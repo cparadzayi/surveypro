@@ -305,30 +305,24 @@ export const DigitalLodgment: React.FC = () => {
     pdf.text(`Surveyor: ${fieldBookConfig.surveyor}`, 20, yPosition);
     yPosition += 8;
     pdf.text(`Date Range: ${fieldBookConfig.dateRange}`, 20, yPosition);
-    yPosition += 20;
-    // Coordinate List Section (Page 100+)
-    yPosition = 20;
+    yPosition += 25;
 
-    pdf.setFontSize(14);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('COORDINATE LIST - Page 100', 20, yPosition);
-    yPosition += 15;
 
     // Found Beacons
     if (fieldBookData.foundBeacons.length > 0) {
+      checkPageBreak(60);
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
       pdf.text('FOUND BEACONS FIXED BY GPS', 20, yPosition);
       yPosition += 10;
 
       const foundBeaconsData = [
-        ['Point', 'Y (metres)', 'X (metres)', 'F/B', 'Calc Ref'],
+        ['Point', 'Y (metres)', 'X (metres)', 'F/B'],
         ...fieldBookData.foundBeacons.map((beacon, index) => [
           beacon.point,
           beacon.y.toFixed(3),
           beacon.x.toFixed(3),
-          'E1',
-          `Calc ${index + 1}, Page C${index + 1}`
+          beacon.fb || '3'
         ])
       ];
 
@@ -359,11 +353,10 @@ export const DigitalLodgment: React.FC = () => {
           minCellHeight: 6
         },
         columnStyles: {
-          0: { cellWidth: 25, halign: 'center' },
-          1: { cellWidth: 35, halign: 'center' },
-          2: { cellWidth: 35, halign: 'center' },
-          3: { cellWidth: 20, halign: 'center' },
-          4: { cellWidth: 40, halign: 'center' }
+          0: { cellWidth: 30, halign: 'center' },
+          1: { cellWidth: 40, halign: 'center' },
+          2: { cellWidth: 40, halign: 'center' },
+          3: { cellWidth: 25, halign: 'center' }
         }
       });
 
@@ -379,13 +372,12 @@ export const DigitalLodgment: React.FC = () => {
       yPosition += 10;
 
       const placedBeaconsData = [
-        ['Point', 'Y (metres)', 'X (metres)', 'F/B', 'Calc Ref'],
+        ['Point', 'Y (metres)', 'X (metres)', 'F/B'],
         ...fieldBookData.placedBeacons.map((beacon, index) => [
           beacon.point,
           beacon.y.toFixed(3),
           beacon.x.toFixed(3),
-          'E1',
-          `Calc ${fieldBookData.foundBeacons.length + index + 1}, Page C${fieldBookData.foundBeacons.length + index + 1}`
+          beacon.fb || '3'
         ])
       ];
 
@@ -416,73 +408,16 @@ export const DigitalLodgment: React.FC = () => {
           minCellHeight: 6
         },
         columnStyles: {
-          0: { cellWidth: 25, halign: 'center' },
-          1: { cellWidth: 35, halign: 'center' },
-          2: { cellWidth: 35, halign: 'center' },
-          3: { cellWidth: 20, halign: 'center' },
-          4: { cellWidth: 40, halign: 'center' }
+          0: { cellWidth: 30, halign: 'center' },
+          1: { cellWidth: 40, halign: 'center' },
+          2: { cellWidth: 40, halign: 'center' },
+          3: { cellWidth: 25, halign: 'center' }
         }
       });
 
       yPosition = (pdf as any).lastAutoTable ? (pdf as any).lastAutoTable.finalY + 15 : yPosition + 50;
     }
 
-    // Calculations Section (C1, C2, C3...)
-    pdf.addPage();
-    yPosition = 20;
-
-    pdf.setFontSize(14);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('CALCULATIONS - Page C1', 20, yPosition);
-    yPosition += 15;
-
-    pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text('GPS coordinates determined by static observations.', 20, yPosition);
-    yPosition += 8;
-    pdf.text('Post-processing performed using commercial GPS software.', 20, yPosition);
-    yPosition += 8;
-    pdf.text('All coordinates referenced to Zimbabwe national grid system.', 20, yPosition);
-    yPosition += 15;
-
-    // Detailed Calculations for each beacon
-    const allBeacons = [...fieldBookData.foundBeacons, ...fieldBookData.placedBeacons];
-    
-    allBeacons.forEach((beacon, index) => {
-      if (index > 0 && index % 2 === 0) {
-        pdf.addPage();
-        yPosition = 20;
-      }
-      
-      checkPageBreak(60);
-      
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(`CALCULATION ${index + 1} - Page C${index + 1}`, 20, yPosition);
-      yPosition += 10;
-      
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Point: ${beacon.point}`, 20, yPosition);
-      yPosition += 6;
-      pdf.text(`Method: GPS Static Observation`, 20, yPosition);
-      yPosition += 6;
-      pdf.text(`Occupation Time: 15+ minutes`, 20, yPosition);
-      yPosition += 6;
-      pdf.text(`Processing Software: Commercial GPS Software`, 20, yPosition);
-      yPosition += 10;
-      
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('Final Coordinates:', 20, yPosition);
-      yPosition += 6;
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Y: ${beacon.y.toFixed(3)} metres (westwards)`, 25, yPosition);
-      yPosition += 6;
-      pdf.text(`X: ${beacon.x.toFixed(3)} metres (southwards)`, 25, yPosition);
-      yPosition += 6;
-      pdf.text(`Accuracy: ±${beacon.hrms?.toFixed(3) || '0.010'}m (HRMS)`, 25, yPosition);
-      yPosition += 15;
-    });
 
     // Save PDF
     const selectedProjectName = projects.find(p => p.id === selectedProject)?.project_name || 'Electronic Field Book';

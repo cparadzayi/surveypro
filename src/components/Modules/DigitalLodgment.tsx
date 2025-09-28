@@ -1,28 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Download, Upload, AlertCircle, CheckCircle } from 'lucide-react';
 import { surveyingApi } from '../../lib/supabase';
-import { SurveyProject } from '../../types/surveying';
+import { SurveyProject, FieldObservation, FieldBookData } from '../../types/surveying';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
-interface FieldObservation {
-  point: string;
-  y: number;
-  x: number;
-  hrms: number;
-  vrms: number;
-  sats: number;
-  pdop: number;
-  fp: string; // F or P (Found or Placed)
-  date: string;
-  description: string;
-}
-
-interface FieldBookData {
-  observations: FieldObservation[];
-  foundBeacons: FieldObservation[];
-  placedBeacons: FieldObservation[];
-}
 
 export const DigitalLodgment: React.FC = () => {
   const [projects, setProjects] = useState<SurveyProject[]>([]);

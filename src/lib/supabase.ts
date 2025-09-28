@@ -3,17 +3,25 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Missing Supabase environment variables. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
-}
+// Create a default client even if env vars are missing to prevent build errors
+const defaultUrl = 'https://placeholder.supabase.co';
+const defaultKey = 'placeholder-key';
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
+export const supabase = createClient(
+  supabaseUrl || defaultUrl, 
+  supabaseKey || defaultKey, 
+  {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true
   }
 });
+
+// Check for missing environment variables at runtime
+export const isSupabaseConfigured = () => {
+  return !!(supabaseUrl && supabaseKey && supabaseUrl !== defaultUrl && supabaseKey !== defaultKey);
+};
 
 // Database Management Utilities
 export const databaseUtils = {

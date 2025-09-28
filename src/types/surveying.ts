@@ -367,3 +367,23 @@ export interface CoordinateSystem {
   is_active: boolean;
   created_at: string;
 }
+
+// Digital Lodgment types
+export interface FieldObservation {
+  point: string;
+  y: number;
+  x: number;
+  hrms: number;
+  vrms: number;
+  sats: number;
+  pdop: number;
+  fp: string; // F or P (Found or Placed)
+  date: string;
+  description: string;
+}
+
+export interface FieldBookData {
+  observations: FieldObservation[];
+  foundBeacons: FieldObservation[];
+  placedBeacons: FieldObservation[];
+}

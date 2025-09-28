@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart3, MapPin, Calculator, Database, Plus } from 'lucide-react';
-import { surveyingApi } from '../../lib/supabase';
+import { surveyingApi, isSupabaseConfigured } from '../../lib/supabase';
 
 export const Dashboard: React.FC = () => {
   const [stats, setStats] = useState({
@@ -20,8 +20,7 @@ export const Dashboard: React.FC = () => {
     try {
       setLoading(true);
       
-      // Check if Supabase is properly configured
-      if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      if (!isSupabaseConfigured()) {
         console.error('Supabase not configured. Please check your .env file.');
         setStats({
           totalProjects: 0,

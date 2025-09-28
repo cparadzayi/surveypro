@@ -1,12 +1,50 @@
-import React, { useState } from 'react';
-import { Calculator, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calculator, RefreshCw, Plus, Trash2, Download, Upload } from 'lucide-react';
 import { SurveyingCalculations } from '../../utils/surveyingCalculations';
+import { surveyingApi } from '../../lib/supabase';
+import { SurveyProject } from '../../types/surveying';
+
+interface BeaconData {
+  point: string;
+  y: number;
+  x: number;
+  fb: string;
+}
+
+interface CoordinateComparison {
+  point: string;
+  oldY: number;
+  oldX: number;
+  newY: number;
+  newX: number;
+  dy: number;
+  dx: number;
+}
 
 export const Calculations: React.FC = () => {
-  const [activeCalculation, setActiveCalculation] = useState<string>('bearing-distance');
+  const [activeCalculation, setActiveCalculation] = useState<string>('coordinate-list');
   const [results, setResults] = useState<any>(null);
+  const [projects, setProjects] = useState<SurveyProject[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string>('');
 
-  // Bearing and Distance Calculator
+  // Coordinate List Data
+  const [foundBeacons, setFoundBeacons] = useState<BeaconData[]>([
+    { point: 'ST1', y: 25426.062, x: 69672.226, fb: '3' },
+    { point: 'ST2', y: 25794.799, x: 69640.102, fb: '3' },
+    { point: 'ST3', y: 27323.586, x: 70288.919, fb: '3' }
+  ]);
+
+  const [coordinateComparisons, setCoordinateComparisons] = useState<CoordinateComparison[]>([
+    { point: 'ST1', oldY: 25426.000, oldX: 69672.000, newY: 25426.062, newX: 69672.226, dy: 0.062, dx: 0.226 }
+  ]);
+
+  const [placedBeacons, setPlacedBeacons] = useState<BeaconData[]>([
+    { point: '9a', y: 24476.65, x: 66048.782, fb: '4' },
+    { point: '4e', y: 24696.577, x: 68288.814, fb: '3' },
+    { point: '8e', y: 24817.44, x: 68517.997, fb: '4' }
+  ]);
+
+  // Traditional calculation forms
   const [bearingDistanceForm, setBearingDistanceForm] = useState({
     fromY: '',
     fromX: '',
@@ -14,7 +52,6 @@ export const Calculations: React.FC = () => {
     toX: ''
   });
 
-  // Coordinate from Bearing and Distance
   const [coordCalcForm, setCoordCalcForm] = useState({
     fromY: '',
     fromX: '',
@@ -24,13 +61,87 @@ export const Calculations: React.FC = () => {
     distance: ''
   });
 
-  // Area Calculation
   const [areaPoints, setAreaPoints] = useState<Array<{ y: string; x: string }>>([
     { y: '', x: '' },
     { y: '', x: '' },
     { y: '', x: '' }
   ]);
 
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  const loadProjects = async () => {
+    try {
+      const data = await surveyingApi.getProjects();
+      setProjects(data || []);
+    } catch (error) {
+      console.error('Error loading projects:', error);
+    }
+  };
+
+  // Found Beacons Functions
+  const addFoundBeacon = () => {
+    setFoundBeacons([...foundBeacons, { point: '', y: 0, x: 0, fb: '3' }]);
+  };
+
+  const updateFoundBeacon = (index: number, field: keyof BeaconData, value: string | number) => {
+    const updated = [...foundBeacons];
+    updated[index] = { ...updated[index], [field]: value };
+    setFoundBeacons(updated);
+  };
+
+  const removeFoundBeacon = (index: number) => {
+    if (foundBeacons.length > 1) {
+      setFoundBeacons(foundBeacons.filter((_, i) => i !== index));
+    }
+  };
+
+  // Coordinate Comparison Functions
+  const addCoordinateComparison = () => {
+    setCoordinateComparisons([...coordinateComparisons, { 
+      point: '', oldY: 0, oldX: 0, newY: 0, newX: 0, dy: 0, dx: 0 
+    }]);
+  };
+
+  const updateCoordinateComparison = (index: number, field: keyof CoordinateComparison, value: string | number) => {
+    const updated = [...coordinateComparisons];
+    updated[index] = { ...updated[index], [field]: value };
+    
+    // Auto-calculate dy and dx when coordinates change
+    if (field === 'oldY' || field === 'oldX' || field === 'newY' || field === 'newX') {
+      const comp = updated[index];
+      comp.dy = comp.newY - comp.oldY;
+      comp.dx = comp.newX - comp.oldX;
+    }
+    
+    setCoordinateComparisons(updated);
+  };
+
+  const removeCoordinateComparison = (index: number) => {
+    if (coordinateComparisons.length > 1) {
+      setCoordinateComparisons(coordinateComparisons.filter((_, i) => i !== index));
+    }
+  };
+
+  // Placed Beacons Functions
+  const addPlacedBeacon = () => {
+    setPlacedBeacons([...placedBeacons, { point: '', y: 0, x: 0, fb: '3' }]);
+  };
+
+  const updatePlacedBeacon = (index: number, field: keyof BeaconData, value: string | number) => {
+    const updated = [...placedBeacons];
+    updated[index] = { ...updated[index], [field]: value };
+    setPlacedBeacons(updated);
+  };
+
+  const removePlacedBeacon = (index: number) => {
+    if (placedBeacons.length > 1) {
+      setPlacedBeacons(placedBeacons.filter((_, i) => i !== index));
+    }
+  };
+
+  // Traditional calculation functions
   const calculateBearingDistance = () => {
     const form = bearingDistanceForm;
     if (!form.fromY || !form.fromX || !form.toY || !form.toX) {
@@ -38,27 +149,31 @@ export const Calculations: React.FC = () => {
       return;
     }
 
-    const bearing = SurveyingCalculations.calculateBearing(
-      parseFloat(form.fromY),
-      parseFloat(form.fromX),
-      parseFloat(form.toY),
-      parseFloat(form.toX)
-    );
+    try {
+      const bearing = SurveyingCalculations.calculateBearing(
+        parseFloat(form.fromY),
+        parseFloat(form.fromX),
+        parseFloat(form.toY),
+        parseFloat(form.toX)
+      );
 
-    const distance = SurveyingCalculations.calculateDistance(
-      parseFloat(form.fromY),
-      parseFloat(form.fromX),
-      parseFloat(form.toY),
-      parseFloat(form.toX)
-    );
+      const distance = SurveyingCalculations.calculateDistance(
+        parseFloat(form.fromY),
+        parseFloat(form.fromX),
+        parseFloat(form.toY),
+        parseFloat(form.toX)
+      );
 
-    const bearingDMS = SurveyingCalculations.decimalToDms(bearing);
+      const bearingDMS = SurveyingCalculations.decimalToDms(bearing);
 
-    setResults({
-      bearing: bearing.toFixed(4),
-      bearingDMS: SurveyingCalculations.formatDMS(bearingDMS.degrees, bearingDMS.minutes, bearingDMS.seconds),
-      distance: distance.toFixed(3)
-    });
+      setResults({
+        bearing: bearing.toFixed(4),
+        bearingDMS: SurveyingCalculations.formatDMS(bearingDMS.degrees, bearingDMS.minutes, bearingDMS.seconds),
+        distance: distance.toFixed(3)
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Error in calculation');
+    }
   };
 
   const calculateCoordinates = () => {
@@ -68,28 +183,32 @@ export const Calculations: React.FC = () => {
       return;
     }
 
-    const bearingDecimal = SurveyingCalculations.dmsToDecimal(
-      parseInt(form.bearingDegrees),
-      parseInt(form.bearingMinutes),
-      parseFloat(form.bearingSeconds)
-    );
-
-    const coords = SurveyingCalculations.calculateCoordinates(
-      parseFloat(form.fromY),
-      parseFloat(form.fromX),
-      bearingDecimal,
-      parseFloat(form.distance)
-    );
-
-    setResults({
-      y: coords.y.toFixed(3),
-      x: coords.x.toFixed(3),
-      bearingUsed: SurveyingCalculations.formatDMS(
+    try {
+      const bearingDecimal = SurveyingCalculations.dmsToDecimal(
         parseInt(form.bearingDegrees),
         parseInt(form.bearingMinutes),
         parseFloat(form.bearingSeconds)
-      )
-    });
+      );
+
+      const coords = SurveyingCalculations.calculateCoordinates(
+        parseFloat(form.fromY),
+        parseFloat(form.fromX),
+        bearingDecimal,
+        parseFloat(form.distance)
+      );
+
+      setResults({
+        y: coords.y.toFixed(3),
+        x: coords.x.toFixed(3),
+        bearingUsed: SurveyingCalculations.formatDMS(
+          parseInt(form.bearingDegrees),
+          parseInt(form.bearingMinutes),
+          parseFloat(form.bearingSeconds)
+        )
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Error in calculation');
+    }
   };
 
   const calculateArea = () => {
@@ -100,25 +219,25 @@ export const Calculations: React.FC = () => {
     }
 
     try {
-    const coordinates = validPoints.map(p => ({
-      y: parseFloat(p.y),
-      x: parseFloat(p.x)
-    }));
+      const coordinates = validPoints.map(p => ({
+        y: parseFloat(p.y),
+        x: parseFloat(p.x)
+      }));
 
-    const area = SurveyingCalculations.calculateArea(coordinates);
-    
-    if (area === 0) {
-      alert('Invalid coordinates: points may be collinear or duplicate');
-      return;
-    }
-    
-    const formattedArea = SurveyingCalculations.formatArea(area);
+      const area = SurveyingCalculations.calculateArea(coordinates);
+      
+      if (area === 0) {
+        alert('Invalid coordinates: points may be collinear or duplicate');
+        return;
+      }
+      
+      const formattedArea = SurveyingCalculations.formatArea(area);
 
-    setResults({
-      area: area,
-      formattedArea: formattedArea,
-      rawAreaSquareMeters: area.toFixed(2)
-    });
+      setResults({
+        area: area,
+        formattedArea: formattedArea,
+        rawAreaSquareMeters: area.toFixed(2)
+      });
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Error in area calculation');
     }
@@ -135,21 +254,65 @@ export const Calculations: React.FC = () => {
     }
   };
 
+  const exportCoordinateList = () => {
+    const csvContent = [
+      // Found Beacons
+      'FOUND BEACONS FIXED BY GPS',
+      'Point,Y (metres),X (metres),F/B',
+      ...foundBeacons.map(b => `${b.point},${b.y},${b.x},${b.fb}`),
+      '',
+      // Coordinate Comparisons
+      'COMPARISON OF COORDINATES',
+      'Point,Old Y,Old X,New Y,New X,dy,dx',
+      ...coordinateComparisons.map(c => `${c.point},${c.oldY},${c.oldX},${c.newY},${c.newX},${c.dy.toFixed(3)},${c.dx.toFixed(3)}`),
+      '',
+      // Placed Beacons
+      'INTERNAL BEACONS PLACED BY GPS',
+      'Point,Y (metres),X (metres),F/B',
+      ...placedBeacons.map(b => `${b.point},${b.y},${b.x},${b.fb}`)
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'coordinate_list.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const calculationTypes = [
+    { id: 'coordinate-list', label: 'Coordinate List' },
     { id: 'bearing-distance', label: 'Bearing & Distance' },
     { id: 'coordinates', label: 'Coordinates from Bearing/Distance' },
-    { id: 'area', label: 'Area Calculation' },
-    { id: 'traverse', label: 'Traverse Adjustment' }
+    { id: 'area', label: 'Area Calculation' }
   ];
 
   return (
     <div className="p-6">
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-900 mb-2">Survey Calculations</h2>
-        <p className="text-gray-600">Zimbabwe cadastral surveying calculations (South-oriented bearings)</p>
+        <p className="text-gray-600">Professional surveying calculations and coordinate management</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Project Selection */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Select Project</label>
+        <select
+          value={selectedProject}
+          onChange={(e) => setSelectedProject(e.target.value)}
+          className="w-full md:w-96 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="">Select a project...</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.project_name} - {project.district}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Calculation Types */}
         <div className="bg-white rounded-xl shadow-md p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Calculation Type</h3>
@@ -174,11 +337,277 @@ export const Calculations: React.FC = () => {
         </div>
 
         {/* Input Forms */}
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <Calculator className="h-5 w-5 mr-2" />
-            Input Parameters
-          </h3>
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-md p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+              <Calculator className="h-5 w-5 mr-2" />
+              {activeCalculation === 'coordinate-list' ? 'Coordinate Management' : 'Input Parameters'}
+            </h3>
+            {activeCalculation === 'coordinate-list' && (
+              <button
+                onClick={exportCoordinateList}
+                className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center text-sm"
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Export CSV
+              </button>
+            )}
+          </div>
+
+          {activeCalculation === 'coordinate-list' && (
+            <div className="space-y-8">
+              {/* Found Beacons Section */}
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="font-semibold text-gray-900">FOUND BEACONS FIXED BY GPS</h4>
+                  <button
+                    onClick={addFoundBeacon}
+                    className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors flex items-center"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full border border-gray-300">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Point</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Y (metres)</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">X (metres)</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">F/B</th>
+                        <th className="border border-gray-300 px-3 py-2 text-center text-sm font-medium">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {foundBeacons.map((beacon, index) => (
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="border border-gray-300 px-2 py-1">
+                            <input
+                              type="text"
+                              value={beacon.point}
+                              onChange={(e) => updateFoundBeacon(index, 'point', e.target.value)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1">
+                            <input
+                              type="number"
+                              step="0.001"
+                              value={beacon.y}
+                              onChange={(e) => updateFoundBeacon(index, 'y', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1">
+                            <input
+                              type="number"
+                              step="0.001"
+                              value={beacon.x}
+                              onChange={(e) => updateFoundBeacon(index, 'x', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1">
+                            <select
+                              value={beacon.fb}
+                              onChange={(e) => updateFoundBeacon(index, 'fb', e.target.value)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            >
+                              <option value="3">3</option>
+                              <option value="4">4</option>
+                            </select>
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1 text-center">
+                            <button
+                              onClick={() => removeFoundBeacon(index)}
+                              className="text-red-600 hover:text-red-800 p-1"
+                              disabled={foundBeacons.length <= 1}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Coordinate Comparison Section */}
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="font-semibold text-gray-900">COMPARISON OF COORDINATES</h4>
+                  <button
+                    onClick={addCoordinateComparison}
+                    className="bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700 transition-colors flex items-center"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full border border-gray-300">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Point</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Old Y</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Old X</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">New Y</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">New X</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">dy</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">dx</th>
+                        <th className="border border-gray-300 px-3 py-2 text-center text-sm font-medium">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {coordinateComparisons.map((comp, index) => (
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="border border-gray-300 px-2 py-1">
+                            <input
+                              type="text"
+                              value={comp.point}
+                              onChange={(e) => updateCoordinateComparison(index, 'point', e.target.value)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1">
+                            <input
+                              type="number"
+                              step="0.001"
+                              value={comp.oldY}
+                              onChange={(e) => updateCoordinateComparison(index, 'oldY', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1">
+                            <input
+                              type="number"
+                              step="0.001"
+                              value={comp.oldX}
+                              onChange={(e) => updateCoordinateComparison(index, 'oldX', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1">
+                            <input
+                              type="number"
+                              step="0.001"
+                              value={comp.newY}
+                              onChange={(e) => updateCoordinateComparison(index, 'newY', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1">
+                            <input
+                              type="number"
+                              step="0.001"
+                              value={comp.newX}
+                              onChange={(e) => updateCoordinateComparison(index, 'newX', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1 bg-blue-50">
+                            <span className="text-sm font-mono">{comp.dy.toFixed(3)}</span>
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1 bg-blue-50">
+                            <span className="text-sm font-mono">{comp.dx.toFixed(3)}</span>
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1 text-center">
+                            <button
+                              onClick={() => removeCoordinateComparison(index)}
+                              className="text-red-600 hover:text-red-800 p-1"
+                              disabled={coordinateComparisons.length <= 1}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Placed Beacons Section */}
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="font-semibold text-gray-900">INTERNAL BEACONS PLACED BY GPS</h4>
+                  <button
+                    onClick={addPlacedBeacon}
+                    className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors flex items-center"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full border border-gray-300">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Point</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Y (metres)</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">X (metres)</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">F/B</th>
+                        <th className="border border-gray-300 px-3 py-2 text-center text-sm font-medium">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {placedBeacons.map((beacon, index) => (
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="border border-gray-300 px-2 py-1">
+                            <input
+                              type="text"
+                              value={beacon.point}
+                              onChange={(e) => updatePlacedBeacon(index, 'point', e.target.value)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1">
+                            <input
+                              type="number"
+                              step="0.001"
+                              value={beacon.y}
+                              onChange={(e) => updatePlacedBeacon(index, 'y', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1">
+                            <input
+                              type="number"
+                              step="0.001"
+                              value={beacon.x}
+                              onChange={(e) => updatePlacedBeacon(index, 'x', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1">
+                            <select
+                              value={beacon.fb}
+                              onChange={(e) => updatePlacedBeacon(index, 'fb', e.target.value)}
+                              className="w-full px-2 py-1 border-0 focus:ring-1 focus:ring-blue-500 text-sm"
+                            >
+                              <option value="3">3</option>
+                              <option value="4">4</option>
+                            </select>
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1 text-center">
+                            <button
+                              onClick={() => removePlacedBeacon(index)}
+                              className="text-red-600 hover:text-red-800 p-1"
+                              disabled={placedBeacons.length <= 1}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
 
           {activeCalculation === 'bearing-distance' && (
             <div className="space-y-4">
@@ -467,11 +896,37 @@ export const Calculations: React.FC = () => {
                   </div>
                 </>
               )}
+
+              {activeCalculation === 'coordinate-list' && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-gray-600">Found Beacons</p>
+                    <p className="text-lg font-bold text-blue-600">{foundBeacons.length}</p>
+                  </div>
+                  <div className="p-3 bg-yellow-50 rounded-lg">
+                    <p className="text-sm text-gray-600">Coordinate Comparisons</p>
+                    <p className="text-lg font-bold text-yellow-600">{coordinateComparisons.length}</p>
+                  </div>
+                  <div className="p-3 bg-green-50 rounded-lg">
+                    <p className="text-sm text-gray-600">Placed Beacons</p>
+                    <p className="text-lg font-bold text-green-600">{placedBeacons.length}</p>
+                  </div>
+                  <div className="p-3 bg-purple-50 rounded-lg">
+                    <p className="text-sm text-gray-600">Total Points</p>
+                    <p className="text-lg font-bold text-purple-600">{foundBeacons.length + placedBeacons.length}</p>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center text-gray-400 py-8">
               <Calculator className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Run a calculation to see results</p>
+              <p>
+                {activeCalculation === 'coordinate-list' 
+                  ? 'Manage your coordinate data above'
+                  : 'Run a calculation to see results'
+                }
+              </p>
             </div>
           )}
         </div>

@@ -99,12 +99,19 @@ export const Calculations: React.FC = () => {
       return;
     }
 
+    try {
     const coordinates = validPoints.map(p => ({
       y: parseFloat(p.y),
       x: parseFloat(p.x)
     }));
 
     const area = SurveyingCalculations.calculateArea(coordinates);
+    
+    if (area === 0) {
+      alert('Invalid coordinates: points may be collinear or duplicate');
+      return;
+    }
+    
     const formattedArea = SurveyingCalculations.formatArea(area);
 
     setResults({
@@ -112,6 +119,9 @@ export const Calculations: React.FC = () => {
       formattedArea: formattedArea,
       rawAreaSquareMeters: area.toFixed(2)
     });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Error in area calculation');
+    }
   };
 
   const addAreaPoint = () => {

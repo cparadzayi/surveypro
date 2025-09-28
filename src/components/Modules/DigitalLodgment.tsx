@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Download, Upload, AlertCircle, CheckCircle } from 'lucide-react';
 import { surveyingApi } from '../../lib/supabase';
-import { SurveyProject, FieldObservation, FieldBookData } from '../../types/surveying';
+import { SurveyProject } from '../../types/surveying';
 import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 
 export const DigitalLodgment: React.FC = () => {
@@ -407,7 +408,8 @@ export const DigitalLodgment: React.FC = () => {
 
     // Save PDF
     const selectedProjectName = projects.find(p => p.id === selectedProject)?.project_name || 'Electronic Field Book';
-    pdf.save(`${selectedProjectName} - Electronic Field Book.pdf`);
+    const sanitizedName = selectedProjectName.replace(/[^a-zA-Z0-9\s-]/g, '');
+    pdf.save(`${sanitizedName} - Electronic Field Book.pdf`);
   };
 
   if (loading) {

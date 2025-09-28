@@ -43,6 +43,10 @@ export class SurveyingCalculations {
 
   // Calculate bearing between two points (Zimbabwe convention: 0° = South)
   static calculateBearing(fromY: number, fromX: number, toY: number, toX: number): number {
+    if (fromY === toY && fromX === toX) {
+      throw new Error('Cannot calculate bearing between identical points');
+    }
+    
     const deltaY = toY - fromY; // West is positive
     const deltaX = toX - fromX; // South is positive
     
@@ -58,6 +62,10 @@ export class SurveyingCalculations {
 
   // Calculate distance between two points
   static calculateDistance(fromY: number, fromX: number, toY: number, toX: number): number {
+    if (fromY === toY && fromX === toX) {
+      return 0;
+    }
+    
     const deltaY = toY - fromY;
     const deltaX = toX - fromX;
     
@@ -82,13 +90,22 @@ export class SurveyingCalculations {
   static calculateArea(coordinates: Array<{ y: number; x: number }>): number {
     if (coordinates.length < 3) return 0;
     
+    // Check for duplicate consecutive points
+    const cleanCoords = coordinates.filter((coord, index) => {
+      if (index === 0) return true;
+      const prev = coordinates[index - 1];
+      return !(coord.y === prev.y && coord.x === prev.x);
+    });
+    
+    if (cleanCoords.length < 3) return 0;
+    
     let area = 0;
-    const n = coordinates.length;
+    const n = cleanCoords.length;
     
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
-      area += coordinates[i].y * coordinates[j].x;
-      area -= coordinates[j].y * coordinates[i].x;
+      area += cleanCoords[i].y * cleanCoords[j].x;
+      area -= cleanCoords[j].y * cleanCoords[i].x;
     }
     
     return Math.abs(area) / 2;

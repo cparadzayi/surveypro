@@ -120,10 +120,7 @@ export const surveyingApi = {
   async getProjects() {
     const { data, error } = await supabase
       .from('survey_projects')
-      .select(`
-        *,
-        coordinate_systems(name, code)
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
     
     if (error) throw error;
@@ -133,10 +130,7 @@ export const surveyingApi = {
   async getProject(id: string) {
     const { data, error } = await supabase
       .from('survey_projects')
-      .select(`
-        *,
-        coordinate_systems(name, code)
-      `)
+      .select('*')
       .eq('id', id)
       .single();
     

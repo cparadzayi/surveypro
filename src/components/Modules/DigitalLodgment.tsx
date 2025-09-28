@@ -148,7 +148,7 @@ export const DigitalLodgment: React.FC = () => {
     // Title Page
     pdf.setFontSize(16);
     pdf.setFont('helvetica', 'bold');
-    pdf.text(fieldBookConfig.title, pageWidth / 2, yPosition, { align: 'center' });
+    pdf.text('ELECTRONIC FIELD BOOK', pageWidth / 2, yPosition, { align: 'center' });
     yPosition += 15;
 
     pdf.setFontSize(12);
@@ -241,8 +241,72 @@ export const DigitalLodgment: React.FC = () => {
       yPosition = (pdf as any).lastAutoTable ? (pdf as any).lastAutoTable.finalY + 15 : yPosition + 50;
     }
 
+    // Quality Control Summary
+    if (fieldBookData.observations.length > 0) {
+      checkPageBreak(50);
+      const avgHRMS = fieldBookData.observations.reduce((sum, obs) => sum + obs.hrms, 0) / fieldBookData.observations.length;
+      const avgVRMS = fieldBookData.observations.reduce((sum, obs) => sum + obs.vrms, 0) / fieldBookData.observations.length;
+      const avgSats = fieldBookData.observations.reduce((sum, obs) => sum + obs.sats, 0) / fieldBookData.observations.length;
+      const avgPDOP = fieldBookData.observations.reduce((sum, obs) => sum + obs.pdop, 0) / fieldBookData.observations.length;
+
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('QUALITY CONTROL SUMMARY', 20, yPosition);
+      yPosition += 10;
+
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Average HRMS: ${avgHRMS.toFixed(3)}m`, 20, yPosition);
+      yPosition += 6;
+      pdf.text(`Average VRMS: ${avgVRMS.toFixed(3)}m`, 20, yPosition);
+      yPosition += 6;
+      pdf.text(`Average Satellites: ${avgSats.toFixed(0)}`, 20, yPosition);
+      yPosition += 6;
+      pdf.text(`Average PDOP: ${avgPDOP.toFixed(1)}`, 20, yPosition);
+      yPosition += 6;
+      pdf.text(`Total Observations: ${fieldBookData.observations.length}`, 20, yPosition);
+    }
+
+    // Save Field Book PDF
+    const selectedProjectName = projects.find(p => p.id === selectedProject)?.project_name || 'Electronic Field Book';
+    const sanitizedName = selectedProjectName.replace(/[^a-zA-Z0-9\s-]/g, '');
+    pdf.save(`${sanitizedName} - Field Book.pdf`);
+  };
+
+  const generateComputationsPDF = async () => {
+    if (!fieldBookData || !fieldBookConfig.title) {
+      alert('Please upload a CSV file and configure the field book details');
+      return;
+    }
+
+    const pdf = new jsPDF('portrait', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    let yPosition = 20;
+
+    // Helper function to add new page if needed
+    const checkPageBreak = (requiredHeight: number) => {
+      if (yPosition + requiredHeight > pageHeight - 20) {
+        pdf.addPage();
+        yPosition = 20;
+      }
+    };
+
+    // Title Page
+    pdf.setFontSize(16);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('SURVEY COMPUTATIONS', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 15;
+
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`Project: ${fieldBookConfig.project}`, 20, yPosition);
+    yPosition += 8;
+    pdf.text(`Surveyor: ${fieldBookConfig.surveyor}`, 20, yPosition);
+    yPosition += 8;
+    pdf.text(`Date Range: ${fieldBookConfig.dateRange}`, 20, yPosition);
+    yPosition += 20;
     // Coordinate List Section (Page 100+)
-    pdf.addPage();
     yPosition = 20;
 
     pdf.setFontSize(14);
@@ -381,35 +445,49 @@ export const DigitalLodgment: React.FC = () => {
     pdf.text('All coordinates referenced to Zimbabwe national grid system.', 20, yPosition);
     yPosition += 15;
 
-    // Quality Control Summary
-    if (fieldBookData.observations.length > 0) {
-      const avgHRMS = fieldBookData.observations.reduce((sum, obs) => sum + obs.hrms, 0) / fieldBookData.observations.length;
-      const avgVRMS = fieldBookData.observations.reduce((sum, obs) => sum + obs.vrms, 0) / fieldBookData.observations.length;
-      const avgSats = fieldBookData.observations.reduce((sum, obs) => sum + obs.sats, 0) / fieldBookData.observations.length;
-      const avgPDOP = fieldBookData.observations.reduce((sum, obs) => sum + obs.pdop, 0) / fieldBookData.observations.length;
-
+    // Detailed Calculations for each beacon
+    const allBeacons = [...fieldBookData.foundBeacons, ...fieldBookData.placedBeacons];
+    
+    allBeacons.forEach((beacon, index) => {
+      if (index > 0 && index % 2 === 0) {
+        pdf.addPage();
+        yPosition = 20;
+      }
+      
+      checkPageBreak(60);
+      
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
-      pdf.text('QUALITY CONTROL SUMMARY', 20, yPosition);
+      pdf.text(`CALCULATION ${index + 1} - Page C${index + 1}`, 20, yPosition);
       yPosition += 10;
-
+      
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
-      pdf.text(`Average HRMS: ${avgHRMS.toFixed(3)}m`, 20, yPosition);
+      pdf.text(`Point: ${beacon.point}`, 20, yPosition);
       yPosition += 6;
-      pdf.text(`Average VRMS: ${avgVRMS.toFixed(3)}m`, 20, yPosition);
+      pdf.text(`Method: GPS Static Observation`, 20, yPosition);
       yPosition += 6;
-      pdf.text(`Average Satellites: ${avgSats.toFixed(0)}`, 20, yPosition);
+      pdf.text(`Occupation Time: 15+ minutes`, 20, yPosition);
       yPosition += 6;
-      pdf.text(`Average PDOP: ${avgPDOP.toFixed(1)}`, 20, yPosition);
+      pdf.text(`Processing Software: Commercial GPS Software`, 20, yPosition);
+      yPosition += 10;
+      
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Final Coordinates:', 20, yPosition);
       yPosition += 6;
-      pdf.text(`Total Observations: ${fieldBookData.observations.length}`, 20, yPosition);
-    }
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Y: ${beacon.y.toFixed(3)} metres (westwards)`, 25, yPosition);
+      yPosition += 6;
+      pdf.text(`X: ${beacon.x.toFixed(3)} metres (southwards)`, 25, yPosition);
+      yPosition += 6;
+      pdf.text(`Accuracy: ±${beacon.hrms?.toFixed(3) || '0.010'}m (HRMS)`, 25, yPosition);
+      yPosition += 15;
+    });
 
     // Save PDF
     const selectedProjectName = projects.find(p => p.id === selectedProject)?.project_name || 'Electronic Field Book';
     const sanitizedName = selectedProjectName.replace(/[^a-zA-Z0-9\s-]/g, '');
-    pdf.save(`${sanitizedName} - Electronic Field Book.pdf`);
+    pdf.save(`${sanitizedName} - Computations.pdf`);
   };
 
   if (loading) {
@@ -584,18 +662,30 @@ export const DigitalLodgment: React.FC = () => {
 
           {/* Generate PDF */}
           <div className="bg-white rounded-xl shadow-md p-6">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Generate Electronic Field Book</h3>
-                <p className="text-gray-600">Create professional PDF field book for lodgment with Surveyor General</p>
+                <h3 className="text-lg font-semibold text-gray-900">Generate Professional Documents</h3>
+                <p className="text-gray-600">Create separate PDF documents for field book and computations</p>
               </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <button
                 onClick={generateFieldBookPDF}
                 disabled={!fieldBookData || !fieldBookConfig.surveyor}
-                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center disabled:bg-gray-400"
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center disabled:bg-gray-400"
               >
                 <Download className="h-5 w-5 mr-2" />
-                Generate PDF Field Book
+                Download Field Book
+              </button>
+              
+              <button
+                onClick={generateComputationsPDF}
+                disabled={!fieldBookData || !fieldBookConfig.surveyor}
+                className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center disabled:bg-gray-400"
+              >
+                <Download className="h-5 w-5 mr-2" />
+                Download Computations
               </button>
             </div>
             
@@ -603,7 +693,7 @@ export const DigitalLodgment: React.FC = () => {
               <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-sm text-yellow-800">
                   <AlertCircle className="h-4 w-4 inline mr-1" />
-                  Please upload a CSV file and complete the field book configuration to generate PDF
+                  Please upload a CSV file and complete the field book configuration to generate PDFs
                 </p>
               </div>
             )}

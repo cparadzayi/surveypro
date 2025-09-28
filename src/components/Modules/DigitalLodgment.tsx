@@ -180,6 +180,18 @@ export const DigitalLodgment: React.FC = () => {
     pdf.text(`Weather: ${fieldBookConfig.weather}`, 25, yPosition);
     yPosition += 20;
 
+    // Methodology Section
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('METHODOLOGY:', 20, yPosition);
+    yPosition += 8;
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('GPS observations recorded during field survey operations.', 25, yPosition);
+    yPosition += 6;
+    pdf.text('All observations taken with dual-frequency GPS receiver.', 25, yPosition);
+    yPosition += 6;
+    pdf.text('Static observations with minimum 15-minute occupation time.', 25, yPosition);
+    yPosition += 20;
+
     // Field Notes Pages (E1, E2, E3...) with 20 entries each
     if (fieldBookData.observations.length > 0) {
       const entriesPerPage = 20;
@@ -195,18 +207,6 @@ export const DigitalLodgment: React.FC = () => {
         pdf.setFont('helvetica', 'bold');
         pdf.text(`FIELD NOTES - Page E${pageNum + 1}`, 20, yPosition);
         yPosition += 15;
-        
-        // Page description (only on first page)
-        if (pageNum === 0) {
-          pdf.setFontSize(10);
-          pdf.setFont('helvetica', 'normal');
-          pdf.text('GPS observations recorded during field survey operations.', 20, yPosition);
-          yPosition += 6;
-          pdf.text('All observations taken with dual-frequency GPS receiver.', 20, yPosition);
-          yPosition += 6;
-          pdf.text('Static observations with minimum 15-minute occupation time.', 20, yPosition);
-          yPosition += 10;
-        }
         
         // Get observations for this page
         const startIndex = pageNum * entriesPerPage;

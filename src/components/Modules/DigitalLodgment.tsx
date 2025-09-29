@@ -334,6 +334,15 @@ export const DigitalLodgment: React.FC = () => {
       }
     };
 
+    // Helper function to get field book page reference for a beacon
+    const getFieldBookReference = (beaconPoint: string): string => {
+      const beaconIndex = fieldBookData.observations.findIndex(obs => obs.point === beaconPoint);
+      if (beaconIndex === -1) return 'E1'; // Default if not found
+      
+      const entriesPerPage = 20;
+      const pageNumber = Math.floor(beaconIndex / entriesPerPage) + 1;
+      return `E${pageNumber}`;
+    };
     // Title Page
     pdf.setFontSize(16);
     pdf.setFont('helvetica', 'bold');
@@ -359,12 +368,12 @@ export const DigitalLodgment: React.FC = () => {
       yPosition += 10;
 
       const foundBeaconsData = [
-        ['Point', 'Y (metres)', 'X (metres)', 'F/B'],
+        ['Point', 'Y (metres)', 'X (metres)', 'Field Book Ref'],
         ...fieldBookData.foundBeacons.map((beacon, index) => [
           beacon.point,
           beacon.y.toFixed(3),
           beacon.x.toFixed(3),
-          beacon.fb || '3'
+          getFieldBookReference(beacon.point)
         ])
       ];
 
@@ -398,7 +407,7 @@ export const DigitalLodgment: React.FC = () => {
           0: { cellWidth: 30, halign: 'center' },
           1: { cellWidth: 40, halign: 'center' },
           2: { cellWidth: 40, halign: 'center' },
-          3: { cellWidth: 25, halign: 'center' }
+          3: { cellWidth: 35, halign: 'center' }
         }
       });
 
@@ -414,12 +423,12 @@ export const DigitalLodgment: React.FC = () => {
       yPosition += 10;
 
       const placedBeaconsData = [
-        ['Point', 'Y (metres)', 'X (metres)', 'F/B'],
+        ['Point', 'Y (metres)', 'X (metres)', 'Field Book Ref'],
         ...fieldBookData.placedBeacons.map((beacon, index) => [
           beacon.point,
           beacon.y.toFixed(3),
           beacon.x.toFixed(3),
-          beacon.fb || '3'
+          getFieldBookReference(beacon.point)
         ])
       ];
 
@@ -453,7 +462,7 @@ export const DigitalLodgment: React.FC = () => {
           0: { cellWidth: 30, halign: 'center' },
           1: { cellWidth: 40, halign: 'center' },
           2: { cellWidth: 40, halign: 'center' },
-          3: { cellWidth: 25, halign: 'center' }
+          3: { cellWidth: 35, halign: 'center' }
         }
       });
 

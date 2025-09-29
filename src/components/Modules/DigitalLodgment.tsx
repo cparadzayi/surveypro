@@ -583,7 +583,7 @@ export const DigitalLodgment: React.FC = () => {
       { content: '', styles: {} }
     ]);
 
-    // Empty row
+    // Second constants row
     coordinateData.push([
       { content: '', styles: {} },
       { content: '', styles: {} },

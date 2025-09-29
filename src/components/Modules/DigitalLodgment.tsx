@@ -748,22 +748,24 @@ export const DigitalLodgment: React.FC = () => {
       body: coordinateData,
       theme: 'grid',
       styles: { 
-        fontSize: 9, 
-        cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
+        fontSize: 7, 
+        cellPadding: { top: 1, right: 1, bottom: 1, left: 1 },
         valign: 'middle',
         lineWidth: 0.5,
         lineColor: [0, 0, 0]
       },
       columnStyles: {
-        0: { cellWidth: 15, halign: 'center' }, // Calc Pg
-        1: { cellWidth: 15, halign: 'center' }, // F/B
-        2: { cellWidth: 20, halign: 'left' },   // Const/Beacon name
-        3: { cellWidth: 25, halign: 'center' }, // Y coordinate
-        4: { cellWidth: 25, halign: 'center' }, // X coordinate
-        5: { cellWidth: 60, halign: 'left' },   // Description
-        6: { cellWidth: 15, halign: 'center' }, // F/P
-        7: { cellWidth: 15, halign: 'center' }  // F/B
+        0: { cellWidth: 12, halign: 'center' }, // Calc Pg
+        1: { cellWidth: 10, halign: 'center' }, // F/B
+        2: { cellWidth: 18, halign: 'left' },   // Const/Beacon name
+        3: { cellWidth: 22, halign: 'center' }, // Y coordinate
+        4: { cellWidth: 22, halign: 'center' }, // X coordinate
+        5: { cellWidth: 85, halign: 'left' },   // Beacon Description
+        6: { cellWidth: 10, halign: 'center' }, // F/P
+        7: { cellWidth: 11, halign: 'center' }  // F/B
       },
+      margin: { left: 10, right: 10 },
+      tableWidth: 'auto',
       didParseCell: function(data) {
         // Make section headers bold
         if (data.cell.text && typeof data.cell.text[0] === 'string') {

@@ -528,11 +528,16 @@ export const DigitalLodgment: React.FC = () => {
       }
     };
 
-    // Title
+    // S.R. No. and Title
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('S.R. No.', 20, yPosition);
+    yPosition += 8;
+    
     pdf.setFontSize(16);
     pdf.setFont('helvetica', 'bold');
     pdf.text('LIST OF CO-ORDINATES', pageWidth / 2, yPosition, { align: 'center' });
-    yPosition += 10;
+    yPosition += 12;
 
     // Survey title
     pdf.setFontSize(12);
@@ -540,44 +545,45 @@ export const DigitalLodgment: React.FC = () => {
     pdf.text(`SURVEY OF: ${fieldBookConfig.project.toUpperCase()}`, pageWidth / 2, yPosition, { align: 'center' });
     yPosition += 15;
 
-    // Create the main coordinate table
+    // Create the main coordinate table with refined structure
     const coordinateData = [];
     
-    // Header row
+    // Main header row
     coordinateData.push([
-      { content: '', styles: { cellWidth: 15 } },
-      { content: '', styles: { cellWidth: 15 } },
-      { content: '', styles: { cellWidth: 25 } },
-      { content: 'Lo. 31 COORDINATES', styles: { cellWidth: 50, halign: 'center', fontStyle: 'bold' } },
-      { content: 'Beacon Description', styles: { cellWidth: 85, halign: 'center', fontStyle: 'bold' } }
+      { content: '', styles: { cellWidth: 15, fillColor: [240, 240, 240] } },
+      { content: '', styles: { cellWidth: 15, fillColor: [240, 240, 240] } },
+      { content: 'Lo. 31 COORDINATES', styles: { cellWidth: 50, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
+      { content: '', styles: { cellWidth: 25, fillColor: [240, 240, 240] } },
+      { content: 'Beacon Description', styles: { cellWidth: 85, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } }
     ]);
 
-    // Sub-header row
+    // Column headers row
     coordinateData.push([
-      { content: 'Calc', styles: { fontStyle: 'bold', halign: 'center' } },
-      { content: 'F/B', styles: { fontStyle: 'bold', halign: 'center' } },
-      { content: '', styles: {} },
-      { content: 'Y (metres)', styles: { fontStyle: 'bold', halign: 'center' } },
-      { content: 'X (metres)', styles: { fontStyle: 'bold', halign: 'center' } }
+      { content: 'Calc', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+      { content: 'F/B', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+      { content: 'Y (metres)', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+      { content: 'X (metres)', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+      { content: '', styles: { fillColor: [240, 240, 240] } }
     ]);
 
     // Constants row
     coordinateData.push([
-      { content: 'Pg.', styles: { fontStyle: 'bold' } },
-      { content: '', styles: {} },
-      { content: 'Const', styles: { fontStyle: 'bold' } },
+      { content: 'Pg.', styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } },
+      { content: '', styles: { fillColor: [240, 240, 240] } },
+      { content: 'Const', styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } },
       { content: '+/- 0.00', styles: { halign: 'center' } },
-      { content: '1800000', styles: { halign: 'center' } }
+      { content: '1800000', styles: { halign: 'center' } },
+      { content: '', styles: {} }
     ]);
 
     // Empty row
-    coordinateData.push(['', '', '', '', '']);
+    coordinateData.push(['', '', '', '', '', '']);
 
     // TRIG BEACONS / T.S.MS section (if any trigonometric stations exist)
     coordinateData.push([
       { content: '', styles: {} },
       { content: '', styles: {} },
-      { content: 'TRIG BEACONS / T.S.MS', styles: { fontStyle: 'bold', colSpan: 3 } }
+      { content: 'TRIG BEACONS / T.S.MS', styles: { fontStyle: 'bold', colSpan: 4, fillColor: [250, 250, 250] } }
     ]);
 
     // Add sample trig beacons (you can modify this based on your data)
@@ -591,57 +597,57 @@ export const DigitalLodgment: React.FC = () => {
       coordinateData.push([
         { content: '', styles: {} },
         { content: '3', styles: { halign: 'center' } },
-        { content: beacon.name, styles: {} },
         { content: beacon.y.toFixed(2), styles: { halign: 'center' } },
         { content: beacon.x.toFixed(2), styles: { halign: 'center' } },
+        { content: beacon.name, styles: {} },
         { content: beacon.desc, styles: {} }
       ]);
     });
 
     // Empty row
-    coordinateData.push(['', '', '', '', '']);
+    coordinateData.push(['', '', '', '', '', '']);
 
     // WORKING STATIONS section
     coordinateData.push([
       { content: '', styles: {} },
       { content: '', styles: {} },
-      { content: 'WORKING STATIONS', styles: { fontStyle: 'bold', colSpan: 3 } }
+      { content: 'WORKING STATIONS', styles: { fontStyle: 'bold', colSpan: 4, fillColor: [250, 250, 250] } }
     ]);
 
     // Add sample working station
     coordinateData.push([
       { content: '', styles: {} },
       { content: '3', styles: { halign: 'center' } },
-      { content: 'T1', styles: {} },
       { content: '26662.1', styles: { halign: 'center' } },
       { content: '65471.85', styles: { halign: 'center' } },
+      { content: 'T1', styles: {} },
       { content: '12mm iron peg', styles: {} }
     ]);
 
     // Empty row
-    coordinateData.push(['', '', '', '', '']);
+    coordinateData.push(['', '', '', '', '', '']);
 
     // BEACONS FOUND section
     if (fieldBookData.foundBeacons.length > 0) {
       coordinateData.push([
         { content: '', styles: {} },
         { content: '', styles: {} },
-        { content: 'BEACONS FOUND', styles: { fontStyle: 'bold', colSpan: 3 } }
+        { content: 'BEACONS FOUND', styles: { fontStyle: 'bold', colSpan: 4, fillColor: [250, 250, 250] } }
       ]);
 
       fieldBookData.foundBeacons.forEach(beacon => {
         coordinateData.push([
           { content: '102', styles: { halign: 'center' } },
           { content: '3', styles: { halign: 'center' } },
-          { content: beacon.point, styles: {} },
           { content: beacon.y.toFixed(2), styles: { halign: 'center' } },
           { content: beacon.x.toFixed(2), styles: { halign: 'center' } },
+          { content: beacon.point, styles: {} },
           { content: getBeaconDescription(beacon), styles: {} }
         ]);
       });
 
       // Empty row
-      coordinateData.push(['', '', '', '', '']);
+      coordinateData.push(['', '', '', '', '', '']);
     }
 
     // BEACONS PLACED section
@@ -649,7 +655,7 @@ export const DigitalLodgment: React.FC = () => {
       coordinateData.push([
         { content: '', styles: {} },
         { content: '', styles: {} },
-        { content: 'BEACONS PLACED', styles: { fontStyle: 'bold', colSpan: 3 } }
+        { content: 'BEACONS PLACED', styles: { fontStyle: 'bold', colSpan: 4, fillColor: [250, 250, 250] } }
       ]);
 
       fieldBookData.placedBeacons.forEach((beacon, index) => {
@@ -657,9 +663,9 @@ export const DigitalLodgment: React.FC = () => {
         coordinateData.push([
           { content: calcPage, styles: { halign: 'center' } },
           { content: '3', styles: { halign: 'center' } },
-          { content: beacon.point, styles: {} },
           { content: beacon.y.toFixed(2), styles: { halign: 'center' } },
           { content: beacon.x.toFixed(2), styles: { halign: 'center' } },
+          { content: beacon.point, styles: {} },
           { content: getBeaconDescription(beacon), styles: {} }
         ]);
       });
@@ -680,17 +686,12 @@ export const DigitalLodgment: React.FC = () => {
       columnStyles: {
         0: { cellWidth: 15, halign: 'center' }, // Calc
         1: { cellWidth: 15, halign: 'center' }, // F/B
-        2: { cellWidth: 25, halign: 'left' },   // Beacon name
-        3: { cellWidth: 25, halign: 'center' }, // Y coordinate
-        4: { cellWidth: 25, halign: 'center' }, // X coordinate
+        2: { cellWidth: 25, halign: 'center' }, // Y coordinate
+        3: { cellWidth: 25, halign: 'center' }, // X coordinate
+        4: { cellWidth: 25, halign: 'left' },   // Beacon name
         5: { cellWidth: 85, halign: 'left' }    // Description
       },
       didParseCell: function(data) {
-        // Make header rows bold and centered
-        if (data.row.index === 0 || data.row.index === 1) {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fillColor = [240, 240, 240];
-        }
         // Make section headers bold
         if (data.cell.text && typeof data.cell.text[0] === 'string') {
           const text = data.cell.text[0];
@@ -703,7 +704,7 @@ export const DigitalLodgment: React.FC = () => {
       }
     });
 
-    // Add F/P and F/B columns on the right side (like in the template)
+    // Add F/P and F/B reference table positioned on the right side
     const tableEndY = (pdf as any).lastAutoTable ? (pdf as any).lastAutoTable.finalY : yPosition + 100;
     
     // Create F/P and F/B reference table
@@ -723,9 +724,9 @@ export const DigitalLodgment: React.FC = () => {
       ]);
     });
 
-    // Position the F/P F/B table on the right side
+    // Position the F/P F/B table on the right side of the page
     autoTable(pdf, {
-      startY: yPosition + 50,
+      startY: yPosition + 40,
       margin: { left: pageWidth - 40 },
       body: fpFbData,
       theme: 'grid',

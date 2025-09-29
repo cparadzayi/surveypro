@@ -545,45 +545,66 @@ export const DigitalLodgment: React.FC = () => {
     pdf.text(`SURVEY OF: ${fieldBookConfig.project.toUpperCase()}`, pageWidth / 2, yPosition, { align: 'center' });
     yPosition += 15;
 
-    // Create the main coordinate table with refined structure
+    // Create the main coordinate table with correct column order
     const coordinateData = [];
     
-    // Main header row
+    // Main header row - Calc Pg, F/B, Const, Y (metres), X (metres), Beacon Description, F/P, F/B
     coordinateData.push([
-      { content: '', styles: { cellWidth: 15, fillColor: [240, 240, 240] } },
-      { content: '', styles: { cellWidth: 15, fillColor: [240, 240, 240] } },
-      { content: 'Lo. 31 COORDINATES', styles: { cellWidth: 50, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
-      { content: '', styles: { cellWidth: 25, fillColor: [240, 240, 240] } },
-      { content: 'Beacon Description', styles: { cellWidth: 85, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } }
+      { content: 'Calc', styles: { cellWidth: 15, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
+      { content: 'F/B', styles: { cellWidth: 15, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
+      { content: 'Lo. 31 COORDINATES', styles: { cellWidth: 30, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240], colSpan: 2 } },
+      { content: '', styles: { cellWidth: 0 } }, // This will be merged with previous cell
+      { content: 'Beacon Description', styles: { cellWidth: 60, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
+      { content: 'F/P', styles: { cellWidth: 15, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
+      { content: 'F/B', styles: { cellWidth: 15, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } }
     ]);
 
-    // Column headers row
+    // Sub-header row
     coordinateData.push([
-      { content: 'Calc', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
-      { content: 'F/B', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+      { content: 'Pg.', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+      { content: '', styles: { fillColor: [240, 240, 240] } },
+      { content: 'Const', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
       { content: 'Y (metres)', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
       { content: 'X (metres)', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+      { content: '', styles: { fillColor: [240, 240, 240] } },
+      { content: '', styles: { fillColor: [240, 240, 240] } },
       { content: '', styles: { fillColor: [240, 240, 240] } }
     ]);
 
     // Constants row
     coordinateData.push([
-      { content: 'Pg.', styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } },
+      { content: '', styles: {} },
       { content: '', styles: { fillColor: [240, 240, 240] } },
-      { content: 'Const', styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } },
       { content: '+/- 0.00', styles: { halign: 'center' } },
       { content: '1800000', styles: { halign: 'center' } },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
       { content: '', styles: {} }
     ]);
 
     // Empty row
-    coordinateData.push(['', '', '', '', '', '']);
+    coordinateData.push([
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '+/- 0.00', styles: { halign: 'center' } },
+      { content: '1800000', styles: { halign: 'center' } },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} }
+    ]);
 
     // TRIG BEACONS / T.S.MS section (if any trigonometric stations exist)
     coordinateData.push([
       { content: '', styles: {} },
       { content: '', styles: {} },
-      { content: 'TRIG BEACONS / T.S.MS', styles: { fontStyle: 'bold', colSpan: 4, fillColor: [250, 250, 250] } }
+      { content: 'TRIG BEACONS / T.S.MS', styles: { fontStyle: 'bold', colSpan: 6, fillColor: [250, 250, 250] } },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} }
     ]);
 
     // Add sample trig beacons (you can modify this based on your data)
@@ -597,57 +618,100 @@ export const DigitalLodgment: React.FC = () => {
       coordinateData.push([
         { content: '', styles: {} },
         { content: '3', styles: { halign: 'center' } },
+        { content: beacon.name, styles: {} },
         { content: beacon.y.toFixed(2), styles: { halign: 'center' } },
         { content: beacon.x.toFixed(2), styles: { halign: 'center' } },
-        { content: beacon.name, styles: {} },
-        { content: beacon.desc, styles: {} }
+        { content: beacon.desc, styles: {} },
+        { content: '', styles: {} },
+        { content: 'E1', styles: { halign: 'center' } }
       ]);
     });
 
-    // Empty row
-    coordinateData.push(['', '', '', '', '', '']);
+    // Empty row  
+    coordinateData.push([
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} }
+    ]);
 
     // WORKING STATIONS section
     coordinateData.push([
       { content: '', styles: {} },
       { content: '', styles: {} },
-      { content: 'WORKING STATIONS', styles: { fontStyle: 'bold', colSpan: 4, fillColor: [250, 250, 250] } }
+      { content: 'WORKING STATIONS', styles: { fontStyle: 'bold', colSpan: 6, fillColor: [250, 250, 250] } },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} }
     ]);
 
     // Add sample working station
     coordinateData.push([
       { content: '', styles: {} },
       { content: '3', styles: { halign: 'center' } },
+      { content: 'T1', styles: {} },
       { content: '26662.1', styles: { halign: 'center' } },
       { content: '65471.85', styles: { halign: 'center' } },
-      { content: 'T1', styles: {} },
-      { content: '12mm iron peg', styles: {} }
+      { content: '12mm iron peg', styles: {} },
+      { content: '', styles: {} },
+      { content: 'E1', styles: { halign: 'center' } }
     ]);
 
-    // Empty row
-    coordinateData.push(['', '', '', '', '', '']);
+    // Empty row  
+    coordinateData.push([
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} },
+      { content: '', styles: {} }
+    ]);
 
     // BEACONS FOUND section
     if (fieldBookData.foundBeacons.length > 0) {
       coordinateData.push([
         { content: '', styles: {} },
         { content: '', styles: {} },
-        { content: 'BEACONS FOUND', styles: { fontStyle: 'bold', colSpan: 4, fillColor: [250, 250, 250] } }
+        { content: 'BEACONS FOUND', styles: { fontStyle: 'bold', colSpan: 6, fillColor: [250, 250, 250] } },
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} }
       ]);
 
       fieldBookData.foundBeacons.forEach(beacon => {
         coordinateData.push([
           { content: '102', styles: { halign: 'center' } },
           { content: '3', styles: { halign: 'center' } },
+          { content: beacon.point, styles: {} },
           { content: beacon.y.toFixed(2), styles: { halign: 'center' } },
           { content: beacon.x.toFixed(2), styles: { halign: 'center' } },
-          { content: beacon.point, styles: {} },
-          { content: getBeaconDescription(beacon), styles: {} }
+          { content: getBeaconDescription(beacon), styles: {} },
+          { content: 'F', styles: { halign: 'center' } },
+          { content: getFieldBookReference(beacon.point), styles: { halign: 'center' } }
         ]);
       });
 
-      // Empty row
-      coordinateData.push(['', '', '', '', '', '']);
+      // Empty row  
+      coordinateData.push([
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} }
+      ]);
     }
 
     // BEACONS PLACED section
@@ -655,7 +719,12 @@ export const DigitalLodgment: React.FC = () => {
       coordinateData.push([
         { content: '', styles: {} },
         { content: '', styles: {} },
-        { content: 'BEACONS PLACED', styles: { fontStyle: 'bold', colSpan: 4, fillColor: [250, 250, 250] } }
+        { content: 'BEACONS PLACED', styles: { fontStyle: 'bold', colSpan: 6, fillColor: [250, 250, 250] } },
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} },
+        { content: '', styles: {} }
       ]);
 
       fieldBookData.placedBeacons.forEach((beacon, index) => {
@@ -663,10 +732,12 @@ export const DigitalLodgment: React.FC = () => {
         coordinateData.push([
           { content: calcPage, styles: { halign: 'center' } },
           { content: '3', styles: { halign: 'center' } },
+          { content: beacon.point, styles: {} },
           { content: beacon.y.toFixed(2), styles: { halign: 'center' } },
           { content: beacon.x.toFixed(2), styles: { halign: 'center' } },
-          { content: beacon.point, styles: {} },
-          { content: getBeaconDescription(beacon), styles: {} }
+          { content: getBeaconDescription(beacon), styles: {} },
+          { content: 'P', styles: { halign: 'center' } },
+          { content: getFieldBookReference(beacon.point), styles: { halign: 'center' } }
         ]);
       });
     }
@@ -684,12 +755,14 @@ export const DigitalLodgment: React.FC = () => {
         lineColor: [0, 0, 0]
       },
       columnStyles: {
-        0: { cellWidth: 15, halign: 'center' }, // Calc
+        0: { cellWidth: 15, halign: 'center' }, // Calc Pg
         1: { cellWidth: 15, halign: 'center' }, // F/B
-        2: { cellWidth: 25, halign: 'center' }, // Y coordinate
-        3: { cellWidth: 25, halign: 'center' }, // X coordinate
-        4: { cellWidth: 25, halign: 'left' },   // Beacon name
-        5: { cellWidth: 85, halign: 'left' }    // Description
+        2: { cellWidth: 20, halign: 'left' },   // Const/Beacon name
+        3: { cellWidth: 25, halign: 'center' }, // Y coordinate
+        4: { cellWidth: 25, halign: 'center' }, // X coordinate
+        5: { cellWidth: 60, halign: 'left' },   // Description
+        6: { cellWidth: 15, halign: 'center' }, // F/P
+        7: { cellWidth: 15, halign: 'center' }  // F/B
       },
       didParseCell: function(data) {
         // Make section headers bold
@@ -701,45 +774,6 @@ export const DigitalLodgment: React.FC = () => {
             data.cell.styles.fillColor = [250, 250, 250];
           }
         }
-      }
-    });
-
-    // Add F/P and F/B reference table positioned on the right side
-    const tableEndY = (pdf as any).lastAutoTable ? (pdf as any).lastAutoTable.finalY : yPosition + 100;
-    
-    // Create F/P and F/B reference table
-    const fpFbData = [];
-    
-    // Headers
-    fpFbData.push([
-      { content: 'F/P', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
-      { content: 'F/B', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } }
-    ]);
-
-    // Add all beacons with their F/P and F/B references
-    [...fieldBookData.foundBeacons, ...fieldBookData.placedBeacons].forEach(beacon => {
-      fpFbData.push([
-        { content: beacon.fp.includes('F') ? 'F' : 'P', styles: { halign: 'center' } },
-        { content: getFieldBookReference(beacon.point), styles: { halign: 'center' } }
-      ]);
-    });
-
-    // Position the F/P F/B table on the right side of the page
-    autoTable(pdf, {
-      startY: yPosition + 40,
-      margin: { left: pageWidth - 40 },
-      body: fpFbData,
-      theme: 'grid',
-      styles: { 
-        fontSize: 8, 
-        cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
-        valign: 'middle',
-        lineWidth: 0.5,
-        lineColor: [0, 0, 0]
-      },
-      columnStyles: {
-        0: { cellWidth: 15, halign: 'center' },
-        1: { cellWidth: 15, halign: 'center' }
       }
     });
 

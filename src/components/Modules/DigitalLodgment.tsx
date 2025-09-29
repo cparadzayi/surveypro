@@ -368,7 +368,7 @@ export const DigitalLodgment: React.FC = () => {
       yPosition += 10;
 
       const foundBeaconsData = [
-        ['Point', 'Y (metres)', 'X (metres)', 'Field Book Ref'],
+        ['Point', 'Y (metres)', 'X (metres)', 'F/B'],
         ...fieldBookData.foundBeacons.map((beacon, index) => [
           beacon.point,
           beacon.y.toFixed(3),
@@ -407,7 +407,7 @@ export const DigitalLodgment: React.FC = () => {
           0: { cellWidth: 30, halign: 'center' },
           1: { cellWidth: 40, halign: 'center' },
           2: { cellWidth: 40, halign: 'center' },
-          3: { cellWidth: 35, halign: 'center' }
+          3: { cellWidth: 25, halign: 'center' }
         }
       });
 
@@ -423,7 +423,7 @@ export const DigitalLodgment: React.FC = () => {
       yPosition += 10;
 
       const placedBeaconsData = [
-        ['Point', 'Y (metres)', 'X (metres)', 'Field Book Ref'],
+        ['Point', 'Y (metres)', 'X (metres)', 'F/B'],
         ...fieldBookData.placedBeacons.map((beacon, index) => [
           beacon.point,
           beacon.y.toFixed(3),
@@ -462,7 +462,7 @@ export const DigitalLodgment: React.FC = () => {
           0: { cellWidth: 30, halign: 'center' },
           1: { cellWidth: 40, halign: 'center' },
           2: { cellWidth: 40, halign: 'center' },
-          3: { cellWidth: 35, halign: 'center' }
+          3: { cellWidth: 25, halign: 'center' }
         }
       });
 

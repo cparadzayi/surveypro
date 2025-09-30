@@ -698,17 +698,6 @@ export const DigitalLodgment: React.FC = () => {
         coordinateData.push([
           { content: '', styles: {} },
           { content: '', styles: {} },
-          { content: '+/- 0.00', styles: { halign: 'center' } },
-          { content: '1800000', styles: { halign: 'center' } },
-          { content: '', styles: {} },
-          { content: '', styles: {} },
-          { content: '', styles: {} },
-          { content: '', styles: {} }
-        ]);
-
-        coordinateData.push([
-          { content: '', styles: {} },
-          { content: '', styles: {} },
           { content: '', styles: {} },
           { content: '+/- 0.00', styles: { halign: 'center' } },
           { content: '1800000', styles: { halign: 'center' } },

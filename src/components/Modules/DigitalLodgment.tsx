@@ -503,6 +503,8 @@ export const DigitalLodgment: React.FC = () => {
 
     const pdf = new jsPDF('portrait', 'mm', 'a4');
     const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    let currentPage = 100; // Start page numbering at 100
     let yPosition = 20;
 
     // Helper function to get field book page reference for a beacon
@@ -515,6 +517,40 @@ export const DigitalLodgment: React.FC = () => {
       return `E${pageNumber}`;
     };
 
+    // Helper function to add page header and footer
+    const addPageHeaderFooter = (pageNum: number) => {
+      // Page footer with page number
+      const footerY = pageHeight - 10;
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Page ${pageNum}`, pageWidth / 2, footerY, { align: 'center' });
+    };
+
+    // Helper function to start new page with header
+    const startNewPage = () => {
+      pdf.addPage();
+      currentPage++;
+      yPosition = 20;
+      
+      // Add page header
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text('S.R. No.', 20, yPosition);
+      yPosition += 8;
+      
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('LIST OF CO-ORDINATES', pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 12;
+
+      // Survey title
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`SURVEY OF: ${fieldBookConfig.project.toUpperCase()}`, pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 15;
+      
+      addPageHeaderFooter(currentPage);
+    };
     // Helper function to generate beacon description
     const getBeaconDescription = (beacon: FieldObservation): string => {
       if (beacon.description && beacon.description.trim()) {
@@ -528,7 +564,7 @@ export const DigitalLodgment: React.FC = () => {
       }
     };
 
-    // S.R. No. and Title
+    // First page header
     pdf.setFontSize(12);
     pdf.setFont('helvetica', 'normal');
     pdf.text('S.R. No.', 20, yPosition);
@@ -545,11 +581,232 @@ export const DigitalLodgment: React.FC = () => {
     pdf.text(`SURVEY OF: ${fieldBookConfig.project.toUpperCase()}`, pageWidth / 2, yPosition, { align: 'center' });
     yPosition += 15;
 
-    // Create the main coordinate table with correct column order
-    const coordinateData = [];
+    // Add first page footer
+    addPageHeaderFooter(currentPage);
+
+    // Collect all coordinate entries
+    const allEntries = [];
     
-    // Main header row - Calc Pg, F/B, Const, Y (metres), X (metres), Beacon Description, F/P, F/B
-    coordinateData.push([
+    // Add trigonometric beacons
+    const trigBeacons = [
+      { name: '419/S', y: 33332.88, x: 60173.45, desc: 'KAPIRO' },
+      { name: '521/V', y: 31440.52, x: 68989.97, desc: 'O.C.P' },
+      { name: '525/V', y: 24189.2, x: 67326.6, desc: 'O.C.P' }
+    ];
+
+    trigBeacons.forEach(beacon => {
+      allEntries.push([
+        '', // Calc Pg
+        '3', // F/B
+        beacon.name, // Const
+        beacon.y.toFixed(2), // Y coordinate
+        beacon.x.toFixed(2), // X coordinate
+        beacon.desc, // Beacon Description
+        '', // F/P
+        'E1' // F/B
+      ]);
+    });
+
+    // Add working station
+    allEntries.push([
+      '', // Calc Pg
+      '3', // F/B
+      'T1', // Const
+      '26662.1', // Y coordinate
+      '65471.85', // X coordinate
+      '12mm iron peg', // Beacon Description
+      '', // F/P
+      'E1' // F/B
+    ]);
+
+    // Add found beacons
+    if (fieldBookData.foundBeacons.length > 0) {
+      fieldBookData.foundBeacons.forEach(beacon => {
+        allEntries.push([
+          '102', // Calc Pg
+          '3', // F/B
+          beacon.point, // Const
+          beacon.y.toFixed(2), // Y coordinate
+          beacon.x.toFixed(2), // X coordinate
+          getBeaconDescription(beacon), // Beacon Description
+          'F', // F/P
+          getFieldBookReference(beacon.point) // F/B
+        ]);
+      });
+    }
+
+    // Add placed beacons
+    if (fieldBookData.placedBeacons.length > 0) {
+      fieldBookData.placedBeacons.forEach((beacon, index) => {
+        const calcPage = index < 20 ? '104' : '105';
+        allEntries.push([
+          calcPage, // Calc Pg
+          '3', // F/B
+          beacon.point, // Const
+          beacon.y.toFixed(2), // Y coordinate
+          beacon.x.toFixed(2), // X coordinate
+          getBeaconDescription(beacon), // Beacon Description
+          'P', // F/P
+          getFieldBookReference(beacon.point) // F/B
+        ]);
+      });
+    }
+
+    // Split entries into pages of 20
+    const entriesPerPage = 20;
+    const totalPages = Math.ceil(allEntries.length / entriesPerPage);
+    
+    for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
+      if (pageIndex > 0) {
+        startNewPage();
+      }
+      
+      // Get entries for this page
+      const startIndex = pageIndex * entriesPerPage;
+      const endIndex = Math.min(startIndex + entriesPerPage, allEntries.length);
+      const pageEntries = allEntries.slice(startIndex, endIndex);
+      
+      // Create table data for this page
+      const coordinateData = [];
+      
+      // Main header row
+      coordinateData.push([
+        { content: 'Calc', styles: { cellWidth: 12, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
+        { content: 'F/B', styles: { cellWidth: 10, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
+        { content: 'Lo. 31 COORDINATES', styles: { cellWidth: 62, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240], colSpan: 3 } },
+        { content: '', styles: { cellWidth: 0 } },
+        { content: '', styles: { cellWidth: 0 } },
+        { content: 'Beacon Description', styles: { cellWidth: 85, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
+        { content: 'F/P', styles: { cellWidth: 10, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
+        { content: 'F/B', styles: { cellWidth: 11, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } }
+      ]);
+
+      // Sub-header row
+      coordinateData.push([
+        { content: 'Pg.', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+        { content: '', styles: { fillColor: [240, 240, 240] } },
+        { content: 'Const', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+        { content: 'Y (metres)', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+        { content: 'X (metres)', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+        { content: '', styles: { fillColor: [240, 240, 240] } },
+        { content: '', styles: { fillColor: [240, 240, 240] } },
+        { content: '', styles: { fillColor: [240, 240, 240] } }
+      ]);
+
+      // Constants rows (only on first page)
+      if (pageIndex === 0) {
+        coordinateData.push([
+          { content: '', styles: {} },
+          { content: '', styles: {} },
+          { content: '+/- 0.00', styles: { halign: 'center' } },
+          { content: '1800000', styles: { halign: 'center' } },
+          { content: '', styles: {} },
+          { content: '', styles: {} },
+          { content: '', styles: {} },
+          { content: '', styles: {} }
+        ]);
+
+        coordinateData.push([
+          { content: '', styles: {} },
+          { content: '', styles: {} },
+          { content: '', styles: {} },
+          { content: '+/- 0.00', styles: { halign: 'center' } },
+          { content: '1800000', styles: { halign: 'center' } },
+          { content: '', styles: {} },
+          { content: '', styles: {} },
+          { content: '', styles: {} }
+        ]);
+      }
+
+      // Add section headers and entries for this page
+      let currentSection = '';
+      
+      pageEntries.forEach((entry, index) => {
+        const globalIndex = startIndex + index;
+        
+        // Determine section based on global index
+        let sectionTitle = '';
+        if (globalIndex < trigBeacons.length) {
+          sectionTitle = 'TRIG BEACONS / T.S.MS';
+        } else if (globalIndex < trigBeacons.length + 1) {
+          sectionTitle = 'WORKING STATIONS';
+        } else if (globalIndex < trigBeacons.length + 1 + (fieldBookData.foundBeacons?.length || 0)) {
+          sectionTitle = 'BEACONS FOUND';
+        } else {
+          sectionTitle = 'BEACONS PLACED';
+        }
+        
+        // Add section header if it's a new section
+        if (sectionTitle !== currentSection) {
+          currentSection = sectionTitle;
+          coordinateData.push([
+            { content: '', styles: {} },
+            { content: '', styles: {} },
+            { content: sectionTitle, styles: { fontStyle: 'bold', colSpan: 6, fillColor: [250, 250, 250] } },
+            { content: '', styles: {} },
+            { content: '', styles: {} },
+            { content: '', styles: {} },
+            { content: '', styles: {} },
+            { content: '', styles: {} }
+          ]);
+        }
+        
+        // Add the entry
+        coordinateData.push([
+          { content: entry[0], styles: { halign: 'center' } },
+          { content: entry[1], styles: { halign: 'center' } },
+          { content: entry[2], styles: {} },
+          { content: entry[3], styles: { halign: 'center' } },
+          { content: entry[4], styles: { halign: 'center' } },
+          { content: entry[5], styles: {} },
+          { content: entry[6], styles: { halign: 'center' } },
+          { content: entry[7], styles: { halign: 'center' } }
+        ]);
+      });
+
+      // Generate the table for this page
+      autoTable(pdf, {
+        startY: yPosition,
+        body: coordinateData,
+        theme: 'grid',
+        styles: { 
+          fontSize: 7, 
+          cellPadding: { top: 1, right: 1, bottom: 1, left: 1 },
+          valign: 'middle',
+          lineWidth: 0.5,
+          lineColor: [0, 0, 0]
+        },
+        columnStyles: {
+          0: { cellWidth: 12, halign: 'center' }, // Calc Pg
+          1: { cellWidth: 10, halign: 'center' }, // F/B
+          2: { cellWidth: 18, halign: 'left' },   // Const/Beacon name
+          3: { cellWidth: 22, halign: 'center' }, // Y coordinate
+          4: { cellWidth: 22, halign: 'center' }, // X coordinate
+          5: { cellWidth: 85, halign: 'left' },   // Beacon Description
+          6: { cellWidth: 10, halign: 'center' }, // F/P
+          7: { cellWidth: 11, halign: 'center' }  // F/B
+        },
+        margin: { left: 10, right: 10 },
+        tableWidth: 'auto',
+        didParseCell: function(data) {
+          // Make section headers bold
+          if (data.cell.text && typeof data.cell.text[0] === 'string') {
+            const text = data.cell.text[0];
+            if (text.includes('TRIG BEACONS') || text.includes('WORKING STATIONS') || 
+                text.includes('BEACONS FOUND') || text.includes('BEACONS PLACED')) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [250, 250, 250];
+            }
+          }
+        }
+      });
+    }
+
+    // Save the PDF
+    const selectedProjectName = projects.find(p => p.id === selectedProject)?.project_name || 'Coordinate List';
+    const sanitizedName = selectedProjectName.replace(/[^a-zA-Z0-9\s-]/g, '');
+    pdf.save(`${sanitizedName} - Coordinate List.pdf`);
+  };
       { content: 'Calc', styles: { cellWidth: 15, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
       { content: 'F/B', styles: { cellWidth: 15, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
       { content: 'Lo. 31 COORDINATES', styles: { cellWidth: 30, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240], colSpan: 2 } },

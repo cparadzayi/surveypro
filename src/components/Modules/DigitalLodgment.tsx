@@ -674,7 +674,7 @@ export const DigitalLodgment: React.FC = () => {
         { content: 'Calc', styles: { cellWidth: 12, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
         { content: 'F/B', styles: { cellWidth: 10, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
         { content: 'Lo. 31 COORDINATES', styles: { cellWidth: 62, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240], colSpan: 3 } },
-        { content: '', styles: { cellWidth: 0 } },
+        { content: 'Lo. 31 COORDINATES', styles: { cellWidth: 44, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240], colSpan: 2 } },
         { content: '', styles: { cellWidth: 0 } },
         { content: 'Beacon Description', styles: { cellWidth: 85, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
         { content: 'F/P', styles: { cellWidth: 10, halign: 'center', fontStyle: 'bold', fillColor: [240, 240, 240] } },
@@ -685,7 +685,7 @@ export const DigitalLodgment: React.FC = () => {
       coordinateData.push([
         { content: 'Pg.', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
         { content: '', styles: { fillColor: [240, 240, 240] } },
-        { content: 'Const', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+        { content: '', styles: { fillColor: [240, 240, 240] } },
         { content: 'Y (metres)', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
         { content: 'X (metres)', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
         { content: '', styles: { fillColor: [240, 240, 240] } },

@@ -597,26 +597,26 @@ export const DigitalLodgment: React.FC = () => {
     trigBeacons.forEach(beacon => {
       allEntries.push([
         '', // Calc Pg
-        '3', // F/B
+        'E1', // F/B
         beacon.name, // Const
         beacon.y.toFixed(2), // Y coordinate
         beacon.x.toFixed(2), // X coordinate
         beacon.desc, // Beacon Description
         '', // F/P
-        'E1' // F/B
+        'E1' // Field Notes Reference
       ]);
     });
 
     // Add working station
     allEntries.push([
       '', // Calc Pg
-      '3', // F/B
+      'E1', // F/B
       'T1', // Const
       '26662.1', // Y coordinate
       '65471.85', // X coordinate
       '12mm iron peg', // Beacon Description
       '', // F/P
-      'E1' // F/B
+      'E1' // Field Notes Reference
     ]);
 
     // Add found beacons
@@ -624,13 +624,13 @@ export const DigitalLodgment: React.FC = () => {
       fieldBookData.foundBeacons.forEach(beacon => {
         allEntries.push([
           '102', // Calc Pg
-          '3', // F/B
+          getFieldBookReference(beacon.point), // F/B
           beacon.point, // Const
           beacon.y.toFixed(2), // Y coordinate
           beacon.x.toFixed(2), // X coordinate
           getBeaconDescription(beacon), // Beacon Description
           'F', // F/P
-          getFieldBookReference(beacon.point) // F/B
+          getFieldBookReference(beacon.point) // Field Notes Reference
         ]);
       });
     }
@@ -641,13 +641,13 @@ export const DigitalLodgment: React.FC = () => {
         const calcPage = index < 20 ? '104' : '105';
         allEntries.push([
           calcPage, // Calc Pg
-          '3', // F/B
+          getFieldBookReference(beacon.point), // F/B
           beacon.point, // Const
           beacon.y.toFixed(2), // Y coordinate
           beacon.x.toFixed(2), // X coordinate
           getBeaconDescription(beacon), // Beacon Description
           'P', // F/P
-          getFieldBookReference(beacon.point) // F/B
+          getFieldBookReference(beacon.point) // Field Notes Reference
         ]);
       });
     }

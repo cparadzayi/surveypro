@@ -768,7 +768,7 @@ export const DigitalLodgment: React.FC = () => {
         columnStyles: {
           0: { cellWidth: 10, halign: 'center' }, // Calc Pg
           1: { cellWidth: 8, halign: 'center' },  // F/B
-          2: { cellWidth: 15, halign: 'left' },   // Const/Beacon name
+          2: { cellWidth: 6, halign: 'left' },     // Const/Beacon name
           3: { cellWidth: 20, halign: 'center' }, // Y coordinate
           4: { cellWidth: 20, halign: 'center' }, // X coordinate
           5: { cellWidth: 75, halign: 'left' },   // Beacon Description

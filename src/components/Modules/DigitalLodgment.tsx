@@ -653,7 +653,7 @@ export const DigitalLodgment: React.FC = () => {
     }
 
     // Split entries into pages of 20
-    const entriesPerPage = 20;
+    const entriesPerPage = 35; // Increased to better utilize page space
     const totalPages = Math.ceil(allEntries.length / entriesPerPage);
     
     for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
@@ -759,24 +759,25 @@ export const DigitalLodgment: React.FC = () => {
         body: coordinateData,
         theme: 'grid',
         styles: { 
-          fontSize: 7, 
-          cellPadding: { top: 1, right: 1, bottom: 1, left: 1 },
+          fontSize: 6, 
+          cellPadding: { top: 0.5, right: 0.5, bottom: 0.5, left: 0.5 },
           valign: 'middle',
-          lineWidth: 0.5,
+          lineWidth: 0.3,
           lineColor: [0, 0, 0]
         },
         columnStyles: {
-          0: { cellWidth: 12, halign: 'center' }, // Calc Pg
-          1: { cellWidth: 10, halign: 'center' }, // F/B
-          2: { cellWidth: 18, halign: 'left' },   // Const/Beacon name
-          3: { cellWidth: 22, halign: 'center' }, // Y coordinate
-          4: { cellWidth: 22, halign: 'center' }, // X coordinate
-          5: { cellWidth: 85, halign: 'left' },   // Beacon Description
-          6: { cellWidth: 10, halign: 'center' }, // F/P
-          7: { cellWidth: 11, halign: 'center' }  // F/B
+          0: { cellWidth: 10, halign: 'center' }, // Calc Pg
+          1: { cellWidth: 8, halign: 'center' },  // F/B
+          2: { cellWidth: 15, halign: 'left' },   // Const/Beacon name
+          3: { cellWidth: 20, halign: 'center' }, // Y coordinate
+          4: { cellWidth: 20, halign: 'center' }, // X coordinate
+          5: { cellWidth: 75, halign: 'left' },   // Beacon Description
+          6: { cellWidth: 8, halign: 'center' },  // F/P
+          7: { cellWidth: 8, halign: 'center' }   // F/B
         },
-        margin: { left: 10, right: 10 },
+        margin: { left: 8, right: 8 },
         tableWidth: 'auto',
+        pageBreak: 'auto',
         didParseCell: function(data) {
           // Make section headers bold
           if (data.cell.text && typeof data.cell.text[0] === 'string') {

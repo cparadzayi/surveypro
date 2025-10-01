@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Download, Upload, AlertCircle, CheckCircle } from 'lucide-react';
+import { FileText, Download, Upload, AlertCircle, CheckCircle, Map } from 'lucide-react';
 import { surveyingApi } from '../../lib/supabase';
 import { SurveyProject } from '../../types/surveying';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { CoordinateMap } from './CoordinateMap';
 
 // Interface for field book data
 interface FieldObservation {
@@ -32,6 +33,7 @@ export const DigitalLodgment: React.FC = () => {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [fieldBookData, setFieldBookData] = useState<FieldBookData | null>(null);
   const [parseError, setParseError] = useState<string>('');
+  const [showMap, setShowMap] = useState(false);
 
   // Field Book Configuration
   const [fieldBookConfig, setFieldBookConfig] = useState({

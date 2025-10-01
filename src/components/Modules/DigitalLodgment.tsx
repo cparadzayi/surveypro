@@ -1006,6 +1006,19 @@ export const DigitalLodgment: React.FC = () => {
               </button>
             </div>
             
+            {/* Map View Button */}
+            {fieldBookData && (
+              <div className="mt-4">
+                <button
+                  onClick={() => setShowMap(true)}
+                  className="bg-orange-600 text-white px-6 py-3 rounded-lg hover:bg-orange-700 transition-colors flex items-center justify-center"
+                >
+                  <Map className="h-5 w-5 mr-2" />
+                  View Coordinates on Map
+                </button>
+              </div>
+            )}
+            
             {(!fieldBookData || !fieldBookConfig.surveyor) && (
               <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-sm text-yellow-800">
@@ -1016,6 +1029,14 @@ export const DigitalLodgment: React.FC = () => {
             )}
           </div>
         </>
+      )}
+      
+      {/* Map Modal */}
+      {showMap && fieldBookData && (
+        <CoordinateMap
+          fieldBookData={fieldBookData}
+          onClose={() => setShowMap(false)}
+        />
       )}
     </div>
   );

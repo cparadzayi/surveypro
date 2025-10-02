@@ -47,11 +47,13 @@ interface CoordinateMapProps {
 export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onClose }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+  const [allCalculations, setAllCalculations] = useState<any[]>([]);
+  const [activeCalculationIndex, setActiveCalculationIndex] = useState<number>(-1);
   const [selectedCorners, setSelectedCorners] = useState<FieldObservation[]>([]);
   const [calculatedArea, setCalculatedArea] = useState<any>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [mapError, setMapError] = useState<string>('');
-  const [showSidePanel, setShowSidePanel] = useState(false);
+  const [showSidePanel, setShowSidePanel] = useState(true);
   const [polygonLayer, setPolygonLayer] = useState<any>(null);
   const [cornerMarkers, setCornerMarkers] = useState<any[]>([]);
 
@@ -323,15 +325,25 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
       });
     }
     
-    setCalculatedArea({
+    const newCalculation = {
+      id: Date.now(),
+      standNumber: selectedCorners[0]?.point || `STAND${allCalculations.length + 1}`,
       area,
       formattedArea,
       perimeter,
       corners: selectedCorners,
-      bearingsDistances
-    });
+      bearingsDistances,
+      timestamp: new Date().toLocaleString()
+    };
     
-    setShowSidePanel(true);
+    setAllCalculations(prev => [...prev, newCalculation]);
+    setActiveCalculationIndex(allCalculations.length);
+    setCalculatedArea(newCalculation);
+    
+    // Reset selection for next calculation
+    setSelectedCorners([]);
+    setIsSelecting(false);
+    updatePolygonDisplay([]);
   };
 
   const calculatePerimeter = () => {
@@ -349,9 +361,21 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
 
   const resetSelection = () => {
     setSelectedCorners([]);
-    setCalculatedArea(null);
-    setShowSidePanel(false);
     updatePolygonDisplay([]);
+  };
+
+  const exitAreaCalculations = () => {
+    setSelectedCorners([]);
+    setCalculatedArea(null);
+    setAllCalculations([]);
+    setActiveCalculationIndex(-1);
+    setIsSelecting(false);
+    updatePolygonDisplay([]);
+  };
+
+  const selectCalculation = (index: number) => {
+    setActiveCalculationIndex(index);
+    setCalculatedArea(allCalculations[index]);
   };
 
   const exportToPDF = () => {
@@ -548,6 +572,15 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
               <button
                 onClick={onClose}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
+            {allCalculations.length > 0 && (
+              <button
+                onClick={exitAreaCalculations}
+                className="px-3 py-1 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors"
+              >
+                <X className="h-4 w-4 inline mr-1" />
+                Exit Area Calculations
+              </button>
+            )}
               >
                 <X className="h-6 w-6" />
               </button>
@@ -573,7 +606,7 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
             ) : (
               <div 
                 ref={mapRef} 
-                className="h-full w-full rounded-lg border border-gray-300"
+                  Reset Selection
                 style={{ minHeight: '500px', background: '#f0f0f0' }}
               />
             )}
@@ -595,15 +628,13 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
                   <div className="flex items-center">
                     <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
                     <span>Selected Corners ({selectedCorners.length})</span>
-                  </div>
-                )}
-                {isSelecting && (
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>
-                    <span>Click markers to select corners</span>
-                  </div>
-                )}
-              </div>
+            <button
+              onClick={() => setShowSidePanel(!showSidePanel)}
+              className="px-3 py-1 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors"
+            >
+              {showSidePanel ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              {showSidePanel ? 'Hide' : 'Show'} Results
+            </button>
               <div className="text-xs text-gray-500">
                 <div>Projection: Cape Datum (Modified Clarke 1880)</div>
                 <div>Central Meridian: 31°E</div>

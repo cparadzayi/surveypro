@@ -4,7 +4,6 @@ export class SurveyingCalculations {
   
   // Convert degrees-minutes-seconds to decimal degrees
   static dmsToDecimal(degrees: number, minutes: number, seconds: number): number {
-    const sign = degrees >= 0 ? 1 : -1;
     return Math.abs(degrees) + minutes / 60 + seconds / 3600;
   }
 

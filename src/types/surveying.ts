@@ -24,7 +24,7 @@ export interface SurveyProject {
   original_diagram_number?: string;
   
   // Project bounds in Zimbabwe coordinates
-  bounds_geometry?: any; // PostGIS geometry
+  bounds_geometry?: unknown; // PostGIS geometry
   min_y?: number; // westernmost
   max_y?: number; // easternmost  
   min_x?: number; // northernmost
@@ -53,7 +53,7 @@ export interface SurveyBeacon {
   y_coordinate: number; // westwards from central meridian
   x_coordinate: number; // southwards from equator
   elevation?: number;
-  geometry?: any; // PostGIS geometry - auto-generated
+  geometry?: unknown; // PostGIS geometry - auto-generated
   
   // Beacon physical specifications (Section 22)
   beacon_specification: string; // e.g., 'iron_rail_2m', 'concrete_block', etc.
@@ -134,7 +134,7 @@ export interface CurvilinearBoundary {
   project_id: string;
   boundary_name: string;
   boundary_description?: string;
-  boundary_geometry?: any; // PostGIS LineString
+  boundary_geometry?: unknown; // PostGIS LineString
   
   // Determination method (Section 19)
   determination_method?: 'field_survey' | 'photogrammetric' | 'previous_survey' | 'map_adoption';
@@ -168,7 +168,7 @@ export interface ReferenceMark {
   y_coordinate: number;
   x_coordinate: number;
   elevation?: number;
-  geometry?: any; // PostGIS geometry - auto-generated
+  geometry?: unknown; // PostGIS geometry - auto-generated
   
   // Physical specification (Section 26.1)
   specification: string; // 'iron_peg_concrete', 'drilled_hole', etc.
@@ -193,13 +193,13 @@ export interface SurveyCalculation {
   calculation_method?: string;
   
   // Input parameters and results (JSON for flexibility)
-  input_parameters: any;
-  results: any;
+  input_parameters: Record<string, unknown>;
+  results: Record<string, unknown>;
   
   // Quality control
   accuracy_achieved?: string;
   within_tolerance?: boolean;
-  error_values?: any; // closure errors, residuals, etc.
+  error_values?: Record<string, unknown>; // closure errors, residuals, etc.
   
   // Audit trail
   calculated_by?: string;

@@ -9,7 +9,7 @@ export const Dashboard: React.FC = () => {
     totalBeacons: 0,
     calculationsToday: 0
   });
-  const [recentProjects, setRecentProjects] = useState<any[]>([]);
+  const [recentProjects, setRecentProjects] = useState<Array<{ id: string; project_name: string; district: string; status: string }>>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -58,7 +58,7 @@ export const Dashboard: React.FC = () => {
   const StatCard: React.FC<{
     title: string;
     value: number;
-    icon: React.ComponentType<any>;
+    icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
     color: string;
   }> = ({ title, value, icon: Icon, color }) => (
     <div className="bg-white rounded-xl shadow-md p-6 border-l-4" style={{ borderColor: color }}>

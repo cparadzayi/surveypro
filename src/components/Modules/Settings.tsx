@@ -29,8 +29,9 @@ export const Settings: React.FC = () => {
       setMessage({ type: 'success', text: 'All user data cleared successfully!' });
       setShowConfirmClear(false);
       await loadStats(); // Refresh stats
-    } catch (error: any) {
-      setMessage({ type: 'error', text: `Error clearing data: ${error.message}` });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setMessage({ type: 'error', text: `Error clearing data: ${errorMessage}` });
     } finally {
       setLoading(false);
     }

@@ -202,11 +202,11 @@ export const surveyingApi = {
     project_id: string;
     calculation_type: 'coordinate_calculation' | 'bearing_distance' | 'area_calculation' | 'traverse_adjustment' | 'alignment_check';
     calculation_method?: string;
-    input_parameters: any;
-    results: any;
+    input_parameters: Record<string, unknown>;
+    results: Record<string, unknown>;
     accuracy_achieved?: string;
     within_tolerance?: boolean;
-    error_values?: any;
+    error_values?: Record<string, unknown>;
     calculated_by?: string;
     verified_by?: string;
     verified_at?: string;

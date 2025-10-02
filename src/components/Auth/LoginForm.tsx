@@ -24,13 +24,14 @@ export const LoginForm: React.FC = () => {
       } else {
         await signIn(email, password);
       }
-    } catch (error: any) {
-      if (error.message.includes('Supabase is not configured')) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+      if (errorMessage.includes('Supabase is not configured')) {
         setError('Database connection not configured. Please check your environment variables.');
-      } else if (error.message.includes('Failed to fetch')) {
+      } else if (errorMessage.includes('Failed to fetch')) {
         setError('Unable to connect to the server. Please check your internet connection and try again.');
       } else {
-        setError(error.message);
+        setError(errorMessage);
       }
     } finally {
       setLoading(false);

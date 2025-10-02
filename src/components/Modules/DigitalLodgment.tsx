@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Download, Upload, AlertCircle, CheckCircle, Map } from 'lucide-react';
+import { Download, Upload, AlertCircle, CheckCircle, Map } from 'lucide-react';
 import { surveyingApi } from '../../lib/supabase';
 import { SurveyProject } from '../../types/surveying';
 import jsPDF from 'jspdf';
@@ -158,13 +158,13 @@ export const DigitalLodgment: React.FC = () => {
     const pageHeight = pdf.internal.pageSize.getHeight();
     let yPosition = 20;
 
-    // Helper function to add new page if needed
-    const checkPageBreak = (requiredHeight: number) => {
-      if (yPosition + requiredHeight > pageHeight - 20) {
-        pdf.addPage();
-        yPosition = 20;
-      }
-    };
+    // Helper function to add new page if needed (for future use)
+    // const checkPageBreak = (requiredHeight: number) => {
+    //   if (yPosition + requiredHeight > pageHeight - 20) {
+    //     pdf.addPage();
+    //     yPosition = 20;
+    //   }
+    // };
 
     // Title Page with Surveyor Details
     pdf.setFontSize(16);
@@ -344,16 +344,15 @@ export const DigitalLodgment: React.FC = () => {
 
     const pdf = new jsPDF('portrait', 'mm', 'a4');
     const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
     let yPosition = 20;
 
-    // Helper function to add new page if needed
-    const checkPageBreak = (requiredHeight: number) => {
-      if (yPosition + requiredHeight > pageHeight - 20) {
-        pdf.addPage();
-        yPosition = 20;
-      }
-    };
+    // Helper function to add new page if needed (for future use)
+    // const checkPageBreak = (requiredHeight: number) => {
+    //   if (yPosition + requiredHeight > pageHeight - 20) {
+    //     pdf.addPage();
+    //     yPosition = 20;
+    //   }
+    // };
 
     // Helper function to get field book page reference for a beacon
     const getFieldBookReference = (beaconPoint: string): string => {
@@ -382,7 +381,7 @@ export const DigitalLodgment: React.FC = () => {
 
     // Found Beacons
     if (fieldBookData.foundBeacons.length > 0) {
-      checkPageBreak(60);
+      // checkPageBreak(60);
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
       pdf.text('FOUND BEACONS FIXED BY GPS', 20, yPosition);
@@ -390,7 +389,7 @@ export const DigitalLodgment: React.FC = () => {
 
       const foundBeaconsData = [
         ['Point', 'Y (metres)', 'X (metres)', 'F/B'],
-        ...fieldBookData.foundBeacons.map((beacon, index) => [
+        ...fieldBookData.foundBeacons.map((beacon) => [
           beacon.point,
           beacon.y.toFixed(3),
           beacon.x.toFixed(3),
@@ -437,7 +436,7 @@ export const DigitalLodgment: React.FC = () => {
 
     // Placed Beacons
     if (fieldBookData.placedBeacons.length > 0) {
-      checkPageBreak(50);
+      // checkPageBreak(50);
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
       pdf.text('INTERNAL BEACONS PLACED BY GPS', 20, yPosition);
@@ -445,7 +444,7 @@ export const DigitalLodgment: React.FC = () => {
 
       const placedBeaconsData = [
         ['Point', 'Y (metres)', 'X (metres)', 'F/B'],
-        ...fieldBookData.placedBeacons.map((beacon, index) => [
+        ...fieldBookData.placedBeacons.map((beacon) => [
           beacon.point,
           beacon.y.toFixed(3),
           beacon.x.toFixed(3),
@@ -688,8 +687,8 @@ export const DigitalLodgment: React.FC = () => {
         { content: 'Pg.', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
         { content: '', styles: { fillColor: [240, 240, 240] } },
         { content: '', styles: { fillColor: [240, 240, 240] } },
-        { content: 'Y (metres)', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
-        { content: 'X (metres)', styles: { fontStyle: 'bold', halign: 'center', fillColor: [240, 240, 240] } },
+        { content: 'Y (metres)', styles: { fontStyle: 'bold' as const, halign: 'center', fillColor: [240, 240, 240] } },
+        { content: 'X (metres)', styles: { fontStyle: 'bold' as const, halign: 'center', fillColor: [240, 240, 240] } },
         { content: '', styles: { fillColor: [240, 240, 240] } },
         { content: '', styles: { fillColor: [240, 240, 240] } },
         { content: '', styles: { fillColor: [240, 240, 240] } }
@@ -733,7 +732,7 @@ export const DigitalLodgment: React.FC = () => {
           coordinateData.push([
             { content: '', styles: {} },
             { content: '', styles: {} },
-            { content: sectionTitle, styles: { fontStyle: 'bold', colSpan: 6, fillColor: [250, 250, 250] } },
+            { content: sectionTitle, styles: { fontStyle: 'bold' as const, colSpan: 6, fillColor: [250, 250, 250] } },
             { content: '', styles: {} },
             { content: '', styles: {} },
             { content: '', styles: {} },
@@ -758,7 +757,7 @@ export const DigitalLodgment: React.FC = () => {
       // Generate the table for this page
       autoTable(pdf, {
         startY: yPosition,
-        body: coordinateData,
+        body: coordinateData as unknown as string[][],
         theme: 'grid',
         styles: { 
           fontSize: 6, 
@@ -784,9 +783,9 @@ export const DigitalLodgment: React.FC = () => {
           // Make section headers bold
           if (data.cell.text && typeof data.cell.text[0] === 'string') {
             const text = data.cell.text[0];
-            if (text.includes('TRIG BEACONS') || text.includes('WORKING STATIONS') || 
+            if (text.includes('TRIG BEACONS') || text.includes('WORKING STATIONS') ||
                 text.includes('BEACONS FOUND') || text.includes('BEACONS PLACED')) {
-              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fontStyle = 'bold' as const;
               data.cell.styles.fillColor = [250, 250, 250];
             }
           }

@@ -9,7 +9,7 @@ export const Projects: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedProject, setSelectedProject] = useState<SurveyProject | null>(null);
-  const [coordinateSystems, setCoordinateSystems] = useState<any[]>([]);
+  const [coordinateSystems, setCoordinateSystems] = useState<Array<{ id: string; name: string; code: string }>>([]);
 
   // Form state for creating/editing projects
   const [formData, setFormData] = useState({

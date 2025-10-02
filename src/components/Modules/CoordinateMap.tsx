@@ -46,16 +46,32 @@ interface CoordinateMapProps {
 
 export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onClose }) => {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const [allCalculations, setAllCalculations] = useState<any[]>([]);
-  const [activeCalculationIndex, setActiveCalculationIndex] = useState<number>(-1);
+  interface AreaCalculation {
+    id: number;
+    standNumber: string;
+    area: number;
+    formattedArea: { displayText: string };
+    perimeter: number;
+    corners: FieldObservation[];
+    bearingsDistances: Array<{
+      from: string;
+      to: string;
+      bearing: number;
+      distance: number;
+      bearingDMS: string;
+    }>;
+    timestamp: string;
+  }
+
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const [allCalculations, setAllCalculations] = useState<AreaCalculation[]>([]);
   const [selectedCorners, setSelectedCorners] = useState<FieldObservation[]>([]);
-  const [calculatedArea, setCalculatedArea] = useState<any>(null);
+  const [calculatedArea, setCalculatedArea] = useState<AreaCalculation | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [mapError, setMapError] = useState<string>('');
   const [showSidePanel, setShowSidePanel] = useState(true);
-  const [polygonLayer, setPolygonLayer] = useState<any>(null);
-  const [cornerMarkers, setCornerMarkers] = useState<any[]>([]);
+  const [polygonLayer, setPolygonLayer] = useState<L.Polygon | null>(null);
+  const [cornerMarkers, setCornerMarkers] = useState<L.Marker[]>([]);
 
   // Convert Zimbabwe Cape Datum coordinates to WGS84 lat/lng
   const convertToLatLng = (y: number, x: number) => {
@@ -258,7 +274,7 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
       setPolygonLayer(polygon);
 
       // Add numbered corner markers
-      const newCornerMarkers: any[] = [];
+      const newCornerMarkers: L.Marker[] = [];
       corners.forEach((corner, index) => {
         const { lat, lng } = convertToLatLng(corner.y, corner.x);
         
@@ -337,7 +353,6 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
     };
     
     setAllCalculations(prev => [...prev, newCalculation]);
-    setActiveCalculationIndex(allCalculations.length);
     setCalculatedArea(newCalculation);
     
     // Reset selection for next calculation
@@ -364,19 +379,18 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
     updatePolygonDisplay([]);
   };
 
-  const exitAreaCalculations = () => {
-    setSelectedCorners([]);
-    setCalculatedArea(null);
-    setAllCalculations([]);
-    setActiveCalculationIndex(-1);
-    setIsSelecting(false);
-    updatePolygonDisplay([]);
-  };
+  // Helper functions for future use
+  // const exitAreaCalculations = () => {
+  //   setSelectedCorners([]);
+  //   setCalculatedArea(null);
+  //   setAllCalculations([]);
+  //   setIsSelecting(false);
+  //   updatePolygonDisplay([]);
+  // };
 
-  const selectCalculation = (index: number) => {
-    setActiveCalculationIndex(index);
-    setCalculatedArea(allCalculations[index]);
-  };
+  // const selectCalculation = (index: number) => {
+  //   setCalculatedArea(allCalculations[index]);
+  // };
 
   const exportToPDF = () => {
     if (!calculatedArea) return;

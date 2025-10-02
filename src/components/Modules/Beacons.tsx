@@ -13,7 +13,28 @@ export const Beacons: React.FC = () => {
   const [selectedBeacon, setSelectedBeacon] = useState<SurveyBeacon | null>(null);
 
   // Form state for creating/editing beacons
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    project_id: string;
+    beacon_name: string;
+    beacon_type: 'corner' | 'indicatory' | 'reference_mark' | 'witness';
+    y_coordinate: string;
+    x_coordinate: string;
+    elevation: string;
+    beacon_specification: string;
+    centre_mark_type: string;
+    centre_mark_diameter: string;
+    centre_mark_depth: string;
+    has_cairn: boolean;
+    has_mound: boolean;
+    has_trenches: boolean;
+    beacon_status: 'found' | 'placed' | 'replaced' | 'missing' | 'damaged';
+    condition_when_found: string;
+    is_established_beacon: boolean;
+    accuracy_class: 'A' | 'B' | 'C' | undefined;
+    survey_method: string;
+    surveyed_date: string;
+    surveyed_by: string;
+  }>({
     project_id: '',
     beacon_name: '',
     beacon_type: 'corner' as const,
@@ -30,7 +51,7 @@ export const Beacons: React.FC = () => {
     beacon_status: 'placed' as const,
     condition_when_found: '',
     is_established_beacon: false,
-    accuracy_class: '' as any,
+    accuracy_class: undefined as 'A' | 'B' | 'C' | undefined,
     survey_method: '',
     surveyed_date: '',
     surveyed_by: ''
@@ -106,7 +127,7 @@ export const Beacons: React.FC = () => {
       y_coordinate: '',
       x_coordinate: '',
       elevation: '',
-      beacon_specification: '',
+      beacon_specification: 'iron_rail_2m',
       centre_mark_type: '',
       centre_mark_diameter: '',
       centre_mark_depth: '',
@@ -116,7 +137,7 @@ export const Beacons: React.FC = () => {
       beacon_status: 'placed',
       condition_when_found: '',
       is_established_beacon: false,
-      accuracy_class: '',
+      accuracy_class: undefined,
       survey_method: '',
       surveyed_date: '',
       surveyed_by: ''
@@ -343,7 +364,7 @@ export const Beacons: React.FC = () => {
                     <select
                       required
                       value={formData.beacon_type}
-                      onChange={(e) => setFormData({...formData, beacon_type: e.target.value as any})}
+                      onChange={(e) => setFormData({...formData, beacon_type: e.target.value as 'corner' | 'indicatory' | 'reference_mark' | 'witness'})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="corner">Corner</option>
@@ -358,7 +379,7 @@ export const Beacons: React.FC = () => {
                     <select
                       required
                       value={formData.beacon_status}
-                      onChange={(e) => setFormData({...formData, beacon_status: e.target.value as any})}
+                      onChange={(e) => setFormData({...formData, beacon_status: e.target.value as 'placed' | 'found' | 'replaced' | 'missing' | 'damaged'})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="placed">Placed</option>
@@ -543,7 +564,7 @@ export const Beacons: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Accuracy Class</label>
                     <select
                       value={formData.accuracy_class}
-                      onChange={(e) => setFormData({...formData, accuracy_class: e.target.value as any})}
+                      onChange={(e) => setFormData({...formData, accuracy_class: e.target.value === '' ? undefined : e.target.value as 'A' | 'B' | 'C'})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">Select class...</option>
@@ -587,7 +608,7 @@ export const Beacons: React.FC = () => {
                   />
                 </div>
 
-                {formData.beacon_status === 'found' && (
+                {formData.beacon_status !== 'placed' && (
                   <div className="mt-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Condition When Found</label>
                     <textarea

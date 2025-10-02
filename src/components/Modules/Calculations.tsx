@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calculator, RefreshCw, Plus, Trash2, Download, Upload } from 'lucide-react';
+import { Calculator, RefreshCw, Plus, Trash2, Download } from 'lucide-react';
 import { SurveyingCalculations } from '../../utils/surveyingCalculations';
 import { surveyingApi } from '../../lib/supabase';
 import { SurveyProject } from '../../types/surveying';
@@ -23,7 +23,18 @@ interface CoordinateComparison {
 
 export const Calculations: React.FC = () => {
   const [activeCalculation, setActiveCalculation] = useState<string>('coordinate-list');
-  const [results, setResults] = useState<any>(null);
+  interface CalculationResults {
+    bearing?: string;
+    bearingDMS?: string;
+    distance?: string;
+    y?: string;
+    x?: string;
+    bearingUsed?: string;
+    area?: number;
+    formattedArea?: { displayText: string };
+    rawAreaSquareMeters?: string;
+  }
+  const [results, setResults] = useState<CalculationResults | null>(null);
   const [projects, setProjects] = useState<SurveyProject[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('');
 
@@ -879,7 +890,7 @@ export const Calculations: React.FC = () => {
                 <>
                   <div className="p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
                     <p className="text-sm text-gray-600 mb-1">Official Area (Zimbabwe Convention)</p>
-                    <p className="text-xl font-bold text-blue-700">{results.formattedArea.displayText}</p>
+                    <p className="text-xl font-bold text-blue-700">{results.formattedArea?.displayText}</p>
                   </div>
                   <div className="p-3 bg-gray-50 rounded-lg">
                     <p className="text-sm text-gray-600">Raw Calculation</p>
@@ -888,7 +899,7 @@ export const Calculations: React.FC = () => {
                   <div className="p-3 bg-green-50 rounded-lg">
                     <p className="text-sm text-gray-600">Rounding Convention Applied</p>
                     <p className="text-xs text-green-700">
-                      {results.area < 10000 
+                      {(results.area ?? 0) < 10000
                         ? "Area < 1 ha: Rounded to nearest m² using banker's rounding"
                         : "Area ≥ 1 ha: Displayed in hectares to 4 decimal places"
                       }

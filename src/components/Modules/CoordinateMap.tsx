@@ -11,8 +11,7 @@ import 'leaflet/dist/leaflet.css';
 
 // Fix for default markers in Leaflet with Vite
 if (typeof window !== 'undefined') {
-  // @ts-ignore
-  delete L.Icon.Default.prototype._getIconUrl;
+  delete (L.Icon.Default.prototype as any)._getIconUrl;
   L.Icon.Default.mergeOptions({
     iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
     iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
@@ -47,7 +46,7 @@ interface CoordinateMapProps {
 
 export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onClose }) => {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
+  const mapInstanceRef = useRef<any>(null);
   const [allCalculations, setAllCalculations] = useState<any[]>([]);
   const [activeCalculationIndex, setActiveCalculationIndex] = useState<number>(-1);
   const [selectedCorners, setSelectedCorners] = useState<FieldObservation[]>([]);
@@ -55,8 +54,8 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
   const [isSelecting, setIsSelecting] = useState(false);
   const [mapError, setMapError] = useState<string>('');
   const [showSidePanel, setShowSidePanel] = useState(true);
-  const [polygonLayer, setPolygonLayer] = useState<L.Polygon | null>(null);
-  const [cornerMarkers, setCornerMarkers] = useState<L.Marker[]>([]);
+  const [polygonLayer, setPolygonLayer] = useState<any>(null);
+  const [cornerMarkers, setCornerMarkers] = useState<any[]>([]);
 
   // Convert Zimbabwe Cape Datum coordinates to WGS84 lat/lng
   const convertToLatLng = (y: number, x: number) => {
@@ -86,7 +85,7 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
   };
 
   useEffect(() => {
-    if (!mapRef.current || typeof window === 'undefined') return;
+    if (!L || !mapRef.current) return;
 
     try {
       // Clean up existing map
@@ -568,15 +567,6 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
                 >
                   {showSidePanel ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
                   {showSidePanel ? 'Hide' : 'Show'} Results
-                </button>
-              )}
-              {allCalculations.length > 0 && (
-                <button
-                  onClick={exitAreaCalculations}
-                  className="px-3 py-1 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors"
-                >
-                  <X className="h-4 w-4 inline mr-1" />
-                  Exit Area Calculations
                 </button>
               )}
               <button

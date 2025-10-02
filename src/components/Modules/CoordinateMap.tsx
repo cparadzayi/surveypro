@@ -195,11 +195,85 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
     setSelectedCorners(prev => {
       const isAlreadySelected = prev.some(corner => corner.point === obs.point);
       if (isAlreadySelected) {
-        return prev.filter(corner => corner.point !== obs.point);
+        const newCorners = prev.filter(corner => corner.point !== obs.point);
+        updatePolygonDisplay(newCorners);
+        return newCorners;
       } else {
-        return [...prev, obs];
+        const newCorners = [...prev, obs];
+        updatePolygonDisplay(newCorners);
+        return newCorners;
       }
     });
+  };
+
+  const updatePolygonDisplay = (corners: FieldObservation[]) => {
+    if (!mapRef.current || !mapRef.current._leaflet_id) return;
+    
+    const map = (mapRef.current as any)._leaflet_map;
+    if (!map) return;
+
+    // Remove existing polygon and corner markers
+    if (polygonLayer) {
+      map.removeLayer(polygonLayer);
+    }
+    cornerMarkers.forEach(marker => map.removeLayer(marker));
+    setCornerMarkers([]);
+
+    if (corners.length >= 3) {
+      // Convert coordinates to lat/lng for polygon display
+      const latLngs = corners.map(corner => {
+        const metersPerDegreeAtZimbabwe = 111320 * Math.cos(Math.PI * -19 / 180);
+        const longitudeOffset = -corner.y / metersPerDegreeAtZimbabwe;
+        const lng = 31.0 + longitudeOffset;
+        const lat = -corner.x / 111320;
+        return L.latLng(lat, lng);
+      });
+
+      // Create polygon
+      const polygon = L.polygon(latLngs, {
+        color: '#ff0000',
+        weight: 3,
+        opacity: 0.8,
+        fillColor: '#ff0000',
+        fillOpacity: 0.2
+      }).addTo(map);
+      
+      setPolygonLayer(polygon);
+
+      // Add numbered corner markers
+      const newCornerMarkers: L.Marker[] = [];
+      corners.forEach((corner, index) => {
+        const metersPerDegreeAtZimbabwe = 111320 * Math.cos(Math.PI * -19 / 180);
+        const longitudeOffset = -corner.y / metersPerDegreeAtZimbabwe;
+        const lng = 31.0 + longitudeOffset;
+        const lat = -corner.x / 111320;
+        
+        const cornerIcon = L.divIcon({
+          className: 'corner-marker',
+          html: `<div style="
+            background-color: #ff0000;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+          ">${index + 1}</div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        });
+        
+        const marker = L.marker(L.latLng(lat, lng), { icon: cornerIcon }).addTo(map);
+        newCornerMarkers.push(marker);
+      });
+      
+      setCornerMarkers(newCornerMarkers);
+    }
   };
 
   const calculateArea = () => {
@@ -208,14 +282,204 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
       return;
     }
 
-    // Simple polygon area calculation using shoelace formula
-    let area = 0;
-    const n = selectedCorners.length;
+    // Use Zimbabwe coordinates for accurate area calculation
+    const coordinates = selectedCorners.map(corner => ({
+      y: corner.y,
+      x: corner.x
+    }));
+
+    const area = SurveyingCalculations.calculateArea(coordinates);
+    const formattedArea = SurveyingCalculations.formatArea(area);
+    const perimeter = calculatePerimeter();
     
-    for (let i = 0; i < n; i++) {
-      const j = (i + 1) % n;
-      area += selectedCorners[i].x * selectedCorners[j].y;
-      area -= selectedCorners[j].x * selectedCorners[i].y;
+    // Calculate centroid
+    const centroidY = selectedCorners.reduce((sum, corner) => sum + corner.y, 0) / selectedCorners.length;
+    const centroidX = selectedCorners.reduce((sum, corner) => sum + corner.x, 0) / selectedCorners.length;
+    const metersPerDegreeAtZimbabwe = 111320 * Math.cos(Math.PI * -19 / 180);
+    const centroidLng = 31.0 + (-centroidY / metersPerDegreeAtZimbabwe);
+    const centroidLat = -centroidX / 111320;
+    
+    // Calculate bearings and distances between consecutive corners
+    const bearingsDistances = [];
+    for (let i = 0; i < selectedCorners.length; i++) {
+      const current = selectedCorners[i];
+      const next = selectedCorners[(i + 1) % selectedCorners.length];
+      
+      const bearing = SurveyingCalculations.calculateBearing(current.y, current.x, next.y, next.x);
+      const distance = SurveyingCalculations.calculateDistance(current.y, current.x, next.y, next.x);
+      const bearingDMS = SurveyingCalculations.decimalToDms(bearing);
+      
+      bearingsDistances.push({
+        from: current.point,
+        to: next.point,
+        bearing,
+        distance,
+        bearingDMS: SurveyingCalculations.formatDMS(bearingDMS.degrees, bearingDMS.minutes, bearingDMS.seconds)
+      });
+    }
+    
+    setCalculatedArea({
+      area,
+      formattedArea,
+      perimeter,
+      corners: selectedCorners,
+      centroid: { lat: centroidLat, lng: centroidLng },
+      bearingsDistances
+    });
+    
+    setShowSidePanel(true);
+  };
+
+  const resetSelection = () => {
+    setSelectedCorners([]);
+    setCalculatedArea(null);
+    setShowSidePanel(false);
+    updatePolygonDisplay([]);
+  };
+
+  const exportToPDF = () => {
+    if (!calculatedArea) return;
+
+    const pdf = new jsPDF('portrait', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    let yPosition = 20;
+
+    // Title
+    pdf.setFontSize(16);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('LAND PARCEL AREA CALCULATION', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 15;
+
+    // Date and time
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`Generated: ${new Date().toLocaleString()}`, 20, yPosition);
+    yPosition += 15;
+
+    // Area summary
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('AREA SUMMARY', 20, yPosition);
+    yPosition += 10;
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`Total Area: ${calculatedArea.formattedArea.displayText}`, 25, yPosition);
+    yPosition += 6;
+    pdf.text(`Perimeter: ${calculatedArea.perimeter.toFixed(3)} m`, 25, yPosition);
+    yPosition += 6;
+    pdf.text(`Number of Corners: ${calculatedArea.corners.length}`, 25, yPosition);
+    yPosition += 15;
+
+    // Corner coordinates table
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('CORNER COORDINATES', 20, yPosition);
+    yPosition += 10;
+
+    const cornerData = [
+      ['Corner', 'Point Name', 'Y (metres)', 'X (metres)', 'Description'],
+      ...calculatedArea.corners.map((corner, index) => [
+        (index + 1).toString(),
+        corner.point,
+        corner.y.toFixed(3),
+        corner.x.toFixed(3),
+        corner.description || 'Survey point'
+      ])
+    ];
+
+    autoTable(pdf, {
+      startY: yPosition,
+      head: [cornerData[0]],
+      body: cornerData.slice(1),
+      theme: 'grid',
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+    });
+
+    yPosition = (pdf as any).lastAutoTable.finalY + 15;
+
+    // Bearings and distances table
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('BEARINGS AND DISTANCES', 20, yPosition);
+    yPosition += 10;
+
+    const bearingData = [
+      ['From', 'To', 'Bearing (DMS)', 'Distance (m)'],
+      ...calculatedArea.bearingsDistances.map(bd => [
+        bd.from,
+        bd.to,
+        bd.bearingDMS,
+        bd.distance.toFixed(3)
+      ])
+    ];
+
+    autoTable(pdf, {
+      startY: yPosition,
+      head: [bearingData[0]],
+      body: bearingData.slice(1),
+      theme: 'grid',
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+    });
+
+    // Footer
+    const footerY = pdf.internal.pageSize.getHeight() - 20;
+    pdf.setFontSize(8);
+    pdf.text('Generated by SurveyPro - Zimbabwe Cadastral Survey Management', pageWidth / 2, footerY, { align: 'center' });
+
+    pdf.save(`Land_Parcel_Area_Calculation_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const exportToExcel = () => {
+    if (!calculatedArea) return;
+
+    const workbook = XLSX.utils.book_new();
+
+    // Summary sheet
+    const summaryData = [
+      ['Land Parcel Area Calculation'],
+      ['Generated:', new Date().toLocaleString()],
+      [''],
+      ['AREA SUMMARY'],
+      ['Total Area:', calculatedArea.formattedArea.displayText],
+      ['Perimeter:', `${calculatedArea.perimeter.toFixed(3)} m`],
+      ['Number of Corners:', calculatedArea.corners.length],
+      [''],
+      ['CORNER COORDINATES'],
+      ['Corner', 'Point Name', 'Y (metres)', 'X (metres)', 'HRMS', 'VRMS', 'Satellites', 'PDOP', 'Description'],
+      ...calculatedArea.corners.map((corner, index) => [
+        index + 1,
+        corner.point,
+        corner.y,
+        corner.x,
+        corner.hrms,
+        corner.vrms,
+        corner.sats,
+        corner.pdop,
+        corner.description || 'Survey point'
+      ])
+    ];
+
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Area Calculation');
+
+    // Bearings and distances sheet
+    const bearingData = [
+      ['BEARINGS AND DISTANCES'],
+      ['From', 'To', 'Bearing (Decimal)', 'Bearing (DMS)', 'Distance (m)'],
+      ...calculatedArea.bearingsDistances.map(bd => [
+        bd.from,
+        bd.to,
+        bd.bearing.toFixed(4),
+        bd.bearingDMS,
+        bd.distance
+      ])
+    ];
+
+    const bearingSheet = XLSX.utils.aoa_to_sheet(bearingData);
+    XLSX.utils.book_append_sheet(workbook, bearingSheet, 'Bearings & Distances');
+
+    XLSX.writeFile(workbook, `Land_Parcel_Area_Calculation_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
     }
     
     area = Math.abs(area) / 2;
@@ -244,7 +508,9 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-5/6 flex flex-col">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-7xl h-5/6 flex">
+        {/* Main Map Area */}
+        <div className={`flex flex-col transition-all duration-300 ${showSidePanel ? 'w-2/3' : 'w-full'}`}>
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b">
           <h3 className="text-lg font-semibold text-gray-900">Survey Coordinates Map</h3>
@@ -258,14 +524,33 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
               }`}
             >
               <Calculator className="h-4 w-4 inline mr-1" />
-              {isSelecting ? 'Stop Selecting' : 'Calculate Area'}
+              {isSelecting ? 'Stop Selecting' : 'Select Corner Points'}
             </button>
             {selectedCorners.length > 0 && (
+              <>
+                <button
+                  onClick={calculateArea}
+                  disabled={selectedCorners.length < 3}
+                  className="px-3 py-1 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 transition-colors disabled:bg-gray-400"
+                >
+                  Calculate Area ({selectedCorners.length})
+                </button>
+                <button
+                  onClick={resetSelection}
+                  className="px-3 py-1 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors"
+                >
+                  <RotateCcw className="h-4 w-4 inline mr-1" />
+                  Reset
+                </button>
+              </>
+            )}
+            {calculatedArea && (
               <button
-                onClick={calculateArea}
-                className="px-3 py-1 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 transition-colors"
+                onClick={() => setShowSidePanel(!showSidePanel)}
+                className="px-3 py-1 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors"
               >
-                Calculate ({selectedCorners.length})
+                {showSidePanel ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                {showSidePanel ? 'Hide' : 'Show'} Results
               </button>
             )}
             <button
@@ -302,44 +587,30 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
           )}
         </div>
         
-        {/* Area Calculation Results */}
-        {calculatedArea && (
-          <div className="border-t p-4 bg-gray-50">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{calculatedArea.area.toFixed(2)} m²</div>
-                <div className="text-sm text-gray-600">Area</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{calculatedArea.perimeter.toFixed(2)} m</div>
-                <div className="text-sm text-gray-600">Perimeter</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">{calculatedArea.corners}</div>
-                <div className="text-sm text-gray-600">Corners</div>
-              </div>
-            </div>
-          </div>
-        )}
-        
         {/* Legend */}
         <div className="border-t p-4">
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center space-x-6">
-            <div className="flex items-center">
-              <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-              <span>Found Beacons</span>
-            </div>
-            <div className="flex items-center">
-              <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-              <span>Placed Beacons</span>
-            </div>
-            {isSelecting && (
               <div className="flex items-center">
-                <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>
-                <span>Click markers to select corners</span>
+                <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                <span>Found Beacons</span>
               </div>
-            )}
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
+                <span>Placed Beacons</span>
+              </div>
+              {selectedCorners.length > 0 && (
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
+                  <span>Selected Corners ({selectedCorners.length})</span>
+                </div>
+              )}
+              {isSelecting && (
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>
+                  <span>Click markers to select corners</span>
+                </div>
+              )}
             </div>
             <div className="text-xs text-gray-500">
               <div>Projection: Cape Datum (Modified Clarke 1880)</div>
@@ -348,6 +619,133 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
             </div>
           </div>
         </div>
+        </div>
+
+        {/* Side Panel */}
+        {showSidePanel && calculatedArea && (
+          <div className="w-1/3 border-l bg-gray-50 flex flex-col">
+            {/* Side Panel Header */}
+            <div className="p-4 border-b bg-white">
+              <div className="flex justify-between items-center">
+                <h4 className="text-lg font-semibold text-gray-900">Area Calculation Results</h4>
+                <button
+                  onClick={() => setShowSidePanel(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Results Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+              {/* Area Summary */}
+              <div className="bg-white rounded-lg p-4 shadow-sm">
+                <h5 className="font-semibold text-gray-900 mb-3">Area Summary</h5>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                    <span className="text-sm font-medium text-blue-900">Total Area</span>
+                    <span className="text-lg font-bold text-blue-600">{calculatedArea.formattedArea.displayText}</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                    <span className="text-sm font-medium text-green-900">Perimeter</span>
+                    <span className="text-lg font-bold text-green-600">{calculatedArea.perimeter.toFixed(3)} m</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
+                    <span className="text-sm font-medium text-purple-900">Corners</span>
+                    <span className="text-lg font-bold text-purple-600">{calculatedArea.corners.length}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Corner Coordinates */}
+              <div className="bg-white rounded-lg p-4 shadow-sm">
+                <h5 className="font-semibold text-gray-900 mb-3">Corner Coordinates</h5>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {calculatedArea.corners.map((corner, index) => (
+                    <div key={corner.point} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <div className="flex items-center">
+                        <div className="w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-bold mr-2">
+                          {index + 1}
+                        </div>
+                        <span className="font-medium">{corner.point}</span>
+                      </div>
+                      <div className="text-right">
+                        <div>Y: {corner.y.toFixed(3)}</div>
+                        <div>X: {corner.x.toFixed(3)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bearings and Distances */}
+              <div className="bg-white rounded-lg p-4 shadow-sm">
+                <h5 className="font-semibold text-gray-900 mb-3">Bearings & Distances</h5>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {calculatedArea.bearingsDistances.map((bd, index) => (
+                    <div key={index} className="p-2 bg-gray-50 rounded text-sm">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-medium">{bd.from} → {bd.to}</span>
+                        <span className="text-blue-600 font-mono">{bd.distance.toFixed(3)} m</span>
+                      </div>
+                      <div className="text-xs text-gray-600">
+                        Bearing: {bd.bearingDMS}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Quality Information */}
+              <div className="bg-white rounded-lg p-4 shadow-sm">
+                <h5 className="font-semibold text-gray-900 mb-3">Survey Quality</h5>
+                <div className="space-y-2 text-sm">
+                  {(() => {
+                    const avgHRMS = calculatedArea.corners.reduce((sum, corner) => sum + corner.hrms, 0) / calculatedArea.corners.length;
+                    const avgVRMS = calculatedArea.corners.reduce((sum, corner) => sum + corner.vrms, 0) / calculatedArea.corners.length;
+                    const avgSats = calculatedArea.corners.reduce((sum, corner) => sum + corner.sats, 0) / calculatedArea.corners.length;
+                    
+                    return (
+                      <>
+                        <div className="flex justify-between">
+                          <span>Average HRMS:</span>
+                          <span className="font-mono">{avgHRMS.toFixed(3)} m</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Average VRMS:</span>
+                          <span className="font-mono">{avgVRMS.toFixed(3)} m</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Average Satellites:</span>
+                          <span className="font-mono">{avgSats.toFixed(0)}</span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            {/* Export Buttons */}
+            <div className="p-4 border-t bg-white space-y-2">
+              <button
+                onClick={exportToPDF}
+                className="w-full bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Export to PDF
+              </button>
+              <button
+                onClick={exportToExcel}
+                className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center"
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Export to Excel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

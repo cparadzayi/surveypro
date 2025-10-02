@@ -5,14 +5,13 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
-// Leaflet imports with proper typing
-let L: any = null;
+// Leaflet imports with ES modules
+import * as L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix for default markers in Leaflet with Vite
 if (typeof window !== 'undefined') {
-  L = require('leaflet');
-  require('leaflet/dist/leaflet.css');
-  
-  // Fix for default markers in Leaflet with Vite
-  delete L.Icon.Default.prototype._getIconUrl;
+  delete (L.Icon.Default.prototype as any)._getIconUrl;
   L.Icon.Default.mergeOptions({
     iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
     iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
@@ -498,16 +497,6 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
 
     XLSX.writeFile(workbook, `Land_Parcel_Area_Calculation_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
-
-  if (!L) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg shadow-xl p-6">
-          <p>Loading map...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

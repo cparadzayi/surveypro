@@ -11,7 +11,8 @@ import 'leaflet/dist/leaflet.css';
 
 // Fix for default markers in Leaflet with Vite
 if (typeof window !== 'undefined') {
-  delete (L.Icon.Default.prototype as any)._getIconUrl;
+  // @ts-ignore
+  delete L.Icon.Default.prototype._getIconUrl;
   L.Icon.Default.mergeOptions({
     iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
     iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
@@ -46,7 +47,7 @@ interface CoordinateMapProps {
 
 export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onClose }) => {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
   const [allCalculations, setAllCalculations] = useState<any[]>([]);
   const [activeCalculationIndex, setActiveCalculationIndex] = useState<number>(-1);
   const [selectedCorners, setSelectedCorners] = useState<FieldObservation[]>([]);
@@ -54,8 +55,8 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
   const [isSelecting, setIsSelecting] = useState(false);
   const [mapError, setMapError] = useState<string>('');
   const [showSidePanel, setShowSidePanel] = useState(true);
-  const [polygonLayer, setPolygonLayer] = useState<any>(null);
-  const [cornerMarkers, setCornerMarkers] = useState<any[]>([]);
+  const [polygonLayer, setPolygonLayer] = useState<L.Polygon | null>(null);
+  const [cornerMarkers, setCornerMarkers] = useState<L.Marker[]>([]);
 
   // Convert Zimbabwe Cape Datum coordinates to WGS84 lat/lng
   const convertToLatLng = (y: number, x: number) => {
@@ -85,7 +86,7 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
   };
 
   useEffect(() => {
-    if (!L || !mapRef.current) return;
+    if (!mapRef.current || typeof window === 'undefined') return;
 
     try {
       // Clean up existing map

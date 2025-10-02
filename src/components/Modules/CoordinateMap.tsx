@@ -67,10 +67,29 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
           const allMarkers: L.Marker[] = [];
           
           fieldBookData.observations.forEach((obs) => {
-            // Simple coordinate conversion (EPSG:22291 to approximate WGS84)
-            // This is a simplified conversion - in production you'd use proper proj4 transformation
-            const lat = -17.8 + (obs.x - 2000000) / 111000; // Approximate latitude
-            const lng = 31.0 + (obs.y - 2000000) / 111000;  // Approximate longitude
+            // Zimbabwe EPSG:22291 to WGS84 conversion
+            // EPSG:22291: Arc 1950 / UTM zone 35S
+            // Central Meridian: 31°E, False Easting: 500000m, False Northing: 10000000m
+            
+            // Convert from Zimbabwe coordinates to UTM Zone 35S
+            const utmEasting = obs.y;  // Y coordinate in Zimbabwe system
+            const utmNorthing = obs.x; // X coordinate in Zimbabwe system
+            
+            // Convert UTM to Geographic (WGS84)
+            // UTM Zone 35S parameters
+            const centralMeridian = 31.0; // 31° East
+            const falseEasting = 500000;
+            const falseNorthing = 10000000;
+            const scaleFactor = 0.9996;
+            
+            // Simplified UTM to Geographic conversion for Zimbabwe
+            // This assumes coordinates are in the valid range for Zimbabwe
+            const x = utmEasting - falseEasting;
+            const y = utmNorthing - falseNorthing;
+            
+            // Convert to degrees (simplified conversion)
+            const lng = centralMeridian + (x / (111320 * Math.cos(Math.PI * -19 / 180)));
+            const lat = -19 + (y / 111320); // Zimbabwe is around 19°S
             
             const latLng = L.latLng(lat, lng);
             bounds.extend(latLng);
@@ -100,6 +119,8 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
                   <h4 style="margin: 0 0 8px 0; color: #333;">${obs.point}</h4>
                   <p style="margin: 2px 0; font-size: 12px;"><strong>Y:</strong> ${obs.y.toFixed(3)}</p>
                   <p style="margin: 2px 0; font-size: 12px;"><strong>X:</strong> ${obs.x.toFixed(3)}</p>
+                  <p style="margin: 2px 0; font-size: 12px;"><strong>Lat:</strong> ${lat.toFixed(6)}°</p>
+                  <p style="margin: 2px 0; font-size: 12px;"><strong>Lng:</strong> ${lng.toFixed(6)}°</p>
                   <p style="margin: 2px 0; font-size: 12px;"><strong>HRMS:</strong> ${obs.hrms}</p>
                   <p style="margin: 2px 0; font-size: 12px;"><strong>VRMS:</strong> ${obs.vrms}</p>
                   <p style="margin: 2px 0; font-size: 12px;"><strong>Satellites:</strong> ${obs.sats}</p>
@@ -296,7 +317,8 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
         
         {/* Legend */}
         <div className="border-t p-4">
-          <div className="flex items-center justify-center space-x-6 text-sm">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center space-x-6">
             <div className="flex items-center">
               <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
               <span>Found Beacons</span>
@@ -311,6 +333,11 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
                 <span>Click markers to select corners</span>
               </div>
             )}
+            </div>
+            <div className="text-xs text-gray-500">
+              <div>Projection: EPSG:22291 (Arc 1950 / UTM Zone 35S)</div>
+              <div>Central Meridian: 31°E</div>
+            </div>
           </div>
         </div>
       </div>

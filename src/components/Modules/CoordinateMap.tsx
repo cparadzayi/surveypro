@@ -67,32 +67,36 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
           const allMarkers: L.Marker[] = [];
           
           fieldBookData.observations.forEach((obs) => {
-            // Zimbabwe EPSG:22291 to WGS84 conversion
-            // EPSG:22291: Arc 1950 / UTM zone 35S
-            // Central Meridian: 31°E, False Easting: 500000m, False Northing: 10000000m
+            // Zimbabwe Cape Datum to WGS84 conversion
+            // Cape Datum with Modified Clarke 1880 ellipsoid
+            // Central Meridian: 31°E, Transverse Mercator projection
             
-            // Convert from Zimbabwe coordinates to UTM Zone 35S
-            // In Zimbabwe system: Y increases westwards, X increases southwards
-            // For UTM: Easting increases eastwards, Northing increases northwards
-            const utmEasting = obs.y;     // Y coordinate (westwards in Zimbabwe)
-            const utmNorthing = 10000000 - obs.x; // X coordinate (southwards in Zimbabwe, convert to northwards)
+            // Zimbabwe Cape Datum parameters
+            // Modified Clarke 1880: a = 6378249.145m, f = 1/293.465
+            // Central Meridian: 31°E (31.0 degrees)
+            // False Easting: 0m, False Northing: 0m for Cape Datum
             
-            // Convert UTM to Geographic (WGS84)
-            // UTM Zone 35S parameters
+            // In Zimbabwe Cape Datum system:
+            // Y increases westwards from central meridian (31°E)
+            // X increases southwards from equator
+            
+            // Convert Cape Datum coordinates to Geographic (approximate)
             const centralMeridian = 31.0; // 31° East
-            const falseEasting = 500000;
-            const falseNorthing = 10000000;
-            const scaleFactor = 0.9996;
+            const equatorOffset = 0; // Cape Datum uses equator as origin
             
-            // Convert UTM to Geographic coordinates
-            // Remove false easting and northing
-            const x = utmEasting - falseEasting;
-            const y = utmNorthing - falseNorthing;
+            // For Zimbabwe, typical coordinates are:
+            // Y: -200,000 to +200,000 (west/east of 31°E)
+            // X: 2,000,000 to 2,400,000 (south of equator)
             
-            // Convert to degrees using proper UTM formulas
-            // Approximate conversion for display purposes
-            const lat = y / 111320; // Convert northing to latitude (degrees)
-            const lng = centralMeridian + (x / (111320 * Math.cos(Math.PI * lat / 180))); // Convert easting to longitude
+            // Convert Y (westwards) to longitude offset from 31°E
+            // Positive Y = west of 31°E, Negative Y = east of 31°E
+            const metersPerDegreeAtZimbabwe = 111320 * Math.cos(Math.PI * -19 / 180); // ~105,000m per degree at 19°S
+            const longitudeOffset = -obs.y / metersPerDegreeAtZimbabwe; // Negative because Y increases westwards
+            const lng = centralMeridian + longitudeOffset;
+            
+            // Convert X (southwards) to latitude
+            // X increases southwards from equator, so larger X = more south = more negative latitude
+            const lat = -obs.x / 111320; // Convert to degrees south of equator
             
             const latLng = L.latLng(lat, lng);
             bounds.extend(latLng);
@@ -338,8 +342,9 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
             )}
             </div>
             <div className="text-xs text-gray-500">
-              <div>Projection: EPSG:22291 (Arc 1950 / UTM Zone 35S)</div>
+              <div>Projection: Cape Datum (Modified Clarke 1880)</div>
               <div>Central Meridian: 31°E</div>
+              <div>Zimbabwe Survey Coordinates</div>
             </div>
           </div>
         </div>

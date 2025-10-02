@@ -72,8 +72,10 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
             // Central Meridian: 31°E, False Easting: 500000m, False Northing: 10000000m
             
             // Convert from Zimbabwe coordinates to UTM Zone 35S
-            const utmEasting = obs.y;  // Y coordinate in Zimbabwe system
-            const utmNorthing = obs.x; // X coordinate in Zimbabwe system
+            // In Zimbabwe system: Y increases westwards, X increases southwards
+            // For UTM: Easting increases eastwards, Northing increases northwards
+            const utmEasting = obs.y;     // Y coordinate (westwards in Zimbabwe)
+            const utmNorthing = 10000000 - obs.x; // X coordinate (southwards in Zimbabwe, convert to northwards)
             
             // Convert UTM to Geographic (WGS84)
             // UTM Zone 35S parameters
@@ -82,14 +84,15 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
             const falseNorthing = 10000000;
             const scaleFactor = 0.9996;
             
-            // Simplified UTM to Geographic conversion for Zimbabwe
-            // This assumes coordinates are in the valid range for Zimbabwe
+            // Convert UTM to Geographic coordinates
+            // Remove false easting and northing
             const x = utmEasting - falseEasting;
             const y = utmNorthing - falseNorthing;
             
-            // Convert to degrees (simplified conversion)
-            const lng = centralMeridian + (x / (111320 * Math.cos(Math.PI * -19 / 180)));
-            const lat = -19 + (y / 111320); // Zimbabwe is around 19°S
+            // Convert to degrees using proper UTM formulas
+            // Approximate conversion for display purposes
+            const lat = y / 111320; // Convert northing to latitude (degrees)
+            const lng = centralMeridian + (x / (111320 * Math.cos(Math.PI * lat / 180))); // Convert easting to longitude
             
             const latLng = L.latLng(lat, lng);
             bounds.extend(latLng);

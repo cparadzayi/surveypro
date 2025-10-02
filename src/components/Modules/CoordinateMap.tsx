@@ -572,15 +572,6 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
               <button
                 onClick={onClose}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
-            {allCalculations.length > 0 && (
-              <button
-                onClick={exitAreaCalculations}
-                className="px-3 py-1 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors"
-              >
-                <X className="h-4 w-4 inline mr-1" />
-                Exit Area Calculations
-              </button>
-            )}
               >
                 <X className="h-6 w-6" />
               </button>

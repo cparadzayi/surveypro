@@ -569,6 +569,15 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
                   {showSidePanel ? 'Hide' : 'Show'} Results
                 </button>
               )}
+              {allCalculations.length > 0 && (
+                <button
+                  onClick={exitAreaCalculations}
+                  className="px-3 py-1 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors"
+                >
+                  <X className="h-4 w-4 inline mr-1" />
+                  Exit Area Calculations
+                </button>
+              )}
               <button
                 onClick={onClose}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -597,7 +606,7 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
             ) : (
               <div 
                 ref={mapRef} 
-                  Reset Selection
+                className="h-full rounded-lg border border-gray-300"
                 style={{ minHeight: '500px', background: '#f0f0f0' }}
               />
             )}
@@ -619,13 +628,9 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
                   <div className="flex items-center">
                     <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
                     <span>Selected Corners ({selectedCorners.length})</span>
-            <button
-              onClick={() => setShowSidePanel(!showSidePanel)}
-              className="px-3 py-1 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors"
-            >
-              {showSidePanel ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-              {showSidePanel ? 'Hide' : 'Show'} Results
-            </button>
+                  </div>
+                )}
+              </div>
               <div className="text-xs text-gray-500">
                 <div>Projection: Cape Datum (Modified Clarke 1880)</div>
                 <div>Central Meridian: 31°E</div>

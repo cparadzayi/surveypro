@@ -1,15 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, MapPin, Calculator } from 'lucide-react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { X, MapPin, Calculator, RotateCcw, ChevronLeft, ChevronRight, FileText, FileSpreadsheet } from 'lucide-react';
+import { SurveyingCalculations } from '../../utils/surveyingCalculations';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
-// Fix for default markers in Leaflet with Vite
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+// Leaflet imports with proper typing
+let L: any = null;
+if (typeof window !== 'undefined') {
+  L = require('leaflet');
+  require('leaflet/dist/leaflet.css');
+  
+  // Fix for default markers in Leaflet with Vite
+  delete L.Icon.Default.prototype._getIconUrl;
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  });
+}
 
 // Interface for field book data
 interface FieldObservation {
@@ -38,155 +47,165 @@ interface CoordinateMapProps {
 
 export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onClose }) => {
   const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
   const [selectedCorners, setSelectedCorners] = useState<FieldObservation[]>([]);
   const [calculatedArea, setCalculatedArea] = useState<any>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [mapError, setMapError] = useState<string>('');
+  const [showSidePanel, setShowSidePanel] = useState(false);
+  const [polygonLayer, setPolygonLayer] = useState<any>(null);
+  const [cornerMarkers, setCornerMarkers] = useState<any[]>([]);
+
+  // Convert Zimbabwe Cape Datum coordinates to WGS84 lat/lng
+  const convertToLatLng = (y: number, x: number) => {
+    try {
+      // Cape Datum with Modified Clarke 1880 ellipsoid
+      // Central Meridian: 31°E, Transverse Mercator projection
+      // Y increases westwards from central meridian (31°E)
+      // X increases southwards from equator
+      
+      const centralMeridian = 31.0; // 31° East
+      
+      // Convert X (southwards) to latitude
+      // X is in meters south of equator, convert to degrees
+      const lat = -x / 111320; // Convert to degrees south of equator
+      
+      // Convert Y (westwards) to longitude offset from 31°E
+      // At Zimbabwe's latitude (~19°S), adjust for convergence
+      const metersPerDegreeAtZimbabwe = 111320 * Math.cos(Math.PI * lat / 180);
+      const longitudeOffset = -y / metersPerDegreeAtZimbabwe; // Negative because Y increases westwards
+      const lng = centralMeridian + longitudeOffset;
+      
+      return { lat, lng };
+    } catch (error) {
+      console.error('Coordinate conversion error:', error);
+      return { lat: -19, lng: 31 }; // Default to center of Zimbabwe
+    }
+  };
 
   useEffect(() => {
-    let map: L.Map | null = null;
-    
+    if (!L || !mapRef.current) return;
+
     try {
-      if (mapRef.current && !mapRef.current._leaflet_id) {
-        // Initialize map
-        map = L.map(mapRef.current, {
-          center: [0, 0],
-          zoom: 2,
-          zoomControl: true,
-          attributionControl: true
-        });
+      // Clean up existing map
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
 
-        // Add tile layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+      // Initialize map
+      const map = L.map(mapRef.current, {
+        center: [-19, 31], // Center of Zimbabwe
+        zoom: 10,
+        zoomControl: true,
+        attributionControl: true
+      });
 
-        // Process coordinates and add markers
-        if (fieldBookData.observations.length > 0) {
-          const bounds = L.latLngBounds([]);
-          const allMarkers: L.Marker[] = [];
+      mapInstanceRef.current = map;
+
+      // Add tile layer
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+
+      // Process coordinates and add markers
+      if (fieldBookData.observations.length > 0) {
+        const bounds = L.latLngBounds([]);
+        
+        fieldBookData.observations.forEach((obs) => {
+          const { lat, lng } = convertToLatLng(obs.y, obs.x);
+          const latLng = L.latLng(lat, lng);
+          bounds.extend(latLng);
           
-          fieldBookData.observations.forEach((obs) => {
-            // Zimbabwe Cape Datum to WGS84 conversion
-            // Cape Datum with Modified Clarke 1880 ellipsoid
-            // Central Meridian: 31°E, Transverse Mercator projection
-            
-            // Zimbabwe Cape Datum parameters
-            // Modified Clarke 1880: a = 6378249.145m, f = 1/293.465
-            // Central Meridian: 31°E (31.0 degrees)
-            // False Easting: 0m, False Northing: 0m for Cape Datum
-            
-            // In Zimbabwe Cape Datum system:
-            // Y increases westwards from central meridian (31°E)
-            // X increases southwards from equator
-            
-            // Convert Cape Datum coordinates to Geographic (approximate)
-            const centralMeridian = 31.0; // 31° East
-            const equatorOffset = 0; // Cape Datum uses equator as origin
-            
-            // For Zimbabwe, typical coordinates are:
-            // Y: -200,000 to +200,000 (west/east of 31°E)
-            // X: 2,000,000 to 2,400,000 (south of equator)
-            
-            // Convert Y (westwards) to longitude offset from 31°E
-            // Positive Y = west of 31°E, Negative Y = east of 31°E
-            const metersPerDegreeAtZimbabwe = 111320 * Math.cos(Math.PI * -19 / 180); // ~105,000m per degree at 19°S
-            const longitudeOffset = -obs.y / metersPerDegreeAtZimbabwe; // Negative because Y increases westwards
-            const lng = centralMeridian + longitudeOffset;
-            
-            // Convert X (southwards) to latitude
-            // X increases southwards from equator, so larger X = more south = more negative latitude
-            const lat = -obs.x / 111320; // Convert to degrees south of equator
-            
-            const latLng = L.latLng(lat, lng);
-            bounds.extend(latLng);
-            
-            const isFound = obs.fp.includes('F');
-            const markerColor = isFound ? 'green' : 'blue';
-            
-            // Create custom icon
-            const customIcon = L.divIcon({
-              className: 'custom-marker',
-              html: `<div style="
-                background-color: ${markerColor};
-                width: 20px;
-                height: 20px;
-                border-radius: 50%;
-                border: 2px solid white;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-              "></div>`,
-              iconSize: [20, 20],
-              iconAnchor: [10, 10]
-            });
-            
-            // Create marker
-            const marker = L.marker(latLng, { icon: customIcon })
-              .bindPopup(`
-                <div style="font-family: Arial, sans-serif;">
-                  <h4 style="margin: 0 0 8px 0; color: #333;">${obs.point}</h4>
-                  <p style="margin: 2px 0; font-size: 12px;"><strong>Y:</strong> ${obs.y.toFixed(3)}</p>
-                  <p style="margin: 2px 0; font-size: 12px;"><strong>X:</strong> ${obs.x.toFixed(3)}</p>
-                  <p style="margin: 2px 0; font-size: 12px;"><strong>Lat:</strong> ${lat.toFixed(6)}°</p>
-                  <p style="margin: 2px 0; font-size: 12px;"><strong>Lng:</strong> ${lng.toFixed(6)}°</p>
-                  <p style="margin: 2px 0; font-size: 12px;"><strong>HRMS:</strong> ${obs.hrms}</p>
-                  <p style="margin: 2px 0; font-size: 12px;"><strong>VRMS:</strong> ${obs.vrms}</p>
-                  <p style="margin: 2px 0; font-size: 12px;"><strong>Satellites:</strong> ${obs.sats}</p>
-                  <p style="margin: 2px 0; font-size: 12px;"><strong>PDOP:</strong> ${obs.pdop}</p>
-                  <p style="margin: 2px 0; font-size: 12px;"><strong>Type:</strong> ${isFound ? 'Found Beacon' : 'Placed Beacon'}</p>
-                  <p style="margin: 2px 0; font-size: 12px;"><strong>Date:</strong> ${obs.date}</p>
-                  ${obs.description ? `<p style="margin: 2px 0; font-size: 12px;"><strong>Description:</strong> ${obs.description}</p>` : ''}
-                </div>
-              `)
-              .addTo(map);
-            
-            // Add beacon name label
-            const label = L.divIcon({
-              className: 'beacon-label',
-              html: `<div style="
-                background: rgba(255, 255, 255, 0.9);
-                padding: 2px 6px;
-                border-radius: 3px;
-                font-size: 11px;
-                font-weight: bold;
-                color: #333;
-                border: 1px solid #ccc;
-                white-space: nowrap;
-              ">${obs.point}</div>`,
-              iconSize: [0, 0],
-              iconAnchor: [-15, -25]
-            });
-            
-            L.marker(latLng, { icon: label }).addTo(map);
-            
-            allMarkers.push(marker);
-            
-            // Add click handler for corner selection
-            marker.on('click', () => {
-              if (isSelecting) {
-                handleCornerSelection(obs);
-              }
-            });
+          const isFound = obs.fp.includes('F');
+          const markerColor = isFound ? '#10b981' : '#3b82f6'; // green for found, blue for placed
+          
+          // Create custom icon
+          const customIcon = L.divIcon({
+            className: 'custom-marker',
+            html: `<div style="
+              background-color: ${markerColor};
+              width: 16px;
+              height: 16px;
+              border-radius: 50%;
+              border: 2px solid white;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            "></div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
           });
           
-          // Fit map to show all points
-          if (bounds.isValid()) {
-            map.fitBounds(bounds, { 
-              padding: [20, 20],
-              maxZoom: 16 
-            });
-          }
-        }
+          // Create marker
+          const marker = L.marker(latLng, { icon: customIcon })
+            .bindPopup(`
+              <div style="font-family: Arial, sans-serif; min-width: 200px;">
+                <h4 style="margin: 0 0 8px 0; color: #333; font-size: 14px;">${obs.point}</h4>
+                <div style="font-size: 11px; line-height: 1.4;">
+                  <p style="margin: 2px 0;"><strong>Zimbabwe Coordinates:</strong></p>
+                  <p style="margin: 2px 0; margin-left: 10px;">Y: ${obs.y.toFixed(3)} (westwards)</p>
+                  <p style="margin: 2px 0; margin-left: 10px;">X: ${obs.x.toFixed(3)} (southwards)</p>
+                  <p style="margin: 4px 0 2px 0;"><strong>Geographic:</strong></p>
+                  <p style="margin: 2px 0; margin-left: 10px;">Lat: ${lat.toFixed(6)}°</p>
+                  <p style="margin: 2px 0; margin-left: 10px;">Lng: ${lng.toFixed(6)}°</p>
+                  <p style="margin: 4px 0 2px 0;"><strong>GPS Quality:</strong></p>
+                  <p style="margin: 2px 0; margin-left: 10px;">HRMS: ${obs.hrms.toFixed(3)}m</p>
+                  <p style="margin: 2px 0; margin-left: 10px;">VRMS: ${obs.vrms.toFixed(3)}m</p>
+                  <p style="margin: 2px 0; margin-left: 10px;">Satellites: ${obs.sats}</p>
+                  <p style="margin: 2px 0; margin-left: 10px;">PDOP: ${obs.pdop.toFixed(1)}</p>
+                  <p style="margin: 4px 0 2px 0;"><strong>Type:</strong> ${isFound ? 'Found Beacon' : 'Placed Beacon'}</p>
+                  <p style="margin: 2px 0;"><strong>Date:</strong> ${obs.date}</p>
+                  ${obs.description ? `<p style="margin: 2px 0;"><strong>Description:</strong> ${obs.description}</p>` : ''}
+                </div>
+              </div>
+            `)
+            .addTo(map);
+          
+          // Add beacon name label
+          const labelIcon = L.divIcon({
+            className: 'beacon-label',
+            html: `<div style="
+              background: ${isFound ? 'rgba(16, 185, 129, 0.9)' : 'rgba(59, 130, 246, 0.9)'};
+              color: white;
+              padding: 2px 6px;
+              border-radius: 3px;
+              font-size: 10px;
+              font-weight: bold;
+              white-space: nowrap;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            ">${obs.point}</div>`,
+            iconSize: [0, 0],
+            iconAnchor: [-15, -25]
+          });
+          
+          L.marker(latLng, { icon: labelIcon }).addTo(map);
+          
+          // Add click handler for corner selection
+          marker.on('click', () => {
+            if (isSelecting) {
+              handleCornerSelection(obs);
+            }
+          });
+        });
         
-        setMapError('');
+        // Fit map to show all points
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { 
+            padding: [20, 20],
+            maxZoom: 16 
+          });
+        }
       }
+      
+      setMapError('');
     } catch (error) {
       console.error('Map initialization error:', error);
       setMapError(`Failed to initialize map: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
     return () => {
-      if (mapRef.current && mapRef.current._leaflet_id) {
-        mapRef.current._leaflet_id = undefined;
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
       }
     };
   }, [fieldBookData, isSelecting]);
@@ -207,14 +226,14 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
   };
 
   const updatePolygonDisplay = (corners: FieldObservation[]) => {
-    if (!mapRef.current || !mapRef.current._leaflet_id) return;
-    
-    const map = (mapRef.current as any)._leaflet_map;
-    if (!map) return;
+    if (!mapInstanceRef.current) return;
+
+    const map = mapInstanceRef.current;
 
     // Remove existing polygon and corner markers
     if (polygonLayer) {
       map.removeLayer(polygonLayer);
+      setPolygonLayer(null);
     }
     cornerMarkers.forEach(marker => map.removeLayer(marker));
     setCornerMarkers([]);
@@ -222,36 +241,30 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
     if (corners.length >= 3) {
       // Convert coordinates to lat/lng for polygon display
       const latLngs = corners.map(corner => {
-        const metersPerDegreeAtZimbabwe = 111320 * Math.cos(Math.PI * -19 / 180);
-        const longitudeOffset = -corner.y / metersPerDegreeAtZimbabwe;
-        const lng = 31.0 + longitudeOffset;
-        const lat = -corner.x / 111320;
+        const { lat, lng } = convertToLatLng(corner.y, corner.x);
         return L.latLng(lat, lng);
       });
 
       // Create polygon
       const polygon = L.polygon(latLngs, {
-        color: '#ff0000',
+        color: '#ef4444',
         weight: 3,
         opacity: 0.8,
-        fillColor: '#ff0000',
+        fillColor: '#ef4444',
         fillOpacity: 0.2
       }).addTo(map);
       
       setPolygonLayer(polygon);
 
       // Add numbered corner markers
-      const newCornerMarkers: L.Marker[] = [];
+      const newCornerMarkers: any[] = [];
       corners.forEach((corner, index) => {
-        const metersPerDegreeAtZimbabwe = 111320 * Math.cos(Math.PI * -19 / 180);
-        const longitudeOffset = -corner.y / metersPerDegreeAtZimbabwe;
-        const lng = 31.0 + longitudeOffset;
-        const lat = -corner.x / 111320;
+        const { lat, lng } = convertToLatLng(corner.y, corner.x);
         
         const cornerIcon = L.divIcon({
           className: 'corner-marker',
           html: `<div style="
-            background-color: #ff0000;
+            background-color: #ef4444;
             color: white;
             width: 24px;
             height: 24px;
@@ -292,13 +305,6 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
     const formattedArea = SurveyingCalculations.formatArea(area);
     const perimeter = calculatePerimeter();
     
-    // Calculate centroid
-    const centroidY = selectedCorners.reduce((sum, corner) => sum + corner.y, 0) / selectedCorners.length;
-    const centroidX = selectedCorners.reduce((sum, corner) => sum + corner.x, 0) / selectedCorners.length;
-    const metersPerDegreeAtZimbabwe = 111320 * Math.cos(Math.PI * -19 / 180);
-    const centroidLng = 31.0 + (-centroidY / metersPerDegreeAtZimbabwe);
-    const centroidLat = -centroidX / 111320;
-    
     // Calculate bearings and distances between consecutive corners
     const bearingsDistances = [];
     for (let i = 0; i < selectedCorners.length; i++) {
@@ -323,11 +329,23 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
       formattedArea,
       perimeter,
       corners: selectedCorners,
-      centroid: { lat: centroidLat, lng: centroidLng },
       bearingsDistances
     });
     
     setShowSidePanel(true);
+  };
+
+  const calculatePerimeter = () => {
+    if (selectedCorners.length < 2) return 0;
+    
+    let perimeter = 0;
+    for (let i = 0; i < selectedCorners.length; i++) {
+      const current = selectedCorners[i];
+      const next = selectedCorners[(i + 1) % selectedCorners.length];
+      const distance = SurveyingCalculations.calculateDistance(current.y, current.x, next.y, next.x);
+      perimeter += distance;
+    }
+    return perimeter;
   };
 
   const resetSelection = () => {
@@ -377,7 +395,7 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
 
     const cornerData = [
       ['Corner', 'Point Name', 'Y (metres)', 'X (metres)', 'Description'],
-      ...calculatedArea.corners.map((corner, index) => [
+      ...calculatedArea.corners.map((corner: FieldObservation, index: number) => [
         (index + 1).toString(),
         corner.point,
         corner.y.toFixed(3),
@@ -404,7 +422,7 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
 
     const bearingData = [
       ['From', 'To', 'Bearing (DMS)', 'Distance (m)'],
-      ...calculatedArea.bearingsDistances.map(bd => [
+      ...calculatedArea.bearingsDistances.map((bd: any) => [
         bd.from,
         bd.to,
         bd.bearingDMS,
@@ -446,7 +464,7 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
       [''],
       ['CORNER COORDINATES'],
       ['Corner', 'Point Name', 'Y (metres)', 'X (metres)', 'HRMS', 'VRMS', 'Satellites', 'PDOP', 'Description'],
-      ...calculatedArea.corners.map((corner, index) => [
+      ...calculatedArea.corners.map((corner: FieldObservation, index: number) => [
         index + 1,
         corner.point,
         corner.y,
@@ -466,7 +484,7 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
     const bearingData = [
       ['BEARINGS AND DISTANCES'],
       ['From', 'To', 'Bearing (Decimal)', 'Bearing (DMS)', 'Distance (m)'],
-      ...calculatedArea.bearingsDistances.map(bd => [
+      ...calculatedArea.bearingsDistances.map((bd: any) => [
         bd.from,
         bd.to,
         bd.bearing.toFixed(4),
@@ -480,145 +498,130 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
 
     XLSX.writeFile(workbook, `Land_Parcel_Area_Calculation_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
-    }
-    
-    area = Math.abs(area) / 2;
-    
-    setCalculatedArea({
-      area: area,
-      perimeter: calculatePerimeter(),
-      corners: selectedCorners.length
-    });
-  };
 
-  const calculatePerimeter = () => {
-    if (selectedCorners.length < 2) return 0;
-    
-    let perimeter = 0;
-    for (let i = 0; i < selectedCorners.length; i++) {
-      const current = selectedCorners[i];
-      const next = selectedCorners[(i + 1) % selectedCorners.length];
-      const distance = Math.sqrt(
-        Math.pow(next.x - current.x, 2) + Math.pow(next.y - current.y, 2)
-      );
-      perimeter += distance;
-    }
-    return perimeter;
-  };
+  if (!L) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl p-6">
+          <p>Loading map...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-7xl h-5/6 flex">
         {/* Main Map Area */}
         <div className={`flex flex-col transition-all duration-300 ${showSidePanel ? 'w-2/3' : 'w-full'}`}>
-        {/* Header */}
-        <div className="flex justify-between items-center p-4 border-b">
-          <h3 className="text-lg font-semibold text-gray-900">Survey Coordinates Map</h3>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setIsSelecting(!isSelecting)}
-              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                isSelecting 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              <Calculator className="h-4 w-4 inline mr-1" />
-              {isSelecting ? 'Stop Selecting' : 'Select Corner Points'}
-            </button>
-            {selectedCorners.length > 0 && (
-              <>
-                <button
-                  onClick={calculateArea}
-                  disabled={selectedCorners.length < 3}
-                  className="px-3 py-1 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 transition-colors disabled:bg-gray-400"
-                >
-                  Calculate Area ({selectedCorners.length})
-                </button>
-                <button
-                  onClick={resetSelection}
-                  className="px-3 py-1 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors"
-                >
-                  <RotateCcw className="h-4 w-4 inline mr-1" />
-                  Reset
-                </button>
-              </>
-            )}
-            {calculatedArea && (
+          {/* Header */}
+          <div className="flex justify-between items-center p-4 border-b">
+            <h3 className="text-lg font-semibold text-gray-900">Survey Coordinates Map</h3>
+            <div className="flex items-center space-x-2">
               <button
-                onClick={() => setShowSidePanel(!showSidePanel)}
-                className="px-3 py-1 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors"
+                onClick={() => setIsSelecting(!isSelecting)}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  isSelecting 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
               >
-                {showSidePanel ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-                {showSidePanel ? 'Hide' : 'Show'} Results
+                <Calculator className="h-4 w-4 inline mr-1" />
+                {isSelecting ? 'Stop Selecting' : 'Select Corner Points'}
               </button>
-            )}
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <X className="h-6 w-6" />
-            </button>
-          </div>
-        </div>
-        
-        {/* Map Content */}
-        <div className="flex-1 p-4">
-          {mapError ? (
-            <div className="h-full bg-red-50 rounded-lg flex items-center justify-center border border-red-200">
-              <div className="text-center p-6">
-                <MapPin className="h-12 w-12 text-red-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-red-900 mb-2">Map Error</h3>
-                <p className="text-red-700 text-sm">{mapError}</p>
-                <button 
-                  onClick={() => window.location.reload()} 
-                  className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  Reload Page
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div 
-              ref={mapRef} 
-              className="h-full w-full rounded-lg border border-gray-300"
-              style={{ minHeight: '500px', background: '#f0f0f0' }}
-            />
-          )}
-        </div>
-        
-        {/* Legend */}
-        <div className="border-t p-4">
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center">
-                <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                <span>Found Beacons</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-                <span>Placed Beacons</span>
-              </div>
               {selectedCorners.length > 0 && (
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
-                  <span>Selected Corners ({selectedCorners.length})</span>
-                </div>
+                <>
+                  <button
+                    onClick={calculateArea}
+                    disabled={selectedCorners.length < 3}
+                    className="px-3 py-1 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 transition-colors disabled:bg-gray-400"
+                  >
+                    Calculate Area ({selectedCorners.length})
+                  </button>
+                  <button
+                    onClick={resetSelection}
+                    className="px-3 py-1 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors"
+                  >
+                    <RotateCcw className="h-4 w-4 inline mr-1" />
+                    Reset
+                  </button>
+                </>
               )}
-              {isSelecting && (
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>
-                  <span>Click markers to select corners</span>
-                </div>
+              {calculatedArea && (
+                <button
+                  onClick={() => setShowSidePanel(!showSidePanel)}
+                  className="px-3 py-1 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700 transition-colors"
+                >
+                  {showSidePanel ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                  {showSidePanel ? 'Hide' : 'Show'} Results
+                </button>
               )}
-            </div>
-            <div className="text-xs text-gray-500">
-              <div>Projection: Cape Datum (Modified Clarke 1880)</div>
-              <div>Central Meridian: 31°E</div>
-              <div>Zimbabwe Survey Coordinates</div>
+              <button
+                onClick={onClose}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-6 w-6" />
+              </button>
             </div>
           </div>
-        </div>
+          
+          {/* Map Content */}
+          <div className="flex-1 p-4">
+            {mapError ? (
+              <div className="h-full bg-red-50 rounded-lg flex items-center justify-center border border-red-200">
+                <div className="text-center p-6">
+                  <MapPin className="h-12 w-12 text-red-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-red-900 mb-2">Map Error</h3>
+                  <p className="text-red-700 text-sm">{mapError}</p>
+                  <button 
+                    onClick={() => window.location.reload()} 
+                    className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Reload Page
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div 
+                ref={mapRef} 
+                className="h-full w-full rounded-lg border border-gray-300"
+                style={{ minHeight: '500px', background: '#f0f0f0' }}
+              />
+            )}
+          </div>
+          
+          {/* Legend */}
+          <div className="border-t p-4">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center space-x-6">
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                  <span>Found Beacons</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
+                  <span>Placed Beacons</span>
+                </div>
+                {selectedCorners.length > 0 && (
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
+                    <span>Selected Corners ({selectedCorners.length})</span>
+                  </div>
+                )}
+                {isSelecting && (
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>
+                    <span>Click markers to select corners</span>
+                  </div>
+                )}
+              </div>
+              <div className="text-xs text-gray-500">
+                <div>Projection: Cape Datum (Modified Clarke 1880)</div>
+                <div>Central Meridian: 31°E</div>
+                <div>Zimbabwe Survey Coordinates</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Side Panel */}
@@ -662,7 +665,7 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
               <div className="bg-white rounded-lg p-4 shadow-sm">
                 <h5 className="font-semibold text-gray-900 mb-3">Corner Coordinates</h5>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {calculatedArea.corners.map((corner, index) => (
+                  {calculatedArea.corners.map((corner: FieldObservation, index: number) => (
                     <div key={corner.point} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
                       <div className="flex items-center">
                         <div className="w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-bold mr-2">
@@ -683,7 +686,7 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
               <div className="bg-white rounded-lg p-4 shadow-sm">
                 <h5 className="font-semibold text-gray-900 mb-3">Bearings & Distances</h5>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {calculatedArea.bearingsDistances.map((bd, index) => (
+                  {calculatedArea.bearingsDistances.map((bd: any, index: number) => (
                     <div key={index} className="p-2 bg-gray-50 rounded text-sm">
                       <div className="flex justify-between items-center mb-1">
                         <span className="font-medium">{bd.from} → {bd.to}</span>
@@ -702,9 +705,9 @@ export const CoordinateMap: React.FC<CoordinateMapProps> = ({ fieldBookData, onC
                 <h5 className="font-semibold text-gray-900 mb-3">Survey Quality</h5>
                 <div className="space-y-2 text-sm">
                   {(() => {
-                    const avgHRMS = calculatedArea.corners.reduce((sum, corner) => sum + corner.hrms, 0) / calculatedArea.corners.length;
-                    const avgVRMS = calculatedArea.corners.reduce((sum, corner) => sum + corner.vrms, 0) / calculatedArea.corners.length;
-                    const avgSats = calculatedArea.corners.reduce((sum, corner) => sum + corner.sats, 0) / calculatedArea.corners.length;
+                    const avgHRMS = calculatedArea.corners.reduce((sum: number, corner: FieldObservation) => sum + corner.hrms, 0) / calculatedArea.corners.length;
+                    const avgVRMS = calculatedArea.corners.reduce((sum: number, corner: FieldObservation) => sum + corner.vrms, 0) / calculatedArea.corners.length;
+                    const avgSats = calculatedArea.corners.reduce((sum: number, corner: FieldObservation) => sum + corner.sats, 0) / calculatedArea.corners.length;
                     
                     return (
                       <>

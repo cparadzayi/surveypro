@@ -11,6 +11,14 @@ interface BeaconPoint {
   x: number;
 }
 
+interface AvailableBeacon {
+  id: string;
+  beacon_name: string;
+  y_coordinate: number;
+  x_coordinate: number;
+  beacon_type: string;
+}
+
 interface ComputedJoin {
   fromName: string;
   toName: string;
@@ -37,6 +45,7 @@ interface StandCalculation {
 export const AreaCalculations: React.FC = () => {
   const [projects, setProjects] = useState<SurveyProject[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('');
+  const [availableBeacons, setAvailableBeacons] = useState<AvailableBeacon[]>([]);
   const [stands, setStands] = useState<StandCalculation[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddStand, setShowAddStand] = useState(false);
@@ -45,6 +54,12 @@ export const AreaCalculations: React.FC = () => {
   useEffect(() => {
     loadProjects();
   }, []);
+
+  useEffect(() => {
+    if (selectedProject) {
+      loadBeacons();
+    }
+  }, [selectedProject]);
 
   const loadProjects = async () => {
     try {
@@ -55,6 +70,16 @@ export const AreaCalculations: React.FC = () => {
       console.error('Error loading projects:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadBeacons = async () => {
+    try {
+      const data = await surveyingApi.getBeacons(selectedProject);
+      setAvailableBeacons(data || []);
+    } catch (error) {
+      console.error('Error loading beacons:', error);
+      setAvailableBeacons([]);
     }
   };
 
@@ -187,6 +212,19 @@ export const AreaCalculations: React.FC = () => {
     if (editingStand) {
       const updated = [...editingStand.beacons];
       updated[index] = { ...updated[index], [field]: value };
+      setEditingStand({ ...editingStand, beacons: updated });
+    }
+  };
+
+  const selectBeaconFromList = (index: number, beaconId: string) => {
+    const selectedBeacon = availableBeacons.find(b => b.id === beaconId);
+    if (selectedBeacon && editingStand) {
+      const updated = [...editingStand.beacons];
+      updated[index] = {
+        name: selectedBeacon.beacon_name,
+        y: selectedBeacon.y_coordinate,
+        x: selectedBeacon.x_coordinate
+      };
       setEditingStand({ ...editingStand, beacons: updated });
     }
   };
@@ -517,13 +555,15 @@ export const AreaCalculations: React.FC = () => {
 
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                   <p className="text-sm text-blue-800">
-                    <strong>Important:</strong> Enter beacons in order around the boundary. The system will automatically:
+                    <strong>How to use:</strong>
                   </p>
                   <ul className="text-sm text-blue-800 mt-2 ml-4 list-disc">
-                    <li>Compute bearings and distances between successive beacons</li>
-                    <li>Calculate coordinate consistency checks (DY, DX)</li>
-                    <li>Compute the enclosed area using the coordinate method</li>
-                    <li>Check loop closure (first and last beacon should match)</li>
+                    <li><strong>Option 1:</strong> Select beacons from the dropdown (automatically fills in coordinates from field notes)</li>
+                    <li><strong>Option 2:</strong> Manually type beacon name and enter coordinates</li>
+                    <li>Enter beacons in order around the boundary</li>
+                    <li>System automatically computes bearings, distances, and area</li>
+                    <li>Coordinate consistency checks (DY, DX) verify accuracy</li>
+                    <li>Loop closure validation ensures the traverse closes properly</li>
                   </ul>
                 </div>
 
@@ -532,6 +572,7 @@ export const AreaCalculations: React.FC = () => {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="border border-gray-300 px-3 py-2 text-left text-sm">#</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm">Select from Field Notes</th>
                         <th className="border border-gray-300 px-3 py-2 text-left text-sm">Beacon Name</th>
                         <th className="border border-gray-300 px-3 py-2 text-left text-sm">Y Coordinate (metres)</th>
                         <th className="border border-gray-300 px-3 py-2 text-left text-sm">X Coordinate (metres)</th>
@@ -543,6 +584,27 @@ export const AreaCalculations: React.FC = () => {
                         <tr key={index}>
                           <td className="border border-gray-300 px-3 py-2 text-center">
                             {index + 1}
+                          </td>
+                          <td className="border border-gray-300 px-2 py-2">
+                            <select
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  selectBeaconFromList(index, e.target.value);
+                                }
+                              }}
+                              className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-blue-500"
+                              defaultValue=""
+                            >
+                              <option value="">-- Select beacon --</option>
+                              {availableBeacons.map((availBeacon) => (
+                                <option key={availBeacon.id} value={availBeacon.id}>
+                                  {availBeacon.beacon_name} ({availBeacon.beacon_type})
+                                </option>
+                              ))}
+                            </select>
+                            {availableBeacons.length === 0 && (
+                              <p className="text-xs text-gray-500 mt-1">No beacons uploaded yet</p>
+                            )}
                           </td>
                           <td className="border border-gray-300 px-2 py-2">
                             <input

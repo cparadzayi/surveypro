@@ -387,3 +387,28 @@ export interface FieldBookData {
   foundBeacons: FieldObservation[];
   placedBeacons: FieldObservation[];
 }
+
+// Area Calculations with Coordinate Checking
+export interface AreaCalculationEntry {
+  direction: string; // Bearing in DMS format (e.g., "321:42:00")
+  distance: number; // Distance in meters
+  name: string; // Beacon/point name
+  y: number; // Y coordinate (westwards)
+  x: number; // X coordinate (southwards)
+  dy: number; // Coordinate consistency check Y
+  dx: number; // Coordinate consistency check X
+}
+
+export interface StandAreaCalculation {
+  standNumber: string; // e.g., "LOT1", "LOT2", "OUTSIDE FIGURE"
+  entries: AreaCalculationEntry[];
+  area: number; // Area in square meters
+  areaHectares: number; // Area in hectares
+}
+
+export interface AreaCalculationsDocument {
+  title: string; // e.g., "Areas from Co-ordinates (With Co-ordinate Checking)"
+  stands: StandAreaCalculation[];
+  generatedDate?: string;
+  projectId?: string;
+}

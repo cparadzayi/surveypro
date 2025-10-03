@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calculator, Map, Database, FileText, BarChart3, Settings, Compass, Triangle, Mountain, Target, HelpCircle } from 'lucide-react';
+import { Calculator, Map, Database, FileText, BarChart3, Settings, Compass, Triangle, Mountain, Target, HelpCircle, CheckSquare } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -11,6 +11,7 @@ const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
   { id: 'projects', label: 'Projects', icon: Database },
   { id: 'calculations', label: 'Calculations', icon: Calculator },
+  { id: 'area-calculations', label: 'Area & Consistencies', icon: CheckSquare },
   { id: 'beacons', label: 'Beacons', icon: Target },
   { id: 'digital-lodgment', label: 'Digital Lodgment', icon: FileText },
   { id: 'cadastral', label: 'Cadastral', icon: Map },

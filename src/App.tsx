@@ -7,6 +7,7 @@ import { Dashboard } from './components/Modules/Dashboard';
 import { Projects } from './components/Modules/Projects';
 import { Beacons } from './components/Modules/Beacons';
 import { Calculations } from './components/Modules/Calculations';
+import { AreaCalculations } from './components/Modules/AreaCalculations';
 import { Help } from './components/Modules/Help';
 import { Settings } from './components/Modules/Settings';
 import { DigitalLodgment } from './components/Modules/DigitalLodgment';
@@ -41,6 +42,8 @@ const AppContent: React.FC = () => {
         return <Projects />;
       case 'calculations':
         return <Calculations />;
+      case 'area-calculations':
+        return <AreaCalculations />;
       case 'beacons':
         return <Beacons />;
       case 'digital-lodgment':

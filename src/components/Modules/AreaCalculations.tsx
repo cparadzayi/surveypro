@@ -1,17 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { Calculator, Download, Upload, Plus, Trash2, FileText } from 'lucide-react';
+import { Calculator, Download, Plus, Trash2, FileText, AlertCircle, CheckCircle } from 'lucide-react';
 import { surveyingApi } from '../../lib/supabase';
-import { SurveyProject, StandAreaCalculation, AreaCalculationEntry } from '../../types/surveying';
+import { SurveyProject } from '../../types/surveying';
+import { SurveyingCalculations } from '../../utils/surveyingCalculations';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+
+interface BeaconPoint {
+  name: string;
+  y: number;
+  x: number;
+}
+
+interface ComputedJoin {
+  fromName: string;
+  toName: string;
+  fromY: number;
+  fromX: number;
+  toY: number;
+  toX: number;
+  direction: string; // DMS format
+  distance: number;
+  dy: number; // Coordinate consistency check
+  dx: number; // Coordinate consistency check
+}
+
+interface StandCalculation {
+  standNumber: string;
+  beacons: BeaconPoint[];
+  joins: ComputedJoin[];
+  area: number; // in square meters
+  areaHectares: number;
+  closureError: { dy: number; dx: number; distance: number };
+  isClosed: boolean;
+}
 
 export const AreaCalculations: React.FC = () => {
   const [projects, setProjects] = useState<SurveyProject[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('');
-  const [stands, setStands] = useState<StandAreaCalculation[]>([]);
+  const [stands, setStands] = useState<StandCalculation[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddStand, setShowAddStand] = useState(false);
-  const [editingStand, setEditingStand] = useState<StandAreaCalculation | null>(null);
+  const [editingStand, setEditingStand] = useState<{ standNumber: string; beacons: BeaconPoint[] } | null>(null);
 
   useEffect(() => {
     loadProjects();
@@ -29,37 +58,111 @@ export const AreaCalculations: React.FC = () => {
     }
   };
 
-  const addStand = () => {
-    const newStand: StandAreaCalculation = {
-      standNumber: `LOT${stands.length + 1}`,
-      entries: [
-        {
-          direction: '',
-          distance: 0,
-          name: '',
-          y: 0,
-          x: 0,
-          dy: 0,
-          dx: 0
-        }
-      ],
-      area: 0,
-      areaHectares: 0
+  const computeJoinsAndArea = (beacons: BeaconPoint[]): Omit<StandCalculation, 'standNumber' | 'beacons'> => {
+    if (beacons.length < 3) {
+      return {
+        joins: [],
+        area: 0,
+        areaHectares: 0,
+        closureError: { dy: 0, dx: 0, distance: 0 },
+        isClosed: false
+      };
+    }
+
+    const joins: ComputedJoin[] = [];
+    let totalDY = 0;
+    let totalDX = 0;
+
+    // Compute joins between successive beacons
+    for (let i = 0; i < beacons.length; i++) {
+      const current = beacons[i];
+      const next = beacons[(i + 1) % beacons.length]; // Loop back to first
+
+      // Calculate bearing and distance
+      const bearing = SurveyingCalculations.calculateBearing(current.y, current.x, next.y, next.x);
+      const distance = SurveyingCalculations.calculateDistance(current.y, current.x, next.y, next.x);
+
+      // Convert bearing to DMS
+      const bearingDMS = SurveyingCalculations.decimalToDms(bearing);
+      const directionStr = `${bearingDMS.degrees}:${bearingDMS.minutes.toString().padStart(2, '0')}:${bearingDMS.seconds.toFixed(0).padStart(2, '0')}`;
+
+      // Calculate coordinate differences (for consistency checking)
+      const dy = next.y - current.y;
+      const dx = next.x - current.x;
+
+      // Compute what the coordinates should be based on bearing and distance
+      const computed = SurveyingCalculations.calculateCoordinates(current.y, current.x, bearing, distance);
+
+      // Consistency check: difference between given and computed coordinates
+      const consistencyDY = next.y - computed.y;
+      const consistencyDX = next.x - computed.x;
+
+      totalDY += dy;
+      totalDX += dx;
+
+      joins.push({
+        fromName: current.name,
+        toName: next.name,
+        fromY: current.y,
+        fromX: current.x,
+        toY: next.y,
+        toX: next.x,
+        direction: directionStr,
+        distance,
+        dy: consistencyDY,
+        dx: consistencyDX
+      });
+    }
+
+    // Calculate area using coordinate method (Shoelace formula)
+    const coordinates = beacons.map(b => ({ y: b.y, x: b.x }));
+    const area = SurveyingCalculations.calculateArea(coordinates);
+    const areaHectares = area / 10000;
+
+    // Check closure (should sum to zero if closed)
+    const closureDistance = Math.sqrt(totalDY * totalDY + totalDX * totalDX);
+    const isClosed = closureDistance < 0.001; // Within 1mm tolerance
+
+    return {
+      joins,
+      area,
+      areaHectares,
+      closureError: { dy: totalDY, dx: totalDX, distance: closureDistance },
+      isClosed
     };
-    setEditingStand(newStand);
+  };
+
+  const addStand = () => {
+    setEditingStand({
+      standNumber: `LOT${stands.length + 1}`,
+      beacons: [
+        { name: '', y: 0, x: 0 },
+        { name: '', y: 0, x: 0 },
+        { name: '', y: 0, x: 0 }
+      ]
+    });
     setShowAddStand(true);
   };
 
   const saveStand = () => {
-    if (editingStand) {
+    if (editingStand && editingStand.beacons.length >= 3) {
+      const computed = computeJoinsAndArea(editingStand.beacons);
+
+      const newStand: StandCalculation = {
+        standNumber: editingStand.standNumber,
+        beacons: editingStand.beacons,
+        ...computed
+      };
+
       const existingIndex = stands.findIndex(s => s.standNumber === editingStand.standNumber);
       if (existingIndex >= 0) {
         const updated = [...stands];
-        updated[existingIndex] = editingStand;
+        updated[existingIndex] = newStand;
         setStands(updated);
       } else {
-        setStands([...stands, editingStand]);
+        setStands([...stands, newStand]);
       }
+
       setShowAddStand(false);
       setEditingStand(null);
     }
@@ -71,121 +174,151 @@ export const AreaCalculations: React.FC = () => {
     }
   };
 
-  const addEntry = () => {
+  const addBeacon = () => {
     if (editingStand) {
       setEditingStand({
         ...editingStand,
-        entries: [
-          ...editingStand.entries,
-          {
-            direction: '',
-            distance: 0,
-            name: '',
-            y: 0,
-            x: 0,
-            dy: 0,
-            dx: 0
-          }
-        ]
+        beacons: [...editingStand.beacons, { name: '', y: 0, x: 0 }]
       });
     }
   };
 
-  const updateEntry = (index: number, field: keyof AreaCalculationEntry, value: string | number) => {
+  const updateBeacon = (index: number, field: keyof BeaconPoint, value: string | number) => {
     if (editingStand) {
-      const updated = [...editingStand.entries];
+      const updated = [...editingStand.beacons];
       updated[index] = { ...updated[index], [field]: value };
-      setEditingStand({ ...editingStand, entries: updated });
+      setEditingStand({ ...editingStand, beacons: updated });
     }
   };
 
-  const removeEntry = (index: number) => {
-    if (editingStand && editingStand.entries.length > 1) {
-      const updated = editingStand.entries.filter((_, i) => i !== index);
-      setEditingStand({ ...editingStand, entries: updated });
+  const removeBeacon = (index: number) => {
+    if (editingStand && editingStand.beacons.length > 3) {
+      const updated = editingStand.beacons.filter((_, i) => i !== index);
+      setEditingStand({ ...editingStand, beacons: updated });
     }
   };
 
   const exportToPDF = () => {
     const pdf = new jsPDF('portrait', 'mm', 'a4');
     const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
     let yPosition = 20;
 
     // Title
-    pdf.setFontSize(12);
+    pdf.setFontSize(10);
     pdf.setFont('helvetica', 'normal');
-    const title = 'Areas from Co-ordinates (With Co-ordinate Checking)';
-    const titleLines = pdf.splitTextToSize(title, pageWidth - 40);
-    titleLines.forEach((line: string) => {
-      pdf.text(line, pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 6;
-    });
+    pdf.text('Areas from Co-ordinates (With Co-ordinate Checking)', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 5;
 
     // Underline
-    pdf.setLineWidth(0.5);
+    pdf.setLineWidth(0.3);
     pdf.line(20, yPosition, pageWidth - 20, yPosition);
     yPosition += 10;
 
+    // Column headers (first occurrence)
+    pdf.setFontSize(8);
+    const headers = ['Direction', 'Distance', 'Name', 'Y', 'X', 'DY', 'DX'];
+    let xPos = 20;
+    const colWidths = [24, 20, 18, 26, 26, 16, 16];
+
+    headers.forEach((header, i) => {
+      pdf.text(header, xPos, yPosition);
+      xPos += colWidths[i];
+    });
+    yPosition += 2;
+    pdf.line(20, yPosition, pageWidth - 20, yPosition);
+    yPosition += 5;
+
     // Process each stand
-    stands.forEach((stand, standIndex) => {
+    stands.forEach((stand) => {
       // Check if we need a new page
       if (yPosition > 250) {
         pdf.addPage();
         yPosition = 20;
+
+        // Repeat headers on new page
+        pdf.setFontSize(8);
+        xPos = 20;
+        headers.forEach((header, i) => {
+          pdf.text(header, xPos, yPosition);
+          xPos += colWidths[i];
+        });
+        yPosition += 2;
+        pdf.line(20, yPosition, pageWidth - 20, yPosition);
+        yPosition += 5;
       }
 
       // Stand header
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
       pdf.text(`Stand/Erf Number = ${stand.standNumber}`, 20, yPosition);
-      yPosition += 5;
-      pdf.line(20, yPosition, pageWidth - 20, yPosition);
-      yPosition += 8;
-
-      // Column headers
-      const headers = ['Direction', 'Distance', 'Name', 'Y', 'X', 'DY', 'DX'];
-      const colWidths = [25, 20, 20, 25, 25, 18, 18];
-      let xPos = 20;
-
-      pdf.setFontSize(8);
-      headers.forEach((header, i) => {
-        pdf.text(header, xPos, yPosition);
-        xPos += colWidths[i];
-      });
-      yPosition += 5;
+      yPosition += 2;
       pdf.line(20, yPosition, pageWidth - 20, yPosition);
       yPosition += 5;
 
-      // Entries
-      stand.entries.forEach((entry) => {
-        if (yPosition > 270) {
+      // First beacon coordinates (starting point)
+      if (stand.beacons.length > 0) {
+        pdf.setFontSize(8);
+        const firstBeacon = stand.beacons[0];
+        xPos = 20;
+        xPos += colWidths[0]; // Skip Direction
+        xPos += colWidths[1]; // Skip Distance
+        pdf.text(firstBeacon.name, xPos, yPosition);
+        xPos += colWidths[2];
+        pdf.text(firstBeacon.y.toFixed(2), xPos, yPosition);
+        xPos += colWidths[3];
+        pdf.text(firstBeacon.x.toFixed(2), xPos, yPosition);
+        yPosition += 4;
+      }
+
+      // All joins
+      stand.joins.forEach((join) => {
+        if (yPosition > 280) {
           pdf.addPage();
           yPosition = 20;
         }
 
         xPos = 20;
-        pdf.text(entry.direction || '', xPos, yPosition);
+        pdf.setFontSize(8);
+
+        // Direction
+        pdf.text(join.direction, xPos, yPosition);
         xPos += colWidths[0];
-        pdf.text(entry.distance.toFixed(2), xPos, yPosition);
+
+        // Distance
+        pdf.text(join.distance.toFixed(2), xPos, yPosition, { align: 'right' });
         xPos += colWidths[1];
-        pdf.text(entry.name, xPos, yPosition);
+
+        // To Name
+        pdf.text(join.toName, xPos, yPosition);
         xPos += colWidths[2];
-        pdf.text(entry.y.toFixed(2), xPos, yPosition);
+
+        // Y coordinate
+        pdf.text(join.toY.toFixed(2), xPos, yPosition);
         xPos += colWidths[3];
-        pdf.text(entry.x.toFixed(2), xPos, yPosition);
+
+        // X coordinate
+        pdf.text(join.toX.toFixed(2), xPos, yPosition);
         xPos += colWidths[4];
-        pdf.text(entry.dy.toFixed(3), xPos, yPosition);
+
+        // DY (consistency check)
+        const dyStr = join.dy >= 0 ? join.dy.toFixed(3) : join.dy.toFixed(3);
+        pdf.text(dyStr, xPos, yPosition, { align: 'right' });
         xPos += colWidths[5];
-        pdf.text(entry.dx.toFixed(3), xPos, yPosition);
-        yPosition += 5;
+
+        // DX (consistency check)
+        const dxStr = join.dx >= 0 ? join.dx.toFixed(3) : join.dx.toFixed(3);
+        pdf.text(dxStr, xPos, yPosition, { align: 'right' });
+
+        yPosition += 4;
       });
 
       // Area
-      yPosition += 3;
+      yPosition += 2;
+      pdf.setFontSize(9);
       pdf.text(`Area (Ha.) = ${stand.areaHectares.toFixed(4)}`, 60, yPosition);
-      yPosition += 5;
+      yPosition += 2;
       pdf.line(60, yPosition, 110, yPosition);
-      yPosition += 10;
+      yPosition += 8;
     });
 
     const projectName = projects.find(p => p.id === selectedProject)?.project_name || 'Area Calculations';
@@ -195,8 +328,8 @@ export const AreaCalculations: React.FC = () => {
   return (
     <div className="p-6">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Area Calculations with Coordinate Checking</h2>
-        <p className="text-gray-600">Generate professional area calculation reports with coordinate consistency checks</p>
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Areas from Co-ordinates (With Co-ordinate Checking)</h2>
+        <p className="text-gray-600">Compute areas and check coordinate consistency for survey stands</p>
       </div>
 
       {/* Project Selection */}
@@ -247,13 +380,26 @@ export const AreaCalculations: React.FC = () => {
                   Area: {stand.areaHectares.toFixed(4)} ha ({stand.area.toFixed(2)} m²)
                 </p>
                 <p className="text-sm text-gray-600">
-                  {stand.entries.length} boundary points
+                  {stand.beacons.length} corner beacons, {stand.joins.length} joins
                 </p>
+                <div className="flex items-center mt-2">
+                  {stand.isClosed ? (
+                    <div className="flex items-center text-green-600 text-sm">
+                      <CheckCircle className="h-4 w-4 mr-1" />
+                      Loop closed (error: {stand.closureError.distance.toFixed(3)}m)
+                    </div>
+                  ) : (
+                    <div className="flex items-center text-amber-600 text-sm">
+                      <AlertCircle className="h-4 w-4 mr-1" />
+                      Closure error: {stand.closureError.distance.toFixed(3)}m (DY: {stand.closureError.dy.toFixed(3)}m, DX: {stand.closureError.dx.toFixed(3)}m)
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex space-x-2">
                 <button
                   onClick={() => {
-                    setEditingStand(stand);
+                    setEditingStand({ standNumber: stand.standNumber, beacons: stand.beacons });
                     setShowAddStand(true);
                   }}
                   className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -276,7 +422,8 @@ export const AreaCalculations: React.FC = () => {
                   <tr>
                     <th className="px-3 py-2 text-left">Direction</th>
                     <th className="px-3 py-2 text-right">Distance</th>
-                    <th className="px-3 py-2 text-left">Name</th>
+                    <th className="px-3 py-2 text-left">From</th>
+                    <th className="px-3 py-2 text-left">To</th>
                     <th className="px-3 py-2 text-right">Y</th>
                     <th className="px-3 py-2 text-right">X</th>
                     <th className="px-3 py-2 text-right">DY</th>
@@ -284,21 +431,26 @@ export const AreaCalculations: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {stand.entries.slice(0, 3).map((entry, idx) => (
+                  {stand.joins.slice(0, 5).map((join, idx) => (
                     <tr key={idx} className="border-t border-gray-200">
-                      <td className="px-3 py-2 font-mono text-xs">{entry.direction}</td>
-                      <td className="px-3 py-2 text-right">{entry.distance.toFixed(2)}</td>
-                      <td className="px-3 py-2">{entry.name}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs">{entry.y.toFixed(2)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs">{entry.x.toFixed(2)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs">{entry.dy.toFixed(3)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs">{entry.dx.toFixed(3)}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{join.direction}</td>
+                      <td className="px-3 py-2 text-right">{join.distance.toFixed(2)}</td>
+                      <td className="px-3 py-2">{join.fromName}</td>
+                      <td className="px-3 py-2">{join.toName}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{join.toY.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{join.toX.toFixed(2)}</td>
+                      <td className={`px-3 py-2 text-right font-mono text-xs ${Math.abs(join.dy) > 0.01 ? 'text-red-600 font-bold' : 'text-gray-900'}`}>
+                        {join.dy.toFixed(3)}
+                      </td>
+                      <td className={`px-3 py-2 text-right font-mono text-xs ${Math.abs(join.dx) > 0.01 ? 'text-red-600 font-bold' : 'text-gray-900'}`}>
+                        {join.dx.toFixed(3)}
+                      </td>
                     </tr>
                   ))}
-                  {stand.entries.length > 3 && (
+                  {stand.joins.length > 5 && (
                     <tr>
-                      <td colSpan={7} className="px-3 py-2 text-center text-gray-500 text-xs">
-                        ... and {stand.entries.length - 3} more entries
+                      <td colSpan={8} className="px-3 py-2 text-center text-gray-500 text-xs">
+                        ... and {stand.joins.length - 5} more joins
                       </td>
                     </tr>
                   )}
@@ -312,7 +464,7 @@ export const AreaCalculations: React.FC = () => {
           <div className="text-center py-12 bg-white rounded-xl shadow-md">
             <Calculator className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No Area Calculations</h3>
-            <p className="text-gray-600 mb-4">Add your first stand to begin creating area calculation reports</p>
+            <p className="text-gray-600 mb-4">Add corner beacons and automatically compute joins, areas, and consistency checks</p>
             <button
               onClick={addStand}
               disabled={!selectedProject}
@@ -327,11 +479,14 @@ export const AreaCalculations: React.FC = () => {
       {/* Add/Edit Stand Modal */}
       {showAddStand && editingStand && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-xl font-semibold text-gray-900">
                 {stands.find(s => s.standNumber === editingStand.standNumber) ? 'Edit' : 'Add'} Stand
               </h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Enter corner beacon coordinates. Bearings, distances, and areas will be computed automatically.
+              </p>
             </div>
 
             <div className="p-6">
@@ -347,135 +502,84 @@ export const AreaCalculations: React.FC = () => {
                 />
               </div>
 
-              {/* Area */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Area (m²)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editingStand.area}
-                    onChange={(e) => {
-                      const area = parseFloat(e.target.value) || 0;
-                      setEditingStand({ ...editingStand, area, areaHectares: area / 10000 });
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Area (Hectares)</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    value={editingStand.areaHectares}
-                    onChange={(e) => {
-                      const hectares = parseFloat(e.target.value) || 0;
-                      setEditingStand({ ...editingStand, areaHectares: hectares, area: hectares * 10000 });
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* Entries */}
+              {/* Beacons */}
               <div className="mb-4">
                 <div className="flex justify-between items-center mb-4">
-                  <h4 className="font-medium text-gray-900">Boundary Points</h4>
+                  <h4 className="font-medium text-gray-900">Corner Beacons (in sequence)</h4>
                   <button
-                    onClick={addEntry}
+                    onClick={addBeacon}
                     className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors flex items-center"
                   >
                     <Plus className="h-3 w-3 mr-1" />
-                    Add Point
+                    Add Beacon
                   </button>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <p className="text-sm text-blue-800">
+                    <strong>Important:</strong> Enter beacons in order around the boundary. The system will automatically:
+                  </p>
+                  <ul className="text-sm text-blue-800 mt-2 ml-4 list-disc">
+                    <li>Compute bearings and distances between successive beacons</li>
+                    <li>Calculate coordinate consistency checks (DY, DX)</li>
+                    <li>Compute the enclosed area using the coordinate method</li>
+                    <li>Check loop closure (first and last beacon should match)</li>
+                  </ul>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full border border-gray-300">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="border border-gray-300 px-2 py-2 text-left text-xs">Direction (DMS)</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left text-xs">Distance (m)</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left text-xs">Name</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left text-xs">Y</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left text-xs">X</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left text-xs">DY</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left text-xs">DX</th>
-                        <th className="border border-gray-300 px-2 py-2 text-center text-xs">Action</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm">#</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm">Beacon Name</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm">Y Coordinate (metres)</th>
+                        <th className="border border-gray-300 px-3 py-2 text-left text-sm">X Coordinate (metres)</th>
+                        <th className="border border-gray-300 px-3 py-2 text-center text-sm">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {editingStand.entries.map((entry, index) => (
+                      {editingStand.beacons.map((beacon, index) => (
                         <tr key={index}>
-                          <td className="border border-gray-300 px-1 py-1">
+                          <td className="border border-gray-300 px-3 py-2 text-center">
+                            {index + 1}
+                          </td>
+                          <td className="border border-gray-300 px-2 py-2">
                             <input
                               type="text"
-                              value={entry.direction}
-                              onChange={(e) => updateEntry(index, 'direction', e.target.value)}
-                              className="w-full px-1 py-1 text-xs border-0 focus:ring-1 focus:ring-blue-500"
-                              placeholder="321:42:00"
+                              value={beacon.name}
+                              onChange={(e) => updateBeacon(index, 'name', e.target.value)}
+                              className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-blue-500"
+                              placeholder="e.g., 1a, 2a, 3b"
                             />
                           </td>
-                          <td className="border border-gray-300 px-1 py-1">
+                          <td className="border border-gray-300 px-2 py-2">
                             <input
                               type="number"
                               step="0.01"
-                              value={entry.distance}
-                              onChange={(e) => updateEntry(index, 'distance', parseFloat(e.target.value) || 0)}
-                              className="w-full px-1 py-1 text-xs border-0 focus:ring-1 focus:ring-blue-500"
+                              value={beacon.y}
+                              onChange={(e) => updateBeacon(index, 'y', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-blue-500"
+                              placeholder="Y (westwards)"
                             />
                           </td>
-                          <td className="border border-gray-300 px-1 py-1">
-                            <input
-                              type="text"
-                              value={entry.name}
-                              onChange={(e) => updateEntry(index, 'name', e.target.value)}
-                              className="w-full px-1 py-1 text-xs border-0 focus:ring-1 focus:ring-blue-500"
-                            />
-                          </td>
-                          <td className="border border-gray-300 px-1 py-1">
+                          <td className="border border-gray-300 px-2 py-2">
                             <input
                               type="number"
                               step="0.01"
-                              value={entry.y}
-                              onChange={(e) => updateEntry(index, 'y', parseFloat(e.target.value) || 0)}
-                              className="w-full px-1 py-1 text-xs border-0 focus:ring-1 focus:ring-blue-500"
+                              value={beacon.x}
+                              onChange={(e) => updateBeacon(index, 'x', parseFloat(e.target.value) || 0)}
+                              className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-blue-500"
+                              placeholder="X (southwards)"
                             />
                           </td>
-                          <td className="border border-gray-300 px-1 py-1">
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={entry.x}
-                              onChange={(e) => updateEntry(index, 'x', parseFloat(e.target.value) || 0)}
-                              className="w-full px-1 py-1 text-xs border-0 focus:ring-1 focus:ring-blue-500"
-                            />
-                          </td>
-                          <td className="border border-gray-300 px-1 py-1">
-                            <input
-                              type="number"
-                              step="0.001"
-                              value={entry.dy}
-                              onChange={(e) => updateEntry(index, 'dy', parseFloat(e.target.value) || 0)}
-                              className="w-full px-1 py-1 text-xs border-0 focus:ring-1 focus:ring-blue-500"
-                            />
-                          </td>
-                          <td className="border border-gray-300 px-1 py-1">
-                            <input
-                              type="number"
-                              step="0.001"
-                              value={entry.dx}
-                              onChange={(e) => updateEntry(index, 'dx', parseFloat(e.target.value) || 0)}
-                              className="w-full px-1 py-1 text-xs border-0 focus:ring-1 focus:ring-blue-500"
-                            />
-                          </td>
-                          <td className="border border-gray-300 px-1 py-1 text-center">
+                          <td className="border border-gray-300 px-2 py-2 text-center">
                             <button
-                              onClick={() => removeEntry(index)}
+                              onClick={() => removeBeacon(index)}
                               className="text-red-600 hover:text-red-800 p-1"
-                              disabled={editingStand.entries.length <= 1}
+                              disabled={editingStand.beacons.length <= 3}
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           </td>
                         </tr>
@@ -499,9 +603,10 @@ export const AreaCalculations: React.FC = () => {
                 </button>
                 <button
                   onClick={saveStand}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  disabled={editingStand.beacons.length < 3}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
                 >
-                  Save Stand
+                  Compute & Save Stand
                 </button>
               </div>
             </div>

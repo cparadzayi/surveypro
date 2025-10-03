@@ -11,14 +11,6 @@ interface BeaconPoint {
   x: number;
 }
 
-interface AvailableBeacon {
-  id: string;
-  beacon_name: string;
-  y_coordinate: number;
-  x_coordinate: number;
-  beacon_type: string;
-}
-
 interface ComputedJoin {
   fromName: string;
   toName: string;
@@ -26,17 +18,17 @@ interface ComputedJoin {
   fromX: number;
   toY: number;
   toX: number;
-  direction: string; // DMS format
+  direction: string;
   distance: number;
-  dy: number; // Coordinate consistency check
-  dx: number; // Coordinate consistency check
+  dy: number;
+  dx: number;
 }
 
 interface StandCalculation {
   standNumber: string;
   beacons: BeaconPoint[];
   joins: ComputedJoin[];
-  area: number; // in square meters
+  area: number;
   areaHectares: number;
   closureError: { dy: number; dx: number; distance: number };
   isClosed: boolean;
@@ -45,7 +37,6 @@ interface StandCalculation {
 export const AreaCalculations: React.FC = () => {
   const [projects, setProjects] = useState<SurveyProject[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('');
-  const [availableBeacons, setAvailableBeacons] = useState<AvailableBeacon[]>([]);
   const [stands, setStands] = useState<StandCalculation[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddStand, setShowAddStand] = useState(false);
@@ -54,12 +45,6 @@ export const AreaCalculations: React.FC = () => {
   useEffect(() => {
     loadProjects();
   }, []);
-
-  useEffect(() => {
-    if (selectedProject) {
-      loadBeacons();
-    }
-  }, [selectedProject]);
 
   const loadProjects = async () => {
     try {
@@ -70,16 +55,6 @@ export const AreaCalculations: React.FC = () => {
       console.error('Error loading projects:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadBeacons = async () => {
-    try {
-      const data = await surveyingApi.getBeacons(selectedProject);
-      setAvailableBeacons(data || []);
-    } catch (error) {
-      console.error('Error loading beacons:', error);
-      setAvailableBeacons([]);
     }
   };
 
@@ -98,27 +73,21 @@ export const AreaCalculations: React.FC = () => {
     let totalDY = 0;
     let totalDX = 0;
 
-    // Compute joins between successive beacons
     for (let i = 0; i < beacons.length; i++) {
       const current = beacons[i];
-      const next = beacons[(i + 1) % beacons.length]; // Loop back to first
+      const next = beacons[(i + 1) % beacons.length];
 
-      // Calculate bearing and distance
       const bearing = SurveyingCalculations.calculateBearing(current.y, current.x, next.y, next.x);
       const distance = SurveyingCalculations.calculateDistance(current.y, current.x, next.y, next.x);
 
-      // Convert bearing to DMS
       const bearingDMS = SurveyingCalculations.decimalToDms(bearing);
       const directionStr = `${bearingDMS.degrees}:${bearingDMS.minutes.toString().padStart(2, '0')}:${bearingDMS.seconds.toFixed(0).padStart(2, '0')}`;
 
-      // Calculate coordinate differences (for consistency checking)
       const dy = next.y - current.y;
       const dx = next.x - current.x;
 
-      // Compute what the coordinates should be based on bearing and distance
       const computed = SurveyingCalculations.calculateCoordinates(current.y, current.x, bearing, distance);
 
-      // Consistency check: difference between given and computed coordinates
       const consistencyDY = next.y - computed.y;
       const consistencyDX = next.x - computed.x;
 
@@ -139,14 +108,12 @@ export const AreaCalculations: React.FC = () => {
       });
     }
 
-    // Calculate area using coordinate method (Shoelace formula)
     const coordinates = beacons.map(b => ({ y: b.y, x: b.x }));
     const area = SurveyingCalculations.calculateArea(coordinates);
     const areaHectares = area / 10000;
 
-    // Check closure (should sum to zero if closed)
     const closureDistance = Math.sqrt(totalDY * totalDY + totalDX * totalDX);
-    const isClosed = closureDistance < 0.001; // Within 1mm tolerance
+    const isClosed = closureDistance < 0.001;
 
     return {
       joins,
@@ -216,19 +183,6 @@ export const AreaCalculations: React.FC = () => {
     }
   };
 
-  const selectBeaconFromList = (index: number, beaconId: string) => {
-    const selectedBeacon = availableBeacons.find(b => b.id === beaconId);
-    if (selectedBeacon && editingStand) {
-      const updated = [...editingStand.beacons];
-      updated[index] = {
-        name: selectedBeacon.beacon_name,
-        y: selectedBeacon.y_coordinate,
-        x: selectedBeacon.x_coordinate
-      };
-      setEditingStand({ ...editingStand, beacons: updated });
-    }
-  };
-
   const removeBeacon = (index: number) => {
     if (editingStand && editingStand.beacons.length > 3) {
       const updated = editingStand.beacons.filter((_, i) => i !== index);
@@ -242,18 +196,15 @@ export const AreaCalculations: React.FC = () => {
     const pageHeight = pdf.internal.pageSize.getHeight();
     let yPosition = 20;
 
-    // Title
     pdf.setFontSize(10);
     pdf.setFont('helvetica', 'normal');
     pdf.text('Areas from Co-ordinates (With Co-ordinate Checking)', pageWidth / 2, yPosition, { align: 'center' });
     yPosition += 5;
 
-    // Underline
     pdf.setLineWidth(0.3);
     pdf.line(20, yPosition, pageWidth - 20, yPosition);
     yPosition += 10;
 
-    // Column headers (first occurrence)
     pdf.setFontSize(8);
     const headers = ['Direction', 'Distance', 'Name', 'Y', 'X', 'DY', 'DX'];
     let xPos = 20;
@@ -267,14 +218,11 @@ export const AreaCalculations: React.FC = () => {
     pdf.line(20, yPosition, pageWidth - 20, yPosition);
     yPosition += 5;
 
-    // Process each stand
     stands.forEach((stand) => {
-      // Check if we need a new page
       if (yPosition > 250) {
         pdf.addPage();
         yPosition = 20;
 
-        // Repeat headers on new page
         pdf.setFontSize(8);
         xPos = 20;
         headers.forEach((header, i) => {
@@ -286,20 +234,18 @@ export const AreaCalculations: React.FC = () => {
         yPosition += 5;
       }
 
-      // Stand header
       pdf.setFontSize(9);
       pdf.text(`Stand/Erf Number = ${stand.standNumber}`, 20, yPosition);
       yPosition += 2;
       pdf.line(20, yPosition, pageWidth - 20, yPosition);
       yPosition += 5;
 
-      // First beacon coordinates (starting point)
       if (stand.beacons.length > 0) {
         pdf.setFontSize(8);
         const firstBeacon = stand.beacons[0];
         xPos = 20;
-        xPos += colWidths[0]; // Skip Direction
-        xPos += colWidths[1]; // Skip Distance
+        xPos += colWidths[0];
+        xPos += colWidths[1];
         pdf.text(firstBeacon.name, xPos, yPosition);
         xPos += colWidths[2];
         pdf.text(firstBeacon.y.toFixed(2), xPos, yPosition);
@@ -308,7 +254,6 @@ export const AreaCalculations: React.FC = () => {
         yPosition += 4;
       }
 
-      // All joins
       stand.joins.forEach((join) => {
         if (yPosition > 280) {
           pdf.addPage();
@@ -318,39 +263,31 @@ export const AreaCalculations: React.FC = () => {
         xPos = 20;
         pdf.setFontSize(8);
 
-        // Direction
         pdf.text(join.direction, xPos, yPosition);
         xPos += colWidths[0];
 
-        // Distance
         pdf.text(join.distance.toFixed(2), xPos, yPosition, { align: 'right' });
         xPos += colWidths[1];
 
-        // To Name
         pdf.text(join.toName, xPos, yPosition);
         xPos += colWidths[2];
 
-        // Y coordinate
         pdf.text(join.toY.toFixed(2), xPos, yPosition);
         xPos += colWidths[3];
 
-        // X coordinate
         pdf.text(join.toX.toFixed(2), xPos, yPosition);
         xPos += colWidths[4];
 
-        // DY (consistency check)
         const dyStr = join.dy >= 0 ? join.dy.toFixed(3) : join.dy.toFixed(3);
         pdf.text(dyStr, xPos, yPosition, { align: 'right' });
         xPos += colWidths[5];
 
-        // DX (consistency check)
         const dxStr = join.dx >= 0 ? join.dx.toFixed(3) : join.dx.toFixed(3);
         pdf.text(dxStr, xPos, yPosition, { align: 'right' });
 
         yPosition += 4;
       });
 
-      // Area
       yPosition += 2;
       pdf.setFontSize(9);
       pdf.text(`Area (Ha.) = ${stand.areaHectares.toFixed(4)}`, 60, yPosition);
@@ -370,7 +307,6 @@ export const AreaCalculations: React.FC = () => {
         <p className="text-gray-600">Compute areas and check coordinate consistency for survey stands</p>
       </div>
 
-      {/* Project Selection */}
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">Select Project</label>
         <select
@@ -387,7 +323,6 @@ export const AreaCalculations: React.FC = () => {
         </select>
       </div>
 
-      {/* Action Buttons */}
       <div className="flex space-x-4 mb-6">
         <button
           onClick={addStand}
@@ -407,7 +342,6 @@ export const AreaCalculations: React.FC = () => {
         </button>
       </div>
 
-      {/* Stands List */}
       <div className="space-y-4">
         {stands.map((stand) => (
           <div key={stand.standNumber} className="bg-white rounded-xl shadow-md p-6">
@@ -453,7 +387,6 @@ export const AreaCalculations: React.FC = () => {
               </div>
             </div>
 
-            {/* Preview table */}
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
@@ -514,7 +447,6 @@ export const AreaCalculations: React.FC = () => {
         )}
       </div>
 
-      {/* Add/Edit Stand Modal */}
       {showAddStand && editingStand && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
@@ -528,7 +460,6 @@ export const AreaCalculations: React.FC = () => {
             </div>
 
             <div className="p-6">
-              {/* Stand Number */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Stand/Erf Number</label>
                 <input
@@ -540,7 +471,6 @@ export const AreaCalculations: React.FC = () => {
                 />
               </div>
 
-              {/* Beacons */}
               <div className="mb-4">
                 <div className="flex justify-between items-center mb-4">
                   <h4 className="font-medium text-gray-900">Corner Beacons (in sequence)</h4>
@@ -555,15 +485,13 @@ export const AreaCalculations: React.FC = () => {
 
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                   <p className="text-sm text-blue-800">
-                    <strong>How to use:</strong>
+                    <strong>Important:</strong> Enter beacons in order around the boundary. The system will automatically:
                   </p>
                   <ul className="text-sm text-blue-800 mt-2 ml-4 list-disc">
-                    <li><strong>Option 1:</strong> Select beacons from the dropdown (automatically fills in coordinates from field notes)</li>
-                    <li><strong>Option 2:</strong> Manually type beacon name and enter coordinates</li>
-                    <li>Enter beacons in order around the boundary</li>
-                    <li>System automatically computes bearings, distances, and area</li>
-                    <li>Coordinate consistency checks (DY, DX) verify accuracy</li>
-                    <li>Loop closure validation ensures the traverse closes properly</li>
+                    <li>Compute bearings and distances between successive beacons</li>
+                    <li>Calculate coordinate consistency checks (DY, DX)</li>
+                    <li>Compute the enclosed area using the coordinate method</li>
+                    <li>Check loop closure (first and last beacon should match)</li>
                   </ul>
                 </div>
 
@@ -572,7 +500,6 @@ export const AreaCalculations: React.FC = () => {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="border border-gray-300 px-3 py-2 text-left text-sm">#</th>
-                        <th className="border border-gray-300 px-3 py-2 text-left text-sm">Select from Field Notes</th>
                         <th className="border border-gray-300 px-3 py-2 text-left text-sm">Beacon Name</th>
                         <th className="border border-gray-300 px-3 py-2 text-left text-sm">Y Coordinate (metres)</th>
                         <th className="border border-gray-300 px-3 py-2 text-left text-sm">X Coordinate (metres)</th>
@@ -584,27 +511,6 @@ export const AreaCalculations: React.FC = () => {
                         <tr key={index}>
                           <td className="border border-gray-300 px-3 py-2 text-center">
                             {index + 1}
-                          </td>
-                          <td className="border border-gray-300 px-2 py-2">
-                            <select
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  selectBeaconFromList(index, e.target.value);
-                                }
-                              }}
-                              className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-blue-500"
-                              defaultValue=""
-                            >
-                              <option value="">-- Select beacon --</option>
-                              {availableBeacons.map((availBeacon) => (
-                                <option key={availBeacon.id} value={availBeacon.id}>
-                                  {availBeacon.beacon_name} ({availBeacon.beacon_type})
-                                </option>
-                              ))}
-                            </select>
-                            {availableBeacons.length === 0 && (
-                              <p className="text-xs text-gray-500 mt-1">No beacons uploaded yet</p>
-                            )}
                           </td>
                           <td className="border border-gray-300 px-2 py-2">
                             <input
@@ -651,7 +557,6 @@ export const AreaCalculations: React.FC = () => {
                 </div>
               </div>
 
-              {/* Form Actions */}
               <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
                 <button
                   type="button"

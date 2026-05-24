@@ -4,7 +4,7 @@
 
 /** Smallest "nice" 1/2/5 ×10ⁿ value ≥ x (for exaggeration factors). */
 export function niceNumber(x) {
-  if (!(x > 0)) return 1
+  if (!(x > 0) || !isFinite(x)) return 1
   const exp = Math.floor(Math.log10(x))
   const base = Math.pow(10, exp)
   const f = x / base
@@ -14,7 +14,7 @@ export function niceNumber(x) {
 
 /** Largest "nice" 1/2/5 ×10ⁿ value ≤ x (for scale-bar lengths). */
 export function niceFloor(x) {
-  if (!(x > 0)) return 0
+  if (!(x > 0) || !isFinite(x)) return 0
   const exp = Math.floor(Math.log10(x))
   const base = Math.pow(10, exp)
   const f = x / base

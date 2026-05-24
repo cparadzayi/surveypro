@@ -596,7 +596,7 @@ function downloadReport() {
     priorSurvey: priorSurvey.value,
     sigma0: sigma0.value,
     critW: critW.value,
-    date: new Date().toISOString().slice(0, 10),
+    date: new Date().toLocaleDateString('en-CA'),
   })
 }
 

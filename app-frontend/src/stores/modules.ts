@@ -113,7 +113,7 @@ export const useModulesStore = defineStore('modules', {
               { slug: 'system', title: 'System Selection', disabled: true, badge: 'Planned', icon: '🌐' },
               { slug: 'helmert', title: 'Helmert', disabled: true, badge: 'Planned', icon: '🧮' },
               { slug: 'geodetic-plane', title: 'Geodetic ↔ Plane', description: 'Cape Datum ↔ WGS84 transformations with mapping', icon: '↔️', badge: 'New' },
-              { slug: 'compare', title: 'Compare Points', disabled: true, badge: 'Planned', icon: '🔍' }
+              { slug: 'compare', title: 'Beacon Comparison & Adjustment', description: 'Sec 67(5) Helmert LSQ + W-test data snooping', badge: 'New', icon: '🔍' }
             ]
           },
           {

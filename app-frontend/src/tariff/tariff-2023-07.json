@@ -1,0 +1,47 @@
+{
+  "version": "2023-07-01",
+  "effective_from": "2023-07-01",
+  "currency": "ZWL",
+  "vat_rate_default": 15,
+  "job_type_overrides": {
+    "SUBDIVISION": { "peg_factor": 2.5, "peg_rounding": "ceil" }
+  },
+  "items": [
+    {
+      "code": "CAD_URB_BASE",
+      "description": "Urban cadastral survey base fee (per parcel)",
+      "unit": "per_parcel",
+      "rate": 0,
+      "job_types": ["NEW_SURVEY", "SUBDIVISION"],
+      "locality": ["URBAN"],
+      "taxable": true
+    },
+    {
+      "code": "PEG_SUPPLY",
+      "description": "Pegs supply",
+      "unit": "per_peg",
+      "rate": 0,
+      "job_types": ["SUBDIVISION"],
+      "taxable": true,
+      "section": "materials"
+    },
+    {
+      "code": "PEG_SETTING",
+      "description": "Peg setting",
+      "unit": "per_peg",
+      "rate": 0,
+      "job_types": ["SUBDIVISION"],
+      "taxable": true,
+      "section": "services"
+    }
+  ],
+  "examItems": [
+    {
+      "code": "EX_DIAGRAM_SHEET",
+      "description": "Diagram examination (per sheet)",
+      "unit": "per_sheet",
+      "rate": 0,
+      "taxable": false
+    }
+  ]
+}

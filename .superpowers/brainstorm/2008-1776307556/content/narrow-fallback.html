@@ -1,0 +1,74 @@
+<h2>Very narrow parcels — what happens when nothing fits?</h2>
+<p class="subtitle">When a parcel is so thin that even a ±45° rotated label at minimum font can't fit wholly inside, we need a fallback strategy. Three options below — each shown on the same extremely narrow parcel.</p>
+
+<div style="margin: 24px 0;">
+  <svg viewBox="0 0 740 230" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:740px;display:block;margin:0 auto;background:#f8f9fa;border-radius:8px;padding:8px;">
+
+    <!-- Option A: shrink font until it fits -->
+    <polygon points="60,200 80,30 105,30 85,200" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="82" y="118" text-anchor="middle" font-family="serif" font-size="7" fill="#14532d" font-weight="bold" transform="rotate(-40,82,118)">2042</text>
+    <text x="82" y="215" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#14532d">A: shrink to 7pt min</text>
+    <text x="82" y="22" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#14532d" font-weight="600">OPTION A</text>
+
+    <!-- Option B: place at centroid, let it clip (current behaviour) -->
+    <polygon points="230,200 250,30 275,30 255,200" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+    <!-- label clips boundary -->
+    <text x="252" y="118" text-anchor="middle" font-family="serif" font-size="11" fill="#92400e" font-weight="bold" transform="rotate(-40,252,118)">2042</text>
+    <!-- clip indicators -->
+    <line x1="230" y1="30" x2="275" y2="200" stroke="#ef4444" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
+    <text x="252" y="215" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#92400e">B: centroid fallback (may clip)</text>
+    <text x="252" y="22" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#92400e" font-weight="600">OPTION B (current)</text>
+
+    <!-- Option C: leader line, place outside -->
+    <polygon points="400,200 420,30 445,30 425,200" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+    <!-- dot at centroid -->
+    <circle cx="422" cy="118" r="2.5" fill="#7c3aed"/>
+    <!-- leader line -->
+    <line x1="422" y1="118" x2="480" y2="95" stroke="#7c3aed" stroke-width="1" stroke-dasharray="3,2"/>
+    <!-- label outside -->
+    <text x="493" y="98" text-anchor="start" font-family="serif" font-size="11" fill="#4c1d95" font-weight="bold">2042</text>
+    <text x="422" y="215" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#7c3aed">C: leader line outside parcel</text>
+    <text x="440" y="22" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#7c3aed" font-weight="600">OPTION C</text>
+
+    <!-- Option D: rotate to ±45° best fit even if label centre outside -->
+    <polygon points="570,200 590,30 615,30 595,200" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+    <text x="592" y="118" text-anchor="middle" font-family="serif" font-size="9" fill="#831843" font-weight="bold" transform="rotate(-44,592,118)">2042</text>
+    <!-- faint bounding box -->
+    <rect x="572" y="108" width="40" height="12" fill="none" stroke="#db2777" stroke-width="0.8" stroke-dasharray="2,2" transform="rotate(-44,592,114)"/>
+    <text x="592" y="215" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#db2777">D: best fit, centre inside parcel</text>
+    <text x="592" y="22" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#db2777" font-weight="600">OPTION D</text>
+  </svg>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Shrink font to hard minimum (7pt), always contained</h3>
+      <p>Keep reducing font size until the label fits wholly inside at the best ±45° angle. 7pt is the floor — below that it's unreadable in the field anyway. Very thin slivers may show tiny text but it will always be inside the parcel.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Centroid fallback — place at centre, accept minor clip (current)</h3>
+      <p>If nothing fits, render at centroid anyway. The label may slightly cross a boundary. Current behaviour — familiar but violates the "wholly contained" requirement for extreme cases.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Leader line — dot inside parcel, label text outside</h3>
+      <p>A small dot marks the parcel centre; a thin line leads to the label placed clear of all boundaries. Common in dense cadastral plans overseas. More complex to implement but very clean on-plan.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="d" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>Best-effort: label centre inside parcel, corners may graze boundary</h3>
+      <p>Place the label so its centre point is inside the parcel at the best ±45° angle. If the label corners touch or just cross the boundary, that's acceptable — the text reads clearly and is visually associated with the correct parcel. Practical compromise for slivers.</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px">This only affects extreme slivers — the majority of parcels will find a clean fit under the ±45° rule with the improved placement search.</p>

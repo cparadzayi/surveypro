@@ -1,0 +1,45 @@
+{
+  "name": "surveypro-backend",
+  "version": "1.0.0",
+  "description": "SurveyPro Backend - Platformatic DB with PostgreSQL and PostGIS",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "platformatic db start",
+    "dev": "platformatic db start --watch",
+    "migrate": "platformatic db migrations apply",
+    "seed": "node scripts/seed.js"
+  },
+  "keywords": [
+    "survey",
+    "cad",
+    "gis",
+    "platformatic"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+  "@fastify/cors": "^10.0.1",
+    "@fastify/multipart": "^9.0.1",
+    "@mapbox/togeojson": "^0.16.2",
+    "@platformatic/db": "^2.21.1",
+    "@platformatic/sql-mapper": "^2.21.1",
+    "@platformatic/sql-openapi": "^2.21.1",
+    "csv-parse": "^6.1.0",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.0",
+    "fastify-plugin": "^5.0.1",
+    "multer": "^2.0.2",
+    "pdfkit": "^0.17.2",
+    "pg": "^8.13.1",
+    "xmldom": "^0.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "cross-env": "^10.1.0",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

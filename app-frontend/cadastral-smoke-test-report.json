@@ -1,0 +1,96 @@
+{
+  "timestamp": "2025-10-17T10:43:55.165Z",
+  "summary": {
+    "passed": 12,
+    "failed": 2,
+    "skipped": 0,
+    "total": 14,
+    "successRate": "85.7%"
+  },
+  "tests": [
+    {
+      "name": "Backend Health Check",
+      "status": "passed",
+      "message": "Backend is responding",
+      "timestamp": "2025-10-17T10:43:54.972Z"
+    },
+    {
+      "name": "User Registration",
+      "status": "passed",
+      "message": "Registration successful or user exists",
+      "timestamp": "2025-10-17T10:43:55.091Z"
+    },
+    {
+      "name": "User Login",
+      "status": "passed",
+      "message": "Login successful",
+      "timestamp": "2025-10-17T10:43:55.155Z"
+    },
+    {
+      "name": "Frontend Accessibility",
+      "status": "failed",
+      "message": "Frontend not accessible",
+      "timestamp": "2025-10-17T10:43:55.159Z"
+    },
+    {
+      "name": "CSV Format Validation",
+      "status": "passed",
+      "message": "CSV validation logic exists",
+      "timestamp": "2025-10-17T10:43:55.159Z"
+    },
+    {
+      "name": "Coordinate Precision Management",
+      "status": "passed",
+      "message": "Precision formatting working",
+      "timestamp": "2025-10-17T10:43:55.160Z"
+    },
+    {
+      "name": "Workflow Step 1: CSV Import",
+      "status": "passed",
+      "message": "Step definition exists",
+      "timestamp": "2025-10-17T10:43:55.160Z"
+    },
+    {
+      "name": "Workflow Step 2: Field Book Generation",
+      "status": "passed",
+      "message": "Step definition exists",
+      "timestamp": "2025-10-17T10:43:55.160Z"
+    },
+    {
+      "name": "Workflow Step 3: Calculations Part 1",
+      "status": "passed",
+      "message": "Step definition exists",
+      "timestamp": "2025-10-17T10:43:55.160Z"
+    },
+    {
+      "name": "Workflow Step 4: Coordinate List",
+      "status": "passed",
+      "message": "Step definition exists",
+      "timestamp": "2025-10-17T10:43:55.161Z"
+    },
+    {
+      "name": "Workflow Step 5: Calculations Part 2",
+      "status": "passed",
+      "message": "Step definition exists",
+      "timestamp": "2025-10-17T10:43:55.161Z"
+    },
+    {
+      "name": "Workflow Step 6: Report on Survey",
+      "status": "passed",
+      "message": "Step definition exists",
+      "timestamp": "2025-10-17T10:43:55.161Z"
+    },
+    {
+      "name": "Workflow Step 7: DSG Certificate",
+      "status": "passed",
+      "message": "Step definition exists",
+      "timestamp": "2025-10-17T10:43:55.162Z"
+    },
+    {
+      "name": "Banker's Rounding",
+      "status": "failed",
+      "message": "1/3 test cases passed",
+      "timestamp": "2025-10-17T10:43:55.162Z"
+    }
+  ]
+}

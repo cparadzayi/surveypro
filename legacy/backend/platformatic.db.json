@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schemas.platformatic.dev/@platformatic/db/2.21.1.json",
+  "server": {
+    "hostname": "{PLT_SERVER_HOSTNAME}",
+    "port": "{PORT}",
+    "logger": {
+      "level": "{PLT_SERVER_LOGGER_LEVEL}"
+    },
+    "cors": {
+      "origin": true,
+      "credentials": true
+    }
+  },
+  "db": {
+    "connectionString": "{DATABASE_URL}",
+    "graphql": true,
+    "openapi": true,
+    "ignore": {
+      "versions": true
+    },
+    "poolSize": 10
+  },
+  "migrations": {
+    "dir": "migrations",
+    "autoApply": true
+  },
+  "plugins": {
+    "paths": [
+      "./plugins/health.js",
+      "./plugins/coordinate-api.js",
+  "./plugins/survey-computations-enhanced.js",
+  "./plugins/projects.js",
+  "./plugins/field-data-enhanced.js"
+    ]
+  },
+  "watch": {
+    "enabled": "{PLT_WATCH_ENABLED}"
+  }
+}

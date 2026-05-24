@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Coordinate Verification - Maglas Township</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+    .result { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #4CAF50; }
+    .error { border-color: #f44336; }
+    .warning { border-color: #ff9800; }
+    h2 { color: #333; }
+    pre { background: #eee; padding: 10px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>🗺️ Coordinate Verification: Maglas Township, Zvishavane</h1>
+  
+  <div class="result">
+    <h2>📍 Google Maps Reference (from screenshot):</h2>
+    <pre>
+Latitude:  -20.322422° S
+Longitude:  30.070504° E
+Location: Maglas township, Zvishavane, Zimbabwe
+    </pre>
+  </div>
+
+  <div id="results"></div>
+
+  <script>
+    // Define Cape Lo31 South-Orientated projection (EPSG:22291)
+    proj4.defs('EPSG:22291', 
+      '+proj=tmerc +axis=wsu +lat_0=0 +lon_0=31 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs'
+    );
+
+    // WGS84
+    proj4.defs('EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs');
+
+    const resultsDiv = document.getElementById('results');
+
+    // Test coordinates from the system (Maglas area)
+    const testPoints = [
+      { id: 'ST1', y: 96649.178, x: 2247915, desc: '10mm iron' },
+      { id: 'ST2', y: 97128.263, x: 2248259.2, desc: '10mm iron' },
+      { id: 'P2', y: 97538.004, x: 2247107.9, desc: '50mm Iron' },
+      { id: 'ZA', y: 96271.08, x: 2247869.9, desc: '50mm Iron' },
+      { id: 'ZE', y: 96649.178, x: 2247915, desc: '50mm Iron' }
+    ];
+
+    let html = '<div class="result"><h2>🔄 Transformation Results:</h2><pre>';
+    
+    const transformedPoints = [];
+    testPoints.forEach(point => {
+      // Cape Lo is south-orientated: +axis=wsu (West-South-Up)
+      // X (Southing) is positive going south, so we NEGATE it for Proj4
+      // Y (Westing) remains positive
+      const [lng, lat] = proj4('EPSG:22291', 'EPSG:4326', [point.y, -point.x]);
+      
+      transformedPoints.push({ id: point.id, lng, lat });
+      
+      html += `\n${point.id}: Cape Lo (Y=${point.y.toFixed(2)}, X=${point.x.toFixed(2)})`;
+      html += `\n    → WGS84: (${lat.toFixed(6)}°S, ${lng.toFixed(6)}°E)`;
+      html += `\n    ${point.desc}\n`;
+    });
+
+    html += '</pre></div>';
+
+    // Calculate average center
+    const avgLng = transformedPoints.reduce((sum, p) => sum + p.lng, 0) / transformedPoints.length;
+    const avgLat = transformedPoints.reduce((sum, p) => sum + p.lat, 0) / transformedPoints.length;
+
+    html += '<div class="result"><h2>📊 Average Center:</h2><pre>';
+    html += `\nCalculated Center: ${avgLat.toFixed(6)}°S, ${avgLng.toFixed(6)}°E`;
+    html += `\nGoogle Maps Center: -20.322422°S, 30.070504°E`;
+    html += `\n\nDistance from Google Maps center:`;
+    html += `\n  Δ Latitude:  ${Math.abs(avgLat - (-20.322422)).toFixed(6)}° (${(Math.abs(avgLat - (-20.322422)) * 111).toFixed(2)} km)`;
+    html += `\n  Δ Longitude: ${Math.abs(avgLng - 30.070504).toFixed(6)}° (${(Math.abs(avgLng - 30.070504) * 111 * Math.cos(avgLat * Math.PI / 180)).toFixed(2)} km)`;
+    html += '</pre></div>';
+
+    // Validation
+    const latMatch = Math.abs(avgLat - (-20.322422)) < 0.05;  // Within ~5.5km
+    const lngMatch = Math.abs(avgLng - 30.070504) < 0.05;
+    
+    if (latMatch && lngMatch) {
+      html += '<div class="result"><h2>✅ VERIFICATION: PASS</h2><pre>';
+      html += '\n✓ Coordinates match Google Maps location';
+      html += '\n✓ Transformation is CORRECT';
+      html += '\n✓ Points are in Maglas Township, Zvishavane';
+      html += '</pre></div>';
+    } else {
+      html += '<div class="result error"><h2>❌ VERIFICATION: FAIL</h2><pre>';
+      html += '\n✗ Coordinates DO NOT match Google Maps';
+      html += '\n✗ Check transformation parameters';
+      html += '\n✗ May need axis adjustment or SRID change';
+      html += '</pre></div>';
+    }
+
+    // Show ranges
+    const minLng = Math.min(...transformedPoints.map(p => p.lng));
+    const maxLng = Math.max(...transformedPoints.map(p => p.lng));
+    const minLat = Math.min(...transformedPoints.map(p => p.lat));
+    const maxLat = Math.max(...transformedPoints.map(p => p.lat));
+
+    html += '<div class="result"><h2>📐 Bounding Box:</h2><pre>';
+    html += `\nSouth-West: ${minLat.toFixed(6)}°S, ${minLng.toFixed(6)}°E`;
+    html += `\nNorth-East: ${maxLat.toFixed(6)}°S, ${maxLng.toFixed(6)}°E`;
+    html += `\n\nExtent: ${((maxLng - minLng) * 111 * Math.cos(avgLat * Math.PI / 180)).toFixed(2)} km × ${((maxLat - minLat) * 111).toFixed(2)} km`;
+    html += '</pre></div>';
+
+    // Show Google Maps link
+    html += '<div class="result"><h2>🔗 Verify on Google Maps:</h2>';
+    html += `<a href="https://www.google.com/maps/@${avgLat},${avgLng},15z" target="_blank" style="color: #4CAF50; font-size: 16px;">`;
+    html += `Open calculated center in Google Maps →</a>`;
+    html += '</div>';
+
+    resultsDiv.innerHTML = html;
+  </script>
+</body>
+</html>

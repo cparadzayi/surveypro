@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Survey Coordinate Data Preview</title>
+    <style>
+        @media print {
+            .no-print { display: none; }
+            body { margin: 0; }
+        }
+        
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .metadata {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+        }
+        
+        .metadata p {
+            margin: 8px 0;
+            color: #34495e;
+        }
+        
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .summary-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .summary-card h3 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: bold;
+        }
+        
+        .summary-card p {
+            margin: 5px 0 0 0;
+            opacity: 0.9;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        th {
+            background: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        tr:hover {
+            background: #e8f4f8;
+        }
+        
+        .status-f {
+            color: #16a085;
+            font-weight: bold;
+        }
+        
+        .status-p {
+            color: #e67e22;
+            font-weight: bold;
+        }
+        
+        .legend {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 30px 0;
+        }
+        
+        .legend h3 {
+            margin-top: 0;
+            color: #856404;
+        }
+        
+        .legend p {
+            margin: 8px 0;
+        }
+        
+        .ranges {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .ranges h3 {
+            margin-top: 0;
+            color: #0c5460;
+        }
+        
+        .print-button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: block;
+            margin: 30px auto;
+        }
+        
+        .print-button:hover {
+            background: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Survey Coordinate Data Preview</h1>
+        
+        <div class="metadata">
+            <p><strong>File:</strong> test-coordinates.csv</p>
+            <p><strong>Total Points:</strong> 10</p>
+            <p><strong>Generated:</strong> <span id="datetime"></span></p>
+        </div>
+        
+        <div class="summary">
+            <div class="summary-card">
+                <h3>10</h3>
+                <p>Total Points</p>
+            </div>
+            <div class="summary-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                <h3>5</h3>
+                <p>Placed Beacons (P)</p>
+            </div>
+            <div class="summary-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                <h3>5</h3>
+                <p>Found Beacons (F)</p>
+            </div>
+        </div>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Point</th>
+                    <th>Y (Westing)</th>
+                    <th>X (Northing)</th>
+                    <th>Status</th>
+                    <th>Description</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>ST1</td>
+                    <td>96649.178</td>
+                    <td>2247915</td>
+                    <td class="status-p">P</td>
+                    <td>10mm iron</td>
+                    <td>2025-01-10</td>
+                </tr>
+                <tr>
+                    <td>ST2</td>
+                    <td>97128.263</td>
+                    <td>2248259.2</td>
+                    <td class="status-p">P</td>
+                    <td>10mm iron</td>
+                    <td>2025-01-10</td>
+                </tr>
+                <tr>
+                    <td>P2</td>
+                    <td>97538.004</td>
+                    <td>2247107.9</td>
+                    <td class="status-f">F</td>
+                    <td>50mm Iron</td>
+                    <td>2025-01-10</td>
+                </tr>
+                <tr>
+                    <td>ZA</td>
+                    <td>96271.08</td>
+                    <td>2247869.9</td>
+                    <td class="status-f">F</td>
+                    <td>50mm Iron</td>
+                    <td>2025-01-10</td>
+                </tr>
+                <tr>
+                    <td>ZD</td>
+                    <td>96551.464</td>
+                    <td>2248065.6</td>
+                    <td class="status-f">F</td>
+                    <td>50mm Iron</td>
+                    <td>2025-01-10</td>
+                </tr>
+                <tr>
+                    <td>ZE</td>
+                    <td>96649.178</td>
+                    <td>2247915</td>
+                    <td class="status-f">F</td>
+                    <td>50mm Iron</td>
+                    <td>2025-01-10</td>
+                </tr>
+                <tr>
+                    <td>ZG</td>
+                    <td>97128.263</td>
+                    <td>2248259.2</td>
+                    <td class="status-f">F</td>
+                    <td>10mm iron</td>
+                    <td>2025-01-10</td>
+                </tr>
+                <tr>
+                    <td>2283A</td>
+                    <td>97057.022</td>
+                    <td>2247854.4</td>
+                    <td class="status-p">P</td>
+                    <td>12mm iron</td>
+                    <td>2025-01-10</td>
+                </tr>
+                <tr>
+                    <td>2283L</td>
+                    <td>96831.6</td>
+                    <td>2248046</td>
+                    <td class="status-p">P</td>
+                    <td>12mm iron</td>
+                    <td>2025-01-10</td>
+                </tr>
+                <tr>
+                    <td>2283M</td>
+                    <td>96865.86</td>
+                    <td>2247999.3</td>
+                    <td class="status-p">P</td>
+                    <td>12mm iron</td>
+                    <td>2025-01-10</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div class="legend">
+            <h3>Legend</h3>
+            <p><span class="status-f">F</span> = Found Beacon (existing marker verified and adopted)</p>
+            <p><span class="status-p">P</span> = Placed Beacon (new marker established)</p>
+        </div>
+        
+        <div class="ranges">
+            <h3>Coordinate Ranges</h3>
+            <p><strong>Y (Westing):</strong> 96271.080 to 97538.004</p>
+            <p><strong>X (Northing):</strong> 2247107.9 to 2248259.2</p>
+        </div>
+        
+        <button class="print-button no-print" onclick="window.print()">📄 Print to PDF</button>
+    </div>
+    
+    <script>
+        document.getElementById('datetime').textContent = new Date().toLocaleString();
+    </script>
+</body>
+</html>

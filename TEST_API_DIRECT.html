@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Control Points API</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #2563eb;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+    }
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 500;
+    }
+    button:hover {
+      background: #1d4ed8;
+    }
+    button:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+    .loading {
+      color: #2563eb;
+      margin: 20px 0;
+      font-weight: 500;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 20px;
+      background: #f8fafc;
+      border-radius: 6px;
+      border-left: 4px solid #2563eb;
+    }
+    .success {
+      border-left-color: #10b981;
+      background: #f0fdf4;
+    }
+    .error {
+      border-left-color: #ef4444;
+      background: #fef2f2;
+      color: #991b1b;
+    }
+    .warning {
+      border-left-color: #f59e0b;
+      background: #fffbeb;
+      color: #92400e;
+    }
+    pre {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .stat {
+      display: inline-block;
+      margin-right: 20px;
+      padding: 10px 15px;
+      background: #e0f2fe;
+      border-radius: 6px;
+      font-weight: 500;
+    }
+    .stat.good {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .stat.bad {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Control Points API Test</h1>
+    <p class="subtitle">Direct test of the backend API to check WGS84 coordinates</p>
+    
+    <button id="testBtn" onclick="testAPI()">Test API: /api/control-points?gauss_lo=31&limit=5</button>
+    
+    <div id="loading" class="loading" style="display: none;">
+      ⏳ Fetching data from API...
+    </div>
+    
+    <div id="result"></div>
+  </div>
+
+  <script>
+    async function testAPI() {
+      const resultDiv = document.getElementById('result');
+      const loadingDiv = document.getElementById('loading');
+      const testBtn = document.getElementById('testBtn');
+      
+      resultDiv.innerHTML = '';
+      loadingDiv.style.display = 'block';
+      testBtn.disabled = true;
+      
+      try {
+        const apiUrl = 'http://localhost:3050/api/control-points?gauss_lo=31&limit=5';
+        console.log('Fetching:', apiUrl);
+        
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+        
+        console.log('Response:', data);
+        
+        if (!data.data || !Array.isArray(data.data)) {
+          throw new Error('Invalid response format');
+        }
+        
+        // Analyze the data
+        const total = data.data.length;
+        const withWGS84 = data.data.filter(p => p.lat_wgs84 !== null && p.lng_wgs84 !== null).length;
+        const withoutWGS84 = total - withWGS84;
+        
+        let html = '<div class="result ' + (withWGS84 > 0 ? 'success' : 'error') + '">';
+        html += '<h2>📊 API Response Analysis</h2>';
+        html += '<div style="margin: 20px 0;">';
+        html += '<span class="stat">Total Points: ' + total + '</span>';
+        html += '<span class="stat ' + (withWGS84 > 0 ? 'good' : 'bad') + '">With WGS84: ' + withWGS84 + '</span>';
+        html += '<span class="stat ' + (withoutWGS84 > 0 ? 'bad' : 'good') + '">Without WGS84: ' + withoutWGS84 + '</span>';
+        html += '</div>';
+        
+        if (withWGS84 === 0) {
+          html += '<div class="error" style="margin: 20px 0; padding: 15px;">';
+          html += '<strong>❌ PROBLEM FOUND:</strong> All control points have NULL WGS84 coordinates!<br><br>';
+          html += '<strong>This means:</strong><br>';
+          html += '• Database conversion did not work<br>';
+          html += '• OR backend is connected to wrong database<br>';
+          html += '• OR backend needs restart to clear connection pool<br><br>';
+          html += '<strong>Solution:</strong><br>';
+          html += '1. Check backend .env file (DB_NAME=surveypro_v1)<br>';
+          html += '2. Re-run: npm run convert:wgs84:correct<br>';
+          html += '3. Restart backend server<br>';
+          html += '</div>';
+        } else {
+          html += '<div class="success" style="margin: 20px 0; padding: 15px;">';
+          html += '<strong>✅ SUCCESS:</strong> API is returning WGS84 coordinates!<br><br>';
+          html += '<strong>This means:</strong><br>';
+          html += '• Backend is working correctly<br>';
+          html += '• Database has the coordinates<br>';
+          html += '• Problem is in frontend code or cache<br><br>';
+          html += '<strong>Solution:</strong><br>';
+          html += '1. Hard refresh browser (Ctrl+Shift+R)<br>';
+          html += '2. Clear browser cache<br>';
+          html += '3. Check frontend console for debug output<br>';
+          html += '</div>';
+        }
+        
+        html += '<h3>📋 Sample Data (First Point):</h3>';
+        if (data.data.length > 0) {
+          const first = data.data[0];
+          html += '<pre>' + JSON.stringify({
+            id: first.id,
+            monu_num: first.monu_num,
+            monu_name: first.monu_name,
+            gauss_lo: first.gauss_lo,
+            y_gauss: first.y_gauss,
+            x_gauss: first.x_gauss,
+            lat_wgs84: first.lat_wgs84,
+            lng_wgs84: first.lng_wgs84,
+            area_nm: first.area_nm
+          }, null, 2) + '</pre>';
+          
+          if (first.lat_wgs84 !== null && first.lng_wgs84 !== null) {
+            html += '<div class="success" style="margin-top: 10px; padding: 10px;">';
+            html += '<strong>✅ Coordinates Look Valid:</strong><br>';
+            html += 'Latitude: ' + first.lat_wgs84 + '° (Zimbabwe range: -23° to -15°)<br>';
+            html += 'Longitude: ' + first.lng_wgs84 + '° (Zimbabwe range: 25° to 34°)<br>';
+            
+            const inRange = first.lat_wgs84 >= -23 && first.lat_wgs84 <= -15 && 
+                           first.lng_wgs84 >= 25 && first.lng_wgs84 <= 34;
+            if (inRange) {
+              html += '<br><strong style="color: #166534;">✅ Coordinates are within Zimbabwe range!</strong>';
+            } else {
+              html += '<br><strong style="color: #991b1b;">⚠️ Coordinates are OUTSIDE Zimbabwe range!</strong>';
+            }
+            html += '</div>';
+          }
+        }
+        
+        html += '<h3>📄 Full Response:</h3>';
+        html += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+        html += '</div>';
+        
+        resultDiv.innerHTML = html;
+        
+      } catch (error) {
+        console.error('Error:', error);
+        resultDiv.innerHTML = '<div class="result error">' +
+          '<h2>❌ Error</h2>' +
+          '<p><strong>Failed to fetch from API:</strong></p>' +
+          '<pre>' + error.message + '</pre>' +
+          '<p style="margin-top: 15px;"><strong>Possible reasons:</strong></p>' +
+          '<ul>' +
+          '<li>Backend server is not running (start with: npm run dev)</li>' +
+          '<li>Backend is running on different port</li>' +
+          '<li>CORS issue (check backend logs)</li>' +
+          '</ul>' +
+          '</div>';
+      } finally {
+        loadingDiv.style.display = 'none';
+        testBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global styles optimized for field use */
+@layer base {
+  html {
+    @apply text-base antialiased;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* High contrast for outdoor visibility */
+  @media (prefers-contrast: high) {
+    body {
+      @apply bg-white;
+    }
+  }
+}
+
+@layer components {
+  /* Touch-friendly buttons */
+  .btn {
+    @apply px-6 py-3 rounded-lg font-medium transition-colors duration-200;
+    @apply min-h-[44px] min-w-[44px] flex items-center justify-center;
+  }
+
+  .btn-primary {
+    @apply bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-900 hover:bg-gray-300 active:bg-gray-400;
+  }
+
+  .btn-success {
+    @apply bg-success text-white hover:bg-success-dark;
+  }
+
+  .btn-error {
+    @apply bg-error text-white hover:bg-error-dark;
+  }
+
+  /* Form inputs - larger for mobile */
+  .input {
+    @apply w-full px-4 py-3 text-base border border-gray-300 rounded-lg;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply min-h-[44px];
+  }
+
+  .input-error {
+    @apply border-error focus:ring-error;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-white rounded-lg shadow-md p-4;
+  }
+
+  /* Navigation items - touch optimized */
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg transition-colors;
+    @apply min-h-[44px] cursor-pointer;
+  }
+
+  .nav-item-active {
+    @apply bg-primary-50 text-primary-700 font-medium;
+  }
+
+  .nav-item:hover {
+    @apply bg-gray-100;
+  }
+}
+
+/* Leaflet map container */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  z-index: 0;
+}

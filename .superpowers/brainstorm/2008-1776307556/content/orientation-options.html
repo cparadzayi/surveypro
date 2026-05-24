@@ -1,0 +1,62 @@
+<h2>Beacon label orientation — how strict should the east-west constraint be?</h2>
+<p class="subtitle">The current algorithm uses two candidate angles: 0° (horizontal) and the parcel's longest-edge angle. For narrow parcels oriented north–south, this produces near-vertical labels. We need to choose how tightly to constrain the allowed angle range.</p>
+
+<div style="margin: 24px 0;">
+  <svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:720px;display:block;margin:0 auto;background:#f8f9fa;border-radius:8px;padding:8px;">
+
+    <!-- Parcel A: wide, horizontal — all options same -->
+    <rect x="30" y="30" width="130" height="90" fill="#e8f4fd" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="95" y="80" text-anchor="middle" font-family="serif" font-size="14" fill="#1e3a5f" font-weight="bold">2041</text>
+    <text x="95" y="130" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#64748b">Wide parcel — no issue</text>
+
+    <!-- Parcel B: narrow diagonal ~60° — current behaviour -->
+    <polygon points="220,180 260,30 310,30 270,180" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+    <!-- vertical label (bad) -->
+    <text x="265" y="105" text-anchor="middle" font-family="serif" font-size="13" fill="#92400e" font-weight="bold" transform="rotate(-80,265,105)">2042</text>
+    <text x="265" y="195" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#92400e">Current: rotates ~80° — hard to read</text>
+
+    <!-- Parcel C: narrow diagonal ~60° — Option A strict 0° -->
+    <polygon points="370,180 410,30 460,30 420,180" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+    <!-- strict horizontal, smaller font -->
+    <text x="415" y="108" text-anchor="middle" font-family="serif" font-size="9" fill="#14532d" font-weight="bold">2042</text>
+    <text x="415" y="195" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#14532d">Option A: strict 0° — shrinks font to fit</text>
+
+    <!-- Parcel D: narrow diagonal — Option B ±30° max -->
+    <polygon points="520,180 560,30 610,30 570,180" fill="#fce7f3" stroke="#db2777" stroke-width="1.5"/>
+    <!-- gentle tilt ~30° -->
+    <text x="565" y="108" text-anchor="middle" font-family="serif" font-size="11" fill="#831843" font-weight="bold" transform="rotate(-28,565,108)">2042</text>
+    <text x="565" y="195" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#831843">Option B: cap at ±30° — larger font, slight tilt</text>
+
+    <!-- Labels for parcels -->
+    <text x="95" y="22" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#475569" font-weight="600">EXAMPLE PLAN</text>
+    <text x="265" y="22" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#92400e" font-weight="600">❌ CURRENT</text>
+    <text x="415" y="22" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#14532d" font-weight="600">OPTION A</text>
+    <text x="565" y="22" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#831843" font-weight="600">OPTION B</text>
+  </svg>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Strict horizontal only (0°)</h3>
+      <p>Labels are always east-west, no exceptions. Narrow parcels get progressively smaller font until the label fits horizontally, or fall back to a minimum readable size (e.g. 7pt). Maximally consistent; some very narrow parcels may show small text.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Capped tilt — max ±30° from horizontal</h3>
+      <p>Allows a gentle lean to follow the parcel shape, but never goes past 30° (so labels never read "uphill" or "downhill"). Wider parcels get 0°; narrow diagonal parcels get up to 30°. Best balance between readability and parcel-following.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Capped tilt — max ±45° from horizontal</h3>
+      <p>More permissive. Labels can tilt up to 45° to follow diagonal parcels while still staying in the "readable" half of the compass. Same as Option B but with a wider band — gives more candidates for very narrow diagonal parcels.</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:20px">Note: the polygon-containment and no-overlap-with-boundary constraints apply equally under all three options — the only difference is the allowed angle range for the stand number label.</p>

@@ -1,0 +1,499 @@
+{"level":30,"time":1767307144040,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"📥 Loading route: system.js"}
+{"level":30,"time":1767307144041,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"✅ Registered route: /api/system (system.js)"}
+{"level":30,"time":1767307144163,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"Server listening at http://127.0.0.1:3050"}
+{"level":30,"time":1767307144163,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"Server listening at http://192.168.1.128:3050"}
+
+================================================================================
+🚀 Server started at 2026-01-01T22:39:04.163Z
+📡 Listening on http://localhost:3050
+📝 Full logs being written to: backend-full.log
+================================================================================
+{"level":30,"time":1767307156777,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1","req":{"method":"OPTIONS","url":"/api/auth/me","headers":{"host":"localhost:3050","connection":"keep-alive","pragma":"no-cache","cache-control":"no-cache","accept":"*/*","access-control-request-method":"GET","access-control-request-headers":"authorization","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:16.777Z] OPTIONS /api/auth/me
+================================================================================
+[2026-01-01T22:39:16.786Z] Response: 204 for OPTIONS /api/auth/me
+{"level":30,"time":1767307156788,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1","res":{"statusCode":204},"responseTime":9.099500060081482,"msg":"request completed"}
+{"level":30,"time":1767307156789,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-2","req":{"method":"GET","url":"/api/auth/me","headers":{"host":"localhost:3050","connection":"keep-alive","pragma":"no-cache","cache-control":"no-cache","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:16.789Z] GET /api/auth/me
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/auth/me
+[AUTH] ✅ JWT verified for user: undefined
+[2026-01-01T22:39:16.808Z] Response: 200 for GET /api/auth/me
+{"level":30,"time":1767307156811,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-2","res":{"statusCode":200},"responseTime":19.1143000125885,"msg":"request completed"}
+{"level":30,"time":1767307157221,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-3","req":{"method":"GET","url":"/api/system/info","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:17.221Z] GET /api/system/info
+================================================================================
+[2026-01-01T22:39:17.224Z] Response: 200 for GET /api/system/info
+{"level":30,"time":1767307157229,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-3","res":{"statusCode":200},"responseTime":2.2280999422073364,"msg":"request completed"}
+{"level":30,"time":1767307157229,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-4","req":{"method":"GET","url":"/api/system/info","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:17.229Z] GET /api/system/info
+================================================================================
+[2026-01-01T22:39:17.231Z] Response: 200 for GET /api/system/info
+{"level":30,"time":1767307157233,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-4","res":{"statusCode":200},"responseTime":1.437999963760376,"msg":"request completed"}
+{"level":30,"time":1767307157234,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-5","req":{"method":"GET","url":"/api/surveyors","headers":{"host":"127.0.0.1:3050","connection":"close","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","accept":"*/*","sec-fetch-site":"same-origin","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/modules/cadastral-standard/workflow","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"127.0.0.1","remoteAddress":"127.0.0.1","remotePort":50680},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:17.235Z] GET /api/surveyors
+================================================================================
+{"level":30,"time":1767307157238,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-6","req":{"method":"OPTIONS","url":"/api/surveyors","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"GET","access-control-request-headers":"authorization","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:17.238Z] OPTIONS /api/surveyors
+================================================================================
+[2026-01-01T22:39:17.241Z] Response: 204 for OPTIONS /api/surveyors
+{"level":30,"time":1767307157242,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-6","res":{"statusCode":204},"responseTime":3.021799921989441,"msg":"request completed"}
+{"level":30,"time":1767307157242,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-7","req":{"method":"GET","url":"/api/surveyors","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:17.242Z] GET /api/surveyors
+================================================================================
+[2026-01-01T22:39:17.291Z] Response: 200 for GET /api/surveyors
+{"level":30,"time":1767307157296,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-5","res":{"statusCode":200},"responseTime":56.24989998340607,"msg":"request completed"}
+{"level":30,"time":1767307157304,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-8","req":{"method":"GET","url":"/api/survey-projects","headers":{"host":"127.0.0.1:3050","connection":"close","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","accept":"*/*","sec-fetch-site":"same-origin","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/modules/cadastral-standard/workflow","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"127.0.0.1","remoteAddress":"127.0.0.1","remotePort":50682},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:17.304Z] GET /api/survey-projects
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307157364,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Request received from user: kuziva@cpls.co.zw"}
+{"level":30,"time":1767307157365,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Looking for profile with user_id: 2"}
+{"level":30,"time":1767307157369,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Profile found:"}
+[2026-01-01T22:39:17.484Z] Response: 200 for GET /api/surveyors
+{"level":30,"time":1767307157501,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-7","res":{"statusCode":200},"responseTime":241.77189993858337,"msg":"request completed"}
+{"level":30,"time":1767307157503,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-9","req":{"method":"OPTIONS","url":"/api/survey-projects","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"GET","access-control-request-headers":"authorization","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:17.503Z] OPTIONS /api/survey-projects
+================================================================================
+[2026-01-01T22:39:17.513Z] Response: 204 for OPTIONS /api/survey-projects
+{"level":30,"time":1767307157520,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-9","res":{"statusCode":204},"responseTime":10.111599922180176,"msg":"request completed"}
+{"level":30,"time":1767307157524,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-a","req":{"method":"GET","url":"/api/survey-projects","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:17.525Z] GET /api/survey-projects
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307157572,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Request received from user: kuziva@cpls.co.zw"}
+{"level":30,"time":1767307157572,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Looking for profile with user_id: 2"}
+{"level":30,"time":1767307157578,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Profile found:"}
+{"level":30,"time":1767307157677,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] User kuziva@cpls.co.zw (profile_id: 2) has 7 projects"}
+[2026-01-01T22:39:17.707Z] Response: 200 for GET /api/survey-projects
+{"level":30,"time":1767307157708,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-8","res":{"statusCode":200},"responseTime":402.4091999530792,"msg":"request completed"}
+{"level":30,"time":1767307157768,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] User kuziva@cpls.co.zw (profile_id: 2) has 7 projects"}
+[2026-01-01T22:39:17.790Z] Response: 200 for GET /api/survey-projects
+{"level":30,"time":1767307157792,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-a","res":{"statusCode":200},"responseTime":265.61119997501373,"msg":"request completed"}
+{"level":30,"time":1767307157795,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-b","req":{"method":"GET","url":"/api/survey-projects","headers":{"host":"127.0.0.1:3050","connection":"close","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","accept":"*/*","sec-fetch-site":"same-origin","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/modules/cadastral-standard/workflow","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"127.0.0.1","remoteAddress":"127.0.0.1","remotePort":62858},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:17.795Z] GET /api/survey-projects
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307157834,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Request received from user: kuziva@cpls.co.zw"}
+{"level":30,"time":1767307157834,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Looking for profile with user_id: 2"}
+{"level":30,"time":1767307157835,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Profile found:"}
+{"level":30,"time":1767307157911,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] User kuziva@cpls.co.zw (profile_id: 2) has 7 projects"}
+[2026-01-01T22:39:17.930Z] Response: 200 for GET /api/survey-projects
+{"level":30,"time":1767307157932,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-b","res":{"statusCode":200},"responseTime":134.75619995594025,"msg":"request completed"}
+{"level":30,"time":1767307157936,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-c","req":{"method":"OPTIONS","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"GET","access-control-request-headers":"authorization","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:17.936Z] OPTIONS /api/survey-projects/7/workflow
+================================================================================
+[2026-01-01T22:39:17.939Z] Response: 204 for OPTIONS /api/survey-projects/7/workflow
+{"level":30,"time":1767307157941,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-c","res":{"statusCode":204},"responseTime":3.1337000131607056,"msg":"request completed"}
+{"level":30,"time":1767307157942,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-d","req":{"method":"GET","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:17.942Z] GET /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307157975,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /workflow] Retrieved workflow state for project 7"}
+[2026-01-01T22:39:17.982Z] Response: 200 for GET /api/survey-projects/7/workflow
+{"level":30,"time":1767307157983,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-d","res":{"statusCode":200},"responseTime":40.480599999427795,"msg":"request completed"}
+{"level":30,"time":1767307159391,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-e","req":{"method":"OPTIONS","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"PATCH","access-control-request-headers":"authorization,content-type","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:19.391Z] OPTIONS /api/survey-projects/7/workflow
+================================================================================
+[2026-01-01T22:39:19.412Z] Response: 204 for OPTIONS /api/survey-projects/7/workflow
+{"level":30,"time":1767307159416,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-e","res":{"statusCode":204},"responseTime":21.18120002746582,"msg":"request completed"}
+{"level":30,"time":1767307159416,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-f","req":{"method":"PATCH","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"354","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"application/json","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:19.417Z] PATCH /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for PATCH /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307159446,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-g","req":{"method":"GET","url":"/api/surveyors","headers":{"host":"127.0.0.1:3050","connection":"close","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","accept":"*/*","sec-fetch-site":"same-origin","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/modules/cadastral-standard/workflow","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"127.0.0.1","remoteAddress":"127.0.0.1","remotePort":64253},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:19.446Z] GET /api/surveyors
+================================================================================
+[2026-01-01T22:39:19.455Z] Response: 200 for GET /api/surveyors
+{"level":30,"time":1767307159459,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-g","res":{"statusCode":200},"responseTime":9.027900099754333,"msg":"request completed"}
+{"level":30,"time":1767307159469,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Updating workflow for project 7: step=project-setup, action=set_current"}
+{"level":30,"time":1767307159476,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-h","req":{"method":"GET","url":"/api/survey-projects","headers":{"host":"127.0.0.1:3050","connection":"close","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","accept":"*/*","sec-fetch-site":"same-origin","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/modules/cadastral-standard/workflow","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"127.0.0.1","remoteAddress":"127.0.0.1","remotePort":64254},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:19.478Z] GET /api/survey-projects
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307159552,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Request received from user: kuziva@cpls.co.zw"}
+{"level":30,"time":1767307159552,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Looking for profile with user_id: 2"}
+{"level":30,"time":1767307159553,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Current step set to 'project-setup'"}
+{"level":30,"time":1767307159559,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Profile found:"}
+{"level":30,"time":1767307159627,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Workflow state updated successfully for project 7"}
+[2026-01-01T22:39:19.645Z] Response: 200 for PATCH /api/survey-projects/7/workflow
+{"level":30,"time":1767307159646,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-f","res":{"statusCode":200},"responseTime":228.12580001354218,"msg":"request completed"}
+{"level":30,"time":1767307159678,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-i","req":{"method":"GET","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:19.679Z] GET /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307159773,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /workflow] Retrieved workflow state for project 7"}
+[2026-01-01T22:39:19.785Z] Response: 200 for GET /api/survey-projects/7/workflow
+{"level":30,"time":1767307159807,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-i","res":{"statusCode":200},"responseTime":106.38480007648468,"msg":"request completed"}
+{"level":30,"time":1767307160176,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] User kuziva@cpls.co.zw (profile_id: 2) has 7 projects"}
+[2026-01-01T22:39:20.240Z] Response: 200 for GET /api/survey-projects
+{"level":30,"time":1767307160242,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-h","res":{"statusCode":200},"responseTime":762.288999915123,"msg":"request completed"}
+{"level":30,"time":1767307160372,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-j","req":{"method":"GET","url":"/api/survey-projects","headers":{"host":"127.0.0.1:3050","connection":"close","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","accept":"*/*","sec-fetch-site":"same-origin","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/modules/cadastral-standard/workflow","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"127.0.0.1","remoteAddress":"127.0.0.1","remotePort":64256},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:20.377Z] GET /api/survey-projects
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307160426,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Request received from user: kuziva@cpls.co.zw"}
+{"level":30,"time":1767307160426,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Looking for profile with user_id: 2"}
+{"level":30,"time":1767307160428,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Profile found:"}
+{"level":30,"time":1767307160595,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] User kuziva@cpls.co.zw (profile_id: 2) has 7 projects"}
+[2026-01-01T22:39:20.617Z] Response: 200 for GET /api/survey-projects
+{"level":30,"time":1767307160626,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-j","res":{"statusCode":200},"responseTime":240.05370008945465,"msg":"request completed"}
+{"level":30,"time":1767307171104,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-k","req":{"method":"OPTIONS","url":"/api/survey-projects","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"GET","access-control-request-headers":"authorization","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:31.104Z] OPTIONS /api/survey-projects
+================================================================================
+[2026-01-01T22:39:31.106Z] Response: 204 for OPTIONS /api/survey-projects
+{"level":30,"time":1767307171111,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-k","res":{"statusCode":204},"responseTime":1.703800082206726,"msg":"request completed"}
+{"level":30,"time":1767307171112,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-l","req":{"method":"GET","url":"/api/survey-projects","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:31.112Z] GET /api/survey-projects
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307171126,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Request received from user: kuziva@cpls.co.zw"}
+{"level":30,"time":1767307171126,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Looking for profile with user_id: 2"}
+{"level":30,"time":1767307171128,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Profile found:"}
+{"level":30,"time":1767307171225,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] User kuziva@cpls.co.zw (profile_id: 2) has 7 projects"}
+[2026-01-01T22:39:31.247Z] Response: 200 for GET /api/survey-projects
+{"level":30,"time":1767307171249,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-l","res":{"statusCode":200},"responseTime":135.17509996891022,"msg":"request completed"}
+{"level":30,"time":1767307171274,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-m","req":{"method":"OPTIONS","url":"/api/survey-projects/7","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"PUT","access-control-request-headers":"authorization,content-type","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:31.274Z] OPTIONS /api/survey-projects/7
+================================================================================
+[2026-01-01T22:39:31.276Z] Response: 204 for OPTIONS /api/survey-projects/7
+{"level":30,"time":1767307171277,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-m","res":{"statusCode":204},"responseTime":2.3595999479293823,"msg":"request completed"}
+{"level":30,"time":1767307171278,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-n","req":{"method":"PUT","url":"/api/survey-projects/7","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"296","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"application/json","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:31.279Z] PUT /api/survey-projects/7
+================================================================================
+[AUTH] 🔐 Verifying JWT for PUT /api/survey-projects/7
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307171346,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[UPDATE] Attempting to create directories for project 7"}
+{"level":30,"time":1767307171346,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[UPDATE] Working directory: Documents/SurveyPro/Projects/KuzivaMaglas2026_Shabani_2026-01-01"}
+{"level":30,"time":1767307171356,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[UPDATE] ✅ All directories already exist at C:\\Users\\mukan\\Documents\\SurveyPro\\Projects\\KuzivaMaglas2026_Shabani_2026-01-01"}
+{"level":30,"time":1767307171356,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[UPDATE] Absolute path: C:\\Users\\mukan\\Documents\\SurveyPro\\Projects\\KuzivaMaglas2026_Shabani_2026-01-01"}
+[2026-01-01T22:39:31.361Z] Response: 200 for PUT /api/survey-projects/7
+{"level":30,"time":1767307171361,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-n","res":{"statusCode":200},"responseTime":82.13359999656677,"msg":"request completed"}
+{"level":30,"time":1767307171371,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-o","req":{"method":"GET","url":"/api/survey-projects","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:31.371Z] GET /api/survey-projects
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307171387,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Request received from user: kuziva@cpls.co.zw"}
+{"level":30,"time":1767307171387,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Looking for profile with user_id: 2"}
+{"level":30,"time":1767307171388,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Profile found:"}
+{"level":30,"time":1767307171497,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] User kuziva@cpls.co.zw (profile_id: 2) has 7 projects"}
+[2026-01-01T22:39:31.522Z] Response: 200 for GET /api/survey-projects
+{"level":30,"time":1767307171525,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-o","res":{"statusCode":200},"responseTime":151.2907999753952,"msg":"request completed"}
+{"level":30,"time":1767307171557,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-p","req":{"method":"OPTIONS","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"PATCH","access-control-request-headers":"authorization,content-type","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:31.557Z] OPTIONS /api/survey-projects/7/workflow
+================================================================================
+[2026-01-01T22:39:31.559Z] Response: 204 for OPTIONS /api/survey-projects/7/workflow
+{"level":30,"time":1767307171559,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-p","res":{"statusCode":204},"responseTime":1.7085999250411987,"msg":"request completed"}
+{"level":30,"time":1767307171560,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-q","req":{"method":"PATCH","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"693","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"application/json","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:31.560Z] PATCH /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for PATCH /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307171573,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Updating workflow for project 7: step=project-setup, action=complete"}
+{"level":30,"time":1767307171614,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Workflow state updated successfully for project 7"}
+[2026-01-01T22:39:31.622Z] Response: 200 for PATCH /api/survey-projects/7/workflow
+{"level":30,"time":1767307171623,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-q","res":{"statusCode":200},"responseTime":61.3507000207901,"msg":"request completed"}
+{"level":30,"time":1767307171649,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-r","req":{"method":"GET","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:31.649Z] GET /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307171671,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /workflow] Retrieved workflow state for project 7"}
+[2026-01-01T22:39:31.676Z] Response: 200 for GET /api/survey-projects/7/workflow
+{"level":30,"time":1767307171680,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-r","res":{"statusCode":200},"responseTime":27.32770001888275,"msg":"request completed"}
+{"level":30,"time":1767307171686,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-s","req":{"method":"GET","url":"/api/survey-projects","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:31.686Z] GET /api/survey-projects
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307171699,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Request received from user: kuziva@cpls.co.zw"}
+{"level":30,"time":1767307171699,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Looking for profile with user_id: 2"}
+{"level":30,"time":1767307171700,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] Profile found:"}
+{"level":30,"time":1767307171815,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /survey-projects] User kuziva@cpls.co.zw (profile_id: 2) has 7 projects"}
+[2026-01-01T22:39:31.833Z] Response: 200 for GET /api/survey-projects
+{"level":30,"time":1767307171836,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-s","res":{"statusCode":200},"responseTime":146.755499958992,"msg":"request completed"}
+{"level":30,"time":1767307174958,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-t","req":{"method":"PATCH","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"348","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"application/json","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:34.959Z] PATCH /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for PATCH /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307174983,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Updating workflow for project 7: step=csv-import, action=set_current"}
+{"level":30,"time":1767307175012,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Current step set to 'csv-import'"}
+{"level":30,"time":1767307175054,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Workflow state updated successfully for project 7"}
+[2026-01-01T22:39:35.059Z] Response: 200 for PATCH /api/survey-projects/7/workflow
+{"level":30,"time":1767307175073,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-t","res":{"statusCode":200},"responseTime":100.61940002441406,"msg":"request completed"}
+{"level":30,"time":1767307175076,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-u","req":{"method":"GET","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:35.076Z] GET /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307175208,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /workflow] Retrieved workflow state for project 7"}
+[2026-01-01T22:39:35.217Z] Response: 200 for GET /api/survey-projects/7/workflow
+{"level":30,"time":1767307175220,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-u","res":{"statusCode":200},"responseTime":140.42460000514984,"msg":"request completed"}
+{"level":30,"time":1767307177596,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-v","req":{"method":"OPTIONS","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"PATCH","access-control-request-headers":"authorization,content-type","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:37.596Z] OPTIONS /api/survey-projects/7/workflow
+================================================================================
+[2026-01-01T22:39:37.635Z] Response: 204 for OPTIONS /api/survey-projects/7/workflow
+{"level":30,"time":1767307177639,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-v","res":{"statusCode":204},"responseTime":38.993799924850464,"msg":"request completed"}
+{"level":30,"time":1767307177643,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-w","req":{"method":"PATCH","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"43","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"application/json","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:37.643Z] PATCH /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for PATCH /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307177661,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Updating workflow for project 7: step=import_csv, action=reset_step"}
+{"level":50,"time":1767307177710,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Failed to delete coordinate points: column sp.surveyor_profile_id does not exist"}
+{"level":30,"time":1767307177710,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Step 'import_csv' reset"}
+{"level":30,"time":1767307177733,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Workflow state updated successfully for project 7"}
+[2026-01-01T22:39:37.742Z] Response: 200 for PATCH /api/survey-projects/7/workflow
+{"level":30,"time":1767307177745,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-w","res":{"statusCode":200},"responseTime":99.44400000572205,"msg":"request completed"}
+{"level":30,"time":1767307177763,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-x","req":{"method":"GET","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:37.763Z] GET /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307177817,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /workflow] Retrieved workflow state for project 7"}
+[2026-01-01T22:39:37.822Z] Response: 200 for GET /api/survey-projects/7/workflow
+{"level":30,"time":1767307177824,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-x","res":{"statusCode":200},"responseTime":58.68930006027222,"msg":"request completed"}
+{"level":30,"time":1767307185857,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-y","req":{"method":"OPTIONS","url":"/api/csv-imports","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"POST","access-control-request-headers":"authorization,content-type","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:45.857Z] OPTIONS /api/csv-imports
+================================================================================
+[2026-01-01T22:39:45.865Z] Response: 204 for OPTIONS /api/csv-imports
+{"level":30,"time":1767307185867,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-y","res":{"statusCode":204},"responseTime":7.816999912261963,"msg":"request completed"}
+{"level":30,"time":1767307185868,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-z","req":{"method":"POST","url":"/api/csv-imports","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"37463","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"application/json","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:45.868Z] POST /api/csv-imports
+================================================================================
+[AUTH] 🔐 Verifying JWT for POST /api/csv-imports
+[AUTH] ✅ JWT verified for user: undefined
+{"level":50,"time":1767307185931,"pid":24988,"hostname":"DESKTOP-D755NH6","err":{"type":"DatabaseError","message":"duplicate key value violates unique constraint \"project_csv_imports_project_id_csv_hash_key\"","stack":"error: duplicate key value violates unique constraint \"project_csv_imports_project_id_csv_hash_key\"\n    at C:\\mataranyika\\SurveyPro-nov-alpha\\app-backend\\node_modules\\pg\\lib\\client.js:545:17\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async Object.query (file:///C:/mataranyika/SurveyPro-nov-alpha/app-backend/src/config/db.js:44:24)\n    at async Object.<anonymous> (file:///C:/mataranyika/SurveyPro-nov-alpha/app-backend/src/routes/csvImports.js:173:22)"},"msg":"duplicate key value violates unique constraint \"project_csv_imports_project_id_csv_hash_key\""}
+[2026-01-01T22:39:45.932Z] Response: 500 for POST /api/csv-imports
+{"level":30,"time":1767307185933,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-z","res":{"statusCode":500},"responseTime":63.85860002040863,"msg":"request completed"}
+{"level":30,"time":1767307186002,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-10","req":{"method":"POST","url":"/api/documents/save","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"43797","sec-ch-ua-platform":"\"Windows\"","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"multipart/form-data; boundary=----WebKitFormBoundaryh5HNzdSyezlU9LNe","sec-ch-ua-mobile":"?0","accept":"*/*","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.002Z] POST /api/documents/save
+================================================================================
+{"level":20,"time":1767307186013,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-10","msg":"starting multipart parsing"}
+{"level":30,"time":1767307186045,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] File received: KuzivaMaglas2026_imported_2026-01-01.csv (43365 bytes)"}
+{"level":30,"time":1767307186045,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] File path: C:/Users/User/Documents/SurveyPro/Projects/KuzivaMaglas2026_Shabani_2026-01-01/input/KuzivaMaglas2026_imported_2026-01-01.csv"}
+{"level":30,"time":1767307186046,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] Saving document to: C:/Users/User/Documents/SurveyPro/Projects/KuzivaMaglas2026_Shabani_2026-01-01/input/KuzivaMaglas2026_imported_2026-01-01.csv"}
+{"level":50,"time":1767307186051,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] Error:"}
+{"level":50,"time":1767307186052,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] Error details:"}
+[2026-01-01T22:39:46.053Z] Response: 500 for POST /api/documents/save
+{"level":30,"time":1767307186059,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-10","res":{"statusCode":500},"responseTime":50.667500019073486,"msg":"request completed"}
+{"level":30,"time":1767307186059,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-11","req":{"method":"OPTIONS","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"PATCH","access-control-request-headers":"authorization,content-type","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.059Z] OPTIONS /api/survey-projects/7/workflow
+================================================================================
+[2026-01-01T22:39:46.063Z] Response: 204 for OPTIONS /api/survey-projects/7/workflow
+{"level":30,"time":1767307186067,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-11","res":{"statusCode":204},"responseTime":3.5203999280929565,"msg":"request completed"}
+{"level":30,"time":1767307186068,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-12","req":{"method":"PATCH","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"76920","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"application/json","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":62305},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.068Z] PATCH /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for PATCH /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307186080,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-13","req":{"method":"OPTIONS","url":"/api/coordinate-points/batch","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"POST","access-control-request-headers":"authorization,content-type","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.080Z] OPTIONS /api/coordinate-points/batch
+================================================================================
+[2026-01-01T22:39:46.084Z] Response: 204 for OPTIONS /api/coordinate-points/batch
+{"level":30,"time":1767307186088,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-13","res":{"statusCode":204},"responseTime":4.340700030326843,"msg":"request completed"}
+{"level":30,"time":1767307186094,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-14","req":{"method":"POST","url":"/api/coordinate-points/batch","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"48189","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"application/json","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.095Z] POST /api/coordinate-points/batch
+================================================================================
+[AUTH] 🔐 Verifying JWT for POST /api/coordinate-points/batch
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307186109,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Updating workflow for project 7: step=csv-import, action=complete"}
+{"level":30,"time":1767307186142,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Step 'csv-import' marked as completed"}
+{"level":30,"time":1767307186142,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Received 544 points"}
+{"level":30,"time":1767307186142,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] First point: {\"id\":\"M5\",\"y\":96892.2,\"x\":2247571.92,\"status\":\"Calculated\",\"description\":\"Not beaconed\",\"survey_date\":\"2026-01-01T22:39:45.843Z\"}"}
+{"level":30,"time":1767307186175,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Workflow state updated successfully for project 7"}
+[2026-01-01T22:39:46.178Z] Response: 200 for PATCH /api/survey-projects/7/workflow
+{"level":30,"time":1767307186179,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-12","res":{"statusCode":200},"responseTime":110.23280000686646,"msg":"request completed"}
+[2026-01-01T22:39:46.292Z] Response: 200 for POST /api/coordinate-points/batch
+{"level":30,"time":1767307186293,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-14","res":{"statusCode":200},"responseTime":197.03090000152588,"msg":"request completed"}
+{"level":30,"time":1767307186318,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-15","req":{"method":"GET","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.318Z] GET /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307186358,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /workflow] Retrieved workflow state for project 7"}
+[2026-01-01T22:39:46.365Z] Response: 200 for GET /api/survey-projects/7/workflow
+{"level":30,"time":1767307186366,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-15","res":{"statusCode":200},"responseTime":46.84979999065399,"msg":"request completed"}
+{"level":30,"time":1767307186399,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-16","req":{"method":"PATCH","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"439","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"application/json","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.399Z] PATCH /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for PATCH /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307186412,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Updating workflow for project 7: step=csv-import, action=complete"}
+{"level":30,"time":1767307186453,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Workflow state updated successfully for project 7"}
+[2026-01-01T22:39:46.460Z] Response: 200 for PATCH /api/survey-projects/7/workflow
+{"level":30,"time":1767307186461,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-16","res":{"statusCode":200},"responseTime":60.40760004520416,"msg":"request completed"}
+{"level":30,"time":1767307186478,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-17","req":{"method":"GET","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.478Z] GET /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307186506,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /workflow] Retrieved workflow state for project 7"}
+[2026-01-01T22:39:46.511Z] Response: 200 for GET /api/survey-projects/7/workflow
+{"level":30,"time":1767307186511,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-17","res":{"statusCode":200},"responseTime":32.8779000043869,"msg":"request completed"}
+{"level":30,"time":1767307186730,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-18","req":{"method":"POST","url":"/api/documents/save","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"309661","sec-ch-ua-platform":"\"Windows\"","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"multipart/form-data; boundary=----WebKitFormBoundaryKSAU5A8hPgys6U7m","sec-ch-ua-mobile":"?0","accept":"*/*","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.730Z] POST /api/documents/save
+================================================================================
+{"level":20,"time":1767307186732,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-18","msg":"starting multipart parsing"}
+{"level":30,"time":1767307186737,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] File received: KuzivaMaglas2026_CalculationsPart1_2026-01-01.pdf (309204 bytes)"}
+{"level":30,"time":1767307186737,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] File path: Documents/SurveyPro/Projects/KuzivaMaglas2026_Shabani_2026-01-01/output/calculations/KuzivaMaglas2026_CalculationsPart1_2026-01-01.pdf"}
+{"level":30,"time":1767307186737,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] Saving document to: C:\\Users\\mukan\\Documents\\SurveyPro\\Projects\\KuzivaMaglas2026_Shabani_2026-01-01\\output\\calculations\\KuzivaMaglas2026_CalculationsPart1_2026-01-01.pdf"}
+{"level":30,"time":1767307186739,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] ✅ Document saved: C:\\Users\\mukan\\Documents\\SurveyPro\\Projects\\KuzivaMaglas2026_Shabani_2026-01-01\\output\\calculations\\KuzivaMaglas2026_CalculationsPart1_2026-01-01.pdf (309204 bytes)"}
+[2026-01-01T22:39:46.740Z] Response: 200 for POST /api/documents/save
+{"level":30,"time":1767307186740,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-18","res":{"statusCode":200},"responseTime":9.63889992237091,"msg":"request completed"}
+{"level":30,"time":1767307186744,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-19","req":{"method":"POST","url":"/api/documents/save","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"429058","sec-ch-ua-platform":"\"Windows\"","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"multipart/form-data; boundary=----WebKitFormBoundaryf9SMQAOOBR6g8mHT","sec-ch-ua-mobile":"?0","accept":"*/*","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.745Z] POST /api/documents/save
+================================================================================
+{"level":20,"time":1767307186745,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-19","msg":"starting multipart parsing"}
+{"level":30,"time":1767307186751,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] File received: KuzivaMaglas2026_CoordinateList_2026-01-01.pdf (428604 bytes)"}
+{"level":30,"time":1767307186751,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] File path: Documents/SurveyPro/Projects/KuzivaMaglas2026_Shabani_2026-01-01/output/coordinate-list/KuzivaMaglas2026_CoordinateList_2026-01-01.pdf"}
+{"level":30,"time":1767307186751,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] Saving document to: C:\\Users\\mukan\\Documents\\SurveyPro\\Projects\\KuzivaMaglas2026_Shabani_2026-01-01\\output\\coordinate-list\\KuzivaMaglas2026_CoordinateList_2026-01-01.pdf"}
+{"level":30,"time":1767307186752,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[SAVE] ✅ Document saved: C:\\Users\\mukan\\Documents\\SurveyPro\\Projects\\KuzivaMaglas2026_Shabani_2026-01-01\\output\\coordinate-list\\KuzivaMaglas2026_CoordinateList_2026-01-01.pdf (428604 bytes)"}
+[2026-01-01T22:39:46.753Z] Response: 200 for POST /api/documents/save
+{"level":30,"time":1767307186754,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-19","res":{"statusCode":200},"responseTime":8.20959997177124,"msg":"request completed"}
+{"level":30,"time":1767307186759,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1a","req":{"method":"PATCH","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","content-length":"135832","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","content-type":"application/json","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.759Z] PATCH /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for PATCH /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307186770,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Updating workflow for project 7: step=calculations-part1, action=complete"}
+{"level":30,"time":1767307186805,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[PATCH /workflow] Workflow state updated successfully for project 7"}
+[2026-01-01T22:39:46.813Z] Response: 200 for PATCH /api/survey-projects/7/workflow
+{"level":30,"time":1767307186814,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1a","res":{"statusCode":200},"responseTime":53.031100034713745,"msg":"request completed"}
+{"level":30,"time":1767307186838,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1b","req":{"method":"GET","url":"/api/survey-projects/7/workflow","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.838Z] GET /api/survey-projects/7/workflow
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/survey-projects/7/workflow
+[AUTH] ✅ JWT verified for user: undefined
+{"level":30,"time":1767307186904,"pid":24988,"hostname":"DESKTOP-D755NH6","msg":"[GET /workflow] Retrieved workflow state for project 7"}
+[2026-01-01T22:39:46.907Z] Response: 200 for GET /api/survey-projects/7/workflow
+{"level":30,"time":1767307186910,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1b","res":{"statusCode":200},"responseTime":69.24919998645782,"msg":"request completed"}
+{"level":30,"time":1767307186934,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1c","req":{"method":"GET","url":"/api/control-points?gauss_lo=31&limit=5000","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","accept":"*/*","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:46.935Z] GET /api/control-points?gauss_lo=31&limit=5000
+================================================================================
+{"level":30,"time":1767307186945,"pid":24988,"hostname":"DESKTOP-D755NH6","method":"GET","url":"/api/control-points?gauss_lo=31&limit=5000","routeUrl":"/api/control-points","params":{},"query":{"gauss_lo":"31","limit":"5000"},"msg":"Control Points Request Debug"}
+[2026-01-01T22:39:47.039Z] Response: 200 for GET /api/control-points?gauss_lo=31&limit=5000
+{"level":30,"time":1767307187056,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1c","res":{"statusCode":200},"responseTime":104.01380002498627,"msg":"request completed"}
+{"level":30,"time":1767307187069,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1d","req":{"method":"OPTIONS","url":"/api/land-parcels?project_id=7","headers":{"host":"localhost:3050","connection":"keep-alive","accept":"*/*","access-control-request-method":"GET","access-control-request-headers":"authorization","origin":"http://localhost:5173","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","sec-fetch-mode":"cors","sec-fetch-site":"same-site","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:47.069Z] OPTIONS /api/land-parcels?project_id=7
+================================================================================
+[2026-01-01T22:39:47.073Z] Response: 204 for OPTIONS /api/land-parcels?project_id=7
+{"level":30,"time":1767307187077,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1d","res":{"statusCode":204},"responseTime":4.1789000034332275,"msg":"request completed"}
+{"level":30,"time":1767307187078,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1e","req":{"method":"GET","url":"/api/land-parcels?project_id=7","headers":{"host":"localhost:3050","connection":"keep-alive","sec-ch-ua-platform":"\"Windows\"","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsImVtYWlsIjoia3V6aXZhQGNwbHMuY28uenciLCJpYXQiOjE3NjczMDI3NDV9.JpDp7peKX6i4vIDmacoD7bHhGk4XNrCcJu-zBTVBLh0","user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0","accept":"application/json, text/plain, */*","sec-ch-ua":"\"Microsoft Edge\";v=\"143\", \"Chromium\";v=\"143\", \"Not A(Brand\";v=\"24\"","sec-ch-ua-mobile":"?0","origin":"http://localhost:5173","sec-fetch-site":"same-site","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:5173/","accept-encoding":"gzip, deflate, br, zstd","accept-language":"en-US,en;q=0.9"},"hostname":"localhost","remoteAddress":"127.0.0.1","remotePort":63897},"msg":"incoming request"}
+
+================================================================================
+[2026-01-01T22:39:47.078Z] GET /api/land-parcels?project_id=7
+================================================================================
+[AUTH] 🔐 Verifying JWT for GET /api/land-parcels?project_id=7
+[AUTH] ✅ JWT verified for user: undefined
+[2026-01-01T22:39:47.098Z] Response: 200 for GET /api/land-parcels?project_id=7
+{"level":30,"time":1767307187105,"pid":24988,"hostname":"DESKTOP-D755NH6","reqId":"req-1e","res":{"statusCode":200},"responseTime":20.241600036621094,"msg":"request completed"}

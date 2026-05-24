@@ -1,0 +1,5 @@
+# API Base URL
+VITE_API_URL=http://localhost:3042/api
+
+# For production, use your Render.com backend URL:
+# VITE_API_URL=https://your-backend.onrender.com/api

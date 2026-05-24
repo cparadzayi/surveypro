@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SurveyPro True Vector GeoPDF Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .capability-card {
+            transition: all 0.3s ease;
+        }
+        .capability-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        .feature-icon {
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-enabled { background-color: #10b981; }
+        .status-disabled { background-color: #6b7280; }
+        .status-partial { background-color: #f59e0b; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <!-- Header -->
+        <header class="bg-white shadow-sm rounded-lg mb-8 p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900">SurveyPro True Vector GeoPDF</h1>
+                    <p class="text-gray-600 mt-2">Enhanced Interactive Geospatial Document Generation</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="text-right">
+                        <p class="text-sm text-gray-500">Backend Status</p>
+                        <p class="text-lg font-semibold" id="backend-status">Checking...</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-gray-500">Frontend Status</p>
+                        <p class="text-lg font-semibold" id="frontend-status">Ready</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Capabilities Panel -->
+            <section class="lg:col-span-2">
+                <div class="bg-white rounded-lg shadow-sm p-6">
+                    <h2 class="text-xl font-bold text-gray-900 mb-6">Enhanced Capabilities</h2>
+                    
+                    <div class="space-y-4" id="capabilities">
+                        <!-- Capabilities will be loaded here -->
+                        <div class="text-center py-8">
+                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                            <p class="text-gray-600 mt-2">Loading capabilities...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Test Panel -->
+            <section class="bg-white rounded-lg shadow-sm p-6">
+                <h2 class="text-xl font-bold text-gray-900 mb-6">Quick Test</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Test Mode</label>
+                        <select id="test-mode" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="enhanced">Enhanced True GeoPDF</option>
+                            <option value="standard">Standard PDF</option>
+                            <option value="validation">Validation Only</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Projection</label>
+                        <select id="projection" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="EPSG:22291">Cape Lo 31</option>
+                            <option value="EPSG:22293">Cape Lo 29</option>
+                            <option value="EPSG:22292">Cape Lo 27</option>
+                            <option value="EPSG:22294">Cape Lo 25</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" id="interactive" checked class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+                            <span class="text-sm font-medium text-gray-700">Interactive Features</span>
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" id="layers" checked class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+                            <span class="text-sm font-medium text-gray-700">Layer Management</span>
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" id="measurements" checked class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+                            <span class="text-sm font-medium text-gray-700">Measurement Tools</span>
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" id="adaptive" checked class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+                            <span class="text-sm font-medium text-gray-700">Adaptive Rendering</span>
+                        </label>
+                    </div>
+
+                    <button id="test-btn" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
+                        Generate Test PDF
+                    </button>
+
+                    <div id="test-result" class="mt-4 p-4 rounded-md hidden">
+                        <!-- Test results will appear here -->
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Sample Data Section -->
+        <section class="bg-white rounded-lg shadow-sm p-6 mt-8">
+            <h2 class="text-xl font-bold text-gray-900 mb-6">Sample Data for Testing</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Sample Parcels</h3>
+                    <pre id="sample-parcels" class="bg-gray-50 p-3 rounded text-sm overflow-x-auto">
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [7865, 2268500],
+            [7870, 2268505],
+            [7865, 2268495]
+          ]
+        ]
+      },
+      "properties": {
+        "stand": "2284",
+        "description": "Residential Stand",
+        "area_m2": 566.03
+      }
+    }
+  ]
+}
+                    </pre>
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Sample Beacons</h3>
+                    <pre id="sample-beacons" class="bg-gray-50 p-3 rounded text-sm overflow-x-auto">
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [7850, 2268500]
+      },
+      "properties": {
+        "name": "BEACON A",
+        "type": "found",
+        "description": "Found and adopted beacon"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [7865, 2268500]
+      },
+      "properties": {
+        "name": "BEACON B",
+        "type": "placed",
+        "description": "Newly placed beacon"
+      }
+    }
+  ]
+}
+                    </pre>
+                </div>
+            </div>
+
+            <div class="mt-6">
+                <button id="load-sample-data" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500">
+                    Load Sample Data
+                </button>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // Test data
+        let sampleParcels = null;
+        let sampleBeacons = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            checkBackendStatus();
+            loadCapabilities();
+            setupEventListeners();
+        });
+
+        // Check backend status
+        async function checkBackendStatus() {
+            try {
+                const response = await fetch('http://localhost:3050/api/geopdf/capabilities');
+                if (response.ok) {
+                    document.getElementById('backend-status').textContent = 'Online';
+                    document.getElementById('backend-status').className = 'text-lg font-semibold text-green-600';
+                } else {
+                    throw new Error('Backend not responding');
+                }
+            } catch (error) {
+                document.getElementById('backend-status').textContent = 'Offline';
+                document.getElementById('backend-status').className = 'text-lg font-semibold text-red-600';
+                console.error('Backend status check failed:', error);
+            }
+        }
+
+        // Load capabilities
+        async function loadCapabilities() {
+            try {
+                const response = await fetch('http://localhost:3050/api/geopdf/capabilities');
+                const capabilities = await response.json();
+                
+                displayCapabilities(capabilities);
+                
+            } catch (error) {
+                console.error('Failed to load capabilities:', error);
+                document.getElementById('capabilities').innerHTML = `
+                    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                        <p class="font-medium">❌ Failed to load capabilities</p>
+                        <p class="text-sm">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Display capabilities
+        function displayCapabilities(capabilities) {
+            const capabilitiesHtml = Object.entries(capabilities.features).map(([key, feature]) => {
+                const statusClass = feature.supported ? 'status-enabled' : 'status-disabled';
+                const statusIcon = feature.supported ? '✅' : '❌';
+                
+                return `
+                    <div class="capability-card bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-lg font-semibold text-gray-900">${feature.description}</h3>
+                            <span class="status-indicator ${statusClass}"></span>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-2">${statusIcon} ${feature.supported ? 'Supported' : 'Not Supported'}</p>
+                        ${feature.capabilities ? `
+                            <div class="text-xs text-gray-500">
+                                <strong>Capabilities:</strong> ${feature.capabilities.join(', ')}
+                            </div>
+                        ` : ''}
+                        ${feature.standards ? `
+                            <div class="text-xs text-gray-500">
+                                <strong>Standards:</strong> ${feature.standards.join(', ')}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('capabilities').innerHTML = capabilitiesHtml;
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            document.getElementById('test-btn').addEventListener('click', generateTestPDF);
+            document.getElementById('load-sample-data').addEventListener('click', loadSampleData);
+        }
+
+        // Load sample data
+        function loadSampleData() {
+            sampleParcels = JSON.parse(document.getElementById('sample-parcels').textContent);
+            sampleBeacons = JSON.parse(document.getElementById('sample-beacons').textContent);
+            
+            document.getElementById('load-sample-data').textContent = 'Sample Data Loaded';
+            document.getElementById('load-sample-data').className = 'bg-gray-600 text-white py-2 px-4 rounded-md cursor-not-allowed';
+            
+            console.log('Sample data loaded:', { parcels: sampleParcels.features.length, beacons: sampleBeacons.features.length });
+        }
+
+        // Generate test PDF
+        async function generateTestPDF() {
+            const testMode = document.getElementById('test-mode').value;
+            const projection = document.getElementById('projection').value;
+            const interactive = document.getElementById('interactive').checked;
+            const layers = document.getElementById('layers').checked;
+            const measurements = document.getElementById('measurements').checked;
+            const adaptive = document.getElementById('adaptive').checked;
+            
+            if (!sampleParcels || !sampleBeacons) {
+                showResult('error', 'Please load sample data first');
+                return;
+            }
+
+            const testBtn = document.getElementById('test-btn');
+            const resultDiv = document.getElementById('test-result');
+            
+            testBtn.disabled = true;
+            testBtn.textContent = 'Generating...';
+            testBtn.className = 'w-full bg-gray-400 text-white py-2 px-4 rounded-md cursor-not-allowed';
+            
+            try {
+                const requestData = {
+                    parcels: sampleParcels,
+                    beacons: sampleBeacons,
+                    projection,
+                    extent: {
+                        minX: 2268490,
+                        minY: 7845,
+                        maxX: 2268505,
+                        maxY: 7870
+                    },
+                    metadata: {
+                        title: 'Test Survey Plan',
+                        surveyor: 'Test Surveyor',
+                        date: new Date().toISOString().split('T')[0],
+                        designation: 'Test Township',
+                        district: 'Test District'
+                    }
+                };
+
+                // Add enhanced options based on test mode
+                if (testMode === 'enhanced') {
+                    requestData.trueGeoPDF = true;
+                    requestData.interactive = interactive;
+                    requestData.enableLayers = layers;
+                    requestData.enableMeasurements = measurements;
+                    requestData.adaptiveRendering = adaptive;
+                } else if (testMode === 'validation') {
+                    // Just validate, don't generate
+                    const validationResponse = await fetch('http://localhost:3050/api/geopdf/validate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestData)
+                    });
+                    
+                    const validation = await validationResponse.json();
+                    showResult('success', `Validation completed: ${validation.valid ? 'Valid' : 'Invalid'}`);
+                    return;
+                }
+
+                const response = await fetch('http://localhost:3050/api/geopdf/vector', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestData)
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `test-${testMode}-survey-plan.pdf`;
+                    link.click();
+                    
+                    URL.revokeObjectURL(url);
+                    
+                    showResult('success', `PDF generated successfully (${blob.size} bytes)`);
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+            } catch (error) {
+                console.error('Test generation failed:', error);
+                showResult('error', `Generation failed: ${error.message}`);
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = 'Generate Test PDF';
+                testBtn.className = 'w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500';
+            }
+        }
+
+        // Show result
+        function showResult(type, message) {
+            const resultDiv = document.getElementById('test-result');
+            resultDiv.classList.remove('hidden');
+            
+            const bgColor = type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 
+                           type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 
+                           'bg-blue-50 border-blue-200 text-blue-700';
+            
+            const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+            
+            resultDiv.className = `${bgColor} px-4 py-3 rounded-md`;
+            resultDiv.innerHTML = `
+                <div class="flex items-center">
+                    <span class="text-lg mr-2">${icon}</span>
+                    <div>
+                        <p class="font-medium">${message}</p>
+                        <p class="text-sm opacity-75">Generated at ${new Date().toLocaleString()}</p>
+                    </div>
+                </div>
+            `;
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                resultDiv.classList.add('hidden');
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coordinate List Smoke Test</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #2c3e50;
+      border-bottom: 3px solid #3498db;
+      padding-bottom: 10px;
+    }
+    .test-section {
+      margin: 20px 0;
+      padding: 20px;
+      background: #f8f9fa;
+      border-left: 4px solid #3498db;
+      border-radius: 4px;
+    }
+    .test-section h2 {
+      margin-top: 0;
+      color: #2c3e50;
+    }
+    button {
+      background: #3498db;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 5px;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: #2980b9;
+    }
+    button:disabled {
+      background: #95a5a6;
+      cursor: not-allowed;
+    }
+    .result {
+      margin-top: 15px;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+    .success {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+    }
+    .error {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+    }
+    .info {
+      background: #d1ecf1;
+      border: 1px solid #bee5eb;
+      color: #0c5460;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin: 20px 0;
+    }
+    .stat-card {
+      background: white;
+      padding: 15px;
+      border-radius: 4px;
+      border: 1px solid #dee2e6;
+    }
+    .stat-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #3498db;
+    }
+    .stat-label {
+      color: #6c757d;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+    .console-output {
+      background: #2c3e50;
+      color: #ecf0f1;
+      padding: 15px;
+      border-radius: 4px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      margin-top: 15px;
+    }
+    .console-line {
+      margin: 2px 0;
+    }
+    .console-line.info { color: #3498db; }
+    .console-line.success { color: #2ecc71; }
+    .console-line.error { color: #e74c3c; }
+    .console-line.warn { color: #f39c12; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 Coordinate List Generation - Smoke Test</h1>
+    
+    <div class="test-section">
+      <h2>Test Configuration</h2>
+      <p>This smoke test verifies the Coordinate List generator works correctly with different dataset sizes.</p>
+      
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-value" id="testCount">0</div>
+          <div class="stat-label">Tests Run</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="passCount">0</div>
+          <div class="stat-label">Passed</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="failCount">0</div>
+          <div class="stat-label">Failed</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="duration">0s</div>
+          <div class="stat-label">Duration</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="test-section">
+      <h2>Quick Tests</h2>
+      <button onclick="runTest('small')">Test Small Dataset (10 points)</button>
+      <button onclick="runTest('medium')">Test Medium Dataset (100 points)</button>
+      <button onclick="runTest('large')">Test Large Dataset (541 points)</button>
+      <button onclick="runAllTests()">Run All Tests</button>
+      <button onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <div class="test-section">
+      <h2>Test Results</h2>
+      <div id="results"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>Console Output</h2>
+      <div class="console-output" id="console"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import the generators (adjust path as needed)
+    import { SimplifiedCadastralCombinedGenerator } from './src/utils/cadastral-combined-simple.ts'
+    
+    let testCount = 0
+    let passCount = 0
+    let failCount = 0
+    let startTime = 0
+
+    // Make functions available globally
+    window.runTest = runTest
+    window.runAllTests = runAllTests
+    window.clearResults = clearResults
+
+    function log(message, type = 'info') {
+      const console = document.getElementById('console')
+      const line = document.createElement('div')
+      line.className = `console-line ${type}`
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`
+      console.appendChild(line)
+      console.scrollTop = console.scrollHeight
+    }
+
+    function updateStats() {
+      document.getElementById('testCount').textContent = testCount
+      document.getElementById('passCount').textContent = passCount
+      document.getElementById('failCount').textContent = failCount
+      
+      if (startTime > 0) {
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1)
+        document.getElementById('duration').textContent = `${duration}s`
+      }
+    }
+
+    function createTestData(count) {
+      const points = []
+      for (let i = 1; i <= count; i++) {
+        points.push({
+          pointId: `P${i}`,
+          y: 500000 + i * 10,
+          x: 2000000 + i * 10,
+          status: i % 3 === 0 ? 'F' : 'P',
+          description: i % 2 === 0 ? 'Iron Peg' : 'Iron Pipe',
+          surveyDate: '2025-10-25'
+        })
+      }
+      return points
+    }
+
+    const surveyorInfo = {
+      name: 'Test Surveyor',
+      licenseNumber: 'LS001',
+      firm: 'Test Firm',
+      address: '123 Test Street',
+      surveyDate: 'October 2025',
+      projectTitle: 'Smoke Test Survey',
+      district: 'Test District'
+    }
+
+    async function runTest(size) {
+      const sizes = {
+        small: 10,
+        medium: 100,
+        large: 541
+      }
+      
+      const pointCount = sizes[size]
+      const testName = `${size.toUpperCase()} Dataset (${pointCount} points)`
+      
+      testCount++
+      updateStats()
+      
+      log(`Starting test: ${testName}`, 'info')
+      
+      const resultsDiv = document.getElementById('results')
+      const resultCard = document.createElement('div')
+      resultCard.className = 'result info'
+      resultCard.textContent = `⏳ Running: ${testName}...`
+      resultsDiv.appendChild(resultCard)
+      
+      try {
+        const testStart = Date.now()
+        
+        // Create test data
+        const surveyPoints = createTestData(pointCount)
+        log(`Created ${pointCount} test points`, 'info')
+        
+        // Generate combined document
+        const generator = new SimplifiedCadastralCombinedGenerator()
+        log('Generating combined document...', 'info')
+        
+        const result = await generator.generateCombinedDocument(surveyPoints, surveyorInfo)
+        
+        const testDuration = ((Date.now() - testStart) / 1000).toFixed(2)
+        
+        // Verify results
+        const checks = []
+        
+        checks.push({
+          name: 'Coordinate List PDF generated',
+          pass: !!result.coordinateListPDF
+        })
+        
+        checks.push({
+          name: 'Calculations Part 1 PDF generated',
+          pass: !!result.calculationsPart1PDF
+        })
+        
+        checks.push({
+          name: 'Coordinate List starts at page 100',
+          pass: result.coordinateListRange.start === 100
+        })
+        
+        checks.push({
+          name: 'Calculations starts after Coordinate List',
+          pass: result.calculationsPart1Range.start === result.coordinateListRange.end + 1
+        })
+        
+        checks.push({
+          name: 'Adjusted coordinates generated',
+          pass: result.adjustedCoordinates.length === pointCount
+        })
+        
+        checks.push({
+          name: 'All points have calculations page references',
+          pass: result.adjustedCoordinates.every(c => c.calculationsPage > 0)
+        })
+        
+        const allPassed = checks.every(c => c.pass)
+        
+        if (allPassed) {
+          passCount++
+          resultCard.className = 'result success'
+          resultCard.innerHTML = `
+✅ PASSED: ${testName}
+Duration: ${testDuration}s
+
+📊 Results:
+- Coordinate List: Pages ${result.coordinateListRange.start}-${result.coordinateListRange.end}
+- Calculations Part 1: Pages ${result.calculationsPart1Range.start}-${result.calculationsPart1Range.end}
+- Total Points: ${result.adjustedCoordinates.length}
+- Duplicate Points: ${result.summary.duplicatePoints}
+
+✓ All ${checks.length} checks passed
+          `
+          log(`✅ Test PASSED: ${testName} (${testDuration}s)`, 'success')
+        } else {
+          failCount++
+          resultCard.className = 'result error'
+          const failedChecks = checks.filter(c => !c.pass).map(c => `  ✗ ${c.name}`).join('\n')
+          resultCard.innerHTML = `
+❌ FAILED: ${testName}
+Duration: ${testDuration}s
+
+Failed checks:
+${failedChecks}
+          `
+          log(`❌ Test FAILED: ${testName}`, 'error')
+        }
+        
+      } catch (error) {
+        failCount++
+        resultCard.className = 'result error'
+        resultCard.innerHTML = `
+❌ ERROR: ${testName}
+
+${error.message}
+
+Stack trace:
+${error.stack}
+        `
+        log(`❌ Test ERROR: ${testName} - ${error.message}`, 'error')
+      }
+      
+      updateStats()
+    }
+
+    async function runAllTests() {
+      startTime = Date.now()
+      clearResults()
+      
+      log('='.repeat(60), 'info')
+      log('Starting full test suite...', 'info')
+      log('='.repeat(60), 'info')
+      
+      await runTest('small')
+      await runTest('medium')
+      await runTest('large')
+      
+      log('='.repeat(60), 'info')
+      log(`Test suite complete: ${passCount}/${testCount} passed`, passCount === testCount ? 'success' : 'error')
+      log('='.repeat(60), 'info')
+    }
+
+    function clearResults() {
+      document.getElementById('results').innerHTML = ''
+      document.getElementById('console').innerHTML = ''
+      testCount = 0
+      passCount = 0
+      failCount = 0
+      startTime = 0
+      updateStats()
+    }
+
+    // Initial log
+    log('Smoke test ready. Click a button to start testing.', 'info')
+  </script>
+</body>
+</html>

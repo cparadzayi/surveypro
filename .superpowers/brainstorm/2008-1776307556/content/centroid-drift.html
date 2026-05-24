@@ -1,0 +1,89 @@
+<h2>Centroid-drift fallback — how it works</h2>
+<p class="subtitle">When no candidate position fits wholly inside the parcel, the label "drifts" from its best candidate toward the pole of inaccessibility (the widest interior point). At each step it checks for polygon containment and collision with other already-placed labels.</p>
+
+<div style="margin: 24px 0;">
+<svg viewBox="0 0 740 300" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:740px;display:block;margin:0 auto;background:#f8f9fa;border-radius:8px;padding:12px;">
+
+  <!-- ── LEFT: thin diagonal sliver ── -->
+  <polygon points="60,270 95,30 125,30 90,270" fill="#e0f2fe" stroke="#0369a1" stroke-width="1.5"/>
+
+  <!-- pole of inaccessibility (widest point along long axis) -->
+  <circle cx="90" cy="152" r="3" fill="#0369a1" opacity="0.5"/>
+  <text x="90" y="148" text-anchor="middle" font-family="sans-serif" font-size="7" fill="#0369a1">POI</text>
+
+  <!-- Step 1: initial candidate (fits partially, corners clip) -->
+  <text x="91" y="100" text-anchor="middle" font-family="serif" font-size="10" fill="#94a3b8" font-weight="bold" transform="rotate(-43,91,100)">2042</text>
+  <circle cx="91" cy="100" r="2" fill="#94a3b8"/>
+  <text x="155" y="103" font-family="sans-serif" font-size="8" fill="#64748b">① initial candidate — clips</text>
+
+  <!-- Step 2: drifted 30% toward POI -->
+  <text x="91" y="127" text-anchor="middle" font-family="serif" font-size="10" fill="#60a5fa" font-weight="bold" transform="rotate(-43,91,127)">2042</text>
+  <circle cx="91" cy="127" r="2" fill="#60a5fa"/>
+  <text x="155" y="130" font-family="sans-serif" font-size="8" fill="#3b82f6">② 30% toward POI — still clips</text>
+
+  <!-- Step 3: drifted 60% toward POI -->
+  <text x="90" y="152" text-anchor="middle" font-family="serif" font-size="10" fill="#2563eb" font-weight="bold" transform="rotate(-43,90,152)">2042</text>
+  <circle cx="90" cy="152" r="2" fill="#2563eb"/>
+  <text x="155" y="155" font-family="sans-serif" font-size="8" fill="#1d4ed8">③ 60% toward POI — fits ✓ → stop here</text>
+
+  <!-- drift arrow -->
+  <line x1="91" y1="104" x2="90" y2="148" stroke="#0369a1" stroke-width="1" stroke-dasharray="3,2" marker-end="url(#arr)"/>
+  <defs>
+    <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#0369a1"/>
+    </marker>
+  </defs>
+
+  <text x="92" y="285" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#0369a1" font-weight="600">Thin sliver parcel</text>
+
+  <!-- ── RIGHT: sliver with existing edge label collision ── -->
+  <polygon points="390,270 425,30 455,30 420,270" fill="#fef9ee" stroke="#d97706" stroke-width="1.5"/>
+
+  <!-- existing edge label (already placed) — blocks upper zone -->
+  <rect x="396" y="78" width="32" height="10" rx="2" fill="#fef3c7" stroke="#d97706" stroke-width="1"/>
+  <text x="412" y="86" text-anchor="middle" font-family="serif" font-size="7" fill="#92400e">82.3</text>
+  <text x="412" y="74" text-anchor="middle" font-family="sans-serif" font-size="7" fill="#92400e">existing label</text>
+
+  <!-- Step 1: would collide with edge label -->
+  <text x="413" y="103" text-anchor="middle" font-family="serif" font-size="10" fill="#94a3b8" font-weight="bold" transform="rotate(-42,413,103)">2042</text>
+  <circle cx="413" cy="103" r="2" fill="#94a3b8"/>
+  <!-- X mark for collision -->
+  <text x="480" y="106" font-family="sans-serif" font-size="8" fill="#ef4444">① collides with edge label ✗</text>
+
+  <!-- pole of inaccessibility -->
+  <circle cx="422" cy="155" r="3" fill="#d97706" opacity="0.5"/>
+  <text x="422" y="151" text-anchor="middle" font-family="sans-serif" font-size="7" fill="#d97706">POI</text>
+
+  <!-- Step 2: drifted past collision zone, fits cleanly -->
+  <text x="421" y="163" text-anchor="middle" font-family="serif" font-size="10" fill="#15803d" font-weight="bold" transform="rotate(-42,421,163)">2042</text>
+  <circle cx="421" cy="163" r="2" fill="#15803d"/>
+  <text x="480" y="166" font-family="sans-serif" font-size="8" fill="#15803d">② drift past collision — fits ✓</text>
+
+  <!-- drift arrow -->
+  <line x1="413" y1="107" x2="421" y2="159" stroke="#d97706" stroke-width="1" stroke-dasharray="3,2" marker-end="url(#arr2)"/>
+  <defs>
+    <marker id="arr2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#d97706"/>
+    </marker>
+  </defs>
+
+  <text x="422" y="285" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#d97706" font-weight="600">Sliver with edge label conflict</text>
+
+  <!-- section labels -->
+  <text x="92" y="18" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#0369a1" font-weight="700">CASE 1</text>
+  <text x="422" y="18" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#d97706" font-weight="700">CASE 2</text>
+</svg>
+</div>
+
+<div class="section">
+  <h3>Algorithm sketch</h3>
+  <ol style="font-size:14px;line-height:1.8;color:#334155;padding-left:1.4em">
+    <li><strong>Normal search first</strong> — try all candidates at ±45° constraint across a grid; if any fit wholly inside with no label collision → use the highest-scoring one, done.</li>
+    <li><strong>Centroid-drift fallback</strong> — take the best-scoring candidate that didn't quite fit; generate 8–10 interpolated positions along the line from that candidate toward the pole of inaccessibility.</li>
+    <li><strong>At each drift step</strong> — test: (a) polygon containment of all 4 label corners, (b) no collision with already-placed labels in this parcel. First step that passes both → place there, stop.</li>
+    <li><strong>Hard fallback</strong> — if even the POI itself fails (extremely thin sliver), reduce font by 1pt and repeat from step 1. Stop at 7pt minimum.</li>
+    <li><strong>Final safety net</strong> — place at POI at 7pt, centre-inside constraint only (corners may graze). Ensures every parcel always has a visible label.</li>
+  </ol>
+</div>
+
+<p class="subtitle">Two benefits over the current centroid-drop: (1) the POI is geometrically the most "sheltered" interior point — less likely to graze a boundary than the arithmetic centroid; (2) the drift path naturally avoids edge labels already placed, so stand labels and dimension labels never stack.</p>

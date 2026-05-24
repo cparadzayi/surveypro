@@ -1,0 +1,14 @@
+{
+  "name": "surveypro-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:manual": "node build-manual.mjs",
+    "copy:manual": "node copy-manual.mjs",
+    "build-and-copy": "npm run build:manual && npm run copy:manual"
+  },
+  "devDependencies": {
+    "md-to-pdf": "^5.2.4",
+    "puppeteer": "^23.7.0"
+  }
+}

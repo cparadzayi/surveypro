@@ -1,0 +1,126 @@
+<h2>Placing suffix labels in wider whitespace — maintaining corner association</h2>
+<p class="subtitle">For narrow parcels like 2031–2034, the corner ends are the tightest spots. The label should travel toward the widest interior zone. When it moves far from its beacon circle, we need a way to keep the association clear.</p>
+
+<div style="margin:20px 0;">
+<svg viewBox="0 0 740 320" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:740px;display:block;margin:0 auto;background:#f8f9fa;border-radius:8px;padding:12px;">
+  <defs>
+    <marker id="la" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto"><circle cx="2.5" cy="2.5" r="2" fill="#0369a1"/></marker>
+    <marker id="lb" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto"><circle cx="2.5" cy="2.5" r="2" fill="#b45309"/></marker>
+    <marker id="lc" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto"><circle cx="2.5" cy="2.5" r="2" fill="#7c3aed"/></marker>
+  </defs>
+
+  <!-- ===== OPTION A: thin leader line ===== -->
+  <text x="120" y="16" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#0369a1" font-weight="700">A — leader line</text>
+
+  <!-- narrow diagonal parcel -->
+  <polygon points="70,290 95,40 145,40 120,290" fill="#e0f2fe" stroke="#374151" stroke-width="1.5"/>
+
+  <!-- POI -->
+  <circle cx="107" cy="165" r="3" fill="#0369a1" opacity="0.3"/>
+
+  <!-- Stand label at POI -->
+  <text x="107" y="168" text-anchor="middle" font-family="serif" font-size="11" fill="#1e3a5f" font-weight="bold">2031</text>
+
+  <!-- Beacon B — bottom narrow end -->
+  <circle cx="82" cy="278" r="3.5" fill="white" stroke="#374151" stroke-width="1.5"/>
+
+  <!-- Label "B" placed in wide zone, leader line back to beacon -->
+  <text x="104" y="235" text-anchor="middle" font-family="sans-serif" font-size="8.5" fill="#0369a1" font-weight="700">B</text>
+  <!-- thin leader from label to beacon circle -->
+  <line x1="100" y1="233" x2="86" y2="275" stroke="#0369a1" stroke-width="0.7" stroke-dasharray="2,2"/>
+
+  <!-- Beacon C — top narrow end -->
+  <circle cx="132" cy="52" r="3.5" fill="white" stroke="#374151" stroke-width="1.5"/>
+  <text x="115" y="92" text-anchor="middle" font-family="sans-serif" font-size="8.5" fill="#0369a1" font-weight="700">C</text>
+  <line x1="118" y1="88" x2="129" y2="56" stroke="#0369a1" stroke-width="0.7" stroke-dasharray="2,2"/>
+
+  <!-- Beacon A — top-left -->
+  <circle cx="95" cy="40" r="3.5" fill="white" stroke="#374151" stroke-width="1.5"/>
+  <text x="86" y="65" text-anchor="middle" font-family="sans-serif" font-size="8.5" fill="#0369a1" font-weight="700">A</text>
+  <line x1="89" y1="61" x2="96" y2="44" stroke="#0369a1" stroke-width="0.7" stroke-dasharray="2,2"/>
+
+  <!-- annotation -->
+  <text x="120" y="305" text-anchor="middle" font-family="sans-serif" font-size="8" fill="#0369a1">thin dashed leader</text>
+  <text x="120" y="315" text-anchor="middle" font-family="sans-serif" font-size="8" fill="#0369a1">to beacon circle</text>
+
+  <!-- ===== OPTION B: no leader, label at widest zone, bold font ===== -->
+  <text x="360" y="16" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#b45309" font-weight="700">B — no leader, label in wide zone</text>
+
+  <polygon points="310,290 335,40 385,40 360,290" fill="#fef9ee" stroke="#374151" stroke-width="1.5"/>
+
+  <!-- POI -->
+  <circle cx="347" cy="165" r="3" fill="#b45309" opacity="0.3"/>
+
+  <!-- Stand label -->
+  <text x="347" y="168" text-anchor="middle" font-family="serif" font-size="11" fill="#1e3a5f" font-weight="bold">2031</text>
+
+  <!-- Beacon B — bottom narrow end -->
+  <circle cx="322" cy="278" r="3.5" fill="white" stroke="#374151" stroke-width="1.5"/>
+  <!-- B label placed in wide zone, no leader — B sits below stand label -->
+  <text x="340" y="230" text-anchor="middle" font-family="sans-serif" font-size="8.5" fill="#b45309" font-weight="700">B</text>
+
+  <!-- Beacon C — top narrow end -->
+  <circle cx="372" cy="52" r="3.5" fill="white" stroke="#374151" stroke-width="1.5"/>
+  <text x="356" y="100" text-anchor="middle" font-family="sans-serif" font-size="8.5" fill="#b45309" font-weight="700">C</text>
+
+  <!-- Beacon A — top-left -->
+  <circle cx="335" cy="40" r="3.5" fill="white" stroke="#374151" stroke-width="1.5"/>
+  <!-- A is close enough to corner — short push -->
+  <text x="323" y="66" text-anchor="middle" font-family="sans-serif" font-size="8.5" fill="#b45309" font-weight="700">A</text>
+
+  <text x="360" y="305" text-anchor="middle" font-family="sans-serif" font-size="8" fill="#b45309">label in wide zone, no line</text>
+  <text x="360" y="315" text-anchor="middle" font-family="sans-serif" font-size="8" fill="#b45309">(may be ambiguous on crowded plans)</text>
+
+  <!-- ===== OPTION C: adaptive — near corner if room, leader if not ===== -->
+  <text x="610" y="16" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#7c3aed" font-weight="700">C — adaptive (recommended)</text>
+
+  <polygon points="560,290 585,40 635,40 610,290" fill="#faf5ff" stroke="#374151" stroke-width="1.5"/>
+
+  <!-- POI -->
+  <circle cx="597" cy="165" r="3" fill="#7c3aed" opacity="0.3"/>
+
+  <!-- Stand label -->
+  <text x="597" y="168" text-anchor="middle" font-family="serif" font-size="11" fill="#1e3a5f" font-weight="bold">2031</text>
+
+  <!-- Beacon B — narrow end, fits just inside with short push — NO leader needed -->
+  <circle cx="572" cy="278" r="3.5" fill="white" stroke="#374151" stroke-width="1.5"/>
+  <!-- short push — still close enough, no leader -->
+  <text x="586" y="260" text-anchor="middle" font-family="sans-serif" font-size="8.5" fill="#7c3aed" font-weight="700">B</text>
+
+  <!-- Beacon C — narrow end, too tight — drift to wide zone, leader added -->
+  <circle cx="622" cy="52" r="3.5" fill="white" stroke="#374151" stroke-width="1.5"/>
+  <text x="606" y="96" text-anchor="middle" font-family="sans-serif" font-size="8.5" fill="#7c3aed" font-weight="700">C</text>
+  <line x1="609" y1="92" x2="619" y2="56" stroke="#7c3aed" stroke-width="0.7" stroke-dasharray="2,2"/>
+
+  <!-- Beacon A — top-left, close enough — no leader -->
+  <circle cx="585" cy="40" r="3.5" fill="white" stroke="#374151" stroke-width="1.5"/>
+  <text x="573" y="66" text-anchor="middle" font-family="sans-serif" font-size="8.5" fill="#7c3aed" font-weight="700">A</text>
+
+  <text x="610" y="305" text-anchor="middle" font-family="sans-serif" font-size="8" fill="#7c3aed">short push if room → no leader</text>
+  <text x="610" y="315" text-anchor="middle" font-family="sans-serif" font-size="8" fill="#7c3aed">tight corner → wide zone + leader</text>
+</svg>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Always use a leader line when label drifts from corner</h3>
+      <p>Any time the label moves more than a threshold distance from its beacon circle, a thin dashed line connects them. Clean and unambiguous — the surveyor always knows which corner the label belongs to. Common in dense urban cadastral plans.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>No leader lines — place label in widest zone, rely on proximity</h3>
+      <p>Label always lands in the widest available whitespace. No extra lines drawn. Simpler on the plan but can become ambiguous when multiple beacons are close together or when the label drifts far from its corner.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Adaptive — short push stays at corner (no leader), long drift gets a leader line</h3>
+      <p>If the label fits close to its corner (within ~1.5× the beacon spacing), place it there with no leader. If it has to travel far into the interior to find whitespace, add a thin dashed leader back to the beacon circle. Best of both: clean plans where possible, unambiguous where needed.</p>
+    </div>
+  </div>
+</div>

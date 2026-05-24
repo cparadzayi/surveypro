@@ -1,0 +1,814 @@
+/**
+ * DXF Generator for Survey Plans — R12 (AC1009) format
+ * Mirrors the PDF labeling system: scale-aware text heights, shared-edge
+ * topology (distance one side / bearing the other), stand labels rotated to
+ * longest edge, BOLD text style for stand numbers.
+ *
+ * Compatible with AutoCAD R12 through AutoCAD 2026+.
+ * All geometry in Cape Lo ground coordinates (real-world metres).
+ *
+ * Layers:
+ *   OUTSIDE_FIGURE   – Outside figure boundary (red)
+ *   PARCELS           – Land parcel boundaries (white/black)
+ *   BEACONS           – Beacon circles (green)
+ *   BEACON_LABELS     – Beacon name text (green)
+ *   DISTANCES         – Edge distance annotations (cyan)
+ *   DIRECTIONS        – Edge bearing annotations (magenta)
+ *   STAND_NUMBERS     – Parcel stand numbers (yellow, BOLD style)
+ *   TITLE_BLOCK       – Title and metadata text (white)
+ */
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function normalizeCapeLoYX(y, x) {
+  if (!Number.isFinite(y) || !Number.isFinite(x)) return [y, x];
+  const ay = Math.abs(y);
+  const ax = Math.abs(x);
+  if ((ay > 1000000 && ax < 1000000) || ay > ax * 2) return [x, y];
+  return [y, x];
+}
+
+function capeLoToAutoCAD(capeY, capeX) {
+  const [y, x] = normalizeCapeLoYX(capeY, capeX);
+  return { x: -y, y: -x };
+}
+
+/** Shoelace centroid in AutoCAD space from an array of AutoCAD {x,y} points */
+function shoelaceCentroid(pts) {
+  let twiceArea = 0, cx = 0, cy = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p0 = pts[i], p1 = pts[(i + 1) % pts.length];
+    const cross = p0.x * p1.y - p1.x * p0.y;
+    twiceArea += cross;
+    cx += (p0.x + p1.x) * cross;
+    cy += (p0.y + p1.y) * cross;
+  }
+  if (Math.abs(twiceArea) > 1e-6) {
+    return { x: cx / (3 * twiceArea), y: cy / (3 * twiceArea) };
+  }
+  // Fallback: simple average
+  let sx = 0, sy = 0;
+  pts.forEach((q) => { sx += q.x; sy += q.y; });
+  return { x: sx / pts.length, y: sy / pts.length };
+}
+
+/** Polygon area from AutoCAD {x,y} points (shoelace, absolute) */
+function polygonAreaGround(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    a += pts[i].x * pts[j].y;
+    a -= pts[j].x * pts[i].y;
+  }
+  return Math.abs(a / 2);
+}
+
+function degToDMS(deg) {
+  const d = Math.floor(deg);
+  const rm = (deg - d) * 60;
+  const m = Math.floor(rm);
+  const s = Math.round((rm - m) * 60);
+  return `${d}d${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"`;
+}
+
+/** Shared-edge key: sorted, rounded to 10mm — matches PDF's createEdgeKey */
+function createEdgeKey(c1, c2) {
+  const y1 = Math.round(c1[0] * 100) / 100;
+  const x1 = Math.round(c1[1] * 100) / 100;
+  const y2 = Math.round(c2[0] * 100) / 100;
+  const x2 = Math.round(c2[1] * 100) / 100;
+  const pts = [[y1, x1], [y2, x2]].sort((a, b) => a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]);
+  return `${pts[0][0]},${pts[0][1]}_${pts[1][0]},${pts[1][1]}`;
+}
+
+/** Point-in-polygon test (ray casting) for AutoCAD {x,y} points */
+function isPointInPolygon(px, py, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Minimum distance from point (px,py) to any edge of polygon [{x,y}...] */
+function minDistToPolygon(px, py, polygon) {
+  let minD = Infinity;
+  for (let i = 0; i < polygon.length; i++) {
+    const j = (i + 1) % polygon.length;
+    const ax = polygon[i].x, ay = polygon[i].y;
+    const bx = polygon[j].x, by = polygon[j].y;
+    const dx = bx - ax, dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 1e-12) { // degenerate edge
+      const d = Math.sqrt((px - ax) * (px - ax) + (py - ay) * (py - ay));
+      if (d < minD) minD = d;
+      continue;
+    }
+    let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax + t * dx, cy = ay + t * dy;
+    const d = Math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+    if (d < minD) minD = d;
+  }
+  return minD;
+}
+
+/** Check if point is inside polygon OR within buffer distance of its boundary */
+function isWithinPolygonBuffer(px, py, polygon, buffer) {
+  if (isPointInPolygon(px, py, polygon)) return true;
+  return minDistToPolygon(px, py, polygon) <= buffer;
+}
+
+/** Parse scale denominator from "1:2000" or "1:500" etc. */
+function parseScaleDenom(scaleStr) {
+  if (!scaleStr) return 2500;
+  const m = String(scaleStr).match(/1\s*:\s*(\d+)/);
+  return m ? parseInt(m[1], 10) : 2500;
+}
+
+/** ISO paper sizes in mm (landscape orientation: width > height) */
+const PAPER_SIZES = {
+  'ISO_A4': { w: 297, h: 210 },
+  'ISO_A3': { w: 420, h: 297 },
+  'ISO_A2': { w: 594, h: 420 },
+  'ISO_A1': { w: 841, h: 594 },
+  'ISO_A0': { w: 1189, h: 841 },
+};
+
+/** Convert PDF point size to ground metres at given scale */
+function ptToGround(pt, S) { return pt * S * 0.000352778; }
+
+/** Convert paper mm to ground metres at given scale */
+function mmToGround(mm, S) { return mm * S / 1000; }
+
+// ── DXF R12 primitives ──────────────────────────────────────────────────────
+function p(code, value) {
+  return String(code).padStart(3) + '\n' + value + '\n';
+}
+
+// ── Main generator ──────────────────────────────────────────────────────────
+
+export function generateDXF(options, logger) {
+  const {
+    parcels,
+    beacons,
+    outsideFigureData,
+    metadata = {},
+    projection = 'Cape Lo',
+    scale,
+    sheetSize = 'ISO_A2',
+  } = options;
+
+  const declaredS = parseScaleDenom(scale);
+  const paper = PAPER_SIZES[sheetSize] || PAPER_SIZES['ISO_A2'];
+
+  // ── Pre-scan drawing extent (outside figure + parcels ONLY, not unfiltered beacons) ──
+  // Beacons are excluded because pre-filtering they span a huge area (e.g. 268 beacons).
+  // Filtered beacons (within OF + 5m buffer) will all be inside the outside figure extent.
+  let extMinX = Infinity, extMinY = Infinity, extMaxX = -Infinity, extMaxY = -Infinity;
+  function trackExt(pt) {
+    if (pt.x < extMinX) extMinX = pt.x;
+    if (pt.y < extMinY) extMinY = pt.y;
+    if (pt.x > extMaxX) extMaxX = pt.x;
+    if (pt.y > extMaxY) extMaxY = pt.y;
+  }
+  // Outside figure edges define the primary extent
+  if (outsideFigureData?.edges) {
+    for (const e of outsideFigureData.edges) { trackExt(capeLoToAutoCAD(e.y, e.x)); }
+  }
+  // Also include non-outside-figure parcels (they should be inside OF, but just in case)
+  if (parcels?.features) {
+    for (const f of parcels.features) {
+      const st = f.properties?.stand || '';
+      if (f.properties?.isOutsideFigure || st.toLowerCase().includes('outside figure')) continue;
+      const coords = f.geometry?.coordinates?.[0];
+      if (!coords) continue;
+      for (const c of coords) { trackExt(capeLoToAutoCAD(c[0], c[1])); }
+    }
+  }
+  // Add 5m buffer for beacons that sit just outside the figure
+  const extBuffer = 10; // metres
+  extMinX -= extBuffer; extMinY -= extBuffer;
+  extMaxX += extBuffer; extMaxY += extBuffer;
+  const drawW = (extMaxX - extMinX) || 100;
+  const drawH = (extMaxY - extMinY) || 100;
+
+  // ── Use declared scale from PDF export; auto-fit only as fallback ──
+  let S;
+  if (declaredS) {
+    S = declaredS;
+  } else {
+    // Fallback: auto-fit drawing to ~70% of paper drawing zone
+    const cW = paper.w - 50 - 150, cH = paper.h - 50 - 50;
+    const aW = cW * 0.70, aH = cH * 0.55 * 0.70;
+    S = Math.ceil(Math.max((drawW * 1000) / aW, (drawH * 1000) / aH) / 50) * 50;
+  }
+
+  logger.info(`[DXF] Drawing extent: ${drawW.toFixed(1)}m x ${drawH.toFixed(1)}m`);
+  logger.info(`[DXF] Using scale 1:${S} (declared: 1:${declaredS}, sheet ${sheetSize} ${paper.w}x${paper.h}mm)`);
+
+  // ── Scale-aware sizes (matching pdfkitLabeling.js) ──
+  let distPt, bearPt;
+  if (S <= 500)       { distPt = 7; bearPt = 7; }
+  else if (S <= 1000) { distPt = 7; bearPt = 7; }
+  else if (S <= 2000) { distPt = 8; bearPt = 7; }
+  else                { distPt = 9; bearPt = 8; }
+
+  const distHeight = ptToGround(distPt, S);
+  const bearHeight = ptToGround(bearPt, S);
+  const edgeOffset = mmToGround(3, S);
+  const pairGap = ptToGround(0.6, S);
+  const beaconRadius = ptToGround(1.5, S);
+  const beaconLabelHeight = ptToGround(6, S);
+  const beaconLabelOffset = beaconRadius + ptToGround(1, S);
+
+  logger.info(`[DXF] Sizes at 1:${S}: dist=${distHeight.toFixed(3)}m, bear=${bearHeight.toFixed(3)}m, offset=${edgeOffset.toFixed(3)}m, beaconR=${beaconRadius.toFixed(3)}m`);
+
+  // ACI colors: 1=red, 2=yellow, 3=green, 4=cyan, 5=blue, 6=magenta, 7=white
+  const layers = [
+    { name: 'OUTSIDE_FIGURE',  color: 1 },
+    { name: 'PARCELS',         color: 7 },
+    { name: 'BEACONS',         color: 3 },
+    { name: 'BEACON_LABELS',   color: 3 },
+    { name: 'DISTANCES',       color: 4 },
+    { name: 'DIRECTIONS',      color: 6 },
+    { name: 'STAND_NUMBERS',   color: 2 },
+    { name: 'TITLE_BLOCK',     color: 7 },
+  ];
+
+  // Track extents
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  function trackPt(pt) {
+    if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return;
+    minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y);
+    maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y);
+  }
+
+  // ── Build entities ──
+  let ent = '';
+
+  function addPolyline(layer, points) {
+    ent += p(0, 'POLYLINE');
+    ent += p(8, layer);
+    ent += p(66, '1');
+    ent += p(70, '1');
+    for (const pt of points) {
+      ent += p(0, 'VERTEX');
+      ent += p(8, layer);
+      ent += p(10, pt.x.toFixed(4));
+      ent += p(20, pt.y.toFixed(4));
+    }
+    ent += p(0, 'SEQEND');
+    ent += p(8, layer);
+  }
+
+  function addCircle(layer, cx, cy, r) {
+    ent += p(0, 'CIRCLE');
+    ent += p(8, layer);
+    ent += p(10, cx.toFixed(4));
+    ent += p(20, cy.toFixed(4));
+    ent += p(40, r.toFixed(4));
+  }
+
+  function addText(layer, x, y, text, height, rotation, style) {
+    ent += p(0, 'TEXT');
+    ent += p(8, layer);
+    ent += p(10, x.toFixed(4));
+    ent += p(20, y.toFixed(4));
+    ent += p(40, height.toFixed(4));
+    ent += p(1, text);
+    if (rotation && rotation !== 0) {
+      ent += p(50, rotation.toFixed(4));
+    }
+    if (style) {
+      ent += p(7, style);
+    }
+  }
+
+  function addLine(layer, x1, y1, x2, y2) {
+    ent += p(0, 'LINE');
+    ent += p(8, layer);
+    ent += p(10, x1.toFixed(4));
+    ent += p(20, y1.toFixed(4));
+    ent += p(11, x2.toFixed(4));
+    ent += p(21, y2.toFixed(4));
+  }
+
+  function addRect(layer, x1, y1, x2, y2) {
+    addLine(layer, x1, y1, x2, y1); // bottom
+    addLine(layer, x2, y1, x2, y2); // right
+    addLine(layer, x2, y2, x1, y2); // top
+    addLine(layer, x1, y2, x1, y1); // left
+  }
+
+  // ── 1. Outside Figure boundary ──
+  let ofPolygon = null; // AutoCAD coords for beacon filtering
+  if (outsideFigureData?.edges?.length > 0) {
+    const ofPts = outsideFigureData.edges.map((e) => {
+      const pt = capeLoToAutoCAD(e.y, e.x); trackPt(pt); return pt;
+    });
+    addPolyline('OUTSIDE_FIGURE', ofPts);
+    ofPolygon = ofPts; // save for beacon filtering
+    logger.info(`[DXF] Outside Figure: ${ofPts.length} vertices`);
+  }
+
+  // ── 2. Identify shared edges (topology — same as PDF) ──
+  const edgeOccurrences = new Map();
+  if (parcels?.features) {
+    for (const feature of parcels.features) {
+      const coords = feature.geometry?.coordinates?.[0];
+      if (!coords) continue;
+      for (let i = 0; i < coords.length - 1; i++) {
+        const key = createEdgeKey(coords[i], coords[i + 1]);
+        edgeOccurrences.set(key, (edgeOccurrences.get(key) || 0) + 1);
+      }
+    }
+  }
+  const sharedEdges = new Set();
+  edgeOccurrences.forEach((count, key) => { if (count > 1) sharedEdges.add(key); });
+  const labeledEdges = new Map(); // edgeKey → { distance: bool, bearing: bool }
+  logger.info(`[DXF] Shared edges detected: ${sharedEdges.size}`);
+
+  // ── 3. Parcels + stand numbers + edge labels ──
+  let parcelCount = 0, edgeLabelCount = 0;
+  if (parcels?.features) {
+    for (const feature of parcels.features) {
+      const props = feature.properties || {};
+      const stand = props.stand || '';
+      if (props.isOutsideFigure || stand.toLowerCase().includes('outside figure')) continue;
+      const coords = feature.geometry?.coordinates?.[0];
+      if (!coords || coords.length < 3) continue;
+
+      // Build AutoCAD polygon (unique vertices, no closing duplicate)
+      const polyPts = coords.slice(0, -1).map((c) => {
+        const pt = capeLoToAutoCAD(c[0], c[1]); trackPt(pt); return pt;
+      });
+      addPolyline('PARCELS', polyPts);
+      parcelCount++;
+
+      // ── Stand label: shoelace centroid, rotated to longest edge ──
+      const centroid = shoelaceCentroid(polyPts);
+      const area = polygonAreaGround(polyPts);
+
+      // Adaptive stand font size (matches PDF's calculateStandLabelPosition)
+      let standPt;
+      if (area > 10000) standPt = 16;
+      else if (area > 2000) standPt = 14;
+      else if (area > 500) standPt = 12;
+      else if (area > 100) standPt = 10;
+      else standPt = 8;
+      const standHeight = ptToGround(standPt, S);
+
+      // Find longest edge angle (matches PDF's renderDeferredStandLabels)
+      let longestLen = 0, longestAngle = 0;
+      for (let i = 0; i < polyPts.length; i++) {
+        const j = (i + 1) % polyPts.length;
+        const dx = polyPts[j].x - polyPts[i].x;
+        const dy = polyPts[j].y - polyPts[i].y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > longestLen) {
+          longestLen = len;
+          longestAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+        }
+      }
+      if (longestAngle > 90) longestAngle -= 180;
+      if (longestAngle < -90) longestAngle += 180;
+
+      if (Number.isFinite(centroid.x) && Number.isFinite(centroid.y)) {
+        addText('STAND_NUMBERS', centroid.x, centroid.y, String(stand), standHeight, longestAngle, 'BOLD');
+      }
+
+      // ── Edge labels with shared-edge topology ──
+      const edges = props.edges || [];
+      for (let i = 0; i < edges.length && i < coords.length - 1; i++) {
+        const edge = edges[i];
+        if (!edge) continue;
+
+        const edgeKey = createEdgeKey(coords[i], coords[i + 1]);
+        const isShared = sharedEdges.has(edgeKey);
+        const edgeInfo = labeledEdges.get(edgeKey);
+
+        // Determine label mode (matches PDF's renderEdgeLabels logic)
+        let labelMode = 'both';
+        if (edgeInfo) {
+          if (edgeInfo.distance && edgeInfo.bearing) continue; // fully labeled
+          else if (edgeInfo.distance && !edgeInfo.bearing) labelMode = 'bearing-only';
+          else if (!edgeInfo.distance && edgeInfo.bearing) labelMode = 'distance-only';
+        } else if (isShared) {
+          labelMode = 'distance-only'; // first parcel gets distance, second gets bearing
+        }
+
+        const a = capeLoToAutoCAD(coords[i][0], coords[i][1]);
+        const b = capeLoToAutoCAD(coords[i + 1][0], coords[i + 1][1]);
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 0.01) continue;
+
+        // Edge angle (keep text readable)
+        let ang = Math.atan2(dy, dx) * (180 / Math.PI);
+        if (ang > 90 || ang < -90) ang += 180;
+
+        // Perpendicular toward centroid (matches PDF)
+        let nx = -dy / len, ny = dx / len;
+        if (nx * (centroid.x - mx) + ny * (centroid.y - my) < 0) { nx = -nx; ny = -ny; }
+
+        // Distance text
+        const distVal = edge.distanceRounded ?? edge.distance;
+        const distNum = typeof distVal === 'number' ? distVal : parseFloat(distVal);
+        const distText = Number.isFinite(distNum) ? distNum.toFixed(2) : null;
+
+        // Direction text
+        const bearDeg = typeof edge.bearing === 'number' ? edge.bearing
+          : typeof edge.bearingDeg === 'number' ? edge.bearingDeg
+          : parseFloat(edge.bearing);
+        const dirText = Number.isFinite(bearDeg) ? (edge.directionDMS || degToDMS(bearDeg)) : null;
+
+        if (labelMode === 'both' || labelMode === 'distance-only') {
+          if (distText) {
+            addText('DISTANCES', mx + nx * edgeOffset, my + ny * edgeOffset, distText, distHeight, ang);
+            edgeLabelCount++;
+          }
+          // Register this edge
+          if (!edgeInfo) {
+            labeledEdges.set(edgeKey, { distance: true, bearing: false });
+          } else {
+            edgeInfo.distance = true;
+          }
+          // For non-shared 'both': place bearing stacked below distance
+          if (labelMode === 'both' && dirText) {
+            const bearOff = edgeOffset + distHeight / 2 + pairGap + bearHeight / 2;
+            addText('DIRECTIONS', mx + nx * bearOff, my + ny * bearOff, dirText, bearHeight, ang);
+            edgeLabelCount++;
+            const stored = labeledEdges.get(edgeKey);
+            if (stored) stored.bearing = true;
+          }
+        }
+
+        if (labelMode === 'bearing-only' && dirText) {
+          // Shared edge: bearing placed in THIS (second) parcel at 3mm offset
+          addText('DIRECTIONS', mx + nx * edgeOffset, my + ny * edgeOffset, dirText, bearHeight, ang);
+          edgeLabelCount++;
+          if (edgeInfo) edgeInfo.bearing = true;
+        }
+      }
+    }
+  }
+  logger.info(`[DXF] Parcels: ${parcelCount}, Edge labels: ${edgeLabelCount}`);
+
+  // ── 4. Beacons (filtered to outside figure + 2m buffer) ──
+  const BEACON_BUFFER = 2; // metres
+  let beaconCount = 0, beaconsSkipped = 0;
+  if (beacons?.features) {
+    for (const feature of beacons.features) {
+      const rc = feature.geometry?.coordinates;
+      if (!Array.isArray(rc) || rc.length < 2) continue;
+      const pt = capeLoToAutoCAD(rc[0], rc[1]);
+      if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
+
+      // Filter: only beacons within outside figure + 2m buffer
+      if (ofPolygon && !isWithinPolygonBuffer(pt.x, pt.y, ofPolygon, BEACON_BUFFER)) {
+        beaconsSkipped++;
+        continue;
+      }
+
+      trackPt(pt);
+      addCircle('BEACONS', pt.x, pt.y, beaconRadius);
+      const name = feature.properties?.name || feature.properties?.beacon_name || '';
+      if (name) addText('BEACON_LABELS', pt.x + beaconLabelOffset, pt.y + beaconLabelOffset, name, beaconLabelHeight);
+      beaconCount++;
+    }
+  }
+  logger.info(`[DXF] Beacons: ${beaconCount} included, ${beaconsSkipped} filtered out (outside figure + ${BEACON_BUFFER}m buffer)`);
+
+  // ── 5. Page layout (matching PDF structure) ──
+  const mm = (v) => mmToGround(v, S); // shorthand
+  const pt = (v) => ptToGround(v, S);
+
+  // Extract central meridian
+  const loMatch = String(projection).match(/222(\d+)/);
+  const centralMeridian = loMatch ? loMatch[1] : '31';
+
+  // Text sizes
+  const hTitle = pt(16);     // GENERAL PLAN
+  const hSub = pt(10);       // subtitles
+  const hBody = pt(7);       // table body
+  const hHead = pt(8);       // table headers
+  const rH = hBody * 1.6;    // row height
+
+  // Drawing bounds
+  const dL = minX || 0, dR = maxX || 0, dT = maxY || 0, dB = minY || 0;
+  const dW = dR - dL, dH = dT - dB;
+  const dCX = (dL + dR) / 2;
+
+  // ── Page frame from actual paper size with exact margins ──
+  // Margins: L=50mm, T=50mm, B=50mm, R=150mm (endorsements in right margin)
+  const mL = mm(50), mT = mm(50), mB = mm(50), mR = mm(150);
+  const pageW = mm(paper.w);   // full paper width in ground
+  const pageH = mm(paper.h);   // full paper height in ground
+
+  // Content area dimensions (inside margins, excluding endorsements)
+  const contentW = pageW - mL - mR;   // 594 - 50 - 150 = 394mm
+  const contentH = pageH - mT - mB;   // 420 - 50 - 50 = 320mm
+
+  // Page positioned so drawing is centered in content area
+  const contentCX = dCX;                              // drawing centered horizontally
+  const contentCY = (dT + dB) / 2;                    // drawing centered vertically
+
+  // Page edges (outer border)
+  const pageL = contentCX - contentW / 2 - mL;       // left edge of paper
+  const pageR = pageL + pageW;                        // right edge of paper
+  const pageB = contentCY - contentH / 2 - mB;       // bottom edge of paper
+  const pageT = pageB + pageH;                        // top edge of paper
+
+  // Content area edges (inside margins)
+  const cntL = pageL + mL;                            // content left  (50mm from left)
+  const cntR = pageR - mR;                            // content right (150mm from right)
+  const cntT = pageT - mT;                            // content top   (50mm from top)
+  const cntB = pageB + mB;                            // content bottom(50mm from bottom)
+
+  // Endorsements column (in the right margin area)
+  const endDivX = cntR;                               // vertical divider at content right
+  const endorseL = endDivX + mm(3);                   // endorsements text start
+
+  // Layout zones within content area
+  // Title zone: top 20% of content, Tables zone: bottom 40% of content
+  const titleZoneH = contentH * 0.20;
+  const tableZoneH = contentH * 0.40;
+  const drawDivY = cntB + tableZoneH;                // horizontal divider above tables
+  const titleDivY = cntT - titleZoneH;               // not drawn but used for reference
+
+  logger.info(`[DXF] Margins: L=${50}mm T=${50}mm B=${50}mm R=${150}mm, Content: ${(contentW / mm(1)).toFixed(0)}x${(contentH / mm(1)).toFixed(0)}mm`);
+
+  // Collect surveyed parcels (exclude outside figure)
+  const surveyedParcels = [];
+  if (parcels?.features) {
+    for (const f of parcels.features) {
+      const st = f.properties?.stand || '';
+      if (f.properties?.isOutsideFigure || st.toLowerCase().includes('outside figure')) continue;
+      surveyedParcels.push({ stand: st, area_m2: f.properties?.area_m2 || 0 });
+    }
+  }
+  surveyedParcels.sort((a, b) => {
+    const na = parseInt(a.stand) || 0, nb = parseInt(b.stand) || 0;
+    return na - nb || a.stand.localeCompare(b.stand);
+  });
+
+  // ── PAGE FRAME + DIVIDERS ──
+  const TB = 'TITLE_BLOCK';
+  addRect(TB, pageL, pageB, pageR, pageT);           // outer paper border
+  // Content area border (margin lines)
+  addRect(TB, cntL, cntB, cntR, cntT);               // content border
+  addLine(TB, endDivX, pageB, endDivX, pageT);       // endorsements divider (full height)
+  addLine(TB, cntL, drawDivY, cntR, drawDivY);       // below drawing (tables divider)
+
+  // ── A) TITLE ZONE (within top margin area, centered in content) ──
+  const txC = (cntL + cntR) / 2; // center of content area
+  let ty = cntT - mm(8);
+  addText(TB, txC, ty, 'GENERAL PLAN', hTitle, 0, 'BOLD');
+  ty -= hTitle * 1.6;
+  if (metadata.surveyOf) {
+    addText(TB, txC, ty, metadata.surveyOf, hSub, 0, 'BOLD');
+    ty -= hSub * 1.6;
+  }
+  const standList = surveyedParcels.map(sp => sp.stand).join(', ');
+  if (metadata.township && standList) {
+    const desc = `Survey of Stands ${standList}, ${metadata.township} Township, ${metadata.district || ''} District`;
+    addText(TB, txC, ty, desc, hBody);
+    ty -= hBody * 1.6;
+  }
+  ty -= mm(3);
+  addText(TB, txC, ty, `SCALE 1:${S}`, hSub, 0, 'BOLD');
+
+  // ── B) ENDORSEMENTS (right margin column: 150mm) ──
+  const eX = endorseL;
+  const endorseR = pageR - mm(5);        // right edge with small padding
+  const endorseColW = endorseR - eX;     // usable width in endorsements
+  let eY = cntT;
+  addText(TB, eX, eY, 'ENDORSEMENTS', hHead, 0, 'BOLD');
+  addLine(TB, endDivX, eY - mm(2), pageR, eY - mm(2)); // underline
+  eY -= mm(8);
+  // Column headers
+  addText(TB, eX, eY, 'No.', hBody, 0, 'BOLD');
+  addText(TB, eX + mm(10), eY, 'STATEMENT', hBody, 0, 'BOLD');
+  addText(TB, eX + mm(90), eY, 'Date', hBody, 0, 'BOLD');
+  addText(TB, eX + mm(110), eY, 'Surveyor-General', hBody, 0, 'BOLD');
+  addLine(TB, endDivX, eY - mm(2), pageR, eY - mm(2));
+  eY -= mm(6);
+  addText(TB, eX, eY, '1.', hBody);
+  addText(TB, eX + mm(10), eY, 'Dispensation Certificate No. ............ relates to this', hBody);
+  eY -= rH;
+  addText(TB, eX + mm(10), eY, 'General Plan.', hBody);
+
+  // ── C) BOTTOM ZONE LAYOUT (within content area, below drawDivY) ──
+  // Split into 3 columns: Schedule (28%), Statement+OFData (42%), Approved (30%)
+  const col1L = cntL + mm(3);                            // schedule column
+  const col1R = cntL + contentW * 0.28;
+  const col2L = col1R + mm(3);                            // statement + OF data column
+  const col2R = col1R + contentW * 0.42;
+  const col3L = col2R + mm(3);                            // approved + coords column
+  const col3R = cntR - mm(3);
+
+  // Vertical dividers in bottom zone
+  addLine(TB, col1R, drawDivY, col1R, cntB);
+  addLine(TB, col2R, drawDivY, col2R, cntB);
+
+  // ── C1) SCHEDULE OF AREAS (bottom-left column) ──
+  let sY = drawDivY - mm(5);
+  addText(TB, col1L, sY, 'SCHEDULE OF AREAS', hHead, 0, 'BOLD');
+  sY -= mm(5);
+  // Table header
+  const scW = col1R - col1L;
+  addText(TB, col1L, sY, 'STAND', hBody, 0, 'BOLD');
+  addText(TB, col1L + scW * 0.35, sY, 'AREAS', hBody, 0, 'BOLD');
+  addText(TB, col1L, sY - hBody * 0.8, 'No.', hBody, 0, 'BOLD');
+  addText(TB, col1L + scW * 0.35, sY - hBody * 0.8, 'SQ. METRES', hBody, 0, 'BOLD');
+  addLine(TB, col1L, sY - mm(5), col1R - mm(3), sY - mm(5));
+  sY -= mm(7);
+  // Data rows
+  for (const sp of surveyedParcels) {
+    addText(TB, col1L, sY, String(sp.stand), hBody);
+    addText(TB, col1L + scW * 0.35, sY, Math.round(sp.area_m2).toString(), hBody);
+    sY -= rH;
+  }
+  // BEACON DESCRIPTION (below schedule)
+  sY -= mm(8);
+  addText(TB, col1L, sY, 'BEACON DESCRIPTION', hHead, 0, 'BOLD');
+  sY -= rH * 1.2;
+  addText(TB, col1L, sY, 'Others:  12mm iron peg in concrete', hBody);
+
+  // ── C2) SURVEY STATEMENT + OUTSIDE FIGURE DATA (center column) ──
+  let cY = drawDivY - mm(5);
+  // Statement
+  if (metadata.date) {
+    addText(TB, col2L, cY, `Surveyed in ${metadata.date} by me`, hBody);
+    cY -= rH * 1.5;
+  }
+  if (metadata.surveyor) {
+    addText(TB, col2L, cY, metadata.surveyor, hSub, 0, 'BOLD');
+    cY -= rH;
+    addText(TB, col2L, cY, '(Land Surveyor, Zim)', hBody);
+    cY -= rH * 1.5;
+  }
+
+  // Horizontal divider before OF data
+  addLine(TB, col2L - mm(3), cY + mm(2), col3R + mm(3), cY + mm(2));
+  cY -= mm(3);
+
+  // Outside Figure Data table
+  const c = (off) => col2L + off; // offset helper
+  const cS = mm(0), cM = mm(28), cD = mm(50), cK = mm(78);
+  const cCY = mm(95), cCX = mm(115);
+
+  addText(TB, c(cS), cY, 'OUTSIDE FIGURE DATA', hHead, 0, 'BOLD');
+  addText(TB, c(cCY), cY, `CO-ORDINATES`, hHead, 0, 'BOLD');
+  cY -= rH * 0.8;
+  addText(TB, c(cCY), cY, `System: Lo ${centralMeridian}`, hBody);
+  cY -= rH * 0.6;
+  // Add vertical divider between OF data and coordinates
+  const coordDivX = c(cCY) - mm(3);
+  addLine(TB, coordDivX, cY + rH * 1.5, coordDivX, cY - rH * ((outsideFigureData?.edges?.length || 0) + 1));
+
+  // Column headers
+  addLine(TB, col2L - mm(3), cY + mm(2), col3R + mm(3), cY + mm(2));
+  addText(TB, c(cS), cY, 'SIDES', hBody, 0, 'BOLD');
+  addText(TB, c(cM), cY, 'Metres', hBody, 0, 'BOLD');
+  addText(TB, c(cD), cY, 'DIRECTION', hBody, 0, 'BOLD');
+  addText(TB, c(cK), cY, 'Constants', hBody, 0, 'BOLD');
+  addText(TB, c(cCY), cY, 'Y', hBody, 0, 'BOLD');
+  addText(TB, c(cCX), cY, 'X', hBody, 0, 'BOLD');
+  addLine(TB, col2L - mm(3), cY - mm(2), col3R + mm(3), cY - mm(2));
+  cY -= rH;
+
+  // Data rows
+  if (outsideFigureData?.edges) {
+    for (const edge of outsideFigureData.edges) {
+      const side = edge.side || '';
+      const dist = typeof edge.distance === 'number' ? edge.distance.toFixed(2) : String(edge.distance || '');
+      const dir = edge.direction || '';
+      const constId = edge.pointId || '';
+      const yV = typeof edge.y === 'number' ? (edge.y >= 0 ? '+' : '') + edge.y.toFixed(2) : '';
+      const xV = typeof edge.x === 'number' ? (edge.x >= 0 ? '+' : '') + edge.x.toFixed(2) : '';
+      addText(TB, c(cS), cY, side, hBody);
+      addText(TB, c(cM), cY, dist, hBody);
+      addText(TB, c(cD), cY, dir, hBody);
+      addText(TB, c(cK), cY, constId, hBody);
+      addText(TB, c(cCY), cY, yV, hBody);
+      addText(TB, c(cCX), cY, xV, hBody);
+      cY -= rH;
+    }
+  }
+
+  // ── C3) APPROVED BOX (right bottom column) ──
+  let aY = drawDivY - mm(5);
+  const aCX = (col3L + col3R) / 2;
+  addRect(TB, col3L, aY - mm(30), col3R, aY);  // approved box border
+  aY -= mm(5);
+  addText(TB, aCX, aY, 'Approved', hSub, 0, 'BOLD');
+  aY -= mm(8);
+  addText(TB, aCX, aY, '........................................', hBody);
+  aY -= rH;
+  addText(TB, aCX, aY, 'For Surveyor General', hBody);
+  aY -= rH;
+  addText(TB, aCX, aY, 'Date: ................', hBody);
+
+  logger.info(`[DXF] Page frame: ${(pageR - pageL).toFixed(0)}m x ${(pageT - pageB).toFixed(0)}m ground`);
+
+  // ── Assemble DXF ──
+  const pad = mm(2);
+  const eMin = { x: pageL - pad, y: pageB - pad };
+  const eMax = { x: pageR + pad, y: pageT + pad };
+
+  let dxf = '';
+
+  // HEADER
+  dxf += p(0, 'SECTION');
+  dxf += p(2, 'HEADER');
+  dxf += p(9, '$ACADVER');
+  dxf += p(1, 'AC1009');
+  dxf += p(9, '$EXTMIN');
+  dxf += p(10, eMin.x.toFixed(4));
+  dxf += p(20, eMin.y.toFixed(4));
+  dxf += p(9, '$EXTMAX');
+  dxf += p(10, eMax.x.toFixed(4));
+  dxf += p(20, eMax.y.toFixed(4));
+  dxf += p(0, 'ENDSEC');
+
+  // TABLES
+  dxf += p(0, 'SECTION');
+  dxf += p(2, 'TABLES');
+
+  // LTYPE table
+  dxf += p(0, 'TABLE');
+  dxf += p(2, 'LTYPE');
+  dxf += p(70, '1');
+  dxf += p(0, 'LTYPE');
+  dxf += p(2, 'CONTINUOUS');
+  dxf += p(70, '0');
+  dxf += p(3, 'Solid line');
+  dxf += p(72, '65');
+  dxf += p(73, '0');
+  dxf += p(40, '0.0');
+  dxf += p(0, 'ENDTAB');
+
+  // LAYER table
+  dxf += p(0, 'TABLE');
+  dxf += p(2, 'LAYER');
+  dxf += p(70, String(layers.length));
+  for (const layer of layers) {
+    dxf += p(0, 'LAYER');
+    dxf += p(2, layer.name);
+    dxf += p(70, '0');
+    dxf += p(62, String(layer.color));
+    dxf += p(6, 'CONTINUOUS');
+  }
+  dxf += p(0, 'ENDTAB');
+
+  // STYLE table — STANDARD + BOLD
+  dxf += p(0, 'TABLE');
+  dxf += p(2, 'STYLE');
+  dxf += p(70, '2');
+  // STANDARD style
+  dxf += p(0, 'STYLE');
+  dxf += p(2, 'STANDARD');
+  dxf += p(70, '0');
+  dxf += p(40, '0.0');
+  dxf += p(41, '1.0');
+  dxf += p(50, '0.0');
+  dxf += p(71, '0');
+  dxf += p(42, '0.0');
+  dxf += p(3, 'txt');
+  dxf += p(4, '');
+  // BOLD style
+  dxf += p(0, 'STYLE');
+  dxf += p(2, 'BOLD');
+  dxf += p(70, '0');
+  dxf += p(40, '0.0');
+  dxf += p(41, '1.0');
+  dxf += p(50, '0.0');
+  dxf += p(71, '0');
+  dxf += p(42, '0.0');
+  dxf += p(3, 'txt');
+  dxf += p(4, '');
+  dxf += p(0, 'ENDTAB');
+
+  dxf += p(0, 'ENDSEC');
+
+  // ENTITIES
+  dxf += p(0, 'SECTION');
+  dxf += p(2, 'ENTITIES');
+  dxf += ent;
+  dxf += p(0, 'ENDSEC');
+
+  // EOF
+  dxf += p(0, 'EOF');
+
+  const sizeKB = (Buffer.byteLength(dxf, 'utf8') / 1024).toFixed(1);
+  logger.info(`[DXF] Generation complete: ${sizeKB} KB, ${parcelCount} parcels, ${beaconCount} beacons, ${edgeLabelCount} edge labels, ${sharedEdges.size} shared edges`);
+
+  return dxf;
+}

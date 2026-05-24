@@ -1,0 +1,4 @@
+Point,Y,X,Status,Description,Date of survey
+P1,6250000.123,450000.456,P,Test point 1,2024-10-07
+P2,6250100.789,450100.234,P,Test point 2,2024-10-07
+P3,6250200.345,450200.567,T,Traverse point,2024-10-07

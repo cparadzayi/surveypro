@@ -51,6 +51,7 @@ class BeaconAdjustmentReport {
   addTransformStats(result) {
     const p = result.adj.params, s = result.adj.stats
     const pass = s.chi2 >= s.chi2L && s.chi2 <= s.chi2U
+    this.ensureSpace(20)
     this.sectionTitle('Transformation & Statistics')
     autoTable(this.doc, {
       startY: this.y, margin: { left: this.margin, right: this.margin }, theme: 'plain',
@@ -212,7 +213,7 @@ class BeaconAdjustmentReport {
     })
     const fy = this.doc.lastAutoTable.finalY + 5
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
-    this.doc.text('BLACK = original (historical) · RED = survey · Bearings South-oriented (0°=S, 90°=W) · Residuals & W-max are undefined ( — ) for rejected beacons.', 14, fy)
+    this.doc.text('BLACK = original (historical) · RED = survey · Bearings South-oriented (0°=S, 90°=W) · Residuals & W-max are undefined ( — ) for rejected beacons.', 14, fy, { maxWidth: this.doc.internal.pageSize.getWidth() - 28 })
   }
 
   addFooters() {

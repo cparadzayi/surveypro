@@ -88,6 +88,16 @@
             >
               ▶ Compute
             </button>
+            <button
+              @click="downloadReport"
+              :disabled="!result"
+              class="px-3 py-1.5 text-xs font-medium border border-[#1a3a5c] text-[#1a3a5c]
+                     rounded hover:bg-[#1a3a5c] hover:text-white transition-colors
+                     disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[#1a3a5c]"
+              title="Generate the SI 727 §67(5) examination report (PDF)"
+            >
+              📄 Examination Report (PDF)
+            </button>
           </div>
         </div>
 
@@ -105,6 +115,21 @@
           >
             {{ importMsg.ok ? '✓' : '⚠' }} {{ importMsg.text }}
           </p>
+        </div>
+
+        <!-- Examination details (for the SG report header) -->
+        <div class="px-4 pb-3 border-t border-gray-100 pt-3">
+          <div class="text-[11px] font-medium text-[#1a3a5c] mb-2">Examination details (for PDF report)</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <input v-model="surveyorName" placeholder="Surveyor name"
+                   class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1a3a5c]" />
+            <input v-model="plsNumber" placeholder="PLS no."
+                   class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1a3a5c]" />
+            <input v-model="location" placeholder="Location / description"
+                   class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1a3a5c]" />
+            <input v-model="priorSurvey" placeholder="Prior survey / Diagram-GP no."
+                   class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1a3a5c]" />
+          </div>
         </div>
       </div>
 
@@ -546,6 +571,7 @@ import { storeToRefs } from 'pinia'
 import ModuleScaffold from '@/components/scaffold/ModuleScaffold.vue'
 import { useSurveyAdjustmentStore } from '@/stores/surveyAdjustmentStore'
 import { f3, f4, f4s, formatDMS, SAMPLE_DATA } from '@/utils/surveyMath'
+import { generateBeaconAdjustmentReport } from '@/utils/beaconAdjustmentReport'
 
 // ── STORE ─────────────────────────────────────────────────────────────────────
 const store = useSurveyAdjustmentStore()
@@ -554,6 +580,25 @@ const { points, sigma0, critW, result, error } = storeToRefs(store)
 // ── LOCAL UI STATE ────────────────────────────────────────────────────────────
 const activeTab = ref('schedule')
 const importMsg = ref(null)   // { ok: boolean, text: string } | null
+
+// ── EXAMINATION REPORT METADATA ───────────────────────────────────────────────
+const surveyorName = ref('')
+const plsNumber    = ref('')
+const location     = ref('')
+const priorSurvey  = ref('')
+
+function downloadReport() {
+  if (!result.value) return
+  generateBeaconAdjustmentReport(result.value, {
+    surveyorName: surveyorName.value,
+    plsNumber: plsNumber.value,
+    location: location.value,
+    priorSurvey: priorSurvey.value,
+    sigma0: sigma0.value,
+    critW: critW.value,
+    date: new Date().toISOString().slice(0, 10),
+  })
+}
 
 // ── CSV TEMPLATE DOWNLOAD ─────────────────────────────────────────────────────
 const CSV_HEADER = 'Beacon,Hist_Y,Hist_X,Survey_Y,Survey_X'

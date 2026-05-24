@@ -57,17 +57,17 @@ class BeaconAdjustmentReport {
       startY: this.y, margin: { left: this.margin, right: this.margin }, theme: 'plain',
       styles: { fontSize: 9, cellPadding: 1.5 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 85 } },
       body: [
-        ['Translation ΔY (Westing, @ centroid)', f4(p.TY) + ' m'],
-        ['Translation ΔX (Southing, @ centroid)', f4(p.TX) + ' m'],
+        ['Translation dY (Westing, @ centroid)', f4(p.TY) + ' m'],
+        ['Translation dX (Southing, @ centroid)', f4(p.TX) + ' m'],
         ['Scale factor', p.scale.toFixed(8)],
         ['Scale (ppm)', p.ppm.toFixed(2) + ' ppm'],
-        ['Rotation θ', formatDMS(p.rotDeg) + '  (' + p.rotDeg.toFixed(6) + '°)'],
-        ['σ₀ a priori', s.sig0.toFixed(4) + ' m'],
-        ['σ₀ a posteriori', s.s0.toFixed(4) + ' m'],
+        ['Rotation (theta)', formatDMS(p.rotDeg) + '  (' + p.rotDeg.toFixed(6) + '°)'],
+        ['Sigma-0 a priori', s.sig0.toFixed(4) + ' m'],
+        ['Sigma-0 a posteriori', s.s0.toFixed(4) + ' m'],
         ['Degrees of freedom', String(s.DOF)],
-        ['Chi-square χ²', s.chi2.toFixed(4) + '  (bounds ' + s.chi2L.toFixed(2) + ' – ' + s.chi2U.toFixed(2) + ')'],
-        ['Chi-square test', pass ? 'PASS — variance consistent with a priori σ₀'
-                                 : 'FAIL — review σ₀ or check for residual blunders'],
+        ['Chi-square', s.chi2.toFixed(4) + '  (bounds ' + s.chi2L.toFixed(2) + ' – ' + s.chi2U.toFixed(2) + ')'],
+        ['Chi-square test', pass ? 'PASS — variance consistent with a priori Sigma-0'
+                                 : 'FAIL — review Sigma-0 or check for residual blunders'],
       ],
     })
     this.y = this.doc.lastAutoTable.finalY + 6
@@ -78,7 +78,7 @@ class BeaconAdjustmentReport {
     this.sectionTitle('Data-Snooping Log (iterative Baarda W-test)')
     autoTable(this.doc, {
       startY: this.y, margin: { left: this.margin, right: this.margin },
-      head: [['Iteration', 'Active pts', 'σ₀ (m)', 'χ²', 'χ² bounds']],
+      head: [['Iteration', 'Active pts', 'Sigma-0 (m)', 'Chi-sq', 'Chi-sq bounds']],
       body: result.log.map(L => [String(L.iter), String(L.n), L.s0.toFixed(5),
         L.chi2.toFixed(4), `${L.chi2L.toFixed(2)} – ${L.chi2U.toFixed(2)}`]),
       styles: { fontSize: 9, cellPadding: 1.5 }, headStyles: { fillColor: NAVY },
@@ -171,7 +171,7 @@ class BeaconAdjustmentReport {
     let line
     if (!result.converged) line = 'Did not converge within 25 iterations — REFER for manual review.'
     else if (rej.length > 0) line = `Referred — ${rej.length} beacon(s) exceed tolerance: ${rej.map(p => p.name).join(', ')}.`
-    else if (!chiOk) line = 'Recommended with note — chi-square test outside bounds; review a priori σ₀.'
+    else if (!chiOk) line = 'Recommended with note — chi-square test outside bounds; review a priori Sigma-0.'
     else line = 'Recommended for approval — all compared beacons within tolerance.'
 
     this.doc.setFontSize(9); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(20)
@@ -204,7 +204,7 @@ class BeaconAdjustmentReport {
     ])
     autoTable(this.doc, {
       startY: 18, margin: { left: 14, right: 14 },
-      head: [['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'ΔY', 'ΔX', 'vY', 'vX', 'Dist', 'Brg (S)', 'W-max', 'Status']],
+      head: [['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'dY', 'dX', 'vY', 'vX', 'Dist', 'Brg (S)', 'W-max', 'Status']],
       body,
       styles: { fontSize: 7.5, cellPadding: 1, halign: 'right' },
       columnStyles: { 0: { halign: 'left' }, 12: { halign: 'center' } },

@@ -605,7 +605,7 @@
                 <tbody>
                   <tr
                     v-for="(e, idx) in result.edges.rows"
-                    :key="e.from + '-' + e.to"
+                    :key="idx + '|' + e.from + '|' + e.to"
                     :class="[!e.pass ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60', 'border-t border-gray-100']"
                   >
                     <td class="px-2 py-1.5 whitespace-nowrap">{{ e.from }} – {{ e.to }}</td>

@@ -212,8 +212,17 @@ class BeaconAdjustmentReport {
       didParseCell: d => { if (d.section === 'body' && body[d.row.index][12] === 'REJECT') d.cell.styles.fillColor = [252, 226, 226] },
     })
     const fy = this.doc.lastAutoTable.finalY + 5
+    const fw = this.doc.internal.pageSize.getWidth() - 28
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
-    this.doc.text('BLACK = original (historical) · RED = survey · Bearings South-oriented (0°=S, 90°=W) · Residuals & W-max are undefined ( — ) for rejected beacons.', 14, fy, { maxWidth: this.doc.internal.pageSize.getWidth() - 28 })
+    this.doc.text('BLACK = original (historical) · RED = survey · Bearings South-oriented (0°=S, 90°=W) · Residuals & W-max are undefined ( — ) for rejected beacons.', 14, fy, { maxWidth: fw })
+    // Drawn as discrete single lines (not maxWidth auto-wrap, which jsPDF's
+    // browser build fails to emit when called after an autoTable).
+    const note = [
+      'dY, dX = raw difference (survey minus historical): still includes the systematic datum shift, scale and rotation common to every beacon.',
+      'vY, vX = residuals left after the best-fit Helmert transformation is removed - the beacon-specific misfit. Dist and Brg (S) are its size and direction.',
+      'Acceptance / rejection is decided by the standardised residual W-max (Baarda data snooping), not by the raw difference dY/dX.',
+    ]
+    note.forEach((ln, i) => this.doc.text(ln, 14, fy + 6 + i * 4))
   }
 
   addFooters() {

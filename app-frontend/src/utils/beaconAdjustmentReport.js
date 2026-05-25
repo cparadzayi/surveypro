@@ -225,6 +225,43 @@ class BeaconAdjustmentReport {
     note.forEach((ln, i) => this.doc.text(ln, 14, fy + 6 + i * 4))
   }
 
+  addEdgeCompliance(result) {
+    const edges = result.edges
+    if (!edges || !edges.rows.length) return
+    this.doc.addPage('a4', 'landscape')
+    this.doc.setFontSize(11); this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(NAVY[0], NAVY[1], NAVY[2])
+    this.doc.text(`SI 727 Edge Compliance — Class ${result.surveyClass || 'B'}`, 14, 14)
+    const body = edges.rows.map(e => [
+      `${e.from} - ${e.to}`, f3(e.dH), f3(e.dS), f4s(e.dDiff), f4(e.dAllow),
+      e.distOk ? 'PASS' : 'FAIL',
+      e.dirResidualSec.toFixed(1), e.dirAllowSec.toFixed(1),
+      e.dirOk ? 'PASS' : 'FAIL',
+    ])
+    autoTable(this.doc, {
+      startY: 18, margin: { left: 14, right: 14 },
+      head: [['Line', 'd Hist (m)', 'd Surv (m)', 'dd (m)', 'dist tol (m)', 'dist',
+              'swing-res (sec)', 'dir tol (sec)', 'dir']],
+      body,
+      styles: { fontSize: 7.5, cellPadding: 1, halign: 'right' },
+      columnStyles: { 0: { halign: 'left' }, 5: { halign: 'center' }, 8: { halign: 'center' } },
+      headStyles: { fillColor: NAVY, halign: 'center', fontSize: 7.5 },
+      didParseCell: d => { if (d.section === 'body' && !edges.rows[d.row.index].pass) d.cell.styles.fillColor = [252, 226, 226] },
+    })
+    const s = edges.summary, p = result.adj.params
+    let y = this.doc.lastAutoTable.finalY + 6
+    this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(40)
+    const meanScale = s.meanScale != null ? s.meanScale.toFixed(8) : '-'
+    const meanSwing = s.meanSwingDeg != null ? formatDMS(s.meanSwingDeg) : '-'
+    const note = [
+      `Lines: ${s.totalLines}.  Distance pass: ${s.distPass}.  Direction pass: ${s.dirPass}.  Both: ${s.bothPass}.`,
+      `SI 727 mean scale ${meanScale}, mean swing ${meanSwing}  (Helmert scale ${p.scale.toFixed(8)}, rotation ${formatDMS(p.rotDeg)}).`,
+      `Distance tolerance = factor x sqrt(0.075f + 0.00015 f^2), f = shorter line. Direction tolerance = K/(S+300) sec, S = historical ray length.`,
+      `Direction shown as residual after removing the Helmert swing. Independent of the W-test accept/reject decision.`,
+    ]
+    note.forEach((ln, i) => this.doc.text(ln, 14, y + i * 4))
+  }
+
   addFooters() {
     const n = this.doc.getNumberOfPages()
     for (let i = 1; i <= n; i++) {
@@ -243,6 +280,7 @@ class BeaconAdjustmentReport {
     this.addDisplacementPlot(result)
     this.addCertification(result, meta)
     this.addScheduleLandscape(result)
+    this.addEdgeCompliance(result)
     this.addFooters()
     return this.doc
   }

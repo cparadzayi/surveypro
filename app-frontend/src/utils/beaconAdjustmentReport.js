@@ -249,8 +249,8 @@ class BeaconAdjustmentReport {
       didParseCell: d => { if (d.section === 'body' && !edges.rows[d.row.index].pass) d.cell.styles.fillColor = [252, 226, 226] },
     })
     const s = edges.summary, p = result.adj.params
-    let y = this.doc.lastAutoTable.finalY + 6
-    this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(40)
+    const y = this.doc.lastAutoTable.finalY + 6
+    this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
     const meanScale = s.meanScale != null ? s.meanScale.toFixed(8) : '-'
     const meanSwing = s.meanSwingDeg != null ? formatDMS(s.meanSwingDeg) : '-'
     const note = [
@@ -259,6 +259,8 @@ class BeaconAdjustmentReport {
       `Distance tolerance = factor x sqrt(0.075f + 0.00015 f^2), f = shorter line. Direction tolerance = K/(S+300) sec, S = historical ray length.`,
       `Direction shown as residual after removing the Helmert swing. Independent of the W-test accept/reject decision.`,
     ]
+    // Discrete single lines (not maxWidth auto-wrap, which jsPDF's browser build
+    // fails to emit when called after an autoTable).
     note.forEach((ln, i) => this.doc.text(ln, 14, y + i * 4))
   }
 

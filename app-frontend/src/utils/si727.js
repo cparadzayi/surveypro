@@ -17,7 +17,7 @@ export function distanceToleranceM(f, cls) {
 /** Allowable direction difference (arc-seconds): K/(S+300). S = ray length (m). */
 export function directionToleranceArcsec(S, cls) {
   const c = SI727_CLASS[cls] || SI727_CLASS.B
-  if (!(S >= 0)) return 0
+  if (!(S >= 0)) return 0   // S=0 allowed: the +300 term caps short-ray tolerance at K/300
   return c.dirK / (S + 300)
 }
 
@@ -92,6 +92,8 @@ export function edgeCompliance(points, cls, swingDeg = 0) {
       const pass = distOk && dirOk
       if (distOk) distPass++
       if (dirOk) dirPass++
+      // SI 727: only tolerance-passing lines are "used in the determination" of
+      // scale/swing, so meanScale/meanSwingDeg are taken over both-pass lines only.
       if (pass) { bothPass++; scales.push(dS / dH); swings.push(dirDiffRaw) }
       rows.push({ from: a.name, to: b.name, dH, dS, dDiff, dAllow, distOk,
                   dirResidualSec, dirAllowSec, dirOk, pass })

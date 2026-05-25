@@ -22,14 +22,28 @@
         <div class="flex flex-wrap gap-4 items-end px-4 py-3">
 
           <div>
+            <label class="block text-[11px] text-gray-500 mb-1">SI 727 class</label>
+            <select
+              :value="surveyClass"
+              @change="store.setSurveyClass($event.target.value)"
+              class="px-2 py-1.5 border border-gray-300 rounded text-sm
+                     focus:outline-none focus:ring-1 focus:ring-[#1a3a5c]"
+            >
+              <option value="B">Class B</option>
+              <option value="C">Class C</option>
+            </select>
+          </div>
+
+          <div>
             <label class="block text-[11px] text-gray-500 mb-1">A priori σ₀ (metres)</label>
             <input
               type="number" step="0.001" min="0.001"
               :value="sigma0"
-              @input="sigma0 = parseFloat($event.target.value)"
+              @input="store.setSigma0($event.target.value)"
               class="w-28 px-2 py-1.5 border border-gray-300 rounded text-sm
                      focus:outline-none focus:ring-1 focus:ring-[#1a3a5c]"
             />
+            <p class="text-[10px] text-gray-400 mt-0.5">{{ sigma0Note }}</p>
           </div>
 
           <div>
@@ -560,6 +574,60 @@
           </p>
         </div>
 
+        <!-- ── EDGE COMPLIANCE TAB ────────────────────────────────────────── -->
+        <div v-show="activeTab === 'edges'" class="p-4">
+          <div v-if="!result?.edges?.rows?.length" class="text-xs text-gray-500">
+            No edges to compare.
+          </div>
+          <template v-else>
+            <div class="text-xs text-gray-500 mb-2">
+              SI 727 Class {{ result.surveyClass }} · all pairs among accepted beacons ·
+              <b class="text-blue-700">{{ result.edges.summary.bothPass }}</b> of
+              {{ result.edges.summary.totalLines }} lines pass both checks ·
+              SI 727 mean scale {{ result.edges.summary.meanScale != null ? result.edges.summary.meanScale.toFixed(8) : '—' }},
+              swing {{ result.edges.summary.meanSwingDeg != null ? formatDMS(result.edges.summary.meanSwingDeg) : '—' }}
+            </div>
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-xs border-collapse">
+                <thead>
+                  <tr class="bg-gray-50 text-gray-600">
+                    <th class="text-left px-2 py-1.5">Line</th>
+                    <th class="text-right px-2 py-1.5">d Hist (m)</th>
+                    <th class="text-right px-2 py-1.5">d Surv (m)</th>
+                    <th class="text-right px-2 py-1.5">Δd (m)</th>
+                    <th class="text-right px-2 py-1.5">dist tol (m)</th>
+                    <th class="text-center px-2 py-1.5">dist</th>
+                    <th class="text-right px-2 py-1.5">swing-res (″)</th>
+                    <th class="text-right px-2 py-1.5">dir tol (″)</th>
+                    <th class="text-center px-2 py-1.5">dir</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(e, idx) in result.edges.rows"
+                    :key="e.from + '-' + e.to"
+                    :class="[!e.pass ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60', 'border-t border-gray-100']"
+                  >
+                    <td class="px-2 py-1.5 whitespace-nowrap">{{ e.from }} – {{ e.to }}</td>
+                    <td class="px-2 py-1.5 text-right">{{ f3(e.dH) }}</td>
+                    <td class="px-2 py-1.5 text-right">{{ f3(e.dS) }}</td>
+                    <td class="px-2 py-1.5 text-right">{{ f4s(e.dDiff) }}</td>
+                    <td class="px-2 py-1.5 text-right text-gray-500">{{ f4(e.dAllow) }}</td>
+                    <td class="px-2 py-1.5 text-center" :class="e.distOk ? 'text-blue-600' : 'text-red-600 font-medium'">{{ e.distOk ? '✓' : '✗' }}</td>
+                    <td class="px-2 py-1.5 text-right">{{ e.dirResidualSec.toFixed(1) }}</td>
+                    <td class="px-2 py-1.5 text-right text-gray-500">{{ e.dirAllowSec.toFixed(1) }}</td>
+                    <td class="px-2 py-1.5 text-center" :class="e.dirOk ? 'text-blue-600' : 'text-red-600 font-medium'">{{ e.dirOk ? '✓' : '✗' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-[10px] text-gray-400 mt-2">
+              Distance tolerance = factor·√(0.075f + 0.00015f²), f = shorter line. Direction tolerance = K/(S+300)″,
+              S = historical ray length. Direction shown as residual after removing the Helmert swing.
+            </p>
+          </template>
+        </div>
+
       </div><!-- /results -->
     </div>
   </ModuleScaffold>
@@ -572,13 +640,21 @@ import ModuleScaffold from '@/components/scaffold/ModuleScaffold.vue'
 import { useSurveyAdjustmentStore } from '@/stores/surveyAdjustmentStore'
 import { f3, f4, f4s, formatDMS, SAMPLE_DATA } from '@/utils/surveyMath'
 import { generateBeaconAdjustmentReport } from '@/utils/beaconAdjustmentReport'
+import { medianPairwiseDistance } from '@/utils/si727'
 
 // ── STORE ─────────────────────────────────────────────────────────────────────
 const store = useSurveyAdjustmentStore()
-const { points, sigma0, critW, result, error } = storeToRefs(store)
+const { points, sigma0, critW, surveyClass, sigma0Auto, result, error } = storeToRefs(store)
 
 // ── LOCAL UI STATE ────────────────────────────────────────────────────────────
 const activeTab = ref('schedule')
+const sigma0Note = computed(() => {
+  if (!sigma0Auto.value) return 'manual override'
+  const L = medianPairwiseDistance(points.value, false)
+  return L > 0
+    ? `SI 727 class ${surveyClass.value} @ L≈${L.toFixed(0)} m`
+    : `SI 727 class ${surveyClass.value}`
+})
 const importMsg = ref(null)   // { ok: boolean, text: string } | null
 
 // ── EXAMINATION REPORT METADATA ───────────────────────────────────────────────
@@ -677,6 +753,7 @@ const TABS = [
   { id: 'trans',    label: 'Transformation'        },
   { id: 'stats',    label: 'Statistics'             },
   { id: 'plot',     label: 'Displacement plot'      },
+  { id: 'edges',    label: 'Edge compliance'        },
 ]
 
 // ── COMPUTED — SCHEDULE ───────────────────────────────────────────────────────

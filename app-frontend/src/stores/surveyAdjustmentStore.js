@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { iterativeAdjust, SAMPLE_DATA } from '@/utils/surveyMath'
+import { suggestedSigma0, edgeCompliance } from '@/utils/si727'
 
 let nextId = SAMPLE_DATA.length + 1
 
@@ -13,6 +14,8 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
   const points = ref(SAMPLE_DATA.map(p => ({ ...p })))
   const sigma0 = ref(0.010)   // a priori σ₀ in metres
   const critW  = ref(2.576)   // W-test critical value (99 % confidence)
+  const surveyClass = ref('B')   // SI 727 survey class (B or C)
+  const sigma0Auto  = ref(true)  // true while σ₀ is auto-derived from the class
   const result = ref(null)    // { adj, pts, log, converged }
   const error  = ref(null)    // string | null
 
@@ -61,14 +64,29 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
     error.value  = null
   }
 
+  function setSurveyClass(c) {
+    surveyClass.value = (c === 'C') ? 'C' : 'B'
+    if (sigma0Auto.value) sigma0.value = suggestedSigma0(points.value, surveyClass.value)
+  }
+
+  function setSigma0(v) {
+    const n = parseFloat(v)
+    if (Number.isFinite(n)) sigma0.value = n
+    sigma0Auto.value = false
+  }
+
   function compute() {
     error.value  = null
     result.value = null
+    if (sigma0Auto.value) sigma0.value = suggestedSigma0(points.value, surveyClass.value)
     try {
       const res = iterativeAdjust(points.value, critW.value, sigma0.value)
       if (res.error) {
         error.value = res.error
       } else {
+        const accepted = res.pts.filter(p => p.finalStatus === 'ACCEPT')
+        res.edges = edgeCompliance(accepted, surveyClass.value, res.adj.params.rotDeg)
+        res.surveyClass = surveyClass.value
         result.value = res
       }
     } catch (e) {
@@ -79,8 +97,9 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
   // ── EXPOSE ─────────────────────────────────────────────────────────────────
   return {
     // state
-    points, sigma0, critW, result, error,
+    points, sigma0, critW, surveyClass, sigma0Auto, result, error,
     // actions
-    addPoint, removePoint, updatePoint, loadSample, setPoints, compute,
+    addPoint, removePoint, updatePoint, loadSample, setPoints,
+    setSurveyClass, setSigma0, compute,
   }
 })

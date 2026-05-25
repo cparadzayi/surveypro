@@ -71,8 +71,10 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
 
   function setSigma0(v) {
     const n = parseFloat(v)
-    if (Number.isFinite(n)) sigma0.value = n
-    sigma0Auto.value = false
+    if (Number.isFinite(n) && n > 0) {
+      sigma0.value = n
+      sigma0Auto.value = false
+    }
   }
 
   function compute() {

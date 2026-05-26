@@ -87,7 +87,7 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
         error.value = res.error
       } else {
         const accepted = res.pts.filter(p => p.finalStatus === 'ACCEPT')
-        res.edges = edgeCompliance(accepted, surveyClass.value, res.adj.params.rotDeg)
+        res.edges = edgeCompliance(accepted, surveyClass.value)
         res.surveyClass = surveyClass.value
         result.value = res
       }

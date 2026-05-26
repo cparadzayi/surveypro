@@ -597,7 +597,9 @@
                     <th class="text-right px-2 py-1.5">Δd (m)</th>
                     <th class="text-right px-2 py-1.5">dist tol (m)</th>
                     <th class="text-center px-2 py-1.5">dist</th>
-                    <th class="text-right px-2 py-1.5">swing-res (″)</th>
+                    <th class="text-right px-2 py-1.5">Hist dir (S)</th>
+                    <th class="text-right px-2 py-1.5">Survey dir (S)</th>
+                    <th class="text-right px-2 py-1.5">Δdir (″)</th>
                     <th class="text-right px-2 py-1.5">dir tol (″)</th>
                     <th class="text-center px-2 py-1.5">dir</th>
                   </tr>
@@ -614,7 +616,9 @@
                     <td class="px-2 py-1.5 text-right">{{ f4s(e.dDiff) }}</td>
                     <td class="px-2 py-1.5 text-right text-gray-500">{{ f4(e.dAllow) }}</td>
                     <td class="px-2 py-1.5 text-center" :class="e.distOk ? 'text-blue-600' : 'text-red-600 font-medium'">{{ e.distOk ? '✓' : '✗' }}</td>
-                    <td class="px-2 py-1.5 text-right">{{ e.dirResidualSec.toFixed(1) }}</td>
+                    <td class="px-2 py-1.5 text-right whitespace-nowrap text-gray-900">{{ formatDMS(e.brgH) }}</td>
+                    <td class="px-2 py-1.5 text-right whitespace-nowrap text-red-600">{{ formatDMS(e.brgS) }}</td>
+                    <td class="px-2 py-1.5 text-right">{{ e.dirDiffSec.toFixed(1) }}</td>
                     <td class="px-2 py-1.5 text-right text-gray-500">{{ e.dirAllowSec.toFixed(1) }}</td>
                     <td class="px-2 py-1.5 text-center" :class="e.dirOk ? 'text-blue-600' : 'text-red-600 font-medium'">{{ e.dirOk ? '✓' : '✗' }}</td>
                   </tr>
@@ -623,7 +627,8 @@
             </div>
             <p class="text-[10px] text-gray-400 mt-2">
               Distance tolerance = factor·√(0.075f + 0.00015f²), f = shorter line. Direction tolerance = K/(S+300)″,
-              S = historical ray length. Direction shown as residual after removing the Helmert swing.
+              S = historical ray length. Δdir = raw (Survey − Hist) direction difference in seconds, South-oriented —
+              an independent SI 727 check (does not use the Helmert swing).
             </p>
           </template>
         </div>

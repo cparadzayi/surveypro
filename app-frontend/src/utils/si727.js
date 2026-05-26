@@ -62,12 +62,14 @@ function wrapDeg(d) {
 
 /**
  * Per-line SI 727 compliance for all unordered pairs of the given beacons.
+ * Independent of the Helmert least-squares solution: per SI 727 the test is the
+ * RAW difference between the survey-derived and historical-derived directions
+ * (no swing/rotation removed), compared to the direction tolerance.
  * @param {Array<{name,yH,xH,yS,xS}>} points
  * @param {'B'|'C'} cls
- * @param {number} swingDeg  Helmert rotation (deg), removed from direction differences.
  * @returns {{ rows, summary }}
  */
-export function edgeCompliance(points, cls, swingDeg = 0) {
+export function edgeCompliance(points, cls) {
   const rows = []
   let distPass = 0, dirPass = 0, bothPass = 0
   const scales = [], swings = []
@@ -82,21 +84,23 @@ export function edgeCompliance(points, cls, swingDeg = 0) {
       const dAllow = distanceToleranceM(f, cls)
       const distOk = Math.abs(dDiff) <= dAllow
 
+      // South-oriented directions from each survey; RAW difference (deg → arc-sec).
       const brgH = bearingSouth(b.yH - a.yH, b.xH - a.xH)
       const brgS = bearingSouth(b.yS - a.yS, b.xS - a.xS)
-      const dirDiffRaw = wrapDeg(brgS - brgH)
-      const dirResidualSec = wrapDeg(dirDiffRaw - swingDeg) * 3600
+      const dirDiffDeg = wrapDeg(brgS - brgH)
+      const dirDiffSec = dirDiffDeg * 3600
       const dirAllowSec = directionToleranceArcsec(dH, cls)
-      const dirOk = Math.abs(dirResidualSec) <= dirAllowSec
+      const dirOk = Math.abs(dirDiffSec) <= dirAllowSec
 
       const pass = distOk && dirOk
       if (distOk) distPass++
       if (dirOk) dirPass++
       // SI 727: only tolerance-passing lines are "used in the determination" of
       // scale/swing, so meanScale/meanSwingDeg are taken over both-pass lines only.
-      if (pass) { bothPass++; scales.push(dS / dH); swings.push(dirDiffRaw) }
+      // (meanSwingDeg here is the SI 727 swing — independent of the Helmert rotation.)
+      if (pass) { bothPass++; scales.push(dS / dH); swings.push(dirDiffDeg) }
       rows.push({ from: a.name, to: b.name, dH, dS, dDiff, dAllow, distOk,
-                  dirResidualSec, dirAllowSec, dirOk, pass })
+                  brgH, brgS, dirDiffSec, dirAllowSec, dirOk, pass })
     }
   }
   const mean = arr => (arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null)

@@ -235,16 +235,17 @@ class BeaconAdjustmentReport {
     const body = edges.rows.map(e => [
       `${e.from} - ${e.to}`, f3(e.dH), f3(e.dS), f4s(e.dDiff), f4(e.dAllow),
       e.distOk ? 'PASS' : 'FAIL',
-      e.dirResidualSec.toFixed(1), e.dirAllowSec.toFixed(1),
+      formatDMS(e.brgH), formatDMS(e.brgS),
+      e.dirDiffSec.toFixed(1), e.dirAllowSec.toFixed(1),
       e.dirOk ? 'PASS' : 'FAIL',
     ])
     autoTable(this.doc, {
       startY: 18, margin: { left: 14, right: 14 },
       head: [['Line', 'd Hist (m)', 'd Surv (m)', 'dd (m)', 'dist tol (m)', 'dist',
-              'swing-res (sec)', 'dir tol (sec)', 'dir']],
+              'Hist dir (S)', 'Survey dir (S)', 'dir diff (sec)', 'dir tol (sec)', 'dir']],
       body,
       styles: { fontSize: 7.5, cellPadding: 1, halign: 'right' },
-      columnStyles: { 0: { halign: 'left' }, 5: { halign: 'center' }, 8: { halign: 'center' } },
+      columnStyles: { 0: { halign: 'left' }, 5: { halign: 'center' }, 10: { halign: 'center' } },
       headStyles: { fillColor: NAVY, halign: 'center', fontSize: 7.5 },
       didParseCell: d => { if (d.section === 'body' && !edges.rows[d.row.index].pass) d.cell.styles.fillColor = [252, 226, 226] },
     })
@@ -262,7 +263,7 @@ class BeaconAdjustmentReport {
       `Lines: ${s.totalLines}.  Distance pass: ${s.distPass}.  Direction pass: ${s.dirPass}.  Both: ${s.bothPass}.`,
       `SI 727 mean scale ${meanScale}, mean swing ${meanSwing}  (Helmert scale ${p.scale.toFixed(8)}, rotation ${formatDMS(p.rotDeg)}).`,
       `Distance tolerance = factor x sqrt(0.075f + 0.00015 f^2), f = shorter line. Direction tolerance = K/(S+300) sec, S = historical ray length.`,
-      `Direction shown as residual after removing the Helmert swing. Independent of the W-test accept/reject decision.`,
+      `dir diff = raw (Survey - Hist) South-oriented direction difference in seconds. Independent SI 727 check (does not use the Helmert swing or the W-test).`,
     ]
     // Discrete single lines (not maxWidth auto-wrap, which jsPDF's browser build
     // fails to emit when called after an autoTable).

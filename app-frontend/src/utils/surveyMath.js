@@ -177,6 +177,40 @@ export function helmertApply(params, yH, xH) {
   }
 }
 
+/**
+ * Danish (Krarup) robust pre-fit: iteratively-reweighted LS that down-weights
+ * observations whose σ̂₀-standardised residual exceeds cutoff c, so gross blunders
+ * do not bias the parameters. c defaults to 2.576 (≈99%); pass critW to match the
+ * W-test confidence. Weights are recomputed from the current residual each iteration.
+ * @returns {{ params, pp, sigma0, weights, iterations, log }}
+ */
+export function danishFit(points, c = 2.576, maxIter = 10) {
+  const mObs = 2 * points.length
+  let weights = new Array(mObs).fill(1)
+  let fit, iterations = 0
+  const log = []
+  for (let k = 1; k <= maxIter; k++) {
+    iterations = k
+    fit = helmertLS(points, weights)
+    const s0 = fit.stats.s0
+    const next = weights.slice()
+    let maxDelta = 0
+    fit.pp.forEach((p, i) => {
+      const uY = s0 > 1e-12 ? Math.abs(p.vY) / (s0 * p.rY) : 0
+      const uX = s0 > 1e-12 ? Math.abs(p.vX) / (s0 * p.rX) : 0
+      const wY = uY <= c ? 1 : Math.exp(-((uY / c) ** 2))
+      const wX = uX <= c ? 1 : Math.exp(-((uX / c) ** 2))
+      maxDelta = Math.max(maxDelta, Math.abs(wY - next[2 * i]), Math.abs(wX - next[2 * i + 1]))
+      next[2 * i] = wY; next[2 * i + 1] = wX
+    })
+    log.push({ iter: k, s0, maxWeightChange: maxDelta })
+    weights = next
+    if (maxDelta < 1e-3) break
+  }
+  fit = helmertLS(points, weights)   // final robust fit with converged weights
+  return { params: fit.params, pp: fit.pp, sigma0: fit.stats.s0, weights, iterations, log }
+}
+
 // ── CHI-SQUARE PERCENTILE ─────────────────────────────────────────────────────
 // Wilson-Hilferty normal approximation to χ²(r) percentile.
 export function chi2Percentile(p, r) {

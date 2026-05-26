@@ -81,7 +81,7 @@ export const mat = {
 //
 // @param {Array<{id, name, yH, xH, yS, xS}>} points  Active beacons only.
 // @returns {{ params, pp, stats }}
-export function helmertLS(points) {
+export function helmertLS(points, weights) {
   const n = points.length
   if (n < 3) throw new Error('Need at least 3 active beacons (minimum DOF = 2)')
 
@@ -89,7 +89,6 @@ export function helmertLS(points) {
   const yc = points.reduce((s, p) => s + p.yH, 0) / n
   const xc = points.reduce((s, p) => s + p.xH, 0) / n
 
-  // Build design matrix A (2n×4) and observation vector l (2n×1) on reduced coords.
   const A = [], l = []
   for (const p of points) {
     const yh = p.yH - yc, xh = p.xH - xc
@@ -97,58 +96,65 @@ export function helmertLS(points) {
     A.push([0, 1,  xh,  yh]);  l.push([p.xS - xc])
   }
 
-  const At  = mat.T(A)
-  const AtA = mat.mul(At, A)          // 4×4 normal matrix N
-  const Atl = mat.mul(At, l)          // 4×1
-  const Ni  = mat.inv(AtA)            // N⁻¹
-  const x   = mat.mul(Ni, Atl).map(r => r[0])   // solution [TY, TX, a, b]
+  const mObs = 2 * n
+  // Per-observation weights (length 2n); default all 1 ⇒ ordinary least squares.
+  const w = (weights && weights.length === mObs) ? weights : new Array(mObs).fill(1)
+
+  // Weighted normal equations: N = AᵀWA,  rhs = AᵀWl.
+  const At  = mat.T(A)                                          // 4×2n
+  const AtW = At.map(row => row.map((val, k) => val * w[k]))    // Aᵀ·W
+  const AtA = mat.mul(AtW, A)          // 4×4 normal matrix N
+  const Atl = mat.mul(AtW, l)          // 4×1
+  const Ni  = mat.inv(AtA)             // N⁻¹
+  const x   = mat.mul(Ni, Atl).map(r => r[0])   // [TY, TX, a, b]
 
   const [TY, TX, a, b] = x
 
-  // Residuals: v = A·x̂ − l
   const Ax = mat.mul(A, x.map(v => [v]))
   const v  = mat.sub(Ax, l).map(r => r[0])
 
-  const DOF  = 2 * n - 4
-  const vTv  = v.reduce((s, vi) => s + vi * vi, 0)
+  const DOF  = mObs - 4
+  const vTv  = v.reduce((s, vi, i) => s + w[i] * vi * vi, 0)   // weighted vᵀWv
   const s0sq = DOF > 0 ? vTv / DOF : 0
   const s0   = Math.sqrt(Math.max(s0sq, 0))
 
-  // Diagonal of Qvv = I − A·N⁻¹·Aᵀ  (cofactor matrix of residuals, for W-test)
-  const ANi    = mat.mul(A, Ni)
-  const diagQvv = A.map((rowA, i) => 1 - ANi[i].reduce((s, v, j) => s + v * rowA[j], 0))
+  // Residual cofactor diagonal q_vv,i = 1/w_i − (A·N⁻¹·Aᵀ)_ii ; redundancy r_i = q_vv,i·w_i.
+  const ANi  = mat.mul(A, Ni)
+  const qvv  = A.map((rowA, i) =>
+    Math.max(1 / w[i] - ANi[i].reduce((s, val, j) => s + val * rowA[j], 0), 1e-14))
+  const redund = qvv.map((q, i) => q * w[i])
+
+  // Parameter covariance  Cxx = σ̂₀² · N⁻¹  (4×4).
+  const Cxx = Ni.map(row => row.map(val => s0sq * val))
 
   const scale  = Math.sqrt(a * a + b * b)
   const rotDeg = Math.atan2(b, a) * RAD
   const ppm    = (scale - 1) * 1e6
 
-  // Per-point statistics
   const pp = points.map((p, i) => {
     const vY = v[2 * i], vX = v[2 * i + 1]
     const resDist = Math.sqrt(vY * vY + vX * vX)
     const resBrg  = bearingSouth(vY, vX)
 
-    const qYY  = Math.max(diagQvv[2 * i],     1e-14)
-    const qXX  = Math.max(diagQvv[2 * i + 1], 1e-14)
-
-    // Baarda W-test:  w = |v_i| / (s₀ · √Qvv_ii)
-    const wY   = s0 > 1e-12 ? Math.abs(vY) / (s0 * Math.sqrt(qYY)) : 0
-    const wX   = s0 > 1e-12 ? Math.abs(vX) / (s0 * Math.sqrt(qXX)) : 0
+    const qYY = qvv[2 * i], qXX = qvv[2 * i + 1]
+    const wY  = s0 > 1e-12 ? Math.abs(vY) / (s0 * Math.sqrt(qYY)) : 0
+    const wX  = s0 > 1e-12 ? Math.abs(vX) / (s0 * Math.sqrt(qXX)) : 0
     const wMax = Math.max(wY, wX)
 
-    // Raw (pre-transformation) coordinate difference
-    const dY      = p.yS - p.yH
-    const dX      = p.xS - p.xH
+    const dY = p.yS - p.yH
+    const dX = p.xS - p.xH
     const rawDist = Math.sqrt(dY * dY + dX * dX)
     const rawBrg  = bearingSouth(dY, dX)
 
-    return { ...p, vY, vX, resDist, resBrg, wY, wX, wMax, dY, dX, rawDist, rawBrg }
+    return { ...p, vY, vX, resDist, resBrg, wY, wX, wMax, dY, dX, rawDist, rawBrg,
+             rY: redund[2 * i], rX: redund[2 * i + 1] }
   })
 
   return {
     params: { TY, TX, a, b, scale, rotDeg, ppm, yc, xc },
     pp,
     stats: { n, DOF, vTv, s0, s0sq },
+    Cxx,
   }
 }
 

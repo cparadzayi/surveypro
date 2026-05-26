@@ -363,9 +363,9 @@
                       ]"
                     >{{ p.finalStatus || '—' }}</span>
                     <span
-                      v-if="p.finalStatus === 'REJECT' && p.rejIter"
+                      v-if="p.finalStatus === 'REJECT' && p.rejIter !== null"
                       class="text-[9px] text-gray-400 ml-1"
-                    >iter {{ p.rejIter }}</span>
+                    >{{ p.rejSource === 'danish' ? 'pre-filter' : 'iter ' + p.rejIter }}</span>
                   </td>
                 </tr>
               </tbody>

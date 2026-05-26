@@ -287,7 +287,7 @@ export function chi2Percentile(p, r) {
 // @param {Array}  inputPoints  All beacons (active and to-be-tested).
 // @param {number} critW        Critical W value (1.960 / 2.576 / 3.291).
 // @param {number} sig0         A priori σ₀ in metres.
-// @returns {{ adj, pts, log, converged } | { error, pts, log }}
+// @returns {{ adj, pts, log, danishLog, loo, converged } | { error, pts, log, danishLog }}
 export function iterativeAdjust(inputPoints, critW, sig0) {
   let pts = inputPoints.map(p => ({ ...p, rejIter: null, rejSource: null }))
   const log = []          // W-test backstop log
@@ -326,7 +326,9 @@ export function iterativeAdjust(inputPoints, critW, sig0) {
       const sm = {}
       adj.pp.forEach(r => { sm[r.id] = r })
       const P  = adj.params
-      const se = paramStdErrors(P, adj.Cxx)
+      let se
+      try { se = paramStdErrors(P, adj.Cxx) }
+      catch (e) { return { error: e.message, pts, log, danishLog } }
       pts = pts.map(p => {
         const base = (p.rejIter === null)
           ? { ...p, ...sm[p.id], finalStatus: 'ACCEPT' }

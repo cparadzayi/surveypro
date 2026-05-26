@@ -1,8 +1,17 @@
 # SI 727 Weighting (σ₀) + Edge Compliance — Design
 
 **Date:** 2026-05-25
-**Status:** Approved (design)
+**Status:** Approved (design); amended 2026-05-26
 **Component:** `app-frontend` — Lite → Beacon Comparison (`/modules/lite/compare`)
+
+> **Correction (2026-05-26):** The original design tested the direction difference
+> as a *residual after removing the Helmert swing*. That coupled the SI 727 edge
+> check to the least-squares solution and masked genuine systematic orientation
+> discrepancies — contrary to SI 727, which compares the **raw** survey-vs-historical
+> direction. The implemented (and now correct) design uses the **raw** direction
+> difference `(brgS − brgH)`, independent of the Helmert rotation, and the edge
+> table shows both bearings (DMS) so the difference is legible. Sections below are
+> updated to match; "swing-residual" wording in the original draft is superseded.
 
 ## Purpose
 
@@ -12,9 +21,9 @@ comparison-sketch logic, in two complementary ways:
 - **(A) Principled a-priori σ₀** derived from the survey class, replacing the
   hand-typed value, so the chi-square test becomes defensible.
 - **(B) Edge (ray) compliance** check: per inter-beacon line, test the distance
-  difference and the swing-residual direction difference against the SI 727
-  class B/C tolerances, and report pass/fail — an independent regulatory check
-  alongside the statistical W-test.
+  difference and the **raw** (survey-vs-historical) direction difference against the
+  SI 727 class B/C tolerances, and report pass/fail — an independent regulatory
+  check alongside the statistical W-test (does not use the Helmert swing).
 
 The core `helmertLS` / `iterativeAdjust` are NOT changed (equal-weight LS retained);
 we change only where σ₀ comes from and ADD the edge computation + reporting.
@@ -63,7 +72,7 @@ export function directionToleranceArcsec(S, cls) // K/(S+300)
 export function distanceBetween(a, b)            // hypot(ΔY, ΔX) on {yX or yS/xS supplied by caller}
 export function medianPairwiseDistance(points, useSurvey=false)
 export function suggestedSigma0(points, cls, div = 5)  // see below
-export function edgeCompliance(points, cls, swingDeg)  // see below
+export function edgeCompliance(points, cls)  // see below (independent of Helmert)
 ```
 
 Reuses `bearingSouth(dY, dX)` from `surveyMath.js`. Pure → Node-testable.
@@ -77,7 +86,7 @@ L  = medianPairwiseDistance(points)            // historical coords; network sca
 `L` is computed from ALL input beacons (stable to dropping 1–2). The result is the
 suggested a-priori σ₀ (metres); the operator may override it in the σ₀ field.
 
-### (B) edgeCompliance(points, cls, swingDeg)
+### (B) edgeCompliance(points, cls)
 
 For every unordered pair (i, j) of ACCEPTED beacons:
 ```
@@ -88,19 +97,19 @@ f       = min(dH, dS)
 dAllow  = distanceToleranceM(f, cls)
 distOk  = |dDiff| <= dAllow
 
-brgH = bearingSouth(yHj - yHi, xHj - xHi)       // S-oriented
-brgS = bearingSouth(ySj - ySi, xSj - xSi)
-dirDiffRaw = wrapDeg(brgS - brgH)               // to (-180,180]
-dirResidualSec = (dirDiffRaw - swingDeg) * 3600 // remove common swing → arc-sec
+brgH = bearingSouth(yHj - yHi, xHj - xHi)       // S-oriented, historical
+brgS = bearingSouth(ySj - ySi, xSj - xSi)       // S-oriented, survey
+dirDiffDeg = wrapDeg(brgS - brgH)               // to (-180,180]
+dirDiffSec = dirDiffDeg * 3600                  // RAW difference → arc-sec (no swing removed)
 dirAllowSec = directionToleranceArcsec(dH, cls) // S = historical ray length
-dirOk = |dirResidualSec| <= dirAllowSec
+dirOk = |dirDiffSec| <= dirAllowSec
 ```
-Returns `{ rows:[{ from, to, dH, dS, dDiff, dAllow, distOk, dirResidualSec, dirAllowSec, dirOk, pass }], summary }`.
+Returns `{ rows:[{ from, to, dH, dS, dDiff, dAllow, distOk, brgH, brgS, dirDiffSec, dirAllowSec, dirOk, pass }], summary }`.
 `summary` = `{ totalLines, distPass, dirPass, bothPass, meanScale, meanSwingDeg }`
-where `meanScale` = mean(dS/dH) and `meanSwingDeg` = mean(dirDiffRaw) over lines that
-pass BOTH checks (cross-check against the Helmert scale/rotation).
-
-`swingDeg` = the Helmert rotation `result.adj.params.rotDeg`.
+where `meanScale` = mean(dS/dH) and `meanSwingDeg` = mean(dirDiffDeg) over lines that
+pass BOTH checks. `meanSwingDeg` is the **SI 727-determined** swing (mean raw direction
+difference) — independent of the Helmert rotation, and reported alongside it as a genuine
+cross-check. `brgH`/`brgS` are surfaced so the table can show both bearings (DMS).
 
 ### Wiring
 
@@ -108,15 +117,15 @@ pass BOTH checks (cross-check against the Helmert scale/rotation).
   `sigma0Auto` flag (true until the user edits σ₀). `compute()`:
   1. if `sigma0Auto`, set `sigma0 = suggestedSigma0(points, surveyClass)`;
   2. run `iterativeAdjust(points, critW, sigma0)` (unchanged);
-  3. if converged, attach `edges = edgeCompliance(acceptedPts, surveyClass, adj.params.rotDeg)`
+  3. if converged, attach `edges = edgeCompliance(acceptedPts, surveyClass)`
      to the result object.
 - **`CompareView.vue`:** add a **Survey class** B/C `<select>` in Configuration; the
   σ₀ input shows the suggested value with a "(SI 727 class B @ L=…m)" note and an
   `@input` that sets `sigma0Auto = false`; add an **"Edge compliance"** tab rendering
   the table + summary (rejected-failing rows tinted).
 - **`beaconAdjustmentReport.js`:** add an **"SI 727 Edge Compliance"** landscape
-  section — per-line table (From, To, dHist, dSurv, Δd, dist-allow, ✓/✗, swing-resid ″,
-  dir-allow ″, ✓/✗), a summary line (lines passing; SI 727 mean swing/scale vs Helmert),
+  section — per-line table (From, To, dHist, dSurv, Δd, dist-allow, ✓/✗, Hist dir,
+  Survey dir, dir-diff ″, dir-allow ″, ✓/✗), a summary line (lines passing; SI 727 mean swing/scale vs Helmert),
   and a footnote stating the tolerance formulas + the σ₀ derivation. All strings
   ASCII/WinAnsi-safe, drawn as discrete single-line `text()` calls (per prior lesson).
   Pass `surveyClass` + `edges` into the report via `meta`/`result`.
@@ -126,7 +135,7 @@ pass BOTH checks (cross-check against the Helmert scale/rotation).
 - < 3 accepted beacons never reaches edgeCompliance (adjustment won't converge).
 - Degenerate/duplicate beacons → `dH` or `dS` = 0 → `f = 0` → `distanceToleranceM(0)=0`;
   guard so a zero-length line is skipped (not a divide-by-zero; just excluded with a note).
-- `dirDiffRaw` wrapped to (−180, 180] before removing swing; swing also wrapped.
+- `dirDiffDeg` wrapped to (−180, 180] before converting to arc-seconds.
 - σ₀ derivation guards `L > 0`; if all points coincide, fall back to the existing
   default 0.010 and flag.
 

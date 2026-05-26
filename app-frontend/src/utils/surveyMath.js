@@ -289,70 +289,67 @@ export function chi2Percentile(p, r) {
 // @param {number} sig0         A priori σ₀ in metres.
 // @returns {{ adj, pts, log, converged } | { error, pts, log }}
 export function iterativeAdjust(inputPoints, critW, sig0) {
-  let pts = inputPoints.map(p => ({ ...p, rejIter: null }))
-  const log = []
+  let pts = inputPoints.map(p => ({ ...p, rejIter: null, rejSource: null }))
+  const log = []          // W-test backstop log
+  const danishLog = []
 
+  // ── Step 1: Danish robust pre-fit on ALL points ──
+  let rob
+  try { rob = danishFit(pts, critW) } catch (e) { return { error: e.message, pts, log, danishLog } }
+  danishLog.push(...rob.log)
+
+  // ── Step 2: flag outliers on the σ̂₀-standardised ROBUST residuals ──
+  const robS0 = rob.sigma0
+  rob.pp.forEach((p, i) => {
+    pts[i].danishWeight = { wY: rob.weights[2 * i], wX: rob.weights[2 * i + 1] }
+    const uY = robS0 > 1e-12 ? Math.abs(p.vY) / robS0 : 0
+    const uX = robS0 > 1e-12 ? Math.abs(p.vX) / robS0 : 0
+    if (Math.max(uY, uX) > critW) { pts[i].rejIter = 0; pts[i].rejSource = 'danish' }
+  })
+
+  // ── Steps 3–4: final OLS on survivors + rigorous W-test backstop ──
   for (let iter = 1; iter <= 25; iter++) {
     const active = pts.filter(p => p.rejIter === null)
     if (active.length < 3)
-      return { error: 'Too few active points remaining for adjustment', pts, log }
+      return { error: 'Too few active points remaining for adjustment', pts, log, danishLog }
 
     let adj
-    try { adj = helmertLS(active) } catch (e) { return { error: e.message, pts, log } }
+    try { adj = helmertLS(active) } catch (e) { return { error: e.message, pts, log, danishLog } }
 
     const chi2  = adj.stats.vTv / (sig0 * sig0)
     const chi2L = adj.stats.DOF > 0 ? chi2Percentile(0.025, adj.stats.DOF) : 0
     const chi2U = adj.stats.DOF > 0 ? chi2Percentile(0.975, adj.stats.DOF) : 1e9
     log.push({ iter, n: active.length, s0: adj.stats.s0, chi2, chi2L, chi2U })
 
-    // Check if all beacons pass
     const worst = adj.pp.reduce((a, b) => a.wMax > b.wMax ? a : b)
     if (worst.wMax <= critW) {
-      // Annotate final statuses and merge per-point results back
       const sm = {}
       adj.pp.forEach(r => { sm[r.id] = r })
+      const P  = adj.params
+      const se = paramStdErrors(P, adj.Cxx)
       pts = pts.map(p => {
-        if (p.rejIter === null) {
-          return { ...p, ...sm[p.id], finalStatus: 'ACCEPT' }
-        }
-        // Rejected beacon: it is excluded from the final fit, so residuals and
-        // W-statistics are undefined — but its raw (pre-adjustment) coordinate
-        // difference is still meaningful and is exactly why it was flagged.
-        const dY = p.yS - p.yH
-        const dX = p.xS - p.xH
-        return {
-          ...p,
-          dY, dX,
-          rawDist: Math.sqrt(dY * dY + dX * dX),
-          rawBrg: bearingSouth(dY, dX),
-          finalStatus: 'REJECT',
-        }
-      })
-      // Apply the FINAL transform to every beacon's historical coords and compare
-      // to its survey coords: transformation residual v = transformed − survey.
-      // (For accepted beacons this equals the LS residual; for rejected ones it
-      // shows the misfit in the fitted frame.)
-      const P = adj.params
-      pts = pts.map(p => {
+        const base = (p.rejIter === null)
+          ? { ...p, ...sm[p.id], finalStatus: 'ACCEPT' }
+          : { ...p, dY: p.yS - p.yH, dX: p.xS - p.xH,
+              rawDist: Math.sqrt((p.yS - p.yH) ** 2 + (p.xS - p.xH) ** 2),
+              rawBrg: bearingSouth(p.yS - p.yH, p.xS - p.xH), finalStatus: 'REJECT' }
         const { yT, xT } = helmertApply(P, p.yH, p.xH)
         const tvY = yT - p.yS, tvX = xT - p.xS
-        return { ...p, yT, xT, tvY, tvX,
-          tResid: Math.sqrt(tvY * tvY + tvX * tvX), tBrg: bearingSouth(tvY, tvX) }
+        return { ...base, yT, xT, tvY, tvX,
+                 tResid: Math.sqrt(tvY * tvY + tvX * tvX), tBrg: bearingSouth(tvY, tvX) }
       })
+      const loo = looResiduals(pts.filter(p => p.finalStatus === 'ACCEPT'))
       return {
-        adj: { ...adj, stats: { ...adj.stats, chi2, chi2L, chi2U, sig0 } },
-        pts,
-        log,
-        converged: true,
+        adj: { ...adj, params: { ...P, se }, stats: { ...adj.stats, chi2, chi2L, chi2U, sig0 } },
+        pts, log, danishLog, loo, converged: true,
       }
     }
 
-    // Reject the beacon with the worst W statistic
     const wi = pts.findIndex(p => p.id === worst.id)
-    pts[wi] = { ...pts[wi], rejIter: iter }
+    pts[wi] = { ...pts[wi], rejIter: iter, rejSource: 'wtest' }
   }
 
-  return { error: 'Did not converge within 25 iterations', pts, log }
+  return { error: 'Did not converge within 25 iterations', pts, log, danishLog }
 }
 
 // ── FORMATTING HELPERS ────────────────────────────────────────────────────────

@@ -271,7 +271,7 @@ class BeaconAdjustmentReport {
   addReliabilityValidation(result) {
     const acc = result.pts.filter(p => p.finalStatus === 'ACCEPT')
     if (!acc.length) return
-    const loo = result.loo || { rows: [], rmsLoo: null, maxLoo: null }
+    const loo = result.loo || { rows: [], rmsLoo: null, maxLoo: null, note: 'LOO not available' }
     const looById = {}
     loo.rows.forEach(r => { looById[r.id] = r })
     this.doc.addPage('a4', 'landscape')
@@ -299,7 +299,7 @@ class BeaconAdjustmentReport {
     })
     const s = result.adj.stats
     let y = this.doc.lastAutoTable.finalY + 6
-    if (y + 4 * 4 > this.doc.internal.pageSize.getHeight() - 12) { this.doc.addPage('a4', 'landscape'); y = 16 }
+    if (y + 3 * 4 > this.doc.internal.pageSize.getHeight() - 12) { this.doc.addPage('a4', 'landscape'); y = 16 }
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
     const note = [
       `Redundancy numbers r (sum = DOF = ${s.DOF}): r -> 1 well controlled / independently checkable; r -> 0 poorly controlled.`,

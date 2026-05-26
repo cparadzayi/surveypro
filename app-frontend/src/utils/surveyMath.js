@@ -196,8 +196,8 @@ export function danishFit(points, c = 2.576, maxIter = 10) {
     const next = weights.slice()
     let maxDelta = 0
     fit.pp.forEach((p, i) => {
-      const uY = s0 > 1e-12 ? Math.abs(p.vY) / (s0 * p.rY) : 0
-      const uX = s0 > 1e-12 ? Math.abs(p.vX) / (s0 * p.rX) : 0
+      const uY = s0 > 1e-12 ? Math.abs(p.vY) / s0 : 0
+      const uX = s0 > 1e-12 ? Math.abs(p.vX) / s0 : 0
       const wY = uY <= c ? 1 : Math.exp(-((uY / c) ** 2))
       const wX = uX <= c ? 1 : Math.exp(-((uX / c) ** 2))
       maxDelta = Math.max(maxDelta, Math.abs(wY - next[2 * i]), Math.abs(wX - next[2 * i + 1]))

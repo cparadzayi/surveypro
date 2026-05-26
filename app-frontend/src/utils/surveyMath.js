@@ -80,7 +80,11 @@ export const mat = {
 // translation (TY, TX) is therefore the datum shift AT THE NETWORK CENTROID.
 //
 // @param {Array<{id, name, yH, xH, yS, xS}>} points  Active beacons only.
-// @returns {{ params, pp, stats }}
+// @param {number[]} [weights]  Optional per-observation weights, length 2n
+//   (Y row then X row of each point). Omit => all 1 => ordinary least squares.
+// @returns {{params, pp, stats, Cxx}}  stats.vTv is the WEIGHTED sum of squares
+//   v^T W v (equals plain v^T v when weights are all 1); Cxx = sigma0^2 * N^-1
+//   (4x4 parameter covariance); each pp entry carries redundancy {rY, rX}.
 export function helmertLS(points, weights) {
   const n = points.length
   if (n < 3) throw new Error('Need at least 3 active beacons (minimum DOF = 2)')
@@ -97,8 +101,9 @@ export function helmertLS(points, weights) {
   }
 
   const mObs = 2 * n
-  // Per-observation weights (length 2n); default all 1 ⇒ ordinary least squares.
-  const w = (weights && weights.length === mObs) ? weights : new Array(mObs).fill(1)
+  // Resolve weights; guard against zero/negative so 1/w in the residual cofactor stays finite.
+  const w0 = (weights && weights.length === mObs) ? weights : new Array(mObs).fill(1)
+  const w  = w0.map(wi => Math.max(wi, 1e-12))
 
   // Weighted normal equations: N = AᵀWA,  rhs = AᵀWl.
   const At  = mat.T(A)                                          // 4×2n
@@ -114,7 +119,7 @@ export function helmertLS(points, weights) {
   const v  = mat.sub(Ax, l).map(r => r[0])
 
   const DOF  = mObs - 4
-  const vTv  = v.reduce((s, vi, i) => s + w[i] * vi * vi, 0)   // weighted vᵀWv
+  const vTv  = v.reduce((s, vi, i) => s + w[i] * vi * vi, 0)   // weighted v^T W v (== v^T v when all w=1)
   const s0sq = DOF > 0 ? vTv / DOF : 0
   const s0   = Math.sqrt(Math.max(s0sq, 0))
 

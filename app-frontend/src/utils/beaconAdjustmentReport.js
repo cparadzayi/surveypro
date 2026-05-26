@@ -230,6 +230,44 @@ class BeaconAdjustmentReport {
     note.forEach((ln, i) => this.doc.text(ln, 14, fy + 6 + i * 4))
   }
 
+  addTransformationResiduals(result) {
+    const pts = result.pts
+    if (!pts || !pts.length) return
+    this.doc.addPage('a4', 'landscape')
+    this.doc.setFontSize(11); this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(NAVY[0], NAVY[1], NAVY[2])
+    this.doc.text('Transformation Residuals (Historical transformed onto Survey)', 14, 14)
+    const body = pts.map(p => [
+      p.name, f3(p.yT), f3(p.xT), f3(p.yS), f3(p.xS),
+      f4s(p.tvY), f4s(p.tvX), f4(p.tResid), formatDMS(p.tBrg), p.finalStatus || '—',
+    ])
+    autoTable(this.doc, {
+      startY: 18, margin: { left: 14, right: 14 },
+      head: [['Beacon', 'Transf Y', 'Transf X', 'Survey Y', 'Survey X',
+              'vY (m)', 'vX (m)', 'Resid (m)', 'Brg (S)', 'Status']],
+      body,
+      styles: { fontSize: 7.5, cellPadding: 1, halign: 'right' },
+      // Survey (Y/X) red per SI 727 §67(5); status centred.
+      columnStyles: {
+        0: { halign: 'left' },
+        3: { textColor: [220, 38, 38] }, 4: { textColor: [220, 38, 38] },
+        9: { halign: 'center' },
+      },
+      headStyles: { fillColor: NAVY, halign: 'center', fontSize: 7.5 },
+      didParseCell: d => { if (d.section === 'body' && pts[d.row.index].finalStatus === 'REJECT') d.cell.styles.fillColor = [252, 226, 226] },
+    })
+    const p = result.adj.params
+    let y = this.doc.lastAutoTable.finalY + 6
+    if (y + 3 * 4 > this.doc.internal.pageSize.getHeight() - 12) { this.doc.addPage('a4', 'landscape'); y = 16 }
+    this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
+    const note = [
+      `Transf Y/X = historical coordinates transformed by the fitted 4-parameter Helmert (TY=${f4(p.TY)}, TX=${f4(p.TX)}, scale=${p.scale.toFixed(8)}, rotation=${formatDMS(p.rotDeg)}).`,
+      `v = Transf - Survey (residual); Resid = sqrt(vY^2 + vX^2); Brg (S) is its South-oriented direction.`,
+      `For accepted beacons v equals the least-squares residual; for rejected beacons it shows the misfit in the fitted frame (the blunder).`,
+    ]
+    note.forEach((ln, i) => this.doc.text(ln, 14, y + i * 4))
+  }
+
   addEdgeCompliance(result) {
     const edges = result.edges
     if (!edges || !edges.rows.length) return
@@ -293,6 +331,7 @@ class BeaconAdjustmentReport {
     this.addDisplacementPlot(result)
     this.addCertification(result, meta)
     this.addScheduleLandscape(result)
+    this.addTransformationResiduals(result)
     this.addEdgeCompliance(result)
     this.addFooters()
     return this.doc

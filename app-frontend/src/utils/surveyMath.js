@@ -152,6 +152,20 @@ export function helmertLS(points) {
   }
 }
 
+/**
+ * Apply a fitted Helmert transform (centroid-reduced) to a historical (Y, X),
+ * returning the transformed (predicted-survey) coordinates.
+ * @param {{yc,xc,TY,TX,a,b}} params  from helmertLS().params
+ */
+export function helmertApply(params, yH, xH) {
+  const { yc, xc, TY, TX, a, b } = params
+  const yh = yH - yc, xh = xH - xc
+  return {
+    yT: yc + TY + a * yh - b * xh,
+    xT: xc + TX + b * yh + a * xh,
+  }
+}
+
 // ── CHI-SQUARE PERCENTILE ─────────────────────────────────────────────────────
 // Wilson-Hilferty normal approximation to χ²(r) percentile.
 export function chi2Percentile(p, r) {
@@ -212,6 +226,17 @@ export function iterativeAdjust(inputPoints, critW, sig0) {
           rawBrg: bearingSouth(dY, dX),
           finalStatus: 'REJECT',
         }
+      })
+      // Apply the FINAL transform to every beacon's historical coords and compare
+      // to its survey coords: transformation residual v = transformed − survey.
+      // (For accepted beacons this equals the LS residual; for rejected ones it
+      // shows the misfit in the fitted frame.)
+      const P = adj.params
+      pts = pts.map(p => {
+        const { yT, xT } = helmertApply(P, p.yH, p.xH)
+        const tvY = yT - p.yS, tvX = xT - p.xS
+        return { ...p, yT, xT, tvY, tvX,
+          tResid: Math.sqrt(tvY * tvY + tvX * tvX), tBrg: bearingSouth(tvY, tvX) }
       })
       return {
         adj: { ...adj, stats: { ...adj.stats, chi2, chi2L, chi2U, sig0 } },

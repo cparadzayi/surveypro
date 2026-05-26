@@ -207,7 +207,12 @@ class BeaconAdjustmentReport {
       head: [['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'dY', 'dX', 'vY', 'vX', 'Dist', 'Brg (S)', 'W-max', 'Status']],
       body,
       styles: { fontSize: 7.5, cellPadding: 1, halign: 'right' },
-      columnStyles: { 0: { halign: 'left' }, 12: { halign: 'center' } },
+      // SI 727 §67(5): historical = black (default), survey (Y/X) = red.
+      columnStyles: {
+        0: { halign: 'left' },
+        3: { textColor: [220, 38, 38] }, 4: { textColor: [220, 38, 38] },
+        12: { halign: 'center' },
+      },
       headStyles: { fillColor: NAVY, halign: 'center', fontSize: 7.5 },
       didParseCell: d => { if (d.section === 'body' && body[d.row.index][12] === 'REJECT') d.cell.styles.fillColor = [252, 226, 226] },
     })

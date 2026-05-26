@@ -12,7 +12,7 @@ let nextId = SAMPLE_DATA.length + 1
 export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
   // ── STATE ──────────────────────────────────────────────────────────────────
   const points = ref(SAMPLE_DATA.map(p => ({ ...p })))
-  const sigma0 = ref(0.010)   // a priori σ₀ in metres
+  const sigma0 = ref(suggestedSigma0(SAMPLE_DATA, 'B'))   // a priori σ₀ (m), class-derived; editable
   const critW  = ref(2.576)   // W-test critical value (99 % confidence)
   const surveyClass = ref('B')   // SI 727 survey class (B or C)
   const sigma0Auto  = ref(true)  // true while σ₀ is auto-derived from the class

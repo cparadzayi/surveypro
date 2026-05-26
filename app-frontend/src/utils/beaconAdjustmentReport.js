@@ -249,7 +249,12 @@ class BeaconAdjustmentReport {
       didParseCell: d => { if (d.section === 'body' && !edges.rows[d.row.index].pass) d.cell.styles.fillColor = [252, 226, 226] },
     })
     const s = edges.summary, p = result.adj.params
-    const y = this.doc.lastAutoTable.finalY + 6
+    let y = this.doc.lastAutoTable.finalY + 6
+    // For large (O(n²)) networks the table can fill the page; keep the 4 note
+    // lines from clipping off the bottom by starting them on a fresh page.
+    if (y + 4 * 4 > this.doc.internal.pageSize.getHeight() - 12) {
+      this.doc.addPage('a4', 'landscape'); y = 16
+    }
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
     const meanScale = s.meanScale != null ? s.meanScale.toFixed(8) : '-'
     const meanSwing = s.meanSwingDeg != null ? formatDMS(s.meanSwingDeg) : '-'

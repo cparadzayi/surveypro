@@ -217,6 +217,52 @@ export function danishFit(points, c = 2.576, maxIter = 10) {
   return { params: fit.params, pp: fit.pp, sigma0: fit.stats.s0, weights, iterations, log }
 }
 
+/**
+ * Leave-one-out cross-validation: for each point, re-fit on the others and predict
+ * it, giving an independent (out-of-sample) residual. Needs >= 4 points (so >= 3 remain).
+ * @returns {{ rows:[{id,name,looY,looX,looDist}], rmsLoo, maxLoo, note? }}
+ */
+export function looResiduals(points) {
+  if (points.length < 4)
+    return { rows: [], rmsLoo: null, maxLoo: null, note: 'too few points for LOO (need >= 4)' }
+  const rows = []
+  for (let i = 0; i < points.length; i++) {
+    const subset = points.filter((_, j) => j !== i)
+    let p
+    try { p = helmertLS(subset).params } catch (e) { continue }
+    const { yT, xT } = helmertApply(p, points[i].yH, points[i].xH)
+    const looY = yT - points[i].yS, looX = xT - points[i].xS
+    rows.push({ id: points[i].id, name: points[i].name, looY, looX,
+                looDist: Math.sqrt(looY * looY + looX * looX) })
+  }
+  const d = rows.map(r => r.looDist)
+  return {
+    rows,
+    rmsLoo: d.length ? Math.sqrt(d.reduce((s, x) => s + x * x, 0) / d.length) : null,
+    maxLoo: d.length ? Math.max(...d) : null,
+  }
+}
+
+/**
+ * Standard errors of the transformation parameters from the covariance Cxx (=σ̂₀²·N⁻¹).
+ * scale & rotation are error-propagated from the (a,b) covariance block.
+ * @returns {{ TY, TX, scale, ppm, rotSec }}  (metres, metres, ratio, ppm, arc-seconds)
+ */
+export function paramStdErrors(params, Cxx) {
+  const { a, b } = params
+  const s2 = a * a + b * b
+  const Caa = Cxx[2][2], Cbb = Cxx[3][3], Cab = Cxx[2][3]
+  const sScale  = Math.sqrt(Math.max((a * a * Caa + b * b * Cbb + 2 * a * b * Cab) / s2, 0))
+  const sThetaR = Math.sqrt(Math.max((b * b * Caa + a * a * Cbb - 2 * a * b * Cab) / (s2 * s2), 0))
+  return {
+    TY: Math.sqrt(Math.max(Cxx[0][0], 0)),
+    TX: Math.sqrt(Math.max(Cxx[1][1], 0)),
+    scale: sScale,
+    ppm: sScale * 1e6,
+    rotSec: sThetaR * 206265,
+  }
+}
+
 // ── CHI-SQUARE PERCENTILE ─────────────────────────────────────────────────────
 // Wilson-Hilferty normal approximation to χ²(r) percentile.
 export function chi2Percentile(p, r) {

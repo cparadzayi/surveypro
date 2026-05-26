@@ -183,8 +183,14 @@ export function helmertApply(params, yH, xH) {
  * do not bias the parameters. c defaults to 2.576 (≈99%); pass critW to match the
  * W-test confidence. Weights are recomputed from the current residual each iteration.
  * @returns {{ params, pp, sigma0, weights, iterations, log }}
+ *   NOTE: pp[i].wY/wX/wMax are the cofactor-normalised W-statistics from the final
+ *   helmertLS fit, NOT the sigma0-only Danish residual used for weighting. To recover
+ *   the Danish metric for a beacon, use |pp[i].vY|/sigma0 (and vX) — do not filter on
+ *   pp.wMax to find down-weighted blunders.
  */
 export function danishFit(points, c = 2.576, maxIter = 10) {
+  if (!(c > 0)) throw new Error('danishFit: cutoff c must be positive')
+  if (maxIter < 1) throw new Error('danishFit: maxIter must be >= 1')
   const mObs = 2 * points.length
   let weights = new Array(mObs).fill(1)
   let fit, iterations = 0
@@ -207,7 +213,7 @@ export function danishFit(points, c = 2.576, maxIter = 10) {
     weights = next
     if (maxDelta < 1e-3) break
   }
-  fit = helmertLS(points, weights)   // final robust fit with converged weights
+  fit = helmertLS(points, weights)   // final robust fit with converged weights (not added to log; total helmertLS calls = iterations + 1)
   return { params: fit.params, pp: fit.pp, sigma0: fit.stats.s0, weights, iterations, log }
 }
 

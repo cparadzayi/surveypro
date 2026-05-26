@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const RAD = 180 / Math.PI
+const ARCSEC_PER_RAD = 206265   // arc-seconds per radian (SI 727 display precision)
 
 /** South-oriented whole-circle bearing, normalised to [0, 360). */
 export function normalizeBearingSouth(deg) {
@@ -236,10 +237,12 @@ export function looResiduals(points) {
                 looDist: Math.sqrt(looY * looY + looX * looX) })
   }
   const d = rows.map(r => r.looDist)
+  const skipped = points.length - rows.length
   return {
     rows,
     rmsLoo: d.length ? Math.sqrt(d.reduce((s, x) => s + x * x, 0) / d.length) : null,
     maxLoo: d.length ? Math.max(...d) : null,
+    ...(skipped > 0 && { note: `${skipped} point(s) skipped (singular subset)` }),
   }
 }
 
@@ -251,6 +254,7 @@ export function looResiduals(points) {
 export function paramStdErrors(params, Cxx) {
   const { a, b } = params
   const s2 = a * a + b * b
+  if (s2 < 1e-20) throw new Error('paramStdErrors: degenerate transform (scale ~ 0)')
   const Caa = Cxx[2][2], Cbb = Cxx[3][3], Cab = Cxx[2][3]
   const sScale  = Math.sqrt(Math.max((a * a * Caa + b * b * Cbb + 2 * a * b * Cab) / s2, 0))
   const sThetaR = Math.sqrt(Math.max((b * b * Caa + a * a * Cbb - 2 * a * b * Cab) / (s2 * s2), 0))
@@ -259,7 +263,7 @@ export function paramStdErrors(params, Cxx) {
     TX: Math.sqrt(Math.max(Cxx[1][1], 0)),
     scale: sScale,
     ppm: sScale * 1e6,
-    rotSec: sThetaR * 206265,
+    rotSec: sThetaR * ARCSEC_PER_RAD,
   }
 }
 

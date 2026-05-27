@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const RAD = 180 / Math.PI
+const ARCSEC_PER_RAD = 206265   // arc-seconds per radian (SI 727 display precision)
 
 /** South-oriented whole-circle bearing, normalised to [0, 360). */
 export function normalizeBearingSouth(deg) {
@@ -80,8 +81,12 @@ export const mat = {
 // translation (TY, TX) is therefore the datum shift AT THE NETWORK CENTROID.
 //
 // @param {Array<{id, name, yH, xH, yS, xS}>} points  Active beacons only.
-// @returns {{ params, pp, stats }}
-export function helmertLS(points) {
+// @param {number[]} [weights]  Optional per-observation weights, length 2n
+//   (Y row then X row of each point). Omit => all 1 => ordinary least squares.
+// @returns {{params, pp, stats, Cxx}}  stats.vTv is the WEIGHTED sum of squares
+//   v^T W v (equals plain v^T v when weights are all 1); Cxx = sigma0^2 * N^-1
+//   (4x4 parameter covariance); each pp entry carries redundancy {rY, rX}.
+export function helmertLS(points, weights) {
   const n = points.length
   if (n < 3) throw new Error('Need at least 3 active beacons (minimum DOF = 2)')
 
@@ -89,7 +94,6 @@ export function helmertLS(points) {
   const yc = points.reduce((s, p) => s + p.yH, 0) / n
   const xc = points.reduce((s, p) => s + p.xH, 0) / n
 
-  // Build design matrix A (2n×4) and observation vector l (2n×1) on reduced coords.
   const A = [], l = []
   for (const p of points) {
     const yh = p.yH - yc, xh = p.xH - xc
@@ -97,58 +101,66 @@ export function helmertLS(points) {
     A.push([0, 1,  xh,  yh]);  l.push([p.xS - xc])
   }
 
-  const At  = mat.T(A)
-  const AtA = mat.mul(At, A)          // 4×4 normal matrix N
-  const Atl = mat.mul(At, l)          // 4×1
-  const Ni  = mat.inv(AtA)            // N⁻¹
-  const x   = mat.mul(Ni, Atl).map(r => r[0])   // solution [TY, TX, a, b]
+  const mObs = 2 * n
+  // Resolve weights; guard against zero/negative so 1/w in the residual cofactor stays finite.
+  const w0 = (weights && weights.length === mObs) ? weights : new Array(mObs).fill(1)
+  const w  = w0.map(wi => Math.max(wi, 1e-12))
+
+  // Weighted normal equations: N = AᵀWA,  rhs = AᵀWl.
+  const At  = mat.T(A)                                          // 4×2n
+  const AtW = At.map(row => row.map((val, k) => val * w[k]))    // Aᵀ·W
+  const AtA = mat.mul(AtW, A)          // 4×4 normal matrix N
+  const Atl = mat.mul(AtW, l)          // 4×1
+  const Ni  = mat.inv(AtA)             // N⁻¹
+  const x   = mat.mul(Ni, Atl).map(r => r[0])   // [TY, TX, a, b]
 
   const [TY, TX, a, b] = x
 
-  // Residuals: v = A·x̂ − l
   const Ax = mat.mul(A, x.map(v => [v]))
   const v  = mat.sub(Ax, l).map(r => r[0])
 
-  const DOF  = 2 * n - 4
-  const vTv  = v.reduce((s, vi) => s + vi * vi, 0)
+  const DOF  = mObs - 4
+  const vTv  = v.reduce((s, vi, i) => s + w[i] * vi * vi, 0)   // weighted v^T W v (== v^T v when all w=1)
   const s0sq = DOF > 0 ? vTv / DOF : 0
   const s0   = Math.sqrt(Math.max(s0sq, 0))
 
-  // Diagonal of Qvv = I − A·N⁻¹·Aᵀ  (cofactor matrix of residuals, for W-test)
-  const ANi    = mat.mul(A, Ni)
-  const diagQvv = A.map((rowA, i) => 1 - ANi[i].reduce((s, v, j) => s + v * rowA[j], 0))
+  // Residual cofactor diagonal q_vv,i = 1/w_i − (A·N⁻¹·Aᵀ)_ii ; redundancy r_i = q_vv,i·w_i.
+  const ANi  = mat.mul(A, Ni)
+  const qvv  = A.map((rowA, i) =>
+    Math.max(1 / w[i] - ANi[i].reduce((s, val, j) => s + val * rowA[j], 0), 1e-14))
+  const redund = qvv.map((q, i) => q * w[i])
+
+  // Parameter covariance  Cxx = σ̂₀² · N⁻¹  (4×4).
+  const Cxx = Ni.map(row => row.map(val => s0sq * val))
 
   const scale  = Math.sqrt(a * a + b * b)
   const rotDeg = Math.atan2(b, a) * RAD
   const ppm    = (scale - 1) * 1e6
 
-  // Per-point statistics
   const pp = points.map((p, i) => {
     const vY = v[2 * i], vX = v[2 * i + 1]
     const resDist = Math.sqrt(vY * vY + vX * vX)
     const resBrg  = bearingSouth(vY, vX)
 
-    const qYY  = Math.max(diagQvv[2 * i],     1e-14)
-    const qXX  = Math.max(diagQvv[2 * i + 1], 1e-14)
-
-    // Baarda W-test:  w = |v_i| / (s₀ · √Qvv_ii)
-    const wY   = s0 > 1e-12 ? Math.abs(vY) / (s0 * Math.sqrt(qYY)) : 0
-    const wX   = s0 > 1e-12 ? Math.abs(vX) / (s0 * Math.sqrt(qXX)) : 0
+    const qYY = qvv[2 * i], qXX = qvv[2 * i + 1]
+    const wY  = s0 > 1e-12 ? Math.abs(vY) / (s0 * Math.sqrt(qYY)) : 0
+    const wX  = s0 > 1e-12 ? Math.abs(vX) / (s0 * Math.sqrt(qXX)) : 0
     const wMax = Math.max(wY, wX)
 
-    // Raw (pre-transformation) coordinate difference
-    const dY      = p.yS - p.yH
-    const dX      = p.xS - p.xH
+    const dY = p.yS - p.yH
+    const dX = p.xS - p.xH
     const rawDist = Math.sqrt(dY * dY + dX * dX)
     const rawBrg  = bearingSouth(dY, dX)
 
-    return { ...p, vY, vX, resDist, resBrg, wY, wX, wMax, dY, dX, rawDist, rawBrg }
+    return { ...p, vY, vX, resDist, resBrg, wY, wX, wMax, dY, dX, rawDist, rawBrg,
+             rY: redund[2 * i], rX: redund[2 * i + 1] }
   })
 
   return {
     params: { TY, TX, a, b, scale, rotDeg, ppm, yc, xc },
     pp,
     stats: { n, DOF, vTv, s0, s0sq },
+    Cxx,
   }
 }
 
@@ -163,6 +175,95 @@ export function helmertApply(params, yH, xH) {
   return {
     yT: yc + TY + a * yh - b * xh,
     xT: xc + TX + b * yh + a * xh,
+  }
+}
+
+/**
+ * Danish (Krarup) robust pre-fit: iteratively-reweighted LS that down-weights
+ * observations whose σ̂₀-standardised residual exceeds cutoff c, so gross blunders
+ * do not bias the parameters. c defaults to 2.576 (≈99%); pass critW to match the
+ * W-test confidence. Weights are recomputed from the current residual each iteration.
+ * @returns {{ params, pp, sigma0, weights, iterations, log }}
+ *   NOTE: pp[i].wY/wX/wMax are the cofactor-normalised W-statistics from the final
+ *   helmertLS fit, NOT the sigma0-only Danish residual used for weighting. To recover
+ *   the Danish metric for a beacon, use |pp[i].vY|/sigma0 (and vX) — do not filter on
+ *   pp.wMax to find down-weighted blunders.
+ */
+export function danishFit(points, c = 2.576, maxIter = 10) {
+  if (!(c > 0)) throw new Error('danishFit: cutoff c must be positive')
+  if (maxIter < 1) throw new Error('danishFit: maxIter must be >= 1')
+  const mObs = 2 * points.length
+  let weights = new Array(mObs).fill(1)
+  let fit, iterations = 0
+  const log = []
+  for (let k = 1; k <= maxIter; k++) {
+    iterations = k
+    fit = helmertLS(points, weights)
+    const s0 = fit.stats.s0
+    const next = weights.slice()
+    let maxDelta = 0
+    fit.pp.forEach((p, i) => {
+      const uY = s0 > 1e-12 ? Math.abs(p.vY) / s0 : 0
+      const uX = s0 > 1e-12 ? Math.abs(p.vX) / s0 : 0
+      const wY = uY <= c ? 1 : Math.exp(-((uY / c) ** 2))
+      const wX = uX <= c ? 1 : Math.exp(-((uX / c) ** 2))
+      maxDelta = Math.max(maxDelta, Math.abs(wY - next[2 * i]), Math.abs(wX - next[2 * i + 1]))
+      next[2 * i] = wY; next[2 * i + 1] = wX
+    })
+    log.push({ iter: k, s0, maxWeightChange: maxDelta })
+    weights = next
+    if (maxDelta < 1e-3) break
+  }
+  fit = helmertLS(points, weights)   // final robust fit with converged weights (not added to log; total helmertLS calls = iterations + 1)
+  return { params: fit.params, pp: fit.pp, sigma0: fit.stats.s0, weights, iterations, log }
+}
+
+/**
+ * Leave-one-out cross-validation: for each point, re-fit on the others and predict
+ * it, giving an independent (out-of-sample) residual. Needs >= 4 points (so >= 3 remain).
+ * @returns {{ rows:[{id,name,looY,looX,looDist}], rmsLoo, maxLoo, note? }}
+ */
+export function looResiduals(points) {
+  if (points.length < 4)
+    return { rows: [], rmsLoo: null, maxLoo: null, note: 'too few points for LOO (need >= 4)' }
+  const rows = []
+  for (let i = 0; i < points.length; i++) {
+    const subset = points.filter((_, j) => j !== i)
+    let p
+    try { p = helmertLS(subset).params } catch (e) { continue }
+    const { yT, xT } = helmertApply(p, points[i].yH, points[i].xH)
+    const looY = yT - points[i].yS, looX = xT - points[i].xS
+    rows.push({ id: points[i].id, name: points[i].name, looY, looX,
+                looDist: Math.sqrt(looY * looY + looX * looX) })
+  }
+  const d = rows.map(r => r.looDist)
+  const skipped = points.length - rows.length
+  return {
+    rows,
+    rmsLoo: d.length ? Math.sqrt(d.reduce((s, x) => s + x * x, 0) / d.length) : null,
+    maxLoo: d.length ? Math.max(...d) : null,
+    ...(skipped > 0 && { note: `${skipped} point(s) skipped (singular subset)` }),
+  }
+}
+
+/**
+ * Standard errors of the transformation parameters from the covariance Cxx (=σ̂₀²·N⁻¹).
+ * scale & rotation are error-propagated from the (a,b) covariance block.
+ * @returns {{ TY, TX, scale, ppm, rotSec }}  (metres, metres, ratio, ppm, arc-seconds)
+ */
+export function paramStdErrors(params, Cxx) {
+  const { a, b } = params
+  const s2 = a * a + b * b
+  if (s2 < 1e-20) throw new Error('paramStdErrors: degenerate transform (scale ~ 0)')
+  const Caa = Cxx[2][2], Cbb = Cxx[3][3], Cab = Cxx[2][3]
+  const sScale  = Math.sqrt(Math.max((a * a * Caa + b * b * Cbb + 2 * a * b * Cab) / s2, 0))
+  const sThetaR = Math.sqrt(Math.max((b * b * Caa + a * a * Cbb - 2 * a * b * Cab) / (s2 * s2), 0))
+  return {
+    TY: Math.sqrt(Math.max(Cxx[0][0], 0)),
+    TX: Math.sqrt(Math.max(Cxx[1][1], 0)),
+    scale: sScale,
+    ppm: sScale * 1e6,
+    rotSec: sThetaR * ARCSEC_PER_RAD,
   }
 }
 
@@ -186,72 +287,71 @@ export function chi2Percentile(p, r) {
 // @param {Array}  inputPoints  All beacons (active and to-be-tested).
 // @param {number} critW        Critical W value (1.960 / 2.576 / 3.291).
 // @param {number} sig0         A priori σ₀ in metres.
-// @returns {{ adj, pts, log, converged } | { error, pts, log }}
+// @returns {{ adj, pts, log, danishLog, loo, converged } | { error, pts, log, danishLog }}
 export function iterativeAdjust(inputPoints, critW, sig0) {
-  let pts = inputPoints.map(p => ({ ...p, rejIter: null }))
-  const log = []
+  let pts = inputPoints.map(p => ({ ...p, rejIter: null, rejSource: null }))
+  const log = []          // W-test backstop log
+  const danishLog = []
 
+  // ── Step 1: Danish robust pre-fit on ALL points ──
+  let rob
+  try { rob = danishFit(pts, critW) } catch (e) { return { error: e.message, pts, log, danishLog } }
+  danishLog.push(...rob.log)
+
+  // ── Step 2: flag outliers on the σ̂₀-standardised ROBUST residuals ──
+  const robS0 = rob.sigma0
+  rob.pp.forEach((p, i) => {
+    pts[i].danishWeight = { wY: rob.weights[2 * i], wX: rob.weights[2 * i + 1] }
+    const uY = robS0 > 1e-12 ? Math.abs(p.vY) / robS0 : 0
+    const uX = robS0 > 1e-12 ? Math.abs(p.vX) / robS0 : 0
+    if (Math.max(uY, uX) > critW) { pts[i].rejIter = 0; pts[i].rejSource = 'danish' }
+  })
+
+  // ── Steps 3–4: final OLS on survivors + rigorous W-test backstop ──
   for (let iter = 1; iter <= 25; iter++) {
     const active = pts.filter(p => p.rejIter === null)
     if (active.length < 3)
-      return { error: 'Too few active points remaining for adjustment', pts, log }
+      return { error: 'Too few active points remaining for adjustment', pts, log, danishLog }
 
     let adj
-    try { adj = helmertLS(active) } catch (e) { return { error: e.message, pts, log } }
+    try { adj = helmertLS(active) } catch (e) { return { error: e.message, pts, log, danishLog } }
 
     const chi2  = adj.stats.vTv / (sig0 * sig0)
     const chi2L = adj.stats.DOF > 0 ? chi2Percentile(0.025, adj.stats.DOF) : 0
     const chi2U = adj.stats.DOF > 0 ? chi2Percentile(0.975, adj.stats.DOF) : 1e9
     log.push({ iter, n: active.length, s0: adj.stats.s0, chi2, chi2L, chi2U })
 
-    // Check if all beacons pass
     const worst = adj.pp.reduce((a, b) => a.wMax > b.wMax ? a : b)
     if (worst.wMax <= critW) {
-      // Annotate final statuses and merge per-point results back
       const sm = {}
       adj.pp.forEach(r => { sm[r.id] = r })
+      const P  = adj.params
+      let se
+      try { se = paramStdErrors(P, adj.Cxx) }
+      catch (e) { return { error: e.message, pts, log, danishLog } }
       pts = pts.map(p => {
-        if (p.rejIter === null) {
-          return { ...p, ...sm[p.id], finalStatus: 'ACCEPT' }
-        }
-        // Rejected beacon: it is excluded from the final fit, so residuals and
-        // W-statistics are undefined — but its raw (pre-adjustment) coordinate
-        // difference is still meaningful and is exactly why it was flagged.
-        const dY = p.yS - p.yH
-        const dX = p.xS - p.xH
-        return {
-          ...p,
-          dY, dX,
-          rawDist: Math.sqrt(dY * dY + dX * dX),
-          rawBrg: bearingSouth(dY, dX),
-          finalStatus: 'REJECT',
-        }
-      })
-      // Apply the FINAL transform to every beacon's historical coords and compare
-      // to its survey coords: transformation residual v = transformed − survey.
-      // (For accepted beacons this equals the LS residual; for rejected ones it
-      // shows the misfit in the fitted frame.)
-      const P = adj.params
-      pts = pts.map(p => {
+        const base = (p.rejIter === null)
+          ? { ...p, ...sm[p.id], finalStatus: 'ACCEPT' }
+          : { ...p, dY: p.yS - p.yH, dX: p.xS - p.xH,
+              rawDist: Math.sqrt((p.yS - p.yH) ** 2 + (p.xS - p.xH) ** 2),
+              rawBrg: bearingSouth(p.yS - p.yH, p.xS - p.xH), finalStatus: 'REJECT' }
         const { yT, xT } = helmertApply(P, p.yH, p.xH)
         const tvY = yT - p.yS, tvX = xT - p.xS
-        return { ...p, yT, xT, tvY, tvX,
-          tResid: Math.sqrt(tvY * tvY + tvX * tvX), tBrg: bearingSouth(tvY, tvX) }
+        return { ...base, yT, xT, tvY, tvX,
+                 tResid: Math.sqrt(tvY * tvY + tvX * tvX), tBrg: bearingSouth(tvY, tvX) }
       })
+      const loo = looResiduals(pts.filter(p => p.finalStatus === 'ACCEPT'))
       return {
-        adj: { ...adj, stats: { ...adj.stats, chi2, chi2L, chi2U, sig0 } },
-        pts,
-        log,
-        converged: true,
+        adj: { ...adj, params: { ...P, se }, stats: { ...adj.stats, chi2, chi2L, chi2U, sig0 } },
+        pts, log, danishLog, loo, converged: true,
       }
     }
 
-    // Reject the beacon with the worst W statistic
     const wi = pts.findIndex(p => p.id === worst.id)
-    pts[wi] = { ...pts[wi], rejIter: iter }
+    pts[wi] = { ...pts[wi], rejIter: iter, rejSource: 'wtest' }
   }
 
-  return { error: 'Did not converge within 25 iterations', pts, log }
+  return { error: 'Did not converge within 25 iterations', pts, log, danishLog }
 }
 
 // ── FORMATTING HELPERS ────────────────────────────────────────────────────────

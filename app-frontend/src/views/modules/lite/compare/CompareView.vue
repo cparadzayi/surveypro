@@ -363,9 +363,9 @@
                       ]"
                     >{{ p.finalStatus || '—' }}</span>
                     <span
-                      v-if="p.finalStatus === 'REJECT' && p.rejIter"
+                      v-if="p.finalStatus === 'REJECT' && p.rejIter !== null"
                       class="text-[9px] text-gray-400 ml-1"
-                    >iter {{ p.rejIter }}</span>
+                    >{{ p.rejSource === 'danish' ? 'pre-filter' : 'iter ' + p.rejIter }}</span>
                   </td>
                 </tr>
               </tbody>
@@ -633,6 +633,50 @@
           </template>
         </div>
 
+        <!-- ── RELIABILITY & VALIDATION TAB ───────────────────────────────── -->
+        <div v-show="activeTab === 'reliability'" class="p-4">
+          <div class="text-xs text-gray-500 mb-2">
+            Redundancy numbers (Σ = DOF {{ result.adj.stats.DOF }}): r→1 well controlled, r→0 poorly controlled ·
+            Leave-one-out validation —
+            <b class="text-blue-700">RMS {{ result.loo && result.loo.rmsLoo != null ? result.loo.rmsLoo.toFixed(4) + ' m' : '—' }}</b>,
+            max {{ result.loo && result.loo.maxLoo != null ? result.loo.maxLoo.toFixed(4) + ' m' : '—' }}
+            {{ result.loo && result.loo.note ? '(' + result.loo.note + ')' : '' }}
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-xs border-collapse">
+              <thead>
+                <tr class="bg-gray-50 text-gray-600">
+                  <th class="text-left px-2 py-1.5">Beacon</th>
+                  <th class="text-right px-2 py-1.5">Redund rY</th>
+                  <th class="text-right px-2 py-1.5">Redund rX</th>
+                  <th class="text-right px-2 py-1.5">LOO ΔY (m)</th>
+                  <th class="text-right px-2 py-1.5">LOO ΔX (m)</th>
+                  <th class="text-right px-2 py-1.5">LOO dist (m)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(p, idx) in result.pts.filter(b => b.finalStatus === 'ACCEPT')"
+                  :key="p.id"
+                  :class="idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'"
+                  class="border-t border-gray-100"
+                >
+                  <td class="px-2 py-1.5 whitespace-nowrap">{{ p.name }}</td>
+                  <td class="px-2 py-1.5 text-right">{{ p.rY != null ? p.rY.toFixed(3) : '—' }}</td>
+                  <td class="px-2 py-1.5 text-right">{{ p.rX != null ? p.rX.toFixed(3) : '—' }}</td>
+                  <td class="px-2 py-1.5 text-right">{{ looFor(p.id) ? f4s(looFor(p.id).looY) : '—' }}</td>
+                  <td class="px-2 py-1.5 text-right">{{ looFor(p.id) ? f4s(looFor(p.id).looX) : '—' }}</td>
+                  <td class="px-2 py-1.5 text-right font-medium text-blue-700">{{ looFor(p.id) ? f4(looFor(p.id).looDist) : '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-[10px] text-gray-400 mt-2">
+            LOO = leave-one-out cross-validation: each beacon predicted from a fit that excludes it — an independent,
+            out-of-sample accuracy check (no held-out points needed).
+          </p>
+        </div>
+
       </div><!-- /results -->
     </div>
   </ModuleScaffold>
@@ -754,11 +798,12 @@ async function handleUpload(event) {
 }
 
 const TABS = [
-  { id: 'schedule', label: 'Computation schedule' },
-  { id: 'trans',    label: 'Transformation'        },
-  { id: 'stats',    label: 'Statistics'             },
-  { id: 'plot',     label: 'Displacement plot'      },
-  { id: 'edges',    label: 'Edge compliance'        },
+  { id: 'schedule',    label: 'Computation schedule' },
+  { id: 'trans',       label: 'Transformation'        },
+  { id: 'stats',       label: 'Statistics'             },
+  { id: 'plot',        label: 'Displacement plot'      },
+  { id: 'edges',       label: 'Edge compliance'        },
+  { id: 'reliability', label: 'Reliability'            },
 ]
 
 // ── COMPUTED — SCHEDULE ───────────────────────────────────────────────────────
@@ -784,12 +829,13 @@ function wColour(p) {
 const transformParams = computed(() => {
   if (!result.value?.adj?.params) return []
   const p = result.value.adj.params
+  const se = p.se
   return [
-    { label: 'Translation ΔY (Westing)',  value: f4(p.TY)  + ' m',     note: 'datum shift @ centroid'    },
-    { label: 'Translation ΔX (Southing)', value: f4(p.TX)  + ' m',     note: 'datum shift @ centroid'    },
-    { label: 'Scale factor',               value: p.scale.toFixed(8),   note: 'Ratio survey / historical' },
-    { label: 'Scale (ppm)',                value: p.ppm.toFixed(2) + ' ppm', note: '(scale − 1) × 10⁶'    },
-    { label: 'Rotation θ',                 value: formatDMS(p.rotDeg), note: p.rotDeg.toFixed(6) + '° (Y→X +)' },
+    { label: 'Translation ΔY (Westing)',  value: f4(p.TY) + ' m' + (se ? ' ± ' + f4(se.TY) : ''),  note: 'datum shift @ centroid' },
+    { label: 'Translation ΔX (Southing)', value: f4(p.TX) + ' m' + (se ? ' ± ' + f4(se.TX) : ''),  note: 'datum shift @ centroid' },
+    { label: 'Scale factor',               value: p.scale.toFixed(8) + (se ? ' ± ' + se.scale.toExponential(2) : ''), note: 'Ratio survey / historical' },
+    { label: 'Scale (ppm)',                value: p.ppm.toFixed(2) + ' ppm' + (se ? ' ± ' + se.ppm.toFixed(2) : ''), note: '(scale − 1) × 10⁶' },
+    { label: 'Rotation θ',                 value: formatDMS(p.rotDeg) + (se ? ' ± ' + se.rotSec.toFixed(1) + '″' : ''), note: p.rotDeg.toFixed(6) + '° (Y→X +)' },
     { label: 'Coefficient a',              value: p.a.toFixed(8),      note: 'scale · cos θ'             },
     { label: 'Coefficient b',              value: p.b.toFixed(8),      note: 'scale · sin θ'             },
   ]
@@ -872,4 +918,10 @@ const plotData = computed(() => {
 
   return { W, H, pad, pointData, arrowScale }
 })
+
+// ── RELIABILITY TAB HELPER ────────────────────────────────────────────────────
+function looFor(id) {
+  const rows = result.value?.loo?.rows
+  return rows ? rows.find(r => r.id === id) : null
+}
 </script>

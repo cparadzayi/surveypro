@@ -57,11 +57,11 @@ class BeaconAdjustmentReport {
       startY: this.y, margin: { left: this.margin, right: this.margin }, theme: 'plain',
       styles: { fontSize: 9, cellPadding: 1.5 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 85 } },
       body: [
-        ['Translation dY (Westing, @ centroid)', f4(p.TY) + ' m'],
-        ['Translation dX (Southing, @ centroid)', f4(p.TX) + ' m'],
-        ['Scale factor', p.scale.toFixed(8)],
-        ['Scale (ppm)', p.ppm.toFixed(2) + ' ppm'],
-        ['Rotation (theta)', formatDMS(p.rotDeg) + '  (' + p.rotDeg.toFixed(6) + '°)'],
+        ['Translation dY (Westing, @ centroid)', f4(p.TY) + ' m' + (p.se ? '  ± ' + f4(p.se.TY) : '')],
+        ['Translation dX (Southing, @ centroid)', f4(p.TX) + ' m' + (p.se ? '  ± ' + f4(p.se.TX) : '')],
+        ['Scale factor', p.scale.toFixed(8) + (p.se ? '  ± ' + p.se.scale.toExponential(2) : '')],
+        ['Scale (ppm)', p.ppm.toFixed(2) + ' ppm' + (p.se ? '  ± ' + p.se.ppm.toFixed(2) : '')],
+        ['Rotation (theta)', formatDMS(p.rotDeg) + (p.se ? '  ± ' + p.se.rotSec.toFixed(1) + ' sec' : '')],
         ['Sigma-0 a priori', s.sig0.toFixed(4) + ' m'],
         ['Sigma-0 a posteriori', s.s0.toFixed(4) + ' m'],
         ['Degrees of freedom', String(s.DOF)],
@@ -268,6 +268,48 @@ class BeaconAdjustmentReport {
     note.forEach((ln, i) => this.doc.text(ln, 14, y + i * 4))
   }
 
+  addReliabilityValidation(result) {
+    const acc = result.pts.filter(p => p.finalStatus === 'ACCEPT')
+    if (!acc.length) return
+    const loo = result.loo || { rows: [], rmsLoo: null, maxLoo: null, note: 'LOO not available' }
+    const looById = {}
+    loo.rows.forEach(r => { looById[r.id] = r })
+    this.doc.addPage('a4', 'landscape')
+    this.doc.setFontSize(11); this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(NAVY[0], NAVY[1], NAVY[2])
+    this.doc.text('Reliability & Validation', 14, 14)
+    const body = acc.map(p => {
+      const lr = looById[p.id]
+      return [
+        p.name,
+        p.rY != null ? p.rY.toFixed(3) : '-',
+        p.rX != null ? p.rX.toFixed(3) : '-',
+        lr ? f4s(lr.looY) : '-',
+        lr ? f4s(lr.looX) : '-',
+        lr ? f4(lr.looDist) : '-',
+      ]
+    })
+    autoTable(this.doc, {
+      startY: 18, margin: { left: 14, right: 14 },
+      head: [['Beacon', 'Redund rY', 'Redund rX', 'LOO dY (m)', 'LOO dX (m)', 'LOO dist (m)']],
+      body,
+      styles: { fontSize: 8, cellPadding: 1.2, halign: 'right' },
+      columnStyles: { 0: { halign: 'left' } },
+      headStyles: { fillColor: NAVY, halign: 'center', fontSize: 8 },
+    })
+    const s = result.adj.stats
+    let y = this.doc.lastAutoTable.finalY + 6
+    if (y + 3 * 4 > this.doc.internal.pageSize.getHeight() - 12) { this.doc.addPage('a4', 'landscape'); y = 16 }
+    this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
+    const note = [
+      `Redundancy numbers r (sum = DOF = ${s.DOF}): r -> 1 well controlled / independently checkable; r -> 0 poorly controlled.`,
+      `LOO = leave-one-out cross-validation: each beacon predicted from a fit that excludes it (independent, out-of-sample).`,
+      `RMS LOO = ${loo.rmsLoo != null ? loo.rmsLoo.toFixed(4) + ' m' : '-'} ;  max LOO = ${loo.maxLoo != null ? loo.maxLoo.toFixed(4) + ' m' : '-'} ` +
+        `${loo.note ? '(' + loo.note + ')' : '— the external (independent) accuracy estimate.'}`,
+    ]
+    note.forEach((ln, i) => this.doc.text(ln, 14, y + i * 4))
+  }
+
   addEdgeCompliance(result) {
     const edges = result.edges
     if (!edges || !edges.rows.length) return
@@ -332,6 +374,7 @@ class BeaconAdjustmentReport {
     this.addCertification(result, meta)
     this.addScheduleLandscape(result)
     this.addTransformationResiduals(result)
+    this.addReliabilityValidation(result)
     this.addEdgeCompliance(result)
     this.addFooters()
     return this.doc

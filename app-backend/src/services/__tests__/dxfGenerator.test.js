@@ -228,3 +228,24 @@ describe('generateDXF — margin guides', () => {
     expect(entityCount(dxf, 'LINE', 'MARGIN_GUIDES')).toBeGreaterThanOrEqual(16)
   })
 })
+
+describe('generateDXF — beacon description block', () => {
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+  const opts = {
+    parcels: { features: [] },
+    beacons: { features: [] },
+    outsideFigureData: null,
+    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+    beaconGroups: [
+      { points: 'BM 001–BM 003', description: 'Permanent concrete pillars' },
+      { points: 'BM 004–BM 008', description: 'Iron pegs with cement collar' },
+    ],
+  }
+  test('emits header + per-group TEXT entities on TITLE_BLOCK layer', () => {
+    const { buffer } = generateDXF(opts, fakeLogger)
+    const dxf = buffer.toString()
+    expect(dxf).toMatch(/BEACON DESCRIPTIONS/)
+    expect(dxf).toMatch(/Permanent concrete pillars/)
+    expect(dxf).toMatch(/Iron pegs/)
+  })
+})

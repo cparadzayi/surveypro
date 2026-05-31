@@ -481,6 +481,36 @@ export function generateDXF(options, logger) {
     addLine(layer, x1, y2, x1, y1); // left
   }
 
+  /**
+   * Beacon descriptions table — one row per beaconGroups[] entry.
+   * Truncates with "+ N more — see PDF" if rows would overflow zoneBottom.
+   */
+  function addBeaconDescription(layer, zoneL, zoneR, zoneTop, zoneBottom, beaconGroups) {
+    if (!Array.isArray(beaconGroups) || beaconGroups.length === 0) return
+    const headerH = mm(4)
+    const rowH = mm(3.5)
+    let y = zoneTop
+    addText(layer, zoneL, y, 'BEACON DESCRIPTIONS', headerH, 0, 'BOLD')
+    y -= headerH * 1.4
+    // Separator LINE
+    addLine(layer, zoneL, y, zoneR, y)
+    y -= mm(1)
+    let printed = 0
+    for (const g of beaconGroups) {
+      if (y - rowH < zoneBottom) break
+      const text = `${g.points}: ${g.description || ''}`
+      addText(layer, zoneL, y, text, mm(2.4), 0)
+      y -= rowH
+      printed++
+    }
+    const remaining = beaconGroups.length - printed
+    if (remaining > 0) {
+      if (y - rowH < zoneBottom) y = zoneBottom + rowH    // squeeze in the footer
+      addText(layer, zoneL, y, `+ ${remaining} more — see PDF for full list`, mm(2.2), 0)
+      warn('beaconDescTruncated', remaining)
+    }
+  }
+
   // ── 1. Outside Figure boundary ──
   let ofPolygon = null; // AutoCAD coords for beacon filtering
   if (outsideFigureData?.edges?.length > 0) {
@@ -843,11 +873,11 @@ export function generateDXF(options, logger) {
     addText(TB, col1L + scW * 0.35, sY, Math.round(sp.area_m2).toString(), hBody);
     sY -= rH;
   }
-  // BEACON DESCRIPTION (below schedule)
-  sY -= mm(8);
-  addText(TB, col1L, sY, 'BEACON DESCRIPTION', hHead, 0, 'BOLD');
-  sY -= rH * 1.2;
-  addText(TB, col1L, sY, 'Others:  12mm iron peg in concrete', hBody);
+  // Beacon descriptions immediately below the Schedule of Areas
+  const beaconDescTop = sY - mm(8);
+  addBeaconDescription(TB, col1L, col1R - mm(2),
+                        beaconDescTop, cntB + mm(4),
+                        options.beaconGroups || []);
 
   // ── C2) SURVEY STATEMENT + OUTSIDE FIGURE DATA (center column) ──
   let cY = drawDivY - mm(5);

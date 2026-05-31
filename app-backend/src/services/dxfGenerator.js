@@ -380,7 +380,7 @@ export function generateDXF(options, logger) {
    */
   function addScaleBar(layer, cx, cy, scaleDenom) {
     const niceLengthM = pickNiceScaleBarLengthM(scaleDenom)
-    const barWidthGround = mmToGround(60, scaleDenom)   // 60 mm bar on paper
+    const barWidthGround = niceLengthM   // bar spans exactly niceLengthM metres on the ground
     const halfW = barWidthGround / 2
     const halfH = mm(2)
     // Outer rectangle (2 horizontal LINEs)
@@ -622,8 +622,8 @@ export function generateDXF(options, logger) {
       const rawVerts = coords;
       const finiteVerts = rawVerts.filter(([yy, xx]) =>
         Number.isFinite(yy) && Number.isFinite(xx));
-      if (finiteVerts.length < 3) {
-        logger.warn(`[DXF] dropped parcel ${stand || '<unnamed>'}: <3 finite vertices`)
+      if (finiteVerts.length !== rawVerts.length || finiteVerts.length < 3) {
+        logger.warn(`[DXF] dropped parcel ${stand || '<unnamed>'}: missing or non-finite vertices (${finiteVerts.length}/${rawVerts.length} finite)`)
         warn('parcels')
         continue
       }
@@ -921,12 +921,6 @@ export function generateDXF(options, logger) {
   addText(TB, eX, eY, 'ENDORSEMENTS', hHead, 0, 'BOLD');
   addLine(TB, endDivX, eY - mm(2), pageR, eY - mm(2)); // underline
   eY -= mm(8);
-  // Column headers
-  addText(TB, eX, eY, 'No.', hBody, 0, 'BOLD');
-  addText(TB, eX + mm(10), eY, 'STATEMENT', hBody, 0, 'BOLD');
-  addText(TB, eX + mm(90), eY, 'Date', hBody, 0, 'BOLD');
-  addText(TB, eX + mm(110), eY, 'Surveyor-General', hBody, 0, 'BOLD');
-  addLine(TB, endDivX, eY - mm(2), pageR, eY - mm(2));
   drawEndorsementZone(eX, endorseR, cntT - mm(5), cntB + mm(5));
 
   // ── C) BOTTOM ZONE LAYOUT (within content area, below drawDivY) ──
@@ -948,9 +942,8 @@ export function generateDXF(options, logger) {
   sY -= mm(5);
   // Table header
   const scW = col1R - col1L;
-  addText(TB, col1L, sY, 'STAND', hBody, 0, 'BOLD');
+  addText(TB, col1L, sY, 'STAND No', hBody, 0, 'BOLD');
   addText(TB, col1L + scW * 0.35, sY, 'AREAS', hBody, 0, 'BOLD');
-  addText(TB, col1L, sY - hBody * 0.8, 'No.', hBody, 0, 'BOLD');
   addText(TB, col1L + scW * 0.35, sY - hBody * 0.8, 'SQ. METRES', hBody, 0, 'BOLD');
   addLine(TB, col1L, sY - mm(5), col1R - mm(3), sY - mm(5));
   sY -= mm(7);

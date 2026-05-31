@@ -124,6 +124,22 @@ describe('generateDXF — graceful degradation on bad inputs', () => {
     const { warnings } = generateDXF(opts, fakeLogger)
     expect(warnings.summary.parcels).toBe(1)
   })
+
+  test('skips parcel with mixed NaN+finite vertices (no NaN VERTEX in output)', () => {
+    const opts = {
+      parcels: { features: [
+        { type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [[[50000, 2200000], [50100, 2200000], [NaN, NaN], [50000, 2200000]]] },
+          properties: { stand: 'MIXED' } },
+      ]},
+      beacons: { features: [] },
+      metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+    }
+    const { buffer, warnings } = generateDXF(opts, fakeLogger)
+    expect(warnings.summary.parcels).toBe(1)
+    // The DXF text must not contain the literal string "NaN" inside a VERTEX entity.
+    expect(buffer.toString()).not.toMatch(/\bVERTEX\b[\s\S]{0,200}NaN/)
+  })
 })
 
 describe('generateDXF — beacon symbol differentiation', () => {
@@ -182,6 +198,44 @@ describe('generateDXF — scale bar', () => {
     expect(entityCount(dxf, 'LINE', 'SCALE_BAR')).toBeGreaterThanOrEqual(7)
     // Tick labels (4) + "1:<scale>" footer (1) = 5 TEXT entities
     expect(entityCount(dxf, 'TEXT', 'SCALE_BAR')).toBeGreaterThanOrEqual(5)
+  })
+
+  test('scale-bar physical width matches the labelled ground length', () => {
+    // At 1:500 with niceLengthM = 50 m, the bar should be 50 m wide in DXF coords.
+    // We compare the left and right tick LINE x-coordinates.
+    // A real outside figure is required so the page layout has finite coordinates.
+    const optsWithGeom = {
+      ...opts,
+      outsideFigureData: {
+        edges: [
+          { side: 'A-B', distance: 200, direction: '90°00\'00"', pointId: 'A', y: 50000, x: 2200000 },
+          { side: 'B-C', distance: 200, direction: '180°00\'00"', pointId: 'B', y: 50200, x: 2200000 },
+          { side: 'C-D', distance: 200, direction: '270°00\'00"', pointId: 'C', y: 50200, x: 2200200 },
+          { side: 'D-A', distance: 200, direction: '0°00\'00"',   pointId: 'D', y: 50000, x: 2200200 },
+        ],
+      },
+    }
+    const { buffer } = generateDXF(optsWithGeom, fakeLogger)
+    const dxf = buffer.toString()
+    // The 4 ticks are at f = 0, 0.25, 0.5, 1 of the bar width.
+    // Extract their x-coordinates by walking SCALE_BAR LINEs that are vertical
+    // (i.e., x1 === x2). The leftmost x is f=0, the rightmost is f=1; their
+    // difference is the bar's ground width.
+    const tickXs = []
+    const entRe = /\b0\s*\n\s*LINE\b([\s\S]*?)(?=\b0\s*\n\s*[A-Z]+\b)/g
+    for (const m of dxf.matchAll(entRe)) {
+      if (!/\b8\s*\n\s*SCALE_BAR\b/.test(m[1])) continue
+      const x1 = parseFloat((m[1].match(/\b10\s*\n\s*(-?[\d.]+)/) || [])[1])
+      const y1 = parseFloat((m[1].match(/\b20\s*\n\s*(-?[\d.]+)/) || [])[1])
+      const x2 = parseFloat((m[1].match(/\b11\s*\n\s*(-?[\d.]+)/) || [])[1])
+      const y2 = parseFloat((m[1].match(/\b21\s*\n\s*(-?[\d.]+)/) || [])[1])
+      if (Math.abs(x1 - x2) < 1e-6 && Math.abs(y1 - y2) > 1) tickXs.push(x1)   // vertical
+    }
+    tickXs.sort((a, b) => a - b)
+    expect(tickXs.length).toBeGreaterThanOrEqual(2)
+    const barWidth = tickXs[tickXs.length - 1] - tickXs[0]
+    // At 1:500 the picker returns 50 m; bar should be 50 m wide.
+    expect(barWidth).toBeCloseTo(50, 0)
   })
 })
 
@@ -308,5 +362,13 @@ describe('generateDXF — endorsement zone', () => {
     const noprior = { ...opts, metadata: { ...opts.metadata, priorDiagrams: [] } }
     const { buffer } = generateDXF(noprior, fakeLogger)
     expect(buffer.toString()).toMatch(/Prior diagrams: None/)
+  })
+
+  test('legacy column headers ("STATEMENT", "No.") are not emitted alongside the new zone', () => {
+    const { buffer } = generateDXF(opts, fakeLogger)
+    const dxf = buffer.toString()
+    // The new endorsement zone replaces the legacy column. These must be absent.
+    expect(dxf).not.toMatch(/\bSTATEMENT\b/)
+    expect(dxf).not.toMatch(/\bNo\.\b/)
   })
 })

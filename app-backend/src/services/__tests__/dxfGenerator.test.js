@@ -3,7 +3,7 @@
  * Run with:  cd app-backend && npm run test -- dxfGenerator
  */
 import { describe, test, expect } from '@jest/globals'
-import { countLayerOnTable } from './dxfParse.js'
+import { countLayerOnTable, entityCount } from './dxfParse.js'
 import { capeLoToDxfSouthUp, generateDXF } from '../dxfGenerator.js'
 
 describe('dxfParse helpers (smoke)', () => {
@@ -123,5 +123,30 @@ describe('generateDXF — graceful degradation on bad inputs', () => {
     }
     const { warnings } = generateDXF(opts, fakeLogger)
     expect(warnings.summary.parcels).toBe(1)
+  })
+})
+
+describe('generateDXF — beacon symbol differentiation', () => {
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+  const opts = {
+    parcels: { features: [] },
+    beacons: { features: [
+      { type: 'Feature', geometry: { coordinates: [50000, 2200000] },
+        properties: { pointId: 'P1', type: 'placed' } },
+      { type: 'Feature', geometry: { coordinates: [50050, 2200050] },
+        properties: { pointId: 'F1', type: 'found' } },
+    ] },
+    outsideFigureData: null,
+    metadata: {},
+    scale: '1:500',
+    sheetSize: 'ISO_A2',
+  }
+  test('placed beacon emits CIRCLE + 8 radial LINEs', () => {
+    const { buffer } = generateDXF(opts, fakeLogger)
+    const dxf = buffer.toString()
+    // 2 CIRCLE entities total (one per beacon), both on BEACONS layer
+    expect(entityCount(dxf, 'CIRCLE', 'BEACONS')).toBe(2)
+    // 8 LINEs for the placed fill + 2 LINEs for the found cross = 10 BEACONS lines
+    expect(entityCount(dxf, 'LINE', 'BEACONS')).toBe(10)
   })
 })

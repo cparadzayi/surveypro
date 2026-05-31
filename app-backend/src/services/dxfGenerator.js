@@ -334,6 +334,28 @@ export function generateDXF(options, logger) {
     ent += p(21, y2.toFixed(4));
   }
 
+  /**
+   * Draw a beacon symbol differentiated by type.
+   *   placed → solid-filled circle (CIRCLE + 8 radial LINEs since R12 has no HATCH)
+   *   found  → open CIRCLE + crossing `+` (two LINEs through the centre)
+   */
+  function addBeaconSymbol(layer, cx, cy, type, sizeM) {
+    const r = sizeM / 2
+    addCircle(layer, cx, cy, r)
+    if (type === 'placed') {
+      // Eight short radial LINEs from centre outward at 45° intervals to mimic a fill
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4
+        addLine(layer, cx, cy, cx + r * Math.cos(a), cy + r * Math.sin(a))
+      }
+    } else if (type === 'found') {
+      // Two LINEs forming a "+" through the centre, length 1.4·r
+      const h = r * 1.4
+      addLine(layer, cx - h, cy, cx + h, cy)
+      addLine(layer, cx, cy - h, cx, cy + h)
+    }
+  }
+
   function addRect(layer, x1, y1, x2, y2) {
     addLine(layer, x1, y1, x2, y1); // bottom
     addLine(layer, x2, y1, x2, y2); // right
@@ -533,7 +555,9 @@ export function generateDXF(options, logger) {
       }
 
       trackPt(pt);
-      addCircle('BEACONS', pt.x, pt.y, beaconRadius);
+      const beaconType = feature.properties?.type || 'placed'
+      const beaconDiameter = mmToGround(2.4, S)
+      addBeaconSymbol('BEACONS', pt.x, pt.y, beaconType, beaconDiameter);
       const name = feature.properties?.name || feature.properties?.beacon_name || '';
       if (name) addText('BEACON_LABELS', pt.x + beaconLabelOffset, pt.y + beaconLabelOffset, name, beaconLabelHeight);
       beaconCount++;

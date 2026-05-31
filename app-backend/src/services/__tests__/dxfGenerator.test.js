@@ -4,7 +4,7 @@
  */
 import { describe, test, expect } from '@jest/globals'
 import { countLayerOnTable } from './dxfParse.js'
-import { capeLoToDxfSouthUp } from '../dxfGenerator.js'
+import { capeLoToDxfSouthUp, generateDXF } from '../dxfGenerator.js'
 
 describe('dxfParse helpers (smoke)', () => {
   test('countLayerOnTable returns 0 for an empty input', () => {
@@ -32,5 +32,33 @@ describe('capeLoToDxfSouthUp', () => {
     const out = capeLoToDxfSouthUp(50000, 2200000)
     expect(out.x).not.toBeLessThan(0)   // catches accidental sign-flip revert
     expect(out.y).not.toBeLessThan(0)
+  })
+})
+
+describe('generateDXF return shape', () => {
+  const minimalOptions = {
+    parcels: { features: [] },
+    beacons: { features: [] },
+    outsideFigureData: null,
+    metadata: { surveyor: 'Test Surveyor', date: '2026-05-31' },
+    projection: 'EPSG:22291',
+    scale: '1:500',
+    sheetSize: 'ISO_A2',
+  }
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+
+  test('returns { buffer, warnings } with Buffer and counters', () => {
+    const result = generateDXF(minimalOptions, fakeLogger)
+    expect(Buffer.isBuffer(result.buffer)).toBe(true)
+    expect(typeof result.warnings).toBe('object')
+    expect(result.warnings.count).toBe(0)
+    expect(typeof result.warnings.summary).toBe('object')
+  })
+
+  test('returned DXF starts with HEADER and ends with EOF', () => {
+    const { buffer } = generateDXF(minimalOptions, fakeLogger)
+    const dxf = buffer.toString()
+    expect(dxf).toMatch(/\bSECTION\b[\s\S]*?\bHEADER\b/)
+    expect(dxf).toMatch(/\bEOF\b\s*$/)
   })
 })

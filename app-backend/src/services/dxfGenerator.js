@@ -163,6 +163,28 @@ function p(code, value) {
 // ── Main generator ──────────────────────────────────────────────────────────
 
 export function generateDXF(options, logger) {
+  // Warnings accumulator. Mutated by guards inside the emitters; returned
+  // alongside the Buffer so the route can surface counts to the surveyor.
+  const warnings = {
+    count: 0,
+    summary: {
+      beacons: 0,
+      parcels: 0,
+      scaleFallback: false,
+      beaconDescTruncated: 0,
+      priorDiagramsTruncated: 0,
+      nonAscii: false,
+    },
+  }
+  function warn(category, n = 1) {
+    if (category === 'scaleFallback' || category === 'nonAscii') {
+      warnings.summary[category] = true
+    } else {
+      warnings.summary[category] = (warnings.summary[category] || 0) + n
+    }
+    warnings.count += n
+  }
+
   const {
     parcels,
     beacons,
@@ -820,5 +842,5 @@ export function generateDXF(options, logger) {
   const sizeKB = (Buffer.byteLength(dxf, 'utf8') / 1024).toFixed(1);
   logger.info(`[DXF] Generation complete: ${sizeKB} KB, ${parcelCount} parcels, ${beaconCount} beacons, ${edgeLabelCount} edge labels, ${sharedEdges.size} shared edges`);
 
-  return dxf;
+  return { buffer: Buffer.from(dxf, 'utf8'), warnings };
 }

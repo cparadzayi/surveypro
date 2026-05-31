@@ -184,3 +184,29 @@ describe('generateDXF — scale bar', () => {
     expect(entityCount(dxf, 'TEXT', 'SCALE_BAR')).toBeGreaterThanOrEqual(5)
   })
 })
+
+describe('generateDXF — coordinate grid ticks', () => {
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+  // Fixture with an outside figure spanning a 200 m × 200 m area at 1:500.
+  // Should produce grid ticks at 50 m intervals along the four borders.
+  const opts = {
+    parcels: { features: [] },
+    beacons: { features: [] },
+    outsideFigureData: {
+      edges: [
+        { side: 'A-B', distance: 200, direction: '90°00\'00"', pointId: 'A', y: 50000, x: 2200000 },
+        { side: 'B-C', distance: 200, direction: '180°00\'00"', pointId: 'B', y: 50200, x: 2200000 },
+        { side: 'C-D', distance: 200, direction: '270°00\'00"', pointId: 'C', y: 50200, x: 2200200 },
+        { side: 'D-A', distance: 200, direction: '0°00\'00"',   pointId: 'D', y: 50000, x: 2200200 },
+      ],
+      constants: { pointId: 'A', y: 50000, x: 2200000 },
+    },
+    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+  }
+  test('emits at least some tick LINEs and coordinate labels on GRID layer', () => {
+    const { buffer } = generateDXF(opts, fakeLogger)
+    const dxf = buffer.toString()
+    expect(entityCount(dxf, 'LINE', 'GRID')).toBeGreaterThan(0)
+    expect(entityCount(dxf, 'TEXT', 'GRID')).toBeGreaterThan(0)
+  })
+})

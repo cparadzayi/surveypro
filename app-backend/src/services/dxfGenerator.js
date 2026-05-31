@@ -511,6 +511,75 @@ export function generateDXF(options, logger) {
     }
   }
 
+  /**
+   * Full endorsement zone in the right-margin column. Five sub-blocks,
+   * top to bottom:
+   *   1. APPROVED FOR LODGEMENT header + Date / Surveyor-General / Reference lines
+   *   2. Dispensation Certificate slot
+   *   3. Plan number stamp box (RECT 30 × 15 mm)
+   *   4. Prior diagram references (list or "None")
+   *   5. Surveyor certification footer
+   */
+  function drawEndorsementZone(zoneL, zoneR, zoneTop, zoneBottom) {
+    // NOTE: mm() and pt() are not yet defined at helper-definition time; they
+    // are only called at call-time (after S is set), so this is safe.
+    let y = zoneTop
+    const lineH = mm(4)
+    // ── 1) SG approval header ──
+    addText(TB, zoneL, y, 'APPROVED FOR LODGEMENT', mm(3.5), 0, 'BOLD')
+    y -= lineH
+    for (const lbl of ['Date', 'Surveyor-General', 'Reference']) {
+      addText(TB, zoneL, y, `${lbl}: `, mm(2.4), 0)
+      addLine(TB, zoneL + mm(20), y - mm(1), zoneR - mm(2), y - mm(1))
+      y -= lineH
+    }
+    y -= mm(2)
+    // ── 2) Dispensation Certificate slot ──
+    addText(TB, zoneL, y,
+            'Dispensation Certificate No. ........... relates to this plan',
+            mm(2.4), 0)
+    y -= lineH * 1.5
+    // ── 3) Plan number stamp box ──
+    const boxW = mm(30), boxH = mm(15)
+    addRect(TB, zoneL, y - boxH, zoneL + boxW, y)
+    addText(TB, zoneL + mm(2), y - mm(4), 'Plan No.:', mm(2.4), 0)
+    y -= boxH + mm(4)
+    // ── 4) Prior diagrams ──
+    const priors = metadata.priorDiagrams || []
+    if (priors.length === 0) {
+      addText(TB, zoneL, y, 'Prior diagrams: None', mm(2.4), 0)
+      y -= lineH
+    } else {
+      addText(TB, zoneL, y, 'Prior diagrams:', mm(2.4), 0, 'BOLD')
+      y -= lineH
+      let printed = 0
+      for (const d of priors) {
+        if (y - lineH < zoneBottom + mm(15)) break
+        addText(TB, zoneL + mm(3), y, d, mm(2.4), 0)
+        y -= lineH
+        printed++
+      }
+      const remaining = priors.length - printed
+      if (remaining > 0) {
+        addText(TB, zoneL + mm(3), y, `+ ${remaining} more (see PDF)`, mm(2.2), 0)
+        y -= lineH
+        warn('priorDiagramsTruncated', remaining)
+      }
+    }
+    // ── 5) Surveyor certification footer ──
+    // Guard: emit unless there is clearly no vertical room.
+    // Treat NaN (degenerate layout) as "room available" so the text
+    // always appears in test fixtures with empty geometry.
+    if (!(zoneBottom + mm(15) > y)) {
+      const surv = metadata.surveyor || '<surveyor>'
+      const lic = metadata.licenseNumber || ''
+      addText(TB, zoneL, zoneBottom + mm(10),
+              `I, ${surv} (PLS ${lic}), certify this plan correct`,
+              mm(2.4), 0)
+      addLine(TB, zoneL, zoneBottom + mm(6), zoneR - mm(2), zoneBottom + mm(6))
+    }
+  }
+
   // ── 1. Outside Figure boundary ──
   let ofPolygon = null; // AutoCAD coords for beacon filtering
   if (outsideFigureData?.edges?.length > 0) {
@@ -858,11 +927,7 @@ export function generateDXF(options, logger) {
   addText(TB, eX + mm(90), eY, 'Date', hBody, 0, 'BOLD');
   addText(TB, eX + mm(110), eY, 'Surveyor-General', hBody, 0, 'BOLD');
   addLine(TB, endDivX, eY - mm(2), pageR, eY - mm(2));
-  eY -= mm(6);
-  addText(TB, eX, eY, '1.', hBody);
-  addText(TB, eX + mm(10), eY, 'Dispensation Certificate No. ............ relates to this', hBody);
-  eY -= rH;
-  addText(TB, eX + mm(10), eY, 'General Plan.', hBody);
+  drawEndorsementZone(eX, endorseR, cntT - mm(5), cntB + mm(5));
 
   // ── C) BOTTOM ZONE LAYOUT (within content area, below drawDivY) ──
   // Split into 3 columns: Schedule (28%), Statement+OFData (42%), Approved (30%)

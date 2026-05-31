@@ -280,3 +280,33 @@ describe('generateDXF — title block field completion', () => {
     expect(dxf).toMatch(/Harare/)
   })
 })
+
+describe('generateDXF — endorsement zone', () => {
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+  const opts = {
+    parcels: { features: [] },
+    beacons: { features: [] },
+    outsideFigureData: null,
+    metadata: {
+      surveyor: 'J. Doe',
+      licenseNumber: 'PLS 1234',
+      priorDiagrams: ['Diagram-GP No. 4567', 'Diagram-GP No. 8910'],
+    },
+    scale: '1:500', sheetSize: 'ISO_A2',
+  }
+  test('emits all five endorsement sub-blocks', () => {
+    const { buffer } = generateDXF(opts, fakeLogger)
+    const dxf = buffer.toString()
+    expect(dxf).toMatch(/APPROVED FOR LODGEMENT/)
+    expect(dxf).toMatch(/Dispensation Certificate/)
+    expect(dxf).toMatch(/Plan No\.:/)
+    expect(dxf).toMatch(/Diagram-GP No\. 4567/)
+    expect(dxf).toMatch(/Diagram-GP No\. 8910/)
+    expect(dxf).toMatch(/certify this plan correct/)
+  })
+  test('falls back to "Prior diagrams: None" when the list is empty', () => {
+    const noprior = { ...opts, metadata: { ...opts.metadata, priorDiagrams: [] } }
+    const { buffer } = generateDXF(noprior, fakeLogger)
+    expect(buffer.toString()).toMatch(/Prior diagrams: None/)
+  })
+})

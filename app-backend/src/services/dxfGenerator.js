@@ -28,9 +28,19 @@ function normalizeCapeLoYX(y, x) {
   return [y, x];
 }
 
-function capeLoToAutoCAD(capeY, capeX) {
+export function capeLoToDxfSouthUp(capeY, capeX) {
   const [y, x] = normalizeCapeLoYX(capeY, capeX);
-  return { x: -y, y: -x };
+  // Sanity guard: typical Cape Lo input is Y>0, X>0; result should be x>0, y>0.
+  // A negative x from positive Y means a stale x = -y formula sneaked through.
+  if (capeY > 0 && y < 0) {
+    // Log once via the singleton flag; logger may not be in scope here.
+    if (!capeLoToDxfSouthUp._warned) {
+      // eslint-disable-next-line no-console
+      console.error('[DXF] capeLoToDxfSouthUp: positive Westing produced negative x — stale east-up call?')
+      capeLoToDxfSouthUp._warned = true
+    }
+  }
+  return { x: y, y: x };
 }
 
 /** Shoelace centroid in AutoCAD space from an array of AutoCAD {x,y} points */
@@ -178,7 +188,7 @@ export function generateDXF(options, logger) {
   }
   // Outside figure edges define the primary extent
   if (outsideFigureData?.edges) {
-    for (const e of outsideFigureData.edges) { trackExt(capeLoToAutoCAD(e.y, e.x)); }
+    for (const e of outsideFigureData.edges) { trackExt(capeLoToDxfSouthUp(e.y, e.x)); }
   }
   // Also include non-outside-figure parcels (they should be inside OF, but just in case)
   if (parcels?.features) {
@@ -187,7 +197,7 @@ export function generateDXF(options, logger) {
       if (f.properties?.isOutsideFigure || st.toLowerCase().includes('outside figure')) continue;
       const coords = f.geometry?.coordinates?.[0];
       if (!coords) continue;
-      for (const c of coords) { trackExt(capeLoToAutoCAD(c[0], c[1])); }
+      for (const c of coords) { trackExt(capeLoToDxfSouthUp(c[0], c[1])); }
     }
   }
   // Add 5m buffer for beacons that sit just outside the figure
@@ -309,7 +319,7 @@ export function generateDXF(options, logger) {
   let ofPolygon = null; // AutoCAD coords for beacon filtering
   if (outsideFigureData?.edges?.length > 0) {
     const ofPts = outsideFigureData.edges.map((e) => {
-      const pt = capeLoToAutoCAD(e.y, e.x); trackPt(pt); return pt;
+      const pt = capeLoToDxfSouthUp(e.y, e.x); trackPt(pt); return pt;
     });
     addPolyline('OUTSIDE_FIGURE', ofPts);
     ofPolygon = ofPts; // save for beacon filtering
@@ -345,7 +355,7 @@ export function generateDXF(options, logger) {
 
       // Build AutoCAD polygon (unique vertices, no closing duplicate)
       const polyPts = coords.slice(0, -1).map((c) => {
-        const pt = capeLoToAutoCAD(c[0], c[1]); trackPt(pt); return pt;
+        const pt = capeLoToDxfSouthUp(c[0], c[1]); trackPt(pt); return pt;
       });
       addPolyline('PARCELS', polyPts);
       parcelCount++;
@@ -402,8 +412,8 @@ export function generateDXF(options, logger) {
           labelMode = 'distance-only'; // first parcel gets distance, second gets bearing
         }
 
-        const a = capeLoToAutoCAD(coords[i][0], coords[i][1]);
-        const b = capeLoToAutoCAD(coords[i + 1][0], coords[i + 1][1]);
+        const a = capeLoToDxfSouthUp(coords[i][0], coords[i][1]);
+        const b = capeLoToDxfSouthUp(coords[i + 1][0], coords[i + 1][1]);
         const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
         const dx = b.x - a.x, dy = b.y - a.y;
         const len = Math.sqrt(dx * dx + dy * dy);
@@ -467,7 +477,7 @@ export function generateDXF(options, logger) {
     for (const feature of beacons.features) {
       const rc = feature.geometry?.coordinates;
       if (!Array.isArray(rc) || rc.length < 2) continue;
-      const pt = capeLoToAutoCAD(rc[0], rc[1]);
+      const pt = capeLoToDxfSouthUp(rc[0], rc[1]);
       if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
 
       // Filter: only beacons within outside figure + 2m buffer

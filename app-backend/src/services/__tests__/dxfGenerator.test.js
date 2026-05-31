@@ -150,3 +150,19 @@ describe('generateDXF — beacon symbol differentiation', () => {
     expect(entityCount(dxf, 'LINE', 'BEACONS')).toBe(10)
   })
 })
+
+describe('generateDXF — north arrow', () => {
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+  const opts = {
+    parcels: { features: [] },
+    beacons: { features: [] },
+    outsideFigureData: null,
+    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+  }
+  test('emits 3 LINEs and 1 TEXT on NORTH_ARROW layer', () => {
+    const { buffer } = generateDXF(opts, fakeLogger)
+    const dxf = buffer.toString()
+    expect(entityCount(dxf, 'LINE', 'NORTH_ARROW')).toBe(3)   // arrowhead triangle
+    expect(entityCount(dxf, 'TEXT', 'NORTH_ARROW')).toBe(1)   // "S" label
+  })
+})

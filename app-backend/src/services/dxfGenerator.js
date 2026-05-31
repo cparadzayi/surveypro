@@ -356,6 +356,23 @@ export function generateDXF(options, logger) {
     }
   }
 
+  /**
+   * Draw a south-pointing arrow (page is south-up, so the arrow points to +DXF-Y).
+   * Three LINEs form the arrowhead triangle; one TEXT entity reads "S" above the apex.
+   * sizeM is the arrowhead height in ground metres at the chosen scale.
+   */
+  function addNorthArrow(layer, cx, cy, sizeM) {
+    const half = sizeM / 2
+    const baseHalf = sizeM * 0.3
+    const apex = { x: cx, y: cy + half }
+    const baseL = { x: cx - baseHalf, y: cy - half }
+    const baseR = { x: cx + baseHalf, y: cy - half }
+    addLine(layer, apex.x, apex.y, baseL.x, baseL.y)
+    addLine(layer, apex.x, apex.y, baseR.x, baseR.y)
+    addLine(layer, baseL.x, baseL.y, baseR.x, baseR.y)
+    addText(layer, cx, cy + half + mm(5), 'S', mm(4), 0)
+  }
+
   function addRect(layer, x1, y1, x2, y2) {
     addLine(layer, x1, y1, x2, y1); // bottom
     addLine(layer, x2, y1, x2, y2); // right
@@ -663,6 +680,9 @@ export function generateDXF(options, logger) {
   }
   ty -= mm(3);
   addText(TB, txC, ty, `SCALE 1:${S}`, hSub, 0, 'BOLD');
+
+  // North/south arrow in the upper-right of the drawing zone
+  addNorthArrow('NORTH_ARROW', cntR - mm(15), cntT - mm(20), mm(20))
 
   // ── B) ENDORSEMENTS (right margin column: 150mm) ──
   const eX = endorseL;

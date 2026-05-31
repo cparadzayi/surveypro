@@ -377,7 +377,17 @@ export function generateDXF(options, logger) {
       const stand = props.stand || '';
       if (props.isOutsideFigure || stand.toLowerCase().includes('outside figure')) continue;
       const coords = feature.geometry?.coordinates?.[0];
-      if (!coords || coords.length < 3) continue;
+      if (!coords) continue;
+
+      // Guard: skip parcel with fewer than 3 finite vertices
+      const rawVerts = coords;
+      const finiteVerts = rawVerts.filter(([yy, xx]) =>
+        Number.isFinite(yy) && Number.isFinite(xx));
+      if (finiteVerts.length < 3) {
+        logger.warn(`[DXF] dropped parcel ${stand || '<unnamed>'}: <3 finite vertices`)
+        warn('parcels')
+        continue
+      }
 
       // Build AutoCAD polygon (unique vertices, no closing duplicate)
       const polyPts = coords.slice(0, -1).map((c) => {
@@ -503,6 +513,16 @@ export function generateDXF(options, logger) {
     for (const feature of beacons.features) {
       const rc = feature.geometry?.coordinates;
       if (!Array.isArray(rc) || rc.length < 2) continue;
+
+      // Guard: skip beacons with NaN/Infinity coords or unreasonable magnitudes
+      const [byRaw, bxRaw] = rc;
+      if (!Number.isFinite(byRaw) || !Number.isFinite(bxRaw)
+          || Math.abs(byRaw) > 1e7 || Math.abs(bxRaw) > 1e7) {
+        logger.warn(`[DXF] dropped beacon ${feature.properties?.pointId || '<unnamed>'}: bad coords`)
+        warn('beacons')
+        continue
+      }
+
       const pt = capeLoToDxfSouthUp(rc[0], rc[1]);
       if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
 

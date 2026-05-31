@@ -89,3 +89,39 @@ describe('generateDXF — layers + UCS table additions', () => {
     expect(dxf).toMatch(/\bTABLE\b[\s\S]*?\bUCS\b[\s\S]*?\bCAD_NORTH_UP\b[\s\S]*?\bENDTAB\b/)
   })
 })
+
+describe('generateDXF — graceful degradation on bad inputs', () => {
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+
+  test('skips beacon with NaN coordinates and increments warnings.beacons', () => {
+    const opts = {
+      parcels: { features: [] },
+      beacons: {
+        features: [
+          { type: 'Feature', geometry: { coordinates: [NaN, 2200000] },
+            properties: { pointId: 'X1' } },
+          { type: 'Feature', geometry: { coordinates: [50000, 2200000] },
+            properties: { pointId: 'X2' } },
+        ],
+      },
+      metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+    }
+    const { warnings } = generateDXF(opts, fakeLogger)
+    expect(warnings.summary.beacons).toBe(1)
+    expect(warnings.count).toBeGreaterThanOrEqual(1)
+  })
+
+  test('skips parcel with fewer than 3 finite vertices and increments warnings.parcels', () => {
+    const opts = {
+      parcels: { features: [
+        { type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [[[50000, 2200000], [50001, 2200000]]] },
+          properties: { stand: 'X' } },
+      ]},
+      beacons: { features: [] },
+      metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+    }
+    const { warnings } = generateDXF(opts, fakeLogger)
+    expect(warnings.summary.parcels).toBe(1)
+  })
+})

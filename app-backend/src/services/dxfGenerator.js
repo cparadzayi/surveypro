@@ -813,6 +813,28 @@ export function generateDXF(options, logger) {
   ty -= mm(3);
   addText(TB, txC, ty, `SCALE 1:${S}`, hSub, 0, 'BOLD');
 
+  // New SI 727 fields the PDF carries
+  if (metadata.firm) {
+    ty -= hSub * 1.4
+    addText(TB, txC, ty, metadata.firm, hSub, 0)
+  }
+  if (metadata.licenseNumber) {
+    ty -= hSub * 1.4
+    addText(TB, txC, ty, `PLS ${metadata.licenseNumber}`, hSub, 0)
+  }
+  if (metadata.parentProperty) {
+    ty -= hSub * 1.4
+    addText(TB, txC, ty, `Parent property: ${metadata.parentProperty}`, hSub, 0)
+  }
+  if (metadata.wholePortion) {
+    ty -= hSub * 1.4
+    addText(TB, txC, ty, `Survey covers: ${metadata.wholePortion}`, hSub, 0)
+  }
+  if (metadata.district && !standList) {
+    ty -= hSub * 1.4
+    addText(TB, txC, ty, `District: ${metadata.district}`, hSub, 0)
+  }
+
   // North/south arrow in the upper-right of the drawing zone
   addNorthArrow('NORTH_ARROW', cntR - mm(15), cntT - mm(20), mm(20))
 

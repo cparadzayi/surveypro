@@ -249,3 +249,34 @@ describe('generateDXF — beacon description block', () => {
     expect(dxf).toMatch(/Iron pegs/)
   })
 })
+
+describe('generateDXF — title block field completion', () => {
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+  const opts = {
+    parcels: { features: [] },
+    beacons: { features: [] },
+    outsideFigureData: null,
+    metadata: {
+      designation: 'STAND 123 BORROWDALE',
+      surveyOf: 'A portion of Stand 456 Borrowdale',
+      township: 'Borrowdale',
+      firm: 'Acme Surveying & Mapping (Pvt) Ltd',
+      licenseNumber: 'PLS 1234',
+      parentProperty: 'Shabani Mine Surface Rights A',
+      wholePortion: 'a portion',
+      district: 'Harare',
+      surveyor: 'J. Doe',
+      date: '2026-05-31',
+    },
+    scale: '1:500', sheetSize: 'ISO_A2',
+  }
+  test('renders firm, license, parent property, whole/portion, district in the title block', () => {
+    const { buffer } = generateDXF(opts, fakeLogger)
+    const dxf = buffer.toString()
+    expect(dxf).toMatch(/Acme Surveying & Mapping/)
+    expect(dxf).toMatch(/PLS 1234/)
+    expect(dxf).toMatch(/Shabani Mine Surface Rights A/)
+    expect(dxf).toMatch(/a portion/)
+    expect(dxf).toMatch(/Harare/)
+  })
+})

@@ -373,6 +373,41 @@ export function generateDXF(options, logger) {
     addText(layer, cx, cy + half + mm(5), 'S', mm(4), 0)
   }
 
+  /**
+   * Graduated horizontal scale bar.
+   * Bar length is chosen so the value at the right end rounds to a "nice"
+   * number at the supplied scale (e.g., 100 m at 1:500, 500 m at 1:2500).
+   */
+  function addScaleBar(layer, cx, cy, scaleDenom) {
+    const niceLengthM = pickNiceScaleBarLengthM(scaleDenom)
+    const barWidthGround = mmToGround(60, scaleDenom)   // 60 mm bar on paper
+    const halfW = barWidthGround / 2
+    const halfH = mm(2)
+    // Outer rectangle (2 horizontal LINEs)
+    addLine(layer, cx - halfW, cy + halfH, cx + halfW, cy + halfH)
+    addLine(layer, cx - halfW, cy - halfH, cx + halfW, cy - halfH)
+    // Centreline
+    addLine(layer, cx - halfW, cy, cx + halfW, cy)
+    // Four vertical tick lines at 0 / ¼ / ½ / 1
+    for (const f of [0, 0.25, 0.5, 1]) {
+      const x = cx - halfW + f * barWidthGround
+      addLine(layer, x, cy - halfH, x, cy + halfH)
+      const labelM = Math.round(f * niceLengthM).toString()
+      addText(layer, x, cy - halfH - mm(3), labelM, mm(2), 0)
+    }
+    // "1:<scale>" footer
+    addText(layer, cx, cy - halfH - mm(8), `1:${scaleDenom}`, mm(2.5), 0)
+  }
+
+  /** Pick a round metre length suitable for a 60 mm bar at the given scale. */
+  function pickNiceScaleBarLengthM(scaleDenom) {
+    if (scaleDenom <= 500) return 50
+    if (scaleDenom <= 1000) return 100
+    if (scaleDenom <= 2500) return 250
+    if (scaleDenom <= 5000) return 500
+    return 1000
+  }
+
   function addRect(layer, x1, y1, x2, y2) {
     addLine(layer, x1, y1, x2, y1); // bottom
     addLine(layer, x2, y1, x2, y2); // right
@@ -683,6 +718,9 @@ export function generateDXF(options, logger) {
 
   // North/south arrow in the upper-right of the drawing zone
   addNorthArrow('NORTH_ARROW', cntR - mm(15), cntT - mm(20), mm(20))
+
+  // Scale bar in the lower-right of the drawing zone
+  addScaleBar('SCALE_BAR', cntR - mm(40), cntB + mm(20), S)
 
   // ── B) ENDORSEMENTS (right margin column: 150mm) ──
   const eX = endorseL;

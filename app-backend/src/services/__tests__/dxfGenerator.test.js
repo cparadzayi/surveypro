@@ -166,3 +166,21 @@ describe('generateDXF — north arrow', () => {
     expect(entityCount(dxf, 'TEXT', 'NORTH_ARROW')).toBe(1)   // "S" label
   })
 })
+
+describe('generateDXF — scale bar', () => {
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+  const opts = {
+    parcels: { features: [] },
+    beacons: { features: [] },
+    outsideFigureData: null,
+    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+  }
+  test('emits centreline + tick LINEs and metre labels on SCALE_BAR', () => {
+    const { buffer } = generateDXF(opts, fakeLogger)
+    const dxf = buffer.toString()
+    // Outer rect (2 LINEs) + centreline (1) + 4 tick verticals = 7 LINEs
+    expect(entityCount(dxf, 'LINE', 'SCALE_BAR')).toBeGreaterThanOrEqual(7)
+    // Tick labels (4) + "1:<scale>" footer (1) = 5 TEXT entities
+    expect(entityCount(dxf, 'TEXT', 'SCALE_BAR')).toBeGreaterThanOrEqual(5)
+  })
+})

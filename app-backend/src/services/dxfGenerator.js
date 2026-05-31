@@ -270,6 +270,10 @@ export function generateDXF(options, logger) {
     { name: 'DIRECTIONS',      color: 6 },
     { name: 'STAND_NUMBERS',   color: 2 },
     { name: 'TITLE_BLOCK',     color: 7 },
+    { name: 'NORTH_ARROW',     color: 7 },
+    { name: 'SCALE_BAR',       color: 7 },
+    { name: 'GRID',            color: 8 },
+    { name: 'MARGIN_GUIDES',   color: 8 },
   ];
 
   // Track extents
@@ -798,6 +802,20 @@ export function generateDXF(options, logger) {
     dxf += p(62, String(layer.color));
     dxf += p(6, 'CONTINUOUS');
   }
+  dxf += p(0, 'ENDTAB');
+
+  // UCS table — one entry so CAD users can toggle to north-up view.
+  // Axes form a proper 180° rotation about Z (det = +1): X=(-1,0,0), Y=(0,-1,0).
+  // After applying this UCS the view shows north at top with east at the left.
+  dxf += p(0, 'TABLE');
+  dxf += p(2, 'UCS');
+  dxf += p(70, '1');
+  dxf += p(0, 'UCS');
+  dxf += p(2, 'CAD_NORTH_UP');
+  dxf += p(70, '0');
+  dxf += p(10, '0.0'); dxf += p(20, '0.0'); dxf += p(30, '0.0');   // origin
+  dxf += p(11, '-1.0'); dxf += p(21, '0.0'); dxf += p(31, '0.0');  // X axis
+  dxf += p(12, '0.0'); dxf += p(22, '-1.0'); dxf += p(32, '0.0');  // Y axis
   dxf += p(0, 'ENDTAB');
 
   // STYLE table — STANDARD + BOLD

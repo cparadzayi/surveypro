@@ -62,3 +62,30 @@ describe('generateDXF return shape', () => {
     expect(dxf).toMatch(/\bEOF\b\s*$/)
   })
 })
+
+describe('generateDXF — layers + UCS table additions', () => {
+  const minimalOptions = {
+    parcels: { features: [] },
+    beacons: { features: [] },
+    outsideFigureData: null,
+    metadata: {},
+    scale: '1:500',
+    sheetSize: 'ISO_A2',
+  }
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+
+  test('declares the four new layers', () => {
+    const { buffer } = generateDXF(minimalOptions, fakeLogger)
+    const dxf = buffer.toString()
+    for (const layer of ['NORTH_ARROW', 'SCALE_BAR', 'GRID', 'MARGIN_GUIDES']) {
+      expect(countLayerOnTable(dxf, layer)).toBe(1)
+    }
+  })
+
+  test('declares the CAD_NORTH_UP UCS entry', () => {
+    const { buffer } = generateDXF(minimalOptions, fakeLogger)
+    const dxf = buffer.toString()
+    // UCS table must appear with the named entry inside.
+    expect(dxf).toMatch(/\bTABLE\b[\s\S]*?\bUCS\b[\s\S]*?\bCAD_NORTH_UP\b[\s\S]*?\bENDTAB\b/)
+  })
+})

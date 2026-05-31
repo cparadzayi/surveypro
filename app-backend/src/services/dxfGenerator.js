@@ -445,6 +445,35 @@ export function generateDXF(options, logger) {
     return 1000
   }
 
+  /**
+   * Drafting-table convention: short tick marks at each content-area corner +
+   * tiny crop-mark crosses at each page corner.
+   */
+  function addMarginGuides(layer, pageL, pageR, pageT, pageB, cntL, cntR, cntT, cntB) {
+    const tick = mm(5)
+    const crop = mm(3)
+    // Content-area corner ticks (2 LINEs per corner, one X-axis one Y-axis)
+    const corners = [
+      { x: cntL, y: cntT, dx: tick, dy: -tick },   // top-left
+      { x: cntR, y: cntT, dx: -tick, dy: -tick },  // top-right
+      { x: cntL, y: cntB, dx: tick, dy: tick },    // bottom-left
+      { x: cntR, y: cntB, dx: -tick, dy: tick },   // bottom-right
+    ]
+    for (const c of corners) {
+      addLine(layer, c.x, c.y, c.x + c.dx, c.y)
+      addLine(layer, c.x, c.y, c.x, c.y + c.dy)
+    }
+    // Page-corner crop-mark crosses (2 LINEs per corner)
+    const pageCorners = [
+      { x: pageL, y: pageT }, { x: pageR, y: pageT },
+      { x: pageL, y: pageB }, { x: pageR, y: pageB },
+    ]
+    for (const c of pageCorners) {
+      addLine(layer, c.x - crop, c.y, c.x + crop, c.y)
+      addLine(layer, c.x, c.y - crop, c.x, c.y + crop)
+    }
+  }
+
   function addRect(layer, x1, y1, x2, y2) {
     addLine(layer, x1, y1, x2, y1); // bottom
     addLine(layer, x2, y1, x2, y2); // right
@@ -734,6 +763,7 @@ export function generateDXF(options, logger) {
   addRect(TB, cntL, cntB, cntR, cntT);               // content border
   addLine(TB, endDivX, pageB, endDivX, pageT);       // endorsements divider (full height)
   addLine(TB, cntL, drawDivY, cntR, drawDivY);       // below drawing (tables divider)
+  addMarginGuides('MARGIN_GUIDES', pageL, pageR, pageT, pageB, cntL, cntR, cntT, cntB)
 
   // ── A) TITLE ZONE (within top margin area, centered in content) ──
   const txC = (cntL + cntR) / 2; // center of content area

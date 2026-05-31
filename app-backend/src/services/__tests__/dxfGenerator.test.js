@@ -210,3 +210,21 @@ describe('generateDXF — coordinate grid ticks', () => {
     expect(entityCount(dxf, 'TEXT', 'GRID')).toBeGreaterThan(0)
   })
 })
+
+describe('generateDXF — margin guides', () => {
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+  const opts = {
+    parcels: { features: [] },
+    beacons: { features: [] },
+    outsideFigureData: null,
+    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+  }
+  test('emits corner tick + crop-mark LINEs on MARGIN_GUIDES', () => {
+    const { buffer } = generateDXF(opts, fakeLogger)
+    const dxf = buffer.toString()
+    // 4 corners × 2 ticks (one X-axis tick + one Y-axis tick) = 8 content-corner LINEs
+    // 4 page corners × 2 crop-mark legs = 8 crop-mark LINEs
+    // Total >= 16
+    expect(entityCount(dxf, 'LINE', 'MARGIN_GUIDES')).toBeGreaterThanOrEqual(16)
+  })
+})

@@ -42,7 +42,13 @@ export interface VectorGeoPDFRequest {
     township?: string
     wholePortion?: string
     parentProperty?: string
+    // New (DXF/PDF parity)
+    firm?: string
+    licenseNumber?: string
+    priorDiagrams?: string[]
   }
+  // New top-level field for the beacon-description block
+  beaconGroups?: Array<{ points: string; description: string }>
   // Scale and sheet size (from intelligentPreview recommendation)
   scale?: string        // e.g. '1:2000'
   sheetSize?: string    // e.g. 'ISO_A2'
@@ -181,16 +187,14 @@ export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promis
 
 /**
  * Generate DXF (AutoCAD) file from the same GeoJSON data used for GeoPDF.
- * Returns a Blob containing the DXF file content.
+ * Returns { blob, warningCount, warningsSummary } — warningCount > 0 means
+ * the backend skipped or truncated some data (see x-dxf-warnings header).
  */
-export async function generateDXF(request: VectorGeoPDFRequest): Promise<Blob> {
-  console.log('[DXF] Sending DXF generation request:', {
-    parcelCount: request.parcels.features.length,
-    beaconCount: request.beacons.features.length,
-    projection: request.projection,
-    scale: request.scale,
-  })
-
+export async function generateDXF(request: VectorGeoPDFRequest): Promise<{
+  blob: Blob
+  warningCount: number
+  warningsSummary: Record<string, number | boolean> | null
+}> {
   const response = await api.post('/geopdf/dxf', {
     parcels: request.parcels,
     beacons: request.beacons,
@@ -199,17 +203,26 @@ export async function generateDXF(request: VectorGeoPDFRequest): Promise<Blob> {
     outsideFigureData: request.outsideFigureData,
     scale: request.scale,
     sheetSize: request.sheetSize,
+    beaconGroups: request.beaconGroups,
   }, {
     responseType: 'blob',
-    timeout: 30000
+    timeout: 30000,
   })
+
+  const warningCount = parseInt(response.headers['x-dxf-warning-count'] || '0', 10) || 0
+  let warningsSummary: Record<string, number | boolean> | null = null
+  const raw = response.headers['x-dxf-warnings']
+  if (raw) {
+    try { warningsSummary = JSON.parse(raw) } catch { warningsSummary = null }
+  }
 
   console.log('[DXF] Received DXF blob:', {
     size: `${(response.data.size / 1024).toFixed(2)} KB`,
     type: response.data.type,
+    warningCount,
   })
 
-  return response.data
+  return { blob: response.data, warningCount, warningsSummary }
 }
 
 /**

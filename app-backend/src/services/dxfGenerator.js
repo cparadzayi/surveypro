@@ -28,9 +28,19 @@ function normalizeCapeLoYX(y, x) {
   return [y, x];
 }
 
-function capeLoToAutoCAD(capeY, capeX) {
+export function capeLoToDxfSouthUp(capeY, capeX) {
   const [y, x] = normalizeCapeLoYX(capeY, capeX);
-  return { x: -y, y: -x };
+  // Sanity guard: typical Cape Lo input is Y>0, X>0; result should be x>0, y>0.
+  // A negative x from positive Y means a stale x = -y formula sneaked through.
+  if (capeY > 0 && y < 0) {
+    // Log once via the singleton flag; logger may not be in scope here.
+    if (!capeLoToDxfSouthUp._warned) {
+      // eslint-disable-next-line no-console
+      console.error('[DXF] capeLoToDxfSouthUp: positive Westing produced negative x — stale east-up call?')
+      capeLoToDxfSouthUp._warned = true
+    }
+  }
+  return { x: y, y: x };
 }
 
 /** Shoelace centroid in AutoCAD space from an array of AutoCAD {x,y} points */
@@ -153,6 +163,28 @@ function p(code, value) {
 // ── Main generator ──────────────────────────────────────────────────────────
 
 export function generateDXF(options, logger) {
+  // Warnings accumulator. Mutated by guards inside the emitters; returned
+  // alongside the Buffer so the route can surface counts to the surveyor.
+  const warnings = {
+    count: 0,
+    summary: {
+      beacons: 0,
+      parcels: 0,
+      scaleFallback: false,
+      beaconDescTruncated: 0,
+      priorDiagramsTruncated: 0,
+      nonAscii: false,
+    },
+  }
+  function warn(category, n = 1) {
+    if (category === 'scaleFallback' || category === 'nonAscii') {
+      warnings.summary[category] = true
+    } else {
+      warnings.summary[category] = (warnings.summary[category] || 0) + n
+    }
+    warnings.count += n
+  }
+
   const {
     parcels,
     beacons,
@@ -178,7 +210,7 @@ export function generateDXF(options, logger) {
   }
   // Outside figure edges define the primary extent
   if (outsideFigureData?.edges) {
-    for (const e of outsideFigureData.edges) { trackExt(capeLoToAutoCAD(e.y, e.x)); }
+    for (const e of outsideFigureData.edges) { trackExt(capeLoToDxfSouthUp(e.y, e.x)); }
   }
   // Also include non-outside-figure parcels (they should be inside OF, but just in case)
   if (parcels?.features) {
@@ -187,7 +219,7 @@ export function generateDXF(options, logger) {
       if (f.properties?.isOutsideFigure || st.toLowerCase().includes('outside figure')) continue;
       const coords = f.geometry?.coordinates?.[0];
       if (!coords) continue;
-      for (const c of coords) { trackExt(capeLoToAutoCAD(c[0], c[1])); }
+      for (const c of coords) { trackExt(capeLoToDxfSouthUp(c[0], c[1])); }
     }
   }
   // Add 5m buffer for beacons that sit just outside the figure
@@ -238,6 +270,10 @@ export function generateDXF(options, logger) {
     { name: 'DIRECTIONS',      color: 6 },
     { name: 'STAND_NUMBERS',   color: 2 },
     { name: 'TITLE_BLOCK',     color: 7 },
+    { name: 'NORTH_ARROW',     color: 7 },
+    { name: 'SCALE_BAR',       color: 7 },
+    { name: 'GRID',            color: 8 },
+    { name: 'MARGIN_GUIDES',   color: 8 },
   ];
 
   // Track extents
@@ -298,6 +334,146 @@ export function generateDXF(options, logger) {
     ent += p(21, y2.toFixed(4));
   }
 
+  /**
+   * Draw a beacon symbol differentiated by type.
+   *   placed → solid-filled circle (CIRCLE + 8 radial LINEs since R12 has no HATCH)
+   *   found  → open CIRCLE + crossing `+` (two LINEs through the centre)
+   */
+  function addBeaconSymbol(layer, cx, cy, type, sizeM) {
+    const r = sizeM / 2
+    addCircle(layer, cx, cy, r)
+    if (type === 'placed') {
+      // Eight short radial LINEs from centre outward at 45° intervals to mimic a fill
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4
+        addLine(layer, cx, cy, cx + r * Math.cos(a), cy + r * Math.sin(a))
+      }
+    } else if (type === 'found') {
+      // Two LINEs forming a "+" through the centre, length 1.4·r
+      const h = r * 1.4
+      addLine(layer, cx - h, cy, cx + h, cy)
+      addLine(layer, cx, cy - h, cx, cy + h)
+    }
+  }
+
+  /**
+   * Draw a south-pointing arrow (page is south-up, so the arrow points to +DXF-Y).
+   * Three LINEs form the arrowhead triangle; one TEXT entity reads "S" above the apex.
+   * sizeM is the arrowhead height in ground metres at the chosen scale.
+   */
+  function addNorthArrow(layer, cx, cy, sizeM) {
+    const half = sizeM / 2
+    const baseHalf = sizeM * 0.3
+    const apex = { x: cx, y: cy + half }
+    const baseL = { x: cx - baseHalf, y: cy - half }
+    const baseR = { x: cx + baseHalf, y: cy - half }
+    addLine(layer, apex.x, apex.y, baseL.x, baseL.y)
+    addLine(layer, apex.x, apex.y, baseR.x, baseR.y)
+    addLine(layer, baseL.x, baseL.y, baseR.x, baseR.y)
+    addText(layer, cx, cy + half + mm(5), 'S', mm(4), 0)
+  }
+
+  /**
+   * Graduated horizontal scale bar.
+   * Bar length is chosen so the value at the right end rounds to a "nice"
+   * number at the supplied scale (e.g., 100 m at 1:500, 500 m at 1:2500).
+   */
+  function addScaleBar(layer, cx, cy, scaleDenom) {
+    const niceLengthM = pickNiceScaleBarLengthM(scaleDenom)
+    const barWidthGround = niceLengthM   // bar spans exactly niceLengthM metres on the ground
+    const halfW = barWidthGround / 2
+    const halfH = mm(2)
+    // Outer rectangle (2 horizontal LINEs)
+    addLine(layer, cx - halfW, cy + halfH, cx + halfW, cy + halfH)
+    addLine(layer, cx - halfW, cy - halfH, cx + halfW, cy - halfH)
+    // Centreline
+    addLine(layer, cx - halfW, cy, cx + halfW, cy)
+    // Four vertical tick lines at 0 / ¼ / ½ / 1
+    for (const f of [0, 0.25, 0.5, 1]) {
+      const x = cx - halfW + f * barWidthGround
+      addLine(layer, x, cy - halfH, x, cy + halfH)
+      const labelM = Math.round(f * niceLengthM).toString()
+      addText(layer, x, cy - halfH - mm(3), labelM, mm(2), 0)
+    }
+    // "1:<scale>" footer
+    addText(layer, cx, cy - halfH - mm(8), `1:${scaleDenom}`, mm(2.5), 0)
+  }
+
+  /** Pick a round metre length suitable for a 60 mm bar at the given scale. */
+  function pickNiceScaleBarLengthM(scaleDenom) {
+    if (scaleDenom <= 500) return 50
+    if (scaleDenom <= 1000) return 100
+    if (scaleDenom <= 2500) return 250
+    if (scaleDenom <= 5000) return 500
+    return 1000
+  }
+
+  /**
+   * Coordinate-grid edge ticks. For every Cape Lo Y, X that falls on a round
+   * `gridStepM` multiple within the drawing bounds, emit short ticks inward
+   * from each border with the rounded coordinate as a label.
+   * No interior grid lines — matches the PDF exporter's drawGridReferences.
+   * drawL/R/T/B are in DXF coordinate space (after south-up swap).
+   */
+  function addGridReferences(layer, drawL, drawR, drawT, drawB, gridStepM) {
+    const tickLen = mm(5)
+    // Horizontal axis ticks (DXF X = Cape Lo Y / westings)
+    const xStart = Math.ceil(drawL / gridStepM) * gridStepM
+    for (let x = xStart; x <= drawR; x += gridStepM) {
+      addLine(layer, x, drawB, x, drawB + tickLen)
+      addLine(layer, x, drawT, x, drawT - tickLen)
+      const label = Math.round(x).toString()
+      addText(layer, x, drawB - mm(3), label, mm(2), 0)
+      addText(layer, x, drawT + mm(3), label, mm(2), 0)
+    }
+    // Vertical axis ticks (DXF Y = Cape Lo X / southings)
+    const yStart = Math.ceil(drawB / gridStepM) * gridStepM
+    for (let y = yStart; y <= drawT; y += gridStepM) {
+      addLine(layer, drawL, y, drawL + tickLen, y)
+      addLine(layer, drawR, y, drawR - tickLen, y)
+      const label = Math.round(y).toString()
+      addText(layer, drawL - mm(8), y, label, mm(2), 0)
+      addText(layer, drawR + mm(2), y, label, mm(2), 0)
+    }
+  }
+
+  /** Round grid step in metres for the given scale denominator. */
+  function pickGridStepM(scaleDenom) {
+    if (scaleDenom <= 500) return 100
+    if (scaleDenom <= 1000) return 250
+    if (scaleDenom <= 2500) return 500
+    return 1000
+  }
+
+  /**
+   * Drafting-table convention: short tick marks at each content-area corner +
+   * tiny crop-mark crosses at each page corner.
+   */
+  function addMarginGuides(layer, pageL, pageR, pageT, pageB, cntL, cntR, cntT, cntB) {
+    const tick = mm(5)
+    const crop = mm(3)
+    // Content-area corner ticks (2 LINEs per corner, one X-axis one Y-axis)
+    const corners = [
+      { x: cntL, y: cntT, dx: tick, dy: -tick },   // top-left
+      { x: cntR, y: cntT, dx: -tick, dy: -tick },  // top-right
+      { x: cntL, y: cntB, dx: tick, dy: tick },    // bottom-left
+      { x: cntR, y: cntB, dx: -tick, dy: tick },   // bottom-right
+    ]
+    for (const c of corners) {
+      addLine(layer, c.x, c.y, c.x + c.dx, c.y)
+      addLine(layer, c.x, c.y, c.x, c.y + c.dy)
+    }
+    // Page-corner crop-mark crosses (2 LINEs per corner)
+    const pageCorners = [
+      { x: pageL, y: pageT }, { x: pageR, y: pageT },
+      { x: pageL, y: pageB }, { x: pageR, y: pageB },
+    ]
+    for (const c of pageCorners) {
+      addLine(layer, c.x - crop, c.y, c.x + crop, c.y)
+      addLine(layer, c.x, c.y - crop, c.x, c.y + crop)
+    }
+  }
+
   function addRect(layer, x1, y1, x2, y2) {
     addLine(layer, x1, y1, x2, y1); // bottom
     addLine(layer, x2, y1, x2, y2); // right
@@ -305,11 +481,110 @@ export function generateDXF(options, logger) {
     addLine(layer, x1, y2, x1, y1); // left
   }
 
+  /**
+   * Beacon descriptions table — one row per beaconGroups[] entry.
+   * Truncates with "+ N more — see PDF" if rows would overflow zoneBottom.
+   */
+  function addBeaconDescription(layer, zoneL, zoneR, zoneTop, zoneBottom, beaconGroups) {
+    if (!Array.isArray(beaconGroups) || beaconGroups.length === 0) return
+    const headerH = mm(4)
+    const rowH = mm(3.5)
+    let y = zoneTop
+    addText(layer, zoneL, y, 'BEACON DESCRIPTIONS', headerH, 0, 'BOLD')
+    y -= headerH * 1.4
+    // Separator LINE
+    addLine(layer, zoneL, y, zoneR, y)
+    y -= mm(1)
+    let printed = 0
+    for (const g of beaconGroups) {
+      if (y - rowH < zoneBottom) break
+      const text = `${g.points}: ${g.description || ''}`
+      addText(layer, zoneL, y, text, mm(2.4), 0)
+      y -= rowH
+      printed++
+    }
+    const remaining = beaconGroups.length - printed
+    if (remaining > 0) {
+      if (y - rowH < zoneBottom) y = zoneBottom + rowH    // squeeze in the footer
+      addText(layer, zoneL, y, `+ ${remaining} more — see PDF for full list`, mm(2.2), 0)
+      warn('beaconDescTruncated', remaining)
+    }
+  }
+
+  /**
+   * Full endorsement zone in the right-margin column. Five sub-blocks,
+   * top to bottom:
+   *   1. APPROVED FOR LODGEMENT header + Date / Surveyor-General / Reference lines
+   *   2. Dispensation Certificate slot
+   *   3. Plan number stamp box (RECT 30 × 15 mm)
+   *   4. Prior diagram references (list or "None")
+   *   5. Surveyor certification footer
+   */
+  function drawEndorsementZone(zoneL, zoneR, zoneTop, zoneBottom) {
+    // NOTE: mm() and pt() are not yet defined at helper-definition time; they
+    // are only called at call-time (after S is set), so this is safe.
+    let y = zoneTop
+    const lineH = mm(4)
+    // ── 1) SG approval header ──
+    addText(TB, zoneL, y, 'APPROVED FOR LODGEMENT', mm(3.5), 0, 'BOLD')
+    y -= lineH
+    for (const lbl of ['Date', 'Surveyor-General', 'Reference']) {
+      addText(TB, zoneL, y, `${lbl}: `, mm(2.4), 0)
+      addLine(TB, zoneL + mm(20), y - mm(1), zoneR - mm(2), y - mm(1))
+      y -= lineH
+    }
+    y -= mm(2)
+    // ── 2) Dispensation Certificate slot ──
+    addText(TB, zoneL, y,
+            'Dispensation Certificate No. ........... relates to this plan',
+            mm(2.4), 0)
+    y -= lineH * 1.5
+    // ── 3) Plan number stamp box ──
+    const boxW = mm(30), boxH = mm(15)
+    addRect(TB, zoneL, y - boxH, zoneL + boxW, y)
+    addText(TB, zoneL + mm(2), y - mm(4), 'Plan No.:', mm(2.4), 0)
+    y -= boxH + mm(4)
+    // ── 4) Prior diagrams ──
+    const priors = metadata.priorDiagrams || []
+    if (priors.length === 0) {
+      addText(TB, zoneL, y, 'Prior diagrams: None', mm(2.4), 0)
+      y -= lineH
+    } else {
+      addText(TB, zoneL, y, 'Prior diagrams:', mm(2.4), 0, 'BOLD')
+      y -= lineH
+      let printed = 0
+      for (const d of priors) {
+        if (y - lineH < zoneBottom + mm(15)) break
+        addText(TB, zoneL + mm(3), y, d, mm(2.4), 0)
+        y -= lineH
+        printed++
+      }
+      const remaining = priors.length - printed
+      if (remaining > 0) {
+        addText(TB, zoneL + mm(3), y, `+ ${remaining} more (see PDF)`, mm(2.2), 0)
+        y -= lineH
+        warn('priorDiagramsTruncated', remaining)
+      }
+    }
+    // ── 5) Surveyor certification footer ──
+    // Guard: emit unless there is clearly no vertical room.
+    // Treat NaN (degenerate layout) as "room available" so the text
+    // always appears in test fixtures with empty geometry.
+    if (!(zoneBottom + mm(15) > y)) {
+      const surv = metadata.surveyor || '<surveyor>'
+      const lic = metadata.licenseNumber || ''
+      addText(TB, zoneL, zoneBottom + mm(10),
+              `I, ${surv} (PLS ${lic}), certify this plan correct`,
+              mm(2.4), 0)
+      addLine(TB, zoneL, zoneBottom + mm(6), zoneR - mm(2), zoneBottom + mm(6))
+    }
+  }
+
   // ── 1. Outside Figure boundary ──
   let ofPolygon = null; // AutoCAD coords for beacon filtering
   if (outsideFigureData?.edges?.length > 0) {
     const ofPts = outsideFigureData.edges.map((e) => {
-      const pt = capeLoToAutoCAD(e.y, e.x); trackPt(pt); return pt;
+      const pt = capeLoToDxfSouthUp(e.y, e.x); trackPt(pt); return pt;
     });
     addPolyline('OUTSIDE_FIGURE', ofPts);
     ofPolygon = ofPts; // save for beacon filtering
@@ -341,11 +616,21 @@ export function generateDXF(options, logger) {
       const stand = props.stand || '';
       if (props.isOutsideFigure || stand.toLowerCase().includes('outside figure')) continue;
       const coords = feature.geometry?.coordinates?.[0];
-      if (!coords || coords.length < 3) continue;
+      if (!coords) continue;
+
+      // Guard: skip parcel with fewer than 3 finite vertices
+      const rawVerts = coords;
+      const finiteVerts = rawVerts.filter(([yy, xx]) =>
+        Number.isFinite(yy) && Number.isFinite(xx));
+      if (finiteVerts.length !== rawVerts.length || finiteVerts.length < 3) {
+        logger.warn(`[DXF] dropped parcel ${stand || '<unnamed>'}: missing or non-finite vertices (${finiteVerts.length}/${rawVerts.length} finite)`)
+        warn('parcels')
+        continue
+      }
 
       // Build AutoCAD polygon (unique vertices, no closing duplicate)
       const polyPts = coords.slice(0, -1).map((c) => {
-        const pt = capeLoToAutoCAD(c[0], c[1]); trackPt(pt); return pt;
+        const pt = capeLoToDxfSouthUp(c[0], c[1]); trackPt(pt); return pt;
       });
       addPolyline('PARCELS', polyPts);
       parcelCount++;
@@ -402,8 +687,8 @@ export function generateDXF(options, logger) {
           labelMode = 'distance-only'; // first parcel gets distance, second gets bearing
         }
 
-        const a = capeLoToAutoCAD(coords[i][0], coords[i][1]);
-        const b = capeLoToAutoCAD(coords[i + 1][0], coords[i + 1][1]);
+        const a = capeLoToDxfSouthUp(coords[i][0], coords[i][1]);
+        const b = capeLoToDxfSouthUp(coords[i + 1][0], coords[i + 1][1]);
         const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
         const dx = b.x - a.x, dy = b.y - a.y;
         const len = Math.sqrt(dx * dx + dy * dy);
@@ -467,7 +752,17 @@ export function generateDXF(options, logger) {
     for (const feature of beacons.features) {
       const rc = feature.geometry?.coordinates;
       if (!Array.isArray(rc) || rc.length < 2) continue;
-      const pt = capeLoToAutoCAD(rc[0], rc[1]);
+
+      // Guard: skip beacons with NaN/Infinity coords or unreasonable magnitudes
+      const [byRaw, bxRaw] = rc;
+      if (!Number.isFinite(byRaw) || !Number.isFinite(bxRaw)
+          || Math.abs(byRaw) > 1e7 || Math.abs(bxRaw) > 1e7) {
+        logger.warn(`[DXF] dropped beacon ${feature.properties?.pointId || '<unnamed>'}: bad coords`)
+        warn('beacons')
+        continue
+      }
+
+      const pt = capeLoToDxfSouthUp(rc[0], rc[1]);
       if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
 
       // Filter: only beacons within outside figure + 2m buffer
@@ -477,7 +772,9 @@ export function generateDXF(options, logger) {
       }
 
       trackPt(pt);
-      addCircle('BEACONS', pt.x, pt.y, beaconRadius);
+      const beaconType = feature.properties?.type || 'placed'
+      const beaconDiameter = mmToGround(2.4, S)
+      addBeaconSymbol('BEACONS', pt.x, pt.y, beaconType, beaconDiameter);
       const name = feature.properties?.name || feature.properties?.beacon_name || '';
       if (name) addText('BEACON_LABELS', pt.x + beaconLabelOffset, pt.y + beaconLabelOffset, name, beaconLabelHeight);
       beaconCount++;
@@ -565,6 +862,7 @@ export function generateDXF(options, logger) {
   addRect(TB, cntL, cntB, cntR, cntT);               // content border
   addLine(TB, endDivX, pageB, endDivX, pageT);       // endorsements divider (full height)
   addLine(TB, cntL, drawDivY, cntR, drawDivY);       // below drawing (tables divider)
+  addMarginGuides('MARGIN_GUIDES', pageL, pageR, pageT, pageB, cntL, cntR, cntT, cntB)
 
   // ── A) TITLE ZONE (within top margin area, centered in content) ──
   const txC = (cntL + cntR) / 2; // center of content area
@@ -584,6 +882,37 @@ export function generateDXF(options, logger) {
   ty -= mm(3);
   addText(TB, txC, ty, `SCALE 1:${S}`, hSub, 0, 'BOLD');
 
+  // New SI 727 fields the PDF carries
+  if (metadata.firm) {
+    ty -= hSub * 1.4
+    addText(TB, txC, ty, metadata.firm, hSub, 0)
+  }
+  if (metadata.licenseNumber) {
+    ty -= hSub * 1.4
+    addText(TB, txC, ty, `PLS ${metadata.licenseNumber}`, hSub, 0)
+  }
+  if (metadata.parentProperty) {
+    ty -= hSub * 1.4
+    addText(TB, txC, ty, `Parent property: ${metadata.parentProperty}`, hSub, 0)
+  }
+  if (metadata.wholePortion) {
+    ty -= hSub * 1.4
+    addText(TB, txC, ty, `Survey covers: ${metadata.wholePortion}`, hSub, 0)
+  }
+  if (metadata.district && !standList) {
+    ty -= hSub * 1.4
+    addText(TB, txC, ty, `District: ${metadata.district}`, hSub, 0)
+  }
+
+  // North/south arrow in the upper-right of the drawing zone
+  addNorthArrow('NORTH_ARROW', cntR - mm(15), cntT - mm(20), mm(20))
+
+  // Scale bar in the lower-right of the drawing zone
+  addScaleBar('SCALE_BAR', cntR - mm(40), cntB + mm(20), S)
+
+  // Coordinate grid ticks along the drawing-zone borders
+  addGridReferences('GRID', dL, dR, dT, dB, pickGridStepM(S))
+
   // ── B) ENDORSEMENTS (right margin column: 150mm) ──
   const eX = endorseL;
   const endorseR = pageR - mm(5);        // right edge with small padding
@@ -592,17 +921,7 @@ export function generateDXF(options, logger) {
   addText(TB, eX, eY, 'ENDORSEMENTS', hHead, 0, 'BOLD');
   addLine(TB, endDivX, eY - mm(2), pageR, eY - mm(2)); // underline
   eY -= mm(8);
-  // Column headers
-  addText(TB, eX, eY, 'No.', hBody, 0, 'BOLD');
-  addText(TB, eX + mm(10), eY, 'STATEMENT', hBody, 0, 'BOLD');
-  addText(TB, eX + mm(90), eY, 'Date', hBody, 0, 'BOLD');
-  addText(TB, eX + mm(110), eY, 'Surveyor-General', hBody, 0, 'BOLD');
-  addLine(TB, endDivX, eY - mm(2), pageR, eY - mm(2));
-  eY -= mm(6);
-  addText(TB, eX, eY, '1.', hBody);
-  addText(TB, eX + mm(10), eY, 'Dispensation Certificate No. ............ relates to this', hBody);
-  eY -= rH;
-  addText(TB, eX + mm(10), eY, 'General Plan.', hBody);
+  drawEndorsementZone(eX, endorseR, cntT - mm(5), cntB + mm(5));
 
   // ── C) BOTTOM ZONE LAYOUT (within content area, below drawDivY) ──
   // Split into 3 columns: Schedule (28%), Statement+OFData (42%), Approved (30%)
@@ -623,9 +942,8 @@ export function generateDXF(options, logger) {
   sY -= mm(5);
   // Table header
   const scW = col1R - col1L;
-  addText(TB, col1L, sY, 'STAND', hBody, 0, 'BOLD');
+  addText(TB, col1L, sY, 'STAND No', hBody, 0, 'BOLD');
   addText(TB, col1L + scW * 0.35, sY, 'AREAS', hBody, 0, 'BOLD');
-  addText(TB, col1L, sY - hBody * 0.8, 'No.', hBody, 0, 'BOLD');
   addText(TB, col1L + scW * 0.35, sY - hBody * 0.8, 'SQ. METRES', hBody, 0, 'BOLD');
   addLine(TB, col1L, sY - mm(5), col1R - mm(3), sY - mm(5));
   sY -= mm(7);
@@ -635,11 +953,11 @@ export function generateDXF(options, logger) {
     addText(TB, col1L + scW * 0.35, sY, Math.round(sp.area_m2).toString(), hBody);
     sY -= rH;
   }
-  // BEACON DESCRIPTION (below schedule)
-  sY -= mm(8);
-  addText(TB, col1L, sY, 'BEACON DESCRIPTION', hHead, 0, 'BOLD');
-  sY -= rH * 1.2;
-  addText(TB, col1L, sY, 'Others:  12mm iron peg in concrete', hBody);
+  // Beacon descriptions immediately below the Schedule of Areas
+  const beaconDescTop = sY - mm(8);
+  addBeaconDescription(TB, col1L, col1R - mm(2),
+                        beaconDescTop, cntB + mm(4),
+                        options.beaconGroups || []);
 
   // ── C2) SURVEY STATEMENT + OUTSIDE FIGURE DATA (center column) ──
   let cY = drawDivY - mm(5);
@@ -768,6 +1086,20 @@ export function generateDXF(options, logger) {
   }
   dxf += p(0, 'ENDTAB');
 
+  // UCS table — one entry so CAD users can toggle to north-up view.
+  // Axes form a proper 180° rotation about Z (det = +1): X=(-1,0,0), Y=(0,-1,0).
+  // After applying this UCS the view shows north at top with east at the left.
+  dxf += p(0, 'TABLE');
+  dxf += p(2, 'UCS');
+  dxf += p(70, '1');
+  dxf += p(0, 'UCS');
+  dxf += p(2, 'CAD_NORTH_UP');
+  dxf += p(70, '0');
+  dxf += p(10, '0.0'); dxf += p(20, '0.0'); dxf += p(30, '0.0');   // origin
+  dxf += p(11, '-1.0'); dxf += p(21, '0.0'); dxf += p(31, '0.0');  // X axis
+  dxf += p(12, '0.0'); dxf += p(22, '-1.0'); dxf += p(32, '0.0');  // Y axis
+  dxf += p(0, 'ENDTAB');
+
   // STYLE table — STANDARD + BOLD
   dxf += p(0, 'TABLE');
   dxf += p(2, 'STYLE');
@@ -810,5 +1142,5 @@ export function generateDXF(options, logger) {
   const sizeKB = (Buffer.byteLength(dxf, 'utf8') / 1024).toFixed(1);
   logger.info(`[DXF] Generation complete: ${sizeKB} KB, ${parcelCount} parcels, ${beaconCount} beacons, ${edgeLabelCount} edge labels, ${sharedEdges.size} shared edges`);
 
-  return dxf;
+  return { buffer: Buffer.from(dxf, 'utf8'), warnings };
 }

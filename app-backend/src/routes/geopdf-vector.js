@@ -178,8 +178,8 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
 
       const { generateDXF } = await import('../services/dxfGenerator.js')
 
-      const dxfContent = generateDXF(
-        { parcels, beacons, outsideFigureData, metadata, projection, scale, sheetSize },
+      const { buffer, warnings } = generateDXF(
+        { parcels, beacons, outsideFigureData, metadata, projection, scale, sheetSize, beaconGroups: request.body.beaconGroups },
         fastify.log
       )
 
@@ -187,7 +187,11 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
       reply
         .type('application/dxf')
         .header('Content-Disposition', `attachment; filename="${filename}"`)
-        .send(dxfContent)
+        .header('X-DXF-Warning-Count', String(warnings.count))
+      if (warnings.count > 0) {
+        reply.header('X-DXF-Warnings', JSON.stringify(warnings.summary))
+      }
+      reply.send(buffer)
 
     } catch (error) {
       fastify.log.error('[DXF] Generation failed:', error)

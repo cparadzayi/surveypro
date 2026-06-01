@@ -170,6 +170,7 @@ export function generateDXF(options, logger) {
     summary: {
       beacons: 0,
       parcels: 0,
+      outsideFigureVertices: 0,
       scaleFallback: false,
       beaconDescTruncated: 0,
       priorDiagramsTruncated: 0,
@@ -274,6 +275,7 @@ export function generateDXF(options, logger) {
     { name: 'SCALE_BAR',       color: 7 },
     { name: 'GRID',            color: 8 },
     { name: 'MARGIN_GUIDES',   color: 8 },
+    { name: 'OUTSIDE_FIGURE_LABELS', color: 8 },
   ];
 
   // Track extents

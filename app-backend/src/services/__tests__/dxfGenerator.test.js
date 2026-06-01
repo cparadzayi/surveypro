@@ -304,6 +304,24 @@ describe('generateDXF — beacon description block', () => {
   })
 })
 
+describe('generateDXF — outside-figure annotation foundation', () => {
+  const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+  const opts = {
+    parcels: { features: [] },
+    beacons: { features: [] },
+    outsideFigureData: null,
+    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+  }
+  test('declares the OUTSIDE_FIGURE_LABELS layer', () => {
+    const { buffer } = generateDXF(opts, fakeLogger)
+    expect(countLayerOnTable(buffer.toString(), 'OUTSIDE_FIGURE_LABELS')).toBe(1)
+  })
+  test('warnings.summary includes outsideFigureVertices counter at zero', () => {
+    const { warnings } = generateDXF(opts, fakeLogger)
+    expect(warnings.summary.outsideFigureVertices).toBe(0)
+  })
+})
+
 describe('generateDXF — title block field completion', () => {
   const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
   const opts = {

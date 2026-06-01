@@ -3,7 +3,7 @@
  * Run with:  cd app-backend && npm run test -- dxfGenerator.titleBlock
  */
 import { describe, test, expect } from '@jest/globals'
-import { splitToWidth } from '../dxfGenerator.js'
+import { splitToWidth, formatSheetLabel } from '../dxfGenerator.js'
 
 describe('splitToWidth', () => {
   test('empty input returns []', () => {
@@ -40,5 +40,29 @@ describe('splitToWidth', () => {
   test('never produces empty entries', () => {
     const lines = splitToWidth('   spaces    between    words   ', 8)
     for (const line of lines) expect(line.length).toBeGreaterThan(0)
+  })
+})
+
+describe('formatSheetLabel', () => {
+  test.each([
+    ['null',                        null],
+    ['undefined',                   undefined],
+    ['empty object',                {}],
+    ['totalSheets: 1',              { totalSheets: 1 }],
+    ['totalSheets: 1 + sheetNumber: 1', { sheetNumber: 1, totalSheets: 1 }],
+    ['negative sheetNumber',        { sheetNumber: -1, totalSheets: 3 }],
+    ['zero sheetNumber',            { sheetNumber: 0, totalSheets: 3 }],
+    ['NaN sheetNumber',             { sheetNumber: NaN, totalSheets: 3 }],
+    ['non-integer sheetNumber',     { sheetNumber: 1.5, totalSheets: 3 }],
+  ])('%s → []', (_label, input) => {
+    expect(formatSheetLabel(input)).toEqual([])
+  })
+
+  test('valid multi-sheet input → ["SHEET N"]', () => {
+    expect(formatSheetLabel({ sheetNumber: 2, totalSheets: 3 })).toEqual(['SHEET 2'])
+  })
+
+  test('sheetNumber 1 with totalSheets 3 → ["SHEET 1"]', () => {
+    expect(formatSheetLabel({ sheetNumber: 1, totalSheets: 3 })).toEqual(['SHEET 1'])
   })
 })

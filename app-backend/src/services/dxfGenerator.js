@@ -51,6 +51,20 @@ export function splitToWidth(str, maxChars) {
   return lines
 }
 
+/**
+ * Returns `["SHEET N"]` when sheetInfo indicates a multi-sheet plan
+ * (totalSheets > 1) with a positive integer sheetNumber. Returns [] for
+ * any other input shape. No warning on malformed input — the absent label
+ * is itself visible to the surveyor in CAD.
+ */
+export function formatSheetLabel(sheetInfo) {
+  if (!sheetInfo || typeof sheetInfo !== 'object') return []
+  const { sheetNumber, totalSheets } = sheetInfo
+  if (typeof totalSheets !== 'number' || totalSheets <= 1) return []
+  if (!Number.isInteger(sheetNumber) || sheetNumber <= 0) return []
+  return [`SHEET ${sheetNumber}`]
+}
+
 function normalizeCapeLoYX(y, x) {
   if (!Number.isFinite(y) || !Number.isFinite(x)) return [y, x];
   const ay = Math.abs(y);

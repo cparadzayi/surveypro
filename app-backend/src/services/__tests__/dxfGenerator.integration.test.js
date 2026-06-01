@@ -35,6 +35,27 @@ describe('dxfGenerator integration — sample fixture', () => {
     }
   })
 
+  test('every beacon has a label on BEACON_LABELS sourced from properties.pointId', () => {
+    // The fixture's beacons use properties.pointId ('A', 'B', …) — the only ID
+    // field most production GeoJSON sources populate. The generator must read
+    // from pointId (with name / beacon_name as fallbacks) so labels actually
+    // appear next to each beacon symbol.
+    expect(entityCount(dxf, 'TEXT', 'BEACON_LABELS'))
+      .toBe(sampleFixture.beacons.features.length)
+    for (const b of sampleFixture.beacons.features) {
+      expect(dxf).toMatch(new RegExp(`\\b8\\s*\\n\\s*BEACON_LABELS\\b[\\s\\S]*?\\b1\\s*\\n\\s*${b.properties.pointId}\\b`))
+    }
+  })
+
+  test('edge labels render distance and direction on DISTANCES / DIRECTIONS even when props.edges is missing', () => {
+    // The fixture's parcels carry only stand + area_m2; properties.edges is
+    // intentionally omitted (most callers don't pre-compute it). The generator
+    // must derive distances and South-oriented bearings from the polygon's
+    // vertex pairs so the labels still appear.
+    expect(entityCount(dxf, 'TEXT', 'DISTANCES')).toBeGreaterThan(0)
+    expect(entityCount(dxf, 'TEXT', 'DIRECTIONS')).toBeGreaterThan(0)
+  })
+
   test('entity counts on key layers match the fixture', () => {
     expect(entityCount(dxf, 'POLYLINE', 'PARCELS'))
       .toBe(sampleFixture.parcels.features.length)

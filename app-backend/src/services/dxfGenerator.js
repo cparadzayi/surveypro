@@ -668,7 +668,24 @@ export function generateDXF(options, logger) {
       }
 
       // ── Edge labels with shared-edge topology ──
-      const edges = props.edges || [];
+      // Most callers don't pre-compute props.edges; derive distance + South-
+      // oriented bearing from successive vertex pairs as a fallback so the
+      // DISTANCES / DIRECTIONS layers populate even when the GeoJSON omits
+      // edges. South-oriented whole-circle bearing convention: 0° = +Southing
+      // (south), 90° = +Westing (west), normalised to [0, 360).
+      let edges = props.edges || [];
+      if (edges.length === 0 && coords.length > 1) {
+        edges = [];
+        for (let i = 0; i < coords.length - 1; i++) {
+          const a = coords[i], b = coords[i + 1];
+          const dY = b[0] - a[0];   // Westing delta
+          const dX = b[1] - a[1];   // Southing delta
+          const distance = Math.sqrt(dY * dY + dX * dX);
+          let bearing = Math.atan2(dY, dX) * (180 / Math.PI);
+          bearing = ((bearing % 360) + 360) % 360;
+          edges.push({ distance, bearing });
+        }
+      }
       for (let i = 0; i < edges.length && i < coords.length - 1; i++) {
         const edge = edges[i];
         if (!edge) continue;
@@ -775,7 +792,10 @@ export function generateDXF(options, logger) {
       const beaconType = feature.properties?.type || 'placed'
       const beaconDiameter = mmToGround(2.4, S)
       addBeaconSymbol('BEACONS', pt.x, pt.y, beaconType, beaconDiameter);
-      const name = feature.properties?.name || feature.properties?.beacon_name || '';
+      const name = feature.properties?.pointId
+                || feature.properties?.name
+                || feature.properties?.beacon_name
+                || '';
       if (name) addText('BEACON_LABELS', pt.x + beaconLabelOffset, pt.y + beaconLabelOffset, name, beaconLabelHeight);
       beaconCount++;
     }

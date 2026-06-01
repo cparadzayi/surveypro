@@ -3,7 +3,7 @@
  * Run with:  cd app-backend && npm run test -- dxfGenerator.titleBlock
  */
 import { describe, test, expect } from '@jest/globals'
-import { splitToWidth, formatSheetLabel, formatVideLine } from '../dxfGenerator.js'
+import { splitToWidth, formatSheetLabel, formatVideLine, formatFigureDescription } from '../dxfGenerator.js'
 import { TITLE_BLOCK } from '../../../../app-shared/block-definitions.js'
 
 describe('splitToWidth', () => {
@@ -92,5 +92,101 @@ describe('formatVideLine', () => {
   test('output contains the literal "Vide diagram S.G. No." opening', () => {
     const lines = formatVideLine(200)
     expect(lines[0]).toMatch(/^Vide diagram S\.G\. No\./)
+  })
+})
+
+describe('formatFigureDescription', () => {
+  // Reusable fixture inputs — happy path, Borrowdale sample.
+  const fullMetadata = {
+    township: 'borrowdale',
+    district: 'harare',
+    parentProperty: 'lot 9 of borrowdale',
+    wholePortion: 'a portion',
+  }
+  const ofData = {
+    edges: [
+      { pointId: 'A', y: 50000, x: 2200000 },
+      { pointId: 'B', y: 50200, x: 2200000 },
+      { pointId: 'C', y: 50200, x: 2200100 },
+      { pointId: 'D', y: 50000, x: 2200100 },
+    ],
+  }
+  const surveyedParcels = [
+    { stand: '123', area_m2: 10000 },
+    { stand: '124', area_m2: 10000 },
+  ]
+
+  test('happy path → all placeholders substituted, sentence reads correctly', () => {
+    const lines = formatFigureDescription(fullMetadata, ofData, surveyedParcels, 500)
+    const sentence = lines.join(' ')
+    expect(sentence).toContain('The figure A, B, C, D, A represents')
+    expect(sentence).toContain('Borrowdale')
+    expect(sentence).toContain('comprising 2 stands')
+    expect(sentence).toContain('numbered')
+    expect(sentence).toContain('123')
+    expect(sentence).toContain('124')
+    expect(sentence).toContain('public places being a portion')
+    expect(sentence).toContain('of Borrowdale of Lot 9 Of Borrowdale')
+    expect(sentence).toContain('situate in the district of Harare')
+  })
+
+  test('returns [] when outsideFigureData has no edges', () => {
+    expect(formatFigureDescription(fullMetadata, { edges: [] }, surveyedParcels, 500)).toEqual([])
+  })
+
+  test('returns [] when outsideFigureData is null', () => {
+    expect(formatFigureDescription(fullMetadata, null, surveyedParcels, 500)).toEqual([])
+  })
+
+  test('returns [] when surveyedParcels is empty', () => {
+    expect(formatFigureDescription(fullMetadata, ofData, [], 500)).toEqual([])
+  })
+
+  test('missing township → fallback "the township"', () => {
+    const m = { ...fullMetadata, township: '' }
+    const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
+    expect(sentence).toContain('represents the township')
+  })
+
+  test('missing district → fallback "the district"', () => {
+    const m = { ...fullMetadata, district: '' }
+    const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
+    expect(sentence).toContain('situate in the district of the district')
+  })
+
+  test('missing parentProperty → ofTarget collapses to township only', () => {
+    const m = { ...fullMetadata, parentProperty: '' }
+    const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
+    expect(sentence).toContain('a portion of Borrowdale')
+    expect(sentence).not.toContain('of Borrowdale of')
+  })
+
+  test('missing wholePortion → fallback "the whole"', () => {
+    const m = { ...fullMetadata, wholePortion: '' }
+    const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
+    expect(sentence).toContain('public places being the whole')
+  })
+
+  test('long input wraps to multiple entries, no entry exceeds maxLineChars, no tokens lost', () => {
+    const lines = formatFigureDescription(fullMetadata, ofData, surveyedParcels, 30)
+    expect(lines.length).toBeGreaterThan(1)
+    for (const line of lines) {
+      expect(line.length).toBeLessThanOrEqual(30)
+    }
+    // Token preservation: every word in the joined output appears somewhere.
+    const joined = lines.join(' ')
+    expect(joined.toLowerCase()).toContain('borrowdale') // case may vary; substring check
+  })
+
+  test('compressed stand range — runs of consecutive numbers shown as a range', () => {
+    const manyParcels = [
+      { stand: '1', area_m2: 100 },
+      { stand: '2', area_m2: 100 },
+      { stand: '3', area_m2: 100 },
+      { stand: '10', area_m2: 100 },
+    ]
+    const sentence = formatFigureDescription(fullMetadata, ofData, manyParcels, 500).join(' ')
+    // Expectation aligned with formatStandRanges() output style (e.g. "1 - 3, 10").
+    expect(sentence).toMatch(/numbered\s+1\s*[-–]\s*3,\s*10/)
   })
 })

@@ -78,6 +78,58 @@ export function formatVideLine(maxLineChars) {
   return splitToWidth(template, maxLineChars)
 }
 
+/**
+ * Title-case helper: "lot 9 of borrowdale" → "Lot 9 Of Borrowdale".
+ * Matches the PDF's `toTitleCase` style for figure-description substitutions.
+ */
+function titleCase(str) {
+  return String(str || '').replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+}
+
+/**
+ * Builds the SI 727 Seventh Schedule (b) figure-description sentence
+ * from the figureDescription template in `app-shared/block-definitions.js`,
+ * wrapped to `maxLineChars`. Returns [] when there is no outside-figure
+ * sequence to describe or no surveyed parcels to count.
+ *
+ * Placeholder substitutions and missing-field fallbacks are documented in
+ * the spec (2026-06-01-dxf-title-block-si727-design.md, Components).
+ */
+export function formatFigureDescription(metadata, outsideFigureData, surveyedParcels, maxLineChars) {
+  const template = TITLE_BLOCK?.figureDescription?.template
+  if (!template) throw new Error('TITLE_BLOCK.figureDescription.template missing from app-shared/block-definitions.js')
+
+  const edges = outsideFigureData?.edges
+  if (!Array.isArray(edges) || edges.length === 0) return []
+  if (!Array.isArray(surveyedParcels) || surveyedParcels.length === 0) return []
+
+  // Beacon sequence: closed loop, first vertex repeated at the end.
+  const ids = edges.map(e => e?.pointId || '').filter(Boolean)
+  if (ids.length === 0) return []
+  const beaconSequence = ids.concat(ids[0]).join(', ')
+
+  const township = titleCase(metadata?.township) || 'the township'
+  const district = titleCase(metadata?.district) || 'the district'
+  const parentProperty = titleCase(metadata?.parentProperty)
+  const wholePortion = (metadata?.wholePortion || 'the whole').trim()
+  const ofTarget = parentProperty ? `${township} of ${parentProperty}` : township
+
+  const standNames = surveyedParcels.map(sp => String(sp?.stand ?? '')).filter(Boolean)
+  const standCount = standNames.length
+  const standRange = formatStandRanges(standNames) || '-'
+
+  const sentence = template
+    .replace('{beaconSequence}', beaconSequence)
+    .replace('{township}',       township)
+    .replace('{standCount}',     String(standCount))
+    .replace('{standRange}',     standRange)
+    .replace('{wholePortion}',   wholePortion)
+    .replace('{ofTarget}',       ofTarget)
+    .replace('{district}',       district)
+
+  return splitToWidth(sentence, maxLineChars)
+}
+
 function normalizeCapeLoYX(y, x) {
   if (!Number.isFinite(y) || !Number.isFinite(x)) return [y, x];
   const ay = Math.abs(y);

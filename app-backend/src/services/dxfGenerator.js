@@ -547,6 +547,32 @@ export function generateDXF(options, logger) {
     }
   }
 
+  /**
+   * For each non-duplicate vertex of the outside figure, emit one short LINE
+   * tick on `layer` pointing outward from the polygon centroid. The
+   * centroid-to-vertex direction matches the vertex-label placement so each
+   * tick + label pair reads as a coherent "I am here at Y=… X=…" marker.
+   *
+   * Functional-minimum: uses centroid direction. Pdfkit reference uses an
+   * angle-bisector for concave outside figures — deferred.
+   *
+   * @param {string} layer
+   * @param {Array<{y,x,pointId}>} vertices  From computeOutsideFigureVertices().
+   * @param {{x,y}} centroidGround
+   */
+  function addOutsideFigureTickMarks(layer, vertices, centroidGround) {
+    const tickLen = mm(3)
+    for (let i = 0; i < vertices.length - 1; i++) {
+      const v = vertices[i]
+      const dxfV = capeLoToDxfSouthUp(v.y, v.x)
+      let nx = dxfV.x - centroidGround.x
+      let ny = dxfV.y - centroidGround.y
+      const mag = Math.sqrt(nx * nx + ny * ny)
+      if (mag < 1e-6) { nx = 1; ny = 0 } else { nx /= mag; ny /= mag }
+      addLine(layer, dxfV.x, dxfV.y, dxfV.x + nx * tickLen, dxfV.y + ny * tickLen)
+    }
+  }
+
   function addRect(layer, x1, y1, x2, y2) {
     addLine(layer, x1, y1, x2, y1); // bottom
     addLine(layer, x2, y1, x2, y2); // right
@@ -893,6 +919,7 @@ export function generateDXF(options, logger) {
       .map(v => capeLoToDxfSouthUp(v.y, v.x));
     const ofCentroid = shoelaceCentroid(ofDxfPts);
     addOutsideFigureVertexLabels('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
+    addOutsideFigureTickMarks('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
   }
 
   // Extract central meridian

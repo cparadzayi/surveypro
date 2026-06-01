@@ -39,6 +39,10 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(entityCount(dxf, 'TEXT', 'OUTSIDE_FIGURE_LABELS')).toBe(4)
   })
 
+  test('emits 4 tick LINE entities on OUTSIDE_FIGURE_LABELS', () => {
+    expect(entityCount(dxf, 'LINE', 'OUTSIDE_FIGURE_LABELS')).toBe(4)
+  })
+
   test('vertex labels contain the Cape Lo coordinates from the fixture', () => {
     for (const v of sampleFixture.outsideFigureData.edges) {
       expect(dxf).toMatch(new RegExp(`Y=${Math.round(v.y)}.*?X=${Math.round(v.x)}`))

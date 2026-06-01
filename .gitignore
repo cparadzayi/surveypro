@@ -56,6 +56,10 @@ app-backend/test*.pdf
 # Root-level manuals, training material, sample survey plans
 /*.pdf
 /*.docx
-# Reference dump folders (SI 727 regs, control-point data, screenshots, manuals)
-cadastral-standard/
-sample docs/
+# Reference dump folders (SI 727 regs, control-point data, screenshots, manuals).
+# Patterns are anchored with a leading slash so they only match at the repo root —
+# previously the bare `cadastral-standard/` also matched
+# app-frontend/src/views/modules/cadastral-standard/, silently un-tracking the
+# entire frontend module.
+/cadastral-standard/
+/sample docs/

@@ -45,6 +45,9 @@ Each item must read true. Tick the box when verified; attach the screenshot refe
   *(Screenshot: `09-endorsement.png`)*
 - [ ] **Margin guides / crop marks** visible at the page and content-area corners. *(Screenshot: `10-margin-guides.png`)*
 - [ ] Typing `_UCS R CAD_NORTH_UP` in the CAD command line flips the view to north-up; typing `_UCS World` restores south-up. *(Screenshot: `11-ucs-toggle.png` — one before, one after.)*
+- [ ] Each outside-figure vertex carries a small tick mark pointing outward plus a Cape Lo coordinate label (`Y=… X=…`) just outside the boundary. *(Screenshot: `12-outside-figure-annotation.png`)*
+- [ ] Each outside-figure edge has a distance label (metres, 2 dp) and a bearing label (DMS) at its midpoint, offset outward from the boundary. *(Screenshot: `12-outside-figure-annotation.png` covers this too)*
+- [ ] Toggling the CAD `DISTANCES` layer off hides BOTH parcel edge distances AND outside-figure edge distances simultaneously (proves they share the layer).
 
 ## After verification
 

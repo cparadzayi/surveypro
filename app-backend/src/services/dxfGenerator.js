@@ -20,6 +20,37 @@
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+import { TITLE_BLOCK, formatStandRanges } from '../../../app-shared/block-definitions.js'
+
+/**
+ * Word-boundary wrap for single-line DXF TEXT entities.
+ * Splits `str` into chunks no longer than `maxChars` characters, never
+ * breaking inside a word. Single tokens longer than `maxChars` are emitted
+ * as their own line (no truncation, no hyphenation). Returns [] for empty
+ * input; never produces empty entries.
+ */
+export function splitToWidth(str, maxChars) {
+  if (!str) return []
+  const tokens = String(str).split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return []
+  const lines = []
+  let current = ''
+  for (const tok of tokens) {
+    if (current === '') {
+      current = tok
+      continue
+    }
+    if (current.length + 1 + tok.length <= maxChars) {
+      current += ' ' + tok
+    } else {
+      lines.push(current)
+      current = tok
+    }
+  }
+  if (current !== '') lines.push(current)
+  return lines
+}
+
 function normalizeCapeLoYX(y, x) {
   if (!Number.isFinite(y) || !Number.isFinite(x)) return [y, x];
   const ay = Math.abs(y);
@@ -239,6 +270,7 @@ export function generateDXF(options, logger) {
     projection = 'Cape Lo',
     scale,
     sheetSize = 'ISO_A2',
+    sheetInfo = null,
   } = options;
 
   const declaredS = parseScaleDenom(scale);

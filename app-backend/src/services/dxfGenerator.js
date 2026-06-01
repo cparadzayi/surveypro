@@ -85,13 +85,19 @@ export function computeOutsideFigureVertices(outsideFigureData) {
   }
   const vertices = []
   let skippedCount = 0
-  for (const e of edges) {
+  for (let idx = 0; idx < edges.length; idx++) {
+    const e = edges[idx]
     if (!Number.isFinite(e.y) || !Number.isFinite(e.x)
         || Math.abs(e.y) > 1e7 || Math.abs(e.x) > 1e7) {
       skippedCount++
       continue
     }
-    vertices.push({ y: e.y, x: e.x, pointId: e.pointId || '' })
+    // edgeIndex preserves the original position in outsideFigureData.edges so
+    // consumers can detect "bridged" polygon edges (i.e. consecutive kept
+    // vertices whose original indices aren't adjacent — indicating a filtered
+    // vertex in between) and fall back to geometry rather than reading stale
+    // distance/direction metadata from the wrong original edge.
+    vertices.push({ y: e.y, x: e.x, pointId: e.pointId || '', edgeIndex: idx })
   }
   // Append closing duplicate (first valid vertex) so consumers can iterate
   // vertices[i] / vertices[i+1] without wraparound.
@@ -610,8 +616,19 @@ export function generateDXF(options, logger) {
       let ang = Math.atan2(dy, dx) * (180 / Math.PI)
       if (ang > 90 || ang < -90) ang += 180
 
-      // Distance text — prefer edges[i].distance if numeric, else derive from len.
-      const edge = edges[i] || {}
+      // Edge metadata is only valid when the polygon edge vertices[i] → vertices[i+1]
+      // corresponds to a single ORIGINAL edge in outsideFigureData.edges (i.e., no
+      // vertex was filtered between them). Intactness check: edges[vIdx] describes
+      // the original edge whose successor is original-index (vIdx + 1) mod N, so
+      // the next polygon vertex must carry that original-index to match. When the
+      // check fails (a filtered vertex bridged two original edges), fall back to
+      // geometry by leaving `edge` empty.
+      const vIdx = vertices[i].edgeIndex
+      const vIdxNext = vertices[i + 1].edgeIndex
+      const isIntact = typeof vIdx === 'number'
+        && typeof vIdxNext === 'number'
+        && vIdxNext === (vIdx + 1) % edges.length
+      const edge = isIntact ? (edges[vIdx] || {}) : {}
       const givenDist = typeof edge.distance === 'number'
         ? edge.distance
         : parseFloat(edge.distance)

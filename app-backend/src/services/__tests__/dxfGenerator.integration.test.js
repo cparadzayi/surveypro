@@ -43,6 +43,13 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(entityCount(dxf, 'LINE', 'OUTSIDE_FIGURE_LABELS')).toBe(4)
   })
 
+  test('outside-figure edges contribute distance + bearing on the existing layers', () => {
+    // Pre-OF-annotation: parcel edges emitted 7 TEXTs each on DISTANCES and
+    // DIRECTIONS. The 4 OF edges add one of each per edge, total 11+11.
+    expect(entityCount(dxf, 'TEXT', 'DISTANCES')).toBe(11)
+    expect(entityCount(dxf, 'TEXT', 'DIRECTIONS')).toBe(11)
+  })
+
   test('vertex labels contain the Cape Lo coordinates from the fixture', () => {
     for (const v of sampleFixture.outsideFigureData.edges) {
       expect(dxf).toMatch(new RegExp(`Y=${Math.round(v.y)}.*?X=${Math.round(v.x)}`))

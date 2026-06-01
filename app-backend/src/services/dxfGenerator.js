@@ -573,6 +573,66 @@ export function generateDXF(options, logger) {
     }
   }
 
+  /**
+   * For each edge of the outside figure, emit a distance TEXT on `distLayer`
+   * and a South-oriented bearing TEXT on `dirLayer`, placed at the edge
+   * midpoint offset outward from the polygon centroid.
+   *
+   * Distance text format: "<m>.<cm>" via toFixed(2).
+   * Bearing text: preserves edges[i].direction when it parses as DMS, else
+   * derives via degToDMS() from the vertex delta.
+   *
+   * @param {string} distLayer  Existing DISTANCES layer.
+   * @param {string} dirLayer   Existing DIRECTIONS layer.
+   * @param {Array<{y,x,pointId}>} vertices  From computeOutsideFigureVertices()
+   *   (with closing duplicate so vertices[i+1] is always valid).
+   * @param {Array} edges  Raw outsideFigureData.edges array (parallel to
+   *   vertices[0..length-2] — edges[i] starts at vertices[i]).
+   * @param {{x,y}} centroidGround
+   */
+  function addOutsideFigureEdgeLabels(distLayer, dirLayer, vertices, edges, centroidGround) {
+    const distOffset = mm(3)
+    const bearOffset = mm(6)
+    for (let i = 0; i < vertices.length - 1; i++) {
+      const a = capeLoToDxfSouthUp(vertices[i].y, vertices[i].x)
+      const b = capeLoToDxfSouthUp(vertices[i + 1].y, vertices[i + 1].x)
+      const dx = b.x - a.x, dy = b.y - a.y
+      const len = Math.sqrt(dx * dx + dy * dy)
+      if (len < 1e-6) continue   // degenerate edge — skip silently
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
+      // Counter-clockwise 90° rotation of the edge direction, then flip
+      // toward the outside (away from polygon centre).
+      let nx = -dy / len, ny = dx / len
+      if (nx * (mx - centroidGround.x) + ny * (my - centroidGround.y) < 0) {
+        nx = -nx; ny = -ny
+      }
+      // Edge angle for upright text.
+      let ang = Math.atan2(dy, dx) * (180 / Math.PI)
+      if (ang > 90 || ang < -90) ang += 180
+
+      // Distance text — prefer edges[i].distance if numeric, else derive from len.
+      const edge = edges[i] || {}
+      const givenDist = typeof edge.distance === 'number'
+        ? edge.distance
+        : parseFloat(edge.distance)
+      const distVal = Number.isFinite(givenDist) ? givenDist : len
+      const distText = distVal.toFixed(2)
+
+      // Bearing text — prefer edges[i].direction when it looks like DMS,
+      // else derive South-oriented bearing from the vertex delta.
+      const dirStr = typeof edge.direction === 'string' ? edge.direction : ''
+      const dirText = /\d+\D+\d+\D+\d+/.test(dirStr)
+        ? dirStr
+        : degToDMS((((Math.atan2(
+            vertices[i + 1].y - vertices[i].y,
+            vertices[i + 1].x - vertices[i].x
+          ) * 180 / Math.PI) % 360) + 360) % 360)
+
+      addText(distLayer, mx + nx * distOffset, my + ny * distOffset, distText, distHeight, ang)
+      addText(dirLayer, mx + nx * bearOffset, my + ny * bearOffset, dirText, bearHeight, ang)
+    }
+  }
+
   function addRect(layer, x1, y1, x2, y2) {
     addLine(layer, x1, y1, x2, y1); // bottom
     addLine(layer, x2, y1, x2, y2); // right
@@ -920,6 +980,8 @@ export function generateDXF(options, logger) {
     const ofCentroid = shoelaceCentroid(ofDxfPts);
     addOutsideFigureVertexLabels('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
     addOutsideFigureTickMarks('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
+    addOutsideFigureEdgeLabels('DISTANCES', 'DIRECTIONS',
+                                ofResult.vertices, outsideFigureData.edges, ofCentroid);
   }
 
   // Extract central meridian

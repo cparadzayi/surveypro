@@ -515,6 +515,38 @@ export function generateDXF(options, logger) {
     }
   }
 
+  /**
+   * For each non-duplicate vertex of the outside figure, emit one TEXT entity
+   * reading "Y=<westing> X=<southing>" (whole metres) on the OUTSIDE_FIGURE_LABELS
+   * layer, offset 5 mm outward from the polygon centroid.
+   *
+   * @param {string} layer  Target layer name.
+   * @param {Array<{y:number,x:number,pointId:string}>} vertices  From
+   *   computeOutsideFigureVertices(); last entry is the closing duplicate.
+   * @param {{x:number,y:number}} centroidGround  In DXF (south-up) coords.
+   */
+  function addOutsideFigureVertexLabels(layer, vertices, centroidGround) {
+    const offset = mm(5)
+    const height = mm(2)
+    // Iterate vertices[0 .. length-2] — skip the closing duplicate at the end.
+    for (let i = 0; i < vertices.length - 1; i++) {
+      const v = vertices[i]
+      const dxfV = capeLoToDxfSouthUp(v.y, v.x)
+      let nx = dxfV.x - centroidGround.x
+      let ny = dxfV.y - centroidGround.y
+      const mag = Math.sqrt(nx * nx + ny * ny)
+      if (mag < 1e-6) {
+        // Degenerate centroid: fall back to fixed direction (DXF +X).
+        nx = 1; ny = 0
+        logger.warn(`[DXF] OF vertex ${v.pointId}: degenerate centroid, using +X fallback`)
+      } else {
+        nx /= mag; ny /= mag
+      }
+      const label = `Y=${Math.round(v.y)} X=${Math.round(v.x)}`
+      addText(layer, dxfV.x + nx * offset, dxfV.y + ny * offset, label, height, 0)
+    }
+  }
+
   function addRect(layer, x1, y1, x2, y2) {
     addLine(layer, x1, y1, x2, y1); // bottom
     addLine(layer, x2, y1, x2, y2); // right
@@ -623,6 +655,7 @@ export function generateDXF(options, logger) {
 
   // ── 1. Outside Figure boundary ──
   let ofPolygon = null; // AutoCAD coords for beacon filtering
+  let ofResult = null; // Will store vertex data for annotation (computed below)
   if (outsideFigureData?.edges?.length > 0) {
     const ofPts = outsideFigureData.edges.map((e) => {
       const pt = capeLoToDxfSouthUp(e.y, e.x); trackPt(pt); return pt;
@@ -630,6 +663,12 @@ export function generateDXF(options, logger) {
     addPolyline('OUTSIDE_FIGURE', ofPts);
     ofPolygon = ofPts; // save for beacon filtering
     logger.info(`[DXF] Outside Figure: ${ofPts.length} vertices`);
+
+    // Compute vertex data for later annotation (after mm is defined)
+    ofResult = computeOutsideFigureVertices(outsideFigureData);
+    if (ofResult.skippedCount > 0) {
+      warn('outsideFigureVertices', ofResult.skippedCount);
+    }
   }
 
   // ── 2. Identify shared edges (topology — same as PDF) ──
@@ -846,6 +885,15 @@ export function generateDXF(options, logger) {
   // ── 5. Page layout (matching PDF structure) ──
   const mm = (v) => mmToGround(v, S); // shorthand
   const pt = (v) => ptToGround(v, S);
+
+  // ── Outside-figure vertex labels ──
+  // (OF polyline and vertex calculation done earlier; now emit the labels)
+  if (ofResult && ofResult.vertices.length >= 3) {
+    const ofDxfPts = ofResult.vertices.slice(0, -1)
+      .map(v => capeLoToDxfSouthUp(v.y, v.x));
+    const ofCentroid = shoelaceCentroid(ofDxfPts);
+    addOutsideFigureVertexLabels('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
+  }
 
   // Extract central meridian
   const loMatch = String(projection).match(/222(\d+)/);

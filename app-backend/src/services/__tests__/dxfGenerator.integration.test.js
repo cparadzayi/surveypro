@@ -24,14 +24,24 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(dxf).toMatch(/\bEOF\b\s*$/)
   })
 
-  test('all 12 required layers are declared exactly once', () => {
+  test('all 13 required layers are declared exactly once', () => {
     const required = [
-      'OUTSIDE_FIGURE', 'PARCELS', 'BEACONS', 'BEACON_LABELS',
+      'OUTSIDE_FIGURE', 'OUTSIDE_FIGURE_LABELS', 'PARCELS', 'BEACONS', 'BEACON_LABELS',
       'DISTANCES', 'DIRECTIONS', 'STAND_NUMBERS', 'TITLE_BLOCK',
       'NORTH_ARROW', 'SCALE_BAR', 'GRID', 'MARGIN_GUIDES',
     ]
     for (const l of required) {
       expect(countLayerOnTable(dxf, l)).toBe(1)
+    }
+  })
+
+  test('emits 4 vertex coord TEXT entities on OUTSIDE_FIGURE_LABELS', () => {
+    expect(entityCount(dxf, 'TEXT', 'OUTSIDE_FIGURE_LABELS')).toBe(4)
+  })
+
+  test('vertex labels contain the Cape Lo coordinates from the fixture', () => {
+    for (const v of sampleFixture.outsideFigureData.edges) {
+      expect(dxf).toMatch(new RegExp(`Y=${Math.round(v.y)}.*?X=${Math.round(v.x)}`))
     }
   })
 

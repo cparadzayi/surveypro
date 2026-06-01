@@ -133,4 +133,13 @@ describe('dxfGenerator integration — graceful degradation', () => {
     expect(warnings.summary.beacons).toBe(1)
     expect(warnings.summary.parcels).toBe(1)
   })
+
+  test('NaN OF vertex bumps warnings.summary.outsideFigureVertices and does not throw', () => {
+    const bad = JSON.parse(JSON.stringify(sampleFixture))
+    bad.outsideFigureData.edges[1].y = NaN
+    const { buffer, warnings } = generateDXF(bad, fakeLogger)
+    expect(Buffer.isBuffer(buffer)).toBe(true)
+    expect(warnings.summary.outsideFigureVertices).toBe(1)
+    expect(warnings.count).toBeGreaterThanOrEqual(1)
+  })
 })

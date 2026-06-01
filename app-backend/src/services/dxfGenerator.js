@@ -62,6 +62,51 @@ function shoelaceCentroid(pts) {
   return { x: sx / pts.length, y: sy / pts.length };
 }
 
+/**
+ * Walk outsideFigureData.edges and return the ordered vertex list around the
+ * outside-figure boundary, with a closing duplicate appended so callers can
+ * pair vertices[i] with vertices[i+1] for edge geometry without index-modulo
+ * wraparound.
+ *
+ * Each edge in edges[] carries the START vertex of that edge as { pointId, y, x }.
+ * Non-finite vertices (NaN / Infinity / |coord| > 1e7 plausibility bound) are
+ * filtered out and counted via skippedCount so the caller can bump
+ * warnings.summary.outsideFigureVertices.
+ *
+ * @param {Object|null} outsideFigureData  May be null/undefined; empty .edges OK.
+ * @returns {{ vertices: Array<{y:number,x:number,pointId:string}>, skippedCount: number }}
+ *   vertices: ordered around the boundary, with closing duplicate.
+ *   skippedCount: how many edges had non-finite vertex coords.
+ */
+export function computeOutsideFigureVertices(outsideFigureData) {
+  const edges = outsideFigureData?.edges
+  if (!Array.isArray(edges) || edges.length === 0) {
+    return { vertices: [], skippedCount: 0 }
+  }
+  const vertices = []
+  let skippedCount = 0
+  for (let idx = 0; idx < edges.length; idx++) {
+    const e = edges[idx]
+    if (!Number.isFinite(e.y) || !Number.isFinite(e.x)
+        || Math.abs(e.y) > 1e7 || Math.abs(e.x) > 1e7) {
+      skippedCount++
+      continue
+    }
+    // edgeIndex preserves the original position in outsideFigureData.edges so
+    // consumers can detect "bridged" polygon edges (i.e. consecutive kept
+    // vertices whose original indices aren't adjacent — indicating a filtered
+    // vertex in between) and fall back to geometry rather than reading stale
+    // distance/direction metadata from the wrong original edge.
+    vertices.push({ y: e.y, x: e.x, pointId: e.pointId || '', edgeIndex: idx })
+  }
+  // Append closing duplicate (first valid vertex) so consumers can iterate
+  // vertices[i] / vertices[i+1] without wraparound.
+  if (vertices.length > 0) {
+    vertices.push({ ...vertices[0] })
+  }
+  return { vertices, skippedCount }
+}
+
 /** Polygon area from AutoCAD {x,y} points (shoelace, absolute) */
 function polygonAreaGround(pts) {
   let a = 0;
@@ -170,6 +215,7 @@ export function generateDXF(options, logger) {
     summary: {
       beacons: 0,
       parcels: 0,
+      outsideFigureVertices: 0,
       scaleFallback: false,
       beaconDescTruncated: 0,
       priorDiagramsTruncated: 0,
@@ -274,6 +320,7 @@ export function generateDXF(options, logger) {
     { name: 'SCALE_BAR',       color: 7 },
     { name: 'GRID',            color: 8 },
     { name: 'MARGIN_GUIDES',   color: 8 },
+    { name: 'OUTSIDE_FIGURE_LABELS', color: 8 },
   ];
 
   // Track extents
@@ -474,6 +521,135 @@ export function generateDXF(options, logger) {
     }
   }
 
+  /**
+   * For each non-duplicate vertex of the outside figure, emit one TEXT entity
+   * reading "Y=<westing> X=<southing>" (whole metres) on the OUTSIDE_FIGURE_LABELS
+   * layer, offset 5 mm outward from the polygon centroid.
+   *
+   * @param {string} layer  Target layer name.
+   * @param {Array<{y:number,x:number,pointId:string}>} vertices  From
+   *   computeOutsideFigureVertices(); last entry is the closing duplicate.
+   * @param {{x:number,y:number}} centroidGround  In DXF (south-up) coords.
+   */
+  function addOutsideFigureVertexLabels(layer, vertices, centroidGround) {
+    const offset = mm(5)
+    const height = mm(2)
+    // Iterate vertices[0 .. length-2] — skip the closing duplicate at the end.
+    for (let i = 0; i < vertices.length - 1; i++) {
+      const v = vertices[i]
+      const dxfV = capeLoToDxfSouthUp(v.y, v.x)
+      let nx = dxfV.x - centroidGround.x
+      let ny = dxfV.y - centroidGround.y
+      const mag = Math.sqrt(nx * nx + ny * ny)
+      if (mag < 1e-6) {
+        // Degenerate centroid: fall back to fixed direction (DXF +X).
+        nx = 1; ny = 0
+        logger.warn(`[DXF] OF vertex ${v.pointId}: degenerate centroid, using +X fallback`)
+      } else {
+        nx /= mag; ny /= mag
+      }
+      const label = `Y=${Math.round(v.y)} X=${Math.round(v.x)}`
+      addText(layer, dxfV.x + nx * offset, dxfV.y + ny * offset, label, height, 0)
+    }
+  }
+
+  /**
+   * For each non-duplicate vertex of the outside figure, emit one short LINE
+   * tick on `layer` pointing outward from the polygon centroid. The
+   * centroid-to-vertex direction matches the vertex-label placement so each
+   * tick + label pair reads as a coherent "I am here at Y=… X=…" marker.
+   *
+   * Functional-minimum: uses centroid direction. Pdfkit reference uses an
+   * angle-bisector for concave outside figures — deferred.
+   *
+   * @param {string} layer
+   * @param {Array<{y,x,pointId}>} vertices  From computeOutsideFigureVertices().
+   * @param {{x,y}} centroidGround
+   */
+  function addOutsideFigureTickMarks(layer, vertices, centroidGround) {
+    const tickLen = mm(3)
+    for (let i = 0; i < vertices.length - 1; i++) {
+      const v = vertices[i]
+      const dxfV = capeLoToDxfSouthUp(v.y, v.x)
+      let nx = dxfV.x - centroidGround.x
+      let ny = dxfV.y - centroidGround.y
+      const mag = Math.sqrt(nx * nx + ny * ny)
+      if (mag < 1e-6) { nx = 1; ny = 0 } else { nx /= mag; ny /= mag }
+      addLine(layer, dxfV.x, dxfV.y, dxfV.x + nx * tickLen, dxfV.y + ny * tickLen)
+    }
+  }
+
+  /**
+   * For each edge of the outside figure, emit a distance TEXT on `distLayer`
+   * and a South-oriented bearing TEXT on `dirLayer`, placed at the edge
+   * midpoint offset outward from the polygon centroid.
+   *
+   * Distance text format: "<m>.<cm>" via toFixed(2).
+   * Bearing text: preserves edges[i].direction when it parses as DMS, else
+   * derives via degToDMS() from the vertex delta.
+   *
+   * @param {string} distLayer  Existing DISTANCES layer.
+   * @param {string} dirLayer   Existing DIRECTIONS layer.
+   * @param {Array<{y,x,pointId}>} vertices  From computeOutsideFigureVertices()
+   *   (with closing duplicate so vertices[i+1] is always valid).
+   * @param {Array} edges  Raw outsideFigureData.edges array (parallel to
+   *   vertices[0..length-2] — edges[i] starts at vertices[i]).
+   * @param {{x,y}} centroidGround
+   */
+  function addOutsideFigureEdgeLabels(distLayer, dirLayer, vertices, edges, centroidGround) {
+    const distOffset = mm(3)
+    const bearOffset = mm(6)
+    for (let i = 0; i < vertices.length - 1; i++) {
+      const a = capeLoToDxfSouthUp(vertices[i].y, vertices[i].x)
+      const b = capeLoToDxfSouthUp(vertices[i + 1].y, vertices[i + 1].x)
+      const dx = b.x - a.x, dy = b.y - a.y
+      const len = Math.sqrt(dx * dx + dy * dy)
+      if (len < 1e-6) continue   // degenerate edge — skip silently
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
+      // Counter-clockwise 90° rotation of the edge direction, then flip
+      // toward the outside (away from polygon centre).
+      let nx = -dy / len, ny = dx / len
+      if (nx * (mx - centroidGround.x) + ny * (my - centroidGround.y) < 0) {
+        nx = -nx; ny = -ny
+      }
+      // Edge angle for upright text.
+      let ang = Math.atan2(dy, dx) * (180 / Math.PI)
+      if (ang > 90 || ang < -90) ang += 180
+
+      // Edge metadata is only valid when the polygon edge vertices[i] → vertices[i+1]
+      // corresponds to a single ORIGINAL edge in outsideFigureData.edges (i.e., no
+      // vertex was filtered between them). Intactness check: edges[vIdx] describes
+      // the original edge whose successor is original-index (vIdx + 1) mod N, so
+      // the next polygon vertex must carry that original-index to match. When the
+      // check fails (a filtered vertex bridged two original edges), fall back to
+      // geometry by leaving `edge` empty.
+      const vIdx = vertices[i].edgeIndex
+      const vIdxNext = vertices[i + 1].edgeIndex
+      const isIntact = typeof vIdx === 'number'
+        && typeof vIdxNext === 'number'
+        && vIdxNext === (vIdx + 1) % edges.length
+      const edge = isIntact ? (edges[vIdx] || {}) : {}
+      const givenDist = typeof edge.distance === 'number'
+        ? edge.distance
+        : parseFloat(edge.distance)
+      const distVal = Number.isFinite(givenDist) ? givenDist : len
+      const distText = distVal.toFixed(2)
+
+      // Bearing text — prefer edges[i].direction when it looks like DMS,
+      // else derive South-oriented bearing from the vertex delta.
+      const dirStr = typeof edge.direction === 'string' ? edge.direction : ''
+      const dirText = /\d+\D+\d+\D+\d+/.test(dirStr)
+        ? dirStr
+        : degToDMS((((Math.atan2(
+            vertices[i + 1].y - vertices[i].y,
+            vertices[i + 1].x - vertices[i].x
+          ) * 180 / Math.PI) % 360) + 360) % 360)
+
+      addText(distLayer, mx + nx * distOffset, my + ny * distOffset, distText, distHeight, ang)
+      addText(dirLayer, mx + nx * bearOffset, my + ny * bearOffset, dirText, bearHeight, ang)
+    }
+  }
+
   function addRect(layer, x1, y1, x2, y2) {
     addLine(layer, x1, y1, x2, y1); // bottom
     addLine(layer, x2, y1, x2, y2); // right
@@ -582,6 +758,7 @@ export function generateDXF(options, logger) {
 
   // ── 1. Outside Figure boundary ──
   let ofPolygon = null; // AutoCAD coords for beacon filtering
+  let ofResult = null; // Will store vertex data for annotation (computed below)
   if (outsideFigureData?.edges?.length > 0) {
     const ofPts = outsideFigureData.edges.map((e) => {
       const pt = capeLoToDxfSouthUp(e.y, e.x); trackPt(pt); return pt;
@@ -589,6 +766,12 @@ export function generateDXF(options, logger) {
     addPolyline('OUTSIDE_FIGURE', ofPts);
     ofPolygon = ofPts; // save for beacon filtering
     logger.info(`[DXF] Outside Figure: ${ofPts.length} vertices`);
+
+    // Compute vertex data for later annotation (after mm is defined)
+    ofResult = computeOutsideFigureVertices(outsideFigureData);
+    if (ofResult.skippedCount > 0) {
+      warn('outsideFigureVertices', ofResult.skippedCount);
+    }
   }
 
   // ── 2. Identify shared edges (topology — same as PDF) ──
@@ -805,6 +988,18 @@ export function generateDXF(options, logger) {
   // ── 5. Page layout (matching PDF structure) ──
   const mm = (v) => mmToGround(v, S); // shorthand
   const pt = (v) => ptToGround(v, S);
+
+  // ── Outside-figure vertex labels ──
+  // (OF polyline and vertex calculation done earlier; now emit the labels)
+  if (ofResult && ofResult.vertices.length >= 3) {
+    const ofDxfPts = ofResult.vertices.slice(0, -1)
+      .map(v => capeLoToDxfSouthUp(v.y, v.x));
+    const ofCentroid = shoelaceCentroid(ofDxfPts);
+    addOutsideFigureVertexLabels('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
+    addOutsideFigureTickMarks('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
+    addOutsideFigureEdgeLabels('DISTANCES', 'DIRECTIONS',
+                                ofResult.vertices, outsideFigureData.edges, ofCentroid);
+  }
 
   // Extract central meridian
   const loMatch = String(projection).match(/222(\d+)/);

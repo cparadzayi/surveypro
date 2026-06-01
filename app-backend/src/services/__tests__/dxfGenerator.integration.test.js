@@ -24,14 +24,35 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(dxf).toMatch(/\bEOF\b\s*$/)
   })
 
-  test('all 12 required layers are declared exactly once', () => {
+  test('all 13 required layers are declared exactly once', () => {
     const required = [
-      'OUTSIDE_FIGURE', 'PARCELS', 'BEACONS', 'BEACON_LABELS',
+      'OUTSIDE_FIGURE', 'OUTSIDE_FIGURE_LABELS', 'PARCELS', 'BEACONS', 'BEACON_LABELS',
       'DISTANCES', 'DIRECTIONS', 'STAND_NUMBERS', 'TITLE_BLOCK',
       'NORTH_ARROW', 'SCALE_BAR', 'GRID', 'MARGIN_GUIDES',
     ]
     for (const l of required) {
       expect(countLayerOnTable(dxf, l)).toBe(1)
+    }
+  })
+
+  test('emits 4 vertex coord TEXT entities on OUTSIDE_FIGURE_LABELS', () => {
+    expect(entityCount(dxf, 'TEXT', 'OUTSIDE_FIGURE_LABELS')).toBe(4)
+  })
+
+  test('emits 4 tick LINE entities on OUTSIDE_FIGURE_LABELS', () => {
+    expect(entityCount(dxf, 'LINE', 'OUTSIDE_FIGURE_LABELS')).toBe(4)
+  })
+
+  test('outside-figure edges contribute distance + bearing on the existing layers', () => {
+    // Pre-OF-annotation: parcel edges emitted 7 TEXTs each on DISTANCES and
+    // DIRECTIONS. The 4 OF edges add one of each per edge, total 11+11.
+    expect(entityCount(dxf, 'TEXT', 'DISTANCES')).toBe(11)
+    expect(entityCount(dxf, 'TEXT', 'DIRECTIONS')).toBe(11)
+  })
+
+  test('vertex labels contain the Cape Lo coordinates from the fixture', () => {
+    for (const v of sampleFixture.outsideFigureData.edges) {
+      expect(dxf).toMatch(new RegExp(`Y=${Math.round(v.y)}.*?X=${Math.round(v.x)}`))
     }
   })
 
@@ -111,5 +132,51 @@ describe('dxfGenerator integration — graceful degradation', () => {
     expect(warnings.count).toBe(2)
     expect(warnings.summary.beacons).toBe(1)
     expect(warnings.summary.parcels).toBe(1)
+  })
+
+  test('NaN OF vertex bumps warnings.summary.outsideFigureVertices and does not throw', () => {
+    const bad = JSON.parse(JSON.stringify(sampleFixture))
+    bad.outsideFigureData.edges[1].y = NaN
+    const { buffer, warnings } = generateDXF(bad, fakeLogger)
+    expect(Buffer.isBuffer(buffer)).toBe(true)
+    expect(warnings.summary.outsideFigureVertices).toBe(1)
+    expect(warnings.count).toBeGreaterThanOrEqual(1)
+  })
+
+  test('OF edge labels reflect actual geometry when a vertex is filtered (no shifted metadata)', () => {
+    // When edges[1].y is NaN (vertex B), vertices is filtered to [A, C, D, A_dup].
+    // The fixture's OF is 200 m × 100 m (A=(50000,2200000), B=(50200,2200000),
+    // C=(50200,2200100), D=(50000,2200100)). After filtering B, the polygon edges
+    // become A→C (diagonal ~223.6 m), C→D (200 m, intact metadata), D→A (100 m,
+    // intact metadata).
+    //
+    // Pre-fix bug: edges[i] was indexed positionally, so the bridged A→C edge
+    // read edges[0].distance (200 m — original A→B metadata) — silently wrong
+    // for the actual 223.6 m diagonal. Post-fix: bridged edges have no intact
+    // metadata and fall back to geometry, producing 223.61 m.
+    //
+    // Assertion: at least one DISTANCES TEXT label must show a value > 200 m
+    // (the diagonal). If the bug returns, the bridged edge would label 200 m
+    // (or any other intact-edge value) instead.
+    const bad = JSON.parse(JSON.stringify(sampleFixture))
+    bad.outsideFigureData.edges[1].y = NaN
+    const { buffer } = generateDXF(bad, fakeLogger)
+    // Walk the DXF line-pair stream and collect TEXT values on DISTANCES layer.
+    const lines = buffer.toString().split('\n')
+    const distances = []
+    let i = 0, currentType = null, currentLayer = null
+    while (i < lines.length - 1) {
+      const code = lines[i].trim(); const value = lines[i + 1].trim()
+      i += 2
+      if (code === '0' && /^[A-Z]+$/.test(value)) {
+        currentType = value; currentLayer = null
+      } else if (code === '8' && currentType === 'TEXT') {
+        currentLayer = value
+      } else if (code === '1' && currentType === 'TEXT' && currentLayer === 'DISTANCES') {
+        distances.push(parseFloat(value))
+      }
+    }
+    const diagonal = distances.filter(d => d > 200 && d < 250)
+    expect(diagonal.length).toBeGreaterThanOrEqual(1)
   })
 })

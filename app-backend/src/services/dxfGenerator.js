@@ -65,6 +65,19 @@ export function formatSheetLabel(sheetInfo) {
   return [`SHEET ${sheetNumber}`]
 }
 
+/**
+ * Returns the SI 727 Seventh Schedule (b) Vide template from
+ * `app-shared/block-definitions.js`, wrapped via `splitToWidth` to fit
+ * `maxLineChars`. Always returns at least one entry. Throws if the
+ * template is missing from the shared module (configuration bug —
+ * the PDF would fail the same way).
+ */
+export function formatVideLine(maxLineChars) {
+  const template = TITLE_BLOCK?.vide?.template
+  if (!template) throw new Error('TITLE_BLOCK.vide.template missing from app-shared/block-definitions.js')
+  return splitToWidth(template, maxLineChars)
+}
+
 function normalizeCapeLoYX(y, x) {
   if (!Number.isFinite(y) || !Number.isFinite(x)) return [y, x];
   const ay = Math.abs(y);

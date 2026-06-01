@@ -326,9 +326,13 @@ describe('formatVideLine', () => {
   })
 
   test('wraps to multiple entries at small maxLineChars', () => {
-    const lines = formatVideLine(20)
+    // The Vide template contains 24-char dot-runs as user-fillable blanks;
+    // splitToWidth emits oversize tokens as their own line (documented in
+    // Task 1). 30 is the smallest value that still produces a multi-line
+    // wrap (≥ 24 to fit the dot-runs, < length(template) to force wrapping).
+    const lines = formatVideLine(30)
     expect(lines.length).toBeGreaterThan(1)
-    for (const line of lines) expect(line.length).toBeLessThanOrEqual(20)
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(30)
   })
 
   test('output contains the literal "Vide diagram S.G. No." opening', () => {

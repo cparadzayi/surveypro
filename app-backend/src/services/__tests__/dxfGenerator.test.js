@@ -390,3 +390,57 @@ describe('generateDXF — endorsement zone', () => {
     expect(dxf).not.toMatch(/\bNo\.\b/)
   })
 })
+
+import { computeOutsideFigureVertices } from '../dxfGenerator.js'
+
+describe('computeOutsideFigureVertices', () => {
+  test('walks edges in order and returns the closing duplicate', () => {
+    const ofd = {
+      edges: [
+        { pointId: 'A', y: 50000, x: 2200000 },
+        { pointId: 'B', y: 50100, x: 2200000 },
+        { pointId: 'C', y: 50100, x: 2200100 },
+        { pointId: 'D', y: 50000, x: 2200100 },
+      ],
+      constants: { pointId: 'A', y: 50000, x: 2200000 },
+    }
+    const result = computeOutsideFigureVertices(ofd)
+    expect(result.vertices).toHaveLength(5)
+    expect(result.vertices.map(v => v.pointId)).toEqual(['A', 'B', 'C', 'D', 'A'])
+    expect(result.skippedCount).toBe(0)
+  })
+
+  test('returns { vertices: [], skippedCount: 0 } when edges missing', () => {
+    expect(computeOutsideFigureVertices({})).toEqual({ vertices: [], skippedCount: 0 })
+    expect(computeOutsideFigureVertices({ edges: [] })).toEqual({ vertices: [], skippedCount: 0 })
+    expect(computeOutsideFigureVertices(null)).toEqual({ vertices: [], skippedCount: 0 })
+  })
+
+  test('filters non-finite vertices and counts them in skippedCount', () => {
+    const ofd = {
+      edges: [
+        { pointId: 'A', y: 50000, x: 2200000 },
+        { pointId: 'B', y: NaN,   x: 2200000 },
+        { pointId: 'C', y: 50100, x: Infinity },
+        { pointId: 'D', y: 50000, x: 2200100 },
+      ],
+      constants: { pointId: 'A', y: 50000, x: 2200000 },
+    }
+    const result = computeOutsideFigureVertices(ofd)
+    expect(result.vertices.map(v => v.pointId)).toEqual(['A', 'D', 'A'])
+    expect(result.skippedCount).toBe(2)
+  })
+
+  test('filters vertices with coordinate magnitudes above 1e7', () => {
+    const ofd = {
+      edges: [
+        { pointId: 'A', y: 50000, x: 2200000 },
+        { pointId: 'X', y: 5e7, x: 2200000 },  // implausibly large westing
+      ],
+      constants: { pointId: 'A', y: 50000, x: 2200000 },
+    }
+    const result = computeOutsideFigureVertices(ofd)
+    expect(result.vertices.find(v => v.pointId === 'X')).toBeUndefined()
+    expect(result.skippedCount).toBe(1)
+  })
+})

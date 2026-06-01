@@ -62,6 +62,45 @@ function shoelaceCentroid(pts) {
   return { x: sx / pts.length, y: sy / pts.length };
 }
 
+/**
+ * Walk outsideFigureData.edges and return the ordered vertex list around the
+ * outside-figure boundary, with a closing duplicate appended so callers can
+ * pair vertices[i] with vertices[i+1] for edge geometry without index-modulo
+ * wraparound.
+ *
+ * Each edge in edges[] carries the START vertex of that edge as { pointId, y, x }.
+ * Non-finite vertices (NaN / Infinity / |coord| > 1e7 plausibility bound) are
+ * filtered out and counted via skippedCount so the caller can bump
+ * warnings.summary.outsideFigureVertices.
+ *
+ * @param {Object|null} outsideFigureData  May be null/undefined; empty .edges OK.
+ * @returns {{ vertices: Array<{y:number,x:number,pointId:string}>, skippedCount: number }}
+ *   vertices: ordered around the boundary, with closing duplicate.
+ *   skippedCount: how many edges had non-finite vertex coords.
+ */
+export function computeOutsideFigureVertices(outsideFigureData) {
+  const edges = outsideFigureData?.edges
+  if (!Array.isArray(edges) || edges.length === 0) {
+    return { vertices: [], skippedCount: 0 }
+  }
+  const vertices = []
+  let skippedCount = 0
+  for (const e of edges) {
+    if (!Number.isFinite(e.y) || !Number.isFinite(e.x)
+        || Math.abs(e.y) > 1e7 || Math.abs(e.x) > 1e7) {
+      skippedCount++
+      continue
+    }
+    vertices.push({ y: e.y, x: e.x, pointId: e.pointId || '' })
+  }
+  // Append closing duplicate (first valid vertex) so consumers can iterate
+  // vertices[i] / vertices[i+1] without wraparound.
+  if (vertices.length > 0) {
+    vertices.push({ ...vertices[0] })
+  }
+  return { vertices, skippedCount }
+}
+
 /** Polygon area from AutoCAD {x,y} points (shoelace, absolute) */
 function polygonAreaGround(pts) {
   let a = 0;

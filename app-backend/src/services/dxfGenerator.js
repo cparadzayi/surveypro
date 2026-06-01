@@ -94,6 +94,10 @@ function titleCase(str) {
  *
  * Placeholder substitutions and missing-field fallbacks are documented in
  * the spec (2026-06-01-dxf-title-block-si727-design.md, Components).
+ *
+ * Note: single-sheet template only. The multi-sheet variant
+ * (`figureDescription.multiSheetTemplate`) is owned by sub-project #6
+ * (multi-sheet tiling).
  */
 export function formatFigureDescription(metadata, outsideFigureData, surveyedParcels, maxLineChars) {
   const template = TITLE_BLOCK?.figureDescription?.template
@@ -111,10 +115,11 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
   const township = titleCase(metadata?.township) || 'the township'
   const district = titleCase(metadata?.district) || 'the district'
   const parentProperty = titleCase(metadata?.parentProperty)
-  const wholePortion = (metadata?.wholePortion || 'the whole').trim()
+  const wholePortion = (metadata?.wholePortion || '').trim() || 'the whole'
   const ofTarget = parentProperty ? `${township} of ${parentProperty}` : township
 
   const standNames = surveyedParcels.map(sp => String(sp?.stand ?? '')).filter(Boolean)
+  if (standNames.length === 0) return []
   const standCount = standNames.length
   const standRange = formatStandRanges(standNames) || '-'
 

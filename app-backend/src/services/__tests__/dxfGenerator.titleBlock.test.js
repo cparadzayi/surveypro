@@ -167,6 +167,22 @@ describe('formatFigureDescription', () => {
     expect(sentence).toContain('public places being the whole')
   })
 
+  test('whitespace-only wholePortion → fallback "the whole"', () => {
+    const m = { ...fullMetadata, wholePortion: '   ' }
+    const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
+    expect(sentence).toContain('public places being the whole')
+    expect(sentence).not.toMatch(/public places being\s{2,}of/)
+  })
+
+  test('all-blank stand values → []', () => {
+    const blankStands = [
+      { stand: '', area_m2: 100 },
+      { stand: null, area_m2: 100 },
+      { stand: undefined, area_m2: 100 },
+    ]
+    expect(formatFigureDescription(fullMetadata, ofData, blankStands, 500)).toEqual([])
+  })
+
   test('long input wraps to multiple entries, no entry exceeds maxLineChars, no tokens lost', () => {
     const lines = formatFigureDescription(fullMetadata, ofData, surveyedParcels, 30)
     expect(lines.length).toBeGreaterThan(1)

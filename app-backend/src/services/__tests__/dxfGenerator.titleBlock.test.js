@@ -3,12 +3,7 @@
  * Run with:  cd app-backend && npm run test -- dxfGenerator.titleBlock
  */
 import { describe, test, expect } from '@jest/globals'
-import {
-  splitToWidth,
-  formatSheetLabel,
-  formatVideLine,
-  formatFigureDescription,
-} from '../dxfGenerator.js'
+import { splitToWidth } from '../dxfGenerator.js'
 
 describe('splitToWidth', () => {
   test('empty input returns []', () => {
@@ -25,9 +20,16 @@ describe('splitToWidth', () => {
       expect(line.length).toBeLessThanOrEqual(25)
     }
   })
-  test('no mid-word splits — joined output preserves every token from the input', () => {
+  test('no mid-word splits — every token in every wrapped line is a token from the input', () => {
     const input = 'one two three four five six seven eight nine ten eleven twelve'
     const lines = splitToWidth(input, 15)
+    const inputTokens = new Set(input.split(/\s+/))
+    for (const line of lines) {
+      for (const tok of line.split(/\s+/)) {
+        expect(inputTokens.has(tok)).toBe(true)
+      }
+    }
+    // Also assert no tokens are dropped:
     const reconstructed = lines.join(' ').split(/\s+/).filter(Boolean)
     expect(reconstructed).toEqual(input.split(/\s+/))
   })

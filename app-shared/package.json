@@ -1,7 +1,4 @@
 {
-  "name": "surveypro-shared",
-  "version": "0.1.0",
   "private": true,
-  "type": "module",
-  "main": "block-definitions.js"
+  "type": "module"
 }

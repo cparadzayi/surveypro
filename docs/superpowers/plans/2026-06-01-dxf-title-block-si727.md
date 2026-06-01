@@ -45,12 +45,7 @@ Create `app-backend/src/services/__tests__/dxfGenerator.titleBlock.test.js`:
  * Run with:  cd app-backend && npm run test -- dxfGenerator.titleBlock
  */
 import { describe, test, expect } from '@jest/globals'
-import {
-  splitToWidth,
-  formatSheetLabel,
-  formatVideLine,
-  formatFigureDescription,
-} from '../dxfGenerator.js'
+import { splitToWidth } from '../dxfGenerator.js'
 
 describe('splitToWidth', () => {
   test('empty input returns []', () => {
@@ -88,7 +83,7 @@ describe('splitToWidth', () => {
 
 Run: `cd app-backend && npm run test -- dxfGenerator.titleBlock`
 
-Expected: All 6 tests fail with `SyntaxError: The requested module '../dxfGenerator.js' does not provide an export named 'splitToWidth'` (and likewise for `formatSheetLabel`, `formatVideLine`, `formatFigureDescription`).
+Expected: All 6 tests fail because the implementation isn't there yet. Jest reports failures like "splitToWidth is not a function".
 
 - [ ] **Step 3: Add the block-definitions import**
 
@@ -188,7 +183,7 @@ Expected: 6 `splitToWidth` tests pass. The other three test groups (`formatSheet
 
 Run: `cd app-backend && npm run test -- dxfGenerator`
 
-Expected: All previously-passing tests still pass. New `dxfGenerator.titleBlock` `splitToWidth` tests pass; the three not-yet-implemented helper test groups fail with the export-not-found errors from Step 2.
+Expected: All previously-passing tests still pass. New `dxfGenerator.titleBlock` `splitToWidth` tests pass (6/6).
 
 - [ ] **Step 8: Commit**
 
@@ -211,7 +206,18 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `app-backend/src/services/__tests__/dxfGenerator.titleBlock.test.js` (after the `splitToWidth` describe block):
+First widen the import at the top of `app-backend/src/services/__tests__/dxfGenerator.titleBlock.test.js`:
+
+Find:
+```js
+import { splitToWidth } from '../dxfGenerator.js'
+```
+Replace with:
+```js
+import { splitToWidth, formatSheetLabel } from '../dxfGenerator.js'
+```
+
+Then append the new describe block after the `splitToWidth` describe block:
 
 ```js
 describe('formatSheetLabel', () => {
@@ -292,7 +298,18 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `app-backend/src/services/__tests__/dxfGenerator.titleBlock.test.js`:
+First widen the import at the top of `app-backend/src/services/__tests__/dxfGenerator.titleBlock.test.js`:
+
+Find:
+```js
+import { splitToWidth, formatSheetLabel } from '../dxfGenerator.js'
+```
+Replace with:
+```js
+import { splitToWidth, formatSheetLabel, formatVideLine } from '../dxfGenerator.js'
+```
+
+Then append the new describe block:
 
 ```js
 import { TITLE_BLOCK } from '../../../../app-shared/block-definitions.js'
@@ -375,7 +392,18 @@ The biggest of the three. Reads the figure-description template from `app-shared
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `app-backend/src/services/__tests__/dxfGenerator.titleBlock.test.js`:
+First widen the import at the top of `app-backend/src/services/__tests__/dxfGenerator.titleBlock.test.js`:
+
+Find:
+```js
+import { splitToWidth, formatSheetLabel, formatVideLine } from '../dxfGenerator.js'
+```
+Replace with:
+```js
+import { splitToWidth, formatSheetLabel, formatVideLine, formatFigureDescription } from '../dxfGenerator.js'
+```
+
+Then append the new describe block:
 
 ```js
 describe('formatFigureDescription', () => {

@@ -3,7 +3,7 @@
  * Run with:  cd app-backend && npm run test -- dxfTopology
  */
 import { describe, test, expect } from '@jest/globals'
-import { computePolygonProfile } from '../dxfTopology.js'
+import { computePolygonProfile, computeWhitespaceZones } from '../dxfTopology.js'
 
 describe('computePolygonProfile', () => {
   test('empty polygon → all 4 dictionaries empty', () => {
@@ -129,5 +129,178 @@ describe('computePolygonProfile', () => {
     // At y=10, both vertical edges contribute. rightAt = max(5, 15) = 15.
     expect(rightAt[10]).toBe(15)
     expect(leftAt[10]).toBe(5)
+  })
+})
+
+describe('computeWhitespaceZones', () => {
+  // A standard 100×100 map bounds used by most tests.
+  const mapBounds = { x: 0, y: 0, width: 100, height: 100 }
+
+  test('empty polygon → returns one full-bounds zone with side="full"', () => {
+    const result = computeWhitespaceZones({
+      polygon: [], mapBounds, buffer: 0, tableMinWidth: 10, scanStep: 5,
+    })
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      x: 0, y: 0, width: 100, height: 100, side: 'full', area: 10000,
+    })
+  })
+
+  test('null polygon → same full-bounds zone special case', () => {
+    const result = computeWhitespaceZones({
+      polygon: null, mapBounds, buffer: 0, tableMinWidth: 10, scanStep: 5,
+    })
+    expect(result).toHaveLength(1)
+    expect(result[0].side).toBe('full')
+  })
+
+  test('polygon with < 3 vertices → full-bounds zone special case', () => {
+    const result = computeWhitespaceZones({
+      polygon: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
+      mapBounds, buffer: 0, tableMinWidth: 10, scanStep: 5,
+    })
+    expect(result).toHaveLength(1)
+    expect(result[0].side).toBe('full')
+  })
+
+  test('polygon flush against right edge → no right zone, but may produce other side zones', () => {
+    // 100×100 polygon filling the entire mapBounds → no whitespace anywhere
+    const fullPolygon = [
+      { x: 0,   y: 0   },
+      { x: 100, y: 0   },
+      { x: 100, y: 100 },
+      { x: 0,   y: 100 },
+      { x: 0,   y: 0   },
+    ]
+    const result = computeWhitespaceZones({
+      polygon: fullPolygon, mapBounds, buffer: 0, tableMinWidth: 10, scanStep: 5,
+    })
+    // No zone with usable width on any side
+    expect(result.filter(z => z.side === 'right')).toHaveLength(0)
+    expect(result.filter(z => z.side === 'left')).toHaveLength(0)
+  })
+
+  test('polygon inset on the right → at least one right zone with width≈right margin', () => {
+    // 40×100 polygon at left edge of 100×100 mapBounds → 60 units of right whitespace
+    const polygon = [
+      { x: 0,  y: 0   },
+      { x: 40, y: 0   },
+      { x: 40, y: 100 },
+      { x: 0,  y: 100 },
+      { x: 0,  y: 0   },
+    ]
+    const result = computeWhitespaceZones({
+      polygon, mapBounds, buffer: 0, tableMinWidth: 10, scanStep: 5,
+    })
+    const rightZones = result.filter(z => z.side === 'right')
+    expect(rightZones.length).toBeGreaterThanOrEqual(1)
+    // The band should span the full y range and have width ≈ 60
+    const biggestRight = rightZones.reduce((a, b) => a.area > b.area ? a : b)
+    expect(biggestRight.width).toBeCloseTo(60, 0)
+    expect(biggestRight.x).toBeCloseTo(40, 0)
+  })
+
+  test('L-shape with notch in upper-right → at least one right zone in the notch', () => {
+    // Same L as the Task 1 test — notch at x∈[40,100], y∈[20,100]
+    const lShape = [
+      { x: 0,   y: 0   },
+      { x: 100, y: 0   },
+      { x: 100, y: 20  },
+      { x: 40,  y: 20  },
+      { x: 40,  y: 100 },
+      { x: 0,   y: 100 },
+      { x: 0,   y: 0   },
+    ]
+    const result = computeWhitespaceZones({
+      polygon: lShape, mapBounds, buffer: 0, tableMinWidth: 10, scanStep: 5,
+    })
+    const rightZones = result.filter(z => z.side === 'right')
+    expect(rightZones.length).toBeGreaterThanOrEqual(1)
+    // Notch zone: x ≈ 40, width ≈ 60
+    const notchZone = rightZones.find(z => Math.abs(z.x - 40) < 1)
+    expect(notchZone).toBeDefined()
+    expect(notchZone.width).toBeCloseTo(60, 0)
+  })
+
+  test('tableMinWidth larger than any available band → returns empty array', () => {
+    // 40×100 polygon at left → 60 units of right whitespace
+    const polygon = [
+      { x: 0,  y: 0   },
+      { x: 40, y: 0   },
+      { x: 40, y: 100 },
+      { x: 0,  y: 100 },
+      { x: 0,  y: 0   },
+    ]
+    const result = computeWhitespaceZones({
+      polygon, mapBounds, buffer: 0, tableMinWidth: 999, scanStep: 5,
+    })
+    expect(result).toEqual([])
+  })
+
+  test('zones sorted by side preference (right, bottom, left, top), then area descending', () => {
+    // Small polygon in the center leaves whitespace on multiple sides.
+    // 20×20 polygon at (40, 40) inside a 100×100 mapBounds.
+    const polygon = [
+      { x: 40, y: 40 },
+      { x: 60, y: 40 },
+      { x: 60, y: 60 },
+      { x: 40, y: 60 },
+      { x: 40, y: 40 },
+    ]
+    const result = computeWhitespaceZones({
+      polygon, mapBounds, buffer: 0, tableMinWidth: 10, scanStep: 5,
+    })
+    // All sides should produce at least one zone. Check sort: right < bottom < left < top by sideOrder.
+    const sideOrder = { right: 0, bottom: 1, left: 2, top: 3 }
+    for (let i = 1; i < result.length; i++) {
+      const prev = sideOrder[result[i - 1].side]
+      const curr = sideOrder[result[i].side]
+      expect(prev).toBeLessThanOrEqual(curr)
+      // Within same side, area descending
+      if (prev === curr) {
+        expect(result[i - 1].area).toBeGreaterThanOrEqual(result[i].area)
+      }
+    }
+  })
+
+  test('buffer parameter increases required clear distance', () => {
+    // 80×100 polygon at left → 20 units of right whitespace.
+    // The PDF requires zone width STRICTLY > tableMinWidth (the band-form
+    // guard uses `rx + buffer >= mRight - tableMinWidth` to flush, so
+    // equality at the boundary is rejected).
+    const polygon = [
+      { x: 0,  y: 0   },
+      { x: 80, y: 0   },
+      { x: 80, y: 100 },
+      { x: 0,  y: 100 },
+      { x: 0,  y: 0   },
+    ]
+    // At buffer=0, tableMinWidth=10 → avail=20, comfortably > 10 → zone fits
+    const zonesNoBuf = computeWhitespaceZones({
+      polygon, mapBounds, buffer: 0, tableMinWidth: 10, scanStep: 5,
+    })
+    expect(zonesNoBuf.filter(z => z.side === 'right').length).toBeGreaterThanOrEqual(1)
+    // At buffer=15, available width drops to 5 < tableMinWidth=10 → no right zone
+    const zonesWithBuf = computeWhitespaceZones({
+      polygon, mapBounds, buffer: 15, tableMinWidth: 10, scanStep: 5,
+    })
+    expect(zonesWithBuf.filter(z => z.side === 'right')).toHaveLength(0)
+  })
+
+  test('bottom-strip height heuristic — narrow strips with height < tableMinWidth/2 are filtered', () => {
+    // Polygon filling most of the height — bottom margin is only 5 units.
+    // tableMinWidth = 20 → tableMinWidth/2 = 10 → bottom strip needs height ≥ 10.
+    // With 5-unit margin, bottom strip should be filtered out.
+    const polygon = [
+      { x: 0,   y: 0  },
+      { x: 100, y: 0  },
+      { x: 100, y: 95 },
+      { x: 0,   y: 95 },
+      { x: 0,   y: 0  },
+    ]
+    const result = computeWhitespaceZones({
+      polygon, mapBounds, buffer: 0, tableMinWidth: 20, scanStep: 5,
+    })
+    expect(result.filter(z => z.side === 'bottom')).toHaveLength(0)
   })
 })

@@ -1204,12 +1204,10 @@ export function generateDXF(options, logger) {
     addText(TB, txC, ty, metadata.surveyOf, hSub, 0, 'BOLD');
     ty -= hSub * 1.6;
   }
+  // Stand list still consumed by the `if (metadata.district && !standList)`
+  // block further down; the ad-hoc "Survey of Stands ..." emission is now
+  // superseded by the SI 727 figureDescription emission below.
   const standList = surveyedParcels.map(sp => sp.stand).join(', ');
-  if (metadata.township && standList) {
-    const desc = `Survey of Stands ${standList}, ${metadata.township} Township, ${metadata.district || ''} District`;
-    addText(TB, txC, ty, desc, hBody);
-    ty -= hBody * 1.6;
-  }
   ty -= mm(3);
   addText(TB, txC, ty, `SCALE 1:${S}`, hSub, 0, 'BOLD');
 
@@ -1233,6 +1231,30 @@ export function generateDXF(options, logger) {
   if (metadata.district && !standList) {
     ty -= hSub * 1.4
     addText(TB, txC, ty, `District: ${metadata.district}`, hSub, 0)
+  }
+
+  // ── SI 727 Seventh Schedule (b) lines ──
+  // Character budget for wrapping: content area width divided by an average
+  // character-to-text-height ratio of 0.55 (see spec). This is the one knob
+  // to tune if manual CAD verification shows lines too short or too long.
+  const titleMaxLineChars = Math.floor((cntR - cntL) / (hBody * 0.55))
+
+  // (b.i) Conditional SHEET N label — only emits for multi-sheet plans.
+  for (const line of formatSheetLabel(sheetInfo)) {
+    ty -= hSub * 1.6
+    addText(TB, txC, ty, line, hSub, 0, 'BOLD')
+  }
+
+  // (b.ii) Figure description sentence (replaces the old ad-hoc line).
+  for (const line of formatFigureDescription(metadata, outsideFigureData, surveyedParcels, titleMaxLineChars)) {
+    ty -= hBody * 1.6
+    addText(TB, txC, ty, line, hBody, 0)
+  }
+
+  // (b.iii) Vide diagram line — always emitted.
+  for (const line of formatVideLine(titleMaxLineChars)) {
+    ty -= hBody * 1.6
+    addText(TB, txC, ty, line, hBody, 0)
   }
 
   // North/south arrow in the upper-right of the drawing zone

@@ -20,6 +20,121 @@
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+import { TITLE_BLOCK, formatStandRanges } from '../../../app-shared/block-definitions.js'
+
+/**
+ * Word-boundary wrap for single-line DXF TEXT entities.
+ * Splits `str` into chunks no longer than `maxChars` characters, never
+ * breaking inside a word. Single tokens longer than `maxChars` are emitted
+ * as their own line (no truncation, no hyphenation). Returns [] for empty
+ * input; never produces empty entries.
+ */
+export function splitToWidth(str, maxChars) {
+  if (!str) return []
+  const tokens = String(str).split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return []
+  const lines = []
+  let current = ''
+  for (const tok of tokens) {
+    if (current === '') {
+      current = tok
+      continue
+    }
+    if (current.length + 1 + tok.length <= maxChars) {
+      current += ' ' + tok
+    } else {
+      lines.push(current)
+      current = tok
+    }
+  }
+  if (current !== '') lines.push(current)
+  return lines
+}
+
+/**
+ * Returns `["SHEET N"]` when sheetInfo indicates a multi-sheet plan
+ * (totalSheets > 1) with a positive integer sheetNumber. Returns [] for
+ * any other input shape. No warning on malformed input — the absent label
+ * is itself visible to the surveyor in CAD.
+ */
+export function formatSheetLabel(sheetInfo) {
+  if (!sheetInfo || typeof sheetInfo !== 'object') return []
+  const { sheetNumber, totalSheets } = sheetInfo
+  if (typeof totalSheets !== 'number' || totalSheets <= 1) return []
+  if (!Number.isInteger(sheetNumber) || sheetNumber <= 0) return []
+  return [`SHEET ${sheetNumber}`]
+}
+
+/**
+ * Returns the SI 727 Seventh Schedule (b) Vide template from
+ * `app-shared/block-definitions.js`, wrapped via `splitToWidth` to fit
+ * `maxLineChars`. Always returns at least one entry. Throws if the
+ * template is missing from the shared module (configuration bug —
+ * the PDF would fail the same way).
+ */
+export function formatVideLine(maxLineChars) {
+  const template = TITLE_BLOCK?.vide?.template
+  if (!template) throw new Error('TITLE_BLOCK.vide.template missing from app-shared/block-definitions.js')
+  return splitToWidth(template, maxLineChars)
+}
+
+/**
+ * Title-case helper: "lot 9 of borrowdale" → "Lot 9 Of Borrowdale".
+ * Matches the PDF's `toTitleCase` style for figure-description substitutions.
+ */
+function titleCase(str) {
+  return String(str || '').replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+}
+
+/**
+ * Builds the SI 727 Seventh Schedule (b) figure-description sentence
+ * from the figureDescription template in `app-shared/block-definitions.js`,
+ * wrapped to `maxLineChars`. Returns [] when there is no outside-figure
+ * sequence to describe or no surveyed parcels to count.
+ *
+ * Placeholder substitutions and missing-field fallbacks are documented in
+ * the spec (2026-06-01-dxf-title-block-si727-design.md, Components).
+ *
+ * Note: single-sheet template only. The multi-sheet variant
+ * (`figureDescription.multiSheetTemplate`) is owned by sub-project #6
+ * (multi-sheet tiling).
+ */
+export function formatFigureDescription(metadata, outsideFigureData, surveyedParcels, maxLineChars) {
+  const template = TITLE_BLOCK?.figureDescription?.template
+  if (!template) throw new Error('TITLE_BLOCK.figureDescription.template missing from app-shared/block-definitions.js')
+
+  const edges = outsideFigureData?.edges
+  if (!Array.isArray(edges) || edges.length === 0) return []
+  if (!Array.isArray(surveyedParcels) || surveyedParcels.length === 0) return []
+
+  // Beacon sequence: closed loop, first vertex repeated at the end.
+  const ids = edges.map(e => e?.pointId || '').filter(Boolean)
+  if (ids.length === 0) return []
+  const beaconSequence = ids.concat(ids[0]).join(', ')
+
+  const township = titleCase(metadata?.township) || 'the township'
+  const district = titleCase(metadata?.district) || 'the district'
+  const parentProperty = titleCase(metadata?.parentProperty)
+  const wholePortion = (metadata?.wholePortion || '').trim() || 'the whole'
+  const ofTarget = parentProperty ? `${township} of ${parentProperty}` : township
+
+  const standNames = surveyedParcels.map(sp => String(sp?.stand ?? '')).filter(Boolean)
+  if (standNames.length === 0) return []
+  const standCount = standNames.length
+  const standRange = formatStandRanges(standNames) || '-'
+
+  const sentence = template
+    .replace('{beaconSequence}', beaconSequence)
+    .replace('{township}',       township)
+    .replace('{standCount}',     String(standCount))
+    .replace('{standRange}',     standRange)
+    .replace('{wholePortion}',   wholePortion)
+    .replace('{ofTarget}',       ofTarget)
+    .replace('{district}',       district)
+
+  return splitToWidth(sentence, maxLineChars)
+}
+
 function normalizeCapeLoYX(y, x) {
   if (!Number.isFinite(y) || !Number.isFinite(x)) return [y, x];
   const ay = Math.abs(y);
@@ -239,6 +354,7 @@ export function generateDXF(options, logger) {
     projection = 'Cape Lo',
     scale,
     sheetSize = 'ISO_A2',
+    sheetInfo = null,
   } = options;
 
   const declaredS = parseScaleDenom(scale);
@@ -1088,12 +1204,10 @@ export function generateDXF(options, logger) {
     addText(TB, txC, ty, metadata.surveyOf, hSub, 0, 'BOLD');
     ty -= hSub * 1.6;
   }
+  // Stand list still consumed by the `if (metadata.district && !standList)`
+  // block further down; the ad-hoc "Survey of Stands ..." emission is now
+  // superseded by the SI 727 figureDescription emission below.
   const standList = surveyedParcels.map(sp => sp.stand).join(', ');
-  if (metadata.township && standList) {
-    const desc = `Survey of Stands ${standList}, ${metadata.township} Township, ${metadata.district || ''} District`;
-    addText(TB, txC, ty, desc, hBody);
-    ty -= hBody * 1.6;
-  }
   ty -= mm(3);
   addText(TB, txC, ty, `SCALE 1:${S}`, hSub, 0, 'BOLD');
 
@@ -1117,6 +1231,30 @@ export function generateDXF(options, logger) {
   if (metadata.district && !standList) {
     ty -= hSub * 1.4
     addText(TB, txC, ty, `District: ${metadata.district}`, hSub, 0)
+  }
+
+  // ── SI 727 Seventh Schedule (b) lines ──
+  // Character budget for wrapping: content area width divided by an average
+  // character-to-text-height ratio of 0.55 (see spec). This is the one knob
+  // to tune if manual CAD verification shows lines too short or too long.
+  const titleMaxLineChars = Math.floor((cntR - cntL) / (hBody * 0.55))
+
+  // (b.i) Conditional SHEET N label — only emits for multi-sheet plans.
+  for (const line of formatSheetLabel(sheetInfo)) {
+    ty -= hSub * 1.6
+    addText(TB, txC, ty, line, hSub, 0, 'BOLD')
+  }
+
+  // (b.ii) Figure description sentence (replaces the old ad-hoc line).
+  for (const line of formatFigureDescription(metadata, outsideFigureData, surveyedParcels, titleMaxLineChars)) {
+    ty -= hBody * 1.6
+    addText(TB, txC, ty, line, hBody, 0)
+  }
+
+  // (b.iii) Vide diagram line — always emitted.
+  for (const line of formatVideLine(titleMaxLineChars)) {
+    ty -= hBody * 1.6
+    addText(TB, txC, ty, line, hBody, 0)
   }
 
   // North/south arrow in the upper-right of the drawing zone

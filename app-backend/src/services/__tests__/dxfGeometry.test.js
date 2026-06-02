@@ -10,6 +10,8 @@ import {
   isPointInPolygon,
   isPointNearPolygon,
   lineSegmentsIntersect,
+  rectanglesOverlap,
+  rectangleOverlapsPolygon,
 } from '../dxfGeometry.js'
 
 describe('pointDistance', () => {
@@ -182,5 +184,58 @@ describe('lineSegmentsIntersect', () => {
     // The orientation test treats t=1 / s=1 as intersection (ua and ub == 1, inclusive).
     const endHook = [{ x: 10, y: 10 }, { x: 20, y: 5 }]
     expect(lineSegmentsIntersect(diagonal, endHook)).toBe(true)
+  })
+})
+
+describe('rectanglesOverlap', () => {
+  const baseRect = { x: 0, y: 0, width: 10, height: 10 }
+
+  test('clear overlap → true', () => {
+    expect(rectanglesOverlap(baseRect, { x: 5, y: 5, width: 10, height: 10 })).toBe(true)
+  })
+  test('clear separation → false', () => {
+    expect(rectanglesOverlap(baseRect, { x: 100, y: 100, width: 10, height: 10 })).toBe(false)
+  })
+  test('touching edges at buffer=0 → true (PDF strict-less-than counts touching as overlap)', () => {
+    // Right edge of baseRect at x=10; left edge of rect2 at x=10. The PDF
+    // original uses `<` not `<=`, so touching IS overlap. The buffer arg
+    // expresses required separation, not how much touching counts as a hit.
+    expect(rectanglesOverlap(baseRect, { x: 10, y: 0, width: 10, height: 10 })).toBe(true)
+  })
+  test('small gap that buffer fills → overlap', () => {
+    // baseRect right edge at x=10; rect2 left edge at x=12 → 2-unit gap.
+    // No buffer: clear separation.
+    expect(rectanglesOverlap(baseRect, { x: 12, y: 0, width: 10, height: 10 })).toBe(false)
+    // buffer=3 expands the separation check by 3 — now the gap counts as overlap.
+    expect(rectanglesOverlap(baseRect, { x: 12, y: 0, width: 10, height: 10 }, 3)).toBe(true)
+  })
+  test('one rect fully inside the other → true', () => {
+    expect(rectanglesOverlap(baseRect, { x: 2, y: 2, width: 2, height: 2 })).toBe(true)
+  })
+})
+
+describe('rectangleOverlapsPolygon', () => {
+  // 10x10 square polygon at origin
+  const polygon = [
+    { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 },
+  ]
+
+  test('rect fully inside polygon → true (rect corners are inside polygon)', () => {
+    expect(rectangleOverlapsPolygon({ x: 2, y: 2, width: 4, height: 4 }, polygon)).toBe(true)
+  })
+  test('rect fully outside polygon → false', () => {
+    expect(rectangleOverlapsPolygon({ x: 100, y: 100, width: 10, height: 10 }, polygon)).toBe(false)
+  })
+  test('rect straddling polygon boundary → true (edge intersect)', () => {
+    expect(rectangleOverlapsPolygon({ x: 5, y: -5, width: 10, height: 10 }, polygon)).toBe(true)
+  })
+  test('rect contains polygon → true (polygon vertices are inside rect)', () => {
+    expect(rectangleOverlapsPolygon({ x: -5, y: -5, width: 20, height: 20 }, polygon)).toBe(true)
+  })
+  test('rect adjacent to polygon, buffer brings it into contact', () => {
+    // Rect 1 unit east of the polygon (no overlap natively)
+    expect(rectangleOverlapsPolygon({ x: 11, y: 0, width: 5, height: 5 }, polygon)).toBe(false)
+    // Buffer 2 expands the rect; now it overlaps
+    expect(rectangleOverlapsPolygon({ x: 11, y: 0, width: 5, height: 5 }, polygon, 2)).toBe(true)
   })
 })

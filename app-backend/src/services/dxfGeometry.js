@@ -203,3 +203,92 @@ export function lineSegmentsIntersect(seg1, seg2) {
 
   return ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1
 }
+
+/**
+ * Axis-aligned rectangle overlap test with optional buffer.
+ * Port of `pdfkitGeoPDF.js:7556` `rectanglesOverlap`.
+ *
+ * Touching edges (zero overlap area) return `false` unless the buffer
+ * makes them effectively touch with positive overlap.
+ *
+ * @param {{x:number,y:number,width:number,height:number}} rect1
+ * @param {{x:number,y:number,width:number,height:number}} rect2
+ * @param {number} [buffer=0] minimum separation; rect2 is treated as if
+ *   expanded by `buffer` on all sides for the overlap test
+ * @returns {boolean}
+ */
+export function rectanglesOverlap(rect1, rect2, buffer = 0) {
+  return !(
+    rect1.x + rect1.width  < rect2.x - buffer ||
+    rect2.x + rect2.width  < rect1.x - buffer ||
+    rect1.y + rect1.height < rect2.y - buffer ||
+    rect2.y + rect2.height < rect1.y - buffer
+  )
+}
+
+/**
+ * True if a rectangle overlaps a polygon. Three independent checks:
+ * (1) any rect corner inside the polygon, (2) any polygon vertex inside
+ * the (buffered) rect, (3) any polygon edge crosses any rect edge.
+ *
+ * Port of `pdfkitGeoPDF.js:7222` `rectangleOverlapsPolygon`. The PDF
+ * version did inline tuple↔object conversions inside the function; this
+ * port uses the uniform `{x, y}` interface so the conversions disappear.
+ *
+ * @param {{x:number,y:number,width:number,height:number}} rect
+ * @param {Array<{x:number,y:number}>} polygon
+ * @param {number} [buffer=0]
+ * @returns {boolean}
+ */
+export function rectangleOverlapsPolygon(rect, polygon, buffer = 0) {
+  // Expand rect by buffer on all sides
+  const expandedRect = {
+    x: rect.x - buffer,
+    y: rect.y - buffer,
+    width: rect.width + 2 * buffer,
+    height: rect.height + 2 * buffer,
+  }
+
+  // Check 1: any rect corner inside polygon
+  const corners = [
+    { x: expandedRect.x,                       y: expandedRect.y                       },
+    { x: expandedRect.x + expandedRect.width,  y: expandedRect.y                       },
+    { x: expandedRect.x + expandedRect.width,  y: expandedRect.y + expandedRect.height },
+    { x: expandedRect.x,                       y: expandedRect.y + expandedRect.height },
+  ]
+  for (const corner of corners) {
+    if (isPointInPolygon(corner, polygon)) return true
+  }
+
+  // Check 2: any polygon vertex inside rect
+  for (const vertex of polygon) {
+    if (vertex.x >= expandedRect.x && vertex.x <= expandedRect.x + expandedRect.width
+        && vertex.y >= expandedRect.y && vertex.y <= expandedRect.y + expandedRect.height) {
+      return true
+    }
+  }
+
+  // Check 3: any polygon edge crosses any rect edge
+  const rectEdges = [
+    // Top
+    [{ x: expandedRect.x,                       y: expandedRect.y                       },
+     { x: expandedRect.x + expandedRect.width,  y: expandedRect.y                       }],
+    // Right
+    [{ x: expandedRect.x + expandedRect.width,  y: expandedRect.y                       },
+     { x: expandedRect.x + expandedRect.width,  y: expandedRect.y + expandedRect.height }],
+    // Bottom
+    [{ x: expandedRect.x + expandedRect.width,  y: expandedRect.y + expandedRect.height },
+     { x: expandedRect.x,                       y: expandedRect.y + expandedRect.height }],
+    // Left
+    [{ x: expandedRect.x,                       y: expandedRect.y + expandedRect.height },
+     { x: expandedRect.x,                       y: expandedRect.y                       }],
+  ]
+  for (let i = 0; i < polygon.length; i++) {
+    const polyEdge = [polygon[i], polygon[(i + 1) % polygon.length]]
+    for (const rectEdge of rectEdges) {
+      if (lineSegmentsIntersect(polyEdge, rectEdge)) return true
+    }
+  }
+
+  return false
+}

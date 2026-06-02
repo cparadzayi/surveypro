@@ -20,7 +20,7 @@
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-import { TITLE_BLOCK, formatStandRanges } from '../../../app-shared/block-definitions.js'
+import { TITLE_BLOCK, SCHEDULE_OF_AREAS, formatStandRanges } from '../../../app-shared/block-definitions.js'
 
 /**
  * Word-boundary wrap for single-line DXF TEXT entities.
@@ -309,6 +309,33 @@ const PAPER_SIZES = {
   'ISO_A0': { w: 1189, h: 841 },
 };
 
+/**
+ * Paper-size escalation ladder used by Schedule of Areas overflow detection
+ * (and consumed by sub-project #5 multi-sheet tiling). Walking the ladder
+ * stops at ISO_A0; beyond that, the layout returns 'multi-sheet-required'.
+ */
+const SHEET_LADDER = ['ISO_A2', 'ISO_A1', 'ISO_A0']
+
+/**
+ * Total paper-millimetres reserved for the Schedule of Areas header
+ * (title + column headers + DEED parent + underline). Shared by
+ * computeScheduleLayout's row-budget math AND addScheduleTable's actual
+ * header emission. Drift between the two would silently break the layout.
+ */
+const SCHEDULE_HEADER_HEIGHT_MM = 12
+
+/**
+ * Returns the next-larger sheet size in SHEET_LADDER, or
+ * 'multi-sheet-required' when already at the top (or for an unknown
+ * starting size — defensive fallback so sub-project #5 always sees a
+ * clear signal).
+ */
+export function nextLargerSheet(currentSheetSize) {
+  const idx = SHEET_LADDER.indexOf(currentSheetSize)
+  if (idx < 0 || idx === SHEET_LADDER.length - 1) return 'multi-sheet-required'
+  return SHEET_LADDER[idx + 1]
+}
+
 /** Convert PDF point size to ground metres at given scale */
 function ptToGround(pt, S) { return pt * S * 0.000352778; }
 
@@ -335,14 +362,22 @@ export function generateDXF(options, logger) {
       beaconDescTruncated: 0,
       priorDiagramsTruncated: 0,
       nonAscii: false,
+      scheduleOverflow: null,
     },
   }
   function warn(category, n = 1) {
     if (category === 'scaleFallback' || category === 'nonAscii') {
       warnings.summary[category] = true
-    } else {
-      warnings.summary[category] = (warnings.summary[category] || 0) + n
+      warnings.count += 1
+      return
     }
+    if (category === 'scheduleOverflow') {
+      // Structured object value, not a counter. `n` carries the payload.
+      warnings.summary[category] = n
+      warnings.count += 1
+      return
+    }
+    warnings.summary[category] = (warnings.summary[category] || 0) + n
     warnings.count += n
   }
 

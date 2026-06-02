@@ -172,3 +172,34 @@ export function isPointNearPolygon(point, polygon, bufferDistance) {
 
   return false
 }
+
+/**
+ * True if two finite line segments cross. Uses the standard
+ * cross-product orientation test (`ua` and `ub` in [0, 1]).
+ *
+ * Port of `pdfkitGeoPDF.js:7317` `lineSegmentsIntersect`. The PDF
+ * version takes flat `{x1, y1, x2, y2}` segment objects; this port
+ * takes `[{x, y}, {x, y}]` pairs (start, end) for interface uniformity.
+ *
+ * Parallel and collinear segments return `false` regardless of overlap
+ * — the PDF original short-circuits when the denominator is near zero.
+ * Callers needing collinear-overlap detection should check separately.
+ *
+ * @param {[{x:number,y:number},{x:number,y:number}]} seg1
+ * @param {[{x:number,y:number},{x:number,y:number}]} seg2
+ * @returns {boolean}
+ */
+export function lineSegmentsIntersect(seg1, seg2) {
+  const [{ x: x1, y: y1 }, { x: x2, y: y2 }] = seg1
+  const [{ x: x3, y: y3 }, { x: x4, y: y4 }] = seg2
+
+  const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
+
+  // Parallel (or collinear) — PDF original returns false here regardless of overlap
+  if (Math.abs(denom) < 1e-10) return false
+
+  const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom
+  const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom
+
+  return ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1
+}

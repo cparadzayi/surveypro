@@ -9,6 +9,7 @@ import {
   distanceToSegment,
   isPointInPolygon,
   isPointNearPolygon,
+  lineSegmentsIntersect,
 } from '../dxfGeometry.js'
 
 describe('pointDistance', () => {
@@ -143,5 +144,43 @@ describe('isPointNearPolygon', () => {
     expect(isPointNearPolygon({ x: 5, y: 5 }, closedSquare, 0)).toBe(true)
     // (20, 20) outside both ways
     expect(isPointNearPolygon({ x: 20, y: 20 }, closedSquare, 0)).toBe(false)
+  })
+})
+
+describe('lineSegmentsIntersect', () => {
+  // Segments are [{x, y}, {x, y}] pairs (start, end).
+  const horizontal = [{ x: 0, y: 5 }, { x: 10, y: 5 }]   // y=5, x in [0,10]
+  const vertical   = [{ x: 5, y: 0 }, { x: 5, y: 10 }]   // x=5, y in [0,10]
+  const diagonal   = [{ x: 0, y: 0 }, { x: 10, y: 10 }]  // y=x
+
+  test('crossing segments → true', () => {
+    expect(lineSegmentsIntersect(horizontal, vertical)).toBe(true)
+    expect(lineSegmentsIntersect(horizontal, diagonal)).toBe(true)
+  })
+  test('parallel non-touching → false', () => {
+    const horizontalAbove = [{ x: 0, y: 7 }, { x: 10, y: 7 }]
+    expect(lineSegmentsIntersect(horizontal, horizontalAbove)).toBe(false)
+  })
+  test('parallel touching at endpoint → false (PDF original returns false on parallels)', () => {
+    // PDF version returns false for any pair with denom ≈ 0, which
+    // includes parallel-touching. Documenting the behaviour with the test.
+    const horizontalTouch = [{ x: 10, y: 5 }, { x: 20, y: 5 }]
+    expect(lineSegmentsIntersect(horizontal, horizontalTouch)).toBe(false)
+  })
+  test('collinear overlapping → false (PDF returns false on parallel/collinear)', () => {
+    const horizontalOverlap = [{ x: 5, y: 5 }, { x: 15, y: 5 }]
+    expect(lineSegmentsIntersect(horizontal, horizontalOverlap)).toBe(false)
+  })
+  test('T-intersection (endpoint exactly on the other segment)', () => {
+    // Vertical's start (5,0) sits on the line y=0; horizontal's at y=5.
+    // The two segments DO cross because horizontal extends through x=5
+    // and vertical extends through y=5 — true intersection.
+    expect(lineSegmentsIntersect(horizontal, vertical)).toBe(true)
+  })
+  test('segments meeting at a shared endpoint', () => {
+    // diagonal goes (0,0)-(10,10); endHook starts at (10,10) and goes elsewhere.
+    // The orientation test treats t=1 / s=1 as intersection (ua and ub == 1, inclusive).
+    const endHook = [{ x: 10, y: 10 }, { x: 20, y: 5 }]
+    expect(lineSegmentsIntersect(diagonal, endHook)).toBe(true)
   })
 })

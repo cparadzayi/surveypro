@@ -340,6 +340,28 @@ export function nextLargerSheet(currentSheetSize) {
   return SHEET_LADDER[idx + 1]
 }
 
+/**
+ * Extracts the six SI 727 Schedule-of-Areas column values from a parcel
+ * GeoJSON feature's `properties`. Returns an object whose values are all
+ * strings ('' for absent optional fields).
+ *
+ * The four optional fields (diagram, deedNumber, deedDate, surveyor) are
+ * populated by Surveyor-General officials at approval time as ownership
+ * transfers. They're meant to be blank at submission — the DXF still
+ * emits the full 6-column header so the SI 727 form is recognisable.
+ */
+export function extractScheduleRow(parcelFeature) {
+  const p = parcelFeature?.properties || {}
+  return {
+    stand:      String(p.stand ?? ''),
+    area:       String(Math.round(p.area_m2 ?? 0)),
+    diagram:    String(p.diagram ?? ''),
+    deedNumber: String(p.deedNumber ?? ''),
+    deedDate:   String(p.deedDate ?? ''),
+    surveyor:   String(p.surveyor ?? ''),
+  }
+}
+
 /** Convert PDF point size to ground metres at given scale */
 function ptToGround(pt, S) { return pt * S * 0.000352778; }
 

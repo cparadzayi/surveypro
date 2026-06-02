@@ -362,6 +362,94 @@ export function extractScheduleRow(parcelFeature) {
   }
 }
 
+/**
+ * Computes the Schedule-of-Areas layout for a given row count and zone
+ * size (in paper-millimetres). Returns either a fits-true layout with
+ * scaled column widths, or a fits-false escalation with a
+ * recommendedSheetSize.
+ *
+ * Inputs:
+ *   rowCount         number of data rows to render
+ *   zoneWidth        available width in paper-mm
+ *   zoneHeight       available height in paper-mm
+ *   rowHeight        per-row height in paper-mm
+ *   headerHeight     reserved header height in paper-mm (use SCHEDULE_HEADER_HEIGHT_MM)
+ *   currentSheetSize current sheet size string (e.g. 'ISO_A2')
+ *
+ * Returns either:
+ *   { fits: true,  numTables, rowsPerTable, columnWidths: number[6] }
+ * or:
+ *   { fits: false, recommendedSheetSize }
+ *
+ * Spec amendment: the spec's `zoneWidth >= singleTableWidth / 2`
+ * readability check is dropped here. The DXF's bottom-left zone is
+ * ~28% of content width — at A2 (~104mm) the check would always fail.
+ * Instead, single-column mode always scales columns down to fit
+ * zoneWidth (up to a 1.0 scale factor, never inflating). Multi-column
+ * overflow detection is unchanged.
+ */
+export function computeScheduleLayout({
+  rowCount,
+  zoneWidth,
+  zoneHeight,
+  rowHeight,
+  headerHeight,
+  currentSheetSize,
+}) {
+  const singleCols = SCHEDULE_OF_AREAS?.singleColumn?.columns
+  const multiCols  = SCHEDULE_OF_AREAS?.multiColumn?.columns
+  const spacing    = SCHEDULE_OF_AREAS?.multiColumn?.columnSpacing
+  if (!Array.isArray(singleCols) || !Array.isArray(multiCols) || typeof spacing !== 'number') {
+    throw new Error('SCHEDULE_OF_AREAS missing from app-shared/block-definitions.js')
+  }
+
+  const singleTableWidth = singleCols.reduce((s, c) => s + c.width, 0)
+  const subTableWidth    = multiCols.reduce((s, c) => s + c.width, 0)
+
+  const rowsPerColumn = Math.max(0, Math.floor((zoneHeight - headerHeight) / rowHeight))
+
+  // Scale single-mode columns to fit zoneWidth, never exceeding natural.
+  const singleScale = Math.min(1, zoneWidth / singleTableWidth)
+  const singleColumnWidths = singleCols.map(c => c.width * singleScale)
+
+  // Empty schedule: emit header + zero rows. Always fits.
+  if (rowCount === 0) {
+    return { fits: true, numTables: 1, rowsPerTable: 0, columnWidths: singleColumnWidths }
+  }
+
+  // No vertical room at all: every row overflows.
+  if (rowsPerColumn === 0) {
+    return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }
+  }
+
+  // Single-column path: row count fits in one table.
+  if (rowCount <= rowsPerColumn) {
+    return { fits: true, numTables: 1, rowsPerTable: rowCount, columnWidths: singleColumnWidths }
+  }
+
+  // Multi-column path: how many natural-width sub-tables fit in zoneWidth?
+  const maxTablesByWidth = Math.max(1, Math.floor((zoneWidth + spacing) / (subTableWidth + spacing)))
+  const numTablesNeeded  = Math.ceil(rowCount / rowsPerColumn)
+
+  if (numTablesNeeded > maxTablesByWidth) {
+    return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }
+  }
+
+  // Multi-mode column widths: each sub-table gets (zoneWidth - (N-1)*spacing) / N,
+  // capped at natural subTableWidth. Columns scaled within that budget.
+  const perTableBudget = (zoneWidth - (numTablesNeeded - 1) * spacing) / numTablesNeeded
+  const subTableWidthOut = Math.min(perTableBudget, subTableWidth)
+  const multiScale = subTableWidthOut / subTableWidth
+  const multiColumnWidths = multiCols.map(c => c.width * multiScale)
+
+  return {
+    fits: true,
+    numTables: numTablesNeeded,
+    rowsPerTable: rowsPerColumn,
+    columnWidths: multiColumnWidths,
+  }
+}
+
 /** Convert PDF point size to ground metres at given scale */
 function ptToGround(pt, S) { return pt * S * 0.000352778; }
 

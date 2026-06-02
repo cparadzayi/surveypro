@@ -242,6 +242,15 @@ generateDXF(options)
         │        deepestY = Math.min(deepestY, subY)
         │   └─ sY = deepestY
         │
+
+**Spacing convention (deliberate):** sub-tables pack left at their natural
+width (`sum(columnWidths)`) with `multiColumn.columnSpacing` between them,
+rather than spreading across the full `zoneWidth`. When the natural width
+is narrower than the per-table budget, the right end of the schedule
+zone is left blank. This matches typical CAD convention (read-left
+to-right, no whitespace gaps inside each table) and keeps each sub-table
+identical in width whether 2 or 3 tables are rendered.
+
         └─ else (!layout.fits):
             └─ addText(TB, col1L, sY, 'SCHEDULE OF AREAS', hHead, 0, 'BOLD')
             └─ warn('scheduleOverflow', {

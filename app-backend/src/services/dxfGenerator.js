@@ -1426,19 +1426,26 @@ export function generateDXF(options, logger) {
 
   logger.info(`[DXF] Margins: L=${50}mm T=${50}mm B=${50}mm R=${150}mm, Content: ${(contentW / mm(1)).toFixed(0)}x${(contentH / mm(1)).toFixed(0)}mm`);
 
-  // Collect surveyed parcels (exclude outside figure)
-  const surveyedParcels = [];
-  if (parcels?.features) {
-    for (const f of parcels.features) {
-      const st = f.properties?.stand || '';
-      if (f.properties?.isOutsideFigure || st.toLowerCase().includes('outside figure')) continue;
-      surveyedParcels.push({ stand: st, area_m2: f.properties?.area_m2 || 0 });
-    }
-  }
-  surveyedParcels.sort((a, b) => {
-    const na = parseInt(a.stand) || 0, nb = parseInt(b.stand) || 0;
-    return na - nb || a.stand.localeCompare(b.stand);
-  });
+  // Filter outside-figure parcels and sort by stand. Used by both the
+  // figure-description text (surveyedParcels) and the Schedule of Areas
+  // emission (scheduleDataRows below) — sharing the source prevents
+  // silent drift between the two consumers.
+  const surveyedFeatures = (parcels?.features || [])
+    .filter(f => {
+      const st = (f.properties?.stand || '').toLowerCase();
+      return !f.properties?.isOutsideFigure && !st.includes('outside figure');
+    })
+    .sort((a, b) => {
+      const na = parseInt(a.properties?.stand) || 0;
+      const nb = parseInt(b.properties?.stand) || 0;
+      return na - nb || String(a.properties?.stand || '').localeCompare(String(b.properties?.stand || ''));
+    });
+
+  // Lightweight projection consumed by formatFigureDescription.
+  const surveyedParcels = surveyedFeatures.map(f => ({
+    stand: f.properties?.stand || '',
+    area_m2: f.properties?.area_m2 || 0,
+  }));
 
   // ── PAGE FRAME + DIVIDERS ──
   const TB = 'TITLE_BLOCK';
@@ -1548,20 +1555,13 @@ export function generateDXF(options, logger) {
   // emission converts back to ground via mm(x) at the boundary.
   let sY = drawDivY - mm(5);
 
-  // Build data rows from the original feature collection so optional
-  // cell fields (diagram/deedNumber/deedDate/surveyor) are picked up.
-  const scheduleDataRows = (parcels?.features || [])
-    .filter(f => {
-      const st = (f.properties?.stand || '').toLowerCase();
-      return !f.properties?.isOutsideFigure && !st.includes('outside figure');
-    })
-    .sort((a, b) => {
-      const na = parseInt(a.properties?.stand) || 0;
-      const nb = parseInt(b.properties?.stand) || 0;
-      return na - nb || String(a.properties?.stand || '').localeCompare(String(b.properties?.stand || ''));
-    })
-    .map(extractScheduleRow);
+  // Schedule of Areas data rows — reads the shared surveyedFeatures so
+  // filter/sort changes can't desynchronise from the figure-description text.
+  const scheduleDataRows = surveyedFeatures.map(extractScheduleRow);
 
+  // Zone reservation: mm(3) right-edge padding (matches the existing
+  // schedule column convention); mm(4) bottom reserve for the
+  // beacon-descriptions block that follows below the schedule.
   const zoneWidthGround  = col1R - col1L - mm(3);
   const zoneHeightGround = (drawDivY - mm(5)) - (cntB + mm(4));
 

@@ -28,6 +28,9 @@
 Each item must read true. Tick the box when verified; attach the screenshot reference.
 
 - [ ] Title block at the **top of the sheet** (south-up orientation); shows designation, surveyOf, firm, parent-property, whole/portion, district fields where the project has them. *(Screenshot: `01-title-block.png`)*
+- [ ] **SI 727 figure-description sentence** present in the title zone — reads as a coherent paragraph (`"The figure A, B, C, D, A represents Borrowdale comprising 2 stands numbered 123–124 and public places being a portion of Borrowdale of Lot 9 Of Borrowdale, situate in the district of Harare."`). Wrap is on word boundaries (no mid-word splits). Fits within the content-area horizontally. *(Screenshot: `01b-figure-description.png`)*
+- [ ] **"Vide diagram S.G. No. ..."** line present immediately below the figure description. Dotted blanks visible (`........................ annexed to ........................ No. ........................`). *(Screenshot: `01c-vide-line.png`)*
+- [ ] **SHEET N label** — verify by running a synthetic multi-sheet export: temporarily edit `app-backend/src/routes/geopdf-vector.js` to inject `sheetInfo: { sheetNumber: 1, totalSheets: 3 }` into the `generateDXF()` call (or pass it via the request body), re-export, and confirm `SHEET 1` renders **above** the figure description in bold. Revert the temporary change after verification. *(Screenshot: `01d-sheet-label.png`)*
 - [ ] Drawing zone shows the parcel(s) with **south at the top**. *(Screenshot: `02-drawing-orientation.png`)*
 - [ ] North/south arrow visible in the **upper-right of the drawing zone**, points up (toward south on the printed sheet, since the page is south-up). *(Screenshot: `03-north-arrow.png`)*
 - [ ] Scale bar visible in the **lower-right of the drawing zone** with metre labels (0, ¼, ½, full length) and a `1:<scale>` footer. *(Screenshot: `04-scale-bar.png`)*

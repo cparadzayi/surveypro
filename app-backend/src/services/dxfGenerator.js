@@ -456,6 +456,92 @@ export function computeScheduleLayout({
   }
 }
 
+/**
+ * Emits one Schedule-of-Areas sub-table block (title + column headers +
+ * DEED parent header + underline + data rows). Returns the y coordinate
+ * after the last row, so the caller can stack the next sub-table or the
+ * beacon-descriptions block below.
+ *
+ * `addText` and `addLine` are injected (the closures inside generateDXF)
+ * so the helper can be exported and unit-tested with capture mocks.
+ *
+ * Inputs (object-style for clarity):
+ *   layer         DXF layer name (e.g. 'TITLE_BLOCK')
+ *   x, y          top-left anchor (ground metres at scale)
+ *   dataRows      Array<extractScheduleRow output>
+ *   columnWidths  number[6] in ground metres
+ *   titleText     'SCHEDULE OF AREAS' or "SCHEDULE OF AREAS (cont'd)"
+ *   hHead         header text height (ground metres)
+ *   hBody         body text height (ground metres)
+ *   rH            data-row vertical spacing (ground metres)
+ *   addText       (layer, x, y, text, h, rotation, style) => void
+ *   addLine       (layer, x1, y1, x2, y2) => void
+ */
+export function addScheduleTable({
+  layer, x, y,
+  dataRows, columnWidths,
+  titleText, hHead, hBody, rH,
+  addText, addLine,
+}) {
+  const singleCols = SCHEDULE_OF_AREAS?.singleColumn?.columns
+  if (!Array.isArray(singleCols)) {
+    throw new Error('SCHEDULE_OF_AREAS missing from app-shared/block-definitions.js')
+  }
+
+  // Column x offsets (cumulative).
+  const colX = []
+  let cx = 0
+  for (const w of columnWidths) {
+    colX.push(x + cx)
+    cx += w
+  }
+  const rightEdge = x + cx
+
+  // 1. Title.
+  let cy = y
+  addText(layer, x, cy, titleText, hHead, 0, 'BOLD')
+  cy -= hHead * 1.6
+
+  // 2. DEED parent header above NUMBER (col 3) + DATE (col 4).
+  // Center the 'DEED' label between the start of column 3 and the end of column 4.
+  const deedStartX = colX[3]
+  const deedEndX   = colX[4] + columnWidths[4]
+  const deedCenter = (deedStartX + deedEndX) / 2
+  addText(layer, deedCenter, cy, 'DEED', hBody, 0, 'BOLD')
+  cy -= hBody * 1.2
+
+  // 3. Column headers. Labels may contain \n for multi-line headers (e.g. 'STAND\nNo.').
+  // Render each token on its own line, decrementing cy by hBody between lines.
+  // Each column may have a different number of header sub-lines; advance cy by the max.
+  let maxHeaderLines = 1
+  for (let i = 0; i < singleCols.length; i++) {
+    const tokens = String(singleCols[i].label).split('\n')
+    if (tokens.length > maxHeaderLines) maxHeaderLines = tokens.length
+    let lineY = cy
+    for (const tok of tokens) {
+      addText(layer, colX[i], lineY, tok, hBody, 0, 'BOLD')
+      lineY -= hBody * 1.2
+    }
+  }
+  cy -= maxHeaderLines * hBody * 1.2
+
+  // 4. Underline.
+  addLine(layer, x, cy, rightEdge, cy)
+  cy -= hBody * 0.6
+
+  // 5. Data rows.
+  const cellKeys = ['stand', 'area', 'diagram', 'deedNumber', 'deedDate', 'surveyor']
+  for (const row of dataRows) {
+    for (let i = 0; i < cellKeys.length; i++) {
+      const val = row[cellKeys[i]]
+      if (val) addText(layer, colX[i], cy, val, hBody)
+    }
+    cy -= rH
+  }
+
+  return cy
+}
+
 /** Convert PDF point size to ground metres at given scale */
 function ptToGround(pt, S) { return pt * S * 0.000352778; }
 

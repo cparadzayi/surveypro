@@ -3,7 +3,7 @@
  * Run with:  cd app-backend && npm run test -- dxfGenerator.scheduleOfAreas
  */
 import { describe, test, expect } from '@jest/globals'
-import { nextLargerSheet, extractScheduleRow, computeScheduleLayout } from '../dxfGenerator.js'
+import { nextLargerSheet, extractScheduleRow, computeScheduleLayout, addScheduleTable } from '../dxfGenerator.js'
 
 describe('nextLargerSheet', () => {
   test.each([
@@ -254,5 +254,112 @@ describe('computeScheduleLayout', () => {
     expect(out.fits).toBe(true)
     expect(out.numTables).toBe(1)
     expect(out.rowsPerTable).toBe(1)
+  })
+})
+
+describe('addScheduleTable', () => {
+  // Capture all calls to addText / addLine for inspection.
+  function mockPrimitives() {
+    const textCalls = []
+    const lineCalls = []
+    const addText = (layer, x, y, text, h, rotation, style) =>
+      textCalls.push({ layer, x, y, text, h, rotation, style })
+    const addLine = (layer, x1, y1, x2, y2) =>
+      lineCalls.push({ layer, x1, y1, x2, y2 })
+    return { textCalls, lineCalls, addText, addLine }
+  }
+
+  const defaultArgs = (overrides = {}) => ({
+    layer: 'TITLE_BLOCK',
+    x: 0,
+    y: 1000,
+    dataRows: [],
+    columnWidths: [10, 12, 10, 10, 10, 12],   // sum 64 (arbitrary test units)
+    titleText: 'SCHEDULE OF AREAS',
+    hHead: 1.5,
+    hBody: 1.0,
+    rH: 1.6,
+    addText: () => {},
+    addLine: () => {},
+    ...overrides,
+  })
+
+  test('emits the title with BOLD style at (x, y)', () => {
+    const { textCalls, addText, addLine } = mockPrimitives()
+    addScheduleTable({ ...defaultArgs({ addText, addLine }) })
+    const titleCalls = textCalls.filter(c => c.text === 'SCHEDULE OF AREAS')
+    expect(titleCalls).toHaveLength(1)
+    expect(titleCalls[0].style).toBe('BOLD')
+    expect(titleCalls[0].x).toBe(0)
+    expect(titleCalls[0].y).toBe(1000)
+  })
+
+  test('emits the (cont\'d) title when titleText is "SCHEDULE OF AREAS (cont\'d)"', () => {
+    const { textCalls, addText, addLine } = mockPrimitives()
+    addScheduleTable({ ...defaultArgs({ addText, addLine, titleText: "SCHEDULE OF AREAS (cont'd)" }) })
+    expect(textCalls.some(c => c.text === "SCHEDULE OF AREAS (cont'd)")).toBe(true)
+  })
+
+  test('emits all six SI 727 column headers', () => {
+    const { textCalls, addText, addLine } = mockPrimitives()
+    addScheduleTable({ ...defaultArgs({ addText, addLine }) })
+    const texts = textCalls.map(c => c.text)
+    // singleColumn label values are "STAND\nNo.", "AREAS\nSQUARE\nMETRES", etc.
+    // The header emission splits \n-separated tokens onto sub-lines.
+    expect(texts).toEqual(expect.arrayContaining(['STAND', 'No.']))
+    expect(texts).toEqual(expect.arrayContaining(['AREAS']))
+    expect(texts).toEqual(expect.arrayContaining(['DIAGRAM']))
+    expect(texts).toEqual(expect.arrayContaining(['NUMBER']))
+    expect(texts).toEqual(expect.arrayContaining(['DATE']))
+    expect(texts.some(t => t.startsWith('SURVEYOR'))).toBe(true)
+  })
+
+  test('emits the DEED parent header (centered above NUMBER + DATE)', () => {
+    const { textCalls, addText, addLine } = mockPrimitives()
+    addScheduleTable({ ...defaultArgs({ addText, addLine }) })
+    expect(textCalls.some(c => c.text === 'DEED')).toBe(true)
+  })
+
+  test('emits a header underline LINE', () => {
+    const { lineCalls, addText, addLine } = mockPrimitives()
+    addScheduleTable({ ...defaultArgs({ addText, addLine }) })
+    expect(lineCalls.length).toBeGreaterThanOrEqual(1)
+  })
+
+  test('emits one TEXT per cell per data row', () => {
+    const { textCalls, addText, addLine } = mockPrimitives()
+    const dataRows = [
+      { stand: '1', area: '100', diagram: 'D1', deedNumber: '12/24', deedDate: '2024-01', surveyor: 'A' },
+      { stand: '2', area: '200', diagram: '',   deedNumber: '',       deedDate: '',       surveyor: ''  },
+    ]
+    addScheduleTable({ ...defaultArgs({ addText, addLine, dataRows }) })
+    // Verify each non-blank cell value appears as a TEXT entry.
+    const texts = textCalls.map(c => c.text)
+    expect(texts).toEqual(expect.arrayContaining(['1', '100', 'D1', '12/24', '2024-01', 'A']))
+    expect(texts).toEqual(expect.arrayContaining(['2', '200']))
+  })
+
+  test('blank-cell values are skipped (no empty-string TEXTs emitted)', () => {
+    const { textCalls, addText, addLine } = mockPrimitives()
+    const dataRows = [
+      { stand: '1', area: '100', diagram: '', deedNumber: '', deedDate: '', surveyor: '' },
+    ]
+    addScheduleTable({ ...defaultArgs({ addText, addLine, dataRows }) })
+    // Empty-string TEXT entries are noise and may produce empty DXF labels.
+    expect(textCalls.every(c => c.text !== '')).toBe(true)
+  })
+
+  test('returns the final y coordinate (≤ y - rows consumed)', () => {
+    const { addText, addLine } = mockPrimitives()
+    const dataRows = [
+      { stand: '1', area: '100', diagram: '', deedNumber: '', deedDate: '', surveyor: '' },
+      { stand: '2', area: '200', diagram: '', deedNumber: '', deedDate: '', surveyor: '' },
+      { stand: '3', area: '300', diagram: '', deedNumber: '', deedDate: '', surveyor: '' },
+    ]
+    const startY = 1000
+    const out = addScheduleTable({ ...defaultArgs({ addText, addLine, dataRows, y: startY, rH: 2 }) })
+    expect(typeof out).toBe('number')
+    // Y decreases as we go down; 3 rows of rH=2 + header consumption → at least 6 below startY.
+    expect(out).toBeLessThan(startY)
   })
 })

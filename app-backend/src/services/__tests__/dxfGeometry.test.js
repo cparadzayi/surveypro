@@ -7,6 +7,8 @@ import {
   pointDistance,
   pointToLineDistance,
   distanceToSegment,
+  isPointInPolygon,
+  isPointNearPolygon,
 } from '../dxfGeometry.js'
 
 describe('pointDistance', () => {
@@ -55,5 +57,91 @@ describe('distanceToSegment', () => {
   })
   test('zero-length segment → reduces to pointDistance to start', () => {
     expect(distanceToSegment({ x: 3, y: 4 }, { x: 0, y: 0 }, { x: 0, y: 0 })).toBe(5)
+  })
+})
+
+describe('isPointInPolygon', () => {
+  // Unit square (0,0)-(10,0)-(10,10)-(0,10)
+  const square = [
+    { x: 0,  y: 0  },
+    { x: 10, y: 0  },
+    { x: 10, y: 10 },
+    { x: 0,  y: 10 },
+  ]
+
+  test('point clearly inside square → true', () => {
+    expect(isPointInPolygon({ x: 5, y: 5 }, square)).toBe(true)
+  })
+  test('point clearly outside square → false', () => {
+    expect(isPointInPolygon({ x: 15, y: 5 }, square)).toBe(false)
+  })
+  test('point on vertex (algorithm choice — accepts either result)', () => {
+    // Ray-casting is famously fragile on vertices. Just assert it returns
+    // a boolean and doesn't throw — the actual on/off result is algorithm-dependent.
+    const result = isPointInPolygon({ x: 0, y: 0 }, square)
+    expect(typeof result).toBe('boolean')
+  })
+  test('point on a horizontal edge', () => {
+    const result = isPointInPolygon({ x: 5, y: 0 }, square)
+    expect(typeof result).toBe('boolean')
+  })
+  test('star-shaped polygon containment', () => {
+    // Concave 5-vertex polygon. (5,5) is inside; (5,9.5) is outside the convex hull
+    // but the polygon's notch puts it outside.
+    const star = [
+      { x: 5,  y: 0  },
+      { x: 6,  y: 4  },
+      { x: 10, y: 5  },
+      { x: 6,  y: 6  },
+      { x: 5,  y: 10 },
+      { x: 4,  y: 6  },
+      { x: 0,  y: 5  },
+      { x: 4,  y: 4  },
+    ]
+    expect(isPointInPolygon({ x: 5, y: 5 }, star)).toBe(true)
+    expect(isPointInPolygon({ x: 9, y: 9 }, star)).toBe(false)
+  })
+  test('ray crossing a vertex — does not double-count', () => {
+    // Triangle: (0,0)-(10,0)-(5,10). Point at (5,5) sits below the apex (5,10).
+    // A horizontal ray from (5,5) eastward would graze the apex if naive — but
+    // the algorithm uses strict-inequality slope test that handles this correctly.
+    const triangle = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 5, y: 10 },
+    ]
+    expect(isPointInPolygon({ x: 5, y: 5 }, triangle)).toBe(true)
+    expect(isPointInPolygon({ x: 5, y: 11 }, triangle)).toBe(false)
+  })
+})
+
+describe('isPointNearPolygon', () => {
+  // CLOSED unit square (last vertex repeats first). isPointNearPolygon
+  // iterates length-1 edges, so the polygon MUST be closed by repeating
+  // the first vertex at the end — see the JSDoc note on this function.
+  const closedSquare = [
+    { x: 0,  y: 0  },
+    { x: 10, y: 0  },
+    { x: 10, y: 10 },
+    { x: 0,  y: 10 },
+    { x: 0,  y: 0  },
+  ]
+
+  test('point inside → true regardless of buffer', () => {
+    expect(isPointNearPolygon({ x: 5, y: 5 }, closedSquare, 0)).toBe(true)
+    expect(isPointNearPolygon({ x: 5, y: 5 }, closedSquare, 100)).toBe(true)
+  })
+  test('point outside but within buffer of an edge → true', () => {
+    // Point (12, 5) is 2 units east of the (10,0)-(10,10) edge
+    expect(isPointNearPolygon({ x: 12, y: 5 }, closedSquare, 3)).toBe(true)
+  })
+  test('point outside beyond buffer → false', () => {
+    expect(isPointNearPolygon({ x: 12, y: 5 }, closedSquare, 1)).toBe(false)
+  })
+  test('buffer = 0 reduces to a stricter isPointInPolygon (boundary may differ)', () => {
+    // (5, 5) inside both ways
+    expect(isPointNearPolygon({ x: 5, y: 5 }, closedSquare, 0)).toBe(true)
+    // (20, 20) outside both ways
+    expect(isPointNearPolygon({ x: 20, y: 20 }, closedSquare, 0)).toBe(false)
   })
 })

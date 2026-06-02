@@ -86,4 +86,17 @@ describe('extractScheduleRow', () => {
       diagram: '', deedNumber: '', deedDate: '', surveyor: '',
     })
   })
+
+  test('null or undefined parcelFeature → no throw, all blank/zero', () => {
+    expect(() => extractScheduleRow(null)).not.toThrow()
+    expect(() => extractScheduleRow(undefined)).not.toThrow()
+    expect(extractScheduleRow(null)).toEqual({
+      stand: '', area: '0',
+      diagram: '', deedNumber: '', deedDate: '', surveyor: '',
+    })
+    expect(extractScheduleRow(undefined)).toEqual({
+      stand: '', area: '0',
+      diagram: '', deedNumber: '', deedDate: '', surveyor: '',
+    })
+  })
 })

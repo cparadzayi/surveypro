@@ -351,14 +351,14 @@ export function nextLargerSheet(currentSheetSize) {
  * emits the full 6-column header so the SI 727 form is recognisable.
  */
 export function extractScheduleRow(parcelFeature) {
-  const p = parcelFeature?.properties || {}
+  const props = parcelFeature?.properties || {}
   return {
-    stand:      String(p.stand ?? ''),
-    area:       String(Math.round(p.area_m2 ?? 0)),
-    diagram:    String(p.diagram ?? ''),
-    deedNumber: String(p.deedNumber ?? ''),
-    deedDate:   String(p.deedDate ?? ''),
-    surveyor:   String(p.surveyor ?? ''),
+    stand:      String(props.stand ?? ''),
+    area:       String(Math.round(props.area_m2 ?? 0)),
+    diagram:    String(props.diagram ?? ''),
+    deedNumber: String(props.deedNumber ?? ''),
+    deedDate:   String(props.deedDate ?? ''),
+    surveyor:   String(props.surveyor ?? ''),
   }
 }
 

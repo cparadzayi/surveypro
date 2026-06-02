@@ -37,6 +37,10 @@ Each item must read true. Tick the box when verified; attach the screenshot refe
 - [ ] Coordinate-grid tick marks along the **four drawing borders** with rounded Cape Lo Y / X values. *(Screenshot: `05-grid-ticks.png`)*
 - [ ] Beacons render with **distinct placed vs found symbols** (placed = filled circle via radial fill; found = open circle + cross). *(Screenshot: `06-beacon-symbols.png`)*
 - [ ] **Schedule of Areas** in the lower-left zone. *(Screenshot: `07-schedule.png`)*
+- [ ] **SI 727 6-column layout** — header reads `STAND No.`, `AREAS SQUARE METRES`, `DIAGRAM NUMBER`, `DEED` parent above `NUMBER` and `DATE`, `SURVEYOR-GENERAL`. Blank cells appear where the optional fields aren't populated (SG officials fill these at approval). *(Screenshot: `07a-schedule-6col.png`)*
+- [ ] **Single-table layout** — for plans with ≤ ~25 stands on A2, the schedule renders as one table in the bottom-left zone with the beacon-descriptions block immediately below. *(Screenshot: `07b-single-table.png`)*
+- [ ] **Side-by-side continuation tables** — for plans with more rows than the single-column budget (synthesise via a temporary fixture or a real ~30-parcel plan), the schedule splits into two or more sub-tables labelled `SCHEDULE OF AREAS` and `SCHEDULE OF AREAS (cont'd)`. *(Screenshot: `07c-multi-table.png`)*
+- [ ] **Schedule overflow signal** — for plans that overflow at A2 (synthesise via a temporary 200-parcel payload), the response `warnings.summary.scheduleOverflow` contains `{ atSheetSize: 'ISO_A2', requiredSheetSize: 'ISO_A1' | 'ISO_A0' | 'multi-sheet-required', standCount: N }`. Verify via the backend log or inspect the response payload in dev tools. *(Screenshot: `07d-overflow-warning.png`)*
 - [ ] **Beacon descriptions block** immediately below the Schedule of Areas. *(Screenshot: `07-schedule.png` covers this too.)*
 - [ ] **Outside-figure data** in the lower-centre zone. *(Screenshot: `08-outside-figure-data.png`)*
 - [ ] **Endorsement column** in the right margin with all five sub-blocks visible:

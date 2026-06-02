@@ -314,10 +314,24 @@ describe('addScheduleTable', () => {
     expect(texts.some(t => t.startsWith('SURVEYOR'))).toBe(true)
   })
 
-  test('emits the DEED parent header (centered above NUMBER + DATE)', () => {
+  test('emits the DEED parent header centered above NUMBER + DATE', () => {
     const { textCalls, addText, addLine } = mockPrimitives()
-    addScheduleTable({ ...defaultArgs({ addText, addLine }) })
-    expect(textCalls.some(c => c.text === 'DEED')).toBe(true)
+    const args = defaultArgs({ addText, addLine })
+    addScheduleTable(args)
+    const deedCall = textCalls.find(c => c.text === 'DEED')
+    expect(deedCall).toBeDefined()
+    // Column offsets cumulative from args.x = 0 with widths [10,12,10,10,10,12]:
+    // colX = [0, 10, 22, 32, 42, 52]; col 3 = NUMBER (x=32), col 4 = DATE (x=42, w=10).
+    // Span: [32, 52]; midpoint = 42.
+    // DEED width ≈ 4 chars × hBody=1.0 × 0.6 = 2.4; half = 1.2.
+    // Expected anchor: 42 - 1.2 = 40.8.
+    const expectedAnchor = 42 - ('DEED'.length * args.hBody * 0.6) / 2
+    expect(deedCall.x).toBeCloseTo(expectedAnchor, 4)
+    // The visible text span [anchor, anchor + width] must fall inside the
+    // NUMBER+DATE column span [colX[3], colX[4] + widths[4]] = [32, 52].
+    const textWidth = 'DEED'.length * args.hBody * 0.6
+    expect(deedCall.x).toBeGreaterThanOrEqual(32)
+    expect(deedCall.x + textWidth).toBeLessThanOrEqual(52)
   })
 
   test('emits a header underline LINE', () => {

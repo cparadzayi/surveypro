@@ -503,11 +503,16 @@ export function addScheduleTable({
   cy -= hHead * 1.6
 
   // 2. DEED parent header above NUMBER (col 3) + DATE (col 4).
-  // Center the 'DEED' label between the start of column 3 and the end of column 4.
+  // The DXF addText primitive emits TEXT with default left-anchor semantics
+  // (no group code 72). To visually center 'DEED' above the NUMBER+DATE span
+  // we shift the X anchor left by half the approximate rendered width
+  // (AutoCAD SHX default character width ≈ 0.6 × text height).
+  const DXF_CHAR_WIDTH_RATIO = 0.6
   const deedStartX = colX[3]
   const deedEndX   = colX[4] + columnWidths[4]
   const deedCenter = (deedStartX + deedEndX) / 2
-  addText(layer, deedCenter, cy, 'DEED', hBody, 0, 'BOLD')
+  const deedTextWidth = 'DEED'.length * hBody * DXF_CHAR_WIDTH_RATIO
+  addText(layer, deedCenter - deedTextWidth / 2, cy, 'DEED', hBody, 0, 'BOLD')
   cy -= hBody * 1.2
 
   // 3. Column headers. Labels may contain \n for multi-line headers (e.g. 'STAND\nNo.').
@@ -529,8 +534,9 @@ export function addScheduleTable({
   addLine(layer, x, cy, rightEdge, cy)
   cy -= hBody * 0.6
 
-  // 5. Data rows.
-  const cellKeys = ['stand', 'area', 'diagram', 'deedNumber', 'deedDate', 'surveyor']
+  // 5. Data rows. Derive cellKeys from the schema so column reordering or
+  // renaming in block-definitions.js propagates without touching this code.
+  const cellKeys = singleCols.map(c => c.key)
   for (const row of dataRows) {
     for (let i = 0; i < cellKeys.length; i++) {
       const val = row[cellKeys[i]]

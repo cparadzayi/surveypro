@@ -428,8 +428,14 @@ export function computeScheduleLayout({
   }
 
   // Multi-column path: how many natural-width sub-tables fit in zoneWidth?
-  const maxTablesByWidth = Math.max(1, Math.floor((zoneWidth + spacing) / (subTableWidth + spacing)))
+  // Reject when even one sub-table doesn't fit at natural width — the
+  // alternative (scaling to 20-40% of natural) produces unreadable output
+  // and defeats the purpose of the recommendedSheetSize escalation ladder.
   const numTablesNeeded  = Math.ceil(rowCount / rowsPerColumn)
+  if (zoneWidth < subTableWidth) {
+    return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }
+  }
+  const maxTablesByWidth = Math.floor((zoneWidth + spacing) / (subTableWidth + spacing))
 
   if (numTablesNeeded > maxTablesByWidth) {
     return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }

@@ -220,9 +220,39 @@ describe('computeScheduleLayout', () => {
     expect(out.columnWidths[0]).toBeLessThan(out.columnWidths[1]) // STAND < AREAS
   })
 
-  test('returns numeric (not null) for the recommendedSheetSize on fit=true', () => {
-    // Spec says only failure has recommendedSheetSize; success omits it.
+  test('fits: true layout omits recommendedSheetSize entirely', () => {
+    // Spec union: success branch returns { fits, numTables, rowsPerTable,
+    // columnWidths } only; recommendedSheetSize is exclusive to failure.
     const out = computeScheduleLayout({ ...base, rowCount: 5 })
     expect(out.recommendedSheetSize).toBeUndefined()
+  })
+
+  test('narrow zone in multi-column mode → overflow rather than unreadable scaling', () => {
+    // zoneWidth=50 is narrower than subTableWidth=230 — even one
+    // natural-width sub-table cannot fit. Should overflow to a larger
+    // sheet rather than silently shrink columns to ~22%.
+    const out = computeScheduleLayout({ ...base, zoneWidth: 50, rowCount: 30 })
+    expect(out.fits).toBe(false)
+    expect(out.recommendedSheetSize).toBe('ISO_A1')
+  })
+
+  test('rowCount requiring 3 tables that fit width-wise → fits with numTables: 3', () => {
+    // Need a zone wide enough for 3 multi-tables: 3*230 + 2*8 = 706mm
+    const out = computeScheduleLayout({
+      ...base,
+      zoneWidth: 750,    // wide enough for 3 multi-tables
+      rowCount: 60,       // 60 / 23 rowsPerColumn = ceil(2.6) = 3 tables
+    })
+    expect(out.fits).toBe(true)
+    expect(out.numTables).toBe(3)
+    expect(out.rowsPerTable).toBe(23)
+    expect(out.columnWidths).toHaveLength(6)
+  })
+
+  test('rowCount: 1 → fits single-column with one row', () => {
+    const out = computeScheduleLayout({ ...base, rowCount: 1 })
+    expect(out.fits).toBe(true)
+    expect(out.numTables).toBe(1)
+    expect(out.rowsPerTable).toBe(1)
   })
 })

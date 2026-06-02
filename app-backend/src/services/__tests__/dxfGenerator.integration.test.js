@@ -244,3 +244,93 @@ describe('dxfGenerator integration — SI 727 title-block lines', () => {
     expect(warnings.count).toBe(0)
   })
 })
+
+describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => {
+  function collectTextsByLayer(dxf, layer) {
+    const lines = dxf.split('\n')
+    const texts = []
+    let i = 0, currentType = null, currentLayer = null
+    while (i < lines.length - 1) {
+      const code = lines[i].trim(), value = lines[i + 1].trim()
+      i += 2
+      if (code === '0' && /^[A-Z_]+$/.test(value)) { currentType = value; currentLayer = null }
+      else if (code === '8' && currentType === 'TEXT') currentLayer = value
+      else if (code === '1' && currentType === 'TEXT' && currentLayer === layer) {
+        texts.push(value)
+      }
+    }
+    return texts
+  }
+
+  test('schedule title "SCHEDULE OF AREAS" is emitted on TITLE_BLOCK', () => {
+    const { buffer } = generateDXF(sampleFixture, fakeLogger)
+    const titleBlockTexts = collectTextsByLayer(buffer.toString(), 'TITLE_BLOCK')
+    expect(titleBlockTexts).toContain('SCHEDULE OF AREAS')
+  })
+
+  test('all six SI 727 column headers appear as TEXT entities on TITLE_BLOCK', () => {
+    const { buffer } = generateDXF(sampleFixture, fakeLogger)
+    const titleBlockTexts = collectTextsByLayer(buffer.toString(), 'TITLE_BLOCK')
+    // singleColumn labels: 'STAND\nNo.', 'AREAS\nSQUARE\nMETRES',
+    // 'DIAGRAM\nNUMBER', 'NUMBER', 'DATE', 'SURVEYOR-\nGENERAL'.
+    // Each \n token becomes its own TEXT entity.
+    expect(titleBlockTexts).toContain('STAND')
+    expect(titleBlockTexts).toContain('AREAS')
+    expect(titleBlockTexts).toContain('DIAGRAM')
+    expect(titleBlockTexts).toContain('NUMBER')
+    expect(titleBlockTexts).toContain('DATE')
+    expect(titleBlockTexts.some(t => t.startsWith('SURVEYOR'))).toBe(true)
+  })
+
+  test('DEED parent header is emitted as a separate TEXT entity', () => {
+    const { buffer } = generateDXF(sampleFixture, fakeLogger)
+    const titleBlockTexts = collectTextsByLayer(buffer.toString(), 'TITLE_BLOCK')
+    expect(titleBlockTexts).toContain('DEED')
+  })
+
+  test('both stand numbers from the sample fixture appear on TITLE_BLOCK', () => {
+    const { buffer } = generateDXF(sampleFixture, fakeLogger)
+    const titleBlockTexts = collectTextsByLayer(buffer.toString(), 'TITLE_BLOCK')
+    expect(titleBlockTexts).toContain('123')
+    expect(titleBlockTexts).toContain('124')
+  })
+
+  test('no TEXT entity on TITLE_BLOCK contains the literal "undefined" or "null"', () => {
+    const { buffer } = generateDXF(sampleFixture, fakeLogger)
+    const titleBlockTexts = collectTextsByLayer(buffer.toString(), 'TITLE_BLOCK')
+    for (const t of titleBlockTexts) {
+      expect(t).not.toBe('undefined')
+      expect(t).not.toBe('null')
+    }
+  })
+
+  test('clean sampleFixture still produces zero warnings + scheduleOverflow null', () => {
+    const { warnings } = generateDXF(sampleFixture, fakeLogger)
+    expect(warnings.count).toBe(0)
+    expect(warnings.summary.scheduleOverflow).toBeNull()
+  })
+
+  test('overflow fixture (200 parcels at A2) emits structured scheduleOverflow warning', () => {
+    // Build a synthetic fixture with enough parcels to exceed the
+    // single-zone budget at A2. The narrow col1 (~104mm) can fit at most
+    // one multi-sub-table at A2 → any rowCount past rowsPerColumn overflows.
+    const manyParcels = []
+    for (let i = 1; i <= 200; i++) {
+      manyParcels.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [[
+          [50000, 2200000], [50001, 2200000], [50001, 2200001], [50000, 2200001], [50000, 2200000],
+        ]]},
+        properties: { stand: String(i), area_m2: 100 + i },
+      })
+    }
+    const overflowFixture = { ...sampleFixture, parcels: { features: manyParcels } }
+    const { warnings } = generateDXF(overflowFixture, fakeLogger)
+    expect(warnings.summary.scheduleOverflow).not.toBeNull()
+    expect(warnings.summary.scheduleOverflow.atSheetSize).toBe('ISO_A2')
+    expect(warnings.summary.scheduleOverflow.standCount).toBe(200)
+    // requiredSheetSize is one of the ladder entries or 'multi-sheet-required'
+    expect(['ISO_A1', 'ISO_A0', 'multi-sheet-required'])
+      .toContain(warnings.summary.scheduleOverflow.requiredSheetSize)
+  })
+})

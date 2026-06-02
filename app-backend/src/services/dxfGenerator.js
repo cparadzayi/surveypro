@@ -1544,21 +1544,80 @@ export function generateDXF(options, logger) {
   addLine(TB, col2R, drawDivY, col2R, cntB);
 
   // ── C1) SCHEDULE OF AREAS (bottom-left column) ──
+  // Layout-driven single/multi/overflow. Helpers operate in paper-mm;
+  // emission converts back to ground via mm(x) at the boundary.
   let sY = drawDivY - mm(5);
-  addText(TB, col1L, sY, 'SCHEDULE OF AREAS', hHead, 0, 'BOLD');
-  sY -= mm(5);
-  // Table header
-  const scW = col1R - col1L;
-  addText(TB, col1L, sY, 'STAND No', hBody, 0, 'BOLD');
-  addText(TB, col1L + scW * 0.35, sY, 'AREAS', hBody, 0, 'BOLD');
-  addText(TB, col1L + scW * 0.35, sY - hBody * 0.8, 'SQ. METRES', hBody, 0, 'BOLD');
-  addLine(TB, col1L, sY - mm(5), col1R - mm(3), sY - mm(5));
-  sY -= mm(7);
-  // Data rows
-  for (const sp of surveyedParcels) {
-    addText(TB, col1L, sY, String(sp.stand), hBody);
-    addText(TB, col1L + scW * 0.35, sY, Math.round(sp.area_m2).toString(), hBody);
-    sY -= rH;
+
+  // Build data rows from the original feature collection so optional
+  // cell fields (diagram/deedNumber/deedDate/surveyor) are picked up.
+  const scheduleDataRows = (parcels?.features || [])
+    .filter(f => {
+      const st = (f.properties?.stand || '').toLowerCase();
+      return !f.properties?.isOutsideFigure && !st.includes('outside figure');
+    })
+    .sort((a, b) => {
+      const na = parseInt(a.properties?.stand) || 0;
+      const nb = parseInt(b.properties?.stand) || 0;
+      return na - nb || String(a.properties?.stand || '').localeCompare(String(b.properties?.stand || ''));
+    })
+    .map(extractScheduleRow);
+
+  const zoneWidthGround  = col1R - col1L - mm(3);
+  const zoneHeightGround = (drawDivY - mm(5)) - (cntB + mm(4));
+
+  const scheduleLayout = computeScheduleLayout({
+    rowCount:         scheduleDataRows.length,
+    zoneWidth:        zoneWidthGround / mm(1),
+    zoneHeight:       zoneHeightGround / mm(1),
+    rowHeight:        rH / mm(1),
+    headerHeight:     SCHEDULE_HEADER_HEIGHT_MM,
+    currentSheetSize: sheetSize,
+  });
+
+  if (!scheduleLayout.fits) {
+    // Overflow: emit only the title as a placeholder, record structured warning.
+    addText(TB, col1L, sY, 'SCHEDULE OF AREAS', hHead, 0, 'BOLD');
+    warn('scheduleOverflow', {
+      atSheetSize:        sheetSize,
+      requiredSheetSize:  scheduleLayout.recommendedSheetSize,
+      standCount:         scheduleDataRows.length,
+    });
+    sY -= mm(10);
+  } else {
+    const columnWidthsGround = scheduleLayout.columnWidths.map(w => mm(w));
+    if (scheduleLayout.numTables === 1) {
+      sY = addScheduleTable({
+        layer: TB, x: col1L, y: sY,
+        dataRows: scheduleDataRows,
+        columnWidths: columnWidthsGround,
+        titleText: 'SCHEDULE OF AREAS',
+        hHead, hBody, rH,
+        addText, addLine,
+      });
+    } else {
+      // Side-by-side. Compute per-sub-table x offsets using the multi-mode spacing.
+      const spacingGround = mm(SCHEDULE_OF_AREAS.multiColumn.columnSpacing);
+      const subTableWidthGround = columnWidthsGround.reduce((s, w) => s + w, 0);
+      let deepestY = sY;
+      for (let i = 0; i < scheduleLayout.numTables; i++) {
+        const rows = scheduleDataRows.slice(
+          i * scheduleLayout.rowsPerTable,
+          (i + 1) * scheduleLayout.rowsPerTable,
+        );
+        const title = i === 0 ? 'SCHEDULE OF AREAS' : "SCHEDULE OF AREAS (cont'd)";
+        const subX = col1L + i * (subTableWidthGround + spacingGround);
+        const subY = addScheduleTable({
+          layer: TB, x: subX, y: sY,
+          dataRows: rows,
+          columnWidths: columnWidthsGround,
+          titleText: title,
+          hHead, hBody, rH,
+          addText, addLine,
+        });
+        if (subY < deepestY) deepestY = subY;
+      }
+      sY = deepestY;
+    }
   }
   // Beacon descriptions immediately below the Schedule of Areas
   const beaconDescTop = sY - mm(8);

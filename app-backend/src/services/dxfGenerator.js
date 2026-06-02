@@ -313,6 +313,10 @@ const PAPER_SIZES = {
  * Paper-size escalation ladder used by Schedule of Areas overflow detection
  * (and consumed by sub-project #5 multi-sheet tiling). Walking the ladder
  * stops at ISO_A0; beyond that, the layout returns 'multi-sheet-required'.
+ *
+ * ISO_A4 and ISO_A3 are deliberately excluded: cadastral plans always
+ * start at ISO_A2 (the DXF generator's default). Smaller sheets are not
+ * valid Schedule of Areas starting sizes.
  */
 const SHEET_LADDER = ['ISO_A2', 'ISO_A1', 'ISO_A0']
 
@@ -365,20 +369,27 @@ export function generateDXF(options, logger) {
       scheduleOverflow: null,
     },
   }
-  function warn(category, n = 1) {
+  /**
+   * Records a warning of a given category. Three category families exist:
+   *   booleans   — 'scaleFallback', 'nonAscii' (sets summary[category] to true)
+   *   structured — 'scheduleOverflow' (stores `value` as the payload object)
+   *   counters   — everything else (adds `value` to summary[category])
+   * `warnings.count` increments by 1 for booleans + structured, by `value`
+   * for counters.
+   */
+  function warn(category, value = 1) {
     if (category === 'scaleFallback' || category === 'nonAscii') {
       warnings.summary[category] = true
       warnings.count += 1
       return
     }
     if (category === 'scheduleOverflow') {
-      // Structured object value, not a counter. `n` carries the payload.
-      warnings.summary[category] = n
+      warnings.summary[category] = value
       warnings.count += 1
       return
     }
-    warnings.summary[category] = (warnings.summary[category] || 0) + n
-    warnings.count += n
+    warnings.summary[category] = (warnings.summary[category] || 0) + value
+    warnings.count += value
   }
 
   const {

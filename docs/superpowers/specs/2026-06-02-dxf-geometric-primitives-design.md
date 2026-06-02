@@ -45,8 +45,8 @@ byte-for-byte identical before and after 4a ships. It's pure foundation.
 |---|---|
 | Where do the primitives live? | New module `app-backend/src/services/dxfGeometry.js`. Keeps `dxfGenerator.js` from growing past ~2,300 lines and gives 4b/4c/4d a clean import surface |
 | Which primitives are in scope? | The 8 functions 4b (whitespace scanner) and 4c (block placer) will use. 4d (per-feature label placement) ports its own additions when it ships |
-| Implementation style | Port verbatim from `pdfkitGeoPDF.js`. These are battle-tested implementations; rewriting from scratch risks subtle algorithm bugs (line-intersection collinear/parallel cases are famously fiddly) |
-| Coordinate convention | Unit-agnostic. Functions accept `{x, y}` points and treat all inputs as one unit. Caller's responsibility to keep units consistent within one call |
+| Implementation style | Port **algorithms** verbatim from `pdfkitGeoPDF.js`. Interfaces are **normalized** to a uniform `{x, y}` shape at port time. The PDF mixes three conventions (`[y, x]` tuples for the point/polygon family, `{x, y}` objects in `rectangleOverlapsPolygon`, `{x1, y1, x2, y2}` flat segment objects in `lineSegmentsIntersect`) with inline tuple↔object conversions inside the helpers. Inheriting that mess into a new module would force 4b/4c/4d to write conversion shims at every call site. Normalisation is ~25 lines of entry-point unpacking; algorithms are identical to the battle-tested PDF versions |
+| Coordinate convention | Unit-agnostic. All point inputs are `{x: number, y: number}` objects. All polygon inputs are `[{x, y}, {x, y}, ...]` arrays. Segments are `[{x, y}, {x, y}]` pairs (start, end). Rectangles are `{x, y, width, height}` (top-left + dimensions). Caller's responsibility to keep units consistent within one call |
 | Composite helpers | `hasBlockToBlockCollision` and `isRectOutsidePolygons` (the PDF's one-line wrappers over the primitives) are deferred to 4c, which owns the `placedBlocks` array. 4a stays pure primitives |
 | Tests | New file `dxfGeometry.test.js`; per-primitive unit tests against hand-computed expected values |
 | Manual CAD verification | None — no DXF output changes |
@@ -70,9 +70,15 @@ Properties:
 
 ## Components
 
-Eight pure functions, ported verbatim from `pdfkitGeoPDF.js`. PDF source
-line numbers are the canonical reference for the algorithm; the only
-modifications during the port are JSDoc and `export` syntax.
+Eight pure functions. **Algorithms** ported verbatim from `pdfkitGeoPDF.js`
+(PDF source line numbers are the canonical reference for the math). The
+**interfaces** are normalised to a uniform `{x, y}` object shape — the
+PDF's mixed `[y, x]` tuples / `{x, y}` objects / flat-segment conventions
+are unpacked at function entry so all helpers present the same parameter
+shape to callers.
+
+Every function's first line(s) will be conversion to the PDF's internal
+representation; the math after that is byte-identical to the source.
 
 ### Point-level helpers (3)
 

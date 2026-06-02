@@ -20,7 +20,7 @@
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-import { TITLE_BLOCK, formatStandRanges } from '../../../app-shared/block-definitions.js'
+import { TITLE_BLOCK, SCHEDULE_OF_AREAS, formatStandRanges } from '../../../app-shared/block-definitions.js'
 
 /**
  * Word-boundary wrap for single-line DXF TEXT entities.
@@ -309,6 +309,245 @@ const PAPER_SIZES = {
   'ISO_A0': { w: 1189, h: 841 },
 };
 
+/**
+ * Paper-size escalation ladder used by Schedule of Areas overflow detection
+ * (and consumed by sub-project #5 multi-sheet tiling). Walking the ladder
+ * stops at ISO_A0; beyond that, the layout returns 'multi-sheet-required'.
+ *
+ * ISO_A4 and ISO_A3 are deliberately excluded: cadastral plans always
+ * start at ISO_A2 (the DXF generator's default). Smaller sheets are not
+ * valid Schedule of Areas starting sizes.
+ */
+const SHEET_LADDER = ['ISO_A2', 'ISO_A1', 'ISO_A0']
+
+/**
+ * Total paper-millimetres reserved for the Schedule of Areas header
+ * (title + column headers + DEED parent + underline). Shared by
+ * computeScheduleLayout's row-budget math AND addScheduleTable's actual
+ * header emission. Drift between the two would silently break the layout.
+ */
+const SCHEDULE_HEADER_HEIGHT_MM = 12
+
+/**
+ * Returns the next-larger sheet size in SHEET_LADDER, or
+ * 'multi-sheet-required' when already at the top (or for an unknown
+ * starting size — defensive fallback so sub-project #5 always sees a
+ * clear signal).
+ */
+export function nextLargerSheet(currentSheetSize) {
+  const idx = SHEET_LADDER.indexOf(currentSheetSize)
+  if (idx < 0 || idx === SHEET_LADDER.length - 1) return 'multi-sheet-required'
+  return SHEET_LADDER[idx + 1]
+}
+
+/**
+ * Extracts the six SI 727 Schedule-of-Areas column values from a parcel
+ * GeoJSON feature's `properties`. Returns an object whose values are all
+ * strings ('' for absent optional fields).
+ *
+ * The four optional fields (diagram, deedNumber, deedDate, surveyor) are
+ * populated by Surveyor-General officials at approval time as ownership
+ * transfers. They're meant to be blank at submission — the DXF still
+ * emits the full 6-column header so the SI 727 form is recognisable.
+ */
+export function extractScheduleRow(parcelFeature) {
+  const props = parcelFeature?.properties || {}
+  return {
+    stand:      String(props.stand ?? ''),
+    area:       String(Math.round(props.area_m2 ?? 0)),
+    diagram:    String(props.diagram ?? ''),
+    deedNumber: String(props.deedNumber ?? ''),
+    deedDate:   String(props.deedDate ?? ''),
+    surveyor:   String(props.surveyor ?? ''),
+  }
+}
+
+/**
+ * Computes the Schedule-of-Areas layout for a given row count and zone
+ * size (in paper-millimetres). Returns either a fits-true layout with
+ * scaled column widths, or a fits-false escalation with a
+ * recommendedSheetSize.
+ *
+ * Inputs:
+ *   rowCount         number of data rows to render
+ *   zoneWidth        available width in paper-mm
+ *   zoneHeight       available height in paper-mm
+ *   rowHeight        per-row height in paper-mm
+ *   headerHeight     reserved header height in paper-mm (use SCHEDULE_HEADER_HEIGHT_MM)
+ *   currentSheetSize current sheet size string (e.g. 'ISO_A2')
+ *
+ * Returns either:
+ *   { fits: true,  numTables, rowsPerTable, columnWidths: number[6] }
+ * or:
+ *   { fits: false, recommendedSheetSize }
+ *
+ * Spec amendment: the spec's `zoneWidth >= singleTableWidth / 2`
+ * readability check is dropped here. The DXF's bottom-left zone is
+ * ~28% of content width — at A2 (~104mm) the check would always fail.
+ * Instead, single-column mode always scales columns down to fit
+ * zoneWidth (up to a 1.0 scale factor, never inflating). Multi-column
+ * overflow detection is unchanged.
+ */
+export function computeScheduleLayout({
+  rowCount,
+  zoneWidth,
+  zoneHeight,
+  rowHeight,
+  headerHeight,
+  currentSheetSize,
+}) {
+  const singleCols = SCHEDULE_OF_AREAS?.singleColumn?.columns
+  const multiCols  = SCHEDULE_OF_AREAS?.multiColumn?.columns
+  const spacing    = SCHEDULE_OF_AREAS?.multiColumn?.columnSpacing
+  if (!Array.isArray(singleCols) || !Array.isArray(multiCols) || typeof spacing !== 'number') {
+    throw new Error('SCHEDULE_OF_AREAS missing from app-shared/block-definitions.js')
+  }
+
+  const singleTableWidth = singleCols.reduce((s, c) => s + c.width, 0)
+  const subTableWidth    = multiCols.reduce((s, c) => s + c.width, 0)
+
+  const rowsPerColumn = Math.max(0, Math.floor((zoneHeight - headerHeight) / rowHeight))
+
+  // Scale single-mode columns to fit zoneWidth, never exceeding natural.
+  const singleScale = Math.min(1, zoneWidth / singleTableWidth)
+  const singleColumnWidths = singleCols.map(c => c.width * singleScale)
+
+  // Empty schedule: emit header + zero rows. Always fits.
+  if (rowCount === 0) {
+    return { fits: true, numTables: 1, rowsPerTable: 0, columnWidths: singleColumnWidths }
+  }
+
+  // No vertical room at all: every row overflows.
+  if (rowsPerColumn === 0) {
+    return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }
+  }
+
+  // Single-column path: row count fits in one table.
+  if (rowCount <= rowsPerColumn) {
+    return { fits: true, numTables: 1, rowsPerTable: rowCount, columnWidths: singleColumnWidths }
+  }
+
+  // Multi-column path: how many natural-width sub-tables fit in zoneWidth?
+  // Reject when even one sub-table doesn't fit at natural width — the
+  // alternative (scaling to 20-40% of natural) produces unreadable output
+  // and defeats the purpose of the recommendedSheetSize escalation ladder.
+  const numTablesNeeded  = Math.ceil(rowCount / rowsPerColumn)
+  if (zoneWidth < subTableWidth) {
+    return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }
+  }
+  const maxTablesByWidth = Math.floor((zoneWidth + spacing) / (subTableWidth + spacing))
+
+  if (numTablesNeeded > maxTablesByWidth) {
+    return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }
+  }
+
+  // Multi-mode column widths: each sub-table gets (zoneWidth - (N-1)*spacing) / N,
+  // capped at natural subTableWidth. Columns scaled within that budget.
+  const perTableBudget = (zoneWidth - (numTablesNeeded - 1) * spacing) / numTablesNeeded
+  const subTableWidthOut = Math.min(perTableBudget, subTableWidth)
+  const multiScale = subTableWidthOut / subTableWidth
+  const multiColumnWidths = multiCols.map(c => c.width * multiScale)
+
+  return {
+    fits: true,
+    numTables: numTablesNeeded,
+    rowsPerTable: rowsPerColumn,
+    columnWidths: multiColumnWidths,
+  }
+}
+
+/**
+ * Emits one Schedule-of-Areas sub-table block (title + column headers +
+ * DEED parent header + underline + data rows). Returns the y coordinate
+ * after the last row, so the caller can stack the next sub-table or the
+ * beacon-descriptions block below.
+ *
+ * `addText` and `addLine` are injected (the closures inside generateDXF)
+ * so the helper can be exported and unit-tested with capture mocks.
+ *
+ * Inputs (object-style for clarity):
+ *   layer         DXF layer name (e.g. 'TITLE_BLOCK')
+ *   x, y          top-left anchor (ground metres at scale)
+ *   dataRows      Array<extractScheduleRow output>
+ *   columnWidths  number[6] in ground metres
+ *   titleText     'SCHEDULE OF AREAS' or "SCHEDULE OF AREAS (cont'd)"
+ *   hHead         header text height (ground metres)
+ *   hBody         body text height (ground metres)
+ *   rH            data-row vertical spacing (ground metres)
+ *   addText       (layer, x, y, text, h, rotation, style) => void
+ *   addLine       (layer, x1, y1, x2, y2) => void
+ */
+export function addScheduleTable({
+  layer, x, y,
+  dataRows, columnWidths,
+  titleText, hHead, hBody, rH,
+  addText, addLine,
+}) {
+  const singleCols = SCHEDULE_OF_AREAS?.singleColumn?.columns
+  if (!Array.isArray(singleCols)) {
+    throw new Error('SCHEDULE_OF_AREAS missing from app-shared/block-definitions.js')
+  }
+
+  // Column x offsets (cumulative).
+  const colX = []
+  let cx = 0
+  for (const w of columnWidths) {
+    colX.push(x + cx)
+    cx += w
+  }
+  const rightEdge = x + cx
+
+  // 1. Title.
+  let cy = y
+  addText(layer, x, cy, titleText, hHead, 0, 'BOLD')
+  cy -= hHead * 1.6
+
+  // 2. DEED parent header above NUMBER (col 3) + DATE (col 4).
+  // The DXF addText primitive emits TEXT with default left-anchor semantics
+  // (no group code 72). To visually center 'DEED' above the NUMBER+DATE span
+  // we shift the X anchor left by half the approximate rendered width
+  // (AutoCAD SHX default character width ≈ 0.6 × text height).
+  const DXF_CHAR_WIDTH_RATIO = 0.6
+  const deedStartX = colX[3]
+  const deedEndX   = colX[4] + columnWidths[4]
+  const deedCenter = (deedStartX + deedEndX) / 2
+  const deedTextWidth = 'DEED'.length * hBody * DXF_CHAR_WIDTH_RATIO
+  addText(layer, deedCenter - deedTextWidth / 2, cy, 'DEED', hBody, 0, 'BOLD')
+  cy -= hBody * 1.2
+
+  // 3. Column headers. Labels may contain \n for multi-line headers (e.g. 'STAND\nNo.').
+  // Render each token on its own line, decrementing cy by hBody between lines.
+  // Each column may have a different number of header sub-lines; advance cy by the max.
+  let maxHeaderLines = 1
+  for (let i = 0; i < singleCols.length; i++) {
+    const tokens = String(singleCols[i].label).split('\n')
+    if (tokens.length > maxHeaderLines) maxHeaderLines = tokens.length
+    let lineY = cy
+    for (const tok of tokens) {
+      addText(layer, colX[i], lineY, tok, hBody, 0, 'BOLD')
+      lineY -= hBody * 1.2
+    }
+  }
+  cy -= maxHeaderLines * hBody * 1.2
+
+  // 4. Underline.
+  addLine(layer, x, cy, rightEdge, cy)
+  cy -= hBody * 0.6
+
+  // 5. Data rows. Derive cellKeys from the schema so column reordering or
+  // renaming in block-definitions.js propagates without touching this code.
+  const cellKeys = singleCols.map(c => c.key)
+  for (const row of dataRows) {
+    for (let i = 0; i < cellKeys.length; i++) {
+      const val = row[cellKeys[i]]
+      if (val) addText(layer, colX[i], cy, val, hBody)
+    }
+    cy -= rH
+  }
+
+  return cy
+}
+
 /** Convert PDF point size to ground metres at given scale */
 function ptToGround(pt, S) { return pt * S * 0.000352778; }
 
@@ -335,15 +574,30 @@ export function generateDXF(options, logger) {
       beaconDescTruncated: 0,
       priorDiagramsTruncated: 0,
       nonAscii: false,
+      scheduleOverflow: null,
     },
   }
-  function warn(category, n = 1) {
+  /**
+   * Records a warning of a given category. Three category families exist:
+   *   booleans   — 'scaleFallback', 'nonAscii' (sets summary[category] to true)
+   *   structured — 'scheduleOverflow' (stores `value` as the payload object)
+   *   counters   — everything else (adds `value` to summary[category])
+   * `warnings.count` increments by 1 for booleans + structured, by `value`
+   * for counters.
+   */
+  function warn(category, value = 1) {
     if (category === 'scaleFallback' || category === 'nonAscii') {
       warnings.summary[category] = true
-    } else {
-      warnings.summary[category] = (warnings.summary[category] || 0) + n
+      warnings.count += 1
+      return
     }
-    warnings.count += n
+    if (category === 'scheduleOverflow') {
+      warnings.summary[category] = value
+      warnings.count += 1
+      return
+    }
+    warnings.summary[category] = (warnings.summary[category] || 0) + value
+    warnings.count += value
   }
 
   const {
@@ -1172,19 +1426,26 @@ export function generateDXF(options, logger) {
 
   logger.info(`[DXF] Margins: L=${50}mm T=${50}mm B=${50}mm R=${150}mm, Content: ${(contentW / mm(1)).toFixed(0)}x${(contentH / mm(1)).toFixed(0)}mm`);
 
-  // Collect surveyed parcels (exclude outside figure)
-  const surveyedParcels = [];
-  if (parcels?.features) {
-    for (const f of parcels.features) {
-      const st = f.properties?.stand || '';
-      if (f.properties?.isOutsideFigure || st.toLowerCase().includes('outside figure')) continue;
-      surveyedParcels.push({ stand: st, area_m2: f.properties?.area_m2 || 0 });
-    }
-  }
-  surveyedParcels.sort((a, b) => {
-    const na = parseInt(a.stand) || 0, nb = parseInt(b.stand) || 0;
-    return na - nb || a.stand.localeCompare(b.stand);
-  });
+  // Filter outside-figure parcels and sort by stand. Used by both the
+  // figure-description text (surveyedParcels) and the Schedule of Areas
+  // emission (scheduleDataRows below) — sharing the source prevents
+  // silent drift between the two consumers.
+  const surveyedFeatures = (parcels?.features || [])
+    .filter(f => {
+      const st = (f.properties?.stand || '').toLowerCase();
+      return !f.properties?.isOutsideFigure && !st.includes('outside figure');
+    })
+    .sort((a, b) => {
+      const na = parseInt(a.properties?.stand) || 0;
+      const nb = parseInt(b.properties?.stand) || 0;
+      return na - nb || String(a.properties?.stand || '').localeCompare(String(b.properties?.stand || ''));
+    });
+
+  // Lightweight projection consumed by formatFigureDescription.
+  const surveyedParcels = surveyedFeatures.map(f => ({
+    stand: f.properties?.stand || '',
+    area_m2: f.properties?.area_m2 || 0,
+  }));
 
   // ── PAGE FRAME + DIVIDERS ──
   const TB = 'TITLE_BLOCK';
@@ -1290,21 +1551,73 @@ export function generateDXF(options, logger) {
   addLine(TB, col2R, drawDivY, col2R, cntB);
 
   // ── C1) SCHEDULE OF AREAS (bottom-left column) ──
+  // Layout-driven single/multi/overflow. Helpers operate in paper-mm;
+  // emission converts back to ground via mm(x) at the boundary.
   let sY = drawDivY - mm(5);
-  addText(TB, col1L, sY, 'SCHEDULE OF AREAS', hHead, 0, 'BOLD');
-  sY -= mm(5);
-  // Table header
-  const scW = col1R - col1L;
-  addText(TB, col1L, sY, 'STAND No', hBody, 0, 'BOLD');
-  addText(TB, col1L + scW * 0.35, sY, 'AREAS', hBody, 0, 'BOLD');
-  addText(TB, col1L + scW * 0.35, sY - hBody * 0.8, 'SQ. METRES', hBody, 0, 'BOLD');
-  addLine(TB, col1L, sY - mm(5), col1R - mm(3), sY - mm(5));
-  sY -= mm(7);
-  // Data rows
-  for (const sp of surveyedParcels) {
-    addText(TB, col1L, sY, String(sp.stand), hBody);
-    addText(TB, col1L + scW * 0.35, sY, Math.round(sp.area_m2).toString(), hBody);
-    sY -= rH;
+
+  // Schedule of Areas data rows — reads the shared surveyedFeatures so
+  // filter/sort changes can't desynchronise from the figure-description text.
+  const scheduleDataRows = surveyedFeatures.map(extractScheduleRow);
+
+  // Zone reservation: mm(3) right-edge padding (matches the existing
+  // schedule column convention); mm(4) bottom reserve for the
+  // beacon-descriptions block that follows below the schedule.
+  const zoneWidthGround  = col1R - col1L - mm(3);
+  const zoneHeightGround = (drawDivY - mm(5)) - (cntB + mm(4));
+
+  const scheduleLayout = computeScheduleLayout({
+    rowCount:         scheduleDataRows.length,
+    zoneWidth:        zoneWidthGround / mm(1),
+    zoneHeight:       zoneHeightGround / mm(1),
+    rowHeight:        rH / mm(1),
+    headerHeight:     SCHEDULE_HEADER_HEIGHT_MM,
+    currentSheetSize: sheetSize,
+  });
+
+  if (!scheduleLayout.fits) {
+    // Overflow: emit only the title as a placeholder, record structured warning.
+    addText(TB, col1L, sY, 'SCHEDULE OF AREAS', hHead, 0, 'BOLD');
+    warn('scheduleOverflow', {
+      atSheetSize:        sheetSize,
+      requiredSheetSize:  scheduleLayout.recommendedSheetSize,
+      standCount:         scheduleDataRows.length,
+    });
+    sY -= mm(10);
+  } else {
+    const columnWidthsGround = scheduleLayout.columnWidths.map(w => mm(w));
+    if (scheduleLayout.numTables === 1) {
+      sY = addScheduleTable({
+        layer: TB, x: col1L, y: sY,
+        dataRows: scheduleDataRows,
+        columnWidths: columnWidthsGround,
+        titleText: 'SCHEDULE OF AREAS',
+        hHead, hBody, rH,
+        addText, addLine,
+      });
+    } else {
+      // Side-by-side. Compute per-sub-table x offsets using the multi-mode spacing.
+      const spacingGround = mm(SCHEDULE_OF_AREAS.multiColumn.columnSpacing);
+      const subTableWidthGround = columnWidthsGround.reduce((s, w) => s + w, 0);
+      let deepestY = sY;
+      for (let i = 0; i < scheduleLayout.numTables; i++) {
+        const rows = scheduleDataRows.slice(
+          i * scheduleLayout.rowsPerTable,
+          (i + 1) * scheduleLayout.rowsPerTable,
+        );
+        const title = i === 0 ? 'SCHEDULE OF AREAS' : "SCHEDULE OF AREAS (cont'd)";
+        const subX = col1L + i * (subTableWidthGround + spacingGround);
+        const subY = addScheduleTable({
+          layer: TB, x: subX, y: sY,
+          dataRows: rows,
+          columnWidths: columnWidthsGround,
+          titleText: title,
+          hHead, hBody, rH,
+          addText, addLine,
+        });
+        if (subY < deepestY) deepestY = subY;
+      }
+      sY = deepestY;
+    }
   }
   // Beacon descriptions immediately below the Schedule of Areas
   const beaconDescTop = sY - mm(8);

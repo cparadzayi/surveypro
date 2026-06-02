@@ -180,3 +180,67 @@ describe('dxfGenerator integration — graceful degradation', () => {
     expect(diagonal.length).toBeGreaterThanOrEqual(1)
   })
 })
+
+describe('dxfGenerator integration — SI 727 title-block lines', () => {
+  test('figure-description sentence is emitted on TITLE_BLOCK', () => {
+    const { buffer } = generateDXF(sampleFixture, fakeLogger)
+    const dxf = buffer.toString()
+    // The opening "The figure ... represents ... comprising N stands" is
+    // distinctive enough that no other line can match it.
+    expect(dxf).toMatch(/The figure [A-Z, ]+ represents .+? comprising \d+ stands/)
+  })
+
+  test('Vide line is emitted on TITLE_BLOCK', () => {
+    const { buffer } = generateDXF(sampleFixture, fakeLogger)
+    const dxf = buffer.toString()
+    expect(dxf).toMatch(/Vide diagram S\.G\. No\./)
+  })
+
+  test('figure-description and Vide lines live on the TITLE_BLOCK layer', () => {
+    // Walk the DXF line-pair stream and collect TEXT values per layer.
+    // Mirrors the walker pattern already used by the OF edge-metadata test
+    // at the bottom of "graceful degradation".
+    const { buffer } = generateDXF(sampleFixture, fakeLogger)
+    const dxf = buffer.toString()
+    const lines = dxf.split('\n')
+    const titleBlockTexts = []
+    let i = 0, currentType = null, currentLayer = null
+    while (i < lines.length - 1) {
+      const code = lines[i].trim(), value = lines[i + 1].trim()
+      i += 2
+      if (code === '0' && /^[A-Z_]+$/.test(value)) { currentType = value; currentLayer = null }
+      else if (code === '8' && currentType === 'TEXT') currentLayer = value
+      else if (code === '1' && currentType === 'TEXT' && currentLayer === 'TITLE_BLOCK') {
+        titleBlockTexts.push(value)
+      }
+    }
+    expect(titleBlockTexts.some(t => /The figure .+ represents/.test(t))).toBe(true)
+    expect(titleBlockTexts.some(t => /Vide diagram S\.G\. No\./.test(t))).toBe(true)
+  })
+
+  test('no SHEET N label when sheetInfo is absent (single-sheet default)', () => {
+    const { buffer } = generateDXF(sampleFixture, fakeLogger)
+    const dxf = buffer.toString()
+    expect(dxf).not.toMatch(/\b1\s*\n\s*SHEET \d+\b/)
+  })
+
+  test('SHEET 1 label present when sheetInfo signals multi-sheet', () => {
+    const withMultiSheet = { ...sampleFixture, sheetInfo: { sheetNumber: 1, totalSheets: 3 } }
+    const { buffer } = generateDXF(withMultiSheet, fakeLogger)
+    const dxf = buffer.toString()
+    // Group code 1 is the text value; preceding context confirms it's a
+    // TEXT entity on TITLE_BLOCK.
+    expect(dxf).toMatch(/\b8\s*\n\s*TITLE_BLOCK\b[\s\S]*?\b1\s*\n\s*SHEET 1\b/)
+  })
+
+  test('SHEET 2 label when sheetNumber: 2', () => {
+    const sheet2 = { ...sampleFixture, sheetInfo: { sheetNumber: 2, totalSheets: 5 } }
+    const { buffer } = generateDXF(sheet2, fakeLogger)
+    expect(buffer.toString()).toMatch(/\b8\s*\n\s*TITLE_BLOCK\b[\s\S]*?\b1\s*\n\s*SHEET 2\b/)
+  })
+
+  test('clean sampleFixture still produces zero warnings after title-block changes', () => {
+    const { warnings } = generateDXF(sampleFixture, fakeLogger)
+    expect(warnings.count).toBe(0)
+  })
+})

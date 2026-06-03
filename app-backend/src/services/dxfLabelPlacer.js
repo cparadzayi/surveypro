@@ -163,3 +163,102 @@ export function findStandLabelPosition({
     height: heightEstimate,
   }
 }
+
+/**
+ * Find the edge-label position for a label on an edge of a parcel.
+ * Iterates perpendicular offset from the edge midpoint inward until
+ * all 4 rotated corners of the label bbox fit inside the parcel.
+ *
+ * Port of `pdfkitGeoPDF.js:4321-4427` `calculateSmartLabelPosition`,
+ * with the DXF adaptation that the returned `{x, y}` is the DXF addText
+ * insertion point (baseline-left). The PDF's `offset = -labelHeight/2`
+ * vertical adjustment is NOT applied.
+ *
+ * @param {Object} args
+ * @param {{x:number,y:number}} args.edgeStart
+ * @param {{x:number,y:number}} args.edgeEnd
+ * @param {Array<{x:number,y:number}>} args.polygon
+ * @param {number} args.labelHeight
+ * @param {number} args.labelWidth
+ * @param {number} args.angle - Rotation in degrees
+ * @param {number} [args.maxOffsetMultiplier=1] - Max offset as multiple of labelHeight (matches PDF's labelHeight + 5)
+ * @param {number} [args.stepSize] - Iteration step. Default labelHeight * 0.1
+ * @returns {{x:number, y:number}|null}
+ *   null if polygon is empty or edge is zero-length
+ */
+export function findEdgeLabelPosition({
+  edgeStart, edgeEnd, polygon, labelHeight, labelWidth, angle,
+  maxOffsetMultiplier = 1, stepSize,
+}) {
+  if (!Array.isArray(polygon) || polygon.length < 3) return null
+
+  const midX = (edgeStart.x + edgeEnd.x) / 2
+  const midY = (edgeStart.y + edgeEnd.y) / 2
+  const edgeDx = edgeEnd.x - edgeStart.x
+  const edgeDy = edgeEnd.y - edgeStart.y
+  const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy)
+  if (edgeLen < 1e-9) return null
+
+  // Perpendicular unit vector (rotated 90° counterclockwise)
+  const perpNormX = -edgeDy / edgeLen
+  const perpNormY =  edgeDx / edgeLen
+
+  // Test both inward directions at small offset to find which is inside parcel
+  const testOffset = 5
+  const testX1 = midX + perpNormX * testOffset
+  const testY1 = midY + perpNormY * testOffset
+  const testX2 = midX - perpNormX * testOffset
+  const testY2 = midY - perpNormY * testOffset
+
+  const inside1 = isPointInPolygon({ x: testX1, y: testY1 }, polygon)
+  const inside2 = isPointInPolygon({ x: testX2, y: testY2 }, polygon)
+
+  let offsetDir = 1
+  if (inside2 && !inside1) offsetDir = -1
+
+  // Iterative offset search
+  const maxOffset = labelHeight * maxOffsetMultiplier + 5
+  const step = stepSize ?? labelHeight * 0.1
+  const angleRad = angle * (Math.PI / 180)
+  const cos = Math.cos(angleRad)
+  const sin = Math.sin(angleRad)
+
+  let labelX, labelY
+  let isFullyInside = false
+
+  for (let offset = 2; offset <= maxOffset; offset += step) {
+    labelX = midX + perpNormX * offsetDir * offset
+    labelY = midY + perpNormY * offsetDir * offset
+
+    // 4 rotated corners of label bbox (centered on labelX, labelY for the corner check)
+    const corners = [
+      {
+        x: labelX - (labelWidth / 2) * cos + (labelHeight / 2) * sin,
+        y: labelY - (labelWidth / 2) * sin - (labelHeight / 2) * cos,
+      },
+      {
+        x: labelX + (labelWidth / 2) * cos + (labelHeight / 2) * sin,
+        y: labelY + (labelWidth / 2) * sin - (labelHeight / 2) * cos,
+      },
+      {
+        x: labelX + (labelWidth / 2) * cos - (labelHeight / 2) * sin,
+        y: labelY + (labelWidth / 2) * sin + (labelHeight / 2) * cos,
+      },
+      {
+        x: labelX - (labelWidth / 2) * cos - (labelHeight / 2) * sin,
+        y: labelY - (labelWidth / 2) * sin + (labelHeight / 2) * cos,
+      },
+    ]
+
+    isFullyInside = corners.every(c => isPointInPolygon(c, polygon))
+    if (isFullyInside) break
+  }
+
+  // If no valid offset found, use the max-offset position (best-effort, same as PDF)
+  if (!isFullyInside) {
+    labelX = midX + perpNormX * offsetDir * maxOffset
+    labelY = midY + perpNormY * offsetDir * maxOffset
+  }
+
+  return { x: labelX, y: labelY }
+}

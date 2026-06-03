@@ -59,3 +59,107 @@ export function checkLabelFitsInParcel({
     labelBottom <= maxY - padding
   )
 }
+
+/**
+ * INTERNAL helper — shoelace centroid. Inlined here so dxfLabelPlacer
+ * stays self-contained (doesn't depend on dxfGenerator.js's helper).
+ *
+ * @param {Array<{x:number,y:number}>} polygon
+ * @returns {{x:number,y:number}}
+ */
+function shoelaceCentroid(polygon) {
+  let twiceArea = 0, cx = 0, cy = 0
+  for (let i = 0; i < polygon.length; i++) {
+    const p0 = polygon[i], p1 = polygon[(i + 1) % polygon.length]
+    const cross = p0.x * p1.y - p1.x * p0.y
+    twiceArea += cross
+    cx += (p0.x + p1.x) * cross
+    cy += (p0.y + p1.y) * cross
+  }
+  const sixArea = 3 * twiceArea
+  if (Math.abs(sixArea) < 1e-12) {
+    // Degenerate polygon; fall back to vertex average.
+    let sx = 0, sy = 0
+    for (const p of polygon) { sx += p.x; sy += p.y }
+    return { x: sx / polygon.length, y: sy / polygon.length }
+  }
+  return { x: cx / sixArea, y: cy / sixArea }
+}
+
+/**
+ * Find the stand-label position for a parcel. Returns the DXF addText
+ * insertion point (baseline-left convention) plus the possibly-shrunk
+ * font height.
+ *
+ * Port of `pdfkitGeoPDF.js:1136-1225` with two DXF adaptations:
+ *   1. Char-width approximation (charWidthRatio default 0.55) replaces
+ *      the PDF's doc.widthOfString.
+ *   2. Returns the centroid directly as the addText insertion point
+ *      (DXF baseline-left). The PDF's width/2, height/2 subtractions
+ *      are NOT applied — they belong to the PDF's bottom-left convention.
+ *
+ * `findLargestInscribedCircle` fallback dropped (the PDF version at
+ * line 1247 is a stub returning the centroid; we just use the centroid).
+ *
+ * @param {Object} args
+ * @param {Array<{x:number,y:number}>} args.polygon - 3+ vertices, NOT closed (last vertex doesn't repeat first)
+ * @param {string} args.standNumber
+ * @param {number} args.fontHeight - Initial font height; may shrink during iteration
+ * @param {number} [args.charWidthRatio=0.55] - Character-width-to-height ratio for width estimation
+ * @param {number} [args.minFontHeightRatio=0.5] - Floor for the iterative shrink (fraction of input fontHeight)
+ * @returns {{x:number, y:number, fontHeight:number, width:number, height:number}|null}
+ *   null if polygon has fewer than 3 vertices
+ */
+export function findStandLabelPosition({
+  polygon, standNumber, fontHeight, charWidthRatio = 0.55, minFontHeightRatio = 0.5,
+}) {
+  if (!Array.isArray(polygon) || polygon.length < 3) return null
+
+  const centroid = shoelaceCentroid(polygon)
+  // PDF's isPointInPolygon check is informational — the fallback is a stub returning
+  // the centroid anyway, so the result is the same. We still call it to match PDF flow.
+  // eslint-disable-next-line no-unused-vars
+  const centroidInside = isPointInPolygon(centroid, polygon)
+  const labelPoint = centroid
+
+  // Polygon bbox
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const p of polygon) {
+    if (p.x < minX) minX = p.x
+    if (p.x > maxX) maxX = p.x
+    if (p.y < minY) minY = p.y
+    if (p.y > maxY) maxY = p.y
+  }
+  const parcelWidth  = maxX - minX
+  const parcelHeight = maxY - minY
+
+  // PDF's edge-label reserve constant + minimum dimensions
+  const edgeLabelReserve = 25
+  const maxAllowedWidth  = Math.max(15, parcelWidth  - edgeLabelReserve * 2)
+  const maxAllowedHeight = Math.max(10, parcelHeight - edgeLabelReserve * 2)
+
+  // Iterative shrink — match PDF's `while (...) { fontSize -= 1; }` style but
+  // step by 10% of input fontHeight so the iteration count stays bounded.
+  const minFontHeight = fontHeight * minFontHeightRatio
+  const step = fontHeight * 0.1
+  let h = fontHeight
+  let widthEstimate  = standNumber.length * h * charWidthRatio
+  let heightEstimate = h * 1.2
+  while (
+    (widthEstimate > maxAllowedWidth * 0.5 || heightEstimate > maxAllowedHeight * 0.5) &&
+    h > minFontHeight
+  ) {
+    h -= step
+    if (h < minFontHeight) h = minFontHeight
+    widthEstimate  = standNumber.length * h * charWidthRatio
+    heightEstimate = h * 1.2
+  }
+
+  return {
+    x: labelPoint.x,
+    y: labelPoint.y,
+    fontHeight: h,
+    width: widthEstimate,
+    height: heightEstimate,
+  }
+}

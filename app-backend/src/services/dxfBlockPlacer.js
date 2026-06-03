@@ -50,3 +50,39 @@ export function computeMapFeatureBounds(polygon) {
     polygon,
   }
 }
+
+/**
+ * Predicate — true if `rect` does NOT overlap any obstacle in
+ * `polygon` or `placedBlocks`. Composes the three checks the PDF's
+ * `isValidPosition` does (port of `pdfkitGeoPDF.js:9344`):
+ *   1. Polygon overlap via 4a's rectangleOverlapsPolygon(rect, polygon, buffer)
+ *      — skipped when polygon is null/empty.
+ *   2. Block overlap via 4a's rectanglesOverlap(rect, placedBlocks[i], blockSpacing)
+ *      — returns false on first overlap.
+ *   3. Returns true if all checks pass.
+ *
+ * True predicate (boolean). No {valid, reason} shape like the PDF
+ * original — DXF callers don't currently surface placement-failure
+ * reasons.
+ *
+ * @param {Object} args
+ * @param {{x:number,y:number,width:number,height:number}} args.rect - The candidate position+size to validate
+ * @param {Array<{x:number,y:number}>|null} args.polygon - Polygon to avoid (skipped if null/empty)
+ * @param {Array<{x:number,y:number,width:number,height:number}>} args.placedBlocks - Obstacles
+ * @param {number} args.buffer - Polygon-clearance distance
+ * @param {number} args.blockSpacing - Minimum separation between rect and any placed block
+ * @returns {boolean}
+ */
+export function isValidPosition({ rect, polygon, placedBlocks, buffer, blockSpacing }) {
+  // Polygon overlap check (skipped when polygon is missing/empty)
+  if (Array.isArray(polygon) && polygon.length > 0) {
+    if (rectangleOverlapsPolygon(rect, polygon, buffer)) return false
+  }
+
+  // Block-vs-block overlap check
+  for (const placedBlock of placedBlocks) {
+    if (rectanglesOverlap(rect, placedBlock, blockSpacing)) return false
+  }
+
+  return true
+}

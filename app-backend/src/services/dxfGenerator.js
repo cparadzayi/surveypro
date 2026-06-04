@@ -29,6 +29,7 @@ import {
   nextLargerSheet,
   SCHEDULE_HEADER_HEIGHT_MM,
 } from './dxfScheduleHelpers.js'
+import { emitScheduleOfAreasTopological } from './dxfScheduleEmitter.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
 // External consumers (tests, other modules) keep importing from dxfGenerator.js.
@@ -1349,114 +1350,88 @@ export function generateDXF(options, logger) {
   eY -= mm(8);
   drawEndorsementZone(eX, endorseR, cntT - mm(5), cntB + mm(5));
 
-  // â”€â”€ C) BOTTOM ZONE LAYOUT (within content area, below drawDivY) â”€â”€
-  // Split into 3 columns: Schedule (28%), Statement+OFData (42%), Approved (30%)
-  const col1L = cntL + mm(3);                            // schedule column
-  const col1R = cntL + contentW * 0.28;
-  const col2L = col1R + mm(3);                            // statement + OF data column
-  const col2R = col1R + contentW * 0.42;
-  const col3L = col2R + mm(3);                            // approved + coords column
-  const col3R = cntR - mm(3);
+  // ── C) BOTTOM ZONE LAYOUT (within content area, below drawDivY) ──
+  // 3-v2: col1 dissolved. Schedule and beacon descriptions emit topologically
+  // in the drawing zone (above drawDivY). Bottom zone is split into two columns:
+  //   statement (Statement+OFData, 58% of contentW from left)
+  //   approved (Approved+Coords, ~42% of contentW from right)
+  const statementL = cntL + mm(3);
+  const statementR = cntL + contentW * 0.58;
+  const approvedL  = statementR + mm(3);
+  const approvedR  = cntR - mm(3);
 
-  // Vertical dividers in bottom zone
-  addLine(TB, col1R, drawDivY, col1R, cntB);
-  addLine(TB, col2R, drawDivY, col2R, cntB);
+  // Vertical divider between statement (left) and approved (right).
+  addLine(TB, statementR, drawDivY, statementR, cntB);
 
-  // â”€â”€ C1) SCHEDULE OF AREAS (bottom-left column) â”€â”€
-  // Layout-driven single/multi/overflow. Helpers operate in paper-mm;
-  // emission converts back to ground via mm(x) at the boundary.
-  let sY = drawDivY - mm(5);
+  // ── C1) SCHEDULE OF AREAS — topological placement (3-v2) ──
+  // Schedule and beacon descriptions emit into the drawing zone (above drawDivY).
+  // emitScheduleOfAreasTopological returns southmostY = min(p.y) across placed
+  // sub-tables (DXF south-up); beacon descriptions anchor just below that.
+  const drawingZone = {
+    x: cntL,
+    y: drawDivY,                       // LOW y in DXF (bottom of drawing zone)
+    width:  cntR - cntL,
+    height: cntT - drawDivY,
+  };
 
-  // Schedule of Areas data rows â€” reads the shared surveyedFeatures so
-  // filter/sort changes can't desynchronise from the figure-description text.
-  const scheduleDataRows = surveyedFeatures.map(extractScheduleRow);
+  // Outside-figure outline as polygon to avoid (null when absent).
+  const figurePolygon = (ofResult && Array.isArray(ofResult.vertices) && ofResult.vertices.length >= 3)
+    ? ofResult.vertices
+    : null;
 
-  // Zone reservation: mm(3) right-edge padding (matches the existing
-  // schedule column convention); mm(4) bottom reserve for the
-  // beacon-descriptions block that follows below the schedule.
-  const zoneWidthGround  = col1R - col1L - mm(3);
-  const zoneHeightGround = (drawDivY - mm(5)) - (cntB + mm(4));
-
-  const scheduleLayout = computeScheduleLayout({
-    rowCount:         scheduleDataRows.length,
-    zoneWidth:        zoneWidthGround / mm(1),
-    zoneHeight:       zoneHeightGround / mm(1),
-    rowHeight:        rH / mm(1),
-    headerHeight:     SCHEDULE_HEADER_HEIGHT_MM,
-    currentSheetSize: sheetSize,
+  const scheduleResult = emitScheduleOfAreasTopological({
+    surveyedFeatures,
+    drawingZone,
+    polygon: figurePolygon,
+    sheetSize,
+    fonts: { hHead, hBody, rH },
+    helpers: {
+      extractScheduleRow,
+      computeScheduleLayout,
+      addScheduleTable,
+      nextLargerSheet,
+      SCHEDULE_HEADER_HEIGHT_MM,
+      mm,
+    },
+    addText: (layer, x, y, text, height, angle, style) => addText(layer, x, y, text, height, angle, style),
+    addLine: (layer, x1, y1, x2, y2) => addLine(layer, x1, y1, x2, y2),
+    warn,
+    logger,
   });
 
-  if (!scheduleLayout.fits) {
-    // Overflow: emit only the title as a placeholder, record structured warning.
-    addText(TB, col1L, sY, 'SCHEDULE OF AREAS', hHead, 0, 'BOLD');
-    warn('scheduleOverflow', {
-      atSheetSize:        sheetSize,
-      requiredSheetSize:  scheduleLayout.recommendedSheetSize,
-      standCount:         scheduleDataRows.length,
-    });
-    sY -= mm(10);
-  } else {
-    const columnWidthsGround = scheduleLayout.columnWidths.map(w => mm(w));
-    if (scheduleLayout.numTables === 1) {
-      sY = addScheduleTable({
-        layer: TB, x: col1L, y: sY,
-        dataRows: scheduleDataRows,
-        columnWidths: columnWidthsGround,
-        titleText: 'SCHEDULE OF AREAS',
-        hHead, hBody, rH,
-        addText, addLine,
-      });
-    } else {
-      // Side-by-side. Compute per-sub-table x offsets using the multi-mode spacing.
-      const spacingGround = mm(SCHEDULE_OF_AREAS.multiColumn.columnSpacing);
-      const subTableWidthGround = columnWidthsGround.reduce((s, w) => s + w, 0);
-      let deepestY = sY;
-      for (let i = 0; i < scheduleLayout.numTables; i++) {
-        const rows = scheduleDataRows.slice(
-          i * scheduleLayout.rowsPerTable,
-          (i + 1) * scheduleLayout.rowsPerTable,
-        );
-        const title = i === 0 ? 'SCHEDULE OF AREAS' : "SCHEDULE OF AREAS (cont'd)";
-        const subX = col1L + i * (subTableWidthGround + spacingGround);
-        const subY = addScheduleTable({
-          layer: TB, x: subX, y: sY,
-          dataRows: rows,
-          columnWidths: columnWidthsGround,
-          titleText: title,
-          hHead, hBody, rH,
-          addText, addLine,
-        });
-        if (subY < deepestY) deepestY = subY;
-      }
-      sY = deepestY;
-    }
-  }
-  // Beacon descriptions immediately below the Schedule of Areas
-  const beaconDescTop = sY - mm(8);
-  addBeaconDescription(TB, col1L, col1R - mm(2),
-                        beaconDescTop, cntB + mm(4),
-                        options.beaconGroups || []);
+  // Beacon descriptions — anchored just below the bottommost placed sub-table.
+  // When no sub-tables placed (overflow), scheduleResult.southmostY === drawingZone.y;
+  // fall back to anchoring near the top of the drawing zone.
+  const beaconAnchorY = scheduleResult.placedTables.length > 0
+    ? scheduleResult.southmostY - mm(8)
+    : drawingZone.y + drawingZone.height - mm(20);
+  addBeaconDescription(
+    TB,
+    cntL, cntR - mm(2),
+    beaconAnchorY, cntB + mm(4),
+    options.beaconGroups || [],
+  );
 
   // â”€â”€ C2) SURVEY STATEMENT + OUTSIDE FIGURE DATA (center column) â”€â”€
   let cY = drawDivY - mm(5);
   // Statement
   if (metadata.date) {
-    addText(TB, col2L, cY, `Surveyed in ${metadata.date} by me`, hBody);
+    addText(TB, statementL, cY, `Surveyed in ${metadata.date} by me`, hBody);
     cY -= rH * 1.5;
   }
   if (metadata.surveyor) {
-    addText(TB, col2L, cY, metadata.surveyor, hSub, 0, 'BOLD');
+    addText(TB, statementL, cY, metadata.surveyor, hSub, 0, 'BOLD');
     cY -= rH;
-    addText(TB, col2L, cY, '(Land Surveyor, Zim)', hBody);
+    addText(TB, statementL, cY, '(Land Surveyor, Zim)', hBody);
     cY -= rH * 1.5;
   }
 
   // Horizontal divider before OF data
-  addLine(TB, col2L - mm(3), cY + mm(2), col3R + mm(3), cY + mm(2));
+  addLine(TB, statementL - mm(3), cY + mm(2), approvedR + mm(3), cY + mm(2));
   cY -= mm(3);
 
   // Outside Figure Data table
-  const c = (off) => col2L + off; // offset helper
+  const c = (off) => statementL + off; // offset helper
   const cS = mm(0), cM = mm(28), cD = mm(50), cK = mm(78);
   const cCY = mm(95), cCX = mm(115);
 
@@ -1470,14 +1445,14 @@ export function generateDXF(options, logger) {
   addLine(TB, coordDivX, cY + rH * 1.5, coordDivX, cY - rH * ((outsideFigureData?.edges?.length || 0) + 1));
 
   // Column headers
-  addLine(TB, col2L - mm(3), cY + mm(2), col3R + mm(3), cY + mm(2));
+  addLine(TB, statementL - mm(3), cY + mm(2), approvedR + mm(3), cY + mm(2));
   addText(TB, c(cS), cY, 'SIDES', hBody, 0, 'BOLD');
   addText(TB, c(cM), cY, 'Metres', hBody, 0, 'BOLD');
   addText(TB, c(cD), cY, 'DIRECTION', hBody, 0, 'BOLD');
   addText(TB, c(cK), cY, 'Constants', hBody, 0, 'BOLD');
   addText(TB, c(cCY), cY, 'Y', hBody, 0, 'BOLD');
   addText(TB, c(cCX), cY, 'X', hBody, 0, 'BOLD');
-  addLine(TB, col2L - mm(3), cY - mm(2), col3R + mm(3), cY - mm(2));
+  addLine(TB, statementL - mm(3), cY - mm(2), approvedR + mm(3), cY - mm(2));
   cY -= rH;
 
   // Data rows
@@ -1501,8 +1476,8 @@ export function generateDXF(options, logger) {
 
   // â”€â”€ C3) APPROVED BOX (right bottom column) â”€â”€
   let aY = drawDivY - mm(5);
-  const aCX = (col3L + col3R) / 2;
-  addRect(TB, col3L, aY - mm(30), col3R, aY);  // approved box border
+  const aCX = (approvedL + approvedR) / 2;
+  addRect(TB, approvedL, aY - mm(30), approvedR, aY);  // approved box border
   aY -= mm(5);
   addText(TB, aCX, aY, 'Approved', hSub, 0, 'BOLD');
   aY -= mm(8);

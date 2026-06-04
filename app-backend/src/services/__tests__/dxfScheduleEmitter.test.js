@@ -178,6 +178,129 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
   })
 })
 
+describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
+  let h
+  beforeEach(() => { h = makeHarness() })
+
+  test('13. computeScheduleLayout fits:false → title placeholder + warn(phase:"initial-budget")', () => {
+    const features = makeFeatures(50)
+    const drawingZone = { x: 0, y: 0, width: 10, height: 5 }
+    emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    const titlePlaceholders = h.calls.addText.filter(args => args[3] === 'SCHEDULE OF AREAS')
+    expect(titlePlaceholders.length).toBe(1)
+    const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
+    expect(warns.length).toBe(1)
+    expect(warns[0].payload.phase).toBe('initial-budget')
+  })
+
+  test('14. warn payload shape: atSheetSize, recommendedSheetSize, placedStandCount, missingStandCount, placedTables', () => {
+    const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
+    const polygon = [
+      { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
+    ]
+    emitScheduleOfAreasTopological({
+      surveyedFeatures: makeFeatures(24),
+      drawingZone, polygon, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
+    expect(warns.length).toBeGreaterThan(0)
+    const payload = warns[0].payload
+    expect(payload).toHaveProperty('atSheetSize', 'ISO_A2')
+    expect(payload).toHaveProperty('recommendedSheetSize')
+    expect(payload).toHaveProperty('placedStandCount')
+    expect(payload).toHaveProperty('missingStandCount')
+    expect(payload).toHaveProperty('placedTables')
+    expect(payload).toHaveProperty('phase')
+  })
+
+  test('15. recommendedSheetSize uses nextLargerSheet(sheetSize)', () => {
+    const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
+    const polygon = [
+      { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
+    ]
+    emitScheduleOfAreasTopological({
+      surveyedFeatures: makeFeatures(24),
+      drawingZone, polygon, sheetSize: 'ISO_A1',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
+    expect(warns.length).toBeGreaterThan(0)
+    expect(warns[0].payload.recommendedSheetSize).toBe('ISO_A0')
+  })
+
+  test('16. polygon with rectangle obstacle → placements avoid the polygon', () => {
+    // Polygon obstacle at x=200..280 (80 wide) leaves a 320-wide right strip
+    // (x=283..600, accounting for blockSpacing buffer) that fits the 260-wide
+    // sub-table. Left strip x=0..197 is only 197 wide and won't fit.
+    const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
+    const polygon = [
+      { x: 200, y: 20 }, { x: 280, y: 20 }, { x: 280, y: 60 }, { x: 200, y: 60 },
+    ]
+    const features = makeFeatures(6)
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    expect(result.placedTables.length).toBeGreaterThan(0)
+    for (const t of result.placedTables) {
+      const cx = t.x + t.width / 2
+      const cy = t.y + t.height / 2
+      const insidePolygon = cx >= 200 && cx <= 280 && cy >= 20 && cy <= 60
+      expect(insidePolygon).toBe(false)
+    }
+  })
+
+  test('17. drawingZone too narrow for one sub-table → scheduleOverflow (initial-budget)', () => {
+    const features = makeFeatures(100)
+    const drawingZone = { x: 0, y: 0, width: 100, height: 100 }
+    emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
+    expect(warns.length).toBe(1)
+    expect(warns[0].payload.phase).toBe('initial-budget')
+  })
+
+  test('18. logger.info called with topology candidate counts (smoke test)', () => {
+    const calls = { info: [], warn: [], error: [] }
+    const logger = {
+      info:  (msg) => calls.info.push(msg),
+      warn:  (msg) => calls.warn.push(msg),
+      error: (msg) => calls.error.push(msg),
+    }
+    const features = makeFeatures(3)
+    const drawingZone = { x: 0, y: 0, width: 400, height: 300 }
+    emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn,
+      logger,
+    })
+
+    const infoMsgs = calls.info.join(' ')
+    expect(infoMsgs).toMatch(/Layer 1.*topology/)
+  })
+})
+
 describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () => {
   let h
   beforeEach(() => { h = makeHarness() })

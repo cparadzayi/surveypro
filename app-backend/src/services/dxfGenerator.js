@@ -21,6 +21,7 @@
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 import { TITLE_BLOCK, SCHEDULE_OF_AREAS, formatStandRanges } from '../../../app-shared/block-definitions.js'
+import { findStandLabelPosition, findEdgeLabelPosition } from './dxfLabelPlacer.js'
 
 /**
  * Word-boundary wrap for single-line DXF TEXT entities.
@@ -1188,11 +1189,13 @@ export function generateDXF(options, logger) {
       addPolyline('PARCELS', polyPts);
       parcelCount++;
 
-      // ── Stand label: shoelace centroid, rotated to longest edge ──
+      // ── Stand label: shoelace centroid + 4d's iterative font-shrink ──
       const centroid = shoelaceCentroid(polyPts);
       const area = polygonAreaGround(polyPts);
 
-      // Adaptive stand font size (matches PDF's calculateStandLabelPosition)
+      // Adaptive stand font size — area-bucketed initial value (matches existing behavior).
+      // 4d's findStandLabelPosition may shrink this further if the rendered string
+      // doesn't fit the parcel's allowable bounds.
       let standPt;
       if (area > 10000) standPt = 16;
       else if (area > 2000) standPt = 14;
@@ -1216,7 +1219,15 @@ export function generateDXF(options, logger) {
       if (longestAngle > 90) longestAngle -= 180;
       if (longestAngle < -90) longestAngle += 180;
 
-      if (Number.isFinite(centroid.x) && Number.isFinite(centroid.y)) {
+      // 4d: smart stand-label position. Falls back to centroid if placer returns null
+      // (degenerate polygon — same as the existing Number.isFinite guard below).
+      const standPos = findStandLabelPosition({
+        polygon: polyPts, standNumber: String(stand), fontHeight: standHeight,
+      });
+      if (standPos && Number.isFinite(standPos.x) && Number.isFinite(standPos.y)) {
+        addText('STAND_NUMBERS', standPos.x, standPos.y, String(stand), standPos.fontHeight, longestAngle, 'BOLD');
+      } else if (Number.isFinite(centroid.x) && Number.isFinite(centroid.y)) {
+        // Fallback: existing inline behavior. Matches pre-4d output for degenerate polygons.
         addText('STAND_NUMBERS', centroid.x, centroid.y, String(stand), standHeight, longestAngle, 'BOLD');
       }
 
@@ -1268,7 +1279,7 @@ export function generateDXF(options, logger) {
         let ang = Math.atan2(dy, dx) * (180 / Math.PI);
         if (ang > 90 || ang < -90) ang += 180;
 
-        // Perpendicular toward centroid (matches PDF)
+        // Perpendicular toward centroid (existing — kept as fallback when placer returns null)
         let nx = -dy / len, ny = dx / len;
         if (nx * (centroid.x - mx) + ny * (centroid.y - my) < 0) { nx = -nx; ny = -ny; }
 
@@ -1283,9 +1294,28 @@ export function generateDXF(options, logger) {
           : parseFloat(edge.bearing);
         const dirText = Number.isFinite(bearDeg) ? (edge.directionDMS || degToDMS(bearDeg)) : null;
 
+        // 4d: smart edge-label position for the distance label (the bearing label,
+        // if any, is positioned at a further offset along the same perpendicular
+        // direction). Char-width approximation for label-width estimate matches
+        // sub-project #2's splitToWidth convention.
+        const distLabelWidth = distText ? distText.length * distHeight * 0.55 : distHeight * 4;
+        const smartPos = findEdgeLabelPosition({
+          edgeStart: a, edgeEnd: b, polygon: polyPts,
+          labelHeight: distHeight, labelWidth: distLabelWidth, angle: ang,
+        });
+
+        // Derive distance-label position + implied offset for stacking the bearing
+        const distX = smartPos?.x ?? (mx + nx * edgeOffset);
+        const distY = smartPos?.y ?? (my + ny * edgeOffset);
+        // Implied offset = distance from edge midpoint to chosen position.
+        // Falls back to the existing fixed edgeOffset when the placer returned null.
+        const impliedOffset = smartPos
+          ? Math.sqrt((distX - mx) * (distX - mx) + (distY - my) * (distY - my))
+          : edgeOffset;
+
         if (labelMode === 'both' || labelMode === 'distance-only') {
           if (distText) {
-            addText('DISTANCES', mx + nx * edgeOffset, my + ny * edgeOffset, distText, distHeight, ang);
+            addText('DISTANCES', distX, distY, distText, distHeight, ang);
             edgeLabelCount++;
           }
           // Register this edge
@@ -1294,9 +1324,9 @@ export function generateDXF(options, logger) {
           } else {
             edgeInfo.distance = true;
           }
-          // For non-shared 'both': place bearing stacked below distance
+          // For non-shared 'both': place bearing stacked further out along the same perpendicular
           if (labelMode === 'both' && dirText) {
-            const bearOff = edgeOffset + distHeight / 2 + pairGap + bearHeight / 2;
+            const bearOff = impliedOffset + distHeight / 2 + pairGap + bearHeight / 2;
             addText('DIRECTIONS', mx + nx * bearOff, my + ny * bearOff, dirText, bearHeight, ang);
             edgeLabelCount++;
             const stored = labeledEdges.get(edgeKey);
@@ -1305,8 +1335,8 @@ export function generateDXF(options, logger) {
         }
 
         if (labelMode === 'bearing-only' && dirText) {
-          // Shared edge: bearing placed in THIS (second) parcel at 3mm offset
-          addText('DIRECTIONS', mx + nx * edgeOffset, my + ny * edgeOffset, dirText, bearHeight, ang);
+          // Shared edge: bearing uses the smart position too (single label, not stacked)
+          addText('DIRECTIONS', distX, distY, dirText, bearHeight, ang);
           edgeLabelCount++;
           if (edgeInfo) edgeInfo.bearing = true;
         }

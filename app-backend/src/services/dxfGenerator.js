@@ -1,5 +1,5 @@
-/**
- * DXF Generator for Survey Plans — R12 (AC1009) format
+﻿/**
+ * DXF Generator for Survey Plans â€” R12 (AC1009) format
  * Mirrors the PDF labeling system: scale-aware text heights, shared-edge
  * topology (distance one side / bearing the other), stand labels rotated to
  * longest edge, BOLD text style for stand numbers.
@@ -8,20 +8,36 @@
  * All geometry in Cape Lo ground coordinates (real-world metres).
  *
  * Layers:
- *   OUTSIDE_FIGURE   – Outside figure boundary (red)
- *   PARCELS           – Land parcel boundaries (white/black)
- *   BEACONS           – Beacon circles (green)
- *   BEACON_LABELS     – Beacon name text (green)
- *   DISTANCES         – Edge distance annotations (cyan)
- *   DIRECTIONS        – Edge bearing annotations (magenta)
- *   STAND_NUMBERS     – Parcel stand numbers (yellow, BOLD style)
- *   TITLE_BLOCK       – Title and metadata text (white)
+ *   OUTSIDE_FIGURE   â€“ Outside figure boundary (red)
+ *   PARCELS           â€“ Land parcel boundaries (white/black)
+ *   BEACONS           â€“ Beacon circles (green)
+ *   BEACON_LABELS     â€“ Beacon name text (green)
+ *   DISTANCES         â€“ Edge distance annotations (cyan)
+ *   DIRECTIONS        â€“ Edge bearing annotations (magenta)
+ *   STAND_NUMBERS     â€“ Parcel stand numbers (yellow, BOLD style)
+ *   TITLE_BLOCK       â€“ Title and metadata text (white)
  */
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import { TITLE_BLOCK, SCHEDULE_OF_AREAS, formatStandRanges } from '../../../app-shared/block-definitions.js'
 import { findStandLabelPosition, findEdgeLabelPosition } from './dxfLabelPlacer.js'
+import {
+  extractScheduleRow,
+  computeScheduleLayout,
+  addScheduleTable,
+  nextLargerSheet,
+  SCHEDULE_HEADER_HEIGHT_MM,
+} from './dxfScheduleHelpers.js'
+
+// Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
+// External consumers (tests, other modules) keep importing from dxfGenerator.js.
+export {
+  extractScheduleRow,
+  computeScheduleLayout,
+  addScheduleTable,
+  nextLargerSheet,
+} from './dxfScheduleHelpers.js'
 
 /**
  * Word-boundary wrap for single-line DXF TEXT entities.
@@ -55,7 +71,7 @@ export function splitToWidth(str, maxChars) {
 /**
  * Returns `["SHEET N"]` when sheetInfo indicates a multi-sheet plan
  * (totalSheets > 1) with a positive integer sheetNumber. Returns [] for
- * any other input shape. No warning on malformed input — the absent label
+ * any other input shape. No warning on malformed input â€” the absent label
  * is itself visible to the surveyor in CAD.
  */
 export function formatSheetLabel(sheetInfo) {
@@ -70,7 +86,7 @@ export function formatSheetLabel(sheetInfo) {
  * Returns the SI 727 Seventh Schedule (b) Vide template from
  * `app-shared/block-definitions.js`, wrapped via `splitToWidth` to fit
  * `maxLineChars`. Always returns at least one entry. Throws if the
- * template is missing from the shared module (configuration bug —
+ * template is missing from the shared module (configuration bug â€”
  * the PDF would fail the same way).
  */
 export function formatVideLine(maxLineChars) {
@@ -80,7 +96,7 @@ export function formatVideLine(maxLineChars) {
 }
 
 /**
- * Title-case helper: "lot 9 of borrowdale" → "Lot 9 Of Borrowdale".
+ * Title-case helper: "lot 9 of borrowdale" â†’ "Lot 9 Of Borrowdale".
  * Matches the PDF's `toTitleCase` style for figure-description substitutions.
  */
 function titleCase(str) {
@@ -152,7 +168,7 @@ export function capeLoToDxfSouthUp(capeY, capeX) {
     // Log once via the singleton flag; logger may not be in scope here.
     if (!capeLoToDxfSouthUp._warned) {
       // eslint-disable-next-line no-console
-      console.error('[DXF] capeLoToDxfSouthUp: positive Westing produced negative x — stale east-up call?')
+      console.error('[DXF] capeLoToDxfSouthUp: positive Westing produced negative x â€” stale east-up call?')
       capeLoToDxfSouthUp._warned = true
     }
   }
@@ -210,7 +226,7 @@ export function computeOutsideFigureVertices(outsideFigureData) {
     }
     // edgeIndex preserves the original position in outsideFigureData.edges so
     // consumers can detect "bridged" polygon edges (i.e. consecutive kept
-    // vertices whose original indices aren't adjacent — indicating a filtered
+    // vertices whose original indices aren't adjacent â€” indicating a filtered
     // vertex in between) and fall back to geometry rather than reading stale
     // distance/direction metadata from the wrong original edge.
     vertices.push({ y: e.y, x: e.x, pointId: e.pointId || '', edgeIndex: idx })
@@ -242,7 +258,7 @@ function degToDMS(deg) {
   return `${d}d${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"`;
 }
 
-/** Shared-edge key: sorted, rounded to 10mm — matches PDF's createEdgeKey */
+/** Shared-edge key: sorted, rounded to 10mm â€” matches PDF's createEdgeKey */
 function createEdgeKey(c1, c2) {
   const y1 = Math.round(c1[0] * 100) / 100;
   const x1 = Math.round(c1[1] * 100) / 100;
@@ -310,244 +326,10 @@ const PAPER_SIZES = {
   'ISO_A0': { w: 1189, h: 841 },
 };
 
-/**
- * Paper-size escalation ladder used by Schedule of Areas overflow detection
- * (and consumed by sub-project #5 multi-sheet tiling). Walking the ladder
- * stops at ISO_A0; beyond that, the layout returns 'multi-sheet-required'.
- *
- * ISO_A4 and ISO_A3 are deliberately excluded: cadastral plans always
- * start at ISO_A2 (the DXF generator's default). Smaller sheets are not
- * valid Schedule of Areas starting sizes.
- */
-const SHEET_LADDER = ['ISO_A2', 'ISO_A1', 'ISO_A0']
+// SHEET_LADDER, SCHEDULE_HEADER_HEIGHT_MM, nextLargerSheet, extractScheduleRow,
+// computeScheduleLayout, addScheduleTable: extracted to dxfScheduleHelpers.js
+// during sub-project 3-v2. Re-exported above so external consumers still work.
 
-/**
- * Total paper-millimetres reserved for the Schedule of Areas header
- * (title + column headers + DEED parent + underline). Shared by
- * computeScheduleLayout's row-budget math AND addScheduleTable's actual
- * header emission. Drift between the two would silently break the layout.
- */
-const SCHEDULE_HEADER_HEIGHT_MM = 12
-
-/**
- * Returns the next-larger sheet size in SHEET_LADDER, or
- * 'multi-sheet-required' when already at the top (or for an unknown
- * starting size — defensive fallback so sub-project #5 always sees a
- * clear signal).
- */
-export function nextLargerSheet(currentSheetSize) {
-  const idx = SHEET_LADDER.indexOf(currentSheetSize)
-  if (idx < 0 || idx === SHEET_LADDER.length - 1) return 'multi-sheet-required'
-  return SHEET_LADDER[idx + 1]
-}
-
-/**
- * Extracts the six SI 727 Schedule-of-Areas column values from a parcel
- * GeoJSON feature's `properties`. Returns an object whose values are all
- * strings ('' for absent optional fields).
- *
- * The four optional fields (diagram, deedNumber, deedDate, surveyor) are
- * populated by Surveyor-General officials at approval time as ownership
- * transfers. They're meant to be blank at submission — the DXF still
- * emits the full 6-column header so the SI 727 form is recognisable.
- */
-export function extractScheduleRow(parcelFeature) {
-  const props = parcelFeature?.properties || {}
-  return {
-    stand:      String(props.stand ?? ''),
-    area:       String(Math.round(props.area_m2 ?? 0)),
-    diagram:    String(props.diagram ?? ''),
-    deedNumber: String(props.deedNumber ?? ''),
-    deedDate:   String(props.deedDate ?? ''),
-    surveyor:   String(props.surveyor ?? ''),
-  }
-}
-
-/**
- * Computes the Schedule-of-Areas layout for a given row count and zone
- * size (in paper-millimetres). Returns either a fits-true layout with
- * scaled column widths, or a fits-false escalation with a
- * recommendedSheetSize.
- *
- * Inputs:
- *   rowCount         number of data rows to render
- *   zoneWidth        available width in paper-mm
- *   zoneHeight       available height in paper-mm
- *   rowHeight        per-row height in paper-mm
- *   headerHeight     reserved header height in paper-mm (use SCHEDULE_HEADER_HEIGHT_MM)
- *   currentSheetSize current sheet size string (e.g. 'ISO_A2')
- *
- * Returns either:
- *   { fits: true,  numTables, rowsPerTable, columnWidths: number[6] }
- * or:
- *   { fits: false, recommendedSheetSize }
- *
- * Spec amendment: the spec's `zoneWidth >= singleTableWidth / 2`
- * readability check is dropped here. The DXF's bottom-left zone is
- * ~28% of content width — at A2 (~104mm) the check would always fail.
- * Instead, single-column mode always scales columns down to fit
- * zoneWidth (up to a 1.0 scale factor, never inflating). Multi-column
- * overflow detection is unchanged.
- */
-export function computeScheduleLayout({
-  rowCount,
-  zoneWidth,
-  zoneHeight,
-  rowHeight,
-  headerHeight,
-  currentSheetSize,
-}) {
-  const singleCols = SCHEDULE_OF_AREAS?.singleColumn?.columns
-  const multiCols  = SCHEDULE_OF_AREAS?.multiColumn?.columns
-  const spacing    = SCHEDULE_OF_AREAS?.multiColumn?.columnSpacing
-  if (!Array.isArray(singleCols) || !Array.isArray(multiCols) || typeof spacing !== 'number') {
-    throw new Error('SCHEDULE_OF_AREAS missing from app-shared/block-definitions.js')
-  }
-
-  const singleTableWidth = singleCols.reduce((s, c) => s + c.width, 0)
-  const subTableWidth    = multiCols.reduce((s, c) => s + c.width, 0)
-
-  const rowsPerColumn = Math.max(0, Math.floor((zoneHeight - headerHeight) / rowHeight))
-
-  // Scale single-mode columns to fit zoneWidth, never exceeding natural.
-  const singleScale = Math.min(1, zoneWidth / singleTableWidth)
-  const singleColumnWidths = singleCols.map(c => c.width * singleScale)
-
-  // Empty schedule: emit header + zero rows. Always fits.
-  if (rowCount === 0) {
-    return { fits: true, numTables: 1, rowsPerTable: 0, columnWidths: singleColumnWidths }
-  }
-
-  // No vertical room at all: every row overflows.
-  if (rowsPerColumn === 0) {
-    return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }
-  }
-
-  // Single-column path: row count fits in one table.
-  if (rowCount <= rowsPerColumn) {
-    return { fits: true, numTables: 1, rowsPerTable: rowCount, columnWidths: singleColumnWidths }
-  }
-
-  // Multi-column path: how many natural-width sub-tables fit in zoneWidth?
-  // Reject when even one sub-table doesn't fit at natural width — the
-  // alternative (scaling to 20-40% of natural) produces unreadable output
-  // and defeats the purpose of the recommendedSheetSize escalation ladder.
-  const numTablesNeeded  = Math.ceil(rowCount / rowsPerColumn)
-  if (zoneWidth < subTableWidth) {
-    return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }
-  }
-  const maxTablesByWidth = Math.floor((zoneWidth + spacing) / (subTableWidth + spacing))
-
-  if (numTablesNeeded > maxTablesByWidth) {
-    return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }
-  }
-
-  // Multi-mode column widths: each sub-table gets (zoneWidth - (N-1)*spacing) / N,
-  // capped at natural subTableWidth. Columns scaled within that budget.
-  const perTableBudget = (zoneWidth - (numTablesNeeded - 1) * spacing) / numTablesNeeded
-  const subTableWidthOut = Math.min(perTableBudget, subTableWidth)
-  const multiScale = subTableWidthOut / subTableWidth
-  const multiColumnWidths = multiCols.map(c => c.width * multiScale)
-
-  return {
-    fits: true,
-    numTables: numTablesNeeded,
-    rowsPerTable: rowsPerColumn,
-    columnWidths: multiColumnWidths,
-  }
-}
-
-/**
- * Emits one Schedule-of-Areas sub-table block (title + column headers +
- * DEED parent header + underline + data rows). Returns the y coordinate
- * after the last row, so the caller can stack the next sub-table or the
- * beacon-descriptions block below.
- *
- * `addText` and `addLine` are injected (the closures inside generateDXF)
- * so the helper can be exported and unit-tested with capture mocks.
- *
- * Inputs (object-style for clarity):
- *   layer         DXF layer name (e.g. 'TITLE_BLOCK')
- *   x, y          top-left anchor (ground metres at scale)
- *   dataRows      Array<extractScheduleRow output>
- *   columnWidths  number[6] in ground metres
- *   titleText     'SCHEDULE OF AREAS' or "SCHEDULE OF AREAS (cont'd)"
- *   hHead         header text height (ground metres)
- *   hBody         body text height (ground metres)
- *   rH            data-row vertical spacing (ground metres)
- *   addText       (layer, x, y, text, h, rotation, style) => void
- *   addLine       (layer, x1, y1, x2, y2) => void
- */
-export function addScheduleTable({
-  layer, x, y,
-  dataRows, columnWidths,
-  titleText, hHead, hBody, rH,
-  addText, addLine,
-}) {
-  const singleCols = SCHEDULE_OF_AREAS?.singleColumn?.columns
-  if (!Array.isArray(singleCols)) {
-    throw new Error('SCHEDULE_OF_AREAS missing from app-shared/block-definitions.js')
-  }
-
-  // Column x offsets (cumulative).
-  const colX = []
-  let cx = 0
-  for (const w of columnWidths) {
-    colX.push(x + cx)
-    cx += w
-  }
-  const rightEdge = x + cx
-
-  // 1. Title.
-  let cy = y
-  addText(layer, x, cy, titleText, hHead, 0, 'BOLD')
-  cy -= hHead * 1.6
-
-  // 2. DEED parent header above NUMBER (col 3) + DATE (col 4).
-  // The DXF addText primitive emits TEXT with default left-anchor semantics
-  // (no group code 72). To visually center 'DEED' above the NUMBER+DATE span
-  // we shift the X anchor left by half the approximate rendered width
-  // (AutoCAD SHX default character width ≈ 0.6 × text height).
-  const DXF_CHAR_WIDTH_RATIO = 0.6
-  const deedStartX = colX[3]
-  const deedEndX   = colX[4] + columnWidths[4]
-  const deedCenter = (deedStartX + deedEndX) / 2
-  const deedTextWidth = 'DEED'.length * hBody * DXF_CHAR_WIDTH_RATIO
-  addText(layer, deedCenter - deedTextWidth / 2, cy, 'DEED', hBody, 0, 'BOLD')
-  cy -= hBody * 1.2
-
-  // 3. Column headers. Labels may contain \n for multi-line headers (e.g. 'STAND\nNo.').
-  // Render each token on its own line, decrementing cy by hBody between lines.
-  // Each column may have a different number of header sub-lines; advance cy by the max.
-  let maxHeaderLines = 1
-  for (let i = 0; i < singleCols.length; i++) {
-    const tokens = String(singleCols[i].label).split('\n')
-    if (tokens.length > maxHeaderLines) maxHeaderLines = tokens.length
-    let lineY = cy
-    for (const tok of tokens) {
-      addText(layer, colX[i], lineY, tok, hBody, 0, 'BOLD')
-      lineY -= hBody * 1.2
-    }
-  }
-  cy -= maxHeaderLines * hBody * 1.2
-
-  // 4. Underline.
-  addLine(layer, x, cy, rightEdge, cy)
-  cy -= hBody * 0.6
-
-  // 5. Data rows. Derive cellKeys from the schema so column reordering or
-  // renaming in block-definitions.js propagates without touching this code.
-  const cellKeys = singleCols.map(c => c.key)
-  for (const row of dataRows) {
-    for (let i = 0; i < cellKeys.length; i++) {
-      const val = row[cellKeys[i]]
-      if (val) addText(layer, colX[i], cy, val, hBody)
-    }
-    cy -= rH
-  }
-
-  return cy
-}
 
 /** Convert PDF point size to ground metres at given scale */
 function ptToGround(pt, S) { return pt * S * 0.000352778; }
@@ -555,12 +337,12 @@ function ptToGround(pt, S) { return pt * S * 0.000352778; }
 /** Convert paper mm to ground metres at given scale */
 function mmToGround(mm, S) { return mm * S / 1000; }
 
-// ── DXF R12 primitives ──────────────────────────────────────────────────────
+// â”€â”€ DXF R12 primitives â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function p(code, value) {
   return String(code).padStart(3) + '\n' + value + '\n';
 }
 
-// ── Main generator ──────────────────────────────────────────────────────────
+// â”€â”€ Main generator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function generateDXF(options, logger) {
   // Warnings accumulator. Mutated by guards inside the emitters; returned
@@ -580,9 +362,9 @@ export function generateDXF(options, logger) {
   }
   /**
    * Records a warning of a given category. Three category families exist:
-   *   booleans   — 'scaleFallback', 'nonAscii' (sets summary[category] to true)
-   *   structured — 'scheduleOverflow' (stores `value` as the payload object)
-   *   counters   — everything else (adds `value` to summary[category])
+   *   booleans   â€” 'scaleFallback', 'nonAscii' (sets summary[category] to true)
+   *   structured â€” 'scheduleOverflow' (stores `value` as the payload object)
+   *   counters   â€” everything else (adds `value` to summary[category])
    * `warnings.count` increments by 1 for booleans + structured, by `value`
    * for counters.
    */
@@ -615,7 +397,7 @@ export function generateDXF(options, logger) {
   const declaredS = parseScaleDenom(scale);
   const paper = PAPER_SIZES[sheetSize] || PAPER_SIZES['ISO_A2'];
 
-  // ── Pre-scan drawing extent (outside figure + parcels ONLY, not unfiltered beacons) ──
+  // â”€â”€ Pre-scan drawing extent (outside figure + parcels ONLY, not unfiltered beacons) â”€â”€
   // Beacons are excluded because pre-filtering they span a huge area (e.g. 268 beacons).
   // Filtered beacons (within OF + 5m buffer) will all be inside the outside figure extent.
   let extMinX = Infinity, extMinY = Infinity, extMaxX = -Infinity, extMaxY = -Infinity;
@@ -646,7 +428,7 @@ export function generateDXF(options, logger) {
   const drawW = (extMaxX - extMinX) || 100;
   const drawH = (extMaxY - extMinY) || 100;
 
-  // ── Use declared scale from PDF export; auto-fit only as fallback ──
+  // â”€â”€ Use declared scale from PDF export; auto-fit only as fallback â”€â”€
   let S;
   if (declaredS) {
     S = declaredS;
@@ -660,7 +442,7 @@ export function generateDXF(options, logger) {
   logger.info(`[DXF] Drawing extent: ${drawW.toFixed(1)}m x ${drawH.toFixed(1)}m`);
   logger.info(`[DXF] Using scale 1:${S} (declared: 1:${declaredS}, sheet ${sheetSize} ${paper.w}x${paper.h}mm)`);
 
-  // ── Scale-aware sizes (matching pdfkitLabeling.js) ──
+  // â”€â”€ Scale-aware sizes (matching pdfkitLabeling.js) â”€â”€
   let distPt, bearPt;
   if (S <= 500)       { distPt = 7; bearPt = 7; }
   else if (S <= 1000) { distPt = 7; bearPt = 7; }
@@ -702,7 +484,7 @@ export function generateDXF(options, logger) {
     maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y);
   }
 
-  // ── Build entities ──
+  // â”€â”€ Build entities â”€â”€
   let ent = '';
 
   function addPolyline(layer, points) {
@@ -754,20 +536,20 @@ export function generateDXF(options, logger) {
 
   /**
    * Draw a beacon symbol differentiated by type.
-   *   placed → solid-filled circle (CIRCLE + 8 radial LINEs since R12 has no HATCH)
-   *   found  → open CIRCLE + crossing `+` (two LINEs through the centre)
+   *   placed â†’ solid-filled circle (CIRCLE + 8 radial LINEs since R12 has no HATCH)
+   *   found  â†’ open CIRCLE + crossing `+` (two LINEs through the centre)
    */
   function addBeaconSymbol(layer, cx, cy, type, sizeM) {
     const r = sizeM / 2
     addCircle(layer, cx, cy, r)
     if (type === 'placed') {
-      // Eight short radial LINEs from centre outward at 45° intervals to mimic a fill
+      // Eight short radial LINEs from centre outward at 45Â° intervals to mimic a fill
       for (let i = 0; i < 8; i++) {
         const a = (i * Math.PI) / 4
         addLine(layer, cx, cy, cx + r * Math.cos(a), cy + r * Math.sin(a))
       }
     } else if (type === 'found') {
-      // Two LINEs forming a "+" through the centre, length 1.4·r
+      // Two LINEs forming a "+" through the centre, length 1.4Â·r
       const h = r * 1.4
       addLine(layer, cx - h, cy, cx + h, cy)
       addLine(layer, cx, cy - h, cx, cy + h)
@@ -806,7 +588,7 @@ export function generateDXF(options, logger) {
     addLine(layer, cx - halfW, cy - halfH, cx + halfW, cy - halfH)
     // Centreline
     addLine(layer, cx - halfW, cy, cx + halfW, cy)
-    // Four vertical tick lines at 0 / ¼ / ½ / 1
+    // Four vertical tick lines at 0 / Â¼ / Â½ / 1
     for (const f of [0, 0.25, 0.5, 1]) {
       const x = cx - halfW + f * barWidthGround
       addLine(layer, x, cy - halfH, x, cy + halfH)
@@ -830,7 +612,7 @@ export function generateDXF(options, logger) {
    * Coordinate-grid edge ticks. For every Cape Lo Y, X that falls on a round
    * `gridStepM` multiple within the drawing bounds, emit short ticks inward
    * from each border with the rounded coordinate as a label.
-   * No interior grid lines — matches the PDF exporter's drawGridReferences.
+   * No interior grid lines â€” matches the PDF exporter's drawGridReferences.
    * drawL/R/T/B are in DXF coordinate space (after south-up swap).
    */
   function addGridReferences(layer, drawL, drawR, drawT, drawB, gridStepM) {
@@ -905,7 +687,7 @@ export function generateDXF(options, logger) {
   function addOutsideFigureVertexLabels(layer, vertices, centroidGround) {
     const offset = mm(5)
     const height = mm(2)
-    // Iterate vertices[0 .. length-2] — skip the closing duplicate at the end.
+    // Iterate vertices[0 .. length-2] â€” skip the closing duplicate at the end.
     for (let i = 0; i < vertices.length - 1; i++) {
       const v = vertices[i]
       const dxfV = capeLoToDxfSouthUp(v.y, v.x)
@@ -928,10 +710,10 @@ export function generateDXF(options, logger) {
    * For each non-duplicate vertex of the outside figure, emit one short LINE
    * tick on `layer` pointing outward from the polygon centroid. The
    * centroid-to-vertex direction matches the vertex-label placement so each
-   * tick + label pair reads as a coherent "I am here at Y=… X=…" marker.
+   * tick + label pair reads as a coherent "I am here at Y=â€¦ X=â€¦" marker.
    *
    * Functional-minimum: uses centroid direction. Pdfkit reference uses an
-   * angle-bisector for concave outside figures — deferred.
+   * angle-bisector for concave outside figures â€” deferred.
    *
    * @param {string} layer
    * @param {Array<{y,x,pointId}>} vertices  From computeOutsideFigureVertices().
@@ -964,7 +746,7 @@ export function generateDXF(options, logger) {
    * @param {Array<{y,x,pointId}>} vertices  From computeOutsideFigureVertices()
    *   (with closing duplicate so vertices[i+1] is always valid).
    * @param {Array} edges  Raw outsideFigureData.edges array (parallel to
-   *   vertices[0..length-2] — edges[i] starts at vertices[i]).
+   *   vertices[0..length-2] â€” edges[i] starts at vertices[i]).
    * @param {{x,y}} centroidGround
    */
   function addOutsideFigureEdgeLabels(distLayer, dirLayer, vertices, edges, centroidGround) {
@@ -975,9 +757,9 @@ export function generateDXF(options, logger) {
       const b = capeLoToDxfSouthUp(vertices[i + 1].y, vertices[i + 1].x)
       const dx = b.x - a.x, dy = b.y - a.y
       const len = Math.sqrt(dx * dx + dy * dy)
-      if (len < 1e-6) continue   // degenerate edge — skip silently
+      if (len < 1e-6) continue   // degenerate edge â€” skip silently
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
-      // Counter-clockwise 90° rotation of the edge direction, then flip
+      // Counter-clockwise 90Â° rotation of the edge direction, then flip
       // toward the outside (away from polygon centre).
       let nx = -dy / len, ny = dx / len
       if (nx * (mx - centroidGround.x) + ny * (my - centroidGround.y) < 0) {
@@ -987,7 +769,7 @@ export function generateDXF(options, logger) {
       let ang = Math.atan2(dy, dx) * (180 / Math.PI)
       if (ang > 90 || ang < -90) ang += 180
 
-      // Edge metadata is only valid when the polygon edge vertices[i] → vertices[i+1]
+      // Edge metadata is only valid when the polygon edge vertices[i] â†’ vertices[i+1]
       // corresponds to a single ORIGINAL edge in outsideFigureData.edges (i.e., no
       // vertex was filtered between them). Intactness check: edges[vIdx] describes
       // the original edge whose successor is original-index (vIdx + 1) mod N, so
@@ -1006,7 +788,7 @@ export function generateDXF(options, logger) {
       const distVal = Number.isFinite(givenDist) ? givenDist : len
       const distText = distVal.toFixed(2)
 
-      // Bearing text — prefer edges[i].direction when it looks like DMS,
+      // Bearing text â€” prefer edges[i].direction when it looks like DMS,
       // else derive South-oriented bearing from the vertex delta.
       const dirStr = typeof edge.direction === 'string' ? edge.direction : ''
       const dirText = /\d+\D+\d+\D+\d+/.test(dirStr)
@@ -1029,8 +811,8 @@ export function generateDXF(options, logger) {
   }
 
   /**
-   * Beacon descriptions table — one row per beaconGroups[] entry.
-   * Truncates with "+ N more — see PDF" if rows would overflow zoneBottom.
+   * Beacon descriptions table â€” one row per beaconGroups[] entry.
+   * Truncates with "+ N more â€” see PDF" if rows would overflow zoneBottom.
    */
   function addBeaconDescription(layer, zoneL, zoneR, zoneTop, zoneBottom, beaconGroups) {
     if (!Array.isArray(beaconGroups) || beaconGroups.length === 0) return
@@ -1053,7 +835,7 @@ export function generateDXF(options, logger) {
     const remaining = beaconGroups.length - printed
     if (remaining > 0) {
       if (y - rowH < zoneBottom) y = zoneBottom + rowH    // squeeze in the footer
-      addText(layer, zoneL, y, `+ ${remaining} more — see PDF for full list`, mm(2.2), 0)
+      addText(layer, zoneL, y, `+ ${remaining} more â€” see PDF for full list`, mm(2.2), 0)
       warn('beaconDescTruncated', remaining)
     }
   }
@@ -1063,7 +845,7 @@ export function generateDXF(options, logger) {
    * top to bottom:
    *   1. APPROVED FOR LODGEMENT header + Date / Surveyor-General / Reference lines
    *   2. Dispensation Certificate slot
-   *   3. Plan number stamp box (RECT 30 × 15 mm)
+   *   3. Plan number stamp box (RECT 30 Ã— 15 mm)
    *   4. Prior diagram references (list or "None")
    *   5. Surveyor certification footer
    */
@@ -1072,7 +854,7 @@ export function generateDXF(options, logger) {
     // are only called at call-time (after S is set), so this is safe.
     let y = zoneTop
     const lineH = mm(4)
-    // ── 1) SG approval header ──
+    // â”€â”€ 1) SG approval header â”€â”€
     addText(TB, zoneL, y, 'APPROVED FOR LODGEMENT', mm(3.5), 0, 'BOLD')
     y -= lineH
     for (const lbl of ['Date', 'Surveyor-General', 'Reference']) {
@@ -1081,17 +863,17 @@ export function generateDXF(options, logger) {
       y -= lineH
     }
     y -= mm(2)
-    // ── 2) Dispensation Certificate slot ──
+    // â”€â”€ 2) Dispensation Certificate slot â”€â”€
     addText(TB, zoneL, y,
             'Dispensation Certificate No. ........... relates to this plan',
             mm(2.4), 0)
     y -= lineH * 1.5
-    // ── 3) Plan number stamp box ──
+    // â”€â”€ 3) Plan number stamp box â”€â”€
     const boxW = mm(30), boxH = mm(15)
     addRect(TB, zoneL, y - boxH, zoneL + boxW, y)
     addText(TB, zoneL + mm(2), y - mm(4), 'Plan No.:', mm(2.4), 0)
     y -= boxH + mm(4)
-    // ── 4) Prior diagrams ──
+    // â”€â”€ 4) Prior diagrams â”€â”€
     const priors = metadata.priorDiagrams || []
     if (priors.length === 0) {
       addText(TB, zoneL, y, 'Prior diagrams: None', mm(2.4), 0)
@@ -1113,7 +895,7 @@ export function generateDXF(options, logger) {
         warn('priorDiagramsTruncated', remaining)
       }
     }
-    // ── 5) Surveyor certification footer ──
+    // â”€â”€ 5) Surveyor certification footer â”€â”€
     // Guard: emit unless there is clearly no vertical room.
     // Treat NaN (degenerate layout) as "room available" so the text
     // always appears in test fixtures with empty geometry.
@@ -1127,7 +909,7 @@ export function generateDXF(options, logger) {
     }
   }
 
-  // ── 1. Outside Figure boundary ──
+  // â”€â”€ 1. Outside Figure boundary â”€â”€
   let ofPolygon = null; // AutoCAD coords for beacon filtering
   let ofResult = null; // Will store vertex data for annotation (computed below)
   if (outsideFigureData?.edges?.length > 0) {
@@ -1145,7 +927,7 @@ export function generateDXF(options, logger) {
     }
   }
 
-  // ── 2. Identify shared edges (topology — same as PDF) ──
+  // â”€â”€ 2. Identify shared edges (topology â€” same as PDF) â”€â”€
   const edgeOccurrences = new Map();
   if (parcels?.features) {
     for (const feature of parcels.features) {
@@ -1159,10 +941,10 @@ export function generateDXF(options, logger) {
   }
   const sharedEdges = new Set();
   edgeOccurrences.forEach((count, key) => { if (count > 1) sharedEdges.add(key); });
-  const labeledEdges = new Map(); // edgeKey → { distance: bool, bearing: bool }
+  const labeledEdges = new Map(); // edgeKey â†’ { distance: bool, bearing: bool }
   logger.info(`[DXF] Shared edges detected: ${sharedEdges.size}`);
 
-  // ── 3. Parcels + stand numbers + edge labels ──
+  // â”€â”€ 3. Parcels + stand numbers + edge labels â”€â”€
   let parcelCount = 0, edgeLabelCount = 0;
   if (parcels?.features) {
     for (const feature of parcels.features) {
@@ -1189,11 +971,11 @@ export function generateDXF(options, logger) {
       addPolyline('PARCELS', polyPts);
       parcelCount++;
 
-      // ── Stand label: shoelace centroid + 4d's iterative font-shrink ──
+      // â”€â”€ Stand label: shoelace centroid + 4d's iterative font-shrink â”€â”€
       const centroid = shoelaceCentroid(polyPts);
       const area = polygonAreaGround(polyPts);
 
-      // Adaptive stand font size — area-bucketed initial value (matches existing behavior).
+      // Adaptive stand font size â€” area-bucketed initial value (matches existing behavior).
       // 4d's findStandLabelPosition may shrink this further if the rendered string
       // doesn't fit the parcel's allowable bounds.
       let standPt;
@@ -1220,7 +1002,7 @@ export function generateDXF(options, logger) {
       if (longestAngle < -90) longestAngle += 180;
 
       // 4d: smart stand-label position. Falls back to centroid if placer returns null
-      // (degenerate polygon — same as the existing Number.isFinite guard below).
+      // (degenerate polygon â€” same as the existing Number.isFinite guard below).
       const standPos = findStandLabelPosition({
         polygon: polyPts, standNumber: String(stand), fontHeight: standHeight,
       });
@@ -1231,12 +1013,12 @@ export function generateDXF(options, logger) {
         addText('STAND_NUMBERS', centroid.x, centroid.y, String(stand), standHeight, longestAngle, 'BOLD');
       }
 
-      // ── Edge labels with shared-edge topology ──
+      // â”€â”€ Edge labels with shared-edge topology â”€â”€
       // Most callers don't pre-compute props.edges; derive distance + South-
       // oriented bearing from successive vertex pairs as a fallback so the
       // DISTANCES / DIRECTIONS layers populate even when the GeoJSON omits
-      // edges. South-oriented whole-circle bearing convention: 0° = +Southing
-      // (south), 90° = +Westing (west), normalised to [0, 360).
+      // edges. South-oriented whole-circle bearing convention: 0Â° = +Southing
+      // (south), 90Â° = +Westing (west), normalised to [0, 360).
       let edges = props.edges || [];
       if (edges.length === 0 && coords.length > 1) {
         edges = [];
@@ -1279,7 +1061,7 @@ export function generateDXF(options, logger) {
         let ang = Math.atan2(dy, dx) * (180 / Math.PI);
         if (ang > 90 || ang < -90) ang += 180;
 
-        // Perpendicular toward centroid (existing — kept as fallback when placer returns null)
+        // Perpendicular toward centroid (existing â€” kept as fallback when placer returns null)
         let nx = -dy / len, ny = dx / len;
         if (nx * (centroid.x - mx) + ny * (centroid.y - my) < 0) { nx = -nx; ny = -ny; }
 
@@ -1345,7 +1127,7 @@ export function generateDXF(options, logger) {
   }
   logger.info(`[DXF] Parcels: ${parcelCount}, Edge labels: ${edgeLabelCount}`);
 
-  // ── 4. Beacons (filtered to outside figure + 2m buffer) ──
+  // â”€â”€ 4. Beacons (filtered to outside figure + 2m buffer) â”€â”€
   const BEACON_BUFFER = 2; // metres
   let beaconCount = 0, beaconsSkipped = 0;
   if (beacons?.features) {
@@ -1385,11 +1167,11 @@ export function generateDXF(options, logger) {
   }
   logger.info(`[DXF] Beacons: ${beaconCount} included, ${beaconsSkipped} filtered out (outside figure + ${BEACON_BUFFER}m buffer)`);
 
-  // ── 5. Page layout (matching PDF structure) ──
+  // â”€â”€ 5. Page layout (matching PDF structure) â”€â”€
   const mm = (v) => mmToGround(v, S); // shorthand
   const pt = (v) => ptToGround(v, S);
 
-  // ── Outside-figure vertex labels ──
+  // â”€â”€ Outside-figure vertex labels â”€â”€
   // (OF polyline and vertex calculation done earlier; now emit the labels)
   if (ofResult && ofResult.vertices.length >= 3) {
     const ofDxfPts = ofResult.vertices.slice(0, -1)
@@ -1417,7 +1199,7 @@ export function generateDXF(options, logger) {
   const dW = dR - dL, dH = dT - dB;
   const dCX = (dL + dR) / 2;
 
-  // ── Page frame from actual paper size with exact margins ──
+  // â”€â”€ Page frame from actual paper size with exact margins â”€â”€
   // Margins: L=50mm, T=50mm, B=50mm, R=150mm (endorsements in right margin)
   const mL = mm(50), mT = mm(50), mB = mm(50), mR = mm(150);
   const pageW = mm(paper.w);   // full paper width in ground
@@ -1458,7 +1240,7 @@ export function generateDXF(options, logger) {
 
   // Filter outside-figure parcels and sort by stand. Used by both the
   // figure-description text (surveyedParcels) and the Schedule of Areas
-  // emission (scheduleDataRows below) — sharing the source prevents
+  // emission (scheduleDataRows below) â€” sharing the source prevents
   // silent drift between the two consumers.
   const surveyedFeatures = (parcels?.features || [])
     .filter(f => {
@@ -1477,7 +1259,7 @@ export function generateDXF(options, logger) {
     area_m2: f.properties?.area_m2 || 0,
   }));
 
-  // ── PAGE FRAME + DIVIDERS ──
+  // â”€â”€ PAGE FRAME + DIVIDERS â”€â”€
   const TB = 'TITLE_BLOCK';
   addRect(TB, pageL, pageB, pageR, pageT);           // outer paper border
   // Content area border (margin lines)
@@ -1486,7 +1268,7 @@ export function generateDXF(options, logger) {
   addLine(TB, cntL, drawDivY, cntR, drawDivY);       // below drawing (tables divider)
   addMarginGuides('MARGIN_GUIDES', pageL, pageR, pageT, pageB, cntL, cntR, cntT, cntB)
 
-  // ── A) TITLE ZONE (within top margin area, centered in content) ──
+  // â”€â”€ A) TITLE ZONE (within top margin area, centered in content) â”€â”€
   const txC = (cntL + cntR) / 2; // center of content area
   let ty = cntT - mm(8);
   addText(TB, txC, ty, 'GENERAL PLAN', hTitle, 0, 'BOLD');
@@ -1524,13 +1306,13 @@ export function generateDXF(options, logger) {
     addText(TB, txC, ty, `District: ${metadata.district}`, hSub, 0)
   }
 
-  // ── SI 727 Seventh Schedule (b) lines ──
+  // â”€â”€ SI 727 Seventh Schedule (b) lines â”€â”€
   // Character budget for wrapping: content area width divided by an average
   // character-to-text-height ratio of 0.55 (see spec). This is the one knob
   // to tune if manual CAD verification shows lines too short or too long.
   const titleMaxLineChars = Math.floor((cntR - cntL) / (hBody * 0.55))
 
-  // (b.i) Conditional SHEET N label — only emits for multi-sheet plans.
+  // (b.i) Conditional SHEET N label â€” only emits for multi-sheet plans.
   for (const line of formatSheetLabel(sheetInfo)) {
     ty -= hSub * 1.6
     addText(TB, txC, ty, line, hSub, 0, 'BOLD')
@@ -1542,7 +1324,7 @@ export function generateDXF(options, logger) {
     addText(TB, txC, ty, line, hBody, 0)
   }
 
-  // (b.iii) Vide diagram line — always emitted.
+  // (b.iii) Vide diagram line â€” always emitted.
   for (const line of formatVideLine(titleMaxLineChars)) {
     ty -= hBody * 1.6
     addText(TB, txC, ty, line, hBody, 0)
@@ -1557,7 +1339,7 @@ export function generateDXF(options, logger) {
   // Coordinate grid ticks along the drawing-zone borders
   addGridReferences('GRID', dL, dR, dT, dB, pickGridStepM(S))
 
-  // ── B) ENDORSEMENTS (right margin column: 150mm) ──
+  // â”€â”€ B) ENDORSEMENTS (right margin column: 150mm) â”€â”€
   const eX = endorseL;
   const endorseR = pageR - mm(5);        // right edge with small padding
   const endorseColW = endorseR - eX;     // usable width in endorsements
@@ -1567,7 +1349,7 @@ export function generateDXF(options, logger) {
   eY -= mm(8);
   drawEndorsementZone(eX, endorseR, cntT - mm(5), cntB + mm(5));
 
-  // ── C) BOTTOM ZONE LAYOUT (within content area, below drawDivY) ──
+  // â”€â”€ C) BOTTOM ZONE LAYOUT (within content area, below drawDivY) â”€â”€
   // Split into 3 columns: Schedule (28%), Statement+OFData (42%), Approved (30%)
   const col1L = cntL + mm(3);                            // schedule column
   const col1R = cntL + contentW * 0.28;
@@ -1580,12 +1362,12 @@ export function generateDXF(options, logger) {
   addLine(TB, col1R, drawDivY, col1R, cntB);
   addLine(TB, col2R, drawDivY, col2R, cntB);
 
-  // ── C1) SCHEDULE OF AREAS (bottom-left column) ──
+  // â”€â”€ C1) SCHEDULE OF AREAS (bottom-left column) â”€â”€
   // Layout-driven single/multi/overflow. Helpers operate in paper-mm;
   // emission converts back to ground via mm(x) at the boundary.
   let sY = drawDivY - mm(5);
 
-  // Schedule of Areas data rows — reads the shared surveyedFeatures so
+  // Schedule of Areas data rows â€” reads the shared surveyedFeatures so
   // filter/sort changes can't desynchronise from the figure-description text.
   const scheduleDataRows = surveyedFeatures.map(extractScheduleRow);
 
@@ -1655,7 +1437,7 @@ export function generateDXF(options, logger) {
                         beaconDescTop, cntB + mm(4),
                         options.beaconGroups || []);
 
-  // ── C2) SURVEY STATEMENT + OUTSIDE FIGURE DATA (center column) ──
+  // â”€â”€ C2) SURVEY STATEMENT + OUTSIDE FIGURE DATA (center column) â”€â”€
   let cY = drawDivY - mm(5);
   // Statement
   if (metadata.date) {
@@ -1717,7 +1499,7 @@ export function generateDXF(options, logger) {
     }
   }
 
-  // ── C3) APPROVED BOX (right bottom column) ──
+  // â”€â”€ C3) APPROVED BOX (right bottom column) â”€â”€
   let aY = drawDivY - mm(5);
   const aCX = (col3L + col3R) / 2;
   addRect(TB, col3L, aY - mm(30), col3R, aY);  // approved box border
@@ -1732,7 +1514,7 @@ export function generateDXF(options, logger) {
 
   logger.info(`[DXF] Page frame: ${(pageR - pageL).toFixed(0)}m x ${(pageT - pageB).toFixed(0)}m ground`);
 
-  // ── Assemble DXF ──
+  // â”€â”€ Assemble DXF â”€â”€
   const pad = mm(2);
   const eMin = { x: pageL - pad, y: pageB - pad };
   const eMax = { x: pageR + pad, y: pageT + pad };
@@ -1782,8 +1564,8 @@ export function generateDXF(options, logger) {
   }
   dxf += p(0, 'ENDTAB');
 
-  // UCS table — one entry so CAD users can toggle to north-up view.
-  // Axes form a proper 180° rotation about Z (det = +1): X=(-1,0,0), Y=(0,-1,0).
+  // UCS table â€” one entry so CAD users can toggle to north-up view.
+  // Axes form a proper 180Â° rotation about Z (det = +1): X=(-1,0,0), Y=(0,-1,0).
   // After applying this UCS the view shows north at top with east at the left.
   dxf += p(0, 'TABLE');
   dxf += p(2, 'UCS');
@@ -1796,7 +1578,7 @@ export function generateDXF(options, logger) {
   dxf += p(12, '0.0'); dxf += p(22, '-1.0'); dxf += p(32, '0.0');  // Y axis
   dxf += p(0, 'ENDTAB');
 
-  // STYLE table — STANDARD + BOLD
+  // STYLE table â€” STANDARD + BOLD
   dxf += p(0, 'TABLE');
   dxf += p(2, 'STYLE');
   dxf += p(70, '2');

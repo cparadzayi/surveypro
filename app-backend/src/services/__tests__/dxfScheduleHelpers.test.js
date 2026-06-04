@@ -1,9 +1,9 @@
 /**
- * Layer 1 unit tests for the Schedule of Areas helpers.
- * Run with:  cd app-backend && npm run test -- dxfGenerator.scheduleOfAreas
+ * Unit tests for the Schedule of Areas helpers in dxfScheduleHelpers.js.
+ * Run with:  cd app-backend && npm run test -- dxfScheduleHelpers
  */
 import { describe, test, expect } from '@jest/globals'
-import { nextLargerSheet, extractScheduleRow, computeScheduleLayout, addScheduleTable } from '../dxfGenerator.js'
+import { nextLargerSheet, extractScheduleRow, computeScheduleLayout, addScheduleTable } from '../dxfScheduleHelpers.js'
 
 describe('nextLargerSheet', () => {
   test.each([

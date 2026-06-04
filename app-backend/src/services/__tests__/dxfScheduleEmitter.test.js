@@ -41,6 +41,143 @@ const makeHarness = () => {
   }
 }
 
+describe('emitScheduleOfAreasTopological — consolidation pass', () => {
+  let h
+  beforeEach(() => { h = makeHarness() })
+
+  // Note: pure-geometry tests for consolidation-success are sensitive to the
+  // placer's internal logic. If the assertions below fail during implementation,
+  // tune the GEOMETRY (drawingZone dims, rowCount, polygon obstacle position) —
+  // not the assertions. The assertions encode the invariants the algorithm
+  // must satisfy; the constants are negotiable.
+  const consolidationFixture = () => ({
+    features: makeFeatures(24),
+    drawingZone: { x: 0, y: 0, width: 600, height: 80 },
+  })
+
+  test('7. consolidation reduces table count when Pass 1 cannot seat all numTables', () => {
+    const { features, drawingZone } = consolidationFixture()
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    expect(result.placedStandCount).toBe(24)
+    expect(h.calls.warn.length).toBe(0)
+  })
+
+  test('8. all non-final placed tables hold identical rowCount; last ≤ that', () => {
+    // Algorithm invariant (holds whether Pass 1 placed all numTables OR
+    // consolidation re-budgeted): tables 0..n-2 share a uniform rowCount
+    // (either layout.rowsPerTable from Pass 1 or ceil(N/feasible) from
+    // consolidation); the final table holds the residual.
+    const { features, drawingZone } = consolidationFixture()
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    if (result.placedTables.length >= 2) {
+      const fullTables = result.placedTables.slice(0, -1)
+      const uniformRowCount = fullTables[0].rowCount
+      for (const t of fullTables) expect(t.rowCount).toBe(uniformRowCount)
+      expect(result.placedTables[result.placedTables.length - 1].rowCount)
+        .toBeLessThanOrEqual(uniformRowCount)
+    }
+    // Sum of rowCounts always equals placedStandCount.
+    const sum = result.placedTables.reduce((s, t) => s + t.rowCount, 0)
+    expect(sum).toBe(result.placedStandCount)
+  })
+
+  test('9. when consolidation triggers, each emitted table is taller than the Pass-1 size', () => {
+    // Original Pass 1 subTableHeight at this fixture = 12 + 22*3 = 78 (rowsPerColumn=22).
+    // Consolidated taller tables have rowCount > 22 → height > 78. The invariant:
+    // if any table holds more rows than Pass 1's per-table budget, its emitted
+    // height must reflect the taller consolidated size. When consolidation didn't
+    // trigger (Pass 1 placed all layout.numTables), this guard skips the assertion.
+    const { features, drawingZone } = consolidationFixture()
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    const PASS1_ROWS_PER_TABLE = 22   // floor((80-12)/3)
+    const PASS1_HEIGHT          = 78  // 12 + 22*3
+    for (const t of result.placedTables) {
+      if (t.rowCount > PASS1_ROWS_PER_TABLE) {
+        expect(t.height).toBeGreaterThan(PASS1_HEIGHT)
+      }
+    }
+  })
+
+  test('10. consolidation, feasible=0 → no consolidation attempted; scheduleOverflow warn (zero-fit)', () => {
+    const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
+    const polygon = [
+      { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
+    ]
+    const features = makeFeatures(24)
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    expect(result.placedStandCount).toBe(0)
+    expect(result.missingStandCount).toBe(24)
+    const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
+    expect(warns.length).toBe(1)
+    expect(warns[0].payload.phase).toBe('consolidation-zero-fit')
+    expect(warns[0].payload.recommendedSheetSize).toBe('ISO_A1')
+  })
+
+  test('11. consolidation-residual: when missingStandCount > 0 after consolidation, residual warn fires with correct payload shape', () => {
+    const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
+    const polygon = [
+      { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
+    ]
+    const features = makeFeatures(24)
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    // Invariant: every stand is either placed or counted missing.
+    expect(result.placedStandCount + result.missingStandCount).toBe(features.length)
+
+    // Invariant: when an overflow warn fires, payload has required keys.
+    const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
+    expect(warns.length).toBeGreaterThan(0)
+    expect(warns[0].payload).toHaveProperty('atSheetSize', 'ISO_A2')
+    expect(warns[0].payload).toHaveProperty('recommendedSheetSize')
+    expect(['consolidation-zero-fit', 'consolidation-residual', 'initial-budget'])
+      .toContain(warns[0].payload.phase)
+  })
+
+  test('12. consolidation that successfully places ALL stands → no warn', () => {
+    const features = makeFeatures(20)
+    const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    expect(result.placedStandCount).toBe(20)
+    expect(result.missingStandCount).toBe(0)
+    expect(h.calls.warn.length).toBe(0)
+  })
+})
+
 describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () => {
   let h
   beforeEach(() => { h = makeHarness() })

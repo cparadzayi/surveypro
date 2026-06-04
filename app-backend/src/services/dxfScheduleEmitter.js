@@ -129,7 +129,69 @@ export function emitScheduleOfAreasTopological({
     })
   }
 
-  // 6. (Consolidation pass — added in Task 3.)
+  // 6. PASS 2 — consolidation (only if PASS 1 didn't seat all tables).
+  if (placedPositions.length < layout.numTables) {
+    const feasible = placedPositions.length
+    placedPositions = []   // discard pass-1 positions; replay from scratch
+
+    if (feasible === 0) {
+      warn('scheduleOverflow', {
+        atSheetSize:          sheetSize,
+        recommendedSheetSize: nextLargerSheet(sheetSize),
+        placedStandCount:     0,
+        missingStandCount:    dataRows.length,
+        placedTables:         0,
+        phase:                'consolidation-zero-fit',
+      })
+      return {
+        placedTables: [], placedStandCount: 0, missingStandCount: dataRows.length,
+        southmostY: drawingZone.y,
+      }
+    }
+
+    const rowsPerTable2 = Math.ceil(dataRows.length / feasible)
+    const subTableHeight2G = mm(
+      SCHEDULE_HEADER_HEIGHT_MM + rowsPerTable2 * (rH / mm(1)),
+    )
+
+    for (let i = 0; i < feasible; i++) {
+      const position = findBlockPosition({
+        block:         { width: subTableWidthG, height: subTableHeight2G },
+        mapBounds:     drawingZone,
+        polygon,
+        placedBlocks:  placedPositions,
+        buffer:        mm(POLYGON_BUFFER_MM),
+        blockSpacing:  mm(BLOCK_SPACING_MM),
+        scanStep:      mm(SCAN_STEP_MM),
+        tableMinWidth: subTableWidthG,
+        logger,
+      })
+      if (position === null) break
+      placedPositions.push({
+        x: position.x, y: position.y,
+        width: subTableWidthG, height: subTableHeight2G,
+        rowCount: rowsPerTable2,
+      })
+    }
+
+    // Pass 2 may also fail (consolidated taller height doesn't fit anywhere).
+    // Emit the same zero-fit warn and return early — otherwise the final
+    // emission loop would silently emit 0 tables with no warning.
+    if (placedPositions.length === 0) {
+      warn('scheduleOverflow', {
+        atSheetSize:          sheetSize,
+        recommendedSheetSize: nextLargerSheet(sheetSize),
+        placedStandCount:     0,
+        missingStandCount:    dataRows.length,
+        placedTables:         0,
+        phase:                'consolidation-zero-fit',
+      })
+      return {
+        placedTables: [], placedStandCount: 0, missingStandCount: dataRows.length,
+        southmostY: drawingZone.y,
+      }
+    }
+  }
 
   // 7. FINAL emission loop.
   const placedTables = []
@@ -161,14 +223,25 @@ export function emitScheduleOfAreasTopological({
     if (p.y < southmostY) southmostY = p.y
   }
 
-  // 8. (Residual-overflow warn — added in Task 3.)
+  // 8. Residual-overflow warn.
+  const missingStandCount = dataRows.length - placedStandCount
+  if (missingStandCount > 0 && placedTables.length > 0) {
+    warn('scheduleOverflow', {
+      atSheetSize:          sheetSize,
+      recommendedSheetSize: nextLargerSheet(sheetSize),
+      placedStandCount,
+      missingStandCount,
+      placedTables:         placedTables.length,
+      phase:                'consolidation-residual',
+    })
+  }
 
   if (placedTables.length === 0) southmostY = drawingZone.y
 
   return {
     placedTables,
     placedStandCount,
-    missingStandCount: dataRows.length - placedStandCount,
+    missingStandCount,
     southmostY,
   }
 }

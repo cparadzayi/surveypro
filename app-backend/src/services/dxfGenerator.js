@@ -393,7 +393,13 @@ export function generateDXF(options, logger) {
     scale,
     sheetSize = 'ISO_A2',
     sheetInfo = null,
+    // SI 727 plan type. 'general-developed' suppresses parcel-edge distance +
+    // direction labels (matches pdfkitLabeling.js:386,456 — developed township
+    // general plans omit internal stand edge labels; per-stand survey diagrams
+    // carry that detail instead). Outside-figure edge labels are unaffected.
+    planType = null,
   } = options;
+  const isDevelopedPlan = planType === 'general-developed';
 
   const declaredS = parseScaleDenom(scale);
   const paper = PAPER_SIZES[sheetSize] || PAPER_SIZES['ISO_A2'];
@@ -1095,6 +1101,18 @@ export function generateDXF(options, logger) {
         const impliedOffset = smartPos
           ? Math.sqrt((distX - mx) * (distX - mx) + (distY - my) * (distY - my))
           : edgeOffset;
+
+        // Developed Township General Plan: suppress parcel-edge distance + direction
+        // labels (per-stand survey diagrams carry that detail). Still record the edge
+        // in labeledEdges so shared-edge topology decisions for any non-developed edges
+        // remain consistent. Outside-figure edge labels are emitted on a separate path
+        // (addOutsideFigureEdgeLabels at the figure-emission site) and are NOT affected.
+        if (isDevelopedPlan) {
+          if (!edgeInfo) {
+            labeledEdges.set(edgeKey, { distance: false, bearing: false });
+          }
+          continue;
+        }
 
         if (labelMode === 'both' || labelMode === 'distance-only') {
           if (distText) {

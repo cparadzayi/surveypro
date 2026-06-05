@@ -10,6 +10,32 @@ import { sampleFixture } from './fixtures/sampleDxfPlan.js'
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
 
+describe('dxfGenerator integration — developed-township planType', () => {
+  test("planType='general-developed' suppresses parcel-edge DISTANCES + DIRECTIONS labels", () => {
+    // Baseline: sample fixture without planType — emits both DISTANCES and DIRECTIONS.
+    const base = generateDXF(sampleFixture, fakeLogger)
+    const baseDist = entityCount(base.buffer.toString(), 'TEXT', 'DISTANCES')
+    const baseDir  = entityCount(base.buffer.toString(), 'TEXT', 'DIRECTIONS')
+    expect(baseDist).toBeGreaterThan(0)
+    expect(baseDir).toBeGreaterThan(0)
+
+    // Developed plan: parcel-edge labels suppressed. The outside-figure edge labels
+    // remain because they emit on a separate code path.
+    const dev = generateDXF({ ...sampleFixture, planType: 'general-developed' }, fakeLogger)
+    const devDist = entityCount(dev.buffer.toString(), 'TEXT', 'DISTANCES')
+    const devDir  = entityCount(dev.buffer.toString(), 'TEXT', 'DIRECTIONS')
+
+    // Developed should be strictly less than baseline (parcel edges removed).
+    expect(devDist).toBeLessThan(baseDist)
+    expect(devDir).toBeLessThan(baseDir)
+
+    // Outside-figure edge labels still emit. The sample fixture has 4 OF edges
+    // contributing distance + bearing each.
+    expect(devDist).toBeGreaterThan(0)
+    expect(devDir).toBeGreaterThan(0)
+  })
+})
+
 describe('dxfGenerator integration — sample fixture', () => {
   let dxf, warnings
   beforeAll(() => {

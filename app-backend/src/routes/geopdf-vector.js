@@ -170,6 +170,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         outsideFigureData,
         scale,
         sheetSize,
+        planType,
       } = request.body
 
       if (!parcels || !beacons) {
@@ -179,7 +180,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
       const { generateDXF } = await import('../services/dxfGenerator.js')
 
       const { buffer, warnings } = generateDXF(
-        { parcels, beacons, outsideFigureData, metadata, projection, scale, sheetSize, beaconGroups: request.body.beaconGroups },
+        { parcels, beacons, outsideFigureData, metadata, projection, scale, sheetSize, planType, beaconGroups: request.body.beaconGroups },
         fastify.log
       )
 

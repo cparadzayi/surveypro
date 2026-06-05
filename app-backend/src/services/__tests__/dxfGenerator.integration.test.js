@@ -11,28 +11,28 @@ import { sampleFixture } from './fixtures/sampleDxfPlan.js'
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
 
 describe('dxfGenerator integration — developed-township planType', () => {
-  test("planType='general-developed' suppresses parcel-edge DISTANCES + DIRECTIONS labels", () => {
-    // Baseline: sample fixture without planType — emits both DISTANCES and DIRECTIONS.
+  test("planType='general-developed' suppresses ALL edge labels (parcel + outside-figure)", () => {
+    // Baseline: sample fixture without planType emits both DISTANCES and DIRECTIONS
+    // from parcel edges and from outside-figure edges.
     const base = generateDXF(sampleFixture, fakeLogger)
     const baseDist = entityCount(base.buffer.toString(), 'TEXT', 'DISTANCES')
     const baseDir  = entityCount(base.buffer.toString(), 'TEXT', 'DIRECTIONS')
     expect(baseDist).toBeGreaterThan(0)
     expect(baseDir).toBeGreaterThan(0)
 
-    // Developed plan: parcel-edge labels suppressed. The outside-figure edge labels
-    // remain because they emit on a separate code path.
+    // Developed plan: BOTH parcel-edge AND outside-figure edge labels suppressed.
+    // The DISTANCES + DIRECTIONS layers should be empty of TEXT entities.
     const dev = generateDXF({ ...sampleFixture, planType: 'general-developed' }, fakeLogger)
     const devDist = entityCount(dev.buffer.toString(), 'TEXT', 'DISTANCES')
     const devDir  = entityCount(dev.buffer.toString(), 'TEXT', 'DIRECTIONS')
 
-    // Developed should be strictly less than baseline (parcel edges removed).
-    expect(devDist).toBeLessThan(baseDist)
-    expect(devDir).toBeLessThan(baseDir)
+    expect(devDist).toBe(0)
+    expect(devDir).toBe(0)
 
-    // Outside-figure edge labels still emit. The sample fixture has 4 OF edges
-    // contributing distance + bearing each.
-    expect(devDist).toBeGreaterThan(0)
-    expect(devDir).toBeGreaterThan(0)
+    // Sanity: OUTSIDE_FIGURE_LABELS (vertex coords + tick marks) still emit —
+    // only the distance/direction edge annotations are suppressed.
+    expect(entityCount(dev.buffer.toString(), 'TEXT', 'OUTSIDE_FIGURE_LABELS'))
+      .toBe(entityCount(base.buffer.toString(), 'TEXT', 'OUTSIDE_FIGURE_LABELS'))
   })
 })
 

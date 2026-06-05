@@ -1190,16 +1190,23 @@ export function generateDXF(options, logger) {
   const mm = (v) => mmToGround(v, S); // shorthand
   const pt = (v) => ptToGround(v, S);
 
-  // â”€â”€ Outside-figure vertex labels â”€â”€
+  // ── Outside-figure vertex labels ──
   // (OF polyline and vertex calculation done earlier; now emit the labels)
+  // Vertex coordinate labels (e.g. "M4") + tick marks always emit.
+  // Outside-figure edge distance + direction labels are suppressed for
+  // developed townships (matches the parcel-edge suppression below — the
+  // user's instruction extends the PDF's `isDeveloped` behavior to all edge
+  // labels, including the OF boundary).
   if (ofResult && ofResult.vertices.length >= 3) {
     const ofDxfPts = ofResult.vertices.slice(0, -1)
       .map(v => capeLoToDxfSouthUp(v.y, v.x));
     const ofCentroid = shoelaceCentroid(ofDxfPts);
     addOutsideFigureVertexLabels('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
     addOutsideFigureTickMarks('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
-    addOutsideFigureEdgeLabels('DISTANCES', 'DIRECTIONS',
-                                ofResult.vertices, outsideFigureData.edges, ofCentroid);
+    if (!isDevelopedPlan) {
+      addOutsideFigureEdgeLabels('DISTANCES', 'DIRECTIONS',
+                                  ofResult.vertices, outsideFigureData.edges, ofCentroid);
+    }
   }
 
   // Extract central meridian

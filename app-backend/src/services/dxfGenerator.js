@@ -29,6 +29,16 @@ import { TITLE_BLOCK, SCHEDULE_OF_AREAS, OUTSIDE_FIGURE_DATA, SURVEYOR_GENERAL_B
 const PT_TO_MM_GEN = 25.4 / 72
 import { findStandLabelPosition, findEdgeLabelPosition } from './dxfLabelPlacer.js'
 import {
+  placeSuffixLabelPOIDirected,
+  tryTightFullBeaconLabelPosition,
+  calculateFullBeaconLabelOutsideOnEdge,
+  pickBeaconFontSize,
+  computeBeaconRadius,
+  groupSplayBeacons,
+  orderSplayGroupByAngle,
+  createCollisionRegistry,
+} from './dxfBeaconPlacer.js'
+import {
   extractScheduleRow,
   computeScheduleLayout,
   addScheduleTable,
@@ -479,9 +489,14 @@ export function generateDXF(options, logger) {
   const bearHeight = ptToGround(bearPt, S);
   const edgeOffset = mmToGround(3, S);
   const pairGap = ptToGround(0.6, S);
-  const beaconRadius = ptToGround(1.5, S);
-  const beaconLabelHeight = ptToGround(6, S);
-  const beaconLabelOffset = beaconRadius + ptToGround(1, S);
+  // PDF-parity sizing (#6 Task 6.2). Replaces fixed pt(1.5)/pt(6)/pt(1)+radius
+  // with scale-aware values matching pdfkitGeoPDF.js:renderBeacons:4629-4636
+  // (logarithmic radius, 1.8-3.0 pt clamp) and :4800-4807 (font tier switch).
+  const beaconFontSizePt  = pickBeaconFontSize(S);
+  const beaconLabelHeight = ptToGround(beaconFontSizePt, S);     // ground-metres
+  const beaconRadiusMM    = computeBeaconRadius(S);              // paper-mm
+  const beaconRadius      = mmToGround(beaconRadiusMM, S);       // ground-metres
+  const beaconLabelOffset = beaconRadius + mmToGround(1, S);     // legacy fallback offset (used when all placers fail)
 
   logger.info(`[DXF] Sizes at 1:${S}: dist=${distHeight.toFixed(3)}m, bear=${bearHeight.toFixed(3)}m, offset=${edgeOffset.toFixed(3)}m, beaconR=${beaconRadius.toFixed(3)}m`);
 
@@ -1204,10 +1219,11 @@ export function generateDXF(options, logger) {
     }
   }
 
-  // Helper: decide displayLabel + position for one beacon.
-  // Returns null when the label should be suppressed (no text emitted).
-  const beaconLabelInsideOffset = beaconRadius + mmToGround(1.5, S); // toward centroid
-  const labelDecision = (beaconName, pt) => {
+  // Helper: decide displayLabel + which parcel polygon to use for inside
+  // placement. Returns null when the label should be suppressed.
+  // Position computation is the placer's job — done downstream in the beacon
+  // emission loop using the dxfBeaconPlacer module (#6 Task 6.3).
+  const labelDecision = (beaconName) => {
     if (!beaconName) return null;
 
     // PRIORITY 1: UI-supplied label.
@@ -1217,80 +1233,188 @@ export function generateDXF(options, logger) {
       const text = String(uiLabel.text || '');
       if (!text) return null;
       if (uiLabel.isInsideParcel && uiLabel.displayInParcel != null) {
-        const poly = parcelById.get(String(uiLabel.displayInParcel));
-        if (poly) return placeInsideParcel(pt, poly, text);
+        const polygon = parcelById.get(String(uiLabel.displayInParcel));
+        if (polygon) return { text, isInsideParcel: true, polygon };
       }
-      return placeOutsideParcel(pt, text);
+      return { text, isInsideParcel: false, polygon: null };
     }
 
     // PRIORITY 2: pattern-matched fallback (matches PDF:4855-4951).
     const m = beaconName.match(/^(\d+)([A-Za-z]+)$/);
     if (m) {
-      const prefix = m[1];
-      const suffix = m[2].toUpperCase();
-      const poly = parcelByStand.get(prefix);
-      if (poly) return placeInsideParcel(pt, poly, suffix);
+      const polygon = parcelByStand.get(m[1]);
+      if (polygon) return { text: m[2].toUpperCase(), isInsideParcel: true, polygon };
     }
-    // Control beacons (no numeric prefix) or unmatched: full name outside.
-    return placeOutsideParcel(pt, beaconName);
+    return { text: beaconName, isInsideParcel: false, polygon: null };
   };
 
-  // Place a label INSIDE a parcel: project from the beacon toward the parcel's
-  // centroid by `beaconLabelInsideOffset`. Keeps the label adjacent to its
-  // beacon while orienting it into the parcel's interior.
-  function placeInsideParcel(pt, poly, text) {
-    const centroid = shoelaceCentroid(poly);
-    let dx = centroid.x - pt.x;
-    let dy = centroid.y - pt.y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len < 1e-6) return placeOutsideParcel(pt, text);
-    dx /= len; dy /= len;
-    return { x: pt.x + dx * beaconLabelInsideOffset, y: pt.y + dy * beaconLabelInsideOffset, text };
-  }
-
-  // Place a label OUTSIDE the parcel: small (+x, +y) offset from beacon.
-  // Matches the existing pre-3-v2 convention and the PDF's `closeOffset` fallback.
-  function placeOutsideParcel(pt, text) {
-    return { x: pt.x + beaconLabelOffset, y: pt.y + beaconLabelOffset, text };
-  }
-
-  if (beacons?.features) {
-    for (const feature of beacons.features) {
-      const rc = feature.geometry?.coordinates;
-      if (!Array.isArray(rc) || rc.length < 2) continue;
-
-      // Guard: skip beacons with NaN/Infinity coords or unreasonable magnitudes
-      const [byRaw, bxRaw] = rc;
-      if (!Number.isFinite(byRaw) || !Number.isFinite(bxRaw)
-          || Math.abs(byRaw) > 1e7 || Math.abs(bxRaw) > 1e7) {
-        logger.warn(`[DXF] dropped beacon ${feature.properties?.pointId || '<unnamed>'}: bad coords`)
-        warn('beacons')
-        continue
-      }
-
-      const pt = capeLoToDxfSouthUp(rc[0], rc[1]);
-      if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
-
-      // Filter: only beacons within outside figure + 2m buffer
-      if (ofPolygon && !isWithinPolygonBuffer(pt.x, pt.y, ofPolygon, BEACON_BUFFER)) {
-        beaconsSkipped++;
+  /**
+   * Walk splay components via BFS, order each by angle, return a flat list
+   * of beacon features in emission order. Solo beacons (not in any splay
+   * group) appear in their original input order. (#6 Task 6.5)
+   */
+  function computeBeaconIterationOrder(features, beaconPositions, splayMap) {
+    const beaconsByName = new Map(features.map(f => {
+      const n = f.properties?.pointId || f.properties?.name || f.properties?.beacon_name;
+      return [n, f];
+    }));
+    const emitted = new Set();
+    const order = [];
+    for (const f of features) {
+      const name = f.properties?.pointId || f.properties?.name || f.properties?.beacon_name;
+      if (!name || emitted.has(name)) continue;
+      const neighbors = splayMap.get(name);
+      if (!neighbors || neighbors.length === 0) {
+        order.push(f);
+        emitted.add(name);
         continue;
       }
-
-      trackPt(pt);
-      const beaconType = feature.properties?.type || 'placed'
-      const beaconDiameter = mmToGround(2.4, S)
-      addBeaconSymbol('BEACONS', pt.x, pt.y, beaconType, beaconDiameter);
-      const name = feature.properties?.pointId
-                || feature.properties?.name
-                || feature.properties?.beacon_name
-                || '';
-      const decision = labelDecision(name, pt);
-      if (decision) {
-        addText('BEACON_LABELS', decision.x, decision.y, decision.text, beaconLabelHeight);
+      const component = new Set([name]);
+      const queue = [name];
+      while (queue.length) {
+        const cur = queue.shift();
+        for (const n of (splayMap.get(cur) || [])) {
+          if (!component.has(n.name)) { component.add(n.name); queue.push(n.name); }
+        }
       }
-      beaconCount++;
+      const members = [...component].map(n => ({ name: n, pos: beaconPositions.get(n) }));
+      for (const m of orderSplayGroupByAngle(members)) {
+        const feat = beaconsByName.get(m.name);
+        if (feat) order.push(feat);
+        emitted.add(m.name);
+      }
     }
+    return order;
+  }
+
+  // ── Pre-loop setup (#6 Task 6.4) ───────────────────────────────────────────
+  const beaconPositions = new Map();
+  if (beacons?.features) {
+    for (const f of beacons.features) {
+      const rc = f.geometry?.coordinates;
+      if (!Array.isArray(rc) || rc.length < 2) continue;
+      const [byRaw, bxRaw] = rc;
+      if (!Number.isFinite(byRaw) || !Number.isFinite(bxRaw)
+          || Math.abs(byRaw) > 1e7 || Math.abs(bxRaw) > 1e7) continue;
+      const pt = capeLoToDxfSouthUp(rc[0], rc[1]);
+      if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
+      const name = f.properties?.pointId || f.properties?.name || f.properties?.beacon_name;
+      if (name) beaconPositions.set(name, pt);
+    }
+  }
+
+  // For each beacon, find the parcel polygons whose vertex matches the beacon.
+  const incidentParcelsByBeacon = new Map();
+  for (const [name, pt] of beaconPositions) {
+    const inc = [];
+    if (parcels?.features) {
+      for (const f of parcels.features) {
+        if (f.properties?.isOutsideFigure) continue;
+        const coords = f.geometry?.coordinates?.[0];
+        if (!Array.isArray(coords) || coords.length < 4) continue;
+        const poly = coords.slice(0, -1).map(c => capeLoToDxfSouthUp(c[0], c[1]));
+        if (poly.some(p => Math.abs(p.x - pt.x) < 0.01 && Math.abs(p.y - pt.y) < 0.01)) {
+          inc.push(poly);
+        }
+      }
+    }
+    if (inc.length > 0) incidentParcelsByBeacon.set(name, inc);
+  }
+
+  const PT_TO_MM_GEN = 25.4 / 72;
+  const proximityFloorG = mmToGround(18 * PT_TO_MM_GEN, S);
+  const splayMap = groupSplayBeacons(beaconPositions, beaconRadius, proximityFloorG);
+  const iterationOrder = computeBeaconIterationOrder(beacons?.features || [], beaconPositions, splayMap);
+
+  const registry = createCollisionRegistry();
+  const deferredCircles = [];
+  const LEADER_THRESHOLD = beaconRadius * 3;
+
+  // ── Beacon emission loop (#6 Task 6.4) ─────────────────────────────────────
+  for (const feature of iterationOrder) {
+    const rc = feature.geometry?.coordinates;
+    if (!Array.isArray(rc) || rc.length < 2) continue;
+
+    const [byRaw, bxRaw] = rc;
+    if (!Number.isFinite(byRaw) || !Number.isFinite(bxRaw)
+        || Math.abs(byRaw) > 1e7 || Math.abs(bxRaw) > 1e7) {
+      logger.warn(`[DXF] dropped beacon ${feature.properties?.pointId || '<unnamed>'}: bad coords`);
+      warn('beacons');
+      continue;
+    }
+    const pt = capeLoToDxfSouthUp(rc[0], rc[1]);
+    if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
+
+    if (ofPolygon && !isWithinPolygonBuffer(pt.x, pt.y, ofPolygon, BEACON_BUFFER)) {
+      beaconsSkipped++;
+      continue;
+    }
+
+    trackPt(pt);
+    const beaconType = feature.properties?.type || 'placed';
+    const beaconDiameter = beaconRadius * 2;
+
+    // Defer the beacon symbol — emitted after all labels so circles sit on top.
+    deferredCircles.push({ x: pt.x, y: pt.y, type: beaconType, diameter: beaconDiameter });
+    beaconCount++;
+
+    const name = feature.properties?.pointId
+              || feature.properties?.name
+              || feature.properties?.beacon_name
+              || '';
+    if (!name) continue;
+    const decision = labelDecision(name);
+    if (!decision) continue;
+
+    const labelText    = decision.text;
+    const labelWidth   = labelText.length * beaconLabelHeight * 0.55;
+    const labelHeightG = beaconLabelHeight * 1.2;
+
+    let labelPos;
+    if (decision.isInsideParcel && decision.polygon) {
+      labelPos = placeSuffixLabelPOIDirected({
+        beaconPos: pt, polygon: decision.polygon,
+        labelWidth, labelHeight: labelHeightG,
+        beaconRadius, registry,
+      });
+    } else {
+      const incident = incidentParcelsByBeacon.get(name) || [];
+      const padding  = mmToGround(0.8, S);
+      labelPos =
+        tryTightFullBeaconLabelPosition({
+          beaconPos: pt, labelWidth, labelHeight: labelHeightG,
+          beaconRadius, padding, incidentPolygons: incident, registry,
+        })
+        || calculateFullBeaconLabelOutsideOnEdge({
+          beaconPos: pt, incidentPolygons: incident,
+          labelWidth, labelHeight: labelHeightG,
+          beaconRadius, registry,
+        })
+        || {
+          x: pt.x + beaconLabelOffset,
+          y: pt.y + beaconLabelOffset,
+        };
+    }
+
+    registry.add({ x: labelPos.x, y: labelPos.y, width: labelWidth, height: labelHeightG });
+    addText('BEACON_LABELS', labelPos.x, labelPos.y, labelText, beaconLabelHeight);
+
+    // Leader line: emit when label center is farther than LEADER_THRESHOLD from beacon.
+    const lcx = labelPos.x + labelWidth / 2;
+    const lcy = labelPos.y + labelHeightG / 2;
+    if (Math.hypot(lcx - pt.x, lcy - pt.y) > LEADER_THRESHOLD) {
+      const angle       = Math.atan2(pt.y - lcy, pt.x - lcx);
+      const beaconEdgeX = pt.x - Math.cos(angle) * beaconRadius;
+      const beaconEdgeY = pt.y - Math.sin(angle) * beaconRadius;
+      const closestX    = Math.max(labelPos.x, Math.min(pt.x, labelPos.x + labelWidth));
+      const closestY    = Math.max(labelPos.y, Math.min(pt.y, labelPos.y + labelHeightG));
+      addLine('BEACON_LABELS', beaconEdgeX, beaconEdgeY, closestX, closestY);
+    }
+  }
+
+  // ── Deferred-circle z-order: emit beacon symbols AFTER all labels ──────────
+  for (const c of deferredCircles) {
+    addBeaconSymbol('BEACONS', c.x, c.y, c.type, c.diameter);
   }
   logger.info(`[DXF] Beacons: ${beaconCount} included, ${beaconsSkipped} filtered out (outside figure + ${BEACON_BUFFER}m buffer)`);
 

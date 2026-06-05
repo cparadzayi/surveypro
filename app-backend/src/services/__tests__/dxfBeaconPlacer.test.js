@@ -7,6 +7,8 @@ import {
   pickBeaconFontSize,
   computeBeaconRadius,
   createCollisionRegistry,
+  groupSplayBeacons,
+  orderSplayGroupByAngle,
 } from '../dxfBeaconPlacer.js'
 
 describe('pickBeaconFontSize — PDF tier switch', () => {
@@ -82,5 +84,90 @@ describe('createCollisionRegistry', () => {
     expect(snapshot.length).toBe(2)
     snapshot.push({ x: 99, y: 99, width: 1, height: 1 })   // mutate the snapshot
     expect(r.size).toBe(2)                                  // original unchanged
+  })
+})
+
+describe('groupSplayBeacons', () => {
+  test('two beacons within proximity → both appear with each other in neighbor lists', () => {
+    const positions = new Map([
+      ['A', { x: 0, y: 0 }],
+      ['B', { x: 5, y: 0 }],
+    ])
+    // proximityFloor = 10, beaconRadius = 1. Threshold = max(10, 6) = 10.
+    // Distance A-B = 5 < 10 → close pair.
+    const map = groupSplayBeacons(positions, 1, 10)
+    expect(map.get('A')).toBeDefined()
+    expect(map.get('B')).toBeDefined()
+    expect(map.get('A').map(n => n.name)).toEqual(['B'])
+    expect(map.get('B').map(n => n.name)).toEqual(['A'])
+  })
+
+  test('beacons farther than threshold are absent from the map', () => {
+    const positions = new Map([
+      ['A', { x: 0,    y: 0 }],
+      ['B', { x: 1000, y: 0 }],
+    ])
+    const map = groupSplayBeacons(positions, 1, 10)
+    expect(map.size).toBe(0)
+  })
+
+  test('proximityFloor wins when beaconRadius·6 is smaller', () => {
+    // beaconRadius·6 = 6; proximityFloor = 10. Threshold = 10.
+    // Pair at distance 8 is close.
+    const positions = new Map([
+      ['A', { x: 0, y: 0 }],
+      ['B', { x: 8, y: 0 }],
+    ])
+    const map = groupSplayBeacons(positions, 1, 10)
+    expect(map.size).toBe(2)
+  })
+
+  test('beaconRadius·6 wins when proximityFloor is smaller', () => {
+    // beaconRadius·6 = 60; proximityFloor = 5. Threshold = 60.
+    // Pair at distance 50 is close.
+    const positions = new Map([
+      ['A', { x: 0,  y: 0 }],
+      ['B', { x: 50, y: 0 }],
+    ])
+    const map = groupSplayBeacons(positions, 10, 5)
+    expect(map.size).toBe(2)
+  })
+
+  test('neighbor entries include distance + position for caller introspection', () => {
+    const positions = new Map([
+      ['A', { x: 0, y: 0 }],
+      ['B', { x: 3, y: 4 }],   // distance 5
+    ])
+    const map = groupSplayBeacons(positions, 1, 10)
+    const [neighbor] = map.get('A')
+    expect(neighbor.name).toBe('B')
+    expect(neighbor.distance).toBeCloseTo(5, 6)
+    expect(neighbor.pos).toEqual({ x: 3, y: 4 })
+  })
+})
+
+describe('orderSplayGroupByAngle', () => {
+  test('three beacons around a centroid → clockwise from angle 0', () => {
+    // Centroid of A(10,0), B(0,10), C(-10,0) is at (0, ~3.33).
+    // Angles from centroid:
+    //   A is at (10, -3.33) → atan2(-3.33, 10) ≈ -0.32 rad (right + down)
+    //   B is at (0, 6.67)   → atan2(6.67, 0)   = π/2 ≈ 1.57 rad
+    //   C is at (-10, -3.33) → atan2(-3.33, -10) ≈ -2.82 rad
+    // Sorted ascending: C, A, B.
+    const ordered = orderSplayGroupByAngle([
+      { name: 'A', pos: { x:  10, y:  0 } },
+      { name: 'B', pos: { x:   0, y: 10 } },
+      { name: 'C', pos: { x: -10, y:  0 } },
+    ])
+    expect(ordered.map(m => m.name)).toEqual(['C', 'A', 'B'])
+  })
+
+  test('single-member group → unchanged', () => {
+    const single = [{ name: 'X', pos: { x: 0, y: 0 } }]
+    expect(orderSplayGroupByAngle(single)).toEqual(single)
+  })
+
+  test('empty group → empty result', () => {
+    expect(orderSplayGroupByAngle([])).toEqual([])
   })
 })

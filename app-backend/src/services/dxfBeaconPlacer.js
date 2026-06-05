@@ -72,3 +72,54 @@ export function createCollisionRegistry() {
     get all() { return rects.slice() },
   }
 }
+
+/**
+ * Splay-group detection — pure proximity scan.
+ * Matches pdfkitGeoPDF.js:4693-4711 with the threshold floor supplied by the
+ * caller (so the function is unit-agnostic; the DXF integration layer
+ * converts the PDF's 18 pt floor to ground-metres via mm(18 * PT_TO_MM_GEN)).
+ *
+ * Threshold = max(proximityFloor, beaconRadius × 6).
+ *
+ * Returns a Map<beaconName, Array<{name, distance, pos}>>. The Map contains
+ * an entry ONLY for beacons that have at least one close neighbor. Solo
+ * beacons (no close neighbors) are absent from the map.
+ *
+ * Each entry holds the DIRECT close neighbors of that beacon (per-beacon
+ * neighbor view, NOT the full connected component). The integration layer
+ * stitches components via BFS over this map.
+ */
+export function groupSplayBeacons(beaconPositions, beaconRadius, proximityFloor) {
+  const threshold = Math.max(proximityFloor, beaconRadius * 6)
+  const map = new Map()
+  for (const [name1, p1] of beaconPositions) {
+    const close = []
+    for (const [name2, p2] of beaconPositions) {
+      if (name1 === name2) continue
+      const dx = p2.x - p1.x
+      const dy = p2.y - p1.y
+      const d = Math.sqrt(dx * dx + dy * dy)
+      if (d < threshold) close.push({ name: name2, distance: d, pos: p2 })
+    }
+    if (close.length > 0) map.set(name1, close)
+  }
+  return map
+}
+
+/**
+ * Order a splay group's members clockwise from angle 0 around the group's
+ * centroid. Integration uses this to place labels in a deterministic angular
+ * sequence so each placer call sees only the already-placed members in the
+ * collision registry.
+ */
+export function orderSplayGroupByAngle(members) {
+  if (members.length <= 1) return members.slice()
+  const cx = members.reduce((s, m) => s + m.pos.x, 0) / members.length
+  const cy = members.reduce((s, m) => s + m.pos.y, 0) / members.length
+  const withAngle = members.map(m => ({
+    ...m,
+    _angle: Math.atan2(m.pos.y - cy, m.pos.x - cx),
+  }))
+  withAngle.sort((a, b) => a._angle - b._angle)
+  return withAngle.map(({ _angle, ...rest }) => rest)
+}

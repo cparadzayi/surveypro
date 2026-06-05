@@ -161,19 +161,24 @@ function normalizeCapeLoYX(y, x) {
   return [y, x];
 }
 
+/**
+ * Convert Cape Lo (Y = Westing, X = Southing) to DXF coordinates with
+ * **north-up east-right** orientation — matching the PDF view.
+ *
+ *   DXF.x = -capeY  (negate westing → easting; east increases to the right)
+ *   DXF.y = -capeX  (negate southing → northing; north increases upward)
+ *
+ * Renamed-in-place: the function still ends in "SouthUp" for historical
+ * compatibility with imports across tests/fixtures/docs, but the behavior
+ * was flipped on 2026-06-05 after the user noticed the DXF and PDF plots
+ * had opposite orientations. The negation is a 180° rotation of the
+ * previous south-up west-right output. Text-label angles compensate via
+ * the existing `if (ang > 90 || ang < -90) ang += 180` normalization
+ * downstream, so labels remain right-side-up.
+ */
 export function capeLoToDxfSouthUp(capeY, capeX) {
   const [y, x] = normalizeCapeLoYX(capeY, capeX);
-  // Sanity guard: typical Cape Lo input is Y>0, X>0; result should be x>0, y>0.
-  // A negative x from positive Y means a stale x = -y formula sneaked through.
-  if (capeY > 0 && y < 0) {
-    // Log once via the singleton flag; logger may not be in scope here.
-    if (!capeLoToDxfSouthUp._warned) {
-      // eslint-disable-next-line no-console
-      console.error('[DXF] capeLoToDxfSouthUp: positive Westing produced negative x â€” stale east-up call?')
-      capeLoToDxfSouthUp._warned = true
-    }
-  }
-  return { x: y, y: x };
+  return { x: -y, y: -x };
 }
 
 /** Shoelace centroid in AutoCAD space from an array of AutoCAD {x,y} points */
@@ -572,7 +577,9 @@ export function generateDXF(options, logger) {
   }
 
   /**
-   * Draw a south-pointing arrow (page is south-up, so the arrow points to +DXF-Y).
+   * Draw a north-pointing arrow. After the 2026-06-05 orientation flip,
+   * +DXF-Y is north (we negate Cape Lo X / southing), so the apex at +Y
+   * correctly points up = north.
    * Three LINEs form the arrowhead triangle; one TEXT entity reads "S" above the apex.
    * sizeM is the arrowhead height in ground metres at the chosen scale.
    */
@@ -585,7 +592,7 @@ export function generateDXF(options, logger) {
     addLine(layer, apex.x, apex.y, baseL.x, baseL.y)
     addLine(layer, apex.x, apex.y, baseR.x, baseR.y)
     addLine(layer, baseL.x, baseL.y, baseR.x, baseR.y)
-    addText(layer, cx, cy + half + mm(5), 'S', mm(4), 0)
+    addText(layer, cx, cy + half + mm(5), 'N', mm(4), 0)
   }
 
   /**
@@ -1663,9 +1670,10 @@ export function generateDXF(options, logger) {
   }
   dxf += p(0, 'ENDTAB');
 
-  // UCS table â€” one entry so CAD users can toggle to north-up view.
-  // Axes form a proper 180Â° rotation about Z (det = +1): X=(-1,0,0), Y=(0,-1,0).
-  // After applying this UCS the view shows north at top with east at the left.
+  // UCS table — entry retained as an IDENTITY UCS for backward compatibility.
+  // The geometry is already plotted north-up east-right in WCS (see
+  // capeLoToDxfSouthUp), so CAD_NORTH_UP no longer needs a rotation. Anyone
+  // toggling to this UCS gets the same view as the WCS default.
   dxf += p(0, 'TABLE');
   dxf += p(2, 'UCS');
   dxf += p(70, '1');
@@ -1673,8 +1681,8 @@ export function generateDXF(options, logger) {
   dxf += p(2, 'CAD_NORTH_UP');
   dxf += p(70, '0');
   dxf += p(10, '0.0'); dxf += p(20, '0.0'); dxf += p(30, '0.0');   // origin
-  dxf += p(11, '-1.0'); dxf += p(21, '0.0'); dxf += p(31, '0.0');  // X axis
-  dxf += p(12, '0.0'); dxf += p(22, '-1.0'); dxf += p(32, '0.0');  // Y axis
+  dxf += p(11, '1.0'); dxf += p(21, '0.0'); dxf += p(31, '0.0');   // X axis (identity)
+  dxf += p(12, '0.0'); dxf += p(22, '1.0'); dxf += p(32, '0.0');   // Y axis (identity)
   dxf += p(0, 'ENDTAB');
 
   // STYLE table â€” STANDARD + BOLD

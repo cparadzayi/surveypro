@@ -196,11 +196,11 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(entityCount(dxf, 'TEXT', 'TITLE_BLOCK')).toBeGreaterThanOrEqual(8)
   })
 
-  test('orientation invariant — DXF X = Cape Lo Y, DXF Y = Cape Lo X', () => {
+  test('orientation invariant — DXF X = -Cape Lo Y, DXF Y = -Cape Lo X (north-up east-right after 2026-06-05 flip)', () => {
     const beacon = parseFirstEntityOf(dxf, 'CIRCLE', 'BEACONS')
     expect(beacon).not.toBeNull()
-    expect(beacon.x).toBeCloseTo(sampleFixture.beacons.features[0].geometry.coordinates[0], 3)
-    expect(beacon.y).toBeCloseTo(sampleFixture.beacons.features[0].geometry.coordinates[1], 3)
+    expect(beacon.x).toBeCloseTo(-sampleFixture.beacons.features[0].geometry.coordinates[0], 3)
+    expect(beacon.y).toBeCloseTo(-sampleFixture.beacons.features[0].geometry.coordinates[1], 3)
   })
 
   test('UCS table contains CAD_NORTH_UP entry', () => {

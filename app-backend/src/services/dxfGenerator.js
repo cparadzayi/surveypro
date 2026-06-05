@@ -20,7 +20,13 @@
 
 // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import { TITLE_BLOCK, SCHEDULE_OF_AREAS, formatStandRanges } from '../../../app-shared/block-definitions.js'
+import { TITLE_BLOCK, SCHEDULE_OF_AREAS, OUTSIDE_FIGURE_DATA, SURVEYOR_GENERAL_BOX, formatStandRanges } from '../../../app-shared/block-definitions.js'
+
+/** Conversion factor: 1 PDF point = 0.352778 mm. block-definitions values
+ *  are in PDF pts (matching the PDF generator's native unit); the DXF
+ *  generator works in paper-mm so it converts at the boundary.
+ */
+const PT_TO_MM_GEN = 25.4 / 72
 import { findStandLabelPosition, findEdgeLabelPosition } from './dxfLabelPlacer.js'
 import {
   extractScheduleRow,
@@ -161,19 +167,24 @@ function normalizeCapeLoYX(y, x) {
   return [y, x];
 }
 
+/**
+ * Convert Cape Lo (Y = Westing, X = Southing) to DXF coordinates with
+ * **north-up east-right** orientation — matching the PDF view.
+ *
+ *   DXF.x = -capeY  (negate westing → easting; east increases to the right)
+ *   DXF.y = -capeX  (negate southing → northing; north increases upward)
+ *
+ * Renamed-in-place: the function still ends in "SouthUp" for historical
+ * compatibility with imports across tests/fixtures/docs, but the behavior
+ * was flipped on 2026-06-05 after the user noticed the DXF and PDF plots
+ * had opposite orientations. The negation is a 180° rotation of the
+ * previous south-up west-right output. Text-label angles compensate via
+ * the existing `if (ang > 90 || ang < -90) ang += 180` normalization
+ * downstream, so labels remain right-side-up.
+ */
 export function capeLoToDxfSouthUp(capeY, capeX) {
   const [y, x] = normalizeCapeLoYX(capeY, capeX);
-  // Sanity guard: typical Cape Lo input is Y>0, X>0; result should be x>0, y>0.
-  // A negative x from positive Y means a stale x = -y formula sneaked through.
-  if (capeY > 0 && y < 0) {
-    // Log once via the singleton flag; logger may not be in scope here.
-    if (!capeLoToDxfSouthUp._warned) {
-      // eslint-disable-next-line no-console
-      console.error('[DXF] capeLoToDxfSouthUp: positive Westing produced negative x â€” stale east-up call?')
-      capeLoToDxfSouthUp._warned = true
-    }
-  }
-  return { x: y, y: x };
+  return { x: -y, y: -x };
 }
 
 /** Shoelace centroid in AutoCAD space from an array of AutoCAD {x,y} points */
@@ -393,7 +404,21 @@ export function generateDXF(options, logger) {
     scale,
     sheetSize = 'ISO_A2',
     sheetInfo = null,
+    // SI 727 plan type. 'general-developed' suppresses parcel-edge distance +
+    // direction labels (matches pdfkitLabeling.js:386,456 — developed township
+    // general plans omit internal stand edge labels; per-stand survey diagrams
+    // carry that detail instead). Outside-figure edge labels are unaffected.
+    planType = null,
+    // UI-supplied beacon label decisions. Same shape as PDF's `beaconLabels`:
+    // [{ beaconName, text, isInsideParcel, displayInParcel, labelType }].
+    // labelType 'suffix' / 'full' / 'suppressed'. When present, drives display
+    // text + inside/outside placement (matches pdfkitGeoPDF.js:4654-4733). When
+    // absent, falls back to pattern matching: `^(\d+)([A-Z]+)$` → prefix=stand,
+    // suffix=letter; if a parcel has matching stand, show suffix inside, else
+    // show full name outside.
+    beaconLabels = null,
   } = options;
+  const isDevelopedPlan = planType === 'general-developed';
 
   const declaredS = parseScaleDenom(scale);
   const paper = PAPER_SIZES[sheetSize] || PAPER_SIZES['ISO_A2'];
@@ -558,7 +583,9 @@ export function generateDXF(options, logger) {
   }
 
   /**
-   * Draw a south-pointing arrow (page is south-up, so the arrow points to +DXF-Y).
+   * Draw a north-pointing arrow. After the 2026-06-05 orientation flip,
+   * +DXF-Y is north (we negate Cape Lo X / southing), so the apex at +Y
+   * correctly points up = north.
    * Three LINEs form the arrowhead triangle; one TEXT entity reads "S" above the apex.
    * sizeM is the arrowhead height in ground metres at the chosen scale.
    */
@@ -571,7 +598,7 @@ export function generateDXF(options, logger) {
     addLine(layer, apex.x, apex.y, baseL.x, baseL.y)
     addLine(layer, apex.x, apex.y, baseR.x, baseR.y)
     addLine(layer, baseL.x, baseL.y, baseR.x, baseR.y)
-    addText(layer, cx, cy + half + mm(5), 'S', mm(4), 0)
+    addText(layer, cx, cy + half + mm(5), 'N', mm(4), 0)
   }
 
   /**
@@ -1096,6 +1123,18 @@ export function generateDXF(options, logger) {
           ? Math.sqrt((distX - mx) * (distX - mx) + (distY - my) * (distY - my))
           : edgeOffset;
 
+        // Developed Township General Plan: suppress parcel-edge distance + direction
+        // labels (per-stand survey diagrams carry that detail). Still record the edge
+        // in labeledEdges so shared-edge topology decisions for any non-developed edges
+        // remain consistent. Outside-figure edge labels are emitted on a separate path
+        // (addOutsideFigureEdgeLabels at the figure-emission site) and are NOT affected.
+        if (isDevelopedPlan) {
+          if (!edgeInfo) {
+            labeledEdges.set(edgeKey, { distance: false, bearing: false });
+          }
+          continue;
+        }
+
         if (labelMode === 'both' || labelMode === 'distance-only') {
           if (distText) {
             addText('DISTANCES', distX, distY, distText, distHeight, ang);
@@ -1128,9 +1167,93 @@ export function generateDXF(options, logger) {
   }
   logger.info(`[DXF] Parcels: ${parcelCount}, Edge labels: ${edgeLabelCount}`);
 
-  // â”€â”€ 4. Beacons (filtered to outside figure + 2m buffer) â”€â”€
+  // ── 4. Beacons (filtered to outside figure + 2m buffer) ──
   const BEACON_BUFFER = 2; // metres
   let beaconCount = 0, beaconsSkipped = 0;
+
+  // Pre-compute parcel lookup maps for beacon-label placement (matches PDF's
+  // beaconLabelMap + parcel lookup at pdfkitGeoPDF.js:4779-4783, 4881-4884).
+  // parcelByStand: stand-string → polygon in DXF coords. Used to find the parcel
+  //   whose stand matches a beacon name's numeric prefix (e.g. "2475A" → "2475").
+  // parcelById: numeric id → polygon in DXF coords. Used when the UI supplies an
+  //   explicit `displayInParcel` parcel id.
+  const parcelByStand = new Map();
+  const parcelById = new Map();
+  if (parcels?.features) {
+    for (const feature of parcels.features) {
+      const props = feature.properties || {};
+      if (props.isOutsideFigure) continue;
+      const coords = feature.geometry?.coordinates?.[0];
+      if (!Array.isArray(coords) || coords.length < 4) continue;
+      const poly = coords.slice(0, -1)
+        .map(c => capeLoToDxfSouthUp(c[0], c[1]))
+        .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+      if (poly.length < 3) continue;
+      const standKey = String(props.stand ?? '');
+      if (standKey) parcelByStand.set(standKey, poly);
+      const idKey = props.id ?? feature.id;
+      if (idKey != null) parcelById.set(String(idKey), poly);
+    }
+  }
+
+  // UI-supplied label map (when provided). One entry per beacon name.
+  const beaconLabelMap = new Map();
+  if (Array.isArray(beaconLabels)) {
+    for (const lbl of beaconLabels) {
+      if (lbl && lbl.beaconName) beaconLabelMap.set(lbl.beaconName, lbl);
+    }
+  }
+
+  // Helper: decide displayLabel + position for one beacon.
+  // Returns null when the label should be suppressed (no text emitted).
+  const beaconLabelInsideOffset = beaconRadius + mmToGround(1.5, S); // toward centroid
+  const labelDecision = (beaconName, pt) => {
+    if (!beaconName) return null;
+
+    // PRIORITY 1: UI-supplied label.
+    const uiLabel = beaconLabelMap.get(beaconName);
+    if (uiLabel) {
+      if (uiLabel.labelType === 'suppressed') return null;
+      const text = String(uiLabel.text || '');
+      if (!text) return null;
+      if (uiLabel.isInsideParcel && uiLabel.displayInParcel != null) {
+        const poly = parcelById.get(String(uiLabel.displayInParcel));
+        if (poly) return placeInsideParcel(pt, poly, text);
+      }
+      return placeOutsideParcel(pt, text);
+    }
+
+    // PRIORITY 2: pattern-matched fallback (matches PDF:4855-4951).
+    const m = beaconName.match(/^(\d+)([A-Za-z]+)$/);
+    if (m) {
+      const prefix = m[1];
+      const suffix = m[2].toUpperCase();
+      const poly = parcelByStand.get(prefix);
+      if (poly) return placeInsideParcel(pt, poly, suffix);
+    }
+    // Control beacons (no numeric prefix) or unmatched: full name outside.
+    return placeOutsideParcel(pt, beaconName);
+  };
+
+  // Place a label INSIDE a parcel: project from the beacon toward the parcel's
+  // centroid by `beaconLabelInsideOffset`. Keeps the label adjacent to its
+  // beacon while orienting it into the parcel's interior.
+  function placeInsideParcel(pt, poly, text) {
+    const centroid = shoelaceCentroid(poly);
+    let dx = centroid.x - pt.x;
+    let dy = centroid.y - pt.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 1e-6) return placeOutsideParcel(pt, text);
+    dx /= len; dy /= len;
+    return { x: pt.x + dx * beaconLabelInsideOffset, y: pt.y + dy * beaconLabelInsideOffset, text };
+  }
+
+  // Place a label OUTSIDE the parcel: small (+x, +y) offset from beacon.
+  // Matches the existing pre-3-v2 convention and the PDF's `closeOffset` fallback.
+  function placeOutsideParcel(pt, text) {
+    return { x: pt.x + beaconLabelOffset, y: pt.y + beaconLabelOffset, text };
+  }
+
   if (beacons?.features) {
     for (const feature of beacons.features) {
       const rc = feature.geometry?.coordinates;
@@ -1162,7 +1285,10 @@ export function generateDXF(options, logger) {
                 || feature.properties?.name
                 || feature.properties?.beacon_name
                 || '';
-      if (name) addText('BEACON_LABELS', pt.x + beaconLabelOffset, pt.y + beaconLabelOffset, name, beaconLabelHeight);
+      const decision = labelDecision(name, pt);
+      if (decision) {
+        addText('BEACON_LABELS', decision.x, decision.y, decision.text, beaconLabelHeight);
+      }
       beaconCount++;
     }
   }
@@ -1172,16 +1298,23 @@ export function generateDXF(options, logger) {
   const mm = (v) => mmToGround(v, S); // shorthand
   const pt = (v) => ptToGround(v, S);
 
-  // â”€â”€ Outside-figure vertex labels â”€â”€
+  // ── Outside-figure vertex labels ──
   // (OF polyline and vertex calculation done earlier; now emit the labels)
+  // Vertex coordinate labels (e.g. "M4") + tick marks always emit.
+  // Outside-figure edge distance + direction labels are suppressed for
+  // developed townships (matches the parcel-edge suppression below — the
+  // user's instruction extends the PDF's `isDeveloped` behavior to all edge
+  // labels, including the OF boundary).
   if (ofResult && ofResult.vertices.length >= 3) {
     const ofDxfPts = ofResult.vertices.slice(0, -1)
       .map(v => capeLoToDxfSouthUp(v.y, v.x));
     const ofCentroid = shoelaceCentroid(ofDxfPts);
     addOutsideFigureVertexLabels('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
     addOutsideFigureTickMarks('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
-    addOutsideFigureEdgeLabels('DISTANCES', 'DIRECTIONS',
-                                ofResult.vertices, outsideFigureData.edges, ofCentroid);
+    if (!isDevelopedPlan) {
+      addOutsideFigureEdgeLabels('DISTANCES', 'DIRECTIONS',
+                                  ofResult.vertices, outsideFigureData.edges, ofCentroid);
+    }
   }
 
   // Extract central meridian
@@ -1266,7 +1399,11 @@ export function generateDXF(options, logger) {
   // Content area border (margin lines)
   addRect(TB, cntL, cntB, cntR, cntT);               // content border
   addLine(TB, endDivX, pageB, endDivX, pageT);       // endorsements divider (full height)
-  addLine(TB, cntL, drawDivY, cntR, drawDivY);       // below drawing (tables divider)
+  // The drawing-zone / bottom-zone separator at drawDivY was previously drawn
+  // as a full-width horizontal line. The PDF doesn't emit any equivalent
+  // (it relies on block placement + per-block borders), so the line is
+  // omitted here for 1:1 PDF parity. `drawDivY` is still used as a y-coord
+  // boundary by the schedule placer and the bottom-zone layout below.
   addMarginGuides('MARGIN_GUIDES', pageL, pageR, pageT, pageB, cntL, cntR, cntT, cntB)
 
   // â”€â”€ A) TITLE ZONE (within top margin area, centered in content) â”€â”€
@@ -1375,16 +1512,31 @@ export function generateDXF(options, logger) {
   };
 
   // Outside-figure outline as polygon to avoid (null when absent).
-  const figurePolygon = (ofResult && Array.isArray(ofResult.vertices) && ofResult.vertices.length >= 3)
-    ? ofResult.vertices
+  // ofResult.vertices carry Cape Lo {y, x} coords; the placer expects DXF
+  // ground-metre {x, y} (matching drawingZone). Convert via capeLoToDxfSouthUp
+  // and drop the trailing closing duplicate so polygon edges aren't
+  // double-counted by the topology scanner.
+  const figurePolygon = (ofResult && Array.isArray(ofResult.vertices) && ofResult.vertices.length >= 4)
+    ? ofResult.vertices.slice(0, -1).map(v => capeLoToDxfSouthUp(v.y, v.x))
     : null;
 
+  // Schedule-specific fonts matching the PDF generator's drawScheduleOfAreasSingleColumn:
+  //   - 9 pt title (line 10247)
+  //   - 7 pt body data rows (line 10434)
+  //   - 6 pt column headers (line 10307) — addScheduleTable shares hBody between
+  //     headers and rows, so we stay at 7 pt rather than reading two separate values.
+  //   - 15 pt row height (line 10240).
+  // Using the dxfGenerator's general-purpose hHead/hBody/rH (pt 8 / 7 / 11.2)
+  // produced tables ~3.4× wider than the PDF's because the column widths in
+  // block-definitions were also interpreted in the wrong unit; see fix at the
+  // same commit (block-definitions now standardized in PDF pts; dxfScheduleHelpers
+  // converts via PT_TO_MM).
   const scheduleResult = emitScheduleOfAreasTopological({
     surveyedFeatures,
     drawingZone,
     polygon: figurePolygon,
     sheetSize,
-    fonts: { hHead, hBody, rH },
+    fonts: { hHead: pt(9), hBody: pt(7), rH: pt(15) },
     helpers: {
       extractScheduleRow,
       computeScheduleLayout,
@@ -1426,34 +1578,56 @@ export function generateDXF(options, logger) {
     cY -= rH * 1.5;
   }
 
-  // Horizontal divider before OF data
-  addLine(TB, statementL - mm(3), cY + mm(2), approvedR + mm(3), cY + mm(2));
+  // Vertical-spacing gap before the OFD title (the previous full-width
+  // horizontal divider between the survey statement and the OFD table was a
+  // pre-3-v2 col1/col2/col3 partition artefact; the PDF doesn't emit any
+  // equivalent so it's dropped here for 1:1 PDF parity).
   cY -= mm(3);
 
-  // Outside Figure Data table
-  const c = (off) => statementL + off; // offset helper
-  const cS = mm(0), cM = mm(28), cD = mm(50), cK = mm(78);
-  const cCY = mm(95), cCX = mm(115);
+  // Outside Figure Data table — all dimensions sourced from
+  // OUTSIDE_FIGURE_DATA in block-definitions.js (PDF pts), converted to
+  // paper-mm via PT_TO_MM_GEN. block-definitions is the single source of
+  // truth shared with pdfkitGeoPDF.js — same values in both generators.
+  const ofTitleH = pt(OUTSIDE_FIGURE_DATA.titleFontSize);
+  const ofBodyH  = pt(OUTSIDE_FIGURE_DATA.fontSize);
+  const ofRowH   = pt(OUTSIDE_FIGURE_DATA.rowHeight);
 
-  addText(TB, c(cS), cY, 'OUTSIDE FIGURE DATA', hHead, 0, 'BOLD');
-  addText(TB, c(cCY), cY, `CO-ORDINATES`, hHead, 0, 'BOLD');
-  cY -= rH * 0.8;
-  addText(TB, c(cCY), cY, `System: Lo ${centralMeridian}`, hBody);
-  cY -= rH * 0.6;
-  // Add vertical divider between OF data and coordinates
-  const coordDivX = c(cCY) - mm(3);
-  addLine(TB, coordDivX, cY + rH * 1.5, coordDivX, cY - rH * ((outsideFigureData?.edges?.length || 0) + 1));
+  // Cumulative column anchor x offsets in paper-mm (sum of preceding widths).
+  const ofdColsPt = OUTSIDE_FIGURE_DATA.columns.map(col => col.width);
+  const ofdColAnchorsMM = [0]; // cS — first column starts at 0
+  for (let i = 0; i < ofdColsPt.length - 1; i++) {
+    ofdColAnchorsMM.push(ofdColAnchorsMM[i] + ofdColsPt[i] * PT_TO_MM_GEN);
+  }
+  const c = (off) => statementL + off;
+  const cS  = mm(ofdColAnchorsMM[0]);   // SIDES
+  const cM  = mm(ofdColAnchorsMM[1]);   // Metres
+  const cD  = mm(ofdColAnchorsMM[2]);   // DIRECTION
+  const cK  = mm(ofdColAnchorsMM[3]);   // Constants
+  const cCY = mm(ofdColAnchorsMM[4]);   // Y
+  const cCX = mm(ofdColAnchorsMM[5]);   // X
+  const ofdRightEdge = mm(ofdColAnchorsMM[5] + ofdColsPt[5] * PT_TO_MM_GEN);
+
+  addText(TB, c(cS), cY, 'OUTSIDE FIGURE DATA', ofTitleH, 0, 'BOLD');
+  addText(TB, c(cCY), cY, `CO-ORDINATES`, ofTitleH, 0, 'BOLD');
+  cY -= ofRowH * 0.9;
+  addText(TB, c(cCY), cY, `System: Lo ${centralMeridian}`, ofBodyH);
+  cY -= ofRowH * 0.7;
+
+  // Vertical divider between OF data and coordinates (matches PDF's
+  // title-box / coordinate-box separator at drawOutsideFigureData:10796).
+  const coordDivX = c(cCY) - mm(2);
+  addLine(TB, coordDivX, cY + ofRowH * 1.5, coordDivX, cY - ofRowH * ((outsideFigureData?.edges?.length || 0) + 1));
 
   // Column headers
-  addLine(TB, statementL - mm(3), cY + mm(2), approvedR + mm(3), cY + mm(2));
-  addText(TB, c(cS), cY, 'SIDES', hBody, 0, 'BOLD');
-  addText(TB, c(cM), cY, 'Metres', hBody, 0, 'BOLD');
-  addText(TB, c(cD), cY, 'DIRECTION', hBody, 0, 'BOLD');
-  addText(TB, c(cK), cY, 'Constants', hBody, 0, 'BOLD');
-  addText(TB, c(cCY), cY, 'Y', hBody, 0, 'BOLD');
-  addText(TB, c(cCX), cY, 'X', hBody, 0, 'BOLD');
-  addLine(TB, statementL - mm(3), cY - mm(2), approvedR + mm(3), cY - mm(2));
-  cY -= rH;
+  addLine(TB, statementL - mm(3), cY + mm(1.5), c(ofdRightEdge) + mm(2), cY + mm(1.5));
+  addText(TB, c(cS), cY, 'SIDES', ofBodyH, 0, 'BOLD');
+  addText(TB, c(cM), cY, 'Metres', ofBodyH, 0, 'BOLD');
+  addText(TB, c(cD), cY, 'DIRECTION', ofBodyH, 0, 'BOLD');
+  addText(TB, c(cK), cY, 'Constants', ofBodyH, 0, 'BOLD');
+  addText(TB, c(cCY), cY, 'Y', ofBodyH, 0, 'BOLD');
+  addText(TB, c(cCX), cY, 'X', ofBodyH, 0, 'BOLD');
+  addLine(TB, statementL - mm(3), cY - mm(1.5), c(ofdRightEdge) + mm(2), cY - mm(1.5));
+  cY -= ofRowH;
 
   // Data rows
   if (outsideFigureData?.edges) {
@@ -1464,28 +1638,43 @@ export function generateDXF(options, logger) {
       const constId = edge.pointId || '';
       const yV = typeof edge.y === 'number' ? (edge.y >= 0 ? '+' : '') + edge.y.toFixed(2) : '';
       const xV = typeof edge.x === 'number' ? (edge.x >= 0 ? '+' : '') + edge.x.toFixed(2) : '';
-      addText(TB, c(cS), cY, side, hBody);
-      addText(TB, c(cM), cY, dist, hBody);
-      addText(TB, c(cD), cY, dir, hBody);
-      addText(TB, c(cK), cY, constId, hBody);
-      addText(TB, c(cCY), cY, yV, hBody);
-      addText(TB, c(cCX), cY, xV, hBody);
-      cY -= rH;
+      addText(TB, c(cS), cY, side, ofBodyH);
+      addText(TB, c(cM), cY, dist, ofBodyH);
+      addText(TB, c(cD), cY, dir, ofBodyH);
+      addText(TB, c(cK), cY, constId, ofBodyH);
+      addText(TB, c(cCY), cY, yV, ofBodyH);
+      addText(TB, c(cCX), cY, xV, ofBodyH);
+      cY -= ofRowH;
     }
   }
 
-  // â”€â”€ C3) APPROVED BOX (right bottom column) â”€â”€
-  let aY = drawDivY - mm(5);
-  const aCX = (approvedL + approvedR) / 2;
-  addRect(TB, approvedL, aY - mm(30), approvedR, aY);  // approved box border
-  aY -= mm(5);
-  addText(TB, aCX, aY, 'Approved', hSub, 0, 'BOLD');
-  aY -= mm(8);
-  addText(TB, aCX, aY, '........................................', hBody);
-  aY -= rH;
-  addText(TB, aCX, aY, 'For Surveyor General', hBody);
-  aY -= rH;
-  addText(TB, aCX, aY, 'Date: ................', hBody);
+  // ── C3) APPROVED / SURVEYOR-GENERAL SIGNATURE BOX ──
+  // All dimensions sourced from SURVEYOR_GENERAL_BOX in block-definitions.js
+  // (PDF pts), converted to paper-mm via PT_TO_MM_GEN. Single source of truth
+  // shared with pdfkitGeoPDF.js:drawSurveyorGeneralSignature.
+  const SG = SURVEYOR_GENERAL_BOX;
+  const sgTitleH  = pt(SG.titleFontSize);
+  const sgBodyH   = pt(SG.bodyFontSize);
+  const sgBoxW    = mm(SG.width  * PT_TO_MM_GEN);
+  const sgBoxH    = mm(SG.height * PT_TO_MM_GEN);
+  const sgBoxR    = approvedR;
+  const sgBoxL    = sgBoxR - sgBoxW;
+  const sgBoxTopY = drawDivY - mm(5);
+  const sgBoxBotY = sgBoxTopY - sgBoxH;
+  const aCX       = (sgBoxL + sgBoxR) / 2;
+
+  // Vertical offsets are PDF-pt offsets from the box top.
+  const sgTitleY  = sgBoxTopY - mm(SG.titleYOffset        * PT_TO_MM_GEN);
+  const sgSigY    = sgBoxTopY - mm(SG.signatureLineYOffset * PT_TO_MM_GEN);
+  const sgForY    = sgBoxTopY - mm(SG.forSGYOffset         * PT_TO_MM_GEN);
+  const sgDateY   = sgBoxTopY - mm(SG.dateYOffset          * PT_TO_MM_GEN);
+  const sgSigInset = mm(SG.signatureLineInset * PT_TO_MM_GEN);
+
+  addRect(TB, sgBoxL, sgBoxBotY, sgBoxR, sgBoxTopY);
+  addText(TB, aCX, sgTitleY, 'Approved', sgTitleH, 0);
+  addLine(TB, sgBoxL + sgSigInset, sgSigY, sgBoxR - sgSigInset, sgSigY);
+  addText(TB, aCX, sgForY,  'For Surveyor General', sgBodyH);
+  addText(TB, aCX, sgDateY, SG.dateText, sgBodyH);
 
   logger.info(`[DXF] Page frame: ${(pageR - pageL).toFixed(0)}m x ${(pageT - pageB).toFixed(0)}m ground`);
 
@@ -1539,9 +1728,10 @@ export function generateDXF(options, logger) {
   }
   dxf += p(0, 'ENDTAB');
 
-  // UCS table â€” one entry so CAD users can toggle to north-up view.
-  // Axes form a proper 180Â° rotation about Z (det = +1): X=(-1,0,0), Y=(0,-1,0).
-  // After applying this UCS the view shows north at top with east at the left.
+  // UCS table — entry retained as an IDENTITY UCS for backward compatibility.
+  // The geometry is already plotted north-up east-right in WCS (see
+  // capeLoToDxfSouthUp), so CAD_NORTH_UP no longer needs a rotation. Anyone
+  // toggling to this UCS gets the same view as the WCS default.
   dxf += p(0, 'TABLE');
   dxf += p(2, 'UCS');
   dxf += p(70, '1');
@@ -1549,11 +1739,25 @@ export function generateDXF(options, logger) {
   dxf += p(2, 'CAD_NORTH_UP');
   dxf += p(70, '0');
   dxf += p(10, '0.0'); dxf += p(20, '0.0'); dxf += p(30, '0.0');   // origin
-  dxf += p(11, '-1.0'); dxf += p(21, '0.0'); dxf += p(31, '0.0');  // X axis
-  dxf += p(12, '0.0'); dxf += p(22, '-1.0'); dxf += p(32, '0.0');  // Y axis
+  dxf += p(11, '1.0'); dxf += p(21, '0.0'); dxf += p(31, '0.0');   // X axis (identity)
+  dxf += p(12, '0.0'); dxf += p(22, '1.0'); dxf += p(32, '0.0');   // Y axis (identity)
   dxf += p(0, 'ENDTAB');
 
-  // STYLE table â€” STANDARD + BOLD
+  // STYLE table — STANDARD + BOLD.
+  //
+  // Group code 41 is the text WIDTH FACTOR — character horizontal scale
+  // relative to height. CAD viewers default the STANDARD font (txt.shx)
+  // to a 1.0 (square) ratio, which renders characters ~1.8× wider than
+  // the Helvetica-style proportions the PDF uses. Visible effect: column
+  // contents overflow their layout slots and the schedule / OFD tables
+  // appear "wide" even though their geometry matches the PDF exactly.
+  //
+  // Setting 41 = 0.55 here makes every TEXT entity emit at Helvetica-like
+  // proportions. The 0.55 ratio also matches the assumption baked into
+  // the DXF placer (dxfLabelPlacer.js `charWidthRatio = 0.55`) and the
+  // existing schedule emitter constants — so label-position math now
+  // agrees with the actual rendered width.
+  const STYLE_WIDTH_FACTOR = '0.55'
   dxf += p(0, 'TABLE');
   dxf += p(2, 'STYLE');
   dxf += p(70, '2');
@@ -1562,7 +1766,7 @@ export function generateDXF(options, logger) {
   dxf += p(2, 'STANDARD');
   dxf += p(70, '0');
   dxf += p(40, '0.0');
-  dxf += p(41, '1.0');
+  dxf += p(41, STYLE_WIDTH_FACTOR);
   dxf += p(50, '0.0');
   dxf += p(71, '0');
   dxf += p(42, '0.0');
@@ -1573,7 +1777,7 @@ export function generateDXF(options, logger) {
   dxf += p(2, 'BOLD');
   dxf += p(70, '0');
   dxf += p(40, '0.0');
-  dxf += p(41, '1.0');
+  dxf += p(41, STYLE_WIDTH_FACTOR);
   dxf += p(50, '0.0');
   dxf += p(71, '0');
   dxf += p(42, '0.0');

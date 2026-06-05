@@ -4500,6 +4500,13 @@ async function exportToDXF() {
       scale: resolvedScale,
       sheetSize: resolvedSheetSize,
       beaconGroups: props.projectInfo.beaconGroups || [],
+      // SI 727 plan type — drives parcel-edge label suppression on developed
+      // townships (per-stand survey diagrams carry that detail). Same value
+      // that the PDF generator already receives via the vector call above.
+      planType: config.value.planType as any,
+      // UI-computed beacon-to-parcel assignments so the DXF can display the
+      // same suffix-only labels inside parcels that the PDF shows.
+      beaconLabels: refinedBeaconLabels.value || [],
     })
 
     const ts = Date.now()

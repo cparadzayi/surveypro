@@ -116,28 +116,68 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     }
   })
 
-  test('10. consolidation, feasible=0 → no consolidation attempted; scheduleOverflow warn (zero-fit)', () => {
+  test('10. polygon fills zone → Pass 3 skip-polygon fallback places all tables (no warn)', () => {
+    // Pass 1 + Pass 2 both place 0 (polygon covers the whole zone). Pass 3
+    // skips polygon avoidance and finds positions inside mapBounds + edge
+    // margin. Mandatory SI 727 schedule renders over the parcel polygon —
+    // documented PDF-fidelity trade-off.
     const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
     const polygon = [
       { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
     ]
     const features = makeFeatures(24)
+    const calls = { info: [], warn: [], error: [] }
+    const logger = {
+      info:  (msg) => calls.info.push(msg),
+      warn:  (msg) => calls.warn.push(msg),
+      error: (msg) => calls.error.push(msg),
+    }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
       drawingZone, polygon, sheetSize: 'ISO_A2',
       fonts: h.fonts, helpers: h.helpers,
-      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+      addText: h.addText, addLine: h.addLine, warn: h.warn,
+      logger,
     })
 
-    expect(result.placedStandCount).toBe(0)
-    expect(result.missingStandCount).toBe(24)
-    const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
-    expect(warns.length).toBe(1)
-    expect(warns[0].payload.phase).toBe('consolidation-zero-fit')
-    expect(warns[0].payload.recommendedSheetSize).toBe('ISO_A1')
+    // Pass 3 placed all stands; no scheduleOverflow warn.
+    expect(result.placedStandCount).toBe(24)
+    expect(result.missingStandCount).toBe(0)
+    expect(h.calls.warn.filter(w => w.cat === 'scheduleOverflow').length).toBe(0)
+
+    // Pass 3 logger trace fires.
+    const passThreeLogs = calls.info.filter(m => m.includes('Pass 3'))
+    expect(passThreeLogs.length).toBeGreaterThan(0)
   })
 
-  test('11. consolidation-residual: when missingStandCount > 0 after consolidation, residual warn fires with correct payload shape', () => {
+  test('10b. true zero-fit: even Pass 3 cannot place tables → title placeholder + warn', () => {
+    // Drawing zone too small for ANY sub-table (after edge margin) even when
+    // polygon is ignored. Triggers initial-budget overflow (fits:false) not
+    // consolidation-zero-fit, since computeScheduleLayout catches it first.
+    const features = makeFeatures(50)
+    const drawingZone = { x: 0, y: 0, width: 40, height: 40 }
+    emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
+    expect(warns.length).toBe(1)
+    expect(['initial-budget', 'consolidation-zero-fit']).toContain(warns[0].payload.phase)
+
+    // Title placeholder is emitted regardless of which path failed.
+    const titlePlaceholders = h.calls.addText.filter(args => args[3] === 'SCHEDULE OF AREAS')
+    expect(titlePlaceholders.length).toBe(1)
+  })
+
+  test('11. stand-conservation invariant holds across all paths', () => {
+    // With Pass 3 in place, residual + consolidation-zero-fit are unreachable
+    // through natural geometry (Pass 3 fits whenever layout passes; if Pass 3
+    // can't fit, layout already returned fits:false → initial-budget).
+    // The conservation invariant is what survives: every stand is either
+    // placed or counted missing, regardless of which path took us there.
     const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
     const polygon = [
       { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
@@ -150,16 +190,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
 
-    // Invariant: every stand is either placed or counted missing.
     expect(result.placedStandCount + result.missingStandCount).toBe(features.length)
-
-    // Invariant: when an overflow warn fires, payload has required keys.
-    const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
-    expect(warns.length).toBeGreaterThan(0)
-    expect(warns[0].payload).toHaveProperty('atSheetSize', 'ISO_A2')
-    expect(warns[0].payload).toHaveProperty('recommendedSheetSize')
-    expect(['consolidation-zero-fit', 'consolidation-residual', 'initial-budget'])
-      .toContain(warns[0].payload.phase)
   })
 
   test('12. consolidation that successfully places ALL stands → no warn', () => {
@@ -199,44 +230,41 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     expect(warns[0].payload.phase).toBe('initial-budget')
   })
 
-  test('14. warn payload shape: atSheetSize, recommendedSheetSize, placedStandCount, missingStandCount, placedTables', () => {
-    const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
-    const polygon = [
-      { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
-    ]
+  test('14. warn payload shape (initial-budget path)', () => {
+    // Initial-budget is the realistic overflow path now that Pass 3 covers
+    // the polygon-fills-zone case (no warn fires there anymore). Verify the
+    // initial-budget payload has the expected shape.
+    const drawingZone = { x: 0, y: 0, width: 100, height: 100 }
     emitScheduleOfAreasTopological({
-      surveyedFeatures: makeFeatures(24),
-      drawingZone, polygon, sheetSize: 'ISO_A2',
+      surveyedFeatures: makeFeatures(100),
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
 
     const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
-    expect(warns.length).toBeGreaterThan(0)
+    expect(warns.length).toBe(1)
     const payload = warns[0].payload
     expect(payload).toHaveProperty('atSheetSize', 'ISO_A2')
-    expect(payload).toHaveProperty('recommendedSheetSize')
-    expect(payload).toHaveProperty('placedStandCount')
-    expect(payload).toHaveProperty('missingStandCount')
-    expect(payload).toHaveProperty('placedTables')
-    expect(payload).toHaveProperty('phase')
+    expect(payload).toHaveProperty('phase', 'initial-budget')
+    // Either escalation field is acceptable; initial-budget uses requiredSheetSize.
+    expect(payload.requiredSheetSize || payload.recommendedSheetSize).toBeTruthy()
   })
 
-  test('15. recommendedSheetSize uses nextLargerSheet(sheetSize)', () => {
-    const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
-    const polygon = [
-      { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
-    ]
+  test('15. sheet escalation uses nextLargerSheet(sheetSize)', () => {
+    // ISO_A1 + small overflow zone → escalation field = ISO_A0.
+    const drawingZone = { x: 0, y: 0, width: 100, height: 100 }
     emitScheduleOfAreasTopological({
-      surveyedFeatures: makeFeatures(24),
-      drawingZone, polygon, sheetSize: 'ISO_A1',
+      surveyedFeatures: makeFeatures(100),
+      drawingZone, polygon: null, sheetSize: 'ISO_A1',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
 
     const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
-    expect(warns.length).toBeGreaterThan(0)
-    expect(warns[0].payload.recommendedSheetSize).toBe('ISO_A0')
+    expect(warns.length).toBe(1)
+    const escalation = warns[0].payload.requiredSheetSize || warns[0].payload.recommendedSheetSize
+    expect(escalation).toBe('ISO_A0')
   })
 
   test('16. polygon with rectangle obstacle → placements avoid the polygon', () => {
@@ -277,6 +305,33 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
     expect(warns.length).toBe(1)
     expect(warns[0].payload.phase).toBe('initial-budget')
+  })
+
+  test('19. layout shrinks zone by 2 * GRID_EDGE_MARGIN so sub-table fits placer scan window', () => {
+    // Regression for the Maglas-at-A0 bug: at large zones the layout previously
+    // sized sub-tables to fill the full zone height, but the grid-fallback's
+    // 14-unit edge margin made every candidate position fall outside the scan
+    // window. Now the emitter feeds layout a zone reduced by 2*14 on each axis
+    // so the sub-table height matches the placer's effective scan range.
+    //
+    // Geometry: zone 600 wide × 88 tall. Effective for layout: 572 × 60.
+    // rH=3, headerHeight=12 → rowsPerColumn = floor((60-12)/3) = 16.
+    // 32 rows → numTables = 2, subTableHeight = 12 + 16*3 = 60. Effective scan
+    // height window = 88 - 28 = 60. Sub-table just fits → grid generates
+    // candidates → placement succeeds.
+    const features = makeFeatures(32)
+    const drawingZone = { x: 0, y: 0, width: 600, height: 88 }
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    // Without the fix, placedTables would be 0 (grid produces no candidates).
+    expect(result.placedTables.length).toBeGreaterThan(0)
+    expect(result.placedStandCount).toBe(32)
+    expect(h.calls.warn.length).toBe(0)
   })
 
   test('18. logger.info called with topology candidate counts (smoke test)', () => {
@@ -389,8 +444,10 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
   })
 
   test("6. cont'd titles: first 'SCHEDULE OF AREAS', subsequent \"SCHEDULE OF AREAS (cont'd)\"", () => {
+    // Drawing height 60 → effective 32 after the placer's 14-unit edge margin
+    // subtraction on top + bottom → fits 6 rows/table (rowsPerColumn) → 12 rows → 2 tables.
     const features = makeFeatures(12)
-    const drawingZone = { x: 0, y: 0, width: 600, height: 30 }
+    const drawingZone = { x: 0, y: 0, width: 600, height: 60 }
     emitScheduleOfAreasTopological({
       surveyedFeatures: features,
       drawingZone, polygon: null, sheetSize: 'ISO_A2',

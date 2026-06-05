@@ -8,70 +8,113 @@
  */
 
 // SI 727 Schedule of Areas - Full 6-column format
+//
+// ALL DIMENSIONS ARE IN PDF POINTS (1 pt = 1/72 inch ≈ 0.353 mm).
+// The PDF generator consumes these values directly (it operates in pt).
+// The DXF generator converts via PT_TO_MM in dxfScheduleHelpers.js, since
+// it operates in paper-mm. Updated 2026-06-05 to match the values
+// hardcoded in pdfkitGeoPDF.js's drawScheduleOfAreasSingleColumn /
+// drawScheduleOfAreasMultiTable — previously block-definitions disagreed
+// with the actual PDF drawer, producing wrong overflow detection in the
+// PDF and DXF tables ~3.4× wider than the PDF tables at print scale.
 export const SCHEDULE_OF_AREAS = {
   title: 'SCHEDULE OF AREAS',
   titleFont: { family: 'Helvetica-Bold', size: 10 },
-  
-  // Single column format (≤50 stands)
+
+  // Single column format (≤50 stands).
+  // Widths match drawScheduleOfAreasSingleColumn:10231-10236 exactly.
+  // Total tableWidth = 260 pt ≈ 91.7 mm at print scale.
   singleColumn: {
     columns: [
-      { key: 'stand', label: 'STAND\nNo.', width: 45, align: 'center' },
+      { key: 'stand', label: 'STAND\nNo.', width: 35, align: 'center' },
       { key: 'area', label: 'AREAS\nSQUARE\nMETRES', width: 60, align: 'center' },
-      { key: 'diagram', label: 'DIAGRAM\nNUMBER', width: 50, align: 'center' },
-      { key: 'deedNumber', label: 'NUMBER', width: 50, align: 'center', parentHeader: 'DEED' },
-      { key: 'deedDate', label: 'DATE', width: 45, align: 'center', parentHeader: 'DEED' },
-      { key: 'surveyor', label: 'SURVEYOR-\nGENERAL', width: 60, align: 'center' }
+      { key: 'diagram', label: 'DIAGRAM\nNUMBER', width: 40, align: 'center' },
+      { key: 'deedNumber', label: 'NUMBER', width: 40, align: 'center', parentHeader: 'DEED' },
+      { key: 'deedDate', label: 'DATE', width: 35, align: 'center', parentHeader: 'DEED' },
+      { key: 'surveyor', label: 'SURVEYOR-\nGENERAL', width: 50, align: 'center' }
     ],
-    rowHeight: 14,
+    rowHeight: 15,
     headerHeight: 25,
-    fontSize: 9,
-    headerFontSize: 9
+    fontSize: 7,           // body row font (drawScheduleOfAreasSingleColumn:10434)
+    headerFontSize: 6,     // column header font (drawScheduleOfAreasSingleColumn:10307)
+    titleFontSize: 9       // title font (drawScheduleOfAreasSingleColumn:10247)
   },
-  
-  // Multi-column format (>50 stands)
+
+  // Multi-column format (>50 stands).
+  // drawScheduleOfAreasMultiTable:9229-9234 uses THE SAME column widths
+  // as singleColumn (not narrower as the old block-definitions suggested).
   multiColumn: {
     columns: [
       { key: 'stand', label: 'STAND\nNo.', width: 35, align: 'center' },
-      { key: 'area', label: 'AREAS\nSQUARE\nMETRES', width: 42, align: 'center' },
-      { key: 'diagram', label: 'DIAGRAM\nNUMBER', width: 38, align: 'center' },
-      { key: 'deedNumber', label: 'NUMBER', width: 38, align: 'center', parentHeader: 'DEED' },
-      { key: 'deedDate', label: 'DATE', width: 32, align: 'center', parentHeader: 'DEED' },
-      { key: 'surveyor', label: 'SURVEYOR-\nGENERAL', width: 45, align: 'center' }
+      { key: 'area', label: 'AREAS\nSQUARE\nMETRES', width: 60, align: 'center' },
+      { key: 'diagram', label: 'DIAGRAM\nNUMBER', width: 40, align: 'center' },
+      { key: 'deedNumber', label: 'NUMBER', width: 40, align: 'center', parentHeader: 'DEED' },
+      { key: 'deedDate', label: 'DATE', width: 35, align: 'center', parentHeader: 'DEED' },
+      { key: 'surveyor', label: 'SURVEYOR-\nGENERAL', width: 50, align: 'center' }
     ],
-    rowHeight: 12,
-    headerHeight: 22,
-    fontSize: 8,
-    headerFontSize: 8,
-    columnSpacing: 8
+    rowHeight: 15,
+    headerHeight: 25,
+    fontSize: 7,
+    headerFontSize: 6,
+    titleFontSize: 9,
+    columnSpacing: 10      // _SCHED_SPACING_BETWEEN at pdfkitGeoPDF.js:8941
   },
-  
+
   threshold: 50 // Switch to multi-column if stands > threshold
 }
 
-// Outside Figure Data
+// Outside Figure Data — ALL DIMENSIONS IN PDF POINTS.
+// Updated 2026-06-05 to match the values hardcoded in
+// pdfkitGeoPDF.js:drawOutsideFigureData at line 10750-10755. col1 (SIDES)
+// has a 45-pt minimum but grows dynamically to fit longer side labels;
+// consumers should still treat 45 as the canonical minimum.
 export const OUTSIDE_FIGURE_DATA = {
   title: 'OUTSIDE FIGURE DATA',
   titleFont: { family: 'Helvetica-Bold', size: 9 },
-  
+
   columns: [
-    { key: 'sides', label: 'SIDES', width: 50, align: 'center' },
-    { key: 'metres', label: 'Metres', width: 50, align: 'right' },
-    { key: 'direction', label: 'DIRECTION\n° \' "', width: 70, align: 'center' },
-    { key: 'constants', label: 'Constants', width: 50, align: 'center' },
-    { key: 'y', label: 'Y', width: 55, align: 'right' },
-    { key: 'x', label: 'X', width: 55, align: 'right' }
+    { key: 'sides',     label: 'SIDES',           width: 45, align: 'center' },  // dynamic min — drawOutsideFigureData:10750
+    { key: 'metres',    label: 'Metres',          width: 40, align: 'center' },  //                             :10751
+    { key: 'direction', label: 'DIRECTION',       width: 70, align: 'center' },  //                             :10752
+    { key: 'constants', label: 'Constants',       width: 55, align: 'center' },  //                             :10753
+    { key: 'y',         label: 'Y',               width: 65, align: 'center' },  //                             :10754
+    { key: 'x',         label: 'X',               width: 70, align: 'center' },  //                             :10755
   ],
-  
+
   coordinateHeader: {
     text: 'CO-ORDINATES',
     subtext: 'System : Lo {meridian}°\nY    Metres    X',
-    colspan: 3 // Spans Y, X columns
+    colspan: 2 // Spans Y + X columns
   },
-  
-  rowHeight: 12,
-  headerHeight: 15,
-  fontSize: 9,
-  headerFontSize: 9
+
+  rowHeight: 12,        // drawOutsideFigureData:10729
+  headerHeight: 15,     // drawOutsideFigureData:10730 (column header row)
+  headerBoxHeight: 40,  // drawOutsideFigureData:10731 (title + CO-ORDINATES box)
+  fontSize: 9,          // drawOutsideFigureData:10741, 10907 (body + headers)
+  headerFontSize: 9,    // same as body — PDF uses one size throughout
+  titleFontSize: 9      // drawOutsideFigureData:10803
+}
+
+// Surveyor-General / Approved signature box — values from
+// pdfkitGeoPDF.js:drawSurveyorGeneralSignature at line 11382-11436.
+export const SURVEYOR_GENERAL_BOX = {
+  width: 200,                   // pdfkitGeoPDF.js:11383
+  height: 80,                   // pdfkitGeoPDF.js:11384
+  titleFontSize: 12,            //                :11398 — "Approved" text
+  titleFont: 'Helvetica',       //                :11399 — regular (NOT bold)
+  bodyFontSize: 9,              //                :11421/11431 — "For Surveyor General", "Date ..."
+  bodyFont: 'Helvetica',
+  // Vertical offsets from box top, in PDF points.
+  titleYOffset:       15,       //                :11396 — `blockY + 15`
+  signatureLineYOffset: 40,     //                :11407 — `blockY + 40`
+  forSGYOffset:       48,       //                :11419 — `signatureY + 8`
+  dateYOffset:        60,       //                :11429 — `blockHeight - 20`
+  // Signature-line horizontal margins (PDF uses 20-pt inset on each side).
+  signatureLineInset: 20,       //                :11408 — `lineMargin`
+  signatureLineDash:  { dash: 2, space: 2 },
+  // "Date ..." label x offset matches PDF's `blockX + 10`; width spans box - 20.
+  dateXOffset: 10,
+  dateText:   'Date ............................'
 }
 
 // Beacon Description
@@ -413,6 +456,7 @@ export function extractBeaconSuffix(beaconName) {
 export default {
   SCHEDULE_OF_AREAS,
   OUTSIDE_FIGURE_DATA,
+  SURVEYOR_GENERAL_BOX,
   BEACON_DESCRIPTION,
   SURVEY_STATEMENT,
   TITLE_BLOCK,

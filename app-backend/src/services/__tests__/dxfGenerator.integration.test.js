@@ -7,8 +7,182 @@ import { describe, test, expect, beforeAll } from '@jest/globals'
 import { generateDXF } from '../dxfGenerator.js'
 import { countLayerOnTable, entityCount, parseFirstEntityOf } from './dxfParse.js'
 import { sampleFixture } from './fixtures/sampleDxfPlan.js'
+import {
+  OUTSIDE_FIGURE_DATA,
+  SURVEYOR_GENERAL_BOX,
+  SCHEDULE_OF_AREAS,
+} from '../../../../app-shared/block-definitions.js'
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+
+describe('dxfGenerator integration — text width factor', () => {
+  test('STANDARD and BOLD styles emit width factor 0.55 (Helvetica-like proportions)', () => {
+    // Group code 41 in a STYLE record is the text width factor. The default
+    // 1.0 (square characters) makes DXF text render ~1.8× wider than the
+    // equivalent PDF text and breaks the assumption baked into the placer's
+    // charWidthRatio = 0.55. Lock down 0.55 so accidental reverts are caught.
+    //
+    // DXF group-code lines are right-padded ("   41\n0.55\n"), so we count
+    // raw occurrences of the "41 / 0.55" pair appearing inside the STYLE
+    // table — there should be exactly two (STANDARD + BOLD).
+    const r = generateDXF(sampleFixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    // Extract the STYLE table section.
+    const styleSection = dxf.match(/TABLE[\s\S]*?STYLE[\s\S]*?ENDTAB/)
+    expect(styleSection).not.toBeNull()
+    // Inside that section, the width-factor group code (41) followed on the
+    // next line by 0.55 must appear exactly twice (STANDARD + BOLD).
+    const widthFactorCount = (styleSection[0].match(/\b41\s*\n\s*0\.55\b/g) || []).length
+    expect(widthFactorCount).toBe(2)
+    // Defensive: no leftover 1.0 width factors anywhere in STYLE.
+    expect(styleSection[0]).not.toMatch(/\b41\s*\n\s*1\.0\b/)
+  })
+})
+
+describe('dxfGenerator integration — block-definitions consumption', () => {
+  test('OUTSIDE_FIGURE_DATA exposes the columns the DXF + PDF emitters read', () => {
+    // Catches drift if someone reorders or renames columns and breaks the
+    // assumption that c.width gives PDF pts.
+    expect(OUTSIDE_FIGURE_DATA.columns).toHaveLength(6)
+    expect(OUTSIDE_FIGURE_DATA.columns.map(c => c.key))
+      .toEqual(['sides', 'metres', 'direction', 'constants', 'y', 'x'])
+    // Total width should match the PDF drawer's hardcoded sum (345 pt).
+    const totalPt = OUTSIDE_FIGURE_DATA.columns.reduce((s, c) => s + c.width, 0)
+    expect(totalPt).toBe(45 + 40 + 70 + 55 + 65 + 70)
+  })
+
+  test('SURVEYOR_GENERAL_BOX has the dimension fields both generators rely on', () => {
+    expect(SURVEYOR_GENERAL_BOX.width).toBe(200)
+    expect(SURVEYOR_GENERAL_BOX.height).toBe(80)
+    expect(SURVEYOR_GENERAL_BOX.titleFontSize).toBe(12)
+    expect(SURVEYOR_GENERAL_BOX.bodyFontSize).toBe(9)
+    expect(SURVEYOR_GENERAL_BOX.titleYOffset).toBe(15)
+    expect(SURVEYOR_GENERAL_BOX.signatureLineYOffset).toBe(40)
+    expect(SURVEYOR_GENERAL_BOX.forSGYOffset).toBe(48)
+    expect(SURVEYOR_GENERAL_BOX.dateYOffset).toBe(60)
+  })
+
+  test('SCHEDULE_OF_AREAS columns match what the PDF drawer hardcodes (260 pt total)', () => {
+    const totalPt = SCHEDULE_OF_AREAS.singleColumn.columns.reduce((s, c) => s + c.width, 0)
+    expect(totalPt).toBe(35 + 60 + 40 + 40 + 35 + 50)
+    expect(SCHEDULE_OF_AREAS.singleColumn.rowHeight).toBe(15)
+    expect(SCHEDULE_OF_AREAS.singleColumn.titleFontSize).toBe(9)
+  })
+
+  test("renders the expected 'For Surveyor General' string sourced from block-definitions", () => {
+    const r = generateDXF(sampleFixture, fakeLogger)
+    expect(r.buffer.toString()).toContain('For Surveyor General')
+    // The 'Date' line text is now driven by SURVEYOR_GENERAL_BOX.dateText
+    expect(r.buffer.toString()).toContain(SURVEYOR_GENERAL_BOX.dateText)
+  })
+})
+
+describe('dxfGenerator integration — beacon labeling', () => {
+  test('pattern-matched fallback: beacon "<stand><suffix>" shows suffix only when parcel stand matches', () => {
+    // Build a fixture with one parcel (stand=123) and one beacon named "123A"
+    // whose coordinates are inside that parcel. With no UI labels, the auto-
+    // detect path should fire: full name "123A" is replaced with suffix "A".
+    const fixture = {
+      ...sampleFixture,
+      // Add a single-letter-suffix beacon overlaid on stand 123 (from the sample fixture).
+      beacons: {
+        type: 'FeatureCollection',
+        features: [
+          ...(sampleFixture.beacons?.features || []),
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [50000.5, 2200000.5] },
+            properties: { pointId: '123A' },
+          },
+        ],
+      },
+    }
+    const r = generateDXF(fixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    // Find TEXT entities on BEACON_LABELS layer.
+    const labels = []
+    const lines = dxf.split('\n')
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i].trim() !== 'TEXT') continue
+      let layer = null, text = null
+      for (let j = i + 1; j < Math.min(i + 30, lines.length - 1); j++) {
+        if (lines[j].trim() === '8') layer = lines[j + 1].trim()
+        if (lines[j].trim() === '1') { text = lines[j + 1]; break }
+      }
+      if (layer === 'BEACON_LABELS') labels.push(text)
+    }
+    // The new beacon "123A" should appear as suffix "A", not full "123A".
+    expect(labels).toContain('A')
+    expect(labels).not.toContain('123A')
+  })
+
+  test('UI-supplied label with labelType="full" shows the full text at the outside offset', () => {
+    const fixture = {
+      ...sampleFixture,
+      beacons: {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [50000.5, 2200000.5] },
+          properties: { pointId: 'CTRL-7' },
+        }],
+      },
+      beaconLabels: [
+        { beaconName: 'CTRL-7', text: 'CTRL-7', isInsideParcel: false, displayInParcel: null, labelType: 'full' },
+      ],
+    }
+    const r = generateDXF(fixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    expect(dxf).toContain('CTRL-7')
+  })
+
+  test('UI-supplied label with labelType="suppressed" emits no text for that beacon', () => {
+    const fixture = {
+      ...sampleFixture,
+      beacons: {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [50000.5, 2200000.5] },
+          properties: { pointId: 'ZZZ_UNIQ_TOKEN' },
+        }],
+      },
+      beaconLabels: [
+        { beaconName: 'ZZZ_UNIQ_TOKEN', text: 'ZZZ_UNIQ_TOKEN', isInsideParcel: false, displayInParcel: null, labelType: 'suppressed' },
+      ],
+    }
+    const r = generateDXF(fixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    // The beacon symbol still emits but no label.
+    expect(dxf).not.toContain('ZZZ_UNIQ_TOKEN')
+  })
+})
+
+describe('dxfGenerator integration — developed-township planType', () => {
+  test("planType='general-developed' suppresses ALL edge labels (parcel + outside-figure)", () => {
+    // Baseline: sample fixture without planType emits both DISTANCES and DIRECTIONS
+    // from parcel edges and from outside-figure edges.
+    const base = generateDXF(sampleFixture, fakeLogger)
+    const baseDist = entityCount(base.buffer.toString(), 'TEXT', 'DISTANCES')
+    const baseDir  = entityCount(base.buffer.toString(), 'TEXT', 'DIRECTIONS')
+    expect(baseDist).toBeGreaterThan(0)
+    expect(baseDir).toBeGreaterThan(0)
+
+    // Developed plan: BOTH parcel-edge AND outside-figure edge labels suppressed.
+    // The DISTANCES + DIRECTIONS layers should be empty of TEXT entities.
+    const dev = generateDXF({ ...sampleFixture, planType: 'general-developed' }, fakeLogger)
+    const devDist = entityCount(dev.buffer.toString(), 'TEXT', 'DISTANCES')
+    const devDir  = entityCount(dev.buffer.toString(), 'TEXT', 'DIRECTIONS')
+
+    expect(devDist).toBe(0)
+    expect(devDir).toBe(0)
+
+    // Sanity: OUTSIDE_FIGURE_LABELS (vertex coords + tick marks) still emit —
+    // only the distance/direction edge annotations are suppressed.
+    expect(entityCount(dev.buffer.toString(), 'TEXT', 'OUTSIDE_FIGURE_LABELS'))
+      .toBe(entityCount(base.buffer.toString(), 'TEXT', 'OUTSIDE_FIGURE_LABELS'))
+  })
+})
 
 describe('dxfGenerator integration — sample fixture', () => {
   let dxf, warnings
@@ -89,11 +263,11 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(entityCount(dxf, 'TEXT', 'TITLE_BLOCK')).toBeGreaterThanOrEqual(8)
   })
 
-  test('orientation invariant — DXF X = Cape Lo Y, DXF Y = Cape Lo X', () => {
+  test('orientation invariant — DXF X = -Cape Lo Y, DXF Y = -Cape Lo X (north-up east-right after 2026-06-05 flip)', () => {
     const beacon = parseFirstEntityOf(dxf, 'CIRCLE', 'BEACONS')
     expect(beacon).not.toBeNull()
-    expect(beacon.x).toBeCloseTo(sampleFixture.beacons.features[0].geometry.coordinates[0], 3)
-    expect(beacon.y).toBeCloseTo(sampleFixture.beacons.features[0].geometry.coordinates[1], 3)
+    expect(beacon.x).toBeCloseTo(-sampleFixture.beacons.features[0].geometry.coordinates[0], 3)
+    expect(beacon.y).toBeCloseTo(-sampleFixture.beacons.features[0].geometry.coordinates[1], 3)
   })
 
   test('UCS table contains CAD_NORTH_UP entry', () => {

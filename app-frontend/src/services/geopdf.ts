@@ -204,9 +204,20 @@ export async function generateDXF(request: VectorGeoPDFRequest): Promise<{
     scale: request.scale,
     sheetSize: request.sheetSize,
     beaconGroups: request.beaconGroups,
+    // SI 727 plan type — backend uses this to suppress parcel-edge labels on
+    // developed-township general plans (per-stand survey diagrams carry that
+    // detail). Mirrors what /geopdf/vector forwards via `request` directly.
+    planType: request.planType,
+    // UI-computed beacon-to-parcel assignments. The DXF generator uses these
+    // to display suffix-only labels inside their parcels (e.g. "A" instead of
+    // "2475A") — matches the PDF's behavior at pdfkitGeoPDF.js:4654-4733.
+    beaconLabels: request.beaconLabels,
   }, {
     responseType: 'blob',
-    timeout: 30000,
+    // 5-minute timeout matches the PDF vector route. Dense plans (200+ parcels
+    // on a developed township at A0 + 1:500 scale) take 30-60s for the DXF
+    // schedule placer to evaluate tens of thousands of candidate positions.
+    timeout: 300000,
   })
 
   const warningCount = parseInt(response.headers['x-dxf-warning-count'] || '0', 10) || 0

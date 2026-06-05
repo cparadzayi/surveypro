@@ -12,7 +12,7 @@ describe('dxfParse helpers (smoke)', () => {
   })
 })
 
-describe('capeLoToDxfSouthUp', () => {
+describe('capeLoToDxfSouthUp (north-up east-right after 2026-06-05 flip)', () => {
   // Fixtures spanning Cape Lo zones 25 (Bulawayo), 27 (Harare),
   // 29 (Mutare), 31 (eastern Zimbabwe). All Y, X positive by convention.
   const fixtures = [
@@ -23,15 +23,17 @@ describe('capeLoToDxfSouthUp', () => {
     { name: 'Lo 31b', capeY: 110000.000, capeX: 2300000.000 },
     { name: 'origin', capeY:      1.000, capeX:       1.000 },
   ]
-  test.each(fixtures)('$name → DXF X = capeY and DXF Y = capeX', ({ capeY, capeX }) => {
+  test.each(fixtures)('$name → DXF X = -capeY (easting) and DXF Y = -capeX (northing)', ({ capeY, capeX }) => {
     const out = capeLoToDxfSouthUp(capeY, capeX)
-    expect(out.x).toBeCloseTo(capeY, 6)
-    expect(out.y).toBeCloseTo(capeX, 6)
+    expect(out.x).toBeCloseTo(-capeY, 6)
+    expect(out.y).toBeCloseTo(-capeX, 6)
   })
-  test('regression sentinel: old (x = -y) formula would fail', () => {
+  test('regression sentinel: typical Cape Lo input produces negative DXF coordinates', () => {
+    // Post-flip: Cape Lo (Y>0, X>0) → DXF (x<0, y<0) by design (negate both axes).
+    // This sentinel catches an accidental revert to the old south-up (x=y, y=x) form.
     const out = capeLoToDxfSouthUp(50000, 2200000)
-    expect(out.x).not.toBeLessThan(0)   // catches accidental sign-flip revert
-    expect(out.y).not.toBeLessThan(0)
+    expect(out.x).toBeLessThan(0)
+    expect(out.y).toBeLessThan(0)
   })
 })
 

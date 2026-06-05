@@ -1375,8 +1375,12 @@ export function generateDXF(options, logger) {
   };
 
   // Outside-figure outline as polygon to avoid (null when absent).
-  const figurePolygon = (ofResult && Array.isArray(ofResult.vertices) && ofResult.vertices.length >= 3)
-    ? ofResult.vertices
+  // ofResult.vertices carry Cape Lo {y, x} coords; the placer expects DXF
+  // ground-metre {x, y} (matching drawingZone). Convert via capeLoToDxfSouthUp
+  // and drop the trailing closing duplicate so polygon edges aren't
+  // double-counted by the topology scanner.
+  const figurePolygon = (ofResult && Array.isArray(ofResult.vertices) && ofResult.vertices.length >= 4)
+    ? ofResult.vertices.slice(0, -1).map(v => capeLoToDxfSouthUp(v.y, v.x))
     : null;
 
   const scheduleResult = emitScheduleOfAreasTopological({

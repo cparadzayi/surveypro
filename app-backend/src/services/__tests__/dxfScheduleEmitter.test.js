@@ -116,7 +116,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     }
   })
 
-  test('10. consolidation, feasible=0 → no consolidation attempted; scheduleOverflow warn (zero-fit)', () => {
+  test('10. consolidation, feasible=0 → no consolidation attempted; scheduleOverflow warn (zero-fit) + title placeholder', () => {
     const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
     const polygon = [
       { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
@@ -135,6 +135,11 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     expect(warns.length).toBe(1)
     expect(warns[0].payload.phase).toBe('consolidation-zero-fit')
     expect(warns[0].payload.recommendedSheetSize).toBe('ISO_A1')
+
+    // Visible-output invariant: every failure path emits the title placeholder
+    // so the user sees there's a schedule that couldn't fit.
+    const titlePlaceholders = h.calls.addText.filter(args => args[3] === 'SCHEDULE OF AREAS')
+    expect(titlePlaceholders.length).toBe(1)
   })
 
   test('11. consolidation-residual: when missingStandCount > 0 after consolidation, residual warn fires with correct payload shape', () => {
@@ -279,6 +284,33 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     expect(warns[0].payload.phase).toBe('initial-budget')
   })
 
+  test('19. layout shrinks zone by 2 * GRID_EDGE_MARGIN so sub-table fits placer scan window', () => {
+    // Regression for the Maglas-at-A0 bug: at large zones the layout previously
+    // sized sub-tables to fill the full zone height, but the grid-fallback's
+    // 14-unit edge margin made every candidate position fall outside the scan
+    // window. Now the emitter feeds layout a zone reduced by 2*14 on each axis
+    // so the sub-table height matches the placer's effective scan range.
+    //
+    // Geometry: zone 600 wide × 88 tall. Effective for layout: 572 × 60.
+    // rH=3, headerHeight=12 → rowsPerColumn = floor((60-12)/3) = 16.
+    // 32 rows → numTables = 2, subTableHeight = 12 + 16*3 = 60. Effective scan
+    // height window = 88 - 28 = 60. Sub-table just fits → grid generates
+    // candidates → placement succeeds.
+    const features = makeFeatures(32)
+    const drawingZone = { x: 0, y: 0, width: 600, height: 88 }
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    // Without the fix, placedTables would be 0 (grid produces no candidates).
+    expect(result.placedTables.length).toBeGreaterThan(0)
+    expect(result.placedStandCount).toBe(32)
+    expect(h.calls.warn.length).toBe(0)
+  })
+
   test('18. logger.info called with topology candidate counts (smoke test)', () => {
     const calls = { info: [], warn: [], error: [] }
     const logger = {
@@ -389,8 +421,10 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
   })
 
   test("6. cont'd titles: first 'SCHEDULE OF AREAS', subsequent \"SCHEDULE OF AREAS (cont'd)\"", () => {
+    // Drawing height 60 → effective 32 after the placer's 14-unit edge margin
+    // subtraction on top + bottom → fits 6 rows/table (rowsPerColumn) → 12 rows → 2 tables.
     const features = makeFeatures(12)
-    const drawingZone = { x: 0, y: 0, width: 600, height: 30 }
+    const drawingZone = { x: 0, y: 0, width: 600, height: 60 }
     emitScheduleOfAreasTopological({
       surveyedFeatures: features,
       drawingZone, polygon: null, sheetSize: 'ISO_A2',

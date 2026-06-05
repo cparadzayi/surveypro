@@ -135,20 +135,30 @@ function generateTopologyCandidates({
 }
 
 /**
+ * Grid-fallback edge margin (in mapBounds units). Positions within this
+ * distance of any mapBounds edge are skipped to avoid crowding the
+ * boundary. Exported so emitter callers can match the placer's effective
+ * scan range when computing their block sizes.
+ *
+ * Source: PDF placer at `pdfkitGeoPDF.js:9431-9434` uses 14 pt.
+ */
+export const GRID_EDGE_MARGIN = 14
+
+/**
  * INTERNAL helper. Full-grid fallback. Scans right-to-left first
  * (matches PDF priority at `pdfkitGeoPDF.js:9431-9450`), then
  * left-to-right (line 9452-9472). Skips positions within `scanStep`
  * epsilon of any in `existingCandidates`.
  *
- * The 14-unit edge margin from the PDF (lines 9432-9434) is preserved
- * as `EDGE_MARGIN` so positions don't crowd the mapBounds boundary.
+ * Uses `GRID_EDGE_MARGIN` (14) as the edge reserve — see the exported
+ * constant for the rationale.
  *
  * @returns {Array<{x:number,y:number}>}
  */
 function generateGridCandidates({
   mapBounds, scanStep, blockWidth, blockHeight, existingCandidates,
 }) {
-  const EDGE_MARGIN = 14
+  const EDGE_MARGIN = GRID_EDGE_MARGIN
   const candidates = []
   const left   = mapBounds.x + EDGE_MARGIN
   const right  = mapBounds.x + mapBounds.width - EDGE_MARGIN

@@ -13,7 +13,7 @@
  * Consolidation pass added in Task 3. Overflow + edge case handling in Task 4.
  */
 
-import { findBlockPosition } from './dxfBlockPlacer.js'
+import { findBlockPosition, GRID_EDGE_MARGIN } from './dxfBlockPlacer.js'
 
 /** Clearance (paper-mm) from polygon edges for the placer's buffer parameter. */
 export const POLYGON_BUFFER_MM = 2.0
@@ -68,24 +68,41 @@ export function emitScheduleOfAreasTopological({
     }
   }
 
-  // 2. Compute layout using the drawing-zone dimensions.
+  // 2. Compute layout using the drawing-zone dimensions, MINUS the placer's
+  //    grid-fallback edge margin reserved on top/bottom/left/right. Without
+  //    this subtraction the layout sizes sub-tables to exactly fill the zone,
+  //    but the placer's grid scan can only generate candidates inside the
+  //    margin-shrunk window — the sub-table is then taller than any candidate
+  //    slot and `generateGridCandidates` returns zero positions.
+  //    The margin is in mapBounds units (ground-metres for our case); the
+  //    layout helper works in paper-mm, so we divide by mm(1) consistently.
+  const effectiveZoneWidth  = (drawingZone.width  - 2 * GRID_EDGE_MARGIN) / mm(1)
+  const effectiveZoneHeight = (drawingZone.height - 2 * GRID_EDGE_MARGIN) / mm(1)
   const layout = computeScheduleLayout({
     rowCount:         dataRows.length,
-    zoneWidth:        drawingZone.width  / mm(1),
-    zoneHeight:       drawingZone.height / mm(1),
+    zoneWidth:        effectiveZoneWidth,
+    zoneHeight:       effectiveZoneHeight,
     rowHeight:        rH / mm(1),
     headerHeight:     SCHEDULE_HEADER_HEIGHT_MM,
     currentSheetSize: sheetSize,
   })
 
-  // 3. Initial-budget overflow.
-  if (!layout.fits) {
+  // Helper: emit the "SCHEDULE OF AREAS" title placeholder near the top-left
+  // of the drawing zone. Used by every path that fails to place any sub-table,
+  // so the user always sees there's a schedule that couldn't fit (the
+  // structured `scheduleOverflow` warn alone isn't visible in the DXF).
+  const emitTitlePlaceholder = () => {
     addText(
       'TITLE_BLOCK',
       drawingZone.x + mm(3),
       drawingZone.y + drawingZone.height - mm(5),
       'SCHEDULE OF AREAS', hHead, 0, 'BOLD',
     )
+  }
+
+  // 3. Initial-budget overflow.
+  if (!layout.fits) {
+    emitTitlePlaceholder()
     warn('scheduleOverflow', {
       atSheetSize:       sheetSize,
       requiredSheetSize: layout.recommendedSheetSize,
@@ -135,6 +152,7 @@ export function emitScheduleOfAreasTopological({
     placedPositions = []   // discard pass-1 positions; replay from scratch
 
     if (feasible === 0) {
+      emitTitlePlaceholder()
       warn('scheduleOverflow', {
         atSheetSize:          sheetSize,
         recommendedSheetSize: nextLargerSheet(sheetSize),
@@ -175,9 +193,10 @@ export function emitScheduleOfAreasTopological({
     }
 
     // Pass 2 may also fail (consolidated taller height doesn't fit anywhere).
-    // Emit the same zero-fit warn and return early — otherwise the final
-    // emission loop would silently emit 0 tables with no warning.
+    // Emit a title placeholder + the same zero-fit warn and return early —
+    // otherwise the final emission loop would silently emit 0 tables.
     if (placedPositions.length === 0) {
+      emitTitlePlaceholder()
       warn('scheduleOverflow', {
         atSheetSize:          sheetSize,
         recommendedSheetSize: nextLargerSheet(sheetSize),

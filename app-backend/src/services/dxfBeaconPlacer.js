@@ -310,3 +310,104 @@ export function tryTightFullBeaconLabelPosition({
 
   return null
 }
+
+/**
+ * Edge-anchored outside placement (fallback after tryTightFullBeaconLabelPosition).
+ *
+ * Adapted port — PDF's calculateFullBeaconLabelOutsideOnEdge has additional
+ * scale-aware logic; this DXF version finds the nearest polygon edge across all
+ * incidentPolygons, computes its outward normal, and places the label bbox so
+ * its CENTER sits at `foot + outwardNormal · (beaconRadius + labelHeight/2 + 1)`.
+ *
+ * If the chosen position fails validation (overlaps an incident polygon or
+ * collides with the registry), walk along the edge in both directions in
+ * labelWidth/4 steps up to 2·labelWidth, retrying. Returns null when nothing fits.
+ *
+ * Returns the label's top-left insertion point or null.
+ */
+export function calculateFullBeaconLabelOutsideOnEdge({
+  beaconPos, incidentPolygons, labelWidth, labelHeight, beaconRadius, registry,
+}) {
+  if (!Array.isArray(incidentPolygons) || incidentPolygons.length === 0) {
+    return null
+  }
+
+  // 1. Find the nearest polygon edge across all incidentPolygons.
+  let nearestEdge = null
+  let nearestPoly = null
+  let nearestDist = Infinity
+  for (const poly of incidentPolygons) {
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i]
+      const b = poly[(i + 1) % poly.length]
+      const d = pointToLineDistance(beaconPos, a, b)
+      if (d < nearestDist) {
+        nearestDist = d
+        nearestEdge = { a, b }
+        nearestPoly = poly
+      }
+    }
+  }
+  if (!nearestEdge) return null
+
+  const { a, b } = nearestEdge
+  // 2. Project beacon onto the edge to get the foot point.
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const edgeLen = Math.sqrt(dx * dx + dy * dy)
+  if (edgeLen < 1e-6) return null
+  const ux = dx / edgeLen
+  const uy = dy / edgeLen
+  const t = ((beaconPos.x - a.x) * ux + (beaconPos.y - a.y) * uy)
+  // Clamp t into the segment [0, edgeLen]
+  const tClamped = Math.max(0, Math.min(edgeLen, t))
+  const footX = a.x + ux * tClamped
+  const footY = a.y + uy * tClamped
+
+  // 3. Outward normal of the edge — pick the direction that lies outside the polygon.
+  // Edge tangent (u). Two candidate normals: (-uy, ux) and (uy, -ux).
+  let nx = -uy, ny = ux
+  // Test midpoint + tiny step in (nx, ny). If inside the polygon, flip.
+  const midX = (a.x + b.x) / 2
+  const midY = (a.y + b.y) / 2
+  const step = Math.max(1e-3, edgeLen * 0.001)
+  const probe = { x: midX + nx * step, y: midY + ny * step }
+  if (isPointInPolygon(probe, nearestPoly)) {
+    nx = -nx; ny = -ny
+  }
+
+  // 4. Primary placement: center = foot + outwardNormal × offset
+  const offset = beaconRadius + labelHeight / 2 + 1
+  const placeAt = (cx, cy) => ({
+    x: cx - labelWidth / 2,
+    y: cy - labelHeight / 2,
+  })
+  const validate = (rect) => {
+    if (!isRectOutsidePolygons(rect, incidentPolygons)) return false
+    if (registry.hasCollision(rect, 1)) return false
+    return true
+  }
+
+  const tryCenter = (cx, cy) => {
+    const tl = placeAt(cx, cy)
+    const rect = { x: tl.x, y: tl.y, width: labelWidth, height: labelHeight }
+    return validate(rect) ? tl : null
+  }
+
+  const primary = tryCenter(footX + nx * offset, footY + ny * offset)
+  if (primary) return primary
+
+  // 5. Walk along the edge in both directions; labelWidth/4 step up to 2·labelWidth.
+  const walkStep = labelWidth / 4
+  const maxWalk = labelWidth * 2
+  for (let s = walkStep; s <= maxWalk; s += walkStep) {
+    for (const sign of [+1, -1]) {
+      const wx = footX + ux * sign * s + nx * offset
+      const wy = footY + uy * sign * s + ny * offset
+      const tl = tryCenter(wx, wy)
+      if (tl) return tl
+    }
+  }
+
+  return null
+}

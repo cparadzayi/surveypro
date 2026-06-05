@@ -11,6 +11,7 @@ import {
   orderSplayGroupByAngle,
   placeSuffixLabelPOIDirected,
   tryTightFullBeaconLabelPosition,
+  calculateFullBeaconLabelOutsideOnEdge,
 } from '../dxfBeaconPlacer.js'
 import { createCollisionRegistry as makeReg } from '../dxfBeaconPlacer.js'
 
@@ -317,6 +318,43 @@ describe('tryTightFullBeaconLabelPosition', () => {
       beaconRadius: 0.5, padding: 0.5,
       incidentPolygons: [parcel],
       registry: reg,
+    })
+    expect(result).toBeNull()
+  })
+})
+
+describe('calculateFullBeaconLabelOutsideOnEdge', () => {
+  test('beacon at center of top edge of a square → label sits outside (above) that edge', () => {
+    const square = [
+      { x:  0, y:  0 },
+      { x: 50, y:  0 },
+      { x: 50, y: 50 },
+      { x:  0, y: 50 },
+    ]
+    const result = calculateFullBeaconLabelOutsideOnEdge({
+      beaconPos: { x: 25, y: 50 },   // on top edge
+      incidentPolygons: [square],
+      labelWidth: 10, labelHeight: 6,
+      beaconRadius: 1,
+      registry: createCollisionRegistry(),
+    })
+    expect(result).not.toBeNull()
+    // Outward normal of top edge (y=50) points in +y direction.
+    // Center = foot + outwardNormal × (1 + 3 + 1) = (25, 50) + (0, 5) = (25, 55).
+    // Top-left = (20, 52).
+    const cx = result.x + 5
+    const cy = result.y + 3
+    expect(cx).toBeCloseTo(25, 3)
+    expect(cy).toBeGreaterThan(50)
+  })
+
+  test('no incident polygons → null', () => {
+    const result = calculateFullBeaconLabelOutsideOnEdge({
+      beaconPos: { x: 0, y: 0 },
+      incidentPolygons: [],
+      labelWidth: 10, labelHeight: 6,
+      beaconRadius: 1,
+      registry: createCollisionRegistry(),
     })
     expect(result).toBeNull()
   })

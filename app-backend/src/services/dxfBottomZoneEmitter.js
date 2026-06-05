@@ -152,3 +152,178 @@ export function sizeBeaconDescriptions(beaconGroups, fonts, mm) {
   const width     = mm(180)                     // 180 mm preferred width
   return { width, height }
 }
+
+/**
+ * Emit the Survey Date Statement at `position` (top-left of its bbox).
+ *
+ * No-op when neither metadata.date nor metadata.surveyor is set
+ * (matches sizeStatement returning {0,0}).
+ *
+ * Mirrors dxfGenerator.js lines 1692-1703 exactly, parameterized by
+ * `position.x` (was statementL) and `position.y` (was cY).
+ *
+ * @param {(layer:string,x:number,y:number,text:string,h:number,angle?:number,style?:string)=>void} addText
+ * @param {{x:number,y:number}} position - top-left (south-up: high y)
+ * @param {{date?:string, surveyor?:string}} metadata
+ * @param {{hBody:number, hSub:number, rH:number}} fonts
+ * @param {string} layer
+ */
+export function emitStatement(addText, position, metadata, fonts, layer) {
+  const { hBody, hSub, rH } = fonts
+  let cY = position.y
+  if (metadata.date) {
+    addText(layer, position.x, cY, `Surveyed in ${metadata.date} by me`, hBody, 0, undefined)
+    cY -= rH * 1.5
+  }
+  if (metadata.surveyor) {
+    addText(layer, position.x, cY, metadata.surveyor, hSub, 0, 'BOLD')
+    cY -= rH
+    addText(layer, position.x, cY, '(Land Surveyor, Zim)', hBody, 0, undefined)
+    cY -= rH * 1.5
+  }
+}
+
+/**
+ * Emit the Surveyor-General Approval Box at `position` (top-left).
+ *
+ * Mirrors dxfGenerator.js lines 1779-1801. The box rect spans
+ * (position.x, position.y - size.height) to (position.x + size.width,
+ * position.y). All vertical offsets come from SURVEYOR_GENERAL_BOX
+ * via PT_TO_MM_GEN through the `mm` converter.
+ *
+ * @param {Function} addText
+ * @param {(layer:string,x1:number,y1:number,x2:number,y2:number)=>void} addLine
+ * @param {(layer:string,x1:number,y1:number,x2:number,y2:number)=>void} addRect
+ * @param {{x:number,y:number}} position - top-left (south-up: high y)
+ * @param {{width:number,height:number}} size
+ * @param {{sgTitleH:number, sgBodyH:number}} fonts
+ * @param {(x:number)=>number} mm
+ * @param {string} layer
+ */
+export function emitSGBox(addText, addLine, addRect, position, size, fonts, mm, layer) {
+  const SG = SURVEYOR_GENERAL_BOX
+  const sgBoxTopY = position.y
+  const sgBoxBotY = position.y - size.height
+  const sgBoxL    = position.x
+  const sgBoxR    = position.x + size.width
+  const aCX       = (sgBoxL + sgBoxR) / 2
+
+  const sgTitleY  = sgBoxTopY - mm(SG.titleYOffset         * PT_TO_MM_GEN)
+  const sgSigY    = sgBoxTopY - mm(SG.signatureLineYOffset * PT_TO_MM_GEN)
+  const sgForY    = sgBoxTopY - mm(SG.forSGYOffset         * PT_TO_MM_GEN)
+  const sgDateY   = sgBoxTopY - mm(SG.dateYOffset          * PT_TO_MM_GEN)
+  const sgSigInset = mm(SG.signatureLineInset * PT_TO_MM_GEN)
+
+  addRect(layer, sgBoxL, sgBoxBotY, sgBoxR, sgBoxTopY)
+  addText(layer, aCX, sgTitleY, 'Approved', fonts.sgTitleH, 0)
+  addLine(layer, sgBoxL + sgSigInset, sgSigY, sgBoxR - sgSigInset, sgSigY)
+  addText(layer, aCX, sgForY,  'For Surveyor General', fonts.sgBodyH)
+  addText(layer, aCX, sgDateY, SG.dateText,            fonts.sgBodyH)
+}
+
+/**
+ * Emit the Outside Figure Data table at `position` (top-left).
+ *
+ * Mirrors dxfGenerator.js lines 1715-1773 exactly, parameterized by
+ * `position.x` (was statementL) and `position.y` (was cY). Column anchors
+ * are computed inside the function from OUTSIDE_FIGURE_DATA.
+ *
+ * @param {Function} addText
+ * @param {Function} addLine
+ * @param {{x:number,y:number}} position
+ * @param {{edges?:Array}} outsideFigureData
+ * @param {{ofTitleH:number, ofBodyH:number, ofRowH:number}} fonts
+ * @param {(x:number)=>number} mm
+ * @param {string|number} centralMeridian
+ * @param {string} layer
+ */
+export function emitOFDTable(addText, addLine, position, outsideFigureData, fonts, mm, centralMeridian, layer) {
+  const edges = outsideFigureData?.edges || []
+  if (edges.length === 0) return
+
+  const { ofTitleH, ofBodyH, ofRowH } = fonts
+
+  const ofdColsPt = OUTSIDE_FIGURE_DATA.columns.map(col => col.width)
+  const ofdColAnchorsMM = [0]
+  for (let i = 0; i < ofdColsPt.length - 1; i++) {
+    ofdColAnchorsMM.push(ofdColAnchorsMM[i] + ofdColsPt[i] * PT_TO_MM_GEN)
+  }
+  const c = (offMM) => position.x + mm(offMM)
+  const cS  = ofdColAnchorsMM[0]   // SIDES
+  const cM  = ofdColAnchorsMM[1]   // Metres
+  const cD  = ofdColAnchorsMM[2]   // DIRECTION
+  const cK  = ofdColAnchorsMM[3]   // Constants
+  const cCY = ofdColAnchorsMM[4]   // Y
+  const cCX = ofdColAnchorsMM[5]   // X
+  const ofdRightEdgeMM = ofdColAnchorsMM[5] + ofdColsPt[5] * PT_TO_MM_GEN
+
+  let cY = position.y
+  addText(layer, c(cS),  cY, 'OUTSIDE FIGURE DATA', ofTitleH, 0, 'BOLD')
+  addText(layer, c(cCY), cY, 'CO-ORDINATES',        ofTitleH, 0, 'BOLD')
+  cY -= ofRowH * 0.9
+  addText(layer, c(cCY), cY, `System: Lo ${centralMeridian}`, ofBodyH)
+  cY -= ofRowH * 0.7
+
+  // Vertical divider between OF data and coordinates.
+  const coordDivX = c(cCY) - mm(2)
+  addLine(layer, coordDivX, cY + ofRowH * 1.5, coordDivX, cY - ofRowH * (edges.length + 1))
+
+  // Column headers
+  addLine(layer, position.x - mm(3), cY + mm(1.5), c(ofdRightEdgeMM) + mm(2), cY + mm(1.5))
+  addText(layer, c(cS),  cY, 'SIDES',     ofBodyH, 0, 'BOLD')
+  addText(layer, c(cM),  cY, 'Metres',    ofBodyH, 0, 'BOLD')
+  addText(layer, c(cD),  cY, 'DIRECTION', ofBodyH, 0, 'BOLD')
+  addText(layer, c(cK),  cY, 'Constants', ofBodyH, 0, 'BOLD')
+  addText(layer, c(cCY), cY, 'Y',         ofBodyH, 0, 'BOLD')
+  addText(layer, c(cCX), cY, 'X',         ofBodyH, 0, 'BOLD')
+  addLine(layer, position.x - mm(3), cY - mm(1.5), c(ofdRightEdgeMM) + mm(2), cY - mm(1.5))
+  cY -= ofRowH
+
+  // Data rows
+  for (const edge of edges) {
+    const side    = edge.side || ''
+    const dist    = typeof edge.distance === 'number' ? edge.distance.toFixed(2) : String(edge.distance || '')
+    const dir     = edge.direction || ''
+    const constId = edge.pointId  || ''
+    const yV      = typeof edge.y === 'number' ? (edge.y >= 0 ? '+' : '') + edge.y.toFixed(2) : ''
+    const xV      = typeof edge.x === 'number' ? (edge.x >= 0 ? '+' : '') + edge.x.toFixed(2) : ''
+    addText(layer, c(cS),  cY, side,    ofBodyH)
+    addText(layer, c(cM),  cY, dist,    ofBodyH)
+    addText(layer, c(cD),  cY, dir,     ofBodyH)
+    addText(layer, c(cK),  cY, constId, ofBodyH)
+    addText(layer, c(cCY), cY, yV,      ofBodyH)
+    addText(layer, c(cCX), cY, xV,      ofBodyH)
+    cY -= ofRowH
+  }
+}
+
+/**
+ * Emit Beacon Descriptions inside the bbox defined by `position` + `size`.
+ *
+ * Adapter for the existing closure-based `addBeaconDescription` helper
+ * defined in dxfGenerator.js (line 860). Converts the topology-returned
+ * top-left + size into the four corners that helper expects:
+ *   leftX   = position.x
+ *   rightX  = position.x + size.width
+ *   topY    = position.y                   (high y in south-up DXF)
+ *   bottomY = position.y - size.height
+ *
+ * No-op when beaconGroups is empty.
+ *
+ * @param {(layer:string,leftX:number,rightX:number,topY:number,bottomY:number,groups:Array)=>void} addBeaconDescription
+ * @param {string} layer
+ * @param {{x:number,y:number}} position
+ * @param {{width:number,height:number}} size
+ * @param {Array} beaconGroups
+ */
+export function emitBeaconDescriptions(addBeaconDescription, layer, position, size, beaconGroups) {
+  if (!beaconGroups || beaconGroups.length === 0) return
+  addBeaconDescription(
+    layer,
+    position.x,
+    position.x + size.width,
+    position.y,
+    position.y - size.height,
+    beaconGroups,
+  )
+}

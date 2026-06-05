@@ -8,6 +8,8 @@ import {
   sizeOFDTable,
   sizeSGBox,
   sizeBeaconDescriptions,
+  emitStatement,
+  emitSGBox,
 } from '../dxfBottomZoneEmitter.js'
 
 // Identity mm so tests work in raw units (paper-mm == ground-metre).
@@ -92,5 +94,64 @@ describe('sizeBeaconDescriptions', () => {
     // The current addBeaconDescription emits a header + one row per group.
     // big has 19 more rows → height delta = 19 * rH * 1.2.
     expect(bigH - smallH).toBeCloseTo(19 * fonts.rH * 1.2, 3)
+  })
+})
+
+describe('emitStatement', () => {
+  const makeRecorder = () => {
+    const calls = { addText: [] }
+    return {
+      addText: (...args) => calls.addText.push(args),
+      calls,
+    }
+  }
+
+  test('records expected addText calls at the given top-left position', () => {
+    const r = makeRecorder()
+    const metadata = { date: '2026-01-01', surveyor: 'John Doe' }
+    const position = { x: 100, y: 200 }   // top-left of bbox (south-up: high y)
+    emitStatement(r.addText, position, metadata, fonts, 'TITLE_BLOCK')
+
+    // Expect 3 addText calls: date line, surveyor (bold), '(Land Surveyor, Zim)'.
+    expect(r.calls.addText).toHaveLength(3)
+    expect(r.calls.addText[0]).toEqual(['TITLE_BLOCK', 100, 200, 'Surveyed in 2026-01-01 by me', fonts.hBody, 0, undefined])
+    expect(r.calls.addText[1][3]).toBe('John Doe')
+    expect(r.calls.addText[1][6]).toBe('BOLD')          // surveyor row is bold
+    expect(r.calls.addText[2][3]).toBe('(Land Surveyor, Zim)')
+  })
+
+  test('records nothing when metadata has neither date nor surveyor', () => {
+    const r = makeRecorder()
+    emitStatement(r.addText, { x: 0, y: 0 }, {}, fonts, 'TITLE_BLOCK')
+    expect(r.calls.addText).toHaveLength(0)
+  })
+})
+
+describe('emitSGBox', () => {
+  const makeRecorder = () => {
+    const calls = { addText: [], addLine: [], addRect: [] }
+    return {
+      addText: (...args) => calls.addText.push(args),
+      addLine: (...args) => calls.addLine.push(args),
+      addRect: (...args) => calls.addRect.push(args),
+      calls,
+    }
+  }
+
+  test('records 1 rect, 4 text, 1 line at the given top-left position', () => {
+    const r = makeRecorder()
+    const position = { x: 100, y: 200 }                 // top-left
+    const size     = sizeSGBox(mm)                      // ~70.6 × ~28.2
+    emitSGBox(r.addText, r.addLine, r.addRect, position, size, fonts, mm, 'TITLE_BLOCK')
+
+    // Box rectangle: 1 addRect from (x, y-height) to (x+width, y).
+    expect(r.calls.addRect).toHaveLength(1)
+    expect(r.calls.addRect[0]).toEqual(['TITLE_BLOCK', 100, 200 - size.height, 100 + size.width, 200])
+
+    // Text rows: "Approved", "For Surveyor General", date text — three text lines.
+    expect(r.calls.addText.length).toBeGreaterThanOrEqual(3)
+
+    // Signature line — exactly one horizontal line inside the box.
+    expect(r.calls.addLine).toHaveLength(1)
   })
 })

@@ -7,8 +7,51 @@ import { describe, test, expect, beforeAll } from '@jest/globals'
 import { generateDXF } from '../dxfGenerator.js'
 import { countLayerOnTable, entityCount, parseFirstEntityOf } from './dxfParse.js'
 import { sampleFixture } from './fixtures/sampleDxfPlan.js'
+import {
+  OUTSIDE_FIGURE_DATA,
+  SURVEYOR_GENERAL_BOX,
+  SCHEDULE_OF_AREAS,
+} from '../../../../app-shared/block-definitions.js'
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
+
+describe('dxfGenerator integration — block-definitions consumption', () => {
+  test('OUTSIDE_FIGURE_DATA exposes the columns the DXF + PDF emitters read', () => {
+    // Catches drift if someone reorders or renames columns and breaks the
+    // assumption that c.width gives PDF pts.
+    expect(OUTSIDE_FIGURE_DATA.columns).toHaveLength(6)
+    expect(OUTSIDE_FIGURE_DATA.columns.map(c => c.key))
+      .toEqual(['sides', 'metres', 'direction', 'constants', 'y', 'x'])
+    // Total width should match the PDF drawer's hardcoded sum (345 pt).
+    const totalPt = OUTSIDE_FIGURE_DATA.columns.reduce((s, c) => s + c.width, 0)
+    expect(totalPt).toBe(45 + 40 + 70 + 55 + 65 + 70)
+  })
+
+  test('SURVEYOR_GENERAL_BOX has the dimension fields both generators rely on', () => {
+    expect(SURVEYOR_GENERAL_BOX.width).toBe(200)
+    expect(SURVEYOR_GENERAL_BOX.height).toBe(80)
+    expect(SURVEYOR_GENERAL_BOX.titleFontSize).toBe(12)
+    expect(SURVEYOR_GENERAL_BOX.bodyFontSize).toBe(9)
+    expect(SURVEYOR_GENERAL_BOX.titleYOffset).toBe(15)
+    expect(SURVEYOR_GENERAL_BOX.signatureLineYOffset).toBe(40)
+    expect(SURVEYOR_GENERAL_BOX.forSGYOffset).toBe(48)
+    expect(SURVEYOR_GENERAL_BOX.dateYOffset).toBe(60)
+  })
+
+  test('SCHEDULE_OF_AREAS columns match what the PDF drawer hardcodes (260 pt total)', () => {
+    const totalPt = SCHEDULE_OF_AREAS.singleColumn.columns.reduce((s, c) => s + c.width, 0)
+    expect(totalPt).toBe(35 + 60 + 40 + 40 + 35 + 50)
+    expect(SCHEDULE_OF_AREAS.singleColumn.rowHeight).toBe(15)
+    expect(SCHEDULE_OF_AREAS.singleColumn.titleFontSize).toBe(9)
+  })
+
+  test("renders the expected 'For Surveyor General' string sourced from block-definitions", () => {
+    const r = generateDXF(sampleFixture, fakeLogger)
+    expect(r.buffer.toString()).toContain('For Surveyor General')
+    // The 'Date' line text is now driven by SURVEYOR_GENERAL_BOX.dateText
+    expect(r.buffer.toString()).toContain(SURVEYOR_GENERAL_BOX.dateText)
+  })
+})
 
 describe('dxfGenerator integration — beacon labeling', () => {
   test('pattern-matched fallback: beacon "<stand><suffix>" shows suffix only when parcel stand matches', () => {

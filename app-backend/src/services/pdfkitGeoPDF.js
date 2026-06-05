@@ -10726,9 +10726,12 @@ function drawOutsideFigureData(
   )
     return;
 
-  const rowHeight = 12;
-  const headerHeight = 15;
-  const headerBoxHeight = 40;
+  // Read dimensions from block-definitions (single source of truth shared
+  // with the DXF generator). Values are in PDF points by convention.
+  const OFD = BLOCKS.OUTSIDE_FIGURE_DATA;
+  const rowHeight       = OFD.rowHeight;
+  const headerHeight    = OFD.headerHeight;
+  const headerBoxHeight = OFD.headerBoxHeight;
 
   // Page boundary detection
   const pageHeight = doc.page.height;
@@ -10746,13 +10749,14 @@ function drawOutsideFigureData(
     if (measuredWidth > maxSidesWidth) maxSidesWidth = measuredWidth;
   }
 
-  // Column widths - INCREASED to prevent text overlap
-  const col1 = Math.max(45, Math.ceil(maxSidesWidth)); // SIDES - dynamic, min 45pt
-  const col2 = 40; // Metres
-  const col3 = 70; // DIRECTION (increased from 55pt for bearings like 301°19'30")
-  const col4 = 55; // Constants (increased from 45pt for beacon names like 131ax)
-  const col5 = 65; // Y (increased from 55pt for coordinates like +97216.74)
-  const col6 = 70; // X (increased from 60pt for coordinates like +2251547.0)
+  // Column widths sourced from BLOCKS.OUTSIDE_FIGURE_DATA.columns (PDF pts).
+  // col1 (SIDES) is the dynamic minimum — grows to fit longer side labels.
+  const col1 = Math.max(OFD.columns[0].width, Math.ceil(maxSidesWidth));
+  const col2 = OFD.columns[1].width; // Metres
+  const col3 = OFD.columns[2].width; // DIRECTION
+  const col4 = OFD.columns[3].width; // Constants
+  const col5 = OFD.columns[4].width; // Y
+  const col6 = OFD.columns[5].width; // X
 
   // Calculate total table width dynamically
   const tableWidth = col1 + col2 + col3 + col4 + col5 + col6;
@@ -11380,8 +11384,10 @@ function drawSurveyStatement(doc, metadata, mapBounds, position) {
  * @param {Object} position - Centrally calculated collision-free position
  */
 function drawSurveyorGeneralSignature(doc, mapBounds, position) {
-  const blockWidth = 200;
-  const blockHeight = 80;
+  // Dimensions sourced from BLOCKS.SURVEYOR_GENERAL_BOX (PDF pts).
+  const SG = BLOCKS.SURVEYOR_GENERAL_BOX;
+  const blockWidth  = SG.width;
+  const blockHeight = SG.height;
 
   // Trust the collision-free position from calculateBlockPositions — do NOT clamp/override
   const blockX = position?.x ?? mapBounds.x + mapBounds.width - blockWidth - 5;
@@ -11393,21 +11399,21 @@ function drawSurveyorGeneralSignature(doc, mapBounds, position) {
   doc.rect(blockX, blockY, blockWidth, blockHeight).stroke();
 
   // "Approved" title
-  const titleY = blockY + 15;
+  const titleY = blockY + SG.titleYOffset;
   doc
-    .fontSize(12)
-    .font("Helvetica")
+    .fontSize(SG.titleFontSize)
+    .font(SG.titleFont)
     .fillColor("#000000")
     .text("Approved", blockX, titleY, {
       width: blockWidth,
       align: "center",
     });
 
-  // Signature line (dotted)
-  const signatureY = blockY + 40;
-  const lineMargin = 20;
+  // Signature line (dashed)
+  const signatureY = blockY + SG.signatureLineYOffset;
+  const lineMargin = SG.signatureLineInset;
   doc.save();
-  doc.dash(2, { space: 2 });
+  doc.dash(SG.signatureLineDash.dash, { space: SG.signatureLineDash.space });
   doc
     .moveTo(blockX + lineMargin, signatureY)
     .lineTo(blockX + blockWidth - lineMargin, signatureY)
@@ -11416,22 +11422,22 @@ function drawSurveyorGeneralSignature(doc, mapBounds, position) {
   doc.restore();
 
   // "For Surveyor General" text
-  const forTextY = signatureY + 8;
+  const forTextY = blockY + SG.forSGYOffset;
   doc
-    .fontSize(9)
-    .font("Helvetica")
+    .fontSize(SG.bodyFontSize)
+    .font(SG.bodyFont)
     .text("For Surveyor General", blockX, forTextY, {
       width: blockWidth,
       align: "center",
     });
 
-  // "Date ................" field
-  const dateY = blockY + blockHeight - 20;
+  // "Date ......" field
+  const dateY = blockY + SG.dateYOffset;
   doc
-    .fontSize(9)
-    .font("Helvetica")
-    .text("Date ............................", blockX + 10, dateY, {
-      width: blockWidth - 20,
+    .fontSize(SG.bodyFontSize)
+    .font(SG.bodyFont)
+    .text(SG.dateText, blockX + SG.dateXOffset, dateY, {
+      width: blockWidth - SG.dateXOffset * 2,
       align: "left",
     });
 

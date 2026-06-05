@@ -20,7 +20,13 @@
 
 // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import { TITLE_BLOCK, SCHEDULE_OF_AREAS, formatStandRanges } from '../../../app-shared/block-definitions.js'
+import { TITLE_BLOCK, SCHEDULE_OF_AREAS, OUTSIDE_FIGURE_DATA, SURVEYOR_GENERAL_BOX, formatStandRanges } from '../../../app-shared/block-definitions.js'
+
+/** Conversion factor: 1 PDF point = 0.352778 mm. block-definitions values
+ *  are in PDF pts (matching the PDF generator's native unit); the DXF
+ *  generator works in paper-mm so it converts at the boundary.
+ */
+const PT_TO_MM_GEN = 25.4 / 72
 import { findStandLabelPosition, findEdgeLabelPosition } from './dxfLabelPlacer.js'
 import {
   extractScheduleRow,
@@ -1572,23 +1578,28 @@ export function generateDXF(options, logger) {
   addLine(TB, statementL - mm(3), cY + mm(2), approvedR + mm(3), cY + mm(2));
   cY -= mm(3);
 
-  // Outside Figure Data table — column widths match the PDF's
-  // drawOutsideFigureData (pts: col1=45, col2=40, col3=70, col4=55,
-  // col5=65, col6=70). Converted to paper-mm via PT_TO_MM = 0.352778.
-  // The PDF row height is 12 pt and all text is 9 pt — adopted as
-  // OF-block-specific fonts so other emissions are unaffected.
-  const ofTitleH = pt(9);
-  const ofBodyH  = pt(9);
-  const ofRowH   = pt(12);
+  // Outside Figure Data table — all dimensions sourced from
+  // OUTSIDE_FIGURE_DATA in block-definitions.js (PDF pts), converted to
+  // paper-mm via PT_TO_MM_GEN. block-definitions is the single source of
+  // truth shared with pdfkitGeoPDF.js — same values in both generators.
+  const ofTitleH = pt(OUTSIDE_FIGURE_DATA.titleFontSize);
+  const ofBodyH  = pt(OUTSIDE_FIGURE_DATA.fontSize);
+  const ofRowH   = pt(OUTSIDE_FIGURE_DATA.rowHeight);
 
+  // Cumulative column anchor x offsets in paper-mm (sum of preceding widths).
+  const ofdColsPt = OUTSIDE_FIGURE_DATA.columns.map(col => col.width);
+  const ofdColAnchorsMM = [0]; // cS — first column starts at 0
+  for (let i = 0; i < ofdColsPt.length - 1; i++) {
+    ofdColAnchorsMM.push(ofdColAnchorsMM[i] + ofdColsPt[i] * PT_TO_MM_GEN);
+  }
   const c = (off) => statementL + off;
-  const cS  = mm(0);         // SIDES        (col1 ≈ 15.88 mm)
-  const cM  = mm(15.88);     // Metres       (col2 = 14.11 mm)
-  const cD  = mm(30.00);     // DIRECTION    (col3 = 24.69 mm)
-  const cK  = mm(54.69);     // Constants    (col4 = 19.40 mm)
-  const cCY = mm(74.09);     // Y            (col5 = 22.93 mm)
-  const cCX = mm(97.02);     // X            (col6 = 24.69 mm)
-  const ofdRightEdge = mm(121.71); // sum of widths
+  const cS  = mm(ofdColAnchorsMM[0]);   // SIDES
+  const cM  = mm(ofdColAnchorsMM[1]);   // Metres
+  const cD  = mm(ofdColAnchorsMM[2]);   // DIRECTION
+  const cK  = mm(ofdColAnchorsMM[3]);   // Constants
+  const cCY = mm(ofdColAnchorsMM[4]);   // Y
+  const cCX = mm(ofdColAnchorsMM[5]);   // X
+  const ofdRightEdge = mm(ofdColAnchorsMM[5] + ofdColsPt[5] * PT_TO_MM_GEN);
 
   addText(TB, c(cS), cY, 'OUTSIDE FIGURE DATA', ofTitleH, 0, 'BOLD');
   addText(TB, c(cCY), cY, `CO-ORDINATES`, ofTitleH, 0, 'BOLD');
@@ -1632,30 +1643,32 @@ export function generateDXF(options, logger) {
   }
 
   // ── C3) APPROVED / SURVEYOR-GENERAL SIGNATURE BOX ──
-  // Matches the PDF's drawSurveyorGeneralSignature at line 11382:
-  //   blockWidth  = 200 pt = 70.55 mm
-  //   blockHeight =  80 pt = 28.22 mm
-  //   title "Approved"      at +5.29 mm from top,  fontSize 12 (regular)
-  //   signature line        at +14.11 mm from top
-  //   "For Surveyor General" at +16.93 mm from top, fontSize 9
-  //   "Date ......"          at +21.17 mm from top, fontSize 9
-  // Box is right-aligned within the approved bottom-zone (PDF anchors
-  // at `mapBounds.x + mapBounds.width - blockWidth - 5`).
-  const sgTitleH  = pt(12);
-  const sgBodyH   = pt(9);
-  const sgBoxW    = mm(70.55);
-  const sgBoxH    = mm(28.22);
+  // All dimensions sourced from SURVEYOR_GENERAL_BOX in block-definitions.js
+  // (PDF pts), converted to paper-mm via PT_TO_MM_GEN. Single source of truth
+  // shared with pdfkitGeoPDF.js:drawSurveyorGeneralSignature.
+  const SG = SURVEYOR_GENERAL_BOX;
+  const sgTitleH  = pt(SG.titleFontSize);
+  const sgBodyH   = pt(SG.bodyFontSize);
+  const sgBoxW    = mm(SG.width  * PT_TO_MM_GEN);
+  const sgBoxH    = mm(SG.height * PT_TO_MM_GEN);
   const sgBoxR    = approvedR;
   const sgBoxL    = sgBoxR - sgBoxW;
   const sgBoxTopY = drawDivY - mm(5);
   const sgBoxBotY = sgBoxTopY - sgBoxH;
   const aCX       = (sgBoxL + sgBoxR) / 2;
 
+  // Vertical offsets are PDF-pt offsets from the box top.
+  const sgTitleY  = sgBoxTopY - mm(SG.titleYOffset        * PT_TO_MM_GEN);
+  const sgSigY    = sgBoxTopY - mm(SG.signatureLineYOffset * PT_TO_MM_GEN);
+  const sgForY    = sgBoxTopY - mm(SG.forSGYOffset         * PT_TO_MM_GEN);
+  const sgDateY   = sgBoxTopY - mm(SG.dateYOffset          * PT_TO_MM_GEN);
+  const sgSigInset = mm(SG.signatureLineInset * PT_TO_MM_GEN);
+
   addRect(TB, sgBoxL, sgBoxBotY, sgBoxR, sgBoxTopY);
-  addText(TB, aCX, sgBoxTopY - mm(5.29),  'Approved',                 sgTitleH, 0);
-  addLine(TB, sgBoxL + mm(7), sgBoxTopY - mm(14.11), sgBoxR - mm(7), sgBoxTopY - mm(14.11));
-  addText(TB, aCX, sgBoxTopY - mm(16.93), 'For Surveyor General',     sgBodyH);
-  addText(TB, aCX, sgBoxTopY - mm(21.17), 'Date ............................', sgBodyH);
+  addText(TB, aCX, sgTitleY, 'Approved', sgTitleH, 0);
+  addLine(TB, sgBoxL + sgSigInset, sgSigY, sgBoxR - sgSigInset, sgSigY);
+  addText(TB, aCX, sgForY,  'For Surveyor General', sgBodyH);
+  addText(TB, aCX, sgDateY, SG.dateText, sgBodyH);
 
   logger.info(`[DXF] Page frame: ${(pageR - pageL).toFixed(0)}m x ${(pageT - pageB).toFixed(0)}m ground`);
 

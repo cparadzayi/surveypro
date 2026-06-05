@@ -63,30 +63,58 @@ export const SCHEDULE_OF_AREAS = {
   threshold: 50 // Switch to multi-column if stands > threshold
 }
 
-// Outside Figure Data
+// Outside Figure Data — ALL DIMENSIONS IN PDF POINTS.
+// Updated 2026-06-05 to match the values hardcoded in
+// pdfkitGeoPDF.js:drawOutsideFigureData at line 10750-10755. col1 (SIDES)
+// has a 45-pt minimum but grows dynamically to fit longer side labels;
+// consumers should still treat 45 as the canonical minimum.
 export const OUTSIDE_FIGURE_DATA = {
   title: 'OUTSIDE FIGURE DATA',
   titleFont: { family: 'Helvetica-Bold', size: 9 },
-  
+
   columns: [
-    { key: 'sides', label: 'SIDES', width: 50, align: 'center' },
-    { key: 'metres', label: 'Metres', width: 50, align: 'right' },
-    { key: 'direction', label: 'DIRECTION\n° \' "', width: 70, align: 'center' },
-    { key: 'constants', label: 'Constants', width: 50, align: 'center' },
-    { key: 'y', label: 'Y', width: 55, align: 'right' },
-    { key: 'x', label: 'X', width: 55, align: 'right' }
+    { key: 'sides',     label: 'SIDES',           width: 45, align: 'center' },  // dynamic min — drawOutsideFigureData:10750
+    { key: 'metres',    label: 'Metres',          width: 40, align: 'center' },  //                             :10751
+    { key: 'direction', label: 'DIRECTION',       width: 70, align: 'center' },  //                             :10752
+    { key: 'constants', label: 'Constants',       width: 55, align: 'center' },  //                             :10753
+    { key: 'y',         label: 'Y',               width: 65, align: 'center' },  //                             :10754
+    { key: 'x',         label: 'X',               width: 70, align: 'center' },  //                             :10755
   ],
-  
+
   coordinateHeader: {
     text: 'CO-ORDINATES',
     subtext: 'System : Lo {meridian}°\nY    Metres    X',
-    colspan: 3 // Spans Y, X columns
+    colspan: 2 // Spans Y + X columns
   },
-  
-  rowHeight: 12,
-  headerHeight: 15,
-  fontSize: 9,
-  headerFontSize: 9
+
+  rowHeight: 12,        // drawOutsideFigureData:10729
+  headerHeight: 15,     // drawOutsideFigureData:10730 (column header row)
+  headerBoxHeight: 40,  // drawOutsideFigureData:10731 (title + CO-ORDINATES box)
+  fontSize: 9,          // drawOutsideFigureData:10741, 10907 (body + headers)
+  headerFontSize: 9,    // same as body — PDF uses one size throughout
+  titleFontSize: 9      // drawOutsideFigureData:10803
+}
+
+// Surveyor-General / Approved signature box — values from
+// pdfkitGeoPDF.js:drawSurveyorGeneralSignature at line 11382-11436.
+export const SURVEYOR_GENERAL_BOX = {
+  width: 200,                   // pdfkitGeoPDF.js:11383
+  height: 80,                   // pdfkitGeoPDF.js:11384
+  titleFontSize: 12,            //                :11398 — "Approved" text
+  titleFont: 'Helvetica',       //                :11399 — regular (NOT bold)
+  bodyFontSize: 9,              //                :11421/11431 — "For Surveyor General", "Date ..."
+  bodyFont: 'Helvetica',
+  // Vertical offsets from box top, in PDF points.
+  titleYOffset:       15,       //                :11396 — `blockY + 15`
+  signatureLineYOffset: 40,     //                :11407 — `blockY + 40`
+  forSGYOffset:       48,       //                :11419 — `signatureY + 8`
+  dateYOffset:        60,       //                :11429 — `blockHeight - 20`
+  // Signature-line horizontal margins (PDF uses 20-pt inset on each side).
+  signatureLineInset: 20,       //                :11408 — `lineMargin`
+  signatureLineDash:  { dash: 2, space: 2 },
+  // "Date ..." label x offset matches PDF's `blockX + 10`; width spans box - 20.
+  dateXOffset: 10,
+  dateText:   'Date ............................'
 }
 
 // Beacon Description
@@ -428,6 +456,7 @@ export function extractBeaconSuffix(beaconName) {
 export default {
   SCHEDULE_OF_AREAS,
   OUTSIDE_FIGURE_DATA,
+  SURVEYOR_GENERAL_BOX,
   BEACON_DESCRIPTION,
   SURVEY_STATEMENT,
   TITLE_BLOCK,

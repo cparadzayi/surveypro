@@ -257,3 +257,56 @@ export function placeSuffixLabelPOIDirected({
   const centroid = shoelaceCentroid(ring)
   return { x: centroid.x - labelWidth / 2, y: centroid.y - labelHeight / 2 }
 }
+
+/**
+ * INTERNAL helper: returns true iff the rect lies entirely outside every
+ * polygon in the list. Wraps 4a's rectangleOverlapsPolygon (inverted).
+ */
+function isRectOutsidePolygons(rect, polygons) {
+  for (const poly of polygons) {
+    if (rectangleOverlapsPolygon(rect, poly, 0)) return false
+  }
+  return true
+}
+
+/**
+ * Tight outside placement — two candidates only: right then left.
+ *
+ * Port of pdfkitGeoPDF.js:400-446. Returns the chosen label's top-left
+ * insertion point + which side it was placed on, or null when both sides
+ * fail validation.
+ *
+ * A candidate passes when (a) the bbox lies outside every incidentPolygon
+ * (via 4a's rectangleOverlapsPolygon, inverted), and (b) the registry
+ * reports no collision.
+ */
+export function tryTightFullBeaconLabelPosition({
+  beaconPos, labelWidth, labelHeight, beaconRadius, padding,
+  incidentPolygons, registry,
+}) {
+  const baseY = beaconPos.y - labelHeight / 2
+  const candidates = [
+    {
+      name: 'right',
+      x: beaconPos.x + beaconRadius + padding,
+      y: baseY,
+    },
+    {
+      name: 'left',
+      x: beaconPos.x - beaconRadius - padding - labelWidth,
+      y: baseY,
+    },
+  ]
+
+  for (const c of candidates) {
+    const rect = { x: c.x, y: c.y, width: labelWidth, height: labelHeight }
+    if (
+      Array.isArray(incidentPolygons) && incidentPolygons.length > 0 &&
+      !isRectOutsidePolygons(rect, incidentPolygons)
+    ) continue
+    if (registry.hasCollision(rect, 1)) continue
+    return { x: c.x, y: c.y, position: c.name }
+  }
+
+  return null
+}

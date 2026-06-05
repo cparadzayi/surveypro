@@ -10,6 +10,7 @@ import {
   groupSplayBeacons,
   orderSplayGroupByAngle,
   placeSuffixLabelPOIDirected,
+  tryTightFullBeaconLabelPosition,
 } from '../dxfBeaconPlacer.js'
 import { createCollisionRegistry as makeReg } from '../dxfBeaconPlacer.js'
 
@@ -250,5 +251,73 @@ describe('placeSuffixLabelPOIDirected', () => {
     // top-left = (45, -3).
     expect(result.x).toBeCloseTo(45, 3)
     expect(result.y).toBeCloseTo(-3, 3)
+  })
+})
+
+describe('tryTightFullBeaconLabelPosition', () => {
+  test('beacon left of parcel, both candidates outside → returns right (first-iteration preference)', () => {
+    const parcel = [
+      { x:  0, y:  0 },
+      { x: 50, y:  0 },
+      { x: 50, y: 50 },
+      { x:  0, y: 50 },
+    ]
+    // Beacon at (-15, 25): right candidate ends at x = -3.5 (still outside parcel
+    // which starts at x=0); left candidate ends at x = -16.5 → -26.5 (also outside).
+    // Both candidates pass — placer returns 'right' as the first iteration.
+    const result = tryTightFullBeaconLabelPosition({
+      beaconPos: { x: -15, y: 25 },
+      labelWidth: 10, labelHeight: 6,
+      beaconRadius: 1, padding: 0.5,
+      incidentPolygons: [parcel],
+      registry: createCollisionRegistry(),
+    })
+    expect(result).not.toBeNull()
+    expect(result.position).toBe('right')
+    // 'right' x = beacon.x + radius + padding = -15 + 1 + 0.5 = -13.5
+    expect(result.x).toBeCloseTo(-13.5, 3)
+    // y centered = beacon.y - h/2 = 25 - 3 = 22
+    expect(result.y).toBeCloseTo(22, 3)
+  })
+
+  test('right candidate overlaps polygon → falls through to left', () => {
+    const parcel = [
+      { x:  0, y:  0 },
+      { x: 50, y:  0 },
+      { x: 50, y: 50 },
+      { x:  0, y: 50 },
+    ]
+    // Beacon at (-5, 25): right candidate (x=-3.5 to 6.5) overlaps parcel left edge.
+    // Left candidate (x=-16.5 to -6.5) is outside.
+    const result = tryTightFullBeaconLabelPosition({
+      beaconPos: { x: -5, y: 25 },
+      labelWidth: 10, labelHeight: 6,
+      beaconRadius: 1, padding: 0.5,
+      incidentPolygons: [parcel],
+      registry: createCollisionRegistry(),
+    })
+    expect(result).not.toBeNull()
+    expect(result.position).toBe('left')
+  })
+
+  test('both sides blocked by registry → returns null', () => {
+    const parcel = [
+      { x:  0, y:  0 },
+      { x: 50, y:  0 },
+      { x: 50, y: 50 },
+      { x:  0, y: 50 },
+    ]
+    const reg = createCollisionRegistry()
+    // Block both right and left of beacon at (60, 25)
+    reg.add({ x: 61, y: 22, width: 10, height: 6 })   // covers right candidate
+    reg.add({ x: 49, y: 22, width: 10, height: 6 })   // covers left candidate
+    const result = tryTightFullBeaconLabelPosition({
+      beaconPos: { x: 60, y: 25 },
+      labelWidth: 10, labelHeight: 6,
+      beaconRadius: 0.5, padding: 0.5,
+      incidentPolygons: [parcel],
+      registry: reg,
+    })
+    expect(result).toBeNull()
   })
 })

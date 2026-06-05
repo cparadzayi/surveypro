@@ -171,18 +171,19 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         scale,
         sheetSize,
         planType,
+        beaconLabels,
       } = request.body
 
       if (!parcels || !beacons) {
         return reply.code(400).send({ error: 'Missing required fields: parcels, beacons' })
       }
 
-      fastify.log.info(`[DXF] Request planType=${JSON.stringify(planType)} (developed → suppresses parcel-edge labels)`)
+      fastify.log.info(`[DXF] Request planType=${JSON.stringify(planType)} beaconLabels=${Array.isArray(beaconLabels) ? beaconLabels.length : 'none'}`)
 
       const { generateDXF } = await import('../services/dxfGenerator.js')
 
       const { buffer, warnings } = generateDXF(
-        { parcels, beacons, outsideFigureData, metadata, projection, scale, sheetSize, planType, beaconGroups: request.body.beaconGroups },
+        { parcels, beacons, outsideFigureData, metadata, projection, scale, sheetSize, planType, beaconLabels, beaconGroups: request.body.beaconGroups },
         fastify.log
       )
 

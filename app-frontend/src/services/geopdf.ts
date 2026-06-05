@@ -208,6 +208,10 @@ export async function generateDXF(request: VectorGeoPDFRequest): Promise<{
     // developed-township general plans (per-stand survey diagrams carry that
     // detail). Mirrors what /geopdf/vector forwards via `request` directly.
     planType: request.planType,
+    // UI-computed beacon-to-parcel assignments. The DXF generator uses these
+    // to display suffix-only labels inside their parcels (e.g. "A" instead of
+    // "2475A") — matches the PDF's behavior at pdfkitGeoPDF.js:4654-4733.
+    beaconLabels: request.beaconLabels,
   }, {
     responseType: 'blob',
     timeout: 30000,

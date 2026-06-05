@@ -398,6 +398,14 @@ export function generateDXF(options, logger) {
     // general plans omit internal stand edge labels; per-stand survey diagrams
     // carry that detail instead). Outside-figure edge labels are unaffected.
     planType = null,
+    // UI-supplied beacon label decisions. Same shape as PDF's `beaconLabels`:
+    // [{ beaconName, text, isInsideParcel, displayInParcel, labelType }].
+    // labelType 'suffix' / 'full' / 'suppressed'. When present, drives display
+    // text + inside/outside placement (matches pdfkitGeoPDF.js:4654-4733). When
+    // absent, falls back to pattern matching: `^(\d+)([A-Z]+)$` → prefix=stand,
+    // suffix=letter; if a parcel has matching stand, show suffix inside, else
+    // show full name outside.
+    beaconLabels = null,
   } = options;
   const isDevelopedPlan = planType === 'general-developed';
 
@@ -1146,9 +1154,93 @@ export function generateDXF(options, logger) {
   }
   logger.info(`[DXF] Parcels: ${parcelCount}, Edge labels: ${edgeLabelCount}`);
 
-  // â”€â”€ 4. Beacons (filtered to outside figure + 2m buffer) â”€â”€
+  // ── 4. Beacons (filtered to outside figure + 2m buffer) ──
   const BEACON_BUFFER = 2; // metres
   let beaconCount = 0, beaconsSkipped = 0;
+
+  // Pre-compute parcel lookup maps for beacon-label placement (matches PDF's
+  // beaconLabelMap + parcel lookup at pdfkitGeoPDF.js:4779-4783, 4881-4884).
+  // parcelByStand: stand-string → polygon in DXF coords. Used to find the parcel
+  //   whose stand matches a beacon name's numeric prefix (e.g. "2475A" → "2475").
+  // parcelById: numeric id → polygon in DXF coords. Used when the UI supplies an
+  //   explicit `displayInParcel` parcel id.
+  const parcelByStand = new Map();
+  const parcelById = new Map();
+  if (parcels?.features) {
+    for (const feature of parcels.features) {
+      const props = feature.properties || {};
+      if (props.isOutsideFigure) continue;
+      const coords = feature.geometry?.coordinates?.[0];
+      if (!Array.isArray(coords) || coords.length < 4) continue;
+      const poly = coords.slice(0, -1)
+        .map(c => capeLoToDxfSouthUp(c[0], c[1]))
+        .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+      if (poly.length < 3) continue;
+      const standKey = String(props.stand ?? '');
+      if (standKey) parcelByStand.set(standKey, poly);
+      const idKey = props.id ?? feature.id;
+      if (idKey != null) parcelById.set(String(idKey), poly);
+    }
+  }
+
+  // UI-supplied label map (when provided). One entry per beacon name.
+  const beaconLabelMap = new Map();
+  if (Array.isArray(beaconLabels)) {
+    for (const lbl of beaconLabels) {
+      if (lbl && lbl.beaconName) beaconLabelMap.set(lbl.beaconName, lbl);
+    }
+  }
+
+  // Helper: decide displayLabel + position for one beacon.
+  // Returns null when the label should be suppressed (no text emitted).
+  const beaconLabelInsideOffset = beaconRadius + mmToGround(1.5, S); // toward centroid
+  const labelDecision = (beaconName, pt) => {
+    if (!beaconName) return null;
+
+    // PRIORITY 1: UI-supplied label.
+    const uiLabel = beaconLabelMap.get(beaconName);
+    if (uiLabel) {
+      if (uiLabel.labelType === 'suppressed') return null;
+      const text = String(uiLabel.text || '');
+      if (!text) return null;
+      if (uiLabel.isInsideParcel && uiLabel.displayInParcel != null) {
+        const poly = parcelById.get(String(uiLabel.displayInParcel));
+        if (poly) return placeInsideParcel(pt, poly, text);
+      }
+      return placeOutsideParcel(pt, text);
+    }
+
+    // PRIORITY 2: pattern-matched fallback (matches PDF:4855-4951).
+    const m = beaconName.match(/^(\d+)([A-Za-z]+)$/);
+    if (m) {
+      const prefix = m[1];
+      const suffix = m[2].toUpperCase();
+      const poly = parcelByStand.get(prefix);
+      if (poly) return placeInsideParcel(pt, poly, suffix);
+    }
+    // Control beacons (no numeric prefix) or unmatched: full name outside.
+    return placeOutsideParcel(pt, beaconName);
+  };
+
+  // Place a label INSIDE a parcel: project from the beacon toward the parcel's
+  // centroid by `beaconLabelInsideOffset`. Keeps the label adjacent to its
+  // beacon while orienting it into the parcel's interior.
+  function placeInsideParcel(pt, poly, text) {
+    const centroid = shoelaceCentroid(poly);
+    let dx = centroid.x - pt.x;
+    let dy = centroid.y - pt.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 1e-6) return placeOutsideParcel(pt, text);
+    dx /= len; dy /= len;
+    return { x: pt.x + dx * beaconLabelInsideOffset, y: pt.y + dy * beaconLabelInsideOffset, text };
+  }
+
+  // Place a label OUTSIDE the parcel: small (+x, +y) offset from beacon.
+  // Matches the existing pre-3-v2 convention and the PDF's `closeOffset` fallback.
+  function placeOutsideParcel(pt, text) {
+    return { x: pt.x + beaconLabelOffset, y: pt.y + beaconLabelOffset, text };
+  }
+
   if (beacons?.features) {
     for (const feature of beacons.features) {
       const rc = feature.geometry?.coordinates;
@@ -1180,7 +1272,10 @@ export function generateDXF(options, logger) {
                 || feature.properties?.name
                 || feature.properties?.beacon_name
                 || '';
-      if (name) addText('BEACON_LABELS', pt.x + beaconLabelOffset, pt.y + beaconLabelOffset, name, beaconLabelHeight);
+      const decision = labelDecision(name, pt);
+      if (decision) {
+        addText('BEACON_LABELS', decision.x, decision.y, decision.text, beaconLabelHeight);
+      }
       beaconCount++;
     }
   }

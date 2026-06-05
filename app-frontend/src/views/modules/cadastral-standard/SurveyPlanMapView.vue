@@ -4504,6 +4504,9 @@ async function exportToDXF() {
       // townships (per-stand survey diagrams carry that detail). Same value
       // that the PDF generator already receives via the vector call above.
       planType: config.value.planType as any,
+      // UI-computed beacon-to-parcel assignments so the DXF can display the
+      // same suffix-only labels inside parcels that the PDF shows.
+      beaconLabels: refinedBeaconLabels.value || [],
     })
 
     const ts = Date.now()

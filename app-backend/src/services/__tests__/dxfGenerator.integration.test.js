@@ -10,6 +10,87 @@ import { sampleFixture } from './fixtures/sampleDxfPlan.js'
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
 
+describe('dxfGenerator integration — beacon labeling', () => {
+  test('pattern-matched fallback: beacon "<stand><suffix>" shows suffix only when parcel stand matches', () => {
+    // Build a fixture with one parcel (stand=123) and one beacon named "123A"
+    // whose coordinates are inside that parcel. With no UI labels, the auto-
+    // detect path should fire: full name "123A" is replaced with suffix "A".
+    const fixture = {
+      ...sampleFixture,
+      // Add a single-letter-suffix beacon overlaid on stand 123 (from the sample fixture).
+      beacons: {
+        type: 'FeatureCollection',
+        features: [
+          ...(sampleFixture.beacons?.features || []),
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [50000.5, 2200000.5] },
+            properties: { pointId: '123A' },
+          },
+        ],
+      },
+    }
+    const r = generateDXF(fixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    // Find TEXT entities on BEACON_LABELS layer.
+    const labels = []
+    const lines = dxf.split('\n')
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i].trim() !== 'TEXT') continue
+      let layer = null, text = null
+      for (let j = i + 1; j < Math.min(i + 30, lines.length - 1); j++) {
+        if (lines[j].trim() === '8') layer = lines[j + 1].trim()
+        if (lines[j].trim() === '1') { text = lines[j + 1]; break }
+      }
+      if (layer === 'BEACON_LABELS') labels.push(text)
+    }
+    // The new beacon "123A" should appear as suffix "A", not full "123A".
+    expect(labels).toContain('A')
+    expect(labels).not.toContain('123A')
+  })
+
+  test('UI-supplied label with labelType="full" shows the full text at the outside offset', () => {
+    const fixture = {
+      ...sampleFixture,
+      beacons: {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [50000.5, 2200000.5] },
+          properties: { pointId: 'CTRL-7' },
+        }],
+      },
+      beaconLabels: [
+        { beaconName: 'CTRL-7', text: 'CTRL-7', isInsideParcel: false, displayInParcel: null, labelType: 'full' },
+      ],
+    }
+    const r = generateDXF(fixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    expect(dxf).toContain('CTRL-7')
+  })
+
+  test('UI-supplied label with labelType="suppressed" emits no text for that beacon', () => {
+    const fixture = {
+      ...sampleFixture,
+      beacons: {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [50000.5, 2200000.5] },
+          properties: { pointId: 'ZZZ_UNIQ_TOKEN' },
+        }],
+      },
+      beaconLabels: [
+        { beaconName: 'ZZZ_UNIQ_TOKEN', text: 'ZZZ_UNIQ_TOKEN', isInsideParcel: false, displayInParcel: null, labelType: 'suppressed' },
+      ],
+    }
+    const r = generateDXF(fixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    // The beacon symbol still emits but no label.
+    expect(dxf).not.toContain('ZZZ_UNIQ_TOKEN')
+  })
+})
+
 describe('dxfGenerator integration — developed-township planType', () => {
   test("planType='general-developed' suppresses ALL edge labels (parcel + outside-figure)", () => {
     // Baseline: sample fixture without planType emits both DISTANCES and DIRECTIONS

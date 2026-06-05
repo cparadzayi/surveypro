@@ -21,8 +21,20 @@ export const POLYGON_BUFFER_MM = 2.0
 /** Minimum separation (paper-mm) between placed sub-tables and other blocks. */
 export const BLOCK_SPACING_MM = 3.0
 
-/** Topology + grid step resolution (paper-mm). */
-export const SCAN_STEP_MM = 2.0
+/**
+ * Topology + grid step resolution (paper-mm). Higher = fewer candidate
+ * positions for the placer to validate = faster placement at the cost of
+ * potentially missing tight slots.
+ *
+ * Bumped from 2 mm to 5 mm on 2026-06-05 after the table-sizing fix
+ * (f48ecc8) cut sub-tables ~3.4× narrower. With the previous step the
+ * placer generated 50k+ candidates per table on dense Maglas-density
+ * plans, taking 40+ seconds and tripping the frontend timeout. At 5 mm
+ * the candidate count drops ~6× while the visual placement is unchanged
+ * — schedule cells are 35-60 pt wide (12-21 mm), so a 5 mm step still
+ * resolves every reasonable placement opportunity.
+ */
+export const SCAN_STEP_MM = 5.0
 
 // Spec amendment: TITLE_SPACING_MM dropped. SCHEDULE_HEADER_HEIGHT_MM already
 // covers the title-to-header gap inside the schedule. Adding TITLE_SPACING

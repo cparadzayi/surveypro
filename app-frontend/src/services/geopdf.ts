@@ -214,7 +214,10 @@ export async function generateDXF(request: VectorGeoPDFRequest): Promise<{
     beaconLabels: request.beaconLabels,
   }, {
     responseType: 'blob',
-    timeout: 30000,
+    // 5-minute timeout matches the PDF vector route. Dense plans (200+ parcels
+    // on a developed township at A0 + 1:500 scale) take 30-60s for the DXF
+    // schedule placer to evaluate tens of thousands of candidate positions.
+    timeout: 300000,
   })
 
   const warningCount = parseInt(response.headers['x-dxf-warning-count'] || '0', 10) || 0

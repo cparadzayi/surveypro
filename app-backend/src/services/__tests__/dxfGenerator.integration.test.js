@@ -156,6 +156,129 @@ describe('dxfGenerator integration — beacon labeling', () => {
     // The beacon symbol still emits but no label.
     expect(dxf).not.toContain('ZZZ_UNIQ_TOKEN')
   })
+
+  test('beacon symbols emit AFTER all labels (deferred-circle z-order)', () => {
+    const r = generateDXF(sampleFixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    // Find the last TEXT entity on BEACON_LABELS and the first CIRCLE entity on BEACONS.
+    // The first CIRCLE must come AFTER the last TEXT.
+    const lines = dxf.split('\n')
+    let lastBeaconLabelIdx = -1
+    let firstBeaconCircleIdx = -1
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i].trim() === 'TEXT') {
+        for (let j = i + 1; j < Math.min(i + 30, lines.length - 1); j++) {
+          if (lines[j].trim() === '8' && lines[j + 1].trim() === 'BEACON_LABELS') {
+            lastBeaconLabelIdx = i
+            break
+          }
+          if (lines[j].trim() === '1') break  // hit text content — no layer match
+        }
+      }
+      if (lines[i].trim() === 'CIRCLE' && firstBeaconCircleIdx === -1) {
+        for (let j = i + 1; j < Math.min(i + 30, lines.length - 1); j++) {
+          if (lines[j].trim() === '8' && lines[j + 1].trim() === 'BEACONS') {
+            firstBeaconCircleIdx = i
+            break
+          }
+        }
+      }
+    }
+    expect(lastBeaconLabelIdx).toBeGreaterThan(-1)
+    expect(firstBeaconCircleIdx).toBeGreaterThan(-1)
+    expect(firstBeaconCircleIdx).toBeGreaterThan(lastBeaconLabelIdx)
+  })
+
+  test('beacon radius scales with scale (logarithmic, clamped)', () => {
+    const small = generateDXF({ ...sampleFixture, scale: '1:500' }, fakeLogger)
+    const large = generateDXF({ ...sampleFixture, scale: '1:5000' }, fakeLogger)
+    const radiusOf = (dxf) => {
+      const lines = dxf.split('\n')
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i].trim() !== 'CIRCLE') continue
+        let layer = null, r = null
+        for (let j = i + 1; j < Math.min(i + 30, lines.length - 1); j++) {
+          if (lines[j].trim() === '8') layer = lines[j + 1].trim()
+          if (lines[j].trim() === '40') { r = parseFloat(lines[j + 1]); break }
+        }
+        if (layer === 'BEACONS') return r
+      }
+      return null
+    }
+    const r500  = radiusOf(small.buffer.toString())
+    const r5000 = radiusOf(large.buffer.toString())
+    expect(r500).not.toBeNull()
+    expect(r5000).not.toBeNull()
+    expect(r5000).toBeGreaterThan(r500)
+    // 3 pt clamp at S=5000: 3 * 5000 * 0.000352778 ≈ 5.29 m ground
+    expect(r5000).toBeLessThanOrEqual(5.29 + 0.01)
+  })
+
+  test('beacon font size scales with scale (PDF tier switch)', () => {
+    const small  = generateDXF({ ...sampleFixture, scale: '1:500' }, fakeLogger)
+    const medium = generateDXF({ ...sampleFixture, scale: '1:1500' }, fakeLogger)
+    const heightOf = (dxf) => {
+      const lines = dxf.split('\n')
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i].trim() !== 'TEXT') continue
+        let layer = null, h = null
+        for (let j = i + 1; j < Math.min(i + 30, lines.length - 1); j++) {
+          if (lines[j].trim() === '8') layer = lines[j + 1].trim()
+          if (lines[j].trim() === '40') { h = parseFloat(lines[j + 1]); break }
+        }
+        if (layer === 'BEACON_LABELS') return h
+      }
+      return null
+    }
+    const h500  = heightOf(small.buffer.toString())
+    const h1500 = heightOf(medium.buffer.toString())
+    expect(h500).not.toBeNull()
+    expect(h1500).not.toBeNull()
+    // 1:500 → font 6 pt → 6 * 500 * 0.000352778 ≈ 1.058 m ground
+    // 1:1500 → font 7 pt → 7 * 1500 * 0.000352778 ≈ 3.704 m ground
+    expect(h500).toBeCloseTo(1.058, 1)
+    expect(h1500).toBeCloseTo(3.704, 1)
+  })
+
+  test('leader line emitted when label-to-beacon distance exceeds threshold', () => {
+    // Add a control beacon (no numeric prefix → outside placement). With
+    // labelText 'CTRL-7' (6 chars) at S=1000 → labelWidth ≈ 7.6 m, so
+    // tryTight's right candidate places the label center ≈ 5 m from the
+    // beacon. LEADER_THRESHOLD = 3 × beaconRadius ≈ 2.35 m at S=1000 → leader fires.
+    const fixture = {
+      ...sampleFixture,
+      beacons: {
+        type: 'FeatureCollection',
+        features: [
+          ...(sampleFixture.beacons?.features || []),
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [50100, 2200050] },
+            properties: { pointId: 'CTRL-7' },
+          },
+        ],
+      },
+    }
+    const r = generateDXF(fixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    expect(entityCount(dxf, 'LINE', 'BEACON_LABELS')).toBeGreaterThan(0)
+  })
+
+  test('splay group iteration order is deterministic across runs', () => {
+    // 3 close beacons + 1 isolated. Two generation runs must produce identical output.
+    const splayFixture = {
+      ...sampleFixture,
+      beacons: { type: 'FeatureCollection', features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [50000.0, 2200000.0] }, properties: { pointId: 'A1' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [50000.5, 2200000.5] }, properties: { pointId: 'A2' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [50001.0, 2200000.0] }, properties: { pointId: 'A3' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [60000.0, 2210000.0] }, properties: { pointId: 'B1' } },
+      ]},
+    }
+    const run1 = generateDXF(splayFixture, fakeLogger).buffer.toString()
+    const run2 = generateDXF(splayFixture, fakeLogger).buffer.toString()
+    expect(run1).toBe(run2)
+  })
 })
 
 describe('dxfGenerator integration — developed-township planType', () => {

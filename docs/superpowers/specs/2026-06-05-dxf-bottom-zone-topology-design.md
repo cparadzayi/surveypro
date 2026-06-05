@@ -193,7 +193,7 @@ The `mm` function (paper-millimetres → ground-metres at the current scale) is 
 edgesCount = outsideFigureData?.edges?.length || 0
 if edgesCount === 0 → return {width: 0, height: 0}
 
-widthMM = sum(OUTSIDE_FIGURE_DATA.columns[i].width) * PT_TO_MM_GEN   // ~73 mm
+widthMM = sum(OUTSIDE_FIGURE_DATA.columns[i].width) * PT_TO_MM_GEN   // 345 pt → ~121.7 mm
 width   = mm(widthMM)
 height  = fonts.ofTitleH                  // title row "OUTSIDE FIGURE DATA"
         + fonts.ofRowH * 0.9              // "System: Lo XX" subtitle
@@ -208,8 +208,8 @@ height  = fonts.ofTitleH                  // title row "OUTSIDE FIGURE DATA"
 ### `sizeSGBox(mm)`
 
 ```
-width  = mm(SURVEYOR_GENERAL_BOX.width  * PT_TO_MM_GEN)   // ~70 mm in ground-metres
-height = mm(SURVEYOR_GENERAL_BOX.height * PT_TO_MM_GEN)   // ~28 mm in ground-metres
+width  = mm(SURVEYOR_GENERAL_BOX.width  * PT_TO_MM_GEN)   // 200 pt → ~70.6 mm in ground-metres
+height = mm(SURVEYOR_GENERAL_BOX.height * PT_TO_MM_GEN)   // 80 pt  → ~28.2 mm in ground-metres
 ```
 
 Constant per scale (depends only on `mm`).

@@ -1572,30 +1572,45 @@ export function generateDXF(options, logger) {
   addLine(TB, statementL - mm(3), cY + mm(2), approvedR + mm(3), cY + mm(2));
   cY -= mm(3);
 
-  // Outside Figure Data table
-  const c = (off) => statementL + off; // offset helper
-  const cS = mm(0), cM = mm(28), cD = mm(50), cK = mm(78);
-  const cCY = mm(95), cCX = mm(115);
+  // Outside Figure Data table — column widths match the PDF's
+  // drawOutsideFigureData (pts: col1=45, col2=40, col3=70, col4=55,
+  // col5=65, col6=70). Converted to paper-mm via PT_TO_MM = 0.352778.
+  // The PDF row height is 12 pt and all text is 9 pt — adopted as
+  // OF-block-specific fonts so other emissions are unaffected.
+  const ofTitleH = pt(9);
+  const ofBodyH  = pt(9);
+  const ofRowH   = pt(12);
 
-  addText(TB, c(cS), cY, 'OUTSIDE FIGURE DATA', hHead, 0, 'BOLD');
-  addText(TB, c(cCY), cY, `CO-ORDINATES`, hHead, 0, 'BOLD');
-  cY -= rH * 0.8;
-  addText(TB, c(cCY), cY, `System: Lo ${centralMeridian}`, hBody);
-  cY -= rH * 0.6;
-  // Add vertical divider between OF data and coordinates
-  const coordDivX = c(cCY) - mm(3);
-  addLine(TB, coordDivX, cY + rH * 1.5, coordDivX, cY - rH * ((outsideFigureData?.edges?.length || 0) + 1));
+  const c = (off) => statementL + off;
+  const cS  = mm(0);         // SIDES        (col1 ≈ 15.88 mm)
+  const cM  = mm(15.88);     // Metres       (col2 = 14.11 mm)
+  const cD  = mm(30.00);     // DIRECTION    (col3 = 24.69 mm)
+  const cK  = mm(54.69);     // Constants    (col4 = 19.40 mm)
+  const cCY = mm(74.09);     // Y            (col5 = 22.93 mm)
+  const cCX = mm(97.02);     // X            (col6 = 24.69 mm)
+  const ofdRightEdge = mm(121.71); // sum of widths
+
+  addText(TB, c(cS), cY, 'OUTSIDE FIGURE DATA', ofTitleH, 0, 'BOLD');
+  addText(TB, c(cCY), cY, `CO-ORDINATES`, ofTitleH, 0, 'BOLD');
+  cY -= ofRowH * 0.9;
+  addText(TB, c(cCY), cY, `System: Lo ${centralMeridian}`, ofBodyH);
+  cY -= ofRowH * 0.7;
+
+  // Vertical divider between OF data and coordinates (matches PDF's
+  // title-box / coordinate-box separator at drawOutsideFigureData:10796).
+  const coordDivX = c(cCY) - mm(2);
+  addLine(TB, coordDivX, cY + ofRowH * 1.5, coordDivX, cY - ofRowH * ((outsideFigureData?.edges?.length || 0) + 1));
 
   // Column headers
-  addLine(TB, statementL - mm(3), cY + mm(2), approvedR + mm(3), cY + mm(2));
-  addText(TB, c(cS), cY, 'SIDES', hBody, 0, 'BOLD');
-  addText(TB, c(cM), cY, 'Metres', hBody, 0, 'BOLD');
-  addText(TB, c(cD), cY, 'DIRECTION', hBody, 0, 'BOLD');
-  addText(TB, c(cK), cY, 'Constants', hBody, 0, 'BOLD');
-  addText(TB, c(cCY), cY, 'Y', hBody, 0, 'BOLD');
-  addText(TB, c(cCX), cY, 'X', hBody, 0, 'BOLD');
-  addLine(TB, statementL - mm(3), cY - mm(2), approvedR + mm(3), cY - mm(2));
-  cY -= rH;
+  addLine(TB, statementL - mm(3), cY + mm(1.5), c(ofdRightEdge) + mm(2), cY + mm(1.5));
+  addText(TB, c(cS), cY, 'SIDES', ofBodyH, 0, 'BOLD');
+  addText(TB, c(cM), cY, 'Metres', ofBodyH, 0, 'BOLD');
+  addText(TB, c(cD), cY, 'DIRECTION', ofBodyH, 0, 'BOLD');
+  addText(TB, c(cK), cY, 'Constants', ofBodyH, 0, 'BOLD');
+  addText(TB, c(cCY), cY, 'Y', ofBodyH, 0, 'BOLD');
+  addText(TB, c(cCX), cY, 'X', ofBodyH, 0, 'BOLD');
+  addLine(TB, statementL - mm(3), cY - mm(1.5), c(ofdRightEdge) + mm(2), cY - mm(1.5));
+  cY -= ofRowH;
 
   // Data rows
   if (outsideFigureData?.edges) {
@@ -1606,28 +1621,41 @@ export function generateDXF(options, logger) {
       const constId = edge.pointId || '';
       const yV = typeof edge.y === 'number' ? (edge.y >= 0 ? '+' : '') + edge.y.toFixed(2) : '';
       const xV = typeof edge.x === 'number' ? (edge.x >= 0 ? '+' : '') + edge.x.toFixed(2) : '';
-      addText(TB, c(cS), cY, side, hBody);
-      addText(TB, c(cM), cY, dist, hBody);
-      addText(TB, c(cD), cY, dir, hBody);
-      addText(TB, c(cK), cY, constId, hBody);
-      addText(TB, c(cCY), cY, yV, hBody);
-      addText(TB, c(cCX), cY, xV, hBody);
-      cY -= rH;
+      addText(TB, c(cS), cY, side, ofBodyH);
+      addText(TB, c(cM), cY, dist, ofBodyH);
+      addText(TB, c(cD), cY, dir, ofBodyH);
+      addText(TB, c(cK), cY, constId, ofBodyH);
+      addText(TB, c(cCY), cY, yV, ofBodyH);
+      addText(TB, c(cCX), cY, xV, ofBodyH);
+      cY -= ofRowH;
     }
   }
 
-  // â”€â”€ C3) APPROVED BOX (right bottom column) â”€â”€
-  let aY = drawDivY - mm(5);
-  const aCX = (approvedL + approvedR) / 2;
-  addRect(TB, approvedL, aY - mm(30), approvedR, aY);  // approved box border
-  aY -= mm(5);
-  addText(TB, aCX, aY, 'Approved', hSub, 0, 'BOLD');
-  aY -= mm(8);
-  addText(TB, aCX, aY, '........................................', hBody);
-  aY -= rH;
-  addText(TB, aCX, aY, 'For Surveyor General', hBody);
-  aY -= rH;
-  addText(TB, aCX, aY, 'Date: ................', hBody);
+  // ── C3) APPROVED / SURVEYOR-GENERAL SIGNATURE BOX ──
+  // Matches the PDF's drawSurveyorGeneralSignature at line 11382:
+  //   blockWidth  = 200 pt = 70.55 mm
+  //   blockHeight =  80 pt = 28.22 mm
+  //   title "Approved"      at +5.29 mm from top,  fontSize 12 (regular)
+  //   signature line        at +14.11 mm from top
+  //   "For Surveyor General" at +16.93 mm from top, fontSize 9
+  //   "Date ......"          at +21.17 mm from top, fontSize 9
+  // Box is right-aligned within the approved bottom-zone (PDF anchors
+  // at `mapBounds.x + mapBounds.width - blockWidth - 5`).
+  const sgTitleH  = pt(12);
+  const sgBodyH   = pt(9);
+  const sgBoxW    = mm(70.55);
+  const sgBoxH    = mm(28.22);
+  const sgBoxR    = approvedR;
+  const sgBoxL    = sgBoxR - sgBoxW;
+  const sgBoxTopY = drawDivY - mm(5);
+  const sgBoxBotY = sgBoxTopY - sgBoxH;
+  const aCX       = (sgBoxL + sgBoxR) / 2;
+
+  addRect(TB, sgBoxL, sgBoxBotY, sgBoxR, sgBoxTopY);
+  addText(TB, aCX, sgBoxTopY - mm(5.29),  'Approved',                 sgTitleH, 0);
+  addLine(TB, sgBoxL + mm(7), sgBoxTopY - mm(14.11), sgBoxR - mm(7), sgBoxTopY - mm(14.11));
+  addText(TB, aCX, sgBoxTopY - mm(16.93), 'For Surveyor General',     sgBodyH);
+  addText(TB, aCX, sgBoxTopY - mm(21.17), 'Date ............................', sgBodyH);
 
   logger.info(`[DXF] Page frame: ${(pageR - pageL).toFixed(0)}m x ${(pageT - pageB).toFixed(0)}m ground`);
 

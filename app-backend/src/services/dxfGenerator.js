@@ -1399,7 +1399,11 @@ export function generateDXF(options, logger) {
   // Content area border (margin lines)
   addRect(TB, cntL, cntB, cntR, cntT);               // content border
   addLine(TB, endDivX, pageB, endDivX, pageT);       // endorsements divider (full height)
-  addLine(TB, cntL, drawDivY, cntR, drawDivY);       // below drawing (tables divider)
+  // The drawing-zone / bottom-zone separator at drawDivY was previously drawn
+  // as a full-width horizontal line. The PDF doesn't emit any equivalent
+  // (it relies on block placement + per-block borders), so the line is
+  // omitted here for 1:1 PDF parity. `drawDivY` is still used as a y-coord
+  // boundary by the schedule placer and the bottom-zone layout below.
   addMarginGuides('MARGIN_GUIDES', pageL, pageR, pageT, pageB, cntL, cntR, cntT, cntB)
 
   // â”€â”€ A) TITLE ZONE (within top margin area, centered in content) â”€â”€
@@ -1574,8 +1578,10 @@ export function generateDXF(options, logger) {
     cY -= rH * 1.5;
   }
 
-  // Horizontal divider before OF data
-  addLine(TB, statementL - mm(3), cY + mm(2), approvedR + mm(3), cY + mm(2));
+  // Vertical-spacing gap before the OFD title (the previous full-width
+  // horizontal divider between the survey statement and the OFD table was a
+  // pre-3-v2 col1/col2/col3 partition artefact; the PDF doesn't emit any
+  // equivalent so it's dropped here for 1:1 PDF parity).
   cY -= mm(3);
 
   // Outside Figure Data table — all dimensions sourced from

@@ -1737,7 +1737,21 @@ export function generateDXF(options, logger) {
   dxf += p(12, '0.0'); dxf += p(22, '1.0'); dxf += p(32, '0.0');   // Y axis (identity)
   dxf += p(0, 'ENDTAB');
 
-  // STYLE table â€” STANDARD + BOLD
+  // STYLE table — STANDARD + BOLD.
+  //
+  // Group code 41 is the text WIDTH FACTOR — character horizontal scale
+  // relative to height. CAD viewers default the STANDARD font (txt.shx)
+  // to a 1.0 (square) ratio, which renders characters ~1.8× wider than
+  // the Helvetica-style proportions the PDF uses. Visible effect: column
+  // contents overflow their layout slots and the schedule / OFD tables
+  // appear "wide" even though their geometry matches the PDF exactly.
+  //
+  // Setting 41 = 0.55 here makes every TEXT entity emit at Helvetica-like
+  // proportions. The 0.55 ratio also matches the assumption baked into
+  // the DXF placer (dxfLabelPlacer.js `charWidthRatio = 0.55`) and the
+  // existing schedule emitter constants — so label-position math now
+  // agrees with the actual rendered width.
+  const STYLE_WIDTH_FACTOR = '0.55'
   dxf += p(0, 'TABLE');
   dxf += p(2, 'STYLE');
   dxf += p(70, '2');
@@ -1746,7 +1760,7 @@ export function generateDXF(options, logger) {
   dxf += p(2, 'STANDARD');
   dxf += p(70, '0');
   dxf += p(40, '0.0');
-  dxf += p(41, '1.0');
+  dxf += p(41, STYLE_WIDTH_FACTOR);
   dxf += p(50, '0.0');
   dxf += p(71, '0');
   dxf += p(42, '0.0');
@@ -1757,7 +1771,7 @@ export function generateDXF(options, logger) {
   dxf += p(2, 'BOLD');
   dxf += p(70, '0');
   dxf += p(40, '0.0');
-  dxf += p(41, '1.0');
+  dxf += p(41, STYLE_WIDTH_FACTOR);
   dxf += p(50, '0.0');
   dxf += p(71, '0');
   dxf += p(42, '0.0');

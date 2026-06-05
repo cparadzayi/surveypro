@@ -15,6 +15,30 @@ import {
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
 
+describe('dxfGenerator integration — text width factor', () => {
+  test('STANDARD and BOLD styles emit width factor 0.55 (Helvetica-like proportions)', () => {
+    // Group code 41 in a STYLE record is the text width factor. The default
+    // 1.0 (square characters) makes DXF text render ~1.8× wider than the
+    // equivalent PDF text and breaks the assumption baked into the placer's
+    // charWidthRatio = 0.55. Lock down 0.55 so accidental reverts are caught.
+    //
+    // DXF group-code lines are right-padded ("   41\n0.55\n"), so we count
+    // raw occurrences of the "41 / 0.55" pair appearing inside the STYLE
+    // table — there should be exactly two (STANDARD + BOLD).
+    const r = generateDXF(sampleFixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    // Extract the STYLE table section.
+    const styleSection = dxf.match(/TABLE[\s\S]*?STYLE[\s\S]*?ENDTAB/)
+    expect(styleSection).not.toBeNull()
+    // Inside that section, the width-factor group code (41) followed on the
+    // next line by 0.55 must appear exactly twice (STANDARD + BOLD).
+    const widthFactorCount = (styleSection[0].match(/\b41\s*\n\s*0\.55\b/g) || []).length
+    expect(widthFactorCount).toBe(2)
+    // Defensive: no leftover 1.0 width factors anywhere in STYLE.
+    expect(styleSection[0]).not.toMatch(/\b41\s*\n\s*1\.0\b/)
+  })
+})
+
 describe('dxfGenerator integration — block-definitions consumption', () => {
   test('OUTSIDE_FIGURE_DATA exposes the columns the DXF + PDF emitters read', () => {
     // Catches drift if someone reorders or renames columns and breaks the

@@ -40,7 +40,7 @@ Out of scope:
 
 ### New module: `app-backend/src/services/dxfBottomZoneEmitter.js`
 
-Pure-function module. Imports `findBlockPosition` from `./dxfBlockPlacer.js`; imports `OUTSIDE_FIGURE_DATA`, `SURVEYOR_GENERAL_BOX`, `PT_TO_MM_GEN` from `../../../app-shared/block-definitions.js`. No DXF-string emission inside; all output goes through caller-injected `addText` / `addLine` / `addRect` callbacks.
+Pure-function module. Imports `findBlockPosition` from `./dxfBlockPlacer.js`; imports `OUTSIDE_FIGURE_DATA`, `SURVEYOR_GENERAL_BOX` from `../../../app-shared/block-definitions.js`. `PT_TO_MM_GEN = 25.4 / 72` is defined as a local module constant (the same constant `dxfGenerator.js` defines at line 29 — block-definitions doesn't currently export it). No DXF-string emission inside; all output goes through caller-injected `addText` / `addLine` / `addRect` callbacks.
 
 Exported sizing functions (pure; same inputs → same `{width, height}`):
 

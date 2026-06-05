@@ -204,6 +204,10 @@ export async function generateDXF(request: VectorGeoPDFRequest): Promise<{
     scale: request.scale,
     sheetSize: request.sheetSize,
     beaconGroups: request.beaconGroups,
+    // SI 727 plan type — backend uses this to suppress parcel-edge labels on
+    // developed-township general plans (per-stand survey diagrams carry that
+    // detail). Mirrors what /geopdf/vector forwards via `request` directly.
+    planType: request.planType,
   }, {
     responseType: 'blob',
     timeout: 30000,

@@ -123,3 +123,137 @@ export function orderSplayGroupByAngle(members) {
   withAngle.sort((a, b) => a._angle - b._angle)
   return withAngle.map(({ _angle, ...rest }) => rest)
 }
+
+/**
+ * INTERNAL helper: shoelace centroid (also used by the integration layer's
+ * fallback paths). Same algorithm as in 4d's dxfLabelPlacer.
+ */
+function shoelaceCentroid(polygon) {
+  let twiceArea = 0, cx = 0, cy = 0
+  for (let i = 0; i < polygon.length; i++) {
+    const p0 = polygon[i]
+    const p1 = polygon[(i + 1) % polygon.length]
+    const cross = p0.x * p1.y - p1.x * p0.y
+    twiceArea += cross
+    cx += (p0.x + p1.x) * cross
+    cy += (p0.y + p1.y) * cross
+  }
+  const sixArea = 3 * twiceArea
+  if (Math.abs(sixArea) < 1e-12) {
+    let sx = 0, sy = 0
+    for (const p of polygon) { sx += p.x; sy += p.y }
+    return { x: sx / polygon.length, y: sy / polygon.length }
+  }
+  return { x: cx / sixArea, y: cy / sixArea }
+}
+
+/**
+ * POI-directed inside placement.
+ *
+ * Port of pdfkitGeoPDF.js:5504-5597 with two DXF adaptations:
+ *   1. Uses caller-supplied labelWidth (DXF can't call doc.widthOfString;
+ *      the integration layer estimates via `labelText.length * fontHeight *
+ *      0.55`, matching the charWidthRatio constant used by 4d).
+ *   2. Returns the label's top-left insertion point — caller passes
+ *      directly to addText without any subtraction.
+ *
+ * Algorithm (paraphrased from the PDF):
+ *   1. Find the ring vertex closest to beaconPos.
+ *   2. Compute the interior bisector at that corner; orient toward centroid.
+ *   3. Try increasing offset distances along the bisector with angle
+ *      perturbations. Each candidate must (a) have its center inside the
+ *      polygon, and (b) not collide with any rect in the registry.
+ *   4. Fallback to centroid when all candidates fail.
+ */
+export function placeSuffixLabelPOIDirected({
+  beaconPos, polygon, labelWidth, labelHeight, beaconRadius, registry,
+}) {
+  // Deduplicate closing vertex if present
+  const n = polygon.length
+  const last = polygon[n - 1]
+  const first = polygon[0]
+  const isClosed = last && first &&
+    Math.abs(last.x - first.x) < 0.001 && Math.abs(last.y - first.y) < 0.001
+  const ring = isClosed ? polygon.slice(0, -1) : polygon
+  const rn = ring.length
+
+  // Centroid fallback for degenerate cases
+  if (rn < 3) {
+    const c = shoelaceCentroid(ring)
+    return { x: c.x - labelWidth / 2, y: c.y - labelHeight / 2 }
+  }
+
+  // Find closest ring vertex to beacon
+  let beaconIdx = -1
+  let minDist = Infinity
+  for (let i = 0; i < rn; i++) {
+    const dx = ring[i].x - beaconPos.x
+    const dy = ring[i].y - beaconPos.y
+    const d = Math.sqrt(dx * dx + dy * dy)
+    if (d < minDist) { minDist = d; beaconIdx = i }
+  }
+
+  // Interior bisector at that corner
+  let intX = 0, intY = 1   // fallback direction
+  const B = ring[beaconIdx]
+  const P = ring[(beaconIdx - 1 + rn) % rn]
+  const N = ring[(beaconIdx + 1) % rn]
+  const v1x = P.x - B.x, v1y = P.y - B.y
+  const v2x = N.x - B.x, v2y = N.y - B.y
+  const len1 = Math.sqrt(v1x * v1x + v1y * v1y)
+  const len2 = Math.sqrt(v2x * v2x + v2y * v2y)
+  if (len1 > 0.001 && len2 > 0.001) {
+    const u1x = v1x / len1, u1y = v1y / len1
+    const u2x = v2x / len2, u2y = v2y / len2
+    let bx = u1x + u2x, by = u1y + u2y
+    const bLen = Math.sqrt(bx * bx + by * by)
+    if (bLen < 0.001) {
+      // 180° straight corner — use perpendicular to one edge
+      bx = -u1y
+      by =  u1x
+    } else {
+      bx /= bLen
+      by /= bLen
+    }
+    // Orient toward interior: dot with (centroid - B) should be positive
+    const centroid = shoelaceCentroid(ring)
+    const dot = bx * (centroid.x - B.x) + by * (centroid.y - B.y)
+    intX = dot >= 0 ? bx : -bx
+    intY = dot >= 0 ? by : -by
+  }
+
+  // Minimum clearance: beacon circle + half label height + 1 unit gap
+  const dMin = beaconRadius + labelHeight / 2 + 1
+
+  // Candidate validator
+  const polygonPts = ring   // already in {x, y} shape
+  const tryPos = (cx, cy) => {
+    if (!isPointInPolygon({ x: cx, y: cy }, polygonPts)) return false
+    if (registry.hasCollision(
+      { x: cx - labelWidth / 2, y: cy - labelHeight / 2, width: labelWidth, height: labelHeight },
+      1,
+    )) return false
+    return true
+  }
+
+  const distances    = [dMin, dMin * 1.3, dMin * 1.7, dMin * 2.2, dMin * 3.0, dMin * 4.0]
+  const perturbsDeg  = [0, 10, -10, 20, -20, 30, -30, 45, -45]
+
+  for (const dist of distances) {
+    for (const pd of perturbsDeg) {
+      const rad = pd * Math.PI / 180
+      const cosP = Math.cos(rad), sinP = Math.sin(rad)
+      const dx = intX * cosP - intY * sinP
+      const dy = intX * sinP + intY * cosP
+      const cx = beaconPos.x + dx * dist
+      const cy = beaconPos.y + dy * dist
+      if (tryPos(cx, cy)) {
+        return { x: cx - labelWidth / 2, y: cy - labelHeight / 2 }
+      }
+    }
+  }
+
+  // Fallback: centroid (caller's leader-distance check decides whether to draw a leader)
+  const centroid = shoelaceCentroid(ring)
+  return { x: centroid.x - labelWidth / 2, y: centroid.y - labelHeight / 2 }
+}

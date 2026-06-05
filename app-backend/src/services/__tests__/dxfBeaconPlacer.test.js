@@ -9,7 +9,9 @@ import {
   createCollisionRegistry,
   groupSplayBeacons,
   orderSplayGroupByAngle,
+  placeSuffixLabelPOIDirected,
 } from '../dxfBeaconPlacer.js'
+import { createCollisionRegistry as makeReg } from '../dxfBeaconPlacer.js'
 
 describe('pickBeaconFontSize — PDF tier switch', () => {
   test('scale 500 → 6 pt', () => {
@@ -169,5 +171,84 @@ describe('orderSplayGroupByAngle', () => {
 
   test('empty group → empty result', () => {
     expect(orderSplayGroupByAngle([])).toEqual([])
+  })
+})
+
+describe('placeSuffixLabelPOIDirected', () => {
+  // Standard 100×100 square parcel for most tests
+  const square = [
+    { x: 0,   y: 0   },
+    { x: 100, y: 0   },
+    { x: 100, y: 100 },
+    { x: 0,   y: 100 },
+  ]
+
+  test('beacon at corner, no obstacles → position inside polygon, on interior bisector', () => {
+    const result = placeSuffixLabelPOIDirected({
+      beaconPos: { x: 0, y: 0 },   // SW corner
+      polygon: square,
+      labelWidth: 10, labelHeight: 6,
+      beaconRadius: 1,
+      registry: makeReg(),
+    })
+    // Label TOP-LEFT should be at cx-5, cy-3 where (cx, cy) is the center.
+    // Center should be inside the square (and toward upper-right since SW corner's
+    // bisector points NE into the parcel).
+    const cx = result.x + 5
+    const cy = result.y + 3
+    expect(cx).toBeGreaterThan(0)
+    expect(cy).toBeGreaterThan(0)
+    expect(cx).toBeLessThan(100)
+    expect(cy).toBeLessThan(100)
+    // NE bias: both should be > 0 (interior direction from SW corner)
+    expect(cx).toBeGreaterThan(1)
+    expect(cy).toBeGreaterThan(1)
+  })
+
+  test('collision: registered label at primary POI position → returns alternative', () => {
+    const reg = makeReg()
+    // First placement
+    const first = placeSuffixLabelPOIDirected({
+      beaconPos: { x: 0, y: 0 },
+      polygon: square,
+      labelWidth: 10, labelHeight: 6,
+      beaconRadius: 1,
+      registry: reg,
+    })
+    reg.add({ x: first.x, y: first.y, width: 10, height: 6 })
+    // Second placement should pick a different position (perturbation or
+    // larger distance), still inside the polygon.
+    const second = placeSuffixLabelPOIDirected({
+      beaconPos: { x: 0, y: 0 },
+      polygon: square,
+      labelWidth: 10, labelHeight: 6,
+      beaconRadius: 1,
+      registry: reg,
+    })
+    const sameSpot = Math.abs(first.x - second.x) < 0.01 && Math.abs(first.y - second.y) < 0.01
+    expect(sameSpot).toBe(false)
+    // Second is still inside the polygon
+    const cx2 = second.x + 5
+    const cy2 = second.y + 3
+    expect(cx2).toBeGreaterThan(0)
+    expect(cy2).toBeGreaterThan(0)
+    expect(cx2).toBeLessThan(100)
+    expect(cy2).toBeLessThan(100)
+  })
+
+  test('degenerate polygon (<3 unique vertices) → centroid fallback', () => {
+    // Two-vertex "polygon" — degenerate.
+    const line = [{ x: 0, y: 0 }, { x: 100, y: 0 }]
+    const result = placeSuffixLabelPOIDirected({
+      beaconPos: { x: 0, y: 0 },
+      polygon: line,
+      labelWidth: 10, labelHeight: 6,
+      beaconRadius: 1,
+      registry: makeReg(),
+    })
+    // Centroid of the two-point "polygon" = (50, 0). Label center = (50, 0),
+    // top-left = (45, -3).
+    expect(result.x).toBeCloseTo(45, 3)
+    expect(result.y).toBeCloseTo(-3, 3)
   })
 })

@@ -116,33 +116,68 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     }
   })
 
-  test('10. consolidation, feasible=0 → no consolidation attempted; scheduleOverflow warn (zero-fit) + title placeholder', () => {
+  test('10. polygon fills zone → Pass 3 skip-polygon fallback places all tables (no warn)', () => {
+    // Pass 1 + Pass 2 both place 0 (polygon covers the whole zone). Pass 3
+    // skips polygon avoidance and finds positions inside mapBounds + edge
+    // margin. Mandatory SI 727 schedule renders over the parcel polygon —
+    // documented PDF-fidelity trade-off.
     const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
     const polygon = [
       { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
     ]
     const features = makeFeatures(24)
+    const calls = { info: [], warn: [], error: [] }
+    const logger = {
+      info:  (msg) => calls.info.push(msg),
+      warn:  (msg) => calls.warn.push(msg),
+      error: (msg) => calls.error.push(msg),
+    }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
       drawingZone, polygon, sheetSize: 'ISO_A2',
       fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn,
+      logger,
+    })
+
+    // Pass 3 placed all stands; no scheduleOverflow warn.
+    expect(result.placedStandCount).toBe(24)
+    expect(result.missingStandCount).toBe(0)
+    expect(h.calls.warn.filter(w => w.cat === 'scheduleOverflow').length).toBe(0)
+
+    // Pass 3 logger trace fires.
+    const passThreeLogs = calls.info.filter(m => m.includes('Pass 3'))
+    expect(passThreeLogs.length).toBeGreaterThan(0)
+  })
+
+  test('10b. true zero-fit: even Pass 3 cannot place tables → title placeholder + warn', () => {
+    // Drawing zone too small for ANY sub-table (after edge margin) even when
+    // polygon is ignored. Triggers initial-budget overflow (fits:false) not
+    // consolidation-zero-fit, since computeScheduleLayout catches it first.
+    const features = makeFeatures(50)
+    const drawingZone = { x: 0, y: 0, width: 40, height: 40 }
+    emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
 
-    expect(result.placedStandCount).toBe(0)
-    expect(result.missingStandCount).toBe(24)
     const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
     expect(warns.length).toBe(1)
-    expect(warns[0].payload.phase).toBe('consolidation-zero-fit')
-    expect(warns[0].payload.recommendedSheetSize).toBe('ISO_A1')
+    expect(['initial-budget', 'consolidation-zero-fit']).toContain(warns[0].payload.phase)
 
-    // Visible-output invariant: every failure path emits the title placeholder
-    // so the user sees there's a schedule that couldn't fit.
+    // Title placeholder is emitted regardless of which path failed.
     const titlePlaceholders = h.calls.addText.filter(args => args[3] === 'SCHEDULE OF AREAS')
     expect(titlePlaceholders.length).toBe(1)
   })
 
-  test('11. consolidation-residual: when missingStandCount > 0 after consolidation, residual warn fires with correct payload shape', () => {
+  test('11. stand-conservation invariant holds across all paths', () => {
+    // With Pass 3 in place, residual + consolidation-zero-fit are unreachable
+    // through natural geometry (Pass 3 fits whenever layout passes; if Pass 3
+    // can't fit, layout already returned fits:false → initial-budget).
+    // The conservation invariant is what survives: every stand is either
+    // placed or counted missing, regardless of which path took us there.
     const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
     const polygon = [
       { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
@@ -155,16 +190,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
 
-    // Invariant: every stand is either placed or counted missing.
     expect(result.placedStandCount + result.missingStandCount).toBe(features.length)
-
-    // Invariant: when an overflow warn fires, payload has required keys.
-    const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
-    expect(warns.length).toBeGreaterThan(0)
-    expect(warns[0].payload).toHaveProperty('atSheetSize', 'ISO_A2')
-    expect(warns[0].payload).toHaveProperty('recommendedSheetSize')
-    expect(['consolidation-zero-fit', 'consolidation-residual', 'initial-budget'])
-      .toContain(warns[0].payload.phase)
   })
 
   test('12. consolidation that successfully places ALL stands → no warn', () => {
@@ -204,44 +230,41 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     expect(warns[0].payload.phase).toBe('initial-budget')
   })
 
-  test('14. warn payload shape: atSheetSize, recommendedSheetSize, placedStandCount, missingStandCount, placedTables', () => {
-    const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
-    const polygon = [
-      { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
-    ]
+  test('14. warn payload shape (initial-budget path)', () => {
+    // Initial-budget is the realistic overflow path now that Pass 3 covers
+    // the polygon-fills-zone case (no warn fires there anymore). Verify the
+    // initial-budget payload has the expected shape.
+    const drawingZone = { x: 0, y: 0, width: 100, height: 100 }
     emitScheduleOfAreasTopological({
-      surveyedFeatures: makeFeatures(24),
-      drawingZone, polygon, sheetSize: 'ISO_A2',
+      surveyedFeatures: makeFeatures(100),
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
 
     const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
-    expect(warns.length).toBeGreaterThan(0)
+    expect(warns.length).toBe(1)
     const payload = warns[0].payload
     expect(payload).toHaveProperty('atSheetSize', 'ISO_A2')
-    expect(payload).toHaveProperty('recommendedSheetSize')
-    expect(payload).toHaveProperty('placedStandCount')
-    expect(payload).toHaveProperty('missingStandCount')
-    expect(payload).toHaveProperty('placedTables')
-    expect(payload).toHaveProperty('phase')
+    expect(payload).toHaveProperty('phase', 'initial-budget')
+    // Either escalation field is acceptable; initial-budget uses requiredSheetSize.
+    expect(payload.requiredSheetSize || payload.recommendedSheetSize).toBeTruthy()
   })
 
-  test('15. recommendedSheetSize uses nextLargerSheet(sheetSize)', () => {
-    const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
-    const polygon = [
-      { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
-    ]
+  test('15. sheet escalation uses nextLargerSheet(sheetSize)', () => {
+    // ISO_A1 + small overflow zone → escalation field = ISO_A0.
+    const drawingZone = { x: 0, y: 0, width: 100, height: 100 }
     emitScheduleOfAreasTopological({
-      surveyedFeatures: makeFeatures(24),
-      drawingZone, polygon, sheetSize: 'ISO_A1',
+      surveyedFeatures: makeFeatures(100),
+      drawingZone, polygon: null, sheetSize: 'ISO_A1',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
 
     const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
-    expect(warns.length).toBeGreaterThan(0)
-    expect(warns[0].payload.recommendedSheetSize).toBe('ISO_A0')
+    expect(warns.length).toBe(1)
+    const escalation = warns[0].payload.requiredSheetSize || warns[0].payload.recommendedSheetSize
+    expect(escalation).toBe('ISO_A0')
   })
 
   test('16. polygon with rectangle obstacle → placements avoid the polygon', () => {

@@ -151,50 +151,69 @@ export function emitScheduleOfAreasTopological({
     const feasible = placedPositions.length
     placedPositions = []   // discard pass-1 positions; replay from scratch
 
-    if (feasible === 0) {
-      emitTitlePlaceholder()
-      warn('scheduleOverflow', {
-        atSheetSize:          sheetSize,
-        recommendedSheetSize: nextLargerSheet(sheetSize),
-        placedStandCount:     0,
-        missingStandCount:    dataRows.length,
-        placedTables:         0,
-        phase:                'consolidation-zero-fit',
-      })
-      return {
-        placedTables: [], placedStandCount: 0, missingStandCount: dataRows.length,
-        southmostY: drawingZone.y,
+    // PASS 2 runs only when Pass 1 placed something. With feasible=0 there's
+    // no useful re-budget (rowsPerTable2 = N → block taller than original).
+    if (feasible > 0) {
+      const rowsPerTable2 = Math.ceil(dataRows.length / feasible)
+      const subTableHeight2G = mm(
+        SCHEDULE_HEADER_HEIGHT_MM + rowsPerTable2 * (rH / mm(1)),
+      )
+
+      for (let i = 0; i < feasible; i++) {
+        const position = findBlockPosition({
+          block:         { width: subTableWidthG, height: subTableHeight2G },
+          mapBounds:     drawingZone,
+          polygon,
+          placedBlocks:  placedPositions,
+          buffer:        mm(POLYGON_BUFFER_MM),
+          blockSpacing:  mm(BLOCK_SPACING_MM),
+          scanStep:      mm(SCAN_STEP_MM),
+          tableMinWidth: subTableWidthG,
+          logger,
+        })
+        if (position === null) break
+        placedPositions.push({
+          x: position.x, y: position.y,
+          width: subTableWidthG, height: subTableHeight2G,
+          rowCount: rowsPerTable2,
+        })
       }
     }
 
-    const rowsPerTable2 = Math.ceil(dataRows.length / feasible)
-    const subTableHeight2G = mm(
-      SCHEDULE_HEADER_HEIGHT_MM + rowsPerTable2 * (rH / mm(1)),
-    )
-
-    for (let i = 0; i < feasible; i++) {
-      const position = findBlockPosition({
-        block:         { width: subTableWidthG, height: subTableHeight2G },
-        mapBounds:     drawingZone,
-        polygon,
-        placedBlocks:  placedPositions,
-        buffer:        mm(POLYGON_BUFFER_MM),
-        blockSpacing:  mm(BLOCK_SPACING_MM),
-        scanStep:      mm(SCAN_STEP_MM),
-        tableMinWidth: subTableWidthG,
-        logger,
-      })
-      if (position === null) break
-      placedPositions.push({
-        x: position.x, y: position.y,
-        width: subTableWidthG, height: subTableHeight2G,
-        rowCount: rowsPerTable2,
-      })
+    // PASS 3 — skip-polygon fallback. When Pass 1 + Pass 2 both produced
+    // zero placements (either feasible=0 entering consolidation, or
+    // consolidation's taller-height retry also failed), try one more time at
+    // the ORIGINAL sub-table size with polygon=null. Accepts overlap with
+    // the figure polygon — the schedule is a mandatory SI 727 element so
+    // overlapping parcel boundary lines is the documented trade-off
+    // (matches `pdfkitGeoPDF.js:_findFreshSkipPolygon`).
+    if (placedPositions.length === 0) {
+      logger.info('[dxfScheduleEmitter] Pass 1 + Pass 2 both placed 0 — trying Pass 3 skip-polygon fallback')
+      for (let i = 0; i < layout.numTables; i++) {
+        const position = findBlockPosition({
+          block:         { width: subTableWidthG, height: subTableHeightG },
+          mapBounds:     drawingZone,
+          polygon:       null,       // skip polygon avoidance; accept overlap
+          placedBlocks:  placedPositions,
+          buffer:        mm(POLYGON_BUFFER_MM),
+          blockSpacing:  mm(BLOCK_SPACING_MM),
+          scanStep:      mm(SCAN_STEP_MM),
+          tableMinWidth: subTableWidthG,
+          logger,
+        })
+        if (position === null) break
+        placedPositions.push({
+          x: position.x, y: position.y,
+          width: subTableWidthG, height: subTableHeightG,
+          rowCount: layout.rowsPerTable,
+        })
+      }
+      if (placedPositions.length > 0) {
+        logger.info(`[dxfScheduleEmitter] Pass 3 placed ${placedPositions.length} tables (overlapping figure polygon)`)
+      }
     }
 
-    // Pass 2 may also fail (consolidated taller height doesn't fit anywhere).
-    // Emit a title placeholder + the same zero-fit warn and return early —
-    // otherwise the final emission loop would silently emit 0 tables.
+    // All three passes failed — emit title placeholder + warn and return.
     if (placedPositions.length === 0) {
       emitTitlePlaceholder()
       warn('scheduleOverflow', {

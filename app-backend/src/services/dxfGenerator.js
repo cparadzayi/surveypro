@@ -1510,12 +1510,23 @@ export function generateDXF(options, logger) {
     ? ofResult.vertices.slice(0, -1).map(v => capeLoToDxfSouthUp(v.y, v.x))
     : null;
 
+  // Schedule-specific fonts matching the PDF generator's drawScheduleOfAreasSingleColumn:
+  //   - 9 pt title (line 10247)
+  //   - 7 pt body data rows (line 10434)
+  //   - 6 pt column headers (line 10307) — addScheduleTable shares hBody between
+  //     headers and rows, so we stay at 7 pt rather than reading two separate values.
+  //   - 15 pt row height (line 10240).
+  // Using the dxfGenerator's general-purpose hHead/hBody/rH (pt 8 / 7 / 11.2)
+  // produced tables ~3.4× wider than the PDF's because the column widths in
+  // block-definitions were also interpreted in the wrong unit; see fix at the
+  // same commit (block-definitions now standardized in PDF pts; dxfScheduleHelpers
+  // converts via PT_TO_MM).
   const scheduleResult = emitScheduleOfAreasTopological({
     surveyedFeatures,
     drawingZone,
     polygon: figurePolygon,
     sheetSize,
-    fonts: { hHead, hBody, rH },
+    fonts: { hHead: pt(9), hBody: pt(7), rH: pt(15) },
     helpers: {
       extractScheduleRow,
       computeScheduleLayout,

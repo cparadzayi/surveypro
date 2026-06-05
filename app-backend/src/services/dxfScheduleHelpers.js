@@ -18,12 +18,24 @@ import { SCHEDULE_OF_AREAS } from '../../../app-shared/block-definitions.js'
 const SHEET_LADDER = ['ISO_A2', 'ISO_A1', 'ISO_A0']
 
 /**
- * Total paper-millimetres reserved for the Schedule of Areas header
- * (title + column headers + DEED parent + underline). Shared by
- * computeScheduleLayout's row-budget math AND addScheduleTable's actual
- * header emission. Drift between the two would silently break the layout.
+ * Conversion factor: 1 PDF point = 0.352778 mm (1/72 inch × 25.4 mm/inch).
+ * block-definitions.js dimensions are in PDF points (matching the PDF
+ * generator's native unit). The DXF generator works in paper-mm, so this
+ * helper converts when reading from the shared definitions.
  */
-export const SCHEDULE_HEADER_HEIGHT_MM = 12
+const PT_TO_MM = 25.4 / 72
+
+/**
+ * Total paper-millimetres reserved for the Schedule of Areas header
+ * (title + spacing + column headers + DEED parent + underline). Shared
+ * by computeScheduleLayout's row-budget math AND addScheduleTable's
+ * actual header emission. Drift between the two would silently break
+ * the layout.
+ *
+ * Matches the PDF's _SCHED_TITLE + _SCHED_SPACING + _SCHED_HEADER =
+ * 15 + 15 + 25 = 55 pt → 19.4 mm (pdfkitGeoPDF.js:7907-7912).
+ */
+export const SCHEDULE_HEADER_HEIGHT_MM = 19
 
 /**
  * Returns the next-larger sheet size in SHEET_LADDER, or
@@ -74,13 +86,17 @@ export function computeScheduleLayout({
     throw new Error('SCHEDULE_OF_AREAS missing from app-shared/block-definitions.js')
   }
 
-  const singleTableWidth = singleCols.reduce((s, c) => s + c.width, 0)
-  const subTableWidth    = multiCols.reduce((s, c) => s + c.width, 0)
+  // Convert column widths and inter-table spacing from PDF pts to paper-mm.
+  // block-definitions.js values are in PDF points (matching the PDF generator's
+  // native unit); the DXF layout computes in paper-mm.
+  const singleTableWidth = singleCols.reduce((s, c) => s + c.width, 0) * PT_TO_MM
+  const subTableWidth    = multiCols.reduce((s, c) => s + c.width, 0) * PT_TO_MM
+  const spacingMM        = spacing * PT_TO_MM
 
   const rowsPerColumn = Math.max(0, Math.floor((zoneHeight - headerHeight) / rowHeight))
 
   const singleScale = Math.min(1, zoneWidth / singleTableWidth)
-  const singleColumnWidths = singleCols.map(c => c.width * singleScale)
+  const singleColumnWidths = singleCols.map(c => c.width * PT_TO_MM * singleScale)
 
   if (rowCount === 0) {
     return { fits: true, numTables: 1, rowsPerTable: 0, columnWidths: singleColumnWidths }
@@ -98,16 +114,16 @@ export function computeScheduleLayout({
   if (zoneWidth < subTableWidth) {
     return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }
   }
-  const maxTablesByWidth = Math.floor((zoneWidth + spacing) / (subTableWidth + spacing))
+  const maxTablesByWidth = Math.floor((zoneWidth + spacingMM) / (subTableWidth + spacingMM))
 
   if (numTablesNeeded > maxTablesByWidth) {
     return { fits: false, recommendedSheetSize: nextLargerSheet(currentSheetSize) }
   }
 
-  const perTableBudget = (zoneWidth - (numTablesNeeded - 1) * spacing) / numTablesNeeded
+  const perTableBudget = (zoneWidth - (numTablesNeeded - 1) * spacingMM) / numTablesNeeded
   const subTableWidthOut = Math.min(perTableBudget, subTableWidth)
   const multiScale = subTableWidthOut / subTableWidth
-  const multiColumnWidths = multiCols.map(c => c.width * multiScale)
+  const multiColumnWidths = multiCols.map(c => c.width * PT_TO_MM * multiScale)
 
   return {
     fits: true,

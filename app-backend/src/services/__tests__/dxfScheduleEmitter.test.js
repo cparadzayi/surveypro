@@ -177,6 +177,83 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     }
   })
 
+  test('9e. Pass 2 split prefers the rightmost-fitting gap (right-anchor preference)', () => {
+    // Two same-size gaps at left and right of the zone. The split must
+    // pick the RIGHT one first so the schedule lands closest to the
+    // content-area right edge (where endorsements live in production).
+    const features = makeFeatures(5)
+    // Polygon shaped like an H: leaves a left strip [0..200] and right strip
+    // [800..1000], both 200 wide × 200 tall. The right strip should be
+    // picked first.
+    const polygon = [
+      { x: 200, y:  0 }, { x: 800, y:  0 },
+      { x: 800, y: 200 }, { x: 200, y: 200 },
+      { x: 200, y:  0 },   // closed
+    ]
+    const drawingZone = { x: 0, y: 0, width: 1000, height: 200 }
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+    expect(result.placedTables.length).toBeGreaterThan(0)
+    // Drawing-zone center x = 500. Every placed sub-table's center should be
+    // RIGHT of the drawing-zone center.
+    for (const t of result.placedTables) {
+      const centerX = t.x + t.width / 2
+      expect(centerX).toBeGreaterThan(500)
+    }
+  })
+
+  test('9f. Pass 2 split shrinks sub-tables to fit when the planned rowCount would overlap the polygon', () => {
+    // Single tall gap on the right — wide enough but the FULL planned
+    // sub-table at rowCount = ceil(40/1) = 40 rows would extend into the
+    // polygon at low-y. Shrinking to a smaller rowCount fits.
+    //
+    // Constructed: polygon occupies the lower half of the zone. The right
+    // gap is only the upper half (because computeWhitespaceZones reports
+    // the top-half band). A sub-table of 40 rows at original height won't
+    // fit in the half-height band; halving to 20 should fit.
+    const features = makeFeatures(40)
+    const polygon = [
+      { x: 0, y: 0 }, { x: 1000, y: 0 },
+      { x: 1000, y: 100 }, { x: 0, y: 100 },
+      { x: 0, y: 0 },
+    ]
+    const drawingZone = { x: 0, y: 0, width: 1000, height: 200 }
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+    // At least one sub-table placed; collectively cover some stands.
+    expect(result.placedTables.length).toBeGreaterThan(0)
+    expect(result.placedStandCount).toBeGreaterThan(0)
+    // Every placed sub-table must NOT overlap the polygon interior.
+    const isInside = (px, py, poly) => {
+      let inside = false
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i].x, yi = poly[i].y
+        const xj = poly[j].x, yj = poly[j].y
+        const intersect = ((yi > py) !== (yj > py)) &&
+          (px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+        if (intersect) inside = !inside
+      }
+      return inside
+    }
+    for (const t of result.placedTables) {
+      for (let i = 1; i <= 5; i++) {
+        for (let j = 1; j <= 5; j++) {
+          const px = t.x + (t.width  * i) / 6
+          const py = t.y + (t.height * j) / 6
+          expect(isInside(px, py, polygon)).toBe(false)
+        }
+      }
+    }
+  })
+
   test('9d. Pass 2 split never places a sub-table overlapping the parcel polygon (regression)', () => {
     // Maglas-density regression: with a non-convex polygon, computeWhitespaceZones
     // can return zones that extend slightly into the polygon due to its

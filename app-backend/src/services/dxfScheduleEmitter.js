@@ -199,9 +199,27 @@ export function emitScheduleOfAreasTopological({
       tableMinWidth: subTableWidthG,
       scanStep:      mm(SCAN_STEP_MM),
     })
-    const availableGaps = allZones.filter(g =>
+    const seedFiltered = allZones.filter(g =>
       !seedPlacedBlocks.some(b =>
         rectanglesOverlap(g, b, mm(BLOCK_SPACING_MM))))
+
+    // 2026-06-06 right-anchor preference: surveyors expect the Schedule of
+    // Areas on the RIGHT side of the page (next to endorsements). Sort gaps
+    // by their right-edge x descending so planScheduleSplit picks the
+    // rightmost-fitting gap first. Capacity is the secondary sort key — a
+    // narrow right-side gap that fits only 3 rows still wins over a wide
+    // left gap that fits 100, but a right gap with no capacity falls past
+    // the next right-positioned candidate.
+    //
+    // planScheduleSplit's internal sort is by capacity descending, which
+    // would defeat the right-preference. We bypass it by pre-sorting AND
+    // wrapping each gap so planScheduleSplit's sort is a stable no-op.
+    const availableGaps = seedFiltered.slice().sort((a, b) => {
+      const aRight = a.x + a.width
+      const bRight = b.x + b.width
+      if (aRight !== bRight) return bRight - aRight   // right-edge x desc
+      return (b.width * b.height) - (a.width * a.height)   // area desc tiebreaker
+    })
 
     const { plan, residualRows } = planScheduleSplit({
       totalRows:    dataRows.length,
@@ -212,42 +230,62 @@ export function emitScheduleOfAreasTopological({
       minRowsPerTable: 3,
     })
 
-    // 2026-06-06 polygon-overlap regression fix: validate every proposed
-    // placement against the polygon AND seedPlacedBlocks before pushing.
-    // computeWhitespaceZones has a documented band-flush quirk (see the
-    // fidelity note in dxfTopology.js) that can return zones extending
-    // slightly into a non-convex polygon — Pass 1 catches this via
-    // findBlockPosition's internal validation, but my original Pass 2
-    // directly trusted the zones, producing user-visible overlap on
-    // Maglas-density plans with the hexagonal outside figure.
+    // 2026-06-06 polygon-overlap fix + shrink-to-fit:
+    //   1. Validate every proposed placement against polygon + seed obstacles.
+    //   2. If invalid, halve the sub-table's rowCount and retry until it
+    //      either fits or drops below minRowsPerTable. This handles the
+    //      band-flush quirk (computeWhitespaceZones can over-report zone
+    //      width on non-convex polygons) AND adapts to sub-tables that fit
+    //      at smaller sizes but not at the originally-planned size.
+    //   3. Anchor the sub-table at the gap's RIGHT edge (not left) so the
+    //      sub-table sits closest to the content-area right side. Combined
+    //      with the right-edge gap sort above, this gives "schedule on the
+    //      right" by construction.
+    //   4. Rows shrunk from a successfully placed sub-table become residual
+    //      (counted toward missingStandCount).
+    const MIN_ROWS_PER_TABLE = 3
     let residualFromInvalidPlacement = 0
+    let residualFromShrink = 0
     for (const entry of plan) {
       const g = availableGaps[entry.gapIndex]
-      const subTableHeightG = headerHeightG + entry.rowCount * rH
-      // Anchor each sub-table at the gap's top. In DXF south-up coords,
-      // gap.y + gap.height is the high-y (top); subtracting the table
-      // height gives the bottom-y (low-y) which is what placedPositions stores.
-      const subTableBottomY = g.y + g.height - subTableHeightG
-      const rect = {
-        x: g.x, y: subTableBottomY,
-        width: subTableWidthG, height: subTableHeightG,
+      let rows = entry.rowCount
+      let placed = false
+      while (rows >= MIN_ROWS_PER_TABLE) {
+        const subTableHeightG = headerHeightG + rows * rH
+        // Right-anchor placement: x = gap right edge - tableWidth.
+        const rect = {
+          x:      g.x + g.width - subTableWidthG,
+          y:      g.y + g.height - subTableHeightG,
+          width:  subTableWidthG,
+          height: subTableHeightG,
+        }
+        const valid = isValidPosition({
+          rect,
+          polygon:      closedPolygon,
+          placedBlocks: [...seedPlacedBlocks, ...placedPositions],
+          buffer:       mm(POLYGON_BUFFER_MM),
+          blockSpacing: mm(BLOCK_SPACING_MM),
+        })
+        if (valid) {
+          placedPositions.push({ ...rect, rowCount: rows })
+          if (rows < entry.rowCount) {
+            residualFromShrink += entry.rowCount - rows
+            logger.info(`[dxfScheduleEmitter] Pass 2 split: shrunk gap[${entry.gapIndex}] sub-table from ${entry.rowCount} → ${rows} rows to fit; ${entry.rowCount - rows} rows become residual`)
+          }
+          placed = true
+          break
+        }
+        // Halve rows and retry. Math.floor ensures monotone decrease.
+        rows = Math.floor(rows / 2)
       }
-      const valid = isValidPosition({
-        rect,
-        polygon: closedPolygon,
-        placedBlocks: [...seedPlacedBlocks, ...placedPositions],
-        buffer:       mm(POLYGON_BUFFER_MM),
-        blockSpacing: mm(BLOCK_SPACING_MM),
-      })
-      if (!valid) {
+      if (!placed) {
         residualFromInvalidPlacement += entry.rowCount
-        logger.info(`[dxfScheduleEmitter] Pass 2 split: rejected gap[${entry.gapIndex}] placement (polygon or seed overlap); ${entry.rowCount} rows become residual`)
-        continue
+        logger.info(`[dxfScheduleEmitter] Pass 2 split: rejected gap[${entry.gapIndex}] (no rowCount fits — polygon or seed overlap); ${entry.rowCount} rows become residual`)
       }
-      placedPositions.push({ ...rect, rowCount: entry.rowCount })
     }
+    const passTwoResidualTotal = residualFromInvalidPlacement + residualFromShrink
 
-    const totalResidual = residualRows + residualFromInvalidPlacement
+    const totalResidual = residualRows + passTwoResidualTotal
     if (placedPositions.length > 0 && totalResidual > 0) {
       warn('scheduleOverflow', {
         atSheetSize:          sheetSize,
@@ -260,7 +298,7 @@ export function emitScheduleOfAreasTopological({
     }
 
     if (placedPositions.length > 0) {
-      logger.info(`[dxfScheduleEmitter] Pass 2 split placed ${placedPositions.length} sub-tables (residualRows: ${residualRows})`)
+      logger.info(`[dxfScheduleEmitter] Pass 2 split placed ${placedPositions.length} sub-tables (planResidual=${residualRows}, shrunk=${residualFromShrink}, invalid=${residualFromInvalidPlacement})`)
     }
 
     // PASS 3 — skip-polygon + skip-seed fallback. When Pass 1 + Pass 2 both

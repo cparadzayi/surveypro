@@ -444,4 +444,22 @@ describe('addScheduleTable', () => {
     const stdSpan  = Math.abs(stdDivider.y2  - stdDivider.y1)
     expect(deedSpan).toBeLessThan(stdSpan)
   })
+
+  test('renders correctly with dynamically-sized columnWidths (wider deedNumber)', () => {
+    const { textCalls, addText, addLine } = mockPrimitives()
+    // Simulated dynamic widths: deedNumber column wider than baseline (matches
+    // the case where computeScheduleColumnWidths picked up a long deedNumber).
+    const dynamicWidths = [10, 12, 10, 18, 10, 12]   // deedNumber=18 vs default 10
+    const args = defaultArgs({
+      addText, addLine,
+      columnWidths: dynamicWidths,
+      dataRows: [
+        { stand: '1', area: '100', diagram: '', deedNumber: 'DG-12345/2024', deedDate: '', surveyor: '' },
+      ],
+    })
+    expect(() => addScheduleTable(args)).not.toThrow()
+    // The deedNumber value 'DG-12345/2024' must appear as a TEXT entry.
+    const texts = textCalls.map(c => c.text)
+    expect(texts).toContain('DG-12345/2024')
+  })
 })

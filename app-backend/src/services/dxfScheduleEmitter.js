@@ -14,6 +14,9 @@
  */
 
 import { findBlockPosition, GRID_EDGE_MARGIN } from './dxfBlockPlacer.js'
+import { computeWhitespaceZones } from './dxfTopology.js'
+import { rectanglesOverlap } from './dxfGeometry.js'
+import { planScheduleSplit } from '../../../app-shared/block-definitions.js'
 
 /** Clearance (paper-mm) from polygon edges for the placer's buffer parameter. */
 export const POLYGON_BUFFER_MM = 2.0
@@ -131,8 +134,11 @@ export function emitScheduleOfAreasTopological({
   // 4. Sub-table dimensions in ground-metres. Height = headerHeight + rowsPerTable
   //    * rowHeight, matching computeScheduleLayout's budget exactly so Pass 1
   //    candidate positions are not pre-emptively rejected by the placer.
-  const columnWidthsG = layout.columnWidths.map(mm)
-  const subTableWidthG = columnWidthsG.reduce((s, w) => s + w, 0)
+  // 2026-06-06: prefer dynamic widths from helpers when caller provides them.
+  // Falls back to layout.columnWidths (the pre-2026-06-06 fixed widths) when
+  // helpers.columnWidthsG is absent so existing test fixtures still work.
+  const columnWidthsG_local = helpers.columnWidthsG || layout.columnWidths.map(mm)
+  const subTableWidthG = columnWidthsG_local.reduce((s, w) => s + w, 0)
   const subTableHeightG = mm(
     SCHEDULE_HEADER_HEIGHT_MM + layout.rowsPerTable * (rH / mm(1)),
   )
@@ -161,36 +167,78 @@ export function emitScheduleOfAreasTopological({
 
   // 6. PASS 2 — consolidation (only if PASS 1 didn't seat all tables).
   if (placedPositions.length < layout.numTables) {
-    const feasible = placedPositions.length
+    // 2026-06-06: split-into-smaller replaces pre-2026-06-06 consolidation
+    // (fewer-but-taller tables, which rarely succeeded because consolidated
+    // taller tables exceeded the zone height). Spec:
+    //   docs/superpowers/specs/2026-06-06-schedule-split-and-dynamic-columns-design.md
     placedPositions = []   // discard pass-1 positions; replay from scratch
+    const headerHeightG = mm(SCHEDULE_HEADER_HEIGHT_MM)
 
-    // PASS 2 runs only when Pass 1 placed something. With feasible=0 there's
-    // no useful re-budget (rowsPerTable2 = N → block taller than original).
-    if (feasible > 0) {
-      const rowsPerTable2 = Math.ceil(dataRows.length / feasible)
-      const subTableHeight2G = mm(
-        SCHEDULE_HEADER_HEIGHT_MM + rowsPerTable2 * (rH / mm(1)),
-      )
+    // Enumerate whitespace gaps then exclude those overlapping seedPlacedBlocks.
+    // computeWhitespaceZones already excludes the polygon interior; seed
+    // exclusion is layered on top so we don't try to place a sub-table on
+    // the OFD table the orchestrator placed first.
+    // computeWhitespaceZones walks polygon edges via polygon[i] → polygon[i+1]
+    // for i < polygon.length - 1, missing the closing edge when the polygon
+    // isn't explicitly closed. The orchestrator's figurePolygon construction
+    // (dxfGenerator.js: ofResult.vertices.slice(0, -1)) strips the closing
+    // vertex, and unit-test polygons typically follow the same convention.
+    // Without an explicit closing edge, the strip-scanner reports spurious
+    // zones (e.g. a polygon fully covering the zone yields a "left strip"
+    // zone of the full width). Append a closing duplicate before passing in.
+    const closedPolygon = (polygon && polygon.length >= 3 &&
+      (polygon[0].x !== polygon[polygon.length - 1].x ||
+       polygon[0].y !== polygon[polygon.length - 1].y))
+      ? [...polygon, polygon[0]]
+      : polygon
 
-      for (let i = 0; i < feasible; i++) {
-        const position = findBlockPosition({
-          block:         { width: subTableWidthG, height: subTableHeight2G },
-          mapBounds:     drawingZone,
-          polygon,
-          placedBlocks:  [...seedPlacedBlocks, ...placedPositions],
-          buffer:        mm(POLYGON_BUFFER_MM),
-          blockSpacing:  mm(BLOCK_SPACING_MM),
-          scanStep:      mm(SCAN_STEP_MM),
-          tableMinWidth: subTableWidthG,
-          logger,
-        })
-        if (position === null) break
-        placedPositions.push({
-          x: position.x, y: position.y,
-          width: subTableWidthG, height: subTableHeight2G,
-          rowCount: rowsPerTable2,
-        })
-      }
+    const allZones = computeWhitespaceZones({
+      polygon:       closedPolygon,
+      mapBounds:     drawingZone,
+      buffer:        mm(POLYGON_BUFFER_MM),
+      tableMinWidth: subTableWidthG,
+      scanStep:      mm(SCAN_STEP_MM),
+    })
+    const availableGaps = allZones.filter(g =>
+      !seedPlacedBlocks.some(b =>
+        rectanglesOverlap(g, b, mm(BLOCK_SPACING_MM))))
+
+    const { plan, residualRows } = planScheduleSplit({
+      totalRows:    dataRows.length,
+      availableGaps,
+      tableWidth:   subTableWidthG,
+      headerHeight: headerHeightG,
+      rowHeight:    rH,
+      minRowsPerTable: 3,
+    })
+
+    for (const entry of plan) {
+      const g = availableGaps[entry.gapIndex]
+      const subTableHeightG = headerHeightG + entry.rowCount * rH
+      // Anchor each sub-table at the gap's top. In DXF south-up coords,
+      // gap.y + gap.height is the high-y (top); subtracting the table
+      // height gives the bottom-y (low-y) which is what placedPositions stores.
+      const subTableBottomY = g.y + g.height - subTableHeightG
+      placedPositions.push({
+        x: g.x, y: subTableBottomY,
+        width: subTableWidthG, height: subTableHeightG,
+        rowCount: entry.rowCount,
+      })
+    }
+
+    if (placedPositions.length > 0 && residualRows > 0) {
+      warn('scheduleOverflow', {
+        atSheetSize:          sheetSize,
+        recommendedSheetSize: nextLargerSheet(sheetSize),
+        placedStandCount:     dataRows.length - residualRows,
+        missingStandCount:    residualRows,
+        placedTables:         placedPositions.length,
+        phase:                'split-residual',
+      })
+    }
+
+    if (placedPositions.length > 0) {
+      logger.info(`[dxfScheduleEmitter] Pass 2 split placed ${placedPositions.length} sub-tables (residualRows: ${residualRows})`)
     }
 
     // PASS 3 — skip-polygon + skip-seed fallback. When Pass 1 + Pass 2 both
@@ -270,7 +318,7 @@ export function emitScheduleOfAreasTopological({
       // `y` is the title-row TOP (HIGH y). Block occupies [p.y, p.y + p.height].
       x: p.x, y: p.y + p.height,
       dataRows: rows,
-      columnWidths: columnWidthsG,
+      columnWidths: columnWidthsG_local,
       titleText,
       hHead, hBody, rH,
       addText, addLine,

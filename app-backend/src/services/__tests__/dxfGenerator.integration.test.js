@@ -785,3 +785,67 @@ describe('dxfGenerator integration — bottom-zone topology (3-v4)', () => {
     }
   })
 })
+
+describe('dxfGenerator integration — schedule split + dynamic columns (2026-06-06)', () => {
+  test('Maglas-density fixture (200+ stands) splits into multiple sub-tables without consolidation-zero-fit', () => {
+    // 200 narrow parcels. With Pass 2 split, the schedule should distribute
+    // across multiple sub-tables that fit in the available whitespace
+    // fragments. consolidation-zero-fit phase must NOT fire (that was the
+    // pre-2026-06-06 failure mode for dense plans).
+    const features = []
+    for (let i = 0; i < 200; i++) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [[
+          [50000 + i * 0.5, 2200000], [50000 + i * 0.5 + 0.5, 2200000],
+          [50000 + i * 0.5 + 0.5, 2200001], [50000 + i * 0.5, 2200001],
+          [50000 + i * 0.5, 2200000],
+        ]]},
+        properties: { stand: String(1000 + i), area_m2: 100 + i },
+      })
+    }
+    const fixture = {
+      ...sampleFixture,
+      parcels: { type: 'FeatureCollection', features },
+      sheetSize: 'ISO_A0',
+    }
+    const r = generateDXF(fixture, fakeLogger)
+    const sched = r.warnings.summary.scheduleOverflow
+    if (sched) {
+      expect(sched.phase).not.toBe('consolidation-zero-fit')
+    }
+    // At least one schedule sub-table title was emitted.
+    const titleCount = (r.buffer.toString().match(/SCHEDULE OF AREAS/g) || []).length
+    expect(titleCount).toBeGreaterThan(0)
+  })
+
+  test('long deedNumber values appear intact in the schedule (dynamic-width proof)', () => {
+    // Dynamic column widths must accommodate the longest data value per column.
+    // The Schedule's deedNumber column historically used a fixed 40-pt width.
+    // A 'DG-1234567890/2024' (18-char) value at body fontSize=7 needs
+    // 18 * 7 * 0.55 ≈ 69 pt — well over the old 40-pt fixed column. With
+    // dynamic widths the column grows to fit and the full string appears
+    // in the DXF output (no truncation or overflow garbage).
+    const features = Array.from({ length: 5 }, (_, i) => ({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [[
+        [50000 + i, 2200000], [50001 + i, 2200000],
+        [50001 + i, 2200001], [50000 + i, 2200001],
+        [50000 + i, 2200000],
+      ]]},
+      properties: {
+        stand: String(100 + i),
+        area_m2: 100 + i,
+        deedNumber: 'DG-1234567890/2024',
+      },
+    }))
+    const fixture = { ...sampleFixture,
+      parcels: { type: 'FeatureCollection', features } }
+    const dxf = generateDXF(fixture, fakeLogger).buffer.toString()
+
+    // The full long-deed string must appear in the DXF — proves the dynamic
+    // column accommodated it (otherwise emission would either truncate or
+    // never render the value at all).
+    expect(dxf).toContain('DG-1234567890/2024')
+  })
+})

@@ -453,6 +453,120 @@ export function extractBeaconSuffix(beaconName) {
   return match ? match[2] : beaconName
 }
 
+/**
+ * Compute per-column widths for the Schedule of Areas so headers and
+ * data values never overflow their column. Widths are in PDF points.
+ *
+ * Per column:
+ *   raw   = max(widest header token at headerFontSize,
+ *               widest data value  at bodyFontSize)
+ *         + 2 * padding
+ *   width = max(raw, colMinFloor)
+ *
+ * Returns 6 widths in the same order as SCHEDULE_OF_AREAS.singleColumn.columns:
+ *   [stand, area, diagram, deedNumber, deedDate, surveyor].
+ *
+ * @param {Object} args
+ * @param {Array<Object>} args.dataRows - schedule data rows; keys match column.key values
+ * @param {number} args.headerFontSize - PDF pt; used for header-token measurement
+ * @param {number} args.bodyFontSize   - PDF pt; used for data-cell measurement
+ * @param {(text:string, fontSize:number) => number} args.measureText
+ *        Text-width measurer returning PDF pt. PDF passes a function backed
+ *        by doc.widthOfString; DXF passes (text, fz) => text.length * fz * 0.55.
+ * @param {number} [args.padding=4]    - per-side cell padding in pt
+ * @param {number} [args.colMinFloor=24] - per-column minimum width in pt
+ * @returns {number[]} 6 column widths in pt
+ */
+export function computeScheduleColumnWidths({
+  dataRows, headerFontSize, bodyFontSize, measureText,
+  padding = 4, colMinFloor = 24,
+}) {
+  const cols = SCHEDULE_OF_AREAS.singleColumn.columns
+  const widths = []
+  for (const col of cols) {
+    const headerTokens = String(col.label).split('\n')
+    let widestHeader = 0
+    for (const t of headerTokens) {
+      const w = measureText(t, headerFontSize)
+      if (w > widestHeader) widestHeader = w
+    }
+    let widestData = 0
+    for (const row of dataRows) {
+      const val = row[col.key]
+      if (val == null || val === '') continue
+      const w = measureText(String(val), bodyFontSize)
+      if (w > widestData) widestData = w
+    }
+    const raw = Math.max(widestHeader, widestData) + 2 * padding
+    widths.push(Math.max(raw, colMinFloor))
+  }
+  return widths
+}
+
+/**
+ * Plan how to split a schedule of totalRows stands across the available
+ * whitespace gaps. Greedy: largest-capacity gap first, fills with as many
+ * rows as it holds.
+ *
+ * Per gap, capacity = floor((gap.height - headerHeight) / rowHeight).
+ * Gaps narrower than tableWidth are skipped (too narrow for the table).
+ * Gaps with capacity < minRowsPerTable are skipped UNLESS totalRows is
+ * itself below minRowsPerTable (very small plan), in which case the first
+ * width-passing gap holds all rows.
+ *
+ * Returns:
+ *   plan: [{ gapIndex, startRow, rowCount, isContinuation }]
+ *         gapIndex is the original index in availableGaps. startRow is
+ *         the index into the caller's dataRows where this sub-table
+ *         starts. isContinuation is true for all sub-tables after the
+ *         first.
+ *   residualRows: number of rows left unplaced. > 0 triggers caller-side
+ *                 scheduleOverflow warn + final-rescue fallback.
+ *
+ * @param {Object} args
+ * @param {number} args.totalRows
+ * @param {Array<{x:number,y:number,width:number,height:number}>} args.availableGaps
+ * @param {number} args.tableWidth   - sum of column widths in the same units as gaps
+ * @param {number} args.headerHeight - total header height (title + DEED + sub-headers)
+ * @param {number} args.rowHeight
+ * @param {number} [args.minRowsPerTable=3]
+ * @returns {{ plan: Array<{gapIndex:number,startRow:number,rowCount:number,isContinuation:boolean}>, residualRows: number }}
+ */
+export function planScheduleSplit({
+  totalRows, availableGaps, tableWidth, headerHeight, rowHeight,
+  minRowsPerTable = 3,
+}) {
+  const candidates = []
+  for (let i = 0; i < availableGaps.length; i++) {
+    const g = availableGaps[i]
+    if (g.width < tableWidth) continue
+    const capacity = Math.floor((g.height - headerHeight) / rowHeight)
+    if (capacity < minRowsPerTable && totalRows >= minRowsPerTable) continue
+    if (capacity <= 0) continue
+    candidates.push({ originalIndex: i, capacity })
+  }
+  candidates.sort((a, b) => b.capacity - a.capacity)
+
+  let remainingRows = totalRows
+  let startIndex = 0
+  const plan = []
+  for (const c of candidates) {
+    if (remainingRows < minRowsPerTable && plan.length > 0) break
+    const rowsHere = Math.min(c.capacity, remainingRows)
+    if (rowsHere <= 0) break
+    plan.push({
+      gapIndex:       c.originalIndex,
+      startRow:       startIndex,
+      rowCount:       rowsHere,
+      isContinuation: plan.length > 0,
+    })
+    startIndex    += rowsHere
+    remainingRows -= rowsHere
+    if (remainingRows === 0) break
+  }
+  return { plan, residualRows: remainingRows }
+}
+
 export default {
   SCHEDULE_OF_AREAS,
   OUTSIDE_FIGURE_DATA,

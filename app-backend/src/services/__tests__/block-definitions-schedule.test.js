@@ -1,0 +1,207 @@
+/**
+ * Unit tests for the two new shared schedule helpers exported from
+ * app-shared/block-definitions.js. Run with:
+ *   cd app-backend && npm test -- --testPathPatterns="block-definitions-schedule"
+ */
+import { describe, test, expect } from '@jest/globals'
+import {
+  computeScheduleColumnWidths,
+  planScheduleSplit,
+} from '../../../../app-shared/block-definitions.js'
+
+/**
+ * Deterministic text-width measurer for tests. Mirrors DXF's
+ * (text, fontSize) => text.length * fontSize * 0.55 approximation
+ * so test outputs are easy to hand-verify.
+ */
+const measureText = (text, fontSize) =>
+  String(text).length * fontSize * 0.55
+
+describe('computeScheduleColumnWidths', () => {
+  test('returns 6 widths summing to a finite total', () => {
+    const widths = computeScheduleColumnWidths({
+      dataRows: [],
+      headerFontSize: 6,
+      bodyFontSize:   7,
+      measureText,
+    })
+    expect(widths).toHaveLength(6)
+    const total = widths.reduce((s, w) => s + w, 0)
+    expect(Number.isFinite(total)).toBe(true)
+    expect(total).toBeGreaterThan(0)
+  })
+
+  test('widest header token determines column when data is short', () => {
+    // 'DIAGRAM' (7 chars) at headerFontSize=6 → 7*6*0.55 = 23.1 pt
+    // 'GP-1' (4 chars) at bodyFontSize=7 → 4*7*0.55 = 15.4 pt
+    // Header wins → raw = 23.1 + 2*4 = 31.1
+    const widths = computeScheduleColumnWidths({
+      dataRows: [{ stand: '1', diagram: 'GP-1' }],
+      headerFontSize: 6, bodyFontSize: 7, measureText,
+    })
+    // diagram is column index 2 (stand, area, diagram, ...).
+    expect(widths[2]).toBeCloseTo(7 * 6 * 0.55 + 8, 3)
+  })
+
+  test('widest data value determines column when it exceeds widest header', () => {
+    // 'NUMBER' (6 chars) at headerFontSize=6 → 6*6*0.55 = 19.8 pt
+    // 'DG-12345/2024' (13 chars) at bodyFontSize=7 → 13*7*0.55 = 50.05 pt
+    // Data wins → raw = 50.05 + 8 = 58.05
+    const widths = computeScheduleColumnWidths({
+      dataRows: [{ stand: '1', deedNumber: 'DG-12345/2024' }],
+      headerFontSize: 6, bodyFontSize: 7, measureText,
+    })
+    // deedNumber is column index 3.
+    expect(widths[3]).toBeCloseTo(13 * 7 * 0.55 + 8, 3)
+  })
+
+  test('colMinFloor (24 pt) enforced when both header and data are narrow', () => {
+    // Tiny measureText so the raw width is below colMinFloor.
+    const tinyMeasure = () => 1
+    const widths = computeScheduleColumnWidths({
+      dataRows: [{ stand: '1' }],
+      headerFontSize: 6, bodyFontSize: 7, measureText: tinyMeasure,
+      colMinFloor: 24,
+    })
+    for (const w of widths) {
+      expect(w).toBeGreaterThanOrEqual(24)
+    }
+  })
+
+  test('padding adds 2 * padding to each column', () => {
+    const fixedMeasure = () => 10
+    const widthsPad0 = computeScheduleColumnWidths({
+      dataRows: [{}],
+      headerFontSize: 6, bodyFontSize: 7, measureText: fixedMeasure,
+      padding: 0, colMinFloor: 0,
+    })
+    const widthsPad5 = computeScheduleColumnWidths({
+      dataRows: [{}],
+      headerFontSize: 6, bodyFontSize: 7, measureText: fixedMeasure,
+      padding: 5, colMinFloor: 0,
+    })
+    for (let i = 0; i < 6; i++) {
+      expect(widthsPad5[i] - widthsPad0[i]).toBeCloseTo(10, 5)
+    }
+  })
+
+  test('injected measureText is called with (text, fontSize)', () => {
+    const calls = []
+    const recorder = (text, fontSize) => {
+      calls.push({ text, fontSize })
+      return text.length * fontSize * 0.55
+    }
+    computeScheduleColumnWidths({
+      dataRows: [{ stand: '1' }],
+      headerFontSize: 6, bodyFontSize: 7, measureText: recorder,
+    })
+    // At least one header call at fontSize=6.
+    expect(calls.some(c => c.fontSize === 6)).toBe(true)
+    // At least one data call at fontSize=7.
+    expect(calls.some(c => c.fontSize === 7 && c.text === '1')).toBe(true)
+  })
+})
+
+describe('planScheduleSplit', () => {
+  test('all rows fit in one gap → plan has 1 entry, no continuation, no residual', () => {
+    const result = planScheduleSplit({
+      totalRows: 5,
+      availableGaps: [{ x: 0, y: 0, width: 100, height: 200 }],
+      tableWidth:   50,
+      headerHeight: 30,
+      rowHeight:    15,
+    })
+    expect(result.plan).toHaveLength(1)
+    expect(result.plan[0].gapIndex).toBe(0)
+    expect(result.plan[0].startRow).toBe(0)
+    expect(result.plan[0].rowCount).toBe(5)
+    expect(result.plan[0].isContinuation).toBe(false)
+    expect(result.residualRows).toBe(0)
+  })
+
+  test('rows distributed across gaps in descending capacity order', () => {
+    // gap[0] holds 2 rows; gap[1] holds 10 rows; gap[2] holds 4 rows.
+    // Largest-first → gap[1] first (rows 0-9), then gap[2] (rows 10-13), then gap[0] skipped (capacity < min).
+    const result = planScheduleSplit({
+      totalRows: 14,
+      availableGaps: [
+        { x: 0, y: 0,  width: 50, height:  60 },  // (60-30)/15 = 2  → skipped (< minRowsPerTable=3)
+        { x: 0, y: 70, width: 50, height: 180 },  // (180-30)/15 = 10
+        { x: 0, y:260, width: 50, height:  90 },  // (90-30)/15 = 4
+      ],
+      tableWidth: 50, headerHeight: 30, rowHeight: 15,
+    })
+    expect(result.plan).toHaveLength(2)
+    expect(result.plan[0].gapIndex).toBe(1)
+    expect(result.plan[0].rowCount).toBe(10)
+    expect(result.plan[0].startRow).toBe(0)
+    expect(result.plan[1].gapIndex).toBe(2)
+    expect(result.plan[1].rowCount).toBe(4)
+    expect(result.plan[1].startRow).toBe(10)
+    expect(result.plan[1].isContinuation).toBe(true)
+    expect(result.residualRows).toBe(0)
+  })
+
+  test('residualRows tracks unplaceable rows when gap capacity runs out', () => {
+    const result = planScheduleSplit({
+      totalRows: 20,
+      availableGaps: [{ x: 0, y: 0, width: 50, height: 105 }], // capacity = (105-30)/15 = 5
+      tableWidth: 50, headerHeight: 30, rowHeight: 15,
+    })
+    expect(result.plan).toHaveLength(1)
+    expect(result.plan[0].rowCount).toBe(5)
+    expect(result.residualRows).toBe(15)
+  })
+
+  test('gap narrower than tableWidth is skipped', () => {
+    const result = planScheduleSplit({
+      totalRows: 5,
+      availableGaps: [{ x: 0, y: 0, width: 30, height: 200 }], // width 30 < tableWidth 50 → skip
+      tableWidth: 50, headerHeight: 30, rowHeight: 15,
+    })
+    expect(result.plan).toHaveLength(0)
+    expect(result.residualRows).toBe(5)
+  })
+
+  test('totalRows < minRowsPerTable → single entry with all rows', () => {
+    // Plan with only 2 stands. Even a small gap should hold them.
+    const result = planScheduleSplit({
+      totalRows: 2,
+      availableGaps: [{ x: 0, y: 0, width: 50, height: 60 }], // capacity (60-30)/15 = 2
+      tableWidth: 50, headerHeight: 30, rowHeight: 15,
+    })
+    expect(result.plan).toHaveLength(1)
+    expect(result.plan[0].rowCount).toBe(2)
+    expect(result.residualRows).toBe(0)
+  })
+
+  test('stand row order preserved across sub-tables (startRow monotonically increases)', () => {
+    const result = planScheduleSplit({
+      totalRows: 12,
+      availableGaps: [
+        { x: 0, y: 0,   width: 50, height:  75 },  // 3 rows
+        { x: 0, y: 100, width: 50, height: 105 },  // 5 rows
+        { x: 0, y: 220, width: 50, height:  90 },  // 4 rows
+      ],
+      tableWidth: 50, headerHeight: 30, rowHeight: 15,
+    })
+    // Largest first: gap[1] (5 rows), then gap[2] (4 rows), then gap[0] (3 rows).
+    let prevEnd = 0
+    for (const p of result.plan) {
+      expect(p.startRow).toBe(prevEnd)
+      prevEnd = p.startRow + p.rowCount
+    }
+    expect(prevEnd).toBe(12)
+    expect(result.residualRows).toBe(0)
+  })
+
+  test('availableGaps empty → returns plan:[], residualRows:totalRows', () => {
+    const result = planScheduleSplit({
+      totalRows: 10,
+      availableGaps: [],
+      tableWidth: 50, headerHeight: 30, rowHeight: 15,
+    })
+    expect(result.plan).toHaveLength(0)
+    expect(result.residualRows).toBe(10)
+  })
+})

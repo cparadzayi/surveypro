@@ -9,6 +9,7 @@ import {
   SI727_MARGINS,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths as _computeScheduleColumnWidths } from "../../../app-shared/block-definitions.js";
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
 import { LabelingSystem } from "./pdfkitLabeling.js";
 import { bankersRound, roundBearingSouth, degToDMS } from "../utils/zim-geo.js";
@@ -9199,6 +9200,35 @@ function computeWhitespaceZones(
  * Splits parcels into multiple side-by-side tables, each anchored at bottom and growing upwards
  * @param {Array} tickMarkBounds - Tick mark regions to avoid
  */
+/**
+ * 2026-06-06: PDF text-width measurer for computeScheduleColumnWidths.
+ * Switches between Helvetica-Bold (headers) and Helvetica (body) based on
+ * the supplied fontSize so doc.widthOfString returns metrics for the
+ * correct font. Saves and restores the prior font/size so callers aren't
+ * surprised by the side-effect.
+ *
+ * @param {PDFKit.PDFDocument} doc
+ * @param {number} headerFontSize  - schedule header pt (typically 6)
+ * @param {number} bodyFontSize    - schedule body pt   (typically 7)
+ * @returns {(text:string, fontSize:number) => number}
+ */
+function buildPdfScheduleMeasurer(doc, headerFontSize, bodyFontSize) {
+  return (text, fontSize) => {
+    const prevFont = doc._font?.name || 'Helvetica'
+    const prevSize = doc._fontSize || 10
+    try {
+      if (fontSize === headerFontSize) {
+        doc.font('Helvetica-Bold').fontSize(fontSize)
+      } else {
+        doc.font('Helvetica').fontSize(fontSize)
+      }
+      return doc.widthOfString(String(text))
+    } finally {
+      doc.font(prevFont).fontSize(prevSize)
+    }
+  }
+}
+
 function drawScheduleOfAreasMultiTable(
   doc,
   parcels,
@@ -9225,15 +9255,45 @@ function drawScheduleOfAreasMultiTable(
 
   const standCount = surveyedParcels.length;
 
-  // Table dimensions — colArea must be wide enough for "2.1410Ha" at 9pt without wrapping
-  const colStand = 35;
-  const colArea = 60;
-  const colDiagram = 40;
-  const colDeedNumber = 40;
-  const colDeedDate = 35;
-  const colSurveyor = 50;
-  const tableWidth =
-    colStand + colArea + colDiagram + colDeedNumber + colDeedDate + colSurveyor;
+  // 2026-06-06: dynamic column widths from the shared algorithm in
+  // app-shared/block-definitions.js. Same algorithm DXF uses (different
+  // measurer). Falls back to the legacy [35,60,40,40,35,50] when the
+  // measurer throws (e.g. font load failure) — preserves the existing
+  // happy path on font errors.
+  //
+  // Note: the variables colStand / colArea / colDiagram / colDeedNumber /
+  // colDeedDate / colSurveyor are read by drawScheduleOfAreasSingleColumn
+  // later in this file at fixed values. The dynamic-width logic only
+  // applies inside the multi-table path; single-column callers continue
+  // to use their own hardcoded constants. PDF parity is preserved at
+  // the multi-table boundary where column widths actually matter.
+  let dynColWidths;
+  try {
+    const measurer = buildPdfScheduleMeasurer(doc, 6, 7);
+    dynColWidths = _computeScheduleColumnWidths({
+      dataRows: surveyedParcels.map((p) => ({
+        stand:      p.properties.stand,
+        area:       String(p.properties.area_m2 || ""),
+        diagram:    p.properties.diagramNumber  || "",
+        deedNumber: p.properties.deedNumber     || "",
+        deedDate:   p.properties.deedDate       || "",
+        surveyor:   p.properties.surveyorGeneral || "",
+      })),
+      headerFontSize: 6,
+      bodyFontSize:   7,
+      measureText:    measurer,
+    });
+  } catch (e) {
+    logger.warn?.(`[PDFKit] computeScheduleColumnWidths fell back to fixed widths: ${e.message}`);
+    dynColWidths = [35, 60, 40, 40, 35, 50];
+  }
+  const colStand      = dynColWidths[0];
+  const colArea       = dynColWidths[1];
+  const colDiagram    = dynColWidths[2];
+  const colDeedNumber = dynColWidths[3];
+  const colDeedDate   = dynColWidths[4];
+  const colSurveyor   = dynColWidths[5];
+  const tableWidth    = dynColWidths.reduce((s, w) => s + w, 0);
   const rowHeight = 15;
   const headerHeight = 25;
   const titleSpacing = 15;

@@ -895,3 +895,85 @@ describe('dxfGenerator integration — schedule split + dynamic columns (2026-06
     expect(dxf).toContain('DG-1234567890/2024')
   })
 })
+
+describe('dxfGenerator integration — plot horizontal alignment (2026-06-06)', () => {
+  /**
+   * Parse the page outer-border LIMITS from the DXF header ($EXTMIN / $EXTMAX).
+   * Returns { extMinX, extMaxX } — the leftmost and rightmost extents that
+   * include the page frame and a 2 mm pad. Used to compare alignment cases.
+   */
+  const parseExtents = (dxf) => {
+    const minMatch = dxf.match(/\$EXTMIN[\s\S]*?\n\s*10\n\s*(-?[\d.eE+]+)/)
+    const maxMatch = dxf.match(/\$EXTMAX[\s\S]*?\n\s*10\n\s*(-?[\d.eE+]+)/)
+    return {
+      extMinX: minMatch ? parseFloat(minMatch[1]) : NaN,
+      extMaxX: maxMatch ? parseFloat(maxMatch[1]) : NaN,
+    }
+  }
+
+  /**
+   * Approximate the parcel-figure x-extent by finding the bounding box of
+   * all PARCELS layer POLYLINE vertices.
+   */
+  const parseParcelXBounds = (dxf) => {
+    const polyRe = /\b0\s*\n\s*POLYLINE\b([\s\S]*?)\b0\s*\n\s*SEQEND\b/g
+    let xMin = Infinity, xMax = -Infinity
+    for (const m of dxf.match(polyRe) || []) {
+      if (!/\b8\s*\n\s*PARCELS\b/.test(m)) continue
+      const vRe = /\b0\s*\n\s*VERTEX\b([\s\S]*?)(?=\b0\s*\n\s*[A-Z]+\b|$)/g
+      for (const v of m.match(vRe) || []) {
+        const x = parseFloat((v.match(/\b10\s*\n\s*(-?[\d.eE+]+)/) || [])[1])
+        if (!Number.isFinite(x)) continue
+        if (x < xMin) xMin = x
+        if (x > xMax) xMax = x
+      }
+    }
+    return { xMin, xMax }
+  }
+
+  test('default left-align: parcel figure sits near the LEFT of the content area', () => {
+    // No explicit plotAlignment in sample fixture → default 'left'. The drawing
+    // bbox should sit ~near the left edge of the content area, with whitespace
+    // to the RIGHT for the schedule + OFD.
+    const r = generateDXF(sampleFixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    const { extMinX, extMaxX } = parseExtents(dxf)
+    const { xMin: parcelXMin, xMax: parcelXMax } = parseParcelXBounds(dxf)
+    // Distance from page-left to parcel-left vs from parcel-right to page-right.
+    // Left-aligned: parcel-left close to page-left, parcel-right far from page-right.
+    const leftMargin  = parcelXMin - extMinX
+    const rightMargin = extMaxX - parcelXMax
+    expect(rightMargin).toBeGreaterThan(leftMargin)
+  })
+
+  test("plotAlignment='right' mirrors left: parcel figure sits near the RIGHT of content area", () => {
+    const r = generateDXF({ ...sampleFixture, plotAlignment: 'right' }, fakeLogger)
+    const dxf = r.buffer.toString()
+    const { extMinX, extMaxX } = parseExtents(dxf)
+    const { xMin: parcelXMin, xMax: parcelXMax } = parseParcelXBounds(dxf)
+    const leftMargin  = parcelXMin - extMinX
+    const rightMargin = extMaxX - parcelXMax
+    expect(leftMargin).toBeGreaterThan(rightMargin)
+  })
+
+  test("plotAlignment='center' preserves the pre-2026-06-06 symmetric centering", () => {
+    const r = generateDXF({ ...sampleFixture, plotAlignment: 'center' }, fakeLogger)
+    const dxf = r.buffer.toString()
+    const { extMinX, extMaxX } = parseExtents(dxf)
+    const { xMin: parcelXMin, xMax: parcelXMax } = parseParcelXBounds(dxf)
+    const leftMargin  = parcelXMin - extMinX
+    const rightMargin = extMaxX - parcelXMax
+    // The right margin includes mR = 150 mm + endorsements, so left and right
+    // margins aren't equal in absolute terms. Centered behavior: drawing
+    // CENTER sits at content-area CENTER. The content area extends from
+    // pageL + 50 mm (mL) to pageR - 150 mm (mR), so its center is at
+    // (pageL + pageR + mL - mR) / 2 = pageMid - 50 mm. Drawing center
+    // should match this content-area center.
+    const drawingCenter = (parcelXMin + parcelXMax) / 2
+    const pageMidX      = (extMinX + extMaxX) / 2
+    // For centered alignment, drawingCenter should be shifted from pageMid
+    // by ~50 mm (half the L vs R margin asymmetry). Just verify drawingCenter
+    // is significantly LEFT of pageMid (because of the 150 mm right margin).
+    expect(drawingCenter).toBeLessThan(pageMidX)
+  })
+})

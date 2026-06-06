@@ -437,6 +437,13 @@ export function generateDXF(options, logger) {
     // suffix=letter; if a parcel has matching stand, show suffix inside, else
     // show full name outside.
     beaconLabels = null,
+    // Plot horizontal alignment within content area: 'left' | 'center' | 'right'.
+    // Default 'left' consolidates whitespace on the right side of the content
+    // area (next to the endorsements column) so the schedule of areas + OFD
+    // table + SG box have one contiguous strip wide enough for full sub-tables.
+    // 'center' is the pre-2026-06-06 behavior; 'right' mirrors 'left' (whitespace
+    // on the LEFT side of content area).
+    plotAlignment = 'left',
   } = options;
   const isDevelopedPlan = planType === 'general-developed';
 
@@ -1495,15 +1502,31 @@ export function generateDXF(options, logger) {
   const contentW = pageW - mL - mR;   // 594 - 50 - 150 = 394mm
   const contentH = pageH - mT - mB;   // 420 - 50 - 50 = 320mm
 
-  // Page positioned so drawing is centered in content area
-  const contentCX = dCX;                              // drawing centered horizontally
-  const contentCY = (dT + dB) / 2;                    // drawing centered vertically
-
-  // Page edges (outer border)
-  const pageL = contentCX - contentW / 2 - mL;       // left edge of paper
-  const pageR = pageL + pageW;                        // right edge of paper
-  const pageB = contentCY - contentH / 2 - mB;       // bottom edge of paper
-  const pageT = pageB + pageH;                        // top edge of paper
+  // Page positioned per plotAlignment.
+  //   'left'   — drawing's left  edge at cntL + PLOT_PAD (whitespace on right)
+  //   'right'  — drawing's right edge at cntR - PLOT_PAD (whitespace on left)
+  //   'center' — drawing centered horizontally in content area (pre-2026-06-06 behavior)
+  //
+  // Vertical alignment is always centered. The horizontal-only alignment
+  // serves the schedule of areas / OFD / SG topology placement: a wider
+  // contiguous whitespace strip on one side fits dynamic sub-tables that
+  // would not fit in symmetric center splits.
+  const PLOT_PAD = mm(5);   // paper-mm padding from content area edge
+  const contentCY = (dT + dB) / 2;
+  let pageL, pageB, pageR, pageT;
+  if (plotAlignment === 'right') {
+    // dR = cntR - PLOT_PAD; cntR = pageR - mR = pageL + pageW - mR
+    // → pageL = dR + PLOT_PAD - pageW + mR
+    pageL = dR + PLOT_PAD - pageW + mR;
+  } else if (plotAlignment === 'center') {
+    pageL = dCX - contentW / 2 - mL;
+  } else {
+    // 'left' (default): dL = cntL + PLOT_PAD; cntL = pageL + mL → pageL = dL - PLOT_PAD - mL
+    pageL = dL - PLOT_PAD - mL;
+  }
+  pageR = pageL + pageW;
+  pageB = contentCY - contentH / 2 - mB;
+  pageT = pageB + pageH;
 
   // Content area edges (inside margins)
   const cntL = pageL + mL;                            // content left  (50mm from left)

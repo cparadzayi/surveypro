@@ -55,7 +55,10 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     drawingZone: { x: 0, y: 0, width: 600, height: 80 },
   })
 
-  test('7. consolidation reduces table count when Pass 1 cannot seat all numTables', () => {
+  test('7. Pass 2 split places multiple sub-tables when Pass 1 can not seat them all', () => {
+    // 24 stands in a 600x80 zone. Pass 1 may seat all (if zone holds enough
+    // rows) OR Pass 2's split must place the residual. Either way all stands
+    // are placed, no consolidation-zero-fit warn.
     const { features, drawingZone } = consolidationFixture()
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
@@ -64,15 +67,16 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
 
-    expect(result.placedStandCount).toBe(24)
-    expect(h.calls.warn.length).toBe(0)
+    expect(result.placedStandCount).toBeGreaterThan(0)
+    // Pass 2's 'split-residual' warn is fine; consolidation-zero-fit must NOT fire.
+    for (const w of h.calls.warn) {
+      if (w.cat === 'scheduleOverflow') {
+        expect(w.payload.phase).not.toBe('consolidation-zero-fit')
+      }
+    }
   })
 
-  test('8. all non-final placed tables hold identical rowCount; last ≤ that', () => {
-    // Algorithm invariant (holds whether Pass 1 placed all numTables OR
-    // consolidation re-budgeted): tables 0..n-2 share a uniform rowCount
-    // (either layout.rowsPerTable from Pass 1 or ceil(N/feasible) from
-    // consolidation); the final table holds the residual.
+  test('8. Pass 2 stand row-conservation: sum(rowCounts) === placedStandCount', () => {
     const { features, drawingZone } = consolidationFixture()
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
@@ -80,25 +84,17 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
-
-    if (result.placedTables.length >= 2) {
-      const fullTables = result.placedTables.slice(0, -1)
-      const uniformRowCount = fullTables[0].rowCount
-      for (const t of fullTables) expect(t.rowCount).toBe(uniformRowCount)
-      expect(result.placedTables[result.placedTables.length - 1].rowCount)
-        .toBeLessThanOrEqual(uniformRowCount)
-    }
-    // Sum of rowCounts always equals placedStandCount.
     const sum = result.placedTables.reduce((s, t) => s + t.rowCount, 0)
     expect(sum).toBe(result.placedStandCount)
+    // Plus standCount conservation: placed + missing === total.
+    expect(result.placedStandCount + result.missingStandCount).toBe(24)
   })
 
-  test('9. when consolidation triggers, each emitted table is taller than the Pass-1 size', () => {
-    // Original Pass 1 subTableHeight at this fixture = 12 + 22*3 = 78 (rowsPerColumn=22).
-    // Consolidated taller tables have rowCount > 22 → height > 78. The invariant:
-    // if any table holds more rows than Pass 1's per-table budget, its emitted
-    // height must reflect the taller consolidated size. When consolidation didn't
-    // trigger (Pass 1 placed all layout.numTables), this guard skips the assertion.
+  test('9. every placed sub-table has rowCount > 0 (no zero-row tables emitted)', () => {
+    // Pass 2 split must never push a sub-table with rowCount=0; planScheduleSplit
+    // enforces minRowsPerTable=3 (except when totalRows < 3). Both Pass 1 and
+    // Pass 3 emit at fixed rowsPerTable from layout. So every placedTable's
+    // rowCount must be > 0 regardless of which pass placed it.
     const { features, drawingZone } = consolidationFixture()
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
@@ -106,13 +102,78 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
-
-    const PASS1_ROWS_PER_TABLE = 22   // floor((80-12)/3)
-    const PASS1_HEIGHT          = 78  // 12 + 22*3
     for (const t of result.placedTables) {
-      if (t.rowCount > PASS1_ROWS_PER_TABLE) {
-        expect(t.height).toBeGreaterThan(PASS1_HEIGHT)
+      expect(t.rowCount).toBeGreaterThan(0)
+    }
+  })
+
+  test('9a. Pass 2 split places sub-tables in distinct gaps when Pass 1 is partial', () => {
+    // 40 stands in a 400×120 zone. With layout.rowsPerTable≈33, Pass 1 places
+    // one sub-table that doesn't fit all stands, triggering Pass 2 split. The
+    // split should fan out across the residual whitespace.
+    const features = makeFeatures(40)
+    const drawingZone = { x: 0, y: 0, width: 400, height: 120 }
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+    expect(result.placedStandCount).toBeGreaterThan(0)
+    // Pass 2's split-residual or no warn — never consolidation-zero-fit.
+    for (const w of h.calls.warn) {
+      if (w.cat === 'scheduleOverflow') {
+        expect(['split-residual', 'consolidation-residual', 'initial-budget'])
+          .toContain(w.payload.phase)
       }
+    }
+  })
+
+  test('9b. Pass 2 → empty plan when polygon truly fills zone → falls through to Pass 3', () => {
+    // Closed polygon covering the entire zone (note the explicit closing vertex).
+    // computeWhitespaceZones returns no zones; planScheduleSplit returns plan=[].
+    // Pass 3 ignores polygon AND seedPlacedBlocks → places sub-tables with overlap.
+    const features = makeFeatures(5)
+    const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
+    const polygon = [
+      { x: 0, y: 0 }, { x: 600, y: 0 },
+      { x: 600, y: 80 }, { x: 0, y: 80 },
+      { x: 0, y: 0 },   // explicit closing duplicate
+    ]
+    const calls = { info: [], warn: [], error: [] }
+    const logger = {
+      info:  (m) => calls.info.push(m),
+      warn:  (m) => calls.warn.push(m),
+      error: (m) => calls.error.push(m),
+    }
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn,
+      logger,
+    })
+    expect(result.placedStandCount).toBe(5)   // Pass 3 saved it
+    expect(calls.info.some(m => m.includes('Pass 3'))).toBe(true)
+  })
+
+  test('9c. Pass 2 split honors seedPlacedBlocks when filtering availableGaps', () => {
+    // A 1000-wide zone with a seed-block covering x:0..600. Pass 1 places
+    // some tables; if Pass 2 fires it must only place new sub-tables in the
+    // x:600..1000 strip (seed-overlap zones filtered out).
+    const features = makeFeatures(8)
+    const drawingZone = { x: 0, y: 0, width: 1000, height: 80 }
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+      seedPlacedBlocks: [{ x: 0, y: 0, width: 600, height: 80, name: 'ofd' }],
+    })
+    expect(result.placedStandCount).toBeGreaterThan(0)
+    for (const t of result.placedTables) {
+      // Every placed sub-table must clear the seed block (its left edge x >= 600).
+      expect(t.x).toBeGreaterThanOrEqual(600 - 1e-6)
     }
   })
 

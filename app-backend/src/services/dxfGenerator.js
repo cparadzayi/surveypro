@@ -20,7 +20,14 @@
 
 // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import { TITLE_BLOCK, SCHEDULE_OF_AREAS, OUTSIDE_FIGURE_DATA, SURVEYOR_GENERAL_BOX, formatStandRanges } from '../../../app-shared/block-definitions.js'
+import {
+  TITLE_BLOCK,
+  SCHEDULE_OF_AREAS,
+  OUTSIDE_FIGURE_DATA,
+  SURVEYOR_GENERAL_BOX,
+  formatStandRanges,
+  computeScheduleColumnWidths,
+} from '../../../app-shared/block-definitions.js'
 
 /** Conversion factor: 1 PDF point = 0.352778 mm. block-definitions values
  *  are in PDF pts (matching the PDF generator's native unit); the DXF
@@ -1673,6 +1680,20 @@ export function generateDXF(options, logger) {
     sgBodyH:  pt(SURVEYOR_GENERAL_BOX.bodyFontSize),
   };
 
+  // 2026-06-06: dynamic column widths. Computed once per generateDXF call
+  // from header + data measurements via the same algorithm PDF uses.
+  // PT_TO_MM_GEN converts from PDF pt to paper-mm; mm() converts to
+  // ground-metres at use site.
+  const dxfMeasureText = (text, fontSize) =>
+    String(text).length * fontSize * 0.55
+  const scheduleColumnWidthsPt = computeScheduleColumnWidths({
+    dataRows:       surveyedFeatures.map(extractScheduleRow),
+    headerFontSize: SCHEDULE_OF_AREAS.singleColumn.headerFontSize,
+    bodyFontSize:   SCHEDULE_OF_AREAS.singleColumn.fontSize,
+    measureText:    dxfMeasureText,
+  });
+  const scheduleColumnWidthsG = scheduleColumnWidthsPt.map(w => mm(w * PT_TO_MM_GEN));
+
   const bottomZoneResult = placeBottomZoneBlocks({
     contentArea,
     polygon:            figurePolygon,
@@ -1694,6 +1715,7 @@ export function generateDXF(options, logger) {
       SCHEDULE_HEADER_HEIGHT_MM,
       addBeaconDescription,
       scheduleEmitter:  emitScheduleOfAreasTopological,
+      columnWidthsG:    scheduleColumnWidthsG,
     },
     layer: TB,
     addText: (layer, x, y, text, height, angle, style) => addText(layer, x, y, text, height, angle, style),

@@ -193,13 +193,23 @@ export function emitScheduleOfAreasTopological({
       }
     }
 
-    // PASS 3 — skip-polygon fallback. When Pass 1 + Pass 2 both produced
-    // zero placements (either feasible=0 entering consolidation, or
+    // PASS 3 — skip-polygon + skip-seed fallback. When Pass 1 + Pass 2 both
+    // produced zero placements (either feasible=0 entering consolidation, or
     // consolidation's taller-height retry also failed), try one more time at
-    // the ORIGINAL sub-table size with polygon=null. Accepts overlap with
-    // the figure polygon — the schedule is a mandatory SI 727 element so
-    // overlapping parcel boundary lines is the documented trade-off
-    // (matches `pdfkitGeoPDF.js:_findFreshSkipPolygon`).
+    // the ORIGINAL sub-table size with polygon=null AND ignoring the
+    // orchestrator-supplied seedPlacedBlocks. Accepts overlap with both the
+    // figure polygon and the other bottom-zone blocks — the schedule is a
+    // mandatory SI 727 element so overlapping a parcel boundary or the OFD
+    // table is the documented trade-off (matches
+    // `pdfkitGeoPDF.js:_findFreshSkipPolygon`).
+    //
+    // 3-v4 regression fix (2026-06-06): pre-3-v4 Pass 3 already ignored the
+    // polygon. When Task 4 added seedPlacedBlocks to Pass 1/2/3 uniformly,
+    // Pass 3 lost its ability to rescue dense plans where the orchestrator
+    // had placed OFD in the central whitespace before the schedule's turn.
+    // On the user's Maglas-density plan the schedule fell back to title
+    // placeholder only. Pass 3 now ignores the seed too — Pass 1 and Pass 2
+    // continue to honor it.
     if (placedPositions.length === 0) {
       logger.info('[dxfScheduleEmitter] Pass 1 + Pass 2 both placed 0 — trying Pass 3 skip-polygon fallback')
       for (let i = 0; i < layout.numTables; i++) {
@@ -207,7 +217,7 @@ export function emitScheduleOfAreasTopological({
           block:         { width: subTableWidthG, height: subTableHeightG },
           mapBounds:     drawingZone,
           polygon:       null,       // skip polygon avoidance; accept overlap
-          placedBlocks:  [...seedPlacedBlocks, ...placedPositions],
+          placedBlocks:  placedPositions,    // skip seed avoidance; only honor own sub-tables
           buffer:        mm(POLYGON_BUFFER_MM),
           blockSpacing:  mm(BLOCK_SPACING_MM),
           scanStep:      mm(SCAN_STEP_MM),

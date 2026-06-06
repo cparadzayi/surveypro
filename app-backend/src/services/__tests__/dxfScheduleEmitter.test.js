@@ -507,4 +507,41 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
     expect(without.placedStandCount).toBe(withEmpty.placedStandCount)
     expect(without.placedTables.length).toBe(withEmpty.placedTables.length)
   })
+
+  test('22. Pass 3 ignores seedPlacedBlocks (schedule MUST emit even if it overlaps OFD)', () => {
+    // Regression for the user-reported Maglas-density issue (2026-06-06):
+    // when OFD has pre-claimed central whitespace AND the figure polygon
+    // dominates the rest, Pass 1 + Pass 2 fail. Pass 3 is the documented
+    // "schedule MUST emit somewhere — overlap is acceptable" path; it
+    // already ignores the polygon, and must also ignore seedPlacedBlocks
+    // for the same reason. The schedule is mandatory SI 727 content —
+    // overlapping OFD is preferable to no schedule at all.
+    const features = makeFeatures(3)
+    // Polygon covers the entire drawing zone → Pass 1 + Pass 2 fail.
+    const polygon = [
+      { x: 0, y: 0 }, { x: 600, y: 0 }, { x: 600, y: 80 }, { x: 0, y: 80 },
+    ]
+    // Seed an obstacle covering nearly the entire zone (mimics OFD + title
+    // zone + scale bar + north arrow claims on a dense Maglas-density plan).
+    // Pass 1/2 must avoid it; Pass 3 must NOT — the schedule wouldn't fit
+    // in the remaining sliver, so Pass 3 must accept overlap with the seed.
+    const seedPlacedBlocks = [{ x: 0, y: 0, width: 595, height: 80, name: 'ofd' }]
+
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone: { x: 0, y: 0, width: 600, height: 80 },
+      polygon, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+      seedPlacedBlocks,
+    })
+
+    // Pass 3 must have rescued the placement — at least one sub-table emitted.
+    expect(result.placedTables.length).toBeGreaterThan(0)
+    expect(result.placedStandCount).toBeGreaterThan(0)
+    // No scheduleOverflow with consolidation-zero-fit phase (Pass 3 succeeded).
+    const overflowWarns = h.calls.warn.filter(w =>
+      w.cat === 'scheduleOverflow' && w.payload.phase === 'consolidation-zero-fit')
+    expect(overflowWarns.length).toBe(0)
+  })
 })

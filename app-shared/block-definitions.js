@@ -453,6 +453,62 @@ export function extractBeaconSuffix(beaconName) {
   return match ? match[2] : beaconName
 }
 
+/**
+ * Compute per-column widths for the Schedule of Areas so headers and
+ * data values never overflow their column. Widths are in PDF points.
+ *
+ * Per column:
+ *   raw   = max(widest header token at headerFontSize,
+ *               widest data value  at bodyFontSize)
+ *         + 2 * padding
+ *   width = max(raw, colMinFloor)
+ *
+ * Returns 6 widths in the same order as SCHEDULE_OF_AREAS.singleColumn.columns:
+ *   [stand, area, diagram, deedNumber, deedDate, surveyor].
+ *
+ * @param {Object} args
+ * @param {Array<Object>} args.dataRows - schedule data rows; keys match column.key values
+ * @param {number} args.headerFontSize - PDF pt; used for header-token measurement
+ * @param {number} args.bodyFontSize   - PDF pt; used for data-cell measurement
+ * @param {(text:string, fontSize:number) => number} args.measureText
+ *        Text-width measurer returning PDF pt. PDF passes a function backed
+ *        by doc.widthOfString; DXF passes (text, fz) => text.length * fz * 0.55.
+ * @param {number} [args.padding=4]    - per-side cell padding in pt
+ * @param {number} [args.colMinFloor=24] - per-column minimum width in pt
+ * @returns {number[]} 6 column widths in pt
+ */
+export function computeScheduleColumnWidths({
+  dataRows, headerFontSize, bodyFontSize, measureText,
+  padding = 4, colMinFloor = 24,
+}) {
+  const cols = SCHEDULE_OF_AREAS.singleColumn.columns
+  const widths = []
+  for (const col of cols) {
+    const headerTokens = String(col.label).split('\n')
+    let widestHeader = 0
+    for (const t of headerTokens) {
+      const w = measureText(t, headerFontSize)
+      if (w > widestHeader) widestHeader = w
+    }
+    let widestData = 0
+    for (const row of dataRows) {
+      const val = row[col.key]
+      if (val == null || val === '') continue
+      const w = measureText(String(val), bodyFontSize)
+      if (w > widestData) widestData = w
+    }
+    const raw = Math.max(widestHeader, widestData) + 2 * padding
+    widths.push(Math.max(raw, colMinFloor))
+  }
+  return widths
+}
+
+// Stub for planScheduleSplit so the test suite loads while Task 2 is pending.
+// Full implementation in Task 2.
+export function planScheduleSplit() {
+  return { plan: [], residualRows: 0 }
+}
+
 export default {
   SCHEDULE_OF_AREAS,
   OUTSIDE_FIGURE_DATA,

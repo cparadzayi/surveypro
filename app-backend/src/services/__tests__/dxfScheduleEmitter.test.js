@@ -177,6 +177,59 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     }
   })
 
+  test('9d. Pass 2 split never places a sub-table overlapping the parcel polygon (regression)', () => {
+    // Maglas-density regression: with a non-convex polygon, computeWhitespaceZones
+    // can return zones that extend slightly into the polygon due to its
+    // band-flush quirk. Pass 2 must re-validate each placement against the
+    // polygon and skip gaps that would produce an overlapping sub-table.
+    //
+    // Hexagonal polygon (6 vertices) imitates the outside figure shape. The
+    // left strip on this polygon may extend into the figure near the
+    // hexagon's narrow neck.
+    const drawingZone = { x: 0, y: 0, width: 1000, height: 200 }
+    const polygon = [
+      { x: 600, y: 50  },   // upper-right edge
+      { x: 700, y: 100 },
+      { x: 700, y: 150 },
+      { x: 600, y: 200 },
+      { x: 500, y: 100 },   // bulge to the left in the middle
+      { x: 600, y: 50  },   // closing duplicate
+    ]
+    const features = makeFeatures(40)
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+
+    // Compute rectangleOverlapsPolygon-equivalent check inline: for each
+    // placed sub-table, verify its bbox does not intersect the polygon
+    // interior. We use a simple point-in-polygon test on a coarse grid
+    // sampled inside each sub-table's bbox.
+    const isInside = (px, py, poly) => {
+      let inside = false
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i].x, yi = poly[i].y
+        const xj = poly[j].x, yj = poly[j].y
+        const intersect = ((yi > py) !== (yj > py)) &&
+          (px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+        if (intersect) inside = !inside
+      }
+      return inside
+    }
+    for (const t of result.placedTables) {
+      // Sample 5x5 grid inside this sub-table's bbox.
+      for (let i = 1; i <= 5; i++) {
+        for (let j = 1; j <= 5; j++) {
+          const px = t.x + (t.width  * i) / 6
+          const py = t.y + (t.height * j) / 6
+          expect(isInside(px, py, polygon)).toBe(false)
+        }
+      }
+    }
+  })
+
   test('10. polygon fills zone → Pass 3 skip-polygon fallback places all tables (no warn)', () => {
     // Pass 1 + Pass 2 both place 0 (polygon covers the whole zone). Pass 3
     // skips polygon avoidance and finds positions inside mapBounds + edge

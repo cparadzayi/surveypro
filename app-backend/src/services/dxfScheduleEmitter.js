@@ -13,7 +13,7 @@
  * Consolidation pass added in Task 3. Overflow + edge case handling in Task 4.
  */
 
-import { findBlockPosition, GRID_EDGE_MARGIN } from './dxfBlockPlacer.js'
+import { findBlockPosition, GRID_EDGE_MARGIN, isValidPosition } from './dxfBlockPlacer.js'
 import { computeWhitespaceZones } from './dxfTopology.js'
 import { rectanglesOverlap } from './dxfGeometry.js'
 import { planScheduleSplit } from '../../../app-shared/block-definitions.js'
@@ -212,6 +212,15 @@ export function emitScheduleOfAreasTopological({
       minRowsPerTable: 3,
     })
 
+    // 2026-06-06 polygon-overlap regression fix: validate every proposed
+    // placement against the polygon AND seedPlacedBlocks before pushing.
+    // computeWhitespaceZones has a documented band-flush quirk (see the
+    // fidelity note in dxfTopology.js) that can return zones extending
+    // slightly into a non-convex polygon — Pass 1 catches this via
+    // findBlockPosition's internal validation, but my original Pass 2
+    // directly trusted the zones, producing user-visible overlap on
+    // Maglas-density plans with the hexagonal outside figure.
+    let residualFromInvalidPlacement = 0
     for (const entry of plan) {
       const g = availableGaps[entry.gapIndex]
       const subTableHeightG = headerHeightG + entry.rowCount * rH
@@ -219,19 +228,32 @@ export function emitScheduleOfAreasTopological({
       // gap.y + gap.height is the high-y (top); subtracting the table
       // height gives the bottom-y (low-y) which is what placedPositions stores.
       const subTableBottomY = g.y + g.height - subTableHeightG
-      placedPositions.push({
+      const rect = {
         x: g.x, y: subTableBottomY,
         width: subTableWidthG, height: subTableHeightG,
-        rowCount: entry.rowCount,
+      }
+      const valid = isValidPosition({
+        rect,
+        polygon: closedPolygon,
+        placedBlocks: [...seedPlacedBlocks, ...placedPositions],
+        buffer:       mm(POLYGON_BUFFER_MM),
+        blockSpacing: mm(BLOCK_SPACING_MM),
       })
+      if (!valid) {
+        residualFromInvalidPlacement += entry.rowCount
+        logger.info(`[dxfScheduleEmitter] Pass 2 split: rejected gap[${entry.gapIndex}] placement (polygon or seed overlap); ${entry.rowCount} rows become residual`)
+        continue
+      }
+      placedPositions.push({ ...rect, rowCount: entry.rowCount })
     }
 
-    if (placedPositions.length > 0 && residualRows > 0) {
+    const totalResidual = residualRows + residualFromInvalidPlacement
+    if (placedPositions.length > 0 && totalResidual > 0) {
       warn('scheduleOverflow', {
         atSheetSize:          sheetSize,
         recommendedSheetSize: nextLargerSheet(sheetSize),
-        placedStandCount:     dataRows.length - residualRows,
-        missingStandCount:    residualRows,
+        placedStandCount:     dataRows.length - totalResidual,
+        missingStandCount:    totalResidual,
         placedTables:         placedPositions.length,
         phase:                'split-residual',
       })

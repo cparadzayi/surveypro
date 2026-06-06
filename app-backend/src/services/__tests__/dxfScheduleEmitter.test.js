@@ -461,4 +461,50 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
     expect(titles[0]).toBe('SCHEDULE OF AREAS')
     expect(titles[1]).toBe("SCHEDULE OF AREAS (cont'd)")
   })
+
+  test('20. seedPlacedBlocks parameter — candidate overlapping the seed is rejected', () => {
+    // 600x80 zone, single sub-table. Seed an obstacle covering the entire
+    // left half — the placer should pick a position on the right half.
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: makeFeatures(3),
+      drawingZone: { x: 0, y: 0, width: 600, height: 80 },
+      polygon:     null,
+      sheetSize:   'ISO_A2',
+      fonts:       h.fonts,
+      helpers:     h.helpers,
+      addText:     h.addText,
+      addLine:     h.addLine,
+      warn:        h.warn,
+      logger:      h.logger,
+      seedPlacedBlocks: [{ x: 0, y: 0, width: 300, height: 80, name: 'obstacle' }],
+    })
+
+    expect(result.placedTables.length).toBeGreaterThan(0)
+    // Every placed sub-table's top-left x should be ≥ 300 (past the obstacle).
+    for (const t of result.placedTables) {
+      expect(t.x).toBeGreaterThanOrEqual(300)
+    }
+  })
+
+  test('21. omitting seedPlacedBlocks is identical to passing []', () => {
+    const features = makeFeatures(3)
+    const without = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone: { x: 0, y: 0, width: 600, height: 80 },
+      polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
+    })
+    const h2 = makeHarness()
+    const withEmpty = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone: { x: 0, y: 0, width: 600, height: 80 },
+      polygon: null, sheetSize: 'ISO_A2',
+      fonts: h2.fonts, helpers: h2.helpers,
+      addText: h2.addText, addLine: h2.addLine, warn: h2.warn, logger: h2.logger,
+      seedPlacedBlocks: [],
+    })
+    expect(without.placedStandCount).toBe(withEmpty.placedStandCount)
+    expect(without.placedTables.length).toBe(withEmpty.placedTables.length)
+  })
 })

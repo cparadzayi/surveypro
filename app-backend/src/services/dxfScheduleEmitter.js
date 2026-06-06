@@ -64,6 +64,7 @@ export function emitScheduleOfAreasTopological({
   addLine,
   warn,
   logger,
+  seedPlacedBlocks = [],   // 3-v4: external obstacles to honour in addition to placedPositions
 }) {
   const { hHead, hBody, rH } = fonts
   const {
@@ -143,7 +144,7 @@ export function emitScheduleOfAreasTopological({
       block:         { width: subTableWidthG, height: subTableHeightG },
       mapBounds:     drawingZone,
       polygon,
-      placedBlocks:  placedPositions,
+      placedBlocks:  [...seedPlacedBlocks, ...placedPositions],
       buffer:        mm(POLYGON_BUFFER_MM),
       blockSpacing:  mm(BLOCK_SPACING_MM),
       scanStep:      mm(SCAN_STEP_MM),
@@ -176,7 +177,7 @@ export function emitScheduleOfAreasTopological({
           block:         { width: subTableWidthG, height: subTableHeight2G },
           mapBounds:     drawingZone,
           polygon,
-          placedBlocks:  placedPositions,
+          placedBlocks:  [...seedPlacedBlocks, ...placedPositions],
           buffer:        mm(POLYGON_BUFFER_MM),
           blockSpacing:  mm(BLOCK_SPACING_MM),
           scanStep:      mm(SCAN_STEP_MM),
@@ -206,7 +207,7 @@ export function emitScheduleOfAreasTopological({
           block:         { width: subTableWidthG, height: subTableHeightG },
           mapBounds:     drawingZone,
           polygon:       null,       // skip polygon avoidance; accept overlap
-          placedBlocks:  placedPositions,
+          placedBlocks:  [...seedPlacedBlocks, ...placedPositions],
           buffer:        mm(POLYGON_BUFFER_MM),
           blockSpacing:  mm(BLOCK_SPACING_MM),
           scanStep:      mm(SCAN_STEP_MM),

@@ -503,10 +503,68 @@ export function computeScheduleColumnWidths({
   return widths
 }
 
-// Stub for planScheduleSplit so the test suite loads while Task 2 is pending.
-// Full implementation in Task 2.
-export function planScheduleSplit() {
-  return { plan: [], residualRows: 0 }
+/**
+ * Plan how to split a schedule of totalRows stands across the available
+ * whitespace gaps. Greedy: largest-capacity gap first, fills with as many
+ * rows as it holds.
+ *
+ * Per gap, capacity = floor((gap.height - headerHeight) / rowHeight).
+ * Gaps narrower than tableWidth are skipped (too narrow for the table).
+ * Gaps with capacity < minRowsPerTable are skipped UNLESS totalRows is
+ * itself below minRowsPerTable (very small plan), in which case the first
+ * width-passing gap holds all rows.
+ *
+ * Returns:
+ *   plan: [{ gapIndex, startRow, rowCount, isContinuation }]
+ *         gapIndex is the original index in availableGaps. startRow is
+ *         the index into the caller's dataRows where this sub-table
+ *         starts. isContinuation is true for all sub-tables after the
+ *         first.
+ *   residualRows: number of rows left unplaced. > 0 triggers caller-side
+ *                 scheduleOverflow warn + final-rescue fallback.
+ *
+ * @param {Object} args
+ * @param {number} args.totalRows
+ * @param {Array<{x:number,y:number,width:number,height:number}>} args.availableGaps
+ * @param {number} args.tableWidth   - sum of column widths in the same units as gaps
+ * @param {number} args.headerHeight - total header height (title + DEED + sub-headers)
+ * @param {number} args.rowHeight
+ * @param {number} [args.minRowsPerTable=3]
+ * @returns {{ plan: Array<{gapIndex:number,startRow:number,rowCount:number,isContinuation:boolean}>, residualRows: number }}
+ */
+export function planScheduleSplit({
+  totalRows, availableGaps, tableWidth, headerHeight, rowHeight,
+  minRowsPerTable = 3,
+}) {
+  const candidates = []
+  for (let i = 0; i < availableGaps.length; i++) {
+    const g = availableGaps[i]
+    if (g.width < tableWidth) continue
+    const capacity = Math.floor((g.height - headerHeight) / rowHeight)
+    if (capacity < minRowsPerTable && totalRows >= minRowsPerTable) continue
+    if (capacity <= 0) continue
+    candidates.push({ originalIndex: i, capacity })
+  }
+  candidates.sort((a, b) => b.capacity - a.capacity)
+
+  let remainingRows = totalRows
+  let startIndex = 0
+  const plan = []
+  for (const c of candidates) {
+    if (remainingRows < minRowsPerTable && plan.length > 0) break
+    const rowsHere = Math.min(c.capacity, remainingRows)
+    if (rowsHere <= 0) break
+    plan.push({
+      gapIndex:       c.originalIndex,
+      startRow:       startIndex,
+      rowCount:       rowsHere,
+      isContinuation: plan.length > 0,
+    })
+    startIndex    += rowsHere
+    remainingRows -= rowsHere
+    if (remainingRows === 0) break
+  }
+  return { plan, residualRows: remainingRows }
 }
 
 export default {

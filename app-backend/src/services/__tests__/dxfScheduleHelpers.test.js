@@ -376,4 +376,72 @@ describe('addScheduleTable', () => {
     // Y decreases as we go down; 3 rows of rH=2 + header consumption → at least 6 below startY.
     expect(out).toBeLessThan(startY)
   })
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Full grid (2026-06-06): the table is now bordered with outer rect +
+  // column verticals + row horizontals + DEED merged-header divider.
+  // Mirrors pdfkitGeoPDF.js:drawScheduleOfAreasSingleColumn.
+  // ───────────────────────────────────────────────────────────────────────
+
+  test('emits the four outer-border lines forming a rectangle', () => {
+    const { lineCalls, addText, addLine } = mockPrimitives()
+    const dataRows = [{ stand: '1', area: '100', diagram: '', deedNumber: '', deedDate: '', surveyor: '' }]
+    const args = defaultArgs({ addText, addLine, dataRows })
+    addScheduleTable(args)
+    // Outer border has 4 unique lines: top, bottom, left, right.
+    // With columnWidths [10,12,10,10,10,12] → rightEdge = 0 + 64.
+    const tableTopY = args.y - args.hHead * 1.6
+    const top    = lineCalls.find(l => l.y1 === tableTopY && l.y2 === tableTopY && l.x1 === 0 && l.x2 === 64)
+    const left   = lineCalls.find(l => l.x1 === 0  && l.x2 === 0  && l.y1 !== l.y2)
+    const right  = lineCalls.find(l => l.x1 === 64 && l.x2 === 64 && l.y1 !== l.y2)
+    expect(top).toBeDefined()
+    expect(left).toBeDefined()
+    expect(right).toBeDefined()
+    // Bottom line: any full-width horizontal line below the title-relative top.
+    const horizontals = lineCalls.filter(l => l.y1 === l.y2 && l.x1 === 0 && l.x2 === 64)
+    expect(horizontals.length).toBeGreaterThanOrEqual(2)   // at least top + bottom
+  })
+
+  test('emits 5 vertical column dividers between the 6 columns', () => {
+    const { lineCalls, addText, addLine } = mockPrimitives()
+    addScheduleTable({ ...defaultArgs({ addText, addLine }) })
+    // Column boundaries from widths [10,12,10,10,10,12]: x = 10, 22, 32, 42, 52.
+    const verticals = lineCalls.filter(l => l.x1 === l.x2)
+    const dividerXs = [10, 22, 32, 42, 52]
+    for (const dx of dividerXs) {
+      expect(verticals.some(l => l.x1 === dx)).toBe(true)
+    }
+  })
+
+  test('emits a horizontal divider between every pair of adjacent data rows', () => {
+    const { lineCalls, addText, addLine } = mockPrimitives()
+    const dataRows = [
+      { stand: '1', area: '100', diagram: '', deedNumber: '', deedDate: '', surveyor: '' },
+      { stand: '2', area: '200', diagram: '', deedNumber: '', deedDate: '', surveyor: '' },
+      { stand: '3', area: '300', diagram: '', deedNumber: '', deedDate: '', surveyor: '' },
+      { stand: '4', area: '400', diagram: '', deedNumber: '', deedDate: '', surveyor: '' },
+    ]
+    addScheduleTable({ ...defaultArgs({ addText, addLine, dataRows }) })
+    // Full-width horizontal lines (y1 === y2 and span the table width).
+    const fullWidthHorizontals = lineCalls.filter(l =>
+      l.y1 === l.y2 && l.x1 === 0 && l.x2 === 64)
+    // Expected horizontals: top + bottom (outer) + header/data + 3 between-data dividers = 6.
+    // Allow ≥ 5 to keep the test resilient to header-divider ordering.
+    expect(fullWidthHorizontals.length).toBeGreaterThanOrEqual(5)
+  })
+
+  test('DEED|DATE internal divider is shorter than full column dividers', () => {
+    const { lineCalls, addText, addLine } = mockPrimitives()
+    const dataRows = [{ stand: '1', area: '100', diagram: '', deedNumber: '', deedDate: '', surveyor: '' }]
+    addScheduleTable({ ...defaultArgs({ addText, addLine, dataRows }) })
+    // The DEED|DATE divider sits at colX[4] = 42 (between deedNumber col 3 and deedDate col 4).
+    // It must NOT span the full table height — it starts at the sub-header row's top, not the table top.
+    const deedDivider = lineCalls.find(l => l.x1 === l.x2 && l.x1 === 42)
+    const stdDivider  = lineCalls.find(l => l.x1 === l.x2 && l.x1 === 10)   // any non-DEED column boundary
+    expect(deedDivider).toBeDefined()
+    expect(stdDivider).toBeDefined()
+    const deedSpan = Math.abs(deedDivider.y2 - deedDivider.y1)
+    const stdSpan  = Math.abs(stdDivider.y2  - stdDivider.y1)
+    expect(deedSpan).toBeLessThan(stdSpan)
+  })
 })

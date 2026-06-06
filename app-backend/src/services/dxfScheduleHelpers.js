@@ -151,6 +151,7 @@ export function addScheduleTable({
     throw new Error('SCHEDULE_OF_AREAS missing from app-shared/block-definitions.js')
   }
 
+  // ── Column anchor x-coords (left edge of each column from x). ──
   const colX = []
   let cx = 0
   for (const w of columnWidths) {
@@ -159,41 +160,115 @@ export function addScheduleTable({
   }
   const rightEdge = x + cx
 
-  let cy = y
-  addText(layer, x, cy, titleText, hHead, 0, 'BOLD')
-  cy -= hHead * 1.6
-
+  // Character width used for centring text horizontally inside columns.
+  // Matches the 0.6 ratio used by the DEED-anchor formula in the pre-2026-06-06
+  // version of this function (and exercised by the dxfScheduleHelpers test
+  // "emits the DEED parent header centered above NUMBER + DATE").
   const DXF_CHAR_WIDTH_RATIO = 0.6
-  const deedStartX = colX[3]
-  const deedEndX   = colX[4] + columnWidths[4]
-  const deedCenter = (deedStartX + deedEndX) / 2
-  const deedTextWidth = 'DEED'.length * hBody * DXF_CHAR_WIDTH_RATIO
-  addText(layer, deedCenter - deedTextWidth / 2, cy, 'DEED', hBody, 0, 'BOLD')
-  cy -= hBody * 1.2
+  // Internal cell padding (horizontal text inset from the column edge so
+  // contents don't touch the vertical grid lines). Matches the PDF's 2-pt
+  // padding when scaled by the body font size.
+  const H_PAD = hBody * 0.3
 
+  // ── Title (above the bordered table, at the caller-supplied (x, y)). ──
+  addText(layer, x, y, titleText, hHead, 0, 'BOLD')
+
+  // ── Bordered table layout ──
+  // Top of the bordered area sits one title-row-height below the title.
+  const tableTopY = y - hHead * 1.6
+
+  // DEED merged-header row (spans NUMBER + DATE columns). Height matches
+  // the single-line sub-header step so the merged header is the same height
+  // as one sub-header line.
+  const deedRowH = hBody * 1.2
+  const deedRowBotY = tableTopY - deedRowH
+
+  // Sub-header rows: enough lines for the longest multi-line header label.
   let maxHeaderLines = 1
   for (let i = 0; i < singleCols.length; i++) {
     const tokens = String(singleCols[i].label).split('\n')
     if (tokens.length > maxHeaderLines) maxHeaderLines = tokens.length
-    let lineY = cy
+  }
+  const subHeaderRowH = maxHeaderLines * hBody * 1.2
+  const subHeaderBotY = deedRowBotY - subHeaderRowH
+
+  // Data rows fill below the headers; each row is rH tall.
+  const dataTopY = subHeaderBotY
+  const dataBotY = dataTopY - dataRows.length * rH
+
+  // ── DEED merged header text ──
+  const deedStartX = colX[3]
+  const deedEndX   = colX[4] + columnWidths[4]
+  const deedCenter = (deedStartX + deedEndX) / 2
+  const deedTextWidth = 'DEED'.length * hBody * DXF_CHAR_WIDTH_RATIO
+  // y stays at the legacy position (tableTopY) so the existing test for
+  // DEED anchor x continues to pass. The text occupies the top of the row.
+  addText(layer, deedCenter - deedTextWidth / 2, tableTopY, 'DEED', hBody, 0, 'BOLD')
+
+  // ── Sub-header tokens (per column, centred horizontally) ──
+  for (let i = 0; i < singleCols.length; i++) {
+    const tokens = String(singleCols[i].label).split('\n')
+    let lineY = deedRowBotY
     for (const tok of tokens) {
-      addText(layer, colX[i], lineY, tok, hBody, 0, 'BOLD')
+      // Horizontally centre each token within its column.
+      const tokenW = tok.length * hBody * DXF_CHAR_WIDTH_RATIO
+      const tokenAnchor = colX[i] + (columnWidths[i] - tokenW) / 2
+      addText(layer, tokenAnchor, lineY, tok, hBody, 0, 'BOLD')
       lineY -= hBody * 1.2
     }
   }
-  cy -= maxHeaderLines * hBody * 1.2
 
-  addLine(layer, x, cy, rightEdge, cy)
-  cy -= hBody * 0.6
-
+  // ── Data rows: centred text, vertically centred in each row ──
   const cellKeys = singleCols.map(c => c.key)
-  for (const row of dataRows) {
+  for (let r = 0; r < dataRows.length; r++) {
+    const row = dataRows[r]
+    const rowTopY = dataTopY - r * rH
+    // Text baseline vertically centred inside [rowBot, rowTop].
+    const baseY = rowTopY - (rH - hBody) / 2 - hBody
     for (let i = 0; i < cellKeys.length; i++) {
       const val = row[cellKeys[i]]
-      if (val) addText(layer, colX[i], cy, val, hBody)
+      if (val) {
+        const valW = String(val).length * hBody * DXF_CHAR_WIDTH_RATIO
+        const valAnchor = colX[i] + Math.max(H_PAD, (columnWidths[i] - valW) / 2)
+        addText(layer, valAnchor, baseY, val, hBody)
+      }
     }
-    cy -= rH
   }
 
-  return cy
+  // ── Grid lines ──
+  // Outer border (top, bottom, left, right).
+  addLine(layer, x,         tableTopY, rightEdge, tableTopY)
+  addLine(layer, x,         dataBotY,  rightEdge, dataBotY)
+  addLine(layer, x,         dataBotY,  x,         tableTopY)
+  addLine(layer, rightEdge, dataBotY,  rightEdge, tableTopY)
+
+  // DEED row ↔ sub-header row divider (only across DEED columns,
+  // matches PDF drawScheduleOfAreasSingleColumn:10301-10304).
+  addLine(layer, deedStartX, deedRowBotY, deedEndX, deedRowBotY)
+
+  // Sub-header row ↔ data divider (full width).
+  addLine(layer, x, subHeaderBotY, rightEdge, subHeaderBotY)
+
+  // Between every two adjacent data rows.
+  for (let r = 1; r < dataRows.length; r++) {
+    const dividerY = dataTopY - r * rH
+    addLine(layer, x, dividerY, rightEdge, dividerY)
+  }
+
+  // Vertical column dividers between the 6 columns.
+  // The DEED|DATE divider (between col 3 and col 4) only starts at the
+  // sub-header row, so the merged DEED header spans both sub-columns
+  // without a line cutting through it (matches PDF :10287-10292).
+  for (let i = 1; i < columnWidths.length; i++) {
+    const divX = colX[i]
+    if (divX > deedStartX && divX < deedEndX) {
+      // Internal divider of the DEED merged header — start at sub-header top.
+      addLine(layer, divX, dataBotY, divX, deedRowBotY)
+    } else {
+      // Regular column divider — full height.
+      addLine(layer, divX, dataBotY, divX, tableTopY)
+    }
+  }
+
+  return dataBotY
 }

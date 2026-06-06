@@ -327,3 +327,159 @@ export function emitBeaconDescriptions(addBeaconDescription, layer, position, si
     beaconGroups,
   )
 }
+
+/**
+ * Compute the fallback top-left position for `blockName` when topology
+ * returns null. Deterministic per block; corners are picked so two
+ * failed placements don't stack on top of each other.
+ *
+ *   ofd       → bottom-left
+ *   beacon    → bottom-left stacked above OFD (reads OFD's height from placedBlocks)
+ *   statement → top-left at statementFallbackY
+ *   sg        → bottom-right
+ *
+ * Returns top-left {x, y} in south-up DXF coords (y = top of bbox).
+ *
+ * @param {string} blockName
+ * @param {{width:number,height:number}} size
+ * @param {{x:number,y:number,width:number,height:number}} contentArea
+ * @param {Array<{name:string,x:number,y:number,width:number,height:number}>} placedBlocks
+ * @param {number} statementFallbackY
+ * @param {(x:number)=>number} mm
+ * @returns {{x:number,y:number}}
+ */
+export function fallbackCorner(blockName, size, contentArea, placedBlocks, statementFallbackY, mm) {
+  const cntL = contentArea.x
+  const cntR = contentArea.x + contentArea.width
+  const cntB = contentArea.y
+  const pad  = mm(3)
+  const bot  = mm(5)
+  switch (blockName) {
+    case 'ofd':
+      return { x: cntL + pad, y: cntB + bot + size.height }
+    case 'beacon': {
+      const ofdEntry = placedBlocks.find(b => b.name === 'ofd')
+      const ofdH = ofdEntry ? ofdEntry.height : 0
+      const gap  = ofdEntry ? mm(3) : 0
+      return { x: cntL + pad, y: cntB + bot + ofdH + gap + size.height }
+    }
+    case 'statement':
+      return { x: cntL + pad, y: statementFallbackY }
+    case 'sg':
+      return { x: cntR - pad - size.width, y: cntB + bot + size.height }
+    default:
+      throw new Error(`fallbackCorner: unknown blockName "${blockName}"`)
+  }
+}
+
+/**
+ * Orchestrate topology placement for the four bottom-zone blocks plus
+ * the schedule of areas. Places blocks in PDF order to match
+ * pdfkitGeoPDF.js:calculateBlockPositions at lines 8553-8581:
+ *
+ *   1. OFD table
+ *   2. Schedule of Areas (delegated to helpers.scheduleEmitter)
+ *   3. Beacon Descriptions
+ *   4. Survey Date Statement
+ *   5. Surveyor-General Approval Box
+ *
+ * Per block: size → findBlockPosition → fallbackCorner if null → emit
+ * → push to placedBlocks. Pre-seeded `obstacles` are honoured by every
+ * placement (title zone, north arrow, scale bar).
+ *
+ * @returns {{
+ *   placedBlocks: Array<{name:string,x:number,y:number,width:number,height:number}>,
+ *   scheduleResult: object,
+ *   southmostY: number,
+ * }}
+ */
+export function placeBottomZoneBlocks({
+  contentArea,
+  polygon,
+  obstacles,
+  statementFallbackY,
+  surveyedFeatures,
+  outsideFigureData,
+  beaconGroups,
+  metadata,
+  centralMeridian,
+  sheetSize,
+  fonts,
+  helpers,
+  layer,
+  addText, addLine, addRect,
+  warn, logger,
+}) {
+  const { mm, addBeaconDescription, scheduleEmitter } = helpers
+  const placedBlocks = [...(obstacles || [])]
+
+  const place = (name, size, emitFn) => {
+    if (size.width === 0 || size.height === 0) return null
+    const pos = findBlockPosition({
+      block:         size,
+      mapBounds:     contentArea,
+      polygon,
+      placedBlocks,
+      buffer:        mm(POLYGON_BUFFER_MM),
+      blockSpacing:  mm(BLOCK_SPACING_MM),
+      scanStep:      mm(SCAN_STEP_MM),
+      tableMinWidth: size.width,
+      logger,
+    })
+    let finalPos = pos
+    if (finalPos === null) {
+      warn(`${name}Overflow`, {
+        blockName:   name,
+        blockSize:   size,
+        contentArea: { width: contentArea.width, height: contentArea.height },
+        obstacles:   placedBlocks.length,
+        hint:        `${name} block fell back to a deterministic corner; may overlap parcel figure or other blocks.`,
+      })
+      finalPos = fallbackCorner(name, size, contentArea, placedBlocks, statementFallbackY, mm)
+    }
+    emitFn(finalPos)
+    placedBlocks.push({ name, x: finalPos.x, y: finalPos.y, width: size.width, height: size.height })
+    return finalPos
+  }
+
+  // 1. OFD
+  const ofdSize = sizeOFDTable(outsideFigureData, fonts, mm)
+  place('ofd', ofdSize, (pos) =>
+    emitOFDTable(addText, addLine, pos, outsideFigureData, fonts, mm, centralMeridian, layer))
+
+  // 2. Schedule of Areas — delegate to existing emitter with seedPlacedBlocks.
+  const scheduleResult = scheduleEmitter({
+    surveyedFeatures,
+    drawingZone:      contentArea,
+    polygon,
+    sheetSize,
+    fonts,
+    helpers,
+    addText, addLine, warn, logger,
+    seedPlacedBlocks: placedBlocks,
+  })
+  for (const t of scheduleResult.placedTables || []) {
+    placedBlocks.push({ name: 'schedule', x: t.x, y: t.y, width: t.width, height: t.height })
+  }
+
+  // 3. Beacon Descriptions
+  const beaconSize = sizeBeaconDescriptions(beaconGroups, fonts, mm)
+  place('beacon', beaconSize, (pos) =>
+    emitBeaconDescriptions(addBeaconDescription, layer, pos, beaconSize, beaconGroups))
+
+  // 4. Statement
+  const statementSize = sizeStatement(metadata, fonts)
+  place('statement', statementSize, (pos) =>
+    emitStatement(addText, pos, metadata, fonts, layer))
+
+  // 5. SG Box
+  const sgSize = sizeSGBox(mm)
+  place('sg', sgSize, (pos) =>
+    emitSGBox(addText, addLine, addRect, pos, sgSize, fonts, mm, layer))
+
+  return {
+    placedBlocks,
+    scheduleResult,
+    southmostY: scheduleResult.southmostY,
+  }
+}

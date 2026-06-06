@@ -10,6 +10,7 @@ import {
   sizeBeaconDescriptions,
   emitStatement,
   emitSGBox,
+  placeBottomZoneBlocks,
 } from '../dxfBottomZoneEmitter.js'
 
 // Identity mm so tests work in raw units (paper-mm == ground-metre).
@@ -153,5 +154,132 @@ describe('emitSGBox', () => {
 
     // Signature line — exactly one horizontal line inside the box.
     expect(r.calls.addLine).toHaveLength(1)
+  })
+})
+
+describe('placeBottomZoneBlocks orchestrator', () => {
+  // Mock schedule emitter returns a single placed table at a known position.
+  const mockScheduleEmitter = ({ drawingZone }) => ({
+    placedTables: [{ x: drawingZone.x + 10, y: drawingZone.y + 10, width: 20, height: 10, rowCount: 5, isContinuation: false }],
+    placedStandCount: 5,
+    missingStandCount: 0,
+    southmostY: drawingZone.y + 10,
+  })
+
+  const baseInput = () => ({
+    // Keep contentArea small to bound findBlockPosition's candidate count
+    // (scanStep is mm(5) = 5 with identity mm, so a 250×120 area generates
+    // ~1200 candidates per call — fast enough for 4 calls per test).
+    // OFD width = 345 pt × 25.4/72 ≈ 121.7 mm fits inside 250.
+    contentArea: { x: 0, y: 0, width: 250, height: 120 },
+    polygon: null,
+    obstacles: [],
+    statementFallbackY: 60,
+    surveyedFeatures: [{ properties: { stand: '1', area_m2: 100 } }],
+    outsideFigureData: { edges: [{ side: 'AB', distance: 10, direction: 'N', pointId: 'P1', y: 1, x: 2 }] },
+    beaconGroups: [{ points: 'A', description: 'iron peg' }],
+    metadata: { date: '2026-01-01', surveyor: 'John Doe' },
+    centralMeridian: 31,
+    sheetSize: 'ISO_A2',
+    fonts: { hBody: 2, hSub: 2.5, rH: 3, hHead: 2.5,
+             ofTitleH: 3, ofBodyH: 2.5, ofRowH: 4,
+             sgTitleH: 3.5, sgBodyH: 2.5 },
+    helpers: { mm: (x) => x, addBeaconDescription: (...args) => {}, scheduleEmitter: mockScheduleEmitter },
+    layer: 'TITLE_BLOCK',
+    addText: () => {}, addLine: () => {}, addRect: () => {},
+    warn: () => {}, logger: { info: () => {}, warn: () => {}, error: () => {} },
+  })
+
+  test('places blocks in PDF order: OFD → schedule → beacon → statement → SG', () => {
+    const callOrder = []
+    const input = baseInput()
+    input.helpers.scheduleEmitter = (args) => {
+      callOrder.push('schedule')
+      return mockScheduleEmitter(args)
+    }
+    input.helpers.addBeaconDescription = () => { callOrder.push('beacon') }
+    // Tag each emission category by inspecting addText calls.
+    input.addText = (layer, x, y, text) => {
+      if (text === 'OUTSIDE FIGURE DATA')      callOrder.push('ofd')
+      else if (text === 'Approved')            callOrder.push('sg')
+      else if (text && text.startsWith('Surveyed in')) callOrder.push('statement')
+    }
+
+    placeBottomZoneBlocks(input)
+
+    expect(callOrder.indexOf('ofd')).toBeLessThan(callOrder.indexOf('schedule'))
+    expect(callOrder.indexOf('schedule')).toBeLessThan(callOrder.indexOf('beacon'))
+    expect(callOrder.indexOf('beacon')).toBeLessThan(callOrder.indexOf('statement'))
+    expect(callOrder.indexOf('statement')).toBeLessThan(callOrder.indexOf('sg'))
+  })
+
+  test('pre-seeded obstacles excluded from candidate positions', () => {
+    const input = baseInput()
+    // Upper half (y in [60, 120]) is an obstacle. All non-schedule blocks
+    // must land entirely in the lower half (top-left y ≤ 60).
+    input.obstacles = [{ name: 'title', x: 0, y: 60, width: 250, height: 60 }]
+    const placements = []
+    input.addText = (layer, x, y, text) => {
+      if (text === 'OUTSIDE FIGURE DATA' || text === 'Approved' ||
+          (text && text.startsWith('Surveyed in'))) {
+        placements.push({ text, y })
+      }
+    }
+    placeBottomZoneBlocks(input)
+    for (const p of placements) {
+      // Block top-left y is the bbox top; obstacle starts at y=60.
+      expect(p.y).toBeLessThanOrEqual(60 + 1e-6)
+    }
+  })
+
+  test('OFD overflow → ofdOverflow warn + bottom-left fallback', () => {
+    const input = baseInput()
+    // Fill the entire content area with one giant obstacle so OFD cannot fit.
+    input.obstacles = [{ name: 'occupier', x: 0, y: 0, width: 250, height: 120 }]
+    const warnings = []
+    input.warn = (cat, payload) => warnings.push({ cat, payload })
+    let ofdEmittedAt = null
+    input.addText = (layer, x, y, text) => {
+      if (text === 'OUTSIDE FIGURE DATA') ofdEmittedAt = { x, y }
+    }
+    placeBottomZoneBlocks(input)
+
+    expect(warnings.find(w => w.cat === 'ofdOverflow')).toBeTruthy()
+    expect(ofdEmittedAt).not.toBeNull()
+    // Bottom-left fallback: x ≈ cntL + 3 (= 0 + 3).
+    expect(ofdEmittedAt.x).toBeCloseTo(0 + 3, 3)
+  })
+
+  test('SG overflow → sgOverflow warn + bottom-right fallback', () => {
+    const input = baseInput()
+    input.obstacles = [{ name: 'occupier', x: 0, y: 0, width: 250, height: 120 }]
+    const warnings = []
+    input.warn = (cat, payload) => warnings.push({ cat, payload })
+    let sgEmittedAt = null
+    input.addText = (layer, x, y, text) => {
+      if (text === 'Approved') sgEmittedAt = { x, y }
+    }
+    placeBottomZoneBlocks(input)
+
+    expect(warnings.find(w => w.cat === 'sgOverflow')).toBeTruthy()
+    expect(sgEmittedAt).not.toBeNull()
+    // SG box width ≈ 70.6 mm. Bottom-right top-left x = cntR - 3 - width.
+    // "Approved" is centred at (sgBoxL + sgBoxR)/2 = cntR - 3 - width/2.
+    const expectedTitleX = 250 - 3 - (200 * (25.4/72)) / 2
+    expect(sgEmittedAt.x).toBeCloseTo(expectedTitleX, 1)
+  })
+
+  test('returned placedBlocks contains every successfully placed block by name', () => {
+    const input = baseInput()
+    input.obstacles = [{ name: 'title', x: 0, y: 90, width: 250, height: 30 }]
+    const result = placeBottomZoneBlocks(input)
+
+    const names = result.placedBlocks.map(b => b.name)
+    expect(names).toContain('title')      // pre-seeded obstacle survives
+    expect(names).toContain('ofd')
+    expect(names).toContain('schedule')
+    expect(names).toContain('beacon')
+    expect(names).toContain('statement')
+    expect(names).toContain('sg')
   })
 })

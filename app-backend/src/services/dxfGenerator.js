@@ -1338,7 +1338,27 @@ export function generateDXF(options, logger) {
 
   const registry = createCollisionRegistry();
   const deferredCircles = [];
-  const LEADER_THRESHOLD = beaconRadius * 3;
+  // Leader-line trigger distance.
+  //
+  //   - beaconRadius × 3  : the original geometric threshold; scales naturally
+  //                         with the beacon symbol size (logarithmic in S).
+  //   - mm(2.13)          : a 2.13 mm paper floor. At small scales (S ≤ 500)
+  //                         beaconRadius × 3 falls below ~2 mm paper and the
+  //                         leaders cluster tightly just above threshold,
+  //                         producing visual noise stubs that don't aid
+  //                         beacon disambiguation. 2.13 mm = the empirical
+  //                         mean leader length observed on a Maglas-density
+  //                         plan; suppressing everything below the mean
+  //                         (~71%) removes the noisy near-threshold cluster
+  //                         while keeping the informative right-tail leaders
+  //                         that genuinely connect distant labels to their
+  //                         beacons.
+  //   - At larger scales (S ≥ ~1000) beaconRadius × 3 already exceeds 2.13 mm
+  //     paper, so the Math.max degrades to a no-op.
+  const LEADER_MIN_PAPER_MM = 2.13;
+  // mmToGround used directly here because the cached `mm` shorthand isn't
+  // bound yet at this point in the function (declared further down).
+  const LEADER_THRESHOLD = Math.max(beaconRadius * 3, mmToGround(LEADER_MIN_PAPER_MM, S));
 
   // ── Beacon emission loop (#6 Task 6.4) ─────────────────────────────────────
   for (const feature of iterationOrder) {

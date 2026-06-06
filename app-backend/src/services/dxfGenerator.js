@@ -46,6 +46,7 @@ import {
   SCHEDULE_HEADER_HEIGHT_MM,
 } from './dxfScheduleHelpers.js'
 import { emitScheduleOfAreasTopological } from './dxfScheduleEmitter.js'
+import { placeBottomZoneBlocks } from './dxfBottomZoneEmitter.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
 // External consumers (tests, other modules) keep importing from dxfGenerator.js.
@@ -385,7 +386,9 @@ export function generateDXF(options, logger) {
   /**
    * Records a warning of a given category. Three category families exist:
    *   booleans   â€” 'scaleFallback', 'nonAscii' (sets summary[category] to true)
-   *   structured â€” 'scheduleOverflow' (stores `value` as the payload object)
+   *   structured â€” any category ending in 'Overflow' (stores `value` as
+   *                the payload object). Pre-3-v4 only 'scheduleOverflow'
+   *                was structured; 3-v4 added ofd/beacon/statement/sg.
    *   counters   â€” everything else (adds `value` to summary[category])
    * `warnings.count` increments by 1 for booleans + structured, by `value`
    * for counters.
@@ -396,7 +399,7 @@ export function generateDXF(options, logger) {
       warnings.count += 1
       return
     }
-    if (category === 'scheduleOverflow') {
+    if (typeof category === 'string' && category.endsWith('Overflow')) {
       warnings.summary[category] = value
       warnings.count += 1
       return
@@ -1452,8 +1455,16 @@ export function generateDXF(options, logger) {
   const hHead = pt(8);       // table headers
   const rH = hBody * 1.6;    // row height
 
-  // Drawing bounds
-  const dL = minX || 0, dR = maxX || 0, dT = maxY || 0, dB = minY || 0;
+  // Drawing bounds. When no features were tracked (empty parcels + empty
+  // beacons + no outside figure data), minX/maxX stay at ±Infinity from
+  // their initial values. Guard against that so cntL/cntR/cntT/cntB stay
+  // finite — otherwise the bottom-zone topology emitter receives a NaN
+  // contentArea and fires spurious overflow warns. Default fallback span:
+  // 100m around origin (matches drawW/drawH fallback at line 467).
+  const dL = Number.isFinite(minX) ? minX : 0;
+  const dR = Number.isFinite(maxX) ? maxX : 100;
+  const dT = Number.isFinite(maxY) ? maxY : 100;
+  const dB = Number.isFinite(minY) ? minY : 0;
   const dW = dR - dL, dH = dT - dB;
   const dCX = (dL + dR) / 2;
 
@@ -1611,194 +1622,88 @@ export function generateDXF(options, logger) {
   eY -= mm(8);
   drawEndorsementZone(eX, endorseR, cntT - mm(5), cntB + mm(5));
 
-  // ── C) BOTTOM ZONE LAYOUT (within content area, below drawDivY) ──
-  // 3-v2: col1 dissolved. Schedule and beacon descriptions emit topologically
-  // in the drawing zone (above drawDivY). Bottom zone is split into two columns:
-  //   statement (Statement+OFData, 58% of contentW from left)
-  //   approved (Approved+Coords, ~42% of contentW from right)
-  const statementL = cntL + mm(3);
-  const statementR = cntL + contentW * 0.58;
-  const approvedL  = statementR + mm(3);
-  const approvedR  = cntR - mm(3);
-
-  // Vertical divider between statement (left) and approved (right).
-  addLine(TB, statementR, drawDivY, statementR, cntB);
-
-  // ── C1) SCHEDULE OF AREAS — topological placement (3-v2) ──
-  // Schedule and beacon descriptions emit into the drawing zone (above drawDivY).
-  // emitScheduleOfAreasTopological returns southmostY = min(p.y) across placed
-  // sub-tables (DXF south-up); beacon descriptions anchor just below that.
-  const drawingZone = {
-    x: cntL,
-    y: drawDivY,                       // LOW y in DXF (bottom of drawing zone)
-    width:  cntR - cntL,
-    height: cntT - drawDivY,
-  };
-
-  // Outside-figure outline as polygon to avoid (null when absent).
-  // ofResult.vertices carry Cape Lo {y, x} coords; the placer expects DXF
-  // ground-metre {x, y} (matching drawingZone). Convert via capeLoToDxfSouthUp
-  // and drop the trailing closing duplicate so polygon edges aren't
-  // double-counted by the topology scanner.
+  // ── C) BOTTOM ZONE — topological emission (3-v4) ──
+  // Replaces the pre-3-v4 fixed bottom-zone partition. All five blocks
+  // (OFD table, schedule of areas, beacon descriptions, survey date
+  // statement, SG approval box) now flow through placeBottomZoneBlocks
+  // which mirrors pdfkitGeoPDF.js:calculateBlockPositions ordering and
+  // calls findBlockPosition for each block. Pre-seeded obstacles below
+  // (title zone, north arrow, scale bar) keep the topology scan away
+  // from the already-emitted fixed elements.
+  //
+  // The figurePolygon construction below mirrors the pre-3-v4 logic:
+  // ofResult.vertices carry Cape Lo {y, x} coords; the placer expects
+  // DXF ground-metre {x, y}. Convert via capeLoToDxfSouthUp and drop
+  // the trailing closing duplicate so polygon edges aren't double-
+  // counted by the topology scanner.
   const figurePolygon = (ofResult && Array.isArray(ofResult.vertices) && ofResult.vertices.length >= 4)
     ? ofResult.vertices.slice(0, -1).map(v => capeLoToDxfSouthUp(v.y, v.x))
     : null;
 
-  // Schedule-specific fonts matching the PDF generator's drawScheduleOfAreasSingleColumn:
-  //   - 9 pt title (line 10247)
-  //   - 7 pt body data rows (line 10434)
-  //   - 6 pt column headers (line 10307) — addScheduleTable shares hBody between
-  //     headers and rows, so we stay at 7 pt rather than reading two separate values.
-  //   - 15 pt row height (line 10240).
-  // Using the dxfGenerator's general-purpose hHead/hBody/rH (pt 8 / 7 / 11.2)
-  // produced tables ~3.4× wider than the PDF's because the column widths in
-  // block-definitions were also interpreted in the wrong unit; see fix at the
-  // same commit (block-definitions now standardized in PDF pts; dxfScheduleHelpers
-  // converts via PT_TO_MM).
-  const scheduleResult = emitScheduleOfAreasTopological({
+  const contentArea = {
+    x:      cntL,
+    y:      cntB,
+    width:  cntR - cntL,
+    height: cntT - cntB,
+  };
+
+  // Pre-seeded obstacles — fixed-position elements already emitted above.
+  const bottomZoneObstacles = [
+    // Title zone covers the top ~20% of the content area.
+    { name: 'titleZone',  x: cntL,           y: titleDivY,         width: cntR - cntL, height: cntT - titleDivY },
+    // North arrow at top-right of drawing zone.
+    { name: 'northArrow', x: cntR - mm(15),  y: cntT - mm(20),     width: mm(15),      height: mm(20) },
+    // Scale bar at bottom-right of drawing zone.
+    { name: 'scaleBar',   x: cntR - mm(40),  y: cntB + mm(15),     width: mm(40),      height: mm(10) },
+  ];
+
+  // Schedule-specific fonts matching the PDF generator (9 pt title,
+  // 7 pt body/headers, 15 pt row height per drawScheduleOfAreasSingleColumn).
+  // OFD + SG sizes pulled from block-definitions.js (single source of truth
+  // shared with pdfkitGeoPDF.js).
+  const bottomZoneFonts = {
+    hHead:    pt(9),
+    hBody:    pt(7),
+    hSub,
+    rH:       pt(15),
+    ofTitleH: pt(OUTSIDE_FIGURE_DATA.titleFontSize),
+    ofBodyH:  pt(OUTSIDE_FIGURE_DATA.fontSize),
+    ofRowH:   pt(OUTSIDE_FIGURE_DATA.rowHeight),
+    sgTitleH: pt(SURVEYOR_GENERAL_BOX.titleFontSize),
+    sgBodyH:  pt(SURVEYOR_GENERAL_BOX.bodyFontSize),
+  };
+
+  const bottomZoneResult = placeBottomZoneBlocks({
+    contentArea,
+    polygon:            figurePolygon,
+    obstacles:          bottomZoneObstacles,
+    statementFallbackY: drawDivY,
     surveyedFeatures,
-    drawingZone,
-    polygon: figurePolygon,
+    outsideFigureData,
+    beaconGroups:       options.beaconGroups || [],
+    metadata,
+    centralMeridian,
     sheetSize,
-    fonts: { hHead: pt(9), hBody: pt(7), rH: pt(15) },
+    fonts:              bottomZoneFonts,
     helpers: {
+      mm,
       extractScheduleRow,
       computeScheduleLayout,
       addScheduleTable,
       nextLargerSheet,
       SCHEDULE_HEADER_HEIGHT_MM,
-      mm,
+      addBeaconDescription,
+      scheduleEmitter:  emitScheduleOfAreasTopological,
     },
+    layer: TB,
     addText: (layer, x, y, text, height, angle, style) => addText(layer, x, y, text, height, angle, style),
     addLine: (layer, x1, y1, x2, y2) => addLine(layer, x1, y1, x2, y2),
+    addRect: (layer, x1, y1, x2, y2) => addRect(layer, x1, y1, x2, y2),
     warn,
     logger,
   });
 
-  // Beacon descriptions — anchored just below the bottommost placed sub-table.
-  // When no sub-tables placed (overflow), scheduleResult.southmostY === drawingZone.y;
-  // fall back to anchoring near the top of the drawing zone.
-  const beaconAnchorY = scheduleResult.placedTables.length > 0
-    ? scheduleResult.southmostY - mm(8)
-    : drawingZone.y + drawingZone.height - mm(20);
-  addBeaconDescription(
-    TB,
-    cntL, cntR - mm(2),
-    beaconAnchorY, cntB + mm(4),
-    options.beaconGroups || [],
-  );
-
-  // â”€â”€ C2) SURVEY STATEMENT + OUTSIDE FIGURE DATA (center column) â”€â”€
-  let cY = drawDivY - mm(5);
-  // Statement
-  if (metadata.date) {
-    addText(TB, statementL, cY, `Surveyed in ${metadata.date} by me`, hBody);
-    cY -= rH * 1.5;
-  }
-  if (metadata.surveyor) {
-    addText(TB, statementL, cY, metadata.surveyor, hSub, 0, 'BOLD');
-    cY -= rH;
-    addText(TB, statementL, cY, '(Land Surveyor, Zim)', hBody);
-    cY -= rH * 1.5;
-  }
-
-  // Vertical-spacing gap before the OFD title (the previous full-width
-  // horizontal divider between the survey statement and the OFD table was a
-  // pre-3-v2 col1/col2/col3 partition artefact; the PDF doesn't emit any
-  // equivalent so it's dropped here for 1:1 PDF parity).
-  cY -= mm(3);
-
-  // Outside Figure Data table — all dimensions sourced from
-  // OUTSIDE_FIGURE_DATA in block-definitions.js (PDF pts), converted to
-  // paper-mm via PT_TO_MM_GEN. block-definitions is the single source of
-  // truth shared with pdfkitGeoPDF.js — same values in both generators.
-  const ofTitleH = pt(OUTSIDE_FIGURE_DATA.titleFontSize);
-  const ofBodyH  = pt(OUTSIDE_FIGURE_DATA.fontSize);
-  const ofRowH   = pt(OUTSIDE_FIGURE_DATA.rowHeight);
-
-  // Cumulative column anchor x offsets in paper-mm (sum of preceding widths).
-  const ofdColsPt = OUTSIDE_FIGURE_DATA.columns.map(col => col.width);
-  const ofdColAnchorsMM = [0]; // cS — first column starts at 0
-  for (let i = 0; i < ofdColsPt.length - 1; i++) {
-    ofdColAnchorsMM.push(ofdColAnchorsMM[i] + ofdColsPt[i] * PT_TO_MM_GEN);
-  }
-  const c = (off) => statementL + off;
-  const cS  = mm(ofdColAnchorsMM[0]);   // SIDES
-  const cM  = mm(ofdColAnchorsMM[1]);   // Metres
-  const cD  = mm(ofdColAnchorsMM[2]);   // DIRECTION
-  const cK  = mm(ofdColAnchorsMM[3]);   // Constants
-  const cCY = mm(ofdColAnchorsMM[4]);   // Y
-  const cCX = mm(ofdColAnchorsMM[5]);   // X
-  const ofdRightEdge = mm(ofdColAnchorsMM[5] + ofdColsPt[5] * PT_TO_MM_GEN);
-
-  addText(TB, c(cS), cY, 'OUTSIDE FIGURE DATA', ofTitleH, 0, 'BOLD');
-  addText(TB, c(cCY), cY, `CO-ORDINATES`, ofTitleH, 0, 'BOLD');
-  cY -= ofRowH * 0.9;
-  addText(TB, c(cCY), cY, `System: Lo ${centralMeridian}`, ofBodyH);
-  cY -= ofRowH * 0.7;
-
-  // Vertical divider between OF data and coordinates (matches PDF's
-  // title-box / coordinate-box separator at drawOutsideFigureData:10796).
-  const coordDivX = c(cCY) - mm(2);
-  addLine(TB, coordDivX, cY + ofRowH * 1.5, coordDivX, cY - ofRowH * ((outsideFigureData?.edges?.length || 0) + 1));
-
-  // Column headers
-  addLine(TB, statementL - mm(3), cY + mm(1.5), c(ofdRightEdge) + mm(2), cY + mm(1.5));
-  addText(TB, c(cS), cY, 'SIDES', ofBodyH, 0, 'BOLD');
-  addText(TB, c(cM), cY, 'Metres', ofBodyH, 0, 'BOLD');
-  addText(TB, c(cD), cY, 'DIRECTION', ofBodyH, 0, 'BOLD');
-  addText(TB, c(cK), cY, 'Constants', ofBodyH, 0, 'BOLD');
-  addText(TB, c(cCY), cY, 'Y', ofBodyH, 0, 'BOLD');
-  addText(TB, c(cCX), cY, 'X', ofBodyH, 0, 'BOLD');
-  addLine(TB, statementL - mm(3), cY - mm(1.5), c(ofdRightEdge) + mm(2), cY - mm(1.5));
-  cY -= ofRowH;
-
-  // Data rows
-  if (outsideFigureData?.edges) {
-    for (const edge of outsideFigureData.edges) {
-      const side = edge.side || '';
-      const dist = typeof edge.distance === 'number' ? edge.distance.toFixed(2) : String(edge.distance || '');
-      const dir = edge.direction || '';
-      const constId = edge.pointId || '';
-      const yV = typeof edge.y === 'number' ? (edge.y >= 0 ? '+' : '') + edge.y.toFixed(2) : '';
-      const xV = typeof edge.x === 'number' ? (edge.x >= 0 ? '+' : '') + edge.x.toFixed(2) : '';
-      addText(TB, c(cS), cY, side, ofBodyH);
-      addText(TB, c(cM), cY, dist, ofBodyH);
-      addText(TB, c(cD), cY, dir, ofBodyH);
-      addText(TB, c(cK), cY, constId, ofBodyH);
-      addText(TB, c(cCY), cY, yV, ofBodyH);
-      addText(TB, c(cCX), cY, xV, ofBodyH);
-      cY -= ofRowH;
-    }
-  }
-
-  // ── C3) APPROVED / SURVEYOR-GENERAL SIGNATURE BOX ──
-  // All dimensions sourced from SURVEYOR_GENERAL_BOX in block-definitions.js
-  // (PDF pts), converted to paper-mm via PT_TO_MM_GEN. Single source of truth
-  // shared with pdfkitGeoPDF.js:drawSurveyorGeneralSignature.
-  const SG = SURVEYOR_GENERAL_BOX;
-  const sgTitleH  = pt(SG.titleFontSize);
-  const sgBodyH   = pt(SG.bodyFontSize);
-  const sgBoxW    = mm(SG.width  * PT_TO_MM_GEN);
-  const sgBoxH    = mm(SG.height * PT_TO_MM_GEN);
-  const sgBoxR    = approvedR;
-  const sgBoxL    = sgBoxR - sgBoxW;
-  const sgBoxTopY = drawDivY - mm(5);
-  const sgBoxBotY = sgBoxTopY - sgBoxH;
-  const aCX       = (sgBoxL + sgBoxR) / 2;
-
-  // Vertical offsets are PDF-pt offsets from the box top.
-  const sgTitleY  = sgBoxTopY - mm(SG.titleYOffset        * PT_TO_MM_GEN);
-  const sgSigY    = sgBoxTopY - mm(SG.signatureLineYOffset * PT_TO_MM_GEN);
-  const sgForY    = sgBoxTopY - mm(SG.forSGYOffset         * PT_TO_MM_GEN);
-  const sgDateY   = sgBoxTopY - mm(SG.dateYOffset          * PT_TO_MM_GEN);
-  const sgSigInset = mm(SG.signatureLineInset * PT_TO_MM_GEN);
-
-  addRect(TB, sgBoxL, sgBoxBotY, sgBoxR, sgBoxTopY);
-  addText(TB, aCX, sgTitleY, 'Approved', sgTitleH, 0);
-  addLine(TB, sgBoxL + sgSigInset, sgSigY, sgBoxR - sgSigInset, sgSigY);
-  addText(TB, aCX, sgForY,  'For Surveyor General', sgBodyH);
-  addText(TB, aCX, sgDateY, SG.dateText, sgBodyH);
+  logger.info(`[DXF] Bottom-zone topological placement complete: ${bottomZoneResult.placedBlocks.length} blocks placed (incl. obstacles)`);
 
   logger.info(`[DXF] Page frame: ${(pageR - pageL).toFixed(0)}m x ${(pageT - pageB).toFixed(0)}m ground`);
 

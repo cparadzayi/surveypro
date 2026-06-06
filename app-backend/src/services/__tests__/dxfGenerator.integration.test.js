@@ -240,11 +240,11 @@ describe('dxfGenerator integration — beacon labeling', () => {
     expect(h1500).toBeCloseTo(3.704, 1)
   })
 
-  test('leader line emitted when label-to-beacon distance exceeds threshold', () => {
-    // Add a control beacon (no numeric prefix → outside placement). With
-    // labelText 'CTRL-7' (6 chars) at S=1000 → labelWidth ≈ 7.6 m, so
-    // tryTight's right candidate places the label center ≈ 5 m from the
-    // beacon. LEADER_THRESHOLD = 3 × beaconRadius ≈ 2.35 m at S=1000 → leader fires.
+  test('beacon leaders are entirely suppressed (no LINE entities on BEACON_LABELS layer)', () => {
+    // 2026-06-06: leader emission removed by user request. Labels keep their
+    // leader-aware placement (POI / tight-outside / edge-anchored) — only the
+    // connecting LINE stroke is suppressed. Locks down the property so an
+    // accidental restoration of the addLine call is caught.
     const fixture = {
       ...sampleFixture,
       beacons: {
@@ -261,45 +261,9 @@ describe('dxfGenerator integration — beacon labeling', () => {
     }
     const r = generateDXF(fixture, fakeLogger)
     const dxf = r.buffer.toString()
-    expect(entityCount(dxf, 'LINE', 'BEACON_LABELS')).toBeGreaterThan(0)
-  })
-
-  test('no beacon leader line is shorter than the 2.13 mm paper-mm floor', () => {
-    // Visual-cleanup floor (2026-06-06): leaders below 2.13 mm paper produce
-    // near-threshold stubs that don't aid disambiguation. Pin the floor so
-    // accidental reverts to the old beaconRadius × 3 alone are caught.
-    //
-    // Every emitted BEACON_LABELS LINE must be >= 2.13 mm paper. The fixture
-    // uses sampleFixture (scale '1:1000'); paper-mm = ground-m × 1000/1000
-    // = ground-m exactly. So the floor is 2.13 m ground at S=1000. At larger
-    // scales the natural beaconRadius × 3 dominates, so this floor is the
-    // tightest active constraint here.
-    const r = generateDXF(sampleFixture, fakeLogger)
-    const dxf = r.buffer.toString()
-    // Parse LINE entities on BEACON_LABELS layer.
-    const re = /\b0\s*\n\s*LINE\b([\s\S]*?)(?=\b0\s*\n\s*[A-Z]+\b|$)/g
-    let count = 0
-    for (const m of dxf.match(re) || []) {
-      if (!/\b8\s*\n\s*BEACON_LABELS\b/.test(m)) continue
-      const x1 = parseFloat((m.match(/\b10\s*\n\s*(-?[\d.eE+]+)/) || [])[1])
-      const y1 = parseFloat((m.match(/\b20\s*\n\s*(-?[\d.eE+]+)/) || [])[1])
-      const x2 = parseFloat((m.match(/\b11\s*\n\s*(-?[\d.eE+]+)/) || [])[1])
-      const y2 = parseFloat((m.match(/\b21\s*\n\s*(-?[\d.eE+]+)/) || [])[1])
-      if (!Number.isFinite(x1) || !Number.isFinite(x2)) continue
-      const lenG = Math.hypot(x2 - x1, y2 - y1)
-      // S=1000 → paper-mm == ground-m for this fixture; threshold = 2.13.
-      // The emitted leader runs from beacon edge to label-bbox-closest-point,
-      // so the geometric length can be substantially shorter than the
-      // center-to-center trigger distance. At sampleFixture S=1000 the
-      // natural trigger (beaconRadius × 3 ≈ 2.35 m) dominates the 2.13 mm
-      // floor, so this fixture exercises the geometric trigger only.
-      // The 0.5 m bound rejects the regression where the floor is removed
-      // and stub-length leaders (~0.1 m) start appearing.
-      expect(lenG).toBeGreaterThanOrEqual(0.5)
-      count++
-    }
-    // Sanity: at least one leader emitted (otherwise the assertion is vacuous).
-    expect(count).toBeGreaterThan(0)
+    expect(entityCount(dxf, 'LINE', 'BEACON_LABELS')).toBe(0)
+    // The label text must still emit at its leader-aware position.
+    expect(dxf).toContain('CTRL-7')
   })
 
   test('splay group iteration order is deterministic across runs', () => {

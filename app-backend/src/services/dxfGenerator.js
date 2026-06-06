@@ -1338,27 +1338,13 @@ export function generateDXF(options, logger) {
 
   const registry = createCollisionRegistry();
   const deferredCircles = [];
-  // Leader-line trigger distance.
-  //
-  //   - beaconRadius × 3  : the original geometric threshold; scales naturally
-  //                         with the beacon symbol size (logarithmic in S).
-  //   - mm(2.13)          : a 2.13 mm paper floor. At small scales (S ≤ 500)
-  //                         beaconRadius × 3 falls below ~2 mm paper and the
-  //                         leaders cluster tightly just above threshold,
-  //                         producing visual noise stubs that don't aid
-  //                         beacon disambiguation. 2.13 mm = the empirical
-  //                         mean leader length observed on a Maglas-density
-  //                         plan; suppressing everything below the mean
-  //                         (~71%) removes the noisy near-threshold cluster
-  //                         while keeping the informative right-tail leaders
-  //                         that genuinely connect distant labels to their
-  //                         beacons.
-  //   - At larger scales (S ≥ ~1000) beaconRadius × 3 already exceeds 2.13 mm
-  //     paper, so the Math.max degrades to a no-op.
-  const LEADER_MIN_PAPER_MM = 2.13;
-  // mmToGround used directly here because the cached `mm` shorthand isn't
-  // bound yet at this point in the function (declared further down).
-  const LEADER_THRESHOLD = Math.max(beaconRadius * 3, mmToGround(LEADER_MIN_PAPER_MM, S));
+  // 2026-06-06: leader-line emission suppressed by user request. Beacon
+  // labels keep their leader-aware placements (POI, tight-outside,
+  // edge-anchored) — the placer's geometry isn't affected — but no LINE
+  // entities are emitted on the BEACON_LABELS layer. The visual result:
+  // labels sit near their beacons (proximity carries the association)
+  // without any connecting strokes. See the (commented-out) leader
+  // emission block further down for the prior trigger logic.
 
   // ── Beacon emission loop (#6 Task 6.4) ─────────────────────────────────────
   for (const feature of iterationOrder) {
@@ -1429,17 +1415,21 @@ export function generateDXF(options, logger) {
     registry.add({ x: labelPos.x, y: labelPos.y, width: labelWidth, height: labelHeightG });
     addText('BEACON_LABELS', labelPos.x, labelPos.y, labelText, beaconLabelHeight);
 
-    // Leader line: emit when label center is farther than LEADER_THRESHOLD from beacon.
-    const lcx = labelPos.x + labelWidth / 2;
-    const lcy = labelPos.y + labelHeightG / 2;
-    if (Math.hypot(lcx - pt.x, lcy - pt.y) > LEADER_THRESHOLD) {
-      const angle       = Math.atan2(pt.y - lcy, pt.x - lcx);
-      const beaconEdgeX = pt.x - Math.cos(angle) * beaconRadius;
-      const beaconEdgeY = pt.y - Math.sin(angle) * beaconRadius;
-      const closestX    = Math.max(labelPos.x, Math.min(pt.x, labelPos.x + labelWidth));
-      const closestY    = Math.max(labelPos.y, Math.min(pt.y, labelPos.y + labelHeightG));
-      addLine('BEACON_LABELS', beaconEdgeX, beaconEdgeY, closestX, closestY);
-    }
+    // 2026-06-06: leader-line emission removed by user request. The placer
+    // still uses leader-aware geometry to position labels (POI-directed,
+    // tight-outside, edge-anchored); we just don't draw the connecting line.
+    // Original emission (preserved here as a comment for future restoration):
+    //
+    //   const lcx = labelPos.x + labelWidth / 2;
+    //   const lcy = labelPos.y + labelHeightG / 2;
+    //   if (Math.hypot(lcx - pt.x, lcy - pt.y) > LEADER_THRESHOLD) {
+    //     const angle       = Math.atan2(pt.y - lcy, pt.x - lcx);
+    //     const beaconEdgeX = pt.x - Math.cos(angle) * beaconRadius;
+    //     const beaconEdgeY = pt.y - Math.sin(angle) * beaconRadius;
+    //     const closestX    = Math.max(labelPos.x, Math.min(pt.x, labelPos.x + labelWidth));
+    //     const closestY    = Math.max(labelPos.y, Math.min(pt.y, labelPos.y + labelHeightG));
+    //     addLine('BEACON_LABELS', beaconEdgeX, beaconEdgeY, closestX, closestY);
+    //   }
   }
 
   // ── Deferred-circle z-order: emit beacon symbols AFTER all labels ──────────

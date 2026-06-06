@@ -1684,12 +1684,24 @@ export function generateDXF(options, logger) {
   // from header + data measurements via the same algorithm PDF uses.
   // PT_TO_MM_GEN converts from PDF pt to paper-mm; mm() converts to
   // ground-metres at use site.
+  //
+  // DXF-specific calibration (vs PDF's doc.widthOfString):
+  //   1. headerFontSize uses bodyFontSize (= 7 pt). DXF's addScheduleTable
+  //      renders headers at hBody (= pt(7)), NOT at PDF's 6-pt header font.
+  //      Sizing the column for the actually-rendered font is what matters.
+  //   2. Char-width ratio is 1.0 (square characters), not the STYLE table's
+  //      0.55. Many CAD viewers ignore the STYLE width factor and render
+  //      text at width factor 1.0. Using 1.0 in the measurer guarantees
+  //      columns fit headers on every viewer. Compliant viewers (honoring
+  //      0.55) see extra padding inside the cell — visually fine, the
+  //      grid lines just sit further from the text.
+  const renderedFontSize = SCHEDULE_OF_AREAS.singleColumn.fontSize  // 7 pt
   const dxfMeasureText = (text, fontSize) =>
-    String(text).length * fontSize * 0.55
+    String(text).length * fontSize * 1.0
   const scheduleColumnWidthsPt = computeScheduleColumnWidths({
     dataRows:       surveyedFeatures.map(extractScheduleRow),
-    headerFontSize: SCHEDULE_OF_AREAS.singleColumn.headerFontSize,
-    bodyFontSize:   SCHEDULE_OF_AREAS.singleColumn.fontSize,
+    headerFontSize: renderedFontSize,
+    bodyFontSize:   renderedFontSize,
     measureText:    dxfMeasureText,
   });
   const scheduleColumnWidthsG = scheduleColumnWidthsPt.map(w => mm(w * PT_TO_MM_GEN));

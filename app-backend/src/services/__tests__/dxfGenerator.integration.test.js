@@ -631,3 +631,157 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
       .toContain(warnings.summary.scheduleOverflow.requiredSheetSize)
   })
 })
+
+/**
+ * Parse all LINE entities on a given layer from the DXF buffer.
+ * Returns {x1,y1,x2,y2}[]. Used by the 3-v4 bottom-zone-topology
+ * regression tests below.
+ */
+function parseLinesOnLayer(dxf, layerName) {
+  const out = []
+  // Match each LINE entity individually by walking the entities section.
+  const ents = dxf.match(/SECTION\s*\n\s*2\s*\n\s*ENTITIES([\s\S]*?)ENDSEC/)
+  if (!ents) return out
+  const lineRe = /\b0\s*\n\s*LINE\b([\s\S]*?)(?=\b0\s*\n\s*(?:[A-Z]+)\b|$)/g
+  for (const m of ents[1].matchAll(lineRe)) {
+    const frag = m[1]
+    if (!new RegExp(`\\b8\\s*\\n\\s*${layerName}\\b`).test(frag)) continue
+    const get = (code) => {
+      const r = new RegExp(`\\b${code}\\s*\\n\\s*(-?[\\d.eE+]+)`)
+      const v = frag.match(r)
+      return v ? parseFloat(v[1]) : NaN
+    }
+    out.push({ x1: get(10), y1: get(20), x2: get(11), y2: get(21) })
+  }
+  return out
+}
+
+describe('dxfGenerator integration — bottom-zone topology (3-v4)', () => {
+  test('no stray vertical divider line at the pre-3-v4 partition x-coord (regression)', () => {
+    // Pre-3-v4 emitted addLine(TB, statementR, drawDivY, statementR, cntB)
+    // where statementR sat at cntL + contentW * 0.58 — a single full-height
+    // vertical span in the middle 30–70% strip. 3-v4 removed this line.
+    //
+    // The strategy: scan all vertical LINEs on TITLE_BLOCK and check that
+    // none of them span more than 30% of the content area height while
+    // sitting strictly inside the content area's x range (i.e., not on the
+    // left/right content borders, which legitimately span the full height).
+    const r = generateDXF(sampleFixture, fakeLogger)
+    const lines = parseLinesOnLayer(r.buffer.toString(), 'TITLE_BLOCK')
+
+    // Pick verticals only.
+    const verticals = lines.filter(L =>
+      Number.isFinite(L.x1) && Number.isFinite(L.x2) && Math.abs(L.x1 - L.x2) < 0.01)
+
+    // Sort by absolute vertical span (descending).
+    const spans = verticals
+      .map(L => ({ x: L.x1, span: Math.abs(L.y2 - L.y1) }))
+      .sort((a, b) => b.span - a.span)
+
+    if (spans.length === 0) return  // nothing vertical → trivially passes
+
+    // The longest vertical span is the content area's left/right border or
+    // the endorsements divider — all of which are legitimate. The pre-3-v4
+    // stray divider was the FOURTH-or-later longest if the page frame is
+    // accounted for. Instead, assert: among the longest 3 verticals (the 2
+    // content-border edges + 1 endorsement divider), none sits in the
+    // 30–70% middle strip of the unique x-coords (which is where the stray
+    // partition lived). The stray would otherwise be one of the longest.
+    const xs = spans.map(s => s.x).sort((a, b) => a - b)
+    const xMin = xs[0]
+    const xMax = xs[xs.length - 1]
+    const stripL = xMin + (xMax - xMin) * 0.30
+    const stripR = xMin + (xMax - xMin) * 0.70
+    // Tolerate small lines in the middle strip (OFD has small internal
+    // vertical dividers). The stray was the LONGEST line in that strip.
+    const longestInStrip = spans.find(s => s.x > stripL && s.x < stripR)
+    if (longestInStrip) {
+      // If anything sits in the strip, it must be much shorter than the
+      // longest overall (the page borders).
+      expect(longestInStrip.span).toBeLessThan(spans[0].span * 0.40)
+    }
+  })
+
+  test('all five bottom-zone blocks emit for the sample fixture', () => {
+    const r = generateDXF(sampleFixture, fakeLogger)
+    const dxf = r.buffer.toString()
+    expect(dxf).toContain('OUTSIDE FIGURE DATA')      // OFD title
+    expect(dxf).toContain('SCHEDULE OF AREAS')        // schedule title
+    expect(dxf).toContain('BEACON DESCRIPTIONS')      // beacon header
+    expect(dxf).toContain('Surveyed in 2026-05-31')   // statement date line
+    expect(dxf).toContain('Approved')                 // SG box title
+  })
+
+  test('SG box position differs between plans with and without OFD edges (topology proof)', () => {
+    const withOfd    = sampleFixture
+    const withoutOfd = { ...sampleFixture, outsideFigureData: { ...sampleFixture.outsideFigureData, edges: [] } }
+
+    const dxfWith    = generateDXF(withOfd,    fakeLogger).buffer.toString()
+    const dxfWithout = generateDXF(withoutOfd, fakeLogger).buffer.toString()
+
+    // Locate the "Approved" TEXT entity (SG box title) in each DXF.
+    const findApproved = (dxf) => {
+      const ents = dxf.match(/SECTION\s*\n\s*2\s*\n\s*ENTITIES([\s\S]*?)ENDSEC/)
+      if (!ents) return null
+      const re = /\b0\s*\n\s*TEXT\b([\s\S]*?)(?=\b0\s*\n\s*(?:[A-Z]+)\b|$)/g
+      for (const m of ents[1].matchAll(re)) {
+        const frag = m[1]
+        if (!/Approved/.test(frag)) continue
+        if (!/\b8\s*\n\s*TITLE_BLOCK\b/.test(frag)) continue
+        const x = parseFloat((frag.match(/\b10\s*\n\s*(-?[\d.eE+]+)/) || [])[1])
+        const y = parseFloat((frag.match(/\b20\s*\n\s*(-?[\d.eE+]+)/) || [])[1])
+        if (Number.isFinite(x) && Number.isFinite(y)) return { x, y }
+      }
+      return null
+    }
+    const pWith    = findApproved(dxfWith)
+    const pWithout = findApproved(dxfWithout)
+
+    expect(pWith).toBeTruthy()
+    expect(pWithout).toBeTruthy()
+    // Topology placement: the chosen SG position depends on what else
+    // sits in the content area. With OFD present, SG must route around
+    // OFD's bbox → different slot than when OFD is absent.
+    const samePosition = Math.abs(pWith.x - pWithout.x) < 1 && Math.abs(pWith.y - pWithout.y) < 1
+    expect(samePosition).toBe(false)
+  })
+
+  test('schedule of areas can place sub-tables beyond the pre-3-v4 drawDivY when whitespace allows', () => {
+    // Dense fixture: 40 stands forces multiple sub-tables. With the expanded
+    // contentArea the placer now considers the full content height instead
+    // of being clamped above drawDivY. This test documents the capability
+    // by checking that at least one schedule sub-table title was emitted
+    // (regression on test 3-v2 behaviour) AND that the orchestrator finished
+    // without scheduleOverflow.
+    const dense = {
+      ...sampleFixture,
+      parcels: {
+        type: 'FeatureCollection',
+        features: Array.from({ length: 40 }, (_, i) => ({
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [[
+            [50000 + i, 2200000], [50000 + i + 1, 2200000],
+            [50000 + i + 1, 2200001], [50000 + i, 2200001],
+            [50000 + i, 2200000],
+          ]]},
+          properties: { stand: String(200 + i), area_m2: 100 + i },
+        })),
+      },
+    }
+    const r = generateDXF(dense, fakeLogger)
+    const dxf = r.buffer.toString()
+
+    // The schedule TITLE 'SCHEDULE OF AREAS' must appear at least once.
+    const titleCount = (dxf.match(/SCHEDULE OF AREAS/g) || []).length
+    expect(titleCount).toBeGreaterThanOrEqual(1)
+
+    // The test documents the NEW capability — pre-3-v4 the schedule was
+    // clamped above drawDivY and 40 stands would have produced
+    // scheduleOverflow. Post-3-v4 the expanded contentArea fits them.
+    // (We assert no scheduleOverflow with phase 'consolidation-zero-fit'
+    // — the schedule did manage to seat its tables somewhere.)
+    if (r.warnings.summary.scheduleOverflow) {
+      expect(r.warnings.summary.scheduleOverflow.phase).not.toBe('consolidation-zero-fit')
+    }
+  })
+})

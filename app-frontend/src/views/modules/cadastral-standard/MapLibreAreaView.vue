@@ -83,7 +83,7 @@
         :points="surveyPegPoints"
         :edit-handler="editPanelHandler"
         @close="showRenamePanel = false"
-        @edit-complete="handleRenameComplete"
+        @edit-complete="(payload) => handleRenameComplete(payload.patch?.name ? [{ oldName: payload.oldName, newName: payload.patch.name }] : [])"
       />
     </div>
 
@@ -1159,10 +1159,83 @@ async function editPanelHandler(
   oldName: string,
   patch: { name?: string; y?: number; x?: number; description?: string }
 ): Promise<void> {
+  // Name change goes through the existing rename pipeline (DB + workflow +
+  // land_parcels.metadata.cape_lo_points + map labels).
   if (patch.name && patch.name !== oldName) {
     await handlePointRename({ oldName, newName: patch.name });
   }
-  // Task 2 will extend this to handle y / x / description.
+
+  // Y / X / description go through PUT /coordinate-points/:id.
+  const hasFieldChange = patch.y !== undefined
+    || patch.x !== undefined
+    || patch.description !== undefined;
+  if (!hasFieldChange) return;
+
+  const currentName = patch.name ?? oldName;
+  // Resolve numeric DB id via the dbPointIds map (name → id).
+  // After a rename the map is updated by handlePointRename, so currentName is safe to use.
+  let resolvedDbId: number | undefined = dbPointIds.value.get(currentName);
+  if (!resolvedDbId) {
+    // Fallback: fetch from backend by name in case dbPointIds is stale.
+    try {
+      const projectId = workflowState?.projectInfo?.projectId;
+      if (projectId) {
+        const pts = await listCoordinatePoints(Number(projectId));
+        const match = pts.find((p: any) => p.name === currentName);
+        if (match?.id) {
+          resolvedDbId = match.id;
+          dbPointIds.value.set(currentName, match.id);
+        }
+      }
+    } catch { /* ignore — will fail below */ }
+  }
+  if (!resolvedDbId) {
+    throw new Error(`Cannot find point id for "${currentName}"`);
+  }
+
+  const apiPatch: { y?: number; x?: number; description?: string } = {};
+  if (patch.y !== undefined)           apiPatch.y = patch.y;
+  if (patch.x !== undefined)           apiPatch.x = patch.x;
+  if (patch.description !== undefined) apiPatch.description = patch.description;
+  await updateCoordinatePoint(resolvedDbId, apiPatch);
+
+  // Update local workflowState entries so other views (and reactive computed
+  // bindings on this page) see the new values without a refetch.
+  const updateEntry = (entry: any) => {
+    if (entry === null || typeof entry !== 'object') return entry;
+    const id = entry.pointId || entry.id || entry.name;
+    if (id !== currentName) return entry;
+    return {
+      ...entry,
+      ...(patch.y !== undefined && { y: patch.y }),
+      ...(patch.x !== undefined && { x: patch.x }),
+      ...(patch.description !== undefined && { description: patch.description }),
+    };
+  };
+
+  if (Array.isArray(workflowState?.adjustedCoordinates)) {
+    workflowState.adjustedCoordinates = workflowState.adjustedCoordinates.map(updateEntry);
+  }
+  if (Array.isArray(workflowState?.importedPoints)) {
+    workflowState.importedPoints = workflowState.importedPoints.map(updateEntry);
+  }
+
+  const projectId = workflowState?.projectInfo?.projectId;
+  if (projectId) {
+    try {
+      await api.patch(`/survey-projects/${projectId}/workflow`, {
+        step: 'calculations-part1',
+        action: 'update',
+        metadata: {
+          adjusted_coordinates: workflowState.adjustedCoordinates,
+          point_edit: { name: currentName, patch: apiPatch, at: new Date().toISOString() },
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (e) {
+      console.warn('[PointEdit] Could not persist edit to workflow state:', e);
+    }
+  }
 }
 
 async function handlePointRename(payload: { oldName: string; newName: string }) {

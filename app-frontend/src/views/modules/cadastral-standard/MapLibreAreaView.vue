@@ -1358,7 +1358,7 @@ async function editPanelHandler(
 
   // Recompute once, at the end, for destructive changes only.
   if (!onlyDescription) {
-    await recomputeAllParcels();
+    await recomputeAllParcels({ skipConfirm: true });
   }
 }
 
@@ -1419,7 +1419,7 @@ async function deletePanelHandler(name: string): Promise<void> {
     }
   }
 
-  await recomputeAllParcels();
+  await recomputeAllParcels({ skipConfirm: true });
 }
 
 async function handlePointRename(payload: { oldName: string; newName: string }) {
@@ -4613,19 +4613,20 @@ async function autoSaveParcel(parcel: Parcel, closureError: number) {
  * Recompute all parcels with latest backend code
  * This updates existing parcels with new fields like directionDMS
  */
-async function recomputeAllParcels() {
+async function recomputeAllParcels({ skipConfirm = false }: { skipConfirm?: boolean } = {}) {
   if (savedParcels.value.size === 0) {
     alert('No parcels to recompute. Please draw and save parcels first.');
     return;
   }
-  
-  const confirmed = confirm(
-    `Recompute ${savedParcels.value.size} parcel(s) with latest backend code?\n\n` +
-    `This will update all parcels with banker's rounding for directions and other improvements.\n\n` +
-    `This action cannot be undone.`
-  );
-  
-  if (!confirmed) return;
+
+  if (!skipConfirm) {
+    const confirmed = confirm(
+      `Recompute ${savedParcels.value.size} parcel(s) with latest backend code?\n\n` +
+      `This will update all parcels with banker's rounding for directions and other improvements.\n\n` +
+      `This action cannot be undone.`
+    );
+    if (!confirmed) return;
+  }
   
   isRecomputing.value = true;
   let successCount = 0;

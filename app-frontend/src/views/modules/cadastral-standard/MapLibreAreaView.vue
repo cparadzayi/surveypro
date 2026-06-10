@@ -818,6 +818,54 @@
       </div>
     </Transition>
     </Teleport>
+
+    <!-- Affected-parcels confirm modal (destructive point edits/deletes) -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div
+          v-if="affectedParcelsConfirm"
+          class="fixed inset-0 flex items-center justify-center"
+          style="z-index: 99999;"
+          @click.self="rejectAffectedParcelsConfirm"
+        >
+          <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+          <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div class="px-5 py-4 bg-amber-500">
+              <h3 class="text-white font-semibold text-base">
+                {{ affectedParcelsConfirm.intent === 'delete' ? 'Delete this point?' : 'Apply this change?' }}
+              </h3>
+              <p class="text-amber-100 text-xs mt-0.5">
+                Point "{{ affectedParcelsConfirm.pointName }}" is used by {{ affectedParcelsConfirm.parcels.length }} parcel{{ affectedParcelsConfirm.parcels.length === 1 ? '' : 's' }}.
+              </p>
+            </div>
+            <div class="px-5 py-3 max-h-48 overflow-y-auto bg-gray-50">
+              <ul class="text-xs text-gray-700 space-y-1 font-mono">
+                <li v-for="p in affectedParcelsConfirm.parcels" :key="p.id">
+                  &bull; {{ p.stand }} &mdash; {{ p.designation }}
+                </li>
+              </ul>
+            </div>
+            <div class="px-5 py-3 text-xs text-gray-600 bg-amber-50 border-t border-amber-100">
+              Proceeding will apply the change and re-run parcel computation so the affected parcels pick up the new beacon geometry.
+            </div>
+            <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+              <button
+                @click="rejectAffectedParcelsConfirm"
+                class="px-4 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                @click="resolveAffectedParcelsConfirm"
+                class="px-4 py-2 text-sm text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors"
+              >
+                Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -956,6 +1004,29 @@ const mapRenameModal = ref<{
   conflictPoint?: { id: string; x: number; y: number; status: string } | null;
 } | null>(null);
 const mapRenameInputRef = ref<HTMLInputElement | null>(null);
+
+// Affected-parcels confirm gate (destructive point edits / deletes)
+const affectedParcelsConfirm = ref<{
+  pointName: string;
+  parcels: Array<{ id: number; stand: string; designation: string }>;
+  intent: 'edit' | 'delete';
+  resolve: () => void;
+  reject: (e: Error) => void;
+} | null>(null);
+
+function resolveAffectedParcelsConfirm() {
+  const m = affectedParcelsConfirm.value;
+  if (!m) return;
+  affectedParcelsConfirm.value = null;
+  m.resolve();
+}
+
+function rejectAffectedParcelsConfirm() {
+  const m = affectedParcelsConfirm.value;
+  if (!m) return;
+  affectedParcelsConfirm.value = null;
+  m.reject(new Error('cancelled'));
+}
 
 function openMapRenameModal(pointId: string, status: string, lngLat: string) {
   mapRenameModal.value = { pointId, newName: pointId, status, lngLat, error: '', saving: false, conflictPoint: null };
@@ -1156,10 +1227,57 @@ const surveyPegPoints = computed(() =>
   coordinatePoints.value.filter((p: any) => p.status !== 'TRIG')
 );
 
+async function findAffectedParcels(
+  pointName: string
+): Promise<Array<{ id: number; stand: string; designation: string }>> {
+  const projectId = workflowState?.projectInfo?.projectId;
+  if (!projectId) return [];
+  const parcels = await listLandParcels(Number(projectId));
+  const out: Array<{ id: number; stand: string; designation: string }> = [];
+  for (const p of parcels) {
+    const capeLoPoints: any[] = (p.metadata as any)?.cape_lo_points ?? [];
+    if (capeLoPoints.some(v => v?.id === pointName)) {
+      out.push({
+        id: p.id,
+        stand: p.stand,
+        designation: (p as any).designation ?? p.stand,
+      });
+    }
+  }
+  return out;
+}
+
+async function requireAffectedParcelsConfirm(
+  pointName: string,
+  intent: 'edit' | 'delete'
+): Promise<void> {
+  const parcels = await findAffectedParcels(pointName);
+  if (parcels.length === 0) return;
+  await new Promise<void>((resolve, reject) => {
+    affectedParcelsConfirm.value = { pointName, parcels, intent, resolve, reject };
+  });
+}
+
 async function editPanelHandler(
   oldName: string,
   patch: { name?: string; y?: number; x?: number; description?: string }
 ): Promise<void> {
+  // Classify the patch. Description-only is non-destructive: no affected-
+  // parcels confirm, no recompute. Anything else (name / y / x) is destructive.
+  const onlyDescription =
+    patch.description !== undefined
+    && patch.name === undefined
+    && patch.y === undefined
+    && patch.x === undefined;
+
+  if (!onlyDescription) {
+    try {
+      await requireAffectedParcelsConfirm(oldName, 'edit');
+    } catch (e: any) {
+      throw new Error('cancelled');
+    }
+  }
+
   // Name change goes through the existing rename pipeline (DB + workflow +
   // land_parcels.metadata.cape_lo_points + map labels).
   if (patch.name && patch.name !== oldName) {
@@ -1170,78 +1288,88 @@ async function editPanelHandler(
   const hasFieldChange = patch.y !== undefined
     || patch.x !== undefined
     || patch.description !== undefined;
-  if (!hasFieldChange) return;
 
-  const currentName = patch.name ?? oldName;
-  // Resolve numeric DB id via the dbPointIds map (name → id).
-  // After a rename the map is updated by handlePointRename, so currentName is safe to use.
-  let resolvedDbId: number | undefined = dbPointIds.value.get(currentName);
-  if (resolvedDbId === undefined) {
-    // Fallback: fetch from backend by name in case dbPointIds is stale.
-    try {
+  if (hasFieldChange) {
+    const currentName = patch.name ?? oldName;
+
+    // Resolve numeric DB id via dbPointIds (with listCoordinatePoints fallback).
+    let resolvedDbId = dbPointIds.value.get(currentName);
+    if (resolvedDbId === undefined) {
       const projectId = workflowState?.projectInfo?.projectId;
-      if (projectId) {
-        const pts = await listCoordinatePoints(Number(projectId));
-        const match = pts.find((p: any) => p.name === currentName);
-        if (match?.id) {
-          resolvedDbId = match.id;
-          dbPointIds.value.set(currentName, match.id);
-        }
+      if (!projectId) {
+        throw new Error(`Cannot find point id for "${currentName}": no project loaded`);
       }
-    } catch { /* ignore — will fail below */ }
-  }
-  if (resolvedDbId === undefined) {
-    throw new Error(`Cannot find point id for "${currentName}"`);
-  }
-
-  const apiPatch: { y?: number; x?: number; description?: string } = {};
-  if (patch.y !== undefined)           apiPatch.y = patch.y;
-  if (patch.x !== undefined)           apiPatch.x = patch.x;
-  if (patch.description !== undefined) apiPatch.description = patch.description;
-  await updateCoordinatePoint(resolvedDbId, apiPatch);
-
-  // Update local workflowState entries so other views (and reactive computed
-  // bindings on this page) see the new values without a refetch.
-  const updateEntry = (entry: any) => {
-    if (entry === null || typeof entry !== 'object') return entry;
-    const id = entry.pointId ?? entry.id ?? entry.name;
-    if (id !== currentName) return entry;
-    return {
-      ...entry,
-      ...(patch.y !== undefined && { y: patch.y }),
-      ...(patch.x !== undefined && { x: patch.x }),
-      ...(patch.description !== undefined && { description: patch.description }),
-    };
-  };
-
-  if (Array.isArray(workflowState?.adjustedCoordinates)) {
-    workflowState.adjustedCoordinates = workflowState.adjustedCoordinates.map(updateEntry);
-  }
-  if (Array.isArray(workflowState?.importedPoints)) {
-    workflowState.importedPoints = workflowState.importedPoints.map(updateEntry);
-  }
-
-  const projectId = workflowState?.projectInfo?.projectId;
-  if (projectId) {
-    try {
-      await api.patch(`/survey-projects/${projectId}/workflow`, {
-        step: 'calculations-part1',
-        action: 'update',
-        metadata: {
-          adjusted_coordinates: workflowState.adjustedCoordinates,
-          point_edit: { name: currentName, patch: apiPatch, at: new Date().toISOString() },
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch (e) {
-      console.warn('[PointEdit] Could not persist edit to workflow state:', e);
+      try {
+        const all = await listCoordinatePoints(Number(projectId));
+        const match = all.find((p: any) => p.name === currentName);
+        if (match?.id !== undefined) {
+          dbPointIds.value.set(currentName, match.id);
+          resolvedDbId = match.id;
+        }
+      } catch {
+        // fall through to throw below
+      }
     }
+    if (resolvedDbId === undefined) {
+      throw new Error(`Cannot find point id for "${currentName}"`);
+    }
+
+    const apiPatch: { y?: number; x?: number; description?: string } = {};
+    if (patch.y !== undefined)           apiPatch.y = patch.y;
+    if (patch.x !== undefined)           apiPatch.x = patch.x;
+    if (patch.description !== undefined) apiPatch.description = patch.description;
+    await updateCoordinatePoint(resolvedDbId, apiPatch);
+
+    const updateEntry = (entry: any) => {
+      if (entry === null || typeof entry !== 'object') return entry;
+      const id = entry.pointId ?? entry.id ?? entry.name;
+      if (id !== currentName) return entry;
+      return {
+        ...entry,
+        ...(patch.y !== undefined && { y: patch.y }),
+        ...(patch.x !== undefined && { x: patch.x }),
+        ...(patch.description !== undefined && { description: patch.description }),
+      };
+    };
+    if (Array.isArray(workflowState?.adjustedCoordinates)) {
+      workflowState.adjustedCoordinates = workflowState.adjustedCoordinates.map(updateEntry);
+    }
+    if (Array.isArray(workflowState?.importedPoints)) {
+      workflowState.importedPoints = workflowState.importedPoints.map(updateEntry);
+    }
+
+    const projectId = workflowState?.projectInfo?.projectId;
+    if (projectId) {
+      try {
+        await api.patch(`/survey-projects/${projectId}/workflow`, {
+          step: 'calculations-part1',
+          action: 'update',
+          metadata: {
+            adjusted_coordinates: workflowState.adjustedCoordinates,
+            point_edit: { name: currentName, patch: apiPatch, at: new Date().toISOString() },
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (e) {
+        console.warn('[PointEdit] Could not persist edit to workflow state:', e);
+      }
+    }
+  }
+
+  // Recompute once, at the end, for destructive changes only.
+  if (!onlyDescription) {
+    await recomputeAllParcels();
   }
 }
 
 async function deletePanelHandler(name: string): Promise<void> {
-  // Resolve numeric DB id via dbPointIds (populated on mount from
-  // listCoordinatePoints). Fall back to a fresh fetch if the cache misses.
+  try {
+    await requireAffectedParcelsConfirm(name, 'delete');
+  } catch (e: any) {
+    throw new Error('cancelled');
+  }
+
+  // ── unchanged Task 3 body: point lookup + deleteCoordinatePoint + workflow sync ──
   let resolvedDbId = dbPointIds.value.get(name);
   if (resolvedDbId === undefined) {
     const projectId = workflowState?.projectInfo?.projectId;
@@ -1259,7 +1387,6 @@ async function deletePanelHandler(name: string): Promise<void> {
   }
   await deleteCoordinatePoint(resolvedDbId);
 
-  // Strip the point out of the workflow snapshot.
   const stripEntry = (entry: any) => {
     if (entry === null || typeof entry !== 'object') return true;
     const id = entry.pointId ?? entry.id ?? entry.name;
@@ -1272,7 +1399,6 @@ async function deletePanelHandler(name: string): Promise<void> {
     workflowState.importedPoints = workflowState.importedPoints.filter(stripEntry);
   }
 
-  // Keep dbPointNames + dbPointIds in sync.
   if (dbPointNames.value.has(name)) dbPointNames.value.delete(name);
   if (dbPointIds.value.has(name))   dbPointIds.value.delete(name);
 
@@ -1292,6 +1418,8 @@ async function deletePanelHandler(name: string): Promise<void> {
       console.warn('[PointDelete] Could not persist delete to workflow state:', e);
     }
   }
+
+  await recomputeAllParcels();
 }
 
 async function handlePointRename(payload: { oldName: string; newName: string }) {

@@ -1295,6 +1295,15 @@ async function handlePointRename(payload: { oldName: string; newName: string }) 
   dbPointNames.value.delete(payload.oldName);
   dbPointNames.value.add(payload.newName);
 
+  // Keep dbPointIds in sync — without this a combined rename+coord edit
+  // would fall back to listCoordinatePoints because dbPointIds still holds
+  // the old name as its key after handlePointRename returns.
+  const oldDbId = dbPointIds.value.get(payload.oldName);
+  if (oldDbId !== undefined) {
+    dbPointIds.value.delete(payload.oldName);
+    dbPointIds.value.set(payload.newName, oldDbId);
+  }
+
   // 5. Propagate rename into land_parcels.metadata.cape_lo_points
   //    Without this, saved parcels still reference the old beacon name.
   const affectedParcels: string[] = [];

@@ -42,14 +42,17 @@
         <button
           v-for="row in filteredRows"
           :key="row.originalName"
-          @click="openModal(row)"
+          :disabled="row.status === 'TRIG'"
+          @click="row.status !== 'TRIG' && openModal(row)"
           :class="[
-            'flex flex-col items-center gap-1 p-2 rounded-lg border text-left transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400',
-            row.saved
-              ? 'border-green-400 bg-green-50 hover:bg-green-100'
-              : 'border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300'
+            'flex flex-col items-center gap-1 p-2 rounded-lg border text-left transition-all focus:outline-none focus:ring-2 focus:ring-blue-400',
+            row.status === 'TRIG'
+              ? 'border-red-200 bg-red-50 cursor-not-allowed opacity-90'
+              : (row.saved
+                ? 'border-green-400 bg-green-50 hover:bg-green-100 hover:shadow-md'
+                : 'border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 hover:shadow-md')
           ]"
-          :title="`Click to edit ${row.currentName}`"
+          :title="row.status === 'TRIG' ? `${row.currentName} (TRIG — read-only)` : `Click to edit ${row.currentName}`"
         >
           <span :class="[
             'text-xs font-bold px-2 py-0.5 rounded-full w-full text-center truncate',
@@ -61,7 +64,8 @@
           <span class="text-gray-400 text-xs truncate w-full text-center">
             {{ row.y }}, {{ row.x }}
           </span>
-          <span v-if="row.saved" class="text-green-600 text-xs font-semibold">✓ saved</span>
+          <span v-if="row.status === 'TRIG'" class="text-red-500 text-xs font-semibold">🔒 TRIG</span>
+          <span v-else-if="row.saved" class="text-green-600 text-xs font-semibold">✓ saved</span>
           <span v-else class="text-blue-400 text-xs">✏️ edit</span>
         </button>
         <div v-if="filteredRows.length === 0" class="col-span-full py-4 text-center text-gray-400 text-xs">

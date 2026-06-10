@@ -1176,7 +1176,7 @@ async function editPanelHandler(
   // Resolve numeric DB id via the dbPointIds map (name → id).
   // After a rename the map is updated by handlePointRename, so currentName is safe to use.
   let resolvedDbId: number | undefined = dbPointIds.value.get(currentName);
-  if (!resolvedDbId) {
+  if (resolvedDbId === undefined) {
     // Fallback: fetch from backend by name in case dbPointIds is stale.
     try {
       const projectId = workflowState?.projectInfo?.projectId;
@@ -1190,7 +1190,7 @@ async function editPanelHandler(
       }
     } catch { /* ignore — will fail below */ }
   }
-  if (!resolvedDbId) {
+  if (resolvedDbId === undefined) {
     throw new Error(`Cannot find point id for "${currentName}"`);
   }
 
@@ -1204,7 +1204,7 @@ async function editPanelHandler(
   // bindings on this page) see the new values without a refetch.
   const updateEntry = (entry: any) => {
     if (entry === null || typeof entry !== 'object') return entry;
-    const id = entry.pointId || entry.id || entry.name;
+    const id = entry.pointId ?? entry.id ?? entry.name;
     if (id !== currentName) return entry;
     return {
       ...entry,
@@ -1249,7 +1249,7 @@ async function deletePanelHandler(name: string): Promise<void> {
       throw new Error(`Cannot find point id for "${name}": no project loaded`);
     }
     const all = await listCoordinatePoints(Number(projectId));
-    const match = all.find((p: any) => p.name === name || p.id === name);
+    const match = all.find((p: any) => p.name === name);
     if (match?.id !== undefined) {
       dbPointIds.value.set(name, match.id);
       resolvedDbId = match.id;

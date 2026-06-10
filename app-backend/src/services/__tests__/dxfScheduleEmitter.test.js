@@ -254,6 +254,41 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     }
   })
 
+  test('9g. Pass 1 right-anchors sub-tables when no polygon forces Pass 2', () => {
+    // Wide drawing zone, no polygon → Pass 1 succeeds at placing all sub-tables
+    // at original size. The right-anchor preference (commit d2b67b4) was
+    // originally scoped to Pass 2; this test pins the extended scope to Pass 1
+    // so the schedule lands on the right side of plain (non-split) layouts too.
+    //
+    // Captures logger.info so we can assert Pass 2's "split placed" log never
+    // fires — proving Pass 1 alone handled placement.
+    const features = makeFeatures(3)
+    const drawingZone = { x: 0, y: 0, width: 1000, height: 300 }
+    const calls = { info: [], warn: [], error: [] }
+    const logger = {
+      info:  (m) => calls.info.push(m),
+      warn:  (m) => calls.warn.push(m),
+      error: (m) => calls.error.push(m),
+    }
+    const result = emitScheduleOfAreasTopological({
+      surveyedFeatures: features,
+      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      fonts: h.fonts, helpers: h.helpers,
+      addText: h.addText, addLine: h.addLine, warn: h.warn,
+      logger,
+    })
+    expect(result.placedTables.length).toBeGreaterThan(0)
+    // Pass 2 must NOT have run — only Pass 1 placed.
+    expect(calls.info.some(m => m.includes('Pass 2 split placed'))).toBe(false)
+    // Every placed sub-table's center is right of the drawing-zone center
+    // (x = 500). Under the pre-fix left-pref topology scan, tables landed at
+    // x ≈ 14 (GRID_EDGE_MARGIN) → centerX < 500.
+    for (const t of result.placedTables) {
+      const centerX = t.x + t.width / 2
+      expect(centerX).toBeGreaterThan(500)
+    }
+  })
+
   test('9d. Pass 2 split never places a sub-table overlapping the parcel polygon (regression)', () => {
     // Maglas-density regression: with a non-convex polygon, computeWhitespaceZones
     // can return zones that extend slightly into the polygon due to its
@@ -543,7 +578,12 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     })
 
     const infoMsgs = calls.info.join(' ')
-    expect(infoMsgs).toMatch(/Layer 1.*topology/)
+    // Pre-2026-06-10 the schedule emitter always called findBlockPosition in
+    // Pass 1, which logged "Layer 1 (topology) ...". After the right-anchor
+    // extension to Pass 1, the gap-based right-pref scan handles the common
+    // case and findBlockPosition is only invoked as a fallback. Smoke-test
+    // logger plumbing via the new Pass 1 right-anchor log instead.
+    expect(infoMsgs).toMatch(/Pass 1 right-anchor/)
   })
 })
 

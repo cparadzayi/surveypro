@@ -143,9 +143,88 @@ export function emitScheduleOfAreasTopological({
     SCHEDULE_HEADER_HEIGHT_MM + layout.rowsPerTable * (rH / mm(1)),
   )
 
-  // 5. PASS 1 — topology placement at original size.
+  // Closed-polygon copy + whitespace-zone enumeration + right-edge sort are
+  // shared between Pass 1 (new right-anchor preference) and Pass 2 (existing
+  // split + shrink-to-fit). Hoisting them out of Pass 2 lets Pass 1 use the
+  // same gap topology without re-walking it.
+  //
+  // computeWhitespaceZones walks polygon edges via polygon[i] → polygon[i+1]
+  // for i < polygon.length - 1, missing the closing edge when the polygon
+  // isn't explicitly closed. The orchestrator's figurePolygon construction
+  // (dxfGenerator.js: ofResult.vertices.slice(0, -1)) strips the closing
+  // vertex, and unit-test polygons typically follow the same convention.
+  // Without an explicit closing edge, the strip-scanner reports spurious
+  // zones (e.g. a polygon fully covering the zone yields a "left strip"
+  // zone of the full width). Append a closing duplicate before passing in.
+  const closedPolygon = (polygon && polygon.length >= 3 &&
+    (polygon[0].x !== polygon[polygon.length - 1].x ||
+     polygon[0].y !== polygon[polygon.length - 1].y))
+    ? [...polygon, polygon[0]]
+    : polygon
+
+  const allZones = computeWhitespaceZones({
+    polygon:       closedPolygon,
+    mapBounds:     drawingZone,
+    buffer:        mm(POLYGON_BUFFER_MM),
+    tableMinWidth: subTableWidthG,
+    scanStep:      mm(SCAN_STEP_MM),
+  })
+  const seedFiltered = allZones.filter(g =>
+    !seedPlacedBlocks.some(b =>
+      rectanglesOverlap(g, b, mm(BLOCK_SPACING_MM))))
+
+  // Right-anchor preference: surveyors expect the Schedule of Areas on the
+  // RIGHT side of the page (next to endorsements). Sort gaps by right-edge x
+  // descending so both passes try the rightmost-fitting gap first.
+  const availableGaps = seedFiltered.slice().sort((a, b) => {
+    const aRight = a.x + a.width
+    const bRight = b.x + b.width
+    if (aRight !== bRight) return bRight - aRight   // right-edge x desc
+    return (b.width * b.height) - (a.width * a.height)   // area desc tiebreaker
+  })
+
+  logger.info(`[dxfScheduleEmitter] Pass 1 right-anchor: ${availableGaps.length} candidate gaps (sorted by right-edge x desc)`)
+
+  // 5. PASS 1 — right-preferred topology placement at original size.
+  //
+  // For each sub-table we walk `availableGaps` (right-edge sorted) and try to
+  // right-anchor at the gap's right edge. If that position is invalid (polygon
+  // overlap on the right side or seed block in the way) we fall back to the
+  // generic findBlockPosition for that single table — preserving the prior
+  // Pass 1 success rate on asymmetric polygons where the rightmost slot is
+  // blocked but a middle/left slot is free.
+  //
+  // Right-anchor commit d2b67b4 originally scoped this to Pass 2 only, but on
+  // plans where Pass 1 succeeds at original size (the common case) the
+  // schedule still landed on the left. Extending the right-pref to Pass 1
+  // makes "schedule on the right" hold across all placement paths.
   let placedPositions = []
   for (let i = 0; i < layout.numTables; i++) {
+    let placed = false
+    for (const g of availableGaps) {
+      if (g.width < subTableWidthG || g.height < subTableHeightG) continue
+      const rect = {
+        x:      g.x + g.width - subTableWidthG,
+        y:      g.y + g.height - subTableHeightG,
+        width:  subTableWidthG,
+        height: subTableHeightG,
+      }
+      const valid = isValidPosition({
+        rect,
+        polygon:      closedPolygon,
+        placedBlocks: [...seedPlacedBlocks, ...placedPositions],
+        buffer:       mm(POLYGON_BUFFER_MM),
+        blockSpacing: mm(BLOCK_SPACING_MM),
+      })
+      if (valid) {
+        placedPositions.push({ ...rect, rowCount: layout.rowsPerTable })
+        placed = true
+        break
+      }
+    }
+    if (placed) continue
+    // Fall back to the generic placer (preserves pre-fix Pass 1 success on
+    // asymmetric polygons where the rightmost slot is blocked).
     const position = findBlockPosition({
       block:         { width: subTableWidthG, height: subTableHeightG },
       mapBounds:     drawingZone,
@@ -165,7 +244,7 @@ export function emitScheduleOfAreasTopological({
     })
   }
 
-  // 6. PASS 2 — consolidation (only if PASS 1 didn't seat all tables).
+  // 6. PASS 2 — split-into-smaller (only if PASS 1 didn't seat all tables).
   if (placedPositions.length < layout.numTables) {
     // 2026-06-06: split-into-smaller replaces pre-2026-06-06 consolidation
     // (fewer-but-taller tables, which rarely succeeded because consolidated
@@ -173,53 +252,6 @@ export function emitScheduleOfAreasTopological({
     //   docs/superpowers/specs/2026-06-06-schedule-split-and-dynamic-columns-design.md
     placedPositions = []   // discard pass-1 positions; replay from scratch
     const headerHeightG = mm(SCHEDULE_HEADER_HEIGHT_MM)
-
-    // Enumerate whitespace gaps then exclude those overlapping seedPlacedBlocks.
-    // computeWhitespaceZones already excludes the polygon interior; seed
-    // exclusion is layered on top so we don't try to place a sub-table on
-    // the OFD table the orchestrator placed first.
-    // computeWhitespaceZones walks polygon edges via polygon[i] → polygon[i+1]
-    // for i < polygon.length - 1, missing the closing edge when the polygon
-    // isn't explicitly closed. The orchestrator's figurePolygon construction
-    // (dxfGenerator.js: ofResult.vertices.slice(0, -1)) strips the closing
-    // vertex, and unit-test polygons typically follow the same convention.
-    // Without an explicit closing edge, the strip-scanner reports spurious
-    // zones (e.g. a polygon fully covering the zone yields a "left strip"
-    // zone of the full width). Append a closing duplicate before passing in.
-    const closedPolygon = (polygon && polygon.length >= 3 &&
-      (polygon[0].x !== polygon[polygon.length - 1].x ||
-       polygon[0].y !== polygon[polygon.length - 1].y))
-      ? [...polygon, polygon[0]]
-      : polygon
-
-    const allZones = computeWhitespaceZones({
-      polygon:       closedPolygon,
-      mapBounds:     drawingZone,
-      buffer:        mm(POLYGON_BUFFER_MM),
-      tableMinWidth: subTableWidthG,
-      scanStep:      mm(SCAN_STEP_MM),
-    })
-    const seedFiltered = allZones.filter(g =>
-      !seedPlacedBlocks.some(b =>
-        rectanglesOverlap(g, b, mm(BLOCK_SPACING_MM))))
-
-    // 2026-06-06 right-anchor preference: surveyors expect the Schedule of
-    // Areas on the RIGHT side of the page (next to endorsements). Sort gaps
-    // by their right-edge x descending so planScheduleSplit picks the
-    // rightmost-fitting gap first. Capacity is the secondary sort key — a
-    // narrow right-side gap that fits only 3 rows still wins over a wide
-    // left gap that fits 100, but a right gap with no capacity falls past
-    // the next right-positioned candidate.
-    //
-    // planScheduleSplit's internal sort is by capacity descending, which
-    // would defeat the right-preference. We bypass it by pre-sorting AND
-    // wrapping each gap so planScheduleSplit's sort is a stable no-op.
-    const availableGaps = seedFiltered.slice().sort((a, b) => {
-      const aRight = a.x + a.width
-      const bRight = b.x + b.width
-      if (aRight !== bRight) return bRight - aRight   // right-edge x desc
-      return (b.width * b.height) - (a.width * a.height)   // area desc tiebreaker
-    })
 
     const { plan, residualRows } = planScheduleSplit({
       totalRows:    dataRows.length,

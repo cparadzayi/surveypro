@@ -176,12 +176,15 @@ interface PointInput {
 
 const props = defineProps<{
   points: PointInput[];
-  renameHandler: (oldName: string, newName: string) => Promise<void>;
+  editHandler: (
+    oldName: string,
+    patch: { name?: string; y?: number; x?: number; description?: string }
+  ) => Promise<void>;
 }>();
 
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'rename-complete', renames: Array<{ oldName: string; newName: string }>): void;
+  (e: 'edit-complete', payload: { oldName: string; patch: { name?: string; y?: number; x?: number; description?: string } }): void;
 }>();
 
 const searchQuery = ref('');
@@ -260,17 +263,18 @@ async function confirmRename() {
 
   isSaving.value = true;
   try {
-    await props.renameHandler(row.currentName, trimmed);
+    const patch = { name: trimmed };
+    await props.editHandler(row.currentName, patch);
     const prev = row.currentName;
     row.currentName = trimmed;
     row.originalName = trimmed;
     row.saved = true;
     savedCount.value++;
-    emit('rename-complete', [{ oldName: prev, newName: trimmed }]);
+    emit('edit-complete', { oldName: prev, patch });
     cancelModal();
     setTimeout(() => { row.saved = false; }, 4000);
   } catch (err: any) {
-    modalError.value = err?.message || 'Rename failed. Please try again.';
+    modalError.value = err?.message || 'Save failed. Please try again.';
   } finally {
     isSaving.value = false;
   }

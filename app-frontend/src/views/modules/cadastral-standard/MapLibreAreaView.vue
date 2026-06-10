@@ -82,6 +82,7 @@
         v-else
         :points="surveyPegPoints"
         :edit-handler="editPanelHandler"
+        :delete-handler="deletePanelHandler"
         @close="showRenamePanel = false"
         @edit-complete="(payload) => handleRenameComplete(payload.patch?.name ? [{ oldName: payload.oldName, newName: payload.patch.name }] : [])"
       />
@@ -1234,6 +1235,61 @@ async function editPanelHandler(
       });
     } catch (e) {
       console.warn('[PointEdit] Could not persist edit to workflow state:', e);
+    }
+  }
+}
+
+async function deletePanelHandler(name: string): Promise<void> {
+  // Resolve numeric DB id via dbPointIds (populated on mount from
+  // listCoordinatePoints). Fall back to a fresh fetch if the cache misses.
+  let resolvedDbId = dbPointIds.value.get(name);
+  if (resolvedDbId === undefined) {
+    const projectId = workflowState?.projectInfo?.projectId;
+    if (!projectId) {
+      throw new Error(`Cannot find point id for "${name}": no project loaded`);
+    }
+    const all = await listCoordinatePoints(Number(projectId));
+    const match = all.find((p: any) => p.name === name || p.id === name);
+    if (match?.id !== undefined) {
+      dbPointIds.value.set(name, match.id);
+      resolvedDbId = match.id;
+    } else {
+      throw new Error(`Cannot find point id for "${name}"`);
+    }
+  }
+  await deleteCoordinatePoint(resolvedDbId);
+
+  // Strip the point out of the workflow snapshot.
+  const stripEntry = (entry: any) => {
+    if (entry === null || typeof entry !== 'object') return true;
+    const id = entry.pointId ?? entry.id ?? entry.name;
+    return id !== name;
+  };
+  if (Array.isArray(workflowState?.adjustedCoordinates)) {
+    workflowState.adjustedCoordinates = workflowState.adjustedCoordinates.filter(stripEntry);
+  }
+  if (Array.isArray(workflowState?.importedPoints)) {
+    workflowState.importedPoints = workflowState.importedPoints.filter(stripEntry);
+  }
+
+  // Keep dbPointNames + dbPointIds in sync.
+  if (dbPointNames.value.has(name)) dbPointNames.value.delete(name);
+  if (dbPointIds.value.has(name))   dbPointIds.value.delete(name);
+
+  const projectId = workflowState?.projectInfo?.projectId;
+  if (projectId) {
+    try {
+      await api.patch(`/survey-projects/${projectId}/workflow`, {
+        step: 'calculations-part1',
+        action: 'update',
+        metadata: {
+          adjusted_coordinates: workflowState.adjustedCoordinates,
+          point_delete: { name, at: new Date().toISOString() },
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (e) {
+      console.warn('[PointDelete] Could not persist delete to workflow state:', e);
     }
   }
 }

@@ -156,9 +156,16 @@
             <p v-if="modalError" class="text-xs text-red-600">{{ modalError }}</p>
           </div>
 
-          <!-- Actions (Delete goes left, Cancel/Save go right; Delete wired in Task 3) -->
+          <!-- Actions (Delete goes left, Cancel/Save go right) -->
           <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
-            <span />
+            <button
+              @click="confirmDelete"
+              :disabled="isSaving || isDeleting"
+              class="px-4 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            >
+              <span v-if="isDeleting" class="animate-spin inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full"></span>
+              🗑 {{ isDeleting ? 'Deleting...' : 'Delete' }}
+            </button>
             <div class="flex gap-2">
               <button
                 @click="cancelModal"
@@ -217,6 +224,7 @@ const props = defineProps<{
     oldName: string,
     patch: { name?: string; y?: number; x?: number; description?: string }
   ) => Promise<void>;
+  deleteHandler: (name: string) => Promise<void>;
 }>();
 
 const emit = defineEmits<{
@@ -226,6 +234,7 @@ const emit = defineEmits<{
 
 const searchQuery = ref('');
 const isSaving = ref(false);
+const isDeleting = ref(false);
 const savedCount = ref(0);
 const rows = ref<PointRow[]>([]);
 
@@ -370,6 +379,23 @@ async function confirmEdit() {
     }
   } finally {
     isSaving.value = false;
+  }
+}
+
+async function confirmDelete() {
+  if (!modalRow.value || isDeleting.value || isSaving.value) return;
+  const row = modalRow.value;
+  isDeleting.value = true;
+  try {
+    await props.deleteHandler(row.currentName);
+    rows.value = rows.value.filter(r => r !== row);
+    cancelModal();
+  } catch (err: any) {
+    if (err?.message !== 'cancelled') {
+      modalError.value = err?.message || 'Delete failed. Please try again.';
+    }
+  } finally {
+    isDeleting.value = false;
   }
 }
 </script>

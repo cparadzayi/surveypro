@@ -826,7 +826,9 @@
           v-if="affectedParcelsConfirm"
           class="fixed inset-0 flex items-center justify-center"
           style="z-index: 99999;"
+          tabindex="-1"
           @click.self="rejectAffectedParcelsConfirm"
+          @keydown.escape="rejectAffectedParcelsConfirm"
         >
           <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
           <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
@@ -1274,7 +1276,11 @@ async function editPanelHandler(
     try {
       await requireAffectedParcelsConfirm(oldName, 'edit');
     } catch (e: any) {
-      throw new Error('cancelled');
+      // User cancel comes from rejectAffectedParcelsConfirm with message
+      // 'cancelled'. Other errors (e.g. listLandParcels network failure)
+      // must surface so the panel can show them instead of silently aborting.
+      if (e?.message === 'cancelled') throw new Error('cancelled');
+      throw e;
     }
   }
 
@@ -1366,7 +1372,8 @@ async function deletePanelHandler(name: string): Promise<void> {
   try {
     await requireAffectedParcelsConfirm(name, 'delete');
   } catch (e: any) {
-    throw new Error('cancelled');
+    if (e?.message === 'cancelled') throw new Error('cancelled');
+    throw e;
   }
 
   // ── unchanged Task 3 body: point lookup + deleteCoordinatePoint + workflow sync ──
@@ -4615,7 +4622,7 @@ async function autoSaveParcel(parcel: Parcel, closureError: number) {
  */
 async function recomputeAllParcels({ skipConfirm = false }: { skipConfirm?: boolean } = {}) {
   if (savedParcels.value.size === 0) {
-    alert('No parcels to recompute. Please draw and save parcels first.');
+    if (!skipConfirm) alert('No parcels to recompute. Please draw and save parcels first.');
     return;
   }
 
@@ -4699,12 +4706,14 @@ async function recomputeAllParcels({ skipConfirm = false }: { skipConfirm?: bool
     // Refresh parcels from database to show updated data
     await refreshParcelsFromDatabase();
     
-    alert(
-      `Recomputation complete!\n\n` +
-      `✅ Success: ${successCount} parcel(s)\n` +
-      `❌ Errors: ${errorCount} parcel(s)\n\n` +
-      `Please regenerate your PDFs to see the updated directions with banker's rounding.`
-    );
+    if (!skipConfirm) {
+      alert(
+        `Recomputation complete!\n\n` +
+        `✅ Success: ${successCount} parcel(s)\n` +
+        `❌ Errors: ${errorCount} parcel(s)\n\n` +
+        `Please regenerate your PDFs to see the updated directions with banker's rounding.`
+      );
+    }
     
   } catch (error) {
     console.error('[MapLibre] ❌ Recomputation failed:', error);

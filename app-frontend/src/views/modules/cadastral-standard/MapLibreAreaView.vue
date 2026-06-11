@@ -825,7 +825,7 @@
         <div
           v-if="affectedParcelsConfirm"
           class="fixed inset-0 flex items-center justify-center"
-          style="z-index: 99999;"
+          style="z-index: 999999;"
           tabindex="-1"
           @click.self="rejectAffectedParcelsConfirm"
           @keydown.escape="rejectAffectedParcelsConfirm"

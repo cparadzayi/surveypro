@@ -127,7 +127,7 @@
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">Y (north)</label>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Y (west)</label>
                 <input
                   v-model="modalY"
                   @keydown.escape="cancelModal"
@@ -137,7 +137,7 @@
                 />
               </div>
               <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">X (east)</label>
+                <label class="block text-xs font-medium text-gray-600 mb-1">X (south)</label>
                 <input
                   v-model="modalX"
                   @keydown.escape="cancelModal"

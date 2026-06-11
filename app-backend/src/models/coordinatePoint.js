@@ -264,17 +264,22 @@ export default {
     
     // Store geometry in project's native SRID (NOT forced to Lo 31)
     const useSrid = finalSrid || 22291;
+    // $2 and $3 carry explicit ::float8 casts so PostgreSQL can resolve their
+    // type even when both are null. Without the casts, a description-only
+    // update (y/x both null) fails with "could not determine data type of
+    // parameter $2" (42P08) — the `$2 IS NOT NULL` expression doesn't
+    // constrain the param type, and pg-node sends unknown-typed NULLs.
     const result = await dbConnection.query(
-      `UPDATE coordinate_points 
+      `UPDATE coordinate_points
        SET name = COALESCE($1, name),
-           geom = CASE WHEN $2 IS NOT NULL AND $3 IS NOT NULL 
-                  THEN ST_SetSRID(ST_MakePoint($2, $3), ${useSrid}) 
+           geom = CASE WHEN $2::float8 IS NOT NULL AND $3::float8 IS NOT NULL
+                  THEN ST_SetSRID(ST_MakePoint($2::float8, $3::float8), ${useSrid})
                   ELSE geom END,
            elevation = COALESCE($4, elevation),
            description = COALESCE($5, description),
            survey_date = COALESCE($6, survey_date),
            surveyor = COALESCE($7, surveyor)
-       WHERE id = $8 
+       WHERE id = $8
        RETURNING *`,
       [name, y, x, elevation, description, surveyDate, surveyor, id]
     )

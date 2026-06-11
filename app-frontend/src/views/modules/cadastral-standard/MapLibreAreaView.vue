@@ -1252,12 +1252,13 @@ async function findAffectedParcels(
 async function requireAffectedParcelsConfirm(
   pointName: string,
   intent: 'edit' | 'delete'
-): Promise<void> {
+): Promise<Array<{ id: number; stand: string; designation: string }>> {
   const parcels = await findAffectedParcels(pointName);
-  if (parcels.length === 0) return;
+  if (parcels.length === 0) return [];
   await new Promise<void>((resolve, reject) => {
     affectedParcelsConfirm.value = { pointName, parcels, intent, resolve, reject };
   });
+  return parcels;
 }
 
 async function editPanelHandler(
@@ -1272,9 +1273,14 @@ async function editPanelHandler(
     && patch.y === undefined
     && patch.x === undefined;
 
+  // Affected parcels list — captured here so we can pass it to
+  // recomputeAllParcels and avoid re-iterating every parcel on the page
+  // (a 210-parcel project takes ~15s of serial network round-trips).
+  let affectedParcels: Array<{ id: number; stand: string; designation: string }> = [];
+
   if (!onlyDescription) {
     try {
-      await requireAffectedParcelsConfirm(oldName, 'edit');
+      affectedParcels = await requireAffectedParcelsConfirm(oldName, 'edit');
     } catch (e: any) {
       // User cancel comes from rejectAffectedParcelsConfirm with message
       // 'cancelled'. Other errors (e.g. listLandParcels network failure)
@@ -1362,15 +1368,20 @@ async function editPanelHandler(
     }
   }
 
-  // Recompute once, at the end, for destructive changes only.
-  if (!onlyDescription) {
-    await recomputeAllParcels({ skipConfirm: true });
+  // Recompute only the parcels actually affected. If the affected list is
+  // empty we don't need to recompute anything — no parcel uses this point.
+  if (!onlyDescription && affectedParcels.length > 0) {
+    await recomputeAllParcels({
+      skipConfirm: true,
+      restrictToDesignations: new Set(affectedParcels.map(p => p.designation)),
+    });
   }
 }
 
 async function deletePanelHandler(name: string): Promise<void> {
+  let affectedParcels: Array<{ id: number; stand: string; designation: string }> = [];
   try {
-    await requireAffectedParcelsConfirm(name, 'delete');
+    affectedParcels = await requireAffectedParcelsConfirm(name, 'delete');
   } catch (e: any) {
     if (e?.message === 'cancelled') throw new Error('cancelled');
     throw e;
@@ -1426,7 +1437,12 @@ async function deletePanelHandler(name: string): Promise<void> {
     }
   }
 
-  await recomputeAllParcels({ skipConfirm: true });
+  if (affectedParcels.length > 0) {
+    await recomputeAllParcels({
+      skipConfirm: true,
+      restrictToDesignations: new Set(affectedParcels.map(p => p.designation)),
+    });
+  }
 }
 
 async function handlePointRename(payload: { oldName: string; newName: string }) {
@@ -4620,7 +4636,17 @@ async function autoSaveParcel(parcel: Parcel, closureError: number) {
  * Recompute all parcels with latest backend code
  * This updates existing parcels with new fields like directionDMS
  */
-async function recomputeAllParcels({ skipConfirm = false }: { skipConfirm?: boolean } = {}) {
+async function recomputeAllParcels({
+  skipConfirm = false,
+  restrictToDesignations,
+}: {
+  skipConfirm?: boolean;
+  // When set, only parcels whose designation is in this set are recomputed.
+  // Used by point-edit/delete handlers so a single edit doesn't re-compute
+  // every parcel on the page (a 210-parcel project takes ~15s of serial
+  // network round-trips).
+  restrictToDesignations?: Set<string>;
+} = {}) {
   if (savedParcels.value.size === 0) {
     if (!skipConfirm) alert('No parcels to recompute. Please draw and save parcels first.');
     return;
@@ -4634,15 +4660,20 @@ async function recomputeAllParcels({ skipConfirm = false }: { skipConfirm?: bool
     );
     if (!confirmed) return;
   }
-  
+
   isRecomputing.value = true;
   let successCount = 0;
   let errorCount = 0;
-  
+
   try {
-    console.log('[MapLibre] 🔧 Recomputing all parcels...');
-    
+    if (restrictToDesignations) {
+      console.log(`[MapLibre] 🔧 Recomputing ${restrictToDesignations.size} affected parcel(s)...`);
+    } else {
+      console.log('[MapLibre] 🔧 Recomputing all parcels...');
+    }
+
     for (const [designation, savedParcel] of savedParcels.value.entries()) {
+      if (restrictToDesignations && !restrictToDesignations.has(designation)) continue;
       try {
         // Get the Cape Lo points from metadata
         const points = savedParcel.metadata?.cape_lo_points || [];

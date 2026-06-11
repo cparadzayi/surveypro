@@ -1368,12 +1368,16 @@ async function editPanelHandler(
     }
   }
 
-  // Recompute only the parcels actually affected. If the affected list is
-  // empty we don't need to recompute anything — no parcel uses this point.
+  // Rebuild affected parcels: rewrite geom + cape_lo_points to reflect the
+  // edit. recomputeAllParcels would only refresh residuals using stale
+  // metadata, leaving the parcel geometry pointing at the OLD beacon coords.
   if (!onlyDescription && affectedParcels.length > 0) {
-    await recomputeAllParcels({
-      skipConfirm: true,
-      restrictToDesignations: new Set(affectedParcels.map(p => p.designation)),
+    await rebuildAffectedParcels(affectedParcels, {
+      kind: 'edit',
+      name: patch.name ?? oldName,
+      y: patch.y,
+      x: patch.x,
+      description: patch.description,
     });
   }
 }
@@ -1438,10 +1442,7 @@ async function deletePanelHandler(name: string): Promise<void> {
   }
 
   if (affectedParcels.length > 0) {
-    await recomputeAllParcels({
-      skipConfirm: true,
-      restrictToDesignations: new Set(affectedParcels.map(p => p.designation)),
-    });
+    await rebuildAffectedParcels(affectedParcels, { kind: 'delete', name });
   }
 }
 
@@ -4630,6 +4631,104 @@ async function autoSaveParcel(parcel: Parcel, closureError: number) {
   } finally {
     isSaving.value = false;
   }
+}
+
+/**
+ * Rebuild affected parcels after a point edit or delete.
+ *
+ * Unlike recomputeAllParcels (which only refreshes residuals using stale
+ * cape_lo_points), this rewrites each affected parcel's geometry and
+ * cape_lo_points to reflect the point mutation, then re-runs the area
+ * computation. Mirrors the vertex-edit commit path.
+ *
+ * On edit: replaces the matching point's y/x/description in cape_lo_points.
+ * On delete: removes the matching point. Parcels left with <3 vertices
+ * are skipped with a warning — surveyor must resolve manually.
+ */
+async function rebuildAffectedParcels(
+  affectedParcels: Array<{ id: number; stand: string; designation: string }>,
+  mutation:
+    | { kind: 'edit'; name: string; y?: number; x?: number; description?: string }
+    | { kind: 'delete'; name: string }
+): Promise<void> {
+  if (affectedParcels.length === 0) return;
+
+  console.log(`[PointEdit] 🔧 Rebuilding ${affectedParcels.length} affected parcel(s) for ${mutation.kind} of "${mutation.name}"...`);
+
+  for (const af of affectedParcels) {
+    try {
+      const parcel = savedParcels.value.get(af.designation);
+      if (!parcel) {
+        console.warn(`[PointEdit] Cannot rebuild ${af.designation}: not in savedParcels`);
+        continue;
+      }
+
+      const existingPoints: Array<{ id: string; y: number; x: number; status?: string; description?: string }> =
+        parcel.metadata?.cape_lo_points || [];
+
+      const newPoints =
+        mutation.kind === 'edit'
+          ? existingPoints.map(p => {
+              if (p.id !== mutation.name) return p;
+              return {
+                ...p,
+                ...(mutation.y !== undefined && { y: mutation.y }),
+                ...(mutation.x !== undefined && { x: mutation.x }),
+                ...(mutation.description !== undefined && { description: mutation.description }),
+              };
+            })
+          : existingPoints.filter(p => p.id !== mutation.name);
+
+      if (newPoints.length < 3) {
+        console.warn(`[PointEdit] Skipping ${af.designation}: only ${newPoints.length} vertices remain after ${mutation.kind}`);
+        continue;
+      }
+
+      const areaResult = await areaCompute({
+        points: newPoints.map(p => ({ y: p.y, x: p.x, id: p.id, name: p.id })),
+        includeResiduals: true,
+        roundMetersDecimals: 2,
+        roundHectaresDecimals: 4,
+      });
+
+      const closureError = Math.sqrt(
+        (areaResult.residuals?.sumDy || 0) ** 2 + (areaResult.residuals?.sumDx || 0) ** 2
+      );
+
+      const coordinates = newPoints.map(p => [p.x, p.y]);
+      coordinates.push(coordinates[0]);
+      const geometry = {
+        type: 'Polygon',
+        coordinates: [coordinates],
+        crs: { type: 'name', properties: { name: 'EPSG:22291' } },
+      } as any;
+
+      const perimeter = newPoints.reduce((sum, p, i) => {
+        const next = newPoints[(i + 1) % newPoints.length];
+        return sum + Math.sqrt((next.y - p.y) ** 2 + (next.x - p.x) ** 2);
+      }, 0);
+      const closureRatio = perimeter / (closureError || 0.001);
+
+      const updatedMetadata = {
+        ...parcel.metadata,
+        points_count: newPoints.length,
+        closure_ratio: `1:${Math.round(closureRatio).toLocaleString()}`,
+        closure_error_m: closureError,
+        residuals: areaResult.residuals,
+        cape_lo_points: newPoints.map(p => ({
+          id: p.id, y: p.y, x: p.x, status: p.status, description: p.description,
+        })),
+        point_edit_rebuilt_at: new Date().toISOString(),
+      };
+
+      await updateLandParcel(parcel.id, { geom: geometry, metadata: updatedMetadata });
+      console.log(`[PointEdit] ✅ Rebuilt ${af.designation}`);
+    } catch (err) {
+      console.error(`[PointEdit] ❌ Failed to rebuild ${af.designation}:`, err);
+    }
+  }
+
+  await refreshParcelsFromDatabase();
 }
 
 /**

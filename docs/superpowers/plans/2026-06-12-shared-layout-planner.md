@@ -216,14 +216,14 @@ async function extractTextPositions(pdfBuffer) {
 
 describe('PDF text+position snapshot', () => {
   test('minimal fixture', async () => {
-    const { buffer } = await generateGeoPDF(sampleMinimalPlan, fakeLogger);
-    const items = await extractTextPositions(buffer);
+    const { pdfBuffer } = await generateGeoPDF(sampleMinimalPlan, fakeLogger);
+    const items = await extractTextPositions(pdfBuffer);
     expect(items).toMatchSnapshot();
   }, 30000);
 
   test('realistic fixture', async () => {
-    const { buffer } = await generateGeoPDF(sampleRealisticPlan, fakeLogger);
-    const items = await extractTextPositions(buffer);
+    const { pdfBuffer } = await generateGeoPDF(sampleRealisticPlan, fakeLogger);
+    const items = await extractTextPositions(pdfBuffer);
     expect(items).toMatchSnapshot();
   }, 30000);
 });

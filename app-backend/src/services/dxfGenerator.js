@@ -1754,7 +1754,7 @@ export function generateDXF(options, logger) {
     metadata,
     parcels:           { type: 'FeatureCollection', features: surveyedFeatures },
     outsideFigureData,
-    beacons:           { type: 'FeatureCollection', features: [] },
+    beacons:           beacons || { type: 'FeatureCollection', features: [] },
     mapBounds:         { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt },
     mapFeatureBounds:  { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt, pdfPoints: polyPtsForPlanner },
     scale:             { value: S, label: `1:${S}` },
@@ -1784,14 +1784,14 @@ export function generateDXF(options, logger) {
       outsideFigureData, bottomZoneFonts, mm, centralMeridian, TB);
   }
 
+  // Schedule emitter operates with its own internal sizing (DXF-specific font
+  // metrics differ slightly from PDF), so give it the full content area as
+  // the drawing zone and let it find space using Pass 1/2/3. Other emitted
+  // blocks (OFD, SG, statement, beacon-desc) are passed as seed obstacles so
+  // the schedule respects their planner-assigned positions.
   emitScheduleOfAreasTopological({
     surveyedFeatures,
-    drawingZone: {
-      x: schedPos.x,
-      y: schedPos.y - schedPos.height,   // bottom of zone in south-up = top - height
-      width: schedPos.width,
-      height: schedPos.height,
-    },
+    drawingZone: contentArea,
     polygon: figurePolygon,
     sheetSize,
     fonts: bottomZoneFonts,
@@ -1800,13 +1800,25 @@ export function generateDXF(options, logger) {
       nextLargerSheet, SCHEDULE_HEADER_HEIGHT_MM, columnWidthsG: scheduleColumnWidthsG,
     },
     addText, addLine, warn, logger,
-    seedPlacedBlocks: [],
+    seedPlacedBlocks: [
+      ...bottomZoneObstacles,
+      { name: 'ofd',       x: ofdPos.x,       y: ofdPos.y - ofdPos.height,             width: ofdPos.width,       height: ofdPos.height },
+      { name: 'beacon',    x: beaconPos.x,    y: beaconPos.y - beaconPos.height,       width: beaconPos.width,    height: beaconPos.height },
+      { name: 'statement', x: statementPos.x, y: statementPos.y - statementPos.height, width: statementPos.width, height: statementPos.height },
+      { name: 'sg',        x: sgPos.x,        y: sgPos.y - sgPos.height,               width: sgPos.width,        height: sgPos.height },
+    ],
   });
 
   if ((options.beaconGroups || []).length) {
+    // Planner sizes beacons from the polygon-feature collection; DXF actually
+    // emits from pre-grouped beaconGroups whose count may differ. Size the
+    // beacon zone for the actual groups (header + separator + 1 row per group)
+    // so the emitter doesn't truncate. Keep the planner-assigned position.
+    const beaconGroupCount = options.beaconGroups.length;
+    const beaconActualHeight = mm(4 * 1.4 + 1 + beaconGroupCount * 3.5 + 2);
     emitBeaconDescriptions(addBeaconDescription, TB,
       { x: beaconPos.x, y: beaconPos.y },
-      { width: beaconPos.width, height: beaconPos.height },
+      { width: beaconPos.width, height: Math.max(beaconPos.height, beaconActualHeight) },
       options.beaconGroups);
   }
 

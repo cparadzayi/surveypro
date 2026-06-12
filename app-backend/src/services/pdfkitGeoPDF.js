@@ -7838,7 +7838,7 @@ function findOptimalPosition(
  * Includes: Schedule of Areas, Outside Figure Data, Beacon Description, Survey Statement, Scale Bar, North Arrow
  * @param {Array} tickMarkBounds - Array of tick mark reserved regions that blocks should avoid
  */
-function calculateBlockPositions(
+export function calculateBlockPositions(
   doc,
   metadata,
   parcels,

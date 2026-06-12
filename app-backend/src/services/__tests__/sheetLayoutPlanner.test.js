@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals';
-import { planSheetLayout } from '../../../../app-shared/sheetLayoutPlanner.js';
+import { planSheetLayout } from '../sheetLayoutPlanner.js';
 import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} };

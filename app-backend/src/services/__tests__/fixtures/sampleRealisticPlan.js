@@ -4,7 +4,14 @@ const stands = Array.from({ length: 12 }, (_, i) => {
   return {
     type: 'Feature',
     geometry: { type: 'Polygon', coordinates: [[[y0, x0], [y0 + 75, x0], [y0 + 75, x0 + 65], [y0, x0 + 65], [y0, x0]]] },
-    properties: { stand: String(i + 100), area_m2: 4875, diagram: `SG-${200 + i}`, deed_number: `D-${i + 1}`, deed_date: `2026-${String((i % 12) + 1).padStart(2, '0')}-01` },
+    properties: {
+      stand: String(i + 100),
+      area_m2: 4875,
+      diagramNumber: `SG-${200 + i}`,
+      deedNumber: `D-${i + 1}`,
+      deedDate: `2026-${String((i % 12) + 1).padStart(2, '0')}-01`,
+      surveyorGeneral: 'B. Jones',
+    },
   };
 });
 

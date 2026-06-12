@@ -1,3 +1,4 @@
+// Run with `npm test` (Jest 30 ESM needs --experimental-vm-modules; npx jest will fail).
 import { describe, test, expect } from '@jest/globals';
 import { generateDXF } from '../dxfGenerator.js';
 import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';

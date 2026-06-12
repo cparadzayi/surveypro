@@ -390,8 +390,15 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-102",
-    "x": -50446.5,
+    "text": "D-2",
+    "x": -50393.7,
+    "y": -2200041.3,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50350.2,
     "y": -2200041.3,
   },
   {
@@ -439,8 +446,15 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-101",
-    "x": -50446.5,
+    "text": "D-1",
+    "x": -50393.7,
+    "y": -2200028.1,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50350.2,
     "y": -2200028.1,
   },
   {
@@ -573,7 +587,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
     "h": 6.2,
     "layer": "TITLE_BLOCK",
     "text": "GENERAL",
-    "x": -50316,
+    "x": -50279,
     "y": -2200003.6,
   },
   {
@@ -615,21 +629,21 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
     "h": 6.2,
     "layer": "TITLE_BLOCK",
     "text": "DATE",
-    "x": -50357.6,
+    "x": -50339.1,
     "y": -2199996.1,
   },
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
     "text": "SURVEYOR-",
-    "x": -50319.7,
+    "x": -50282.7,
     "y": -2199996.1,
   },
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "20",
-    "x": -50379.7,
+    "text": "DEED",
+    "x": -50361.2,
     "y": -2199988.7,
   },
   {
@@ -1571,8 +1585,15 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-211",
-    "x": -50546.5,
+    "text": "20",
+    "x": -50495.6,
+    "y": -2200191.3,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200191.3,
   },
   {
@@ -1606,8 +1627,15 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-210",
-    "x": -50546.5,
+    "text": "20",
+    "x": -50495.6,
+    "y": -2200178.1,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200178.1,
   },
   {
@@ -1627,8 +1655,15 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-209",
-    "x": -50546.5,
+    "text": "20",
+    "x": -50495.6,
+    "y": -2200164.8,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200164.8,
   },
   {
@@ -1649,7 +1684,14 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
     "h": 6.2,
     "layer": "TITLE_BLOCK",
     "text": "40",
-    "x": -50546.5,
+    "x": -50493.7,
+    "y": -2200151.6,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200151.6,
   },
   {
@@ -1676,8 +1718,15 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-207",
-    "x": -50546.5,
+    "text": "D-8",
+    "x": -50493.7,
+    "y": -2200138.4,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200138.4,
   },
   {
@@ -1697,8 +1746,15 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-206",
-    "x": -50546.5,
+    "text": "D-7",
+    "x": -50493.7,
+    "y": -2200125.2,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200125.2,
   },
   {
@@ -1718,8 +1774,15 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-205",
-    "x": -50546.5,
+    "text": "D-6",
+    "x": -50493.7,
+    "y": -2200111.9,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200111.9,
   },
   {
@@ -1739,8 +1802,15 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-204",
-    "x": -50546.5,
+    "text": "D-5",
+    "x": -50493.7,
+    "y": -2200098.7,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200098.7,
   },
   {
@@ -1760,8 +1830,15 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-203",
-    "x": -50546.5,
+    "text": "D-4",
+    "x": -50493.7,
+    "y": -2200085.5,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200085.5,
   },
   {
@@ -1781,8 +1858,15 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-202",
-    "x": -50546.5,
+    "text": "D-3",
+    "x": -50493.7,
+    "y": -2200072.2,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200072.2,
   },
   {
@@ -1802,8 +1886,15 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-201",
-    "x": -50546.5,
+    "text": "D-2",
+    "x": -50493.7,
+    "y": -2200059,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200059,
   },
   {
@@ -1851,8 +1942,15 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "SG-200",
-    "x": -50546.5,
+    "text": "D-1",
+    "x": -50493.7,
+    "y": -2200045.8,
+  },
+  {
+    "h": 6.2,
+    "layer": "TITLE_BLOCK",
+    "text": "20",
+    "x": -50450.2,
     "y": -2200045.8,
   },
   {
@@ -1943,7 +2041,7 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
     "h": 6.2,
     "layer": "TITLE_BLOCK",
     "text": "GENERAL",
-    "x": -50416,
+    "x": -50379,
     "y": -2200021.3,
   },
   {
@@ -2006,21 +2104,21 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
     "h": 6.2,
     "layer": "TITLE_BLOCK",
     "text": "DATE",
-    "x": -50457.6,
+    "x": -50439.1,
     "y": -2200013.9,
   },
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
     "text": "SURVEYOR-",
-    "x": -50419.7,
+    "x": -50382.7,
     "y": -2200013.9,
   },
   {
     "h": 6.2,
     "layer": "TITLE_BLOCK",
-    "text": "20",
-    "x": -50479.7,
+    "text": "DEED",
+    "x": -50461.2,
     "y": -2200006.4,
   },
   {

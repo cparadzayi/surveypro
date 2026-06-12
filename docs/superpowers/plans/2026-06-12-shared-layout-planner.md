@@ -283,7 +283,7 @@ describe('DXF entity-list snapshot', () => {
 - [ ] **Step 6: Capture baseline snapshots.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="snapshot" -u
+cd app-backend && npm test -- --testPathPatterns="snapshot" -u
 ```
 
 Expected: 4 tests pass (2 PDF + 2 DXF), 4 snapshot files written under `__snapshots__/`. Inspect the snapshots to make sure positions look sane (non-empty, no NaN, no duplicate (x,y) collisions).
@@ -291,7 +291,7 @@ Expected: 4 tests pass (2 PDF + 2 DXF), 4 snapshot files written under `__snapsh
 - [ ] **Step 7: Run snapshot tests a second time to confirm stability.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="snapshot"
+cd app-backend && npm test -- --testPathPatterns="snapshot"
 ```
 
 Expected: 4 passed, 0 snapshot changes. If a snapshot drifts on a clean second run, generation is non-deterministic — must be fixed before proceeding (most likely cause: a timestamp in metadata; remove `metadata.generatedAt` or similar before extraction).
@@ -464,7 +464,7 @@ describe('planSheetLayout — measureText injection', () => {
 - [ ] **Step 3: Run the tests to confirm they fail.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="sheetLayoutPlanner"
+cd app-backend && npm test -- --testPathPatterns="sheetLayoutPlanner"
 ```
 
 Expected: all tests FAIL with "planSheetLayout: not implemented".
@@ -571,7 +571,7 @@ Use search-and-replace on the planner file. (`ENDORSEMENT_BLOCK` is also importe
 - [ ] **Step 4: Run the planner unit tests.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="sheetLayoutPlanner"
+cd app-backend && npm test -- --testPathPatterns="sheetLayoutPlanner"
 ```
 
 Expected: all planner tests PASS. If a test fails on a missing top-level helper, the issue is Step 2 — copy that helper too.
@@ -579,7 +579,7 @@ Expected: all planner tests PASS. If a test fails on a missing top-level helper,
 - [ ] **Step 5: Run the PDF snapshot test to confirm PDF is unchanged.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="pdfkitGeoPDF.snapshot"
+cd app-backend && npm test -- --testPathPatterns="pdfkitGeoPDF.snapshot"
 ```
 
 Expected: 2 tests pass, 0 snapshot changes. (The PDF still uses the old function — we have not flipped the switch — but this confirms we have not accidentally broken anything in `pdfkitGeoPDF.js` while collecting helpers.)
@@ -655,7 +655,7 @@ If `calculateTitleBlockHeight` and `rectangleOverlapsPolygon` are no longer refe
 - [ ] **Step 4: Run the PDF snapshot test.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="pdfkitGeoPDF.snapshot"
+cd app-backend && npm test -- --testPathPatterns="pdfkitGeoPDF.snapshot"
 ```
 
 Expected: 2 tests pass, **zero snapshot changes**.
@@ -667,7 +667,7 @@ If the diff is non-empty, the lift in Task 3 introduced drift. Common culprits:
 - [ ] **Step 5: Run the full PDF and DXF snapshot suite to confirm nothing collateral broke.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="snapshot"
+cd app-backend && npm test -- --testPathPatterns="snapshot"
 ```
 
 Expected: 4 tests pass, 0 snapshot changes.
@@ -712,7 +712,7 @@ describe('planSheetLayout — endorsement slot', () => {
 - [ ] **Step 2: Run the test to confirm it fails.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="sheetLayoutPlanner" -t "endorsement slot"
+cd app-backend && npm test -- --testPathPatterns="sheetLayoutPlanner" -t "endorsement slot"
 ```
 
 Expected: FAIL with "Cannot read properties of undefined (reading 'x')" or similar.
@@ -737,7 +737,7 @@ Then add `endorsement` to the returned object.
 - [ ] **Step 4: Run the test to confirm it passes.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="sheetLayoutPlanner" -t "endorsement slot"
+cd app-backend && npm test -- --testPathPatterns="sheetLayoutPlanner" -t "endorsement slot"
 ```
 
 Expected: PASS.
@@ -775,7 +775,7 @@ drawEndorsementBlock(doc, blockPositions.endorsement);
 - [ ] **Step 7: Run the PDF snapshot test.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="pdfkitGeoPDF.snapshot"
+cd app-backend && npm test -- --testPathPatterns="pdfkitGeoPDF.snapshot"
 ```
 
 Expected: 2 tests pass, **zero snapshot changes** (endorsement renders at the same coordinates it did before — the planner returns the same values that `drawEndorsementBlock` was computing inline).
@@ -843,7 +843,7 @@ describe('planSheetLayout — closed-polygon validation guard', () => {
 - [ ] **Step 2: Run the test to confirm it fails (or passes by luck).**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="sheetLayoutPlanner" -t "closed-polygon"
+cd app-backend && npm test -- --testPathPatterns="sheetLayoutPlanner" -t "closed-polygon"
 ```
 
 Expected: usually FAIL — the open polygon produces a different titleBlock placement because the missing closing edge fails to register as an obstacle. If by luck it passes (because the bug doesn't manifest at this particular polygon shape), proceed to Step 3 anyway; the guard is the correct invariant to encode.
@@ -877,7 +877,7 @@ Only the destructuring line and any new `polyPtsClosed` references should appear
 - [ ] **Step 4: Run the test to confirm it passes.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="sheetLayoutPlanner" -t "closed-polygon"
+cd app-backend && npm test -- --testPathPatterns="sheetLayoutPlanner" -t "closed-polygon"
 ```
 
 Expected: PASS.
@@ -885,7 +885,7 @@ Expected: PASS.
 - [ ] **Step 5: Run the PDF snapshot test to confirm no regression.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="pdfkitGeoPDF.snapshot"
+cd app-backend && npm test -- --testPathPatterns="pdfkitGeoPDF.snapshot"
 ```
 
 Expected: 2 tests pass, **zero snapshot changes**. The two existing fixtures pass closed polygons, so this guard is a no-op for them — only the new open-polygon test invokes the auto-close.
@@ -1034,7 +1034,7 @@ The module's final exports are `emitStatement`, `emitSGBox`, `emitOFDTable`, `em
 - [ ] **Step 4: Run the DXF snapshot test.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="dxfGenerator.snapshot"
+cd app-backend && npm test -- --testPathPatterns="dxfGenerator.snapshot"
 ```
 
 Expected: 2 tests **fail** with snapshot mismatch. The expected diffs are: OFD, statement, SG box, beacon description, schedule positions shift to PDF-determined values. Read the diff carefully — every shift should be reasonable (within the drawing area, not negative, not overlapping the polygon).
@@ -1042,7 +1042,7 @@ Expected: 2 tests **fail** with snapshot mismatch. The expected diffs are: OFD, 
 - [ ] **Step 5: Update the DXF snapshots intentionally.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="dxfGenerator.snapshot" -u
+cd app-backend && npm test -- --testPathPatterns="dxfGenerator.snapshot" -u
 ```
 
 Expected: 2 tests pass, 2 snapshots updated.
@@ -1050,7 +1050,7 @@ Expected: 2 tests pass, 2 snapshots updated.
 - [ ] **Step 6: Run the DXF unit tests to confirm nothing else broke.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="dxf"
+cd app-backend && npm test -- --testPathPatterns="dxf"
 ```
 
 Expected: all DXF tests pass except possibly the `dxfBottomZoneEmitter.test.js` tests for `placeBottomZoneBlocks`, `sizeStatement`, etc. (those tests reference now-deleted code).
@@ -1062,7 +1062,7 @@ In `app-backend/src/services/__tests__/dxfBottomZoneEmitter.test.js`, delete the
 - [ ] **Step 8: Run the DXF unit tests again.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="dxf"
+cd app-backend && npm test -- --testPathPatterns="dxf"
 ```
 
 Expected: all DXF tests pass. Note the new test count.
@@ -1165,7 +1165,7 @@ emitEndorsementBlock(addText, addLine,
 - [ ] **Step 3: Run the DXF snapshot test.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="dxfGenerator.snapshot"
+cd app-backend && npm test -- --testPathPatterns="dxfGenerator.snapshot"
 ```
 
 Expected: 2 tests **fail** with snapshot mismatch — new TEXT entities ("ENDORSEMENTS", "No.", "STATEMENT", "Date", "Surveyor-Gen.", default-row content) appear in the snapshot.
@@ -1173,7 +1173,7 @@ Expected: 2 tests **fail** with snapshot mismatch — new TEXT entities ("ENDORS
 - [ ] **Step 4: Update the DXF snapshots intentionally.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="dxfGenerator.snapshot" -u
+cd app-backend && npm test -- --testPathPatterns="dxfGenerator.snapshot" -u
 ```
 
 Expected: 2 tests pass, snapshots updated.
@@ -1181,7 +1181,7 @@ Expected: 2 tests pass, snapshots updated.
 - [ ] **Step 5: Confirm full DXF suite passes.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="dxf"
+cd app-backend && npm test -- --testPathPatterns="dxf"
 ```
 
 Expected: all DXF tests pass.
@@ -1274,7 +1274,7 @@ describe('PDF ↔ DXF parity', () => {
 - [ ] **Step 2: Run the parity test.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="parity"
+cd app-backend && npm test -- --testPathPatterns="parity"
 ```
 
 Expected: 2 tests pass. (Both calls use the same planner with the same measurer, so positions must agree — failure means determinism is broken in the planner.)
@@ -1282,7 +1282,7 @@ Expected: 2 tests pass. (Both calls use the same planner with the same measurer,
 - [ ] **Step 3: Run the full snapshot suite as a final sanity check.**
 
 ```bash
-cd app-backend && npx jest --testPathPatterns="snapshot|parity|sheetLayout"
+cd app-backend && npm test -- --testPathPatterns="snapshot|parity|sheetLayout"
 ```
 
 Expected: all tests pass, 0 snapshot changes from this task.
@@ -1301,7 +1301,7 @@ git commit -m "test(3-v5): PDF↔DXF block-position parity"
 After Task 9, run the full backend test suite to confirm no other tests broke:
 
 ```bash
-cd app-backend && npx jest
+cd app-backend && npm test --
 ```
 
 Expected: all tests pass (modulo the 30 pre-existing failures in `scaleSelector.test.js` + `si727LayoutCalculator.test.js`, which are unrelated to this sub-project).

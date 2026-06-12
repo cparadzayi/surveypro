@@ -1,3 +1,4 @@
+// Run with `npm test` (Jest 30 ESM needs --experimental-vm-modules; npx jest will fail).
 import { describe, test, expect } from '@jest/globals';
 import { generateGeoPDF } from '../pdfkitGeoPDF.js';
 import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
@@ -7,7 +8,11 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} };
 
 async function extractTextPositions(pdfBuffer) {
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(pdfBuffer), useSystemFonts: false });
+  const loadingTask = pdfjs.getDocument({
+    data: new Uint8Array(pdfBuffer),
+    useSystemFonts: false,
+    verbosity: 0,
+  });
   const pdf = await loadingTask.promise;
   const items = [];
   for (let p = 1; p <= pdf.numPages; p++) {

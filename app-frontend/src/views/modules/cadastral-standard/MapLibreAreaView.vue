@@ -1712,8 +1712,13 @@ function handleRenameComplete(renames: Array<{ oldName: string; newName: string 
       }))
   };
 
-  // Assigning a new object triggers the watcher → setData → map redraws labels
+  // Update the ref so any other observers see the new value, but ALSO call
+  // setData directly. The watcher fires on the next tick, which can race
+  // with refreshParcelsFromDatabase's tile re-render and silently no-op —
+  // the direct setData call here is the reliable refresh.
   livePegGeojson.value = newGeojson;
+  const src = map.getSource('survey-pegs') as maplibregl.GeoJSONSource | undefined;
+  if (src) src.setData(newGeojson);
 
   console.log(`[PointRename] ${renames.length} rename(s) complete. Map labels updated immediately.`);
 }

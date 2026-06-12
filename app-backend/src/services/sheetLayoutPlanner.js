@@ -64,12 +64,24 @@ export function planSheetLayout(args) {
     throw new Error('Scale parameter is required with value and label properties');
   }
 
+  // Ensure the polygon is explicitly closed before edge-walk validation.
+  // An open polygon (last vertex ≠ first) causes rectangleOverlapsPolygon to
+  // silently miss the closing edge, producing spurious whitespace zones at the
+  // open boundary. Reference: 3-v3 sweep memory + dxfScheduleEmitter Pass 2.
+  let polyPtsClosed = polyPts;
+  if (polyPts && polyPts.length >= 3) {
+    const first = polyPts[0], last = polyPts[polyPts.length - 1];
+    if (first.x !== last.x || first.y !== last.y) {
+      polyPtsClosed = [...polyPts, { x: first.x, y: first.y }];
+    }
+  }
+
   const doc = makeMeasureProxy(measureText);
   const blockPositions = calculateBlockPositions(
     doc, metadata, parcels, outsideFigureData, beacons,
     mapBounds, mapFeatureBounds, logger, scale, extent,
     tickMarkBounds, zOrderCollisionRegistry,
-    figureBounds, polyPts,
+    figureBounds, polyPtsClosed,
   );
 
   // Endorsement block — fixed right-margin position. Mirrors the inline

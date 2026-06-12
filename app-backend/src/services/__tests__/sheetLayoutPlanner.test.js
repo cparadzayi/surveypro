@@ -96,3 +96,42 @@ describe('planSheetLayout — endorsement slot', () => {
     expect(r.endorsement.height).toBeCloseTo(150, 0);
   });
 });
+
+describe('planSheetLayout — closed-polygon validation guard', () => {
+  test('an open polygon is auto-closed before placement validation', () => {
+    // Square polygon WITHOUT explicit closing vertex.
+    const openSquare = [
+      { x: 100, y: 100 }, { x: 500, y: 100 },
+      { x: 500, y: 400 }, { x: 100, y: 400 },
+    ];
+    const closedSquare = [...openSquare, { x: 100, y: 100 }];
+
+    const baseArgs = {
+      metadata: sampleMinimalPlan.metadata,
+      parcels: sampleMinimalPlan.parcels,
+      outsideFigureData: sampleMinimalPlan.outsideFigureData,
+      beacons: sampleMinimalPlan.beacons,
+      mapBounds: A2_MAP_BOUNDS,
+      scale: sampleMinimalPlan.scale,
+      extent: { minX: 50000, maxX: 50100, minY: 2200000, maxY: 2200060 },
+      measureText: fakeMeasure,
+      logger: fakeLogger,
+    };
+
+    const rOpen = planSheetLayout({
+      ...baseArgs,
+      mapFeatureBounds: { x: 100, y: 100, width: 400, height: 300, pdfPoints: openSquare },
+      polyPts: openSquare,
+    });
+    const rClosed = planSheetLayout({
+      ...baseArgs,
+      mapFeatureBounds: { x: 100, y: 100, width: 400, height: 300, pdfPoints: closedSquare },
+      polyPts: closedSquare,
+    });
+
+    // Both inputs must produce identical placements — guard auto-closes the polygon
+    // so edge-walk validation sees the same shape either way.
+    expect(rOpen.titleBlock.x).toBeCloseTo(rClosed.titleBlock.x, 1);
+    expect(rOpen.titleBlock.y).toBeCloseTo(rClosed.titleBlock.y, 1);
+  });
+});

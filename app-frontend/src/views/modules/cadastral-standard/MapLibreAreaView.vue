@@ -1685,7 +1685,13 @@ async function repairParcelBeaconNames() {
 }
 
 function handleRenameComplete(renames: Array<{ oldName: string; newName: string }>) {
-  if (!map || !map.isStyleLoaded()) return;
+  // Note: do NOT gate on map.isStyleLoaded(). refreshParcelsFromDatabase
+  // calls setData on the parcels source which briefly flips that flag false
+  // — and we get called from editPanelHandler immediately after, so the
+  // gate was silently skipping the marker refresh and the dot stayed at
+  // its old position until the next hard reload. setData on the survey-pegs
+  // source itself is safe whether the overall style is reloading or not.
+  if (!map) return;
 
   const loZone = workflowState?.projectInfo?.centralMeridian || 31;
   const rawCoords = (workflowState?.adjustedCoordinates ?? []) as any[];

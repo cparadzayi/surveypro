@@ -1789,9 +1789,13 @@ export function generateDXF(options, logger) {
   // the drawing zone and let it find space using Pass 1/2/3. Other emitted
   // blocks (OFD, SG, statement, beacon-desc) are passed as seed obstacles so
   // the schedule respects their planner-assigned positions.
+  // 3-v6: Pass the planner's exact schedule top-left as fixedPosition. The
+  // emitter skips Pass 1/2/3 search and emits side-by-side sub-tables at the
+  // planner's position — guarantees PDF↔DXF schedule-position parity.
   emitScheduleOfAreasTopological({
     surveyedFeatures,
-    drawingZone: contentArea,
+    drawingZone: contentArea,    // unused when fixedPosition is set; provided for legacy fallback paths
+    fixedPosition: { x: schedPos.x, y: schedPos.y },
     polygon: figurePolygon,
     sheetSize,
     fonts: bottomZoneFonts,
@@ -1800,13 +1804,7 @@ export function generateDXF(options, logger) {
       nextLargerSheet, SCHEDULE_HEADER_HEIGHT_MM, columnWidthsG: scheduleColumnWidthsG,
     },
     addText, addLine, warn, logger,
-    seedPlacedBlocks: [
-      ...bottomZoneObstacles,
-      { name: 'ofd',       x: ofdPos.x,       y: ofdPos.y - ofdPos.height,             width: ofdPos.width,       height: ofdPos.height },
-      { name: 'beacon',    x: beaconPos.x,    y: beaconPos.y - beaconPos.height,       width: beaconPos.width,    height: beaconPos.height },
-      { name: 'statement', x: statementPos.x, y: statementPos.y - statementPos.height, width: statementPos.width, height: statementPos.height },
-      { name: 'sg',        x: sgPos.x,        y: sgPos.y - sgPos.height,               width: sgPos.width,        height: sgPos.height },
-    ],
+    seedPlacedBlocks: [],
   });
 
   if ((options.beaconGroups || []).length) {

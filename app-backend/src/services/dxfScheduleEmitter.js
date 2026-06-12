@@ -16,7 +16,10 @@
 import { findBlockPosition, GRID_EDGE_MARGIN, isValidPosition } from './dxfBlockPlacer.js'
 import { computeWhitespaceZones } from './dxfTopology.js'
 import { rectanglesOverlap } from './dxfGeometry.js'
-import { planScheduleSplit } from '../../../app-shared/block-definitions.js'
+import { planScheduleSplit, SCHEDULE_OF_AREAS } from '../../../app-shared/block-definitions.js'
+
+/** PDF point → paper-millimetre conversion. 1 pt = 1/72 inch = 25.4/72 mm. */
+const PT_TO_MM = 25.4 / 72
 
 /** Clearance (paper-mm) from polygon edges for the placer's buffer parameter. */
 export const POLYGON_BUFFER_MM = 2.0
@@ -68,6 +71,7 @@ export function emitScheduleOfAreasTopological({
   warn,
   logger,
   seedPlacedBlocks = [],   // 3-v4: external obstacles to honour in addition to placedPositions
+  fixedPosition,           // 3-v6: { x, y } TOP-LEFT (south-up: high y); when set, skip Pass 1/2/3 search and emit at this position
 }) {
   const { hHead, hBody, rH } = fonts
   const {
@@ -142,6 +146,50 @@ export function emitScheduleOfAreasTopological({
   const subTableHeightG = mm(
     SCHEDULE_HEADER_HEIGHT_MM + layout.rowsPerTable * (rH / mm(1)),
   )
+
+  // 3-v6: fixedPosition early exit. When the caller (DXF generator) supplies
+  // an exact placement from the shared planner, skip Pass 1/2/3 polygon-aware
+  // search and emit sub-tables side-by-side at that position. Achieves PDF↔DXF
+  // schedule-position parity at the cost of accepting overlap if the caller's
+  // position conflicts with the polygon — the caller is responsible for picking
+  // a sensible spot (which the shared planner already does for the PDF).
+  if (fixedPosition) {
+    const spacingG = mm(SCHEDULE_OF_AREAS.multiColumn.columnSpacing * PT_TO_MM)
+    const placedTables = []
+    let placedStandCount = 0
+    let southmostY = fixedPosition.y
+    for (let i = 0; i < layout.numTables; i++) {
+      const startRow = i * layout.rowsPerTable
+      const rows = dataRows.slice(startRow, startRow + layout.rowsPerTable)
+      if (rows.length === 0) break
+      const x = fixedPosition.x + i * (subTableWidthG + spacingG)
+      const titleText = i === 0 ? 'SCHEDULE OF AREAS' : "SCHEDULE OF AREAS (cont'd)"
+      addScheduleTable({
+        layer: 'TITLE_BLOCK',
+        x, y: fixedPosition.y,
+        dataRows: rows,
+        columnWidths: columnWidthsG_local,
+        titleText,
+        hHead, hBody, rH,
+        addText, addLine,
+      })
+      const yBottom = fixedPosition.y - subTableHeightG
+      placedTables.push({
+        x, y: yBottom, width: subTableWidthG, height: subTableHeightG,
+        rowCount: rows.length,
+        isContinuation: i > 0,
+      })
+      placedStandCount += rows.length
+      if (yBottom < southmostY) southmostY = yBottom
+    }
+    logger.info(`[dxfScheduleEmitter] fixedPosition mode: emitted ${placedTables.length}/${layout.numTables} sub-tables at (${fixedPosition.x.toFixed(2)}, ${fixedPosition.y.toFixed(2)})`)
+    return {
+      placedTables,
+      placedStandCount,
+      missingStandCount: dataRows.length - placedStandCount,
+      southmostY,
+    }
+  }
 
   // Closed-polygon copy + whitespace-zone enumeration + right-edge sort are
   // shared between Pass 1 (new right-anchor preference) and Pass 2 (existing

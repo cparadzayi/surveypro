@@ -8,9 +8,11 @@ const stands = Array.from({ length: 12 }, (_, i) => {
       stand: String(i + 100),
       area_m2: 4875,
       diagramNumber: `SG-${200 + i}`,
+      diagram: `SG-${200 + i}`,
       deedNumber: `D-${i + 1}`,
       deedDate: `2026-${String((i % 12) + 1).padStart(2, '0')}-01`,
       surveyorGeneral: 'B. Jones',
+      surveyor: 'B. Jones',
     },
   };
 });

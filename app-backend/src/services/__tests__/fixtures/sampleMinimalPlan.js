@@ -17,8 +17,8 @@ export const sampleMinimalPlan = {
   parcels: {
     type: 'FeatureCollection',
     features: [
-      { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[50000,2200000],[50050,2200000],[50050,2200060],[50000,2200060],[50000,2200000]]] }, properties: { stand: '1', area_m2: 3000, diagramNumber: 'SG-101', deedNumber: 'D-1', deedDate: '2026-01-01', surveyorGeneral: 'A. Smith' } },
-      { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[50050,2200000],[50100,2200000],[50100,2200060],[50050,2200060],[50050,2200000]]] }, properties: { stand: '2', area_m2: 3000, diagramNumber: 'SG-102', deedNumber: 'D-2', deedDate: '2026-01-02', surveyorGeneral: 'A. Smith' } },
+      { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[50000,2200000],[50050,2200000],[50050,2200060],[50000,2200060],[50000,2200000]]] }, properties: { stand: '1', area_m2: 3000, diagramNumber: 'SG-101', diagram: 'SG-101', deedNumber: 'D-1', deedDate: '2026-01-01', surveyorGeneral: 'A. Smith', surveyor: 'A. Smith' } },
+      { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[50050,2200000],[50100,2200000],[50100,2200060],[50050,2200060],[50050,2200000]]] }, properties: { stand: '2', area_m2: 3000, diagramNumber: 'SG-102', diagram: 'SG-102', deedNumber: 'D-2', deedDate: '2026-01-02', surveyorGeneral: 'A. Smith', surveyor: 'A. Smith' } },
     ],
   },
   beacons: {

@@ -1,7 +1,6 @@
 import { describe, test, expect } from '@jest/globals';
 import { planSheetLayout } from '../../../../app-shared/sheetLayoutPlanner.js';
 import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
-import { sampleRealisticPlan } from './fixtures/sampleRealisticPlan.js';
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} };
 const fakeMeasure = (str, { size }) => String(str).length * size * 0.55;
@@ -80,6 +79,7 @@ describe('planSheetLayout — measureText injection', () => {
       measureText: countingMeasure,
       logger: fakeLogger,
     });
+    // Minimal fixture has 4 OFD edges; OFD col1 measurement is the only injected call site.
     expect(measureCalls).toBeGreaterThanOrEqual(4);
   });
 });

@@ -1380,6 +1380,12 @@ async function editPanelHandler(
       description: patch.description,
     });
   }
+
+  // Force the survey-peg map source to re-read from workflowState. The panel
+  // also emits 'edit-complete' which triggers this via the parent, but doing
+  // it here makes the refresh part of the same handler so the marker can't
+  // stall behind the panel's close transition.
+  handleRenameComplete([]);
 }
 
 async function deletePanelHandler(name: string): Promise<void> {
@@ -1444,6 +1450,9 @@ async function deletePanelHandler(name: string): Promise<void> {
   if (affectedParcels.length > 0) {
     await rebuildAffectedParcels(affectedParcels, { kind: 'delete', name });
   }
+
+  // Force the survey-peg map source to drop the deleted marker immediately.
+  handleRenameComplete([]);
 }
 
 async function handlePointRename(payload: { oldName: string; newName: string }) {

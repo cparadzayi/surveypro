@@ -19,6 +19,7 @@ import { AdaptiveRenderer } from "./adaptiveRenderer.js";
 import { boxesIntersect, isRectWithinBounds } from "../utils/collisionPrimitives.js";
 import { placeBlocks } from "./blockPlacementEngine.js";
 import { findPoleOfInaccessibility } from '../utils/labelPlacer.js';
+import { planSheetLayout } from './sheetLayoutPlanner.js';
 
 /**
  * PDFKit-based GeoPDF Generator with SI 727 Compliance
@@ -7838,7 +7839,7 @@ function findOptimalPosition(
  * Includes: Schedule of Areas, Outside Figure Data, Beacon Description, Survey Statement, Scale Bar, North Arrow
  * @param {Array} tickMarkBounds - Array of tick mark reserved regions that blocks should avoid
  */
-function calculateBlockPositions(
+export function calculateBlockPositions(
   doc,
   metadata,
   parcels,
@@ -11507,13 +11508,13 @@ function drawSurveyorGeneralSignature(doc, mapBounds, position) {
 /**
  * Draw Endorsement block (right margin, outside map area)
  */
-function drawEndorsementBlock(doc, mapBounds, pageWidth, pageHeight) {
-  // Position: Top-left corner abutting top-right corner of map boundary
-  const blockX = mapBounds.x + mapBounds.width;
-  const blockY = mapBounds.y;
-  // Width: Full 150mm right margin (150mm * 2.835 = 425.25pt)
-  const blockWidth = 150 * 2.835; // 425.25pt
-  const blockHeight = 150;
+function drawEndorsementBlock(doc, position) {
+  // Position comes from planSheetLayout's endorsement slot (right-margin,
+  // 150mm × 150mm). Previously computed inline; now consumed from the planner.
+  const blockX = position.x;
+  const blockY = position.y;
+  const blockWidth = position.width;
+  const blockHeight = position.height;
 
   doc.save();
 
@@ -13468,23 +13469,28 @@ async function _generateGeoPDFInner(options, logger) {
     }
   }
 
-  // Pass 2: Calculate block positions (blocks avoid initial tick mark regions)
-  const blockPositions = calculateBlockPositions(
-    doc,
+  // Pass 2: Calculate block positions via the shared sheet-layout planner.
+  // Both PDF and DXF call planSheetLayout to guarantee identical block arrangement.
+  // PDF passes its real PDFKit doc through measureText so the planner uses
+  // PDFKit's widthOfString for text measurement (DXF passes its own 0.55 heuristic).
+  const pdfKitMeasureText = (str, { family, size }) =>
+    doc.font(family).fontSize(size).widthOfString(str);
+  const blockPositions = planSheetLayout({
     metadata,
-    filteredParcels,
+    parcels: filteredParcels,
     outsideFigureData,
-    filteredBeacons,
+    beacons: filteredBeacons,
     mapBounds,
     mapFeatureBounds,
     logger,
-    optimalScale,
-    calculatedExtent,
-    initialTickMarkBounds, // Blocks avoid tick marks
-    zOrderCollisionRegistry, // Pass Z-order collision registry
-    figureBounds, // Scale bar candidates constrained to figure area
-    _topoPolyPts  // Actual outside figure polygon vertices for zone ranking
-  );
+    scale: optimalScale,
+    extent: calculatedExtent,
+    tickMarkBounds: initialTickMarkBounds,
+    zOrderCollisionRegistry,
+    figureBounds,
+    polyPts: _topoPolyPts,
+    measureText: pdfKitMeasureText,
+  });
 
   // =========================================================================
   // PAPER-SIZE ESCALATION (preferred) then SCALE STEP-UP (last resort)
@@ -13639,7 +13645,7 @@ async function _generateGeoPDFInner(options, logger) {
   drawNorthArrow(doc, mapBounds, blockPositions.northArrow);
   drawSurveyorGeneralSignature(doc, mapBounds, blockPositions.sgSignature);
 
-  drawEndorsementBlock(doc, mapBounds, pageWidth, pageHeight);
+  drawEndorsementBlock(doc, blockPositions.endorsement);
 
   // Step 5c: Render tick marks AFTER all blocks are drawn.
   // blockPositions now contains the actual rendered bounds for all blocks,

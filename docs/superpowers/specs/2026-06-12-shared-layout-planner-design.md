@@ -3,7 +3,9 @@
 **Date:** 2026-06-12
 **Status:** Draft (pending user review)
 **Sub-project:** 3-v5 of the dxfGenerator re-baseline against pdfkitGeoPDF
-**Modules touched primarily:** new `app-shared/sheetLayoutPlanner.js`, `app-backend/src/services/pdfkitGeoPDF.js`, `app-backend/src/services/dxfGenerator.js`, `app-backend/src/services/dxfBottomZoneEmitter.js`
+**Modules touched primarily:** new `app-backend/src/services/sheetLayoutPlanner.js`, `app-backend/src/services/pdfkitGeoPDF.js`, `app-backend/src/services/dxfGenerator.js`, `app-backend/src/services/dxfBottomZoneEmitter.js`
+
+**Note on approach (2026-06-12 revision):** Earlier drafts proposed moving `calculateBlockPositions` and its transitive helpers (`calculateTitleBlockHeight`, `rectangleOverlapsPolygon`, `rectanglesOverlap`, `computeWhitespaceZones`, plus the 510-line `blockPlacementEngine.js` and the title-block dependency chain `getOutsideFigureVertices` / `getStandsInsideOutsideFigure` / `countStandsInOutsideFigure`) into `app-shared/`. On implementation, this turned out to require relocating ~1500 lines from the untested 14k-line `pdfkitGeoPDF.js` — high regression risk for a structural win that doesn't change user-visible behaviour. Pivoted to a thin-wrapper approach: `calculateBlockPositions` is *exported* from `pdfkitGeoPDF.js` in place, and `sheetLayoutPlanner.js` is a ~30-line adapter that builds a `measureText`-backed fake `doc` proxy and delegates. The user-visible goal (PDF and DXF arrange surrounding blocks identically) is achieved more reliably this way. The planner lives in `app-backend/src/services/` (not `app-shared/`) because DXF doesn't need frontend access to it; `app-shared/` stays reserved for frontend-shared definitions like `block-definitions.js`.
 
 ## Goal
 
@@ -14,7 +16,7 @@ This unlocks two things: (a) any future improvement to sheet arrangement lives i
 ## Strategy (already settled with the user)
 
 - **Scope = surrounding blocks only.** Parcel-internal labels (stand numbers, distance/bearing edge labels, beacon labels) stay format-specific. Polygon rendering (tick marks, parcel edges, dimension lines) stays format-specific.
-- **PDF planner is the primary source.** PDF's `calculateBlockPositions` (`pdfkitGeoPDF.js:7841-8719`, 878 lines) is the battle-tested algorithm; we extract it as-is. The few DXF-specific fixes worth keeping (closed-polygon validation, endorsement-block parity) get folded in during the extraction.
+- **PDF planner is the primary source.** PDF's `calculateBlockPositions` (`pdfkitGeoPDF.js:7841-8719`, 878 lines) is the battle-tested algorithm; both formats consume it via the thin-wrapper adapter described above. The few DXF-specific fixes worth keeping (closed-polygon validation, endorsement-block parity) are folded in at the wrapper level — the wrapper applies them before delegating.
 - **Verification by golden-PDF snapshot.** Before any refactor, capture a snapshot of two fixture PDFs (text + position). Every implementation step must keep the snapshot green.
 - **Schedule placement inherits PDF's whitespace-avoidance.** DXF's recently-shipped right-anchor schedule (`5224c80`, 2026-06-10) is intentionally dropped — DXF now picks the same spot the PDF picks. If PDF turns out to pick "any valid spot" rather than "most whitespace," that enhancement is deferred to 3-v6.
 
@@ -31,7 +33,7 @@ This unlocks two things: (a) any future improvement to sheet arrangement lives i
 
 ### The shared planner
 
-New module: `app-shared/sheetLayoutPlanner.js`. Exports one function:
+New module: `app-backend/src/services/sheetLayoutPlanner.js`. Exports one function:
 
 ```js
 planSheetLayout({
@@ -65,17 +67,19 @@ planSheetLayout({
 
 All positions in **PDF points**. DXF converts to paper-mm via `PT_TO_MM = 25.4 / 72` at consumption (existing convention in `dxfScheduleHelpers.js`).
 
-### What moves into the planner
+### What's in the planner module
 
-- The body of `calculateBlockPositions` from `pdfkitGeoPDF.js:7841-8719`, renamed `planSheetLayout`.
-- `calculateTitleBlockHeight` (currently in `pdfkitGeoPDF.js`, pure helper called only from the planner).
-- Any other pure layout helpers called only by `calculateBlockPositions` — identified during implementation by grepping the function body.
-- The `_topoPolyPts`-aware zone ranking that's already partially wired in the PDF (we already pass `polyPts` from the call site at `pdfkitGeoPDF.js:13486`).
-- **From DXF:** the Pass 2 closed-polygon validation pattern from `dxfScheduleEmitter.js` — when a candidate position is validated against the polygon, the polygon is explicitly closed first (append `polyPts[0]` if not already closed). Prevents the spurious-zone bug documented in the 3-v3 sweep memory.
+- The thin wrapper `planSheetLayout({ ..., measureText, logger })`. ~30 lines.
+- A `makeMeasureProxy(measureText)` helper that constructs a fake PDFKit-doc-like object with `.font(f)`, `.fontSize(s)`, and `.widthOfString(text)` methods. The proxy's `widthOfString` calls the injected `measureText(text, { family, size })`.
+- Scale validation guard (throws `Scale parameter is required with value and label properties` early — matches the existing error from `calculateBlockPositions`).
+- An import of `calculateBlockPositions` from `./pdfkitGeoPDF.js` (which `pdfkitGeoPDF.js` now exports).
+- **From DXF (Task 6):** closed-polygon guard — the wrapper auto-appends `polyPts[0]` if not already closed before delegating, preventing the spurious-zone bug.
+- **New (Task 5):** endorsement slot — the wrapper post-processes the `calculateBlockPositions` return value to add an `endorsement: { x, y, width, height }` slot (right-margin, 150×150 mm, derived from `block-definitions.js` `ENDORSEMENT_BLOCK`).
 
 ### What stays where it is
 
-- **In `pdfkitGeoPDF.js`:** every `drawX()` function; the PDFKit-doc text measurement (wrapped in a thin `pdfKitMeasureText(str, font) → number` adapter passed into the planner); the Z-order collision registry; tick-mark drawing; the sheet-escalation control flow (`SHEET_ORDER`, `MAX_SHEET_UP_ATTEMPTS`); the call site at `pdfkitGeoPDF.js:13472` is replaced with `planSheetLayout({ ... })`.
+- **In `pdfkitGeoPDF.js`:** every `drawX()` function; the `calculateBlockPositions` body (now `export`-ed so the wrapper can import it); all 1500+ lines of layout helpers (`calculateTitleBlockHeight`, `rectangleOverlapsPolygon`, `rectanglesOverlap`, `computeWhitespaceZones`, plus the title-block dependency chain); the Z-order collision registry; tick-mark drawing; the sheet-escalation control flow (`SHEET_ORDER`, `MAX_SHEET_UP_ATTEMPTS`); the call site at `pdfkitGeoPDF.js:13472` is rewired in Task 4 to call `planSheetLayout({ ... })` instead of `calculateBlockPositions(...)` directly. PDF passes its real PDFKit `doc` via `measureText = (str, { family, size }) => doc.font(family).fontSize(size).widthOfString(str)`.
+- **In `blockPlacementEngine.js`:** unchanged location and contents; still imported by `pdfkitGeoPDF.js`.
 - **In `dxfGenerator.js`:** all DXF entity emission; the `dxfMeasureText` adapter `(str, { family, size }) => str.length * size * 0.55` matching the 3-v3 width factor; the scale/paper/polygon setup before the planner call; a new orchestration block that iterates `blockPositions` and dispatches to the format-specific emitters with positions converted to mm.
 - **In `dxfBottomZoneEmitter.js`:** the `emitX` functions (`emitOutsideFigureData`, `emitStatement`, `emitSGBox`, `emitBeaconDescriptions`) — DELETED: `placeBottomZoneBlocks`, `sizeStatement`, `sizeOFDTable`, `sizeSGBox`, `sizeBeaconDescriptions`, `fallbackCorner`. Module shrinks to a thin emit layer.
 - **In `dxfScheduleEmitter.js`:** Pass 1/2/3 split-into-smaller logic unchanged; the only diff is that its `topLeft` argument is now passed in from the shared planner (via `dxfGenerator.js`) rather than computed by `placeBottomZoneBlocks`.
@@ -153,7 +157,7 @@ Aim: ≥80% line coverage on `sheetLayoutPlanner.js`.
 
 ```
                               ┌─────────────────────────────────┐
-                              │  app-shared/sheetLayoutPlanner  │
+                              │  app-backend/src/services/sheetLayoutPlanner  │
                               │       planSheetLayout(...)      │
                               └────────────────┬────────────────┘
                                                │
@@ -250,7 +254,7 @@ emitEndorsementBlock(out, mmPos.endorsement, ...);  // NEW
 The implementation plan will sequence the work approximately as:
 
 1. **Snapshot harness foundation** — add `pdfjs-dist` devDep, write the two fixtures, capture both PDF and DXF baseline snapshots, commit.
-2. **Create the planner module skeleton** — `app-shared/sheetLayoutPlanner.js` with the function signature, no body yet; failing unit tests for size calcs.
+2. **Create the planner module skeleton** — `app-backend/src/services/sheetLayoutPlanner.js` with the function signature, no body yet; failing unit tests for size calcs.
 3. **Lift `calculateBlockPositions` byte-for-byte** — copy the body into the new module, leave PDF calling the old function untouched. Planner unit tests pass.
 4. **Decouple from PDFKit doc** — replace the inline `doc.fontSize(9).font('Helvetica'); doc.widthOfString(...)` calls with `measureText(str, { family: 'Helvetica', size: 9 })`. Planner unit tests still pass.
 5. **PDF switches to the planner** — `_generateGeoPDFInner` now calls `planSheetLayout(...)` instead of `calculateBlockPositions(...)`; the old function is deleted from `pdfkitGeoPDF.js`. Golden-PDF snapshot diff must be zero.
@@ -276,7 +280,7 @@ Each step is a discrete commit on the implementation branch.
 
 ## Acceptance criteria
 
-1. New module `app-shared/sheetLayoutPlanner.js` exports `planSheetLayout({ ..., measureText, logger }) → blockPositions` with the shape in the Architecture section.
+1. New module `app-backend/src/services/sheetLayoutPlanner.js` exports `planSheetLayout({ ..., measureText, logger }) → blockPositions` with the shape in the Architecture section.
 2. `app-shared/__tests__/sheetLayoutPlanner.test.js` exists with ≥80% line coverage on the new module, covering each block-size calc, schedule split, sheet escalation, tick-mark collision avoidance, and closed-polygon validation.
 3. `pdfkitGeoPDF.snapshot.test.js` passes on both `fixture-minimal.json` and `fixture-realistic.json` against snapshots captured before the planner extraction (zero text/position drift on the bulk of the diff; the deliberate endorsement-slot diff is a single approved snapshot update).
 4. `_generateGeoPDFInner` calls `planSheetLayout(...)` not `calculateBlockPositions(...)`; the old function is removed from `pdfkitGeoPDF.js`.
@@ -298,7 +302,7 @@ Each step is a discrete commit on the implementation branch.
 
 ## How this fits the bigger picture
 
-After 3-v5, the SI 727 surrounding-block arrangement is one algorithm consumed by two renderers. The 3-v3 single-source-of-truth pattern for *dimensions* (in `app-shared/block-definitions.js`) is now joined by a single source of truth for *positions* (in `app-shared/sheetLayoutPlanner.js`).
+After 3-v5, the SI 727 surrounding-block arrangement is one algorithm consumed by two renderers. The 3-v3 single-source-of-truth pattern for *dimensions* (in `app-shared/block-definitions.js`) is now joined by a single source of truth for *positions* (in `app-backend/src/services/sheetLayoutPlanner.js`).
 
 This positions the codebase for:
 - 3-v6: port DXF planning improvements into the planner — both formats benefit.

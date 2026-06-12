@@ -19,6 +19,7 @@ import { AdaptiveRenderer } from "./adaptiveRenderer.js";
 import { boxesIntersect, isRectWithinBounds } from "../utils/collisionPrimitives.js";
 import { placeBlocks } from "./blockPlacementEngine.js";
 import { findPoleOfInaccessibility } from '../utils/labelPlacer.js';
+import { planSheetLayout } from './sheetLayoutPlanner.js';
 
 /**
  * PDFKit-based GeoPDF Generator with SI 727 Compliance
@@ -13468,23 +13469,28 @@ async function _generateGeoPDFInner(options, logger) {
     }
   }
 
-  // Pass 2: Calculate block positions (blocks avoid initial tick mark regions)
-  const blockPositions = calculateBlockPositions(
-    doc,
+  // Pass 2: Calculate block positions via the shared sheet-layout planner.
+  // Both PDF and DXF call planSheetLayout to guarantee identical block arrangement.
+  // PDF passes its real PDFKit doc through measureText so the planner uses
+  // PDFKit's widthOfString for text measurement (DXF passes its own 0.55 heuristic).
+  const pdfKitMeasureText = (str, { family, size }) =>
+    doc.font(family).fontSize(size).widthOfString(str);
+  const blockPositions = planSheetLayout({
     metadata,
-    filteredParcels,
+    parcels: filteredParcels,
     outsideFigureData,
-    filteredBeacons,
+    beacons: filteredBeacons,
     mapBounds,
     mapFeatureBounds,
     logger,
-    optimalScale,
-    calculatedExtent,
-    initialTickMarkBounds, // Blocks avoid tick marks
-    zOrderCollisionRegistry, // Pass Z-order collision registry
-    figureBounds, // Scale bar candidates constrained to figure area
-    _topoPolyPts  // Actual outside figure polygon vertices for zone ranking
-  );
+    scale: optimalScale,
+    extent: calculatedExtent,
+    tickMarkBounds: initialTickMarkBounds,
+    zOrderCollisionRegistry,
+    figureBounds,
+    polyPts: _topoPolyPts,
+    measureText: pdfKitMeasureText,
+  });
 
   // =========================================================================
   // PAPER-SIZE ESCALATION (preferred) then SCALE STEP-UP (last resort)

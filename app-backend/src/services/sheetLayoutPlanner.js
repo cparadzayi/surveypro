@@ -56,6 +56,7 @@ export function planSheetLayout(args) {
     metadata, parcels, outsideFigureData, beacons,
     mapBounds, mapFeatureBounds, logger, scale, extent,
     tickMarkBounds = [], figureBounds = null, polyPts = [],
+    zOrderCollisionRegistry = null,
     measureText,
   } = args;
 
@@ -67,7 +68,7 @@ export function planSheetLayout(args) {
   return calculateBlockPositions(
     doc, metadata, parcels, outsideFigureData, beacons,
     mapBounds, mapFeatureBounds, logger, scale, extent,
-    tickMarkBounds, null /* zOrderCollisionRegistry — PDF passes its own at the call site */,
+    tickMarkBounds, zOrderCollisionRegistry,
     figureBounds, polyPts,
   );
 }

@@ -53,7 +53,13 @@ import {
   SCHEDULE_HEADER_HEIGHT_MM,
 } from './dxfScheduleHelpers.js'
 import { emitScheduleOfAreasTopological } from './dxfScheduleEmitter.js'
-import { placeBottomZoneBlocks } from './dxfBottomZoneEmitter.js'
+import {
+  emitOFDTable,
+  emitBeaconDescriptions,
+  emitStatement,
+  emitSGBox,
+} from './dxfBottomZoneEmitter.js'
+import { planSheetLayout } from './sheetLayoutPlanner.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
 // External consumers (tests, other modules) keep importing from dxfGenerator.js.
@@ -1716,38 +1722,103 @@ export function generateDXF(options, logger) {
   });
   const scheduleColumnWidthsG = scheduleColumnWidthsPt.map(w => mm(w * PT_TO_MM_GEN));
 
-  const bottomZoneResult = placeBottomZoneBlocks({
-    contentArea,
-    polygon:            figurePolygon,
-    obstacles:          bottomZoneObstacles,
-    statementFallbackY: drawDivY,
-    surveyedFeatures,
-    outsideFigureData,
-    beaconGroups:       options.beaconGroups || [],
+  // ── 3-v5: Bottom-zone positions come from the shared sheet-layout planner ──
+  // The planner expects PDF-point coordinates with y-down origin. DXF works
+  // in ground metres with south-up y. Convert at both boundaries.
+  //
+  //   1 PDF pt = (25.4/72) mm paper = (25.4/72) * (S/1000) ground metres
+  //   So: groundMetres → PDF pt = groundMetres * 1000 / S / (25.4/72)
+  const M_TO_PT = 1000 / S / (25.4 / 72);
+  const PT_TO_M = 1 / M_TO_PT;
+  const contentWidthPt  = (cntR - cntL) * M_TO_PT;
+  const contentHeightPt = (cntT - cntB) * M_TO_PT;
+
+  // Polygon: shift to content-area-relative coords, flip y (south-up → top-down).
+  const polyPtsForPlanner = (figurePolygon || []).map(p => ({
+    x: (p.x - cntL) * M_TO_PT,
+    y: (cntT - p.y) * M_TO_PT,
+  }));
+
+  // Pre-seeded obstacles: same shift/flip.
+  const tickMarkBoundsForPlanner = bottomZoneObstacles.map(o => ({
+    name: o.name,
+    x: (o.x - cntL) * M_TO_PT,
+    y: (cntT - (o.y + o.height)) * M_TO_PT,  // top edge in y-down
+    width:  o.width  * M_TO_PT,
+    height: o.height * M_TO_PT,
+  }));
+
+  const plannerMeasure = (str, { size }) => String(str).length * size * 0.55;
+
+  const blockPositions = planSheetLayout({
     metadata,
-    centralMeridian,
-    sheetSize,
-    fonts:              bottomZoneFonts,
-    helpers: {
-      mm,
-      extractScheduleRow,
-      computeScheduleLayout,
-      addScheduleTable,
-      nextLargerSheet,
-      SCHEDULE_HEADER_HEIGHT_MM,
-      addBeaconDescription,
-      scheduleEmitter:  emitScheduleOfAreasTopological,
-      columnWidthsG:    scheduleColumnWidthsG,
-    },
-    layer: TB,
-    addText: (layer, x, y, text, height, angle, style) => addText(layer, x, y, text, height, angle, style),
-    addLine: (layer, x1, y1, x2, y2) => addLine(layer, x1, y1, x2, y2),
-    addRect: (layer, x1, y1, x2, y2) => addRect(layer, x1, y1, x2, y2),
-    warn,
+    parcels:           { type: 'FeatureCollection', features: surveyedFeatures },
+    outsideFigureData,
+    beacons:           { type: 'FeatureCollection', features: [] },
+    mapBounds:         { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt },
+    mapFeatureBounds:  { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt, pdfPoints: polyPtsForPlanner },
+    scale:             { value: S, label: `1:${S}` },
+    extent:            { minX: pageL, maxX: pageR, minY: pageB, maxY: pageT },
+    tickMarkBounds:    tickMarkBoundsForPlanner,
+    polyPts:           polyPtsForPlanner,
+    measureText:       plannerMeasure,
     logger,
   });
 
-  logger.info(`[DXF] Bottom-zone topological placement complete: ${bottomZoneResult.placedBlocks.length} blocks placed (incl. obstacles)`);
+  // Convert planner positions (y-down PDF pt, relative to content area top-left)
+  // → DXF ground metres (south-up). Emit position.y = TOP of block in south-up.
+  const toDxf = (p) => ({
+    x:      cntL + p.x * PT_TO_M,
+    y:      cntT - p.y * PT_TO_M,
+    width:  p.width  * PT_TO_M,
+    height: p.height * PT_TO_M,
+  });
+  const ofdPos       = toDxf(blockPositions.outsideFigureData);
+  const schedPos     = toDxf(blockPositions.scheduleOfAreas);
+  const beaconPos    = toDxf(blockPositions.beaconDescription);
+  const statementPos = toDxf(blockPositions.surveyStatement);
+  const sgPos        = toDxf(blockPositions.sgSignature);
+
+  if (outsideFigureData?.edges?.length) {
+    emitOFDTable(addText, addLine, { x: ofdPos.x, y: ofdPos.y },
+      outsideFigureData, bottomZoneFonts, mm, centralMeridian, TB);
+  }
+
+  emitScheduleOfAreasTopological({
+    surveyedFeatures,
+    drawingZone: {
+      x: schedPos.x,
+      y: schedPos.y - schedPos.height,   // bottom of zone in south-up = top - height
+      width: schedPos.width,
+      height: schedPos.height,
+    },
+    polygon: figurePolygon,
+    sheetSize,
+    fonts: bottomZoneFonts,
+    helpers: {
+      mm, extractScheduleRow, computeScheduleLayout, addScheduleTable,
+      nextLargerSheet, SCHEDULE_HEADER_HEIGHT_MM, columnWidthsG: scheduleColumnWidthsG,
+    },
+    addText, addLine, warn, logger,
+    seedPlacedBlocks: [],
+  });
+
+  if ((options.beaconGroups || []).length) {
+    emitBeaconDescriptions(addBeaconDescription, TB,
+      { x: beaconPos.x, y: beaconPos.y },
+      { width: beaconPos.width, height: beaconPos.height },
+      options.beaconGroups);
+  }
+
+  emitStatement(addText, { x: statementPos.x, y: statementPos.y },
+    metadata, bottomZoneFonts, TB);
+
+  emitSGBox(addText, addLine, addRect,
+    { x: sgPos.x, y: sgPos.y },
+    { width: sgPos.width, height: sgPos.height },
+    bottomZoneFonts, mm, TB);
+
+  logger.info(`[DXF] Shared planner placement complete: 5 surrounding blocks emitted`);
 
   logger.info(`[DXF] Page frame: ${(pageR - pageL).toFixed(0)}m x ${(pageT - pageB).toFixed(0)}m ground`);
 

@@ -3230,6 +3230,15 @@ function addSurveyPoints(wgs84Points: any[]) {
           if (!projectId) { alert('No project loaded — cannot delete point.'); return; }
 
           try {
+            // Look up affected parcels BEFORE deleting so the rebuild can still
+            // see which polygons reference this beacon.
+            let affectedParcels: Array<{ id: number; stand: string; designation: string }> = [];
+            try {
+              affectedParcels = await findAffectedParcels(pointName);
+            } catch (e) {
+              console.warn('[BeaconDelete] ⚠️ Could not look up affected parcels:', e);
+            }
+
             // Always delete by project_id + name — no numeric id required
             try {
               await deleteCoordinatePointByName(Number(projectId), pointName);
@@ -3265,6 +3274,16 @@ function addSurveyPoints(wgs84Points: any[]) {
               });
             } catch (e) {
               console.warn('[BeaconDelete] ⚠️ Could not persist deletion to workflow state:', e);
+            }
+
+            // Rebuild any parcels that referenced this beacon: rewrite geom +
+            // cape_lo_points so the polygon no longer carries the deleted vertex.
+            if (affectedParcels.length > 0) {
+              try {
+                await rebuildAffectedParcels(affectedParcels, { kind: 'delete', name: pointName });
+              } catch (e) {
+                console.warn('[BeaconDelete] ⚠️ Could not rebuild affected parcels:', e);
+              }
             }
 
             // Refresh map survey peg layer

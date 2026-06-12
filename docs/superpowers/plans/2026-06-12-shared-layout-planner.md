@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extract PDF's `calculateBlockPositions` into a shared `app-shared/sheetLayoutPlanner.js` module consumed by both `pdfkitGeoPDF.js` and `dxfGenerator.js`, so the PDF and DXF outputs arrange the surrounding blocks (title, schedule, OFD, beacon-desc, scale bar, statement, N-arrow, SG signature, endorsement) identically.
+**Goal:** Extract PDF's `calculateBlockPositions` into a shared `app-backend/src/services/sheetLayoutPlanner.js` module consumed by both `pdfkitGeoPDF.js` and `dxfGenerator.js`, so the PDF and DXF outputs arrange the surrounding blocks (title, schedule, OFD, beacon-desc, scale bar, statement, N-arrow, SG signature, endorsement) identically.
 
-**Architecture:** A single `planSheetLayout({ ..., measureText, logger }) → blockPositions` function in `app-shared/`. PDFKit-doc text measurement is injected from PDF, the 0.55 width-factor heuristic is injected from DXF. PDF call site (`_generateGeoPDFInner`) replaces its inline planner call; DXF call site (`generateDXF`) replaces `placeBottomZoneBlocks` with the planner + position-to-mm conversion + per-block emit dispatch. Golden snapshot tests on two fixtures (minimal + realistic) hold both formats green throughout the refactor.
+**Architecture (2026-06-12 revision):** Originally planned to *move* `calculateBlockPositions` + ~1500 lines of helpers from `pdfkitGeoPDF.js` into `app-shared/`. Implementation revealed the transitive-helper dependency chain (`calculateTitleBlockHeight` → `getOutsideFigureVertices` → ...) makes the lift impractical without high regression risk against the untested 14k-line PDF. **Pivoted to a thin-wrapper approach**: `calculateBlockPositions` is *exported* from `pdfkitGeoPDF.js` in place, and `sheetLayoutPlanner.js` is a ~30-line adapter that builds a `measureText`-backed fake `doc` proxy and delegates. PDF passes a real PDFKit-backed measurer; DXF passes the 0.55 width-factor heuristic. Both formats run the exact same algorithm. Task 5's endorsement slot and Task 6's closed-polygon guard land at the wrapper level. Golden snapshot tests on two fixtures (minimal + realistic) hold both formats green throughout the refactor.
 
 **Tech Stack:** Node.js (Fastify backend), ESM modules, Jest 29, `pdfjs-dist` (new devDep for PDF text extraction), `pdfkit` (existing), the existing DXF emitters in `app-backend/src/services/dxf*.js`.
 
@@ -15,7 +15,7 @@
 ## File Structure
 
 **Files created:**
-- `app-shared/sheetLayoutPlanner.js` — the planner; one export `planSheetLayout(...)`. Pure module, no PDFKit/DXF imports.
+- `app-backend/src/services/sheetLayoutPlanner.js` — the planner; one export `planSheetLayout(...)`. Pure module, no PDFKit/DXF imports.
 - `app-backend/src/services/__tests__/sheetLayoutPlanner.test.js` — planner unit tests.
 - `app-backend/src/services/__tests__/pdfkitGeoPDF.snapshot.test.js` — PDF text+position snapshot harness.
 - `app-backend/src/services/__tests__/dxfGenerator.snapshot.test.js` — DXF entity-list snapshot harness.
@@ -316,12 +316,12 @@ git commit -m "test(3-v5): PDF + DXF snapshot harness for layout-planner refacto
 Create the planner with a stub body and write the unit tests that lock in its contract.
 
 **Files:**
-- Create: `app-shared/sheetLayoutPlanner.js`
+- Create: `app-backend/src/services/sheetLayoutPlanner.js`
 - Create: `app-backend/src/services/__tests__/sheetLayoutPlanner.test.js`
 
 - [ ] **Step 1: Write the planner skeleton.**
 
-`app-shared/sheetLayoutPlanner.js`:
+`app-backend/src/services/sheetLayoutPlanner.js`:
 
 ```js
 /**
@@ -373,7 +373,7 @@ export function planSheetLayout(args) {
 
 ```js
 import { describe, test, expect } from '@jest/globals';
-import { planSheetLayout } from '../../../../app-shared/sheetLayoutPlanner.js';
+import { planSheetLayout } from '../../../../app-backend/src/services/sheetLayoutPlanner.js';
 import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
 import { sampleRealisticPlan } from './fixtures/sampleRealisticPlan.js';
 
@@ -472,7 +472,7 @@ Expected: all tests FAIL with "planSheetLayout: not implemented".
 - [ ] **Step 4: Commit the skeleton + failing tests.**
 
 ```bash
-git add app-shared/sheetLayoutPlanner.js \
+git add app-backend/src/services/sheetLayoutPlanner.js \
         app-backend/src/services/__tests__/sheetLayoutPlanner.test.js
 git commit -m "test(3-v5): planner module skeleton + contract tests"
 ```
@@ -484,7 +484,7 @@ git commit -m "test(3-v5): planner module skeleton + contract tests"
 Mechanical port: copy the function body, replace `doc.widthOfString` with `measureText`. Tests pass; PDF snapshot remains green (the function still exists in `pdfkitGeoPDF.js`, the lifted copy in `app-shared/` is not yet called).
 
 **Files:**
-- Modify: `app-shared/sheetLayoutPlanner.js`
+- Modify: `app-backend/src/services/sheetLayoutPlanner.js`
 - Reference: `app-backend/src/services/pdfkitGeoPDF.js:7841-8719` (source body)
 - Reference: `app-backend/src/services/pdfkitGeoPDF.js` (also need `calculateTitleBlockHeight` and `rectangleOverlapsPolygon`)
 
@@ -498,12 +498,12 @@ Expected: at minimum `calculateTitleBlockHeight` and `rectangleOverlapsPolygon`.
 
 - [ ] **Step 2: Copy each helper called by `calculateBlockPositions` into the planner module.**
 
-For each helper identified, copy its body verbatim from `pdfkitGeoPDF.js` into `app-shared/sheetLayoutPlanner.js` as a non-exported function. Do not modify its body. They need to be present so the lifted `calculateBlockPositions` body can call them.
+For each helper identified, copy its body verbatim from `pdfkitGeoPDF.js` into `app-backend/src/services/sheetLayoutPlanner.js` as a non-exported function. Do not modify its body. They need to be present so the lifted `calculateBlockPositions` body can call them.
 
 Example pattern (the actual content is whatever the source file has):
 
 ```js
-// In app-shared/sheetLayoutPlanner.js, above planSheetLayout:
+// In app-backend/src/services/sheetLayoutPlanner.js, above planSheetLayout:
 
 function calculateTitleBlockHeight(metadata, outsideFigureData, logger, parcels) {
   // … verbatim copy from pdfkitGeoPDF.js …
@@ -587,7 +587,7 @@ Expected: 2 tests pass, 0 snapshot changes. (The PDF still uses the old function
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add app-shared/sheetLayoutPlanner.js
+git add app-backend/src/services/sheetLayoutPlanner.js
 git commit -m "feat(3-v5): lift calculateBlockPositions into shared planner"
 ```
 
@@ -606,7 +606,7 @@ Replace the call site in `_generateGeoPDFInner`, delete the old function from `p
 Open `app-backend/src/services/pdfkitGeoPDF.js`. Near the existing block-definitions import, add:
 
 ```js
-import { planSheetLayout } from '../../../app-shared/sheetLayoutPlanner.js';
+import { planSheetLayout } from '../../../app-backend/src/services/sheetLayoutPlanner.js';
 ```
 
 - [ ] **Step 2: Replace the call site.**
@@ -686,7 +686,7 @@ git commit -m "feat(3-v5): PDF consumes shared layout planner"
 Extend the planner output with an `endorsement` slot. PDF's `drawEndorsementBlock` consumes the planner-assigned position instead of computing it internally. PDF snapshot stays zero-diff (endorsement renders in the same physical position; only the source of the position changes).
 
 **Files:**
-- Modify: `app-shared/sheetLayoutPlanner.js`
+- Modify: `app-backend/src/services/sheetLayoutPlanner.js`
 - Modify: `app-backend/src/services/pdfkitGeoPDF.js`
 - Modify: `app-backend/src/services/__tests__/sheetLayoutPlanner.test.js`
 
@@ -719,7 +719,7 @@ Expected: FAIL with "Cannot read properties of undefined (reading 'x')" or simil
 
 - [ ] **Step 3: Add the endorsement slot to the planner.**
 
-In `app-shared/sheetLayoutPlanner.js`, just before the final `return blockPositions` (or wherever the result object is assembled), add:
+In `app-backend/src/services/sheetLayoutPlanner.js`, just before the final `return blockPositions` (or wherever the result object is assembled), add:
 
 ```js
 // Endorsement block — fixed right-margin position.
@@ -783,7 +783,7 @@ Expected: 2 tests pass, **zero snapshot changes** (endorsement renders at the sa
 - [ ] **Step 8: Commit.**
 
 ```bash
-git add app-shared/sheetLayoutPlanner.js \
+git add app-backend/src/services/sheetLayoutPlanner.js \
         app-backend/src/services/__tests__/sheetLayoutPlanner.test.js \
         app-backend/src/services/pdfkitGeoPDF.js
 git commit -m "feat(3-v5): endorsement block consumes planner-assigned position"
@@ -796,7 +796,7 @@ git commit -m "feat(3-v5): endorsement block consumes planner-assigned position"
 The planner's candidate validation calls `rectangleOverlapsPolygon(rect, polyPts, buffer)` which walks `polyPts[i] → polyPts[i+1]`. If `polyPts` is not explicitly closed (i.e., last vertex is not a duplicate of the first), the closing edge is silently missed and a spurious "whitespace zone" may appear there. Document and fix.
 
 **Files:**
-- Modify: `app-shared/sheetLayoutPlanner.js`
+- Modify: `app-backend/src/services/sheetLayoutPlanner.js`
 - Modify: `app-backend/src/services/__tests__/sheetLayoutPlanner.test.js`
 
 - [ ] **Step 1: Write a failing unit test for the open-polygon bug.**
@@ -850,7 +850,7 @@ Expected: usually FAIL — the open polygon produces a different titleBlock plac
 
 - [ ] **Step 3: Add the closing-edge guard.**
 
-In `app-shared/sheetLayoutPlanner.js`, near the top of `planSheetLayout` after `args` is destructured, add:
+In `app-backend/src/services/sheetLayoutPlanner.js`, near the top of `planSheetLayout` after `args` is destructured, add:
 
 ```js
 // Ensure the polygon is explicitly closed before any edge-walk validation.
@@ -893,7 +893,7 @@ Expected: 2 tests pass, **zero snapshot changes**. The two existing fixtures pas
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add app-shared/sheetLayoutPlanner.js \
+git add app-backend/src/services/sheetLayoutPlanner.js \
         app-backend/src/services/__tests__/sheetLayoutPlanner.test.js
 git commit -m "fix(3-v5): planner auto-closes open polygons before validation"
 ```
@@ -913,7 +913,7 @@ Replace `placeBottomZoneBlocks` orchestration in `dxfGenerator.js` with `planShe
 Near the existing `import { placeBottomZoneBlocks } from './dxfBottomZoneEmitter.js'` at line 56, add:
 
 ```js
-import { planSheetLayout } from '../../../app-shared/sheetLayoutPlanner.js';
+import { planSheetLayout } from '../../../app-backend/src/services/sheetLayoutPlanner.js';
 import {
   emitStatement, emitSGBox, emitOFDTable, emitBeaconDescriptions,
 } from './dxfBottomZoneEmitter.js';
@@ -1211,7 +1211,7 @@ Lock in the goal of the sub-project: PDF and DXF block positions agree within 0.
 import { describe, test, expect } from '@jest/globals';
 import { generateGeoPDF } from '../pdfkitGeoPDF.js';
 import { generateDXF } from '../dxfGenerator.js';
-import { planSheetLayout } from '../../../../app-shared/sheetLayoutPlanner.js';
+import { planSheetLayout } from '../../../../app-backend/src/services/sheetLayoutPlanner.js';
 import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
 import { sampleRealisticPlan } from './fixtures/sampleRealisticPlan.js';
 

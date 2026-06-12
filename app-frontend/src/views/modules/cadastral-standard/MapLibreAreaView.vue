@@ -1397,23 +1397,37 @@ async function deletePanelHandler(name: string): Promise<void> {
     throw e;
   }
 
-  // ── unchanged Task 3 body: point lookup + deleteCoordinatePoint + workflow sync ──
+  // Resolve numeric DB id. Memory-only points (entered into the workflow but
+  // not yet persisted to coordinate_points) won't have a row to delete —
+  // we skip the DB call and just clean the workflow state.
   let resolvedDbId = dbPointIds.value.get(name);
   if (resolvedDbId === undefined) {
     const projectId = workflowState?.projectInfo?.projectId;
-    if (!projectId) {
-      throw new Error(`Cannot find point id for "${name}": no project loaded`);
-    }
-    const all = await listCoordinatePoints(Number(projectId));
-    const match = all.find((p: any) => p.name === name);
-    if (match?.id !== undefined) {
-      dbPointIds.value.set(name, match.id);
-      resolvedDbId = match.id;
-    } else {
-      throw new Error(`Cannot find point id for "${name}"`);
+    if (projectId) {
+      try {
+        const all = await listCoordinatePoints(Number(projectId));
+        const match = all.find((p: any) => p.name === name);
+        if (match?.id !== undefined) {
+          dbPointIds.value.set(name, match.id);
+          resolvedDbId = match.id;
+        }
+      } catch {
+        // fall through — treat as memory-only
+      }
     }
   }
-  await deleteCoordinatePoint(resolvedDbId);
+  if (resolvedDbId !== undefined) {
+    try {
+      await deleteCoordinatePoint(resolvedDbId);
+    } catch (e: any) {
+      // 404 means the row was already gone (e.g. a previous deletion attempt
+      // partially succeeded). Treat as memory-only cleanup.
+      if (e?.response?.status !== 404) throw e;
+      console.warn(`[PointDelete] DB row for "${name}" already gone — continuing memory cleanup`);
+    }
+  } else {
+    console.warn(`[PointDelete] "${name}" not in DB — memory-only cleanup only`);
+  }
 
   const stripEntry = (entry: any) => {
     if (entry === null || typeof entry !== 'object') return true;
@@ -1711,6 +1725,7 @@ function handleRenameComplete(renames: Array<{ oldName: string; newName: string 
 const beaconModal = ref<{
   mode: 'add' | 'edit';
   dbId: number | null;       // null when adding a new beacon
+  originalName: string;      // name at modal open — survives rename in the form
   name: string;
   y: string;                 // Cape Lo Y (Westing)
   x: string;                 // Cape Lo X (Southing)
@@ -1722,7 +1737,7 @@ const beaconModal = ref<{
 const beaconModalNameRef = ref<HTMLInputElement | null>(null);
 
 function openAddBeaconModal() {
-  beaconModal.value = { mode: 'add', dbId: null, name: '', y: '', x: '', description: '', error: '', saving: false };
+  beaconModal.value = { mode: 'add', dbId: null, originalName: '', name: '', y: '', x: '', description: '', error: '', saving: false };
   nextTick(() => { beaconModalNameRef.value?.focus(); });
 }
 
@@ -1732,6 +1747,7 @@ function openEditBeaconModal(pt: { id: string | number; y: number; x: number; de
   beaconModal.value = {
     mode: 'edit',
     dbId: resolvedId,
+    originalName: String(pt.id),
     name: String(pt.id),
     y: String(pt.y),
     x: String(pt.x),
@@ -1789,44 +1805,30 @@ async function confirmBeaconSave() {
       dbPointNames.value.add(name);
 
     } else {
-      // Edit existing — resolve numeric DB id (dbPointIds may be stale if point was added post-init)
-      let resolvedDbId = modal.dbId ?? dbPointIds.value.get(modal.name) ?? null;
-      if (!resolvedDbId) {
-        // Last resort: fetch from backend by name
-        try {
-          const pts = await listCoordinatePoints(Number(projectId));
-          const match = pts.find((p: any) => p.name === modal.name);
-          if (match?.id) {
-            resolvedDbId = match.id;
-            // Refresh the map so future edits don't need this fallback
-            dbPointIds.value.set(modal.name, match.id);
-            dbPointNames.value.add(modal.name);
-          }
-        } catch { /* ignore — will fail below */ }
-      }
-      if (!resolvedDbId) {
-        modal.error = 'Cannot edit: no database ID found. Try refreshing the page.';
-        modal.saving = false;
-        return;
-      }
-      saved = await updateCoordinatePoint(resolvedDbId, {
-        name,
-        y: yVal,
-        x: xVal,
-        description: modal.description.trim() || undefined
-      });
+      // Edit existing — route through editPanelHandler so the parcel rebuild,
+      // affected-parcels gate, workflow PATCH, and beacon refresh all go
+      // through one code path (same one used by the Edit Point Names panel).
+      const patch: { name?: string; y?: number; x?: number; description?: string } = {};
+      if (name !== modal.originalName) patch.name = name;
+      patch.y = yVal;
+      patch.x = xVal;
+      patch.description = modal.description.trim();
 
-      // Patch workflowState.adjustedCoordinates in-place (replace old entry)
-      if (Array.isArray(workflowState?.adjustedCoordinates)) {
-        workflowState.adjustedCoordinates = workflowState.adjustedCoordinates.map((c: any) => {
-          const cId = c.id || c.pointId || c.name;
-          if (cId !== modal.name && cId !== name) return c;
-          return { ...c, id: name, pointId: name, name, y: yVal, x: xVal, description: modal.description.trim() };
-        });
+      try {
+        await editPanelHandler(modal.originalName, patch);
+      } catch (e: any) {
+        if (e?.message === 'cancelled') {
+          modal.saving = false;
+          return;
+        }
+        throw e;
       }
+      console.log(`[BeaconEdit] ✅ Updated beacon "${modal.originalName}" → "${name}" (Y=${yVal}, X=${xVal})`);
+      beaconModal.value = null;
+      return;
     }
 
-    // Persist updated coordinates array to workflow step so reload works
+    // Add-mode persistence: persist new point + workflow + refresh map.
     try {
       await api.patch(`/survey-projects/${projectId}/workflow`, {
         step: 'calculations-part1',
@@ -1841,10 +1843,8 @@ async function confirmBeaconSave() {
       console.warn('[BeaconEdit] ⚠️ Could not persist to workflow state:', e);
     }
 
-    // Refresh map survey peg layer so the new/edited point renders
     handleRenameComplete([]);
-
-    console.log(`[BeaconEdit] ✅ ${modal.mode === 'add' ? 'Added' : 'Updated'} beacon "${name}" (Y=${yVal}, X=${xVal})`);
+    console.log(`[BeaconEdit] ✅ Added beacon "${name}" (Y=${yVal}, X=${xVal})`);
     beaconModal.value = null;
 
   } catch (e: any) {
@@ -3232,75 +3232,15 @@ function addSurveyPoints(wgs84Points: any[]) {
       if (deleteBtn) {
         deleteBtn.addEventListener('click', async () => {
           popup.remove();
-          if (!confirm(`Delete beacon "${props.id}"?\n\nThis cannot be undone. The point will be removed from the database and all related data.`)) return;
-
-          const pointName = props.id as string;
-          const projectId = workflowState?.projectInfo?.projectId;
-          if (!projectId) { alert('No project loaded — cannot delete point.'); return; }
-
+          // Route through the panel handler so the affected-parcels gate,
+          // DB delete, workflow PATCH, parcel rebuild, and map refresh all
+          // happen the same way as a delete from the Edit Point Names panel.
+          // Single source of truth = one place to fix bugs.
           try {
-            // Look up affected parcels BEFORE deleting so the rebuild can still
-            // see which polygons reference this beacon.
-            let affectedParcels: Array<{ id: number; stand: string; designation: string }> = [];
-            try {
-              affectedParcels = await findAffectedParcels(pointName);
-            } catch (e) {
-              console.warn('[BeaconDelete] ⚠️ Could not look up affected parcels:', e);
-            }
-
-            // Always delete by project_id + name — no numeric id required
-            try {
-              await deleteCoordinatePointByName(Number(projectId), pointName);
-              console.log(`[BeaconDelete] 🗑️ DB row deleted for "${pointName}"`);
-            } catch (dbErr: any) {
-              // 404 = point only existed in memory (never persisted), that's fine
-              if (dbErr?.response?.status !== 404) throw dbErr;
-              console.warn(`[BeaconDelete] ⚠️ Point "${pointName}" not found in DB (memory-only) — continuing cleanup`);
-            }
-
-            // Remove from workflowState.adjustedCoordinates (all name field variants)
-            if (Array.isArray(workflowState?.adjustedCoordinates)) {
-              workflowState.adjustedCoordinates = workflowState.adjustedCoordinates.filter((c: any) => {
-                const cId = c.id || c.pointId || c.name || c.label;
-                return cId !== pointName;
-              });
-            }
-
-            // Remove from in-memory tracking maps
-            dbPointNames.value.delete(pointName);
-            dbPointIds.value.delete(pointName);
-
-            // Persist updated adjusted coordinates to workflow step
-            try {
-              await api.patch(`/survey-projects/${projectId}/workflow`, {
-                step: 'calculations-part1',
-                action: 'update',
-                metadata: {
-                  adjusted_coordinates: workflowState.adjustedCoordinates,
-                  beacon_delete: { name: pointName, at: new Date().toISOString() },
-                  timestamp: new Date().toISOString()
-                }
-              });
-            } catch (e) {
-              console.warn('[BeaconDelete] ⚠️ Could not persist deletion to workflow state:', e);
-            }
-
-            // Rebuild any parcels that referenced this beacon: rewrite geom +
-            // cape_lo_points so the polygon no longer carries the deleted vertex.
-            if (affectedParcels.length > 0) {
-              try {
-                await rebuildAffectedParcels(affectedParcels, { kind: 'delete', name: pointName });
-              } catch (e) {
-                console.warn('[BeaconDelete] ⚠️ Could not rebuild affected parcels:', e);
-              }
-            }
-
-            // Refresh map survey peg layer
-            handleRenameComplete([]);
-            console.log(`[BeaconDelete] ✅ Deleted beacon "${pointName}"`);
-
+            await deletePanelHandler(props.id as string);
           } catch (err: any) {
-            alert(`Failed to delete beacon "${pointName}": ${err?.response?.data?.error || err?.message || 'Unknown error'}`);
+            if (err?.message === 'cancelled') return;
+            alert(`Failed to delete beacon "${props.id}": ${err?.response?.data?.error || err?.message || 'Unknown error'}`);
           }
         });
       }

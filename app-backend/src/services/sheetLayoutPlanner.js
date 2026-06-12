@@ -65,10 +65,22 @@ export function planSheetLayout(args) {
   }
 
   const doc = makeMeasureProxy(measureText);
-  return calculateBlockPositions(
+  const blockPositions = calculateBlockPositions(
     doc, metadata, parcels, outsideFigureData, beacons,
     mapBounds, mapFeatureBounds, logger, scale, extent,
     tickMarkBounds, zOrderCollisionRegistry,
     figureBounds, polyPts,
   );
+
+  // Endorsement block — fixed right-margin position. Mirrors the inline
+  // computation in drawEndorsementBlock (which is now rewired to consume
+  // this slot in Task 5). 150 mm × 150 mm at top-right of the map area.
+  blockPositions.endorsement = {
+    x: mapBounds.x + mapBounds.width,
+    y: mapBounds.y,
+    width: 150 * 2.835,  // 150 mm → PDF points
+    height: 150,
+  };
+
+  return blockPositions;
 }

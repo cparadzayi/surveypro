@@ -11508,13 +11508,13 @@ function drawSurveyorGeneralSignature(doc, mapBounds, position) {
 /**
  * Draw Endorsement block (right margin, outside map area)
  */
-function drawEndorsementBlock(doc, mapBounds, pageWidth, pageHeight) {
-  // Position: Top-left corner abutting top-right corner of map boundary
-  const blockX = mapBounds.x + mapBounds.width;
-  const blockY = mapBounds.y;
-  // Width: Full 150mm right margin (150mm * 2.835 = 425.25pt)
-  const blockWidth = 150 * 2.835; // 425.25pt
-  const blockHeight = 150;
+function drawEndorsementBlock(doc, position) {
+  // Position comes from planSheetLayout's endorsement slot (right-margin,
+  // 150mm × 150mm). Previously computed inline; now consumed from the planner.
+  const blockX = position.x;
+  const blockY = position.y;
+  const blockWidth = position.width;
+  const blockHeight = position.height;
 
   doc.save();
 
@@ -13645,7 +13645,7 @@ async function _generateGeoPDFInner(options, logger) {
   drawNorthArrow(doc, mapBounds, blockPositions.northArrow);
   drawSurveyorGeneralSignature(doc, mapBounds, blockPositions.sgSignature);
 
-  drawEndorsementBlock(doc, mapBounds, pageWidth, pageHeight);
+  drawEndorsementBlock(doc, blockPositions.endorsement);
 
   // Step 5c: Render tick marks AFTER all blocks are drawn.
   // blockPositions now contains the actual rendered bounds for all blocks,

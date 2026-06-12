@@ -83,3 +83,16 @@ describe('planSheetLayout — measureText injection', () => {
     expect(measureCalls).toBeGreaterThanOrEqual(4);
   });
 });
+
+describe('planSheetLayout — endorsement slot', () => {
+  test('returns endorsement slot at right-margin position', () => {
+    const r = plan(sampleMinimalPlan);
+    expect(r.endorsement).toBeDefined();
+    // Per drawEndorsementBlock: top-left = (mapBounds.x + mapBounds.width, mapBounds.y),
+    // width = 150mm in PDF points (150 * 2.835), height = 150 PDF points.
+    expect(r.endorsement.x).toBeCloseTo(A2_MAP_BOUNDS.x + A2_MAP_BOUNDS.width, 0);
+    expect(r.endorsement.y).toBeCloseTo(A2_MAP_BOUNDS.y, 0);
+    expect(r.endorsement.width).toBeCloseTo(150 * 2.835, 1);
+    expect(r.endorsement.height).toBeCloseTo(150, 0);
+  });
+});

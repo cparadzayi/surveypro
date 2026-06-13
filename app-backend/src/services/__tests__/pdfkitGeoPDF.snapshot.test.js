@@ -3,6 +3,7 @@ import { describe, test, expect } from '@jest/globals';
 import { generateGeoPDF } from '../pdfkitGeoPDF.js';
 import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
 import { sampleRealisticPlan } from './fixtures/sampleRealisticPlan.js';
+import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} };
@@ -47,4 +48,10 @@ describe('PDF text+position snapshot', () => {
     const items = await extractTextPositions(pdfBuffer);
     expect(items).toMatchSnapshot();
   }, 30000);
+
+  test('Maglas fixture', async () => {
+    const { pdfBuffer } = await generateGeoPDF(sampleMaglasPlan, fakeLogger);
+    const items = await extractTextPositions(pdfBuffer);
+    expect(items).toMatchSnapshot();
+  }, 60000);
 });

@@ -61,6 +61,7 @@ import {
   emitSGBox,
 } from './dxfBottomZoneEmitter.js'
 import { planSheetLayout } from './sheetLayoutPlanner.js'
+import { rectangleOverlapsPolygon } from './dxfGeometry.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
 // External consumers (tests, other modules) keep importing from dxfGenerator.js.
@@ -413,15 +414,10 @@ export function generateDXF(options, logger) {
       warnings.count += 1
       return
     }
-    if (typeof category === 'string' && category.endsWith('Overflow')) {
-      warnings.summary[category] = value
-      warnings.count += 1
-      return
-    }
-    // 3-v7: structured warning for paper-size escalation exhaustion. Mirrors
-    // PDF's `warnings.scheduleEscalationExhausted` payload for unified frontend
-    // signal.
-    if (category === 'scheduleEscalationExhausted') {
+    if (typeof category === 'string' &&
+        (category.endsWith('Overflow') ||
+         category === 'scheduleEscalationExhausted' ||
+         category.endsWith('OverlapsPolygon'))) {
       warnings.summary[category] = value
       warnings.count += 1
       return
@@ -1861,6 +1857,28 @@ export function generateDXF(options, logger) {
     { x: sgPos.x, y: sgPos.y },
     { width: sgPos.width, height: sgPos.height },
     bottomZoneFonts, mm, TB);
+
+  // 3-v7: structured warnings for each surrounding block that overlaps the polygon.
+  function _warnIfOverlap(name, pos, sizeInfo) {
+    if (!figurePolygon || figurePolygon.length < 3) return;
+    const rect = {
+      x:      pos.x,
+      y:      pos.y - sizeInfo.height,   // south-up: pos.y is TOP, rect.y is BOTTOM
+      width:  sizeInfo.width,
+      height: sizeInfo.height,
+    };
+    if (rectangleOverlapsPolygon(rect, figurePolygon, 0)) {
+      warn(`${name}OverlapsPolygon`, {
+        position: { x: pos.x, y: pos.y, width: sizeInfo.width, height: sizeInfo.height },
+        hint: `${name} block rendered over the parcel figure.`,
+      });
+    }
+  }
+
+  _warnIfOverlap('outsideFigureData', ofdPos,       ofdPos);
+  _warnIfOverlap('beaconDescription', beaconPos,    beaconPos);
+  _warnIfOverlap('surveyStatement',   statementPos, statementPos);
+  _warnIfOverlap('sgSignature',       sgPos,        sgPos);
 
   logger.info(`[DXF] Shared planner placement complete: 5 surrounding blocks emitted`);
 

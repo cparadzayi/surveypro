@@ -13670,6 +13670,27 @@ async function _generateGeoPDFInner(options, logger) {
 
   drawEndorsementBlock(doc, blockPositions.endorsement);
 
+  // 3-v7: structured warnings for each surrounding block that overlaps the polygon.
+  // Mirrors DXF's per-block OverlapsPolygon warnings (same category names).
+  const _pdfPoly = mapFeatureBounds?.pdfPoints ?? [];
+  function _pdfWarnIfOverlap(name, pos) {
+    if (!_pdfPoly || _pdfPoly.length < 3) return;
+    if (!pos) return;
+    const rect = { x: pos.x, y: pos.y, width: pos.width, height: pos.height };
+    if (rectangleOverlapsPolygon(rect, _pdfPoly, 0)) {
+      warnings[`${name}OverlapsPolygon`] = {
+        position: rect,
+        hint: `${name} block rendered over the parcel figure.`,
+      };
+    }
+  }
+
+  _pdfWarnIfOverlap('outsideFigureData', blockPositions.outsideFigureData);
+  _pdfWarnIfOverlap('scheduleOfAreas',   blockPositions.scheduleOfAreas);
+  _pdfWarnIfOverlap('beaconDescription', blockPositions.beaconDescription);
+  _pdfWarnIfOverlap('surveyStatement',   blockPositions.surveyStatement);
+  _pdfWarnIfOverlap('sgSignature',       blockPositions.sgSignature);
+
   // Step 5c: Render tick marks AFTER all blocks are drawn.
   // blockPositions now contains the actual rendered bounds for all blocks,
   // so tick mark label collision checks correctly avoid every table.

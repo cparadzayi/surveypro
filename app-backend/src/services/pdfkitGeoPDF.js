@@ -9,8 +9,7 @@ import {
   SI727_MARGINS,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths as _computeScheduleColumnWidths } from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths } from '../../../app-shared/block-definitions.js';
+import { computeScheduleColumnWidths } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -9277,7 +9276,7 @@ function drawScheduleOfAreasMultiTable(
   let dynColWidths;
   try {
     const measurer = buildPdfScheduleMeasurer(doc, 6, 7);
-    dynColWidths = _computeScheduleColumnWidths({
+    dynColWidths = computeScheduleColumnWidths({
       dataRows: surveyedParcels.map((p) => ({
         stand:      p.properties.stand,
         area:       String(p.properties.area_m2 || ""),

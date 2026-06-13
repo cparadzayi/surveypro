@@ -1763,6 +1763,7 @@ export function generateDXF(options, logger) {
     polyPts:           polyPtsForPlanner,
     measureText:       plannerMeasure,
     logger,
+    scheduleColumnWidthsPt,
   });
 
   // Convert planner positions (y-down PDF pt, relative to content area top-left)

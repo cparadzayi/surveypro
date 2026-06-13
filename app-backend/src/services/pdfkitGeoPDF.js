@@ -10,6 +10,7 @@ import {
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
 import { computeScheduleColumnWidths as _computeScheduleColumnWidths } from "../../../app-shared/block-definitions.js";
+import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
 import { LabelingSystem } from "./pdfkitLabeling.js";
 import { bankersRound, roundBearingSouth, degToDMS } from "../utils/zim-geo.js";
@@ -13500,21 +13501,18 @@ async function _generateGeoPDFInner(options, logger) {
   //      This preserves legibility per SI 727 §32(2).
   //   2. ONLY if already at A0 (largest), try the next higher scale denominator.
   // =========================================================================
-  const SHEET_ORDER = ['ISO_A2', 'ISO_A1', 'ISO_A0'];
-  const MAX_SHEET_UP_ATTEMPTS = 2; // A2→A1→A0 = max 2 escalations
   const MAX_SCALE_UP_ATTEMPTS = 1;
   let suggestedScale = null;
 
   if (blockPositions.needsScaleUp) {
     // Determine current sheet size name
     const currentSheetName = sheetSize || 'ISO_A2';
-    const currentSheetIdx = SHEET_ORDER.indexOf(currentSheetName);
-    const canEscalateSheet = currentSheetIdx >= 0 && currentSheetIdx < SHEET_ORDER.length - 1
+    const canEscalateSheet = nextSheetUp(currentSheetName) !== null
       && _sheetSizeUpAttempt < MAX_SHEET_UP_ATTEMPTS;
 
     if (canEscalateSheet) {
       // ── PAPER-SIZE ESCALATION ──
-      const nextSheet = SHEET_ORDER[currentSheetIdx + 1];
+      const nextSheet = nextSheetUp(currentSheetName);
       logger.warn(
         `[PDFKit] 📄 Blocks unplaceable on ${currentSheetName} at ${optimalScale.label} — ` +
         `escalating paper size to ${nextSheet} (attempt ${_sheetSizeUpAttempt + 1}/${MAX_SHEET_UP_ATTEMPTS})`

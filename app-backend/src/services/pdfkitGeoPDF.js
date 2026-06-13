@@ -8929,7 +8929,8 @@ function drawScheduleOfAreas(
   mapFeatureBounds = null,
   tickMarkBounds = [],
   splitParams = null,
-  scaleDenominator = 1000
+  scaleDenominator = 1000,
+  scheduleColumnWidthsPt = null,   // 3-v7: caller-provided widths from planner
 ) {
   if (!parcels || parcels.features.length === 0) return;
 
@@ -8990,7 +8991,8 @@ function drawScheduleOfAreas(
       allBlockPositions,   // needed for block↔block collision avoidance
       mapFeatureBounds,    // needed for polygon overlap rejection
       tickMarkBounds,      // needed for tick mark avoidance
-      scaleDenominator
+      scaleDenominator,
+      scheduleColumnWidthsPt,   // 3-v7: caller-provided widths
     );
     // Patch blockPositions with the actual composite bounds so that tick mark label
     // collision checks (which run after this call) use the real rendered rect.
@@ -9007,11 +9009,17 @@ function drawScheduleOfAreas(
   } else {
     const totalHeight = _SCHED_TITLE + _SCHED_SPACING + _SCHED_HEADER + standCount * _SCHED_ROW + _SCHED_PAD;
     logger.info(`[PDFKit] 📊 Schedule of Areas: drawing ${standCount} stands at (${tableX.toFixed(0)},${tableY.toFixed(0)}), totalHeight=${totalHeight.toFixed(0)}pt`);
-    drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY, mapBounds);
+    drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY, scheduleColumnWidthsPt);
     // Patch blockPositions with actual rendered bounds for single-column path too
+    // 3-v7: width derived from caller-provided dynamic widths when available,
+    // else falls back to the static 260pt sum.
+    const _renderedSchedWidth =
+      Array.isArray(scheduleColumnWidthsPt) && scheduleColumnWidthsPt.length === 6
+        ? scheduleColumnWidthsPt.reduce((s, w) => s + w, 0)
+        : _schedSingleColWidth;
     if (allBlockPositions) {
-      allBlockPositions.scheduleOfAreas = { x: tableX, y: tableY, width: _schedSingleColWidth, height: totalHeight };
-      logger.info(`[PDFKit] 📊 Patched blockPositions.scheduleOfAreas (single-col) → (${tableX.toFixed(0)},${tableY.toFixed(0)}) ${_schedSingleColWidth.toFixed(0)}×${totalHeight.toFixed(0)}`);
+      allBlockPositions.scheduleOfAreas = { x: tableX, y: tableY, width: _renderedSchedWidth, height: totalHeight };
+      logger.info(`[PDFKit] 📊 Patched blockPositions.scheduleOfAreas (single-col) → (${tableX.toFixed(0)},${tableY.toFixed(0)}) ${_renderedSchedWidth.toFixed(0)}×${totalHeight.toFixed(0)}`);
     }
   }
 }
@@ -9247,7 +9255,8 @@ function drawScheduleOfAreasMultiTable(
   allBlockPositions = {},
   mapFeatureBounds = null,
   tickMarkBounds = [],
-  scaleDenominator = 1000
+  scaleDenominator = 1000,
+  scheduleColumnWidthsPt = null,   // 3-v7: caller-provided widths from planner
 ) {
   // Filter out Outside Figure parcels
   const surveyedParcels = parcels.features.filter((parcel) => {
@@ -9261,38 +9270,14 @@ function drawScheduleOfAreasMultiTable(
 
   const standCount = surveyedParcels.length;
 
-  // 2026-06-06: dynamic column widths from the shared algorithm in
-  // app-shared/block-definitions.js. Same algorithm DXF uses (different
-  // measurer). Falls back to the legacy [35,60,40,40,35,50] when the
-  // measurer throws (e.g. font load failure) — preserves the existing
-  // happy path on font errors.
-  //
-  // Note: the variables colStand / colArea / colDiagram / colDeedNumber /
-  // colDeedDate / colSurveyor are read by drawScheduleOfAreasSingleColumn
-  // later in this file at fixed values. The dynamic-width logic only
-  // applies inside the multi-table path; single-column callers continue
-  // to use their own hardcoded constants. PDF parity is preserved at
-  // the multi-table boundary where column widths actually matter.
-  let dynColWidths;
-  try {
-    const measurer = buildPdfScheduleMeasurer(doc, 6, 7);
-    dynColWidths = computeScheduleColumnWidths({
-      dataRows: surveyedParcels.map((p) => ({
-        stand:      p.properties.stand,
-        area:       String(p.properties.area_m2 || ""),
-        diagram:    p.properties.diagramNumber  || "",
-        deedNumber: p.properties.deedNumber     || "",
-        deedDate:   p.properties.deedDate       || "",
-        surveyor:   p.properties.surveyorGeneral || "",
-      })),
-      headerFontSize: 6,
-      bodyFontSize:   7,
-      measureText:    measurer,
-    });
-  } catch (e) {
-    logger.warn?.(`[PDFKit] computeScheduleColumnWidths fell back to fixed widths: ${e.message}`);
-    dynColWidths = [35, 60, 40, 40, 35, 50];
-  }
+  // 3-v7: caller-provided widths take precedence over internal computation.
+  // The planner (_generateGeoPDFInner) now computes widths once via
+  // computeScheduleColumnWidths and threads them through. When absent
+  // (omitted by caller), fall back to the static defaults — same values
+  // the previous in-function try/catch used on font-measurer failure.
+  const dynColWidths = Array.isArray(scheduleColumnWidthsPt) && scheduleColumnWidthsPt.length === 6
+    ? scheduleColumnWidthsPt
+    : [35, 60, 40, 40, 35, 50];
   const colStand      = dynColWidths[0];
   const colArea       = dynColWidths[1];
   const colDiagram    = dynColWidths[2];
@@ -10292,14 +10277,18 @@ function drawScheduleOfAreasMultiTable(
  * Draw Schedule of Areas - Single column (for ≤50 stands)
  * Full SI 727 6-column format
  */
-function drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY) {
-  // SI 727 column widths — colArea must be wide enough for "2.1410Ha" at 11pt without wrapping
-  const colStand = 35;
-  const colArea = 60;
-  const colDiagram = 40;
-  const colDeedNumber = 40;
-  const colDeedDate = 35;
-  const colSurveyor = 50;
+function drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY, scheduleColumnWidthsPt = null) {
+  // 3-v7: caller-provided widths take precedence; falls back to the legacy
+  // static [35,60,40,40,35,50] (sum = 260pt) when absent.
+  const widths = Array.isArray(scheduleColumnWidthsPt) && scheduleColumnWidthsPt.length === 6
+    ? scheduleColumnWidthsPt
+    : [35, 60, 40, 40, 35, 50];
+  const colStand      = widths[0];
+  const colArea       = widths[1];
+  const colDiagram    = widths[2];
+  const colDeedNumber = widths[3];
+  const colDeedDate   = widths[4];
+  const colSurveyor   = widths[5];
   const tableWidth =
     colStand + colArea + colDiagram + colDeedNumber + colDeedDate + colSurveyor;
 
@@ -13641,7 +13630,8 @@ async function _generateGeoPDFInner(options, logger) {
       numCols:     blockPositions._schedNumCols     ?? 1,
       rowsPerCol:  blockPositions._schedRowsPerCol  ?? (filteredParcels?.features?.length ?? 0),
     },
-    optimalScale.value
+    optimalScale.value,
+    _scheduleColumnWidthsPt,   // 3-v7: caller-provided widths from planner
   );
   drawOutsideFigureData(
     doc,

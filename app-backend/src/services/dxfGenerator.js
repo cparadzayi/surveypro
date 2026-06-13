@@ -28,6 +28,7 @@ import {
   formatStandRanges,
   computeScheduleColumnWidths,
 } from '../../../app-shared/block-definitions.js'
+import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 
 /** Conversion factor: 1 PDF point = 0.352778 mm. block-definitions values
  *  are in PDF pts (matching the PDF generator's native unit); the DXF
@@ -413,6 +414,14 @@ export function generateDXF(options, logger) {
       return
     }
     if (typeof category === 'string' && category.endsWith('Overflow')) {
+      warnings.summary[category] = value
+      warnings.count += 1
+      return
+    }
+    // 3-v7: structured warning for paper-size escalation exhaustion. Mirrors
+    // PDF's `warnings.scheduleEscalationExhausted` payload for unified frontend
+    // signal.
+    if (category === 'scheduleEscalationExhausted') {
       warnings.summary[category] = value
       warnings.count += 1
       return
@@ -1765,6 +1774,30 @@ export function generateDXF(options, logger) {
     logger,
     scheduleColumnWidthsPt,
   });
+
+  // 3-v7: paper-size escalation. Mirrors pdfkitGeoPDF.js:13497-13559.
+  const _sheetSizeUpAttempt = options._sheetSizeUpAttempt ?? 0;
+  if (blockPositions.needsScaleUp && _sheetSizeUpAttempt < MAX_SHEET_UP_ATTEMPTS) {
+    const nextSheet = nextSheetUp(sheetSize);
+    if (nextSheet) {
+      logger.warn(
+        `[DXF] Blocks unplaceable on ${sheetSize} — ` +
+        `escalating to ${nextSheet} (attempt ${_sheetSizeUpAttempt + 1}/${MAX_SHEET_UP_ATTEMPTS})`
+      );
+      return generateDXF({
+        ...options,
+        sheetSize: nextSheet,
+        _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
+      }, logger);
+    }
+  }
+  if (blockPositions.needsScaleUp) {
+    warn('scheduleEscalationExhausted', {
+      atSheetSize: sheetSize,
+      attempts: _sheetSizeUpAttempt,
+      hint: 'Plan too dense for largest available paper size; some blocks may overlap the figure.',
+    });
+  }
 
   // Convert planner positions (y-down PDF pt, relative to content area top-left)
   // → DXF ground metres (south-up). Emit position.y = TOP of block in south-up.

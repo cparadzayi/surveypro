@@ -609,10 +609,16 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
     expect(warnings.summary.scheduleOverflow).toBeNull()
   })
 
-  test('overflow fixture (200 parcels at A2) emits structured scheduleOverflow warning', () => {
-    // Build a synthetic fixture with enough parcels to exceed the
-    // single-zone budget at A2. The narrow col1 (~104mm) can fit at most
-    // one multi-sub-table at A2 → any rowCount past rowsPerColumn overflows.
+  test('overflow fixture (200 parcels) triggers paper-size escalation and fits at A0', () => {
+    // 3-v7: DXF now mirrors PDF's paper-size escalation. When the planner
+    // returns needsScaleUp at A2, the generator recurses up the SHEET_ORDER
+    // ladder (A2 → A1 → A0). For this fixture, 200 parcels exceed the
+    // schedule budget at A2/A1 but fit at A0 — so escalation succeeds and
+    // neither scheduleOverflow nor scheduleEscalationExhausted fires.
+    //
+    // The escalation log lines are observable on `logger.warn` for the
+    // diagnostic narrative; the lack of structured warnings is the success
+    // signal.
     const manyParcels = []
     for (let i = 1; i <= 200; i++) {
       manyParcels.push({
@@ -624,13 +630,21 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
       })
     }
     const overflowFixture = { ...sampleFixture, parcels: { features: manyParcels } }
-    const { warnings } = generateDXF(overflowFixture, fakeLogger)
-    expect(warnings.summary.scheduleOverflow).not.toBeNull()
-    expect(warnings.summary.scheduleOverflow.atSheetSize).toBe('ISO_A2')
-    expect(warnings.summary.scheduleOverflow.standCount).toBe(200)
-    // requiredSheetSize is one of the ladder entries or 'multi-sheet-required'
-    expect(['ISO_A1', 'ISO_A0', 'multi-sheet-required'])
-      .toContain(warnings.summary.scheduleOverflow.requiredSheetSize)
+    const capturedWarn = []
+    const captureLogger = {
+      info:  () => {},
+      warn:  (...a) => capturedWarn.push(a.map(String).join(' ')),
+      error: () => {},
+    }
+    const { warnings } = generateDXF(overflowFixture, captureLogger)
+    // Escalation log lines should mention the climb up the ladder.
+    const climbLines = capturedWarn.filter(s =>
+      /Blocks unplaceable on ISO_A[210] — escalating to ISO_A[210]/.test(s))
+    expect(climbLines.length).toBeGreaterThanOrEqual(1)
+    // After escalation the schedule fits at A0; no structured exhaustion or
+    // overflow warning should fire.
+    expect(warnings.summary.scheduleEscalationExhausted).toBeUndefined()
+    expect(warnings.summary.scheduleOverflow).toBeNull()
   })
 })
 

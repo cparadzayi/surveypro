@@ -12138,6 +12138,9 @@ async function _generateGeoPDFInner(options, logger) {
     enableMeasurements = false, // Enable measurement tools
   } = options;
 
+  // 3-v7: structured warnings collection, mirroring DXF's warnings.summary shape.
+  const warnings = {};
+
   console.log("🔥 Destructuring complete, about to log with logger");
   const beaconLabelsIsArray = Array.isArray(beaconLabels);
   const beaconLabelsIsMap = beaconLabels instanceof Map;
@@ -13575,6 +13578,12 @@ async function _generateGeoPDFInner(options, logger) {
     } else {
       logger.warn(`[PDFKit] ⚠️ Both paper-size escalation and scale step-up exhausted — using stacker fallback`);
     }
+    // 3-v7: emit identical structured warning as DXF on escalation exhaustion.
+    warnings.scheduleEscalationExhausted = {
+      atSheetSize: sheetSize || 'ISO_A2',
+      attempts: _sheetSizeUpAttempt,
+      hint: 'Plan too dense for largest available paper size; some blocks may overlap the figure.',
+    };
   }
 
   // Pass 3: Recalculate tick mark bounds with title block position for final adjustment
@@ -13811,7 +13820,7 @@ async function _generateGeoPDFInner(options, logger) {
     });
   }
 
-  return { pdfBuffer, suggestedScale, scale: optimalScale.label, sheetSize: pageSize.code, tileGrid };
+  return { pdfBuffer, suggestedScale, scale: optimalScale.label, sheetSize: pageSize.code, tileGrid, warnings };
 }
 
 // ============================================================================

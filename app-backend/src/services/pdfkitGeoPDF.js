@@ -10,7 +10,9 @@ import {
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
 import { computeScheduleColumnWidths as _computeScheduleColumnWidths } from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths } from '../../../app-shared/block-definitions.js';
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
+import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
 import { LabelingSystem } from "./pdfkitLabeling.js";
 import { bankersRound, roundBearingSouth, degToDMS } from "../utils/zim-geo.js";
@@ -13479,6 +13481,27 @@ async function _generateGeoPDFInner(options, logger) {
   // PDFKit's widthOfString for text measurement (DXF passes its own 0.55 heuristic).
   const pdfKitMeasureText = (str, { family, size }) =>
     doc.font(family).fontSize(size).widthOfString(str);
+
+  // 3-v7: Compute dynamic schedule column widths once and pass to the planner.
+  // The schedule renderers will consume the same widths in Task 6.
+  // Measurer signature matches block-definitions.js' computeScheduleColumnWidths
+  // contract: (text, fontSize) => widthInPt. Headers render in Helvetica-Bold,
+  // body in Helvetica, matching drawScheduleOfAreasSingleColumn.
+  const _pdfScheduleMeasurer = buildPdfScheduleMeasurer(doc, 6, 7);
+  const _scheduleColumnWidthsPt = (() => {
+    try {
+      return computeScheduleColumnWidths({
+        dataRows: filteredParcels.features.map(extractScheduleRow),
+        headerFontSize: 6,   // matches drawScheduleOfAreasSingleColumn header font
+        bodyFontSize:   7,   // matches drawScheduleOfAreasSingleColumn body font
+        measureText:    _pdfScheduleMeasurer,
+      });
+    } catch (e) {
+      logger.warn?.(`[PDFKit] computeScheduleColumnWidths fell back to static: ${e.message}`);
+      return null;   // planner falls back to static via the Task 4 guard
+    }
+  })();
+
   const blockPositions = planSheetLayout({
     metadata,
     parcels: filteredParcels,
@@ -13494,6 +13517,7 @@ async function _generateGeoPDFInner(options, logger) {
     figureBounds,
     polyPts: _topoPolyPts,
     measureText: pdfKitMeasureText,
+    scheduleColumnWidthsPt: _scheduleColumnWidthsPt,   // NEW
   });
 
   // =========================================================================

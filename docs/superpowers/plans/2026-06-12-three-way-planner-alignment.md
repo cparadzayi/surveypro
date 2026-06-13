@@ -552,8 +552,12 @@ In `app-backend/src/services/pdfkitGeoPDF.js`, before the `planSheetLayout` call
 ```js
 // 3-v7: Compute dynamic schedule column widths once and pass to the planner.
 // The schedule renderers will consume the same widths in Task 6.
-const _pdfScheduleMeasurer = (str, { family, size }) =>
-  doc.font(family).fontSize(size).widthOfString(str);
+// NOTE: `computeScheduleColumnWidths` calls measureText with `(text, fontSize)` —
+// a number, not an object. Use the existing `buildPdfScheduleMeasurer` helper
+// (already defined in pdfkitGeoPDF.js around line 9220) which matches that
+// contract. Do NOT use `(str, { family, size }) => doc.font(...).widthOfString(...)`
+// — that throws on the destructure and silently falls back to static widths.
+const _pdfScheduleMeasurer = buildPdfScheduleMeasurer(doc, 6, 7);
 const _scheduleColumnWidthsPt = (() => {
   try {
     return computeScheduleColumnWidths({

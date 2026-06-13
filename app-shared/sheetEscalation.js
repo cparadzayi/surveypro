@@ -1,0 +1,24 @@
+/**
+ * SI 727 paper-size escalation ladder. Shared between pdfkitGeoPDF.js and
+ * dxfGenerator.js so both formats follow the same A2 → A1 → A0 sequence
+ * when the planner returns needsScaleUp.
+ *
+ * Spec: docs/superpowers/specs/2026-06-12-three-way-planner-alignment-design.md
+ */
+
+export const SHEET_ORDER = ['ISO_A2', 'ISO_A1', 'ISO_A0'];
+
+export const MAX_SHEET_UP_ATTEMPTS = 2;
+
+/**
+ * Returns the next sheet size in the escalation ladder, or null if the
+ * current sheet is already the largest or not in the ladder.
+ *
+ * @param {string} currentSheet
+ * @returns {string | null}
+ */
+export function nextSheetUp(currentSheet) {
+  const idx = SHEET_ORDER.indexOf(currentSheet);
+  if (idx < 0 || idx >= SHEET_ORDER.length - 1) return null;
+  return SHEET_ORDER[idx + 1];
+}

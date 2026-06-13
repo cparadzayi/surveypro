@@ -3,6 +3,7 @@ import { describe, test, expect } from '@jest/globals';
 import { generateDXF } from '../dxfGenerator.js';
 import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
 import { sampleRealisticPlan } from './fixtures/sampleRealisticPlan.js';
+import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js';
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} };
 
@@ -37,6 +38,12 @@ describe('DXF entity-list snapshot', () => {
 
   test('realistic fixture', () => {
     const { buffer } = generateDXF(sampleRealisticPlan, fakeLogger);
+    const items = extractTextEntities(buffer.toString());
+    expect(items).toMatchSnapshot();
+  });
+
+  test('Maglas fixture', () => {
+    const { buffer } = generateDXF(sampleMaglasPlan, fakeLogger);
     const items = extractTextEntities(buffer.toString());
     expect(items).toMatchSnapshot();
   });

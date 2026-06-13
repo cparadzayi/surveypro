@@ -15,7 +15,7 @@
 
 import { findBlockPosition, GRID_EDGE_MARGIN, isValidPosition } from './dxfBlockPlacer.js'
 import { computeWhitespaceZones } from './dxfTopology.js'
-import { rectanglesOverlap } from './dxfGeometry.js'
+import { rectanglesOverlap, rectangleOverlapsPolygon } from './dxfGeometry.js'
 import { planScheduleSplit, SCHEDULE_OF_AREAS } from '../../../app-shared/block-definitions.js'
 
 /** PDF point → paper-millimetre conversion. 1 pt = 1/72 inch = 25.4/72 mm. */
@@ -183,6 +183,21 @@ export function emitScheduleOfAreasTopological({
       if (yBottom < southmostY) southmostY = yBottom
     }
     logger.info(`[dxfScheduleEmitter] fixedPosition mode: emitted ${placedTables.length}/${layout.numTables} sub-tables at (${fixedPosition.x.toFixed(2)}, ${fixedPosition.y.toFixed(2)})`)
+    // 3-v7: warn if any placed sub-table overlaps the polygon. The emit still
+    // happens (single source of truth: the planner placed the schedule here);
+    // the warn gives the frontend a machine-readable signal.
+    if (polygon && polygon.length >= 3) {
+      for (const t of placedTables) {
+        const rect = { x: t.x, y: t.y, width: t.width, height: t.height }
+        if (rectangleOverlapsPolygon(rect, polygon, 0)) {
+          warn('scheduleOfAreasOverlapsPolygon', {
+            position: rect,
+            isContinuation: t.isContinuation,
+            hint: 'Schedule sub-table rendered over the parcel figure.',
+          })
+        }
+      }
+    }
     return {
       placedTables,
       placedStandCount,

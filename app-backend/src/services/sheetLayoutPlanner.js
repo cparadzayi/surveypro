@@ -58,6 +58,7 @@ export function planSheetLayout(args) {
     tickMarkBounds = [], figureBounds = null, polyPts = [],
     zOrderCollisionRegistry = null,
     measureText,
+    scheduleColumnWidthsPt = null,   // NEW
   } = args;
 
   if (!scale || !scale.value || !scale.label) {
@@ -82,6 +83,7 @@ export function planSheetLayout(args) {
     mapBounds, mapFeatureBounds, logger, scale, extent,
     tickMarkBounds, zOrderCollisionRegistry,
     figureBounds, polyPtsClosed,
+    scheduleColumnWidthsPt,        // NEW 15th positional arg
   );
 
   // Endorsement block — fixed right-margin position. Mirrors the inline

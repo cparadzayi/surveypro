@@ -7854,7 +7854,8 @@ export function calculateBlockPositions(
   tickMarkBounds = [],
   zOrderCollisionRegistry = null,
   figureBounds = null,
-  polyPts = []
+  polyPts = [],
+  scheduleColumnWidthsPt = null,   // NEW
 ) {
   // Validate scale parameter
   if (!scale || !scale.value || !scale.label) {
@@ -7905,7 +7906,9 @@ export function calculateBlockPositions(
   //   titleHeight=15, titleSpacing=15, headerHeight=25, rowHeight=15, bottomPadding=10
   // These are hardcoded in the draw function and MUST match here.
   const _sch = BLOCKS.SCHEDULE_OF_AREAS.singleColumn;
-  const _schedSingleColWidth = _sch.columns.reduce((s, c) => s + c.width, 0);
+  const _schedSingleColWidth = Array.isArray(scheduleColumnWidthsPt) && scheduleColumnWidthsPt.length === 6
+    ? scheduleColumnWidthsPt.reduce((s, w) => s + w, 0)
+    : _sch.columns.reduce((s, c) => s + c.width, 0);
   const schedRows   = parcels?.features?.length ?? 0;
   const _SCHED_TITLE   = 15;
   const _SCHED_SPACING = 15;

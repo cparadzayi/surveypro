@@ -97,6 +97,33 @@ describe('planSheetLayout — endorsement slot', () => {
   });
 });
 
+describe('planSheetLayout — scheduleColumnWidthsPt override', () => {
+  test('uses caller-provided widths when scheduleColumnWidthsPt is set', () => {
+    // Wide widths: 50, 80, 60, 60, 50, 70 sum = 370 pt
+    const customWidths = [50, 80, 60, 60, 50, 70];
+    const r = planSheetLayout({
+      metadata: sampleMinimalPlan.metadata,
+      parcels: sampleMinimalPlan.parcels,
+      outsideFigureData: sampleMinimalPlan.outsideFigureData,
+      beacons: sampleMinimalPlan.beacons,
+      mapBounds: A2_MAP_BOUNDS,
+      mapFeatureBounds: { x: 100, y: 100, width: 500, height: 400, pdfPoints: [] },
+      scale: sampleMinimalPlan.scale,
+      extent: { minX: 50000, maxX: 50100, minY: 2200000, maxY: 2200060 },
+      polyPts: [{ x: 100, y: 100 }, { x: 600, y: 100 }, { x: 600, y: 500 }, { x: 100, y: 500 }, { x: 100, y: 100 }],
+      measureText: fakeMeasure,
+      logger: fakeLogger,
+      scheduleColumnWidthsPt: customWidths,
+    });
+    expect(r.scheduleOfAreas.width).toBeCloseTo(370, 0);
+  });
+
+  test('falls back to static widths (260 pt) when scheduleColumnWidthsPt is omitted', () => {
+    const r = plan(sampleMinimalPlan);
+    expect(r.scheduleOfAreas.width).toBeCloseTo(260, 0);
+  });
+});
+
 describe('planSheetLayout — closed-polygon validation guard', () => {
   test('an open polygon is auto-closed before placement validation', () => {
     // Square polygon WITHOUT explicit closing vertex.

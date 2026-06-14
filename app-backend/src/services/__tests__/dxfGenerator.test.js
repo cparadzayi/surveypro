@@ -368,7 +368,7 @@ describe('generateDXF — endorsement zone', () => {
     },
     scale: '1:500', sheetSize: 'ISO_A2',
   }
-  test('emits all five endorsement sub-blocks', () => {
+  test('emits all four endorsement sub-blocks', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
     const dxf = buffer.toString()
     expect(dxf).toMatch(/APPROVED FOR LODGEMENT/)
@@ -376,7 +376,9 @@ describe('generateDXF — endorsement zone', () => {
     expect(dxf).toMatch(/Plan No\.:/)
     expect(dxf).toMatch(/Diagram-GP No\. 4567/)
     expect(dxf).toMatch(/Diagram-GP No\. 8910/)
-    expect(dxf).toMatch(/certify this plan correct/)
+    // 3-v8 follow-up: the "I, ... certify this plan correct" footer was removed
+    // for PDF↔DXF content parity. PDF emits no such certification line.
+    expect(dxf).not.toMatch(/certify this plan correct/)
   })
   test('falls back to "Prior diagrams: None" when the list is empty', () => {
     const noprior = { ...opts, metadata: { ...opts.metadata, priorDiagrams: [] } }

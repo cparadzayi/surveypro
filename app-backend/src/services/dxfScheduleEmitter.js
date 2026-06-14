@@ -72,6 +72,10 @@ export function emitScheduleOfAreasTopological({
   logger,
   seedPlacedBlocks = [],   // 3-v4: external obstacles to honour in addition to placedPositions
   fixedPosition,           // 3-v6: { x, y } TOP-LEFT (south-up: high y); when set, skip Pass 1/2/3 search and emit at this position
+  // 3-v8 follow-up: when the shared planner ran PDF's smart layout search and
+  // produced per-sub-table positions, the DXF generator converts each to ground
+  // metres and passes them here. Highest precedence — overrides fixedPosition.
+  placedTablesGround = null,
 }) {
   const { hHead, hBody, rH } = fonts
   const {
@@ -146,6 +150,59 @@ export function emitScheduleOfAreasTopological({
   const subTableHeightG = mm(
     SCHEDULE_HEADER_HEIGHT_MM + layout.rowsPerTable * (rH / mm(1)),
   )
+
+  // 3-v8 follow-up: placedTablesGround early exit. When the planner ran the
+  // shared schedule-layout search and produced per-sub-table positions, render
+  // each at its own (x, y). This gives DXF the SAME placement PDF uses.
+  if (Array.isArray(placedTablesGround) && placedTablesGround.length > 0) {
+    const placedTables = []
+    let placedStandCount = 0
+    let southmostY = placedTablesGround[0].y
+    for (const t of placedTablesGround) {
+      const startRow = Number.isFinite(t.parcelsStartIndex)
+        ? t.parcelsStartIndex
+        : placedStandCount
+      const rowsBudget = Number.isFinite(t.rowCount) ? t.rowCount : layout.rowsPerTable
+      const rows = dataRows.slice(startRow, startRow + rowsBudget)
+      if (rows.length === 0) break
+      const titleText = t.isContinuation ? "SCHEDULE OF AREAS (cont'd)" : 'SCHEDULE OF AREAS'
+      addScheduleTable({
+        layer: 'TITLE_BLOCK',
+        x: t.x, y: t.y,
+        dataRows: rows,
+        columnWidths: columnWidthsG_local,
+        titleText,
+        hHead, hBody, rH,
+        addText, addLine,
+      })
+      const yBottom = t.y - t.height
+      placedTables.push({
+        x: t.x, y: yBottom, width: t.width, height: t.height,
+        rowCount: rows.length, isContinuation: !!t.isContinuation,
+      })
+      placedStandCount += rows.length
+      if (yBottom < southmostY) southmostY = yBottom
+    }
+    logger.info(`[dxfScheduleEmitter] placedTablesGround mode: emitted ${placedTables.length}/${placedTablesGround.length} sub-tables (${placedStandCount}/${dataRows.length} stands)`)
+    if (polygon && polygon.length >= 3) {
+      for (const t of placedTables) {
+        const rect = { x: t.x, y: t.y, width: t.width, height: t.height }
+        if (rectangleOverlapsPolygon(rect, polygon, 0)) {
+          warn('scheduleOfAreasOverlapsPolygon', {
+            position: rect,
+            isContinuation: t.isContinuation,
+            hint: 'Schedule sub-table rendered over the parcel figure.',
+          })
+        }
+      }
+    }
+    return {
+      placedTables,
+      placedStandCount,
+      missingStandCount: dataRows.length - placedStandCount,
+      southmostY,
+    }
+  }
 
   // 3-v6: fixedPosition early exit. When the caller (DXF generator) supplies
   // an exact placement from the shared planner, skip Pass 1/2/3 polygon-aware

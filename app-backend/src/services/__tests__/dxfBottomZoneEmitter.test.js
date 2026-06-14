@@ -34,8 +34,8 @@ describe('sizeStatement', () => {
   })
 
   test('includes only the date row when surveyor absent', () => {
-    const result = sizeStatement({ date: '2026-01-01' }, fonts)
-    // Single line: "Surveyed in 2026-01-01 by me" — no gap after it.
+    const result = sizeStatement({ date: '2026-06-15' }, fonts)
+    // Single line: "Surveyed in June 2026 by me" — no gap after it.
     expect(result.height).toBeCloseTo(fonts.hBody, 5)
     expect(result.width).toBeGreaterThan(0)
   })
@@ -109,13 +109,14 @@ describe('emitStatement', () => {
 
   test('records expected addText calls at the given top-left position', () => {
     const r = makeRecorder()
-    const metadata = { date: '2026-01-01', surveyor: 'John Doe' }
+    // Mid-month date avoids timezone-driven month boundaries in the formatter.
+    const metadata = { date: '2026-06-15', surveyor: 'John Doe' }
     const position = { x: 100, y: 200 }   // top-left of bbox (south-up: high y)
     emitStatement(r.addText, position, metadata, fonts, 'TITLE_BLOCK')
 
     // Expect 3 addText calls: date line, surveyor (bold), '(Land Surveyor, Zim)'.
     expect(r.calls.addText).toHaveLength(3)
-    expect(r.calls.addText[0]).toEqual(['TITLE_BLOCK', 100, 200, 'Surveyed in 2026-01-01 by me', fonts.hBody, 0, undefined])
+    expect(r.calls.addText[0]).toEqual(['TITLE_BLOCK', 100, 200, 'Surveyed in June 2026 by me', fonts.hBody, 0, undefined])
     expect(r.calls.addText[1][3]).toBe('John Doe')
     expect(r.calls.addText[1][6]).toBe('BOLD')          // surveyor row is bold
     expect(r.calls.addText[2][3]).toBe('(Land Surveyor, Zim)')

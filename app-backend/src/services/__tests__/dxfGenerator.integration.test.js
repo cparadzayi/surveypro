@@ -405,7 +405,8 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(dxf).toMatch(/BEACON DESCRIPTIONS/)
     expect(dxf).toMatch(/Permanent concrete pillars/)
     expect(dxf).toMatch(/Diagram-GP No\. 4567/)
-    expect(dxf).toMatch(/certify this plan correct/)
+    // 3-v8 follow-up: certification footer removed for PDF↔DXF content parity.
+    expect(dxf).not.toMatch(/certify this plan correct/)
   })
 
   test('clean fixture produces zero warnings', () => {
@@ -724,7 +725,7 @@ describe('dxfGenerator integration — bottom-zone topology (3-v4)', () => {
     expect(dxf).toContain('OUTSIDE FIGURE DATA')      // OFD title
     expect(dxf).toContain('SCHEDULE OF AREAS')        // schedule title
     expect(dxf).toContain('BEACON DESCRIPTIONS')      // beacon header
-    expect(dxf).toContain('Surveyed in 2026-05-31')   // statement date line
+    expect(dxf).toContain('Surveyed in May 2026')     // statement date line — PDF-style "Month YYYY"
     expect(dxf).toContain('Approved')                 // SG box title
   })
 

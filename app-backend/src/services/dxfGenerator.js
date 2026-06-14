@@ -61,6 +61,8 @@ import {
   emitSGBox,
 } from './dxfBottomZoneEmitter.js'
 import { planSheetLayout } from './sheetLayoutPlanner.js'
+import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlanner.js'
+import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon } from './dxfGeometry.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
@@ -452,7 +454,13 @@ export function generateDXF(options, logger) {
   const isDevelopedPlan = planType === 'general-developed';
 
   const declaredS = parseScaleDenom(scale);
-  const paper = PAPER_SIZES[sheetSize] || PAPER_SIZES['ISO_A2'];
+  // Normalize sheetSize input: accept both 'ISO_A0' (underscore, canonical) and
+  // 'ISO A0' (space, used in some legacy logs/headers from si727Constants.code).
+  // Without this, an 'ISO A0' input misses PAPER_SIZES and falls back to A2.
+  const normalizedSheetSize = typeof sheetSize === 'string'
+    ? sheetSize.replace(/\s+/g, '_')
+    : sheetSize;
+  const paper = PAPER_SIZES[normalizedSheetSize] || PAPER_SIZES['ISO_A2'];
 
   // â”€â”€ Pre-scan drawing extent (outside figure + parcels ONLY, not unfiltered beacons) â”€â”€
   // Beacons are excluded because pre-filtering they span a huge area (e.g. 268 beacons).
@@ -497,7 +505,7 @@ export function generateDXF(options, logger) {
   }
 
   logger.info(`[DXF] Drawing extent: ${drawW.toFixed(1)}m x ${drawH.toFixed(1)}m`);
-  logger.info(`[DXF] Using scale 1:${S} (declared: 1:${declaredS}, sheet ${sheetSize} ${paper.w}x${paper.h}mm)`);
+  logger.info(`[DXF] Using scale 1:${S} (declared: 1:${declaredS}, sheet ${normalizedSheetSize} ${paper.w}x${paper.h}mm)`);
 
   // â”€â”€ Scale-aware sizes (matching pdfkitLabeling.js) â”€â”€
   let distPt, bearPt;
@@ -959,18 +967,11 @@ export function generateDXF(options, logger) {
         warn('priorDiagramsTruncated', remaining)
       }
     }
-    // â”€â”€ 5) Surveyor certification footer â”€â”€
-    // Guard: emit unless there is clearly no vertical room.
-    // Treat NaN (degenerate layout) as "room available" so the text
-    // always appears in test fixtures with empty geometry.
-    if (!(zoneBottom + mm(15) > y)) {
-      const surv = metadata.surveyor || '<surveyor>'
-      const lic = metadata.licenseNumber || ''
-      addText(TB, zoneL, zoneBottom + mm(10),
-              `I, ${surv} (PLS ${lic}), certify this plan correct`,
-              mm(2.4), 0)
-      addLine(TB, zoneL, zoneBottom + mm(6), zoneR - mm(2), zoneBottom + mm(6))
-    }
+    // 3-v8 follow-up: the surveyor-certification footer that used to live here
+    // ("I, <surv> (PLS <lic>), certify this plan correct") was redundant with
+    // the planner-positioned emitStatement block at the bottom of the page —
+    // and PDF emits no such certification line at all. Removed for PDF↔DXF
+    // content parity. The horizontal rule it sat on was decorative only.
   }
 
   // â”€â”€ 1. Outside Figure boundary â”€â”€
@@ -1701,29 +1702,19 @@ export function generateDXF(options, logger) {
     sgBodyH:  pt(SURVEYOR_GENERAL_BOX.bodyFontSize),
   };
 
-  // 2026-06-06: dynamic column widths. Computed once per generateDXF call
-  // from header + data measurements via the same algorithm PDF uses.
-  // PT_TO_MM_GEN converts from PDF pt to paper-mm; mm() converts to
-  // ground-metres at use site.
-  //
-  // DXF-specific calibration (vs PDF's doc.widthOfString):
-  //   1. headerFontSize uses bodyFontSize (= 7 pt). DXF's addScheduleTable
-  //      renders headers at hBody (= pt(7)), NOT at PDF's 6-pt header font.
-  //      Sizing the column for the actually-rendered font is what matters.
-  //   2. Char-width ratio is 1.0 (square characters), not the STYLE table's
-  //      0.55. Many CAD viewers ignore the STYLE width factor and render
-  //      text at width factor 1.0. Using 1.0 in the measurer guarantees
-  //      columns fit headers on every viewer. Compliant viewers (honoring
-  //      0.55) see extra padding inside the cell — visually fine, the
-  //      grid lines just sit further from the text.
-  const renderedFontSize = SCHEDULE_OF_AREAS.singleColumn.fontSize  // 7 pt
-  const dxfMeasureText = (text, fontSize) =>
-    String(text).length * fontSize * 1.0
+  // 3-v8 follow-up: use the shared Helvetica-AFM measurer and PDF's
+  // (headerFontSize=6, bodyFontSize=7) so DXF and PDF feed the planner
+  // bit-identical scheduleColumnWidthsPt. Previously DXF used 1.0 char
+  // width × 7pt for both header and body — that gave wider columns than
+  // PDF, the planner saw different schedule dimensions, and chose
+  // different anchor sides. See scheduleMeasurer.js for the documented
+  // trade-off around CAD-viewer width-factor compliance.
+  const dxfScheduleMeasure = buildScheduleMeasurer(6, 7);
   const scheduleColumnWidthsPt = computeScheduleColumnWidths({
     dataRows:       surveyedFeatures.map(extractScheduleRow),
-    headerFontSize: renderedFontSize,
-    bodyFontSize:   renderedFontSize,
-    measureText:    dxfMeasureText,
+    headerFontSize: 6,
+    bodyFontSize:   7,
+    measureText:    dxfScheduleMeasure,
   });
   const scheduleColumnWidthsG = scheduleColumnWidthsPt.map(w => mm(w * PT_TO_MM_GEN));
 
@@ -1738,11 +1729,23 @@ export function generateDXF(options, logger) {
   const contentWidthPt  = (cntR - cntL) * M_TO_PT;
   const contentHeightPt = (cntT - cntB) * M_TO_PT;
 
-  // Polygon: shift to content-area-relative coords, flip y (south-up → top-down).
-  const polyPtsForPlanner = (figurePolygon || []).map(p => ({
-    x: (p.x - cntL) * M_TO_PT,
-    y: (cntT - p.y) * M_TO_PT,
-  }));
+  // 3-v8: polygon-for-planner comes from the shared helper so PDF and DXF feed
+  // an identical polygon into planSheetLayout. Previously DXF used a y-flipped
+  // capeLoToDxfSouthUp transform while PDF used transformCoords (fit-to-extent),
+  // and the two polygons differed in size by ~5% AND in vertex ordering —
+  // making the planner place blocks on opposite sides of the figure.
+  // 3-v8 follow-up: build polygon AND parcel segments via the same shared helper
+  // the PDF side now uses, so the placement engine sees identical obstacle sets
+  // on both formats (modulo the per-format mapBounds origin).
+  const { polyPts: polyPtsForPlanner, parcelSegments: parcelSegmentsForPlanner } = buildPlannerObstacles({
+    outsideFigure: (ofResult && ofResult.vertices.length >= 4)
+      ? { geometry: { type: 'Polygon', coordinates: [ofResult.vertices.slice(0, -1)] } }
+      : null,
+    parcels:    { type: 'FeatureCollection', features: surveyedFeatures },
+    scaleDenom: S,
+    mapBounds:  { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt },
+    closeRing:  false,
+  });
 
   // Pre-seeded obstacles: same shift/flip.
   const tickMarkBoundsForPlanner = bottomZoneObstacles.map(o => ({
@@ -1755,29 +1758,66 @@ export function generateDXF(options, logger) {
 
   const plannerMeasure = (str, { size }) => String(str).length * size * 0.55;
 
+  // ── 3-v7 diagnostic: log the planner inputs so PDF↔DXF discrepancies can be
+  // traced from the same request.  Remove once polygon-handoff is verified.
+  const _diagPolyBbox = (polyPtsForPlanner && polyPtsForPlanner.length)
+    ? {
+        minX: Math.min(...polyPtsForPlanner.map(p => p.x)),
+        maxX: Math.max(...polyPtsForPlanner.map(p => p.x)),
+        minY: Math.min(...polyPtsForPlanner.map(p => p.y)),
+        maxY: Math.max(...polyPtsForPlanner.map(p => p.y)),
+      }
+    : null;
+  logger.info({
+    msg: '[PLANNER-INPUT] DXF → planSheetLayout',
+    mapBounds: { x: 0, y: 0, width: +contentWidthPt.toFixed(1), height: +contentHeightPt.toFixed(1) },
+    polyVerts: polyPtsForPlanner?.length ?? 0,
+    polyBbox: _diagPolyBbox,
+    polyFirst3: polyPtsForPlanner?.slice(0, 3).map(p => ({ x: +p.x.toFixed(1), y: +p.y.toFixed(1) })),
+    scheduleColumnWidthsPt,
+  });
+
   const blockPositions = planSheetLayout({
     metadata,
     parcels:           { type: 'FeatureCollection', features: surveyedFeatures },
     outsideFigureData,
     beacons:           beacons || { type: 'FeatureCollection', features: [] },
     mapBounds:         { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt },
-    mapFeatureBounds:  { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt, pdfPoints: polyPtsForPlanner },
+    mapFeatureBounds:  { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt, pdfPoints: polyPtsForPlanner, parcelSegments: parcelSegmentsForPlanner },
     scale:             { value: S, label: `1:${S}` },
     extent:            { minX: pageL, maxX: pageR, minY: pageB, maxY: pageT },
-    tickMarkBounds:    tickMarkBoundsForPlanner,
+    // 3-v8 follow-up: match PDF (which now also passes []) so the planner
+    // sees identical obstacle sets and makes identical placement decisions.
+    // The titleZone/northArrow/scaleBar items previously injected here are
+    // already represented by calculateBlockPositions' internal prePlaced
+    // path, so removing them here doesn't lose collision coverage.
+    tickMarkBounds:    [],
     polyPts:           polyPtsForPlanner,
     measureText:       plannerMeasure,
     logger,
     scheduleColumnWidthsPt,
   });
 
+  // 3-v7 diagnostic: log returned block positions so the PDF↔DXF placement
+  // divergence can be diagnosed from a single request.
+  logger.info({
+    msg: '[PLANNER-OUTPUT] DXF received block positions',
+    titleBlock:        blockPositions.titleBlock        ? { x: +blockPositions.titleBlock.x.toFixed(1),        y: +blockPositions.titleBlock.y.toFixed(1) }        : null,
+    scheduleOfAreas:   blockPositions.scheduleOfAreas   ? { x: +blockPositions.scheduleOfAreas.x.toFixed(1),   y: +blockPositions.scheduleOfAreas.y.toFixed(1) }   : null,
+    outsideFigureData: blockPositions.outsideFigureData ? { x: +blockPositions.outsideFigureData.x.toFixed(1), y: +blockPositions.outsideFigureData.y.toFixed(1) } : null,
+    surveyStatement:   blockPositions.surveyStatement   ? { x: +blockPositions.surveyStatement.x.toFixed(1),   y: +blockPositions.surveyStatement.y.toFixed(1) }   : null,
+    sgSignature:       blockPositions.sgSignature       ? { x: +blockPositions.sgSignature.x.toFixed(1),       y: +blockPositions.sgSignature.y.toFixed(1) }       : null,
+  });
+
   // 3-v7: paper-size escalation. Mirrors pdfkitGeoPDF.js:13497-13559.
+  // Uses normalizedSheetSize so the ladder lookup matches even when callers
+  // sent the space form (e.g. 'ISO A0' from si727Constants.code).
   const _sheetSizeUpAttempt = options._sheetSizeUpAttempt ?? 0;
   if (blockPositions.needsScaleUp && _sheetSizeUpAttempt < MAX_SHEET_UP_ATTEMPTS) {
-    const nextSheet = nextSheetUp(sheetSize);
+    const nextSheet = nextSheetUp(normalizedSheetSize);
     if (nextSheet) {
       logger.warn(
-        `[DXF] Blocks unplaceable on ${sheetSize} — ` +
+        `[DXF] Blocks unplaceable on ${normalizedSheetSize} — ` +
         `escalating to ${nextSheet} (attempt ${_sheetSizeUpAttempt + 1}/${MAX_SHEET_UP_ATTEMPTS})`
       );
       return generateDXF({
@@ -1822,10 +1862,28 @@ export function generateDXF(options, logger) {
   // 3-v6: Pass the planner's exact schedule top-left as fixedPosition. The
   // emitter skips Pass 1/2/3 search and emits side-by-side sub-tables at the
   // planner's position — guarantees PDF↔DXF schedule-position parity.
+  // 3-v8 follow-up: when the planner ran the shared schedule search and stored
+  // placedTables on the schedule block, convert each sub-table's planner-pt
+  // (x, y, w, h) into DXF ground metres and pass through. The emitter renders
+  // each sub-table at its own coordinates — matching PDF exactly.
+  const _plannerPlacedSched = blockPositions.scheduleOfAreas?.placedTables;
+  const _placedTablesGround = (Array.isArray(_plannerPlacedSched) && _plannerPlacedSched.length > 0)
+    ? _plannerPlacedSched.map(t => ({
+        x:      cntL + t.x * PT_TO_M,
+        y:      cntT - t.y * PT_TO_M,            // south-up: TOP of table
+        width:  t.width  * PT_TO_M,
+        height: t.height * PT_TO_M,
+        rowCount:          t.rowCount,
+        parcelsStartIndex: t.parcelsStartIndex,
+        isContinuation:    !!t.isContinuation,
+      }))
+    : null;
+
   emitScheduleOfAreasTopological({
     surveyedFeatures,
-    drawingZone: contentArea,    // unused when fixedPosition is set; provided for legacy fallback paths
+    drawingZone: contentArea,    // unused when fixedPosition / placedTablesGround is set; provided for legacy fallback paths
     fixedPosition: { x: schedPos.x, y: schedPos.y },
+    placedTablesGround: _placedTablesGround,
     polygon: figurePolygon,
     sheetSize,
     fonts: bottomZoneFonts,

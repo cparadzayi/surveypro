@@ -37,6 +37,23 @@ export const BLOCK_SPACING_MM = 3.0
 export const SCAN_STEP_MM = 5.0
 
 /**
+ * Format a survey date as "Month YYYY" (e.g. "June 2024") for the statement
+ * line. Mirrors pdfkitGeoPDF.js:drawSurveyStatement so PDF and DXF render the
+ * same string for the same `metadata.date` value. Falls back to the raw input
+ * when the date cannot be parsed.
+ */
+function formatSurveyDate(dateInput) {
+  if (!dateInput) return ''
+  try {
+    const d = new Date(dateInput)
+    if (Number.isNaN(d.getTime())) return String(dateInput)
+    return `${d.toLocaleString('en-US', { month: 'long' })} ${d.getFullYear()}`
+  } catch {
+    return String(dateInput)
+  }
+}
+
+/**
  * Compute size of the Survey Date Statement block.
  *
  * The statement is a stack of up to three lines:
@@ -59,7 +76,7 @@ export function sizeStatement(metadata, fonts) {
   const lines = []
   if (metadata.date) {
     lines.push({
-      text:   `Surveyed in ${metadata.date} by me`,
+      text:   `Surveyed in ${formatSurveyDate(metadata.date)} by me`,
       height: hBody,
       gap:    rH * 1.5,
     })
@@ -172,7 +189,7 @@ export function emitStatement(addText, position, metadata, fonts, layer) {
   const { hBody, hSub, rH } = fonts
   let cY = position.y
   if (metadata.date) {
-    addText(layer, position.x, cY, `Surveyed in ${metadata.date} by me`, hBody, 0, undefined)
+    addText(layer, position.x, cY, `Surveyed in ${formatSurveyDate(metadata.date)} by me`, hBody, 0, undefined)
     cY -= rH * 1.5
   }
   if (metadata.surveyor) {

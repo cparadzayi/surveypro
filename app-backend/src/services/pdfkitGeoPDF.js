@@ -22,6 +22,7 @@ import { boxesIntersect, isRectWithinBounds } from "../utils/collisionPrimitives
 import { placeBlocks } from "./blockPlacementEngine.js";
 import { findPoleOfInaccessibility } from '../utils/labelPlacer.js';
 import { planSheetLayout } from './sheetLayoutPlanner.js';
+import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlanner.js';
 
 /**
  * PDFKit-based GeoPDF Generator with SI 727 Compliance
@@ -7925,10 +7926,12 @@ export function calculateBlockPositions(
   const _schedNeedsSplit      = _schedSingleColHeight > _schedAvailableHeight && schedRows > 0;
   let schedWidth, schedHeight, _schedNumCols, _schedRowsPerCol;
   if (_schedNeedsSplit) {
-    // Target: keep schedule block height ≤ 60% of available height so the placement
-    // engine can fit it in a corner quadrant alongside the polygon, rather than filling
-    // the full page height and leaving no clear slot for the stacker.
-    const _schedTargetHeight  = _schedAvailableHeight * 0.60;
+    // 3-v8 follow-up: side-by-side anchor lives at the right edge, so we no
+    // longer need to keep the schedule under 60% of available height to fit in
+    // a corner quadrant. Bump to 95% so each sub-table extends down the full
+    // drawing space — minimises the number of columns (fewer wide blocks) at
+    // the cost of using more vertical space (where there's no other claimant).
+    const _schedTargetHeight  = _schedAvailableHeight * 0.95;
     const _schedRowsAtTarget  = Math.max(1, Math.floor(
       (_schedTargetHeight - _SCHED_TITLE - _SCHED_SPACING - _SCHED_HEADER - _SCHED_PAD) / _SCHED_ROW
     ));
@@ -8705,10 +8708,56 @@ export function calculateBlockPositions(
     sgSignature:      `(${sgSignaturePos.x.toFixed(0)},${sgSignaturePos.y.toFixed(0)})`,
   });
 
+  // 3-v8 follow-up: when the schedule splits into multiple sub-tables, the PDF
+  // renderer previously ran its own polygon-aware search at draw-time. Both
+  // formats now share the search by running it HERE (planner side) and storing
+  // the chosen sub-table positions on blockPositions.scheduleOfAreas.placedTables.
+  // - PDF renderer: drawScheduleOfAreasMultiTable is called with
+  //   precomputedPlacedTables, so it skips its internal search.
+  // - DXF emitter: reads placedTables and emits each sub-table at its
+  //   (planner-pt → ground-metre converted) position.
+  let scheduleOfAreasFinal = schedulePos;
+  if (_schedNeedsSplit && parcels?.features?.length > 0 && schedulePos) {
+    const _allForSched = {
+      titleBlock:        titleBlockPos,
+      outsideFigureData: outsideFigurePos,
+      scheduleOfAreas:   schedulePos,
+      beaconDescription: beaconPos,
+      scaleBar:          scaleBarPos,
+      surveyStatement:   surveyStatementPos,
+      northArrow:        northArrowPos,
+      sgSignature:       sgSignaturePos,
+    };
+    try {
+      const _schedSearch = drawScheduleOfAreasMultiTable(
+        null, parcels, schedulePos.x, schedulePos.y, mapBounds,
+        _schedRowsPerCol, 10, logger, _allForSched, mapFeatureBounds,
+        tickMarkBounds, scale?.value ?? 500, scheduleColumnWidthsPt,
+        { searchOnly: true },
+      );
+      if (_schedSearch?.composite && Array.isArray(_schedSearch.placedTables) && _schedSearch.placedTables.length > 0) {
+        scheduleOfAreasFinal = {
+          x:      _schedSearch.composite.x,
+          y:      _schedSearch.composite.y,
+          width:  _schedSearch.composite.width,
+          height: _schedSearch.composite.height,
+          placedTables: _schedSearch.placedTables,
+          standsPlaced:  _schedSearch.standsPlaced,
+          missingStands: _schedSearch.missingStands,
+        };
+        logger.info(`[PDFKit] 📊 Planner-side schedule search: ${_schedSearch.placedTables.length} sub-tables at composite (${_schedSearch.composite.x.toFixed(0)}, ${_schedSearch.composite.y.toFixed(0)}) ${_schedSearch.composite.width.toFixed(0)}×${_schedSearch.composite.height.toFixed(0)} (${_schedSearch.standsPlaced}/${_schedSearch.standsPlaced + _schedSearch.missingStands} stands)`);
+      } else {
+        logger.warn('[PDFKit] 📊 Planner-side schedule search returned no placedTables — falling back to engine-placed schedulePos');
+      }
+    } catch (e) {
+      logger.warn(`[PDFKit] 📊 Planner-side schedule search threw — keeping engine-placed schedulePos. err=${e?.message}`);
+    }
+  }
+
   return {
     titleBlock:        titleBlockPos,
     outsideFigureData: outsideFigurePos,
-    scheduleOfAreas:   schedulePos,
+    scheduleOfAreas:   scheduleOfAreasFinal,
     beaconDescription: beaconPos,
     scaleBar:          scaleBarPos,
     surveyStatement:   surveyStatementPos,
@@ -8962,7 +9011,10 @@ function drawScheduleOfAreas(
     const singleH = _SCHED_TITLE + _SCHED_SPACING + _SCHED_HEADER + standCount * _SCHED_ROW + _SCHED_PAD;
     needsSplit = singleH > availH && standCount > 0;
     if (needsSplit) {
-      const targetH      = availH * 0.60;
+      // 3-v8 follow-up: match calculateBlockPositions — 95% target so the
+      // schedule fills more vertical space (fewer, taller sub-tables) once
+      // it lives at the right-edge anchor instead of a corner quadrant.
+      const targetH      = availH * 0.95;
       const rowsAtTarget = Math.max(1, Math.floor(
         (targetH - _SCHED_TITLE - _SCHED_SPACING - _SCHED_HEADER - _SCHED_PAD) / _SCHED_ROW
       ));
@@ -8980,6 +9032,11 @@ function drawScheduleOfAreas(
 
   if (needsSplit && numCols > 1) {
     logger.info(`[PDFKit] 📊 Schedule of Areas: splitting ${standCount} stands into ${numCols} side-by-side tables (${rowsPerCol} rows each) at (${tableX.toFixed(0)},${tableY.toFixed(0)})`);
+    // 3-v8 follow-up: when the planner stored placedTables on the schedule
+    // block (single source — same list the DXF emitter will use), thread them
+    // through as precomputedPlacedTables so the render path skips the redundant
+    // search and emits at the planner-chosen positions verbatim.
+    const _plannerPlacedTables = allBlockPositions?.scheduleOfAreas?.placedTables;
     // Temporarily remove the oversized pre-estimated scheduleOfAreas bounds from allBlockPositions
     // so that the multi-table placement engine does not treat its own estimated footprint as an
     // obstacle (circular self-collision that prevents any table from being placed).
@@ -8993,6 +9050,11 @@ function drawScheduleOfAreas(
       tickMarkBounds,      // needed for tick mark avoidance
       scaleDenominator,
       scheduleColumnWidthsPt,   // 3-v7: caller-provided widths
+      {
+        precomputedPlacedTables: (Array.isArray(_plannerPlacedTables) && _plannerPlacedTables.length > 0)
+          ? _plannerPlacedTables
+          : null,
+      },
     );
     // Patch blockPositions with the actual composite bounds so that tick mark label
     // collision checks (which run after this call) use the real rendered rect.
@@ -9226,6 +9288,12 @@ function computeWhitespaceZones(
  * @param {number} bodyFontSize    - schedule body pt   (typically 7)
  * @returns {(text:string, fontSize:number) => number}
  */
+// 3-v8 follow-up: must match SCHEDULE_COLUMN_PAD_FACTOR in scheduleMeasurer.js
+// so PDF (this measurer) and DXF (shared scheduleMeasurer) feed the planner
+// identical scheduleColumnWidthsPt — otherwise the schedule's compositeW
+// differs between formats and the side-by-side anchor lands at different x.
+const _PDF_SCHEDULE_COLUMN_PAD_FACTOR = 1.15;
+
 function buildPdfScheduleMeasurer(doc, headerFontSize, bodyFontSize) {
   return (text, fontSize) => {
     const prevFont = doc._font?.name || 'Helvetica'
@@ -9236,14 +9304,14 @@ function buildPdfScheduleMeasurer(doc, headerFontSize, bodyFontSize) {
       } else {
         doc.font('Helvetica').fontSize(fontSize)
       }
-      return doc.widthOfString(String(text))
+      return doc.widthOfString(String(text)) * _PDF_SCHEDULE_COLUMN_PAD_FACTOR
     } finally {
       doc.font(prevFont).fontSize(prevSize)
     }
   }
 }
 
-function drawScheduleOfAreasMultiTable(
+export function drawScheduleOfAreasMultiTable(
   doc,
   parcels,
   startX,
@@ -9257,6 +9325,15 @@ function drawScheduleOfAreasMultiTable(
   tickMarkBounds = [],
   scaleDenominator = 1000,
   scheduleColumnWidthsPt = null,   // 3-v7: caller-provided widths from planner
+  // 3-v8 follow-up: dual-mode support so the planner and the DXF generator can
+  // share PDF's smart layout search ("one source").
+  //   searchOnly=true  → run the search + per-table picking, return the chosen
+  //                      placedTables without touching `doc`. doc may be null.
+  //   precomputedPlacedTables → skip the search entirely and render at the
+  //                      caller-supplied positions. Used by PDF render-time when
+  //                      the planner has already chosen positions in searchOnly
+  //                      mode.
+  { searchOnly = false, precomputedPlacedTables = null } = {},
 ) {
   // Filter out Outside Figure parcels
   const surveyedParcels = parcels.features.filter((parcel) => {
@@ -9988,87 +10065,119 @@ function drawScheduleOfAreasMultiTable(
     writeFile('C:/mataranyika/diag-sched.txt', JSON.stringify(_diagSched, null, 2) + '\n').catch(() => {});
   }
 
-  // Draw each table - searching for white space
-  let parcelIndex = 0;
-  let tablesDrawn = 0;
-  let candidateIndex = 0;
-
-  for (let tableNum = 0; tableNum < numTables; tableNum++) {
-    // Find next available position
-    let foundPosition = null;
-
-    while (candidateIndex < candidateZones.length && !foundPosition) {
-      const candidate = candidateZones[candidateIndex];
-
-      // Use adapted height if this is a fluid-smaller candidate
-      const testHeight = candidate.adaptedHeight || tableHeight;
-
-      // Check if this position is available.
-      // skipBlockCheck: skip otherBlocks — mandatory schedule may overlap informational blocks.
-      // skipPolygonCheck: skip polygon too — bounds-only fallback when polygon blocks all positions.
-      const _inBounds =
-        candidate.x >= mapLeftEdge &&
-        candidate.x + tableWidth <= mapRightEdge &&
-        candidate.y >= mapTopEdge &&
-        candidate.y + testHeight <= mapBottomEdge;
-      const _positionValid = (candidate.skipBlockCheck && candidate.skipPolygonCheck)
-        ? _inBounds
-        : candidate.skipBlockCheck
-          ? ( _inBounds &&
-              (polygonPoints.length === 0 ||
-               !rectangleOverlapsPolygon({ x: candidate.x, y: candidate.y, width: tableWidth, height: testHeight }, polygonPoints, 40)) )
-          : !overlapsPlacedTable(candidate.x, candidate.y, tableWidth, testHeight);
-      if (_positionValid) {
-        foundPosition = candidate;
-        logger.info(
-          `[PDFKit] ✅ Found valid position for table at (${candidate.x.toFixed(
-            0
-          )}, ${candidate.y.toFixed(0)}) zone: ${candidate.zone}`
-        );
+  // 3-v8 follow-up: split pick from render so searchOnly/precomputedPlacedTables
+  // modes work without invoking doc.* calls. Each placedTables entry carries
+  // everything the render pass needs (parcelsStartIndex, rowCount, isContinuation,
+  // adaptedHeight), so the planner + DXF can consume the same list.
+  if (precomputedPlacedTables) {
+    placedTables.length = 0;
+    for (const t of precomputedPlacedTables) placedTables.push({ ...t });
+  } else {
+    // SIDE-BY-SIDE layout: find a single anchor where the composite
+    // (numTables sub-tables in a row) fits, then derive per-table positions
+    // from that anchor. Prefer candidates where the composite clears the
+    // polygon + other blocks; fall back to a bounds-only right-to-left scan
+    // and ultimately to the planner-supplied startX/startY.
+    const _spacingPt = tableSpacingParam;
+    const _compositeW = numTables * tableWidth + (numTables - 1) * _spacingPt;
+    let _anchor = null;
+    for (const candidate of candidateZones) {
+      if (_anchor) break;
+      const _testH = candidate.adaptedHeight || tableHeight;
+      if (candidate.x + _compositeW > mapRightEdge) continue;
+      if (candidate.x < mapLeftEdge) continue;
+      if (candidate.y < mapTopEdge || candidate.y + _testH > mapBottomEdge) continue;
+      const _rect = { x: candidate.x, y: candidate.y, width: _compositeW, height: _testH };
+      if (candidate.skipBlockCheck && candidate.skipPolygonCheck) {
+        _anchor = candidate;
       } else {
-        candidateIndex++;
+        const _polyOK = candidate.skipPolygonCheck || polygonPoints.length === 0 ||
+          !rectangleOverlapsPolygon(_rect, polygonPoints, 40);
+        const _blockOK = candidate.skipBlockCheck ||
+          !overlapsPlacedTable(candidate.x, candidate.y, _compositeW, _testH);
+        if (_polyOK && _blockOK) _anchor = candidate;
       }
     }
-
-    if (!foundPosition) {
-      logger.warn(
-        `[PDFKit] ⚠️  No more white space for Schedule of Areas: placed ${tablesDrawn} of ${numTables} tables (${parcelIndex} of ${standCount} stands)`
-      );
-      break;
+    if (!_anchor) {
+      logger.warn(`[PDFKit] 📊 Side-by-side: no topology candidate fits composite ${_compositeW.toFixed(0)}×${tableHeight.toFixed(0)}pt — bounds-only fallback`);
+      const _step = 20;
+      const _CRITICAL = new Set(['titleBlock', 'northArrow', 'scaleBar', 'sgSignature', 'surveyStatement']);
+      const _hitsCritical = (bx, by, bw, bh) => {
+        for (const bl of otherBlocks) {
+          if (!_CRITICAL.has(bl.name)) continue;
+          if (!bl.x || !bl.y || !bl.width || !bl.height) continue;
+          const ov = !(bx + bw + 15 < bl.x || bx > bl.x + bl.width + 15 ||
+                       by + bh + 15 < bl.y || by > bl.y + bl.height + 15);
+          if (ov) return true;
+        }
+        return false;
+      };
+      boundsScan:
+      for (let bx = mapRightEdge - _compositeW - 14; bx >= mapLeftEdge + 14; bx -= _step) {
+        for (let by = mapTopEdge + 14; by + tableHeight <= mapBottomEdge - 14; by += _step) {
+          if (!_hitsCritical(bx, by, _compositeW, tableHeight)) {
+            _anchor = { x: bx, y: by, zone: 'sbs-bounds-only' };
+            break boundsScan;
+          }
+        }
+      }
     }
+    if (!_anchor) {
+      logger.warn(`[PDFKit] 📊 Side-by-side: bounds-only fallback empty — using engine startX/Y as anchor`);
+      _anchor = { x: startX, y: startY, zone: 'sbs-planner-startxy' };
+    }
+    logger.info(`[PDFKit] 📊 Side-by-side schedule: anchor (${_anchor.x.toFixed(0)}, ${_anchor.y.toFixed(0)}) zone=${_anchor.zone || '?'} composite=${_compositeW.toFixed(0)}×${tableHeight.toFixed(0)}pt`);
+    // Build placedTables side-by-side from the anchor.
+    let _pIdx = 0;
+    for (let tableNum = 0; tableNum < numTables; tableNum++) {
+      const _rowsIn = Math.min(_maxRowsPerTable, standCount - _pIdx);
+      if (_rowsIn === 0) break;
+      placedTables.push({
+        x: _anchor.x + tableNum * (tableWidth + _spacingPt),
+        y: _anchor.y,
+        width:  tableWidth,
+        height: tableHeight,
+        rowCount: _rowsIn,
+        parcelsStartIndex: _pIdx,
+        isContinuation: tableNum > 0,
+        adaptedHeight: null,
+      });
+      _pIdx += _rowsIn;
+    }
+  }
 
-    const currentTableX = foundPosition.x;
-    const currentTableY = foundPosition.y;
+  // searchOnly mode: return the chosen placedTables without invoking doc.* calls.
+  // Used by the planner (to thread positions through blockPositions) and by the
+  // DXF generator (to drive its own renderer at the same positions).
+  if (searchOnly) {
+    if (placedTables.length === 0) return null;
+    const _cX = Math.min(...placedTables.map(t => t.x));
+    const _cY = Math.min(...placedTables.map(t => t.y));
+    const _cR = Math.max(...placedTables.map(t => t.x + t.width));
+    const _cB = Math.max(...placedTables.map(t => t.y + t.height));
+    const _placed = placedTables.reduce((s, t) => s + t.rowCount, 0);
+    return {
+      placedTables: placedTables.map(t => ({ ...t })),
+      composite: { x: _cX, y: _cY, width: _cR - _cX, height: _cB - _cY },
+      standsPlaced:  _placed,
+      missingStands: standCount - _placed,
+    };
+  }
 
-    // Calculate rows for this table - use adapted height if fluid position
-    const effectiveHeight = foundPosition.adaptedHeight || tableHeight;
-    const effectiveRows = foundPosition.adaptedHeight
-      ? Math.floor(
-          (effectiveHeight - titleSpacing - headerHeight - 10) / rowHeight
-        )
-      : _maxRowsPerTable;
-    const rowsInThisTable = Math.min(effectiveRows, standCount - parcelIndex);
+  // Render: iterate placedTables and draw each.
+  let parcelIndex = 0;
+  let tablesDrawn = 0;
+  for (let tableNum = 0; tableNum < placedTables.length; tableNum++) {
+    const _t = placedTables[tableNum];
+    const currentTableX = _t.x;
+    const currentTableY = _t.y;
+    const effectiveHeight = _t.height;
+    const rowsInThisTable = _t.rowCount;
+    parcelIndex = _t.parcelsStartIndex;
+    const parcelsForThisTable = surveyedParcels.slice(parcelIndex, parcelIndex + rowsInThisTable);
 
-    // Register this table position with effective height
-    placedTables.push({
-      x: currentTableX,
-      y: currentTableY,
-      width: tableWidth,
-      height: effectiveHeight,
-    });
-    candidateIndex++; // Move to next candidate for next table
-
-    const parcelsForThisTable = surveyedParcels.slice(
-      parcelIndex,
-      parcelIndex + rowsInThisTable
-    );
-
-    if (foundPosition.adaptedHeight) {
-      logger.info(
-        `[PDFKit] 📊 Using fluid table with ${rowsInThisTable} rows (adapted height: ${effectiveHeight.toFixed(
-          0
-        )}pt)`
-      );
+    if (_t.adaptedHeight) {
+      logger.info(`[PDFKit] 📊 Using fluid table with ${rowsInThisTable} rows (adapted height: ${effectiveHeight.toFixed(0)}pt)`);
     }
 
     doc.save();
@@ -10079,7 +10188,7 @@ function drawScheduleOfAreasMultiTable(
       .font("Helvetica-Bold")
       .fillColor("#000000")
       .text(
-        tableNum === 0 ? "SCHEDULE OF AREAS" : `SCHEDULE OF AREAS (cont'd)`,
+        _t.isContinuation ? `SCHEDULE OF AREAS (cont'd)` : "SCHEDULE OF AREAS",
         currentTableX,
         currentTableY,
         {
@@ -13350,8 +13459,11 @@ async function _generateGeoPDFInner(options, logger) {
     _segMaxY = Math.max(_segMaxY, s.y1, s.y2);
   }
 
-  // Build pdfPoints from outside figure polygon for hard-reject in engine/stacker.
-  // Uses same transform (coordinates[0]=Y, coordinates[1]=X, mapBounds target) as renderOutsideFigureBoundary.
+  // _topoPolyPts: extent-fitted polygon vertices used by tick-mark and label
+  // collision avoidance below. Matches where the OF is actually drawn on the
+  // PDF page, which depends on calculatedExtent (potentially larger than the
+  // OF itself if outlier parcels exist). Do NOT reuse this for the planner —
+  // see _polyForPlanner below.
   const _topoPolyPts = [];
   if (outsideFigure?.features?.length > 0) {
     const _ofFeat = outsideFigure.features[0];
@@ -13481,8 +13593,18 @@ async function _generateGeoPDFInner(options, logger) {
   const _pdfScheduleMeasurer = buildPdfScheduleMeasurer(doc, 6, 7);
   const _scheduleColumnWidthsPt = (() => {
     try {
+      // 3-v8 follow-up: exclude the Outside Figure parcel from the measurer
+      // input. DXF already filters it (dxfGenerator.surveyedFeatures), and the
+      // PDF schedule itself only ever renders stand rows — so the OF row was
+      // inflating column 1 to ~91 pt ("OUTSIDE FIGURE M1686") without ever
+      // being drawn, which caused the planner to see a wider schedule on PDF
+      // than DXF and place it differently.
+      const _scheduleRows = filteredParcels.features.filter(f => {
+        const st = String(f.properties?.stand || '').toLowerCase();
+        return !f.properties?.isOutsideFigure && !st.includes('outside figure');
+      });
       return computeScheduleColumnWidths({
-        dataRows: filteredParcels.features.map(extractScheduleRow),
+        dataRows: _scheduleRows.map(extractScheduleRow),
         headerFontSize: 6,   // matches drawScheduleOfAreasSingleColumn header font
         bodyFontSize:   7,   // matches drawScheduleOfAreasSingleColumn body font
         measureText:    _pdfScheduleMeasurer,
@@ -13493,22 +13615,91 @@ async function _generateGeoPDFInner(options, logger) {
     }
   })();
 
+  // 3-v8: polygon-for-planner from the shared helper. DXF builds the same
+  // polygon via the same helper, so planSheetLayout receives identical
+  // polygon shape + mapBounds-relative position on both sides. Block
+  // placements now agree across formats. _topoPolyPts is still used below
+  // for tick-mark/label collision avoidance, which needs the extent-fitted
+  // polygon matching the actually-drawn OF.
+  // 3-v8 follow-up: build polygon AND parcel segments via the shared helper so
+  // PDF and DXF feed the engine identical obstacle sets. Previously PDF built
+  // parcelSegments via transformCoords (fit-to-extent) and DXF passed none,
+  // which made the engine score placements differently and pinned the
+  // schedule to opposite corners on the two formats.
+  const { polyPts: _polyForPlanner, parcelSegments: _parcelSegmentsForPlanner } = buildPlannerObstacles({
+    outsideFigure,
+    parcels:    filteredParcels,
+    scaleDenom: optimalScale?.value,
+    mapBounds,
+    closeRing:  false,
+  });
+  // mapFeatureBounds.pdfPoints feeds the planner's polygon obstacle list, so
+  // it must use the planner polygon (not _topoPolyPts). parcelSegments
+  // overrides the format-specific build above so both formats agree.
+  const mapFeatureBoundsForPlanner = {
+    ...mapFeatureBounds,
+    pdfPoints:      _polyForPlanner.length > 0 ? _polyForPlanner : mapFeatureBounds.pdfPoints,
+    parcelSegments: _parcelSegmentsForPlanner,
+  };
+
+  // ── 3-v7 diagnostic: log the planner inputs so PDF↔DXF discrepancies can be
+  // traced from the same request.  Remove once polygon-handoff is verified.
+  const _diagPolyBbox = (_polyForPlanner && _polyForPlanner.length)
+    ? {
+        minX: Math.min(..._polyForPlanner.map(p => p.x)),
+        maxX: Math.max(..._polyForPlanner.map(p => p.x)),
+        minY: Math.min(..._polyForPlanner.map(p => p.y)),
+        maxY: Math.max(..._polyForPlanner.map(p => p.y)),
+      }
+    : null;
+  logger.info({
+    msg: '[PLANNER-INPUT] PDF → planSheetLayout',
+    mapBounds: { x: mapBounds.x, y: mapBounds.y, width: mapBounds.width, height: mapBounds.height },
+    polyVerts: _polyForPlanner?.length ?? 0,
+    polyBbox: _diagPolyBbox,
+    polyFirst3: _polyForPlanner?.slice(0, 3).map(p => ({ x: +p.x.toFixed(1), y: +p.y.toFixed(1) })),
+    scheduleColumnWidthsPt: _scheduleColumnWidthsPt,
+  });
+
   const blockPositions = planSheetLayout({
     metadata,
     parcels: filteredParcels,
     outsideFigureData,
     beacons: filteredBeacons,
     mapBounds,
-    mapFeatureBounds,
+    mapFeatureBounds: mapFeatureBoundsForPlanner,
     logger,
     scale: optimalScale,
     extent: calculatedExtent,
-    tickMarkBounds: initialTickMarkBounds,
+    // 3-v8 follow-up: pass [] so PDF and DXF feed the planner identical
+    // obstacle sets. The 4 corner tick-mark reservations only existed on the
+    // PDF side and caused the planner to pick different schedule/OFD/SG
+    // anchor zones than DXF. PDF's tick-mark renderer already does its own
+    // collision avoidance at draw time (per "Y label … has collisions in all
+    // placements — skipping label" diagnostics), so dropping them here only
+    // affects the planner's pre-render decisions, not the visible ticks.
+    tickMarkBounds: [],
     zOrderCollisionRegistry,
-    figureBounds,
-    polyPts: _topoPolyPts,
+    // 3-v8 follow-up: omit figureBounds so PDF's scale bar gets sized off
+    // mapBounds.width — same calc DXF already uses. Previously PDF's scale
+    // bar was 202pt and DXF's was 188pt, and that 14pt obstacle-size delta
+    // (combined with surveyStatement's 8pt drift) tipped the relaxed-scan
+    // stacker into picking a different anchor for scheduleOfAreas.
+    // figureBounds: figureBounds,
+    polyPts: _polyForPlanner,
     measureText: pdfKitMeasureText,
-    scheduleColumnWidthsPt: _scheduleColumnWidthsPt,   // NEW
+    scheduleColumnWidthsPt: _scheduleColumnWidthsPt,
+  });
+
+  // 3-v7 diagnostic: log returned block positions so the PDF↔DXF placement
+  // divergence can be diagnosed from a single request.
+  logger.info({
+    msg: '[PLANNER-OUTPUT] PDF received block positions',
+    titleBlock:        blockPositions.titleBlock        ? { x: +blockPositions.titleBlock.x.toFixed(1),        y: +blockPositions.titleBlock.y.toFixed(1) }        : null,
+    scheduleOfAreas:   blockPositions.scheduleOfAreas   ? { x: +blockPositions.scheduleOfAreas.x.toFixed(1),   y: +blockPositions.scheduleOfAreas.y.toFixed(1) }   : null,
+    outsideFigureData: blockPositions.outsideFigureData ? { x: +blockPositions.outsideFigureData.x.toFixed(1), y: +blockPositions.outsideFigureData.y.toFixed(1) } : null,
+    surveyStatement:   blockPositions.surveyStatement   ? { x: +blockPositions.surveyStatement.x.toFixed(1),   y: +blockPositions.surveyStatement.y.toFixed(1) }   : null,
+    sgSignature:       blockPositions.sgSignature       ? { x: +blockPositions.sgSignature.x.toFixed(1),       y: +blockPositions.sgSignature.y.toFixed(1) }       : null,
   });
 
   // =========================================================================
@@ -13821,7 +14012,7 @@ async function _generateGeoPDFInner(options, logger) {
     tileGrid = {
       scaleDenominator: optimalScale.value,
       scaleLabel: optimalScale.label,
-      sheetSize: pageSize.code || pageSize.name,
+      sheetSize: String(pageSize.code || '').replace(/\s+/g, '_') || null,
       cols,
       rows,
       totalSheets: cols * rows,
@@ -13841,7 +14032,13 @@ async function _generateGeoPDFInner(options, logger) {
     });
   }
 
-  return { pdfBuffer, suggestedScale, scale: optimalScale.label, sheetSize: pageSize.code, tileGrid, warnings };
+  // sheetSize returned in underscore form ('ISO_A0') for round-trip consistency:
+  // intelligentPreview / PAPER_SIZES / DXF generator all key by this form.
+  // pageSize.code is 'ISO A0' (space form, human-readable); normalize to
+  // underscored canonical name before returning. pageSize.name is the FULL
+  // display string ('1189mm × 841mm (ISO A0)') — don't use that here.
+  const _returnedSheetSize = String(pageSize.code || '').replace(/\s+/g, '_') || null;
+  return { pdfBuffer, suggestedScale, scale: optimalScale.label, sheetSize: _returnedSheetSize, tileGrid, warnings };
 }
 
 // ============================================================================

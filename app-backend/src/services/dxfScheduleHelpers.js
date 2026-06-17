@@ -145,6 +145,7 @@ export function addScheduleTable({
   dataRows, columnWidths,
   titleText, hHead, hBody, rH,
   addText, addLine,
+  measureText,
 }) {
   const singleCols = SCHEDULE_OF_AREAS?.singleColumn?.columns
   if (!Array.isArray(singleCols)) {
@@ -164,7 +165,12 @@ export function addScheduleTable({
   // Matches the 0.6 ratio used by the DEED-anchor formula in the pre-2026-06-06
   // version of this function (and exercised by the dxfScheduleHelpers test
   // "emits the DEED parent header centered above NUMBER + DATE").
+  // When `measureText` is provided (from pdfMeasureTextInUnits), uses that
+  // instead of the heuristic ratio for PDF↔DXF centering parity.
   const DXF_CHAR_WIDTH_RATIO = 0.6
+  const tw = measureText
+    ? (_str, _h) => measureText(String(_str), _h)
+    : (_str, _h) => _str.length * _h * DXF_CHAR_WIDTH_RATIO
   // Internal cell padding (horizontal text inset from the column edge so
   // contents don't touch the vertical grid lines). Matches the PDF's 2-pt
   // padding when scaled by the body font size.
@@ -200,7 +206,7 @@ export function addScheduleTable({
   const deedStartX = colX[3]
   const deedEndX   = colX[4] + columnWidths[4]
   const deedCenter = (deedStartX + deedEndX) / 2
-  const deedTextWidth = 'DEED'.length * hBody * DXF_CHAR_WIDTH_RATIO
+  const deedTextWidth = tw('DEED', hBody)
   // y stays at the legacy position (tableTopY) so the existing test for
   // DEED anchor x continues to pass. The text occupies the top of the row.
   addText(layer, deedCenter - deedTextWidth / 2, tableTopY, 'DEED', hBody, 0, 'BOLD')
@@ -211,7 +217,7 @@ export function addScheduleTable({
     let lineY = deedRowBotY
     for (const tok of tokens) {
       // Horizontally centre each token within its column.
-      const tokenW = tok.length * hBody * DXF_CHAR_WIDTH_RATIO
+      const tokenW = tw(tok, hBody)
       const tokenAnchor = colX[i] + (columnWidths[i] - tokenW) / 2
       addText(layer, tokenAnchor, lineY, tok, hBody, 0, 'BOLD')
       lineY -= hBody * 1.2
@@ -228,7 +234,7 @@ export function addScheduleTable({
     for (let i = 0; i < cellKeys.length; i++) {
       const val = row[cellKeys[i]]
       if (val) {
-        const valW = String(val).length * hBody * DXF_CHAR_WIDTH_RATIO
+        const valW = tw(val, hBody)
         const valAnchor = colX[i] + Math.max(H_PAD, (columnWidths[i] - valW) / 2)
         addText(layer, valAnchor, baseY, val, hBody)
       }

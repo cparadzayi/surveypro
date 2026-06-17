@@ -105,13 +105,14 @@ function shoelaceCentroid(polygon) {
  * @param {Array<{x:number,y:number}>} args.polygon - 3+ vertices, NOT closed (last vertex doesn't repeat first)
  * @param {string} args.standNumber
  * @param {number} args.fontHeight - Initial font height; may shrink during iteration
- * @param {number} [args.charWidthRatio=0.55] - Character-width-to-height ratio for width estimation
+ * @param {number} [args.charWidthRatio=0.55] - Character-width-to-height ratio for width estimation (used when measureText is not provided)
  * @param {number} [args.minFontHeightRatio=0.5] - Floor for the iterative shrink (fraction of input fontHeight)
+ * @param {Function} [args.measureText] - (str, h) => width in same units as h. When provided, overrides charWidthRatio
  * @returns {{x:number, y:number, fontHeight:number, width:number, height:number}|null}
  *   null if polygon has fewer than 3 vertices
  */
 export function findStandLabelPosition({
-  polygon, standNumber, fontHeight, charWidthRatio = 0.55, minFontHeightRatio = 0.5,
+  polygon, standNumber, fontHeight, charWidthRatio = 0.55, minFontHeightRatio = 0.5, measureText,
 }) {
   if (!Array.isArray(polygon) || polygon.length < 3) return null
 
@@ -142,8 +143,11 @@ export function findStandLabelPosition({
   // step by 10% of input fontHeight so the iteration count stays bounded.
   const minFontHeight = fontHeight * minFontHeightRatio
   const step = fontHeight * 0.1
+  const widthFn = measureText
+    ? (_str, _h) => measureText(String(_str), _h)
+    : (_str, _h) => _str.length * _h * charWidthRatio;
   let h = fontHeight
-  let widthEstimate  = standNumber.length * h * charWidthRatio
+  let widthEstimate  = widthFn(standNumber, h)
   let heightEstimate = h * 1.2
   while (
     (widthEstimate > maxAllowedWidth * 0.5 || heightEstimate > maxAllowedHeight * 0.5) &&
@@ -151,7 +155,7 @@ export function findStandLabelPosition({
   ) {
     h -= step
     if (h < minFontHeight) h = minFontHeight
-    widthEstimate  = standNumber.length * h * charWidthRatio
+    widthEstimate  = widthFn(standNumber, h)
     heightEstimate = h * 1.2
   }
 
@@ -159,7 +163,7 @@ export function findStandLabelPosition({
     x: labelPoint.x,
     y: labelPoint.y,
     fontHeight: h,
-    width: widthEstimate,
+    width: widthFn(standNumber, h),
     height: heightEstimate,
   }
 }

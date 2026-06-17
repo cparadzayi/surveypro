@@ -61,3 +61,35 @@ export function buildScheduleMeasurer(headerFontSize, bodyFontSize) {
     return doc.widthOfString(String(text)) * SCHEDULE_COLUMN_PAD_FACTOR;
   };
 }
+
+/**
+ * Generic PDFKit-backed text measurer. Accepts the `(str, { family, size })`
+ * signature expected by the shared planner proxy (makeMeasureProxy).
+ *
+ * Both PDF and DXF callers use this so the same planSheetLayout →
+ * calculateBlockPositions pipeline sees bit-identical text widths and makes
+ * identical block-placement decisions.
+ */
+export function pdfMeasureText(str, { family, size }) {
+  const doc = getDoc();
+  const font = family === 'Helvetica-Bold' ? 'Helvetica-Bold' : 'Helvetica';
+  return doc.font(font).fontSize(size).widthOfString(String(str));
+}
+
+/**
+ * Measure text where `size` and returned width are in caller's units
+ * (e.g. ground-metres).  Converts to PDF points via `mToPt`, measures,
+ * then converts back — so callers that work in ground-metres can use
+ * the same PDFKit-backed Helvetica metrics as the planner.
+ *
+ * @param {string} str
+ * @param {{size:number, mToPt:number, family?:string}} opts
+ *        size   — font height in caller's units (e.g. ground-metres)
+ *        mToPt  — multiplier to convert caller units → PDF points
+ *        family — 'Helvetica' (default) or 'Helvetica-Bold'
+ * @returns {number} width in the same units as `size`
+ */
+export function pdfMeasureTextInUnits(str, { size, mToPt, family }) {
+  const widthPt = pdfMeasureText(str, { family, size: size * mToPt });
+  return widthPt / mToPt;
+}

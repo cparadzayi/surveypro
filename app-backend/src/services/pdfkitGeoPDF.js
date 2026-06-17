@@ -1789,14 +1789,10 @@ function renderOutsideFigureTickMarks(
   blockPositions = null,
   polygonPdfPoints = []
 ) {
-  // CODE VERSION: 2026-01-07-13:48 - CARTOGRAPHIC STANDARDS ENHANCED
   // - Tight label coupling: 5pt offset (was 20pt)
   // - Professional font: 8pt (was 10pt)
   // - 4 placement options per label (perpendicular to tick arms)
   // - Enhanced collision detection with all map blocks
-  logger.info(
-    `[PDFKit] 🚨🚨🚨 TICK MARK RENDERING - CODE VERSION 2026-01-07-13:48 - CARTOGRAPHIC STANDARDS 🚨🚨🚨`
-  );
   logger.info(
     `[PDFKit] 🎯 renderOutsideFigureTickMarks called - blockPositions: ${
       blockPositions ? "PROVIDED" : "NULL"
@@ -2165,9 +2161,6 @@ function renderOutsideFigureTickMarks(
 
     // Check collision with all blocks if blockPositions provided
     if (blockPositions) {
-      logger.info(
-        `[PDFKit] 🚨 COLLISION DETECTION ACTIVE - Code updated and running for tick ${tick.name}`
-      );
       // Log block positions for debugging
       logger.info(
         `[PDFKit] 🔍 Tick ${tick.name} at PDF (${pdfPoint.x.toFixed(
@@ -3242,9 +3235,6 @@ function renderBeacons(
     beaconRadius: beaconRadius.toFixed(2) + "pt",
     beaconLineWidth: beaconLineWidth.toFixed(2) + "pt",
   });
-
-  // 🚨 CODE VERSION CHECK: 2026-01-06-17:23 🚨
-  logger.info(`[PDFKit] 🔥 DIAGNOSTIC CODE LOADED - Version 2026-01-06-17:23`);
 
   // Create a map of beacon names to their label info from UI
   const beaconLabelMap = new Map();
@@ -6703,9 +6693,6 @@ export function calculateBlockPositions(
     preOccupied: [prePlacedTitleBlock, prePlacedNorthArrow, prePlacedScaleBar].filter(Boolean),
     parcelSegments: mapFeatureBounds?.parcelSegments ?? [],
   });
-  const _engDiag = `needsScaleUp=${needsScaleUp} unplaceable=${JSON.stringify(unplaceable)} hasPdfPts=${(mapFeatureBounds?.pdfPoints?.length??0)>0} pdfPtsLen=${mapFeatureBounds?.pdfPoints?.length??0} sched=${JSON.stringify(_enginePlacements?.scheduleOfAreas)} scale=${JSON.stringify(scale)}`;
-  console.error(`[ENGINE-RESULT] ${_engDiag}`);
-  writeFile('C:/mataranyika/diag-engine.txt', _engDiag + '\n').catch(() => {});
 
   // TOPOLOGY PRE-CHECK: Before propagating needsScaleUp for the schedule, verify whether
   // the actual whitespace around the polygon (derived from its boundary profile) can
@@ -8516,22 +8503,6 @@ export function drawScheduleOfAreasMultiTable(
         }
       }
     }
-  }
-
-  // Diagnostic dump — shows state after pre-flight + consolidation
-  {
-    const _diagSched = {
-      standCount, numTables, _maxRowsPerTable, tableHeight: tableHeight.toFixed(0),
-      candidateZones: candidateZones.length,
-      candidatesWithAdaptedH: candidateZones.filter(c => c.adaptedHeight).length,
-      candidatesNoAdaptedH: candidateZones.filter(c => !c.adaptedHeight).length,
-      zones: candidateZones.map(c => `(${c.x.toFixed(0)},${c.y.toFixed(0)},h=${(c.adaptedHeight||tableHeight).toFixed(0)},zone=${c.zone},skipBlock=${c.skipBlockCheck},skipPoly=${c.skipPolygonCheck})`),
-      mapBounds: `(${mapBounds.x.toFixed(0)},${mapBounds.y.toFixed(0)},${mapBounds.width.toFixed(0)},${mapBounds.height.toFixed(0)})`,
-      mapEdges: `L=${mapLeftEdge.toFixed(0)} R=${mapRightEdge.toFixed(0)} T=${mapTopEdge.toFixed(0)} B=${mapBottomEdge.toFixed(0)}`,
-      otherBlockNames: otherBlocks.map(b => `${b.name}(${b.x?.toFixed(0)},${b.y?.toFixed(0)},${b.width?.toFixed(0)}x${b.height?.toFixed(0)})`),
-    };
-    console.error(`[SCHED-DIAG] ${JSON.stringify(_diagSched)}`);
-    writeFile('C:/mataranyika/diag-sched.txt', JSON.stringify(_diagSched, null, 2) + '\n').catch(() => {});
   }
 
   // 3-v8 follow-up: split pick from render so searchOnly/precomputedPlacedTables
@@ -10674,15 +10645,10 @@ class LabelCollisionDetector {
  * MODIFIED: 2025-12-30 20:00 - File loading confirmed, investigating parcel rendering
  */
 export async function generateGeoPDF(options, logger) {
-  console.log("========================================");
-  console.log("🔥 generateGeoPDF FUNCTION CALLED");
-  console.log("========================================");
   try {
-  return await _generateGeoPDFInner(options, logger);
+    return await _generateGeoPDFInner(options, logger);
   } catch (topErr) {
-    const msg = `TOP-LEVEL-ERROR: ${topErr?.message}\nSTACK: ${topErr?.stack?.slice(0,1000)}`;
-    console.error(msg);
-    writeFile('C:/mataranyika/diag-error.txt', msg + '\n').catch(() => {});
+    console.error(`TOP-LEVEL-ERROR: ${topErr?.message}\nSTACK: ${topErr?.stack?.slice(0, 1000)}`);
     throw topErr;
   }
 }
@@ -10719,33 +10685,6 @@ async function _generateGeoPDFInner(options, logger) {
   // 3-v7: structured warnings collection, mirroring DXF's warnings.summary shape.
   const warnings = {};
 
-  console.log("🔥 Destructuring complete, about to log with logger");
-  const beaconLabelsIsArray = Array.isArray(beaconLabels);
-  const beaconLabelsIsMap = beaconLabels instanceof Map;
-  const beaconLabelsLength = beaconLabelsIsArray
-    ? beaconLabels.length
-    : beaconLabelsIsMap
-    ? beaconLabels.size
-    : 0;
-  const beaconLabelsSample = beaconLabelsIsArray
-    ? beaconLabels.slice(0, 3)
-    : beaconLabelsIsMap
-    ? Array.from(beaconLabels.entries()).slice(0, 3)
-    : null;
-  console.log(
-    "🚨🚨🚨 DIAGNOSTIC - beaconLabels type:",
-    typeof beaconLabels,
-    "isArray:",
-    beaconLabelsIsArray,
-    "isMap:",
-    beaconLabelsIsMap,
-    "length:",
-    beaconLabelsLength
-  );
-  console.log(
-    "🚨🚨🚨 DIAGNOSTIC - beaconLabels sample:",
-    JSON.stringify(beaconLabelsSample)
-  );
   logger.info("[PDFKit] 🎨 Starting GeoPDF generation...");
   logger.info("[PDFKit] 🔍 LabelingSystem import check:", {
     hasLabelingSystem: typeof LabelingSystem !== "undefined",
@@ -10762,14 +10701,6 @@ async function _generateGeoPDFInner(options, logger) {
     outsideFigureDataEdges: outsideFigureData?.edges?.length || 0,
   });
 
-  // 🚨 DIAGNOSTIC CODE - VERSION 2026-01-06-18:45 🚨
-  logger.info(`[PDFKit] 🔥 DIAGNOSTIC CODE LOADED - Version 2026-01-06-18:45`);
-  logger.info(
-    `[PDFKit] 🏷️ beaconLabels parameter type: ${typeof beaconLabels}`
-  );
-  logger.info(
-    `[PDFKit] 🏷️ beaconLabels isArray: ${Array.isArray(beaconLabels)}`
-  );
   if (beaconLabels && Array.isArray(beaconLabels)) {
     logger.info(
       `[PDFKit] 🏷️ Received ${beaconLabels.length} beacon labels from UI`
@@ -11949,11 +11880,6 @@ async function _generateGeoPDFInner(options, logger) {
       }
     }
   }
-  const _rawRing = (outsideFigure?.features?.[0]?.geometry?.coordinates?.[0] ?? []).slice(0,3);
-  const _diagMsg = `topoPolyPts=${_topoPolyPts.length} pts=${JSON.stringify(_topoPolyPts)} figureBounds=(${figureBounds.x.toFixed(0)},${figureBounds.y.toFixed(0)},${figureBounds.width.toFixed(0)},${figureBounds.height.toFixed(0)}) extent=${JSON.stringify(calculatedExtent)} rawRing=${JSON.stringify(_rawRing)}`;
-  console.error(`[DIAG] ${_diagMsg}`);
-  writeFile('C:/mataranyika/diag-topo.txt', _diagMsg + '\n').catch(() => {});
-
   // mapFeatureBounds: pdfPoints = outside figure polygon vertices for hard-reject.
   // parcelSegments kept for topology scoring bonus.
   // Always build mapFeatureBounds with pdfPoints so polygon hard-reject fires
@@ -12205,7 +12131,6 @@ async function _generateGeoPDFInner(options, logger) {
       } catch (retryErr) {
         const errMsg = `SHEET-SIZE-RETRY-ERROR attempt=${_sheetSizeUpAttempt + 1} nextSheet=${nextSheet} err=${retryErr?.message} stack=${retryErr?.stack?.slice(0, 500)}`;
         console.error(errMsg);
-        writeFile('C:/mataranyika/diag-error.txt', errMsg + '\n').catch(() => {});
         logger.warn(`[PDFKit] ⚠️ Paper-size escalation failed — continuing at ${currentSheetName} with stacker fallback`);
       }
     } else if (_scaleUpAttempt < MAX_SCALE_UP_ATTEMPTS) {
@@ -12230,7 +12155,6 @@ async function _generateGeoPDFInner(options, logger) {
         } catch (retryErr) {
           const errMsg = `SCALE-RETRY-ERROR attempt=${_scaleUpAttempt + 1} nextScale=${nextScale.label} err=${retryErr?.message} stack=${retryErr?.stack?.slice(0, 500)}`;
           console.error(errMsg);
-          writeFile('C:/mataranyika/diag-error.txt', errMsg + '\n').catch(() => {});
           logger.warn(`[PDFKit] ⚠️ Scale retry failed — continuing at ${optimalScale.label} with stacker fallback`);
         }
         suggestedScale = nextScale.label;

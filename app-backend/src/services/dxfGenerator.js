@@ -62,7 +62,7 @@ import {
 } from './dxfBottomZoneEmitter.js'
 import { planSheetLayout } from './sheetLayoutPlanner.js'
 import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlanner.js'
-import { buildScheduleMeasurer, pdfMeasureText, pdfMeasureTextInUnits } from './scheduleMeasurer.js'
+import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon } from './dxfGeometry.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
@@ -1068,12 +1068,8 @@ export function generateDXF(options, logger) {
 
       // 4d: smart stand-label position. Falls back to centroid if placer returns null
       // (degenerate polygon â€” same as the existing Number.isFinite guard below).
-      // Use PDF-backed measurement so stand-label width matches the PDF.
-      const _mToPt = 1 / ptToGround(1, S);
-      const _standMeasurer = (str, h) => pdfMeasureTextInUnits(str, { size: h, mToPt: _mToPt });
       const standPos = findStandLabelPosition({
         polygon: polyPts, standNumber: String(stand), fontHeight: standHeight,
-        measureText: _standMeasurer,
       });
       if (standPos && Number.isFinite(standPos.x) && Number.isFinite(standPos.y)) {
         addText('STAND_NUMBERS', standPos.x, standPos.y, String(stand), standPos.fontHeight, longestAngle, 'BOLD');
@@ -1149,7 +1145,7 @@ export function generateDXF(options, logger) {
         // if any, is positioned at a further offset along the same perpendicular
         // direction). Char-width approximation for label-width estimate matches
         // sub-project #2's splitToWidth convention.
-        const distLabelWidth = distText ? pdfMeasureText(distText, { family: 'Helvetica', size: distHeight }) : distHeight * 4;
+        const distLabelWidth = distText ? distText.length * distHeight * 0.55 : distHeight * 4;
         const smartPos = findEdgeLabelPosition({
           edgeStart: a, edgeEnd: b, polygon: polyPts,
           labelHeight: distHeight, labelWidth: distLabelWidth, angle: ang,
@@ -1399,7 +1395,7 @@ export function generateDXF(options, logger) {
     if (!decision) continue;
 
     const labelText    = decision.text;
-    const labelWidth   = pdfMeasureText(labelText, { family: 'Helvetica', size: beaconLabelHeight });
+    const labelWidth   = labelText.length * beaconLabelHeight * 0.55;
     const labelHeightG = beaconLabelHeight * 1.2;
 
     let labelPos;
@@ -1760,9 +1756,7 @@ export function generateDXF(options, logger) {
     height: o.height * M_TO_PT,
   }));
 
-  // Use shared PDFKit-backed measurement so the block planner sees the same
-  // text widths as the PDF side → identical block placement.
-  const plannerMeasure = pdfMeasureText;
+  const plannerMeasure = (str, { size }) => String(str).length * size * 0.55;
 
   // ── 3-v7 diagnostic: log the planner inputs so PDF↔DXF discrepancies can be
   // traced from the same request.  Remove once polygon-handoff is verified.
@@ -1885,7 +1879,6 @@ export function generateDXF(options, logger) {
       }))
     : null;
 
-  const _scheduleMeasurer = (str, h) => pdfMeasureTextInUnits(str, { size: h, mToPt: M_TO_PT });
   emitScheduleOfAreasTopological({
     surveyedFeatures,
     drawingZone: contentArea,    // unused when fixedPosition / placedTablesGround is set; provided for legacy fallback paths
@@ -1894,7 +1887,6 @@ export function generateDXF(options, logger) {
     polygon: figurePolygon,
     sheetSize,
     fonts: bottomZoneFonts,
-    measureText: _scheduleMeasurer,
     helpers: {
       mm, extractScheduleRow, computeScheduleLayout, addScheduleTable,
       nextLargerSheet, SCHEDULE_HEADER_HEIGHT_MM, columnWidthsG: scheduleColumnWidthsG,
@@ -2025,10 +2017,10 @@ export function generateDXF(options, logger) {
   // appear "wide" even though their geometry matches the PDF exactly.
   //
   // Setting 41 = 0.55 here makes every TEXT entity emit at Helvetica-like
-  // proportions. The 0.55 ratio keeps the DXF rendered-width close to
-  // the pdfMeasureText-backed widths the planner, stand-label placer,
-  // and schedule emitter now use — so label-position math agrees with
-  // the actual rendered width in CAD viewers using the txt.shx fallback.
+  // proportions. The 0.55 ratio also matches the assumption baked into
+  // the DXF placer (dxfLabelPlacer.js `charWidthRatio = 0.55`) and the
+  // existing schedule emitter constants — so label-position math now
+  // agrees with the actual rendered width.
   const STYLE_WIDTH_FACTOR = '0.55'
   dxf += p(0, 'TABLE');
   dxf += p(2, 'STYLE');

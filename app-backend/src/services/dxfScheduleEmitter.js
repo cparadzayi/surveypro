@@ -76,7 +76,6 @@ export function emitScheduleOfAreasTopological({
   // produced per-sub-table positions, the DXF generator converts each to ground
   // metres and passes them here. Highest precedence — overrides fixedPosition.
   placedTablesGround = null,
-  measureText,
 }) {
   const { hHead, hBody, rH } = fonts
   const {
@@ -175,7 +174,6 @@ export function emitScheduleOfAreasTopological({
         titleText,
         hHead, hBody, rH,
         addText, addLine,
-        measureText,
       })
       const yBottom = t.y - t.height
       placedTables.push({
@@ -231,7 +229,6 @@ export function emitScheduleOfAreasTopological({
         titleText,
         hHead, hBody, rH,
         addText, addLine,
-        measureText,
       })
       const yBottom = fixedPosition.y - subTableHeightG
       placedTables.push({
@@ -537,7 +534,6 @@ export function emitScheduleOfAreasTopological({
       titleText,
       hHead, hBody, rH,
       addText, addLine,
-      measureText,
     })
     placedTables.push({
       x: p.x, y: p.y, width: p.width, height: p.height,

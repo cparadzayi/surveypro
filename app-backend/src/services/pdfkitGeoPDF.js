@@ -10351,9 +10351,19 @@ function checkMarginConstraint(extentWidth, extentHeight, figureBounds, scaleDen
  * Both township general plan types must not be plotted at a scale smaller than 1:500.
  * Extents too large to fit at 1:500 trigger multi-sheet tiling (needsTiling=true).
  */
+// SI 727 Reg 32(3) scale rules by plan type:
+//  • DEVELOPED-township general plan — mandated at EXACTLY 1:500 (no edge
+//    distances/directions are shown). Capped here (≤500) and floored in the
+//    enlarge step, so it resolves to exactly 1:500 (tiling if the figure is too
+//    big to fit at 1:500).
+//  • UNDEVELOPED-township general plan — NO fixed scale. It may take any
+//    suitable scale that keeps stand numbers, beacon labels and edge
+//    distances/directions legible (no overcrowding/overlap) at the print scale,
+//    so it is intentionally NOT listed here (uncapped — enlarge to the best fit,
+//    with label-crowding detection stepping finer when needed). This matches the
+//    frontend, which only applies the ceiling for 'general-developed'.
 const SI727_MAX_DENOMINATOR_BY_PLAN = {
   'general-developed':   500,
-  'general-undeveloped': 500,
 };
 
 function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceMinDenominator = 0, planType = null) {
@@ -10392,6 +10402,44 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
     candidateIndex = SI727_PRESCRIBED_SCALES.findIndex(s => s.value >= minRequiredScale);
     if (candidateIndex === -1) {
       candidateIndex = SI727_PRESCRIBED_SCALES.length - 1; // largest available
+    }
+  }
+
+  // --- ENLARGE the figure to dominate the sheet (SI 727 General Plan) ---
+  // The requested scale (from intelligentPreview) is often conservative, leaving
+  // the figure small on a large sheet. Step DOWN to the smallest denominator
+  // (largest figure) that still fits the drawing area, so the figure is the hero.
+  // The 90% margin loop below + forceMinDenominator (block-placement retry)
+  // reclaim room if the enlarged figure crowds the schedule/blocks. Skipped
+  // during a block-placement retry (forceMinDenominator > 0) so we don't undo a
+  // scale-up that was needed to fit the blocks.
+  if (forceMinDenominator <= 0) {
+    const _mapWmm = mapBounds.width / MM_TO_PT;
+    const _mapHmm = mapBounds.height / MM_TO_PT;
+    const _minFit = Math.max(
+      (extentWidth * 1000) / _mapWmm,
+      (extentHeight * 1000) / _mapHmm,
+    );
+    let _autoMaxIdx = SI727_PRESCRIBED_SCALES.findIndex(s => s.value >= _minFit);
+    // SI 727 Reg 32(3): a DEVELOPED-township general plan is mandated at exactly
+    // 1:500 → never enlarge it finer than 1:500 (the applyPlanTypeCeiling() cap
+    // below prevents coarser, so it lands exactly on 1:500; if the figure is too
+    // big to fit at 1:500 the cap flags needsTiling). An UNDEVELOPED-township
+    // plan MAY use larger (finer) scales to accommodate the edge distances +
+    // directions it must show, so it is NOT floored here — the ceiling still
+    // caps it no coarser than 1:500.
+    const _exactMandateDenom = planType === 'general-developed' ? 500 : 0;
+    if (_exactMandateDenom > 0) {
+      const _floorIdx = SI727_PRESCRIBED_SCALES.findIndex(s => s.value >= _exactMandateDenom);
+      if (_floorIdx !== -1) _autoMaxIdx = Math.max(_autoMaxIdx, _floorIdx);
+    }
+    if (_autoMaxIdx !== -1 && _autoMaxIdx < candidateIndex) {
+      logger.info(
+        `[PDFKit] 📏 Enlarging figure: ${SI727_PRESCRIBED_SCALES[candidateIndex].label} → ` +
+        `${SI727_PRESCRIBED_SCALES[_autoMaxIdx].label} (largest SI 727 scale that fills the drawing area` +
+        `${_exactMandateDenom ? `, floored at the 1:${_exactMandateDenom} developed-township mandate` : ''})`,
+      );
+      candidateIndex = _autoMaxIdx;
     }
   }
 
@@ -12431,7 +12479,11 @@ async function _generateGeoPDFInner(options, logger) {
   // underscored canonical name before returning. pageSize.name is the FULL
   // display string ('1189mm × 841mm (ISO A0)') — don't use that here.
   const _returnedSheetSize = String(pageSize.code || '').replace(/\s+/g, '_') || null;
-  return { pdfBuffer, suggestedScale, scale: optimalScale.label, sheetSize: _returnedSheetSize, tileGrid, warnings };
+  // Orientation the PDF laid out at (width >= height ⇒ landscape). Shared with the
+  // DXF so PDF↔DXF stay in lockstep on scale + sheet size + orientation.
+  // NOTE: pageSize carries `size: [wPt, hPt]` (no .width/.height fields).
+  const _returnedOrientation = pageSize.size?.[0] >= pageSize.size?.[1] ? 'landscape' : 'portrait';
+  return { pdfBuffer, suggestedScale, scale: optimalScale.label, sheetSize: _returnedSheetSize, orientation: _returnedOrientation, tileGrid, warnings };
 }
 
 // ============================================================================

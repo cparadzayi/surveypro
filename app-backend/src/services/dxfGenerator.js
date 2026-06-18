@@ -64,6 +64,7 @@ import { planSheetLayout } from './sheetLayoutPlanner.js'
 import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlanner.js'
 import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon } from './dxfGeometry.js'
+import { selectFigureScale } from '../utils/si727Constants.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
 // External consumers (tests, other modules) keep importing from dxfGenerator.js.
@@ -350,11 +351,28 @@ function isWithinPolygonBuffer(px, py, polygon, buffer) {
   return minDistToPolygon(px, py, polygon) <= buffer;
 }
 
-/** Parse scale denominator from "1:2000" or "1:500" etc. */
-function parseScaleDenom(scaleStr) {
-  if (!scaleStr) return 2500;
-  const m = String(scaleStr).match(/1\s*:\s*(\d+)/);
-  return m ? parseInt(m[1], 10) : 2500;
+/**
+ * Parse a scale denominator from any of the shapes the caller may pass:
+ *   - object  { value: 500, label: '1:500' }   (what the PDF route/front-end sends)
+ *   - string  '1:500' or '500'
+ *   - number  500
+ * Returns null when nothing usable is present, so the caller can auto-fit.
+ *
+ * NOTE: the previous implementation did `String(scaleStr)` on the object and
+ * matched "[object Object]" → no match → silently defaulted to 1:2500, which
+ * hard-wired every DXF to 1:2500 regardless of the chosen scale.
+ */
+function parseScaleDenom(scale) {
+  if (scale == null) return null;
+  if (typeof scale === 'number') return Number.isFinite(scale) ? scale : null;
+  if (typeof scale === 'object') {
+    if (Number.isFinite(scale.value)) return Number(scale.value);
+    scale = scale.label;
+  }
+  const m = String(scale).match(/1\s*:\s*(\d+)/);
+  if (m) return parseInt(m[1], 10);
+  const n = parseInt(String(scale), 10);
+  return Number.isFinite(n) ? n : null;
 }
 
 /** ISO paper sizes in mm (landscape orientation: width > height) */
@@ -436,6 +454,10 @@ export function generateDXF(options, logger) {
     projection = 'Cape Lo',
     scale,
     sheetSize = 'ISO_A2',
+    // Page orientation. Shared from the PDF (PDF↔DXF parity): the PDF decides
+    // scale + sheet size + orientation and the DXF consumes them verbatim.
+    // 'landscape' (default) = width > height; 'portrait' swaps the paper dims.
+    orientation = 'landscape',
     sheetInfo = null,
     // SI 727 plan type. 'general-developed' suppresses parcel-edge distance +
     // direction labels (matches pdfkitLabeling.js:386,456 — developed township
@@ -460,7 +482,12 @@ export function generateDXF(options, logger) {
   const normalizedSheetSize = typeof sheetSize === 'string'
     ? sheetSize.replace(/\s+/g, '_')
     : sheetSize;
-  const paper = PAPER_SIZES[normalizedSheetSize] || PAPER_SIZES['ISO_A2'];
+  const _basePaper = PAPER_SIZES[normalizedSheetSize] || PAPER_SIZES['ISO_A2'];
+  // Honor the shared orientation (from the PDF). PAPER_SIZES are stored
+  // landscape (w > h); a 'portrait' request swaps the dimensions.
+  const paper = orientation === 'portrait'
+    ? { w: _basePaper.h, h: _basePaper.w }
+    : _basePaper;
 
   // â”€â”€ Pre-scan drawing extent (outside figure + parcels ONLY, not unfiltered beacons) â”€â”€
   // Beacons are excluded because pre-filtering they span a huge area (e.g. 268 beacons).
@@ -493,19 +520,46 @@ export function generateDXF(options, logger) {
   const drawW = (extMaxX - extMinX) || 100;
   const drawH = (extMaxY - extMinY) || 100;
 
-  // â”€â”€ Use declared scale from PDF export; auto-fit only as fallback â”€â”€
+  // â”€â”€ SI 727 scale selection: ENLARGE the figure to the largest prescribed
+  //    scale (smallest denominator) whose drawing still fits the sheet's
+  //    drawing area, so the figure dominates the plan like a real General Plan.
+  //    A declared scale is honoured only when it also fits; otherwise we enlarge
+  //    (declared too small) or shrink (declared overflows) to the best fit.
+  //
+  //    Available drawing area (paper-mm): content area (SI 727 margins: 50 left,
+  //    150 right for SG endorsements, 50 top/bottom) minus a reserve for the
+  //    schedule/co-ordinate column (right) and the title strip (top).
+  // Scale selection. PARITY: when a scale is supplied (the PDF shares its chosen
+  // scale with the DXF), honor it VERBATIM so the two render in lockstep. Only
+  // when NO scale is supplied do we auto-maximize the figure to the largest SI
+  // 727 prescribed scale that fits the sheet (uses the same shared helper the
+  // PDF uses for its own selection).
+  const _figFit = selectFigureScale({
+    drawWidthM: drawW,
+    drawHeightM: drawH,
+    paperWmm: paper.w,
+    paperHmm: paper.h,
+  });
+  // SI 727 Reg 32(3) scale precedence (fallback when no PDF scale is handed off):
+  //   1. declaredS — a supplied scale (PDF handoff) honored verbatim → parity.
+  //   2. DEVELOPED township GP — mandated at EXACTLY 1:500 (no edge labels;
+  //      tiles if the figure is too big to fit at 1:500).
+  //   3. Everything else (UNDEVELOPED township GP + unconstrained) — auto-
+  //      maximize to the largest SI 727 scale that fits. Undeveloped has no
+  //      fixed scale; the largest fitting figure gives the most room for stand
+  //      numbers, beacon labels and edge distances/directions to stay legible.
   let S;
   if (declaredS) {
     S = declaredS;
+  } else if (planType === 'general-developed') {
+    S = 500;
   } else {
-    // Fallback: auto-fit drawing to ~70% of paper drawing zone
-    const cW = paper.w - 50 - 150, cH = paper.h - 50 - 50;
-    const aW = cW * 0.70, aH = cH * 0.55 * 0.70;
-    S = Math.ceil(Math.max((drawW * 1000) / aW, (drawH * 1000) / aH) / 50) * 50;
+    S = _figFit.S;
   }
+  const { minScaleToFit, fitScale } = _figFit;
 
   logger.info(`[DXF] Drawing extent: ${drawW.toFixed(1)}m x ${drawH.toFixed(1)}m`);
-  logger.info(`[DXF] Using scale 1:${S} (declared: 1:${declaredS}, sheet ${normalizedSheetSize} ${paper.w}x${paper.h}mm)`);
+  logger.info(`[DXF] SI 727 scale: 1:${S} (declared: ${declaredS ? '1:' + declaredS : 'none'}, minToFit: 1:${Math.ceil(minScaleToFit)}, fit: 1:${fitScale}, sheet ${normalizedSheetSize} ${paper.w}x${paper.h}mm)`);
 
   // â”€â”€ Scale-aware sizes (matching pdfkitLabeling.js) â”€â”€
   let distPt, bearPt;

@@ -52,6 +52,9 @@ export interface VectorGeoPDFRequest {
   // Scale and sheet size (from intelligentPreview recommendation)
   scale?: string        // e.g. '1:2000'
   sheetSize?: string    // e.g. 'ISO_A2'
+  // Page orientation. For PDF↔DXF parity the PDF decides scale + sheetSize +
+  // orientation and the DXF export forwards the PDF's chosen values verbatim.
+  orientation?: 'landscape' | 'portrait'
   /**
    * SI 727 plan type. 'general-developed' enforces the 1:500 maximum scale
    * denominator per Reg 32(3). When multi-sheet tiling is required the backend
@@ -203,6 +206,7 @@ export async function generateDXF(request: VectorGeoPDFRequest): Promise<{
     outsideFigureData: request.outsideFigureData,
     scale: request.scale,
     sheetSize: request.sheetSize,
+    orientation: request.orientation,
     beaconGroups: request.beaconGroups,
     // SI 727 plan type — backend uses this to suppress parcel-edge labels on
     // developed-township general plans (per-stand survey diagrams carry that

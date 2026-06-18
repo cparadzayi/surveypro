@@ -67,6 +67,57 @@ export function isValidSI727Scale(scale) {
   return SI727_PRESCRIBED_SCALES.some(s => s.value === scale)
 }
 
+/**
+ * Select the SI 727 scale that ENLARGES the figure to dominate the sheet —
+ * the largest prescribed scale (smallest denominator) whose drawing still fits
+ * the sheet's available drawing area. A declared scale is honoured only when it
+ * also fits; otherwise the figure is enlarged (declared too small) or shrunk
+ * (declared overflows) to the best-fitting prescribed scale.
+ *
+ * SHARED by both generators (pdfkitGeoPDF.js + dxfGenerator.js) so PDF and DXF
+ * always resolve to the SAME scale → PDF↔DXF parity / lockstep. Deterministic:
+ * identical inputs ⇒ identical output, regardless of which generator calls it.
+ *
+ * @param {Object}  p
+ * @param {number}  p.drawWidthM    Figure width in ground metres
+ * @param {number}  p.drawHeightM   Figure height in ground metres
+ * @param {number}  p.paperWmm      Sheet width (mm)
+ * @param {number}  p.paperHmm      Sheet height (mm)
+ * @param {number} [p.declaredScale] Caller-requested denominator (honoured iff it fits)
+ * @param {number} [p.reserveW=0.72] Fraction of content width available to the figure
+ * @param {number} [p.reserveH=0.85] Fraction of content height available to the figure
+ * @returns {{ S:number, minScaleToFit:number, fitScale:number, honoredDeclared:boolean }}
+ */
+export function selectFigureScale({
+  drawWidthM, drawHeightM, paperWmm, paperHmm,
+  declaredScale = null, reserveW = 0.72, reserveH = 0.85,
+  minDenominator = 0,
+}) {
+  // SI 727 margins: 50 left, 150 right (SG endorsements), 50 top/bottom (mm).
+  const contentW = paperWmm - 50 - 150;
+  const contentH = paperHmm - 50 - 50;
+  const availW = contentW * reserveW; // remainder reserved for schedule/co-ord blocks
+  const availH = contentH * reserveH; // remainder reserved for the title strip
+  const minScaleToFit = Math.max(
+    (drawWidthM * 1000) / availW,
+    (drawHeightM * 1000) / availH,
+    1, // guard against zero-extent degenerate input
+  );
+  const ladder = SI727_PRESCRIBED_SCALES.map((s) => s.value).sort((a, b) => a - b);
+  let fitScale = ladder.find((v) => v >= minScaleToFit) || ladder[ladder.length - 1];
+  // SI 727 Reg 32(3) mandate floor: never ENLARGE finer than minDenominator
+  // (e.g. 1:500 for developed/undeveloped general plans). A coarser fit (figure
+  // too big for the mandated scale) is left untouched — the caller tiles.
+  if (minDenominator > 0 && fitScale < minDenominator) fitScale = minDenominator;
+  const honoredDeclared = !!(declaredScale && declaredScale >= minScaleToFit);
+  return {
+    S: honoredDeclared ? declaredScale : fitScale,
+    minScaleToFit,
+    fitScale,
+    honoredDeclared,
+  };
+}
+
 // Helper function to get the nearest valid SI 727 scale
 export function getNearestValidScale(targetScale) {
   return SI727_PRESCRIBED_SCALES.reduce((nearest, current) => {

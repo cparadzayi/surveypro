@@ -4465,6 +4465,11 @@ async function exportToDXF() {
     // Prefer PDF's final scale (after text-block fitting); fall back to intelligentPreview
     const resolvedScale = pdfFinalScale.value || intelligentPreview.value?.scale?.label || undefined
     const resolvedSheetSize = intelligentPreview.value?.sheetSize || 'ISO_A2'
+    // PDF↔DXF parity: share the PDF's page orientation. Derived from the same
+    // intelligentPreview sheet the PDF export uses (width > height ⇒ landscape).
+    const _sheet = intelligentPreview.value?.layout?.sheet
+    const resolvedOrientation: 'landscape' | 'portrait' =
+      _sheet ? (_sheet.width > _sheet.height ? 'landscape' : 'portrait') : 'landscape'
 
     const metadata = {
       title: `General Plan - ${props.projectInfo.designation || 'Survey Plan'}`,
@@ -4499,6 +4504,7 @@ async function exportToDXF() {
       outsideFigureData: outsideFigureData.value,
       scale: resolvedScale,
       sheetSize: resolvedSheetSize,
+      orientation: resolvedOrientation,
       beaconGroups: props.projectInfo.beaconGroups || [],
       // SI 727 plan type — drives parcel-edge label suppression on developed
       // townships (per-stand survey diagrams carry that detail). Same value

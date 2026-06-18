@@ -74,15 +74,27 @@ describe('planSheetLayout parity — PDF and DXF callers', () => {
 
 describe('3-v7 Maglas parity', () => {
   test('PDF and DXF both generate non-empty output on Maglas', async () => {
+    // PDF-first handoff (see note in the warning-parity test below).
     const pdfResult = await generateGeoPDF(sampleMaglasPlan, fakeLogger);
-    const dxfResult = generateDXF(sampleMaglasPlan, fakeLogger);
+    const dxfResult = generateDXF(
+      { ...sampleMaglasPlan, scale: pdfResult.scale, sheetSize: pdfResult.sheetSize, orientation: pdfResult.orientation },
+      fakeLogger,
+    );
     expect(pdfResult.pdfBuffer.length).toBeGreaterThan(0);
     expect(dxfResult.buffer.length).toBeGreaterThan(0);
   }, 120000);
 
   test('PDF and DXF produce structured warning categories on Maglas', async () => {
+    // PDF↔DXF parity follows the real app flow: the PDF generates FIRST and
+    // decides scale + sheet size + orientation (enlarging the figure to the
+    // largest SI 727 scale that fits). The DXF then consumes those verbatim, so
+    // both render the same layout. Passing the fixture to each independently
+    // would let them diverge (PDF enlarges, DXF would honor the fixture scale).
     const pdfResult = await generateGeoPDF(sampleMaglasPlan, fakeLogger);
-    const dxfResult = generateDXF(sampleMaglasPlan, fakeLogger);
+    const dxfResult = generateDXF(
+      { ...sampleMaglasPlan, scale: pdfResult.scale, sheetSize: pdfResult.sheetSize, orientation: pdfResult.orientation },
+      fakeLogger,
+    );
 
     // PDF warnings are flat keys on `warnings` object
     const pdfWarnKeys = Object.keys(pdfResult.warnings || {})

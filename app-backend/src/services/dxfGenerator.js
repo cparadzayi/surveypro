@@ -626,6 +626,30 @@ export function generateDXF(options, logger) {
     ent += p(8, layer);
   }
 
+  /**
+   * Draw a CLOSED polygon boundary as individual LINE edges, each TRIMMED by
+   * `trimR` (ground-metres) at BOTH endpoints. Cadastral polygon corners are
+   * beacons, so the trim leaves a clean gap around each beacon's open circle
+   * (the SI 727 convention) instead of running the boundary through the symbol.
+   * Edges shorter than 2·trimR are skipped (corner-to-corner spacing too tight).
+   */
+  function addTrimmedPolygon(layer, points, trimR) {
+    if (!Array.isArray(points) || points.length < 2) return;
+    const a0 = points[0], aN = points[points.length - 1];
+    const isClosed = Math.abs(a0.x - aN.x) < 1e-6 && Math.abs(a0.y - aN.y) < 1e-6;
+    const verts = isClosed ? points.slice(0, -1) : points;
+    const m = verts.length;
+    for (let i = 0; i < m; i++) {
+      const a = verts[i];
+      const b = verts[(i + 1) % m]; // wrap closes the ring
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      if (!(len > 2 * trimR)) continue;
+      const ux = dx / len, uy = dy / len;
+      addLine(layer, a.x + ux * trimR, a.y + uy * trimR, b.x - ux * trimR, b.y - uy * trimR);
+    }
+  }
+
   function addCircle(layer, cx, cy, r) {
     ent += p(0, 'CIRCLE');
     ent += p(8, layer);
@@ -659,25 +683,17 @@ export function generateDXF(options, logger) {
   }
 
   /**
-   * Draw a beacon symbol differentiated by type.
-   *   placed â†’ solid-filled circle (CIRCLE + 8 radial LINEs since R12 has no HATCH)
-   *   found  â†’ open CIRCLE + crossing `+` (two LINEs through the centre)
+   * Draw a beacon symbol: a PLAIN OPEN CIRCLE for every beacon, matching the
+   * SI 727 General Plan convention (stand-corner beacons shown as clean open
+   * circles). The `type` argument is retained for call-site compatibility but no
+   * longer changes the symbol — the previous placed/found differentiation
+   * (8 radial "fill" lines / a crossing `+`) cluttered the plan with asterisk-
+   * like marks. If a placed/found distinction is needed it should be carried via
+   * layer or colour, not by busying up the symbol.
    */
   function addBeaconSymbol(layer, cx, cy, type, sizeM) {
     const r = sizeM / 2
     addCircle(layer, cx, cy, r)
-    if (type === 'placed') {
-      // Eight short radial LINEs from centre outward at 45Â° intervals to mimic a fill
-      for (let i = 0; i < 8; i++) {
-        const a = (i * Math.PI) / 4
-        addLine(layer, cx, cy, cx + r * Math.cos(a), cy + r * Math.sin(a))
-      }
-    } else if (type === 'found') {
-      // Two LINEs forming a "+" through the centre, length 1.4Â·r
-      const h = r * 1.4
-      addLine(layer, cx - h, cy, cx + h, cy)
-      addLine(layer, cx, cy - h, cx, cy + h)
-    }
   }
 
   /**
@@ -1035,7 +1051,7 @@ export function generateDXF(options, logger) {
     const ofPts = outsideFigureData.edges.map((e) => {
       const pt = capeLoToDxfSouthUp(e.y, e.x); trackPt(pt); return pt;
     });
-    addPolyline('OUTSIDE_FIGURE', ofPts);
+    addTrimmedPolygon('OUTSIDE_FIGURE', ofPts, beaconRadius);
     ofPolygon = ofPts; // save for beacon filtering
     logger.info(`[DXF] Outside Figure: ${ofPts.length} vertices`);
 
@@ -1087,7 +1103,7 @@ export function generateDXF(options, logger) {
       const polyPts = coords.slice(0, -1).map((c) => {
         const pt = capeLoToDxfSouthUp(c[0], c[1]); trackPt(pt); return pt;
       });
-      addPolyline('PARCELS', polyPts);
+      addTrimmedPolygon('PARCELS', polyPts, beaconRadius);
       parcelCount++;
 
       // â”€â”€ Stand label: shoelace centroid + 4d's iterative font-shrink â”€â”€

@@ -34,18 +34,20 @@ export function pickBeaconFontSize(scaleValue) {
 }
 
 /**
- * PDF logarithmic beacon radius in paper-mm, clamped to 1.8-3.0 pt.
- * Matches pdfkitGeoPDF.js:4629-4636.
+ * Beacon open-circle radius as a FIXED legible PAPER size (mm). The circle must
+ * read clearly at the print scale regardless of the ground scale — matching the
+ * SI 727 General Plan convention (see the ideal plan: ~2 mm radius open circles).
+ * The previous 1.8-3.0 pt clamp (~0.63-1.06 mm) rendered the circles too small
+ * to read. A slight log growth at coarser scales keeps them visible when the
+ * figure is small.
  *
- *   baseRadiusMM × (1 + 0.15·log10(max(500, scaleValue) / 500))
- *   clamped to 1.8-3.0 pt
+ *   baseRadiusMM × (1 + 0.15·log10(max(500, scaleValue) / 500)), clamped 1.5-2.4 mm
  */
 export function computeBeaconRadius(scaleValue) {
-  const baseRadiusMM = 0.75
+  const baseRadiusMM = 1.8
   const scaleFactor  = 1 + 0.15 * Math.log10(Math.max(500, scaleValue) / 500)
-  let rPt = baseRadiusMM * PT_PER_MM * scaleFactor
-  rPt = Math.max(1.8, Math.min(3.0, rPt))
-  return rPt * 0.352778   // back to mm
+  const rMM = baseRadiusMM * scaleFactor
+  return Math.max(1.5, Math.min(2.4, rMM))   // paper-mm
 }
 
 /**

@@ -210,8 +210,9 @@ describe('dxfGenerator integration — beacon labeling', () => {
     expect(r500).not.toBeNull()
     expect(r5000).not.toBeNull()
     expect(r5000).toBeGreaterThan(r500)
-    // 3 pt clamp at S=5000: 3 * 5000 * 0.000352778 ≈ 5.29 m ground
-    expect(r5000).toBeLessThanOrEqual(5.29 + 0.01)
+    // Beacon radius is now a fixed legible PAPER size (1.5-2.4 mm), so the GROUND
+    // radius = paperMM/1000 * S. At S=5000 the 2.4 mm upper clamp ⇒ ≤ 12 m ground.
+    expect(r5000).toBeLessThanOrEqual(12.0 + 0.01)
   })
 
   test('beacon font size scales with scale (PDF tier switch)', () => {
@@ -377,8 +378,10 @@ describe('dxfGenerator integration — sample fixture', () => {
   })
 
   test('entity counts on key layers match the fixture', () => {
-    expect(entityCount(dxf, 'POLYLINE', 'PARCELS'))
-      .toBe(sampleFixture.parcels.features.length)
+    // Parcel boundaries are now trimmed LINE edges (one per polygon edge, gapped
+    // at the beacon corners) rather than a single POLYLINE per parcel.
+    expect(entityCount(dxf, 'POLYLINE', 'PARCELS')).toBe(0)
+    expect(entityCount(dxf, 'LINE', 'PARCELS')).toBeGreaterThan(0)
     expect(entityCount(dxf, 'CIRCLE', 'BEACONS'))
       .toBe(sampleFixture.beacons.features.length)
     expect(entityCount(dxf, 'LINE', 'NORTH_ARROW')).toBeGreaterThanOrEqual(3)

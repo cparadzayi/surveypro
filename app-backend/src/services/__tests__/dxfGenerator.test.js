@@ -159,13 +159,14 @@ describe('generateDXF — beacon symbol differentiation', () => {
     scale: '1:500',
     sheetSize: 'ISO_A2',
   }
-  test('placed beacon emits CIRCLE + 8 radial LINEs', () => {
+  test('every beacon emits a plain open CIRCLE with no radial/cross LINEs', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
     const dxf = buffer.toString()
-    // 2 CIRCLE entities total (one per beacon), both on BEACONS layer
+    // One open CIRCLE per beacon on the BEACONS layer (SI 727 open-circle convention)
     expect(entityCount(dxf, 'CIRCLE', 'BEACONS')).toBe(2)
-    // 8 LINEs for the placed fill + 2 LINEs for the found cross = 10 BEACONS lines
-    expect(entityCount(dxf, 'LINE', 'BEACONS')).toBe(10)
+    // No radial "fill" or crossing "+" LINEs — the symbol is a clean open circle
+    // (the placed/found differentiation by symbol was removed to match the ideal).
+    expect(entityCount(dxf, 'LINE', 'BEACONS')).toBe(0)
   })
 })
 

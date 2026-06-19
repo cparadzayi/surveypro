@@ -296,7 +296,21 @@ git commit -m "feat(schedule): chooseScheduleStrategy — balance/pool/flat/esca
 >    closes the pre-existing latent divergence. Task 3 is therefore only a no-op
 >    for the `balance` branch (both already centre), NOT for `pool`/`flat`.
 >
-> **⚠️ Implementation status (2026-06-19): DXF balance DONE; PDF parity BLOCKED.**
+> **✅ DECISION (2026-06-19): SHIP the DXF balance; PDF schedule parity is OUT OF
+> SCOPE (consciously dropped, not blocked).** The DXF is the primary export (the
+> reference General Plan IS a DXF) and now matches the ideal. PDF↔DXF *pixel*
+> parity is the wrong goal: PDF (PDFKit Helvetica) and DXF (0.55 SHX heuristic)
+> render text at genuinely different widths, so identical `placedTables` would
+> force one format's columns to mis-fit its own text — and that's exactly the
+> reverted 3-v10 shared-metrics change. The PDF remains a reasonable preview
+> (schedule pooled, not balanced). If PDF *structural* equivalence is ever wanted,
+> the path is to route the PDF schedule through the shared `chooseScheduleStrategy`
+> + `balanceScheduleTables` (each format feeding its own measured column width) so
+> the PDF pools into a narrow strip and balances — NOT to diff `placedTables`.
+> ① is therefore considered DONE for the agreed scope. The historical
+> investigation notes below are retained for context.
+>
+> **(historical) Implementation status (2026-06-19): DXF balance DONE; PDF parity BLOCKED.**
 > The planner `placedTables` mirror-redistribution is implemented
 > (`pdfkitGeoPDF.js`, just before `calculateBlockPositions`' return) and the
 > **DXF now balances the schedule across both side strips** (render-verified on

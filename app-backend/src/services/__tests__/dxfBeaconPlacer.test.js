@@ -33,13 +33,13 @@ describe('pickBeaconFontSize — PDF tier switch', () => {
   })
 })
 
-describe('computeBeaconRadius — logarithmic with PDF clamp', () => {
-  // Base case: at scale 500 → baseRadiusMM × 1.0 = 0.75 mm,
-  // = 2.13 pt; not clamped, returns ~0.75 mm.
-  test('scale 500 → ~0.75 mm', () => {
+describe('computeBeaconRadius — fixed legible paper size', () => {
+  // Beacon radius is now a fixed legible PAPER size (mm), not the old 0.63-1.06 mm
+  // clamp which rendered too small. At scale 500 → baseRadiusMM × 1.0 = 1.8 mm.
+  test('scale 500 → ~1.8 mm', () => {
     const r = computeBeaconRadius(500)
-    expect(r).toBeGreaterThan(0.74)
-    expect(r).toBeLessThan(0.76)
+    expect(r).toBeGreaterThan(1.79)
+    expect(r).toBeLessThan(1.81)
   })
   test('monotone non-decreasing in scale', () => {
     const r500  = computeBeaconRadius(500)
@@ -48,11 +48,10 @@ describe('computeBeaconRadius — logarithmic with PDF clamp', () => {
     expect(r1000).toBeGreaterThanOrEqual(r500)
     expect(r5000).toBeGreaterThanOrEqual(r1000)
   })
-  test('clamped at PDF 1.8-3.0 pt window', () => {
-    // 1.8 pt ≈ 0.635 mm, 3.0 pt ≈ 1.058 mm.
+  test('clamped to the 1.5-2.4 mm legible window', () => {
     const huge = computeBeaconRadius(100000)
-    expect(huge).toBeGreaterThanOrEqual(0.63)
-    expect(huge).toBeLessThanOrEqual(1.06)
+    expect(huge).toBeGreaterThanOrEqual(1.5)
+    expect(huge).toBeLessThanOrEqual(2.4)
   })
 })
 

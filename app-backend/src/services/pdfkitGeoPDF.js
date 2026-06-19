@@ -7206,6 +7206,14 @@ export function calculateBlockPositions(
     }
   }
 
+  // ── ① Schedule balancing is applied at DRAW time by each generator (via the
+  // shared balanceScheduleTables helper), NOT here. The planner can't reach the
+  // figure polygon on the PDF side (polyPts=[] and mapFeatureBounds.pdfPoints is
+  // empty in the planner for dense plans), so the mirror is done where each
+  // generator already knows its own figure centre + content edges in its own
+  // coordinate frame. See dxfGenerator.js (ground-metres) and the PDF schedule
+  // renderer (PDF points).
+
   return {
     titleBlock:        titleBlockPos,
     outsideFigureData: outsideFigurePos,
@@ -7488,6 +7496,14 @@ function drawScheduleOfAreas(
     // block (single source — same list the DXF emitter will use), thread them
     // through as precomputedPlacedTables so the render path skips the redundant
     // search and emits at the planner-chosen positions verbatim.
+    // NOTE: schedule balancing is NOT applied here yet. The PDF's planner
+    // `placedTables` are arranged as a WIDE pool (spanning toward the content
+    // centre) rather than the DXF's narrow side-strip, so mirroring them across
+    // the content centre lands a table mid-page instead of in the opposite
+    // strip. Balancing the PDF cleanly first needs the PDF↔DXF `placedTables`
+    // reconciled (the divergence comes from PDFKit vs heuristic text widths).
+    // The shared `balanceScheduleTables` helper is ready; wire it in once the
+    // PDF schedule pools into a narrow strip like the DXF. See the plan.
     const _plannerPlacedTables = allBlockPositions?.scheduleOfAreas?.placedTables;
     // Temporarily remove the oversized pre-estimated scheduleOfAreas bounds from allBlockPositions
     // so that the multi-table placement engine does not treat its own estimated footprint as an

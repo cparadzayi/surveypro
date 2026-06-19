@@ -249,6 +249,111 @@ git commit -m "feat(schedule): chooseScheduleStrategy — balance/pool/flat/esca
 
 ---
 
+> **⚠️ Discovery update (2026-06-19, during implementation):** Tasks 1–2 (the pure
+> primitives) are DONE + committed on `feature/schedule-whitespace-placement`
+> (`measureFigureWhitespace`, `chooseScheduleStrategy`, 8/8 tests). Tracing the
+> generators revealed the original Task 3/4 assumptions were wrong:
+>
+> - **Task 3 is essentially a no-op for the DXF.** `dxfGenerator.js:1581` already
+>   sets `contentCX = dCX` → the figure is already centred in the content area.
+>   `figureAlign` only matters for the `pool`/`flat` branches (to shift the page
+>   frame off-centre). For the balance branch nothing is needed here.
+> - **Task 4's "feed planScheduleSplit both strips" is wrong.** The schedule
+>   sub-table positions come from `drawScheduleOfAreasMultiTable(..., {searchOnly:true})`
+>   run once in the **planner** (`pdfkitGeoPDF.js:7184`), starting from the single
+>   engine-placed `schedulePos`. It returns `scheduleOfAreasFinal.placedTables` =
+>   `[{x, y, width, height}]` (PDF points) + a `composite` bbox; **both PDF and DXF
+>   consume those** (DXF via `placedTablesGround`). So the balance must be a
+>   **post-process redistribution of `placedTables`** right after the search
+>   (`pdfkitGeoPDF.js:7207`), NOT a change to the search internals.
+>
+> **Revised balance approach (replaces Task 4 body):** After `scheduleOfAreasFinal`
+> is set, if `placedTables.length >= 2` and `chooseScheduleStrategy` returns
+> `mode==='balance'`: relocate the latter half of the sub-tables from the pooled
+> side into the opposite side strip (column x = the opposite strip's x; stack y
+> downward from the strip top), then recompute `composite` to span both sides.
+> Inputs needed (confirm exact names in the planner): figure x-extent =
+> `mapBounds.x` / `mapBounds.x + mapBounds.width`; content x-edges = page width
+> minus SI 727 margins (`SI727_MARGINS`, already imported, 50 L / 150 R mm → pt);
+> column width = `_schedSingleColWidth`. Validate the opposite strip width ≥
+> `_schedSingleColWidth` before moving (reuse `chooseScheduleStrategy`). Because
+> both formats consume `placedTables`, this single planner change keeps PDF↔DXF in
+> lockstep with no DXF-side schedule change. Tasks 5–7 (ticks, snapshots) unchanged.
+>
+> **Parity reasoning (two separate concerns):**
+> 1. **Schedule = inherently parity-safe.** `placedTables` is computed once in the
+>    planner and consumed by BOTH the PDF (`precomputedPlacedTables`) and the DXF
+>    (`placedTablesGround`). Redistributing it in the planner yields identical
+>    schedules in both with NO per-generator schedule edit — the whole reason it
+>    belongs in the planner, not DXF-side.
+> 2. **Figure alignment = a real PDF-side change is required.** The figure offset
+>    is computed INDEPENDENTLY today: DXF `contentCX = dCX` (always centred) vs PDF
+>    `alignX = hSlack>40?'left':'center'` (left-aligns dense plans). So PDF and DXF
+>    already DIVERGE on figure placement for dense plans (the parity test checks
+>    block slots, not the figure offset). For IDENTICAL output, both must derive
+>    the figure offset from the SAME `chooseScheduleStrategy.figureAlign`: Task 3
+>    wires it into DXF `contentCX`, Task 6 wires it into PDF `alignX`. This also
+>    closes the pre-existing latent divergence. Task 3 is therefore only a no-op
+>    for the `balance` branch (both already centre), NOT for `pool`/`flat`.
+>
+> **✅ DECISION (2026-06-19): SHIP the DXF balance; PDF schedule parity is OUT OF
+> SCOPE (consciously dropped, not blocked).** The DXF is the primary export (the
+> reference General Plan IS a DXF) and now matches the ideal. PDF↔DXF *pixel*
+> parity is the wrong goal: PDF (PDFKit Helvetica) and DXF (0.55 SHX heuristic)
+> render text at genuinely different widths, so identical `placedTables` would
+> force one format's columns to mis-fit its own text — and that's exactly the
+> reverted 3-v10 shared-metrics change. The PDF remains a reasonable preview
+> (schedule pooled, not balanced). If PDF *structural* equivalence is ever wanted,
+> the path is to route the PDF schedule through the shared `chooseScheduleStrategy`
+> + `balanceScheduleTables` (each format feeding its own measured column width) so
+> the PDF pools into a narrow strip and balances — NOT to diff `placedTables`.
+> ① is therefore considered DONE for the agreed scope. The historical
+> investigation notes below are retained for context.
+>
+> **(historical) Implementation status (2026-06-19): DXF balance DONE; PDF parity BLOCKED.**
+> The planner `placedTables` mirror-redistribution is implemented
+> (`pdfkitGeoPDF.js`, just before `calculateBlockPositions`' return) and the
+> **DXF now balances the schedule across both side strips** (render-verified on
+> the 240-stand fixture; full suite green; committed on this branch).
+>
+> **PDF parity is NOT yet achieved**, and it's deeper than expected:
+> - The DXF always consumes the planner's `placedTables` (`placedTablesGround`),
+>   so the redistribution reaches it.
+> - The **PDF only consumes `placedTables` when the planner-side search populated
+>   them**; for the dense fixture the planner search returns **no** `placedTables`
+>   for the PDF (different `measureText` → different column widths → the search
+>   doesn't split the same way), so the PDF falls back to its **render-time**
+>   schedule search inside `drawScheduleOfAreasMultiTable` (without
+>   `precomputedPlacedTables`), which pools the sub-tables on one side and
+>   **bypasses the planner redistribution entirely**.
+> - Verified via PDF→DXF handoff (same A1/1:1250): DXF redistribution fires
+>   (`fits=true`); PDF produces no planner `placedTables` → renders pooled-left.
+>
+> **Deeper diagnosis (2026-06-19, second attempt — the blocker has THREE layers):**
+> 1. The PDF's planner search DOES populate `placedTables` (e.g. "3 sub-tables at
+>    composite (156,156)" on A1) — the earlier "search returns none" theory was
+>    wrong. The PDF schedule IS the planner's `placedTables`, pooled left.
+> 2. BUT the redistribution gate can't read the figure polygon on the PDF side:
+>    the PDF passes **`polyPts = []`** (verified `[GATEDIAG] polyPts=0
+>    placedTables=3/4`), and **`mapFeatureBounds.pdfPoints` is ALSO empty** in the
+>    planner for the PDF dense case. So the figure centre needed to mirror across
+>    is not available to `calculateBlockPositions` on the PDF side.
+> 3. Even with a figure centre, the PDF **left-aligns** the dense figure
+>    (`alignX='left'`), so the centre is left-of-content and mirroring left-pooled
+>    tables wouldn't cross to the right strip. Setting `alignX='center'` alone did
+>    NOT move the schedule (planner figure/table positions don't track render-time
+>    `alignX`).
+>
+> **To finish PDF parity (concrete next step):** thread the **figure centre +
+> content bound** into the redistribution on the PDF side, OR — likely cleaner —
+> move the mirror out of `calculateBlockPositions` into a **shared helper applied
+> at each generator's draw time**, where the figure centre + content edges are
+> already known in that generator's own frame (DXF: `dCX`/`cntL`/`cntR`; PDF: the
+> rendered figure bbox + page content). That sidesteps the empty-`polyPts` /
+> frame-mismatch problem; then prove identical output via the parity test. The
+> figure-centre `alignX` change is deferred until this lands (centred figure +
+> pooled schedule looks inconsistent).
+
 ### Task 3: Wire `figureAlign` into the DXF figure offset (render checkpoint)
 
 **Goal:** Make the DXF centre the figure when both side strips are usable, instead of its current fixed offset. The DXF computes its own figure position (the PDF's `alignX` does NOT reach it — verified by the centre experiment).

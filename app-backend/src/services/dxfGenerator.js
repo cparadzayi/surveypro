@@ -65,6 +65,7 @@ import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlann
 import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon } from './dxfGeometry.js'
 import { selectFigureScale } from '../utils/si727Constants.js'
+import { balanceScheduleTables } from './scheduleStrategy.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
 // External consumers (tests, other modules) keep importing from dxfGenerator.js.
@@ -1949,11 +1950,21 @@ export function generateDXF(options, logger) {
       }))
     : null;
 
+  // ① Balance the schedule across BOTH side strips at draw time (the ideal
+  // General Plan look). Mirror the pooled sub-tables across the figure centre
+  // (dCX) into the opposite strip when they still fit the content area
+  // [cntL, cntR] — all in DXF ground-metres. Done here (not in the planner)
+  // because the planner can't reach the figure polygon on the PDF side; each
+  // generator balances in its own frame via the same shared helper.
+  const _placedTablesBalanced = _placedTablesGround
+    ? balanceScheduleTables(_placedTablesGround, dCX, cntL, cntR)
+    : null;
+
   emitScheduleOfAreasTopological({
     surveyedFeatures,
     drawingZone: contentArea,    // unused when fixedPosition / placedTablesGround is set; provided for legacy fallback paths
     fixedPosition: { x: schedPos.x, y: schedPos.y },
-    placedTablesGround: _placedTablesGround,
+    placedTablesGround: _placedTablesBalanced,
     polygon: figurePolygon,
     sheetSize,
     fonts: bottomZoneFonts,

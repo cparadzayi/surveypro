@@ -85,3 +85,30 @@ describe('chooseScheduleStrategy', () => {
     expect(d.mode).toBe('escalate');
   });
 });
+
+import { balanceScheduleTables } from '../scheduleStrategy.js';
+
+describe('balanceScheduleTables', () => {
+  // figure centred at x=500; content [0,1000]. Two tables pooled on the right.
+  const t = (x, y) => ({ x, y, width: 100, height: 200 });
+
+  test('two pooled tables → second mirrors to the opposite strip, top-aligned', () => {
+    const tables = [t(700, 800), t(700, 560)]; // both right of centre, stacked
+    const out = balanceScheduleTables(tables, 500, 0, 1000);
+    expect(out[0]).toEqual(t(700, 800));        // first kept
+    // second mirrored: x = 2*500 - 700 - 100 = 200; y top-aligned to tables[0].y
+    expect(out[1].x).toBe(200);
+    expect(out[1].y).toBe(800);
+  });
+
+  test('returns input unchanged when the mirror would fall outside the content', () => {
+    const tables = [t(700, 800), t(950, 560)]; // mirror of 950 → -50, outside [0,1000]
+    const out = balanceScheduleTables(tables, 500, 0, 1000);
+    expect(out).toBe(tables);
+  });
+
+  test('single table → unchanged', () => {
+    const tables = [t(700, 800)];
+    expect(balanceScheduleTables(tables, 500, 0, 1000)).toBe(tables);
+  });
+});

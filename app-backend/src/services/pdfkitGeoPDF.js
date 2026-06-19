@@ -7206,49 +7206,13 @@ export function calculateBlockPositions(
     }
   }
 
-  // ── ① Balance the schedule across BOTH side strips (the ideal General Plan
-  // look). The schedule search pools its sub-tables on one side of the figure;
-  // when the figure leaves room on the OPPOSITE side too, mirror the latter half
-  // of the sub-tables across the figure's vertical centre line so they fill the
-  // other strip, top-aligned to the kept tables. Because both the PDF
-  // (precomputedPlacedTables) and the DXF (placedTablesGround) consume
-  // `placedTables`, this single planner-side change keeps PDF↔DXF in lockstep.
-  // Gated on every mirrored table staying inside the drawable figure area
-  // (`figureBounds`) so it only fires when the opposite strip genuinely fits.
-  if (Array.isArray(polyPts) && polyPts.length >= 3 &&
-      Array.isArray(scheduleOfAreasFinal?.placedTables) && scheduleOfAreasFinal.placedTables.length >= 2) {
-    const _tbls = scheduleOfAreasFinal.placedTables;
-    // Figure centre = centre of the polygon bbox (same PDF-pt frame as the
-    // placed tables). The content bound = mapBounds (the drawable area).
-    let _fMinX = Infinity, _fMaxX = -Infinity;
-    for (const p of polyPts) { if (p.x < _fMinX) _fMinX = p.x; if (p.x > _fMaxX) _fMaxX = p.x; }
-    const _figCX = (_fMinX + _fMaxX) / 2;
-    const _contentL = mapBounds.x;
-    const _contentR = mapBounds.x + mapBounds.width;
-    const _half = Math.ceil(_tbls.length / 2);
-    const _moved = [];
-    for (let i = _half; i < _tbls.length; i++) {
-      const t = _tbls[i];
-      // mirror x across the figure centre; top-align to the kept counterpart's y
-      const mx = 2 * _figCX - t.x - t.width;
-      _moved.push({ i, x: mx, y: _tbls[i - _half].y });
-    }
-    const _fits = _moved.length > 0 && _moved.every(
-      (m) => m.x >= _contentL && (m.x + _tbls[m.i].width) <= _contentR,
-    );
-    if (_fits) {
-      for (const m of _moved) { _tbls[m.i].x = m.x; _tbls[m.i].y = m.y; }
-      const _xs = _tbls.map((t) => t.x);
-      const _xr = _tbls.map((t) => t.x + t.width);
-      const _ys = _tbls.map((t) => t.y);
-      const _yb = _tbls.map((t) => t.y + t.height);
-      const _cx = Math.min(..._xs), _cy = Math.min(..._ys);
-      scheduleOfAreasFinal.composite = { x: _cx, y: _cy, width: Math.max(..._xr) - _cx, height: Math.max(..._yb) - _cy };
-      scheduleOfAreasFinal.width = scheduleOfAreasFinal.composite.width;
-      scheduleOfAreasFinal.height = scheduleOfAreasFinal.composite.height;
-      logger.info(`[PDFKit] 📊 Schedule balanced across both side strips: ${_tbls.length - _moved.length} + ${_moved.length} sub-tables`);
-    }
-  }
+  // ── ① Schedule balancing is applied at DRAW time by each generator (via the
+  // shared balanceScheduleTables helper), NOT here. The planner can't reach the
+  // figure polygon on the PDF side (polyPts=[] and mapFeatureBounds.pdfPoints is
+  // empty in the planner for dense plans), so the mirror is done where each
+  // generator already knows its own figure centre + content edges in its own
+  // coordinate frame. See dxfGenerator.js (ground-metres) and the PDF schedule
+  // renderer (PDF points).
 
   return {
     titleBlock:        titleBlockPos,
@@ -7532,6 +7496,14 @@ function drawScheduleOfAreas(
     // block (single source — same list the DXF emitter will use), thread them
     // through as precomputedPlacedTables so the render path skips the redundant
     // search and emits at the planner-chosen positions verbatim.
+    // NOTE: schedule balancing is NOT applied here yet. The PDF's planner
+    // `placedTables` are arranged as a WIDE pool (spanning toward the content
+    // centre) rather than the DXF's narrow side-strip, so mirroring them across
+    // the content centre lands a table mid-page instead of in the opposite
+    // strip. Balancing the PDF cleanly first needs the PDF↔DXF `placedTables`
+    // reconciled (the divergence comes from PDFKit vs heuristic text widths).
+    // The shared `balanceScheduleTables` helper is ready; wire it in once the
+    // PDF schedule pools into a narrow strip like the DXF. See the plan.
     const _plannerPlacedTables = allBlockPositions?.scheduleOfAreas?.placedTables;
     // Temporarily remove the oversized pre-estimated scheduleOfAreas bounds from allBlockPositions
     // so that the multi-table placement engine does not treat its own estimated footprint as an

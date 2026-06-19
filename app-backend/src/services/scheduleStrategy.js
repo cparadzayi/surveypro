@@ -77,3 +77,41 @@ export function chooseScheduleStrategy({ strips, colW, rowH, headerH }) {
   }
   return { mode: 'escalate', figureAlign: 'center', regions: [] };
 }
+
+/**
+ * Balance pooled schedule sub-tables across BOTH side strips. When the schedule
+ * search has pooled the sub-tables on one side of the figure and the opposite
+ * side strip has room, mirror the latter half of the tables across the figure's
+ * vertical centre line (top-aligned to the kept tables) so the schedule fills
+ * both strips — the ideal General Plan look.
+ *
+ * Frame-agnostic: the caller passes the figure-centre x and the content
+ * [left, right] bound in the SAME units as the tables' x/width, so each generator
+ * can call this at draw time in its own coordinate frame (DXF ground-metres or
+ * PDF points). Returns a NEW array; returns the input unchanged when balancing
+ * isn't possible (fewer than 2 tables, or a mirrored table wouldn't fit the
+ * content area).
+ *
+ * @param {Array<{x:number,y:number,width:number,height:number}>} tables
+ * @param {number} figureCX  figure centre x
+ * @param {number} contentL  content-area left edge (min x)
+ * @param {number} contentR  content-area right edge (max x)
+ * @returns {Array<{x,y,width,height}>}
+ */
+export function balanceScheduleTables(tables, figureCX, contentL, contentR) {
+  if (!Array.isArray(tables) || tables.length < 2) return tables;
+  const half = Math.ceil(tables.length / 2);
+  const moved = [];
+  for (let i = half; i < tables.length; i++) {
+    const t = tables[i];
+    // mirror x across the figure centre; top-align to the kept counterpart's y
+    moved.push({ i, x: 2 * figureCX - t.x - t.width, y: tables[i - half].y });
+  }
+  const fits = moved.length > 0 && moved.every(
+    (m) => m.x >= contentL && (m.x + tables[m.i].width) <= contentR,
+  );
+  if (!fits) return tables;
+  const out = tables.map((t) => ({ ...t }));
+  for (const m of moved) { out[m.i].x = m.x; out[m.i].y = m.y; }
+  return out;
+}

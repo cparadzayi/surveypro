@@ -7206,6 +7206,50 @@ export function calculateBlockPositions(
     }
   }
 
+  // ── ① Balance the schedule across BOTH side strips (the ideal General Plan
+  // look). The schedule search pools its sub-tables on one side of the figure;
+  // when the figure leaves room on the OPPOSITE side too, mirror the latter half
+  // of the sub-tables across the figure's vertical centre line so they fill the
+  // other strip, top-aligned to the kept tables. Because both the PDF
+  // (precomputedPlacedTables) and the DXF (placedTablesGround) consume
+  // `placedTables`, this single planner-side change keeps PDF↔DXF in lockstep.
+  // Gated on every mirrored table staying inside the drawable figure area
+  // (`figureBounds`) so it only fires when the opposite strip genuinely fits.
+  if (Array.isArray(polyPts) && polyPts.length >= 3 &&
+      Array.isArray(scheduleOfAreasFinal?.placedTables) && scheduleOfAreasFinal.placedTables.length >= 2) {
+    const _tbls = scheduleOfAreasFinal.placedTables;
+    // Figure centre = centre of the polygon bbox (same PDF-pt frame as the
+    // placed tables). The content bound = mapBounds (the drawable area).
+    let _fMinX = Infinity, _fMaxX = -Infinity;
+    for (const p of polyPts) { if (p.x < _fMinX) _fMinX = p.x; if (p.x > _fMaxX) _fMaxX = p.x; }
+    const _figCX = (_fMinX + _fMaxX) / 2;
+    const _contentL = mapBounds.x;
+    const _contentR = mapBounds.x + mapBounds.width;
+    const _half = Math.ceil(_tbls.length / 2);
+    const _moved = [];
+    for (let i = _half; i < _tbls.length; i++) {
+      const t = _tbls[i];
+      // mirror x across the figure centre; top-align to the kept counterpart's y
+      const mx = 2 * _figCX - t.x - t.width;
+      _moved.push({ i, x: mx, y: _tbls[i - _half].y });
+    }
+    const _fits = _moved.length > 0 && _moved.every(
+      (m) => m.x >= _contentL && (m.x + _tbls[m.i].width) <= _contentR,
+    );
+    if (_fits) {
+      for (const m of _moved) { _tbls[m.i].x = m.x; _tbls[m.i].y = m.y; }
+      const _xs = _tbls.map((t) => t.x);
+      const _xr = _tbls.map((t) => t.x + t.width);
+      const _ys = _tbls.map((t) => t.y);
+      const _yb = _tbls.map((t) => t.y + t.height);
+      const _cx = Math.min(..._xs), _cy = Math.min(..._ys);
+      scheduleOfAreasFinal.composite = { x: _cx, y: _cy, width: Math.max(..._xr) - _cx, height: Math.max(..._yb) - _cy };
+      scheduleOfAreasFinal.width = scheduleOfAreasFinal.composite.width;
+      scheduleOfAreasFinal.height = scheduleOfAreasFinal.composite.height;
+      logger.info(`[PDFKit] 📊 Schedule balanced across both side strips: ${_tbls.length - _moved.length} + ${_moved.length} sub-tables`);
+    }
+  }
+
   return {
     titleBlock:        titleBlockPos,
     outsideFigureData: outsideFigurePos,

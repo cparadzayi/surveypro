@@ -295,6 +295,34 @@ git commit -m "feat(schedule): chooseScheduleStrategy — balance/pool/flat/esca
 >    wires it into DXF `contentCX`, Task 6 wires it into PDF `alignX`. This also
 >    closes the pre-existing latent divergence. Task 3 is therefore only a no-op
 >    for the `balance` branch (both already centre), NOT for `pool`/`flat`.
+>
+> **⚠️ Implementation status (2026-06-19): DXF balance DONE; PDF parity BLOCKED.**
+> The planner `placedTables` mirror-redistribution is implemented
+> (`pdfkitGeoPDF.js`, just before `calculateBlockPositions`' return) and the
+> **DXF now balances the schedule across both side strips** (render-verified on
+> the 240-stand fixture; full suite green; committed on this branch).
+>
+> **PDF parity is NOT yet achieved**, and it's deeper than expected:
+> - The DXF always consumes the planner's `placedTables` (`placedTablesGround`),
+>   so the redistribution reaches it.
+> - The **PDF only consumes `placedTables` when the planner-side search populated
+>   them**; for the dense fixture the planner search returns **no** `placedTables`
+>   for the PDF (different `measureText` → different column widths → the search
+>   doesn't split the same way), so the PDF falls back to its **render-time**
+>   schedule search inside `drawScheduleOfAreasMultiTable` (without
+>   `precomputedPlacedTables`), which pools the sub-tables on one side and
+>   **bypasses the planner redistribution entirely**.
+> - Verified via PDF→DXF handoff (same A1/1:1250): DXF redistribution fires
+>   (`fits=true`); PDF produces no planner `placedTables` → renders pooled-left.
+>
+> **To finish PDF parity (next step):** make the PDF consume the planner's
+> redistributed `placedTables` in the dense case — either (a) ensure the
+> planner-side search populates `placedTables` for the PDF (investigate why
+> `drawScheduleOfAreasMultiTable(searchOnly:true)` returns none with PDFKit
+> widths), or (b) apply the same mirror redistribution inside the PDF's
+> render-time `drawScheduleOfAreasMultiTable` path. Until then the figure-centre
+> `alignX` change is also deferred (a centred figure with a pooled schedule looks
+> inconsistent — land it together with the PDF schedule balance).
 
 ### Task 3: Wire `figureAlign` into the DXF figure offset (render checkpoint)
 

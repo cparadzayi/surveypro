@@ -315,14 +315,30 @@ git commit -m "feat(schedule): chooseScheduleStrategy — balance/pool/flat/esca
 > - Verified via PDF→DXF handoff (same A1/1:1250): DXF redistribution fires
 >   (`fits=true`); PDF produces no planner `placedTables` → renders pooled-left.
 >
-> **To finish PDF parity (next step):** make the PDF consume the planner's
-> redistributed `placedTables` in the dense case — either (a) ensure the
-> planner-side search populates `placedTables` for the PDF (investigate why
-> `drawScheduleOfAreasMultiTable(searchOnly:true)` returns none with PDFKit
-> widths), or (b) apply the same mirror redistribution inside the PDF's
-> render-time `drawScheduleOfAreasMultiTable` path. Until then the figure-centre
-> `alignX` change is also deferred (a centred figure with a pooled schedule looks
-> inconsistent — land it together with the PDF schedule balance).
+> **Deeper diagnosis (2026-06-19, second attempt — the blocker has THREE layers):**
+> 1. The PDF's planner search DOES populate `placedTables` (e.g. "3 sub-tables at
+>    composite (156,156)" on A1) — the earlier "search returns none" theory was
+>    wrong. The PDF schedule IS the planner's `placedTables`, pooled left.
+> 2. BUT the redistribution gate can't read the figure polygon on the PDF side:
+>    the PDF passes **`polyPts = []`** (verified `[GATEDIAG] polyPts=0
+>    placedTables=3/4`), and **`mapFeatureBounds.pdfPoints` is ALSO empty** in the
+>    planner for the PDF dense case. So the figure centre needed to mirror across
+>    is not available to `calculateBlockPositions` on the PDF side.
+> 3. Even with a figure centre, the PDF **left-aligns** the dense figure
+>    (`alignX='left'`), so the centre is left-of-content and mirroring left-pooled
+>    tables wouldn't cross to the right strip. Setting `alignX='center'` alone did
+>    NOT move the schedule (planner figure/table positions don't track render-time
+>    `alignX`).
+>
+> **To finish PDF parity (concrete next step):** thread the **figure centre +
+> content bound** into the redistribution on the PDF side, OR — likely cleaner —
+> move the mirror out of `calculateBlockPositions` into a **shared helper applied
+> at each generator's draw time**, where the figure centre + content edges are
+> already known in that generator's own frame (DXF: `dCX`/`cntL`/`cntR`; PDF: the
+> rendered figure bbox + page content). That sidesteps the empty-`polyPts` /
+> frame-mismatch problem; then prove identical output via the parity test. The
+> figure-centre `alignX` change is deferred until this lands (centred figure +
+> pooled schedule looks inconsistent).
 
 ### Task 3: Wire `figureAlign` into the DXF figure offset (render checkpoint)
 

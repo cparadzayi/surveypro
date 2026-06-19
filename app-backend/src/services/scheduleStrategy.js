@@ -46,3 +46,34 @@ export function measureFigureWhitespace({ figureBBox, contentArea, fixedBlocks =
 
   return { left, right, top, bottom };
 }
+
+const MIN_ROWS_PER_TABLE = 3; // matches planScheduleSplit's minRowsPerTable
+
+/**
+ * Decide where + how the schedule goes, from the measured strips.
+ * Precedence: balance (both sides) → pool (one side) → flat (top/bottom) → escalate.
+ *
+ * @returns {{ mode, figureAlign, regions }} where mode ∈
+ *   'balance'|'pool'|'flat'|'escalate', figureAlign ∈ 'center'|'left'|'right',
+ *   regions = ordered array of strip rects the split path should fill.
+ */
+export function chooseScheduleStrategy({ strips, colW, rowH, headerH }) {
+  const minTableH = headerH + rowH * MIN_ROWS_PER_TABLE;
+  const usableSide = (s) => s && s.w >= colW && s.h >= minTableH;
+  const usableFlat = (s) => s && s.h >= minTableH && s.w >= colW;
+
+  if (usableSide(strips.left) && usableSide(strips.right)) {
+    return { mode: 'balance', figureAlign: 'center', regions: [strips.left, strips.right] };
+  }
+  if (usableSide(strips.left) || usableSide(strips.right)) {
+    const right = usableSide(strips.right) &&
+      (!usableSide(strips.left) || strips.right.w >= strips.left.w);
+    const region = right ? strips.right : strips.left;
+    return { mode: 'pool', figureAlign: right ? 'left' : 'right', regions: [region] };
+  }
+  if (usableFlat(strips.bottom) || usableFlat(strips.top)) {
+    const region = usableFlat(strips.bottom) ? strips.bottom : strips.top;
+    return { mode: 'flat', figureAlign: 'center', regions: [region] };
+  }
+  return { mode: 'escalate', figureAlign: 'center', regions: [] };
+}

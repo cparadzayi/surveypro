@@ -6577,14 +6577,12 @@ export function calculateBlockPositions(
    .sort((a, b) => a.coverage - b.coverage); // best (least polygon-covered) first
 
   const _overallCoverage = _sampleCoverage(mapBounds.x, mapBounds.y, mapBounds.x + mapBounds.width, mapBounds.y + mapBounds.height);
-  console.error(`[DIAG-POLY] polyPts=${polyPts.length} coverage=${(_overallCoverage*100).toFixed(1)}%`);
 
   logger.info({
     msg:             '[PDFKit] Polygon actual coverage by quadrant (point-sample)',
     overallCoverage: `${(_overallCoverage * 100).toFixed(1)}%`,
     quadrants:       _quadrants.map(q => `${q.zone}:${(q.coverage * 100).toFixed(1)}%`).join(' | '),
   });
-  console.error(`[COVERAGE] overall=${(_overallCoverage*100).toFixed(1)}% ${_quadrants.map(q=>`${q.zone}:${(q.coverage*100).toFixed(1)}%`).join(' ')}`);
 
   if (_overallCoverage > 0.60) {
     logger.warn(`[PDFKit] Polygon covers ${(_overallCoverage * 100).toFixed(1)}% of map — perimeter-biased placement active`);
@@ -7045,8 +7043,6 @@ export function calculateBlockPositions(
   const surveyStatementPos = _pos("surveyStatement", ssWidth, ssHeight);
 
   const sgSignaturePos = _pos("sgSignature", sgWidth, sgHeight);
-
-  console.error(`[PLACEMENTS] sched=(${schedulePos?.x?.toFixed(0)},${schedulePos?.y?.toFixed(0)},${schedWidth},${schedulePos?.height?.toFixed(0)}) beacon=(${beaconPos?.x?.toFixed(0)},${beaconPos?.y?.toFixed(0)}) ofd=(${outsideFigurePos?.x?.toFixed(0)},${outsideFigurePos?.y?.toFixed(0)}) ss=(${surveyStatementPos?.x?.toFixed(0)},${surveyStatementPos?.y?.toFixed(0)}) sg=(${sgSignaturePos?.x?.toFixed(0)},${sgSignaturePos?.y?.toFixed(0)})`);
 
   // =========================================================================
   // Build authoritative allPlacedBlocks — includes EVERY block:
@@ -10999,11 +10995,8 @@ async function _generateGeoPDFInner(options, logger) {
       [minY, maxX],
       [minY, minX], // close
     ];
-    const _bboxMsg = `[DIAG] outsideFigureBoundary bbox: Y:${minY.toFixed(1)}-${maxY.toFixed(1)}, X:${minX.toFixed(1)}-${maxX.toFixed(1)}, pts:${outsideFigureBoundary.length}`;
-    console.error(_bboxMsg);
+    const _bboxMsg = `outsideFigureBoundary bbox: Y:${minY.toFixed(1)}-${maxY.toFixed(1)}, X:${minX.toFixed(1)}-${maxX.toFixed(1)}, pts:${outsideFigureBoundary.length}`;
     logger.info({ msg: "[PDFKit] 📐 outsideFigureBoundary rebuilt as extent bbox", bbox: _bboxMsg });
-  } else {
-    console.error(`[DIAG] outsideFigureBoundary NOT rebuilt: minY=${minY} maxY=${maxY} minX=${minX} maxX=${maxX}`);
   }
 
   // Select appropriate page size per SI 727 Section 62
@@ -11941,7 +11934,6 @@ async function _generateGeoPDFInner(options, logger) {
     parcelSegments: _parcelSegments,
   };
 
-  console.error(`[DIAG] parcelSegments=${_parcelSegments.length} segBbox=(${_segMinX.toFixed(0)},${_segMinY.toFixed(0)})→(${_segMaxX.toFixed(0)},${_segMaxY.toFixed(0)})`);
   logger.info({
     msg:            '[PDFKit] 🗺️  Topology-aware: parcel segments built',
     segmentCount:   _parcelSegments.length,

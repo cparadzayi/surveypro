@@ -325,15 +325,24 @@ describe('generateDXF — outside-figure annotation foundation', () => {
   })
 })
 
-describe('generateDXF — title block field completion', () => {
+describe('generateDXF — title block (PDF-matched, SI 727)', () => {
   const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
   const opts = {
-    parcels: { features: [] },
+    parcels: { features: [
+      { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[50000, 2200000], [50050, 2200000], [50050, 2200050], [50000, 2200050], [50000, 2200000]]] }, properties: { stand: '123', area_m2: 1000 } },
+      { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[50050, 2200050], [50100, 2200050], [50100, 2200100], [50050, 2200100], [50050, 2200050]]] }, properties: { stand: '124', area_m2: 1000 } },
+    ] },
     beacons: { features: [] },
-    outsideFigureData: null,
+    outsideFigureData: {
+      edges: [
+        { side: 'AB', y: 50000, x: 2200000 }, { side: 'BC', y: 50200, x: 2200000 },
+        { side: 'CD', y: 50200, x: 2200100 }, { side: 'DA', y: 50000, x: 2200100 },
+      ],
+      coordinates: [{ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' }],
+    },
     metadata: {
       designation: 'STAND 123 BORROWDALE',
-      surveyOf: 'A portion of Stand 456 Borrowdale',
+      surveyOf: 'Borrowdale',
       township: 'Borrowdale',
       firm: 'Acme Surveying & Mapping (Pvt) Ltd',
       licenseNumber: 'PLS 1234',
@@ -345,14 +354,23 @@ describe('generateDXF — title block field completion', () => {
     },
     scale: '1:500', sheetSize: 'ISO_A2',
   }
-  test('renders firm, license, parent property, whole/portion, district in the title block', () => {
-    const { buffer } = generateDXF(opts, fakeLogger)
-    const dxf = buffer.toString()
-    expect(dxf).toMatch(/Acme Surveying & Mapping/)
-    expect(dxf).toMatch(/PLS 1234/)
-    expect(dxf).toMatch(/Shabani Mine Surface Rights A/)
-    expect(dxf).toMatch(/a portion/)
-    expect(dxf).toMatch(/Harare/)
+
+  test('heading mirrors the PDF: "GENERAL PLAN" / "of" / "Stands … Township"', () => {
+    const dxf = generateDXF(opts, fakeLogger).buffer.toString()
+    expect(dxf).toMatch(/\bGENERAL PLAN\b/)
+    expect(dxf).toMatch(/Stands 123 - 124 Borrowdale/)
+  })
+
+  test('omits surveyor firm & licence — SI 727 does not require them on General Plans', () => {
+    const dxf = generateDXF(opts, fakeLogger).buffer.toString()
+    expect(dxf).not.toMatch(/Acme Surveying & Mapping/)
+    expect(dxf).not.toMatch(/PLS 1234/)
+  })
+
+  test('whole-portion / parent property / district appear via the figure-description sentence', () => {
+    const dxf = generateDXF(opts, fakeLogger).buffer.toString()
+    expect(dxf).toMatch(/being a portion of Borrowdale of Shabani Mine Surface Rights A/)
+    expect(dxf).toMatch(/situate in the district of Harare/)
   })
 })
 

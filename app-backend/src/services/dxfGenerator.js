@@ -161,10 +161,26 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
   if (!Array.isArray(edges) || edges.length === 0) return []
   if (!Array.isArray(surveyedParcels) || surveyedParcels.length === 0) return []
 
-  // Beacon sequence: closed loop, first vertex repeated at the end.
-  const ids = edges.map(e => e?.pointId || '').filter(Boolean)
+  // Ordered boundary-beacon labels. Prefer edge pointId; fall back to the
+  // outside-figure corner-coordinate names, then to the leading vertex of each
+  // edge's "side" label (e.g. 'A-B' → 'A', 'AB' → 'A'). This keeps the sentence
+  // alive for plans whose edges omit pointId (e.g. the Maglas sample, which
+  // labels edges by `side` and carries the beacon names in `coordinates`).
+  let ids = edges.map(e => e?.pointId || '').filter(Boolean)
+  if (ids.length === 0) {
+    const coords = outsideFigureData?.coordinates
+    if (Array.isArray(coords)) ids = coords.map(c => c?.name || '').filter(Boolean)
+  }
+  if (ids.length === 0) {
+    ids = edges.map(e => {
+      const s = String(e?.side || '').trim()
+      return /[\s\-.]/.test(s) ? s.split(/[\s\-.]/)[0] : s.slice(0, 1)
+    }).filter(Boolean)
+  }
   if (ids.length === 0) return []
-  const beaconSequence = ids.concat(ids[0]).join(', ')
+  // Closed loop, first vertex repeated at the end, dot-separated to match the
+  // ideal General Plan (e.g. "RD2.M2.M3.RD3.RD2").
+  const beaconSequence = ids.concat(ids[0]).join('.')
 
   const township = titleCase(metadata?.township) || 'the township'
   const district = titleCase(metadata?.district) || 'the district'
@@ -175,18 +191,43 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
   const standNames = surveyedParcels.map(sp => String(sp?.stand ?? '')).filter(Boolean)
   if (standNames.length === 0) return []
   const standCount = standNames.length
-  const standRange = formatStandRanges(standNames) || '-'
 
   const sentence = template
     .replace('{beaconSequence}', beaconSequence)
-    .replace('{township}',       township)
     .replace('{standCount}',     String(standCount))
-    .replace('{standRange}',     standRange)
     .replace('{wholePortion}',   wholePortion)
     .replace('{ofTarget}',       ofTarget)
     .replace('{district}',       district)
 
   return splitToWidth(sentence, maxLineChars)
+}
+
+/**
+ * Build the SI 727 designation headline that sits beneath the "GENERAL PLAN / of"
+ * heading — e.g. "Stands 1213, 1686 - 1737 MAGLAS TOWNSHIP".
+ *
+ * Derived exactly like the PDF title block (drawTitleBlock) so the two stay in
+ * lockstep: the stand range comes from the surveyed parcels, and the township
+ * description is `surveyOf`/`township` with any leading "Stands X - Y" prefix and
+ * any trailing " of <parent property>" suffix stripped. The parent-property suffix
+ * deliberately appears only in the figure-description sentence, not this headline.
+ * Case is preserved as stored (the PDF doesn't force-case this line). Falls back to
+ * `surveyOf`/`designation` (suffix-stripped) when the parts are unavailable, and
+ * returns '' when there is nothing to render.
+ */
+export function formatPlanDesignation(metadata, surveyedParcels) {
+  const standNames = Array.isArray(surveyedParcels)
+    ? surveyedParcels.map(sp => String(sp?.stand ?? '')).filter(Boolean)
+    : []
+  const standRange = formatStandRanges(standNames)
+  const rawSurveyOf = (metadata?.surveyOf || metadata?.township || '').trim()
+  const townshipDesc = rawSurveyOf
+    .replace(/^Stands?\s+[\d,\s\-–]+/i, '')
+    .replace(/\s+of\s+.+$/i, '')
+    .trim()
+  if (standRange && townshipDesc) return `Stands ${standRange} ${townshipDesc}`
+  const fallback = (metadata?.surveyOf || metadata?.designation || '').trim()
+  return fallback.replace(/\s+of\s+.+$/i, '').trim()
 }
 
 function normalizeCapeLoYX(y, x) {
@@ -669,6 +710,25 @@ export function generateDXF(options, logger) {
     if (rotation && rotation !== 0) {
       ent += p(50, rotation.toFixed(4));
     }
+    if (style) {
+      ent += p(7, style);
+    }
+  }
+
+  // Horizontally-centred TEXT: centres on `xc` via DXF justification code 72 = 1
+  // (Center). When 72 ≠ 0 the alignment point is read from codes 11/21, so we set
+  // both 10/20 and 11/21 to (xc, y) for reader compatibility. Used by the title
+  // heading block so it reads as a centred column, matching the PDF.
+  function addTextC(layer, xc, y, text, height, style) {
+    ent += p(0, 'TEXT');
+    ent += p(8, layer);
+    ent += p(10, xc.toFixed(4));
+    ent += p(20, y.toFixed(4));
+    ent += p(40, height.toFixed(4));
+    ent += p(1, text);
+    ent += p(72, 1);
+    ent += p(11, xc.toFixed(4));
+    ent += p(21, y.toFixed(4));
     if (style) {
       ent += p(7, style);
     }
@@ -1644,40 +1704,24 @@ export function generateDXF(options, logger) {
   // â”€â”€ A) TITLE ZONE (within top margin area, centered in content) â”€â”€
   const txC = (cntL + cntR) / 2; // center of content area
   let ty = cntT - mm(8);
-  addText(TB, txC, ty, 'GENERAL PLAN', hTitle, 0, 'BOLD');
+  // Title heading mirrors the PDF title block exactly: "GENERAL PLAN" → "of" →
+  // designation headline → (SHEET N) → figure description → Vide. The PDF carries
+  // no SCALE / firm / licence / "Survey covers" lines here, so neither do we.
+  addTextC(TB, txC, ty, 'GENERAL PLAN', hTitle, 'BOLD');
   ty -= hTitle * 1.6;
-  if (metadata.surveyOf) {
-    addText(TB, txC, ty, metadata.surveyOf, hSub, 0, 'BOLD');
-    ty -= hSub * 1.6;
+  addTextC(TB, txC, ty, 'of', hSub);
+  ty -= hSub * 1.6;
+  // Designation headline: "Stands <range> <township>" (parent-property suffix
+  // stripped — it appears only in the figure-description sentence below).
+  const planDesignation = formatPlanDesignation(metadata, surveyedParcels)
+  if (planDesignation) {
+    const desigMaxChars = Math.floor((cntR - cntL) / (hSub * 0.6))
+    for (const line of splitToWidth(planDesignation, desigMaxChars)) {
+      addTextC(TB, txC, ty, line, hSub, 'BOLD');
+      ty -= hSub * 1.6;
+    }
   }
-  // Stand list still consumed by the `if (metadata.district && !standList)`
-  // block further down; the ad-hoc "Survey of Stands ..." emission is now
-  // superseded by the SI 727 figureDescription emission below.
-  const standList = surveyedParcels.map(sp => sp.stand).join(', ');
   ty -= mm(3);
-  addText(TB, txC, ty, `SCALE 1:${S}`, hSub, 0, 'BOLD');
-
-  // New SI 727 fields the PDF carries
-  if (metadata.firm) {
-    ty -= hSub * 1.4
-    addText(TB, txC, ty, metadata.firm, hSub, 0)
-  }
-  if (metadata.licenseNumber) {
-    ty -= hSub * 1.4
-    addText(TB, txC, ty, `PLS ${metadata.licenseNumber}`, hSub, 0)
-  }
-  if (metadata.parentProperty) {
-    ty -= hSub * 1.4
-    addText(TB, txC, ty, `Parent property: ${metadata.parentProperty}`, hSub, 0)
-  }
-  if (metadata.wholePortion) {
-    ty -= hSub * 1.4
-    addText(TB, txC, ty, `Survey covers: ${metadata.wholePortion}`, hSub, 0)
-  }
-  if (metadata.district && !standList) {
-    ty -= hSub * 1.4
-    addText(TB, txC, ty, `District: ${metadata.district}`, hSub, 0)
-  }
 
   // â”€â”€ SI 727 Seventh Schedule (b) lines â”€â”€
   // Character budget for wrapping: content area width divided by an average
@@ -1688,19 +1732,19 @@ export function generateDXF(options, logger) {
   // (b.i) Conditional SHEET N label â€” only emits for multi-sheet plans.
   for (const line of formatSheetLabel(sheetInfo)) {
     ty -= hSub * 1.6
-    addText(TB, txC, ty, line, hSub, 0, 'BOLD')
+    addTextC(TB, txC, ty, line, hSub, 'BOLD')
   }
 
   // (b.ii) Figure description sentence (replaces the old ad-hoc line).
   for (const line of formatFigureDescription(metadata, outsideFigureData, surveyedParcels, titleMaxLineChars)) {
     ty -= hBody * 1.6
-    addText(TB, txC, ty, line, hBody, 0)
+    addTextC(TB, txC, ty, line, hBody)
   }
 
   // (b.iii) Vide diagram line â€” always emitted.
   for (const line of formatVideLine(titleMaxLineChars)) {
     ty -= hBody * 1.6
-    addText(TB, txC, ty, line, hBody, 0)
+    addTextC(TB, txC, ty, line, hBody)
   }
 
   // North/south arrow in the upper-right of the drawing zone

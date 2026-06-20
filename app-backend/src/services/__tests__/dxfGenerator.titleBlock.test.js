@@ -3,7 +3,7 @@
  * Run with:  cd app-backend && npm run test -- dxfGenerator.titleBlock
  */
 import { describe, test, expect } from '@jest/globals'
-import { splitToWidth, formatSheetLabel, formatVideLine, formatFigureDescription } from '../dxfGenerator.js'
+import { splitToWidth, formatSheetLabel, formatVideLine, formatFigureDescription, formatPlanDesignation } from '../dxfGenerator.js'
 import { TITLE_BLOCK } from '../../../../app-shared/block-definitions.js'
 
 describe('splitToWidth', () => {
@@ -116,18 +116,32 @@ describe('formatFigureDescription', () => {
     { stand: '124', area_m2: 10000 },
   ]
 
-  test('happy path → all placeholders substituted, sentence reads correctly', () => {
+  test('happy path → ideal phrasing, dot-joined beacons, no comprising/numbered clause', () => {
     const lines = formatFigureDescription(fullMetadata, ofData, surveyedParcels, 500)
     const sentence = lines.join(' ')
-    expect(sentence).toContain('The figure A, B, C, D, A represents')
-    expect(sentence).toContain('Borrowdale')
-    expect(sentence).toContain('comprising 2 stands')
-    expect(sentence).toContain('numbered')
-    expect(sentence).toContain('123')
-    expect(sentence).toContain('124')
-    expect(sentence).toContain('public places being a portion')
+    expect(sentence).toContain('The figure A.B.C.D.A represents')
+    expect(sentence).toContain('2 stands and public places being a portion')
     expect(sentence).toContain('of Borrowdale of Lot 9 Of Borrowdale')
     expect(sentence).toContain('situate in the district of Harare')
+    // Stand numbers/range now live in the title designation line, not this sentence.
+    expect(sentence).not.toContain('comprising')
+    expect(sentence).not.toContain('numbered')
+    expect(sentence).not.toContain('123')
+  })
+
+  test('edges without pointId fall back to coordinates[].name for the beacon sequence', () => {
+    const sideEdges = {
+      edges: [{ side: 'AB' }, { side: 'BC' }, { side: 'CD' }, { side: 'DA' }],
+      coordinates: [{ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' }],
+    }
+    const sentence = formatFigureDescription(fullMetadata, sideEdges, surveyedParcels, 500).join(' ')
+    expect(sentence).toContain('The figure A.B.C.D.A represents')
+  })
+
+  test('edges with neither pointId nor coordinates fall back to the side leading vertex', () => {
+    const sideOnly = { edges: [{ side: 'A-B' }, { side: 'B-C' }, { side: 'C-D' }, { side: 'D-A' }] }
+    const sentence = formatFigureDescription(fullMetadata, sideOnly, surveyedParcels, 500).join(' ')
+    expect(sentence).toContain('The figure A.B.C.D.A represents')
   })
 
   test('returns [] when outsideFigureData has no edges', () => {
@@ -142,10 +156,10 @@ describe('formatFigureDescription', () => {
     expect(formatFigureDescription(fullMetadata, ofData, [], 500)).toEqual([])
   })
 
-  test('missing township → fallback "the township"', () => {
+  test('missing township → fallback "the township" inside ofTarget', () => {
     const m = { ...fullMetadata, township: '' }
     const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
-    expect(sentence).toContain('represents the township')
+    expect(sentence).toContain('of the township of Lot 9 Of Borrowdale')
   })
 
   test('missing district → fallback "the district"', () => {
@@ -194,7 +208,7 @@ describe('formatFigureDescription', () => {
     expect(joined.toLowerCase()).toContain('borrowdale') // case may vary; substring check
   })
 
-  test('compressed stand range — runs of consecutive numbers shown as a range', () => {
+  test('stand count reflects parcels; numeric range no longer in the figure sentence', () => {
     const manyParcels = [
       { stand: '1', area_m2: 100 },
       { stand: '2', area_m2: 100 },
@@ -202,7 +216,40 @@ describe('formatFigureDescription', () => {
       { stand: '10', area_m2: 100 },
     ]
     const sentence = formatFigureDescription(fullMetadata, ofData, manyParcels, 500).join(' ')
-    // Expectation aligned with formatStandRanges() output style (e.g. "1 - 3, 10").
-    expect(sentence).toMatch(/numbered\s+1\s*[-–]\s*3,\s*10/)
+    expect(sentence).toContain('represents 4 stands')
+    // The stand range moved to the title designation line (see formatPlanDesignation).
+    expect(sentence).not.toMatch(/numbered/)
+  })
+})
+
+describe('formatPlanDesignation', () => {
+  const parcels = [
+    { stand: '1438', area_m2: 100 },
+    { stand: '1439', area_m2: 100 },
+    { stand: '1597', area_m2: 100 },
+  ]
+
+  test('composes "Stands <range> <township>" — PDF-style: mixed case, no parent suffix', () => {
+    const m = { township: 'Maglas Township', parentProperty: 'Shabani Mine Surface Rights A' }
+    expect(formatPlanDesignation(m, parcels))
+      .toBe('Stands 1438 - 1439, 1597 Maglas Township')
+  })
+
+  test('strips leading "Stands X - Y" prefix and trailing " of <parent>" from surveyOf', () => {
+    const m = { surveyOf: 'STANDS 1 - 5 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A' }
+    expect(formatPlanDesignation(m, parcels))
+      .toBe('Stands 1438 - 1439, 1597 MAGLAS TOWNSHIP')
+  })
+
+  test('no stands → designation/surveyOf fallback with " of <parent>" suffix stripped', () => {
+    expect(formatPlanDesignation({ designation: 'Stands 1686 - 1925 Maglas Township' }, []))
+      .toBe('Stands 1686 - 1925 Maglas Township')
+    expect(formatPlanDesignation({ surveyOf: 'Stands 1 - 5 Greendale Township of Lot 9' }, []))
+      .toBe('Stands 1 - 5 Greendale Township')
+  })
+
+  test('nothing to render → empty string', () => {
+    expect(formatPlanDesignation({}, [])).toBe('')
+    expect(formatPlanDesignation({}, null)).toBe('')
   })
 })

@@ -4975,8 +4975,9 @@ function getOutsideFigureVertices(outsideFigureData, logger) {
   const first = beacons[0] || "A";
   const last = beacons[beacons.length - 1] || "Z";
 
-  // Create sequence: "M4, M5, M6, …, M9, M4" — closed loop notation per SI 727
-  const sequence = beacons.join(", ");
+  // Create sequence: "M4.M5.M6.….M9.M4" — closed-loop notation, dot-separated
+  // to match the ideal General Plan (and keep PDF↔DXF figure descriptions in lockstep).
+  const sequence = beacons.join(".");
 
   if (logger) {
     logger.info({

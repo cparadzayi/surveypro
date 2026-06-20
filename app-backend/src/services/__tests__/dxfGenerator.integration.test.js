@@ -488,9 +488,9 @@ describe('dxfGenerator integration — SI 727 title-block lines', () => {
   test('figure-description sentence is emitted on TITLE_BLOCK', () => {
     const { buffer } = generateDXF(sampleFixture, fakeLogger)
     const dxf = buffer.toString()
-    // The opening "The figure ... represents ... comprising N stands" is
+    // The opening "The figure <dot-joined beacons> represents N stands" is
     // distinctive enough that no other line can match it.
-    expect(dxf).toMatch(/The figure [A-Z, ]+ represents .+? comprising \d+ stands/)
+    expect(dxf).toMatch(/The figure [A-Z0-9.]+ represents \d+ stands and public places being/)
   })
 
   test('Vide line is emitted on TITLE_BLOCK', () => {

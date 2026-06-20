@@ -193,8 +193,11 @@ export const TITLE_BLOCK = {
   },
   
   figureDescription: {
-    // Single-sheet: beacon sequence + stand count + whole/remainder/portion
-    template: 'The figure {beaconSequence} represents {township} comprising {standCount} stands numbered {standRange} and public places being {wholePortion} of {ofTarget}, situate in the district of {district}.',
+    // Single-sheet: beacon sequence + stand count + whole/remainder/portion.
+    // Phrasing follows the ideal General Plan: dot-joined beacons, no leading
+    // township name, and no "comprising … numbered <range>" clause (the stand
+    // range now lives in the prominent title designation line instead).
+    template: 'The figure {beaconSequence} represents {standCount} stands and public places being {wholePortion} of {ofTarget} situate in the district of {district}.',
     // Multi-sheet: SI 727 Seventh Schedule (b) inter-sheet description
     multiSheetTemplate: 'The figure {figureLabel} which, together with the figures on {otherSheets}, represents {township} comprising {totalStandCount} stands numbered {standRange} and public places being {wholePortion} of {ofTarget}, situate in the district of {district}.',
     font: { family: 'Helvetica', size: 9 },

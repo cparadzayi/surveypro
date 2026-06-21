@@ -381,7 +381,7 @@ describe('generateDXF — title block (PDF-matched, SI 727)', () => {
   })
 })
 
-describe('generateDXF — endorsement zone', () => {
+describe('generateDXF — endorsement zone (PDF-aligned table)', () => {
   const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
   const opts = {
     parcels: { features: [] },
@@ -390,34 +390,29 @@ describe('generateDXF — endorsement zone', () => {
     metadata: {
       surveyor: 'J. Doe',
       licenseNumber: 'PLS 1234',
-      priorDiagrams: ['Diagram-GP No. 4567', 'Diagram-GP No. 8910'],
     },
     scale: '1:500', sheetSize: 'ISO_A2',
   }
-  test('emits all four endorsement sub-blocks', () => {
+  test('emits the ENDORSEMENTS table (No./STATEMENT/Date/Surveyor-General) + Dispensation row', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
     const dxf = buffer.toString()
-    expect(dxf).toMatch(/APPROVED FOR LODGEMENT/)
-    expect(dxf).toMatch(/Dispensation Certificate/)
-    expect(dxf).toMatch(/Plan No\.:/)
-    expect(dxf).toMatch(/Diagram-GP No\. 4567/)
-    expect(dxf).toMatch(/Diagram-GP No\. 8910/)
-    // 3-v8 follow-up: the "I, ... certify this plan correct" footer was removed
-    // for PDF↔DXF content parity. PDF emits no such certification line.
-    expect(dxf).not.toMatch(/certify this plan correct/)
-  })
-  test('falls back to "Prior diagrams: None" when the list is empty', () => {
-    const noprior = { ...opts, metadata: { ...opts.metadata, priorDiagrams: [] } }
-    const { buffer } = generateDXF(noprior, fakeLogger)
-    expect(buffer.toString()).toMatch(/Prior diagrams: None/)
+    expect(dxf).toMatch(/ENDORSEMENTS/)
+    expect(dxf).toMatch(/\bSTATEMENT\b/)            // table column header (PDF parity)
+    expect(dxf).toMatch(/Surveyor-General/)         // table column header
+    // The statement wraps across TEXT entities; both halves are present.
+    expect(dxf).toMatch(/Dispensation Certificate No\./)
+    expect(dxf).toMatch(/relates to this General Plan/)
   })
 
-  test('legacy column headers ("STATEMENT", "No.") are not emitted alongside the new zone', () => {
+  test('omits the old field-label layout (PDF carries none of these)', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
     const dxf = buffer.toString()
-    // The new endorsement zone replaces the legacy column. These must be absent.
-    expect(dxf).not.toMatch(/\bSTATEMENT\b/)
-    expect(dxf).not.toMatch(/\bNo\.\b/)
+    expect(dxf).not.toMatch(/APPROVED FOR LODGEMENT/)
+    expect(dxf).not.toMatch(/Reference:/)
+    expect(dxf).not.toMatch(/Plan No\.:/)
+    expect(dxf).not.toMatch(/Prior diagrams/)
+    // The PDF emits no surveyor-certification line either.
+    expect(dxf).not.toMatch(/certify this plan correct/)
   })
 })
 

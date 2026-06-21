@@ -1085,54 +1085,46 @@ export function generateDXF(options, logger) {
   function drawEndorsementZone(zoneL, zoneR, zoneTop, zoneBottom) {
     // NOTE: mm() and pt() are not yet defined at helper-definition time; they
     // are only called at call-time (after S is set), so this is safe.
-    let y = zoneTop
-    const lineH = mm(4)
-    // â”€â”€ 1) SG approval header â”€â”€
-    addText(TB, zoneL, y, 'APPROVED FOR LODGEMENT', mm(3.5), 0, 'BOLD')
-    y -= lineH
-    for (const lbl of ['Date', 'Surveyor-General', 'Reference']) {
-      addText(TB, zoneL, y, `${lbl}: `, mm(2.4), 0)
-      addLine(TB, zoneL + mm(20), y - mm(1), zoneR - mm(2), y - mm(1))
-      y -= lineH
+    //
+    // Mirrors the PDF drawEndorsementBlock: a four-column table
+    // "No. | STATEMENT | Date | Surveyor-General" with a tall entry row whose
+    // first statement is the Dispensation Certificate line. (The "Approved /
+    // For Surveyor General" signature box is a separate block via emitSGBox.)
+    const zoneW   = zoneR - zoneL
+    const colNo   = mm(9)               // narrow "No." column
+    const colStmt = zoneW * 0.5         // wide "STATEMENT" column (PDF: 50%)
+    const colDate = zoneW * 0.2         // "Date" column (PDF: 20%)
+    const xNoR    = zoneL + colNo
+    const xStmtR  = xNoR + colStmt
+    const xDateR  = xStmtR + colDate    // "Surveyor-General" spans xDateR..zoneR
+
+    const headerH   = mm(7)
+    const yTop      = zoneTop
+    const yHdrBot   = yTop - headerH
+    const yEntryBot = zoneBottom + mm(5)
+
+    // Horizontal rules (above header, below header, bottom of entry row)
+    addLine(TB, zoneL, yTop,      zoneR, yTop)
+    addLine(TB, zoneL, yHdrBot,   zoneR, yHdrBot)
+    addLine(TB, zoneL, yEntryBot, zoneR, yEntryBot)
+    // Internal column separators down the full table height
+    for (const x of [xNoR, xStmtR, xDateR]) addLine(TB, x, yTop, x, yEntryBot)
+
+    // Header labels, vertically centred in the header band
+    const yHdr = yHdrBot + (headerH - mm(2.4)) / 2
+    addTextC(TB, (zoneL + xNoR) / 2,   yHdr, 'No.', mm(2.4))
+    addText (TB, xNoR + mm(2),         yHdr, 'STATEMENT', mm(2.4), 0)
+    addTextC(TB, (xStmtR + xDateR) / 2, yHdr, 'Date', mm(2.4))
+    addTextC(TB, (xDateR + zoneR) / 2,  yHdr, 'Surveyor-General', mm(2.2))
+
+    // Entry row 1: "1." + Dispensation Certificate statement, top-aligned
+    let yE = yHdrBot - mm(5)
+    addTextC(TB, (zoneL + xNoR) / 2, yE, '1.', mm(2.4))
+    const stmtChars = Math.max(8, Math.floor(colStmt / (mm(2.4) * 0.55)))
+    for (const line of splitToWidth('Dispensation Certificate No. .................. relates to this General Plan', stmtChars)) {
+      addText(TB, xNoR + mm(2), yE, line, mm(2.4), 0)
+      yE -= mm(4)
     }
-    y -= mm(2)
-    // â”€â”€ 2) Dispensation Certificate slot â”€â”€
-    addText(TB, zoneL, y,
-            'Dispensation Certificate No. ........... relates to this plan',
-            mm(2.4), 0)
-    y -= lineH * 1.5
-    // â”€â”€ 3) Plan number stamp box â”€â”€
-    const boxW = mm(30), boxH = mm(15)
-    addRect(TB, zoneL, y - boxH, zoneL + boxW, y)
-    addText(TB, zoneL + mm(2), y - mm(4), 'Plan No.:', mm(2.4), 0)
-    y -= boxH + mm(4)
-    // â”€â”€ 4) Prior diagrams â”€â”€
-    const priors = metadata.priorDiagrams || []
-    if (priors.length === 0) {
-      addText(TB, zoneL, y, 'Prior diagrams: None', mm(2.4), 0)
-      y -= lineH
-    } else {
-      addText(TB, zoneL, y, 'Prior diagrams:', mm(2.4), 0, 'BOLD')
-      y -= lineH
-      let printed = 0
-      for (const d of priors) {
-        if (y - lineH < zoneBottom + mm(15)) break
-        addText(TB, zoneL + mm(3), y, d, mm(2.4), 0)
-        y -= lineH
-        printed++
-      }
-      const remaining = priors.length - printed
-      if (remaining > 0) {
-        addText(TB, zoneL + mm(3), y, `+ ${remaining} more (see PDF)`, mm(2.2), 0)
-        y -= lineH
-        warn('priorDiagramsTruncated', remaining)
-      }
-    }
-    // 3-v8 follow-up: the surveyor-certification footer that used to live here
-    // ("I, <surv> (PLS <lic>), certify this plan correct") was redundant with
-    // the planner-positioned emitStatement block at the bottom of the page —
-    // and PDF emits no such certification line at all. Removed for PDF↔DXF
-    // content parity. The horizontal rule it sat on was decorative only.
   }
 
   // â”€â”€ 1. Outside Figure boundary â”€â”€

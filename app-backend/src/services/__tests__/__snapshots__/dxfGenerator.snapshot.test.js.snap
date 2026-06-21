@@ -7325,11 +7325,11 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
     "y": -2199997,
   },
   {
-    "h": 4,
+    "h": 3.5,
     "layer": "NORTH_ARROW",
-    "text": "N",
-    "x": -49770.5,
-    "y": -2199844.5,
+    "text": "TN",
+    "x": -49795.5,
+    "y": -2200549,
   },
   {
     "h": 2,
@@ -19902,11 +19902,11 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
     "y": -2199998.5,
   },
   {
-    "h": 2,
+    "h": 1.8,
     "layer": "NORTH_ARROW",
-    "text": "N",
-    "x": -49959,
-    "y": -2199952.5,
+    "text": "TN",
+    "x": -49971.5,
+    "y": -2200094.2,
   },
   {
     "h": 1,
@@ -21146,11 +21146,11 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
     "y": -2199997,
   },
   {
-    "h": 4,
+    "h": 3.5,
     "layer": "NORTH_ARROW",
-    "text": "N",
-    "x": -49844.5,
-    "y": -2199858,
+    "text": "TN",
+    "x": -49869.5,
+    "y": -2200315.5,
   },
   {
     "h": 2,

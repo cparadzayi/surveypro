@@ -178,11 +178,18 @@ describe('generateDXF — north arrow', () => {
     outsideFigureData: null,
     metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
   }
-  test('emits 3 LINEs and 1 TEXT on NORTH_ARROW layer', () => {
+  test('emits the PDF-style compass rose on NORTH_ARROW layer', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
     const dxf = buffer.toString()
-    expect(entityCount(dxf, 'LINE', 'NORTH_ARROW')).toBe(3)   // arrowhead triangle
-    expect(entityCount(dxf, 'TEXT', 'NORTH_ARROW')).toBe(1)   // "S" label
+    // 8 triangular points (3 LINEs each = 24) + 4 double N–S axis lines = 28.
+    expect(entityCount(dxf, 'LINE', 'NORTH_ARROW')).toBe(28)
+    // N and S main points are SOLID-filled.
+    expect(entityCount(dxf, 'SOLID', 'NORTH_ARROW')).toBe(2)
+    // White centre hub circle.
+    expect(entityCount(dxf, 'CIRCLE', 'NORTH_ARROW')).toBe(1)
+    // "TN" (true north) label.
+    expect(entityCount(dxf, 'TEXT', 'NORTH_ARROW')).toBe(1)
+    expect(dxf).toMatch(/\bNORTH_ARROW\b[\s\S]*?\bTN\b/)
   })
 })
 

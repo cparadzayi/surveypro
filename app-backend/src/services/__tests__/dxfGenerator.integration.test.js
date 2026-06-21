@@ -402,13 +402,18 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(dxf).toMatch(/\bUCS\b[\s\S]{0,500}\bCAD_NORTH_UP\b/)
   })
 
-  test('endorsement block, beacon descriptions, and prior diagrams all rendered', () => {
-    expect(dxf).toMatch(/APPROVED FOR LODGEMENT/)
+  test('endorsement table + beacon descriptions rendered', () => {
+    // PDF-aligned ENDORSEMENTS table (No./STATEMENT/Date/Surveyor-General).
+    expect(dxf).toMatch(/ENDORSEMENTS/)
+    expect(dxf).toMatch(/\bSTATEMENT\b/)
+    expect(dxf).toMatch(/Surveyor-General/)
     expect(dxf).toMatch(/Dispensation Certificate/)
+    expect(dxf).toMatch(/relates to this General Plan/)
     expect(dxf).toMatch(/BEACON DESCRIPTIONS/)
     expect(dxf).toMatch(/Permanent concrete pillars/)
-    expect(dxf).toMatch(/Diagram-GP No\. 4567/)
-    // 3-v8 follow-up: certification footer removed for PDF↔DXF content parity.
+    // Old field-label layout + prior diagrams are gone (PDF carries neither here);
+    // and no surveyor-certification line.
+    expect(dxf).not.toMatch(/APPROVED FOR LODGEMENT/)
     expect(dxf).not.toMatch(/certify this plan correct/)
   })
 

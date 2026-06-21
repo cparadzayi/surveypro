@@ -247,8 +247,11 @@ describe('placeBottomZoneBlocks orchestrator', () => {
 
     expect(warnings.find(w => w.cat === 'ofdOverflow')).toBeTruthy()
     expect(ofdEmittedAt).not.toBeNull()
-    // Bottom-left fallback: x ≈ cntL + 3 (= 0 + 3).
-    expect(ofdEmittedAt.x).toBeCloseTo(0 + 3, 3)
+    // Bottom-left fallback: the table's left edge is cntL + 3 (= 3). The
+    // "OUTSIDE FIGURE DATA" title is centred within the left section of the
+    // table, so it sits at/after the table left and within that section.
+    expect(ofdEmittedAt.x).toBeGreaterThanOrEqual(3)
+    expect(ofdEmittedAt.x).toBeLessThan(3 + 80)
   })
 
   test('SG overflow → sgOverflow warn + bottom-right fallback', () => {

@@ -102,8 +102,8 @@ export function sizeStatement(metadata, fonts) {
  * to paper-mm via PT_TO_MM_GEN, then passed through the `mm` callback so
  * the returned value is in ground-metres.
  *
- * Height = title row + "System: Lo X" subtitle (rowH * 0.9) + gap (rowH * 0.7)
- *        + column header row (rowH) + N data rows (rowH each) + mm(2) padding.
+ * Height = header box (headerBoxHeight pt: OFD title + CO-ORDINATES section)
+ *        + column-header row (headerHeight pt) + N data rows (ofRowH each).
  *
  * Returns {0,0} when there are no edges → orchestrator skips emission.
  *
@@ -118,12 +118,9 @@ export function sizeOFDTable(outsideFigureData, fonts, mm) {
 
   const widthMM = OUTSIDE_FIGURE_DATA.columns.reduce((s, col) => s + col.width, 0) * PT_TO_MM_GEN
   const width   = mm(widthMM)
-  const height  = fonts.ofTitleH                  // "OUTSIDE FIGURE DATA" title row
-                + fonts.ofRowH * 0.9              // "System: Lo XX" subtitle
-                + fonts.ofRowH * 0.7              // gap before headers
-                + fonts.ofRowH                    // column header row
-                + fonts.ofRowH * edgesCount       // data rows
-                + mm(2)                           // bottom padding for own divider lines
+  const height  = mm(OUTSIDE_FIGURE_DATA.headerBoxHeight * PT_TO_MM_GEN)  // title + CO-ORDINATES box
+                + mm(OUTSIDE_FIGURE_DATA.headerHeight    * PT_TO_MM_GEN)  // column-header row
+                + fonts.ofRowH * edgesCount                              // data rows (ofRowH = pt(rowHeight))
   return { width, height }
 }
 
@@ -258,59 +255,64 @@ export function emitOFDTable(addText, addLine, position, outsideFigureData, font
   const edges = outsideFigureData?.edges || []
   if (edges.length === 0) return
 
-  const { ofTitleH, ofBodyH, ofRowH } = fonts
+  const { ofTitleH, ofBodyH } = fonts
+  const OFD = OUTSIDE_FIGURE_DATA
+  const ptG = (p) => mm(p * PT_TO_MM_GEN)   // PDF points → ground-metres
 
-  const ofdColsPt = OUTSIDE_FIGURE_DATA.columns.map(col => col.width)
-  const ofdColAnchorsMM = [0]
-  for (let i = 0; i < ofdColsPt.length - 1; i++) {
-    ofdColAnchorsMM.push(ofdColAnchorsMM[i] + ofdColsPt[i] * PT_TO_MM_GEN)
+  // Column x-boundaries (ground). x[4] = OFD/CO-ORDINATES divider; x[6] = right edge.
+  const x = [position.x]
+  for (const col of OFD.columns) x.push(x[x.length - 1] + ptG(col.width))
+
+  const headerBoxH = ptG(OFD.headerBoxHeight)  // 40pt — title + CO-ORDINATES box
+  const headerRowH = ptG(OFD.headerHeight)     // 15pt — column-header row
+  const dataRowH   = ptG(OFD.rowHeight)        // 12pt — each data row
+
+  const yTop     = position.y
+  const yHBbot   = yTop - headerBoxH
+  const yCHbot   = yHBbot - headerRowH
+  const yRowsBot = yCHbot - dataRowH * edges.length
+
+  // ── Grid borders ──
+  addLine(layer, x[0], yTop,   x[6], yTop)      // top of header box
+  addLine(layer, x[0], yHBbot, x[6], yHBbot)    // header box ↔ column-header row
+  addLine(layer, x[0], yCHbot, x[6], yCHbot)    // column-header row ↔ data rows
+  for (let k = 1; k <= edges.length; k++) addLine(layer, x[0], yCHbot - dataRowH * k, x[6], yCHbot - dataRowH * k)
+  addLine(layer, x[0], yTop, x[0], yRowsBot)    // left edge (full height)
+  addLine(layer, x[4], yTop, x[4], yRowsBot)    // OFD/CO-ORDINATES divider (full height)
+  addLine(layer, x[6], yTop, x[6], yRowsBot)    // right edge (full height)
+  for (const i of [1, 2, 3, 5]) addLine(layer, x[i], yHBbot, x[i], yRowsBot) // column separators (rows only)
+
+  // Centre `text` within column [xL, xR] (DXF can't query rendered width; use the
+  // same 0.55 char ratio the rest of the generator assumes).
+  const cText = (xL, xR, yy, text, h, style) => {
+    const w = String(text).length * h * 0.55
+    addText(layer, xL + ((xR - xL) - w) / 2, yy, String(text), h, 0, style)
   }
-  const c = (offMM) => position.x + mm(offMM)
-  const cS  = ofdColAnchorsMM[0]   // SIDES
-  const cM  = ofdColAnchorsMM[1]   // Metres
-  const cD  = ofdColAnchorsMM[2]   // DIRECTION
-  const cK  = ofdColAnchorsMM[3]   // Constants
-  const cCY = ofdColAnchorsMM[4]   // Y
-  const cCX = ofdColAnchorsMM[5]   // X
-  const ofdRightEdgeMM = ofdColAnchorsMM[5] + ofdColsPt[5] * PT_TO_MM_GEN
 
-  let cY = position.y
-  addText(layer, c(cS),  cY, 'OUTSIDE FIGURE DATA', ofTitleH, 0, 'BOLD')
-  addText(layer, c(cCY), cY, 'CO-ORDINATES',        ofTitleH, 0, 'BOLD')
-  cY -= ofRowH * 0.9
-  addText(layer, c(cCY), cY, `System: Lo ${centralMeridian}`, ofBodyH)
-  cY -= ofRowH * 0.7
+  // ── Header box ──
+  cText(x[0], x[4], yTop - headerBoxH * 0.5 - ofTitleH * 0.4, 'OUTSIDE FIGURE DATA', ofTitleH, 'BOLD')
+  cText(x[4], x[6], yTop - ptG(3)  - ofTitleH, 'CO-ORDINATES', ofTitleH, 'BOLD')
+  cText(x[4], x[6], yTop - ptG(15) - ofBodyH,  `System : Lo ${centralMeridian}°`, ofBodyH)
+  const yYMX = yTop - ptG(28) - ofBodyH
+  addText(layer, x[4] + ptG(4), yYMX, 'Y', ofBodyH, 0)
+  cText(x[4], x[6], yYMX, 'Metres', ofBodyH)
+  addText(layer, x[6] - ptG(4) - ofBodyH * 0.55, yYMX, 'X', ofBodyH, 0)
 
-  // Vertical divider between OF data and coordinates.
-  const coordDivX = c(cCY) - mm(2)
-  addLine(layer, coordDivX, cY + ofRowH * 1.5, coordDivX, cY - ofRowH * (edges.length + 1))
+  // ── Column-header row ──
+  const yHdr = yHBbot - headerRowH * 0.5 - ofBodyH * 0.4
+  const headers = ['SIDES', 'Metres', 'DIRECTION', 'Constants', '+ 0.00', '+ 0.00']
+  for (let i = 0; i < 6; i++) cText(x[i], x[i + 1], yHdr, headers[i], ofBodyH, 'BOLD')
 
-  // Column headers
-  addLine(layer, position.x - mm(3), cY + mm(1.5), c(ofdRightEdgeMM) + mm(2), cY + mm(1.5))
-  addText(layer, c(cS),  cY, 'SIDES',     ofBodyH, 0, 'BOLD')
-  addText(layer, c(cM),  cY, 'Metres',    ofBodyH, 0, 'BOLD')
-  addText(layer, c(cD),  cY, 'DIRECTION', ofBodyH, 0, 'BOLD')
-  addText(layer, c(cK),  cY, 'Constants', ofBodyH, 0, 'BOLD')
-  addText(layer, c(cCY), cY, 'Y',         ofBodyH, 0, 'BOLD')
-  addText(layer, c(cCX), cY, 'X',         ofBodyH, 0, 'BOLD')
-  addLine(layer, position.x - mm(3), cY - mm(1.5), c(ofdRightEdgeMM) + mm(2), cY - mm(1.5))
-  cY -= ofRowH
-
-  // Data rows
+  // ── Data rows ──
+  let yr = yCHbot
   for (const edge of edges) {
-    const side    = edge.side || ''
-    const dist    = typeof edge.distance === 'number' ? edge.distance.toFixed(2) : String(edge.distance || '')
-    const dir     = edge.direction || ''
-    const constId = edge.pointId  || ''
-    const yV      = typeof edge.y === 'number' ? (edge.y >= 0 ? '+' : '') + edge.y.toFixed(2) : ''
-    const xV      = typeof edge.x === 'number' ? (edge.x >= 0 ? '+' : '') + edge.x.toFixed(2) : ''
-    addText(layer, c(cS),  cY, side,    ofBodyH)
-    addText(layer, c(cM),  cY, dist,    ofBodyH)
-    addText(layer, c(cD),  cY, dir,     ofBodyH)
-    addText(layer, c(cK),  cY, constId, ofBodyH)
-    addText(layer, c(cCY), cY, yV,      ofBodyH)
-    addText(layer, c(cCX), cY, xV,      ofBodyH)
-    cY -= ofRowH
+    const yv = yr - dataRowH * 0.5 - ofBodyH * 0.4
+    const dist = typeof edge.distance === 'number' ? edge.distance.toFixed(2) : String(edge.distance || '')
+    const yV   = typeof edge.y === 'number' ? (edge.y >= 0 ? '+' : '') + edge.y.toFixed(2) : ''
+    const xV   = typeof edge.x === 'number' ? (edge.x >= 0 ? '+' : '') + edge.x.toFixed(2) : ''
+    const vals = [edge.side || '', dist, edge.direction || '', edge.pointId || '', yV, xV]
+    for (let i = 0; i < 6; i++) cText(x[i], x[i + 1], yv, vals[i], ofBodyH)
+    yr -= dataRowH
   }
 }
 

@@ -1135,7 +1135,10 @@ export function generateDXF(options, logger) {
     // Entry row 1: "1." + Dispensation Certificate statement, top-aligned
     let yE = yHdrBot - mm(5)
     addTextC(TB, (tableL + xNoR) / 2, yE, '1.', mm(2.4))
-    const stmtChars = Math.max(8, Math.floor(colStmt / (mm(2.4) * 0.55)))
+    // Wrap to the STATEMENT column INTERIOR: subtract the mm(2) left + mm(2) right
+    // text padding, and use a conservative char ratio so no line overruns into the
+    // Date column.
+    const stmtChars = Math.max(8, Math.floor((colStmt - mm(4)) / (mm(2.4) * 0.6)))
     for (const line of splitToWidth('Dispensation Certificate No. .................. relates to this General Plan', stmtChars)) {
       addText(TB, xNoR + mm(2), yE, line, mm(2.4), 0)
       yE -= mm(4)
@@ -1728,8 +1731,9 @@ export function generateDXF(options, logger) {
   const TB = 'TITLE_BLOCK';
   addRect(TB, pageL, pageB, pageR, pageT);           // outer paper border
   // Content area border (margin lines)
-  addRect(TB, cntL, cntB, cntR, cntT);               // content border
-  addLine(TB, endDivX, pageB, endDivX, pageT);       // endorsements divider (full height)
+  addRect(TB, cntL, cntB, cntR, cntT);               // content border (also draws the
+                                                     // endorsements divider edge at cntR=endDivX,
+                                                     // bounded to cntB..cntT — no margin overrun)
   // The drawing-zone / bottom-zone separator at drawDivY was previously drawn
   // as a full-width horizontal line. The PDF doesn't emit any equivalent
   // (it relies on block placement + per-block borders), so the line is

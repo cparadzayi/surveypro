@@ -19451,7 +19451,7 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 2.4,
     "layer": "TITLE_BLOCK",
-    "text": "to this General Plan",
+    "text": "relates to this General Plan",
     "x": -49744.5,
     "y": -2199863.5,
   },
@@ -19507,7 +19507,7 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 2.4,
     "layer": "TITLE_BLOCK",
-    "text": "Dispensation Certificate No. .................. relates",
+    "text": "Dispensation Certificate No. ..................",
     "x": -49744.5,
     "y": -2199859.5,
   },
@@ -20422,7 +20422,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "TITLE_BLOCK",
-    "text": "to this General Plan",
+    "text": "relates to this General Plan",
     "x": -49946,
     "y": -2199962,
   },
@@ -20443,7 +20443,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "TITLE_BLOCK",
-    "text": "Dispensation Certificate No. .................. relates",
+    "text": "Dispensation Certificate No. ..................",
     "x": -49946,
     "y": -2199960,
   },
@@ -22023,7 +22023,7 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 2.4,
     "layer": "TITLE_BLOCK",
-    "text": "to this General Plan",
+    "text": "relates to this General Plan",
     "x": -49818.5,
     "y": -2199877,
   },
@@ -22079,7 +22079,7 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 2.4,
     "layer": "TITLE_BLOCK",
-    "text": "Dispensation Certificate No. .................. relates",
+    "text": "Dispensation Certificate No. ..................",
     "x": -49818.5,
     "y": -2199873,
   },

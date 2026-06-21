@@ -33,7 +33,7 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DIRECTIONS",
-    "text": "0°00'00"",
+    "text": "0%%d00'00"",
     "x": -50250,
     "y": -2200426,
   },
@@ -1902,14 +1902,14 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DIRECTIONS",
-    "text": "90°00'00"",
+    "text": "90%%d00'00"",
     "x": -50506,
     "y": -2200210,
   },
   {
     "h": 2.5,
     "layer": "DIRECTIONS",
-    "text": "270°00'00"",
+    "text": "270%%d00'00"",
     "x": -49994,
     "y": -2200210,
   },
@@ -3638,7 +3638,7 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DIRECTIONS",
-    "text": "180°00'00"",
+    "text": "180%%d00'00"",
     "x": -50250,
     "y": -2199994,
   },
@@ -19374,8 +19374,22 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "180°00'00"",
+    "text": "41",
+    "x": -50716.6,
+    "y": -2199879.9,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "180%%d00'00"",
     "x": -50706,
+    "y": -2199879.9,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50675.2,
     "y": -2199879.9,
   },
   {
@@ -19409,8 +19423,22 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "270°00'00"",
+    "text": "41",
+    "x": -50716.6,
+    "y": -2199875.7,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "270%%d00'00"",
     "x": -50706,
+    "y": -2199875.7,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50675.2,
     "y": -2199875.7,
   },
   {
@@ -19444,8 +19472,22 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "0°00'00"",
+    "text": "41",
+    "x": -50716.6,
+    "y": -2199871.5,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "0%%d00'00"",
     "x": -50704.2,
+    "y": -2199871.5,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50675.2,
     "y": -2199871.5,
   },
   {
@@ -19472,8 +19514,22 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "90°00'00"",
+    "text": "41",
+    "x": -50716.6,
+    "y": -2199867.2,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "90%%d00'00"",
     "x": -50705.1,
+    "y": -2199867.2,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50675.2,
     "y": -2199867.2,
   },
   {
@@ -19591,7 +19647,7 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "System : Lo 31°",
+    "text": "System : Lo 31%%d",
     "x": -50654.8,
     "y": -2199852.9,
   },
@@ -19701,7 +19757,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "DIRECTIONS",
-    "text": "0°00'00"",
+    "text": "0%%d00'00"",
     "x": -50050,
     "y": -2200063,
   },
@@ -19722,7 +19778,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "DIRECTIONS",
-    "text": "90°00'00"",
+    "text": "90%%d00'00"",
     "x": -50103,
     "y": -2200030,
   },
@@ -19750,7 +19806,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "DIRECTIONS",
-    "text": "270°00'00"",
+    "text": "270%%d00'00"",
     "x": -49997,
     "y": -2200030,
   },
@@ -19771,7 +19827,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "DIRECTIONS",
-    "text": "180°00'00"",
+    "text": "180%%d00'00"",
     "x": -50050,
     "y": -2199997,
   },
@@ -20030,8 +20086,22 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.6,
     "layer": "TITLE_BLOCK",
-    "text": "180°00'00"",
+    "text": "41",
+    "x": -50134.6,
+    "y": -2199992.8,
+  },
+  {
+    "h": 1.6,
+    "layer": "TITLE_BLOCK",
+    "text": "180%%d00'00"",
     "x": -50129.2,
+    "y": -2199992.8,
+  },
+  {
+    "h": 1.6,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50113.8,
     "y": -2199992.8,
   },
   {
@@ -20058,8 +20128,22 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.6,
     "layer": "TITLE_BLOCK",
-    "text": "270°00'00"",
+    "text": "41",
+    "x": -50134.6,
+    "y": -2199990.7,
+  },
+  {
+    "h": 1.6,
+    "layer": "TITLE_BLOCK",
+    "text": "270%%d00'00"",
     "x": -50129.2,
+    "y": -2199990.7,
+  },
+  {
+    "h": 1.6,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50113.8,
     "y": -2199990.7,
   },
   {
@@ -20086,8 +20170,22 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.6,
     "layer": "TITLE_BLOCK",
-    "text": "0°00'00"",
+    "text": "41",
+    "x": -50134.6,
+    "y": -2199988.6,
+  },
+  {
+    "h": 1.6,
+    "layer": "TITLE_BLOCK",
+    "text": "0%%d00'00"",
     "x": -50128.4,
+    "y": -2199988.6,
+  },
+  {
+    "h": 1.6,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50113.8,
     "y": -2199988.6,
   },
   {
@@ -20156,8 +20254,22 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.6,
     "layer": "TITLE_BLOCK",
-    "text": "90°00'00"",
+    "text": "41",
+    "x": -50134.6,
+    "y": -2199986.4,
+  },
+  {
+    "h": 1.6,
+    "layer": "TITLE_BLOCK",
+    "text": "90%%d00'00"",
     "x": -50128.8,
+    "y": -2199986.4,
+  },
+  {
+    "h": 1.6,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50113.8,
     "y": -2199986.4,
   },
   {
@@ -20602,7 +20714,7 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DIRECTIONS",
-    "text": "0°00'00"",
+    "text": "0%%d00'00"",
     "x": -50150,
     "y": -2200206,
   },
@@ -20700,14 +20812,14 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DIRECTIONS",
-    "text": "90°00'00"",
+    "text": "90%%d00'00"",
     "x": -50306,
     "y": -2200100,
   },
   {
     "h": 2.5,
     "layer": "DIRECTIONS",
-    "text": "270°00'00"",
+    "text": "270%%d00'00"",
     "x": -49994,
     "y": -2200100,
   },
@@ -20840,7 +20952,7 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DIRECTIONS",
-    "text": "180°00'00"",
+    "text": "180%%d00'00"",
     "x": -50150,
     "y": -2199994,
   },
@@ -21932,8 +22044,22 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "180°00'00"",
+    "text": "41",
+    "x": -50442.6,
+    "y": -2199893.4,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "180%%d00'00"",
     "x": -50432,
+    "y": -2199893.4,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50401.2,
     "y": -2199893.4,
   },
   {
@@ -21967,8 +22093,22 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "270°00'00"",
+    "text": "41",
+    "x": -50442.6,
+    "y": -2199889.2,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "270%%d00'00"",
     "x": -50432,
+    "y": -2199889.2,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50401.2,
     "y": -2199889.2,
   },
   {
@@ -22002,8 +22142,22 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "0°00'00"",
+    "text": "41",
+    "x": -50442.6,
+    "y": -2199885,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "0%%d00'00"",
     "x": -50430.2,
+    "y": -2199885,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50401.2,
     "y": -2199885,
   },
   {
@@ -22030,8 +22184,22 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "90°00'00"",
+    "text": "41",
+    "x": -50442.6,
+    "y": -2199880.7,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "90%%d00'00"",
     "x": -50431.1,
+    "y": -2199880.7,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "41",
+    "x": -50401.2,
     "y": -2199880.7,
   },
   {
@@ -22149,7 +22317,7 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "System : Lo 31°",
+    "text": "System : Lo 31%%d",
     "x": -50380.8,
     "y": -2199866.4,
   },

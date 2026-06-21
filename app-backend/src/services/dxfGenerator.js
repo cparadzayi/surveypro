@@ -696,6 +696,10 @@ export function generateDXF(options, logger) {
     if (rotation && rotation !== 0) {
       ent += p(50, rotation.toFixed(4));
     }
+    // Per-entity width factor (matches STYLE_WIDTH_FACTOR). The STYLE table also
+    // declares it, but many viewers honour only the entity's own 41 (default 1.0)
+    // — without this, text renders ~1.8× too wide and overruns its layout slot.
+    ent += p(41, '0.55');
     if (style) {
       ent += p(7, style);
     }
@@ -712,6 +716,7 @@ export function generateDXF(options, logger) {
     ent += p(20, y.toFixed(4));
     ent += p(40, height.toFixed(4));
     ent += p(1, text);
+    ent += p(41, '0.55');   // per-entity width factor (matches STYLE_WIDTH_FACTOR)
     ent += p(72, 1);
     ent += p(11, xc.toFixed(4));
     ent += p(21, y.toFixed(4));
@@ -2230,6 +2235,11 @@ export function generateDXF(options, logger) {
 
   // EOF
   dxf += p(0, 'EOF');
+
+  // Degree symbol → DXF control code "%%d". Writing the literal ° (U+00B0) as
+  // UTF-8 yields bytes C2 B0, which ANSI/latin1 CAD viewers render as "Â°".
+  // "%%d" is pure-ASCII and rendered as ° by every CAD viewer.
+  dxf = dxf.replace(/°/g, '%%d');
 
   const sizeKB = (Buffer.byteLength(dxf, 'utf8') / 1024).toFixed(1);
   logger.info(`[DXF] Generation complete: ${sizeKB} KB, ${parcelCount} parcels, ${beaconCount} beacons, ${edgeLabelCount} edge labels, ${sharedEdges.size} shared edges`);

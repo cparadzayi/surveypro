@@ -54,6 +54,7 @@ import {
   SCHEDULE_HEADER_HEIGHT_MM,
 } from './dxfScheduleHelpers.js'
 import { emitScheduleOfAreasTopological } from './dxfScheduleEmitter.js'
+import { getOutsideFigureVertices } from './outsideFigureBeacons.js'
 import {
   emitOFDTable,
   emitBeaconDescriptions,
@@ -161,26 +162,11 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
   if (!Array.isArray(edges) || edges.length === 0) return []
   if (!Array.isArray(surveyedParcels) || surveyedParcels.length === 0) return []
 
-  // Ordered boundary-beacon labels. Prefer edge pointId; fall back to the
-  // outside-figure corner-coordinate names, then to the leading vertex of each
-  // edge's "side" label (e.g. 'A-B' → 'A', 'AB' → 'A'). This keeps the sentence
-  // alive for plans whose edges omit pointId (e.g. the Maglas sample, which
-  // labels edges by `side` and carries the beacon names in `coordinates`).
-  let ids = edges.map(e => e?.pointId || '').filter(Boolean)
-  if (ids.length === 0) {
-    const coords = outsideFigureData?.coordinates
-    if (Array.isArray(coords)) ids = coords.map(c => c?.name || '').filter(Boolean)
-  }
-  if (ids.length === 0) {
-    ids = edges.map(e => {
-      const s = String(e?.side || '').trim()
-      return /[\s\-.]/.test(s) ? s.split(/[\s\-.]/)[0] : s.slice(0, 1)
-    }).filter(Boolean)
-  }
-  if (ids.length === 0) return []
-  // Closed loop, first vertex repeated at the end, dot-separated to match the
-  // ideal General Plan (e.g. "RD2.M2.M3.RD3.RD2").
-  const beaconSequence = ids.concat(ids[0]).join('.')
+  // Beacon sequence comes from the SHARED extractor (outsideFigureBeacons.js),
+  // the exact same function the PDF uses — so the closed, dot-joined sequence is
+  // byte-identical to the PDF's on every project (real or fixture).
+  const beaconSequence = getOutsideFigureVertices(outsideFigureData, null).sequence
+  if (!beaconSequence) return []
 
   const township = titleCase(metadata?.township) || 'the township'
   const district = titleCase(metadata?.district) || 'the district'

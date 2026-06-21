@@ -261,7 +261,12 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
           { ...analysis, extent: extentForOpt, density: beaconDensityForScale },
           areaType || 'urban'
         )
-        const minScaleDenominator = scaleResult.minScale || scaleResult.recommended.value
+        // Use the LEGIBILITY minimum as the candidate floor (not the combined
+        // minScale). determineOptimalScale.minScale now also folds in the figure-
+        // size denominator, which as a lower bound would force the figure toward
+        // the 650mm² minimum (tiny). The joint optimisation enlarges to fill the
+        // sheet, so it must floor on legibility only — its documented intent.
+        const minScaleDenominator = scaleResult.minScaleForLegibility || scaleResult.recommended.value
 
         // Try sheets from smallest to largest; for each sheet find smallest SI 727 scale that fits
         const sheetOrder = ['ISO_A2', 'ISO_A1', 'ISO_A0']

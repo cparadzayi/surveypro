@@ -20422,7 +20422,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "TITLE_BLOCK",
-    "text": "The figure A.B.C.D.A represents 2 stands and public places being A portion of Test Township situate in the district of Test District.",
+    "text": "The figure AB.BC.CD.DA.AB represents 2 stands and public places being A portion of Test Township situate in the district of Test District.",
     "x": -50050,
     "y": -2199967.6,
   },

@@ -129,16 +129,16 @@ describe('formatFigureDescription', () => {
     expect(sentence).not.toContain('123')
   })
 
-  test('edges without pointId fall back to coordinates[].name for the beacon sequence', () => {
-    const sideEdges = {
-      edges: [{ side: 'AB' }, { side: 'BC' }, { side: 'CD' }, { side: 'DA' }],
-      coordinates: [{ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' }],
-    }
+  // The beacon sequence comes from the shared extractor (outsideFigureBeacons.js),
+  // the exact same code the PDF uses — so DXF and PDF sequences are identical on
+  // every project. When edges carry only a `side` label, the leading token is used.
+  test('edges labelled only by side ("AB") use the side token, matching the PDF', () => {
+    const sideEdges = { edges: [{ side: 'AB' }, { side: 'BC' }, { side: 'CD' }, { side: 'DA' }] }
     const sentence = formatFigureDescription(fullMetadata, sideEdges, surveyedParcels, 500).join(' ')
-    expect(sentence).toContain('The figure A.B.C.D.A represents')
+    expect(sentence).toContain('The figure AB.BC.CD.DA.AB represents')
   })
 
-  test('edges with neither pointId nor coordinates fall back to the side leading vertex', () => {
+  test('hyphenated side labels ("A-B") use the from-vertex token', () => {
     const sideOnly = { edges: [{ side: 'A-B' }, { side: 'B-C' }, { side: 'C-D' }, { side: 'D-A' }] }
     const sentence = formatFigureDescription(fullMetadata, sideOnly, surveyedParcels, 500).join(' ')
     expect(sentence).toContain('The figure A.B.C.D.A represents')

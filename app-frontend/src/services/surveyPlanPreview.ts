@@ -126,19 +126,6 @@ export interface PreviewData {
   }
 }
 
-export interface ScaleRecommendation {
-  recommended: {
-    value: number
-    label: string
-  }
-  alternatives: Array<{
-    value: number
-    label: string
-  }>
-  reasoning: string
-  requiresMultiSheet: boolean
-}
-
 /**
  * Get survey plan preview data
  */
@@ -160,23 +147,6 @@ export async function getSurveyPlanPreview(
   
   const queryString = params.toString()
   const url = `/survey-plan/preview/${projectId}${queryString ? `?${queryString}` : ''}`
-  
-  const response = await api.get(url)
-  return response.data
-}
-
-/**
- * Get available scales for a project
- */
-export async function getAvailableScales(
-  projectId: number,
-  areaType?: 'urban' | 'peri-urban' | 'rural'
-): Promise<ScaleRecommendation> {
-  const params = new URLSearchParams()
-  if (areaType) params.append('areaType', areaType)
-  
-  const queryString = params.toString()
-  const url = `/survey-plan/scales/${projectId}${queryString ? `?${queryString}` : ''}`
   
   const response = await api.get(url)
   return response.data

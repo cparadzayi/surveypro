@@ -764,16 +764,60 @@ export function generateDXF(options, logger) {
    * Three LINEs form the arrowhead triangle; one TEXT entity reads "S" above the apex.
    * sizeM is the arrowhead height in ground metres at the chosen scale.
    */
-  function addNorthArrow(layer, cx, cy, sizeM) {
-    const half = sizeM / 2
-    const baseHalf = sizeM * 0.3
-    const apex = { x: cx, y: cy + half }
-    const baseL = { x: cx - baseHalf, y: cy - half }
-    const baseR = { x: cx + baseHalf, y: cy - half }
-    addLine(layer, apex.x, apex.y, baseL.x, baseL.y)
-    addLine(layer, apex.x, apex.y, baseR.x, baseR.y)
-    addLine(layer, baseL.x, baseL.y, baseR.x, baseR.y)
-    addText(layer, cx, cy + half + mm(5), 'N', mm(4), 0)
+  // Filled triangle (DXF SOLID). SOLID fills its quad in 1-2-4-3 order, so a
+  // triangle (apex, baseL, baseR) is passed with the 4th vertex equal to the 3rd.
+  function addSolidTri(layer, ax, ay, bx, by, cx2, cy2) {
+    ent += p(0, 'SOLID')
+    ent += p(8, layer)
+    ent += p(10, ax.toFixed(4)); ent += p(20, ay.toFixed(4))
+    ent += p(11, bx.toFixed(4)); ent += p(21, by.toFixed(4))
+    ent += p(12, cx2.toFixed(4)); ent += p(22, cy2.toFixed(4))
+    ent += p(13, cx2.toFixed(4)); ent += p(23, cy2.toFixed(4))
+  }
+
+  /**
+   * Compass-rose North arrow matching the PDF (drawNorthArrow): eight triangular
+   * points (N & S filled main points, E/W + diagonals open), a white centre
+   * circle, double N–S axis lines, and a "TN" (true north) label below the south
+   * tip. Sized in paper-mm so it is scale-independent; `cx, cy` is the rose centre
+   * (DXF y-up, so North points +y). The `sizeM` argument is retained for call-site
+   * compatibility but no longer drives the (now fixed paper-mm) geometry.
+   */
+  function addNorthArrow(layer, cx, cy, _sizeM) {
+    const mainLen = mm(12.5)  // PDF mainLength 35pt
+    const sideLen = mm(8.8)   // PDF sideLength 25pt
+    const innerR  = mm(2.8)   // PDF innerRadius 8pt
+    const lineOff = mm(0.55)  // PDF lineOffset 1.5pt
+    const points = [
+      { a: 0,   len: mainLen, fill: true,  bw: mm(1.1) }, // N
+      { a: 45,  len: sideLen, fill: false, bw: mm(0.9) }, // NE
+      { a: 90,  len: sideLen, fill: false, bw: mm(0.9) }, // E
+      { a: 135, len: sideLen, fill: false, bw: mm(0.9) }, // SE
+      { a: 180, len: mainLen, fill: true,  bw: mm(1.1) }, // S
+      { a: 225, len: sideLen, fill: false, bw: mm(0.9) }, // SW
+      { a: 270, len: sideLen, fill: false, bw: mm(0.9) }, // W
+      { a: 315, len: sideLen, fill: false, bw: mm(0.9) }, // NW
+    ]
+    for (const pt of points) {
+      const t = (pt.a * Math.PI) / 180
+      const s = Math.sin(t), c = Math.cos(t)        // dir = (s, c): a=0 → North (+y)
+      const ox = cx + s * pt.len, oy = cy + c * pt.len  // outer tip
+      const lx = cx + c * pt.bw,  ly = cy - s * pt.bw   // base, perpendicular +
+      const rx = cx - c * pt.bw,  ry = cy + s * pt.bw   // base, perpendicular −
+      addLine(layer, ox, oy, lx, ly)
+      addLine(layer, lx, ly, rx, ry)
+      addLine(layer, rx, ry, ox, oy)
+      if (pt.fill) addSolidTri(layer, ox, oy, lx, ly, rx, ry)
+    }
+    // White centre hub
+    addCircle(layer, cx, cy, innerR)
+    // Double lines along the N–S axis (hub edge → main tip)
+    addLine(layer, cx - lineOff, cy + innerR, cx - lineOff, cy + mainLen)
+    addLine(layer, cx + lineOff, cy + innerR, cx + lineOff, cy + mainLen)
+    addLine(layer, cx - lineOff, cy - innerR, cx - lineOff, cy - mainLen)
+    addLine(layer, cx + lineOff, cy - innerR, cx + lineOff, cy - mainLen)
+    // "TN" (true north) label below the south tip
+    addTextC(layer, cx, cy - mainLen - mm(6), 'TN', mm(3.5), 'BOLD')
   }
 
   /**
@@ -1747,11 +1791,12 @@ export function generateDXF(options, logger) {
     addTextC(TB, txC, ty, line, hBody)
   }
 
-  // North/south arrow in the upper-right of the drawing zone
-  addNorthArrow('NORTH_ARROW', cntR - mm(15), cntT - mm(20), mm(20))
-
-  // Scale bar in the lower-right of the drawing zone
-  addScaleBar('SCALE_BAR', cntR - mm(40), cntB + mm(20), S)
+  // Graduated scale bar (lower-right of the drawing zone) with the compass-rose
+  // North arrow centred directly above it, mirroring the PDF arrangement.
+  const scaleBarCX = cntR - mm(40)
+  const scaleBarCY = cntB + mm(20)
+  addScaleBar('SCALE_BAR', scaleBarCX, scaleBarCY, S)
+  addNorthArrow('NORTH_ARROW', scaleBarCX, scaleBarCY + mm(30), mm(25))
 
   // Coordinate grid ticks along the drawing-zone borders
   addGridReferences('GRID', dL, dR, dT, dB, pickGridStepM(S))
@@ -1795,10 +1840,10 @@ export function generateDXF(options, logger) {
   const bottomZoneObstacles = [
     // Title zone covers the top ~20% of the content area.
     { name: 'titleZone',  x: cntL,           y: titleDivY,         width: cntR - cntL, height: cntT - titleDivY },
-    // North arrow at top-right of drawing zone.
-    { name: 'northArrow', x: cntR - mm(15),  y: cntT - mm(20),     width: mm(15),      height: mm(20) },
-    // Scale bar at bottom-right of drawing zone.
-    { name: 'scaleBar',   x: cntR - mm(40),  y: cntB + mm(15),     width: mm(40),      height: mm(10) },
+    // Scale bar at bottom-right of drawing zone, with the North arrow centred
+    // directly above it (compass rose ~26mm wide, ~36mm tall).
+    { name: 'scaleBar',   x: scaleBarCX - mm(20), y: cntB + mm(15),       width: mm(40), height: mm(10) },
+    { name: 'northArrow', x: scaleBarCX - mm(13), y: scaleBarCY + mm(9),  width: mm(26), height: mm(36) },
   ];
 
   // Schedule-specific fonts matching the PDF generator (9 pt title,

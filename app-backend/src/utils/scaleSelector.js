@@ -30,15 +30,16 @@ export function determineOptimalScale(analysis, areaType = 'urban') {
   // Step 2: Calculate minimum scale for legibility
   const minScaleForLegibility = calculateMinimumScaleForLegibility(density)
   
-  // Step 3: Determine overall minimum scale.
-  // Use legibility as the primary constraint; figure size is secondary.
-  const minScale = minScaleForLegibility
-  
+  // Step 3: Overall minimum scale must satisfy BOTH the SI 727 minimum figure
+  // size (650mm²) and the legibility constraint — take the more restrictive
+  // (larger) denominator so neither is violated.
+  const minScale = Math.max(minScaleForSize, minScaleForLegibility)
+
   console.log('[ScaleSelector] 📊 Scale calculation:', {
     minScaleForSize: minScaleForSize.toFixed(0),
     minScaleForLegibility: minScaleForLegibility.toFixed(0),
     minScaleUsed: minScale.toFixed(0),
-    note: 'Using legibility as primary constraint'
+    note: 'Using the larger of figure-size and legibility constraints'
   })
   
   // Step 4: Filter all SI 727 scales that satisfy the minimum
@@ -51,7 +52,7 @@ export function determineOptimalScale(analysis, areaType = 'urban') {
       recommended: largest,
       alternatives: [],
       requiresMultiSheet: true,
-      reasoning: `Survey requires scale larger than ${largest.label}. Multi-sheet plan recommended.`,
+      reasoning: `Survey requires scale larger than ${largest.label}. A multi-sheet plan is recommended.`,
       minScale,
       minScaleForSize,
       minScaleForLegibility
@@ -202,18 +203,21 @@ export function getValidScales(analysis) {
     throw new Error('Analysis must include extent and density data')
   }
   
-  const minScaleForSize = calculateMinimumScaleForFigureSize(analysis.extent)
-  const minScaleForLegibility = calculateMinimumScaleForLegibility(analysis.density)
-  const minScale = Math.max(minScaleForSize, minScaleForLegibility)
-  
-  return SI727_PRESCRIBED_SCALES.map(scale => ({
-    ...scale,
-    valid: scale.value >= minScale,
-    figureSize: calculateFigureSize(analysis.extent, scale.value),
-    reason: scale.value < minScale 
-      ? `Figure size would be ${calculateFigureSize(analysis.extent, scale.value).toFixed(0)}mm² (< 650mm² minimum)`
-      : 'Meets all requirements'
-  }))
+  // A scale is valid iff the figure it produces meets the SI 727 minimum size
+  // (650mm²). This is a per-scale figure-size test — distinct from the legibility
+  // constraint used by determineOptimalScale.
+  return SI727_PRESCRIBED_SCALES.map(scale => {
+    const figureSize = calculateFigureSize(analysis.extent, scale.value)
+    const valid = figureSize >= MIN_FIGURE_SIZE_MM2
+    return {
+      ...scale,
+      valid,
+      figureSize,
+      reason: valid
+        ? 'Meets all requirements'
+        : `Figure size would be ${figureSize.toFixed(0)}mm² (< 650mm² minimum)`
+    }
+  })
 }
 
 /**

@@ -1644,9 +1644,18 @@ export function generateDXF(options, logger) {
     }
   }
 
-  // Extract central meridian
-  const loMatch = String(projection).match(/222(\d+)/);
-  const centralMeridian = loMatch ? loMatch[1] : '31';
+  // Extract the central meridian from the projection. Cape Lo zones use EPSG
+  // codes 22275 (Lo15) … 22293 (Lo33), where meridian = EPSG − 22260
+  // (e.g. EPSG:22291 → Lo 31). Also accept a literal "Lo NN". Default Lo 31.
+  let centralMeridian = '31';
+  const epsgMatch = String(projection).match(/\b(222\d{2})\b/);
+  const loLiteral = String(projection).match(/Lo\s*(\d{1,2})/i);
+  if (epsgMatch) {
+    const code = parseInt(epsgMatch[1], 10);
+    if (code >= 22275 && code <= 22293) centralMeridian = String(code - 22260);
+  } else if (loLiteral) {
+    centralMeridian = loLiteral[1];
+  }
 
   // Text sizes
   const hTitle = pt(16);     // GENERAL PLAN

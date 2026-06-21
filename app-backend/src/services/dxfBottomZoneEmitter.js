@@ -292,7 +292,10 @@ export function emitOFDTable(addText, addLine, position, outsideFigureData, font
   // ── Header box ──
   cText(x[0], x[4], yTop - headerBoxH * 0.5 - ofTitleH * 0.4, 'OUTSIDE FIGURE DATA', ofTitleH, 'BOLD')
   cText(x[4], x[6], yTop - ptG(3)  - ofTitleH, 'CO-ORDINATES', ofTitleH, 'BOLD')
-  cText(x[4], x[6], yTop - ptG(15) - ofBodyH,  `System : Lo ${centralMeridian}°`, ofBodyH)
+  // Prefer the loSystem carried in the outside-figure data (matches the PDF);
+  // fall back to the meridian parsed from the projection.
+  const loSystem = outsideFigureData.constants?.loSystem || `Lo ${centralMeridian}`
+  cText(x[4], x[6], yTop - ptG(15) - ofBodyH, `System : ${loSystem}°`, ofBodyH)
   const yYMX = yTop - ptG(28) - ofBodyH
   addText(layer, x[4] + ptG(4), yYMX, 'Y', ofBodyH, 0)
   cText(x[4], x[6], yYMX, 'Metres', ofBodyH)

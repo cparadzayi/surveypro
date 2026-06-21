@@ -1082,45 +1082,63 @@ export function generateDXF(options, logger) {
    *   4. Prior diagram references (list or "None")
    *   5. Surveyor certification footer
    */
-  function drawEndorsementZone(zoneL, zoneR, zoneTop, zoneBottom) {
+  function drawEndorsementZone(tableL, tableR, tableTop, tableBottom) {
     // NOTE: mm() and pt() are not yet defined at helper-definition time; they
     // are only called at call-time (after S is set), so this is safe.
     //
-    // Mirrors the PDF drawEndorsementBlock: a four-column table
-    // "No. | STATEMENT | Date | Surveyor-General" with a tall entry row whose
-    // first statement is the Dispensation Certificate line. (The "Approved /
-    // For Surveyor General" signature box is a separate block via emitSGBox.)
-    const zoneW   = zoneR - zoneL
-    const colNo   = mm(9)               // narrow "No." column
-    const colStmt = zoneW * 0.5         // wide "STATEMENT" column (PDF: 50%)
-    const colDate = zoneW * 0.2         // "Date" column (PDF: 20%)
-    const xNoR    = zoneL + colNo
+    // Mirrors the PDF drawEndorsementBlock. The table fills the right-margin
+    // strip: horizontally from the drawing-area right margin (tableL) out to the
+    // paper edge (tableR), and vertically from the top margin (tableTop) to the
+    // bottom margin (tableBottom). Layout top→bottom:
+    //   ── line ──  ENDORSEMENTS (centred)  ── line ──
+    //   No. | STATEMENT | Date | Surveyor-General      ── line ──
+    //   1.  | Dispensation … relates to this General Plan | … | …   (tall entry)
+    //   ── line ── (bottom margin)
+    // (The "Approved / For Surveyor General" signature box is a separate block.)
+    const tableW  = tableR - tableL
+    const titleH  = mm(8)
+    const headerH = mm(7)
+
+    const yTitleTop = tableTop                 // top margin
+    const yTitleBot = tableTop - titleH        // line below the ENDORSEMENTS title
+    const yHdrBot   = yTitleBot - headerH       // line below the column headers
+    const yBottom   = tableBottom              // bottom margin
+
+    // Columns (PDF proportions): No. fixed, STATEMENT 50%, Date 20%, SG the rest.
+    const colNo   = mm(9)
+    const colStmt = tableW * 0.5
+    const colDate = tableW * 0.2
+    const xNoR    = tableL + colNo
     const xStmtR  = xNoR + colStmt
-    const xDateR  = xStmtR + colDate    // "Surveyor-General" spans xDateR..zoneR
+    const xDateR  = xStmtR + colDate
 
-    const headerH   = mm(7)
-    const yTop      = zoneTop
-    const yHdrBot   = yTop - headerH
-    const yEntryBot = zoneBottom + mm(5)
+    // Horizontal rules — flush with the drawing-area right margin, out to the
+    // media edge. Top/bottom rules sit on the top/bottom margins.
+    addLine(TB, tableL, yTitleTop, tableR, yTitleTop)
+    addLine(TB, tableL, yTitleBot, tableR, yTitleBot)
+    addLine(TB, tableL, yHdrBot,   tableR, yHdrBot)
+    addLine(TB, tableL, yBottom,   tableR, yBottom)
 
-    // Horizontal rules (above header, below header, bottom of entry row)
-    addLine(TB, zoneL, yTop,      zoneR, yTop)
-    addLine(TB, zoneL, yHdrBot,   zoneR, yHdrBot)
-    addLine(TB, zoneL, yEntryBot, zoneR, yEntryBot)
-    // Internal column separators down the full table height
-    for (const x of [xNoR, xStmtR, xDateR]) addLine(TB, x, yTop, x, yEntryBot)
+    // ENDORSEMENTS — centred across the table, between the top two rules
+    addTextC(TB, (tableL + tableR) / 2, yTitleBot + (titleH - mm(3.2)) / 2, 'ENDORSEMENTS', mm(3.2), 'BOLD')
 
-    // Header labels, vertically centred in the header band
+    // Column headers — vertically centred in the header band
     const yHdr = yHdrBot + (headerH - mm(2.4)) / 2
-    addTextC(TB, (zoneL + xNoR) / 2,   yHdr, 'No.', mm(2.4))
-    addText (TB, xNoR + mm(2),         yHdr, 'STATEMENT', mm(2.4), 0)
+    addTextC(TB, (tableL + xNoR) / 2,   yHdr, 'No.', mm(2.4))
+    addText (TB, xNoR + mm(2),          yHdr, 'STATEMENT', mm(2.4), 0)
     addTextC(TB, (xStmtR + xDateR) / 2, yHdr, 'Date', mm(2.4))
-    addTextC(TB, (xDateR + zoneR) / 2,  yHdr, 'Surveyor-General', mm(2.2))
+    addTextC(TB, (xDateR + tableR) / 2, yHdr, 'Surveyor-General', mm(2.2))
+
+    // Internal column separators — header band + entry row only (not the title band)
+    for (const x of [xNoR, xStmtR, xDateR]) addLine(TB, x, yTitleBot, x, yBottom)
 
     // Entry row 1: "1." + Dispensation Certificate statement, top-aligned
     let yE = yHdrBot - mm(5)
-    addTextC(TB, (zoneL + xNoR) / 2, yE, '1.', mm(2.4))
-    const stmtChars = Math.max(8, Math.floor(colStmt / (mm(2.4) * 0.55)))
+    addTextC(TB, (tableL + xNoR) / 2, yE, '1.', mm(2.4))
+    // Wrap to the STATEMENT column INTERIOR: subtract the mm(2) left + mm(2) right
+    // text padding, and use a conservative char ratio so no line overruns into the
+    // Date column.
+    const stmtChars = Math.max(8, Math.floor((colStmt - mm(4)) / (mm(2.4) * 0.6)))
     for (const line of splitToWidth('Dispensation Certificate No. .................. relates to this General Plan', stmtChars)) {
       addText(TB, xNoR + mm(2), yE, line, mm(2.4), 0)
       yE -= mm(4)
@@ -1678,7 +1696,6 @@ export function generateDXF(options, logger) {
 
   // Endorsements column (in the right margin area)
   const endDivX = cntR;                               // vertical divider at content right
-  const endorseL = endDivX + mm(3);                   // endorsements text start
 
   // Layout zones within content area
   // Title zone: top 20% of content, Tables zone: bottom 40% of content
@@ -1714,8 +1731,9 @@ export function generateDXF(options, logger) {
   const TB = 'TITLE_BLOCK';
   addRect(TB, pageL, pageB, pageR, pageT);           // outer paper border
   // Content area border (margin lines)
-  addRect(TB, cntL, cntB, cntR, cntT);               // content border
-  addLine(TB, endDivX, pageB, endDivX, pageT);       // endorsements divider (full height)
+  addRect(TB, cntL, cntB, cntR, cntT);               // content border (also draws the
+                                                     // endorsements divider edge at cntR=endDivX,
+                                                     // bounded to cntB..cntT — no margin overrun)
   // The drawing-zone / bottom-zone separator at drawDivY was previously drawn
   // as a full-width horizontal line. The PDF doesn't emit any equivalent
   // (it relies on block placement + per-block borders), so the line is
@@ -1779,15 +1797,11 @@ export function generateDXF(options, logger) {
   // Coordinate grid ticks along the drawing-zone borders
   addGridReferences('GRID', dL, dR, dT, dB, pickGridStepM(S))
 
-  // â”€â”€ B) ENDORSEMENTS (right margin column: 150mm) â”€â”€
-  const eX = endorseL;
-  const endorseR = pageR - mm(5);        // right edge with small padding
-  const endorseColW = endorseR - eX;     // usable width in endorsements
-  let eY = cntT;
-  addText(TB, eX, eY, 'ENDORSEMENTS', hHead, 0, 'BOLD');
-  addLine(TB, endDivX, eY - mm(2), pageR, eY - mm(2)); // underline
-  eY -= mm(8);
-  drawEndorsementZone(eX, endorseR, cntT - mm(5), cntB + mm(5));
+  // â”€â”€ B) ENDORSEMENTS (right-margin table) â”€â”€
+  // Fills the right-margin strip from the drawing-area right margin (endDivX)
+  // out to the paper edge (pageR), and from the top margin (cntT) to the bottom
+  // margin (cntB). Title + all rules are drawn inside drawEndorsementZone.
+  drawEndorsementZone(endDivX, pageR, cntT, cntB);
 
   // ── C) BOTTOM ZONE — topological emission (3-v4) ──
   // Replaces the pre-3-v4 fixed bottom-zone partition. All five blocks

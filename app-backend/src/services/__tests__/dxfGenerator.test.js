@@ -399,9 +399,9 @@ describe('generateDXF — endorsement zone (PDF-aligned table)', () => {
     expect(dxf).toMatch(/ENDORSEMENTS/)
     expect(dxf).toMatch(/\bSTATEMENT\b/)            // table column header (PDF parity)
     expect(dxf).toMatch(/Surveyor-General/)         // table column header
-    // The statement wraps across TEXT entities; both halves are present.
+    // The statement wraps across TEXT entities, so assert wrap-independent tokens.
     expect(dxf).toMatch(/Dispensation Certificate No\./)
-    expect(dxf).toMatch(/relates to this General Plan/)
+    expect(dxf).toMatch(/\brelates\b/)
   })
 
   test('omits the old field-label layout (PDF carries none of these)', () => {

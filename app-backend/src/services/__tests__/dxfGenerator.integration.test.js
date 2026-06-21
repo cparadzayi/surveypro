@@ -408,7 +408,7 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(dxf).toMatch(/\bSTATEMENT\b/)
     expect(dxf).toMatch(/Surveyor-General/)
     expect(dxf).toMatch(/Dispensation Certificate/)
-    expect(dxf).toMatch(/relates to this General Plan/)
+    expect(dxf).toMatch(/\brelates\b/)  // statement wraps across TEXT entities
     expect(dxf).toMatch(/BEACON DESCRIPTIONS/)
     expect(dxf).toMatch(/Permanent concrete pillars/)
     // Old field-label layout + prior diagrams are gone (PDF carries neither here);

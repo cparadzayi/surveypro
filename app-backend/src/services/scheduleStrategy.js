@@ -92,26 +92,42 @@ export function chooseScheduleStrategy({ strips, colW, rowH, headerH }) {
  * isn't possible (fewer than 2 tables, or a mirrored table wouldn't fit the
  * content area).
  *
+ * A mirrored table is only moved when it (a) fits the content area and (b) does
+ * not collide with any `obstacles` (other bottom-zone blocks — Outside Figure
+ * Data, Surveyor-General box, survey statement, beacon descriptions). Tables that
+ * can't be mirrored without overlapping stay at their original (planner) position,
+ * so the schedule never overlaps another component — matching the PDF's
+ * non-overlapping layout.
+ *
  * @param {Array<{x:number,y:number,width:number,height:number}>} tables
  * @param {number} figureCX  figure centre x
  * @param {number} contentL  content-area left edge (min x)
  * @param {number} contentR  content-area right edge (max x)
+ * @param {Array<{x:number,y:number,width:number,height:number}>} [obstacles]
+ *        other blocks to avoid, in the SAME frame as `tables` (the caller's). For
+ *        the DXF south-up frame each rect's `y` is its TOP edge, extending down by
+ *        `height`.
  * @returns {Array<{x,y,width,height}>}
  */
-export function balanceScheduleTables(tables, figureCX, contentL, contentR) {
+export function balanceScheduleTables(tables, figureCX, contentL, contentR, obstacles = []) {
   if (!Array.isArray(tables) || tables.length < 2) return tables;
   const half = Math.ceil(tables.length / 2);
-  const moved = [];
+
+  // Rect overlap with `y` = top edge, extending downward by `height` (DXF south-up).
+  const overlaps = (a, b) =>
+    a.x < b.x + b.width && a.x + a.width > b.x &&
+    (a.y - a.height) < b.y && a.y > (b.y - b.height);
+
+  const out = tables.map((t) => ({ ...t }));
+  let movedAny = false;
   for (let i = half; i < tables.length; i++) {
     const t = tables[i];
-    // mirror x across the figure centre; top-align to the kept counterpart's y
-    moved.push({ i, x: 2 * figureCX - t.x - t.width, y: tables[i - half].y });
+    const mx = 2 * figureCX - t.x - t.width;   // mirror x across the figure centre
+    const my = tables[i - half].y;             // top-align to the kept counterpart
+    const candidate = { x: mx, y: my, width: t.width, height: t.height };
+    const fitsContent = mx >= contentL && (mx + t.width) <= contentR;
+    const clear = obstacles.every((o) => !overlaps(candidate, o));
+    if (fitsContent && clear) { out[i].x = mx; out[i].y = my; movedAny = true; }
   }
-  const fits = moved.length > 0 && moved.every(
-    (m) => m.x >= contentL && (m.x + tables[m.i].width) <= contentR,
-  );
-  if (!fits) return tables;
-  const out = tables.map((t) => ({ ...t }));
-  for (const m of moved) { out[m.i].x = m.x; out[m.i].y = m.y; }
-  return out;
+  return movedAny ? out : tables;
 }

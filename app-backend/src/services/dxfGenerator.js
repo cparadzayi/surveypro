@@ -2051,8 +2051,20 @@ export function generateDXF(options, logger) {
   // [cntL, cntR] — all in DXF ground-metres. Done here (not in the planner)
   // because the planner can't reach the figure polygon on the PDF side; each
   // generator balances in its own frame via the same shared helper.
+  // Other bottom-zone blocks the schedule must not overlap (OFD, SG approval box,
+  // survey statement, beacon descriptions). Inflate slightly so a visible gap is
+  // kept. A sub-table that can't mirror into the opposite strip without hitting
+  // one of these stays at its planner (pooled) position — no overlap.
+  const _pad = mm(2);
+  const _inflate = (b) => ({ x: b.x - _pad, y: b.y + _pad, width: b.width + 2 * _pad, height: b.height + 2 * _pad });
+  const _scheduleObstacles = [
+    outsideFigureData?.edges?.length ? ofdPos : null,
+    sgPos,
+    statementPos,
+    (options.beaconGroups || []).length ? beaconPos : null,
+  ].filter(Boolean).map(_inflate);
   const _placedTablesBalanced = _placedTablesGround
-    ? balanceScheduleTables(_placedTablesGround, dCX, cntL, cntR)
+    ? balanceScheduleTables(_placedTablesGround, dCX, cntL, cntR, _scheduleObstacles)
     : null;
 
   emitScheduleOfAreasTopological({

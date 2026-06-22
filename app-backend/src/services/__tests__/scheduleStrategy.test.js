@@ -111,4 +111,20 @@ describe('balanceScheduleTables', () => {
     const tables = [t(700, 800)];
     expect(balanceScheduleTables(tables, 500, 0, 1000)).toBe(tables);
   });
+
+  test('skips the mirror when it would overlap an obstacle (no component overlap)', () => {
+    const tables = [t(700, 800), t(700, 560)];
+    // Mirror destination is x∈[200,300], y∈[600,800]; this obstacle covers it.
+    const obstacle = { x: 150, y: 820, width: 200, height: 260 };
+    const out = balanceScheduleTables(tables, 500, 0, 1000, [obstacle]);
+    expect(out).toBe(tables);          // collision → not moved → original reference
+  });
+
+  test('still mirrors when obstacles are clear of the destination strip', () => {
+    const tables = [t(700, 800), t(700, 560)];
+    const obstacle = { x: 800, y: 900, width: 100, height: 200 }; // far right, no overlap
+    const out = balanceScheduleTables(tables, 500, 0, 1000, [obstacle]);
+    expect(out[1].x).toBe(200);        // mirror still applied
+    expect(out[1].y).toBe(800);
+  });
 });

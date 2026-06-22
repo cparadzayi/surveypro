@@ -211,8 +211,11 @@ describe('generateDXF — scale bar', () => {
   })
 
   test('scale-bar physical width matches the labelled ground length', () => {
-    // At 1:500 with niceLengthM = 50 m, the bar should be 50 m wide in DXF coords.
-    // We compare the left and right tick LINE x-coordinates.
+    // The bar is now fitted to the planner's reserved scale-bar slot (so it can
+    // never overflow into the schedule placed beside it), so its labelled length
+    // is the largest "nice" length that fits the slot — not a fixed 50 m. What
+    // must always hold is dimensional honesty: the bar's physical ground width
+    // equals its rightmost tick label. We assert that invariant.
     // A real outside figure is required so the page layout has finite coordinates.
     const optsWithGeom = {
       ...opts,
@@ -232,20 +235,31 @@ describe('generateDXF — scale bar', () => {
     // (i.e., x1 === x2). The leftmost x is f=0, the rightmost is f=1; their
     // difference is the bar's ground width.
     const tickXs = []
-    const entRe = /\b0\s*\n\s*LINE\b([\s\S]*?)(?=\b0\s*\n\s*[A-Z]+\b)/g
+    const tickLabels = []
+    const entRe = /\b0\s*\n\s*(LINE|TEXT)\b([\s\S]*?)(?=\b0\s*\n\s*[A-Z]+\b)/g
     for (const m of dxf.matchAll(entRe)) {
-      if (!/\b8\s*\n\s*SCALE_BAR\b/.test(m[1])) continue
-      const x1 = parseFloat((m[1].match(/\b10\s*\n\s*(-?[\d.]+)/) || [])[1])
-      const y1 = parseFloat((m[1].match(/\b20\s*\n\s*(-?[\d.]+)/) || [])[1])
-      const x2 = parseFloat((m[1].match(/\b11\s*\n\s*(-?[\d.]+)/) || [])[1])
-      const y2 = parseFloat((m[1].match(/\b21\s*\n\s*(-?[\d.]+)/) || [])[1])
-      if (Math.abs(x1 - x2) < 1e-6 && Math.abs(y1 - y2) > 1) tickXs.push(x1)   // vertical
+      const body = m[2]
+      if (!/\b8\s*\n\s*SCALE_BAR\b/.test(body)) continue
+      if (m[1] === 'LINE') {
+        const x1 = parseFloat((body.match(/\b10\s*\n\s*(-?[\d.]+)/) || [])[1])
+        const y1 = parseFloat((body.match(/\b20\s*\n\s*(-?[\d.]+)/) || [])[1])
+        const x2 = parseFloat((body.match(/\b11\s*\n\s*(-?[\d.]+)/) || [])[1])
+        const y2 = parseFloat((body.match(/\b21\s*\n\s*(-?[\d.]+)/) || [])[1])
+        if (Math.abs(x1 - x2) < 1e-6 && Math.abs(y1 - y2) > 1) tickXs.push(x1)   // vertical
+      } else {
+        // TEXT: collect the pure-number tick labels (exclude the "1:<scale>" footer).
+        const t = ((body.match(/\b1\s*\n\s*(.+)/) || [])[1] || '').trim()
+        if (/^\d+$/.test(t)) tickLabels.push(parseInt(t, 10))
+      }
     }
     tickXs.sort((a, b) => a - b)
     expect(tickXs.length).toBeGreaterThanOrEqual(2)
     const barWidth = tickXs[tickXs.length - 1] - tickXs[0]
-    // At 1:500 the picker returns 50 m; bar should be 50 m wide.
-    expect(barWidth).toBeCloseTo(50, 0)
+    // Dimensional honesty: physical width == the largest (rightmost) tick label.
+    const maxLabel = Math.max(...tickLabels)
+    expect(barWidth).toBeCloseTo(maxLabel, 0)
+    // And the bar is slot-fitted, so it never exceeds the un-capped picker length.
+    expect(barWidth).toBeLessThanOrEqual(50)
   })
 })
 

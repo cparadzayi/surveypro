@@ -816,8 +816,8 @@ export function generateDXF(options, logger) {
    * Bar length is chosen so the value at the right end rounds to a "nice"
    * number at the supplied scale (e.g., 100 m at 1:500, 500 m at 1:2500).
    */
-  function addScaleBar(layer, cx, cy, scaleDenom) {
-    const niceLengthM = pickNiceScaleBarLengthM(scaleDenom)
+  function addScaleBar(layer, cx, cy, scaleDenom, maxWidthGround) {
+    const niceLengthM = pickNiceScaleBarLengthM(scaleDenom, maxWidthGround)
     const barWidthGround = niceLengthM   // bar spans exactly niceLengthM metres on the ground
     const halfW = barWidthGround / 2
     const halfH = mm(2)
@@ -837,8 +837,20 @@ export function generateDXF(options, logger) {
     addText(layer, cx, cy - halfH - mm(8), `1:${scaleDenom}`, mm(2.5), 0)
   }
 
-  /** Pick a round metre length suitable for a 60 mm bar at the given scale. */
-  function pickNiceScaleBarLengthM(scaleDenom) {
+  /**
+   * Pick a round metre length for the scale bar. When `maxWidthGround` is given
+   * (the reserved slot's ground width), return the largest "nice" length whose
+   * ground span fits the slot, so the bar never overflows its planner slot (and
+   * therefore never spills into the schedule placed beside it). Without a cap,
+   * fall back to the legacy scale-based ladder.
+   */
+  function pickNiceScaleBarLengthM(scaleDenom, maxWidthGround) {
+    if (maxWidthGround && maxWidthGround > 0) {
+      const candidates = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000]
+      let best = candidates[0]
+      for (const c of candidates) { if (c <= maxWidthGround) best = c }
+      return best
+    }
     if (scaleDenom <= 500) return 50
     if (scaleDenom <= 1000) return 100
     if (scaleDenom <= 2500) return 250
@@ -1801,12 +1813,11 @@ export function generateDXF(options, logger) {
     addTextC(TB, txC, ty, line, hBody)
   }
 
-  // Graduated scale bar (lower-right of the drawing zone) with the compass-rose
-  // North arrow centred directly above it, mirroring the PDF arrangement.
-  const scaleBarCX = cntR - mm(40)
-  const scaleBarCY = cntB + mm(20)
-  addScaleBar('SCALE_BAR', scaleBarCX, scaleBarCY, S)
-  addNorthArrow('NORTH_ARROW', scaleBarCX, scaleBarCY + mm(30), mm(25))
+  // Scale bar + North arrow are emitted AFTER the planner runs (see below), at
+  // the planner's reserved `scaleBar` / `northArrow` slots — the same slots the
+  // schedule is placed to avoid. Rendering them anywhere else (e.g. a hard-coded
+  // bottom-right corner) makes the schedule collide with them, because the
+  // schedule dutifully dodges the planner's slots, not the renderer's position.
 
   // Coordinate grid ticks along the drawing-zone borders
   addGridReferences('GRID', dL, dR, dT, dB, pickGridStepM(S))
@@ -1843,13 +1854,12 @@ export function generateDXF(options, logger) {
   };
 
   // Pre-seeded obstacles — fixed-position elements already emitted above.
+  // The scale bar + North arrow are NOT seeded here: the planner reserves them
+  // internally (calculateBlockPositions' prePlaced path) and we render them at
+  // those reserved slots, so the schedule already avoids them.
   const bottomZoneObstacles = [
     // Title zone covers the top ~20% of the content area.
     { name: 'titleZone',  x: cntL,           y: titleDivY,         width: cntR - cntL, height: cntT - titleDivY },
-    // Scale bar at bottom-right of drawing zone, with the North arrow centred
-    // directly above it (compass rose ~26mm wide, ~36mm tall).
-    { name: 'scaleBar',   x: scaleBarCX - mm(20), y: cntB + mm(15),       width: mm(40), height: mm(10) },
-    { name: 'northArrow', x: scaleBarCX - mm(13), y: scaleBarCY + mm(9),  width: mm(26), height: mm(36) },
   ];
 
   // Schedule-specific fonts matching the PDF generator (9 pt title,
@@ -2015,6 +2025,25 @@ export function generateDXF(options, logger) {
   const statementPos = toDxf(blockPositions.surveyStatement);
   const sgPos        = toDxf(blockPositions.sgSignature);
 
+  // Scale bar + North arrow at the planner's reserved slots (the schedule is
+  // placed to avoid these, so rendering them here — rather than at a hard-coded
+  // corner — guarantees no collision). The bar is fitted to its slot width so it
+  // can't overflow into a neighbouring schedule table.
+  const scaleBarPos   = blockPositions.scaleBar   ? toDxf(blockPositions.scaleBar)   : null;
+  const northArrowPos = blockPositions.northArrow ? toDxf(blockPositions.northArrow) : null;
+  if (scaleBarPos) {
+    addScaleBar('SCALE_BAR',
+      scaleBarPos.x + scaleBarPos.width / 2,   // centre x of slot
+      scaleBarPos.y - mm(4),                   // bar line near slot top; labels/footer below
+      S, scaleBarPos.width);
+  }
+  if (northArrowPos) {
+    addNorthArrow('NORTH_ARROW',
+      northArrowPos.x + northArrowPos.width / 2,
+      northArrowPos.y - northArrowPos.height / 2,
+      mm(25));
+  }
+
   if (outsideFigureData?.edges?.length) {
     emitOFDTable(addText, addLine, { x: ofdPos.x, y: ofdPos.y },
       outsideFigureData, bottomZoneFonts, mm, centralMeridian, TB);
@@ -2062,6 +2091,8 @@ export function generateDXF(options, logger) {
     sgPos,
     statementPos,
     (options.beaconGroups || []).length ? beaconPos : null,
+    scaleBarPos,
+    northArrowPos,
   ].filter(Boolean).map(_inflate);
   const _placedTablesBalanced = _placedTablesGround
     ? balanceScheduleTables(_placedTablesGround, dCX, cntL, cntR, _scheduleObstacles)

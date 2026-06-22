@@ -1842,14 +1842,21 @@ export function generateDXF(options, logger) {
     height: cntT - cntB,
   };
 
-  // Pre-seeded obstacles — fixed-position elements already emitted above.
+  // Pre-seeded obstacles — fixed-position elements already emitted above. The
+  // scale bar + North arrow live bottom-right (compass rose centred above the
+  // bar); their bboxes must match the ACTUAL rendered geometry so the planner
+  // reserves the right region and never seats a schedule sub-table over them.
+  // (y = BOTTOM edge, extending +height UP, per tickMarkBoundsForPlanner.)
+  const _scaleBarLenG = pickNiceScaleBarLengthM(S);   // bar width in GROUND metres
   const bottomZoneObstacles = [
     // Title zone covers the top ~20% of the content area.
-    { name: 'titleZone',  x: cntL,           y: titleDivY,         width: cntR - cntL, height: cntT - titleDivY },
-    // Scale bar at bottom-right of drawing zone, with the North arrow centred
-    // directly above it (compass rose ~26mm wide, ~36mm tall).
-    { name: 'scaleBar',   x: scaleBarCX - mm(20), y: cntB + mm(15),       width: mm(40), height: mm(10) },
-    { name: 'northArrow', x: scaleBarCX - mm(13), y: scaleBarCY + mm(9),  width: mm(26), height: mm(36) },
+    { name: 'titleZone',  x: cntL,                               y: titleDivY,         width: cntR - cntL,        height: cntT - titleDivY },
+    // Scale bar: spans _scaleBarLenG ground metres centred on scaleBarCX, with
+    // graduation labels + the "1:scale" footer below the bar.
+    { name: 'scaleBar',   x: scaleBarCX - _scaleBarLenG / 2 - mm(2), y: scaleBarCY - mm(11), width: _scaleBarLenG + mm(4), height: mm(13) },
+    // North arrow: compass rose centred at (scaleBarCX, scaleBarCY + 30mm),
+    // ~20mm wide, ~33mm tall (rose + "TN" label below the south tip).
+    { name: 'northArrow', x: scaleBarCX - mm(10),                y: scaleBarCY + mm(9), width: mm(20),             height: mm(33) },
   ];
 
   // Schedule-specific fonts matching the PDF generator (9 pt title,
@@ -1952,12 +1959,13 @@ export function generateDXF(options, logger) {
     mapFeatureBounds:  { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt, pdfPoints: polyPtsForPlanner, parcelSegments: parcelSegmentsForPlanner },
     scale:             { value: S, label: `1:${S}` },
     extent:            { minX: pageL, maxX: pageR, minY: pageB, maxY: pageT },
-    // 3-v8 follow-up: match PDF (which now also passes []) so the planner
-    // sees identical obstacle sets and makes identical placement decisions.
-    // The titleZone/northArrow/scaleBar items previously injected here are
-    // already represented by calculateBlockPositions' internal prePlaced
-    // path, so removing them here doesn't lose collision coverage.
-    tickMarkBounds:    [],
+    // The DXF renders the scale bar + compass-rose North arrow BOTTOM-RIGHT
+    // (North arrow above the bar), whereas the planner's internal prePlaced path
+    // reserves them at the PDF's top-right. So we MUST hand the planner the DXF's
+    // actual scale-bar + North-arrow rects — otherwise it seats schedule
+    // sub-tables over them. (titleZone is excluded: the planner reserves the
+    // title area itself.)
+    tickMarkBounds:    tickMarkBoundsForPlanner.filter(o => o.name === 'scaleBar' || o.name === 'northArrow'),
     polyPts:           polyPtsForPlanner,
     measureText:       plannerMeasure,
     logger,

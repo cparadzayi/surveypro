@@ -2098,8 +2098,23 @@ export function generateDXF(options, logger) {
     ? balanceScheduleTables(_placedTablesGround, dCX, cntL, cntR, _scheduleObstacles)
     : null;
 
+  // Sibling bottom-zone blocks the re-split search must NOT land on (the planner
+  // placed these around the schedule; our own search must avoid them too, or it
+  // figure-dodges straight onto e.g. the Surveyor-General box). The emitter's
+  // search frame is the content area with y = bottom (min corner), so convert
+  // each toDxf position (y = TOP) to its min corner: y_bottom = y - height.
+  const _toSeed = (p) => (p ? { x: p.x, y: p.y - p.height, width: p.width, height: p.height } : null);
+  const _titleBlockPos = blockPositions.titleBlock ? toDxf(blockPositions.titleBlock) : null;
+  const _endorsementPos = blockPositions.endorsement ? toDxf(blockPositions.endorsement) : null;
+  const _resplitSeeds = [
+    outsideFigureData?.edges?.length ? ofdPos : null,
+    sgPos, statementPos,
+    (options.beaconGroups || []).length ? beaconPos : null,
+    scaleBarPos, northArrowPos, _titleBlockPos, _endorsementPos,
+  ].filter(Boolean).map(_toSeed);
+
   // Arguments shared by the dry-run (search) and the real emit. fixedPosition /
-  // placedTablesGround / draw callbacks are supplied per-call below.
+  // placedTablesGround / seedPlacedBlocks / draw callbacks are supplied per-call.
   const _commonEmitArgs = {
     surveyedFeatures,
     drawingZone: contentArea,    // the search path's zone; ignored when placement is supplied
@@ -2110,7 +2125,6 @@ export function generateDXF(options, logger) {
       mm, extractScheduleRow, computeScheduleLayout, addScheduleTable,
       nextLargerSheet, SCHEDULE_HEADER_HEIGHT_MM, columnWidthsG: scheduleColumnWidthsG,
     },
-    seedPlacedBlocks: [],
   };
 
   // Guarded re-split. The planner sizes the schedule against ~full content
@@ -2128,31 +2142,44 @@ export function generateDXF(options, logger) {
     _placedTablesBalanced.some(t => rectangleOverlapsPolygon(
       { x: t.x, y: t.y - t.height, width: t.width, height: t.height }, figurePolygon, 0));
 
-  let _useResplit = false;
+  // Monotonic placement choice (never worse than today):
+  //   C 'resplit-seeded'   — re-split avoiding BOTH the figure and the sibling
+  //                          bottom-zone blocks. Clears every overlap. Best.
+  //   B 'resplit'          — re-split avoiding only the figure (may touch a
+  //                          sibling). This is the prior shipped behaviour; used
+  //                          when C can't seat every stand (genuine capacity).
+  //   A 'planner'          — the planner's complete tables (overlap the figure).
+  // We prefer C, then B, then A — so adding the sibling-avoidance can only ever
+  // improve a plan, never reintroduce the figure overlap it already fixed.
+  let _emitMode = 'planner';
   if (_plannerTablesOverlapFigure) {
     const _noop = () => {};
     const _silent = { info: () => {}, warn: () => {}, error: () => {} };
-    const _dry = emitScheduleOfAreasTopological({
+    const _drySearch = (seeds) => emitScheduleOfAreasTopological({
       ..._commonEmitArgs,
       fixedPosition: null,
       placedTablesGround: null,        // force the polygon-aware Pass 1/2/3 search
+      seedPlacedBlocks: seeds,
       addText: _noop, addLine: _noop, warn: _noop, logger: _silent,
     });
-    _useResplit = shouldAdoptResplit({
-      resplitTables: _dry.placedTables,
-      missingStandCount: _dry.missingStandCount,
-      figurePolygon,
-    });
-    logger.info(
-      `[DXF] planner schedule tables overlap figure — polygon-aware re-split ` +
-      `${_useResplit ? 'ADOPTED' : 'rejected'} (placed ${_dry.placedStandCount}, missing ${_dry.missingStandCount})`
-    );
+    const _seeded = _drySearch(_resplitSeeds);
+    if (shouldAdoptResplit({ resplitTables: _seeded.placedTables, missingStandCount: _seeded.missingStandCount, figurePolygon, obstacles: _resplitSeeds })) {
+      _emitMode = 'resplit-seeded';
+    } else {
+      const _plain = _drySearch([]);
+      if (shouldAdoptResplit({ resplitTables: _plain.placedTables, missingStandCount: _plain.missingStandCount, figurePolygon })) {
+        _emitMode = 'resplit';
+      }
+    }
+    logger.info(`[DXF] planner schedule tables overlap figure — placement: ${_emitMode}`);
   }
 
+  const _resplit = _emitMode !== 'planner';
   emitScheduleOfAreasTopological({
     ..._commonEmitArgs,
-    fixedPosition: _useResplit ? null : { x: schedPos.x, y: schedPos.y },
-    placedTablesGround: _useResplit ? null : _placedTablesBalanced,
+    fixedPosition: _resplit ? null : { x: schedPos.x, y: schedPos.y },
+    placedTablesGround: _resplit ? null : _placedTablesBalanced,
+    seedPlacedBlocks: _emitMode === 'resplit-seeded' ? _resplitSeeds : [],
     addText, addLine, warn, logger,
   });
 

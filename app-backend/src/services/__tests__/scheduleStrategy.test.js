@@ -47,6 +47,27 @@ describe('shouldAdoptResplit', () => {
       figurePolygon: [],
     })).toBe(false);
   });
+
+  test('rejects when a re-split table overlaps a sibling block (e.g. the SG box)', () => {
+    // The re-split avoids the figure but lands on another bottom-zone block.
+    const sgBox = { x: 22, y: 2, width: 6, height: 4 };  // overlaps clearTable (x:20..25)
+    expect(shouldAdoptResplit({
+      resplitTables: [clearTable],
+      missingStandCount: 0,
+      figurePolygon: figure,
+      obstacles: [sgBox],
+    })).toBe(false);
+  });
+
+  test('adopts when figure-clear AND clear of all sibling obstacles', () => {
+    const sgBox = { x: 40, y: 0, width: 6, height: 4 };  // far from clearTable
+    expect(shouldAdoptResplit({
+      resplitTables: [clearTable],
+      missingStandCount: 0,
+      figurePolygon: figure,
+      obstacles: [sgBox],
+    })).toBe(true);
+  });
 });
 
 describe('measureFigureWhitespace', () => {

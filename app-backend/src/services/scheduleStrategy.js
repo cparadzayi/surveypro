@@ -121,18 +121,33 @@ export function chooseScheduleStrategy({ strips, colW, rowH, headerH }) {
  * one overlapping layout for another.
  *
  * `resplitTables` use the DXF emitter's returned convention: {x, y, width,
- * height} with (x, y) = lower-left (min) corner, same frame as `figurePolygon`.
+ * height} with (x, y) = lower-left (min) corner, same frame as `figurePolygon`
+ * and `obstacles`.
+ *
+ * `obstacles` are the OTHER bottom-zone blocks the schedule must not cover
+ * (Outside Figure Data, Surveyor-General box, survey statement, beacon
+ * descriptions, scale bar, North arrow). The emitter's own search is seeded to
+ * avoid these, but its last-resort pass can ignore seeds, so we re-check here:
+ * a re-split that figure-dodges by landing on a sibling block is NOT adopted.
  *
  * @param {{ resplitTables: {x,y,width,height}[], missingStandCount: number,
- *           figurePolygon: {x,y}[] }} opts
+ *           figurePolygon: {x,y}[], obstacles?: {x,y,width,height}[] }} opts
  * @returns {boolean}
  */
-export function shouldAdoptResplit({ resplitTables, missingStandCount, figurePolygon }) {
+export function shouldAdoptResplit({ resplitTables, missingStandCount, figurePolygon, obstacles = [] }) {
   if (missingStandCount > 0) return false;                       // would drop stands
   if (!Array.isArray(figurePolygon) || figurePolygon.length < 3) return false;
   if (!Array.isArray(resplitTables) || resplitTables.length === 0) return false;
-  return !resplitTables.some((t) => rectangleOverlapsPolygon(
+  const overlapsFigure = resplitTables.some((t) => rectangleOverlapsPolygon(
     { x: t.x, y: t.y, width: t.width, height: t.height }, figurePolygon, 0));
+  if (overlapsFigure) return false;
+  // AABB overlap in the shared min-corner frame.
+  const rectsOverlap = (a, b) =>
+    a.x < b.x + b.width && a.x + a.width > b.x &&
+    a.y < b.y + b.height && a.y + a.height > b.y;
+  const overlapsSibling = resplitTables.some((t) =>
+    obstacles.some((o) => rectsOverlap(t, o)));
+  return !overlapsSibling;
 }
 
 export function balanceScheduleTables(tables, figureCX, contentL, contentR, obstacles = []) {

@@ -1,5 +1,7 @@
 // app-backend/src/services/scheduleStrategy.js
 
+import { rectangleOverlapsPolygon } from './dxfGeometry.js';
+
 /**
  * Decompose the whitespace around a figure into the four canonical strips
  * (left / right / top / bottom), in the same paper-mm frame as the inputs.
@@ -109,6 +111,30 @@ export function chooseScheduleStrategy({ strips, colW, rowH, headerH }) {
  *        `height`.
  * @returns {Array<{x,y,width,height}>}
  */
+/**
+ * Decide whether a polygon-aware re-split of the schedule should REPLACE the
+ * planner's exact tables. The caller only invokes this when the planner's tables
+ * overlap the figure (the defect we're fixing). The re-split is adopted ONLY
+ * when it is strictly better: it seats every stand (no data loss) AND none of
+ * its tables overlap the figure. Otherwise the caller keeps the planner's
+ * complete tables — we never trade a complete schedule for a lossy one, nor swap
+ * one overlapping layout for another.
+ *
+ * `resplitTables` use the DXF emitter's returned convention: {x, y, width,
+ * height} with (x, y) = lower-left (min) corner, same frame as `figurePolygon`.
+ *
+ * @param {{ resplitTables: {x,y,width,height}[], missingStandCount: number,
+ *           figurePolygon: {x,y}[] }} opts
+ * @returns {boolean}
+ */
+export function shouldAdoptResplit({ resplitTables, missingStandCount, figurePolygon }) {
+  if (missingStandCount > 0) return false;                       // would drop stands
+  if (!Array.isArray(figurePolygon) || figurePolygon.length < 3) return false;
+  if (!Array.isArray(resplitTables) || resplitTables.length === 0) return false;
+  return !resplitTables.some((t) => rectangleOverlapsPolygon(
+    { x: t.x, y: t.y, width: t.width, height: t.height }, figurePolygon, 0));
+}
+
 export function balanceScheduleTables(tables, figureCX, contentL, contentR, obstacles = []) {
   if (!Array.isArray(tables) || tables.length < 2) return tables;
   const half = Math.ceil(tables.length / 2);

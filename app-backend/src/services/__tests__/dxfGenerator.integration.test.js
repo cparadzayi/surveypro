@@ -676,6 +676,35 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
     )
     expect(warnings.summary.scheduleOfAreasOverlapsPolygon).toBeUndefined()
   })
+
+  test('schedule overlapping an irregular figure at the largest sheet re-splits into figure-fitting tables, losing no stands', () => {
+    // Reproduces the real Maglas overlap: an irregular figure whose top-right
+    // block juts into the RIGHT strip where the planner pools its (few, very
+    // tall) tables — so the tall table clips the figure. At A0 there is no
+    // larger sheet to escalate into, so the only fix is the guarded re-split:
+    // the emitter's polygon-aware search splits into more, SHORTER tables that
+    // dodge the figure. It is adopted only because it seats every stand AND
+    // clears the figure — so the overlap warning is gone AND no stand is dropped
+    // (scheduleOverflow stays null). The protrusion geometry is the calibrated
+    // reproduction; see dxfGenerator.js guarded-re-split block.
+    const co = sampleMaglasPlan.outsideFigureData.coordinates
+    const yMin = co[0].y, yMax = co[1].y, xMin = co[0].x, xMax = co[2].x
+    const protY = yMax + (yMax - yMin) * 0.25
+    const irregularOFD = {
+      edges: sampleMaglasPlan.outsideFigureData.edges,
+      coordinates: [
+        { name: 'A', y: yMin, x: xMin }, { name: 'B', y: yMax, x: xMin },
+        { name: 'C', y: yMax, x: xMax * 0.7 }, { name: 'P', y: protY, x: xMax * 0.7 },
+        { name: 'Q', y: protY, x: xMax }, { name: 'D', y: yMin, x: xMax },
+      ],
+    }
+    const { warnings } = generateDXF(
+      { ...sampleMaglasPlan, outsideFigureData: irregularOFD, scale: { value: 750, label: '1:750' }, sheetSize: 'ISO_A0', orientation: 'landscape' },
+      fakeLogger,
+    )
+    expect(warnings.summary.scheduleOfAreasOverlapsPolygon).toBeUndefined()
+    expect(warnings.summary.scheduleOverflow).toBeNull()
+  })
 })
 
 /**

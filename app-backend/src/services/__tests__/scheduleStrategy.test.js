@@ -2,6 +2,52 @@
 import { describe, test, expect } from '@jest/globals';
 import { measureFigureWhitespace } from '../scheduleStrategy.js';
 import { chooseScheduleStrategy } from '../scheduleStrategy.js';
+import { shouldAdoptResplit } from '../scheduleStrategy.js';
+
+describe('shouldAdoptResplit', () => {
+  // A 10x10 figure polygon at the origin (min-corner rect convention: tables
+  // are {x, y, width, height} with (x, y) = lower-left, matching what the DXF
+  // schedule emitter returns for placedTables).
+  const figure = [
+    { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 0, y: 0 },
+  ];
+  // A table well clear of the figure (to its right).
+  const clearTable = { x: 20, y: 0, width: 5, height: 5 };
+  // A table sitting on top of the figure.
+  const overlapTable = { x: 2, y: 2, width: 4, height: 4 };
+
+  test('adopts the re-split when it loses no stands and overlaps nothing', () => {
+    expect(shouldAdoptResplit({
+      resplitTables: [clearTable, { x: 26, y: 0, width: 5, height: 5 }],
+      missingStandCount: 0,
+      figurePolygon: figure,
+    })).toBe(true);
+  });
+
+  test('rejects the re-split when it would drop stands (data loss is never acceptable)', () => {
+    expect(shouldAdoptResplit({
+      resplitTables: [clearTable],
+      missingStandCount: 12,   // 12 stands could not be placed
+      figurePolygon: figure,
+    })).toBe(false);
+  });
+
+  test('rejects the re-split when any table still overlaps the figure', () => {
+    expect(shouldAdoptResplit({
+      resplitTables: [clearTable, overlapTable],
+      missingStandCount: 0,
+      figurePolygon: figure,
+    })).toBe(false);
+  });
+
+  test('rejects when no figure polygon is available to verify against', () => {
+    expect(shouldAdoptResplit({
+      resplitTables: [clearTable],
+      missingStandCount: 0,
+      figurePolygon: [],
+    })).toBe(false);
+  });
+});
 
 describe('measureFigureWhitespace', () => {
   // contentArea is the usable drawing area in paper-mm: {x,y,w,h} with y UP.

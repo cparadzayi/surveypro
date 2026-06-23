@@ -66,7 +66,7 @@ import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlann
 import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon } from './dxfGeometry.js'
 import { selectFigureScale } from '../utils/si727Constants.js'
-import { balanceScheduleTables } from './scheduleStrategy.js'
+import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
 // External consumers (tests, other modules) keep importing from dxfGenerator.js.
@@ -2098,11 +2098,11 @@ export function generateDXF(options, logger) {
     ? balanceScheduleTables(_placedTablesGround, dCX, cntL, cntR, _scheduleObstacles)
     : null;
 
-  emitScheduleOfAreasTopological({
+  // Arguments shared by the dry-run (search) and the real emit. fixedPosition /
+  // placedTablesGround / draw callbacks are supplied per-call below.
+  const _commonEmitArgs = {
     surveyedFeatures,
-    drawingZone: contentArea,    // unused when fixedPosition / placedTablesGround is set; provided for legacy fallback paths
-    fixedPosition: { x: schedPos.x, y: schedPos.y },
-    placedTablesGround: _placedTablesBalanced,
+    drawingZone: contentArea,    // the search path's zone; ignored when placement is supplied
     polygon: figurePolygon,
     sheetSize,
     fonts: bottomZoneFonts,
@@ -2110,8 +2110,50 @@ export function generateDXF(options, logger) {
       mm, extractScheduleRow, computeScheduleLayout, addScheduleTable,
       nextLargerSheet, SCHEDULE_HEADER_HEIGHT_MM, columnWidthsG: scheduleColumnWidthsG,
     },
-    addText, addLine, warn, logger,
     seedPlacedBlocks: [],
+  };
+
+  // Guarded re-split. The planner sizes the schedule against ~full content
+  // height, so on dense plans it pools a few very TALL tables down one side.
+  // When the figure is irregular and its edge juts into that side strip (the
+  // real Maglas overlap: the figure's top-right block reaches into the right
+  // strip), those tall tables clip the figure. The emitter's own Pass 1/2/3
+  // search is polygon-aware and splits into more, SHORTER tables that dodge the
+  // figure. So when the planner's tables overlap the figure, dry-run that search
+  // (no-op draw callbacks → deterministic, no side effects) and adopt it ONLY if
+  // it seats every stand AND overlaps nothing (shouldAdoptResplit) — never
+  // trading a complete schedule for a lossy or still-overlapping one. Tables are
+  // south-up (y = TOP); the min-corner rect is { y: t.y - t.height }.
+  const _plannerTablesOverlapFigure = _placedTablesBalanced && figurePolygon && figurePolygon.length >= 3 &&
+    _placedTablesBalanced.some(t => rectangleOverlapsPolygon(
+      { x: t.x, y: t.y - t.height, width: t.width, height: t.height }, figurePolygon, 0));
+
+  let _useResplit = false;
+  if (_plannerTablesOverlapFigure) {
+    const _noop = () => {};
+    const _silent = { info: () => {}, warn: () => {}, error: () => {} };
+    const _dry = emitScheduleOfAreasTopological({
+      ..._commonEmitArgs,
+      fixedPosition: null,
+      placedTablesGround: null,        // force the polygon-aware Pass 1/2/3 search
+      addText: _noop, addLine: _noop, warn: _noop, logger: _silent,
+    });
+    _useResplit = shouldAdoptResplit({
+      resplitTables: _dry.placedTables,
+      missingStandCount: _dry.missingStandCount,
+      figurePolygon,
+    });
+    logger.info(
+      `[DXF] planner schedule tables overlap figure — polygon-aware re-split ` +
+      `${_useResplit ? 'ADOPTED' : 'rejected'} (placed ${_dry.placedStandCount}, missing ${_dry.missingStandCount})`
+    );
+  }
+
+  emitScheduleOfAreasTopological({
+    ..._commonEmitArgs,
+    fixedPosition: _useResplit ? null : { x: schedPos.x, y: schedPos.y },
+    placedTablesGround: _useResplit ? null : _placedTablesBalanced,
+    addText, addLine, warn, logger,
   });
 
   // Post-emission escalation. Mirrors the PDF's _polyCollisionOnMandatory →

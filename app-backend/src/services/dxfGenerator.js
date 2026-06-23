@@ -2114,6 +2114,32 @@ export function generateDXF(options, logger) {
     seedPlacedBlocks: [],
   });
 
+  // Post-emission escalation. Mirrors the PDF's _polyCollisionOnMandatory →
+  // needsScaleUp promotion (pdfkitGeoPDF.js:7020). The shared planner runs a
+  // coarser placement search than the schedule emitter's actual sub-table
+  // footprints, so it can mark the schedule placeable (needsScaleUp=false) on a
+  // sheet where the EMITTED tables still overlap the figure. The pre-emission
+  // gate above only sees the planner's needsScaleUp and misses this. So if the
+  // emitted schedule actually overlaps the figure and the sheet can still grow,
+  // escalate rather than render the overlap. When the largest sheet is exhausted
+  // there is no nextSheet, so we fall through and keep the existing
+  // scheduleOfAreasOverlapsPolygon warning as the graceful residual signal.
+  if (warnings.summary.scheduleOfAreasOverlapsPolygon
+      && _sheetSizeUpAttempt < MAX_SHEET_UP_ATTEMPTS) {
+    const nextSheet = nextSheetUp(normalizedSheetSize);
+    if (nextSheet) {
+      logger.warn(
+        `[DXF] Emitted schedule overlaps the figure on ${normalizedSheetSize} — ` +
+        `escalating to ${nextSheet} (attempt ${_sheetSizeUpAttempt + 1}/${MAX_SHEET_UP_ATTEMPTS})`
+      );
+      return generateDXF({
+        ...options,
+        sheetSize: nextSheet,
+        _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
+      }, logger);
+    }
+  }
+
   if ((options.beaconGroups || []).length) {
     // Planner sizes beacons from the polygon-feature collection; DXF actually
     // emits from pre-grouped beaconGroups whose count may differ. Size the

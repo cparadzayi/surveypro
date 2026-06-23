@@ -84,7 +84,7 @@ describe('3-v7 Maglas parity', () => {
     expect(dxfResult.buffer.length).toBeGreaterThan(0);
   }, 120000);
 
-  test('PDF and DXF produce structured warning categories on Maglas', async () => {
+  test('dense Maglas resolves the schedule-over-figure overlap in both formats', async () => {
     // PDF↔DXF parity follows the real app flow: the PDF generates FIRST and
     // decides scale + sheet size + orientation (enlarging the figure to the
     // largest SI 727 scale that fits). The DXF then consumes those verbatim, so
@@ -106,13 +106,18 @@ describe('3-v7 Maglas parity', () => {
       .filter(k => k.endsWith('OverlapsPolygon') || k === 'scheduleEscalationExhausted')
       .sort();
 
-    // Both formats should produce structured warning categories of the same shape
-    // (the actual KEYS may differ slightly because PDF and DXF may detect overlap
-    // on different blocks, but both should produce some structured warnings on
-    // dense Maglas).
-    expect(pdfWarnKeys.length + dxfWarnKeys.length).toBeGreaterThan(0);
     // Log for visibility
     console.log('PDF warn keys:', pdfWarnKeys);
     console.log('DXF warn keys:', dxfWarnKeys);
+
+    // Previously this asserted dense Maglas PRODUCES overlap warnings — i.e. it
+    // codified the schedule-over-figure overlap as expected behaviour. That
+    // overlap is now resolved: the PDF packs the schedule into A1 whitespace,
+    // and the DXF escalates a pinned sheet to A0 when its emitted sub-tables
+    // would overlap (post-emission escalation mirroring the PDF's
+    // _polyCollisionOnMandatory → needsScaleUp promotion). So NEITHER format may
+    // render a schedule-over-figure overlap on this fixture.
+    expect(pdfWarnKeys).not.toContain('scheduleOfAreasOverlapsPolygon');
+    expect(dxfWarnKeys).not.toContain('scheduleOfAreasOverlapsPolygon');
   }, 120000);
 });

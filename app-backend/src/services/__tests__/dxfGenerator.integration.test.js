@@ -7,6 +7,7 @@ import { describe, test, expect, beforeAll } from '@jest/globals'
 import { generateDXF } from '../dxfGenerator.js'
 import { countLayerOnTable, entityCount, parseFirstEntityOf } from './dxfParse.js'
 import { sampleFixture } from './fixtures/sampleDxfPlan.js'
+import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js'
 import {
   OUTSIDE_FIGURE_DATA,
   SURVEYOR_GENERAL_BOX,
@@ -654,6 +655,26 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
     // overflow warning should fire.
     expect(warnings.summary.scheduleEscalationExhausted).toBeUndefined()
     expect(warnings.summary.scheduleOverflow).toBeNull()
+  })
+
+  test('schedule pinned to a sheet where its sub-tables overlap the figure escalates instead of rendering the overlap', () => {
+    // The shared planner runs a coarser placement search than the DXF schedule
+    // emitter's actual sub-table footprints, so the planner can mark the
+    // schedule "placeable" (needsScaleUp=false) on a sheet where the EMITTED
+    // tables still overlap the figure polygon. The pre-emission escalation gate
+    // (keyed only on planner needsScaleUp) misses this, so the overlap was
+    // rendered. This mirrors the PDF's _polyCollisionOnMandatory → needsScaleUp
+    // promotion: when the actually-emitted schedule overlaps the figure and the
+    // sheet can still grow, the DXF must escalate (A1 → A0 here) rather than
+    // render a schedule-over-figure overlap.
+    //
+    // The dense Maglas fixture pinned to A1/1:1250 reproduces this: the planner
+    // accepts A1 but the emitted sub-tables overlap; escalation to A0 fits.
+    const { warnings } = generateDXF(
+      { ...sampleMaglasPlan, scale: { value: 1250, label: '1:1250' }, sheetSize: 'ISO_A1', orientation: 'landscape' },
+      fakeLogger,
+    )
+    expect(warnings.summary.scheduleOfAreasOverlapsPolygon).toBeUndefined()
   })
 })
 

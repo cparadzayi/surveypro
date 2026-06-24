@@ -876,9 +876,16 @@ export function generateDXF(options, logger) {
     const arm  = mm(4);     // cross-arm half length
     const lblH = mm(2.5);   // label text height
     const off  = mm(1.5);   // label gap from the arm tip
+    // Snap the four corners OUTWARD to a round coordinate grid so every cross
+    // label is a clean multiple of 50 m (or 100 m for large figures) — the SI 727
+    // coordinate convention. drawL/B are the min corners (floor/out), drawR/T the
+    // max corners (ceil/out); labels = −coord, so they stay multiples too.
+    const G = Math.max(drawR - drawL, drawT - drawB) > 1000 ? 100 : 50;
+    const xL = Math.floor(drawL / G) * G, xR = Math.ceil(drawR / G) * G;
+    const yB = Math.floor(drawB / G) * G, yT = Math.ceil(drawT / G) * G;
     const corners = [
-      { x: drawL, y: drawT }, { x: drawR, y: drawT },
-      { x: drawL, y: drawB }, { x: drawR, y: drawB },
+      { x: xL, y: yT }, { x: xR, y: yT },
+      { x: xL, y: yB }, { x: xR, y: yB },
     ];
     const bounds = [];
     for (const c of corners) {

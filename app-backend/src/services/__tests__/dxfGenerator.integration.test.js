@@ -734,6 +734,80 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
   })
 })
 
+describe('dxfGenerator — cartographic text hierarchy', () => {
+  // Parse every TEXT entity as { layer, text, height } (height = DXF group 40,
+  // ground metres; scale-independent ranking is all we need here).
+  function parseTexts(dxf) {
+    const out = []
+    const parts = dxf.split(/^\s*0\s*\r?\n\s*TEXT\s*\r?\n/m)
+    for (let i = 1; i < parts.length; i++) {
+      const b = parts[i]
+      const layer = (b.match(/^\s*8\s*\r?\n\s*([^\r\n]+)/m) || [])[1]?.trim() || ''
+      const h = parseFloat((b.match(/^\s*40\s*\r?\n\s*([-\d.]+)/m) || [])[1] || 'NaN')
+      const text = (b.match(/^\s*1\s*\r?\n\s*([^\r\n]+)/m) || [])[1]?.trim() || ''
+      if (Number.isFinite(h)) out.push({ layer, text, height: h })
+    }
+    return out
+  }
+
+  // Large-parcel plan: 200 m × 200 m stands (40 000 m²) land in the top area
+  // bucket and are big enough that the label is NOT shrunk to fit — so they
+  // expose the title-vs-stand inversion the old buckets produced.
+  const bigStandsPlan = (() => {
+    const yBase = 50000, xBase = 2200000, w = 200, h = 200, cols = 6, rows = 3
+    const stands = []
+    for (let i = 0; i < cols * rows; i++) {
+      const r = Math.floor(i / cols), c = i % cols
+      const y0 = yBase + c * w, x0 = xBase + r * h
+      stands.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [[[y0, x0], [y0 + w, x0], [y0 + w, x0 + h], [y0, x0 + h], [y0, x0]]] },
+        properties: { stand: String(2000 + i), area_m2: w * h },
+      })
+    }
+    const ofW = cols * w, ofH = rows * h
+    return {
+      metadata: { designation: `Stands 2000 - ${2000 + cols * rows - 1} Bigtown Township`, township: 'Bigtown Township', district: 'Test', centralMeridian: 31 },
+      parcels: { type: 'FeatureCollection', features: stands },
+      beacons: { type: 'FeatureCollection', features: [] },
+      outsideFigureData: {
+        edges: [
+          { side: 'AB', metres: String(ofW), direction: "90°00'00\"", constants: '', y: yBase + ofW, x: xBase },
+          { side: 'BC', metres: String(ofH), direction: "0°00'00\"", constants: '', y: yBase + ofW, x: xBase + ofH },
+          { side: 'CD', metres: String(ofW), direction: "270°00'00\"", constants: '', y: yBase, x: xBase + ofH },
+          { side: 'DA', metres: String(ofH), direction: "180°00'00\"", constants: '', y: yBase, x: xBase },
+        ],
+        coordinates: [
+          { name: 'A', y: yBase, x: xBase }, { name: 'B', y: yBase + ofW, x: xBase },
+          { name: 'C', y: yBase + ofW, x: xBase + ofH }, { name: 'D', y: yBase, x: xBase + ofH },
+        ],
+      },
+      sheetSize: 'ISO_A2', scale: { value: 1000, label: '1:1000' },
+    }
+  })()
+
+  test('the title dominates: GENERAL PLAN >= designation > every stand label', () => {
+    // Cartographic hierarchy (ISO 3098 / best practice): the document title must
+    // be the most prominent text. Stand numbers are area-scaled feature labels and
+    // must never out-rank the identifying title. Large parcels sized stand labels
+    // ABOVE the designation under the old area buckets.
+    const texts = parseTexts(generateDXF(bigStandsPlan, fakeLogger).buffer.toString())
+    const heightOf = (pred) => Math.max(0, ...texts.filter(pred).map(t => t.height))
+
+    const generalPlan = heightOf(t => t.layer === 'TITLE_BLOCK' && /GENERAL PLAN/i.test(t.text))
+    const designation = heightOf(t => t.layer === 'TITLE_BLOCK' && /township/i.test(t.text))
+    const maxStand   = heightOf(t => t.layer === 'STAND_NUMBERS')
+
+    expect(generalPlan).toBeGreaterThan(0)
+    expect(designation).toBeGreaterThan(0)
+    expect(maxStand).toBeGreaterThan(0)
+    // The identifying title out-ranks the largest stand label…
+    expect(designation).toBeGreaterThan(maxStand)
+    // …and GENERAL PLAN tops the designation.
+    expect(generalPlan).toBeGreaterThanOrEqual(designation)
+  })
+})
+
 /**
  * Parse all LINE entities on a given layer from the DXF buffer.
  * Returns {x1,y1,x2,y2}[]. Used by the 3-v4 bottom-zone-topology

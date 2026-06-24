@@ -1239,6 +1239,10 @@ export function generateDXF(options, logger) {
       else if (area > 500) standPt = 12;
       else if (area > 100) standPt = 10;
       else standPt = 8;
+      // Cartographic hierarchy: a stand number is a feature label and must not
+      // out-rank the 5 mm designation title. Cap at 10 pt (~3.5 mm); the parcel
+      // fitter (findStandLabelPosition) may shrink it further to fit.
+      standPt = Math.min(standPt, 10);
       const standHeight = ptToGround(standPt, S);
 
       // Find longest edge angle (matches PDF's renderDeferredStandLabels)
@@ -1676,10 +1680,14 @@ export function generateDXF(options, logger) {
     centralMeridian = loLiteral[1];
   }
 
-  // Text sizes
-  const hTitle = pt(16);     // GENERAL PLAN
-  const hSub = pt(10);       // subtitles
-  const hBody = pt(7);       // table body
+  // Text sizes. Cartographic hierarchy (ISO 3098 nominal heights): the title
+  // must dominate every feature label. GENERAL PLAN (7 mm) > designation (5 mm)
+  // > section headers/stand numbers (≤3.5 mm) > table body (~2.5 mm). hBody/hHead
+  // stay pt-based (≈2.5/2.8 mm) so the schedule row geometry is unchanged.
+  const hTitle = mm(7);      // GENERAL PLAN — dominant heading
+  const hDesig = mm(5);      // designation headline — the identifying title
+  const hSub = pt(10);       // 'of' connector + SHEET label (~3.5 mm)
+  const hBody = pt(7);       // table body (~2.5 mm)
   const hHead = pt(8);       // table headers
   const rH = hBody * 1.6;    // row height
 
@@ -1783,10 +1791,10 @@ export function generateDXF(options, logger) {
   // stripped — it appears only in the figure-description sentence below).
   const planDesignation = formatPlanDesignation(metadata, surveyedParcels)
   if (planDesignation) {
-    const desigMaxChars = Math.floor((cntR - cntL) / (hSub * 0.6))
+    const desigMaxChars = Math.floor((cntR - cntL) / (hDesig * 0.6))
     for (const line of splitToWidth(planDesignation, desigMaxChars)) {
-      addTextC(TB, txC, ty, line, hSub, 'BOLD');
-      ty -= hSub * 1.6;
+      addTextC(TB, txC, ty, line, hDesig, 'BOLD');
+      ty -= hDesig * 1.6;
     }
   }
   ty -= mm(3);

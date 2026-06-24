@@ -167,7 +167,9 @@ export const SURVEY_STATEMENT = {
 export const TITLE_BLOCK = {
   mainTitle: {
     text: 'GENERAL PLAN',
-    font: { family: 'Helvetica-Bold', size: 16 },
+    // Cartographic hierarchy (ISO 3098): the document heading dominates every
+    // feature label. 20 pt ≈ 7 mm; mirrors the DXF hTitle.
+    font: { family: 'Helvetica-Bold', size: 20 },
     alignment: 'center'
   },
   
@@ -186,9 +188,10 @@ export const TITLE_BLOCK = {
   
   designation: {
     // Headline line: just the stands + immediate township name, no district
-    // e.g. "Stands 16 - 18 Maglas Township"
+    // e.g. "Stands 16 - 18 Maglas Township". This is the identifying title and
+    // must out-rank the stand labels. 14 pt ≈ 5 mm; mirrors the DXF hDesig.
     template: '{designation}',
-    font: { family: 'Helvetica-Bold', size: 10 },
+    font: { family: 'Helvetica-Bold', size: 14 },
     alignment: 'center'
   },
   

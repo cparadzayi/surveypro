@@ -110,6 +110,10 @@ function calculateStandLabelPosition(
   } else {
     fontSize = 8; // Very small parcel
   }
+  // Cartographic hierarchy: a stand number is a feature label and must not
+  // out-rank the 14 pt (~5 mm) designation title. Cap at 10 pt (~3.5 mm); the
+  // fit-to-parcel logic below may still shrink it further. Mirrors the DXF cap.
+  fontSize = Math.min(fontSize, 10);
 
   // Reserve space for edge labels (distance + bearing stacked alongside each edge)
   const edgeLabelReserve = 25;

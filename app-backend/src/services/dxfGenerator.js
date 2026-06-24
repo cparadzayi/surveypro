@@ -889,6 +889,44 @@ export function generateDXF(options, logger) {
     }
   }
 
+  /**
+   * Geodetic corner reference crosses — ports the PDF's
+   * renderOutsideFigureTickMarks. Instead of scattering short single ticks along
+   * the axis-aligned bounding box (which float in the margins when the figure is
+   * plotted diagonally to the Cape Lo grid), draw a clean "+" at each of the
+   * figure's four coordinate corners (NW/NE/SW/SE) with its Cape Lo Y (westing)
+   * and X (southing) labelled — the SI 727 coordinate-frame convention.
+   *
+   * Coordinate mapping is DXF (x, y) = (−capeY, −capeX) (capeLoToDxfSouthUp), so
+   * westing = −x and southing = −y. Returns the crosses' reserved bounds
+   * (min-corner ground rects) so the block-placement pass keeps clear of them.
+   */
+  function addCornerCrosses(layer, drawL, drawR, drawT, drawB) {
+    const arm  = mm(4);     // cross-arm half length
+    const lblH = mm(2.5);   // label text height
+    const off  = mm(1.5);   // label gap from the arm tip
+    const corners = [
+      { x: drawL, y: drawT }, { x: drawR, y: drawT },
+      { x: drawL, y: drawB }, { x: drawR, y: drawB },
+    ];
+    const bounds = [];
+    for (const c of corners) {
+      addLine(layer, c.x - arm, c.y, c.x + arm, c.y);   // horizontal arm
+      addLine(layer, c.x, c.y - arm, c.x, c.y + arm);   // vertical arm
+      // Westing (Y) above the vertical arm; Southing (X) right of the horizontal arm.
+      addText(layer, c.x - arm, c.y + arm + off, `Y=${Math.round(-c.x)}`, lblH, 0);
+      addText(layer, c.x + arm + off, c.y - lblH / 2, `X=${Math.round(-c.y)}`, lblH, 0);
+      // Reserve a band covering the cross + both labels (X= runs right; Y= runs up).
+      bounds.push({
+        x:      c.x - arm - mm(2),
+        y:      c.y - arm - mm(2),
+        width:  2 * arm + off + mm(26),          // room for the X= southing string
+        height: 2 * arm + off + lblH + mm(2),    // room for the Y= westing string
+      });
+    }
+    return bounds;
+  }
+
   /** Round grid step in metres for the given scale denominator. */
   function pickGridStepM(scaleDenom) {
     if (scaleDenom <= 500) return 100
@@ -1829,8 +1867,10 @@ export function generateDXF(options, logger) {
   // bottom-right corner) makes the schedule collide with them, because the
   // schedule dutifully dodges the planner's slots, not the renderer's position.
 
-  // Coordinate grid ticks along the drawing-zone borders
-  addGridReferences('GRID', dL, dR, dT, dB, pickGridStepM(S))
+  // Coordinate reference crosses at the figure's four corners (SI 727 frame).
+  // _crossBounds is reserved as an obstacle in the collision-avoidance pass so no
+  // block covers a cross or its coordinate label.
+  const _crossBounds = addCornerCrosses('GRID', dL, dR, dT, dB)
 
   // â”€â”€ B) ENDORSEMENTS (right-margin table) â”€â”€
   // Fills the right-margin strip from the drawing-area right margin (endDivX)
@@ -2229,7 +2269,7 @@ export function generateDXF(options, logger) {
   // Fixed-slot blocks that do NOT relocate (title block, endorsements) seed the
   // obstacle set. The scale bar + North arrow are relocatable tasks below, so
   // they are NOT seeded here (that would make them collide with their own slot).
-  const _occupied = [..._schedRects];
+  const _occupied = [..._schedRects, ..._crossBounds];
   for (const p of [_titleBlockPos, _endorsementPos]) {
     if (p) _occupied.push({ x: p.x, y: p.y - p.height, width: p.width, height: p.height });
   }

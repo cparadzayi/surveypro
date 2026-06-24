@@ -732,6 +732,33 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
       k => k.endsWith('OverlapsSchedule') && warnings.summary[k])
     expect(onSchedule).toEqual([])
   })
+
+  test('scale bar and North arrow relocate off the figure into whitespace', () => {
+    // Irregular figure whose top reaches the planner's reserved scale bar /
+    // North arrow slots. They are now placed in the collision-avoidance pass, so
+    // they relocate into clear whitespace instead of rendering over the figure.
+    const co = sampleMaglasPlan.outsideFigureData.coordinates
+    const yMin = co[0].y, yMax = co[1].y, xMin = co[0].x, xMax = co[2].x
+    const protY = yMax + (yMax - yMin) * 0.25
+    const irregularOFD = {
+      edges: sampleMaglasPlan.outsideFigureData.edges,
+      coordinates: [
+        { name: 'A', y: yMin, x: xMin }, { name: 'B', y: yMax, x: xMin },
+        { name: 'C', y: yMax, x: xMax * 0.7 }, { name: 'P', y: protY, x: xMax * 0.7 },
+        { name: 'Q', y: protY, x: xMax }, { name: 'D', y: yMin, x: xMax },
+      ],
+    }
+    const { warnings } = generateDXF(
+      { ...sampleMaglasPlan, outsideFigureData: irregularOFD, scale: { value: 750, label: '1:750' }, sheetSize: 'ISO_A0', orientation: 'landscape' },
+      fakeLogger,
+    )
+    // Neither the scale bar nor the North arrow may end up over the figure or the
+    // schedule once the collision-avoidance pass has placed them.
+    for (const block of ['scaleBar', 'northArrow']) {
+      expect(warnings.summary[`${block}OverlapsPolygon`]).toBeUndefined()
+      expect(warnings.summary[`${block}OverlapsSchedule`]).toBeUndefined()
+    }
+  })
 })
 
 describe('dxfGenerator — cartographic text hierarchy', () => {

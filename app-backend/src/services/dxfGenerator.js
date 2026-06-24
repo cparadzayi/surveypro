@@ -2041,18 +2041,9 @@ export function generateDXF(options, logger) {
   // can't overflow into a neighbouring schedule table.
   const scaleBarPos   = blockPositions.scaleBar   ? toDxf(blockPositions.scaleBar)   : null;
   const northArrowPos = blockPositions.northArrow ? toDxf(blockPositions.northArrow) : null;
-  if (scaleBarPos) {
-    addScaleBar('SCALE_BAR',
-      scaleBarPos.x + scaleBarPos.width / 2,   // centre x of slot
-      scaleBarPos.y - mm(4),                   // bar line near slot top; labels/footer below
-      S, scaleBarPos.width);
-  }
-  if (northArrowPos) {
-    addNorthArrow('NORTH_ARROW',
-      northArrowPos.x + northArrowPos.width / 2,
-      northArrowPos.y - northArrowPos.height / 2,
-      mm(25));
-  }
+  // NOTE: the scale bar + North arrow are emitted AFTER the schedule now (in the
+  // collision-avoidance pass below), so they relocate out of the figure when the
+  // planner's reserved slot falls on an irregular/large figure.
 
   // NOTE: the Outside Figure Data table is emitted AFTER the schedule now (in the
   // collision-avoidance pass below), so it can be placed clear of the schedule's
@@ -2235,8 +2226,11 @@ export function generateDXF(options, logger) {
   const _rectsOverlap = (a, b) =>
     a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
   const _minRect = (pos, size) => ({ x: pos.x, y: pos.y - size.height, width: size.width, height: size.height });
+  // Fixed-slot blocks that do NOT relocate (title block, endorsements) seed the
+  // obstacle set. The scale bar + North arrow are relocatable tasks below, so
+  // they are NOT seeded here (that would make them collide with their own slot).
   const _occupied = [..._schedRects];
-  for (const p of [scaleBarPos, northArrowPos, _titleBlockPos, _endorsementPos]) {
+  for (const p of [_titleBlockPos, _endorsementPos]) {
     if (p) _occupied.push({ x: p.x, y: p.y - p.height, width: p.width, height: p.height });
   }
   // Returns the emission position (y = TOP) for a block, relocating it out of the
@@ -2290,6 +2284,17 @@ export function generateDXF(options, logger) {
     _tasks.push({ label: 'sgSignature', pos: { x: sgPos.x, y: sgPos.y }, size,
       emit: (p) => emitSGBox(addText, addLine, addRect, { x: p.x, y: p.y }, size, bottomZoneFonts, mm, TB) });
   }
+  if (scaleBarPos) {
+    const size = { width: scaleBarPos.width, height: scaleBarPos.height };
+    _tasks.push({ label: 'scaleBar', pos: { x: scaleBarPos.x, y: scaleBarPos.y }, size,
+      // bar line near slot top (− mm(4)); labels/footer fall below, within the slot height.
+      emit: (p) => addScaleBar('SCALE_BAR', p.x + size.width / 2, p.y - mm(4), S, size.width) });
+  }
+  if (northArrowPos) {
+    const size = { width: northArrowPos.width, height: northArrowPos.height };
+    _tasks.push({ label: 'northArrow', pos: { x: northArrowPos.x, y: northArrowPos.y }, size,
+      emit: (p) => addNorthArrow('NORTH_ARROW', p.x + size.width / 2, p.y - size.height / 2, mm(25)) });
+  }
   _tasks.sort((a, b) => b.size.width - a.size.width);
 
   const _finalPos = {};
@@ -2324,6 +2329,8 @@ export function generateDXF(options, logger) {
   _warnIfOverlap('beaconDescription');
   _warnIfOverlap('surveyStatement');
   _warnIfOverlap('sgSignature');
+  _warnIfOverlap('scaleBar');
+  _warnIfOverlap('northArrow');
 
   logger.info(`[DXF] Shared planner placement complete: 5 surrounding blocks emitted`);
 

@@ -861,35 +861,6 @@ export function generateDXF(options, logger) {
   }
 
   /**
-   * Coordinate-grid edge ticks. For every Cape Lo Y, X that falls on a round
-   * `gridStepM` multiple within the drawing bounds, emit short ticks inward
-   * from each border with the rounded coordinate as a label.
-   * No interior grid lines â€” matches the PDF exporter's drawGridReferences.
-   * drawL/R/T/B are in DXF coordinate space (after south-up swap).
-   */
-  function addGridReferences(layer, drawL, drawR, drawT, drawB, gridStepM) {
-    const tickLen = mm(5)
-    // Horizontal axis ticks (DXF X = Cape Lo Y / westings)
-    const xStart = Math.ceil(drawL / gridStepM) * gridStepM
-    for (let x = xStart; x <= drawR; x += gridStepM) {
-      addLine(layer, x, drawB, x, drawB + tickLen)
-      addLine(layer, x, drawT, x, drawT - tickLen)
-      const label = Math.round(x).toString()
-      addText(layer, x, drawB - mm(3), label, mm(2), 0)
-      addText(layer, x, drawT + mm(3), label, mm(2), 0)
-    }
-    // Vertical axis ticks (DXF Y = Cape Lo X / southings)
-    const yStart = Math.ceil(drawB / gridStepM) * gridStepM
-    for (let y = yStart; y <= drawT; y += gridStepM) {
-      addLine(layer, drawL, y, drawL + tickLen, y)
-      addLine(layer, drawR, y, drawR - tickLen, y)
-      const label = Math.round(y).toString()
-      addText(layer, drawL - mm(8), y, label, mm(2), 0)
-      addText(layer, drawR + mm(2), y, label, mm(2), 0)
-    }
-  }
-
-  /**
    * Geodetic corner reference crosses — ports the PDF's
    * renderOutsideFigureTickMarks. Instead of scattering short single ticks along
    * the axis-aligned bounding box (which float in the margins when the figure is
@@ -925,14 +896,6 @@ export function generateDXF(options, logger) {
       });
     }
     return bounds;
-  }
-
-  /** Round grid step in metres for the given scale denominator. */
-  function pickGridStepM(scaleDenom) {
-    if (scaleDenom <= 500) return 100
-    if (scaleDenom <= 1000) return 250
-    if (scaleDenom <= 2500) return 500
-    return 1000
   }
 
   /**

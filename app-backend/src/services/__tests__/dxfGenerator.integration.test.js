@@ -705,6 +705,33 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
     expect(warnings.summary.scheduleOfAreasOverlapsPolygon).toBeUndefined()
     expect(warnings.summary.scheduleOverflow).toBeNull()
   })
+
+  test('bottom-zone blocks are relocated clear of the re-split schedule (collision-avoidance pass)', () => {
+    // Same irregular figure that forces the schedule to re-split into the side
+    // strips. At their planner slots the Outside Figure Data table, SG box,
+    // survey statement and beacon descriptions would land ON the re-split
+    // schedule. The post-schedule collision-avoidance pass places them (schedule
+    // first, then these blocks) into the leftover whitespace, so none overlaps
+    // the Schedule of Areas.
+    const co = sampleMaglasPlan.outsideFigureData.coordinates
+    const yMin = co[0].y, yMax = co[1].y, xMin = co[0].x, xMax = co[2].x
+    const protY = yMax + (yMax - yMin) * 0.25
+    const irregularOFD = {
+      edges: sampleMaglasPlan.outsideFigureData.edges,
+      coordinates: [
+        { name: 'A', y: yMin, x: xMin }, { name: 'B', y: yMax, x: xMin },
+        { name: 'C', y: yMax, x: xMax * 0.7 }, { name: 'P', y: protY, x: xMax * 0.7 },
+        { name: 'Q', y: protY, x: xMax }, { name: 'D', y: yMin, x: xMax },
+      ],
+    }
+    const { warnings } = generateDXF(
+      { ...sampleMaglasPlan, outsideFigureData: irregularOFD, scale: { value: 750, label: '1:750' }, sheetSize: 'ISO_A0', orientation: 'landscape' },
+      fakeLogger,
+    )
+    const onSchedule = Object.keys(warnings.summary).filter(
+      k => k.endsWith('OverlapsSchedule') && warnings.summary[k])
+    expect(onSchedule).toEqual([])
+  })
 })
 
 /**

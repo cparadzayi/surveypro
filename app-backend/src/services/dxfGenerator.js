@@ -65,6 +65,7 @@ import { planSheetLayout } from './sheetLayoutPlanner.js'
 import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlanner.js'
 import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon } from './dxfGeometry.js'
+import { findBlockPosition } from './dxfBlockPlacer.js'
 import { selectFigureScale } from '../utils/si727Constants.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 
@@ -465,7 +466,8 @@ export function generateDXF(options, logger) {
     if (typeof category === 'string' &&
         (category.endsWith('Overflow') ||
          category === 'scheduleEscalationExhausted' ||
-         category.endsWith('OverlapsPolygon'))) {
+         category.endsWith('OverlapsPolygon') ||
+         category.endsWith('OverlapsSchedule'))) {
       warnings.summary[category] = value
       warnings.count += 1
       return
@@ -2044,10 +2046,9 @@ export function generateDXF(options, logger) {
       mm(25));
   }
 
-  if (outsideFigureData?.edges?.length) {
-    emitOFDTable(addText, addLine, { x: ofdPos.x, y: ofdPos.y },
-      outsideFigureData, bottomZoneFonts, mm, centralMeridian, TB);
-  }
+  // NOTE: the Outside Figure Data table is emitted AFTER the schedule now (in the
+  // collision-avoidance pass below), so it can be placed clear of the schedule's
+  // actual footprint rather than at a fixed planner slot the schedule may cover.
 
   // Schedule emitter operates with its own internal sizing (DXF-specific font
   // metrics differ slightly from PDF), so give it the full content area as
@@ -2175,13 +2176,18 @@ export function generateDXF(options, logger) {
   }
 
   const _resplit = _emitMode !== 'planner';
-  emitScheduleOfAreasTopological({
+  const _schedEmit = emitScheduleOfAreasTopological({
     ..._commonEmitArgs,
     fixedPosition: _resplit ? null : { x: schedPos.x, y: schedPos.y },
     placedTablesGround: _resplit ? null : _placedTablesBalanced,
     seedPlacedBlocks: _emitMode === 'resplit-seeded' ? _resplitSeeds : [],
     addText, addLine, warn, logger,
   });
+  // Actual schedule sub-table footprints (min-corner ground rects, y = bottom)
+  // — the dominant obstacle the small bottom-zone blocks are placed around below.
+  const _schedRects = (_schedEmit?.placedTables || []).map(t => ({
+    x: t.x, y: t.y, width: t.width, height: t.height,
+  }));
 
   // Post-emission escalation. Mirrors the PDF's _polyCollisionOnMandatory →
   // needsScaleUp promotion (pdfkitGeoPDF.js:7020). The shared planner runs a
@@ -2209,48 +2215,107 @@ export function generateDXF(options, logger) {
     }
   }
 
+  // ── Collision-avoidance pass for the small bottom-zone blocks ──
+  // The schedule (the dominant block) is already placed; now position Outside
+  // Figure Data, beacon descriptions, survey statement and the SG box into the
+  // LEFTOVER whitespace so they never cover the schedule, the figure, or each
+  // other. Placement order is schedule-first → these blocks second (per design):
+  // each keeps its planner slot when that is already clear, otherwise it relocates
+  // via findBlockPosition (the same placer the schedule uses). Frame: ground,
+  // y-up, min-corner. The fixed-slot blocks (scale bar, North arrow, title block,
+  // endorsements) are seeded as obstacles so nothing lands on them either.
+  const _rectsOverlap = (a, b) =>
+    a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  const _minRect = (pos, size) => ({ x: pos.x, y: pos.y - size.height, width: size.width, height: size.height });
+  const _occupied = [..._schedRects];
+  for (const p of [scaleBarPos, northArrowPos, _titleBlockPos, _endorsementPos]) {
+    if (p) _occupied.push({ x: p.x, y: p.y - p.height, width: p.width, height: p.height });
+  }
+  // Returns the emission position (y = TOP) for a block, relocating it out of the
+  // schedule / figure / already-placed footprints when its planner slot collides.
+  const _placeClear = (pos, size, label) => {
+    const here = _minRect(pos, size);
+    const onFigure = figurePolygon && figurePolygon.length >= 3 && rectangleOverlapsPolygon(here, figurePolygon, 0);
+    const onBlock = _occupied.some((o) => _rectsOverlap(here, o));
+    if (!onFigure && !onBlock) { _occupied.push(here); return { x: pos.x, y: pos.y }; }
+    const found = findBlockPosition({
+      block: { width: size.width, height: size.height },
+      mapBounds: contentArea, polygon: figurePolygon, placedBlocks: _occupied,
+      buffer: mm(2), blockSpacing: mm(3), scanStep: mm(5), tableMinWidth: size.width, logger,
+    });
+    if (found) {
+      _occupied.push({ x: found.x, y: found.y, width: size.width, height: size.height });
+      logger.info(`[DXF] relocated ${label} clear of the schedule/figure → (${found.x.toFixed(1)}, ${found.y.toFixed(1)})`);
+      return { x: found.x, y: found.y + size.height };   // findBlockPosition gives bottom-y; emit wants TOP
+    }
+    _occupied.push(here);   // no clear spot found — keep planner slot (emitted; flagged below)
+    logger.warn(`[DXF] ${label} could not be relocated clear of the schedule/figure — kept at planner slot`);
+    return { x: pos.x, y: pos.y };
+  };
+
+  // Build placement tasks, then place WIDEST-first so the hardest-to-fit blocks
+  // claim whitespace before the smaller ones. Each task carries its emit closure
+  // so placement and emission are decoupled from ordering.
+  const _tasks = [];
+  if (outsideFigureData?.edges?.length) {
+    const size = { width: ofdPos.width, height: ofdPos.height };
+    _tasks.push({ label: 'outsideFigureData', pos: { x: ofdPos.x, y: ofdPos.y }, size,
+      emit: (p) => emitOFDTable(addText, addLine, { x: p.x, y: p.y }, outsideFigureData, bottomZoneFonts, mm, centralMeridian, TB) });
+  }
   if ((options.beaconGroups || []).length) {
-    // Planner sizes beacons from the polygon-feature collection; DXF actually
-    // emits from pre-grouped beaconGroups whose count may differ. Size the
-    // beacon zone for the actual groups (header + separator + 1 row per group)
-    // so the emitter doesn't truncate. Keep the planner-assigned position.
+    // Planner sizes beacons from the polygon-feature collection; DXF emits from
+    // pre-grouped beaconGroups whose count may differ. Size for the actual groups
+    // (header + separator + 1 row per group) so the emitter doesn't truncate.
     const beaconGroupCount = options.beaconGroups.length;
     const beaconActualHeight = mm(4 * 1.4 + 1 + beaconGroupCount * 3.5 + 2);
-    emitBeaconDescriptions(addBeaconDescription, TB,
-      { x: beaconPos.x, y: beaconPos.y },
-      { width: beaconPos.width, height: Math.max(beaconPos.height, beaconActualHeight) },
-      options.beaconGroups);
+    const size = { width: beaconPos.width, height: Math.max(beaconPos.height, beaconActualHeight) };
+    _tasks.push({ label: 'beaconDescription', pos: { x: beaconPos.x, y: beaconPos.y }, size,
+      emit: (p) => emitBeaconDescriptions(addBeaconDescription, TB, { x: p.x, y: p.y }, size, options.beaconGroups) });
+  }
+  {
+    const size = { width: statementPos.width, height: statementPos.height };
+    _tasks.push({ label: 'surveyStatement', pos: { x: statementPos.x, y: statementPos.y }, size,
+      emit: (p) => emitStatement(addText, { x: p.x, y: p.y }, metadata, bottomZoneFonts, TB) });
+  }
+  {
+    const size = { width: sgPos.width, height: sgPos.height };
+    _tasks.push({ label: 'sgSignature', pos: { x: sgPos.x, y: sgPos.y }, size,
+      emit: (p) => emitSGBox(addText, addLine, addRect, { x: p.x, y: p.y }, size, bottomZoneFonts, mm, TB) });
+  }
+  _tasks.sort((a, b) => b.size.width - a.size.width);
+
+  const _finalPos = {};
+  for (const t of _tasks) {
+    const p = _placeClear(t.pos, t.size, t.label);
+    t.emit(p);
+    _finalPos[t.label] = { x: p.x, y: p.y, width: t.size.width, height: t.size.height };
   }
 
-  emitStatement(addText, { x: statementPos.x, y: statementPos.y },
-    metadata, bottomZoneFonts, TB);
-
-  emitSGBox(addText, addLine, addRect,
-    { x: sgPos.x, y: sgPos.y },
-    { width: sgPos.width, height: sgPos.height },
-    bottomZoneFonts, mm, TB);
-
-  // 3-v7: structured warnings for each surrounding block that overlaps the polygon.
-  function _warnIfOverlap(name, pos, sizeInfo) {
-    if (!figurePolygon || figurePolygon.length < 3) return;
-    const rect = {
-      x:      pos.x,
-      y:      pos.y - sizeInfo.height,   // south-up: pos.y is TOP, rect.y is BOTTOM
-      width:  sizeInfo.width,
-      height: sizeInfo.height,
-    };
-    if (rectangleOverlapsPolygon(rect, figurePolygon, 0)) {
+  // 3-v7: structured warnings for each surrounding block that overlaps the polygon
+  // (checked at the FINAL emitted position) + a signal if a block could not be
+  // kept clear of the schedule after the collision-avoidance pass above.
+  function _warnIfOverlap(name) {
+    const pos = _finalPos[name];
+    if (!pos) return;
+    const rect = { x: pos.x, y: pos.y - pos.height, width: pos.width, height: pos.height };
+    if (figurePolygon && figurePolygon.length >= 3 && rectangleOverlapsPolygon(rect, figurePolygon, 0)) {
       warn(`${name}OverlapsPolygon`, {
-        position: { x: pos.x, y: pos.y, width: sizeInfo.width, height: sizeInfo.height },
+        position: { x: pos.x, y: pos.y, width: pos.width, height: pos.height },
         hint: `${name} block rendered over the parcel figure.`,
+      });
+    }
+    if (_schedRects.some((s) => _rectsOverlap(rect, s))) {
+      warn(`${name}OverlapsSchedule`, {
+        position: { x: pos.x, y: pos.y, width: pos.width, height: pos.height },
+        hint: `${name} block could not be placed clear of the Schedule of Areas.`,
       });
     }
   }
 
-  _warnIfOverlap('outsideFigureData', ofdPos,       ofdPos);
-  _warnIfOverlap('beaconDescription', beaconPos,    beaconPos);
-  _warnIfOverlap('surveyStatement',   statementPos, statementPos);
-  _warnIfOverlap('sgSignature',       sgPos,        sgPos);
+  _warnIfOverlap('outsideFigureData');
+  _warnIfOverlap('beaconDescription');
+  _warnIfOverlap('surveyStatement');
+  _warnIfOverlap('sgSignature');
 
   logger.info(`[DXF] Shared planner placement complete: 5 surrounding blocks emitted`);
 

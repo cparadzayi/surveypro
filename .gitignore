@@ -52,6 +52,11 @@ coverage/
 app-backend/temp/
 app-backend/test*.pdf
 
+# Ad-hoc scratch/repro files in app-backend (underscore-prefixed):
+# render dumps (_*.dxf/.png/.pdf), generator/repro scripts (_gen*.mjs, _*repro*.mjs,
+# _pdfrender.py) and scratch text (_*.txt). Not part of the build — never committed.
+app-backend/_*
+
 # Large reference documents & sample data (kept on disk, not tracked)
 # Root-level manuals, training material, sample survey plans
 /*.pdf

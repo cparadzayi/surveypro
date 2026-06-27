@@ -69,6 +69,34 @@ describe('extractScheduleRow', () => {
     expect(extractScheduleRow(f).area).toBe('10000')
   })
 
+  // ── SI 727 area rule: < 10 000 m² → nearest m²; ≥ 10 000 m² → hectares (4 dp).
+  //    Both branches use banker's (round-half-to-even) rounding. ──
+  test('area_m2: 10000 (threshold) → area: "1.0000Ha"', () => {
+    const f = { properties: { stand: '7', area_m2: 10000 } }
+    expect(extractScheduleRow(f).area).toBe('1.0000Ha')
+  })
+
+  test('area_m2: 12345.6789 → area: "1.2346Ha" (hectares, 4 dp)', () => {
+    const f = { properties: { stand: '7', area_m2: 12345.6789 } }
+    expect(extractScheduleRow(f).area).toBe('1.2346Ha')
+  })
+
+  test('area_m2: 9999 → area: "9999" (just under threshold, square metres)', () => {
+    const f = { properties: { stand: '7', area_m2: 9999 } }
+    expect(extractScheduleRow(f).area).toBe('9999')
+  })
+
+  test("banker's rounding (m²): 100.5 → \"100\", 101.5 → \"102\" (round half to even)", () => {
+    expect(extractScheduleRow({ properties: { area_m2: 100.5 } }).area).toBe('100')
+    expect(extractScheduleRow({ properties: { area_m2: 101.5 } }).area).toBe('102')
+  })
+
+  test("banker's rounding (ha 4 dp): 12345.5 → \"1.2346Ha\", 12346.5 → \"1.2346Ha\"", () => {
+    // The 4th ha decimal corresponds to whole m²; halves round to the even m².
+    expect(extractScheduleRow({ properties: { area_m2: 12345.5 } }).area).toBe('1.2346Ha')
+    expect(extractScheduleRow({ properties: { area_m2: 12346.5 } }).area).toBe('1.2346Ha')
+  })
+
   test('area_m2: 0 → area: "0" (not blank)', () => {
     const f = { properties: { stand: '7', area_m2: 0 } }
     expect(extractScheduleRow(f).area).toBe('0')

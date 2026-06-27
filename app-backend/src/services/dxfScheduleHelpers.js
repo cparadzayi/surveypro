@@ -9,7 +9,7 @@
  * Algorithms unchanged from the #3 ship at d1f6fcd.
  */
 
-import { SCHEDULE_OF_AREAS } from '../../../app-shared/block-definitions.js'
+import { SCHEDULE_OF_AREAS, formatAreaValue } from '../../../app-shared/block-definitions.js'
 
 /**
  * Sheet ladder ordered smallest → largest. Index in this array maps to
@@ -53,12 +53,17 @@ export function nextLargerSheet(currentSheetSize) {
  * Extracts the six SI 727 Schedule-of-Areas column values from a parcel
  * GeoJSON feature's `properties`. Returns an object whose values are all
  * strings ('' for absent optional fields).
+ *
+ * Area follows the SI 727 rule via the shared formatAreaValue (same logic the
+ * PDF schedule uses): areas < 10 000 m² are given to the nearest square metre,
+ * larger areas in hectares to four decimal places ("…Ha") — both with banker's
+ * (round-half-to-even) rounding.
  */
 export function extractScheduleRow(parcelFeature) {
   const props = parcelFeature?.properties || {}
   return {
     stand:      String(props.stand ?? ''),
-    area:       String(Math.round(props.area_m2 ?? 0)),
+    area:       formatAreaValue(props.area_m2 ?? 0),
     diagram:    String(props.diagram ?? ''),
     deedNumber: String(props.deedNumber ?? ''),
     deedDate:   String(props.deedDate ?? ''),

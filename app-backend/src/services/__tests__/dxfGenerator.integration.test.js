@@ -304,10 +304,10 @@ describe('dxfGenerator integration — developed-township planType', () => {
     expect(devDist).toBe(0)
     expect(devDir).toBe(0)
 
-    // Sanity: OUTSIDE_FIGURE_LABELS (vertex coords + tick marks) still emit —
+    // Sanity: OUTSIDE_FIGURE_LABELS tick LINEs still emit identically —
     // only the distance/direction edge annotations are suppressed.
-    expect(entityCount(dev.buffer.toString(), 'TEXT', 'OUTSIDE_FIGURE_LABELS'))
-      .toBe(entityCount(base.buffer.toString(), 'TEXT', 'OUTSIDE_FIGURE_LABELS'))
+    expect(entityCount(dev.buffer.toString(), 'LINE', 'OUTSIDE_FIGURE_LABELS'))
+      .toBe(entityCount(base.buffer.toString(), 'LINE', 'OUTSIDE_FIGURE_LABELS'))
   })
 })
 
@@ -336,8 +336,10 @@ describe('dxfGenerator integration — sample fixture', () => {
     }
   })
 
-  test('emits 4 vertex coord TEXT entities on OUTSIDE_FIGURE_LABELS', () => {
-    expect(entityCount(dxf, 'TEXT', 'OUTSIDE_FIGURE_LABELS')).toBe(4)
+  test('emits NO vertex coord TEXT entities on OUTSIDE_FIGURE_LABELS', () => {
+    // Per-vertex coordinate value labels were removed — the corner reference
+    // crosses carry the coordinate frame instead.
+    expect(entityCount(dxf, 'TEXT', 'OUTSIDE_FIGURE_LABELS')).toBe(0)
   })
 
   test('emits 4 tick LINE entities on OUTSIDE_FIGURE_LABELS', () => {
@@ -351,10 +353,11 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(entityCount(dxf, 'TEXT', 'DIRECTIONS')).toBe(11)
   })
 
-  test('vertex labels contain the Cape Lo coordinates from the fixture', () => {
-    for (const v of sampleFixture.outsideFigureData.edges) {
-      expect(dxf).toMatch(new RegExp(`Y=${Math.round(v.y)}.*?X=${Math.round(v.x)}`))
-    }
+  test('emits no per-vertex Y=/X= coordinate labels on OUTSIDE_FIGURE_LABELS', () => {
+    // Vertex coordinate values were removed; assert none of the fixture's
+    // vertex coordinates appear as OUTSIDE_FIGURE_LABELS text.
+    const ofLabelTexts = entityCount(dxf, 'TEXT', 'OUTSIDE_FIGURE_LABELS')
+    expect(ofLabelTexts).toBe(0)
   })
 
   test('every beacon has a label on BEACON_LABELS sourced from properties.pointId', () => {

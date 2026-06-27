@@ -935,38 +935,6 @@ export function generateDXF(options, logger) {
   }
 
   /**
-   * For each non-duplicate vertex of the outside figure, emit one TEXT entity
-   * reading "Y=<westing> X=<southing>" (whole metres) on the OUTSIDE_FIGURE_LABELS
-   * layer, offset 5 mm outward from the polygon centroid.
-   *
-   * @param {string} layer  Target layer name.
-   * @param {Array<{y:number,x:number,pointId:string}>} vertices  From
-   *   computeOutsideFigureVertices(); last entry is the closing duplicate.
-   * @param {{x:number,y:number}} centroidGround  In DXF (south-up) coords.
-   */
-  function addOutsideFigureVertexLabels(layer, vertices, centroidGround) {
-    const offset = mm(5)
-    const height = mm(2)
-    // Iterate vertices[0 .. length-2] â€” skip the closing duplicate at the end.
-    for (let i = 0; i < vertices.length - 1; i++) {
-      const v = vertices[i]
-      const dxfV = capeLoToDxfSouthUp(v.y, v.x)
-      let nx = dxfV.x - centroidGround.x
-      let ny = dxfV.y - centroidGround.y
-      const mag = Math.sqrt(nx * nx + ny * ny)
-      if (mag < 1e-6) {
-        // Degenerate centroid: fall back to fixed direction (DXF +X).
-        nx = 1; ny = 0
-        logger.warn(`[DXF] OF vertex ${v.pointId}: degenerate centroid, using +X fallback`)
-      } else {
-        nx /= mag; ny /= mag
-      }
-      const label = `Y=${Math.round(v.y)} X=${Math.round(v.x)}`
-      addText(layer, dxfV.x + nx * offset, dxfV.y + ny * offset, label, height, 0)
-    }
-  }
-
-  /**
    * For each non-duplicate vertex of the outside figure, emit one short LINE
    * tick on `layer` pointing outward from the polygon centroid. The
    * centroid-to-vertex direction matches the vertex-label placement so each
@@ -1656,9 +1624,12 @@ export function generateDXF(options, logger) {
   const mm = (v) => mmToGround(v, S); // shorthand
   const pt = (v) => ptToGround(v, S);
 
-  // ── Outside-figure vertex labels ──
-  // (OF polyline and vertex calculation done earlier; now emit the labels)
-  // Vertex coordinate labels (e.g. "M4") + tick marks always emit.
+  // ── Outside-figure vertex markers ──
+  // (OF polyline and vertex calculation done earlier; now emit the markers)
+  // Vertex tick marks always emit. Per-vertex coordinate value labels
+  // (Y=<westing> X=<southing>) are intentionally NOT emitted — the corner
+  // reference crosses already carry the coordinate frame, so labelling every
+  // vertex just clutters the figure.
   // Outside-figure edge distance + direction labels are suppressed for
   // developed townships (matches the parcel-edge suppression below — the
   // user's instruction extends the PDF's `isDeveloped` behavior to all edge
@@ -1667,7 +1638,6 @@ export function generateDXF(options, logger) {
     const ofDxfPts = ofResult.vertices.slice(0, -1)
       .map(v => capeLoToDxfSouthUp(v.y, v.x));
     const ofCentroid = shoelaceCentroid(ofDxfPts);
-    addOutsideFigureVertexLabels('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
     addOutsideFigureTickMarks('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
     if (!isDevelopedPlan) {
       addOutsideFigureEdgeLabels('DISTANCES', 'DIRECTIONS',

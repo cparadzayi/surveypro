@@ -325,7 +325,11 @@ function degToDMS(deg) {
   const rm = (deg - d) * 60;
   const m = Math.floor(rm);
   const s = Math.round((rm - m) * 60);
-  return `${d}d${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"`;
+  // Use the degree symbol (°) — identical to the PDF's edge-label formatter
+  // (pdfkitLabeling.js:441). The literal "d" separator ("179d18'15\"") is not
+  // SI 727 compliant. The post-emission pass converts ° → the DXF control code
+  // "%%d", which every CAD viewer renders as a true degree symbol.
+  return `${d}°${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"`;
 }
 
 /** Shared-edge key: sorted, rounded to 10mm â€” matches PDF's createEdgeKey */

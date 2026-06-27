@@ -353,6 +353,14 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(entityCount(dxf, 'TEXT', 'DIRECTIONS')).toBe(11)
   })
 
+  test('bearing labels use the degree control code (%%d), never a literal "d" separator', () => {
+    // SI 727 / PDF parity: degToDMS emits ° which the post-emission pass turns
+    // into the DXF control code "%%d" (rendered as a true degree symbol). The
+    // old "179d18'15\"" format is non-compliant and must not appear.
+    expect(dxf).toMatch(/\d+%%d\d{2}'\d{2}"/)          // proper degree code present
+    expect(dxf).not.toMatch(/\d+d\d{2}'\d{2}"/)        // no literal-d bearings
+  })
+
   test('emits no per-vertex Y=/X= coordinate labels on OUTSIDE_FIGURE_LABELS', () => {
     // Vertex coordinate values were removed; assert none of the fixture's
     // vertex coordinates appear as OUTSIDE_FIGURE_LABELS text.

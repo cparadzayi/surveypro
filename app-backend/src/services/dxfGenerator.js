@@ -68,6 +68,7 @@ import { rectangleOverlapsPolygon } from './dxfGeometry.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
 import { selectFigureScale } from '../utils/si727Constants.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
+import { roundBearingSouth } from '../utils/zim-geo.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
 // External consumers (tests, other modules) keep importing from dxfGenerator.js.
@@ -321,15 +322,34 @@ function polygonAreaGround(pts) {
 }
 
 function degToDMS(deg) {
-  const d = Math.floor(deg);
+  let d = Math.floor(deg);
   const rm = (deg - d) * 60;
-  const m = Math.floor(rm);
-  const s = Math.round((rm - m) * 60);
+  let m = Math.floor(rm);
+  let s = Math.round((rm - m) * 60);
+  // Carry normalization: Math.round on the seconds (and float error in
+  // (deg - d) * 60) can yield 60 — e.g. 161°09'56" rounded to the nearest 10"
+  // surfaces as 161°09'60" instead of 161°10'00". Carry seconds → minutes →
+  // degrees so the label always reads canonically. Mirrors edge-computation.js.
+  if (s >= 60) { s -= 60; m += 1; }
+  if (m >= 60) { m -= 60; d += 1; }
+  if (d >= 360) { d -= 360; }
   // Use the degree symbol (°) — identical to the PDF's edge-label formatter
   // (pdfkitLabeling.js:441). The literal "d" separator ("179d18'15\"") is not
   // SI 727 compliant. The post-emission pass converts ° → the DXF control code
   // "%%d", which every CAD viewer renders as a true degree symbol.
   return `${d}°${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"`;
+}
+
+/**
+ * Formats a south-oriented bearing as DMS, applying the SI 727 seconds
+ * resolution rule (matches edge-computation.js / the PDF): edges shorter than
+ * 6000 m are given to the nearest 10", longer edges to the nearest second.
+ * Used only on the fallback path; a pre-computed edge.directionDMS already
+ * carries this rounding.
+ */
+export function degToDMSForDistance(bearDeg, distance) {
+  const secRes = (Number.isFinite(distance) && distance < 6000) ? 10 : 1;
+  return degToDMS(roundBearingSouth(bearDeg, secRes));
 }
 
 /** Shared-edge key: sorted, rounded to 10mm â€” matches PDF's createEdgeKey */
@@ -875,8 +895,15 @@ export function generateDXF(options, logger) {
    * Coordinate mapping is DXF (x, y) = (−capeY, −capeX) (capeLoToDxfSouthUp), so
    * westing = −x and southing = −y. Returns the crosses' reserved bounds
    * (min-corner ground rects) so the block-placement pass keeps clear of them.
+   *
+   * (areaL, areaR, areaB, areaT) are the drawing-area (content rectangle) bounds
+   * in DXF ground coords. When supplied, each corner that would snap OUTWARD past
+   * the drawing area — pushing the cross + its label into the margin — is stepped
+   * INWARD by one grid interval until its footprint fits, porting the PDF's
+   * renderOutsideFigureTickMarks map-edge clamp (pdfkitGeoPDF.js:1903-1982).
+   * Stepping by the grid interval keeps every label a clean round coordinate.
    */
-  function addCornerCrosses(layer, drawL, drawR, drawT, drawB) {
+  function addCornerCrosses(layer, drawL, drawR, drawT, drawB, areaL, areaR, areaB, areaT) {
     const arm  = mm(4);     // cross-arm half length
     const lblH = mm(2.5);   // label text height
     const off  = mm(1.5);   // label gap from the arm tip
@@ -885,8 +912,23 @@ export function generateDXF(options, logger) {
     // coordinate convention. drawL/B are the min corners (floor/out), drawR/T the
     // max corners (ceil/out); labels = −coord, so they stay multiples too.
     const G = Math.max(drawR - drawL, drawT - drawB) > 1000 ? 100 : 50;
-    const xL = Math.floor(drawL / G) * G, xR = Math.ceil(drawR / G) * G;
-    const yB = Math.floor(drawB / G) * G, yT = Math.ceil(drawT / G) * G;
+    let xL = Math.floor(drawL / G) * G, xR = Math.ceil(drawR / G) * G;
+    let yB = Math.floor(drawB / G) * G, yT = Math.ceil(drawT / G) * G;
+    // Inward clamp (PDF parity). Footprint extents of a cross centred at (cx, cy):
+    //   left  = cx − arm − mm(2)            right = cx + arm + off + mm(24)  (X= label)
+    //   bottom = cy − arm − mm(2)            top  = cy + arm + off + lblH + mm(2)  (Y= label)
+    // Step each shared grid line inward by G until that footprint sits inside the
+    // drawing area. Guarded so a too-small area can't loop forever or cross over.
+    if ([areaL, areaR, areaB, areaT].every(Number.isFinite)) {
+      const padR = arm + off + mm(24);          // X= label runs right
+      const padTop = arm + off + lblH + mm(2);  // Y= label runs up
+      const padMin = arm + mm(2);               // bare arm on the other two sides
+      let g;
+      for (g = 0; yT + padTop > areaT && yT - G > areaB && g < 1000; g++) yT -= G;
+      for (g = 0; yB - padMin < areaB && yB + G < areaT && g < 1000; g++) yB += G;
+      for (g = 0; xL - padMin < areaL && xL + G < areaR && g < 1000; g++) xL += G;
+      for (g = 0; xR + padR > areaR && xR - G > areaL && g < 1000; g++) xR -= G;
+    }
     const corners = [
       { x: xL, y: yT }, { x: xR, y: yT },
       { x: xL, y: yB }, { x: xR, y: yB },
@@ -1025,10 +1067,12 @@ export function generateDXF(options, logger) {
       const dirStr = typeof edge.direction === 'string' ? edge.direction : ''
       const dirText = /\d+\D+\d+\D+\d+/.test(dirStr)
         ? dirStr
-        : degToDMS((((Math.atan2(
-            vertices[i + 1].y - vertices[i].y,
-            vertices[i + 1].x - vertices[i].x
-          ) * 180 / Math.PI) % 360) + 360) % 360)
+        : degToDMSForDistance(
+            (((Math.atan2(
+              vertices[i + 1].y - vertices[i].y,
+              vertices[i + 1].x - vertices[i].x
+            ) * 180 / Math.PI) % 360) + 360) % 360,
+            distVal)
 
       addText(distLayer, mx + nx * distOffset, my + ny * distOffset, distText, distHeight, ang)
       addText(dirLayer, mx + nx * bearOffset, my + ny * bearOffset, dirText, bearHeight, ang)
@@ -1313,7 +1357,7 @@ export function generateDXF(options, logger) {
         const bearDeg = typeof edge.bearing === 'number' ? edge.bearing
           : typeof edge.bearingDeg === 'number' ? edge.bearingDeg
           : parseFloat(edge.bearing);
-        const dirText = Number.isFinite(bearDeg) ? (edge.directionDMS || degToDMS(bearDeg)) : null;
+        const dirText = Number.isFinite(bearDeg) ? (edge.directionDMS || degToDMSForDistance(bearDeg, distNum)) : null;
 
         // 4d: smart edge-label position for the distance label (the bearing label,
         // if any, is positioned at a further offset along the same perpendicular
@@ -1814,7 +1858,7 @@ export function generateDXF(options, logger) {
   // Coordinate reference crosses at the figure's four corners (SI 727 frame).
   // _crossBounds is reserved as an obstacle in the collision-avoidance pass so no
   // block covers a cross or its coordinate label.
-  const _crossBounds = addCornerCrosses('GRID', dL, dR, dT, dB)
+  const _crossBounds = addCornerCrosses('GRID', dL, dR, dT, dB, cntL, cntR, cntB, cntT)
 
   // â”€â”€ B) ENDORSEMENTS (right-margin table) â”€â”€
   // Fills the right-margin strip from the drawing-area right margin (endDivX)

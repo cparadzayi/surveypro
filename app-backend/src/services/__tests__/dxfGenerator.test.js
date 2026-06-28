@@ -4,11 +4,61 @@
  */
 import { describe, test, expect } from '@jest/globals'
 import { countLayerOnTable, entityCount } from './dxfParse.js'
-import { capeLoToDxfSouthUp, generateDXF } from '../dxfGenerator.js'
+import { capeLoToDxfSouthUp, generateDXF, degToDMSForDistance } from '../dxfGenerator.js'
 
 describe('dxfParse helpers (smoke)', () => {
   test('countLayerOnTable returns 0 for an empty input', () => {
     expect(countLayerOnTable('', 'NONEXISTENT')).toBe(0)
+  })
+})
+
+describe('degToDMSForDistance — SI 727 distance-based bearing resolution', () => {
+  // 45.123456° = 45°07'24.4…" — chosen so nearest-10" and nearest-1" differ.
+  const BRG = 45.123456
+
+  test('edge < 6000 m → seconds rounded to nearest 10"', () => {
+    expect(degToDMSForDistance(BRG, 100)).toBe('45°07\'20"')
+  })
+
+  test('edge >= 6000 m → seconds rounded to nearest 1"', () => {
+    expect(degToDMSForDistance(BRG, 7000)).toBe('45°07\'24"')
+  })
+
+  test('boundary: exactly 6000 m uses the nearest-1" rule (not < 6000)', () => {
+    expect(degToDMSForDistance(BRG, 6000)).toBe('45°07\'24"')
+  })
+
+  test('just under the boundary (5999.99 m) uses nearest 10"', () => {
+    expect(degToDMSForDistance(BRG, 5999.99)).toBe('45°07\'20"')
+  })
+
+  test('non-finite distance falls back to nearest 1" (defensive)', () => {
+    expect(degToDMSForDistance(BRG, undefined)).toBe('45°07\'24"')
+    expect(degToDMSForDistance(BRG, NaN)).toBe('45°07\'24"')
+  })
+
+  test('already-round bearing is unaffected by either resolution', () => {
+    expect(degToDMSForDistance(90, 100)).toBe('90°00\'00"')
+    expect(degToDMSForDistance(90, 7000)).toBe('90°00\'00"')
+  })
+
+  // Carry normalization: rounding must never surface "…'60\"" — it carries up.
+  test('161°09\'56" at <6000 m carries to 161°10\'00" (not 161°09\'60")', () => {
+    const brg = 161 + 9 / 60 + 56 / 3600   // 161°09'56"
+    expect(degToDMSForDistance(brg, 100)).toBe('161°10\'00"')
+  })
+
+  test('seconds carry rolls minutes into degrees: 44°59\'56" → 45°00\'00"', () => {
+    const brg = 44 + 59 / 60 + 56 / 3600
+    expect(degToDMSForDistance(brg, 100)).toBe('45°00\'00"')
+  })
+
+  test('no bearing label ever contains a 60" reading', () => {
+    // Sweep many bearings at the 10" resolution; none may render "'60\"".
+    for (let k = 0; k < 360 * 6; k++) {
+      const brg = k / 6 + 0.0277  // arbitrary offset to hit rounding edges
+      expect(degToDMSForDistance(brg, 100)).not.toMatch(/60"/)
+    }
   })
 })
 

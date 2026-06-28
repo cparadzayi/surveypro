@@ -565,6 +565,81 @@ describe('dxfGenerator integration — SI 727 title-block lines', () => {
   })
 })
 
+describe('dxfGenerator integration — corner crosses clamp to the drawing area', () => {
+  // Parse LINE+TEXT entity endpoints for one layer (group codes 10/20 & 11/21).
+  function layerPoints(dxf, layer) {
+    const lines = dxf.split(/\r?\n/)
+    const pts = []
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i].trim()
+      if (t !== 'LINE' && t !== 'TEXT') continue
+      let lyr = '', x10, y20, x11, y21
+      for (let j = i + 1; j < Math.min(i + 40, lines.length); j++) {
+        const c = lines[j].trim(), v = (lines[j + 1] || '').trim()
+        if (c === '0') break
+        if (c === '8') lyr = v
+        else if (c === '10') x10 = parseFloat(v)
+        else if (c === '20') y20 = parseFloat(v)
+        else if (c === '11') x11 = parseFloat(v)
+        else if (c === '21') y21 = parseFloat(v)
+      }
+      if (lyr !== layer) continue
+      if (Number.isFinite(x10) && Number.isFinite(y20)) pts.push([x10, y20])
+      if (Number.isFinite(x11) && Number.isFinite(y21)) pts.push([x11, y21])
+    }
+    return pts
+  }
+  // Content rectangle = the 4 inner MARGIN_GUIDES corner ticks (each vertex is
+  // shared by 2 LINE segments, so it appears >= twice among the endpoints).
+  function contentRect(dxf) {
+    const pts = layerPoints(dxf, 'MARGIN_GUIDES')
+    const cnt = {}
+    for (const [x, y] of pts) { const k = `${Math.round(x)},${Math.round(y)}`; cnt[k] = (cnt[k] || 0) + 1 }
+    const corners = Object.entries(cnt).filter(([, c]) => c >= 2).map(([k]) => k.split(',').map(Number))
+    const xs = corners.map(c => c[0]), ys = corners.map(c => c[1])
+    return { L: Math.min(...xs), R: Math.max(...xs), B: Math.min(...ys), T: Math.max(...ys) }
+  }
+
+  // A tall figure (~160 m) at 1:500 on A2 nearly fills the content height; before
+  // the inward clamp its outward-snapped corner crosses spilled into the margins.
+  const Y0 = 50000, X0 = 2200000, W = 90, H = 160
+  const ring = [[Y0, X0], [Y0 + W, X0], [Y0 + W, X0 + H], [Y0, X0 + H], [Y0, X0]]
+  const tallPlan = {
+    metadata: { designation: 'Stand 1 Test', township: 'T', district: 'D', standCount: 1, standRange: '1', beaconSequence: 'ABCDA', date: '2026-06-27', centralMeridian: 29 },
+    parcels: { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: { stand: '1', area_m2: W * H } }] },
+    beacons: { type: 'FeatureCollection', features: ring.slice(0, 4).map((c, i) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: c }, properties: { name: 'ABCD'[i], pointId: 'ABCD'[i] } })) },
+    outsideFigureData: {
+      edges: [
+        { side: 'AB', metres: W, direction: '90°00\'00"', y: Y0 + W, x: X0 },
+        { side: 'BC', metres: H, direction: '0°00\'00"', y: Y0 + W, x: X0 + H },
+        { side: 'CD', metres: W, direction: '270°00\'00"', y: Y0, x: X0 + H },
+        { side: 'DA', metres: H, direction: '180°00\'00"', y: Y0, x: X0 },
+      ],
+      coordinates: ring.slice(0, 4).map((c, i) => ({ name: 'ABCD'[i], y: c[0], x: c[1] })),
+    },
+    sheetSize: 'ISO_A2', scale: { value: 500, label: '1:500' },
+  }
+
+  test('all GRID corner-cross geometry stays within the content rectangle', () => {
+    const dxf = generateDXF(tallPlan, fakeLogger).buffer.toString()
+    const rect = contentRect(dxf)
+    const grid = layerPoints(dxf, 'GRID')
+    expect(grid.length).toBeGreaterThan(0)
+    for (const [x, y] of grid) {
+      expect(x).toBeGreaterThanOrEqual(rect.L)
+      expect(x).toBeLessThanOrEqual(rect.R)
+      expect(y).toBeGreaterThanOrEqual(rect.B)
+      expect(y).toBeLessThanOrEqual(rect.T)
+    }
+  })
+
+  test('still emits the full set of corner crosses (8 LINEs + 8 TEXT)', () => {
+    const dxf = generateDXF(tallPlan, fakeLogger).buffer.toString()
+    expect(entityCount(dxf, 'LINE', 'GRID')).toBe(8)
+    expect(entityCount(dxf, 'TEXT', 'GRID')).toBe(8)
+  })
+})
+
 describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => {
   function collectTextsByLayer(dxf, layer) {
     const lines = dxf.split('\n')

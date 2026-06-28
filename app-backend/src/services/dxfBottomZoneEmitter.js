@@ -17,6 +17,7 @@ import {
   OUTSIDE_FIGURE_DATA,
   SURVEYOR_GENERAL_BOX,
   edgeDistanceMetres,
+  resolveLoSystem,
 } from '../../../app-shared/block-definitions.js'
 
 /** PDF point → paper-millimetre conversion. 1 pt = 1/72 inch = 25.4/72 mm. */
@@ -249,10 +250,9 @@ export function emitSGBox(addText, addLine, addRect, position, size, fonts, mm, 
  * @param {{edges?:Array}} outsideFigureData
  * @param {{ofTitleH:number, ofBodyH:number, ofRowH:number}} fonts
  * @param {(x:number)=>number} mm
- * @param {string|number} centralMeridian
  * @param {string} layer
  */
-export function emitOFDTable(addText, addLine, position, outsideFigureData, fonts, mm, centralMeridian, layer) {
+export function emitOFDTable(addText, addLine, position, outsideFigureData, fonts, mm, layer) {
   const edges = outsideFigureData?.edges || []
   if (edges.length === 0) return
 
@@ -293,9 +293,9 @@ export function emitOFDTable(addText, addLine, position, outsideFigureData, font
   // ── Header box ──
   cText(x[0], x[4], yTop - headerBoxH * 0.5 - ofTitleH * 0.4, 'OUTSIDE FIGURE DATA', ofTitleH, 'BOLD')
   cText(x[4], x[6], yTop - ptG(3)  - ofTitleH, 'CO-ORDINATES', ofTitleH, 'BOLD')
-  // Prefer the loSystem carried in the outside-figure data (matches the PDF);
-  // fall back to the meridian parsed from the projection.
-  const loSystem = outsideFigureData.constants?.loSystem || `Lo ${centralMeridian}`
+  // Single source of truth shared with the PDF — prefer the loSystem carried in
+  // the outside-figure constants, else the SI 727 default (Lo 31).
+  const loSystem = resolveLoSystem(outsideFigureData)
   cText(x[4], x[6], yTop - ptG(15) - ofBodyH, `System : ${loSystem}°`, ofBodyH)
   const yYMX = yTop - ptG(28) - ofBodyH
   addText(layer, x[4] + ptG(4), yYMX, 'Y', ofBodyH, 0)
@@ -426,7 +426,6 @@ export function placeBottomZoneBlocks({
   outsideFigureData,
   beaconGroups,
   metadata,
-  centralMeridian,
   sheetSize,
   fonts,
   helpers,
@@ -469,7 +468,7 @@ export function placeBottomZoneBlocks({
   // 1. OFD
   const ofdSize = sizeOFDTable(outsideFigureData, fonts, mm)
   place('ofd', ofdSize, (pos) =>
-    emitOFDTable(addText, addLine, pos, outsideFigureData, fonts, mm, centralMeridian, layer))
+    emitOFDTable(addText, addLine, pos, outsideFigureData, fonts, mm, layer))
 
   // 2. Schedule of Areas — delegate to existing emitter with seedPlacedBlocks.
   const scheduleResult = scheduleEmitter({

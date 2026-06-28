@@ -470,6 +470,16 @@ export function classifyBeaconGroups(beacons) {
     }))
 }
 
+// Resolve the Lo coordinate-system label ("Lo 31") shown in the OUTSIDE FIGURE
+// DATA header. Single source of truth so the DXF and PDF never disagree: prefer
+// the loSystem carried in the outside-figure constants; otherwise fall back to
+// the SI 727 default central meridian (Lo 31). Deliberately ignores any
+// projection hint — the projection field has proven unreliable and caused the
+// DXF to print "Lo 29" where the PDF correctly printed "Lo 31".
+export function resolveLoSystem(outsideFigureData) {
+  return outsideFigureData?.constants?.loSystem || 'Lo 31'
+}
+
 // Helper function to format coordinates
 export function formatCoordinate(value, decimals = 2) {
   if (!value || isNaN(value)) return '0.00'
@@ -654,6 +664,7 @@ export default {
   formatAreaValue,
   edgeDistanceMetres,
   classifyBeaconGroups,
+  resolveLoSystem,
   formatCoordinate,
   formatBearing,
   getAdaptiveLabelSize,

@@ -10,6 +10,7 @@ import {
   sizeBeaconDescriptions,
   emitStatement,
   emitSGBox,
+  emitOFDTable,
   placeBottomZoneBlocks,
 } from '../dxfBottomZoneEmitter.js'
 
@@ -158,6 +159,31 @@ describe('emitSGBox', () => {
   })
 })
 
+describe('emitOFDTable — System meridian label (DXF/PDF parity)', () => {
+  const ofdFonts = { ofTitleH: 3, ofBodyH: 2.5, ofRowH: 4 }
+  const baseOFD = {
+    edges: [{ side: 'AB', distance: 10, direction: 'N 00°00\'00"', pointId: 'P1', y: 1, x: 2 }],
+  }
+  const systemLine = (texts) => texts.find(t => t.startsWith('System :'))
+
+  test('falls back to "Lo 31°" (SI 727 default) when no loSystem is carried', () => {
+    const texts = []
+    emitOFDTable(
+      (layer, x, y, text) => texts.push(String(text)),
+      () => {}, { x: 0, y: 0 }, baseOFD, ofdFonts, mm, 'TITLE_BLOCK')
+    expect(systemLine(texts)).toBe('System : Lo 31°')
+  })
+
+  test('uses the loSystem carried in outside-figure constants when present', () => {
+    const texts = []
+    emitOFDTable(
+      (layer, x, y, text) => texts.push(String(text)),
+      () => {}, { x: 0, y: 0 },
+      { ...baseOFD, constants: { loSystem: 'Lo 29' } }, ofdFonts, mm, 'TITLE_BLOCK')
+    expect(systemLine(texts)).toBe('System : Lo 29°')
+  })
+})
+
 describe('placeBottomZoneBlocks orchestrator', () => {
   // Mock schedule emitter returns a single placed table at a known position.
   const mockScheduleEmitter = ({ drawingZone }) => ({
@@ -180,7 +206,6 @@ describe('placeBottomZoneBlocks orchestrator', () => {
     outsideFigureData: { edges: [{ side: 'AB', distance: 10, direction: 'N', pointId: 'P1', y: 1, x: 2 }] },
     beaconGroups: [{ points: 'A', description: 'iron peg' }],
     metadata: { date: '2026-01-01', surveyor: 'John Doe' },
-    centralMeridian: 31,
     sheetSize: 'ISO_A2',
     fonts: { hBody: 2, hSub: 2.5, rH: 3, hHead: 2.5,
              ofTitleH: 3, ofBodyH: 2.5, ofRowH: 4,

@@ -9,6 +9,7 @@ import {
   planScheduleSplit,
   edgeDistanceMetres,
   classifyBeaconGroups,
+  resolveLoSystem,
 } from '../../../../app-shared/block-definitions.js'
 
 const beaconsFC = (...names) => ({
@@ -235,6 +236,19 @@ describe('edgeDistanceMetres — accepts both `distance` and `metres`', () => {
     expect(edgeDistanceMetres({ distance: 'abc' })).toBeNull()
     expect(edgeDistanceMetres(null)).toBeNull()
     expect(edgeDistanceMetres(undefined)).toBeNull()
+  })
+})
+
+describe('resolveLoSystem — shared OFD meridian label (DXF/PDF parity)', () => {
+  test('prefers loSystem carried in outside-figure constants', () => {
+    expect(resolveLoSystem({ constants: { loSystem: 'Lo 29' } })).toBe('Lo 29')
+  })
+
+  test('falls back to the SI 727 default Lo 31 when absent', () => {
+    expect(resolveLoSystem({ constants: {} })).toBe('Lo 31')
+    expect(resolveLoSystem({})).toBe('Lo 31')
+    expect(resolveLoSystem(null)).toBe('Lo 31')
+    expect(resolveLoSystem(undefined)).toBe('Lo 31')
   })
 })
 

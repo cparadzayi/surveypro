@@ -9,7 +9,7 @@ import {
   SI727_MARGINS,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths, edgeDistanceMetres, classifyBeaconGroups } from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -9305,8 +9305,7 @@ function drawOutsideFigureData(
         });
 
       // CO-ORDINATES box content (aligned with last 2 columns)
-      const systemInfo = outsideFigureData.constants || {};
-      const loSystem = systemInfo.loSystem || "Lo 31";
+      const loSystem = resolveLoSystem(outsideFigureData);
 
       // Line 1: CO-ORDINATES (bold)
       doc
@@ -9367,8 +9366,7 @@ function drawOutsideFigureData(
           align: "center",
         });
 
-      const systemInfo = outsideFigureData.constants || {};
-      const loSystem = systemInfo.loSystem || "Lo 31";
+      const loSystem = resolveLoSystem(outsideFigureData);
 
       doc
         .fontSize(9)

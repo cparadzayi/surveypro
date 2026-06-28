@@ -1696,18 +1696,11 @@ export function generateDXF(options, logger) {
     }
   }
 
-  // Extract the central meridian from the projection. Cape Lo zones use EPSG
-  // codes 22275 (Lo15) … 22293 (Lo33), where meridian = EPSG − 22260
-  // (e.g. EPSG:22291 → Lo 31). Also accept a literal "Lo NN". Default Lo 31.
-  let centralMeridian = '31';
-  const epsgMatch = String(projection).match(/\b(222\d{2})\b/);
-  const loLiteral = String(projection).match(/Lo\s*(\d{1,2})/i);
-  if (epsgMatch) {
-    const code = parseInt(epsgMatch[1], 10);
-    if (code >= 22275 && code <= 22293) centralMeridian = String(code - 22260);
-  } else if (loLiteral) {
-    centralMeridian = loLiteral[1];
-  }
+  // The OUTSIDE FIGURE DATA "System : Lo NN°" label is resolved inside
+  // emitOFDTable via the shared resolveLoSystem() helper (prefers
+  // outsideFigureData.constants.loSystem, else the SI 727 default Lo 31) so the
+  // DXF and PDF can never disagree. We deliberately no longer derive the
+  // meridian from the (unreliable) `projection` field here.
 
   // Text sizes. Cartographic hierarchy (ISO 3098 nominal heights): the title
   // must dominate every feature label. GENERAL PLAN (7 mm) > designation (5 mm)
@@ -2301,7 +2294,7 @@ export function generateDXF(options, logger) {
   if (outsideFigureData?.edges?.length) {
     const size = { width: ofdPos.width, height: ofdPos.height };
     _tasks.push({ label: 'outsideFigureData', pos: { x: ofdPos.x, y: ofdPos.y }, size,
-      emit: (p) => emitOFDTable(addText, addLine, { x: p.x, y: p.y }, outsideFigureData, bottomZoneFonts, mm, centralMeridian, TB) });
+      emit: (p) => emitOFDTable(addText, addLine, { x: p.x, y: p.y }, outsideFigureData, bottomZoneFonts, mm, TB) });
   }
   if (beaconGroups.length) {
     // Planner sizes beacons from the polygon-feature collection; DXF emits from

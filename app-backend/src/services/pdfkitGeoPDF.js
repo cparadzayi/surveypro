@@ -9,7 +9,7 @@ import {
   SI727_MARGINS,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths, edgeDistanceMetres } from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths, edgeDistanceMetres, classifyBeaconGroups } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -6303,18 +6303,9 @@ export function calculateBlockPositions(
   //   each group renders at lineHeight=18 (from BLOCKS.BEACON_DESCRIPTION.groupFormat.lineHeight)
   // Beacon groups are classified by type (not by description property).
   const _beaconLineHeight = BLOCKS.BEACON_DESCRIPTION.groupFormat.lineHeight; // 18
-  const beaconGroupCount = (() => {
-    if (!beacons?.features?.length) return 0;
-    // Mirror the classification logic in drawBeaconDescription
-    const types = new Set();
-    beacons.features.forEach(f => {
-      const name = f.properties?.name || f.properties?.id || "BP";
-      if (name.match(/^M\d+/i)) types.add("Not beaconed");
-      else if (name.match(/^[A-Z]\d+$/i) || name.match(/^[A-Z]{2,}$/i)) types.add("50mm Iron Pipe in Concrete");
-      else types.add("12mm iron peg in concrete");
-    });
-    return Math.max(1, types.size);
-  })();
+  // Same shared grouping drawBeaconDescription uses, so the reserved height
+  // matches the rendered block exactly.
+  const beaconGroupCount = classifyBeaconGroups(beacons).length;
   const beaconWidth  = 400;
   const beaconHeight = beaconGroupCount > 0
     ? 14 + beaconGroupCount * _beaconLineHeight + 10  // title(14) + groups*lineHeight + padding
@@ -9678,93 +9669,15 @@ function drawBeaconDescription(doc, beacons, mapBounds, position) {
   // Content starts below the title (12pt title height + small gap)
   const tableY = boxY + 14;
 
-  // Classify beacons by NAME pattern (same logic as UI)
-  // This matches the frontend logic in SurveyPlanMapView.vue
-  const beaconTypeGroups = new Map();
-
-  beacons.features.forEach((beacon) => {
-    const name = beacon.properties.name || beacon.properties.id || "BP";
-    let beaconType = "";
-
-    // Classify based on naming patterns (matching UI logic)
-    // M-series = Not beaconed (monument points)
-    // Single letter + number (P2, Z1) or multi-letter codes (ZE, ZD) = Special markers
-    // Numeric with letter suffix (2283A, 2284B) = Standard concrete beacons
-
-    if (name.match(/^M\d+/i)) {
-      // M5, M6, M7, M8, M9 = Not beaconed
-      beaconType = "Not beaconed";
-    } else if (name.match(/^[A-Z]\d+$/i) || name.match(/^[A-Z]{2,}$/i)) {
-      // P2, Z1, ZE, ZD = Special markers
-      beaconType = "50mm Iron Pipe in Concrete";
-    } else {
-      // 2283A, 2283L, N1, etc. = Standard concrete beacons (default)
-      beaconType = "12mm iron peg in concrete";
-    }
-
-    if (!beaconTypeGroups.has(beaconType)) {
-      beaconTypeGroups.set(beaconType, []);
-    }
-    beaconTypeGroups.get(beaconType).push(name);
-  });
-
-  // Find the most common type (this becomes "Others")
-  const sortedTypes = Array.from(beaconTypeGroups.entries()).sort(
-    (a, b) => b[1].length - a[1].length
-  );
-
-  const mostCommonType = sortedTypes[0]?.[0] || "12mm iron peg in concrete";
-
-  // Build groups for display
-  const groups = {};
-  beaconTypeGroups.forEach((pointNames, beaconType) => {
-    if (beaconType !== mostCommonType) {
-      // Unique types - list specific beacons
-      groups[beaconType] = pointNames;
-    }
-  });
-
-  // Add "Others" for the most common type (will be placed at bottom)
-  if (beaconTypeGroups.has(mostCommonType)) {
-    groups[mostCommonType] = ["Others"];
-  }
-
-  // Sort groups: "Not beaconed" first, "Others" last, alphabetical in between
-  const sortedGroups = Object.entries(groups).sort(
-    ([descA, pointsA], [descB, pointsB]) => {
-      // "Not beaconed" always first
-      if (descA.toLowerCase().includes("not beaconed")) return -1;
-      if (descB.toLowerCase().includes("not beaconed")) return 1;
-
-      // "Others" always last
-      const isOthersA = pointsA.length === 1 && pointsA[0] === "Others";
-      const isOthersB = pointsB.length === 1 && pointsB[0] === "Others";
-      if (isOthersA) return 1;
-      if (isOthersB) return -1;
-
-      // Alphabetical for everything else
-      return descA.localeCompare(descB);
-    }
-  );
+  // Classify + group beacons via the shared helper (single source of truth so
+  // the DXF and UI render identical groupings).
+  const beaconGroups = classifyBeaconGroups(beacons);
 
   // Draw grouped text with proper spacing
   let currentY = tableY;
-  const maxWidth = 400; // Maximum width for beacon names before wrapping
 
-  sortedGroups.forEach(([description, points]) => {
-    // Sort beacon names alphanumerically
-    const sortedPoints = points.sort((a, b) => {
-      // Extract numbers for proper sorting (M5 before M10)
-      const numA = parseInt(a.match(/\d+/)?.[0] || "0");
-      const numB = parseInt(b.match(/\d+/)?.[0] || "0");
-      const prefixA = a.match(/[A-Za-z]+/)?.[0] || "";
-      const prefixB = b.match(/[A-Za-z]+/)?.[0] || "";
-
-      if (prefixA !== prefixB) return prefixA.localeCompare(prefixB);
-      return numA - numB;
-    });
-
-    const pointsText = sortedPoints.join(", ");
+  beaconGroups.forEach(({ description, points }) => {
+    const pointsText = points;
 
     // Measure text width to determine spacing
     doc

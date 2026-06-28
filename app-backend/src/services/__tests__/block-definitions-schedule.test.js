@@ -8,7 +8,12 @@ import {
   computeScheduleColumnWidths,
   planScheduleSplit,
   edgeDistanceMetres,
+  classifyBeaconGroups,
 } from '../../../../app-shared/block-definitions.js'
+
+const beaconsFC = (...names) => ({
+  features: names.map(n => ({ properties: { name: n } })),
+})
 
 /**
  * Deterministic text-width measurer for tests. Mirrors DXF's
@@ -230,5 +235,47 @@ describe('edgeDistanceMetres — accepts both `distance` and `metres`', () => {
     expect(edgeDistanceMetres({ distance: 'abc' })).toBeNull()
     expect(edgeDistanceMetres(null)).toBeNull()
     expect(edgeDistanceMetres(undefined)).toBeNull()
+  })
+})
+
+describe('classifyBeaconGroups — SI 727 beacon description grouping', () => {
+  test('empty / missing beacons → []', () => {
+    expect(classifyBeaconGroups({ features: [] })).toEqual([])
+    expect(classifyBeaconGroups(null)).toEqual([])
+  })
+
+  test('Sebanga case: letter codes → 50mm pipe, numeric-suffix → Others (12mm)', () => {
+    // 12mm group is the clear majority (5 > 3), so it rolls up as "Others".
+    const groups = classifyBeaconGroups(beaconsFC('REMA', 'SCENIC', 'SLE', '96C', '101B', '100B', '102C', '97Z'))
+    expect(groups).toEqual([
+      { points: 'REMA, SCENIC, SLE', description: '50mm Iron Pipe in Concrete' },
+      { points: 'Others', description: '12mm iron peg in concrete' },
+    ])
+  })
+
+  test('"Not beaconed" (M-series) sorts first, "Others" last', () => {
+    const groups = classifyBeaconGroups(beaconsFC('M5', 'M6', 'REMA', 'SCENIC', '12A', '13B', '14C'))
+    expect(groups.map(g => g.description)).toEqual([
+      'Not beaconed', '50mm Iron Pipe in Concrete', '12mm iron peg in concrete',
+    ])
+    expect(groups[0].points).toBe('M5, M6')
+    expect(groups[groups.length - 1].points).toBe('Others')
+  })
+
+  test('reads name | id | pointId | beacon_name', () => {
+    // 4 numeric (12mm) beacons make 12mm the majority so the 50mm group is listed.
+    const fc = { features: [
+      { properties: { pointId: 'REMA' } },
+      { properties: { beacon_name: 'SCENIC' } },
+      { properties: { id: 'SLE' } },
+      { properties: { name: '10A' } },
+      { properties: { name: '11B' } },
+      { properties: { name: '12C' } },
+      { properties: { name: '13D' } },
+    ] }
+    expect(classifyBeaconGroups(fc)).toEqual([
+      { points: 'REMA, SCENIC, SLE', description: '50mm Iron Pipe in Concrete' },
+      { points: 'Others', description: '12mm iron peg in concrete' },
+    ])
   })
 })

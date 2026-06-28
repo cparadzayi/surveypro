@@ -416,6 +416,60 @@ export function edgeDistanceMetres(edge) {
   return Number.isFinite(n) ? n : null
 }
 
+// Classify + group beacons for the Beacon Description block. Single source of
+// truth so the PDF, DXF and UI render identical groupings. Classification is by
+// name pattern: M-series → "Not beaconed"; single-letter+digits or all-letter
+// codes (P2, ZE, REMA) → "50mm Iron Pipe in Concrete"; everything else → "12mm
+// iron peg in concrete". The most common type is rolled up as "Others".
+// Returns an ordered array of { points, description } where `points` is the
+// comma-joined sorted beacon names (or the literal "Others"); "Not beaconed"
+// sorts first, "Others" last, the rest alphabetically by description.
+export function classifyBeaconGroups(beacons) {
+  const features = beacons?.features || []
+  if (!features.length) return []
+
+  const typeGroups = new Map()
+  for (const b of features) {
+    const p = b?.properties || {}
+    const name = p.name || p.id || p.pointId || p.beacon_name || 'BP'
+    let type
+    if (/^M\d+/i.test(name)) type = 'Not beaconed'
+    else if (/^[A-Z]\d+$/i.test(name) || /^[A-Z]{2,}$/i.test(name)) type = '50mm Iron Pipe in Concrete'
+    else type = '12mm iron peg in concrete'
+    if (!typeGroups.has(type)) typeGroups.set(type, [])
+    typeGroups.get(type).push(name)
+  }
+
+  // Most common type becomes "Others".
+  const byCount = [...typeGroups.entries()].sort((a, b) => b[1].length - a[1].length)
+  const mostCommon = byCount[0]?.[0] || '12mm iron peg in concrete'
+
+  const groups = {}
+  typeGroups.forEach((names, type) => { if (type !== mostCommon) groups[type] = names })
+  if (typeGroups.has(mostCommon)) groups[mostCommon] = ['Others']
+
+  const sortNames = (pts) => [...pts].sort((a, b) => {
+    const pa = a.match(/[A-Za-z]+/)?.[0] || '', pb = b.match(/[A-Za-z]+/)?.[0] || ''
+    if (pa !== pb) return pa.localeCompare(pb)
+    return (parseInt(a.match(/\d+/)?.[0] || '0', 10)) - (parseInt(b.match(/\d+/)?.[0] || '0', 10))
+  })
+
+  return Object.entries(groups)
+    .sort(([dA, pA], [dB, pB]) => {
+      if (dA.toLowerCase().includes('not beaconed')) return -1
+      if (dB.toLowerCase().includes('not beaconed')) return 1
+      const oA = pA.length === 1 && pA[0] === 'Others'
+      const oB = pB.length === 1 && pB[0] === 'Others'
+      if (oA) return 1
+      if (oB) return -1
+      return dA.localeCompare(dB)
+    })
+    .map(([description, points]) => ({
+      description,
+      points: (points.length === 1 && points[0] === 'Others') ? 'Others' : sortNames(points).join(', '),
+    }))
+}
+
 // Helper function to format coordinates
 export function formatCoordinate(value, decimals = 2) {
   if (!value || isNaN(value)) return '0.00'
@@ -599,6 +653,7 @@ export default {
   LABEL_CONFIG,
   formatAreaValue,
   edgeDistanceMetres,
+  classifyBeaconGroups,
   formatCoordinate,
   formatBearing,
   getAdaptiveLabelSize,

@@ -394,9 +394,33 @@ describe('generateDXF — beacon description block', () => {
   test('emits header + per-group TEXT entities on TITLE_BLOCK layer', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
     const dxf = buffer.toString()
-    expect(dxf).toMatch(/BEACON DESCRIPTIONS/)
+    expect(dxf).toMatch(/BEACON DESCRIPTION\b/)   // singular — matches the PDF title
     expect(dxf).toMatch(/Permanent concrete pillars/)
     expect(dxf).toMatch(/Iron pegs/)
+  })
+
+  test('derives the block from beacons when no beaconGroups are supplied (PDF parity)', () => {
+    // No beaconGroups: the block must still emit, classified from the beacons —
+    // it used to be silently dropped. REMA/SCENIC/SLE → 50mm Iron Pipe; the
+    // numeric-suffix beacons roll up as "Others : 12mm iron peg in concrete".
+    const { buffer } = generateDXF({
+      parcels: { features: [] },
+      beacons: { features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [50000, 2200000] }, properties: { pointId: 'REMA' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [50100, 2200000] }, properties: { pointId: 'SCENIC' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [50100, 2200060] }, properties: { pointId: 'SLE' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [50050, 2200030] }, properties: { pointId: '96C' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [50060, 2200040] }, properties: { pointId: '101B' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [50070, 2200050] }, properties: { pointId: '100B' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [50080, 2200055] }, properties: { pointId: '102C' } },
+      ] },
+      outsideFigureData: null,
+      metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+    }, fakeLogger)
+    const dxf = buffer.toString()
+    expect(dxf).toMatch(/BEACON DESCRIPTION\b/)
+    expect(dxf).toMatch(/REMA, SCENIC, SLE : 50mm Iron Pipe in Concrete/)
+    expect(dxf).toMatch(/Others : 12mm iron peg in concrete/)
   })
 })
 

@@ -28,6 +28,7 @@ import {
   formatStandRanges,
   computeScheduleColumnWidths,
   edgeDistanceMetres,
+  classifyBeaconGroups,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 
@@ -1097,7 +1098,7 @@ export function generateDXF(options, logger) {
     const headerH = mm(4)
     const rowH = mm(3.5)
     let y = zoneTop
-    addText(layer, zoneL, y, 'BEACON DESCRIPTIONS', headerH, 0, 'BOLD')
+    addText(layer, zoneL, y, 'BEACON DESCRIPTION', headerH, 0, 'BOLD')   // singular — matches PDF
     y -= headerH * 1.4
     // Separator LINE
     addLine(layer, zoneL, y, zoneR, y)
@@ -1105,7 +1106,7 @@ export function generateDXF(options, logger) {
     let printed = 0
     for (const g of beaconGroups) {
       if (y - rowH < zoneBottom) break
-      const text = `${g.points}: ${g.description || ''}`
+      const text = `${g.points} : ${g.description || ''}`
       addText(layer, zoneL, y, text, mm(2.4), 0)
       y -= rowH
       printed++
@@ -2065,6 +2066,14 @@ export function generateDXF(options, logger) {
   const statementPos = toDxf(blockPositions.surveyStatement);
   const sgPos        = toDxf(blockPositions.sgSignature);
 
+  // Beacon Description groups: honour caller-supplied beaconGroups, else derive
+  // from the beacons via the shared classifier — the same grouping the PDF
+  // renders — so the DXF emits the SI 727 Beacon Description block (it used to
+  // be silently dropped whenever no pre-grouped beaconGroups were passed).
+  const beaconGroups = (options.beaconGroups && options.beaconGroups.length)
+    ? options.beaconGroups
+    : classifyBeaconGroups(beacons);
+
   // Scale bar + North arrow at the planner's reserved slots (the schedule is
   // placed to avoid these, so rendering them here — rather than at a hard-coded
   // corner — guarantees no collision). The bar is fitted to its slot width so it
@@ -2120,7 +2129,7 @@ export function generateDXF(options, logger) {
     outsideFigureData?.edges?.length ? ofdPos : null,
     sgPos,
     statementPos,
-    (options.beaconGroups || []).length ? beaconPos : null,
+    beaconGroups.length ? beaconPos : null,
     scaleBarPos,
     northArrowPos,
   ].filter(Boolean).map(_inflate);
@@ -2139,7 +2148,7 @@ export function generateDXF(options, logger) {
   const _resplitSeeds = [
     outsideFigureData?.edges?.length ? ofdPos : null,
     sgPos, statementPos,
-    (options.beaconGroups || []).length ? beaconPos : null,
+    beaconGroups.length ? beaconPos : null,
     scaleBarPos, northArrowPos, _titleBlockPos, _endorsementPos,
   ].filter(Boolean).map(_toSeed);
 
@@ -2294,15 +2303,15 @@ export function generateDXF(options, logger) {
     _tasks.push({ label: 'outsideFigureData', pos: { x: ofdPos.x, y: ofdPos.y }, size,
       emit: (p) => emitOFDTable(addText, addLine, { x: p.x, y: p.y }, outsideFigureData, bottomZoneFonts, mm, centralMeridian, TB) });
   }
-  if ((options.beaconGroups || []).length) {
+  if (beaconGroups.length) {
     // Planner sizes beacons from the polygon-feature collection; DXF emits from
-    // pre-grouped beaconGroups whose count may differ. Size for the actual groups
+    // the resolved beaconGroups whose count may differ. Size for the actual groups
     // (header + separator + 1 row per group) so the emitter doesn't truncate.
-    const beaconGroupCount = options.beaconGroups.length;
+    const beaconGroupCount = beaconGroups.length;
     const beaconActualHeight = mm(4 * 1.4 + 1 + beaconGroupCount * 3.5 + 2);
     const size = { width: beaconPos.width, height: Math.max(beaconPos.height, beaconActualHeight) };
     _tasks.push({ label: 'beaconDescription', pos: { x: beaconPos.x, y: beaconPos.y }, size,
-      emit: (p) => emitBeaconDescriptions(addBeaconDescription, TB, { x: p.x, y: p.y }, size, options.beaconGroups) });
+      emit: (p) => emitBeaconDescriptions(addBeaconDescription, TB, { x: p.x, y: p.y }, size, beaconGroups) });
   }
   {
     const size = { width: statementPos.width, height: statementPos.height };

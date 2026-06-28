@@ -470,6 +470,19 @@ export function classifyBeaconGroups(beacons) {
     }))
 }
 
+// Snap a raw scale-bar segment length (in ground metres) to the nearest "nice"
+// cartographic number so graduation labels read 0, L, 2L, 3L (e.g. 0 5 10 15)
+// rather than awkward fractions. Single source of truth shared by the PDF and
+// DXF scale bars. Mirrors the PDF's original rule: the first nice number that is
+// ≥ half the raw segment; falls back to 100 m when the raw value is enormous.
+export function snapScaleBarSegment(rawSegmentMeters) {
+  const niceNumbers = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
+  for (const n of niceNumbers) {
+    if (n >= rawSegmentMeters / 2) return n
+  }
+  return 100
+}
+
 // Resolve the Lo coordinate-system label ("Lo 31") shown in the OUTSIDE FIGURE
 // DATA header. Single source of truth so the DXF and PDF never disagree: prefer
 // the loSystem carried in the outside-figure constants; otherwise fall back to
@@ -665,6 +678,7 @@ export default {
   edgeDistanceMetres,
   classifyBeaconGroups,
   resolveLoSystem,
+  snapScaleBarSegment,
   formatCoordinate,
   formatBearing,
   getAdaptiveLabelSize,

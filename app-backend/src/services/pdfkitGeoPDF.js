@@ -9,7 +9,7 @@ import {
   SI727_MARGINS,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem } from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -5314,19 +5314,9 @@ function drawScaleBar(doc, extent, mapBounds, scale, position, figureBounds) {
   // Calculate meters that fit in target width
   const rawSegmentMeters = targetPoints * metersPerPoint;
 
-  // Round to nearest "nice" number (1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000)
-  // These are standard cartographic divisions that are easy to read and mentally calculate
-  const niceNumbers = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
-
-  // Find the first nice number that is >= half of rawSegmentMeters
-  // This ensures the segment is not too small while staying close to target width
-  let segmentLength = 100; // Default fallback
-  for (const n of niceNumbers) {
-    if (n >= rawSegmentMeters / 2) {
-      segmentLength = n;
-      break;
-    }
-  }
+  // Round to the nearest "nice" cartographic number (shared with the DXF scale
+  // bar so both formats graduate identically).
+  const segmentLength = snapScaleBarSegment(rawSegmentMeters);
 
   const numSegments = 3; // 3 segments: 0 – 1× – 2× – 3× (clean, compact)
 

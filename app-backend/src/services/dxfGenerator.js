@@ -29,6 +29,7 @@ import {
   computeScheduleColumnWidths,
   edgeDistanceMetres,
   classifyBeaconGroups,
+  snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 
@@ -840,50 +841,41 @@ export function generateDXF(options, logger) {
   }
 
   /**
-   * Graduated horizontal scale bar.
-   * Bar length is chosen so the value at the right end rounds to a "nice"
-   * number at the supplied scale (e.g., 100 m at 1:500, 500 m at 1:2500).
+   * Graduated horizontal scale bar — equal round-number segments graduated
+   * 0, L, 2L, 3L (e.g. "0  5  10  15  METRES"), ported from the PDF's drawScaleBar
+   * so the two formats read identically. The segment length is ~40 mm of paper at
+   * the plan scale, snapped to a nice cartographic number via the shared
+   * snapScaleBarSegment(). The bar is reduced segment-by-segment if it would spill
+   * past its planner slot (maxWidthGround), so it never overruns the schedule.
    */
   function addScaleBar(layer, cx, cy, scaleDenom, maxWidthGround) {
-    const niceLengthM = pickNiceScaleBarLengthM(scaleDenom, maxWidthGround)
-    const barWidthGround = niceLengthM   // bar spans exactly niceLengthM metres on the ground
+    const rawSegmentMeters = 0.04 * scaleDenom   // 40 mm of paper at 1:scaleDenom
+    const segmentLength = snapScaleBarSegment(rawSegmentMeters)
+    let numSegments = 3
+    // Reserve room for the " METRES" label on the right. The bar is centred in
+    // the slot, so reserve it on both sides to keep label + bar inside the slot.
+    const metresReserve = mm(8)
+    if (maxWidthGround && maxWidthGround > 0) {
+      while (numSegments > 1 && segmentLength * numSegments + 2 * metresReserve > maxWidthGround) numSegments--
+    }
+    const barWidthGround = segmentLength * numSegments
     const halfW = barWidthGround / 2
     const halfH = mm(2)
-    // Outer rectangle (2 horizontal LINEs)
-    addLine(layer, cx - halfW, cy + halfH, cx + halfW, cy + halfH)
-    addLine(layer, cx - halfW, cy - halfH, cx + halfW, cy - halfH)
-    // Centreline
-    addLine(layer, cx - halfW, cy, cx + halfW, cy)
-    // Four vertical tick lines at 0 / Â¼ / Â½ / 1
-    for (const f of [0, 0.25, 0.5, 1]) {
-      const x = cx - halfW + f * barWidthGround
+    const left = cx - halfW
+    // Outer rectangle (2 horizontal LINEs) + centreline
+    addLine(layer, left, cy + halfH, left + barWidthGround, cy + halfH)
+    addLine(layer, left, cy - halfH, left + barWidthGround, cy - halfH)
+    addLine(layer, left, cy, left + barWidthGround, cy)
+    // Vertical graduation ticks at 0, L, 2L … with round-number labels below.
+    for (let i = 0; i <= numSegments; i++) {
+      const x = left + i * segmentLength
       addLine(layer, x, cy - halfH, x, cy + halfH)
-      const labelM = Math.round(f * niceLengthM).toString()
-      addText(layer, x, cy - halfH - mm(3), labelM, mm(2), 0)
+      addText(layer, x, cy - halfH - mm(3), String(i * segmentLength), mm(2), 0)
     }
-    // "1:<scale>" footer
-    addText(layer, cx, cy - halfH - mm(8), `1:${scaleDenom}`, mm(2.5), 0)
-  }
-
-  /**
-   * Pick a round metre length for the scale bar. When `maxWidthGround` is given
-   * (the reserved slot's ground width), return the largest "nice" length whose
-   * ground span fits the slot, so the bar never overflows its planner slot (and
-   * therefore never spills into the schedule placed beside it). Without a cap,
-   * fall back to the legacy scale-based ladder.
-   */
-  function pickNiceScaleBarLengthM(scaleDenom, maxWidthGround) {
-    if (maxWidthGround && maxWidthGround > 0) {
-      const candidates = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000]
-      let best = candidates[0]
-      for (const c of candidates) { if (c <= maxWidthGround) best = c }
-      return best
-    }
-    if (scaleDenom <= 500) return 50
-    if (scaleDenom <= 1000) return 100
-    if (scaleDenom <= 2500) return 250
-    if (scaleDenom <= 5000) return 500
-    return 1000
+    // "METRES" unit label beside the right end of the bar.
+    addText(layer, left + barWidthGround + mm(3), cy - halfH - mm(3), 'METRES', mm(2), 0)
+    // "SCALE 1:<denom>" footer, centred under the bar.
+    addText(layer, cx, cy - halfH - mm(8), `SCALE 1:${scaleDenom}`, mm(2.5), 0)
   }
 
   /**

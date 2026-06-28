@@ -19619,7 +19619,7 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "System : Lo 31%%d",
+    "text": "System : Lo 29%%d",
     "x": -50654.8,
     "y": -2199852.9,
   },
@@ -20240,7 +20240,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.6,
     "layer": "TITLE_BLOCK",
-    "text": "System : Lo 31%%d",
+    "text": "System : Lo 29%%d",
     "x": -50057.6,
     "y": -2200078.6,
   },
@@ -22310,7 +22310,7 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "System : Lo 31%%d",
+    "text": "System : Lo 29%%d",
     "x": -50380.8,
     "y": -2199866.4,
   },

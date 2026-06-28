@@ -10528,6 +10528,18 @@ async function _generateGeoPDFInner(options, logger) {
     enableMeasurements = false, // Enable measurement tools
   } = options;
 
+  // Resolve the OUTSIDE FIGURE DATA "System : Lo NN°" label once, from the
+  // project's central meridian (metadata.centralMeridian) / projection, and
+  // stash it on outsideFigureData.constants.loSystem. Shared resolveLoSystem()
+  // is the single source of truth with the DXF — a Lo 29 project must read
+  // Lo 29, not the bare default.
+  if (outsideFigureData && !outsideFigureData.constants?.loSystem) {
+    outsideFigureData.constants = {
+      ...(outsideFigureData.constants || {}),
+      loSystem: resolveLoSystem(outsideFigureData, metadata, projection),
+    };
+  }
+
   // 3-v7: structured warnings collection, mirroring DXF's warnings.summary shape.
   const warnings = {};
 

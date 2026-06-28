@@ -260,11 +260,27 @@ describe('snapScaleBarSegment — shared scale-bar graduation (DXF/PDF parity)',
 })
 
 describe('resolveLoSystem — shared OFD meridian label (DXF/PDF parity)', () => {
-  test('prefers loSystem carried in outside-figure constants', () => {
-    expect(resolveLoSystem({ constants: { loSystem: 'Lo 29' } })).toBe('Lo 29')
+  test('1. explicit loSystem string in constants wins over everything', () => {
+    expect(resolveLoSystem(
+      { constants: { loSystem: 'Lo 27' } },
+      { centralMeridian: 29 },
+      'EPSG:22291',
+    )).toBe('Lo 27')
   })
 
-  test('falls back to the SI 727 default Lo 31 when absent', () => {
+  test('2. derives from the project central meridian (metadata.centralMeridian)', () => {
+    expect(resolveLoSystem({}, { centralMeridian: 29 })).toBe('Lo 29')
+    expect(resolveLoSystem({}, { centralMeridian: '29' })).toBe('Lo 29')
+    // metadata meridian beats the projection hint
+    expect(resolveLoSystem({}, { centralMeridian: 29 }, 'EPSG:22291')).toBe('Lo 29')
+  })
+
+  test('3. derives from the projection when no meridian is supplied', () => {
+    expect(resolveLoSystem({}, null, 'EPSG:22289')).toBe('Lo 29') // 22289 − 22260
+    expect(resolveLoSystem({}, null, 'Cape Lo 31')).toBe('Lo 31')
+  })
+
+  test('4. falls back to the SI 727 default Lo 31 only as a last resort', () => {
     expect(resolveLoSystem({ constants: {} })).toBe('Lo 31')
     expect(resolveLoSystem({})).toBe('Lo 31')
     expect(resolveLoSystem(null)).toBe('Lo 31')

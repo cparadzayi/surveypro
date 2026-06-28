@@ -483,14 +483,35 @@ export function snapScaleBarSegment(rawSegmentMeters) {
   return 100
 }
 
-// Resolve the Lo coordinate-system label ("Lo 31") shown in the OUTSIDE FIGURE
-// DATA header. Single source of truth so the DXF and PDF never disagree: prefer
-// the loSystem carried in the outside-figure constants; otherwise fall back to
-// the SI 727 default central meridian (Lo 31). Deliberately ignores any
-// projection hint — the projection field has proven unreliable and caused the
-// DXF to print "Lo 29" where the PDF correctly printed "Lo 31".
-export function resolveLoSystem(outsideFigureData) {
-  return outsideFigureData?.constants?.loSystem || 'Lo 31'
+// Resolve the Lo coordinate-system label ("Lo 29") shown in the OUTSIDE FIGURE
+// DATA header. Single source of truth so the DXF and PDF never disagree, in
+// priority order:
+//   1. an explicit loSystem string carried in the outside-figure constants;
+//   2. the project's central meridian (metadata.centralMeridian) — the value
+//      entered at project setup, and the authoritative source;
+//   3. the meridian parsed from the projection (Cape Lo EPSG 22275–22293, or a
+//      literal "Lo NN");
+//   4. the SI 727 default Lo 31 as a last resort.
+// "Lo 31" is only a last-resort default — a project set up as Lo 29 must read
+// Lo 29 in both formats, not the default.
+export function resolveLoSystem(outsideFigureData, metadata = null, projection = null) {
+  const explicit = outsideFigureData?.constants?.loSystem
+  if (explicit) return String(explicit)
+
+  const cm = parseInt(metadata?.centralMeridian ?? outsideFigureData?.constants?.centralMeridian, 10)
+  if (Number.isFinite(cm)) return `Lo ${cm}`
+
+  if (projection != null) {
+    const epsg = String(projection).match(/\b(222\d{2})\b/)
+    if (epsg) {
+      const code = parseInt(epsg[1], 10)
+      if (code >= 22275 && code <= 22293) return `Lo ${code - 22260}`
+    }
+    const literal = String(projection).match(/Lo\s*(\d{1,2})/i)
+    if (literal) return `Lo ${literal[1]}`
+  }
+
+  return 'Lo 31'
 }
 
 // Helper function to format coordinates

@@ -30,6 +30,7 @@ import {
   edgeDistanceMetres,
   classifyBeaconGroups,
   snapScaleBarSegment,
+  resolveLoSystem,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 
@@ -1688,11 +1689,17 @@ export function generateDXF(options, logger) {
     }
   }
 
-  // The OUTSIDE FIGURE DATA "System : Lo NN°" label is resolved inside
-  // emitOFDTable via the shared resolveLoSystem() helper (prefers
-  // outsideFigureData.constants.loSystem, else the SI 727 default Lo 31) so the
-  // DXF and PDF can never disagree. We deliberately no longer derive the
-  // meridian from the (unreliable) `projection` field here.
+  // Resolve the OUTSIDE FIGURE DATA "System : Lo NN°" label once, from the
+  // project's central meridian (metadata.centralMeridian) / projection, and
+  // stash it on outsideFigureData.constants.loSystem so emitOFDTable reads the
+  // same value the PDF does. Shared resolveLoSystem() is the single source of
+  // truth — a Lo 29 project must read Lo 29, not the bare default.
+  if (outsideFigureData && !outsideFigureData.constants?.loSystem) {
+    outsideFigureData.constants = {
+      ...(outsideFigureData.constants || {}),
+      loSystem: resolveLoSystem(outsideFigureData, metadata, projection),
+    };
+  }
 
   // Text sizes. Cartographic hierarchy (ISO 3098 nominal heights): the title
   // must dominate every feature label. GENERAL PLAN (7 mm) > designation (5 mm)

@@ -3645,7 +3645,7 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DISTANCES",
-    "text": "500.00",
+    "text": "420.00",
     "x": -50250,
     "y": -2200423,
   },
@@ -5374,14 +5374,14 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DISTANCES",
-    "text": "420.00",
+    "text": "500.00",
     "x": -50503,
     "y": -2200210,
   },
   {
     "h": 2.5,
     "layer": "DISTANCES",
-    "text": "420.00",
+    "text": "500.00",
     "x": -49997,
     "y": -2200210,
   },
@@ -7250,7 +7250,7 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DISTANCES",
-    "text": "500.00",
+    "text": "420.00",
     "x": -50250,
     "y": -2199997,
   },
@@ -19339,8 +19339,8 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "41",
-    "x": -50716.6,
+    "text": "420.00",
+    "x": -50721.9,
     "y": -2199879.9,
   },
   {
@@ -19388,8 +19388,8 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "41",
-    "x": -50716.6,
+    "text": "500.00",
+    "x": -50721.9,
     "y": -2199875.7,
   },
   {
@@ -19430,8 +19430,8 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "41",
-    "x": -50716.6,
+    "text": "420.00",
+    "x": -50721.9,
     "y": -2199871.5,
   },
   {
@@ -19472,8 +19472,8 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "41",
-    "x": -50716.6,
+    "text": "500.00",
+    "x": -50721.9,
     "y": -2199867.2,
   },
   {
@@ -19792,7 +19792,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "DISTANCES",
-    "text": "100.00",
+    "text": "60.00",
     "x": -50050,
     "y": -2200061.5,
   },
@@ -19813,7 +19813,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "DISTANCES",
-    "text": "60.00",
+    "text": "100.00",
     "x": -50101.5,
     "y": -2200030,
   },
@@ -19841,7 +19841,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "DISTANCES",
-    "text": "60.00",
+    "text": "100.00",
     "x": -49998.5,
     "y": -2200030,
   },
@@ -19862,7 +19862,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "DISTANCES",
-    "text": "100.00",
+    "text": "60.00",
     "x": -50050,
     "y": -2199998.5,
   },
@@ -20009,8 +20009,8 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.6,
     "layer": "TITLE_BLOCK",
-    "text": "40",
-    "x": -50134.6,
+    "text": "20",
+    "x": -50136.7,
     "y": -2199994.2,
   },
   {
@@ -20051,8 +20051,8 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.6,
     "layer": "TITLE_BLOCK",
-    "text": "41",
-    "x": -50134.6,
+    "text": "100.00",
+    "x": -50137.2,
     "y": -2199992.1,
   },
   {
@@ -20093,8 +20093,8 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.6,
     "layer": "TITLE_BLOCK",
-    "text": "41",
-    "x": -50134.6,
+    "text": "20",
+    "x": -50136.7,
     "y": -2199990,
   },
   {
@@ -20178,7 +20178,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
     "h": 1.6,
     "layer": "TITLE_BLOCK",
     "text": "40",
-    "x": -50134.6,
+    "x": -50137.2,
     "y": -2199987.9,
   },
   {
@@ -20903,7 +20903,7 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DISTANCES",
-    "text": "300.00",
+    "text": "200.00",
     "x": -50150,
     "y": -2200203,
   },
@@ -21001,14 +21001,14 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DISTANCES",
-    "text": "200.00",
+    "text": "300.00",
     "x": -50303,
     "y": -2200100,
   },
   {
     "h": 2.5,
     "layer": "DISTANCES",
-    "text": "200.00",
+    "text": "300.00",
     "x": -49997,
     "y": -2200100,
   },
@@ -21141,7 +21141,7 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 2.5,
     "layer": "DISTANCES",
-    "text": "300.00",
+    "text": "200.00",
     "x": -50150,
     "y": -2199997,
   },
@@ -21981,8 +21981,8 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "41",
-    "x": -50442.6,
+    "text": "200.00",
+    "x": -50447.9,
     "y": -2199893.4,
   },
   {
@@ -22030,8 +22030,8 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "41",
-    "x": -50442.6,
+    "text": "300.00",
+    "x": -50447.9,
     "y": -2199889.2,
   },
   {
@@ -22072,8 +22072,8 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "41",
-    "x": -50442.6,
+    "text": "200.00",
+    "x": -50447.9,
     "y": -2199885,
   },
   {
@@ -22114,8 +22114,8 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 3.2,
     "layer": "TITLE_BLOCK",
-    "text": "41",
-    "x": -50442.6,
+    "text": "300.00",
+    "x": -50447.9,
     "y": -2199880.7,
   },
   {

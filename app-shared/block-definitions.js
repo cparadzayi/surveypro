@@ -403,6 +403,19 @@ export function formatAreaValue(areaM2) {
   }
 }
 
+// Edge side-length (metres) for the Outside Figure Data table AND the figure
+// edge labels. Frontend / data payloads carry the side length under either
+// `distance` or `metres`; read both from a single helper so the OFD "Metres"
+// column and the on-figure distance label can never diverge (and so the DXF and
+// PDF render identical values). Returns a finite number, or null when neither
+// field is present (callers decide the fallback).
+export function edgeDistanceMetres(edge) {
+  if (!edge) return null
+  const raw = edge.distance ?? edge.metres
+  const n = typeof raw === 'number' ? raw : parseFloat(raw)
+  return Number.isFinite(n) ? n : null
+}
+
 // Helper function to format coordinates
 export function formatCoordinate(value, decimals = 2) {
   if (!value || isNaN(value)) return '0.00'
@@ -585,6 +598,7 @@ export default {
   SCALE_BAR,
   LABEL_CONFIG,
   formatAreaValue,
+  edgeDistanceMetres,
   formatCoordinate,
   formatBearing,
   getAdaptiveLabelSize,

@@ -27,6 +27,7 @@ import {
   SURVEYOR_GENERAL_BOX,
   formatStandRanges,
   computeScheduleColumnWidths,
+  edgeDistanceMetres,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 
@@ -1056,10 +1057,11 @@ export function generateDXF(options, logger) {
         && typeof vIdxNext === 'number'
         && vIdxNext === (vIdx + 1) % edges.length
       const edge = isIntact ? (edges[vIdx] || {}) : {}
-      const givenDist = typeof edge.distance === 'number'
-        ? edge.distance
-        : parseFloat(edge.distance)
-      const distVal = Number.isFinite(givenDist) ? givenDist : len
+      // Accept `distance` or `metres` (same helper the OFD table uses) so the
+      // on-figure label and the OFD "Metres" column never diverge; fall back to
+      // the geometric edge length only when neither field is supplied.
+      const givenDist = edgeDistanceMetres(edge)
+      const distVal = givenDist != null ? givenDist : len
       const distText = distVal.toFixed(2)
 
       // Bearing text â€” prefer edges[i].direction when it looks like DMS,

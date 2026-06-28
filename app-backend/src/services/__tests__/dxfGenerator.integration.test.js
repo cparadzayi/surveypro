@@ -640,6 +640,62 @@ describe('dxfGenerator integration — corner crosses clamp to the drawing area'
   })
 })
 
+describe('dxfGenerator integration — OFD Metres accepts `metres` payloads', () => {
+  function titleBlockTexts(dxf) {
+    const lines = dxf.split(/\r?\n/)
+    const out = []
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() !== 'TEXT') continue
+      let layer = '', val = ''
+      for (let j = i + 1; j < Math.min(i + 40, lines.length); j++) {
+        const c = lines[j].trim(), v = lines[j + 1] || ''
+        if (c === '0') break
+        if (c === '8') layer = v.trim()
+        else if (c === '1') val = v
+      }
+      if (layer === 'TITLE_BLOCK') out.push(val)
+    }
+    return out
+  }
+
+  // Outside figure supplied with `metres` (NOT `distance`) — the field name 3 of
+  // the 4 fixtures use. Before normalization the OFD "Metres" column rendered
+  // blank for this shape. The figure itself is small (fits A2 at 1:500).
+  const Y0 = 50000, X0 = 2200000
+  const metresPlan = {
+    metadata: { designation: 'Stand 1 Test', township: 'T', district: 'D', standCount: 1, standRange: '1', beaconSequence: 'ABCDA', date: '2026-06-28', centralMeridian: 29 },
+    parcels: { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[Y0, X0], [Y0 + 100, X0], [Y0 + 100, X0 + 60], [Y0, X0 + 60], [Y0, X0]]] }, properties: { stand: '1', area_m2: 6000 } }] },
+    beacons: { type: 'FeatureCollection', features: [
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [Y0, X0] }, properties: { name: 'A', pointId: 'A' } },
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [Y0 + 100, X0] }, properties: { name: 'B', pointId: 'B' } },
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [Y0 + 100, X0 + 60] }, properties: { name: 'C', pointId: 'C' } },
+      { type: 'Feature', geometry: { type: 'Point', coordinates: [Y0, X0 + 60] }, properties: { name: 'D', pointId: 'D' } },
+    ] },
+    outsideFigureData: {
+      edges: [
+        { side: 'AB', metres: 100.000, direction: '90°00\'00"', constants: '', y: Y0 + 100, x: X0 },
+        { side: 'BC', metres: 60.000, direction: '0°00\'00"', constants: '', y: Y0 + 100, x: X0 + 60 },
+        { side: 'CD', metres: 100.000, direction: '270°00\'00"', constants: '', y: Y0, x: X0 + 60 },
+        { side: 'DA', metres: 60.000, direction: '180°00\'00"', constants: '', y: Y0, x: X0 },
+      ],
+      coordinates: [
+        { name: 'A', y: Y0, x: X0 }, { name: 'B', y: Y0 + 100, x: X0 },
+        { name: 'C', y: Y0 + 100, x: X0 + 60 }, { name: 'D', y: Y0, x: X0 + 60 },
+      ],
+    },
+    sheetSize: 'ISO_A2', scale: { value: 500, label: '1:500' },
+  }
+
+  test('OFD Metres column is populated from `metres` (not left blank)', () => {
+    const dxf = generateDXF(metresPlan, fakeLogger).buffer.toString()
+    const tb = titleBlockTexts(dxf)
+    // Every edge length must appear in the OFD table, formatted to 2 dp.
+    for (const e of metresPlan.outsideFigureData.edges) {
+      expect(tb).toContain(e.metres.toFixed(2))
+    }
+  })
+})
+
 describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => {
   function collectTextsByLayer(dxf, layer) {
     const lines = dxf.split('\n')

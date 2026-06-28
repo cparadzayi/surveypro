@@ -16,6 +16,7 @@ import { findBlockPosition } from './dxfBlockPlacer.js'
 import {
   OUTSIDE_FIGURE_DATA,
   SURVEYOR_GENERAL_BOX,
+  edgeDistanceMetres,
 } from '../../../app-shared/block-definitions.js'
 
 /** PDF point → paper-millimetre conversion. 1 pt = 1/72 inch = 25.4/72 mm. */
@@ -310,7 +311,8 @@ export function emitOFDTable(addText, addLine, position, outsideFigureData, font
   let yr = yCHbot
   for (const edge of edges) {
     const yv = yr - dataRowH * 0.5 - ofBodyH * 0.4
-    const dist = typeof edge.distance === 'number' ? edge.distance.toFixed(2) : String(edge.distance || '')
+    const distM = edgeDistanceMetres(edge)              // accepts `distance` or `metres`
+    const dist = distM != null ? distM.toFixed(2) : ''
     const yV   = typeof edge.y === 'number' ? (edge.y >= 0 ? '+' : '') + edge.y.toFixed(2) : ''
     const xV   = typeof edge.x === 'number' ? (edge.x >= 0 ? '+' : '') + edge.x.toFixed(2) : ''
     const vals = [edge.side || '', dist, edge.direction || '', edge.pointId || '', yV, xV]

@@ -9,7 +9,7 @@ import {
   SI727_MARGINS,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths } from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths, edgeDistanceMetres } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -9506,11 +9506,11 @@ function drawOutsideFigureData(
       `${String.fromCharCode(65 + i)}-${String.fromCharCode(
         65 + ((i + 1) % outsideFigureData.edges.length)
       )}`;
-    // Distance is already banker's rounded from frontend - just format for display
-    const distanceValue =
-      typeof edge.distance === "number"
-        ? edge.distance
-        : parseFloat(edge.distance) || 0;
+    // Distance is already banker's rounded from frontend - just format for display.
+    // Accept `distance` or `metres` (shared helper) so the OFD Metres column is
+    // never blank when the payload uses the alternate field name — and stays in
+    // lockstep with the DXF OFD table + on-figure label.
+    const distanceValue = edgeDistanceMetres(edge) ?? 0;
     const distance = distanceValue.toFixed(2); // Format only, value is already banker's rounded
     const direction = edge.direction || ""; // Frontend sends 'direction' (DMS format with banker's rounding)
 

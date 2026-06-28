@@ -7,6 +7,7 @@ import { describe, test, expect } from '@jest/globals'
 import {
   computeScheduleColumnWidths,
   planScheduleSplit,
+  edgeDistanceMetres,
 } from '../../../../app-shared/block-definitions.js'
 
 /**
@@ -203,5 +204,31 @@ describe('planScheduleSplit', () => {
     })
     expect(result.plan).toHaveLength(0)
     expect(result.residualRows).toBe(10)
+  })
+})
+
+describe('edgeDistanceMetres — accepts both `distance` and `metres`', () => {
+  test('reads numeric `distance`', () => {
+    expect(edgeDistanceMetres({ distance: 138.24 })).toBe(138.24)
+  })
+
+  test('reads numeric `metres` when `distance` is absent', () => {
+    expect(edgeDistanceMetres({ metres: 300 })).toBe(300)
+  })
+
+  test('parses string values', () => {
+    expect(edgeDistanceMetres({ distance: '138.24' })).toBe(138.24)
+    expect(edgeDistanceMetres({ metres: '300.000' })).toBe(300)
+  })
+
+  test('`distance` takes precedence over `metres`', () => {
+    expect(edgeDistanceMetres({ distance: 100, metres: 999 })).toBe(100)
+  })
+
+  test('returns null when neither field is present or parseable', () => {
+    expect(edgeDistanceMetres({})).toBeNull()
+    expect(edgeDistanceMetres({ distance: 'abc' })).toBeNull()
+    expect(edgeDistanceMetres(null)).toBeNull()
+    expect(edgeDistanceMetres(undefined)).toBeNull()
   })
 })

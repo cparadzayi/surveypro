@@ -992,10 +992,13 @@ export function generateDXF(options, logger) {
     const rowH = mm(3.5)
     let y = zoneTop
     addText(layer, zoneL, y, 'BEACON DESCRIPTION', headerH, 0, 'BOLD')   // singular — matches PDF
-    y -= headerH * 1.4
-    // Separator LINE
+    // Separator LINE — sits just below the header text (DXF text grows UP from the
+    // baseline). It must clear the first row below it: the previous mm(1) gap put
+    // the line inside the first row's mm(2.4)-tall text, cutting across it. Hug the
+    // header instead and keep the first row where it was (total height unchanged).
+    y -= mm(2)
     addLine(layer, zoneL, y, zoneR, y)
-    y -= mm(1)
+    y -= headerH * 1.4 - mm(1)
     let printed = 0
     for (const g of beaconGroups) {
       if (y - rowH < zoneBottom) break

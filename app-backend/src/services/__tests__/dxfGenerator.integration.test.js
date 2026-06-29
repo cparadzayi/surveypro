@@ -397,7 +397,11 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(entityCount(dxf, 'CIRCLE', 'BEACONS'))
       .toBe(sampleFixture.beacons.features.length)
     expect(entityCount(dxf, 'LINE', 'NORTH_ARROW')).toBeGreaterThanOrEqual(3)
-    expect(entityCount(dxf, 'LINE', 'SCALE_BAR')).toBeGreaterThanOrEqual(7)
+    // Scale bar: 3 structural LINEs (top/bottom/centreline) + (numSegments+1)
+    // graduation ticks. numSegments is 2–3 depending on how the round-metre bar
+    // (+ "METRES" label) fits the slot — mirrors the PDF's segment reduction —
+    // so the minimum is 3 + 3 = 6 LINEs.
+    expect(entityCount(dxf, 'LINE', 'SCALE_BAR')).toBeGreaterThanOrEqual(6)
     expect(entityCount(dxf, 'LINE', 'GRID')).toBeGreaterThan(0)
     expect(entityCount(dxf, 'LINE', 'MARGIN_GUIDES')).toBeGreaterThanOrEqual(16)
     expect(entityCount(dxf, 'TEXT', 'TITLE_BLOCK')).toBeGreaterThanOrEqual(8)

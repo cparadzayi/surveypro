@@ -1658,9 +1658,56 @@ export function generateDXF(options, logger) {
   const contentW = pageW - mL - mR;   // 594 - 50 - 150 = 394mm
   const contentH = pageH - mT - mB;   // 420 - 50 - 50 = 320mm
 
-  // Page positioned so drawing is centered in content area
+  // Surveyed parcels (hoisted: needed both to measure the title band below and,
+  // later, for the figure-description text + Schedule of Areas). Sharing the one
+  // source prevents silent drift between consumers.
+  const surveyedFeatures = (parcels?.features || [])
+    .filter(f => {
+      const st = (f.properties?.stand || '').toLowerCase();
+      return !f.properties?.isOutsideFigure && !st.includes('outside figure');
+    })
+    .sort((a, b) => {
+      const na = parseInt(a.properties?.stand) || 0;
+      const nb = parseInt(b.properties?.stand) || 0;
+      return na - nb || String(a.properties?.stand || '').localeCompare(String(b.properties?.stand || ''));
+    });
+  const surveyedParcels = surveyedFeatures.map(f => ({
+    stand: f.properties?.stand || '',
+    area_m2: f.properties?.area_m2 || 0,
+  }));
+
+  // ── Measure the title block as ONE cohesive band ──
+  // Sum the exact vertical advances the title drawer uses (GENERAL PLAN → of →
+  // designation → SHEET → figure description → Vide), so the outside figure can
+  // be fitted strictly below it. Mirrors the char-wrap budgets in the drawer.
+  const _desigMaxChars = Math.max(1, Math.floor(contentW / (hDesig * 0.6)));
+  const _titleMaxChars = Math.max(1, Math.floor(contentW / (hBody * 0.55)));
+  const _desigLines = formatPlanDesignation(metadata, surveyedParcels)
+    ? splitToWidth(formatPlanDesignation(metadata, surveyedParcels), _desigMaxChars).length : 0;
+  const _sheetLines = formatSheetLabel(sheetInfo).length;
+  const _figLines   = formatFigureDescription(metadata, outsideFigureData, surveyedParcels, _titleMaxChars).length;
+  const _videLines  = formatVideLine(_titleMaxChars).length;
+  const titleBandH =
+      mm(8)                                   // top inset to first baseline
+    + hTitle * 1.6                            // GENERAL PLAN
+    + hSub * 1.6                              // of
+    + _desigLines * hDesig * 1.6             // designation line(s)
+    + mm(3)                                   // gap before SI 727 lines
+    + _sheetLines * hSub * 1.6               // SHEET N (multi-sheet only)
+    + _figLines * hBody * 1.6                // figure description
+    + _videLines * hBody * 1.6               // Vide line
+    + hBody;                                  // clearance gap below the last line
+
+  // Page positioned so the drawing is centred horizontally, and vertically so a
+  // top band is reserved for the title block with the figure fitted strictly
+  // below it (matches the PDF's reserve-band-fit-figure-below strategy). The
+  // figure is only shifted DOWN when its natural top margin is smaller than the
+  // band, and never so far that it overruns the content bottom.
   const contentCX = dCX;                              // drawing centered horizontally
-  const contentCY = (dT + dB) / 2;                    // drawing centered vertically
+  const _naturalCY = (dT + dB) / 2;                   // figure centred in content
+  const _desiredCY = dT - contentH / 2 + titleBandH;  // figure top at cntT − band
+  const _maxCY     = dB + contentH / 2;               // figure bottom at cntB (don't overrun)
+  const contentCY  = Math.min(_maxCY, Math.max(_naturalCY, _desiredCY));
 
   // Page edges (outer border)
   const pageL = contentCX - contentW / 2 - mL;       // left edge of paper
@@ -1677,35 +1724,18 @@ export function generateDXF(options, logger) {
   // Endorsements column (in the right margin area)
   const endDivX = cntR;                               // vertical divider at content right
 
-  // Layout zones within content area
-  // Title zone: top 20% of content, Tables zone: bottom 40% of content
-  const titleZoneH = contentH * 0.20;
+  // Layout zones within content area. Title zone now uses the MEASURED title band
+  // (so the reserved obstacle matches what is actually drawn and the figure,
+  // fitted below it, never overlaps). Tables zone: bottom 40% of content.
+  const titleZoneH = titleBandH;
   const tableZoneH = contentH * 0.40;
   const drawDivY = cntB + tableZoneH;                // horizontal divider above tables
   const titleDivY = cntT - titleZoneH;               // not drawn but used for reference
 
   logger.info(`[DXF] Margins: L=${50}mm T=${50}mm B=${50}mm R=${150}mm, Content: ${(contentW / mm(1)).toFixed(0)}x${(contentH / mm(1)).toFixed(0)}mm`);
 
-  // Filter outside-figure parcels and sort by stand. Used by both the
-  // figure-description text (surveyedParcels) and the Schedule of Areas
-  // emission (scheduleDataRows below) â€” sharing the source prevents
-  // silent drift between the two consumers.
-  const surveyedFeatures = (parcels?.features || [])
-    .filter(f => {
-      const st = (f.properties?.stand || '').toLowerCase();
-      return !f.properties?.isOutsideFigure && !st.includes('outside figure');
-    })
-    .sort((a, b) => {
-      const na = parseInt(a.properties?.stand) || 0;
-      const nb = parseInt(b.properties?.stand) || 0;
-      return na - nb || String(a.properties?.stand || '').localeCompare(String(b.properties?.stand || ''));
-    });
-
-  // Lightweight projection consumed by formatFigureDescription.
-  const surveyedParcels = surveyedFeatures.map(f => ({
-    stand: f.properties?.stand || '',
-    area_m2: f.properties?.area_m2 || 0,
-  }));
+  // (surveyedFeatures / surveyedParcels are hoisted above — needed to measure
+  // the title band before the page frame is positioned.)
 
   // â”€â”€ PAGE FRAME + DIVIDERS â”€â”€
   const TB = 'TITLE_BLOCK';

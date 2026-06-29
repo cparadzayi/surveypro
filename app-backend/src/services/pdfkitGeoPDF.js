@@ -4880,6 +4880,99 @@ function getStandsInsideOutsideFigure(parcels, outsideFigureData) {
  * Calculate title block width based on actual text content
  * @param {number} widthFactor - Width adjustment factor (0.75 to 1.25, default 1.0)
  */
+/**
+ * Single source of truth for the title block's textual content. Both
+ * calculateTitleBlockHeight (to measure) and drawTitleBlock (to render) build
+ * their lines from here so the reserved band height always matches what is
+ * actually drawn (no drift → no figure overlap).
+ *
+ * Returns the ordered, ready-to-render strings:
+ *   { designation, sheetText, figureText, videText, hasFigure }
+ * Any field may be '' / null when not applicable.
+ */
+function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, logger = null) {
+  const config = BLOCKS.TITLE_BLOCK;
+  const isMultiSheet = !!(sheetInfo && sheetInfo.totalSheets > 1);
+  const district = metadata.district || "";
+
+  // ── Designation: "Stands 16 - 18 Maglas Township" ──
+  const standsInside = getStandsInsideOutsideFigure(parcels, outsideFigureData);
+  const dynamicStandList = formatStandRanges(standsInside);
+  const rawSurveyOf = (metadata.surveyOf || metadata.township || "").trim();
+  const withoutStandsPrefix = rawSurveyOf.replace(/^Stands?\s+[\d,\s\-–]+/i, "").trim();
+  const townshipDescription = withoutStandsPrefix.replace(/\s+of\s+.+$/i, "").trim();
+  let designation;
+  if (dynamicStandList) {
+    designation = townshipDescription
+      ? `Stands ${dynamicStandList} ${townshipDescription}`
+      : `Stands ${dynamicStandList}`;
+  } else {
+    const rawDesig = (metadata.designation || "").trim();
+    designation = rawDesig.replace(/\s+of\s+.+$/i, "").trim();
+  }
+
+  const sheetText = isMultiSheet ? `SHEET ${sheetInfo.sheetNumber}` : "";
+
+  // ── Figure description sentence + Vide line (only when there is a figure) ──
+  const vertices = getOutsideFigureVertices(outsideFigureData, logger);
+  const standCount = standsInside.length;
+  const hasFigure = !!(designation && vertices.sequence && standCount > 0);
+
+  let figureText = "";
+  let videText = "";
+  if (hasFigure) {
+    const rawFullDesig = (metadata.surveyOf || metadata.designation || '').trim();
+    const standRangeMatch = rawFullDesig.match(/Stands?\s+([\d]+)\s*[-–]\s*([\d]+)/i);
+    let projectStandRange;
+    if (standRangeMatch) {
+      projectStandRange = `${parseInt(standRangeMatch[1], 10)}–${parseInt(standRangeMatch[2], 10)}`;
+    } else {
+      const sortedFallback = standsInside.map(s => parseInt(s, 10)).filter(n => !isNaN(n)).sort((a, b) => a - b);
+      projectStandRange = sortedFallback.length > 1
+        ? `${sortedFallback[0]}–${sortedFallback[sortedFallback.length - 1]}`
+        : (sortedFallback[0] ?? standCount).toString();
+    }
+
+    const wholePortion = (metadata.wholePortion || 'the whole').trim();
+    const toTitleCase = s => s.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+    const township = toTitleCase(townshipDescription || (metadata.township || '').trim());
+    const parentProp = toTitleCase((metadata.parentProperty || '').trim());
+    const ofTarget = parentProp ? `${township} of ${parentProp}` : township;
+
+    if (isMultiSheet) {
+      const { sheetNumber, totalSheets } = sheetInfo;
+      const otherNums = Array.from({ length: totalSheets }, (_, i) => i + 1).filter(n => n !== sheetNumber);
+      const otherSheets = otherNums.length === 1
+        ? `sheet ${otherNums[0]}`
+        : otherNums.slice(0, -1).map(n => `sheet ${n}`).join(', ') + ` and sheet ${otherNums[otherNums.length - 1]}`;
+      const projectStandRangeFormatted = formatStandRanges(standsInside.length > 0 ? standsInside : []) || projectStandRange;
+      const figureLabel = sheetInfo.fullFigureLabel || vertices.sequence;
+      figureText = config.figureDescription.multiSheetTemplate
+        .replace('{figureLabel}',     figureLabel)
+        .replace('{otherSheets}',     otherSheets)
+        .replace('{township}',        township)
+        .replace('{totalStandCount}', standsInside.length)
+        .replace('{standRange}',      projectStandRangeFormatted)
+        .replace('{wholePortion}',    wholePortion)
+        .replace('{ofTarget}',        ofTarget)
+        .replace('{district}',        district);
+    } else {
+      const tileStandRange = formatStandRanges(standsInside);
+      figureText = config.figureDescription.template
+        .replace('{beaconSequence}', vertices.sequence)
+        .replace('{township}',       township)
+        .replace('{standCount}',     standCount)
+        .replace('{standRange}',     tileStandRange)
+        .replace('{wholePortion}',   wholePortion)
+        .replace('{ofTarget}',       ofTarget)
+        .replace('{district}',       district);
+    }
+    videText = config.vide.template;
+  }
+
+  return { designation, sheetText, figureText, videText, hasFigure, isMultiSheet };
+}
+
 function calculateTitleBlockWidth(
   doc,
   metadata,
@@ -4953,39 +5046,77 @@ function calculateTitleBlockWidth(
  * Calculate actual title block height based on content
  * This ensures accurate positioning of blocks below the title block
  */
-function calculateTitleBlockHeight(metadata, outsideFigureData, logger, parcels = null) {
+/**
+ * Greedy word-wrap line count for `text` at `width`, using the doc's font
+ * metrics (real PDFKit doc, or the measure-proxy used by the DXF planner —
+ * both expose font/fontSize/widthOfString; save/restore are optional).
+ */
+function _wrapLineCount(doc, text, fontFamily, fontSize, width) {
+  if (!text) return 0;
+  doc.save?.();
+  doc.font(fontFamily).fontSize(fontSize);
+  const words = String(text).split(/\s+/).filter(Boolean);
+  if (words.length === 0) { doc.restore?.(); return 0; }
+  let lines = 1, cur = words[0];
+  for (let i = 1; i < words.length; i++) {
+    const trial = `${cur} ${words[i]}`;
+    if (doc.widthOfString(trial) <= width) cur = trial;
+    else { lines++; cur = words[i]; }
+  }
+  doc.restore?.();
+  return lines;
+}
+
+/**
+ * Accurate height of the title block as a single cohesive block, covering ALL
+ * its elements — GENERAL PLAN, "of", optional SHEET N, the designation, the
+ * figure-description sentence, AND the Vide line — measured at the width they
+ * are actually drawn (so the reserved band never under-shoots and the outside
+ * figure, fitted below it, never overlaps the lower elements). Uses the shared
+ * _buildTitleBlockTexts builder so render and measurement can't drift.
+ */
+function calculateTitleBlockHeight(doc, metadata, outsideFigureData, mapBounds, logger, parcels = null, sheetInfo = null) {
   const config = BLOCKS.TITLE_BLOCK;
+  const { designation, figureText, videText, hasFigure, isMultiSheet } =
+    _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, logger);
 
-  // Base heights from font sizes
-  const mainTitleHeight = config.mainTitle.font.size;
-  const ofTextHeight = config.ofText.font.size;
-  const designationHeight = config.designation.font.size;
+  // Match drawTitleBlock's text column width (figure description + Vide wrap here).
+  const MARGIN = 10;
+  const actualTextWidth = Math.min(600, mapBounds.width - MARGIN * 2);
 
-  // Check if we have figure description
-  const vertices = getOutsideFigureVertices(outsideFigureData, logger);
-  const standsInsideH = getStandsInsideOutsideFigure(parcels, outsideFigureData);
-  const standCount = standsInsideH.length || countStandsInOutsideFigure(parcels, outsideFigureData, metadata.designation || "");
-  const hasFigureDescription = vertices.sequence && standCount > 0;
+  let h = config.mainTitle.font.size;            // GENERAL PLAN
+  h += config.spacing.afterMainTitle;
+  h += config.ofText.font.size;                  // of
+  h += config.spacing.afterOf;
 
-  let totalHeight = mainTitleHeight; // Start with main title
-  totalHeight += config.spacing.afterMainTitle; // Space after main title
-  totalHeight += ofTextHeight; // "of" text
-  totalHeight += config.spacing.afterOf; // Space after "of"
-  totalHeight += designationHeight; // Designation line
+  // Designation line(s). drawTitleBlock advances by (font.size + 6) for the
+  // first line; wrapped lines add their own height.
+  const desigLines = designation
+    ? _wrapLineCount(doc, config.designation.template.replace('{designation}', designation),
+        config.designation.font.family, config.designation.font.size, actualTextWidth)
+    : 1;
+  h += config.designation.font.size + 6
+     + Math.max(0, desigLines - 1) * (config.designation.font.size + 2);
 
-  if (hasFigureDescription) {
-    totalHeight += config.spacing.afterDesignation; // Space before figure description
-
-    // Figure description can wrap to multiple lines
-    // Estimate 2-3 lines for typical beacon sequences
-    const figureDescHeight = config.figureDescription.font.size * 2.5; // 2.5 lines average
-    totalHeight += figureDescHeight;
+  // Optional SHEET N line (multi-sheet only).
+  if (isMultiSheet) {
+    h += config.sheetLabel.font.size + config.spacing.afterSheet;
   }
 
-  // Add small padding at bottom
-  totalHeight += 5;
+  // Figure description + Vide line (always drawn together for general plans).
+  if (hasFigure) {
+    h += config.spacing.afterDesignation;
+    const figLines = _wrapLineCount(doc, figureText,
+      config.figureDescription.font.family, config.figureDescription.font.size, actualTextWidth);
+    h += figLines * (config.figureDescription.font.size + config.figureDescription.lineGap);
+    h += 4; // videY = doc.y + 4
+    const videLines = _wrapLineCount(doc, videText,
+      config.vide.font.family, config.vide.font.size, actualTextWidth);
+    h += videLines * (config.vide.font.size + config.vide.lineGap);
+  }
 
-  return totalHeight;
+  h += 8; // bottom padding
+  return h;
 }
 
 /**
@@ -6212,7 +6343,7 @@ export function calculateBlockPositions(
 
   // --- Title Block ---
   const titleWidth  = 650;
-  const titleHeight = calculateTitleBlockHeight(metadata, outsideFigureData, logger, parcels);
+  const titleHeight = calculateTitleBlockHeight(doc, metadata, outsideFigureData, mapBounds, logger, parcels);
 
   // --- Outside Figure Data ---
   // Column widths: col1 is DYNAMIC (matches drawOutsideFigureData logic)
@@ -10896,6 +11027,26 @@ async function _generateGeoPDFInner(options, logger) {
   const boundaries = calculateMapBounds(pageWidth, pageHeight);
   const mapBounds = boundaries.main; // For blocks and tables
   let figureBounds = boundaries.figure; // For parcels, beacons, outside figure (will be adjusted)
+
+  // ── Reserve a top band for the title block; fit the outside figure below it ──
+  // The title block (GENERAL PLAN / of / SHEET / designation / figure description
+  // / Vide) is a single cohesive block at top-center. Inset the figure's drawing
+  // area below its measured height so the figure is scaled + positioned clear of
+  // every title element (deterministic — no escalation churn). calculateOptimalScale
+  // and transformCoords both fit the figure into figureBounds, so insetting here
+  // drives both the scale and the on-page position.
+  {
+    const _titleBandH = calculateTitleBlockHeight(doc, metadata, outsideFigureData, mapBounds, logger, parcels, sheetInfo);
+    const _TITLE_FIGURE_GAP = 12; // pt of clear space between title and figure
+    const _band = Math.min(_titleBandH + _TITLE_FIGURE_GAP, figureBounds.height * 0.5);
+    figureBounds = {
+      x: figureBounds.x,
+      y: figureBounds.y + _band,
+      width: figureBounds.width,
+      height: figureBounds.height - _band,
+    };
+    logger.info(`[PDFKit] 📐 Reserved ${_band.toFixed(0)}pt title band — figure fitted below (figureBounds.y=${figureBounds.y.toFixed(0)}, h=${figureBounds.height.toFixed(0)})`);
+  }
 
   // DYNAMIC MAP POSITIONING OPTIMIZATION
   // Calculate polygon bounds in PDF space to determine optimal map position

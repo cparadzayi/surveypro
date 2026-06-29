@@ -975,32 +975,6 @@ export function generateDXF(options, logger) {
     }
   }
 
-  /**
-   * For each non-duplicate vertex of the outside figure, emit one short LINE
-   * tick on `layer` pointing outward from the polygon centroid. The
-   * centroid-to-vertex direction matches the vertex-label placement so each
-   * tick + label pair reads as a coherent "I am here at Y=â€¦ X=â€¦" marker.
-   *
-   * Functional-minimum: uses centroid direction. Pdfkit reference uses an
-   * angle-bisector for concave outside figures â€” deferred.
-   *
-   * @param {string} layer
-   * @param {Array<{y,x,pointId}>} vertices  From computeOutsideFigureVertices().
-   * @param {{x,y}} centroidGround
-   */
-  function addOutsideFigureTickMarks(layer, vertices, centroidGround) {
-    const tickLen = mm(3)
-    for (let i = 0; i < vertices.length - 1; i++) {
-      const v = vertices[i]
-      const dxfV = capeLoToDxfSouthUp(v.y, v.x)
-      let nx = dxfV.x - centroidGround.x
-      let ny = dxfV.y - centroidGround.y
-      const mag = Math.sqrt(nx * nx + ny * ny)
-      if (mag < 1e-6) { nx = 1; ny = 0 } else { nx /= mag; ny /= mag }
-      addLine(layer, dxfV.x, dxfV.y, dxfV.x + nx * tickLen, dxfV.y + ny * tickLen)
-    }
-  }
-
   function addRect(layer, x1, y1, x2, y2) {
     addLine(layer, x1, y1, x2, y1); // bottom
     addLine(layer, x2, y1, x2, y2); // right
@@ -1595,22 +1569,14 @@ export function generateDXF(options, logger) {
   const pt = (v) => ptToGround(v, S);
 
   // ── Outside-figure vertex markers ──
-  // (OF polyline and vertex calculation done earlier; now emit the markers)
-  // Vertex tick marks always emit. Per-vertex coordinate value labels
-  // (Y=<westing> X=<southing>) are intentionally NOT emitted — the corner
-  // reference crosses already carry the coordinate frame, so labelling every
-  // vertex just clutters the figure.
-  // Outside-figure EDGE distance + direction labels are NOT emitted at all —
-  // matching the PDF (renderOutsideFigureLabels is disabled: "only individual
-  // parcel edges are labeled"). The outside figure carries only its vertex
-  // beacon names; its edge distances/directions live in the OUTSIDE FIGURE DATA
-  // table. Parcel-edge labels are unaffected and emitted below.
-  if (ofResult && ofResult.vertices.length >= 3) {
-    const ofDxfPts = ofResult.vertices.slice(0, -1)
-      .map(v => capeLoToDxfSouthUp(v.y, v.x));
-    const ofCentroid = shoelaceCentroid(ofDxfPts);
-    addOutsideFigureTickMarks('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
-  }
+  // Nothing is emitted at the outside-figure vertices any more. Per-vertex
+  // coordinate value labels (Y=<westing> X=<southing>) were removed earlier —
+  // the four corner reference crosses carry the coordinate frame — and the
+  // short outward leader ticks that used to point at those labels are now
+  // removed too (they pointed at nothing). The outside figure carries only its
+  // vertex beacon names. Its edge distances/directions live in the OUTSIDE
+  // FIGURE DATA table (no on-figure edge labels — matches the PDF). Parcel-edge
+  // labels are unaffected and emitted below.
 
   // Resolve the OUTSIDE FIGURE DATA "System : Lo NN°" label once, from the
   // project's central meridian (metadata.centralMeridian) / projection, and

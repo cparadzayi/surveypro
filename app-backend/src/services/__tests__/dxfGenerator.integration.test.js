@@ -304,10 +304,11 @@ describe('dxfGenerator integration — developed-township planType', () => {
     expect(devDist).toBe(0)
     expect(devDir).toBe(0)
 
-    // Sanity: OUTSIDE_FIGURE_LABELS tick LINEs still emit identically —
-    // only the distance/direction edge annotations are suppressed.
-    expect(entityCount(dev.buffer.toString(), 'LINE', 'OUTSIDE_FIGURE_LABELS'))
-      .toBe(entityCount(base.buffer.toString(), 'LINE', 'OUTSIDE_FIGURE_LABELS'))
+    // Sanity: the OUTSIDE_FIGURE_LABELS layer carries no geometry in either
+    // plan type — the per-vertex leader ticks were removed (they pointed at the
+    // long-gone coordinate labels); the corner crosses live on GRID instead.
+    expect(entityCount(dev.buffer.toString(), 'LINE', 'OUTSIDE_FIGURE_LABELS')).toBe(0)
+    expect(entityCount(base.buffer.toString(), 'LINE', 'OUTSIDE_FIGURE_LABELS')).toBe(0)
   })
 })
 
@@ -342,8 +343,11 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(entityCount(dxf, 'TEXT', 'OUTSIDE_FIGURE_LABELS')).toBe(0)
   })
 
-  test('emits 4 tick LINE entities on OUTSIDE_FIGURE_LABELS', () => {
-    expect(entityCount(dxf, 'LINE', 'OUTSIDE_FIGURE_LABELS')).toBe(4)
+  test('emits NO leader-tick LINE entities on OUTSIDE_FIGURE_LABELS', () => {
+    // The per-vertex outward leader ticks were removed — they used to point at
+    // the (now-removed) per-vertex coordinate labels, so they pointed at nothing.
+    // The coordinate frame is carried by the four corner crosses on GRID.
+    expect(entityCount(dxf, 'LINE', 'OUTSIDE_FIGURE_LABELS')).toBe(0)
   })
 
   test('outside-figure edges are NOT labelled — only parcel edges (PDF parity)', () => {

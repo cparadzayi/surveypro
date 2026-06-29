@@ -1001,80 +1001,6 @@ export function generateDXF(options, logger) {
     }
   }
 
-  /**
-   * For each edge of the outside figure, emit a distance TEXT on `distLayer`
-   * and a South-oriented bearing TEXT on `dirLayer`, placed at the edge
-   * midpoint offset outward from the polygon centroid.
-   *
-   * Distance text format: "<m>.<cm>" via toFixed(2).
-   * Bearing text: preserves edges[i].direction when it parses as DMS, else
-   * derives via degToDMS() from the vertex delta.
-   *
-   * @param {string} distLayer  Existing DISTANCES layer.
-   * @param {string} dirLayer   Existing DIRECTIONS layer.
-   * @param {Array<{y,x,pointId}>} vertices  From computeOutsideFigureVertices()
-   *   (with closing duplicate so vertices[i+1] is always valid).
-   * @param {Array} edges  Raw outsideFigureData.edges array (parallel to
-   *   vertices[0..length-2] â€” edges[i] starts at vertices[i]).
-   * @param {{x,y}} centroidGround
-   */
-  function addOutsideFigureEdgeLabels(distLayer, dirLayer, vertices, edges, centroidGround) {
-    const distOffset = mm(3)
-    const bearOffset = mm(6)
-    for (let i = 0; i < vertices.length - 1; i++) {
-      const a = capeLoToDxfSouthUp(vertices[i].y, vertices[i].x)
-      const b = capeLoToDxfSouthUp(vertices[i + 1].y, vertices[i + 1].x)
-      const dx = b.x - a.x, dy = b.y - a.y
-      const len = Math.sqrt(dx * dx + dy * dy)
-      if (len < 1e-6) continue   // degenerate edge â€” skip silently
-      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
-      // Counter-clockwise 90Â° rotation of the edge direction, then flip
-      // toward the outside (away from polygon centre).
-      let nx = -dy / len, ny = dx / len
-      if (nx * (mx - centroidGround.x) + ny * (my - centroidGround.y) < 0) {
-        nx = -nx; ny = -ny
-      }
-      // Edge angle for upright text.
-      let ang = Math.atan2(dy, dx) * (180 / Math.PI)
-      if (ang > 90 || ang < -90) ang += 180
-
-      // Edge metadata is only valid when the polygon edge vertices[i] â†’ vertices[i+1]
-      // corresponds to a single ORIGINAL edge in outsideFigureData.edges (i.e., no
-      // vertex was filtered between them). Intactness check: edges[vIdx] describes
-      // the original edge whose successor is original-index (vIdx + 1) mod N, so
-      // the next polygon vertex must carry that original-index to match. When the
-      // check fails (a filtered vertex bridged two original edges), fall back to
-      // geometry by leaving `edge` empty.
-      const vIdx = vertices[i].edgeIndex
-      const vIdxNext = vertices[i + 1].edgeIndex
-      const isIntact = typeof vIdx === 'number'
-        && typeof vIdxNext === 'number'
-        && vIdxNext === (vIdx + 1) % edges.length
-      const edge = isIntact ? (edges[vIdx] || {}) : {}
-      // Accept `distance` or `metres` (same helper the OFD table uses) so the
-      // on-figure label and the OFD "Metres" column never diverge; fall back to
-      // the geometric edge length only when neither field is supplied.
-      const givenDist = edgeDistanceMetres(edge)
-      const distVal = givenDist != null ? givenDist : len
-      const distText = distVal.toFixed(2)
-
-      // Bearing text â€” prefer edges[i].direction when it looks like DMS,
-      // else derive South-oriented bearing from the vertex delta.
-      const dirStr = typeof edge.direction === 'string' ? edge.direction : ''
-      const dirText = /\d+\D+\d+\D+\d+/.test(dirStr)
-        ? dirStr
-        : degToDMSForDistance(
-            (((Math.atan2(
-              vertices[i + 1].y - vertices[i].y,
-              vertices[i + 1].x - vertices[i].x
-            ) * 180 / Math.PI) % 360) + 360) % 360,
-            distVal)
-
-      addText(distLayer, mx + nx * distOffset, my + ny * distOffset, distText, distHeight, ang)
-      addText(dirLayer, mx + nx * bearOffset, my + ny * bearOffset, dirText, bearHeight, ang)
-    }
-  }
-
   function addRect(layer, x1, y1, x2, y2) {
     addLine(layer, x1, y1, x2, y1); // bottom
     addLine(layer, x2, y1, x2, y2); // right
@@ -1674,19 +1600,16 @@ export function generateDXF(options, logger) {
   // (Y=<westing> X=<southing>) are intentionally NOT emitted — the corner
   // reference crosses already carry the coordinate frame, so labelling every
   // vertex just clutters the figure.
-  // Outside-figure edge distance + direction labels are suppressed for
-  // developed townships (matches the parcel-edge suppression below — the
-  // user's instruction extends the PDF's `isDeveloped` behavior to all edge
-  // labels, including the OF boundary).
+  // Outside-figure EDGE distance + direction labels are NOT emitted at all —
+  // matching the PDF (renderOutsideFigureLabels is disabled: "only individual
+  // parcel edges are labeled"). The outside figure carries only its vertex
+  // beacon names; its edge distances/directions live in the OUTSIDE FIGURE DATA
+  // table. Parcel-edge labels are unaffected and emitted below.
   if (ofResult && ofResult.vertices.length >= 3) {
     const ofDxfPts = ofResult.vertices.slice(0, -1)
       .map(v => capeLoToDxfSouthUp(v.y, v.x));
     const ofCentroid = shoelaceCentroid(ofDxfPts);
     addOutsideFigureTickMarks('OUTSIDE_FIGURE_LABELS', ofResult.vertices, ofCentroid);
-    if (!isDevelopedPlan) {
-      addOutsideFigureEdgeLabels('DISTANCES', 'DIRECTIONS',
-                                  ofResult.vertices, outsideFigureData.edges, ofCentroid);
-    }
   }
 
   // Resolve the OUTSIDE FIGURE DATA "System : Lo NN°" label once, from the

@@ -266,6 +266,14 @@
             <option value="working-plan">Working Plan</option>
           </select>
         </div>
+        <div v-if="isDiagramMode" class="config-group diagram-subject-hint">
+          <p v-if="!selectedDiagramParcelId" class="text-xs text-amber-600">
+            👆 Click the parcel on the map to choose the diagram subject.
+          </p>
+          <p v-else class="text-xs text-green-700">
+            ✓ Diagram subject: <strong>Stand {{ selectedDiagramStand }}</strong>
+          </p>
+        </div>
 
         <!-- Scale (SI 727 Section 32(2) Prescribed) -->
         <div class="config-group">
@@ -572,6 +580,7 @@ import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
 import api from '@/services/api'
 import { buildWorkflowExcel } from '@/utils/workflowExcelExporter'
 import { autoSaveStepProducts } from '@/services/workflowProductStorage'
+import { getPlanTypeMeta } from './planTypes'
 
 // Props
 const props = defineProps<{
@@ -663,7 +672,17 @@ const refinedBeaconLabels = ref<Array<{
   isInsideParcel: boolean
   displayInParcel: number | null
   labelType: 'suffix' | 'full' | 'suppressed'
-}>>([])// ⭐ MULTI-SHEET: Active tile grid (computed reactively from outside figure + plan config)
+}>>([])
+
+// Diagram subject selection
+const selectedDiagramParcelId = ref<string | number | null>(null)
+const selectedDiagramStand = computed(() => {
+  const p = parcels.value.find((x: any) => String(x.id) === String(selectedDiagramParcelId.value))
+  return p?.stand ?? null
+})
+const isDiagramMode = computed(() => getPlanTypeMeta(config.value.planType).subjectMode === 'single-parcel')
+
+// ⭐ MULTI-SHEET: Active tile grid (computed reactively from outside figure + plan config)
 const activeTileGrid = ref<TileGrid | null>(null)
 // Sheet Review panel state
 const showSheetReview = ref(false)
@@ -1647,7 +1666,12 @@ function addParcelsToMap() {
     
     // (Centroid markers removed: use label layers + popups on click if needed)
   })
-  
+
+  // Diagram subject picking (single registration; handler no-ops unless in diagram mode)
+  map.value!.off('click', onMapClickSelectParcel)
+  map.value!.on('click', onMapClickSelectParcel)
+  applyDiagramHighlight(selectedDiagramParcelId.value)
+
   // ⭐ PHASE 3 (SI 727): Use ALL validated labels (no overlap allowed)
   const edgeAnnotationFeatures = validatedLabels.value.edges.map(edge => ({
     type: 'Feature',
@@ -1788,6 +1812,39 @@ function addParcelsToMap() {
   }
   
   console.log('[SurveyPlanMap] ✅ All parcels added to map')
+}
+
+function applyDiagramHighlight(selectedId: string | number | null) {
+  if (!map.value) return
+  parcels.value.forEach((p: any) => {
+    const layerId = `parcel-${p.id}-outline`
+    if (!map.value!.getLayer(layerId)) return
+    const isOutsideFig = p.id === getOutsideFigureParcel()?.id
+    const isSelected = selectedId != null && String(p.id) === String(selectedId)
+    map.value!.setPaintProperty(
+      layerId, 'line-color',
+      isOutsideFig ? '#ef4444' : isSelected ? '#2563eb' : '#0f172a',
+    )
+    map.value!.setPaintProperty(
+      layerId, 'line-width',
+      isOutsideFig ? 3 : isSelected ? 4 : 2,
+    )
+  })
+}
+
+function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
+  if (!map.value || !isDiagramMode.value) return
+  const fillLayers = parcels.value
+    .map((p: any) => `parcel-${p.id}-fill`)
+    .filter((id: string) => map.value!.getLayer(id))
+  if (fillLayers.length === 0) return
+  const hits = map.value.queryRenderedFeatures(e.point, { layers: fillLayers })
+  if (hits.length === 0) return
+  const layerId = hits[0].layer.id // 'parcel-<id>-fill'
+  const id = layerId.replace(/^parcel-/, '').replace(/-fill$/, '')
+  const match = parcels.value.find((p: any) => String(p.id) === id)
+  selectedDiagramParcelId.value = match ? match.id : null
+  applyDiagramHighlight(selectedDiagramParcelId.value)
 }
 
 function addPointsToMap() {
@@ -5563,6 +5620,14 @@ watch(
   () => { recomputeTileGrid() },
   { immediate: true }
 )
+
+// Clear diagram selection when leaving diagram mode
+watch(() => config.value.planType, () => {
+  if (!isDiagramMode.value) {
+    selectedDiagramParcelId.value = null
+  }
+  applyDiagramHighlight(selectedDiagramParcelId.value)
+})
 
 // Current tile descriptor (1-based index → 0-based array)
 const currentTile = computed(() => {

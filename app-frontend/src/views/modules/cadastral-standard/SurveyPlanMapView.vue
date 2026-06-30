@@ -3911,6 +3911,9 @@ async function generatePlanDocuments() {
         const parts: string[] = []
         if (warningsSummary.beacons) parts.push(`${warningsSummary.beacons} beacon(s) skipped`)
         if (warningsSummary.parcels) parts.push(`${warningsSummary.parcels} parcel(s) skipped`)
+        if (warningsSummary.beaconDescTruncated) parts.push(`${warningsSummary.beaconDescTruncated} beacon description(s) truncated`)
+        if (warningsSummary.priorDiagramsTruncated) parts.push(`${warningsSummary.priorDiagramsTruncated} prior diagram(s) truncated`)
+        if (warningsSummary.scaleFallback) parts.push('scale fell back to 1:500')
         if (parts.length) console.warn('[PlanDocs] DXF warnings:', parts.join(', '))
       }
     }

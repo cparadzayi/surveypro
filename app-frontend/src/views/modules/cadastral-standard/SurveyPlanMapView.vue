@@ -3847,6 +3847,17 @@ async function generatePlanDocuments() {
   const v = validateGenerateRequest(meta, selectedDiagramParcelId.value, parcels.value.length, exportFormats)
   if (!v.ok) { alert(v.error); return }
 
+  // General Plans are built around the Outside Figure (the remainder-of-parent
+  // figure). Diagram and Working Plan legitimately don't need one. Fail fast
+  // with a clear message for the general-plan types, mirroring the old export.
+  const requiresOutsideFigure =
+    config.value.planType === 'general-undeveloped' ||
+    config.value.planType === 'general-developed'
+  if (requiresOutsideFigure && !outsideFigureData.value) {
+    alert('Outside Figure data required. Designate a parcel as "Outside Figure" and run Compute Area & Consistency before generating a General Plan.')
+    return
+  }
+
   isExporting.value = true
   try {
     await loadData()
@@ -3904,7 +3915,7 @@ async function generatePlanDocuments() {
     }
 
     if (exportFormats.dxf) {
-      const dxfPayload = { ...payload, scale: usedScale || payload.scale }
+      const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: payload.sheetSize || 'ISO_A2' }
       const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload)
       docs.dxf = blob
       if (warningCount > 0 && warningsSummary) {

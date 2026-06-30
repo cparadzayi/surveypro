@@ -1,5 +1,5 @@
 import type { VectorGeoPDFRequest } from '../../../services/geopdf'
-import { getPlanTypeMeta, type PlanType } from './planTypes'
+import { getPlanTypeMeta, type PlanType, type SubjectMode } from './planTypes'
 import JSZip from 'jszip'
 
 export interface PlanPayloadContext {
@@ -131,4 +131,28 @@ export async function bundlePlanDocuments(
   if (docs.summary) zip.file(`${baseName}-summary.pdf`, await docs.summary.arrayBuffer())
   const blob = await zip.generateAsync({ type: 'blob' })
   return { blob, filename: `${baseName}.zip` }
+}
+
+export interface GenerateFormats {
+  pdf: boolean
+  dxf: boolean
+}
+
+export function validateGenerateRequest(
+  meta: { subjectMode: SubjectMode },
+  subjectParcelId: unknown,
+  parcelCount: number,
+  formats: GenerateFormats,
+): { ok: boolean; error?: string } {
+  if (!formats.pdf && !formats.dxf) {
+    return { ok: false, error: 'Select at least one format (PDF or DXF).' }
+  }
+  if (meta.subjectMode === 'single-parcel') {
+    if (subjectParcelId == null || subjectParcelId === '') {
+      return { ok: false, error: 'Click a parcel on the map to choose the diagram subject.' }
+    }
+  } else if (parcelCount < 1) {
+    return { ok: false, error: 'No parcels available to generate.' }
+  }
+  return { ok: true }
 }

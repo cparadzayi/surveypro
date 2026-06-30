@@ -1,4 +1,4 @@
-import { buildPlanPayload, beaconsForParcel, composePlanBaseName, bundlePlanDocuments, type PlanPayloadContext } from '../planPayload'
+import { buildPlanPayload, beaconsForParcel, composePlanBaseName, bundlePlanDocuments, validateGenerateRequest, type PlanPayloadContext } from '../planPayload'
 
 const parcelA: GeoJSON.Feature = {
   type: 'Feature',
@@ -113,5 +113,28 @@ describe('bundlePlanDocuments', () => {
 
   it('throws when nothing is supplied', async () => {
     await expect(bundlePlanDocuments({}, 'x')).rejects.toThrow(/No documents/)
+  })
+})
+
+describe('validateGenerateRequest', () => {
+  const whole = { subjectMode: 'whole-set' as const }
+  const single = { subjectMode: 'single-parcel' as const }
+
+  it('rejects when no format is chosen', () => {
+    expect(validateGenerateRequest(whole, null, 5, { pdf: false, dxf: false }).ok).toBe(false)
+  })
+  it('rejects single-parcel mode with no subject', () => {
+    const r = validateGenerateRequest(single, null, 5, { pdf: true, dxf: true })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/click a parcel/i)
+  })
+  it('accepts single-parcel mode with a subject', () => {
+    expect(validateGenerateRequest(single, 'A', 5, { pdf: true, dxf: false }).ok).toBe(true)
+  })
+  it('rejects whole-set mode with zero parcels', () => {
+    expect(validateGenerateRequest(whole, null, 0, { pdf: true, dxf: true }).ok).toBe(false)
+  })
+  it('accepts whole-set mode with parcels', () => {
+    expect(validateGenerateRequest(whole, null, 3, { pdf: true, dxf: false }).ok).toBe(true)
   })
 })

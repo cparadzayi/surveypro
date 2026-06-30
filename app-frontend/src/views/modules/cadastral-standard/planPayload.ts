@@ -31,13 +31,16 @@ export function beaconsForParcel(
   beacons: GeoJSON.FeatureCollection,
   parcelFeature: GeoJSON.Feature,
 ): GeoJSON.FeatureCollection {
-  const ring = (((parcelFeature.geometry as any)?.coordinates?.[0]) ?? []) as number[][]
+  if (parcelFeature.geometry?.type !== 'Polygon') {
+    return { type: 'FeatureCollection', features: [] }
+  }
+  const ring = (parcelFeature.geometry.coordinates[0] ?? []) as GeoJSON.Position[]
   const onRing = (c: number[]) =>
     ring.some(v => Math.abs(v[0] - c[0]) <= VERTEX_TOL && Math.abs(v[1] - c[1]) <= VERTEX_TOL)
   return {
     type: 'FeatureCollection',
     features: beacons.features.filter(
-      f => f.geometry?.type === 'Point' && onRing((f.geometry as any).coordinates as number[]),
+      f => f.geometry?.type === 'Point' && onRing((f.geometry as GeoJSON.Point).coordinates),
     ),
   }
 }

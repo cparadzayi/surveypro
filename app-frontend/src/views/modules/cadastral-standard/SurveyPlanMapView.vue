@@ -474,17 +474,19 @@
             <span class="text-xs text-gray-500">SI 727 Compliant Survey Documents</span>
           </div>
           <div class="export-buttons" style="display: flex; flex-direction: column; gap: 12px;">
-            <button @click="exportGeneralPlan" :disabled="isExporting" class="btn-export btn-geopdf" style="width: 100%; font-size: 16px; padding: 16px;">
-              <span v-if="!isExporting">📋 Generate General Plan</span>
-              <span v-else>⏳ Generating...</span>
+            <div class="format-toggles" style="display: flex; gap: 16px; font-size: 14px;">
+              <label><input type="checkbox" v-model="exportFormats.pdf" /> PDF</label>
+              <label><input type="checkbox" v-model="exportFormats.dxf" /> DXF</label>
+            </div>
+            <button @click="generatePlanDocuments" :disabled="isExporting"
+                    class="btn-export btn-geopdf" style="width: 100%; font-size: 16px; padding: 16px;">
+              <span v-if="!isExporting">📋 Generate {{ planTypeLabel }}</span>
+              <span v-else>⏳ Generating…</span>
             </button>
-            <button @click="generateComprehensivePDF" :disabled="isExporting" class="btn-export btn-professional" style="width: 100%; font-size: 16px; padding: 16px;">
+            <button @click="generateComprehensivePDF" :disabled="isExporting"
+                    class="btn-export btn-professional" style="width: 100%; font-size: 16px; padding: 16px;">
               <span v-if="!isExporting">📚 Download Complete Survey Record</span>
-              <span v-else>⏳ Generating...</span>
-            </button>
-            <button @click="exportToDXF" :disabled="isExporting" class="btn-export btn-dxf" style="width: 100%; font-size: 16px; padding: 16px;">
-              <span v-if="!isExporting">📐 Export AutoCAD DXF</span>
-              <span v-else>⏳ Generating...</span>
+              <span v-else>⏳ Generating…</span>
             </button>
           </div>
         </div>
@@ -517,7 +519,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick, reactive } from 'vue'
 
 defineOptions({ name: 'SurveyPlanMapView' })
 import maplibregl from 'maplibre-gl'
@@ -581,6 +583,10 @@ import api from '@/services/api'
 import { buildWorkflowExcel } from '@/utils/workflowExcelExporter'
 import { autoSaveStepProducts } from '@/services/workflowProductStorage'
 import { getPlanTypeMeta } from './planTypes'
+import {
+  buildPlanPayload, composePlanBaseName, bundlePlanDocuments, validateGenerateRequest,
+  type PlanPayloadContext, type PlanDocumentSet,
+} from './planPayload'
 
 // Props
 const props = defineProps<{
@@ -681,6 +687,8 @@ const selectedDiagramStand = computed(() => {
   return p?.stand ?? null
 })
 const isDiagramMode = computed(() => getPlanTypeMeta(config.value.planType).subjectMode === 'single-parcel')
+const exportFormats = reactive({ pdf: true, dxf: true })
+const planTypeLabel = computed(() => getPlanTypeMeta(config.value.planType).label)
 
 // ⭐ MULTI-SHEET: Active tile grid (computed reactively from outside figure + plan config)
 const activeTileGrid = ref<TileGrid | null>(null)
@@ -3758,206 +3766,163 @@ function generateBeaconLabelsForPDF() {
   return beaconLabels
 }
 
-// General Plan Export — all plan types (developed, undeveloped, diagram, working-plan)
-async function exportGeneralPlan() {
-  console.log('[GeneralPlan] 📋 Starting General Plan generation...')
-  isExporting.value = true
-  
-  try {
-    // Validate required data
-    if (!map.value) throw new Error('Map not initialized')
-    if (!outsideFigureData.value) throw new Error('Outside Figure data required')
-    
-    // Refresh data to ensure latest
-    console.log('[GeneralPlan] 🔄 Loading latest data...')
-    await loadData()
-    
-    // Prepare GeoJSON data
-    console.log('[GeneralPlan] 🔍 Pre-export state:', {
-      coordinatePoints: coordinatePoints.value.length,
-      parcels: parcels.value.length,
-    })
-    const parcelsGeoJSON = exportParcelsAsGeoJSON()
-    const beaconsGeoJSON = exportBeaconsAsGeoJSON()
-    
-    console.log('[GeneralPlan] 📊 Data summary:', {
-      parcels: parcelsGeoJSON.features.length,
-      beacons: beaconsGeoJSON.features.length,
-      outsideFigure: outsideFigureData.value ? 'Available' : 'Missing'
-    })
-    
-    // Calculate extent
-    let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity
-    
-    parcelsGeoJSON.features.forEach(feature => {
-      if (feature.geometry.type === 'Polygon') {
-        feature.geometry.coordinates[0].forEach((coord: number[]) => {
-          minY = Math.min(minY, coord[0])
-          maxY = Math.max(maxY, coord[0])
-          minX = Math.min(minX, coord[1])
-          maxX = Math.max(maxX, coord[1])
-        })
-      }
-    })
-    
-    beaconsGeoJSON.features.forEach(feature => {
-      if (feature.geometry.type === 'Point') {
-        minY = Math.min(minY, feature.geometry.coordinates[0])
-        maxY = Math.max(maxY, feature.geometry.coordinates[0])
-        minX = Math.min(minX, feature.geometry.coordinates[1])
-        maxX = Math.max(maxX, feature.geometry.coordinates[1])
-      }
-    })
-    
-    const extent = { minY, maxY, minX, maxX }
-    
-    // Prepare metadata
-    const metadata = {
-      title: `General Plan - ${props.projectInfo.designation || (config.value.planType === 'general-developed' ? 'Developed Township' : 'Undeveloped Township')}`,
-      planType: config.value.planType,
-      surveyor: config.value.surveyorName,
-      date: config.value.surveyDate,
-      designation: props.projectInfo.designation,
-      surveyOf: props.projectInfo.surveyOf || '',
-      district: props.projectInfo.district,
-      township: props.projectInfo.township,
-      wholePortion: props.projectInfo.wholePortion || 'the whole',
-      parentProperty: props.projectInfo.parentProperty || ''
-    }
-    
-    console.log('[GeneralPlan] 📤 Generating beacon labels for PDF export...')
-    
-    // Generate beacon labels on-demand for PDF export
-    let pdfBeaconLabels = generateBeaconLabelsForPDF()
-    if (pdfBeaconLabels.length === 0 && validatedLabels.value.beacons.length > 0) {
-      console.warn('[GeneralPlan] ⚠️ On-demand beacon label generation returned 0; falling back to validatedLabels.beacons')
-      pdfBeaconLabels = validatedLabels.value.beacons.map(label => ({
-        text: label.text,
-        coordinates: label.coordinates,
-        parcelId: label.parcelId,
-        type: 'beacon' as const,
-        beaconName: label.beaconName,
-        isInsideParcel: label.isInsideParcel,
-        displayInParcel: (label as any).displayInParcel ?? null,
-        labelType: (label as any).labelType ?? (label.isInsideParcel ? 'suffix' : 'full')
-      }))
-    }
-    console.log(`[GeneralPlan] 🏷️ Generated ${pdfBeaconLabels.length} beacon labels for PDF`)
-    
-    console.log('[GeneralPlan] 📤 Calling backend API...')
-    
-    const epsgCode = `EPSG:${22260 + parseInt(config.value.centralMeridian || '31')}`
-    
-    // Use intelligentPreview recommendations so plan and summary PDF agree
-    const resolvedScale = intelligentPreview.value?.scale?.label || undefined
-    const resolvedSheetSize = intelligentPreview.value?.sheetSize || undefined
+// ---- Plan-type-driven generation orchestrator (Task 7) ----
 
-    console.log('[GeneralPlan] 📐 Using scale/sheet from intelligentPreview:', {
-      scale: resolvedScale,
-      sheetSize: resolvedSheetSize
-    })
+function gatherPlanContext(): PlanPayloadContext {
+  const parcelsGeoJSON = exportParcelsAsGeoJSON()
+  const beaconsGeoJSON = exportBeaconsAsGeoJSON()
 
-    const pdfRequest = {
-      parcels: parcelsGeoJSON,
-      beacons: beaconsGeoJSON,
-      annotations: { type: 'FeatureCollection', features: [] },
-      projection: epsgCode,
-      projectId: props.projectId,
-      renderEngine: 'pdfkit' as const,
-      extent: extent,
-      scale: resolvedScale,
-      sheetSize: resolvedSheetSize,
-      metadata,
-      outsideFigureData: outsideFigureData.value,
-      beaconLabels: pdfBeaconLabels,
-      planType: config.value.planType as any  // SI 727 Reg 32(3): enforces 1:500 ceiling for developed townships
-    }
-
-    let result = await generateVectorGeoPDF(pdfRequest)
-
-    // Auto-retry at suggested scale if block placement needed more whitespace
-    if (result.suggestedScale) {
-      console.warn(`[GeneralPlan] 📏 Block placement suggested higher scale: ${result.suggestedScale}. Retrying...`)
-      result = await generateVectorGeoPDF({ ...pdfRequest, scale: result.suggestedScale })
-      console.log(`[GeneralPlan] ✅ Retry complete at ${result.usedScale}`)
-    }
-
-    const pdfBlob = result.blob
-
-    // Store the PDF's final resolved scale so DXF can match it
-    if (result.usedScale) {
-      pdfFinalScale.value = result.usedScale
-      console.log(`[GeneralPlan] 📏 PDF final scale stored: ${result.usedScale}`)
-    }
-
-    // Download PDF
-    console.log('[GeneralPlan] 💾 Downloading General Plan...')
-    const ts = Date.now()
-    const planTypeLabel = config.value.planType === 'general-developed' ? 'developed-township' : 'undeveloped-township'
-    const isTiled = !!result.tileGrid
-    const filename = isTiled
-      ? `general-plan-multisheet-${props.projectInfo.designation || planTypeLabel}-${ts}.pdf`
-      : `general-plan-${props.projectInfo.designation || planTypeLabel}-${ts}.pdf`
-    downloadBlob(pdfBlob, filename)
-
-    // SI 727 Reg 32(3): inform user that multi-sheet PDF was generated
-    if (isTiled) {
-      const tg = result.tileGrid!
-      alert(
-        `SI 727 Reg 32(3) — Multi-sheet General Plan downloaded.\n\n` +
-        `${tg.totalSheets} sheets (${tg.cols}×${tg.rows} grid) at ${tg.scaleLabel} on ${tg.sheetSize}.\n\n` +
-        `The PDF contains:\n` +
-        `  • Sheet 0: Key Plan (sheet index diagram)\n` +
-        `  • Sheets 1–${tg.totalSheets}: Individual tile sheets with 5% overlap`
-      )
-    }
-
-    // Generate and download summary statistics PDF
-    console.log('[GeneralPlan] 📊 Generating plan statistics summary...')
-    try {
-      const summaryBlob = generatePlanStatisticsPDF({
-        projectInfo: {
-          designation: props.projectInfo.designation || '',
-          surveyOf: props.projectInfo.surveyOf || '',
-          district: props.projectInfo.district,
-          township: props.projectInfo.township,
-          surveyDate: props.projectInfo.surveyDate || new Date().toISOString(),
-          surveyorName: props.projectInfo.surveyorName || config.value.surveyorName,
-          licenseNumber: props.projectInfo.licenseNumber || config.value.licenseNumber,
-          firm: props.projectInfo.firm
-        },
-        parcels: parcels.value.map((p: any) => ({
-          id: p.id,
-          stand: p.stand,
-          area_m2: p.area_m2 || 0,
-          description: p.description
-        })),
-        outsideFigureData: outsideFigureData.value || undefined,
-        beaconGroups: formatBeaconDescriptionGroups(coordinatePoints.value),
-        scale: result.usedScale || intelligentPreview.value?.scale?.label || config.value.scale || '1:1000',
-        sheetSize: result.usedSheetSize || intelligentPreview.value?.sheetSize || 'ISO_A0',
-        orientation: 'landscape',
-        centralMeridian: parseInt(config.value.centralMeridian || '31'),
-        generatedAt: new Date()
+  let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity
+  parcelsGeoJSON.features.forEach((feature: any) => {
+    if (feature.geometry.type === 'Polygon') {
+      feature.geometry.coordinates[0].forEach((coord: number[]) => {
+        minY = Math.min(minY, coord[0]); maxY = Math.max(maxY, coord[0])
+        minX = Math.min(minX, coord[1]); maxX = Math.max(maxX, coord[1])
       })
-      const summaryFilename = filename.replace(/\.pdf$/i, '-summary.pdf')
-      const summaryUrl = URL.createObjectURL(summaryBlob)
-      const sa = document.createElement('a')
-      sa.href = summaryUrl
-      sa.download = summaryFilename
-      sa.click()
-      URL.revokeObjectURL(summaryUrl)
-      console.log('[GeneralPlan] ✅ Summary statistics PDF downloaded:', summaryFilename)
-    } catch (summaryErr: any) {
-      console.warn('[GeneralPlan] ⚠️ Summary PDF failed (plan PDF still downloaded):', summaryErr?.message)
+    }
+  })
+  beaconsGeoJSON.features.forEach((feature: any) => {
+    if (feature.geometry.type === 'Point') {
+      minY = Math.min(minY, feature.geometry.coordinates[0]); maxY = Math.max(maxY, feature.geometry.coordinates[0])
+      minX = Math.min(minX, feature.geometry.coordinates[1]); maxX = Math.max(maxX, feature.geometry.coordinates[1])
+    }
+  })
+  const extent = { minY, maxY, minX, maxX }
+
+  const metadata = {
+    title: `${getPlanTypeMeta(config.value.planType).label} - ${props.projectInfo.designation || 'Survey Plan'}`,
+    planType: config.value.planType,
+    surveyor: config.value.surveyorName,
+    date: config.value.surveyDate,
+    designation: props.projectInfo.designation,
+    surveyOf: props.projectInfo.surveyOf || '',
+    district: props.projectInfo.district,
+    township: props.projectInfo.township,
+    firm: config.value.firm,
+    licenseNumber: config.value.licenseNumber,
+    parentProperty: props.projectInfo.parentProperty || '',
+    wholePortion: props.projectInfo.wholePortion || 'the whole',
+    priorDiagrams: props.projectInfo.priorDiagrams || [],
+  }
+
+  let beaconLabels = generateBeaconLabelsForPDF()
+  if (beaconLabels.length === 0 && validatedLabels.value.beacons.length > 0) {
+    beaconLabels = validatedLabels.value.beacons.map((label: any) => ({
+      text: label.text, coordinates: label.coordinates, parcelId: label.parcelId,
+      type: 'beacon' as const, beaconName: label.beaconName, isInsideParcel: label.isInsideParcel,
+      displayInParcel: label.displayInParcel ?? null,
+      labelType: label.labelType ?? (label.isInsideParcel ? 'suffix' : 'full'),
+    }))
+  }
+
+  const epsgCode = `EPSG:${22260 + parseInt(config.value.centralMeridian || '31')}`
+  const resolvedScale = intelligentPreview.value?.scale?.label || undefined
+  const resolvedSheetSize = intelligentPreview.value?.sheetSize || undefined
+  const _sheet = intelligentPreview.value?.layout?.sheet
+  const orientation: 'landscape' | 'portrait' =
+    _sheet ? (_sheet.width > _sheet.height ? 'landscape' : 'portrait') : 'landscape'
+
+  return {
+    planType: config.value.planType as any,
+    subjectParcelId: selectedDiagramParcelId.value,
+    parcels: parcelsGeoJSON,
+    beacons: beaconsGeoJSON,
+    beaconLabels,
+    projection: epsgCode,
+    projectId: props.projectId,
+    metadata,
+    extent,
+    scale: resolvedScale,
+    sheetSize: resolvedSheetSize,
+    orientation,
+    outsideFigureData: outsideFigureData.value,
+    beaconGroups: props.projectInfo.beaconGroups || [],
+    annotations: { type: 'FeatureCollection', features: [] },
+    renderEngine: 'pdfkit',
+  }
+}
+
+async function generatePlanDocuments() {
+  const meta = getPlanTypeMeta(config.value.planType)
+  const v = validateGenerateRequest(meta, selectedDiagramParcelId.value, parcels.value.length, exportFormats)
+  if (!v.ok) { alert(v.error); return }
+
+  isExporting.value = true
+  try {
+    await loadData()
+    const ctx = gatherPlanContext()
+    const payload = buildPlanPayload(ctx)
+    const docs: PlanDocumentSet = {}
+    let usedScale: string | undefined
+
+    if (exportFormats.pdf) {
+      let result = await generateVectorGeoPDF(payload)
+      if (result.suggestedScale) {
+        result = await generateVectorGeoPDF({ ...payload, scale: result.suggestedScale })
+      }
+      docs.pdf = result.blob
+      usedScale = result.usedScale || undefined
+      if (result.usedScale) pdfFinalScale.value = result.usedScale
+
+      if (result.tileGrid) {
+        const tg = result.tileGrid
+        alert(
+          `SI 727 Reg 32(3) — Multi-sheet plan.\n\n` +
+          `${tg.totalSheets} sheets (${tg.cols}×${tg.rows}) at ${tg.scaleLabel} on ${tg.sheetSize}.\n` +
+          `Sheet 0: Key Plan; Sheets 1–${tg.totalSheets}: tiles with 5% overlap.`
+        )
+      }
+
+      if (meta.includesSummary) {
+        try {
+          docs.summary = generatePlanStatisticsPDF({
+            projectInfo: {
+              designation: props.projectInfo.designation || '',
+              surveyOf: props.projectInfo.surveyOf || '',
+              district: props.projectInfo.district,
+              township: props.projectInfo.township,
+              surveyDate: props.projectInfo.surveyDate || new Date().toISOString(),
+              surveyorName: props.projectInfo.surveyorName || config.value.surveyorName,
+              licenseNumber: props.projectInfo.licenseNumber || config.value.licenseNumber,
+              firm: props.projectInfo.firm,
+            },
+            parcels: parcels.value.map((p: any) => ({
+              id: p.id, stand: p.stand, area_m2: p.area_m2 || 0, description: p.description,
+            })),
+            outsideFigureData: outsideFigureData.value || undefined,
+            beaconGroups: formatBeaconDescriptionGroups(coordinatePoints.value),
+            scale: usedScale || intelligentPreview.value?.scale?.label || config.value.scale || '1:1000',
+            sheetSize: result.usedSheetSize || intelligentPreview.value?.sheetSize || 'ISO_A0',
+            orientation: 'landscape',
+            centralMeridian: parseInt(config.value.centralMeridian || '31'),
+            generatedAt: new Date(),
+          })
+        } catch (summaryErr: any) {
+          console.warn('[PlanDocs] Summary PDF failed (plan still generated):', summaryErr?.message)
+        }
+      }
     }
 
-    console.log('[GeneralPlan] ✅ General Plan generation complete')
-    emit('export-complete', { format: 'undeveloped-township-gp', filename })
-    
+    if (exportFormats.dxf) {
+      const dxfPayload = { ...payload, scale: usedScale || payload.scale }
+      const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload)
+      docs.dxf = blob
+      if (warningCount > 0 && warningsSummary) {
+        const parts: string[] = []
+        if (warningsSummary.beacons) parts.push(`${warningsSummary.beacons} beacon(s) skipped`)
+        if (warningsSummary.parcels) parts.push(`${warningsSummary.parcels} parcel(s) skipped`)
+        if (parts.length) console.warn('[PlanDocs] DXF warnings:', parts.join(', '))
+      }
+    }
+
+    const ts = Date.now()
+    const baseName = composePlanBaseName(config.value.planType, props.projectInfo.designation, props.projectId, ts)
+    const { blob, filename } = await bundlePlanDocuments(docs, baseName)
+    downloadBlob(blob, filename)
+    emit('export-complete', { format: config.value.planType, filename })
   } catch (error: any) {
-    console.error('[GeneralPlan] ❌ General Plan generation failed:', error)
-    alert(`General Plan generation failed: ${error.message}`)
+    console.error('[PlanDocs] Generation failed:', error)
+    alert(`Generation failed: ${error.message}`)
   } finally {
     isExporting.value = false
   }
@@ -4237,7 +4202,7 @@ async function generateComprehensivePDF() {
 // Raster GeoPDF Export Function (DEPRECATED - kept for backward compatibility)
 async function exportGeoPDF() {
   console.log('[SurveyPlanMap] 🌍 Starting Raster GeoPDF export (DEPRECATED)...')
-  console.log('[SurveyPlanMap] ⚠️ Consider using exportGeneralPlan() for true vector output')
+  console.log('[SurveyPlanMap] ⚠️ Consider using generatePlanDocuments() for true vector output')
   isExporting.value = true
   
   try {
@@ -4504,97 +4469,6 @@ async function exportToPDF() {
   } catch (error) {
     console.error('[SurveyPlanMap] ❌ PDF export error:', error)
     alert(`Failed to export PDF: ${error.message}`)
-  } finally {
-    isExporting.value = false
-  }
-}
-
-async function exportToDXF() {
-  isExporting.value = true
-  try {
-    console.log('[DXF Export] Starting DXF generation...')
-
-    // Gather GeoJSON data (same as PDF export)
-    const parcelsGeoJSON = exportParcelsAsGeoJSON()
-    const beaconsGeoJSON = exportBeaconsAsGeoJSON()
-
-    const epsgCode = `EPSG:${22260 + parseInt(config.value.centralMeridian || '31')}`
-    // Prefer PDF's final scale (after text-block fitting); fall back to intelligentPreview
-    const resolvedScale = pdfFinalScale.value || intelligentPreview.value?.scale?.label || undefined
-    const resolvedSheetSize = intelligentPreview.value?.sheetSize || 'ISO_A2'
-    // PDF↔DXF parity: share the PDF's page orientation. Derived from the same
-    // intelligentPreview sheet the PDF export uses (width > height ⇒ landscape).
-    const _sheet = intelligentPreview.value?.layout?.sheet
-    const resolvedOrientation: 'landscape' | 'portrait' =
-      _sheet ? (_sheet.width > _sheet.height ? 'landscape' : 'portrait') : 'landscape'
-
-    const metadata = {
-      title: `General Plan - ${props.projectInfo.designation || 'Survey Plan'}`,
-      surveyor: config.value.surveyorName,
-      date: config.value.surveyDate,
-      designation: props.projectInfo.designation,
-      surveyOf: props.projectInfo.surveyOf || '',
-      district: props.projectInfo.district,
-      township: props.projectInfo.township,
-      // New SI-727 fields the PDF carries
-      firm: config.value.firm,
-      licenseNumber: config.value.licenseNumber,
-      parentProperty: props.projectInfo.parentProperty,
-      wholePortion: props.projectInfo.wholePortion,
-      priorDiagrams: props.projectInfo.priorDiagrams || [],
-    }
-
-    console.log('[DXF Export] Data summary:', {
-      parcels: parcelsGeoJSON.features.length,
-      beacons: beaconsGeoJSON.features.length,
-      scale: resolvedScale,
-      scaleSource: pdfFinalScale.value ? 'PDF final' : 'intelligentPreview',
-      sheetSize: resolvedSheetSize,
-      projection: epsgCode,
-    })
-
-    const { blob: dxfBlob, warningCount, warningsSummary } = await generateDXF({
-      parcels: parcelsGeoJSON,
-      beacons: beaconsGeoJSON,
-      projection: epsgCode,
-      metadata,
-      outsideFigureData: outsideFigureData.value,
-      scale: resolvedScale,
-      sheetSize: resolvedSheetSize,
-      orientation: resolvedOrientation,
-      beaconGroups: props.projectInfo.beaconGroups || [],
-      // SI 727 plan type — drives parcel-edge label suppression on developed
-      // townships (per-stand survey diagrams carry that detail). Same value
-      // that the PDF generator already receives via the vector call above.
-      planType: config.value.planType as any,
-      // UI-computed beacon-to-parcel assignments so the DXF can display the
-      // same suffix-only labels inside parcels that the PDF shows.
-      beaconLabels: refinedBeaconLabels.value || [],
-    })
-
-    const ts = Date.now()
-    const filename = `survey-plan-${props.projectInfo.designation || props.projectId}-${ts}.dxf`
-    downloadBlob(dxfBlob, filename)
-
-    console.log('[DXF Export] Download complete:', filename)
-    if (warningCount > 0 && warningsSummary) {
-      const parts: string[] = []
-      if (warningsSummary.beacons) parts.push(`${warningsSummary.beacons} beacon(s) skipped`)
-      if (warningsSummary.parcels) parts.push(`${warningsSummary.parcels} parcel(s) skipped`)
-      if (warningsSummary.beaconDescTruncated) parts.push(`${warningsSummary.beaconDescTruncated} beacon description(s) truncated`)
-      if (warningsSummary.priorDiagramsTruncated) parts.push(`${warningsSummary.priorDiagramsTruncated} prior diagram(s) truncated`)
-      if (warningsSummary.scaleFallback) parts.push('scale fell back to 1:500')
-      const summary = parts.length ? parts.join(', ') : `${warningCount} warning(s)`
-      // The component has no toast helper imported; use console.warn as placeholder.
-      // If a toast/notify helper is added, replace with: toast.warning(`DXF generated with ${summary}. See the PDF for the complete record.`)
-      // eslint-disable-next-line no-console
-      console.warn(`[DXF Export] ${summary}. See the PDF for the complete record.`)
-    }
-    emit('export-complete', { format: 'dxf', filename })
-
-  } catch (error: any) {
-    console.error('[DXF Export] Failed:', error)
-    alert(`Failed to generate DXF: ${error?.message || 'Unknown error'}`)
   } finally {
     isExporting.value = false
   }

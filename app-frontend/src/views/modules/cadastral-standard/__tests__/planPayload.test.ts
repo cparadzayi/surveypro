@@ -95,6 +95,14 @@ describe('bundlePlanDocuments', () => {
   it('names a lone dxf with the .dxf extension', async () => {
     const r = await bundlePlanDocuments({ dxf }, 'diagram-302-1')
     expect(r.filename).toBe('diagram-302-1.dxf')
+    expect(r.blob).toBe(dxf)
+  })
+
+  it('names a lone summary with the -summary.pdf suffix', async () => {
+    const summary = new Blob(['%PDF-1.4 summary'], { type: 'application/pdf' })
+    const r = await bundlePlanDocuments({ summary }, 'general-undeveloped-Stand_85-1')
+    expect(r.filename).toBe('general-undeveloped-Stand_85-1-summary.pdf')
+    expect(r.blob).toBe(summary)
   })
 
   it('zips when both formats are present', async () => {

@@ -53,23 +53,24 @@ describe('buildPlanPayload — whole-set', () => {
   })
 })
 
-describe('buildPlanPayload — single-parcel (diagram)', () => {
-  it('filters parcels, beacons, and labels to the subject', () => {
+describe('buildPlanPayload — diagram carries all parcels + subjectParcelId', () => {
+  it('does NOT filter parcels/beacons and records subjectParcelId in metadata', () => {
     const p = buildPlanPayload(ctx({ planType: 'diagram', subjectParcelId: 'A' }))
-    expect(p.parcels.features.map(f => f.properties!.id)).toEqual(['A'])
-    expect(p.beacons.features.map(f => f.properties!.name)).toEqual(['A1', 'A2'])
-    expect(p.beaconLabels).toEqual([{ text: 'A', parcelId: 'A' }])
+    expect(p.parcels.features.map(f => f.properties!.id)).toEqual(['A', 'B'])
+    expect(p.beacons.features).toHaveLength(3)
+    expect((p.metadata as any).subjectParcelId).toBe('A')
   })
 
-  it('returns empty sets when the subject id is not found', () => {
+  it('still records subjectParcelId even if it is not among the parcels', () => {
     const p = buildPlanPayload(ctx({ planType: 'diagram', subjectParcelId: 'Z' }))
-    expect(p.parcels.features).toHaveLength(0)
-    expect(p.beacons.features).toHaveLength(0)
+    expect(p.parcels.features).toHaveLength(2)
+    expect((p.metadata as any).subjectParcelId).toBe('Z')
   })
 
-  it('does NOT filter when subjectParcelId is null even in diagram mode', () => {
-    const p = buildPlanPayload(ctx({ planType: 'diagram', subjectParcelId: null }))
+  it('whole-set plan types are unaffected and set no subjectParcelId', () => {
+    const p = buildPlanPayload(ctx({ planType: 'general-undeveloped' }))
     expect(p.parcels.features).toHaveLength(2)
+    expect((p.metadata as any).subjectParcelId).toBeUndefined()
   })
 })
 

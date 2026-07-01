@@ -47,27 +47,23 @@ export function beaconsForParcel(
 }
 
 /**
- * Assemble the request shared by the PDF and DXF endpoints. For single-parcel
- * plan types (Diagram) with a chosen subject, the parcels/beacons/labels are
- * filtered to that one parcel. Renderer behaviour is otherwise unchanged.
+ * Assemble the request shared by the PDF and DXF endpoints. For the single-parcel
+ * plan type (Diagram) with a chosen subject, ALL parcels/beacons are kept (the
+ * neighbours are drawn as context) and the subject parcel is marked in
+ * `metadata.subjectParcelId` for the renderer. Renderer behaviour is otherwise
+ * unchanged.
  */
 export function buildPlanPayload(ctx: PlanPayloadContext): VectorGeoPDFRequest {
   const meta = getPlanTypeMeta(ctx.planType)
-  let parcels = ctx.parcels
-  let beacons = ctx.beacons
-  let beaconLabels = ctx.beaconLabels
+  const parcels = ctx.parcels
+  const beacons = ctx.beacons
+  const beaconLabels = ctx.beaconLabels
+  let metadata = ctx.metadata
 
   if (meta.subjectMode === 'single-parcel' && ctx.subjectParcelId != null) {
-    const subject = ctx.parcels.features.find(
-      f => String(f.properties?.id) === String(ctx.subjectParcelId),
-    )
-    parcels = { type: 'FeatureCollection', features: subject ? [subject] : [] }
-    beacons = subject
-      ? beaconsForParcel(ctx.beacons, subject)
-      : { type: 'FeatureCollection', features: [] }
-    beaconLabels = (ctx.beaconLabels ?? []).filter(
-      l => String(l?.parcelId) === String(ctx.subjectParcelId),
-    )
+    // Diagram: keep ALL parcels/beacons (neighbours are drawn as context) and
+    // mark which parcel is the diagram subject for the renderer.
+    metadata = { ...(ctx.metadata ?? {}), subjectParcelId: String(ctx.subjectParcelId) }
   }
 
   return {
@@ -81,7 +77,7 @@ export function buildPlanPayload(ctx: PlanPayloadContext): VectorGeoPDFRequest {
     scale: ctx.scale,
     sheetSize: ctx.sheetSize,
     orientation: ctx.orientation,
-    metadata: ctx.metadata,
+    metadata,
     outsideFigureData: ctx.outsideFigureData,
     beaconGroups: ctx.beaconGroups,
     beaconLabels,

@@ -1,8 +1,11 @@
 import PDFDocument from 'pdfkit'
 import { deriveSubjectGeometry } from './diagram/subjectGeometry.js'
 import { parcelExtent, pickDiagramScale, makeTransform } from './diagram/diagramScale.js'
-import { buildSidesTable } from './diagram/sidesTable.js'
-import { resolveLoSystem, classifyBeaconGroups } from '../../../app-shared/block-definitions.js'
+import { buildSidesTable, buildFigureRepresents } from './diagram/sidesTable.js'
+import { buildReferenceGrid } from './diagram/referenceGrid.js'
+import {
+  resolveLoSystem, classifyBeaconGroups, formatAreaValue, snapScaleBarSegment,
+} from '../../../app-shared/block-definitions.js'
 
 // A4 portrait, points.
 const A4 = [595.28, 841.89]
@@ -14,13 +17,15 @@ export const REGIONS = {
   beaconDesc: { x: 40, y: 195, width: 250, height: 40 },
   approved: { x: 380, y: 195, width: 175, height: 45 },
   northArrow: { x: 300, y: 195, width: 40, height: 50 },
+  scaleBar: { x: 220, y: 620, width: 160, height: 30 },
+  statement: { x: 40, y: 660, width: 515, height: 60 },
+  refGrid: { x: 40, y: 725, width: 515, height: 100 },
 }
 
 function docToBuffer(doc) {
   const chunks = []
-  doc.on('data', (c) => chunks.push(c))
-  doc.end()
   return new Promise((resolve, reject) => {
+    doc.on('data', (c) => chunks.push(c))
     doc.on('end', () => resolve(Buffer.concat(chunks)))
     doc.on('error', reject)
   })
@@ -120,6 +125,63 @@ function drawApprovedBox(doc) {
   doc.restore()
 }
 
+function drawScaleBar(doc, denom) {
+  const R = REGIONS.scaleBar
+  // Ground metres represented by the bar's width:
+  const barGroundM = (R.width / (72 / 25.4)) * denom / 1000
+  const seg = snapScaleBarSegment(barGroundM / 4) // ~4 segments
+  const ptPerM = (72 / 25.4) * 1000 / denom
+  doc.save().lineWidth(1).strokeColor('#000').font('Helvetica').fontSize(6.5)
+  let x = R.x, ground = 0
+  doc.moveTo(R.x, R.y + 10).lineTo(R.x, R.y + 16).stroke()
+  for (let i = 0; i < 4; i++) {
+    const w = seg * ptPerM
+    if (i % 2 === 0) doc.rect(x, R.y + 10, w, 4).fillAndStroke('#000', '#000')
+    else doc.rect(x, R.y + 10, w, 4).stroke()
+    x += w; ground += seg
+    doc.fillColor('#000').text(String(Math.round(ground)), x - 6, R.y, { width: 12, align: 'center' })
+  }
+  doc.text('metres', x + 4, R.y + 10)
+  doc.text(`Scale 1 : ${denom}`, R.x + R.width / 2 - 30, R.y + 20)
+  doc.restore()
+}
+
+function drawStatement(doc, geometry, metadata) {
+  const R = REGIONS.statement
+  const seq = buildFigureRepresents(geometry)
+  const area = formatAreaValue(geometry.area)
+  const designation = metadata.designation ?? ''
+  const parent = metadata.parentProperty ? ` OF ${metadata.parentProperty}` : ''
+  doc.save().font('Helvetica').fontSize(8).fillColor('#000')
+  doc.text('The figure', R.x, R.y)
+  doc.text('represents', R.x, R.y + 11)
+  doc.text(`${seq}`, R.x + 120, R.y, { width: 260, align: 'center' })
+  doc.text(`${area} of land called`, R.x + 120, R.y + 12, { width: 300 })
+  doc.font('Helvetica-Bold').text(`${designation}${parent}`, R.x, R.y + 30, { width: R.width })
+  doc.font('Helvetica').fontSize(7).text(
+    `situate in the district of ${metadata.district ?? ''}.`, R.x, R.y + 44)
+  doc.text(`Surveyed in ${metadata.surveyDate ? new Date(metadata.surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`, R.x, R.y + 53)
+  doc.restore()
+}
+
+function drawReferenceGrid(doc, grid) {
+  const R = REGIONS.refGrid
+  doc.save().rect(R.x, R.y, R.width, R.height).stroke()
+  doc.font('Helvetica').fontSize(7).fillColor('#000')
+  const col2 = R.x + R.width / 2
+  doc.text(`This diagram is annexed to No. ${grid.annexedToNo}  dated ${grid.annexedToDate}`, R.x + 4, R.y + 6)
+  doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, R.x + 4, R.y + 22)
+  doc.text(`Deed of Transfer No. ${grid.deedOfTransferNo}`, R.x + 4, R.y + 38)
+  doc.text(`File : ${grid.fileNo}`, R.x + 4, R.y + 54)
+  doc.text(`G.P. : ${grid.registrationGp}`, R.x + 4, R.y + 70)
+  doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, col2, R.y + 6)
+  doc.text(`S.R. : ${grid.srNo}`, col2, R.y + 38)
+  doc.text('Land Surveyor', col2, R.y + 54)
+  doc.text('Surveyor-General', col2, R.y + 70)
+  doc.text(`Compilation : ${grid.compilation}`, R.x + 4, R.y + 86)
+  doc.restore()
+}
+
 export async function generateDiagramPDF(options, logger) {
   const { parcels, metadata = {}, scale: requestedScale } = options
   const features = parcels?.features ?? []
@@ -171,7 +233,11 @@ export async function generateDiagramPDF(options, logger) {
   drawBeaconDescription(doc, options.beacons)
   drawNorthArrow(doc)
   drawApprovedBox(doc)
+  drawScaleBar(doc, denom)
+  drawStatement(doc, geometry, metadata)
+  drawReferenceGrid(doc, buildReferenceGrid(metadata))
 
+  doc.end()
   const pdfBuffer = await bufferPromise
   return { pdfBuffer, scale: label, sheetSize: 'A4' }
 }

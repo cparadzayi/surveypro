@@ -47,6 +47,8 @@ describe('generateDiagramPDF', () => {
     }
     const r = await generateDiagramPDF(withBeacons, logger)
     expect(r.pdfBuffer.slice(0, 5).toString()).toBe('%PDF-')
-    expect(r.pdfBuffer.length).toBeGreaterThan(1000)
+    // A fully-drawn diagram (figure + table + grid) is ~2.7KB; a blank page
+    // (the doc.end()-before-drawing bug) is ~1KB. Guard against that regression.
+    expect(r.pdfBuffer.length).toBeGreaterThan(2000)
   })
 })

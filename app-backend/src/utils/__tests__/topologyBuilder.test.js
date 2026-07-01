@@ -70,9 +70,23 @@ describe('Topology Builder', () => {
       expect(beacon).toHaveProperty('type')
     })
     
-    test('throws error for invalid coordinate points', () => {
-      expect(() => buildBeaconMap(sampleParcels, [{ name: 'A' }])).toThrow()
-      expect(() => buildBeaconMap(sampleParcels, [{ x: 0, y: 0 }])).toThrow()
+    test('skips invalid coordinate points instead of throwing (resilient preview)', () => {
+      // Real-world bug: a coordinate_points row with a blank name (a duplicate
+      // of a named beacon at the same location) must not abort the whole survey
+      // plan preview. Invalid points are skipped; valid points still map.
+      const points = [
+        { name: '2283A', x: 0, y: 0 },
+        { name: 'B', x: 5 },          // missing y  → skipped
+        { x: 0, y: 0 },               // missing name → skipped
+        { name: '', x: 7, y: 7 },     // blank name (the actual bug) → skipped
+        { name: '   ', x: 8, y: 8 },  // whitespace-only name → skipped
+      ]
+      let beaconMap
+      expect(() => { beaconMap = buildBeaconMap(sampleParcels, points) }).not.toThrow()
+      expect(beaconMap.has('2283A')).toBe(true)
+      expect(beaconMap.has('')).toBe(false)
+      expect(beaconMap.has('B')).toBe(false)
+      expect(beaconMap.size).toBe(1)
     })
   })
   

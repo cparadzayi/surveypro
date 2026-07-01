@@ -48,10 +48,20 @@ export function buildBeaconMap(parcels, coordinatePoints) {
   const beaconMap = new Map()
   
   coordinatePoints.forEach(point => {
-    if (!point.name || typeof point.x !== 'number' || typeof point.y !== 'number') {
-      throw new Error('All coordinate points must have name, x, and y')
+    // Skip (don't throw) points we cannot key into a name-indexed beacon map:
+    // a missing/blank name or non-numeric coords. This keeps the survey plan
+    // preview resilient to a stray coordinate_points row (e.g. a duplicate of a
+    // named beacon that lost its name), matching how the rest of the app
+    // tolerates such data instead of aborting the whole preview.
+    const hasValidName = typeof point.name === 'string' && point.name.trim() !== ''
+    if (!hasValidName || typeof point.x !== 'number' || typeof point.y !== 'number') {
+      console.warn(
+        `[topologyBuilder] Skipping coordinate point with missing/blank name or invalid coordinates: ` +
+        JSON.stringify({ name: point.name, x: point.x, y: point.y })
+      )
+      return
     }
-    
+
     beaconMap.set(point.name, {
       name: point.name,
       x: point.x,

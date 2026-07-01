@@ -460,6 +460,26 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
       if (renderEngine === 'pdfkit') {
         fastify.log.info('[GeoPDF] 🎨 Using PDFKit professional renderer (SI 727 layout + labels)')
 
+        if (planType === 'diagram') {
+          fastify.log.info('[GeoPDF] 📐 Diagram plan type → single-stand Diagram renderer')
+          const { generateDiagramPDF } = await import('../services/diagramPdf.js')
+          const diagram = await generateDiagramPDF(
+            { parcels: parcelsWithComputedData, beacons, metadata, projection,
+              scale, sheetSize: 'A4', orientation: 'portrait' },
+            fastify.log
+          )
+          const ts = Date.now()
+          reply
+            .type('application/pdf')
+            .headers({
+              'Content-Disposition': `attachment; filename="diagram-${ts}.pdf"`,
+              'X-Used-Scale': diagram.scale,
+              'X-Used-Sheet-Size': diagram.sheetSize,
+            })
+            .send(diagram.pdfBuffer)
+          return
+        }
+
         const {
           generateGeoPDF: generatePDFKitGeoPDF,
           generateTiledGeoPDF,

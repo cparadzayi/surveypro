@@ -156,6 +156,14 @@ const projectInfo = computed(() => {
     wholePortion: project?.whole_portion || props.workflowState?.projectInfo?.wholePortion || 'the whole',
     // Immediate parent property (e.g. "Shabani Mine Surface Rights A")
     parentProperty: project?.parent_property || props.workflowState?.projectInfo?.parentProperty || '',
+    // Diagram reference fields (sub-project 2a)
+    deedOfTransferNo: project?.deed_of_transfer_no || props.workflowState?.projectInfo?.deedOfTransferNo || '',
+    parentDiagramNo: project?.parent_diagram_no || props.workflowState?.projectInfo?.parentDiagramNo || '',
+    parentDiagramAnnexedTo: project?.parent_diagram_annexed_to || props.workflowState?.projectInfo?.parentDiagramAnnexedTo || '',
+    originalTitleDiagramNo: project?.original_title_diagram_no || props.workflowState?.projectInfo?.originalTitleDiagramNo || '',
+    srNo: project?.sr_no || props.workflowState?.projectInfo?.srNo || '',
+    fileNo: project?.file_no || props.workflowState?.projectInfo?.fileNo || '',
+    gpNo: project?.gp_no || props.workflowState?.projectInfo?.gpNo || '',
     // Working directory for auto-saving files to project folder
     workingDirectory: project?.working_directory || props.workflowState?.projectInfo?.workingDirectory || '',
     // Project name for file naming

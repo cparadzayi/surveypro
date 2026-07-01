@@ -188,7 +188,83 @@
                 Appears in title block: "being the whole/remainder/portion of [Parent Property]"
               </p>
             </div>
-            
+
+            <!-- Diagram details (SI 727 single-stand Diagram reference grid) -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Deed of Transfer No.
+              </label>
+              <input
+                v-model="setupData.deedOfTransferNo"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g. 3326/72"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Immediate parent diagram No.
+              </label>
+              <input
+                v-model="setupData.parentDiagramNo"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g. 8055/57"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Parent diagram annexed to
+              </label>
+              <input
+                v-model="setupData.parentDiagramAnnexedTo"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Original title diagram No.
+              </label>
+              <input
+                v-model="setupData.originalTitleDiagramNo"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                S.R. No.
+              </label>
+              <input
+                v-model="setupData.srNo"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g. 118/2023"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                File No.
+              </label>
+              <input
+                v-model="setupData.fileNo"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g. 8/2916"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                G.P. No.
+              </label>
+              <input
+                v-model="setupData.gpNo"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
             <!-- District -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -411,6 +487,13 @@ const emit = defineEmits<{
     surveyType: string
     township?: string
     parentProperty?: string
+    deedOfTransferNo?: string
+    parentDiagramNo?: string
+    parentDiagramAnnexedTo?: string
+    originalTitleDiagramNo?: string
+    srNo?: string
+    fileNo?: string
+    gpNo?: string
     district: string
     surveyDate: string
     surveyOf: string
@@ -434,6 +517,13 @@ const setupData = ref({
   surveyType: '',
   township: '',
   parentProperty: '',
+  deedOfTransferNo: '',
+  parentDiagramNo: '',
+  parentDiagramAnnexedTo: '',
+  originalTitleDiagramNo: '',
+  srNo: '',
+  fileNo: '',
+  gpNo: '',
   surveyDate: '',
   surveyOf: '',
   instruments: '',
@@ -528,6 +618,13 @@ function onProjectChange() {
     setupData.value.surveyType = project.survey_type || ''
     setupData.value.township = project.township || ''
     setupData.value.parentProperty = project.parent_property || ''
+    setupData.value.deedOfTransferNo = project.deed_of_transfer_no || ''
+    setupData.value.parentDiagramNo = project.parent_diagram_no || ''
+    setupData.value.parentDiagramAnnexedTo = project.parent_diagram_annexed_to || ''
+    setupData.value.originalTitleDiagramNo = project.original_title_diagram_no || ''
+    setupData.value.srNo = project.sr_no || ''
+    setupData.value.fileNo = project.file_no || ''
+    setupData.value.gpNo = project.gp_no || ''
     setupData.value.district = project.district || ''
     setupData.value.wholePortion = project.whole_portion || 'the whole'
     setupData.value.surveyDate = formatDateForInput(project.survey_date)
@@ -734,6 +831,13 @@ async function completeSetup() {
       surveyType: setupData.value.surveyType,
       township: setupData.value.township || undefined,
       parentProperty: setupData.value.parentProperty || undefined,
+      deedOfTransferNo: setupData.value.deedOfTransferNo || undefined,
+      parentDiagramNo: setupData.value.parentDiagramNo || undefined,
+      parentDiagramAnnexedTo: setupData.value.parentDiagramAnnexedTo || undefined,
+      originalTitleDiagramNo: setupData.value.originalTitleDiagramNo || undefined,
+      srNo: setupData.value.srNo || undefined,
+      fileNo: setupData.value.fileNo || undefined,
+      gpNo: setupData.value.gpNo || undefined,
       district: setupData.value.district,
       surveyDate: setupData.value.surveyDate,
       surveyOf: setupData.value.surveyOf,

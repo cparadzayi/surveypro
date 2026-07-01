@@ -37,4 +37,16 @@ describe('generateDiagramPDF', () => {
     await expect(generateDiagramPDF({ ...options, metadata: { subjectParcelId: 'Z' } }, logger))
       .rejects.toThrow(/subject parcel/i)
   })
+
+  test('renders with beacons + Lo system without error and stays a valid PDF', async () => {
+    const withBeacons = {
+      ...options,
+      beacons: { type: 'FeatureCollection', features: [
+        { type: 'Feature', properties: { name: '302A', description: '12mm iron peg' }, geometry: { type: 'Point', coordinates: [0, 0] } },
+      ] },
+    }
+    const r = await generateDiagramPDF(withBeacons, logger)
+    expect(r.pdfBuffer.slice(0, 5).toString()).toBe('%PDF-')
+    expect(r.pdfBuffer.length).toBeGreaterThan(1000)
+  })
 })

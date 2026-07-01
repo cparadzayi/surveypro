@@ -587,6 +587,7 @@ import {
   buildPlanPayload, composePlanBaseName, bundlePlanDocuments, validateGenerateRequest,
   type PlanPayloadContext, type PlanDocumentSet,
 } from './planPayload'
+import { diagramReferenceMetadata } from './diagramReferenceMetadata'
 
 // Props
 const props = defineProps<{
@@ -609,6 +610,13 @@ const props = defineProps<{
     parentProperty?: string
     workingDirectory?: string
     name?: string
+    deedOfTransferNo?: string
+    parentDiagramNo?: string
+    parentDiagramAnnexedTo?: string
+    originalTitleDiagramNo?: string
+    srNo?: string
+    fileNo?: string
+    gpNo?: string
   }
 }>()
 
@@ -3803,6 +3811,7 @@ function gatherPlanContext(): PlanPayloadContext {
     parentProperty: props.projectInfo.parentProperty || '',
     wholePortion: props.projectInfo.wholePortion || 'the whole',
     priorDiagrams: props.projectInfo.priorDiagrams || [],
+    ...diagramReferenceMetadata(props.projectInfo as any),
   }
 
   let beaconLabels = generateBeaconLabelsForPDF()

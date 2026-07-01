@@ -30,10 +30,12 @@ describe('diagramReferenceMetadata', () => {
   })
 
   it('handles null/undefined input', () => {
-    expect(diagramReferenceMetadata(null)).toEqual({
+    const empty = {
       deedOfTransferNo: '', parentDiagramNo: '', parentDiagramAnnexedTo: '',
       originalTitleDiagramNo: '', srNo: '', fileNo: '', gpNo: '',
-    })
+    }
+    expect(diagramReferenceMetadata(null)).toEqual(empty)
+    expect(diagramReferenceMetadata(undefined)).toEqual(empty)
   })
 
   it('exposes exactly the seven contract keys', () => {

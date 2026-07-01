@@ -22,13 +22,15 @@ function resolveWorkingDirectory(workingDirectory) {
 export default async function documentRoutes(fastify, options) {
   // Save document to project folder
   fastify.post('/documents/save', async (request, reply) => {
+    // Declared out here (not inside try) so the catch block can name the file
+    // when classifying a write error (e.g. a locked target file).
+    let fileBuffer = null
+    let fileName = null
+    let filePath = null
     try {
       // Process multipart form data
       const parts = request.parts()
-      let fileBuffer = null
-      let fileName = null
-      let filePath = null
-      
+
       for await (const part of parts) {
         if (part.type === 'file') {
           // This is the file

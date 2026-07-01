@@ -3,6 +3,7 @@ import path from 'path'
 import os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { classifyFsWriteError } from '../utils/fsWriteErrors.js'
 
 const execAsync = promisify(exec)
 
@@ -85,11 +86,14 @@ export default async function documentRoutes(fastify, options) {
         stack: error.stack,
         code: error.code
       })
-      return reply.code(500).send({
+      // A locked target file (e.g. the doc is open in a PDF viewer) becomes a
+      // clear, actionable 409 instead of a cryptic 500 EBUSY.
+      const classified = classifyFsWriteError(error, fileName)
+      return reply.code(classified.status).send({
         ok: false,
         error: 'Failed to save document',
-        message: error.message,
-        code: error.code
+        message: classified.message,
+        code: classified.code
       })
     }
   })
@@ -196,9 +200,11 @@ export default async function documentRoutes(fastify, options) {
       }
     } catch (error) {
       fastify.log.error('[SAVE-PDF] Error:', error)
-      return reply.code(500).send({
+      const classified = classifyFsWriteError(error)
+      return reply.code(classified.status).send({
         success: false,
-        message: error.message || 'Failed to save PDF'
+        message: classified.message,
+        code: classified.code
       })
     }
   })
@@ -251,9 +257,11 @@ export default async function documentRoutes(fastify, options) {
       }
     } catch (error) {
       fastify.log.error('[SAVE-ZIP] Error:', error)
-      return reply.code(500).send({
+      const classified = classifyFsWriteError(error)
+      return reply.code(classified.status).send({
         success: false,
-        message: error.message || 'Failed to save ZIP'
+        message: classified.message,
+        code: classified.code
       })
     }
   })

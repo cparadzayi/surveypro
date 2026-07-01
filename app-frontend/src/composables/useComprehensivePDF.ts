@@ -123,10 +123,12 @@ export async function generateComprehensiveLatestPDF(
       } else {
         console.error('[ComprehensivePDF] ❌ Failed to save PDF:', saveResult.error)
         
-        // Return blob for download fallback
+        // Return blob for download fallback. saveResult.error is already a
+        // complete, actionable message from the backend (e.g. the file is open
+        // in another program), so surface it verbatim rather than re-wrapping.
         return {
           success: false,
-          error: `Failed to save to project folder: ${saveResult.error}`,
+          error: saveResult.error,
           pdfBlob: blob
         }
       }

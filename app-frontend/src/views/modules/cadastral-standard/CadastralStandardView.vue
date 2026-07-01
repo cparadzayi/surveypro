@@ -1920,6 +1920,13 @@ async function handleProjectSetupComplete(setupData: {
   surveyType: string;
   township?: string;
   parentProperty?: string;
+  deedOfTransferNo?: string;
+  parentDiagramNo?: string;
+  parentDiagramAnnexedTo?: string;
+  originalTitleDiagramNo?: string;
+  srNo?: string;
+  fileNo?: string;
+  gpNo?: string;
   district: string;
   surveyDate: string;
   surveyOf: string;
@@ -2047,6 +2054,13 @@ async function handleProjectSetupComplete(setupData: {
   workflowState.projectInfo.surveyType = setupData.surveyType;
   workflowState.projectInfo.township = setupData.township;
   workflowState.projectInfo.parentProperty = setupData.parentProperty;
+  workflowState.projectInfo.deedOfTransferNo = setupData.deedOfTransferNo;
+  workflowState.projectInfo.parentDiagramNo = setupData.parentDiagramNo;
+  workflowState.projectInfo.parentDiagramAnnexedTo = setupData.parentDiagramAnnexedTo;
+  workflowState.projectInfo.originalTitleDiagramNo = setupData.originalTitleDiagramNo;
+  workflowState.projectInfo.srNo = setupData.srNo;
+  workflowState.projectInfo.fileNo = setupData.fileNo;
+  workflowState.projectInfo.gpNo = setupData.gpNo;
   workflowState.projectInfo.workingDirectory = setupData.workingDirectory;
   workflowState.projectInfo.wholePortion = setupData.wholePortion;
   workflowState.projectInfo.centralMeridian = setupData.loZone;
@@ -2074,6 +2088,13 @@ async function handleProjectSetupComplete(setupData: {
         surveyType: setupData.surveyType,
         township: setupData.township,
         parentProperty: setupData.parentProperty,
+        deedOfTransferNo: setupData.deedOfTransferNo,
+        parentDiagramNo: setupData.parentDiagramNo,
+        parentDiagramAnnexedTo: setupData.parentDiagramAnnexedTo,
+        originalTitleDiagramNo: setupData.originalTitleDiagramNo,
+        srNo: setupData.srNo,
+        fileNo: setupData.fileNo,
+        gpNo: setupData.gpNo,
         district: setupData.district,
         surveyDate: setupData.surveyDate,
         designation: setupData.surveyOf,

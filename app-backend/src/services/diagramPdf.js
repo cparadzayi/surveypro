@@ -146,8 +146,11 @@ function drawStatement(doc, layout, geometry, metadata) {
   const R = layout.statement
   const seq = buildFigureRepresents(geometry)
   const area = formatDiagramArea(geometry.area)
-  const designation = metadata.designation ?? ''
+  // Name the SELECTED parcel (subject), not the whole survey; fall back to project.
+  const designation = geometry.designation ?? metadata.designation ?? ''
   const parent = metadata.parentProperty ? ` OF ${metadata.parentProperty}` : ''
+  // Survey date arrives as metadata.date from the frontend; accept either key.
+  const surveyDate = metadata.surveyDate ?? metadata.date
   doc.save().font('Helvetica').fontSize(8).fillColor('#000')
   doc.text('The figure', R.x, R.y)
   doc.text('represents', R.x, R.y + 11)
@@ -156,7 +159,7 @@ function drawStatement(doc, layout, geometry, metadata) {
   doc.font('Helvetica-Bold').text(`${designation}${parent}`, R.x, R.y + 30, { width: R.width })
   doc.font('Helvetica').fontSize(7).text(
     `situate in the district of ${metadata.district ?? ''}.`, R.x, R.y + 44)
-  doc.text(`Surveyed in ${metadata.surveyDate ? new Date(metadata.surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`, R.x, R.y + 53)
+  doc.text(`Surveyed in ${surveyDate ? new Date(surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`, R.x, R.y + 53)
   doc.restore()
 }
 
@@ -228,7 +231,7 @@ export async function generateDiagramPDF(options, logger) {
       if (!strips.length) continue
       // Draw only the real neighbour boundary edges within the buffer — not the
       // artificial clip line along the buffer boundary.
-      doc.save().dash(2, { space: 2 }).lineWidth(0.5).strokeColor('#000000')
+      doc.save().dash(4, { space: 2.5 }).lineWidth(1).strokeColor('#000000')
       for (const strip of strips) {
         for (const [a, b] of neighbourBoundaryEdges(strip, nbRing)) {
           const pa = tf(a), pb = tf(b)

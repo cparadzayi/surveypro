@@ -43,6 +43,14 @@ describe('deriveSubjectGeometry', () => {
     expect(deriveSubjectGeometry(squareStored).area).toBe(10000)
   })
 
+  test('carries the subject parcel designation (falls back to stand, then null)', () => {
+    const withDesig = { ...squareStored, properties: { ...squareStored.properties, designation: 'STAND 405 BRACKENHURST TOWNSHIP' } }
+    expect(deriveSubjectGeometry(withDesig).designation).toBe('STAND 405 BRACKENHURST TOWNSHIP')
+    const standOnly = { ...squareStored, properties: { area_m2: 1, stand: '405' } }
+    expect(deriveSubjectGeometry(standOnly).designation).toBe('405')
+    expect(deriveSubjectGeometry(squareStored).designation).toBeNull()
+  })
+
   test('already-normalized [Westing,Southing] input is left unchanged (idempotent)', () => {
     const normalized = {
       properties: { area_m2: 5000 },

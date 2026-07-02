@@ -49,5 +49,10 @@ export function deriveSubjectGeometry(subjectFeature) {
   }
 
   const area = Number(subjectFeature?.properties?.area_m2) || 0
-  return { vertices, sides, area }
+  // The diagram statement names the SELECTED parcel, not the whole survey — carry
+  // the subject parcel's own designation (fall back to its stand number).
+  const designation = subjectFeature?.properties?.designation
+    ?? subjectFeature?.properties?.stand
+    ?? null
+  return { vertices, sides, area, designation }
 }

@@ -5,7 +5,8 @@ export const BUFFER_M = 10
 const SCALE = 1000                 // metres → integer (mm) for Clipper
 const ARC_TOLERANCE = 0.5 * SCALE  // 0.5 m smoothness on round joins
 
-// [y,x] metres → Clipper integer point (X=Westing, Y=Southing).
+// [y,x] metres → Clipper integer point. Clipper's field names are arbitrary axes:
+// Clipper.X ← Westing (y), Clipper.Y ← Southing (x). unpt reverses it.
 function pt(y, x) { return { X: Math.round(y * SCALE), Y: Math.round(x * SCALE) } }
 function unpt(p) { return [p.X / SCALE, p.Y / SCALE] }
 
@@ -57,7 +58,7 @@ export function bufferRing(ring, distanceM = BUFFER_M) {
   // with the path reversed.
   const inArea = Math.abs(ClipperLib.Clipper.Area(path))
   const outArea = sol.reduce((s, p) => s + Math.abs(ClipperLib.Clipper.Area(p)), 0)
-  if (!sol.length || outArea < inArea) {
+  if (!sol.length || outArea <= inArea) {
     sol = offsetOnce(path.slice().reverse(), delta)
   }
   return sol.map(pathToYX)

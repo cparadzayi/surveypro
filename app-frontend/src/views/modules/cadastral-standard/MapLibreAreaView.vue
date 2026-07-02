@@ -381,8 +381,16 @@
             🔄 Refresh
           </button>
         </div>
+        <div class="mb-2">
+          <ParcelSelect
+            :options="savedParcelOptions"
+            v-model="managedParcelSelection"
+            placeholder="Find a saved parcel…"
+            @select="onManagedParcelPicked"
+          />
+        </div>
         <div class="space-y-2 max-h-64 overflow-y-auto">
-          <div 
+          <div
             v-for="[designation, dbParcel] in Array.from(savedParcels.entries())" 
             :key="dbParcel.id"
             :class="[
@@ -898,6 +906,8 @@ import { validateParcel, formatValidationMessage, type ValidationResult } from '
 import type { DetectedParcel } from '../../../utils/automatedParcelDetector';
 import type { ParcelDetectionResult } from '../../../services/parcelDetection';
 import PointRenamePanel from '../../../components/cadastral/PointRenamePanel.vue';
+import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
+import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 
 const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../components/ParcelDetectionPanel.vue'));
 
@@ -1988,6 +1998,21 @@ const lastSaved = ref<Date | null>(null);
 const isRecomputing = ref(false);
 const savedParcels = ref<Map<string, LandParcel>>(new Map()); // designation -> LandParcel
 const existingParcelIds = ref<Map<string, number>>(new Map()); // designation -> database ID (ALL parcels, including geometry-less)
+
+const savedParcelOptions = computed(() =>
+  buildParcelOptions(Array.from(savedParcels.value.values()) as any[]))
+
+function onManagedParcelPicked(option: { id: string | number }) {
+  if (!map) return
+  const dbParcel = Array.from(savedParcels.value.values())
+    .find((p: any) => String(p.id) === String(option.id)) as any
+  const ring = dbParcel?.geom?.coordinates?.[0] as [number, number][] | undefined
+  if (!ring || ring.length === 0) return
+  const bounds = new maplibregl.LngLatBounds(ring[0], ring[0])
+  for (const c of ring) bounds.extend(c as [number, number])
+  map.fitBounds(bounds, { padding: 60, maxZoom: 19 })
+}
+const managedParcelSelection = ref<string | number | null>(null)
 
 // AI Detection state
 const showAIPanel = ref(false);

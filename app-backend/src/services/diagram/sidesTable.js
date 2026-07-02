@@ -1,4 +1,5 @@
-import { bankersRound } from '../../utils/zim-geo.js'
+import { bankersRound, roundBearingSouth } from '../../utils/zim-geo.js'
+import { resolveVertexBeaconName } from './beaconName.js'
 
 /** Whole-degree/minute/second breakdown of a decimal-degree bearing. */
 export function toDMS(deg) {
@@ -37,15 +38,18 @@ function pad2(n) { return String(n).padStart(2, '0') }
  * Build the SIDES / DIRECTIONS / CO-ORDINATES table model. Const row is
  * 0.00/0.00 (full coordinates are carried in the coordinate rows).
  */
-export function buildSidesTable(geometry) {
+export function buildSidesTable(geometry, beacons) {
   const constRow = { y: '0.00', x: '0.00' }
   const coordinateRows = geometry.vertices.map(v => ({
     letter: v.letter,
     y: signed(v.y),
     x: signed(v.x),
+    beaconName: resolveVertexBeaconName([v.y, v.x], beacons),
   }))
   const sideRows = geometry.sides.map(s => {
-    const { d, m, s: sec } = toDMS(s.bearingDeg)
+    // SI 727: nearest 10″ for sights under 6000 m, else nearest 1″ (banker's).
+    const res = Number(s.distance) < 6000 ? 10 : 1
+    const { d, m, s: sec } = toDMS(roundBearingSouth(s.bearingDeg, res))
     return {
       side: s.side,
       metres: Number(s.distance).toFixed(2),

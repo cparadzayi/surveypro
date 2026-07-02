@@ -3,16 +3,22 @@ import { toDMS, buildSidesTable, buildFigureRepresents, formatDiagramArea } from
 
 const geometry = {
   vertices: [
-    { letter: 'A', y: -85557.12, x: 787.48 },
-    { letter: 'B', y: -85605.99, x: 836.25 },
-    { letter: 'C', y: -85503.68, x: 938.79 },
+    { letter: 'A', y: -85728.70, x: 2143972.14 },
+    { letter: 'B', y: -85741.41, x: 2143988.59 },
+    { letter: 'C', y: -85765.14, x: 2144017.16 },
   ],
   sides: [
-    { side: 'AB', distance: 69.05, bearingDeg: 314.9444 },
-    { side: 'BC', distance: 144.85, bearingDeg: 44.9361 },
-    { side: 'CA', distance: 120.0, bearingDeg: 224.0 },
+    { side: 'AB', distance: 20.79, bearingDeg: 322.30861 }, // ≈ 322°18′31″
+    { side: 'BC', distance: 37.14, bearingDeg: 320.28722 },
+    { side: 'CA', distance: 5000, bearingDeg: 44.9361 },
   ],
-  area: 5019,
+  area: 4047,
+}
+const beacons = {
+  type: 'FeatureCollection',
+  features: [
+    { properties: { name: '86B' }, geometry: { type: 'Point', coordinates: [2143972.14, -85728.70] } },
+  ],
 }
 
 describe('toDMS', () => {
@@ -41,15 +47,21 @@ describe('formatDiagramArea', () => {
 
 describe('buildSidesTable', () => {
   test('const row is 0.00 / 0.00', () => {
-    expect(buildSidesTable(geometry).constRow).toEqual({ y: '0.00', x: '0.00' })
+    expect(buildSidesTable(geometry, beacons).constRow).toEqual({ y: '0.00', x: '0.00' })
   })
   test('coordinate rows carry full signed coords to 2dp', () => {
-    const t = buildSidesTable(geometry)
-    expect(t.coordinateRows[0]).toEqual({ letter: 'A', y: '-85557.12', x: '+787.48' })
+    const t = buildSidesTable(geometry, beacons)
+    expect(t.coordinateRows[0]).toMatchObject({ letter: 'A', y: '-85728.70', x: '+2143972.14' })
   })
-  test('side rows have metres + spaced DMS direction', () => {
-    const t = buildSidesTable(geometry)
-    expect(t.sideRows[0]).toEqual({ side: 'AB', metres: '69.05', direction: '314 56 40' })
+  test('directions round to nearest 10 seconds when distance < 6000 m', () => {
+    const t = buildSidesTable(geometry, beacons)
+    // AB 322°18′31″ → 322 18 30 (nearest 10″, banker's)
+    expect(t.sideRows[0].direction).toBe('322 18 30')
+  })
+  test('coordinate rows carry the matched beacon name (blank when none)', () => {
+    const t = buildSidesTable(geometry, beacons)
+    expect(t.coordinateRows[0].beaconName).toBe('86B')
+    expect(t.coordinateRows[1].beaconName).toBe('')
   })
 })
 

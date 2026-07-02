@@ -465,7 +465,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           const { generateDiagramPDF } = await import('../services/diagramPdf.js')
           const diagram = await generateDiagramPDF(
             { parcels: parcelsWithComputedData, beacons, metadata, projection,
-              scale, sheetSize: 'A4', orientation: 'portrait' },
+              scale, sheetSize: (sheetSize === 'A3' ? 'A3' : 'A4'), orientation: 'portrait' },
             fastify.log
           )
           const ts = Date.now()

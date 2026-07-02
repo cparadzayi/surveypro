@@ -4,11 +4,16 @@ import { parcelExtent, pickDiagramScale, makeTransform, beaconRadiusPt } from '.
 import { buildSidesTable, buildFigureRepresents, formatDiagramArea } from './diagram/sidesTable.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
+import { offsetPolygonPt } from './diagram/offsetPolygon.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import {
   resolveLoSystem, classifyBeaconGroups, snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
+
+// SI 727 figure styling.
+const FIGURE_GREEN = '#2f9e4f'                 // uniform green inner-border tint (from the sample)
+const INNER_BAND_PT = 1.3 * (72 / 25.4)        // ≈ 3.69 pt (~1.3 mm), page-relative band width
 
 function docToBuffer(doc) {
   const chunks = []
@@ -218,7 +223,7 @@ export async function generateDiagramPDF(options, logger) {
       if (!strips.length) continue
       // Draw only the real neighbour boundary edges within the buffer — not the
       // artificial clip line along the buffer boundary.
-      doc.save().lineWidth(0.5).strokeColor('#999999')
+      doc.save().dash(2, { space: 2 }).lineWidth(0.5).strokeColor('#000000')
       for (const strip of strips) {
         for (const [a, b] of neighbourBoundaryEdges(strip, nbRing)) {
           const pa = tf(a), pb = tf(b)
@@ -226,7 +231,7 @@ export async function generateDiagramPDF(options, logger) {
           neighbourSegs.push([pa, pb])
         }
       }
-      doc.stroke().restore()
+      doc.stroke().undash().restore()
       const stand = nb.properties?.stand ?? nb.properties?.designation ?? ''
       if (stand) {
         // Defer drawing: placed outward, line-avoiding, once all segments are known.
@@ -237,7 +242,24 @@ export async function generateDiagramPDF(options, logger) {
 
   // Subject: bold outline, beacon circles at each vertex, lettered vertices.
   const subjPt = geometry.vertices.map((v) => tf([v.y, v.x]))
-  drawRing(doc, subjPt, { color: '#0a7d34', width: 1.5 })
+  // Green inner figure-border band: fill the ring between the boundary and an
+  // inward offset (even-odd rule) so only a ~1.3 mm band inside the edge is tinted.
+  const inner = offsetPolygonPt(subjPt.map((p) => [p.px, p.py]), -INNER_BAND_PT)
+  if (inner.length) {
+    doc.save().fillColor(FIGURE_GREEN)
+    doc.moveTo(subjPt[0].px, subjPt[0].py)
+    for (let i = 1; i < subjPt.length; i++) doc.lineTo(subjPt[i].px, subjPt[i].py)
+    doc.closePath()
+    for (const ring of inner) {
+      doc.moveTo(ring[0][0], ring[0][1])
+      for (let i = 1; i < ring.length; i++) doc.lineTo(ring[i][0], ring[i][1])
+      doc.closePath()
+    }
+    doc.fill('even-odd')
+    doc.restore()
+  }
+  // Continuous, well-defined black boundary on top of the band.
+  drawRing(doc, subjPt, { color: '#000000', width: 1.2 })
   // Beacon circles drawn ON TOP of the boundary: the white fill knocks out the
   // boundary line inside, so edges appear clipped at the circle edge (the
   // developed-plan technique). Radius is page-relative → visible at print scale.

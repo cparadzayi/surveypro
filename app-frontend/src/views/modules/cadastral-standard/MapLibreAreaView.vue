@@ -2006,9 +2006,14 @@ function onManagedParcelPicked(option: { id: string | number }) {
   if (!map) return
   const dbParcel = Array.from(savedParcels.value.values())
     .find((p: any) => String(p.id) === String(option.id)) as any
-  const ring = dbParcel?.geom?.coordinates?.[0] as [number, number][] | undefined
-  if (!ring || ring.length === 0) return
-  const bounds = new maplibregl.LngLatBounds(ring[0], ring[0])
+  let geometry = dbParcel?.geom
+  if (typeof geometry === 'string') { try { geometry = JSON.parse(geometry) } catch { return } }
+  if (!geometry?.coordinates) return
+  const loZone = workflowState?.projectInfo?.centralMeridian || 31
+  const wgs84 = transformGeometryToWGS84(geometry, loZone)
+  const ring = getExteriorRingForBounds(wgs84)
+  if (ring.length === 0) return
+  const bounds = new maplibregl.LngLatBounds(ring[0] as [number, number], ring[0] as [number, number])
   for (const c of ring) bounds.extend(c as [number, number])
   map.fitBounds(bounds, { padding: 60, maxZoom: 19 })
 }

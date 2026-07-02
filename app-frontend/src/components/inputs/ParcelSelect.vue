@@ -8,6 +8,7 @@
       :disabled="disabled"
       v-model="query"
       @focus="onFocus"
+      @blur="close"
       @input="onInput"
       @keydown.down.prevent="move(1)"
       @keydown.up.prevent="move(-1)"

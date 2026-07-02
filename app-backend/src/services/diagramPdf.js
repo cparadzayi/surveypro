@@ -1,6 +1,6 @@
 import PDFDocument from 'pdfkit'
 import { deriveSubjectGeometry } from './diagram/subjectGeometry.js'
-import { parcelExtent, pickDiagramScale, makeTransform } from './diagram/diagramScale.js'
+import { parcelExtent, pickDiagramScale, makeTransform, beaconRadiusPt } from './diagram/diagramScale.js'
 import { buildSidesTable, buildFigureRepresents, formatDiagramArea } from './diagram/sidesTable.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
@@ -231,21 +231,27 @@ export async function generateDiagramPDF(options, logger) {
     }
   }
 
-  // Subject: bold outline + lettered vertices + per-side bearing/distance labels.
+  // Subject: bold outline, beacon circles at each vertex, lettered vertices.
   const subjPt = geometry.vertices.map((v) => tf([v.y, v.x]))
   drawRing(doc, subjPt, { color: '#0a7d34', width: 1.5 })
+  // Beacon circles drawn ON TOP of the boundary: the white fill knocks out the
+  // boundary line inside, so edges appear clipped at the circle edge (the
+  // developed-plan technique). Radius is page-relative → visible at print scale.
+  const beaconR = beaconRadiusPt(denom)
+  for (const p of subjPt) {
+    doc.save()
+      .circle(p.px, p.py, beaconR)
+      .lineWidth(0.8)
+      .fillColor('#FFFFFF')
+      .strokeColor('#000000')
+      .fillAndStroke()
+    doc.restore()
+  }
+  // Vertex letters on top, offset clear of the circle. (No edge-distance labels.)
   doc.fillColor('#000000').fontSize(8)
   geometry.vertices.forEach((v, i) => {
     const p = subjPt[i]
-    doc.text(v.letter, p.px + 2, p.py - 9)
-  })
-  doc.fontSize(6.5).fillColor('#111111')
-  geometry.sides.forEach((s, i) => {
-    const a = subjPt[i]
-    const b = subjPt[(i + 1) % subjPt.length]
-    const mx = (a.px + b.px) / 2
-    const my = (a.py + b.py) / 2
-    doc.text(`${s.distance.toFixed(2)}m`, mx - 18, my - 4, { width: 36, align: 'center' })
+    doc.text(v.letter, p.px + beaconR + 1, p.py - beaconR - 8)
   })
 
   // resolveLoSystem already returns the full "Lo NN" label.

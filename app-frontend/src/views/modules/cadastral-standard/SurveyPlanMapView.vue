@@ -3864,7 +3864,9 @@ function gatherPlanContext(): PlanPayloadContext {
 
   const epsgCode = `EPSG:${22260 + parseInt(config.value.centralMeridian || '31')}`
   const resolvedScale = intelligentPreview.value?.scale?.label || undefined
-  const resolvedSheetSize = intelligentPreview.value?.sheetSize || undefined
+  const resolvedSheetSize = config.value.planType === 'diagram'
+    ? (config.value.sheetSize === 'A3' ? 'A3' : 'A4')
+    : (intelligentPreview.value?.sheetSize || undefined)
   const _sheet = intelligentPreview.value?.layout?.sheet
   const orientation: 'landscape' | 'portrait' =
     _sheet ? (_sheet.width > _sheet.height ? 'landscape' : 'portrait') : 'landscape'

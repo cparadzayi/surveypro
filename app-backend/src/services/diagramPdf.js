@@ -3,24 +3,10 @@ import { deriveSubjectGeometry } from './diagram/subjectGeometry.js'
 import { parcelExtent, pickDiagramScale, makeTransform } from './diagram/diagramScale.js'
 import { buildSidesTable, buildFigureRepresents } from './diagram/sidesTable.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
+import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
 import {
   resolveLoSystem, classifyBeaconGroups, formatAreaValue, snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
-
-// A4 portrait, points.
-const A4 = [595.28, 841.89]
-// Page regions (pt). Tasks 7–8 add table/reference regions above/below.
-export const REGIONS = {
-  figure: { x: 40, y: 250, width: 515, height: 360 },
-  table: { x: 40, y: 40, width: 515, height: 150 },
-  sgNoBox: { x: 455, y: 40, width: 100, height: 40 },
-  beaconDesc: { x: 40, y: 195, width: 250, height: 40 },
-  approved: { x: 380, y: 195, width: 175, height: 45 },
-  northArrow: { x: 300, y: 195, width: 40, height: 50 },
-  scaleBar: { x: 220, y: 620, width: 160, height: 30 },
-  statement: { x: 40, y: 660, width: 515, height: 60 },
-  refGrid: { x: 40, y: 725, width: 515, height: 100 },
-}
 
 function docToBuffer(doc) {
   const chunks = []
@@ -54,15 +40,15 @@ function centroidPt(ptRing) {
   }
 }
 
-function drawTable(doc, table, loLabel) {
+function drawTable(doc, layout, table, loLabel) {
   const { constRow, coordinateRows, sideRows } = table
-  const R = REGIONS.table
+  const R = layout.table
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
   doc.text('SIDES', R.x, R.y)
   doc.text('DIRECTIONS', R.x + 90, R.y)
   doc.text(loLabel, R.x + 190, R.y)
   doc.text('CO-ORDINATES', R.x + 245, R.y)
-  doc.text('DIAGRAM S.G. No.', REGIONS.sgNoBox.x, R.y)
+  doc.text('DIAGRAM S.G. No.', layout.sgNoBox.x, R.y)
   doc.font('Helvetica').fontSize(6.5)
   doc.text('Metres', R.x, R.y + 10)
   doc.text('°  ′  ″', R.x + 90, R.y + 10)
@@ -89,12 +75,12 @@ function drawTable(doc, table, loLabel) {
     }
   }
   // SG No. box outline (blank)
-  doc.rect(REGIONS.sgNoBox.x, REGIONS.sgNoBox.y + 10, REGIONS.sgNoBox.width, REGIONS.sgNoBox.height).stroke()
+  doc.rect(layout.sgNoBox.x, layout.sgNoBox.y + 10, layout.sgNoBox.width, layout.sgNoBox.height).stroke()
   doc.restore()
 }
 
-function drawBeaconDescription(doc, beacons) {
-  const R = REGIONS.beaconDesc
+function drawBeaconDescription(doc, layout, beacons) {
+  const R = layout.beaconDesc
   const groups = classifyBeaconGroups(beacons ?? { features: [] })
   doc.save().font('Helvetica-Bold').fontSize(7).text('Beacon description', R.x, R.y)
   doc.font('Helvetica').fontSize(7)
@@ -105,8 +91,8 @@ function drawBeaconDescription(doc, beacons) {
   doc.restore()
 }
 
-function drawNorthArrow(doc) {
-  const R = REGIONS.northArrow
+function drawNorthArrow(doc, layout) {
+  const R = layout.northArrow
   const cx = R.x + R.width / 2
   doc.save().lineWidth(1).strokeColor('#000')
   doc.moveTo(cx, R.y + R.height).lineTo(cx, R.y).stroke()      // shaft
@@ -115,8 +101,8 @@ function drawNorthArrow(doc) {
   doc.restore()
 }
 
-function drawApprovedBox(doc) {
-  const R = REGIONS.approved
+function drawApprovedBox(doc, layout) {
+  const R = layout.approved
   doc.save().rect(R.x, R.y, R.width, R.height).stroke()
   doc.font('Helvetica').fontSize(7)
   doc.text('Approved', R.x + 8, R.y + 6)
@@ -125,8 +111,8 @@ function drawApprovedBox(doc) {
   doc.restore()
 }
 
-function drawScaleBar(doc, denom) {
-  const R = REGIONS.scaleBar
+function drawScaleBar(doc, layout, denom) {
+  const R = layout.scaleBar
   // Ground metres represented by the bar's width:
   const barGroundM = (R.width / (72 / 25.4)) * denom / 1000
   const seg = snapScaleBarSegment(barGroundM / 4) // ~4 segments
@@ -146,8 +132,8 @@ function drawScaleBar(doc, denom) {
   doc.restore()
 }
 
-function drawStatement(doc, geometry, metadata) {
-  const R = REGIONS.statement
+function drawStatement(doc, layout, geometry, metadata) {
+  const R = layout.statement
   const seq = buildFigureRepresents(geometry)
   const area = formatAreaValue(geometry.area)
   const designation = metadata.designation ?? ''
@@ -164,8 +150,8 @@ function drawStatement(doc, geometry, metadata) {
   doc.restore()
 }
 
-function drawReferenceGrid(doc, grid) {
-  const R = REGIONS.refGrid
+function drawReferenceGrid(doc, layout, grid) {
+  const R = layout.refGrid
   doc.save().rect(R.x, R.y, R.width, R.height).stroke()
   doc.font('Helvetica').fontSize(7).fillColor('#000')
   const col2 = R.x + R.width / 2
@@ -184,6 +170,7 @@ function drawReferenceGrid(doc, grid) {
 
 export async function generateDiagramPDF(options, logger) {
   const { parcels, metadata = {}, scale: requestedScale } = options
+  const sheetSize = options.sheetSize === 'A3' ? 'A3' : 'A4'
   const features = parcels?.features ?? []
   const subjectId = String(metadata.subjectParcelId ?? '')
   const subject = features.find((f) => String(f.properties?.id) === subjectId)
@@ -192,13 +179,22 @@ export async function generateDiagramPDF(options, logger) {
   }
   const neighbours = features.filter((f) => f !== subject)
 
+  const dims = pageDimsPt(sheetSize)
+  const margins = marginsPt()
+  const layout = computeDiagramLayout({ pageWidthPt: dims.width, pageHeightPt: dims.height, margins })
+
   const geometry = deriveSubjectGeometry(subject)
   const extent = parcelExtent(subject)
-  const { denom, label } = pickDiagramScale(extent, REGIONS.figure, requestedScale)
-  const tf = makeTransform(extent, REGIONS.figure, denom)
+  const { denom, label } = pickDiagramScale(extent, layout.figure, requestedScale)
+  const tf = makeTransform(extent, layout.figure, denom)
 
-  const doc = new PDFDocument({ size: A4, margin: 0 })
+  const doc = new PDFDocument({ size: [dims.width, dims.height], margin: 0 })
   const bufferPromise = docToBuffer(doc)
+
+  // Neat-line border (35mm left, 15mm other margins); content sits inside it.
+  doc.save().lineWidth(1).strokeColor('#000')
+  doc.rect(layout.border.x, layout.border.y, layout.border.width, layout.border.height).stroke()
+  doc.restore()
 
   // Neighbours: faint outline + stand-number label at centroid.
   doc.font('Helvetica').fontSize(7).fillColor('#555555')
@@ -229,15 +225,15 @@ export async function generateDiagramPDF(options, logger) {
 
   // resolveLoSystem already returns the full "Lo NN" label.
   const loLabel = resolveLoSystem(null, metadata, options.projection)
-  drawTable(doc, buildSidesTable(geometry), loLabel)
-  drawBeaconDescription(doc, options.beacons)
-  drawNorthArrow(doc)
-  drawApprovedBox(doc)
-  drawScaleBar(doc, denom)
-  drawStatement(doc, geometry, metadata)
-  drawReferenceGrid(doc, buildReferenceGrid(metadata))
+  drawTable(doc, layout, buildSidesTable(geometry), loLabel)
+  drawBeaconDescription(doc, layout, options.beacons)
+  drawNorthArrow(doc, layout)
+  drawApprovedBox(doc, layout)
+  drawScaleBar(doc, layout, denom)
+  drawStatement(doc, layout, geometry, metadata)
+  drawReferenceGrid(doc, layout, buildReferenceGrid(metadata))
 
   doc.end()
   const pdfBuffer = await bufferPromise
-  return { pdfBuffer, scale: label, sheetSize: 'A4' }
+  return { pdfBuffer, scale: label, sheetSize }
 }

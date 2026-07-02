@@ -51,4 +51,17 @@ describe('generateDiagramPDF', () => {
     // (the doc.end()-before-drawing bug) is ~1KB. Guard against that regression.
     expect(r.pdfBuffer.length).toBeGreaterThan(2000)
   })
+
+  test('honors A3 sheet size and echoes it', async () => {
+    const r = await generateDiagramPDF({ ...options, sheetSize: 'A3' }, logger)
+    expect(r.pdfBuffer.slice(0, 5).toString()).toBe('%PDF-')
+    expect(r.sheetSize).toBe('A3')
+    expect(r.pdfBuffer.length).toBeGreaterThan(2000)
+  })
+
+  test('defaults to A4 when sheetSize is missing/unknown', async () => {
+    const r = await generateDiagramPDF({ ...options, sheetSize: 'ZZ' }, logger)
+    expect(r.sheetSize).toBe('A4')
+    expect(r.pdfBuffer.slice(0, 5).toString()).toBe('%PDF-')
+  })
 })

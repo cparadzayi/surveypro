@@ -346,10 +346,11 @@
           </div>
           <div v-if="showPaperSizeOptions" class="mt-2">
             <select v-model="config.sheetSize" @change="onSheetSizeChange" class="config-input">
-              <option value="auto">Auto (Recommended)</option>
-              <option value="ISO_A2">ISO A2 (594×420mm)</option>
-              <option value="ISO_A1">ISO A1 (841×594mm)</option>
-              <option value="ISO_A0">ISO A0 (1189×841mm)</option>
+              <option
+                v-for="opt in paperSizeOptionsFor(config.planType)"
+                :key="opt.value"
+                :value="opt.value"
+              >{{ opt.label }}</option>
             </select>
           </div>
         </div>
@@ -596,6 +597,7 @@ import {
 } from './planPayload'
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
 import { pickDiagramSubjectId } from './diagramSubjectPick'
+import { paperSizeOptionsFor } from './paperSizeOptions'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 
@@ -662,7 +664,7 @@ const exportOptions = ref<ExportOptions>({
 const config = ref({
   planType: (props.projectInfo as any)?.planType || 'general-undeveloped',  // Accept from parent component
   scale: 'auto', // Auto-select optimal SI 727 scale
-  sheetSize: 'auto' as 'auto' | 'ISO_A2' | 'ISO_A1' | 'ISO_A0',
+  sheetSize: 'auto' as 'auto' | 'ISO_A2' | 'ISO_A1' | 'ISO_A0' | 'A4' | 'A3',
   surveyorName: props.projectInfo.surveyorName || '',
   licenseNumber: props.projectInfo.licenseNumber || '',
   surveyDate: toDateInputFormat(props.projectInfo.surveyDate) || toDateInputFormat(new Date()),
@@ -3862,7 +3864,9 @@ function gatherPlanContext(): PlanPayloadContext {
 
   const epsgCode = `EPSG:${22260 + parseInt(config.value.centralMeridian || '31')}`
   const resolvedScale = intelligentPreview.value?.scale?.label || undefined
-  const resolvedSheetSize = intelligentPreview.value?.sheetSize || undefined
+  const resolvedSheetSize = config.value.planType === 'diagram'
+    ? (config.value.sheetSize === 'A3' ? 'A3' : 'A4')
+    : (intelligentPreview.value?.sheetSize || undefined)
   const _sheet = intelligentPreview.value?.layout?.sheet
   const orientation: 'landscape' | 'portrait' =
     _sheet ? (_sheet.width > _sheet.height ? 'landscape' : 'portrait') : 'landscape'
@@ -5561,6 +5565,17 @@ watch(() => config.value.planType, () => {
   }
   applyDiagramHighlight(selectedDiagramParcelId.value)
 })
+
+// Keep the paper size valid for the plan type: Diagram → A4/A3; others → auto/ISO.
+watch(() => config.value.planType, (pt) => {
+  if (pt === 'diagram') {
+    if (config.value.sheetSize !== 'A4' && config.value.sheetSize !== 'A3') {
+      config.value.sheetSize = 'A4'
+    }
+  } else if (config.value.sheetSize === 'A4' || config.value.sheetSize === 'A3') {
+    config.value.sheetSize = 'auto'
+  }
+}, { immediate: true })
 
 // Current tile descriptor (1-based index → 0-based array)
 const currentTile = computed(() => {

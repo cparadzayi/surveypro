@@ -233,11 +233,17 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
       let selectedSheetSize
       let layout
 
-      if (scale && sheetSize) {
+      // A4/A3 (diagram sheets) are not in the SI 727 ISO ladder this preview
+      // optimiser understands; ignore a non-ISO sheet here so the preview never
+      // crashes (the diagram renderer sizes itself from the chosen A4/A3 directly).
+      const isoSheetSize =
+        (sheetSize === 'ISO_A2' || sheetSize === 'ISO_A1' || sheetSize === 'ISO_A0') ? sheetSize : undefined
+
+      if (scale && isoSheetSize) {
         // Both explicitly provided
         selectedScale = { value: parseInt(scale), label: `1:${scale}` }
-        selectedSheetSize = sheetSize
-        layout = calculateSI727Layout(sheetSize, parcels.length, 0)
+        selectedSheetSize = isoSheetSize
+        layout = calculateSI727Layout(isoSheetSize, parcels.length, 0)
       } else if (scale) {
         // Scale provided, pick smallest fitting sheet
         selectedScale = { value: parseInt(scale), label: `1:${scale}` }

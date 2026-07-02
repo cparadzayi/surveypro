@@ -208,7 +208,8 @@ export async function generateDiagramPDF(options, logger) {
   // clipped strip. The whole-site OUTSIDE FIGURE parcel is excluded; parcels that
   // don't reach the buffer clip to nothing and are omitted.
   doc.font('Helvetica').fontSize(7).fillColor('#555555')
-  const neighbourSegs = [] // drawn neighbour line segments (pt) — vertex labels avoid these
+  const neighbourSegs = [] // drawn neighbour line segments (pt) — labels avoid these
+  const neighbourLabels = [] // { anchor, text } drawn after the subject, placed outward
   if (buffer.length) {
     for (const nb of neighbours) {
       if (isOutsideFigureFeature(nb)) continue
@@ -228,8 +229,8 @@ export async function generateDiagramPDF(options, logger) {
       doc.stroke().restore()
       const stand = nb.properties?.stand ?? nb.properties?.designation ?? ''
       if (stand) {
-        const c = centroidPt(strips[0].map((p) => tf(p)))
-        doc.text(String(stand), c.px - 15, c.py - 4, { width: 30, align: 'center' })
+        // Defer drawing: placed outward, line-avoiding, once all segments are known.
+        neighbourLabels.push({ anchor: centroidPt(strips[0].map((p) => tf(p))), text: String(stand) })
       }
     }
   }
@@ -255,15 +256,37 @@ export async function generateDiagramPDF(options, logger) {
   doc.fillColor('#000000').fontSize(8)
   const subjCentroid = centroidPt(subjPt)
   const subjSegs = subjPt.map((p, i) => [p, subjPt[(i + 1) % subjPt.length]])
-  const avoidSegs = subjSegs.concat(neighbourSegs)
+  // Already-placed label boxes become obstacles too, so labels don't collide with
+  // each other. A box is represented by its 4 edges + 2 diagonals (the diagonals
+  // catch a smaller candidate that would sit fully inside a larger placed box).
+  const labelObstacles = []
+  const boxToSegs = (b) => {
+    const c1 = { px: b.x, py: b.y }, c2 = { px: b.x + b.w, py: b.y }
+    const c3 = { px: b.x + b.w, py: b.y + b.h }, c4 = { px: b.x, py: b.y + b.h }
+    return [[c1, c2], [c2, c3], [c3, c4], [c4, c1], [c1, c3], [c2, c4]]
+  }
+
   geometry.vertices.forEach((v, i) => {
     const p = subjPt[i]
     const labelW = doc.widthOfString(v.letter)
     const pos = placeVertexLabel(p, subjCentroid, {
-      beaconR, labelW, labelH: 8, gap: 2, segments: avoidSegs,
+      beaconR, labelW, labelH: 8, gap: 2, segments: subjSegs.concat(neighbourSegs, labelObstacles),
     })
     doc.text(v.letter, pos.x, pos.y)
+    labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 8 }))
   })
+
+  // Neighbour stand labels: same outward (away from the subject centroid),
+  // line-avoiding placement, clear of the drawn lines AND the vertex labels.
+  doc.font('Helvetica').fontSize(7).fillColor('#555555')
+  for (const nl of neighbourLabels) {
+    const labelW = doc.widthOfString(nl.text)
+    const pos = placeVertexLabel(nl.anchor, subjCentroid, {
+      beaconR: 0, gap: 1, labelW, labelH: 7, segments: subjSegs.concat(neighbourSegs, labelObstacles),
+    })
+    doc.text(nl.text, pos.x, pos.y)
+    labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
+  }
 
   // resolveLoSystem already returns the full "Lo NN" label.
   const loLabel = resolveLoSystem(null, metadata, options.projection)

@@ -3863,7 +3863,12 @@ function gatherPlanContext(): PlanPayloadContext {
   }
 
   const epsgCode = `EPSG:${22260 + parseInt(config.value.centralMeridian || '31')}`
-  const resolvedScale = intelligentPreview.value?.scale?.label || undefined
+  // Diagram: use the surveyor's explicit scale if chosen, otherwise leave it
+  // undefined so the diagram renderer auto-picks an SI 727 scale responsive to
+  // the subject parcel (not the whole-site intelligentPreview scale).
+  const resolvedScale = config.value.planType === 'diagram'
+    ? (config.value.scale && config.value.scale !== 'auto' ? config.value.scale : undefined)
+    : (intelligentPreview.value?.scale?.label || undefined)
   const resolvedSheetSize = config.value.planType === 'diagram'
     ? (config.value.sheetSize === 'A3' ? 'A3' : 'A4')
     : (intelligentPreview.value?.sheetSize || undefined)

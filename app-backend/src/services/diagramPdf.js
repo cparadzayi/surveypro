@@ -1,12 +1,12 @@
 import PDFDocument from 'pdfkit'
 import { deriveSubjectGeometry } from './diagram/subjectGeometry.js'
 import { parcelExtent, pickDiagramScale, makeTransform } from './diagram/diagramScale.js'
-import { buildSidesTable, buildFigureRepresents } from './diagram/sidesTable.js'
+import { buildSidesTable, buildFigureRepresents, formatDiagramArea } from './diagram/sidesTable.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import {
-  resolveLoSystem, classifyBeaconGroups, formatAreaValue, snapScaleBarSegment,
+  resolveLoSystem, classifyBeaconGroups, snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
 
 function docToBuffer(doc) {
@@ -134,7 +134,7 @@ function drawScaleBar(doc, layout, denom) {
 function drawStatement(doc, layout, geometry, metadata) {
   const R = layout.statement
   const seq = buildFigureRepresents(geometry)
-  const area = formatAreaValue(geometry.area)
+  const area = formatDiagramArea(geometry.area)
   const designation = metadata.designation ?? ''
   const parent = metadata.parentProperty ? ` OF ${metadata.parentProperty}` : ''
   doc.save().font('Helvetica').fontSize(8).fillColor('#000')

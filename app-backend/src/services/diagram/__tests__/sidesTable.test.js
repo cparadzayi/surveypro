@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals'
-import { toDMS, buildSidesTable, buildFigureRepresents } from '../sidesTable.js'
+import { toDMS, buildSidesTable, buildFigureRepresents, formatDiagramArea } from '../sidesTable.js'
 
 const geometry = {
   vertices: [
@@ -18,6 +18,24 @@ const geometry = {
 describe('toDMS', () => {
   test('converts degrees to d/m/s', () => {
     expect(toDMS(314.9444)).toEqual({ d: 314, m: 56, s: 40 })
+  })
+  test("uses banker's rounding on the arcsecond (round half to even) per SI 727", () => {
+    // 2.5" → 2 (even), not 3; 0.5" → 0 (even), not 1. Plain Math.round would round half up.
+    expect(toDMS(2.5 / 3600)).toEqual({ d: 0, m: 0, s: 2 })
+    expect(toDMS(0.5 / 3600)).toEqual({ d: 0, m: 0, s: 0 })
+  })
+})
+
+describe('formatDiagramArea', () => {
+  test('below 1 hectare: whole square metres with unit', () => {
+    expect(formatDiagramArea(4047)).toBe('4047 square metres')
+  })
+  test("below 1 hectare uses banker's rounding on the whole metre", () => {
+    expect(formatDiagramArea(4046.5)).toBe('4046 square metres') // 4046 is even
+  })
+  test('1 hectare or more: hectares to 4 decimals with unit', () => {
+    expect(formatDiagramArea(12345)).toBe('1.2345 hectares')
+    expect(formatDiagramArea(15000)).toBe('1.5000 hectares')
   })
 })
 

@@ -1,11 +1,28 @@
+import { bankersRound } from '../../utils/zim-geo.js'
+
 /** Whole-degree/minute/second breakdown of a decimal-degree bearing. */
 export function toDMS(deg) {
-  let total = Math.round(deg * 3600) // total arc-seconds, rounded
+  // SI 727: round the arcsecond half-to-even (banker's rounding).
+  let total = bankersRound(deg * 3600, 0)
   total = ((total % 1296000) + 1296000) % 1296000
   const d = Math.floor(total / 3600)
   const m = Math.floor((total % 3600) / 60)
   const s = total % 60
   return { d, m, s }
+}
+
+/**
+ * SI 727 area statement value with units, banker's-rounded: below 1 hectare →
+ * whole square metres ("4047 square metres"); 1 hectare or more → hectares to
+ * 4 decimals ("1.2345 hectares").
+ */
+export function formatDiagramArea(areaM2) {
+  const a = Math.abs(Number(areaM2) || 0)
+  const ha = a / 10000
+  if (ha >= 1) {
+    return `${bankersRound(ha, 4).toFixed(4)} hectares`
+  }
+  return `${bankersRound(a, 0)} square metres`
 }
 
 function signed(value) {

@@ -588,6 +588,7 @@ import {
   type PlanPayloadContext, type PlanDocumentSet,
 } from './planPayload'
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
+import { pickDiagramSubjectId } from './diagramSubjectPick'
 
 // Props
 const props = defineProps<{
@@ -1850,16 +1851,21 @@ function applyDiagramHighlight(selectedId: string | number | null) {
 
 function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
   if (!map.value || !isDiagramMode.value) return
+  const outsideFigureId = getOutsideFigureParcel()?.id ?? null
   const fillLayers = parcels.value
+    .filter((p: any) => outsideFigureId == null || p.id !== outsideFigureId) // never pick the Outside Figure
     .map((p: any) => `parcel-${p.id}-fill`)
     .filter((id: string) => map.value!.getLayer(id))
   if (fillLayers.length === 0) return
   const hits = map.value.queryRenderedFeatures(e.point, { layers: fillLayers })
-  if (hits.length === 0) return
-  const layerId = hits[0].layer.id // 'parcel-<id>-fill'
-  const id = layerId.replace(/^parcel-/, '').replace(/-fill$/, '')
-  const match = parcels.value.find((p: any) => String(p.id) === id)
-  selectedDiagramParcelId.value = match ? match.id : null
+  // Drop the Outside Figure (defensive) and prefer the smallest overlapping stand.
+  const picked = pickDiagramSubjectId(
+    hits.map(h => h.layer.id),
+    parcels.value,
+    outsideFigureId,
+  )
+  if (picked == null) return
+  selectedDiagramParcelId.value = picked
   applyDiagramHighlight(selectedDiagramParcelId.value)
 }
 

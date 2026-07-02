@@ -267,10 +267,17 @@
           </select>
         </div>
         <div v-if="isDiagramMode" class="config-group diagram-subject-hint">
-          <p v-if="!selectedDiagramParcelId" class="text-xs text-amber-600">
-            👆 Click the parcel on the map to choose the diagram subject.
+          <label class="config-label">Diagram subject</label>
+          <ParcelSelect
+            :options="diagramSubjectOptions"
+            v-model="selectedDiagramParcelId"
+            placeholder="Search stand or designation, or click the map…"
+            @select="onDiagramSubjectPicked"
+          />
+          <p v-if="!selectedDiagramParcelId" class="mt-1 text-xs text-amber-600">
+            👆 Or click the parcel on the map to choose the diagram subject.
           </p>
-          <p v-else class="text-xs text-green-700">
+          <p v-else class="mt-1 text-xs text-green-700">
             ✓ Diagram subject: <strong>Stand {{ selectedDiagramStand }}</strong>
           </p>
         </div>
@@ -589,6 +596,8 @@ import {
 } from './planPayload'
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
 import { pickDiagramSubjectId } from './diagramSubjectPick'
+import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
+import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 
 // Props
 const props = defineProps<{
@@ -695,6 +704,27 @@ const selectedDiagramStand = computed(() => {
   const p = parcels.value.find((x: any) => String(x.id) === String(selectedDiagramParcelId.value))
   return p?.stand ?? null
 })
+
+const diagramSubjectOptions = computed(() =>
+  buildParcelOptions(parcels.value, { excludeId: getOutsideFigureParcel()?.id ?? null }))
+
+function onDiagramSubjectPicked(option: { id: string | number }) {
+  applyDiagramHighlight(option.id)
+  zoomToParcel(option.id)
+}
+
+function zoomToParcel(id: string | number) {
+  if (!map.value) return
+  const parcel = parcels.value.find((p: any) => String(p.id) === String(id))
+  if (!parcel?.geom) return
+  const feature = transformParcelGeometry(parcel.geom)
+  const ring = feature?.geometry?.coordinates?.[0] as [number, number][] | undefined
+  if (!ring || ring.length === 0) return
+  const bounds = new maplibregl.LngLatBounds(ring[0], ring[0])
+  for (const c of ring) bounds.extend(c as [number, number])
+  map.value.fitBounds(bounds, { padding: 60, maxZoom: 19 })
+}
+
 const isDiagramMode = computed(() => getPlanTypeMeta(config.value.planType).subjectMode === 'single-parcel')
 const exportFormats = reactive({ pdf: true, dxf: true })
 const planTypeLabel = computed(() => getPlanTypeMeta(config.value.planType).label)

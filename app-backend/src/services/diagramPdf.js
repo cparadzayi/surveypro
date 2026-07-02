@@ -1,12 +1,13 @@
 import PDFDocument from 'pdfkit'
 import { deriveSubjectGeometry } from './diagram/subjectGeometry.js'
-import { parcelExtent, pickDiagramScale, makeTransform } from './diagram/diagramScale.js'
-import { buildSidesTable, buildFigureRepresents } from './diagram/sidesTable.js'
+import { parcelExtent, pickDiagramScale, makeTransform, beaconRadiusPt } from './diagram/diagramScale.js'
+import { buildSidesTable, buildFigureRepresents, formatDiagramArea } from './diagram/sidesTable.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
-import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature } from './diagram/neighbourBuffer.js'
+import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
+import { placeVertexLabel } from './diagram/vertexLabel.js'
 import {
-  resolveLoSystem, classifyBeaconGroups, formatAreaValue, snapScaleBarSegment,
+  resolveLoSystem, classifyBeaconGroups, snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
 
 function docToBuffer(doc) {
@@ -47,7 +48,10 @@ function drawTable(doc, layout, table, loLabel) {
   doc.text('DIAGRAM S.G. No.', layout.sgNoBox.x, R.y)
   doc.font('Helvetica').fontSize(6.5)
   doc.text('Metres', R.x, R.y + 10)
-  doc.text('°  ′  ″', R.x + 90, R.y + 10)
+  // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
+  // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica (WinAnsi) and
+  // render as garbage; °, ' and " are all in the font.
+  doc.text('°  \'  "', R.x + 90, R.y + 10)
   doc.text('Y', R.x + 245, R.y + 10)
   doc.text('X', R.x + 320, R.y + 10)
   // Const row
@@ -131,7 +135,7 @@ function drawScaleBar(doc, layout, denom) {
 function drawStatement(doc, layout, geometry, metadata) {
   const R = layout.statement
   const seq = buildFigureRepresents(geometry)
-  const area = formatAreaValue(geometry.area)
+  const area = formatDiagramArea(geometry.area)
   const designation = metadata.designation ?? ''
   const parent = metadata.parentProperty ? ` OF ${metadata.parentProperty}` : ''
   doc.save().font('Helvetica').fontSize(8).fillColor('#000')
@@ -204,38 +208,85 @@ export async function generateDiagramPDF(options, logger) {
   // clipped strip. The whole-site OUTSIDE FIGURE parcel is excluded; parcels that
   // don't reach the buffer clip to nothing and are omitted.
   doc.font('Helvetica').fontSize(7).fillColor('#555555')
+  const neighbourSegs = [] // drawn neighbour line segments (pt) — labels avoid these
+  const neighbourLabels = [] // { anchor, text } drawn after the subject, placed outward
   if (buffer.length) {
     for (const nb of neighbours) {
       if (isOutsideFigureFeature(nb)) continue
-      const strips = clipRingToPolygon(nb?.geometry?.coordinates?.[0] ?? [], buffer)
+      const nbRing = nb?.geometry?.coordinates?.[0] ?? []
+      const strips = clipRingToPolygon(nbRing, buffer)
       if (!strips.length) continue
+      // Draw only the real neighbour boundary edges within the buffer — not the
+      // artificial clip line along the buffer boundary.
+      doc.save().lineWidth(0.5).strokeColor('#999999')
       for (const strip of strips) {
-        drawRing(doc, strip.map((p) => tf(p)), { color: '#999999', width: 0.5 })
+        for (const [a, b] of neighbourBoundaryEdges(strip, nbRing)) {
+          const pa = tf(a), pb = tf(b)
+          doc.moveTo(pa.px, pa.py).lineTo(pb.px, pb.py)
+          neighbourSegs.push([pa, pb])
+        }
       }
+      doc.stroke().restore()
       const stand = nb.properties?.stand ?? nb.properties?.designation ?? ''
       if (stand) {
-        const c = centroidPt(strips[0].map((p) => tf(p)))
-        doc.text(String(stand), c.px - 15, c.py - 4, { width: 30, align: 'center' })
+        // Defer drawing: placed outward, line-avoiding, once all segments are known.
+        neighbourLabels.push({ anchor: centroidPt(strips[0].map((p) => tf(p))), text: String(stand) })
       }
     }
   }
 
-  // Subject: bold outline + lettered vertices + per-side bearing/distance labels.
+  // Subject: bold outline, beacon circles at each vertex, lettered vertices.
   const subjPt = geometry.vertices.map((v) => tf([v.y, v.x]))
   drawRing(doc, subjPt, { color: '#0a7d34', width: 1.5 })
+  // Beacon circles drawn ON TOP of the boundary: the white fill knocks out the
+  // boundary line inside, so edges appear clipped at the circle edge (the
+  // developed-plan technique). Radius is page-relative → visible at print scale.
+  const beaconR = beaconRadiusPt(denom)
+  for (const p of subjPt) {
+    doc.save()
+      .circle(p.px, p.py, beaconR)
+      .lineWidth(0.8)
+      .fillColor('#FFFFFF')
+      .strokeColor('#000000')
+      .fillAndStroke()
+    doc.restore()
+  }
+  // Vertex letters placed OUTSIDE the figure, clear of the beacon circle, and not
+  // overriding the subject or adjoining-property lines. (No edge-distance labels.)
   doc.fillColor('#000000').fontSize(8)
+  const subjCentroid = centroidPt(subjPt)
+  const subjSegs = subjPt.map((p, i) => [p, subjPt[(i + 1) % subjPt.length]])
+  // Already-placed label boxes become obstacles too, so labels don't collide with
+  // each other. A box is represented by its 4 edges + 2 diagonals (the diagonals
+  // catch a smaller candidate that would sit fully inside a larger placed box).
+  const labelObstacles = []
+  const boxToSegs = (b) => {
+    const c1 = { px: b.x, py: b.y }, c2 = { px: b.x + b.w, py: b.y }
+    const c3 = { px: b.x + b.w, py: b.y + b.h }, c4 = { px: b.x, py: b.y + b.h }
+    return [[c1, c2], [c2, c3], [c3, c4], [c4, c1], [c1, c3], [c2, c4]]
+  }
+
   geometry.vertices.forEach((v, i) => {
     const p = subjPt[i]
-    doc.text(v.letter, p.px + 2, p.py - 9)
+    const labelW = doc.widthOfString(v.letter)
+    const pos = placeVertexLabel(p, subjCentroid, {
+      beaconR, labelW, labelH: 8, gap: 2, segments: subjSegs.concat(neighbourSegs, labelObstacles),
+    })
+    doc.text(v.letter, pos.x, pos.y)
+    labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 8 }))
   })
-  doc.fontSize(6.5).fillColor('#111111')
-  geometry.sides.forEach((s, i) => {
-    const a = subjPt[i]
-    const b = subjPt[(i + 1) % subjPt.length]
-    const mx = (a.px + b.px) / 2
-    const my = (a.py + b.py) / 2
-    doc.text(`${s.distance.toFixed(2)}m`, mx - 18, my - 4, { width: 36, align: 'center' })
-  })
+
+  // Neighbour stand labels: same outward (away from the subject centroid),
+  // line-avoiding placement, clear of the drawn lines AND the vertex labels.
+  doc.font('Helvetica').fontSize(7).fillColor('#555555')
+  for (const nl of neighbourLabels) {
+    const labelW = doc.widthOfString(nl.text)
+    const pos = placeVertexLabel(nl.anchor, subjCentroid, {
+      beaconR: 0, gap: 1, labelW, labelH: 7, segments: subjSegs.concat(neighbourSegs, labelObstacles),
+    })
+    doc.text(nl.text, pos.x, pos.y)
+    labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
+  }
 
   // resolveLoSystem already returns the full "Lo NN" label.
   const loLabel = resolveLoSystem(null, metadata, options.projection)

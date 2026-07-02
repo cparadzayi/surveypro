@@ -1,6 +1,7 @@
 import { describe, test, expect } from '@jest/globals'
 import {
   bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, polygonArea,
+  neighbourBoundaryEdges,
 } from '../neighbourBuffer.js'
 
 // 100 m subject square, stored [Southing, Westing] (the DB order); normalized to
@@ -47,6 +48,41 @@ describe('clipRingToPolygon', () => {
       [2144000, 90000], [2144100, 90000], [2144100, 90100], [2144000, 90100], [2144000, 90000],
     ]
     expect(clipRingToPolygon(far, buf)).toEqual([])
+  })
+})
+
+describe('neighbourBoundaryEdges', () => {
+  const buf = bufferRing(subjectRing, 10)
+  // Neighbour abutting the subject on its Westing=85100 side, extending east/south
+  // beyond the buffer. Its real edges within the buffer are on Westing=85100 and
+  // Southing=2144000; the strip's outer edges lie on the buffer (clip) boundary.
+  const abutting = [
+    [2144000, 85100], [2144200, 85100], [2144200, 85500], [2144000, 85500], [2144000, 85100],
+  ]
+  const strip = clipRingToPolygon(abutting, buf)[0]
+
+  test('returns only edges lying on the original neighbour boundary', () => {
+    const edges = neighbourBoundaryEdges(strip, abutting)
+    expect(edges.length).toBeGreaterThan(0)
+    // The buffer-cut edges are excluded, so not every strip edge is returned.
+    expect(edges.length).toBeLessThan(strip.length)
+    // Every kept edge's midpoint sits on a real neighbour edge (Westing 85100 or Southing 2144000).
+    for (const [a, b] of edges) {
+      const midY = (a[0] + b[0]) / 2
+      const midX = (a[1] + b[1]) / 2
+      const onWest = Math.abs(midY - 85100) < 0.1
+      const onSouth = Math.abs(midX - 2144000) < 0.1
+      expect(onWest || onSouth).toBe(true)
+    }
+  })
+
+  test('excludes the buffer-boundary (clip) edges near Westing 85110 / Southing 2144110', () => {
+    const edges = neighbourBoundaryEdges(strip, abutting)
+    for (const [a, b] of edges) {
+      const midY = (a[0] + b[0]) / 2
+      const midX = (a[1] + b[1]) / 2
+      expect(Math.abs(midY - 85110) < 0.1 && midX > 2144000 && midX < 2144110).toBe(false)
+    }
   })
 })
 

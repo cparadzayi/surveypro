@@ -99,6 +99,42 @@ export function ringExtent(polys) {
   return { minY, maxY, minX, maxX, widthM: maxY - minY, heightM: maxX - minX }
 }
 
+function distPointToSeg([py, px], [ay, ax], [by, bx]) {
+  const dy = by - ay, dx = bx - ax
+  const len2 = dy * dy + dx * dx
+  let t = len2 ? ((py - ay) * dy + (px - ax) * dx) / len2 : 0
+  t = Math.max(0, Math.min(1, t))
+  return Math.hypot(py - (ay + t * dy), px - (ax + t * dx))
+}
+
+function distPointToRing(p, ring) {
+  let m = Infinity
+  for (let i = 0; i < ring.length; i++) {
+    const d = distPointToSeg(p, ring[i], ring[(i + 1) % ring.length])
+    if (d < m) m = d
+  }
+  return m
+}
+
+/**
+ * Edges of a clipped strip that lie on the ORIGINAL neighbour boundary — the real
+ * cadastral edges — excluding the buffer clip line (the artificial outer edge of
+ * the clip polygon). `stripRing` is a normalized [y,x] ring (clip output);
+ * `neighbourRing` is the raw neighbour ring. Returns segments `[[y1,x1],[y2,x2]]`.
+ */
+export function neighbourBoundaryEdges(stripRing, neighbourRing, tol = 0.05) {
+  const nb = dropClose((neighbourRing ?? []).map((p) => normalizeCapeLoYX(p[0], p[1])))
+  if (!stripRing || stripRing.length < 2 || nb.length < 2) return []
+  const edges = []
+  for (let i = 0; i < stripRing.length; i++) {
+    const a = stripRing[i]
+    const b = stripRing[(i + 1) % stripRing.length]
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+    if (distPointToRing(mid, nb) <= tol) edges.push([a, b])
+  }
+  return edges
+}
+
 export function isOutsideFigureFeature(feature) {
   const p = feature?.properties ?? {}
   const has = (v) => typeof v === 'string' && (

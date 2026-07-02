@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals'
-import { parcelExtent, pickDiagramScale, makeTransform } from '../diagramScale.js'
+import { parcelExtent, pickDiagramScale, makeTransform, beaconRadiusPt } from '../diagramScale.js'
 
 // Realistic Cape Lo square stored as [Southing, Westing]; helpers normalize.
 const squareStored = { geometry: { type: 'Polygon', coordinates: [[
@@ -24,6 +24,23 @@ describe('pickDiagramScale', () => {
     const r = pickDiagramScale(parcelExtent(squareStored), figure, 'auto')
     expect(r.denom).toBeGreaterThanOrEqual(750)
     expect(r.label).toBe(`1:${r.denom}`)
+  })
+})
+
+describe('beaconRadiusPt (page-relative, visible at print scale)', () => {
+  test('stays within the diagram clamp [2.0, 3.5] pt across scales', () => {
+    for (const denom of [100, 500, 5000, 50000, 1000000]) {
+      const r = beaconRadiusPt(denom)
+      expect(r).toBeGreaterThanOrEqual(2.0)
+      expect(r).toBeLessThanOrEqual(3.5)
+    }
+  })
+  test('grows weakly with the denominator (log-scaled)', () => {
+    expect(beaconRadiusPt(5000)).toBeGreaterThanOrEqual(beaconRadiusPt(500))
+  })
+  test('tiny/invalid denominators floor at 2.0 pt', () => {
+    expect(beaconRadiusPt(0)).toBeGreaterThanOrEqual(2.0)
+    expect(beaconRadiusPt(1)).toBeGreaterThanOrEqual(2.0)
   })
 })
 

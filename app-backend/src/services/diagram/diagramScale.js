@@ -9,6 +9,20 @@ const SCALE_LADDER = [
   10000, 12500, 15000, 20000, 25000,
 ]
 
+/**
+ * Beacon-circle radius in POINTS (page-relative), so vertices stay visible at
+ * the print scale regardless of 1:N. Mirrors the developed-plan log-scaled
+ * sizing (0.75 mm base, gentle growth with the denominator) but clamped a touch
+ * larger for the single-parcel diagram. Returns 2.0–3.5 pt (~1.4–2.5 mm dia).
+ */
+export function beaconRadiusPt(denom) {
+  const d = Number(denom) || 500
+  const baseRadiusMM = 0.75
+  const scaleFactor = 1 + 0.15 * Math.log10(Math.max(500, d) / 500)
+  const r = baseRadiusMM * scaleFactor * PT_PER_MM
+  return Math.max(2.0, Math.min(3.5, r))
+}
+
 export function parcelExtent(subjectFeature) {
   const ring = subjectFeature?.geometry?.coordinates?.[0] ?? []
   let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity

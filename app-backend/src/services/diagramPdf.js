@@ -5,6 +5,7 @@ import { buildSidesTable, buildFigureRepresents, formatDiagramArea } from './dia
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
+import { placeVertexLabel } from './diagram/vertexLabel.js'
 import {
   resolveLoSystem, classifyBeaconGroups, snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
@@ -207,6 +208,7 @@ export async function generateDiagramPDF(options, logger) {
   // clipped strip. The whole-site OUTSIDE FIGURE parcel is excluded; parcels that
   // don't reach the buffer clip to nothing and are omitted.
   doc.font('Helvetica').fontSize(7).fillColor('#555555')
+  const neighbourSegs = [] // drawn neighbour line segments (pt) — vertex labels avoid these
   if (buffer.length) {
     for (const nb of neighbours) {
       if (isOutsideFigureFeature(nb)) continue
@@ -220,6 +222,7 @@ export async function generateDiagramPDF(options, logger) {
         for (const [a, b] of neighbourBoundaryEdges(strip, nbRing)) {
           const pa = tf(a), pb = tf(b)
           doc.moveTo(pa.px, pa.py).lineTo(pb.px, pb.py)
+          neighbourSegs.push([pa, pb])
         }
       }
       doc.stroke().restore()
@@ -247,11 +250,19 @@ export async function generateDiagramPDF(options, logger) {
       .fillAndStroke()
     doc.restore()
   }
-  // Vertex letters on top, offset clear of the circle. (No edge-distance labels.)
+  // Vertex letters placed OUTSIDE the figure, clear of the beacon circle, and not
+  // overriding the subject or adjoining-property lines. (No edge-distance labels.)
   doc.fillColor('#000000').fontSize(8)
+  const subjCentroid = centroidPt(subjPt)
+  const subjSegs = subjPt.map((p, i) => [p, subjPt[(i + 1) % subjPt.length]])
+  const avoidSegs = subjSegs.concat(neighbourSegs)
   geometry.vertices.forEach((v, i) => {
     const p = subjPt[i]
-    doc.text(v.letter, p.px + beaconR + 1, p.py - beaconR - 8)
+    const labelW = doc.widthOfString(v.letter)
+    const pos = placeVertexLabel(p, subjCentroid, {
+      beaconR, labelW, labelH: 8, gap: 2, segments: avoidSegs,
+    })
+    doc.text(v.letter, pos.x, pos.y)
   })
 
   // resolveLoSystem already returns the full "Lo NN" label.

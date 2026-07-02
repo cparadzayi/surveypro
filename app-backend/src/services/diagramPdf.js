@@ -45,38 +45,43 @@ function centroidPt(ptRing) {
 function drawTable(doc, layout, table, loLabel) {
   const { constRow, coordinateRows, sideRows } = table
   const R = layout.table
+  // Column x-offsets (from R.x). Compressed so the beacon-name "Const." column
+  // sits left of the DIAGRAM S.G. No. box on A4 (sgNoBox.x ≈ R.x + 353).
+  const cSide = 0, cMetres = 28, cDir = 76, cLetter = 158, cY = 198, cX = 260, cConst = 330
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
-  doc.text('SIDES', R.x, R.y)
-  doc.text('DIRECTIONS', R.x + 90, R.y)
-  doc.text(loLabel, R.x + 190, R.y)
-  doc.text('CO-ORDINATES', R.x + 245, R.y)
+  doc.text('SIDES', R.x + cSide, R.y)
+  doc.text('DIRECTIONS', R.x + cDir, R.y)
+  doc.text(loLabel, R.x + cLetter, R.y)
+  doc.text('CO-ORDINATES', R.x + cY, R.y)
+  doc.text('Const.', R.x + cConst, R.y)
   doc.text('DIAGRAM S.G. No.', layout.sgNoBox.x, R.y)
   doc.font('Helvetica').fontSize(6.5)
-  doc.text('Metres', R.x, R.y + 10)
+  doc.text('Metres', R.x + cSide, R.y + 10)
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
   // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica (WinAnsi) and
   // render as garbage; °, ' and " are all in the font.
-  doc.text('°  \'  "', R.x + 90, R.y + 10)
-  doc.text('Y', R.x + 245, R.y + 10)
-  doc.text('X', R.x + 320, R.y + 10)
-  // Const row
+  doc.text('°  \'  "', R.x + cDir, R.y + 10)
+  doc.text('Y', R.x + cY, R.y + 10)
+  doc.text('X', R.x + cX, R.y + 10)
+  // Const. 0.00/0.00 row (retained)
   let ry = R.y + 22
-  doc.text('Const.', R.x + 190, ry)
-  doc.text(constRow.y, R.x + 245, ry)
-  doc.text(constRow.x, R.x + 320, ry)
+  doc.text('Const.', R.x + cLetter, ry)
+  doc.text(constRow.y, R.x + cY, ry)
+  doc.text(constRow.x, R.x + cX, ry)
   // Coordinate rows + side rows in parallel
   const rows = Math.max(coordinateRows.length, sideRows.length)
   for (let i = 0; i < rows; i++) {
     ry += 11
     if (sideRows[i]) {
-      doc.text(sideRows[i].side, R.x, ry)
-      doc.text(sideRows[i].metres, R.x + 30, ry)
-      doc.text(sideRows[i].direction, R.x + 90, ry)
+      doc.text(sideRows[i].side, R.x + cSide, ry)
+      doc.text(sideRows[i].metres, R.x + cMetres, ry)
+      doc.text(sideRows[i].direction, R.x + cDir, ry)
     }
     if (coordinateRows[i]) {
-      doc.text(coordinateRows[i].letter, R.x + 190, ry)
-      doc.text(coordinateRows[i].y, R.x + 245, ry)
-      doc.text(coordinateRows[i].x, R.x + 320, ry)
+      doc.text(coordinateRows[i].letter, R.x + cLetter, ry)
+      doc.text(coordinateRows[i].y, R.x + cY, ry)
+      doc.text(coordinateRows[i].x, R.x + cX, ry)
+      doc.text(coordinateRows[i].beaconName ?? '', R.x + cConst, ry)
     }
   }
   // SG No. box outline (blank)
@@ -312,7 +317,7 @@ export async function generateDiagramPDF(options, logger) {
 
   // resolveLoSystem already returns the full "Lo NN" label.
   const loLabel = resolveLoSystem(null, metadata, options.projection)
-  drawTable(doc, layout, buildSidesTable(geometry), loLabel)
+  drawTable(doc, layout, buildSidesTable(geometry, options.beacons), loLabel)
   drawBeaconDescription(doc, layout, options.beacons)
   drawNorthArrow(doc, layout)
   drawApprovedBox(doc, layout)

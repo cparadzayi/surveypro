@@ -57,6 +57,9 @@ function drawTable(doc, layout, table, loLabel) {
   doc.text('DIAGRAM S.G. No.', layout.sgNoBox.x, R.y)
   doc.font('Helvetica').fontSize(6.5)
   doc.text('Metres', R.x + cSide, R.y + 10)
+  // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
+  // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica (WinAnsi) and
+  // render as garbage; °, ' and " are all in the font.
   doc.text('°  \'  "', R.x + cDir, R.y + 10)
   doc.text('Y', R.x + cY, R.y + 10)
   doc.text('X', R.x + cX, R.y + 10)

@@ -4,7 +4,7 @@ import { parcelExtent, pickDiagramScale, makeTransform } from './diagram/diagram
 import { buildSidesTable, buildFigureRepresents } from './diagram/sidesTable.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
-import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature } from './diagram/neighbourBuffer.js'
+import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import {
   resolveLoSystem, classifyBeaconGroups, formatAreaValue, snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
@@ -210,11 +210,19 @@ export async function generateDiagramPDF(options, logger) {
   if (buffer.length) {
     for (const nb of neighbours) {
       if (isOutsideFigureFeature(nb)) continue
-      const strips = clipRingToPolygon(nb?.geometry?.coordinates?.[0] ?? [], buffer)
+      const nbRing = nb?.geometry?.coordinates?.[0] ?? []
+      const strips = clipRingToPolygon(nbRing, buffer)
       if (!strips.length) continue
+      // Draw only the real neighbour boundary edges within the buffer — not the
+      // artificial clip line along the buffer boundary.
+      doc.save().lineWidth(0.5).strokeColor('#999999')
       for (const strip of strips) {
-        drawRing(doc, strip.map((p) => tf(p)), { color: '#999999', width: 0.5 })
+        for (const [a, b] of neighbourBoundaryEdges(strip, nbRing)) {
+          const pa = tf(a), pb = tf(b)
+          doc.moveTo(pa.px, pa.py).lineTo(pb.px, pb.py)
+        }
       }
+      doc.stroke().restore()
       const stand = nb.properties?.stand ?? nb.properties?.designation ?? ''
       if (stand) {
         const c = centroidPt(strips[0].map((p) => tf(p)))

@@ -1,3 +1,5 @@
+import { normalizeCapeLoYX } from '../pdfkitGeoPDF/geometry.js'
+
 const PT_PER_MM = 72 / 25.4
 
 // SI 727 prescribed base ladder (denominators), ascending.
@@ -10,7 +12,9 @@ const SCALE_LADDER = [
 export function parcelExtent(subjectFeature) {
   const ring = subjectFeature?.geometry?.coordinates?.[0] ?? []
   let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity
-  for (const [y, x] of ring) {
+  for (const p of ring) {
+    // Normalize to canonical [Y=Westing, X=Southing] before measuring.
+    const [y, x] = normalizeCapeLoYX(p[0], p[1])
     if (y < minY) minY = y
     if (y > maxY) maxY = y
     if (x < minX) minX = x
@@ -38,16 +42,23 @@ export function pickDiagramScale(extent, figureAreaPt, requestedScale) {
 }
 
 /**
- * Map Cape Lo [Y, X] to points inside figureAreaPt ({x,y,width,height}).
- * Y (Westing) → horizontal, X (Southing) → vertical (down). Centred.
+ * Map Cape Lo coordinates to points inside figureAreaPt ({x,y,width,height}),
+ * north-up and east-right. Input may be raw [Southing, Westing] or canonical
+ * [Y=Westing, X=Southing]; it is normalized first. Easting (=−Westing) → horizontal
+ * (east to the right), Southing → vertical (south downward, so north is up). Centred.
  */
 export function makeTransform(extent, figureAreaPt, denom) {
   const drawW = metresToPt(extent.widthM || 1, denom)
   const drawH = metresToPt(extent.heightM || 1, denom)
   const ox = figureAreaPt.x + (figureAreaPt.width - drawW) / 2
   const oy = figureAreaPt.y + (figureAreaPt.height - drawH) / 2
-  return ([y, x]) => ({
-    px: ox + ((y - extent.minY) / (extent.widthM || 1)) * drawW,
-    py: oy + ((x - extent.minX) / (extent.heightM || 1)) * drawH,
-  })
+  return (coord) => {
+    const [y, x] = normalizeCapeLoYX(coord[0], coord[1])
+    return {
+      // East to the right: most-west maps to the left edge, most-east to the right.
+      px: ox + ((extent.maxY - y) / (extent.widthM || 1)) * drawW,
+      // North up: increasing Southing goes downward.
+      py: oy + ((x - extent.minX) / (extent.heightM || 1)) * drawH,
+    }
+  }
 }

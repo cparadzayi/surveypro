@@ -4,6 +4,7 @@ import { parcelExtent, pickDiagramScale, makeTransform } from './diagram/diagram
 import { buildSidesTable, buildFigureRepresents } from './diagram/sidesTable.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
+import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature } from './diagram/neighbourBuffer.js'
 import {
   resolveLoSystem, classifyBeaconGroups, formatAreaValue, snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
@@ -25,11 +26,6 @@ function drawRing(doc, ptRing, { color, width }) {
   for (let i = 1; i < ptRing.length; i++) doc.lineTo(ptRing[i].px, ptRing[i].py)
   doc.closePath().stroke()
   doc.restore()
-}
-
-function ringToPt(feature, tf) {
-  const ring = feature?.geometry?.coordinates?.[0] ?? []
-  return ring.map((p) => tf(p))
 }
 
 function centroidPt(ptRing) {
@@ -184,7 +180,15 @@ export async function generateDiagramPDF(options, logger) {
   const layout = computeDiagramLayout({ pageWidthPt: dims.width, pageHeightPt: dims.height, margins })
 
   const geometry = deriveSubjectGeometry(subject)
-  const extent = parcelExtent(subject)
+  // 10 m offset buffer of the subject; the figure is sized to it so only a thin
+  // ring of surrounding context is shown (falls back to the subject extent).
+  let buffer = []
+  try {
+    buffer = bufferRing(subject?.geometry?.coordinates?.[0] ?? [])
+  } catch (e) {
+    logger?.warn?.(`[Diagram] buffer failed: ${e?.message}`)
+  }
+  const extent = buffer.length ? ringExtent(buffer) : parcelExtent(subject)
   const { denom, label } = pickDiagramScale(extent, layout.figure, requestedScale)
   const tf = makeTransform(extent, layout.figure, denom)
 
@@ -196,14 +200,24 @@ export async function generateDiagramPDF(options, logger) {
   doc.rect(layout.border.x, layout.border.y, layout.border.width, layout.border.height).stroke()
   doc.restore()
 
-  // Neighbours: faint outline + stand-number label at centroid.
+  // Abutting neighbours: clip to the 10 m buffer, faint outline + label at the
+  // clipped strip. The whole-site OUTSIDE FIGURE parcel is excluded; parcels that
+  // don't reach the buffer clip to nothing and are omitted.
   doc.font('Helvetica').fontSize(7).fillColor('#555555')
-  for (const nb of neighbours) {
-    const pr = ringToPt(nb, tf)
-    drawRing(doc, pr, { color: '#999999', width: 0.5 })
-    const c = centroidPt(pr)
-    const stand = nb.properties?.stand ?? nb.properties?.designation ?? ''
-    if (stand) doc.text(String(stand), c.px - 15, c.py - 4, { width: 30, align: 'center' })
+  if (buffer.length) {
+    for (const nb of neighbours) {
+      if (isOutsideFigureFeature(nb)) continue
+      const strips = clipRingToPolygon(nb?.geometry?.coordinates?.[0] ?? [], buffer)
+      if (!strips.length) continue
+      for (const strip of strips) {
+        drawRing(doc, strip.map((p) => tf(p)), { color: '#999999', width: 0.5 })
+      }
+      const stand = nb.properties?.stand ?? nb.properties?.designation ?? ''
+      if (stand) {
+        const c = centroidPt(strips[0].map((p) => tf(p)))
+        doc.text(String(stand), c.px - 15, c.py - 4, { width: 30, align: 'center' })
+      }
+    }
   }
 
   // Subject: bold outline + lettered vertices + per-side bearing/distance labels.

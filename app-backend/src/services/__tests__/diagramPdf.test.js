@@ -64,4 +64,23 @@ describe('generateDiagramPDF', () => {
     expect(r.sheetSize).toBe('A4')
     expect(r.pdfBuffer.slice(0, 5).toString()).toBe('%PDF-')
   })
+
+  test('clips neighbours to the buffer and omits the outside figure (realistic coords)', async () => {
+    const subj = { type: 'Feature', properties: { id: 'S', stand: '403', designation: 'STAND 403', area_m2: 10000 },
+      geometry: { type: 'Polygon', coordinates: [[[2144000, 85000], [2144100, 85000], [2144100, 85100], [2144000, 85100], [2144000, 85000]]] } }
+    const abut = { type: 'Feature', properties: { id: 'N', stand: '404' },
+      geometry: { type: 'Polygon', coordinates: [[[2144000, 85100], [2144200, 85100], [2144200, 85500], [2144000, 85500], [2144000, 85100]]] } }
+    const far = { type: 'Feature', properties: { id: 'F', stand: '999' },
+      geometry: { type: 'Polygon', coordinates: [[[2144000, 90000], [2144100, 90000], [2144100, 90100], [2144000, 90100], [2144000, 90000]]] } }
+    const of = { type: 'Feature', properties: { id: 'OF', designation: 'OUTSIDE FIGURE' },
+      geometry: { type: 'Polygon', coordinates: [[[2143000, 84000], [2145000, 84000], [2145000, 86000], [2143000, 86000], [2143000, 84000]]] } }
+    const r = await generateDiagramPDF({
+      parcels: { type: 'FeatureCollection', features: [subj, abut, far, of] },
+      beacons: { type: 'FeatureCollection', features: [] },
+      metadata: { subjectParcelId: 'S', designation: 'STAND 403', centralMeridian: 29 },
+      projection: 'EPSG:22289', scale: 'auto', sheetSize: 'A4',
+    }, logger)
+    expect(r.pdfBuffer.slice(0, 5).toString()).toBe('%PDF-')
+    expect(r.pdfBuffer.length).toBeGreaterThan(2000)
+  })
 })

@@ -54,5 +54,6 @@ export function deriveSubjectGeometry(subjectFeature) {
   const designation = subjectFeature?.properties?.designation
     ?? subjectFeature?.properties?.stand
     ?? null
-  return { vertices, sides, area, designation }
+  const stand = subjectFeature?.properties?.stand ?? null
+  return { vertices, sides, area, designation, stand }
 }

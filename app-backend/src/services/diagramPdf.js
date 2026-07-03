@@ -46,32 +46,34 @@ function centroidPt(ptRing) {
 function drawTable(doc, layout, table, loLabel) {
   const { constRow, coordinateRows, sideRows } = table
   const R = layout.table
-  // Column x-offsets (from R.x). Compressed so the beacon-name "Const." column
-  // stays left of the DIAGRAM S.G. No. box on the padded A4 content box
-  // (sgNoBox left edge ≈ R.x + 341).
-  const cSide = 0, cMetres = 28, cDir = 76, cLetter = 158, cY = 198, cX = 260, cConst = 308
+  // Fixed column x-offsets from R.x. The beacon "Const." names live in the
+  // rightmost DIAGRAM S.G. No. column (matches the SG diagram samples), so there
+  // is no separate Const. column.
+  const cSide = 0, cMetres = 28, cDir = 76, cLetter = 158, cY = 198, cX = 260
+  const cSg = layout.sgNoBox.x + 2 // absolute x of the rightmost (SG No.) column
+  const rows = Math.max(coordinateRows.length, sideRows.length)
+
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y)
   doc.text('DIRECTIONS', R.x + cDir, R.y)
   doc.text(loLabel, R.x + cLetter, R.y)
   doc.text('CO-ORDINATES', R.x + cY, R.y)
-  doc.text('Const.', R.x + cConst, R.y)
-  doc.text('DIAGRAM S.G. No.', layout.sgNoBox.x, R.y)
+  doc.text('DIAGRAM S.G. No.', cSg, R.y)
   doc.font('Helvetica').fontSize(6.5)
-  doc.text('Metres', R.x + cSide, R.y + 10)
+  doc.text('Metres', R.x + cMetres, R.y + 10) // over the distances, not the sides
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
-  // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica (WinAnsi) and
-  // render as garbage; °, ' and " are all in the font.
+  // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica and render as
+  // garbage; °, ' and " are all in the font.
   doc.text('°  \'  "', R.x + cDir, R.y + 10)
   doc.text('Y', R.x + cY, R.y + 10)
   doc.text('X', R.x + cX, R.y + 10)
-  // Const. 0.00/0.00 row (retained)
+
+  // Constants row + coordinate/side rows. The "Const." label and beacon names
+  // are in the rightmost (SG No.) column.
   let ry = R.y + 22
-  doc.text('Const.', R.x + cLetter, ry)
   doc.text(constRow.y, R.x + cY, ry)
   doc.text(constRow.x, R.x + cX, ry)
-  // Coordinate rows + side rows in parallel
-  const rows = Math.max(coordinateRows.length, sideRows.length)
+  doc.text('Const.', cSg, ry)
   for (let i = 0; i < rows; i++) {
     ry += 11
     if (sideRows[i]) {
@@ -83,11 +85,21 @@ function drawTable(doc, layout, table, loLabel) {
       doc.text(coordinateRows[i].letter, R.x + cLetter, ry)
       doc.text(coordinateRows[i].y, R.x + cY, ry)
       doc.text(coordinateRows[i].x, R.x + cX, ry)
-      doc.text(coordinateRows[i].beaconName ?? '', R.x + cConst, ry)
+      doc.text(coordinateRows[i].beaconName ?? '', cSg, ry)
     }
   }
-  // SG No. box outline (blank)
-  doc.rect(layout.sgNoBox.x, layout.sgNoBox.y + 10, layout.sgNoBox.width, layout.sgNoBox.height).stroke()
+
+  // Grid: outer box + column dividers + one header/data rule (no per-row lines).
+  const boxL = R.x - 3
+  const boxR = R.x + R.width + 3
+  const boxT = R.y - 3
+  const boxB = ry + 9
+  const hSep = R.y + 20 // header/data separator (below the two header sub-rows)
+  const verticals = [R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
+  doc.lineWidth(0.5).strokeColor('#000')
+  doc.rect(boxL, boxT, boxR - boxL, boxB - boxT).stroke()
+  for (const vx of verticals) doc.moveTo(vx, boxT).lineTo(vx, boxB).stroke()
+  doc.moveTo(boxL, hSep).lineTo(boxR, hSep).stroke()
   doc.restore()
 }
 

@@ -189,18 +189,19 @@ function drawReferenceGrid(doc, layout, grid) {
   const B = layout.border
   const bottom = B.y + B.height
   doc.save().lineWidth(0.5).strokeColor('#000')
-  // No outer box: the two column dividers run down to the bottom neat-line border.
+  // Top border of the block (full width) + the two column dividers running down to
+  // the bottom neat-line border (no bottom line of its own).
+  doc.moveTo(B.x, R.y).lineTo(B.x + B.width, R.y).stroke()
   doc.moveTo(x1, R.y).lineTo(x1, bottom).stroke()
   doc.moveTo(x2, R.y).lineTo(x2, bottom).stroke()
-  // Left column mid rule → extends to the left neat-line margin.
-  doc.moveTo(B.x, r2).lineTo(x1, r2).stroke()
-  // Middle column: three rules (between the dividers) + the File|G.P. split.
-  doc.moveTo(x1, r1).lineTo(x2, r1).stroke()
+  // Left column: single cell (no internal divider).
+  // Middle column: rule above File|G.P. and above Compilation + the File|G.P. split.
   doc.moveTo(x1, r2).lineTo(x2, r2).stroke()
   doc.moveTo(x1, r3).lineTo(x2, r3).stroke()
   doc.moveTo(midHalf, r2).lineTo(midHalf, r3).stroke()
-  // Right column mid rule → extends to the right neat-line margin.
-  doc.moveTo(x2, r2).lineTo(B.x + B.width, r2).stroke()
+  // Right column divider aligned with the line above Compilation (r3), extended to
+  // the right neat-line margin.
+  doc.moveTo(x2, r3).lineTo(B.x + B.width, r3).stroke()
 
   doc.font('Helvetica').fontSize(6.5).fillColor('#000')
   const pad = 3
@@ -218,7 +219,7 @@ function drawReferenceGrid(doc, layout, grid) {
   doc.text(`Compilation : ${grid.compilation}`, x1 + pad, r3 + 4, { width: wM })
   // Right column.
   doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, x2 + pad, R.y + 5, { width: wR })
-  doc.text(`S.R. : ${grid.srNo}`, x2 + pad, r2 + 5, { width: wR })
+  doc.text(`S.R. : ${grid.srNo}`, x2 + pad, r3 + 5, { width: wR })
   doc.restore()
 }
 

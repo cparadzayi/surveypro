@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit'
 import { deriveSubjectGeometry } from './diagram/subjectGeometry.js'
 import { parcelExtent, pickDiagramScale, makeTransform, beaconRadiusPt } from './diagram/diagramScale.js'
 import { buildSidesTable, buildFigureRepresents, formatDiagramArea } from './diagram/sidesTable.js'
+import { resolveStatementDesignation } from './diagram/designation.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
@@ -146,8 +147,9 @@ function drawStatement(doc, layout, geometry, metadata) {
   const R = layout.statement
   const seq = buildFigureRepresents(geometry)
   const area = formatDiagramArea(geometry.area)
-  // Name the SELECTED parcel (subject), not the whole survey; fall back to project.
-  const designation = geometry.designation ?? metadata.designation ?? ''
+  // Name the SELECTED parcel (subject). A bare stand number is expanded to
+  // "STAND <n> <locality>" using the project designation's locality suffix.
+  const designation = resolveStatementDesignation(geometry.designation, geometry.stand, metadata.designation)
   const parent = metadata.parentProperty ? ` OF ${metadata.parentProperty}` : ''
   // Survey date arrives as metadata.date from the frontend; accept either key.
   const surveyDate = metadata.surveyDate ?? metadata.date

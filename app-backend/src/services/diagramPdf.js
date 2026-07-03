@@ -47,8 +47,9 @@ function drawTable(doc, layout, table, loLabel) {
   const { constRow, coordinateRows, sideRows } = table
   const R = layout.table
   // Column x-offsets (from R.x). Compressed so the beacon-name "Const." column
-  // sits left of the DIAGRAM S.G. No. box on A4 (sgNoBox.x ≈ R.x + 353).
-  const cSide = 0, cMetres = 28, cDir = 76, cLetter = 158, cY = 198, cX = 260, cConst = 330
+  // stays left of the DIAGRAM S.G. No. box on the padded A4 content box
+  // (sgNoBox left edge ≈ R.x + 341).
+  const cSide = 0, cMetres = 28, cDir = 76, cLetter = 158, cY = 198, cX = 260, cConst = 308
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y)
   doc.text('DIRECTIONS', R.x + cDir, R.y)

@@ -16,6 +16,10 @@ const PAGE_DIMS_PT = {
 // Fixed band heights (pt); the figure fills whatever remains.
 const BAND = { table: 150, header: 55, scaleBar: 34, statement: 64, refGrid: 100 }
 
+// Inset (pt) between the neat-line border and the content bands, so text/labels
+// never touch the border/margins.
+export const CONTENT_PAD = 6
+
 export function pageDimsPt(sheetSize) {
   return PAGE_DIMS_PT[sheetSize] || PAGE_DIMS_PT.A4
 }
@@ -30,13 +34,21 @@ export function marginsPt(mm = DIAGRAM_MARGINS_MM) {
 }
 
 export function computeDiagramLayout({ pageWidthPt, pageHeightPt, margins }) {
-  const cx = margins.left
-  const cy = margins.top
-  const cw = pageWidthPt - margins.left - margins.right
-  const ch = pageHeightPt - margins.top - margins.bottom
-  const contentRight = cx + cw
+  // Neat-line border = the content box (page minus margins).
+  const border = {
+    x: margins.left,
+    y: margins.top,
+    width: pageWidthPt - margins.left - margins.right,
+    height: pageHeightPt - margins.top - margins.bottom,
+  }
 
-  const border = { x: cx, y: cy, width: cw, height: ch }
+  // Bands are laid out inside a padded inset of the border, so text/labels never
+  // touch the border/margins.
+  const cx = border.x + CONTENT_PAD
+  const cy = border.y + CONTENT_PAD
+  const cw = border.width - 2 * CONTENT_PAD
+  const ch = border.height - 2 * CONTENT_PAD
+  const contentRight = cx + cw
 
   const fixed = BAND.table + BAND.header + BAND.scaleBar + BAND.statement + BAND.refGrid
   const figureH = ch - fixed

@@ -1,6 +1,6 @@
 import { describe, test, expect } from '@jest/globals'
 import {
-  DIAGRAM_MARGINS_MM, pageDimsPt, marginsPt, computeDiagramLayout,
+  DIAGRAM_MARGINS_MM, CONTENT_PAD, pageDimsPt, marginsPt, computeDiagramLayout,
 } from '../diagramLayout.js'
 
 const MM = 72 / 25.4
@@ -35,24 +35,29 @@ describe('computeDiagramLayout', () => {
     expect(L.border.height).toBeCloseTo(dims.height - 30 * MM, 3) // 15 + 15
   })
 
-  test('figure flexes = content height minus fixed bands', () => {
+  test('bands are inset from the border by CONTENT_PAD so text clears the margins', () => {
+    expect(CONTENT_PAD).toBeGreaterThan(0)
+    expect(L.table.x).toBeCloseTo(L.border.x + CONTENT_PAD, 3)
+    expect(L.table.y).toBeCloseTo(L.border.y + CONTENT_PAD, 3)
+    expect(L.figure.width).toBeCloseTo(L.border.width - 2 * CONTENT_PAD, 3)
+  })
+
+  test('figure flexes = padded content height minus fixed bands', () => {
     const fixed = 150 + 55 + 34 + 64 + 100
-    expect(L.figure.height).toBeCloseTo(L.border.height - fixed, 3)
-    expect(L.figure.width).toBeCloseTo(L.border.width, 3)
+    expect(L.figure.height).toBeCloseTo(L.border.height - 2 * CONTENT_PAD - fixed, 3)
   })
 
   test('bands stack top-to-bottom without gaps or overlap', () => {
-    expect(L.table.y).toBeCloseTo(L.border.y, 3)
     expect(L.figure.y).toBeCloseTo(L.table.y + L.table.height + 55, 3) // header band = 55
     expect(L.scaleBar.y).toBeCloseTo(L.figure.y + L.figure.height, 3)
     expect(L.statement.y).toBeCloseTo(L.scaleBar.y + 34, 3)
     expect(L.refGrid.y).toBeCloseTo(L.statement.y + 64, 3)
-    // last band bottom sits within the content box
+    // last band bottom sits within the content box (inside the border)
     expect(L.refGrid.y + L.refGrid.height).toBeLessThanOrEqual(L.border.y + L.border.height + 0.01)
   })
 
-  test('sgNoBox is right-aligned inside the content box', () => {
-    expect(L.sgNoBox.x + L.sgNoBox.width).toBeCloseTo(L.border.x + L.border.width, 3)
+  test('sgNoBox is right-aligned inside the padded content box', () => {
+    expect(L.sgNoBox.x + L.sgNoBox.width).toBeCloseTo(L.border.x + L.border.width - CONTENT_PAD, 3)
   })
 
   test('every region is inside the content box', () => {

@@ -89,17 +89,15 @@ function drawTable(doc, layout, table, loLabel) {
     }
   }
 
-  // Grid: outer box + column dividers + one header/data rule (no per-row lines).
-  const boxL = R.x - 3
-  const boxR = R.x + R.width + 3
-  const boxT = R.y - 3
+  // Grid: no outer box — the column dividers run up to the top neat-line border
+  // and the header/data rule spans the full width to the left/right neat-lines.
+  const B = layout.border
   const boxB = ry + 9
   const hSep = R.y + 20 // header/data separator (below the two header sub-rows)
   const verticals = [R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
   doc.lineWidth(0.5).strokeColor('#000')
-  doc.rect(boxL, boxT, boxR - boxL, boxB - boxT).stroke()
-  for (const vx of verticals) doc.moveTo(vx, boxT).lineTo(vx, boxB).stroke()
-  doc.moveTo(boxL, hSep).lineTo(boxR, hSep).stroke()
+  for (const vx of verticals) doc.moveTo(vx, B.y).lineTo(vx, boxB).stroke()
+  doc.moveTo(B.x, hSep).lineTo(B.x + B.width, hSep).stroke()
   doc.restore()
 }
 
@@ -188,20 +186,21 @@ function drawReferenceGrid(doc, layout, grid) {
   const midHalf = x1 + (x2 - x1) / 2      // File | G.P. split in the middle column
   const r1 = R.y + H * 0.25, r2 = R.y + H * 0.50, r3 = R.y + H * 0.75
 
+  const B = layout.border
+  const bottom = B.y + B.height
   doc.save().lineWidth(0.5).strokeColor('#000')
-  // Outer box + the two column dividers.
-  doc.rect(x0, R.y, W, H).stroke()
-  doc.moveTo(x1, R.y).lineTo(x1, R.y + H).stroke()
-  doc.moveTo(x2, R.y).lineTo(x2, R.y + H).stroke()
-  // Left column: one rule at mid height.
-  doc.moveTo(x0, r2).lineTo(x1, r2).stroke()
-  // Middle column: three rules + the File|G.P. vertical split.
+  // No outer box: the two column dividers run down to the bottom neat-line border.
+  doc.moveTo(x1, R.y).lineTo(x1, bottom).stroke()
+  doc.moveTo(x2, R.y).lineTo(x2, bottom).stroke()
+  // Left column mid rule → extends to the left neat-line margin.
+  doc.moveTo(B.x, r2).lineTo(x1, r2).stroke()
+  // Middle column: three rules (between the dividers) + the File|G.P. split.
   doc.moveTo(x1, r1).lineTo(x2, r1).stroke()
   doc.moveTo(x1, r2).lineTo(x2, r2).stroke()
   doc.moveTo(x1, r3).lineTo(x2, r3).stroke()
   doc.moveTo(midHalf, r2).lineTo(midHalf, r3).stroke()
-  // Right column: one rule at mid height.
-  doc.moveTo(x2, r2).lineTo(x3, r2).stroke()
+  // Right column mid rule → extends to the right neat-line margin.
+  doc.moveTo(x2, r2).lineTo(B.x + B.width, r2).stroke()
 
   doc.font('Helvetica').fontSize(6.5).fillColor('#000')
   const pad = 3

@@ -19,14 +19,17 @@ Three refinements to match the real SG diagram samples (`Desktop/tecno 7/IMG-202
 
 - Diagram plan type only — `drawTable` and `drawReferenceGrid` in
   `app-backend/src/services/diagramPdf.js`. No General/Working/DXF change.
-- Content (field values, columns, coordinates) is unchanged — this adds ruling and
-  moves one header label.
+- Field values, coordinates, and area are unchanged. Two structural changes:
+  "Metres" moves over the distances, and the beacon-name "Const." column **merges
+  into the rightmost DIAGRAM S.G. No. column** to match the samples cell-for-cell
+  (user decision, 2026-07-03).
 
 ## Non-goals (YAGNI)
 
 - No per-data-row horizontal lines in the coordinate table (the samples don't).
-- No new fields; no change to `buildSidesTable` / `buildReferenceGrid` models.
-- No change to the figure, statement, scale bar, margins, or beacon column data.
+- No new fields; no change to `buildSidesTable` / `buildReferenceGrid` models
+  (the beacon name is already carried on `coordinateRows[i].beaconName`).
+- No change to the figure, statement, scale bar, or margins.
 
 ## Architecture
 
@@ -41,22 +44,29 @@ prior layout work). Exact line coordinates are a visual-tuning item.
 Move the `Metres` sub-header from the side-label offset (`R.x + cSide`) to the
 distance offset (`R.x + cMetres`), so it sits above the `20.79 / 37.14…` figures.
 
-### 2. Coordinate/directions table grid — `drawTable`
+### 2. Coordinate/directions table grid + column merge — `drawTable`
 
-Add ruling (thin black, ~0.5 pt), computed from the existing column x-offsets
-(`cSide/cMetres/cDir/cLetter/cY/cX/cConst`) and the row y-positions:
+First **merge the beacon column into the S.G.-No. column** (drop the separate
+`cConst` offset): the rightmost column now reads, top-to-bottom, `DIAGRAM S.G. No.`
+(header) / SG number cell (blank — no data) / `Const.` (constants-row label) / the
+beacon names (`coordinateRows[i].beaconName`) aligned to their data rows. The
+`Const.` label that was in the letter column moves here. The separate blank
+`sgNoBox` rectangle is dropped — the grid cell replaces it. Beacon text and the
+S.G.-No. header draw at `layout.sgNoBox.x + 2`.
 
-- **Outer box** spanning the full table width (`R.x` … `R.x + R.width`) from just
-  above the header row to just below the last data row. The last row's y is derived
-  from `Math.max(coordinateRows.length, sideRows.length)` (same loop `drawTable`
-  already runs), so the box height follows the row count.
-- **Vertical dividers** between the logical column groups, placed in the gaps
-  between offsets: SIDES │ DIRECTIONS │ Lo-letter │ CO-ORDINATES │ Const. │
-  DIAGRAM S.G. No. (≈ 6 verticals including the two outer edges; the divider before
-  the S.G.-No. column aligns with `layout.sgNoBox.x`).
-- **One horizontal line** under the two-row header (below the `Metres / ° ' " / Y X`
-  sub-row, above the `Const.` row) — the header/data separator.
-- The existing blank `DIAGRAM S.G. No.` box remains the top-right cell.
+Then add ruling (thin black, ~0.5 pt), computed from the column x-offsets
+(`cSide/cMetres/cDir/cLetter/cY/cX` + `sgNoBox.x`) and the row y-positions:
+
+- **Outer box** from just left of `R.x` to just right of `R.x + R.width`, from just
+  above the header row to just below the last data row. The last row's y comes from
+  the `Math.max(coordinateRows.length, sideRows.length)` loop `drawTable` already
+  runs, so the box height follows the row count.
+- **Vertical dividers** (4) between the column groups:
+  SIDES │ DIRECTIONS │ Lo-letter │ CO-ORDINATES │ DIAGRAM S.G. No. — at
+  `R.x+70`, `R.x+150`, `R.x+193`, and `sgNoBox.x-4` (final positions visually tuned).
+- **One horizontal line** across the full width under the two-row header (below the
+  `Metres / ° ' " / Y X` and the SG-number sub-row, above the `Const.`/beacon rows) —
+  the header/data separator.
 - No horizontal lines between individual data rows.
 
 ### 3. Reg-53 endorsement grid — `drawReferenceGrid`

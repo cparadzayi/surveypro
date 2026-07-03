@@ -182,17 +182,44 @@ function drawStatement(doc, layout, geometry, metadata) {
 
 function drawReferenceGrid(doc, layout, grid) {
   const R = layout.refGrid
-  doc.save().rect(R.x, R.y, R.width, R.height).stroke()
-  doc.font('Helvetica').fontSize(7).fillColor('#000')
-  const col2 = R.x + R.width / 2
-  doc.text(`This diagram is annexed to No. ${grid.annexedToNo}  dated ${grid.annexedToDate}`, R.x + 4, R.y + 6)
-  doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, R.x + 4, R.y + 22)
-  doc.text(`Deed of Transfer No. ${grid.deedOfTransferNo}`, R.x + 4, R.y + 38)
-  doc.text(`File : ${grid.fileNo}`, R.x + 4, R.y + 54)
-  doc.text(`G.P. : ${grid.registrationGp}`, R.x + 4, R.y + 70)
-  doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, col2, R.y + 6)
-  doc.text(`S.R. : ${grid.srNo}`, col2, R.y + 38)
-  doc.text(`Compilation : ${grid.compilation}`, R.x + 4, R.y + 86)
+  const W = R.width, H = R.height
+  // Three columns: left 30% / middle 40% / right 30%.
+  const x0 = R.x, x1 = R.x + W * 0.30, x2 = R.x + W * 0.70, x3 = R.x + W
+  const midHalf = x1 + (x2 - x1) / 2      // File | G.P. split in the middle column
+  const r1 = R.y + H * 0.25, r2 = R.y + H * 0.50, r3 = R.y + H * 0.75
+
+  doc.save().lineWidth(0.5).strokeColor('#000')
+  // Outer box + the two column dividers.
+  doc.rect(x0, R.y, W, H).stroke()
+  doc.moveTo(x1, R.y).lineTo(x1, R.y + H).stroke()
+  doc.moveTo(x2, R.y).lineTo(x2, R.y + H).stroke()
+  // Left column: one rule at mid height.
+  doc.moveTo(x0, r2).lineTo(x1, r2).stroke()
+  // Middle column: three rules + the File|G.P. vertical split.
+  doc.moveTo(x1, r1).lineTo(x2, r1).stroke()
+  doc.moveTo(x1, r2).lineTo(x2, r2).stroke()
+  doc.moveTo(x1, r3).lineTo(x2, r3).stroke()
+  doc.moveTo(midHalf, r2).lineTo(midHalf, r3).stroke()
+  // Right column: one rule at mid height.
+  doc.moveTo(x2, r2).lineTo(x3, r2).stroke()
+
+  doc.font('Helvetica').fontSize(6.5).fillColor('#000')
+  const pad = 3
+  const wL = (x1 - x0) - 2 * pad
+  const wM = (x2 - x1) - 2 * pad
+  const wR = (x3 - x2) - 2 * pad
+  // Left column.
+  doc.text(`This diagram is annexed to No. ${grid.annexedToNo}  dated ${grid.annexedToDate}`, x0 + pad, R.y + 5, { width: wL })
+  doc.text('Surveyor-General', x0 + pad, r2 + 5, { width: wL })
+  // Middle column.
+  doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, x1 + pad, R.y + 4, { width: wM })
+  doc.text(`Deed of Transfer No. ${grid.deedOfTransferNo}`, x1 + pad, r1 + 4, { width: wM })
+  doc.text(`File : ${grid.fileNo}`, x1 + pad, r2 + 4, { width: (midHalf - x1) - 2 * pad })
+  doc.text(`G.P. : ${grid.registrationGp}`, midHalf + pad, r2 + 4, { width: (x2 - midHalf) - 2 * pad })
+  doc.text(`Compilation : ${grid.compilation}`, x1 + pad, r3 + 4, { width: wM })
+  // Right column.
+  doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, x2 + pad, R.y + 5, { width: wR })
+  doc.text(`S.R. : ${grid.srNo}`, x2 + pad, r2 + 5, { width: wR })
   doc.restore()
 }
 

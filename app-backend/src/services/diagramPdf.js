@@ -162,6 +162,8 @@ function drawStatement(doc, layout, geometry, metadata) {
   doc.font('Helvetica').fontSize(7).text(
     `situate in the district of ${metadata.district ?? ''}.`, R.x, R.y + 44)
   doc.text(`Surveyed in ${surveyDate ? new Date(surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`, R.x, R.y + 53)
+  // Surveyor's designation to the far right of the "Surveyed in … by me" line.
+  doc.text('Land Surveyor', R.x, R.y + 53, { width: R.width, align: 'right' })
   doc.restore()
 }
 
@@ -177,8 +179,6 @@ function drawReferenceGrid(doc, layout, grid) {
   doc.text(`G.P. : ${grid.registrationGp}`, R.x + 4, R.y + 70)
   doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, col2, R.y + 6)
   doc.text(`S.R. : ${grid.srNo}`, col2, R.y + 38)
-  doc.text('Land Surveyor', col2, R.y + 54)
-  doc.text('Surveyor-General', col2, R.y + 70)
   doc.text(`Compilation : ${grid.compilation}`, R.x + 4, R.y + 86)
   doc.restore()
 }

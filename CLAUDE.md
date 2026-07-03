@@ -39,10 +39,15 @@ npm run build         # Production build → dist/
 npm run preview       # Preview production build
 ```
 
-### Running a single backend test
+### Running backend tests directly (filtered)
+The backend is ESM (`"type": "module"`), so Jest must run under
+`--experimental-vm-modules` — bare `npx jest` fails with "Cannot use import
+statement outside a module". Use the same runner as `npm test`, from `app-backend`:
 ```bash
-cd app-backend && npx jest --testPathPattern=<filename>
+cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js <pattern>
 ```
+`<pattern>` matches test file paths (e.g. `diagramPdf`, or `diagram` for all
+diagram suites). `npm test` runs the whole suite the same way.
 
 ## Architecture
 

@@ -46,32 +46,34 @@ function centroidPt(ptRing) {
 function drawTable(doc, layout, table, loLabel) {
   const { constRow, coordinateRows, sideRows } = table
   const R = layout.table
-  // Column x-offsets (from R.x). Compressed so the beacon-name "Const." column
-  // stays left of the DIAGRAM S.G. No. box on the padded A4 content box
-  // (sgNoBox left edge ≈ R.x + 341).
-  const cSide = 0, cMetres = 28, cDir = 76, cLetter = 158, cY = 198, cX = 260, cConst = 308
+  // Fixed column x-offsets from R.x. The beacon "Const." names live in the
+  // rightmost DIAGRAM S.G. No. column (matches the SG diagram samples), so there
+  // is no separate Const. column.
+  const cSide = 0, cMetres = 28, cDir = 76, cLetter = 158, cY = 198, cX = 260
+  const cSg = layout.sgNoBox.x + 2 // absolute x of the rightmost (SG No.) column
+  const rows = Math.max(coordinateRows.length, sideRows.length)
+
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y)
   doc.text('DIRECTIONS', R.x + cDir, R.y)
   doc.text(loLabel, R.x + cLetter, R.y)
   doc.text('CO-ORDINATES', R.x + cY, R.y)
-  doc.text('Const.', R.x + cConst, R.y)
-  doc.text('DIAGRAM S.G. No.', layout.sgNoBox.x, R.y)
+  doc.text('DIAGRAM S.G. No.', cSg, R.y)
   doc.font('Helvetica').fontSize(6.5)
-  doc.text('Metres', R.x + cSide, R.y + 10)
+  doc.text('Metres', R.x + cMetres, R.y + 10) // over the distances, not the sides
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
-  // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica (WinAnsi) and
-  // render as garbage; °, ' and " are all in the font.
+  // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica and render as
+  // garbage; °, ' and " are all in the font.
   doc.text('°  \'  "', R.x + cDir, R.y + 10)
   doc.text('Y', R.x + cY, R.y + 10)
   doc.text('X', R.x + cX, R.y + 10)
-  // Const. 0.00/0.00 row (retained)
+
+  // Constants row + coordinate/side rows. The "Const." label and beacon names
+  // are in the rightmost (SG No.) column.
   let ry = R.y + 22
-  doc.text('Const.', R.x + cLetter, ry)
   doc.text(constRow.y, R.x + cY, ry)
   doc.text(constRow.x, R.x + cX, ry)
-  // Coordinate rows + side rows in parallel
-  const rows = Math.max(coordinateRows.length, sideRows.length)
+  doc.text('Const.', cSg, ry)
   for (let i = 0; i < rows; i++) {
     ry += 11
     if (sideRows[i]) {
@@ -83,11 +85,21 @@ function drawTable(doc, layout, table, loLabel) {
       doc.text(coordinateRows[i].letter, R.x + cLetter, ry)
       doc.text(coordinateRows[i].y, R.x + cY, ry)
       doc.text(coordinateRows[i].x, R.x + cX, ry)
-      doc.text(coordinateRows[i].beaconName ?? '', R.x + cConst, ry)
+      doc.text(coordinateRows[i].beaconName ?? '', cSg, ry)
     }
   }
-  // SG No. box outline (blank)
-  doc.rect(layout.sgNoBox.x, layout.sgNoBox.y + 10, layout.sgNoBox.width, layout.sgNoBox.height).stroke()
+
+  // Grid: outer box + column dividers + one header/data rule (no per-row lines).
+  const boxL = R.x - 3
+  const boxR = R.x + R.width + 3
+  const boxT = R.y - 3
+  const boxB = ry + 9
+  const hSep = R.y + 20 // header/data separator (below the two header sub-rows)
+  const verticals = [R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
+  doc.lineWidth(0.5).strokeColor('#000')
+  doc.rect(boxL, boxT, boxR - boxL, boxB - boxT).stroke()
+  for (const vx of verticals) doc.moveTo(vx, boxT).lineTo(vx, boxB).stroke()
+  doc.moveTo(boxL, hSep).lineTo(boxR, hSep).stroke()
   doc.restore()
 }
 
@@ -170,17 +182,44 @@ function drawStatement(doc, layout, geometry, metadata) {
 
 function drawReferenceGrid(doc, layout, grid) {
   const R = layout.refGrid
-  doc.save().rect(R.x, R.y, R.width, R.height).stroke()
-  doc.font('Helvetica').fontSize(7).fillColor('#000')
-  const col2 = R.x + R.width / 2
-  doc.text(`This diagram is annexed to No. ${grid.annexedToNo}  dated ${grid.annexedToDate}`, R.x + 4, R.y + 6)
-  doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, R.x + 4, R.y + 22)
-  doc.text(`Deed of Transfer No. ${grid.deedOfTransferNo}`, R.x + 4, R.y + 38)
-  doc.text(`File : ${grid.fileNo}`, R.x + 4, R.y + 54)
-  doc.text(`G.P. : ${grid.registrationGp}`, R.x + 4, R.y + 70)
-  doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, col2, R.y + 6)
-  doc.text(`S.R. : ${grid.srNo}`, col2, R.y + 38)
-  doc.text(`Compilation : ${grid.compilation}`, R.x + 4, R.y + 86)
+  const W = R.width, H = R.height
+  // Three columns: left 30% / middle 40% / right 30%.
+  const x0 = R.x, x1 = R.x + W * 0.30, x2 = R.x + W * 0.70, x3 = R.x + W
+  const midHalf = x1 + (x2 - x1) / 2      // File | G.P. split in the middle column
+  const r1 = R.y + H * 0.25, r2 = R.y + H * 0.50, r3 = R.y + H * 0.75
+
+  doc.save().lineWidth(0.5).strokeColor('#000')
+  // Outer box + the two column dividers.
+  doc.rect(x0, R.y, W, H).stroke()
+  doc.moveTo(x1, R.y).lineTo(x1, R.y + H).stroke()
+  doc.moveTo(x2, R.y).lineTo(x2, R.y + H).stroke()
+  // Left column: one rule at mid height.
+  doc.moveTo(x0, r2).lineTo(x1, r2).stroke()
+  // Middle column: three rules + the File|G.P. vertical split.
+  doc.moveTo(x1, r1).lineTo(x2, r1).stroke()
+  doc.moveTo(x1, r2).lineTo(x2, r2).stroke()
+  doc.moveTo(x1, r3).lineTo(x2, r3).stroke()
+  doc.moveTo(midHalf, r2).lineTo(midHalf, r3).stroke()
+  // Right column: one rule at mid height.
+  doc.moveTo(x2, r2).lineTo(x3, r2).stroke()
+
+  doc.font('Helvetica').fontSize(6.5).fillColor('#000')
+  const pad = 3
+  const wL = (x1 - x0) - 2 * pad
+  const wM = (x2 - x1) - 2 * pad
+  const wR = (x3 - x2) - 2 * pad
+  // Left column.
+  doc.text(`This diagram is annexed to No. ${grid.annexedToNo}  dated ${grid.annexedToDate}`, x0 + pad, R.y + 5, { width: wL })
+  doc.text('Surveyor-General', x0 + pad, r2 + 5, { width: wL })
+  // Middle column.
+  doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, x1 + pad, R.y + 4, { width: wM })
+  doc.text(`Deed of Transfer No. ${grid.deedOfTransferNo}`, x1 + pad, r1 + 4, { width: wM })
+  doc.text(`File : ${grid.fileNo}`, x1 + pad, r2 + 4, { width: (midHalf - x1) - 2 * pad })
+  doc.text(`G.P. : ${grid.registrationGp}`, midHalf + pad, r2 + 4, { width: (x2 - midHalf) - 2 * pad })
+  doc.text(`Compilation : ${grid.compilation}`, x1 + pad, r3 + 4, { width: wM })
+  // Right column.
+  doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, x2 + pad, R.y + 5, { width: wR })
+  doc.text(`S.R. : ${grid.srNo}`, x2 + pad, r2 + 5, { width: wR })
   doc.restore()
 }
 

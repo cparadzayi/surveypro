@@ -60,11 +60,14 @@ function drawTable(doc, layout, table, loLabel) {
   // Whole CO-ORDINATES group width (spans the Y and X sub-columns).
   const coordGroupW = (layout.sgNoBox.x - 4) - (R.x + cY)
   const ctrCoord = { width: coordGroupW, align: 'center' }
+  // DIRECTIONS column spans the dividers at R.x+70 .. R.x+150; centre its contents.
+  const cDirX = R.x + 70
+  const ctrDir = { width: 80, align: 'center' }
 
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y)
-  doc.text('DIRECTIONS', R.x + cDir, R.y)
-  doc.text('CO-ORDINATES', R.x + cY, R.y)
+  doc.text('DIRECTIONS', cDirX, R.y, ctrDir)
+  doc.text('CO-ORDINATES', R.x + cY, R.y, ctrCoord) // centred over Lo NN
   doc.text('DIAGRAM S.G. No.', cSg, R.y)
   doc.font('Helvetica').fontSize(6.5)
   // 'Lo NN' heads the CO-ORDINATES group, between CO-ORDINATES and the Y/X row.
@@ -73,7 +76,7 @@ function drawTable(doc, layout, table, loLabel) {
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
   // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica and render as
   // garbage; °, ' and " are all in the font.
-  doc.text('°  \'  "', R.x + cDir, R.y + 19)
+  doc.text('°  \'  "', cDirX, R.y + 19, ctrDir)
   // Coordinate sub-headers: Y  Metres  X.
   doc.text('Y', R.x + cY, R.y + 19, ctrY)
   doc.text('Metres', R.x + cY, R.y + 19, ctrCoord)
@@ -90,7 +93,7 @@ function drawTable(doc, layout, table, loLabel) {
     if (sideRows[i]) {
       doc.text(sideRows[i].side, R.x + cSide, ry)
       doc.text(sideRows[i].metres, R.x + cMetres, ry)
-      doc.text(sideRows[i].direction, R.x + cDir, ry)
+      doc.text(sideRows[i].direction, cDirX, ry, ctrDir)
     }
     if (coordinateRows[i]) {
       doc.text(coordinateRows[i].letter, R.x + cLetter, ry)

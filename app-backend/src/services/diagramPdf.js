@@ -8,8 +8,9 @@ import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLa
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
+import { buildBeaconDescription } from './diagram/beaconDescription.js'
 import {
-  resolveLoSystem, classifyBeaconGroups, snapScaleBarSegment,
+  resolveLoSystem, snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
 
 // SI 727 figure styling.
@@ -120,15 +121,22 @@ function drawTable(doc, layout, table, loLabel) {
   doc.restore()
 }
 
-function drawBeaconDescription(doc, layout, beacons) {
+function drawBeaconDescription(doc, layout, groups) {
   const R = layout.beaconDesc
-  const groups = classifyBeaconGroups(beacons ?? { features: [] })
   doc.save().font('Helvetica-Bold').fontSize(7).text('Beacon description', R.x, R.y)
   doc.font('Helvetica').fontSize(7)
-  const line = groups && groups.length
-    ? `All          : ${groups[0].description ?? ''}`
-    : 'All          :'
-  doc.text(line, R.x, R.y + 11)
+  if (groups.length === 0) {
+    doc.text('All          :', R.x, R.y + 11)
+  } else if (groups.length === 1) {
+    // All subject beacons share one description.
+    doc.text(`All          : ${groups[0].description}`, R.x, R.y + 11)
+  } else {
+    let y = R.y + 11
+    for (const g of groups) {
+      doc.text(`${g.names}  :  ${g.description}`, R.x, y, { width: R.width })
+      y += 11
+    }
+  }
   doc.restore()
 }
 
@@ -384,7 +392,7 @@ export async function generateDiagramPDF(options, logger) {
   // resolveLoSystem already returns the full "Lo NN" label.
   const loLabel = resolveLoSystem(null, metadata, options.projection)
   drawTable(doc, layout, buildSidesTable(geometry, options.beacons), loLabel)
-  drawBeaconDescription(doc, layout, options.beacons)
+  drawBeaconDescription(doc, layout, buildBeaconDescription(geometry, options.beacons))
   drawNorthArrow(doc, layout)
   drawApprovedBox(doc, layout)
   drawScaleBar(doc, layout, denom)

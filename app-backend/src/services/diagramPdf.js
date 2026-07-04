@@ -63,6 +63,9 @@ function drawTable(doc, layout, table, loLabel) {
   // DIRECTIONS column spans the dividers at R.x+70 .. R.x+150; centre its contents.
   const cDirX = R.x + 70
   const ctrDir = { width: 80, align: 'center' }
+  // Vertex-letter column spans the dividers at R.x+150 .. R.x+193; centre its letters.
+  const cLetX = R.x + 150
+  const ctrLet = { width: 43, align: 'center' }
 
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y)
@@ -96,7 +99,7 @@ function drawTable(doc, layout, table, loLabel) {
       doc.text(sideRows[i].direction, cDirX, ry, ctrDir)
     }
     if (coordinateRows[i]) {
-      doc.text(coordinateRows[i].letter, R.x + cLetter, ry)
+      doc.text(coordinateRows[i].letter, cLetX, ry, ctrLet)
       doc.text(coordinateRows[i].y, R.x + cY, ry, ctrY)
       doc.text(coordinateRows[i].x, R.x + cX, ry, ctrX)
       doc.text(coordinateRows[i].beaconName ?? '', cSg, ry)

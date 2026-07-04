@@ -44,6 +44,10 @@ export interface ProjectDirectoryStructure {
   coordinateList: string;
   reports: string;
   certificates: string;
+  diagrams: string;
+  generalPlans: string;
+  workingPlans: string;
+  surveyRecord: string;
 }
 
 /**
@@ -58,28 +62,56 @@ export function getProjectDirectoryStructure(workingDirectory: string): ProjectD
     calculations: `${workingDirectory}/output/calculations`,
     coordinateList: `${workingDirectory}/output/coordinate-list`,
     reports: `${workingDirectory}/output/reports`,
-    certificates: `${workingDirectory}/output/certificates`
+    certificates: `${workingDirectory}/output/certificates`,
+    diagrams: `${workingDirectory}/output/diagrams`,
+    generalPlans: `${workingDirectory}/output/general-plans`,
+    workingPlans: `${workingDirectory}/output/working-plans`,
+    surveyRecord: `${workingDirectory}/output/survey-record`
   };
 }
 
-/**
- * Generate default working directory path based on project name
- */
-export function generateDefaultWorkingDirectory(projectName: string, district?: string): string {
-  // Create a shorter, more manageable folder name
-  const sanitized = projectName
-    .replace(/[^a-zA-Z0-9-_\s]/g, '') // Remove special chars but keep spaces
+/** Sanitize a name for use as a filesystem path segment. */
+function sanitizePathSegment(s: string, max = 60): string {
+  return (s || '')
+    .replace(/[<>:"/\\|?*]/g, '')
     .trim()
-    .split(/\s+/) // Split by whitespace
-    .slice(0, 4) // Take first 4 words max
-    .join('_') // Join with underscores
-    .substring(0, 50); // Limit to 50 characters
-  
+    .replace(/\s+/g, '_')
+    .substring(0, max);
+}
+
+/**
+ * Generate default working directory: surveyor-scoped, stable (no date).
+ * `Documents/SurveyPro/Surveyors/<surveyor>/<project>[_district]`
+ */
+export function generateDefaultWorkingDirectory(
+  projectName: string,
+  district?: string,
+  surveyorName?: string,
+): string {
+  const project = projectName
+    .replace(/[^a-zA-Z0-9-_\s]/g, '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 4)
+    .join('_')
+    .substring(0, 50);
   const districtPart = district ? `_${district.replace(/[^a-zA-Z0-9-_]/g, '').substring(0, 20)}` : '';
-  const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  // Default to Documents/SurveyPro/Projects
-  return `Documents/SurveyPro/Projects/${sanitized}${districtPart}_${timestamp}`;
+  const surveyor = sanitizePathSegment(surveyorName || '') || 'Unknown_Surveyor';
+  return `Documents/SurveyPro/Surveyors/${surveyor}/${project}${districtPart}`;
+}
+
+/** Map a plan type to its output subfolder name (relative to output/). */
+export function planTypeOutputSubdir(planType: string): string {
+  switch (planType) {
+    case 'diagram': return 'diagrams';
+    case 'general-undeveloped':
+    case 'general-developed':
+    case 'general-plan': return 'general-plans';
+    case 'working-plan': return 'working-plans';
+    case 'survey-record':
+    case 'report-on-survey': return 'survey-record';
+    default: return 'output';
+  }
 }
 
 /**
@@ -151,7 +183,11 @@ ${structure.root}/
     ├── calculations/        (Calculations Part 1 & 2 PDFs)
     ├── coordinate-list/     (Coordinate List PDFs)
     ├── reports/             (Report on Survey PDFs)
-    └── certificates/        (DSG Certificate PDFs)
+    ├── certificates/        (DSG Certificate PDFs)
+    ├── diagrams/            (Diagram PDFs + DXF)
+    ├── general-plans/       (General Plan PDFs + DXF)
+    ├── working-plans/       (Working Plan PDFs + DXF)
+    └── survey-record/       (Survey record documents)
   `.trim();
 }
 

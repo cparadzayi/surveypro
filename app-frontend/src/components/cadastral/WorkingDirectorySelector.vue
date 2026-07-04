@@ -131,6 +131,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
+import { useAuthStore } from '../../stores/auth';
 import {
   generateDefaultWorkingDirectory,
   validateWorkingDirectory,
@@ -153,6 +154,7 @@ interface Emits {
 
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
+const auth = useAuthStore()
 
 const localPath = ref(props.modelValue || '');
 const validationError = ref<string | null>(null);
@@ -204,7 +206,7 @@ function validatePath() {
 
 // Use default path
 function useDefaultPath() {
-  localPath.value = generateDefaultWorkingDirectory(props.projectName, props.district);
+  localPath.value = generateDefaultWorkingDirectory(props.projectName, props.district, auth.surveyorName);
   validationError.value = null;
   emit('update:modelValue', localPath.value);
 }

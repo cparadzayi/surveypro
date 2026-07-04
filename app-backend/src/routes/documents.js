@@ -4,6 +4,7 @@ import os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { classifyFsWriteError } from '../utils/fsWriteErrors.js'
+import { writeFileWithRetry } from '../utils/fsWriteRetry.js'
 
 const execAsync = promisify(exec)
 
@@ -83,9 +84,14 @@ export default async function documentRoutes(fastify, options) {
         })
       }
 
-      // Write file
-      fs.writeFileSync(absolutePath, fileBuffer)
-      
+      // Write file, tolerating transient Windows locks (antivirus/indexer) that
+      // briefly hold a handle right after a nearby write. A genuine viewer lock
+      // persists past the retries and is rethrown → classified as FILE_LOCKED.
+      await writeFileWithRetry(() => fs.writeFileSync(absolutePath, fileBuffer), {
+        onRetry: (code, attempt) =>
+          fastify.log.warn(`[SAVE] transient write lock (${code}) on ${absolutePath}, retry ${attempt}`),
+      })
+
       fastify.log.info(`[SAVE] ✅ Document saved: ${absolutePath} (${fileBuffer.length} bytes)`)
 
       return {

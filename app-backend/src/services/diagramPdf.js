@@ -57,25 +57,31 @@ function drawTable(doc, layout, table, loLabel) {
   const xColW = (layout.sgNoBox.x - 4) - (R.x + cX)
   const ctrY = { width: yColW, align: 'center' }
   const ctrX = { width: xColW, align: 'center' }
+  // Whole CO-ORDINATES group width (spans the Y and X sub-columns).
+  const coordGroupW = (layout.sgNoBox.x - 4) - (R.x + cY)
+  const ctrCoord = { width: coordGroupW, align: 'center' }
 
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y)
   doc.text('DIRECTIONS', R.x + cDir, R.y)
-  doc.text(loLabel, R.x + cLetter, R.y)
   doc.text('CO-ORDINATES', R.x + cY, R.y)
   doc.text('DIAGRAM S.G. No.', cSg, R.y)
   doc.font('Helvetica').fontSize(6.5)
-  doc.text('Metres', R.x + cMetres, R.y + 10) // over the distances, not the sides
+  // 'Lo NN' heads the CO-ORDINATES group, between CO-ORDINATES and the Y/X row.
+  doc.text(loLabel, R.x + cY, R.y + 10, ctrCoord)
+  doc.text('Metres', R.x + cMetres, R.y + 19) // sides: over the distances
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
   // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica and render as
   // garbage; °, ' and " are all in the font.
-  doc.text('°  \'  "', R.x + cDir, R.y + 10)
-  doc.text('Y', R.x + cY, R.y + 10, ctrY)
-  doc.text('X', R.x + cX, R.y + 10, ctrX)
+  doc.text('°  \'  "', R.x + cDir, R.y + 19)
+  // Coordinate sub-headers: Y  Metres  X.
+  doc.text('Y', R.x + cY, R.y + 19, ctrY)
+  doc.text('Metres', R.x + cY, R.y + 19, ctrCoord)
+  doc.text('X', R.x + cX, R.y + 19, ctrX)
 
   // Constants row + coordinate/side rows. The "Const." label and beacon names
   // are in the rightmost (SG No.) column.
-  let ry = R.y + 22
+  let ry = R.y + 30
   doc.text(constRow.y, R.x + cY, ry, ctrY)
   doc.text(constRow.x, R.x + cX, ry, ctrX)
   doc.text('Const.', cSg, ry)
@@ -98,7 +104,7 @@ function drawTable(doc, layout, table, loLabel) {
   // and the header/data rule spans the full width to the left/right neat-lines.
   const B = layout.border
   const boxB = ry + 9
-  const hSep = R.y + 20 // header/data separator (below the two header sub-rows)
+  const hSep = R.y + 28 // header/data separator (below the three header rows)
   const verticals = [R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
   doc.lineWidth(0.5).strokeColor('#000')
   for (const vx of verticals) doc.moveTo(vx, B.y).lineTo(vx, boxB).stroke()

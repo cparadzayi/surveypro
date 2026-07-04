@@ -59,9 +59,9 @@ export function computeDiagramLayout({ pageWidthPt, pageHeightPt, margins }) {
   y += BAND.table
 
   const beaconDesc = { x: cx, y, width: cw * 0.45, height: BAND.header }
-  // Approval block aligns to the top table's 3rd column (table.x + 150) and runs to
-  // the right content edge; drawn borderless with centred text.
-  const approved = { x: cx + 150, y, width: cw - 150, height: 45 }
+  // Approval block aligns to the top table's last column (the DIAGRAM S.G. No.
+  // column, = sgNoBox.x) and runs to the right content edge; borderless, centred.
+  const approved = { x: sgNoBox.x, y, width: contentRight - sgNoBox.x, height: 45 }
   y += BAND.header
 
   const figure = { x: cx, y, width: cw, height: figureH }

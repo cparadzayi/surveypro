@@ -59,11 +59,14 @@ export function computeDiagramLayout({ pageWidthPt, pageHeightPt, margins }) {
   y += BAND.table
 
   const beaconDesc = { x: cx, y, width: cw * 0.45, height: BAND.header }
-  const northArrow = { x: cx + cw / 2 - 20, y, width: 40, height: 50 }
-  const approved = { x: contentRight - 175, y, width: 175, height: 45 }
+  // Approval block aligns to the top table's 3rd column (table.x + 150) and runs to
+  // the right content edge; drawn borderless with centred text.
+  const approved = { x: cx + 150, y, width: cw - 150, height: 45 }
   y += BAND.header
 
   const figure = { x: cx, y, width: cw, height: figureH }
+  // North arrow sits in the left margin, beside the (centred) figure.
+  const northArrow = { x: figure.x + 15, y: figure.y + figureH / 2 - 25, width: 40, height: 50 }
   y += figureH
 
   const scaleBar = { x: cx + (cw - 160) / 2, y, width: 160, height: BAND.scaleBar }

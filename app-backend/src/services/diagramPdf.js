@@ -52,6 +52,11 @@ function drawTable(doc, layout, table, loLabel) {
   const cSide = 0, cMetres = 28, cDir = 76, cLetter = 158, cY = 198, cX = 260
   const cSg = layout.sgNoBox.x + 2 // absolute x of the rightmost (SG No.) column
   const rows = Math.max(coordinateRows.length, sideRows.length)
+  // Y / X sub-column widths, used to centre the coordinate figures in their cells.
+  const yColW = cX - cY
+  const xColW = (layout.sgNoBox.x - 4) - (R.x + cX)
+  const ctrY = { width: yColW, align: 'center' }
+  const ctrX = { width: xColW, align: 'center' }
 
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y)
@@ -65,14 +70,14 @@ function drawTable(doc, layout, table, loLabel) {
   // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica and render as
   // garbage; °, ' and " are all in the font.
   doc.text('°  \'  "', R.x + cDir, R.y + 10)
-  doc.text('Y', R.x + cY, R.y + 10)
-  doc.text('X', R.x + cX, R.y + 10)
+  doc.text('Y', R.x + cY, R.y + 10, ctrY)
+  doc.text('X', R.x + cX, R.y + 10, ctrX)
 
   // Constants row + coordinate/side rows. The "Const." label and beacon names
   // are in the rightmost (SG No.) column.
   let ry = R.y + 22
-  doc.text(constRow.y, R.x + cY, ry)
-  doc.text(constRow.x, R.x + cX, ry)
+  doc.text(constRow.y, R.x + cY, ry, ctrY)
+  doc.text(constRow.x, R.x + cX, ry, ctrX)
   doc.text('Const.', cSg, ry)
   for (let i = 0; i < rows; i++) {
     ry += 11
@@ -83,8 +88,8 @@ function drawTable(doc, layout, table, loLabel) {
     }
     if (coordinateRows[i]) {
       doc.text(coordinateRows[i].letter, R.x + cLetter, ry)
-      doc.text(coordinateRows[i].y, R.x + cY, ry)
-      doc.text(coordinateRows[i].x, R.x + cX, ry)
+      doc.text(coordinateRows[i].y, R.x + cY, ry, ctrY)
+      doc.text(coordinateRows[i].x, R.x + cX, ry, ctrX)
       doc.text(coordinateRows[i].beaconName ?? '', cSg, ry)
     }
   }
@@ -125,11 +130,12 @@ function drawNorthArrow(doc, layout) {
 
 function drawApprovedBox(doc, layout) {
   const R = layout.approved
-  doc.save().rect(R.x, R.y, R.width, R.height).stroke()
-  doc.font('Helvetica').fontSize(7)
-  doc.text('Approved', R.x + 8, R.y + 6)
-  doc.text('for Surveyor-General', R.x + 8, R.y + 22)
-  doc.text('Date ....................', R.x + 8, R.y + 34)
+  // No box outline; contents centred within the approval region.
+  const ctr = { width: R.width, align: 'center' }
+  doc.save().font('Helvetica').fontSize(7).fillColor('#000')
+  doc.text('Approved', R.x, R.y + 6, ctr)
+  doc.text('for Surveyor-General', R.x, R.y + 22, ctr)
+  doc.text('Date ....................', R.x, R.y + 34, ctr)
   doc.restore()
 }
 

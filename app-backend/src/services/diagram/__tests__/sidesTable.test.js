@@ -46,8 +46,8 @@ describe('formatDiagramArea', () => {
 })
 
 describe('buildSidesTable', () => {
-  test('const row is 0.00 / 0.00', () => {
-    expect(buildSidesTable(geometry, beacons).constRow).toEqual({ y: '0.00', x: '0.00' })
+  test('const row is signed 0.00 / 0.00', () => {
+    expect(buildSidesTable(geometry, beacons).constRow).toEqual({ y: '+0.00', x: '+0.00' })
   })
   test('coordinate rows carry full signed coords to 2dp', () => {
     const t = buildSidesTable(geometry, beacons)

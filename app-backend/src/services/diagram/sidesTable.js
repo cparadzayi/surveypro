@@ -39,7 +39,7 @@ function pad2(n) { return String(n).padStart(2, '0') }
  * 0.00/0.00 (full coordinates are carried in the coordinate rows).
  */
 export function buildSidesTable(geometry, beacons) {
-  const constRow = { y: '0.00', x: '0.00' }
+  const constRow = { y: signed(0), x: signed(0) }
   const coordinateRows = geometry.vertices.map(v => ({
     letter: v.letter,
     y: signed(v.y),

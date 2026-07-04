@@ -63,5 +63,5 @@ export function buildSidesTable(geometry, beacons) {
 export function buildFigureRepresents(geometry) {
   const letters = geometry.vertices.map(v => v.letter)
   if (letters.length === 0) return ''
-  return letters.concat(letters[0]).join('.') + '.'
+  return letters.concat(letters[0]).join('.')
 }

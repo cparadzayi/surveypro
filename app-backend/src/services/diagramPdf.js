@@ -66,9 +66,11 @@ function drawTable(doc, layout, table, loLabel) {
   // Vertex-letter column spans the dividers at R.x+150 .. R.x+193; centre its letters.
   const cLetX = R.x + 150
   const ctrLet = { width: 43, align: 'center' }
+  // SIDES side-label sub-column spans [cSide .. cMetres]; centre AB/BC/CD/DA.
+  const ctrSide = { width: cMetres, align: 'center' }
 
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
-  doc.text('SIDES', R.x + cSide, R.y)
+  doc.text('SIDES', R.x + cSide, R.y, ctrSide)
   doc.text('DIRECTIONS', cDirX, R.y, ctrDir)
   doc.text('CO-ORDINATES', R.x + cY, R.y, ctrCoord) // centred over Lo NN
   doc.text('DIAGRAM S.G. No.', cSg, R.y)
@@ -94,7 +96,7 @@ function drawTable(doc, layout, table, loLabel) {
   for (let i = 0; i < rows; i++) {
     ry += 11
     if (sideRows[i]) {
-      doc.text(sideRows[i].side, R.x + cSide, ry)
+      doc.text(sideRows[i].side, R.x + cSide, ry, ctrSide)
       doc.text(sideRows[i].metres, R.x + cMetres, ry)
       doc.text(sideRows[i].direction, cDirX, ry, ctrDir)
     }

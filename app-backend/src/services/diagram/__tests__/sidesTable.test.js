@@ -67,6 +67,6 @@ describe('buildSidesTable', () => {
 
 describe('buildFigureRepresents', () => {
   test('joins vertex letters and closes back to the first', () => {
-    expect(buildFigureRepresents(geometry)).toBe('A.B.C.A.')
+    expect(buildFigureRepresents(geometry)).toBe('A.B.C.A')
   })
 })

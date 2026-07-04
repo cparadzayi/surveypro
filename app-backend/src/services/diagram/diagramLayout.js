@@ -65,8 +65,8 @@ export function computeDiagramLayout({ pageWidthPt, pageHeightPt, margins }) {
   y += BAND.header
 
   const figure = { x: cx, y, width: cw, height: figureH }
-  // North arrow sits in the left margin, beside the (centred) figure.
-  const northArrow = { x: figure.x + 15, y: figure.y + figureH / 2 - 25, width: 40, height: 50 }
+  // North arrow sits near the top of the figure, in the left margin.
+  const northArrow = { x: figure.x + 15, y: figure.y + 8, width: 40, height: 50 }
   y += figureH
 
   const scaleBar = { x: cx + (cw - 160) / 2, y, width: 160, height: BAND.scaleBar }

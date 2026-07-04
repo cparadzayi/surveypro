@@ -154,6 +154,7 @@ function drawScaleBar(doc, layout, denom) {
   doc.save().lineWidth(1).strokeColor('#000').font('Helvetica').fontSize(6.5)
   let x = R.x, ground = 0
   doc.moveTo(R.x, R.y + 10).lineTo(R.x, R.y + 16).stroke()
+  doc.fillColor('#000').text('0', R.x - 6, R.y, { width: 12, align: 'center' }) // bar origin
   for (let i = 0; i < 4; i++) {
     const w = seg * ptPerM
     if (i % 2 === 0) doc.rect(x, R.y + 10, w, 4).fillAndStroke('#000', '#000')

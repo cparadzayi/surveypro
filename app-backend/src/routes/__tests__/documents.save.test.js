@@ -64,4 +64,50 @@ describe('POST /documents/save error handling', () => {
 
     await app.close()
   })
+
+  test('existing file without overwrite returns 409 EXISTS and does not change it', async () => {
+    const fs = await import('fs')
+    const path = await import('path')
+    const app = Fastify(); await app.register(multipart); await app.register(documentRoutes); await app.ready()
+
+    const target = path.join(os.tmpdir(), `sp-exists-${Date.now()}.pdf`)
+    fs.writeFileSync(target, 'ORIGINAL')
+
+    const boundary = '----jestb' + Date.now()
+    const payload = buildMultipart(boundary, { fileName: path.basename(target), fileContent: 'NEW', filePath: target })
+    const res = await app.inject({ method: 'POST', url: '/documents/save',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload })
+
+    expect(res.statusCode).toBe(409)
+    expect(res.json().code).toBe('EXISTS')
+    expect(fs.readFileSync(target, 'utf8')).toBe('ORIGINAL')
+    fs.unlinkSync(target)
+    await app.close()
+  })
+
+  test('existing file with overwrite=true replaces it', async () => {
+    const fs = await import('fs')
+    const path = await import('path')
+    const app = Fastify(); await app.register(multipart); await app.register(documentRoutes); await app.ready()
+
+    const target = path.join(os.tmpdir(), `sp-ovr-${Date.now()}.pdf`)
+    fs.writeFileSync(target, 'ORIGINAL')
+
+    const boundary = '----jestb' + Date.now()
+    const CRLF = '\r\n'
+    const payload =
+      `--${boundary}${CRLF}Content-Disposition: form-data; name="file"; filename="${path.basename(target)}"${CRLF}` +
+      `Content-Type: application/pdf${CRLF}${CRLF}NEW${CRLF}` +
+      `--${boundary}${CRLF}Content-Disposition: form-data; name="filePath"${CRLF}${CRLF}${target}${CRLF}` +
+      `--${boundary}${CRLF}Content-Disposition: form-data; name="overwrite"${CRLF}${CRLF}true${CRLF}` +
+      `--${boundary}--${CRLF}`
+    const res = await app.inject({ method: 'POST', url: '/documents/save',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().ok).toBe(true)
+    expect(fs.readFileSync(target, 'utf8')).toBe('NEW')
+    fs.unlinkSync(target)
+    await app.close()
+  })
 })

@@ -27,6 +27,7 @@ export default async function documentRoutes(fastify, options) {
     let fileBuffer = null
     let fileName = null
     let filePath = null
+    let overwrite = false
     try {
       // Process multipart form data
       const parts = request.parts()
@@ -46,6 +47,8 @@ export default async function documentRoutes(fastify, options) {
           if (part.fieldname === 'filePath') {
             filePath = part.value
             fastify.log.info(`[SAVE] File path: ${filePath}`)
+          } else if (part.fieldname === 'overwrite') {
+            overwrite = part.value === 'true'
           }
         }
       }
@@ -69,6 +72,15 @@ export default async function documentRoutes(fastify, options) {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true })
         fastify.log.info(`[SAVE] Created directory: ${dir}`)
+      }
+
+      // Overwrite gate: never silently clobber an existing product. The caller
+      // must opt in with overwrite=true (driven by a user prompt).
+      if (!overwrite && fs.existsSync(absolutePath)) {
+        fastify.log.info(`[SAVE] Exists, overwrite not set: ${absolutePath}`)
+        return reply.code(409).send({
+          ok: false, code: 'EXISTS', error: 'File already exists', filePath: absolutePath,
+        })
       }
 
       // Write file

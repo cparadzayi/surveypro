@@ -12,7 +12,7 @@
  */
 
 import { saveDocument } from './documentStorage'
-import { makeAbsolutePath } from '../utils/project-directory'
+import { makeAbsolutePath, getProjectDirectoryStructure } from '../utils/project-directory'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3042/api'
 
@@ -348,5 +348,61 @@ export async function autoSaveStepProducts(options: AutoSaveOptions): Promise<vo
     await saveWorkflowProducts(workingDirectory, productsToSave)
   } else {
     console.log('ℹ️ [Product Storage] No products to save for this step')
+  }
+}
+
+export interface SavePlanFileArgs {
+  workingDirectory: string
+  subdir: string        // subfolder under output/, e.g. 'diagrams'
+  fileName: string      // canonical name incl. extension
+  blob: Blob
+}
+export type OverwriteConfirmFn = (fileName: string) => Promise<boolean> | boolean
+export interface SavePlanFileResult {
+  success: boolean
+  filePath?: string
+  skipped?: boolean
+  error?: string
+}
+
+function postSave(filePath: string, fileName: string, blob: Blob, overwrite: boolean): Promise<Response> {
+  const formData = new FormData()
+  formData.append('file', blob, fileName)
+  formData.append('filePath', filePath)
+  formData.append('overwrite', overwrite ? 'true' : 'false')
+  return fetch(`${API_BASE}/documents/save`, { method: 'POST', body: formData })
+}
+
+/**
+ * Save a plan file into output/<subdir>/, prompting before overwriting an
+ * existing file. Returns { skipped:true } if the user declines the overwrite.
+ */
+export async function saveWithOverwritePrompt(
+  args: SavePlanFileArgs,
+  confirmFn: OverwriteConfirmFn,
+): Promise<SavePlanFileResult> {
+  const { workingDirectory, subdir, fileName, blob } = args
+  const structure = getProjectDirectoryStructure(workingDirectory)
+  const filePath = `${structure.output}/${subdir}/${fileName}`
+  try {
+    let res = await postSave(filePath, fileName, blob, false)
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({} as any))
+      if (body?.code === 'EXISTS') {
+        const ok = await confirmFn(fileName)
+        if (!ok) return { success: false, skipped: true }
+        res = await postSave(filePath, fileName, blob, true)
+      } else {
+        return { success: false, error: body?.message || 'File is locked or cannot be written' }
+      }
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({} as any))
+      return { success: false, error: err?.message || 'Failed to save file' }
+    }
+    const result = await res.json()
+    return { success: true, filePath: result.filePath }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Unknown error' }
   }
 }

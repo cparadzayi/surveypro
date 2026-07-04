@@ -590,9 +590,11 @@ import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
 import api from '@/services/api'
 import { buildWorkflowExcel } from '@/utils/workflowExcelExporter'
 import { autoSaveStepProducts } from '@/services/workflowProductStorage'
+import { planTypeOutputSubdir } from '@/utils/project-directory'
+import { saveWithOverwritePrompt } from '@/services/workflowProductStorage'
 import { getPlanTypeMeta } from './planTypes'
 import {
-  buildPlanPayload, composePlanBaseName, bundlePlanDocuments, validateGenerateRequest,
+  buildPlanPayload, composePlanBaseName, validateGenerateRequest,
   type PlanPayloadContext, type PlanDocumentSet,
 } from './planPayload'
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
@@ -3983,11 +3985,37 @@ async function generatePlanDocuments() {
       }
     }
 
-    const ts = Date.now()
-    const baseName = composePlanBaseName(config.value.planType, props.projectInfo.designation, props.projectId, ts)
-    const { blob, filename } = await bundlePlanDocuments(docs, baseName)
-    downloadBlob(blob, filename)
-    emit('export-complete', { format: config.value.planType, filename })
+    const baseName = composePlanBaseName(config.value.planType, props.projectInfo.designation, props.projectId)
+    const workingDirectory = (props.projectInfo as any).workingDirectory
+    if (!workingDirectory) {
+      alert('Set the project working directory (Project Setup) before generating plans.')
+      return
+    }
+    const subdir = planTypeOutputSubdir(config.value.planType)
+    let overwriteAll = false
+    const confirmOverwrite = async (name: string): Promise<boolean> => {
+      if (overwriteAll) return true
+      const ok = window.confirm(`"${name}" already exists in output/${subdir}. Overwrite it (and any other existing files in this plan)?`)
+      if (ok) overwriteAll = true
+      return ok
+    }
+    const saved: string[] = []
+    const skipped: string[] = []
+    for (const kind of ['pdf', 'dxf', 'summary'] as const) {
+      const blob = (docs as PlanDocumentSet)[kind]
+      if (!(blob instanceof Blob)) continue
+      const ext = kind === 'dxf' ? 'dxf' : 'pdf'
+      const suffix = kind === 'summary' ? '-summary' : ''
+      const fileName = `${baseName}${suffix}.${ext}`
+      const res = await saveWithOverwritePrompt({ workingDirectory, subdir, fileName, blob }, confirmOverwrite)
+      if (res.success) saved.push(fileName)
+      else if (res.skipped) skipped.push(fileName)
+      else throw new Error(res.error || `Failed to save ${fileName}`)
+    }
+    const summaryMsg = `Saved to output/${subdir}/:\n${saved.join('\n') || '(none)'}` +
+      (skipped.length ? `\n\nKept existing (not overwritten):\n${skipped.join('\n')}` : '')
+    alert(summaryMsg)
+    emit('export-complete', { format: config.value.planType, filename: saved[0] || '' })
   } catch (error: any) {
     console.error('[PlanDocs] Generation failed:', error)
     alert(`Generation failed: ${error.message}`)

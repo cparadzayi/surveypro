@@ -57,3 +57,31 @@ export function upsertAnnotation(list: SideAnnotation[], ann: SideAnnotation): S
 export function removeAnnotation(list: SideAnnotation[], side: string): SideAnnotation[] {
   return list.filter((a) => a.side !== side)
 }
+
+/** The list for a subject id (string or number), or [] (incl. null id). */
+export function annotationsForSubject(
+  map: Record<string, SideAnnotation[]>,
+  subjectId: string | number | null,
+): SideAnnotation[] {
+  if (subjectId == null) return []
+  return map?.[String(subjectId)] ?? []
+}
+
+/** New map with `subjectId` set to `list` (immutable). */
+export function withSubjectAnnotations(
+  map: Record<string, SideAnnotation[]>,
+  subjectId: string | number,
+  list: SideAnnotation[],
+): Record<string, SideAnnotation[]> {
+  return { ...map, [String(subjectId)]: list }
+}
+
+/** Coerce a loaded value into a per-subject map: drop non-array entries; {} if not an object. */
+export function hydrateAnnotationsMap(raw: unknown): Record<string, SideAnnotation[]> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, SideAnnotation[]> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(v)) out[k] = v as SideAnnotation[]
+  }
+  return out
+}

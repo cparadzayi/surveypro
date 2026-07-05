@@ -43,7 +43,7 @@ describe('computeDiagramLayout', () => {
   })
 
   test('figure flexes = padded content height minus fixed bands', () => {
-    const fixed = 150 + 66 + 34 + 64 + 100
+    const fixed = 150 + 66 + 34 + 82 + 100
     expect(L.figure.height).toBeCloseTo(L.border.height - 2 * CONTENT_PAD - fixed, 3)
   })
 
@@ -51,7 +51,7 @@ describe('computeDiagramLayout', () => {
     expect(L.figure.y).toBeCloseTo(L.table.y + L.table.height + 66, 3) // header band = 66
     expect(L.scaleBar.y).toBeCloseTo(L.figure.y + L.figure.height, 3)
     expect(L.statement.y).toBeCloseTo(L.scaleBar.y + 34, 3)
-    expect(L.refGrid.y).toBeCloseTo(L.statement.y + 64, 3)
+    expect(L.refGrid.y).toBeCloseTo(L.statement.y + 82, 3)
     // last band bottom sits within the content box (inside the border)
     expect(L.refGrid.y + L.refGrid.height).toBeLessThanOrEqual(L.border.y + L.border.height + 0.01)
   })

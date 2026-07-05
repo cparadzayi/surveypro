@@ -14,7 +14,7 @@ const PAGE_DIMS_PT = {
 }
 
 // Fixed band heights (pt); the figure fills whatever remains.
-const BAND = { table: 150, header: 66, scaleBar: 34, statement: 64, refGrid: 100 }
+const BAND = { table: 150, header: 66, scaleBar: 34, statement: 82, refGrid: 100 }
 
 // Inset (pt) between the neat-line border and the content bands, so text/labels
 // never touch the border/margins.

@@ -203,8 +203,9 @@ function drawStatement(doc, layout, geometry, metadata) {
   doc.font('Helvetica').fontSize(7).text(
     `situate in the district of ${metadata.district ?? ''}.`, R.x, R.y + 44)
   doc.text(`Surveyed in ${surveyDate ? new Date(surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`, R.x, R.y + 53)
-  // Surveyor's designation to the far right of the "Surveyed in … by me" line.
-  doc.text('Land Surveyor', R.x, R.y + 53, { width: R.width, align: 'right' })
+  // "Land Surveyor" drops to its own line (right-aligned as before), leaving the
+  // row between it and "Surveyed … by me" for the surveyor's signature.
+  doc.text('Land Surveyor', R.x, R.y + 73, { width: R.width, align: 'right' })
   doc.restore()
 }
 

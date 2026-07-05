@@ -363,7 +363,8 @@ function drawReferenceGrid(doc, layout, grid) {
   const W = R.width, H = R.height
   // Three columns: left 30% / middle 40% / right 30%.
   const x0 = R.x, x1 = R.x + W * 0.30, x2 = R.x + W * 0.70, x3 = R.x + W
-  const midHalf = x1 + (x2 - x1) / 2      // File | G.P. split in the middle column
+  // File | G.P. | S.R. share the middle column as three equal cells.
+  const t1 = x1 + (x2 - x1) / 3, t2 = x1 + 2 * (x2 - x1) / 3
   const r1 = R.y + H * 0.25, r2 = R.y + H * 0.50, r3 = R.y + H * 0.75
 
   const B = layout.border
@@ -375,13 +376,12 @@ function drawReferenceGrid(doc, layout, grid) {
   doc.moveTo(x1, R.y).lineTo(x1, bottom).stroke()
   doc.moveTo(x2, R.y).lineTo(x2, bottom).stroke()
   // Left column: single cell (no internal divider).
-  // Middle column: rule above File|G.P. and above Compilation + the File|G.P. split.
+  // Middle column: rule above the File|G.P.|S.R. row and above Compilation, plus the
+  // two dividers splitting that row into three equal cells.
   doc.moveTo(x1, r2).lineTo(x2, r2).stroke()
   doc.moveTo(x1, r3).lineTo(x2, r3).stroke()
-  doc.moveTo(midHalf, r2).lineTo(midHalf, r3).stroke()
-  // Right column divider aligned with the line above Compilation (r3), extended to
-  // the right neat-line margin.
-  doc.moveTo(x2, r3).lineTo(B.x + B.width, r3).stroke()
+  doc.moveTo(t1, r2).lineTo(t1, r3).stroke()
+  doc.moveTo(t2, r2).lineTo(t2, r3).stroke()
 
   doc.font('Helvetica').fontSize(7).fillColor('#000')
   const pad = 3
@@ -396,17 +396,17 @@ function drawReferenceGrid(doc, layout, grid) {
   const colMid = x0 + (x1 - x0) / 2
   doc.text('No.', x0 + pad, R.y + 26)
   doc.text('dated', colMid, R.y + 26)
-  // Aligned with "Compilation" (middle) and "S.R." (right) on the bottom row.
-  doc.text('Surveyor-General', x0 + pad, r3 + 5, { width: wL })
+  // Right-aligned within the left column, level with "Compilation" on the bottom row.
+  doc.text('Surveyor-General', x0 + pad, r3 + 5, { width: wL, align: 'right' })
   // Middle column.
   doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, x1 + pad, R.y + 6, { width: wM })
   doc.text(`Deed of Transfer No. ${grid.deedOfTransferNo}`, x1 + pad, r1 + 4, { width: wM })
-  doc.text(`File : ${grid.fileNo}`, x1 + pad, r2 + 4, { width: (midHalf - x1) - 2 * pad })
-  doc.text(`G.P. : ${grid.registrationGp}`, midHalf + pad, r2 + 4, { width: (x2 - midHalf) - 2 * pad })
+  doc.text(`File : ${grid.fileNo}`, x1 + pad, r2 + 4, { width: (t1 - x1) - 2 * pad })
+  doc.text(`G.P. : ${grid.registrationGp}`, t1 + pad, r2 + 4, { width: (t2 - t1) - 2 * pad })
+  doc.text(`S.R. : ${grid.srNo}`, t2 + pad, r2 + 4, { width: (x2 - t2) - 2 * pad })
   doc.text(`Compilation : ${grid.compilation}`, x1 + pad, r3 + 4, { width: wM })
-  // Right column.
+  // Right column (single cell — S.R. now lives in the middle File/G.P./S.R. row).
   doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, x2 + pad, R.y + 6, { width: wR })
-  doc.text(`S.R. : ${grid.srNo}`, x2 + pad, r3 + 5, { width: wR })
   doc.restore()
 }
 

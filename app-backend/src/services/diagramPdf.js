@@ -361,33 +361,32 @@ function drawStatement(doc, layout, geometry, metadata) {
 function drawReferenceGrid(doc, layout, grid) {
   const R = layout.refGrid
   const W = R.width, H = R.height
-  // Three columns: left 30% / middle 40% / right 30%.
-  const x0 = R.x, x1 = R.x + W * 0.30, x2 = R.x + W * 0.70, x3 = R.x + W
-  // File | G.P. | S.R. share the middle column as three equal cells.
-  const t1 = x1 + (x2 - x1) / 3, t2 = x1 + 2 * (x2 - x1) / 3
-  const r1 = R.y + H * 0.25, r2 = R.y + H * 0.50, r3 = R.y + H * 0.75
-
   const B = layout.border
   const bottom = B.y + B.height
+  // Left column takes 40%; the remaining 60% runs to the right neat-line (xR) and
+  // holds a parent | original-title band on top, then the full-width File|G.P.|S.R.
+  // and Compilation rows.
+  const x0 = R.x, x1 = R.x + W * 0.40, xR = B.x + B.width
+  const x2 = x1 + (xR - x1) / 2                              // parent | original-title (top band)
+  const t1 = x1 + (xR - x1) / 3, t2 = x1 + 2 * (xR - x1) / 3 // File | G.P. | S.R. thirds
+  const r1 = R.y + H * 0.25, r2 = R.y + H * 0.50, r3 = R.y + H * 0.75
+
   doc.save().lineWidth(0.5).strokeColor('#000')
-  // Top border of the block (full width) + the two column dividers running down to
-  // the bottom neat-line border (no bottom line of its own).
+  // Top border (full width) + the left-column divider (full height).
   doc.moveTo(B.x, R.y).lineTo(B.x + B.width, R.y).stroke()
   doc.moveTo(x1, R.y).lineTo(x1, bottom).stroke()
-  doc.moveTo(x2, R.y).lineTo(x2, bottom).stroke()
-  // Left column: single cell (no internal divider).
-  // Middle column: rule above the File|G.P.|S.R. row and above Compilation, plus the
-  // two dividers splitting that row into three equal cells.
-  doc.moveTo(x1, r2).lineTo(x2, r2).stroke()
-  doc.moveTo(x1, r3).lineTo(x2, r3).stroke()
+  // Parent | original-title split — top band only (down to r2).
+  doc.moveTo(x2, R.y).lineTo(x2, r2).stroke()
+  // Full-width rules above File|G.P.|S.R. (r2) and above Compilation (r3), and the
+  // two dividers splitting the File|G.P.|S.R. row into three equal cells.
+  doc.moveTo(x1, r2).lineTo(xR, r2).stroke()
+  doc.moveTo(x1, r3).lineTo(xR, r3).stroke()
   doc.moveTo(t1, r2).lineTo(t1, r3).stroke()
   doc.moveTo(t2, r2).lineTo(t2, r3).stroke()
 
   doc.font('Helvetica').fontSize(7).fillColor('#000')
   const pad = 3
   const wL = (x1 - x0) - 2 * pad
-  const wM = (x2 - x1) - 2 * pad
-  const wR = (x3 - x2) - 2 * pad
   // Left column. The annexation reference (Deed of Transfer, Certificate of
   // Registered Title, etc.) is filled by the SG office after submission — we print
   // only the lead-in and the "No." / "dated" labels (blank entries, no dots). No
@@ -398,15 +397,15 @@ function drawReferenceGrid(doc, layout, grid) {
   doc.text('dated', colMid, R.y + 26)
   // Right-aligned within the left column, level with "Compilation" on the bottom row.
   doc.text('Surveyor-General', x0 + pad, r3 + 5, { width: wL, align: 'right' })
-  // Middle column.
-  doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, x1 + pad, R.y + 6, { width: wM })
-  doc.text(`Deed of Transfer No. ${grid.deedOfTransferNo}`, x1 + pad, r1 + 4, { width: wM })
+  // Top band: parent (+ Deed of Transfer) on the left, original title on the right.
+  doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, x1 + pad, R.y + 6, { width: (x2 - x1) - 2 * pad })
+  doc.text(`Deed of Transfer No. ${grid.deedOfTransferNo}`, x1 + pad, r1 + 4, { width: (x2 - x1) - 2 * pad })
+  doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, x2 + pad, R.y + 6, { width: (xR - x2) - 2 * pad })
+  // Full-width File | G.P. | S.R. row, then Compilation — both run to the right neat-line.
   doc.text(`File : ${grid.fileNo}`, x1 + pad, r2 + 4, { width: (t1 - x1) - 2 * pad })
   doc.text(`G.P. : ${grid.registrationGp}`, t1 + pad, r2 + 4, { width: (t2 - t1) - 2 * pad })
-  doc.text(`S.R. : ${grid.srNo}`, t2 + pad, r2 + 4, { width: (x2 - t2) - 2 * pad })
-  doc.text(`Compilation : ${grid.compilation}`, x1 + pad, r3 + 4, { width: wM })
-  // Right column (single cell — S.R. now lives in the middle File/G.P./S.R. row).
-  doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, x2 + pad, R.y + 6, { width: wR })
+  doc.text(`S.R. : ${grid.srNo}`, t2 + pad, r2 + 4, { width: (xR - t2) - 2 * pad })
+  doc.text(`Compilation : ${grid.compilation}`, x1 + pad, r3 + 4, { width: (xR - x1) - 2 * pad })
   doc.restore()
 }
 

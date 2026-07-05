@@ -22,7 +22,7 @@ describe('buildBeaconDescription', () => {
       beacon('FAR', 2200000, -90000, { description: '50mm pipe' }),
     ])
     expect(buildBeaconDescription(geometry, beacons)).toEqual([
-      { names: 'A1, B1', description: '12mm iron peg' },
+      { names: 'A, B', description: '12mm iron peg' },
     ])
   })
 
@@ -32,8 +32,8 @@ describe('buildBeaconDescription', () => {
       beacon('B1', 2144060, -85000, { description: '50mm iron pipe' }),
     ])
     expect(buildBeaconDescription(geometry, beacons)).toEqual([
-      { names: 'A1', description: '12mm iron peg' },
-      { names: 'B1', description: '50mm iron pipe' },
+      { names: 'A', description: '12mm iron peg' },
+      { names: 'B', description: '50mm iron pipe' },
     ])
   })
 
@@ -43,8 +43,8 @@ describe('buildBeaconDescription', () => {
       beacon('B1', 2144060, -85000),    // [A-Z]\d → 50mm Iron Pipe in Concrete
     ])
     expect(buildBeaconDescription(geometry, beacons)).toEqual([
-      { names: '84A', description: '12mm iron peg in concrete' },
-      { names: 'B1', description: '50mm Iron Pipe in Concrete' },
+      { names: 'A', description: '12mm iron peg in concrete' },
+      { names: 'B', description: '50mm Iron Pipe in Concrete' },
     ])
   })
 

@@ -284,22 +284,35 @@ function drawApprovedBox(doc, layout) {
 
 function drawScaleBar(doc, layout, denom) {
   const R = layout.scaleBar
-  // Ground metres represented by the bar's width:
-  const barGroundM = (R.width / (72 / 25.4)) * denom / 1000
-  const seg = snapScaleBarSegment(barGroundM / 4) // ~4 segments
   const ptPerM = (72 / 25.4) * 1000 / denom
+  const barGroundM = (R.width / (72 / 25.4)) * denom / 1000
+  // Bar = 1 subdivided segment LEFT of 0 + 2 equal segments RIGHT of 0 (SG style).
+  const seg = snapScaleBarSegment(barGroundM / 3)
+  const w = seg * ptPerM
+  const barY = R.y + 10
+  const x0 = R.x + w // ground zero, after the left (subdivided) segment
   doc.save().lineWidth(1).strokeColor('#000').font('Helvetica').fontSize(6.5)
-  let x = R.x, ground = 0
-  doc.moveTo(R.x, R.y + 10).lineTo(R.x, R.y + 16).stroke()
-  doc.fillColor('#000').text('0', R.x - 6, R.y, { width: 12, align: 'center' }) // bar origin
-  for (let i = 0; i < 4; i++) {
-    const w = seg * ptPerM
-    if (i % 2 === 0) doc.rect(x, R.y + 10, w, 4).fillAndStroke('#000', '#000')
-    else doc.rect(x, R.y + 10, w, 4).stroke()
-    x += w; ground += seg
-    doc.fillColor('#000').text(String(Math.round(ground)), x - 6, R.y, { width: 12, align: 'center' })
+  // Left segment subdivided into 5 alternating ticks (a fine ruler left of 0).
+  const subN = 5
+  const subW = w / subN
+  for (let i = 0; i < subN; i++) {
+    const sx = R.x + i * subW
+    if (i % 2 === 0) doc.rect(sx, barY, subW, 4).fillAndStroke('#000', '#000')
+    else doc.rect(sx, barY, subW, 4).stroke()
   }
-  doc.text('metres', x + 4, R.y + 10)
+  // Two equal segments right of 0, alternating fill (first empty to alternate).
+  for (let i = 0; i < 2; i++) {
+    const sx = x0 + i * w
+    if (i % 2 === 0) doc.rect(sx, barY, w, 4).stroke()
+    else doc.rect(sx, barY, w, 4).fillAndStroke('#000', '#000')
+  }
+  // Tick labels: seg | 0 | seg | 2*seg, centred under each tick.
+  const lbl = (val, cx) => doc.fillColor('#000').text(String(Math.round(val)), cx - 8, R.y, { width: 16, align: 'center' })
+  lbl(seg, R.x)
+  lbl(0, x0)
+  lbl(seg, x0 + w)
+  lbl(2 * seg, x0 + 2 * w)
+  doc.text('metres', x0 + 2 * w + 6, barY)
   doc.text(`Scale 1 : ${denom}`, R.x + R.width / 2 - 30, R.y + 20)
   doc.restore()
 }

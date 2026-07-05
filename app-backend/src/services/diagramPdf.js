@@ -222,7 +222,7 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
     if (ann.label) {
       doc.save().font('Helvetica').fontSize(7).fillColor('#000000')
       const labelW = doc.widthOfString(ann.label)
-      if (ann.role === 'road') {
+      if (ann.role === 'road' || ann.role === 'servitude') {
         const ex = p2.px - p1.px, ey = p2.py - p1.py
         const len = Math.hypot(ex, ey) || 1
         let perpX = -ey / len, perpY = ex / len
@@ -230,7 +230,9 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         if (perpX * (subjCentroid.px - mid.px) + perpY * (subjCentroid.py - mid.py) > 0) { perpX = -perpX; perpY = -perpY }
         let angleDeg = Math.atan2(ey, ex) * 180 / Math.PI
         if (angleDeg > 90 || angleDeg < -90) angleDeg += 180 // keep the text upright
-        const off = ROAD_STRIP_PT + 5
+        // Sit just outside the strip (roads use the nominal width; servitudes their own).
+        const stripPt = ann.role === 'servitude' && ann.widthM > 0 ? ann.widthM * ptPerGroundM : ROAD_STRIP_PT
+        const off = stripPt + 5
         const lx = mid.px + perpX * off, ly = mid.py + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })
         doc.text(ann.label, lx - labelW / 2, ly - 3.5, { lineBreak: false })

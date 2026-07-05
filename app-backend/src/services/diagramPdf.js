@@ -202,10 +202,12 @@ function drawStatement(doc, layout, geometry, metadata) {
   doc.font('Helvetica-Bold').text(`${designation}${parent}`, R.x, R.y + 30, { width: R.width })
   doc.font('Helvetica').fontSize(7).text(
     `situate in the district of ${metadata.district ?? ''}.`, R.x, R.y + 44)
-  doc.text(`Surveyed in ${surveyDate ? new Date(surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`, R.x, R.y + 53)
+  // Extra row above "Surveyed … by me" (below "situate in the district of …") for
+  // visual separation.
+  doc.text(`Surveyed in ${surveyDate ? new Date(surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`, R.x, R.y + 61)
   // "Land Surveyor" drops to its own line (right-aligned as before), leaving the
   // row between it and "Surveyed … by me" for the surveyor's signature.
-  doc.text('Land Surveyor', R.x, R.y + 73, { width: R.width, align: 'right' })
+  doc.text('Land Surveyor', R.x, R.y + 81, { width: R.width, align: 'right' })
   doc.restore()
 }
 

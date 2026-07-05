@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { letterAt, subjectSides, upsertAnnotation, removeAnnotation, type SideAnnotation } from '../sideAnnotations'
+import { letterAt, subjectSides, upsertAnnotation, removeAnnotation, type SideAnnotation, annotationsForSubject, withSubjectAnnotations, hydrateAnnotationsMap } from '../sideAnnotations'
 
 describe('letterAt', () => {
   it('is A..Z then AA', () => {
@@ -38,5 +38,35 @@ describe('upsertAnnotation / removeAnnotation', () => {
     expect(list).toHaveLength(2)
     list = removeAnnotation(list, 'AB')
     expect(list.map(a => a.side)).toEqual(['BC'])
+  })
+})
+
+describe('annotationsForSubject', () => {
+  const map = { '5': [{ side: 'AB', role: 'road' as const }] }
+  it('returns the subject list (by string or number id) or [] / [] for null', () => {
+    expect(annotationsForSubject(map, 5)).toEqual([{ side: 'AB', role: 'road' }])
+    expect(annotationsForSubject(map, '5')).toHaveLength(1)
+    expect(annotationsForSubject(map, 9)).toEqual([])
+    expect(annotationsForSubject(map, null)).toEqual([])
+  })
+})
+
+describe('withSubjectAnnotations', () => {
+  it('immutably sets the subject key, leaving others', () => {
+    const map = { '5': [] as any[] }
+    const next = withSubjectAnnotations(map, 7, [{ side: 'BC', role: 'servitude', widthM: 3 }])
+    expect(next).not.toBe(map)
+    expect(next['7']).toHaveLength(1)
+    expect(next['5']).toEqual([])
+  })
+})
+
+describe('hydrateAnnotationsMap', () => {
+  it('passes a valid map and coerces junk to {}', () => {
+    expect(hydrateAnnotationsMap({ '5': [{ side: 'AB', role: 'road' }] }))
+      .toEqual({ '5': [{ side: 'AB', role: 'road' }] })
+    expect(hydrateAnnotationsMap(undefined)).toEqual({})
+    expect(hydrateAnnotationsMap('nope')).toEqual({})
+    expect(hydrateAnnotationsMap({ '5': 'notarray', '6': [] })).toEqual({ '6': [] })
   })
 })

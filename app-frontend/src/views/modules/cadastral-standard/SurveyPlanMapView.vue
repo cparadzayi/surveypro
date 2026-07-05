@@ -2030,6 +2030,18 @@ async function persistSideAnnotations() {
   }
 }
 
+/** Hydrate the per-subject annotation map from the saved survey-plan workflow step (on mount). */
+async function loadSideAnnotations() {
+  try {
+    const resp = await api.get(`/survey-projects/${props.projectId}/workflow`)
+    const ws = resp.data?.workflow_state
+    sideAnnotationsBySubject.value = hydrateAnnotationsMap(ws?.step_data?.['survey-plan']?.sideAnnotations)
+    updateSubjectSidesLayer()
+  } catch (e: any) {
+    console.warn('[SurveyPlanMap] failed to load side annotations:', e?.message)
+  }
+}
+
 function addPointsToMap() {
   if (!map.value || coordinatePoints.value.length === 0) return
   
@@ -4172,8 +4184,6 @@ async function generateComprehensivePDF() {
     console.log('[ComprehensivePDF] 📥 Loading workflow state from API...')
     const workflowResponse = await api.get(`/survey-projects/${props.projectId}/workflow`)
     const workflowState = workflowResponse.data.workflow_state
-    sideAnnotationsBySubject.value = hydrateAnnotationsMap(workflowState?.step_data?.['survey-plan']?.sideAnnotations)
-    updateSubjectSidesLayer()
 
     // Extract data from workflow
     const adjustedCoords = workflowState?.step_data?.['calculations-part1']?.adjusted_coordinates || []
@@ -6259,7 +6269,7 @@ onMounted(async () => {
   }
   
   loadData()
-  
+  loadSideAnnotations()
 
 })
 

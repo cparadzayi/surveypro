@@ -206,8 +206,10 @@ function drawStatement(doc, layout, geometry, metadata) {
   doc.save().font('Helvetica').fontSize(8).fillColor('#000')
   doc.text('The figure', R.x, R.y)
   doc.text('represents', R.x, R.y + 11)
-  doc.text(`${seq}`, R.x + 120, R.y, { width: 260, align: 'center' })
-  doc.text(`${area} of land called`, R.x + 120, R.y + 12, { width: 300 })
+  // Centre both the vertex sequence and the area line over the same span so they
+  // read as a centred block beside "The figure represents".
+  doc.text(`${seq}`, R.x + 120, R.y, { width: 300, align: 'center' })
+  doc.text(`${area} of land called`, R.x + 120, R.y + 12, { width: 300, align: 'center' })
   doc.font('Helvetica-Bold').text(`${designation}${parent}`, R.x, R.y + 30, { width: R.width })
   doc.font('Helvetica').fontSize(7).text(
     `situate in the district of ${metadata.district ?? ''}.`, R.x, R.y + 44)

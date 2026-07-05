@@ -84,13 +84,13 @@ function drawTable(doc, layout, table, loLabel) {
   const cMetresX = R.x + 32
   const ctrMetres = { width: 38, align: 'center' }
 
-  doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
+  doc.save().font('Helvetica-Bold').fontSize(7.5).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y, ctrSide)
   doc.text('METRES', cMetresX, R.y, ctrMetres)
   doc.text('DIRECTIONS', cDirX, R.y, ctrDir)
   doc.text('CO-ORDINATES', R.x + cY, R.y, ctrCoord) // centred over Lo NN
   doc.text('DIAGRAM S.G. No.', cSg, R.y)
-  doc.font('Helvetica').fontSize(6.5)
+  doc.font('Helvetica').fontSize(7)
   // 'Lo NN' heads the CO-ORDINATES group, between CO-ORDINATES and the Y/X row.
   doc.text(loLabel, R.x + cY, R.y + 10, ctrCoord)
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
@@ -141,8 +141,8 @@ function drawTable(doc, layout, table, loLabel) {
 
 function drawBeaconDescription(doc, layout, groups) {
   const R = layout.beaconDesc
-  doc.save().font('Helvetica-Bold').fontSize(7).text('Description of Beacons', R.x, R.y)
-  doc.font('Helvetica').fontSize(7)
+  doc.save().font('Helvetica-Bold').fontSize(8).text('Description of Beacons', R.x, R.y)
+  doc.font('Helvetica').fontSize(8)
   if (groups.length === 0) {
     doc.text('All          :', R.x, R.y + 11)
   } else if (groups.length === 1) {
@@ -327,15 +327,15 @@ function drawStatement(doc, layout, geometry, metadata) {
   const parent = metadata.parentProperty ? ` OF ${metadata.parentProperty}` : ''
   // Survey date arrives as metadata.date from the frontend; accept either key.
   const surveyDate = metadata.surveyDate ?? metadata.date
-  doc.save().font('Helvetica').fontSize(8).fillColor('#000')
+  doc.save().font('Helvetica').fontSize(9).fillColor('#000')
   doc.text('The figure', R.x, R.y)
   doc.text('represents', R.x, R.y + 11)
   // Centre both the vertex sequence and the area line over the same span so they
   // read as a centred block beside "The figure represents".
   doc.text(`${seq}`, R.x + 120, R.y, { width: 300, align: 'center' })
   doc.text(`${area} of land called`, R.x + 120, R.y + 12, { width: 300, align: 'center' })
-  doc.font('Helvetica-Bold').text(`${designation}${parent}`, R.x, R.y + 30, { width: R.width })
-  doc.font('Helvetica').fontSize(7).text(
+  doc.font('Helvetica-Bold').fontSize(11).text(`${designation}${parent}`, R.x, R.y + 30, { width: R.width })
+  doc.font('Helvetica').fontSize(8).text(
     `situate in the district of ${metadata.district ?? ''}.`, R.x, R.y + 44)
   // Extra row above "Surveyed … by me" (below "situate in the district of …") for
   // visual separation.
@@ -371,7 +371,7 @@ function drawReferenceGrid(doc, layout, grid) {
   // the right neat-line margin.
   doc.moveTo(x2, r3).lineTo(B.x + B.width, r3).stroke()
 
-  doc.font('Helvetica').fontSize(6.5).fillColor('#000')
+  doc.font('Helvetica').fontSize(7).fillColor('#000')
   const pad = 3
   const wL = (x1 - x0) - 2 * pad
   const wM = (x2 - x1) - 2 * pad

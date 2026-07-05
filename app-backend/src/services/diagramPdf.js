@@ -10,6 +10,7 @@ import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neig
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
+import { formatSI } from './diagram/numberFormat.js'
 import {
   resolveLoSystem, snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
@@ -83,13 +84,13 @@ function drawTable(doc, layout, table, loLabel) {
   const cMetresX = R.x + 32
   const ctrMetres = { width: 38, align: 'center' }
 
-  doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
+  doc.save().font('Helvetica-Bold').fontSize(7.5).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y, ctrSide)
   doc.text('METRES', cMetresX, R.y, ctrMetres)
   doc.text('DIRECTIONS', cDirX, R.y, ctrDir)
   doc.text('CO-ORDINATES', R.x + cY, R.y, ctrCoord) // centred over Lo NN
   doc.text('DIAGRAM S.G. No.', cSg, R.y)
-  doc.font('Helvetica').fontSize(6.5)
+  doc.font('Helvetica').fontSize(7)
   // 'Lo NN' heads the CO-ORDINATES group, between CO-ORDINATES and the Y/X row.
   doc.text(loLabel, R.x + cY, R.y + 10, ctrCoord)
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
@@ -106,7 +107,7 @@ function drawTable(doc, layout, table, loLabel) {
   let ry = R.y + 30
   doc.text(constRow.y, R.x + cY, ry, ctrY)
   doc.text(constRow.x, R.x + cX, ry, ctrX)
-  doc.text('Const.', cSg, ry)
+  doc.text('Constants', cSg, ry)
   for (let i = 0; i < rows; i++) {
     ry += 11
     if (sideRows[i]) {
@@ -140,8 +141,8 @@ function drawTable(doc, layout, table, loLabel) {
 
 function drawBeaconDescription(doc, layout, groups) {
   const R = layout.beaconDesc
-  doc.save().font('Helvetica-Bold').fontSize(7).text('Beacon description', R.x, R.y)
-  doc.font('Helvetica').fontSize(7)
+  doc.save().font('Helvetica-Bold').fontSize(8).text('Description of Beacons', R.x, R.y)
+  doc.font('Helvetica').fontSize(8)
   if (groups.length === 0) {
     doc.text('All          :', R.x, R.y + 11)
   } else if (groups.length === 1) {
@@ -224,7 +225,10 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
     // servitude/contiguous keep the horizontal outward label (avoiding drawn lines).
     if (ann.label) {
       doc.save().font('Helvetica').fontSize(7).fillColor('#000000')
-      const labelW = doc.widthOfString(ann.label)
+      const labelText = ann.role === 'road' && ann.widthM > 0
+        ? `${ann.label} ${formatSI(ann.widthM, 2)}m`
+        : ann.label
+      const labelW = doc.widthOfString(labelText)
       if (ann.role === 'road' || ann.role === 'servitude') {
         const ex = p2.px - p1.px, ey = p2.py - p1.py
         const len = Math.hypot(ex, ey) || 1
@@ -239,13 +243,13 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         const off = stripPt + vertexBandPt
         const lx = mid.px + perpX * off, ly = mid.py + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })
-        doc.text(ann.label, lx - labelW / 2, ly - 3.5, { lineBreak: false })
+        doc.text(labelText, lx - labelW / 2, ly - 3.5, { lineBreak: false })
       } else {
         const pos = placeVertexLabel(mid, subjCentroid, {
           beaconR: 0, gap: 2, labelW, labelH: 7,
           segments: subjSegs.concat(neighbourSegs, labelObstacles),
         })
-        doc.text(ann.label, pos.x, pos.y)
+        doc.text(labelText, pos.x, pos.y)
         labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
       }
       doc.restore()
@@ -280,22 +284,35 @@ function drawApprovedBox(doc, layout) {
 
 function drawScaleBar(doc, layout, denom) {
   const R = layout.scaleBar
-  // Ground metres represented by the bar's width:
-  const barGroundM = (R.width / (72 / 25.4)) * denom / 1000
-  const seg = snapScaleBarSegment(barGroundM / 4) // ~4 segments
   const ptPerM = (72 / 25.4) * 1000 / denom
+  const barGroundM = (R.width / (72 / 25.4)) * denom / 1000
+  // Bar = 1 subdivided segment LEFT of 0 + 2 equal segments RIGHT of 0 (SG style).
+  const seg = snapScaleBarSegment(barGroundM / 3)
+  const w = seg * ptPerM
+  const barY = R.y + 10
+  const x0 = R.x + w // ground zero, after the left (subdivided) segment
   doc.save().lineWidth(1).strokeColor('#000').font('Helvetica').fontSize(6.5)
-  let x = R.x, ground = 0
-  doc.moveTo(R.x, R.y + 10).lineTo(R.x, R.y + 16).stroke()
-  doc.fillColor('#000').text('0', R.x - 6, R.y, { width: 12, align: 'center' }) // bar origin
-  for (let i = 0; i < 4; i++) {
-    const w = seg * ptPerM
-    if (i % 2 === 0) doc.rect(x, R.y + 10, w, 4).fillAndStroke('#000', '#000')
-    else doc.rect(x, R.y + 10, w, 4).stroke()
-    x += w; ground += seg
-    doc.fillColor('#000').text(String(Math.round(ground)), x - 6, R.y, { width: 12, align: 'center' })
+  // Left segment subdivided into 5 alternating ticks (a fine ruler left of 0).
+  const subN = 5
+  const subW = w / subN
+  for (let i = 0; i < subN; i++) {
+    const sx = R.x + i * subW
+    if (i % 2 === 0) doc.rect(sx, barY, subW, 4).fillAndStroke('#000', '#000')
+    else doc.rect(sx, barY, subW, 4).stroke()
   }
-  doc.text('metres', x + 4, R.y + 10)
+  // Two equal segments right of 0, alternating fill (first empty to alternate).
+  for (let i = 0; i < 2; i++) {
+    const sx = x0 + i * w
+    if (i % 2 === 0) doc.rect(sx, barY, w, 4).stroke()
+    else doc.rect(sx, barY, w, 4).fillAndStroke('#000', '#000')
+  }
+  // Tick labels: seg | 0 | seg | 2*seg, centred under each tick.
+  const lbl = (val, cx) => doc.fillColor('#000').text(String(Math.round(val)), cx - 8, R.y, { width: 16, align: 'center' })
+  lbl(seg, R.x)
+  lbl(0, x0)
+  lbl(seg, x0 + w)
+  lbl(2 * seg, x0 + 2 * w)
+  doc.text('metres', x0 + 2 * w + 6, barY)
   doc.text(`Scale 1 : ${denom}`, R.x + R.width / 2 - 30, R.y + 20)
   doc.restore()
 }
@@ -310,15 +327,15 @@ function drawStatement(doc, layout, geometry, metadata) {
   const parent = metadata.parentProperty ? ` OF ${metadata.parentProperty}` : ''
   // Survey date arrives as metadata.date from the frontend; accept either key.
   const surveyDate = metadata.surveyDate ?? metadata.date
-  doc.save().font('Helvetica').fontSize(8).fillColor('#000')
+  doc.save().font('Helvetica').fontSize(9).fillColor('#000')
   doc.text('The figure', R.x, R.y)
   doc.text('represents', R.x, R.y + 11)
   // Centre both the vertex sequence and the area line over the same span so they
   // read as a centred block beside "The figure represents".
   doc.text(`${seq}`, R.x + 120, R.y, { width: 300, align: 'center' })
   doc.text(`${area} of land called`, R.x + 120, R.y + 12, { width: 300, align: 'center' })
-  doc.font('Helvetica-Bold').text(`${designation}${parent}`, R.x, R.y + 30, { width: R.width })
-  doc.font('Helvetica').fontSize(7).text(
+  doc.font('Helvetica-Bold').fontSize(11).text(`${designation}${parent}`, R.x, R.y + 30, { width: R.width })
+  doc.font('Helvetica').fontSize(8).text(
     `situate in the district of ${metadata.district ?? ''}.`, R.x, R.y + 44)
   // Extra row above "Surveyed … by me" (below "situate in the district of …") for
   // visual separation.
@@ -354,7 +371,7 @@ function drawReferenceGrid(doc, layout, grid) {
   // the right neat-line margin.
   doc.moveTo(x2, r3).lineTo(B.x + B.width, r3).stroke()
 
-  doc.font('Helvetica').fontSize(6.5).fillColor('#000')
+  doc.font('Helvetica').fontSize(7).fillColor('#000')
   const pad = 3
   const wL = (x1 - x0) - 2 * pad
   const wM = (x2 - x1) - 2 * pad

@@ -1,5 +1,6 @@
 import { bankersRound, roundBearingSouth } from '../../utils/zim-geo.js'
 import { resolveVertexBeaconName } from './beaconName.js'
+import { formatSI } from './numberFormat.js'
 
 /** Whole-degree/minute/second breakdown of a decimal-degree bearing. */
 export function toDMS(deg) {
@@ -14,22 +15,20 @@ export function toDMS(deg) {
 
 /**
  * SI 727 area statement value with units, banker's-rounded: below 1 hectare →
- * whole square metres ("4047 square metres"); 1 hectare or more → hectares to
- * 4 decimals ("1.2345 hectares").
+ * whole square metres ("4 047 square metres"); 1 hectare or more → hectares to
+ * 4 decimals ("1,2345 hectares").
  */
 export function formatDiagramArea(areaM2) {
   const a = Math.abs(Number(areaM2) || 0)
   const ha = a / 10000
   if (ha >= 1) {
-    return `${bankersRound(ha, 4).toFixed(4)} hectares`
+    return `${formatSI(bankersRound(ha, 4), 4)} hectares`
   }
-  return `${bankersRound(a, 0)} square metres`
+  return `${formatSI(bankersRound(a, 0), 0)} square metres`
 }
 
 function signed(value) {
-  const v = Number(value)
-  const fixed = Math.abs(v).toFixed(2)
-  return (v < 0 ? '-' : '+') + fixed
+  return formatSI(value, 2, { sign: true })
 }
 
 function pad2(n) { return String(n).padStart(2, '0') }
@@ -52,7 +51,7 @@ export function buildSidesTable(geometry, beacons) {
     const { d, m, s: sec } = toDMS(roundBearingSouth(s.bearingDeg, res))
     return {
       side: s.side,
-      metres: Number(s.distance).toFixed(2),
+      metres: formatSI(s.distance, 2),
       direction: `${d} ${pad2(m)} ${pad2(sec)}`,
     }
   })

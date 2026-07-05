@@ -46,7 +46,7 @@ export function buildBeaconDescription(geometry, beacons, tolM = 0.5) {
     const name = String(p.name ?? p.beacon_name ?? p.id ?? '')
     const desc = String(p.description ?? p.beacon_type ?? '').trim() || inferDescription(name)
     if (!namesByDesc.has(desc)) { namesByDesc.set(desc, []); order.push(desc) }
-    namesByDesc.get(desc).push(name)
+    namesByDesc.get(desc).push(v.letter)
   }
 
   return order.map((desc) => ({ names: namesByDesc.get(desc).join(', '), description: desc }))

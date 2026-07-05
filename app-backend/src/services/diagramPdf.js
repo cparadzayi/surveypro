@@ -50,7 +50,7 @@ function drawTable(doc, layout, table, loLabel) {
   // Fixed column x-offsets from R.x. The beacon "Const." names live in the
   // rightmost DIAGRAM S.G. No. column (matches the SG diagram samples), so there
   // is no separate Const. column.
-  const cSide = 0, cMetres = 28, cDir = 76, cLetter = 158, cY = 198, cX = 260
+  const cSide = 0, cMetres = 36, cDir = 76, cLetter = 158, cY = 198, cX = 260
   const cSg = layout.sgNoBox.x + 2 // absolute x of the rightmost (SG No.) column
   const rows = Math.max(coordinateRows.length, sideRows.length)
   // Y / X sub-column widths, used to centre the coordinate figures in their cells.
@@ -67,8 +67,9 @@ function drawTable(doc, layout, table, loLabel) {
   // Vertex-letter column spans the dividers at R.x+150 .. R.x+193; centre its letters.
   const cLetX = R.x + 150
   const ctrLet = { width: 43, align: 'center' }
-  // SIDES side-label sub-column spans [cSide .. cMetres]; centre AB/BC/CD/DA.
-  const ctrSide = { width: cMetres, align: 'center' }
+  // SIDES side-label sub-column: centre AB/BC/CD/DA in a fixed narrow band (kept
+  // independent of cMetres so the divider can sit clear of the "SIDES" label).
+  const ctrSide = { width: 30, align: 'center' }
 
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y, ctrSide)
@@ -115,7 +116,7 @@ function drawTable(doc, layout, table, loLabel) {
   const boxB = ry + 9
   const hSep = R.y + 28 // header/data separator (below the three header rows)
   // Group dividers + the side-label|Metres split, full height.
-  const verticals = [R.x + 26, R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
+  const verticals = [R.x + 32, R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
   doc.lineWidth(0.5).strokeColor('#000')
   for (const vx of verticals) doc.moveTo(vx, B.y).lineTo(vx, boxB).stroke()
   // Y|X divider — only through the value rows: the "Metres" coords sub-header

@@ -114,9 +114,13 @@ function drawTable(doc, layout, table, loLabel) {
   const B = layout.border
   const boxB = ry + 9
   const hSep = R.y + 28 // header/data separator (below the three header rows)
-  const verticals = [R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
+  // Group dividers + the side-label|Metres split, full height.
+  const verticals = [R.x + 26, R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
   doc.lineWidth(0.5).strokeColor('#000')
   for (const vx of verticals) doc.moveTo(vx, B.y).lineTo(vx, boxB).stroke()
+  // Y|X divider — only through the value rows: the "Metres" coords sub-header
+  // spans both Y and X, so the divider must not cross the header.
+  doc.moveTo(R.x + cX, hSep).lineTo(R.x + cX, boxB).stroke()
   doc.moveTo(B.x, hSep).lineTo(B.x + B.width, hSep).stroke()
   doc.restore()
 }

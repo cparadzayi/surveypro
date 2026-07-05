@@ -242,20 +242,20 @@ function drawReferenceGrid(doc, layout, grid) {
   // Registered Title, etc.) is filled by the SG office after submission — we print
   // only the lead-in and the "No." / "dated" labels (blank entries, no dots). No
   // deed type is pre-printed, as the target instrument varies.
-  doc.text('This diagram is annexed to', x0 + pad, R.y + 8, { width: wL })
+  doc.text('This diagram is annexed to', x0 + pad, R.y + 6, { width: wL })
   const colMid = x0 + (x1 - x0) / 2
   doc.text('No.', x0 + pad, R.y + 26)
   doc.text('dated', colMid, R.y + 26)
   // Aligned with "Compilation" (middle) and "S.R." (right) on the bottom row.
   doc.text('Surveyor-General', x0 + pad, r3 + 5, { width: wL })
   // Middle column.
-  doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, x1 + pad, R.y + 4, { width: wM })
+  doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, x1 + pad, R.y + 6, { width: wM })
   doc.text(`Deed of Transfer No. ${grid.deedOfTransferNo}`, x1 + pad, r1 + 4, { width: wM })
   doc.text(`File : ${grid.fileNo}`, x1 + pad, r2 + 4, { width: (midHalf - x1) - 2 * pad })
   doc.text(`G.P. : ${grid.registrationGp}`, midHalf + pad, r2 + 4, { width: (x2 - midHalf) - 2 * pad })
   doc.text(`Compilation : ${grid.compilation}`, x1 + pad, r3 + 4, { width: wM })
   // Right column.
-  doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, x2 + pad, R.y + 5, { width: wR })
+  doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, x2 + pad, R.y + 6, { width: wR })
   doc.text(`S.R. : ${grid.srNo}`, x2 + pad, r3 + 5, { width: wR })
   doc.restore()
 }

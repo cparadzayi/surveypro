@@ -217,16 +217,31 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
       doc.undash().restore()
     }
 
-    // Label the feature outside the edge, avoiding drawn lines and placed labels.
+    // Label the feature. Roads read ALONG the edge (rotated), just outside the strip;
+    // servitude/contiguous keep the horizontal outward label (avoiding drawn lines).
     if (ann.label) {
       doc.save().font('Helvetica').fontSize(7).fillColor('#000000')
       const labelW = doc.widthOfString(ann.label)
-      const pos = placeVertexLabel(mid, subjCentroid, {
-        beaconR: 0, gap: 2, labelW, labelH: 7,
-        segments: subjSegs.concat(neighbourSegs, labelObstacles),
-      })
-      doc.text(ann.label, pos.x, pos.y)
-      labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
+      if (ann.role === 'road') {
+        const ex = p2.px - p1.px, ey = p2.py - p1.py
+        const len = Math.hypot(ex, ey) || 1
+        let perpX = -ey / len, perpY = ex / len
+        // Point the perpendicular OUTWARD (away from the figure centroid).
+        if (perpX * (subjCentroid.px - mid.px) + perpY * (subjCentroid.py - mid.py) > 0) { perpX = -perpX; perpY = -perpY }
+        let angleDeg = Math.atan2(ey, ex) * 180 / Math.PI
+        if (angleDeg > 90 || angleDeg < -90) angleDeg += 180 // keep the text upright
+        const off = ROAD_STRIP_PT + 5
+        const lx = mid.px + perpX * off, ly = mid.py + perpY * off
+        doc.rotate(angleDeg, { origin: [lx, ly] })
+        doc.text(ann.label, lx - labelW / 2, ly - 3.5, { lineBreak: false })
+      } else {
+        const pos = placeVertexLabel(mid, subjCentroid, {
+          beaconR: 0, gap: 2, labelW, labelH: 7,
+          segments: subjSegs.concat(neighbourSegs, labelObstacles),
+        })
+        doc.text(ann.label, pos.x, pos.y)
+        labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
+      }
       doc.restore()
     }
   }
@@ -447,19 +462,6 @@ export async function generateDiagramPDF(options, logger) {
   }
   // Continuous, well-defined black boundary on top of the band.
   drawRing(doc, subjPt, { color: '#000000', width: 1.2 })
-  // Beacon circles drawn ON TOP of the boundary: the white fill knocks out the
-  // boundary line inside, so edges appear clipped at the circle edge (the
-  // developed-plan technique). Radius is page-relative → visible at print scale.
-  const beaconR = beaconRadiusPt(denom)
-  for (const p of subjPt) {
-    doc.save()
-      .circle(p.px, p.py, beaconR)
-      .lineWidth(0.8)
-      .fillColor('#FFFFFF')
-      .strokeColor('#000000')
-      .fillAndStroke()
-    doc.restore()
-  }
   // Vertex letters placed OUTSIDE the figure, clear of the beacon circle, and not
   // overriding the subject or adjoining-property lines. (No edge-distance labels.)
   doc.fillColor('#000000').fontSize(8)
@@ -481,6 +483,20 @@ export async function generateDiagramPDF(options, logger) {
     annotations: metadata.sideAnnotations,
     geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs,
   }, logger)
+
+  // Beacon circles drawn ON TOP of the boundary AND the adjoining features: the white
+  // fill knocks out the lines inside, so edges (incl. road/servitude strips) appear
+  // clipped at the circle edge (the developed-plan technique). Page-relative → visible.
+  const beaconR = beaconRadiusPt(denom)
+  for (const p of subjPt) {
+    doc.save()
+      .circle(p.px, p.py, beaconR)
+      .lineWidth(0.8)
+      .fillColor('#FFFFFF')
+      .strokeColor('#000000')
+      .fillAndStroke()
+    doc.restore()
+  }
 
   geometry.vertices.forEach((v, i) => {
     const p = subjPt[i]

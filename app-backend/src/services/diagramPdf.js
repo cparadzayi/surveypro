@@ -155,7 +155,10 @@ function drawNorthArrow(doc, layout) {
   doc.save().lineWidth(1).strokeColor('#000')
   doc.moveTo(cx, R.y + R.height).lineTo(cx, R.y).stroke()      // shaft
   doc.moveTo(cx - 4, R.y + 8).lineTo(cx, R.y).lineTo(cx + 4, R.y + 8).stroke() // head
-  doc.font('Helvetica').fontSize(7).text('T  N', cx - 8, R.y + R.height + 2)
+  // "T" and "N" flank the shaft near its base, so the vertical line passes between them.
+  doc.font('Helvetica').fontSize(7)
+  doc.text('T', cx - 9, R.y + R.height - 14)
+  doc.text('N', cx + 4, R.y + R.height - 14)
   doc.restore()
 }
 

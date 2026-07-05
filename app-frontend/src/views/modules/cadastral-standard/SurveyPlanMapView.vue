@@ -22,7 +22,7 @@
           <label>Label
             <input v-model="activeSideEditor.label" type="text" placeholder="e.g. STAND 86 … / Klein Road" />
           </label>
-          <label v-if="activeSideEditor.role === 'servitude'">Width (m)
+          <label v-if="activeSideEditor.role === 'servitude' || activeSideEditor.role === 'road'">Width (m)
             <input v-model.number="activeSideEditor.widthM" type="number" min="0" step="0.1" />
           </label>
           <div class="side-modal-actions">
@@ -1999,7 +1999,7 @@ function saveSideEditor() {
     side: ed.side,
     role: ed.role,
     label: ed.label?.trim() || undefined,
-    widthM: ed.role === 'servitude' && ed.widthM != null ? ed.widthM : undefined,
+    widthM: (ed.role === 'servitude' || ed.role === 'road') && ed.widthM != null ? ed.widthM : undefined,
   }
   const list = upsertAnnotation(currentSideAnnotations.value, ann)
   sideAnnotationsBySubject.value = withSubjectAnnotations(sideAnnotationsBySubject.value, selectedDiagramParcelId.value, list)

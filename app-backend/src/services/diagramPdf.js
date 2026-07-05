@@ -330,10 +330,11 @@ function drawStatement(doc, layout, geometry, metadata) {
   doc.save().font('Helvetica').fontSize(9).fillColor('#000')
   doc.text('The figure', R.x, R.y)
   doc.text('represents', R.x, R.y + 11)
-  // Centre both the vertex sequence and the area line over the same span so they
-  // read as a centred block beside "The figure represents".
+  // Vertex sequence and the area figure are centred over the same span (area sits
+  // directly under "A.B.C…A"); "of land called" is right-aligned on the area line.
   doc.text(`${seq}`, R.x + 120, R.y, { width: 300, align: 'center' })
-  doc.text(`${area} of land called`, R.x + 120, R.y + 12, { width: 300, align: 'center' })
+  doc.text(area, R.x + 120, R.y + 12, { width: 300, align: 'center' })
+  doc.text('of land called', R.x + 120, R.y + 12, { width: 300, align: 'right' })
   // Designation dominates at 11pt, but must stay on ONE row: shrink to fit R.width
   // (down to a 7.5pt floor) so a long name never wraps into the "situate" line below.
   const desigText = `${designation}${parent}`

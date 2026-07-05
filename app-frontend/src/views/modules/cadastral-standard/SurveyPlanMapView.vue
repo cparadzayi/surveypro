@@ -9,29 +9,27 @@
       
       <div ref="mapContainer" class="map-canvas"></div>
 
-      <div
-        v-if="activeSideEditor"
-        class="side-editor"
-        :style="{ left: activeSideEditor.x + 'px', top: activeSideEditor.y + 'px' }"
-      >
-        <div class="side-editor-title">Side {{ activeSideEditor.side }}</div>
-        <label>Role
-          <select v-model="activeSideEditor.role">
-            <option value="contiguous">Contiguous parcel</option>
-            <option value="road">Road</option>
-            <option value="servitude">Servitude</option>
-          </select>
-        </label>
-        <label>Label
-          <input v-model="activeSideEditor.label" type="text" placeholder="e.g. STAND 86 … / Klein Road" />
-        </label>
-        <label v-if="activeSideEditor.role === 'servitude'">Width (m)
-          <input v-model.number="activeSideEditor.widthM" type="number" min="0" step="0.1" />
-        </label>
-        <div class="side-editor-actions">
-          <button type="button" @click="saveSideEditor">Save</button>
-          <button type="button" @click="clearSideEditor">Clear</button>
-          <button type="button" @click="activeSideEditor = null">Cancel</button>
+      <div v-if="activeSideEditor" class="side-modal-backdrop" @click.self="activeSideEditor = null">
+        <div class="side-modal">
+          <div class="side-modal-title">Classify side {{ activeSideEditor.side }}</div>
+          <label>Role
+            <select v-model="activeSideEditor.role">
+              <option value="contiguous">Contiguous parcel</option>
+              <option value="road">Road</option>
+              <option value="servitude">Servitude</option>
+            </select>
+          </label>
+          <label>Label
+            <input v-model="activeSideEditor.label" type="text" placeholder="e.g. STAND 86 … / Klein Road" />
+          </label>
+          <label v-if="activeSideEditor.role === 'servitude'">Width (m)
+            <input v-model.number="activeSideEditor.widthM" type="number" min="0" step="0.1" />
+          </label>
+          <div class="side-modal-actions">
+            <button type="button" class="btn-primary" @click="saveSideEditor">Save</button>
+            <button type="button" @click="clearSideEditor">Clear</button>
+            <button type="button" @click="activeSideEditor = null">Cancel</button>
+          </div>
         </div>
       </div>
 
@@ -625,7 +623,7 @@ import {
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
 import { pickDiagramSubjectId } from './diagramSubjectPick'
 import { paperSizeOptionsFor } from './paperSizeOptions'
-import { subjectSides, upsertAnnotation, removeAnnotation, type SideAnnotation, type SideRole } from './sideAnnotations'
+import { subjectSides, upsertAnnotation, removeAnnotation, annotationsForSubject, withSubjectAnnotations, hydrateAnnotationsMap, type SideAnnotation, type SideRole } from './sideAnnotations'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 
@@ -730,8 +728,9 @@ const refinedBeaconLabels = ref<Array<{
 
 // Diagram subject selection
 const selectedDiagramParcelId = ref<string | number | null>(null)
-const sideAnnotations = ref<SideAnnotation[]>([])
-const activeSideEditor = ref<{ side: string; x: number; y: number; role: SideRole; label: string; widthM: number | null } | null>(null)
+const sideAnnotationsBySubject = ref<Record<string, SideAnnotation[]>>({})
+const currentSideAnnotations = computed(() => annotationsForSubject(sideAnnotationsBySubject.value, selectedDiagramParcelId.value))
+const activeSideEditor = ref<{ side: string; role: SideRole; label: string; widthM: number | null } | null>(null)
 const selectedDiagramStand = computed(() => {
   const p = parcels.value.find((x: any) => String(x.id) === String(selectedDiagramParcelId.value))
   return p?.stand ?? null
@@ -1921,7 +1920,7 @@ function updateSubjectSidesLayer() {
     const tf = transformParcelGeometry(subj.geom)
     const ring = tf?.geometry?.coordinates?.[0] as [number, number][] | undefined
     if (ring) {
-      const roleBySide = new Map(sideAnnotations.value.map(a => [a.side, a.role]))
+      const roleBySide = new Map(currentSideAnnotations.value.map(a => [a.side, a.role]))
       for (const s of subjectSides(ring)) {
         feats.push({
           type: 'Feature',
@@ -1949,22 +1948,27 @@ function updateSubjectSidesLayer() {
     filter: ['!', ['any', ['==', ['get', 'role'], 'road'], ['==', ['get', 'role'], 'servitude']]] as any,
     paint: { 'line-color': colour, 'line-width': 4, 'line-dasharray': [2, 2] },
   })
+  // Wide transparent hit line: easy click target + hover cursor.
+  map.value.addLayer({
+    id: `${srcId}-hit`, type: 'line', source: srcId,
+    paint: { 'line-color': '#000000', 'line-opacity': 0, 'line-width': 14 },
+  })
+  map.value.on('mouseenter', `${srcId}-hit`, () => { if (map.value) map.value.getCanvas().style.cursor = 'pointer' })
+  map.value.on('mouseleave', `${srcId}-hit`, () => { if (map.value) map.value.getCanvas().style.cursor = '' })
 }
 
 function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
   if (!map.value || !isDiagramMode.value) return
   // Side classification takes priority over re-selecting the subject.
-  const sideLayers = ['diagram-subject-sides-solid', 'diagram-subject-sides-dashed']
-    .filter(id => map.value!.getLayer(id))
-  if (sideLayers.length) {
-    const sideHits = map.value.queryRenderedFeatures(e.point, { layers: sideLayers })
+  const hitLayer = 'diagram-subject-sides-hit'
+  if (map.value.getLayer(hitLayer)) {
+    const sideHits = map.value.queryRenderedFeatures(e.point, { layers: [hitLayer] })
     if (sideHits.length) {
       const side = String(sideHits[0].properties?.side ?? '')
       if (side) {
-        const cur = sideAnnotations.value.find(a => a.side === side)
+        const cur = currentSideAnnotations.value.find(a => a.side === side)
         activeSideEditor.value = {
-          side, x: e.point.x, y: e.point.y,
-          role: cur?.role ?? 'contiguous', label: cur?.label ?? '', widthM: cur?.widthM ?? null,
+          side, role: cur?.role ?? 'contiguous', label: cur?.label ?? '', widthM: cur?.widthM ?? null,
         }
         return
       }
@@ -1990,24 +1994,40 @@ function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
 
 function saveSideEditor() {
   const ed = activeSideEditor.value
-  if (!ed) return
+  if (!ed || selectedDiagramParcelId.value == null) return
   const ann: SideAnnotation = {
     side: ed.side,
     role: ed.role,
     label: ed.label?.trim() || undefined,
     widthM: ed.role === 'servitude' && ed.widthM != null ? ed.widthM : undefined,
   }
-  sideAnnotations.value = upsertAnnotation(sideAnnotations.value, ann)
+  const list = upsertAnnotation(currentSideAnnotations.value, ann)
+  sideAnnotationsBySubject.value = withSubjectAnnotations(sideAnnotationsBySubject.value, selectedDiagramParcelId.value, list)
   activeSideEditor.value = null
   updateSubjectSidesLayer()
+  persistSideAnnotations()
 }
 
 function clearSideEditor() {
   const ed = activeSideEditor.value
-  if (!ed) return
-  sideAnnotations.value = removeAnnotation(sideAnnotations.value, ed.side)
+  if (!ed || selectedDiagramParcelId.value == null) return
+  const list = removeAnnotation(currentSideAnnotations.value, ed.side)
+  sideAnnotationsBySubject.value = withSubjectAnnotations(sideAnnotationsBySubject.value, selectedDiagramParcelId.value, list)
   activeSideEditor.value = null
   updateSubjectSidesLayer()
+  persistSideAnnotations()
+}
+
+async function persistSideAnnotations() {
+  try {
+    await api.patch(`/survey-projects/${props.projectId}/workflow`, {
+      step: 'survey-plan',
+      action: 'update',
+      metadata: { sideAnnotations: sideAnnotationsBySubject.value },
+    })
+  } catch (e: any) {
+    console.warn('[SurveyPlanMap] failed to persist side annotations:', e?.message)
+  }
 }
 
 function addPointsToMap() {
@@ -3959,7 +3979,7 @@ function gatherPlanContext(): PlanPayloadContext {
     wholePortion: props.projectInfo.wholePortion || 'the whole',
     priorDiagrams: props.projectInfo.priorDiagrams || [],
     ...diagramReferenceMetadata(props.projectInfo as any),
-    sideAnnotations: sideAnnotations.value,
+    sideAnnotations: currentSideAnnotations.value,
   }
 
   let beaconLabels = generateBeaconLabelsForPDF()
@@ -4152,7 +4172,9 @@ async function generateComprehensivePDF() {
     console.log('[ComprehensivePDF] 📥 Loading workflow state from API...')
     const workflowResponse = await api.get(`/survey-projects/${props.projectId}/workflow`)
     const workflowState = workflowResponse.data.workflow_state
-    
+    sideAnnotationsBySubject.value = hydrateAnnotationsMap(workflowState?.step_data?.['survey-plan']?.sideAnnotations)
+    updateSubjectSidesLayer()
+
     // Extract data from workflow
     const adjustedCoords = workflowState?.step_data?.['calculations-part1']?.adjusted_coordinates || []
     const observations = workflowState?.step_data?.['field-book']?.observations || []
@@ -5716,7 +5738,6 @@ watch(() => config.value.planType, () => {
 
 // Reset side annotations whenever the diagram subject changes
 watch(selectedDiagramParcelId, () => {
-  sideAnnotations.value = []
   activeSideEditor.value = null
   updateSubjectSidesLayer()
 })
@@ -7421,24 +7442,31 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.side-editor {
-  position: absolute;
-  z-index: 20;
-  transform: translate(8px, 8px);
+.side-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.side-modal {
   background: #fff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  font-size: 12px;
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 260px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 180px;
+  gap: 10px;
+  font-size: 13px;
 }
-.side-editor-title { font-weight: 600; }
-.side-editor label { display: flex; flex-direction: column; gap: 2px; }
-.side-editor-actions { display: flex; gap: 6px; }
-.side-editor button { cursor: pointer; }
+.side-modal-title { font-weight: 600; font-size: 14px; }
+.side-modal label { display: flex; flex-direction: column; gap: 3px; }
+.side-modal select, .side-modal input { padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 4px; }
+.side-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.side-modal button { cursor: pointer; padding: 5px 12px; border: 1px solid #cbd5e1; border-radius: 4px; background: #f8fafc; }
+.side-modal .btn-primary { background: #2563eb; color: #fff; border-color: #2563eb; }
 
 </style>

@@ -238,8 +238,12 @@ function drawReferenceGrid(doc, layout, grid) {
   const wL = (x1 - x0) - 2 * pad
   const wM = (x2 - x1) - 2 * pad
   const wR = (x3 - x2) - 2 * pad
-  // Left column.
-  doc.text(`This diagram is annexed to No. ${grid.annexedToNo}  dated ${grid.annexedToDate}`, x0 + pad, R.y + 5, { width: wL })
+  // Left column. Deed type + number + date are filled by the SG office post-
+  // submission, so lay out blank fields for them (modelled on the middle column's
+  // "Deed of Transfer No. ...").
+  doc.text('This diagram is annexed to', x0 + pad, R.y + 5, { width: wL })
+  doc.text('Deed of ..............  No. ............', x0 + pad, R.y + 16, { width: wL })
+  doc.text('dated ..............', x0 + pad, R.y + 27, { width: wL })
   doc.text('Surveyor-General', x0 + pad, r2 + 5, { width: wL })
   // Middle column.
   doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, x1 + pad, R.y + 4, { width: wM })

@@ -238,17 +238,14 @@ function drawReferenceGrid(doc, layout, grid) {
   const wL = (x1 - x0) - 2 * pad
   const wM = (x2 - x1) - 2 * pad
   const wR = (x3 - x2) - 2 * pad
-  // Left column. The annexation reference (a Deed of Transfer, Certificate of
-  // Registered Title, etc. — with its number and date) is filled by the SG office
-  // after submission, so we print only the lead-in and leave well-spaced ruled
-  // lines. No deed type is pre-printed, as the target instrument varies.
+  // Left column. The annexation reference (Deed of Transfer, Certificate of
+  // Registered Title, etc.) is filled by the SG office after submission — we print
+  // only the lead-in and the "No." / "dated" labels (blank entries, no dots). No
+  // deed type is pre-printed, as the target instrument varies.
   doc.text('This diagram is annexed to', x0 + pad, R.y + 8, { width: wL })
-  const annexLeadW = doc.widthOfString('This diagram is annexed to ')
-  doc.save().dash(1, { space: 2 }).lineWidth(0.4).strokeColor('#000')
-  doc.moveTo(x0 + pad + annexLeadW, R.y + 15).lineTo(x1 - pad, R.y + 15).stroke()
-  doc.moveTo(x0 + pad, R.y + 33).lineTo(x1 - pad, R.y + 33).stroke()
-  doc.moveTo(x0 + pad, R.y + 51).lineTo(x1 - pad, R.y + 51).stroke()
-  doc.undash().restore()
+  const colMid = x0 + (x1 - x0) / 2
+  doc.text('No.', x0 + pad, R.y + 26)
+  doc.text('dated', colMid, R.y + 26)
   // Aligned with "Compilation" (middle) and "S.R." (right) on the bottom row.
   doc.text('Surveyor-General', x0 + pad, r3 + 5, { width: wL })
   // Middle column.

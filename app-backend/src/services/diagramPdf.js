@@ -70,9 +70,14 @@ function drawTable(doc, layout, table, loLabel) {
   // Whole CO-ORDINATES group width (spans the Y and X sub-columns).
   const coordGroupW = (layout.sgNoBox.x - 4) - (R.x + cY)
   const ctrCoord = { width: coordGroupW, align: 'center' }
-  // DIRECTIONS column spans the dividers at R.x+70 .. R.x+150; centre its contents.
+  // DIRECTIONS column spans the dividers at R.x+70 .. R.x+150. Each data row shows the
+  // side (AB/BC…, centred, no header) at the left, then the direction value right-
+  // justified; the "° ' \"" units are right-justified too.
   const cDirX = R.x + 70
   const ctrDir = { width: 80, align: 'center' }
+  const rDir = { width: 80, align: 'right' }      // units header, aligned to the column's right edge
+  const dirSide = { width: 22, align: 'center' }   // side label at the left of DIRECTIONS (no header)
+  const dirVal = { width: 56, align: 'right' }     // direction value, right-justified (ends at R.x+150)
   // Vertex-letter column spans the dividers at R.x+150 .. R.x+193; centre its letters.
   const cLetX = R.x + 150
   const ctrLet = { width: 43, align: 'center' }
@@ -96,7 +101,7 @@ function drawTable(doc, layout, table, loLabel) {
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
   // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica and render as
   // garbage; °, ' and " are all in the font.
-  doc.text('°  \'  "', cDirX, R.y + 19, ctrDir)
+  doc.text('°  \'  "', cDirX, R.y + 19, rDir)
   // Coordinate sub-headers: Y  Metres  X.
   doc.text('Y', R.x + cY, R.y + 19, ctrY)
   doc.text('Metres', R.x + cY, R.y + 19, ctrCoord)
@@ -113,7 +118,8 @@ function drawTable(doc, layout, table, loLabel) {
     if (sideRows[i]) {
       doc.text(sideRows[i].side, R.x + cSide, ry, ctrSide)
       doc.text(sideRows[i].metres, cMetresX, ry, ctrMetres)
-      doc.text(sideRows[i].direction, cDirX, ry, ctrDir)
+      doc.text(sideRows[i].side, cDirX, ry, dirSide)               // side before the direction (no header)
+      doc.text(sideRows[i].direction, cDirX + 24, ry, dirVal)
     }
     if (coordinateRows[i]) {
       doc.text(coordinateRows[i].letter, cLetX, ry, ctrLet)
@@ -363,10 +369,10 @@ function drawReferenceGrid(doc, layout, grid) {
   const W = R.width, H = R.height
   const B = layout.border
   const bottom = B.y + B.height
-  // Left column takes 40%; the remaining 60% runs to the right neat-line (xR) and
+  // Left column takes ~33%; the remaining ~67% runs to the right neat-line (xR) and
   // holds a parent | original-title band on top, then the full-width File|G.P.|S.R.
   // and Compilation rows.
-  const x0 = R.x, x1 = R.x + W * 0.40, xR = B.x + B.width
+  const x0 = R.x, x1 = R.x + W / 3, xR = B.x + B.width
   const x2 = x1 + (xR - x1) / 2                              // parent | original-title (top band)
   const t1 = x1 + (xR - x1) / 3, t2 = x1 + 2 * (xR - x1) / 3 // File | G.P. | S.R. thirds
   const r1 = R.y + H * 0.25, r2 = R.y + H * 0.50, r3 = R.y + H * 0.75

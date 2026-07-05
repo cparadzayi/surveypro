@@ -75,9 +75,12 @@ function drawTable(doc, layout, table, loLabel) {
   // justified; the "° ' \"" units are right-justified too.
   const cDirX = R.x + 70
   const ctrDir = { width: 80, align: 'center' }
-  const rDir = { width: 80, align: 'right' }      // units header, aligned to the column's right edge
-  const dirSide = { width: 22, align: 'center' }   // side label at the left of DIRECTIONS (no header)
-  const dirVal = { width: 56, align: 'right' }     // direction value, right-justified (ends at R.x+150)
+  // A divider (dirSplitX) separates the side labels (left) from the direction values.
+  // Units + values are right-justified but padded 3pt off the column's right divider.
+  const dirSplitX = cDirX + 24
+  const rDir = { width: 77, align: 'right' }       // units header, 3pt clear of the right divider
+  const dirSide = { width: 22, align: 'center' }    // side label at the left of DIRECTIONS (no header)
+  const dirVal = { width: 50, align: 'right' }      // direction value, right-justified, 3pt clear right
   // Vertex-letter column spans the dividers at R.x+150 .. R.x+193; centre its letters.
   const cLetX = R.x + 150
   const ctrLet = { width: 43, align: 'center' }
@@ -119,7 +122,7 @@ function drawTable(doc, layout, table, loLabel) {
       doc.text(sideRows[i].side, R.x + cSide, ry, ctrSide)
       doc.text(sideRows[i].metres, cMetresX, ry, ctrMetres)
       doc.text(sideRows[i].side, cDirX, ry, dirSide)               // side before the direction (no header)
-      doc.text(sideRows[i].direction, cDirX + 24, ry, dirVal)
+      doc.text(sideRows[i].direction, dirSplitX + 3, ry, dirVal)
     }
     if (coordinateRows[i]) {
       doc.text(coordinateRows[i].letter, cLetX, ry, ctrLet)
@@ -141,6 +144,9 @@ function drawTable(doc, layout, table, loLabel) {
   // Y|X divider — only through the value rows: the "Metres" coords sub-header
   // spans both Y and X, so the divider must not cross the header.
   doc.moveTo(R.x + cX, hSep).lineTo(R.x + cX, boxB).stroke()
+  // Side-label | direction-value divider inside DIRECTIONS — through the data rows only
+  // (below hSep) so it does not cut the centred "DIRECTIONS" header.
+  doc.moveTo(dirSplitX, hSep).lineTo(dirSplitX, boxB).stroke()
   doc.moveTo(B.x, hSep).lineTo(B.x + B.width, hSep).stroke()
   doc.restore()
 }

@@ -8,14 +8,22 @@ import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLa
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
+import { edgeStrip } from './diagram/edgeStrip.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
 import {
   resolveLoSystem, snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
 
 // SI 727 figure styling.
+const PT_PER_MM = 72 / 25.4
 const FIGURE_GREEN = '#2f9e4f'                 // uniform green inner-border tint (from the sample)
-const INNER_BAND_PT = 1.3 * (72 / 25.4)        // ≈ 3.69 pt (~1.3 mm), page-relative band width
+const INNER_BAND_PT = 1.3 * PT_PER_MM          // ≈ 3.69 pt (~1.3 mm), page-relative band width
+// Adjoining features (SI 727): roads burnt-sienna, servitudes blue, contiguous dashed.
+const BURNT_SIENNA = '#B7410E'
+const SERVITUDE_BLUE = '#1F6FB2'
+const ROAD_STRIP_PT = 1.3 * PT_PER_MM          // nominal, like the inner band
+const STRIP_FILL_OPACITY = 0.6                 // colour must not obscure detail
+const CONTIG_STUB_PT = 6 * PT_PER_MM
 
 function docToBuffer(doc) {
   const chunks = []
@@ -147,6 +155,81 @@ function drawBeaconDescription(doc, layout, groups) {
     }
   }
   doc.restore()
+}
+
+/**
+ * Draw adjoining features from metadata.sideAnnotations: burnt-sienna road strips,
+ * blue servitude strips (of a defined ground width), and dashed contiguous stubs,
+ * each labelled outside the edge. Strips sit OUTSIDE the subject edge (via edgeStrip).
+ */
+function drawAdjoiningFeatures(doc, ctx, logger) {
+  const {
+    annotations, geometry, subjPt, subjCentroid, subjSegs, neighbourSegs,
+    denom, labelObstacles, boxToSegs,
+  } = ctx
+  if (!Array.isArray(annotations) || annotations.length === 0) return
+  const n = geometry.vertices.length
+  const ptPerGroundM = PT_PER_MM * 1000 / denom
+  const cen = [subjCentroid.px, subjCentroid.py]
+
+  for (const ann of annotations) {
+    if (!ann || !ann.side || !ann.role) continue
+    // Resolve the side letters (e.g. 'AB') to a subject edge index.
+    let i = -1
+    for (let k = 0; k < n; k++) {
+      const s = geometry.vertices[k].letter + geometry.vertices[(k + 1) % n].letter
+      if (s === ann.side) { i = k; break }
+    }
+    if (i < 0) { logger?.warn?.(`[Diagram] adjoining: side ${ann.side} not found`); continue }
+
+    const p1 = subjPt[i]
+    const p2 = subjPt[(i + 1) % n]
+    const a = [p1.px, p1.py]
+    const b = [p2.px, p2.py]
+    const mid = { px: (p1.px + p2.px) / 2, py: (p1.py + p2.py) / 2 }
+
+    if (ann.role === 'road' || ann.role === 'servitude') {
+      let widthPt = ROAD_STRIP_PT
+      if (ann.role === 'servitude') {
+        if (!(ann.widthM > 0)) {
+          logger?.warn?.(`[Diagram] servitude ${ann.side} has no widthM; drawing label only`)
+          widthPt = 0
+        } else {
+          widthPt = ann.widthM * ptPerGroundM
+        }
+      }
+      if (widthPt > 0) {
+        const q = edgeStrip(a, b, widthPt, cen)
+        doc.save()
+          .fillColor(ann.role === 'road' ? BURNT_SIENNA : SERVITUDE_BLUE)
+          .fillOpacity(STRIP_FILL_OPACITY)
+        doc.moveTo(q[0][0], q[0][1])
+        for (let k = 1; k < q.length; k++) doc.lineTo(q[k][0], q[k][1])
+        doc.closePath().fill()
+        doc.restore()
+      }
+    } else if (ann.role === 'contiguous') {
+      // Short dashed outward stubs at each endpoint to hint the neighbour continues.
+      const st = edgeStrip(a, b, CONTIG_STUB_PT, cen) // st[3]=a+out, st[2]=b+out
+      doc.save().dash(3, { space: 2 }).lineWidth(0.6).strokeColor('#000000')
+      doc.moveTo(a[0], a[1]).lineTo(st[3][0], st[3][1]).stroke()
+      doc.moveTo(b[0], b[1]).lineTo(st[2][0], st[2][1]).stroke()
+      doc.undash().restore()
+    }
+
+    // Label the feature outside the edge, avoiding drawn lines and placed labels.
+    if (ann.label) {
+      doc.save().font('Helvetica').fontSize(7).fillColor('#000000')
+      const labelW = doc.widthOfString(ann.label)
+      const pos = placeVertexLabel(mid, subjCentroid, {
+        beaconR: 0, gap: 2, labelW, labelH: 7,
+        segments: subjSegs.concat(neighbourSegs, labelObstacles),
+      })
+      doc.text(ann.label, pos.x, pos.y)
+      labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
+      doc.restore()
+    }
+  }
 }
 
 function drawNorthArrow(doc, layout) {
@@ -391,6 +474,13 @@ export async function generateDiagramPDF(options, logger) {
     const c3 = { px: b.x + b.w, py: b.y + b.h }, c4 = { px: b.x, py: b.y + b.h }
     return [[c1, c2], [c2, c3], [c3, c4], [c4, c1], [c1, c3], [c2, c4]]
   }
+
+  // Adjoining features (roads/servitudes/contiguous) from metadata.sideAnnotations —
+  // drawn outside the figure, before labels so their designations become obstacles.
+  drawAdjoiningFeatures(doc, {
+    annotations: metadata.sideAnnotations,
+    geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs,
+  }, logger)
 
   geometry.vertices.forEach((v, i) => {
     const p = subjPt[i]

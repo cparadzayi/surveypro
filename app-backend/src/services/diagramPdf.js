@@ -334,7 +334,17 @@ function drawStatement(doc, layout, geometry, metadata) {
   // read as a centred block beside "The figure represents".
   doc.text(`${seq}`, R.x + 120, R.y, { width: 300, align: 'center' })
   doc.text(`${area} of land called`, R.x + 120, R.y + 12, { width: 300, align: 'center' })
-  doc.font('Helvetica-Bold').fontSize(11).text(`${designation}${parent}`, R.x, R.y + 30, { width: R.width })
+  // Designation dominates at 11pt, but must stay on ONE row: shrink to fit R.width
+  // (down to a 7.5pt floor) so a long name never wraps into the "situate" line below.
+  const desigText = `${designation}${parent}`
+  doc.font('Helvetica-Bold')
+  let desigSize = 11
+  doc.fontSize(desigSize)
+  while (desigSize > 7.5 && doc.widthOfString(desigText) > R.width) {
+    desigSize -= 0.5
+    doc.fontSize(desigSize)
+  }
+  doc.text(desigText, R.x, R.y + 30, { width: R.width, lineBreak: false })
   doc.font('Helvetica').fontSize(8).text(
     `situate in the district of ${metadata.district ?? ''}.`, R.x, R.y + 44)
   // Extra row above "Surveyed … by me" (below "situate in the district of …") for

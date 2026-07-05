@@ -238,13 +238,19 @@ function drawReferenceGrid(doc, layout, grid) {
   const wL = (x1 - x0) - 2 * pad
   const wM = (x2 - x1) - 2 * pad
   const wR = (x3 - x2) - 2 * pad
-  // Left column. Deed type + number + date are filled by the SG office post-
-  // submission, so lay out blank fields for them (modelled on the middle column's
-  // "Deed of Transfer No. ...").
-  doc.text('This diagram is annexed to', x0 + pad, R.y + 5, { width: wL })
-  doc.text('Deed of ..............  No. ............', x0 + pad, R.y + 16, { width: wL })
-  doc.text('dated ..............', x0 + pad, R.y + 27, { width: wL })
-  doc.text('Surveyor-General', x0 + pad, r2 + 5, { width: wL })
+  // Left column. The annexation reference (a Deed of Transfer, Certificate of
+  // Registered Title, etc. — with its number and date) is filled by the SG office
+  // after submission, so we print only the lead-in and leave well-spaced ruled
+  // lines. No deed type is pre-printed, as the target instrument varies.
+  doc.text('This diagram is annexed to', x0 + pad, R.y + 8, { width: wL })
+  const annexLeadW = doc.widthOfString('This diagram is annexed to ')
+  doc.save().dash(1, { space: 2 }).lineWidth(0.4).strokeColor('#000')
+  doc.moveTo(x0 + pad + annexLeadW, R.y + 15).lineTo(x1 - pad, R.y + 15).stroke()
+  doc.moveTo(x0 + pad, R.y + 33).lineTo(x1 - pad, R.y + 33).stroke()
+  doc.moveTo(x0 + pad, R.y + 51).lineTo(x1 - pad, R.y + 51).stroke()
+  doc.undash().restore()
+  // Aligned with "Compilation" (middle) and "S.R." (right) on the bottom row.
+  doc.text('Surveyor-General', x0 + pad, r3 + 5, { width: wL })
   // Middle column.
   doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, x1 + pad, R.y + 4, { width: wM })
   doc.text(`Deed of Transfer No. ${grid.deedOfTransferNo}`, x1 + pad, r1 + 4, { width: wM })

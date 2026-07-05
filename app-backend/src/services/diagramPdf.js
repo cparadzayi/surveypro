@@ -171,6 +171,9 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
   const n = geometry.vertices.length
   const ptPerGroundM = PT_PER_MM * 1000 / denom
   const cen = [subjCentroid.px, subjCentroid.py]
+  // Road/servitude names sit beyond the vertex-letter band so they clear the letters
+  // (which stay snug to their beacons). ~beaconR + gap + letter height ≈ the band.
+  const vertexBandPt = beaconRadiusPt(denom) + 14
 
   for (const ann of annotations) {
     if (!ann || !ann.side || !ann.role) continue
@@ -230,20 +233,13 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         if (perpX * (subjCentroid.px - mid.px) + perpY * (subjCentroid.py - mid.py) > 0) { perpX = -perpX; perpY = -perpY }
         let angleDeg = Math.atan2(ey, ex) * 180 / Math.PI
         if (angleDeg > 90 || angleDeg < -90) angleDeg += 180 // keep the text upright
-        // Sit just outside the strip (roads use the nominal width; servitudes their own).
+        // Push the name out past the strip AND the vertex-letter band, so it clears
+        // the figure vertex labels (which stay close to their beacons).
         const stripPt = ann.role === 'servitude' && ann.widthM > 0 ? ann.widthM * ptPerGroundM : ROAD_STRIP_PT
-        const off = stripPt + 5
+        const off = stripPt + vertexBandPt
         const lx = mid.px + perpX * off, ly = mid.py + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })
         doc.text(ann.label, lx - labelW / 2, ly - 3.5, { lineBreak: false })
-        // Register the ROTATED label box as an obstacle so the vertex letters
-        // (placed afterwards) don't land on top of e.g. "Harare Road".
-        const th = angleDeg * Math.PI / 180
-        const cos = Math.cos(th), sin = Math.sin(th)
-        const hw = labelW / 2, hh = 4
-        const corner = (ox, oy) => ({ px: lx + ox * cos - oy * sin, py: ly + ox * sin + oy * cos })
-        const c1 = corner(-hw, -hh), c2 = corner(hw, -hh), c3 = corner(hw, hh), c4 = corner(-hw, hh)
-        labelObstacles.push([c1, c2], [c2, c3], [c3, c4], [c4, c1], [c1, c3], [c2, c4])
       } else {
         const pos = placeVertexLabel(mid, subjCentroid, {
           beaconR: 0, gap: 2, labelW, labelH: 7,

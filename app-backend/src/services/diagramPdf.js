@@ -10,6 +10,7 @@ import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neig
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
+import { formatSI } from './diagram/numberFormat.js'
 import {
   resolveLoSystem, snapScaleBarSegment,
 } from '../../../app-shared/block-definitions.js'
@@ -106,7 +107,7 @@ function drawTable(doc, layout, table, loLabel) {
   let ry = R.y + 30
   doc.text(constRow.y, R.x + cY, ry, ctrY)
   doc.text(constRow.x, R.x + cX, ry, ctrX)
-  doc.text('Const.', cSg, ry)
+  doc.text('Constants', cSg, ry)
   for (let i = 0; i < rows; i++) {
     ry += 11
     if (sideRows[i]) {
@@ -140,7 +141,7 @@ function drawTable(doc, layout, table, loLabel) {
 
 function drawBeaconDescription(doc, layout, groups) {
   const R = layout.beaconDesc
-  doc.save().font('Helvetica-Bold').fontSize(7).text('Beacon description', R.x, R.y)
+  doc.save().font('Helvetica-Bold').fontSize(7).text('Description of Beacons', R.x, R.y)
   doc.font('Helvetica').fontSize(7)
   if (groups.length === 0) {
     doc.text('All          :', R.x, R.y + 11)
@@ -224,7 +225,10 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
     // servitude/contiguous keep the horizontal outward label (avoiding drawn lines).
     if (ann.label) {
       doc.save().font('Helvetica').fontSize(7).fillColor('#000000')
-      const labelW = doc.widthOfString(ann.label)
+      const labelText = ann.role === 'road' && ann.widthM > 0
+        ? `${ann.label} ${formatSI(ann.widthM, 2)}m`
+        : ann.label
+      const labelW = doc.widthOfString(labelText)
       if (ann.role === 'road' || ann.role === 'servitude') {
         const ex = p2.px - p1.px, ey = p2.py - p1.py
         const len = Math.hypot(ex, ey) || 1
@@ -239,13 +243,13 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         const off = stripPt + vertexBandPt
         const lx = mid.px + perpX * off, ly = mid.py + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })
-        doc.text(ann.label, lx - labelW / 2, ly - 3.5, { lineBreak: false })
+        doc.text(labelText, lx - labelW / 2, ly - 3.5, { lineBreak: false })
       } else {
         const pos = placeVertexLabel(mid, subjCentroid, {
           beaconR: 0, gap: 2, labelW, labelH: 7,
           segments: subjSegs.concat(neighbourSegs, labelObstacles),
         })
-        doc.text(ann.label, pos.x, pos.y)
+        doc.text(labelText, pos.x, pos.y)
         labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
       }
       doc.restore()

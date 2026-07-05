@@ -9,6 +9,31 @@
       
       <div ref="mapContainer" class="map-canvas"></div>
 
+      <div
+        v-if="activeSideEditor"
+        class="side-editor"
+        :style="{ left: activeSideEditor.x + 'px', top: activeSideEditor.y + 'px' }"
+      >
+        <div class="side-editor-title">Side {{ activeSideEditor.side }}</div>
+        <label>Role
+          <select v-model="activeSideEditor.role">
+            <option value="contiguous">Contiguous parcel</option>
+            <option value="road">Road</option>
+            <option value="servitude">Servitude</option>
+          </select>
+        </label>
+        <label>Label
+          <input v-model="activeSideEditor.label" type="text" placeholder="e.g. STAND 86 … / Klein Road" />
+        </label>
+        <label v-if="activeSideEditor.role === 'servitude'">Width (m)
+          <input v-model.number="activeSideEditor.widthM" type="number" min="0" step="0.1" />
+        </label>
+        <div class="side-editor-actions">
+          <button type="button" @click="saveSideEditor">Save</button>
+          <button type="button" @click="clearSideEditor">Clear</button>
+          <button type="button" @click="activeSideEditor = null">Cancel</button>
+        </div>
+      </div>
 
 
 
@@ -600,6 +625,7 @@ import {
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
 import { pickDiagramSubjectId } from './diagramSubjectPick'
 import { paperSizeOptionsFor } from './paperSizeOptions'
+import { subjectSides, upsertAnnotation, removeAnnotation, type SideAnnotation, type SideRole } from './sideAnnotations'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 
@@ -704,6 +730,8 @@ const refinedBeaconLabels = ref<Array<{
 
 // Diagram subject selection
 const selectedDiagramParcelId = ref<string | number | null>(null)
+const sideAnnotations = ref<SideAnnotation[]>([])
+const activeSideEditor = ref<{ side: string; x: number; y: number; role: SideRole; label: string; widthM: number | null } | null>(null)
 const selectedDiagramStand = computed(() => {
   const p = parcels.value.find((x: any) => String(x.id) === String(selectedDiagramParcelId.value))
   return p?.stand ?? null
@@ -1722,6 +1750,7 @@ function addParcelsToMap() {
   map.value!.off('click', onMapClickSelectParcel)
   map.value!.on('click', onMapClickSelectParcel)
   applyDiagramHighlight(selectedDiagramParcelId.value)
+  updateSubjectSidesLayer()
 
   // ⭐ PHASE 3 (SI 727): Use ALL validated labels (no overlap allowed)
   const edgeAnnotationFeatures = validatedLabels.value.edges.map(edge => ({
@@ -1883,8 +1912,64 @@ function applyDiagramHighlight(selectedId: string | number | null) {
   })
 }
 
+function updateSubjectSidesLayer() {
+  if (!map.value) return
+  const srcId = 'diagram-subject-sides'
+  const feats: any[] = []
+  const subj = parcels.value.find((p: any) => String(p.id) === String(selectedDiagramParcelId.value))
+  if (isDiagramMode.value && subj?.geom) {
+    const tf = transformParcelGeometry(subj.geom)
+    const ring = tf?.geometry?.coordinates?.[0] as [number, number][] | undefined
+    if (ring) {
+      const roleBySide = new Map(sideAnnotations.value.map(a => [a.side, a.role]))
+      for (const s of subjectSides(ring)) {
+        feats.push({
+          type: 'Feature',
+          properties: { side: s.side, role: roleBySide.get(s.side) ?? '' },
+          geometry: { type: 'LineString', coordinates: [s.a, s.b] },
+        })
+      }
+    }
+  }
+  const data = { type: 'FeatureCollection', features: feats } as any
+  const existing = map.value.getSource(srcId) as any
+  if (existing) { existing.setData(data); return }
+  map.value.addSource(srcId, { type: 'geojson', data })
+  const colour = ['match', ['get', 'role'], 'road', '#B7410E', 'servitude', '#1F6FB2', 'contiguous', '#000000', '#9aa0a6'] as any
+  // Solid layer for road/servitude.
+  map.value.addLayer({
+    id: `${srcId}-solid`, type: 'line', source: srcId,
+    filter: ['any', ['==', ['get', 'role'], 'road'], ['==', ['get', 'role'], 'servitude']] as any,
+    paint: { 'line-color': colour, 'line-width': 4 },
+  })
+  // Dashed layer for contiguous + unannotated (dasharray is not data-driven, so a
+  // separate fixed-dash layer).
+  map.value.addLayer({
+    id: `${srcId}-dashed`, type: 'line', source: srcId,
+    filter: ['!', ['any', ['==', ['get', 'role'], 'road'], ['==', ['get', 'role'], 'servitude']]] as any,
+    paint: { 'line-color': colour, 'line-width': 4, 'line-dasharray': [2, 2] },
+  })
+}
+
 function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
   if (!map.value || !isDiagramMode.value) return
+  // Side classification takes priority over re-selecting the subject.
+  const sideLayers = ['diagram-subject-sides-solid', 'diagram-subject-sides-dashed']
+    .filter(id => map.value!.getLayer(id))
+  if (sideLayers.length) {
+    const sideHits = map.value.queryRenderedFeatures(e.point, { layers: sideLayers })
+    if (sideHits.length) {
+      const side = String(sideHits[0].properties?.side ?? '')
+      if (side) {
+        const cur = sideAnnotations.value.find(a => a.side === side)
+        activeSideEditor.value = {
+          side, x: e.point.x, y: e.point.y,
+          role: cur?.role ?? 'contiguous', label: cur?.label ?? '', widthM: cur?.widthM ?? null,
+        }
+        return
+      }
+    }
+  }
   const outsideFigureId = getOutsideFigureParcel()?.id ?? null
   const fillLayers = parcels.value
     .filter((p: any) => outsideFigureId == null || p.id !== outsideFigureId) // never pick the Outside Figure
@@ -1901,6 +1986,28 @@ function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
   if (picked == null) return
   selectedDiagramParcelId.value = picked
   applyDiagramHighlight(selectedDiagramParcelId.value)
+}
+
+function saveSideEditor() {
+  const ed = activeSideEditor.value
+  if (!ed) return
+  const ann: SideAnnotation = {
+    side: ed.side,
+    role: ed.role,
+    label: ed.label?.trim() || undefined,
+    widthM: ed.role === 'servitude' && ed.widthM != null ? ed.widthM : undefined,
+  }
+  sideAnnotations.value = upsertAnnotation(sideAnnotations.value, ann)
+  activeSideEditor.value = null
+  updateSubjectSidesLayer()
+}
+
+function clearSideEditor() {
+  const ed = activeSideEditor.value
+  if (!ed) return
+  sideAnnotations.value = removeAnnotation(sideAnnotations.value, ed.side)
+  activeSideEditor.value = null
+  updateSubjectSidesLayer()
 }
 
 function addPointsToMap() {
@@ -3852,6 +3959,7 @@ function gatherPlanContext(): PlanPayloadContext {
     wholePortion: props.projectInfo.wholePortion || 'the whole',
     priorDiagrams: props.projectInfo.priorDiagrams || [],
     ...diagramReferenceMetadata(props.projectInfo as any),
+    sideAnnotations: sideAnnotations.value,
   }
 
   let beaconLabels = generateBeaconLabelsForPDF()
@@ -5606,6 +5714,13 @@ watch(() => config.value.planType, () => {
   applyDiagramHighlight(selectedDiagramParcelId.value)
 })
 
+// Reset side annotations whenever the diagram subject changes
+watch(selectedDiagramParcelId, () => {
+  sideAnnotations.value = []
+  activeSideEditor.value = null
+  updateSubjectSidesLayer()
+})
+
 // Keep the paper size valid for the plan type: Diagram → A4/A3; others → auto/ISO.
 watch(() => config.value.planType, (pt) => {
   if (pt === 'diagram') {
@@ -7305,5 +7420,25 @@ onUnmounted(() => {
   height: 14px;
   cursor: pointer;
 }
+
+.side-editor {
+  position: absolute;
+  z-index: 20;
+  transform: translate(8px, 8px);
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+}
+.side-editor-title { font-weight: 600; }
+.side-editor label { display: flex; flex-direction: column; gap: 2px; }
+.side-editor-actions { display: flex; gap: 6px; }
+.side-editor button { cursor: pointer; }
 
 </style>

@@ -1,4 +1,4 @@
-import { buildPlanPayload, beaconsForParcel, composePlanBaseName, validateGenerateRequest, type PlanPayloadContext } from '../planPayload'
+import { buildPlanPayload, beaconsForParcel, composePlanBaseName, resolveSubjectDesignation, validateGenerateRequest, type PlanPayloadContext } from '../planPayload'
 
 const parcelA: GeoJSON.Feature = {
   type: 'Feature',
@@ -80,6 +80,24 @@ describe('composePlanBaseName', () => {
   })
   it('falls back to projectId when designation is blank', () => {
     expect(composePlanBaseName('working-plan', '   ', 7)).toBe('working-plan-7')
+  })
+})
+
+describe('resolveSubjectDesignation', () => {
+  it('builds STAND <n> <locality> from a bare stand + project designation', () => {
+    expect(resolveSubjectDesignation('404', '404', 'STANDS 403-405 BRACKENHURST TOWNSHIP'))
+      .toBe('STAND 404 BRACKENHURST TOWNSHIP')
+  })
+  it('uses the parcel stand when the name is empty', () => {
+    expect(resolveSubjectDesignation('', 405, 'STANDS 403-405 BRACKENHURST TOWNSHIP'))
+      .toBe('STAND 405 BRACKENHURST TOWNSHIP')
+  })
+  it('keeps an already-full (lettered) designation as-is', () => {
+    expect(resolveSubjectDesignation('STAND 404 BRACKENHURST TOWNSHIP', '404', 'STANDS 403-405 BRACKENHURST TOWNSHIP'))
+      .toBe('STAND 404 BRACKENHURST TOWNSHIP')
+  })
+  it('falls back to STAND <n> when the project locality cannot be parsed', () => {
+    expect(resolveSubjectDesignation('404', '404', '')).toBe('STAND 404')
   })
 })
 

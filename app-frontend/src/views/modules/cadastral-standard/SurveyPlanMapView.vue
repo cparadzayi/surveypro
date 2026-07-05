@@ -594,7 +594,7 @@ import { planTypeOutputSubdir } from '@/utils/project-directory'
 import { saveWithOverwritePrompt } from '@/services/workflowProductStorage'
 import { getPlanTypeMeta } from './planTypes'
 import {
-  buildPlanPayload, composePlanBaseName, validateGenerateRequest,
+  buildPlanPayload, composePlanBaseName, resolveSubjectDesignation, validateGenerateRequest,
   type PlanPayloadContext, type PlanDocumentSet,
 } from './planPayload'
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
@@ -3985,7 +3985,14 @@ async function generatePlanDocuments() {
       }
     }
 
-    const baseName = composePlanBaseName(config.value.planType, props.projectInfo.designation, props.projectId)
+    // A diagram is for ONE subject parcel — name the file after that parcel
+    // (e.g. "STAND 404 …"), not the whole-project designation, so each parcel's
+    // diagram is a distinct file. Whole-set plans keep the project designation.
+    const subjectParcel = parcels.value.find((x: any) => String(x.id) === String(selectedDiagramParcelId.value))
+    const planDesignation = isDiagramMode.value
+      ? resolveSubjectDesignation(subjectParcel?.designation, subjectParcel?.stand, props.projectInfo.designation)
+      : props.projectInfo.designation
+    const baseName = composePlanBaseName(config.value.planType, planDesignation, props.projectId)
     const workingDirectory = (props.projectInfo as any).workingDirectory
     if (!workingDirectory) {
       alert('Set the project working directory (Project Setup) before generating plans.')

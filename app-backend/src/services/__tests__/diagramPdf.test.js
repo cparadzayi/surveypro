@@ -83,4 +83,27 @@ describe('generateDiagramPDF', () => {
     expect(r.pdfBuffer.slice(0, 5).toString()).toBe('%PDF-')
     expect(r.pdfBuffer.length).toBeGreaterThan(2000)
   })
+
+  test('renders adjoining-feature annotations (road/servitude/contiguous), skipping unmatched sides', async () => {
+    const withAdjoining = {
+      ...options,
+      metadata: {
+        ...options.metadata,
+        sideAnnotations: [
+          { side: 'AB', role: 'road', label: 'Klein Road' },
+          { side: 'BC', role: 'servitude', label: 'Water servitude', widthM: 3 },
+          { side: 'CD', role: 'contiguous', label: 'STAND 303 BRACKENHURST' },
+          { side: 'ZZ', role: 'road', label: 'nowhere' }, // no such edge → skipped, no throw
+        ],
+      },
+    }
+    const r = await generateDiagramPDF(withAdjoining, logger)
+    expect(r.pdfBuffer.slice(0, 5).toString()).toBe('%PDF-')
+    expect(r.pdfBuffer.length).toBeGreaterThan(2000)
+  })
+
+  test('is unchanged when sideAnnotations is absent (backward compatible)', async () => {
+    const r = await generateDiagramPDF(options, logger)
+    expect(r.pdfBuffer.slice(0, 5).toString()).toBe('%PDF-')
+  })
 })

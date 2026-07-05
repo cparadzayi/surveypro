@@ -50,7 +50,7 @@ function drawTable(doc, layout, table, loLabel) {
   // Fixed column x-offsets from R.x. The beacon "Const." names live in the
   // rightmost DIAGRAM S.G. No. column (matches the SG diagram samples), so there
   // is no separate Const. column.
-  const cSide = 0, cMetres = 36, cDir = 76, cLetter = 158, cY = 198, cX = 260
+  const cSide = 0, cDir = 76, cLetter = 158, cY = 198, cX = 260
   const cSg = layout.sgNoBox.x + 2 // absolute x of the rightmost (SG No.) column
   const rows = Math.max(coordinateRows.length, sideRows.length)
   // Y / X sub-column widths, used to centre the coordinate figures in their cells.
@@ -70,16 +70,20 @@ function drawTable(doc, layout, table, loLabel) {
   // SIDES side-label sub-column: centre AB/BC/CD/DA in a fixed narrow band (kept
   // independent of cMetres so the divider can sit clear of the "SIDES" label).
   const ctrSide = { width: 30, align: 'center' }
+  // METRES (distances) sub-column spans the dividers at R.x+32 .. R.x+70; it is a
+  // top-row header (peer of SIDES/DIRECTIONS), centred, with centred values.
+  const cMetresX = R.x + 32
+  const ctrMetres = { width: 38, align: 'center' }
 
   doc.save().font('Helvetica-Bold').fontSize(7).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y, ctrSide)
+  doc.text('METRES', cMetresX, R.y, ctrMetres)
   doc.text('DIRECTIONS', cDirX, R.y, ctrDir)
   doc.text('CO-ORDINATES', R.x + cY, R.y, ctrCoord) // centred over Lo NN
   doc.text('DIAGRAM S.G. No.', cSg, R.y)
   doc.font('Helvetica').fontSize(6.5)
   // 'Lo NN' heads the CO-ORDINATES group, between CO-ORDINATES and the Y/X row.
   doc.text(loLabel, R.x + cY, R.y + 10, ctrCoord)
-  doc.text('Metres', R.x + cMetres, R.y + 19) // sides: over the distances
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
   // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica and render as
   // garbage; °, ' and " are all in the font.
@@ -99,7 +103,7 @@ function drawTable(doc, layout, table, loLabel) {
     ry += 11
     if (sideRows[i]) {
       doc.text(sideRows[i].side, R.x + cSide, ry, ctrSide)
-      doc.text(sideRows[i].metres, R.x + cMetres, ry)
+      doc.text(sideRows[i].metres, cMetresX, ry, ctrMetres)
       doc.text(sideRows[i].direction, cDirX, ry, ctrDir)
     }
     if (coordinateRows[i]) {

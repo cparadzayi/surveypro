@@ -155,9 +155,10 @@ function drawApprovedBox(doc, layout) {
   // No box outline; contents centred within the approval region.
   const ctr = { width: R.width, align: 'center' }
   doc.save().font('Helvetica').fontSize(7).fillColor('#000')
-  doc.text('Approved', R.x, R.y + 6, ctr)
-  doc.text('for Surveyor-General', R.x, R.y + 22, ctr)
-  doc.text('Date ....................', R.x, R.y + 34, ctr)
+  // Wider gaps leave room to sign above "for Surveyor-General" and to enter the date.
+  doc.text('Approved', R.x, R.y + 5, ctr)
+  doc.text('for Surveyor-General', R.x, R.y + 31, ctr)
+  doc.text('Date ....................', R.x, R.y + 55, ctr)
   doc.restore()
 }
 

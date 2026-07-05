@@ -236,6 +236,14 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         const lx = mid.px + perpX * off, ly = mid.py + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })
         doc.text(ann.label, lx - labelW / 2, ly - 3.5, { lineBreak: false })
+        // Register the ROTATED label box as an obstacle so the vertex letters
+        // (placed afterwards) don't land on top of e.g. "Harare Road".
+        const th = angleDeg * Math.PI / 180
+        const cos = Math.cos(th), sin = Math.sin(th)
+        const hw = labelW / 2, hh = 4
+        const corner = (ox, oy) => ({ px: lx + ox * cos - oy * sin, py: ly + ox * sin + oy * cos })
+        const c1 = corner(-hw, -hh), c2 = corner(hw, -hh), c3 = corner(hw, hh), c4 = corner(-hw, hh)
+        labelObstacles.push([c1, c2], [c2, c3], [c3, c4], [c4, c1], [c1, c3], [c2, c4])
       } else {
         const pos = placeVertexLabel(mid, subjCentroid, {
           beaconR: 0, gap: 2, labelW, labelH: 7,

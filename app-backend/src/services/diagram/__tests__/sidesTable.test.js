@@ -33,25 +33,25 @@ describe('toDMS', () => {
 })
 
 describe('formatDiagramArea', () => {
-  test('below 1 hectare: whole square metres with unit', () => {
-    expect(formatDiagramArea(4047)).toBe('4047 square metres')
+  test('below 1 hectare: whole square metres, space-grouped, with unit', () => {
+    expect(formatDiagramArea(4047)).toBe('4 047 square metres')
   })
   test("below 1 hectare uses banker's rounding on the whole metre", () => {
-    expect(formatDiagramArea(4046.5)).toBe('4046 square metres') // 4046 is even
+    expect(formatDiagramArea(4046.5)).toBe('4 046 square metres') // 4046 is even
   })
-  test('1 hectare or more: hectares to 4 decimals with unit', () => {
-    expect(formatDiagramArea(12345)).toBe('1.2345 hectares')
-    expect(formatDiagramArea(15000)).toBe('1.5000 hectares')
+  test('1 hectare or more: hectares to 4 decimals (comma) with unit', () => {
+    expect(formatDiagramArea(12345)).toBe('1,2345 hectares')
+    expect(formatDiagramArea(15000)).toBe('1,5000 hectares')
   })
 })
 
 describe('buildSidesTable', () => {
-  test('const row is signed 0.00 / 0.00', () => {
-    expect(buildSidesTable(geometry, beacons).constRow).toEqual({ y: '+0.00', x: '+0.00' })
+  test('const row is SI-signed 0,00 / 0,00', () => {
+    expect(buildSidesTable(geometry, beacons).constRow).toEqual({ y: '+ 0,00', x: '+ 0,00' })
   })
-  test('coordinate rows carry full signed coords to 2dp', () => {
+  test('coordinate rows carry full SI-signed coords to 2dp', () => {
     const t = buildSidesTable(geometry, beacons)
-    expect(t.coordinateRows[0]).toMatchObject({ letter: 'A', y: '-85728.70', x: '+2143972.14' })
+    expect(t.coordinateRows[0]).toMatchObject({ letter: 'A', y: '- 85 728,70', x: '+ 2 143 972,14' })
   })
   test('directions round to nearest 10 seconds when distance < 6000 m', () => {
     const t = buildSidesTable(geometry, beacons)

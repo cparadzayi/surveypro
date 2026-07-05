@@ -94,6 +94,31 @@ export function composePlanBaseName(
   return `${planType}-${safe}`
 }
 
+/**
+ * Designation of the SINGLE subject parcel (for a diagram), used to name the
+ * file so each parcel's diagram is distinct — e.g. "STAND 404 BRACKENHURST
+ * TOWNSHIP" rather than the whole-project "STANDS 403-405 BRACKENHURST TOWNSHIP".
+ * If the parcel already carries a full (lettered) designation, use it as-is;
+ * otherwise build "STAND <stand> <locality>" from the project designation's
+ * locality suffix. Mirrors the backend's resolveStatementDesignation.
+ */
+export function resolveSubjectDesignation(
+  subjectName: string | null | undefined,
+  subjectStand: string | number | null | undefined,
+  projectDesignation: string | null | undefined,
+): string {
+  const name = subjectName == null ? '' : String(subjectName).trim()
+  if (name && /[A-Za-z]/.test(name)) return name
+
+  const stand = (name || (subjectStand == null ? '' : String(subjectStand))).trim()
+  const proj = projectDesignation == null ? '' : String(projectDesignation).trim()
+  if (!stand) return proj
+
+  const m = proj.match(/^STANDS?\b[\s\d,.–—-]+(.*)$/i)
+  if (m && m[1].trim()) return `STAND ${stand} ${m[1].trim()}`
+  return `STAND ${stand}`
+}
+
 export interface PlanDocumentSet {
   pdf?: Blob
   dxf?: Blob

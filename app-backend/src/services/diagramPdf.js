@@ -76,11 +76,13 @@ function drawTable(doc, layout, table, loLabel) {
   const cDirX = R.x + 70
   const ctrDir = { width: 80, align: 'center' }
   // A divider (dirSplitX) separates the side labels (left) from the direction values.
-  // Units + values are right-justified but padded 3pt off the column's right divider.
   const dirSplitX = cDirX + 24
-  const rDir = { width: 77, align: 'right' }       // units header, 3pt clear of the right divider
   const dirSide = { width: 22, align: 'center' }    // side label at the left of DIRECTIONS (no header)
-  const dirVal = { width: 50, align: 'right' }      // direction value, right-justified, 3pt clear right
+  // Degree/minute/second sub-columns: each unit symbol (° ' ") sits directly over its
+  // value column. Boxes span R.x+97 .. R.x+147 (3pt clear of both DIRECTIONS dividers).
+  const oDeg = { width: 22, align: 'center' }, xDeg = R.x + 97
+  const oMin = { width: 14, align: 'center' }, xMin = R.x + 119
+  const oSec = { width: 14, align: 'center' }, xSec = R.x + 133
   // Vertex-letter column spans the dividers at R.x+150 .. R.x+193; centre its letters.
   const cLetX = R.x + 150
   const ctrLet = { width: 43, align: 'center' }
@@ -104,7 +106,9 @@ function drawTable(doc, layout, table, loLabel) {
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
   // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica and render as
   // garbage; °, ' and " are all in the font.
-  doc.text('°  \'  "', cDirX, R.y + 19, rDir)
+  doc.text('°', xDeg, R.y + 19, oDeg)
+  doc.text('\'', xMin, R.y + 19, oMin)
+  doc.text('"', xSec, R.y + 19, oSec)
   // Coordinate sub-headers: Y  Metres  X.
   doc.text('Y', R.x + cY, R.y + 19, ctrY)
   doc.text('Metres', R.x + cY, R.y + 19, ctrCoord)
@@ -122,7 +126,10 @@ function drawTable(doc, layout, table, loLabel) {
       doc.text(sideRows[i].side, R.x + cSide, ry, ctrSide)
       doc.text(sideRows[i].metres, cMetresX, ry, ctrMetres)
       doc.text(sideRows[i].side, cDirX, ry, dirSide)               // side before the direction (no header)
-      doc.text(sideRows[i].direction, dirSplitX + 3, ry, dirVal)
+      const [dd, mm, ss] = String(sideRows[i].direction).split(' ')
+      doc.text(dd ?? '', xDeg, ry, oDeg)
+      doc.text(mm ?? '', xMin, ry, oMin)
+      doc.text(ss ?? '', xSec, ry, oSec)
     }
     if (coordinateRows[i]) {
       doc.text(coordinateRows[i].letter, cLetX, ry, ctrLet)
@@ -137,8 +144,8 @@ function drawTable(doc, layout, table, loLabel) {
   const B = layout.border
   const boxB = ry + 9
   const hSep = R.y + 28 // header/data separator (below the three header rows)
-  // Group dividers + the side-label|Metres split, full height.
-  const verticals = [R.x + 32, R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
+  // Group dividers (no SIDES|METRES split), full height.
+  const verticals = [R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
   doc.lineWidth(0.5).strokeColor('#000')
   for (const vx of verticals) doc.moveTo(vx, B.y).lineTo(vx, boxB).stroke()
   // Y|X divider — only through the value rows: the "Metres" coords sub-header

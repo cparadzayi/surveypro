@@ -67,6 +67,10 @@ function drawTable(doc, layout, table, loLabel) {
   const xColW = (layout.sgNoBox.x - 4) - (R.x + cX)
   const ctrY = { width: yColW, align: 'center' }
   const ctrX = { width: xColW, align: 'center' }
+  // Y / X figures (and the Constants row) are right-justified, padded 3pt off the
+  // Y|X divider and the DIAGRAM S.G. No. divider respectively.
+  const rY = { width: yColW - 3, align: 'right' }
+  const rX = { width: xColW - 3, align: 'right' }
   // Whole CO-ORDINATES group width (spans the Y and X sub-columns).
   const coordGroupW = (layout.sgNoBox.x - 4) - (R.x + cY)
   const ctrCoord = { width: coordGroupW, align: 'center' }
@@ -117,8 +121,8 @@ function drawTable(doc, layout, table, loLabel) {
   // Constants row + coordinate/side rows. The "Const." label and beacon names
   // are in the rightmost (SG No.) column.
   let ry = R.y + 30
-  doc.text(constRow.y, R.x + cY, ry, ctrY)
-  doc.text(constRow.x, R.x + cX, ry, ctrX)
+  doc.text(constRow.y, R.x + cY, ry, rY)
+  doc.text(constRow.x, R.x + cX, ry, rX)
   doc.text('Constants', cSg, ry)
   for (let i = 0; i < rows; i++) {
     ry += 11
@@ -133,8 +137,8 @@ function drawTable(doc, layout, table, loLabel) {
     }
     if (coordinateRows[i]) {
       doc.text(coordinateRows[i].letter, cLetX, ry, ctrLet)
-      doc.text(coordinateRows[i].y, R.x + cY, ry, ctrY)
-      doc.text(coordinateRows[i].x, R.x + cX, ry, ctrX)
+      doc.text(coordinateRows[i].y, R.x + cY, ry, rY)
+      doc.text(coordinateRows[i].x, R.x + cX, ry, rX)
       doc.text(coordinateRows[i].beaconName ?? '', cSg, ry)
     }
   }
@@ -144,13 +148,15 @@ function drawTable(doc, layout, table, loLabel) {
   const B = layout.border
   const boxB = ry + 9
   const hSep = R.y + 28 // header/data separator (below the three header rows)
-  // Group dividers (no SIDES|METRES split), full height.
+  // Group dividers, full height (the SIDES|METRES split is data-rows-only, below).
   const verticals = [R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
   doc.lineWidth(0.5).strokeColor('#000')
   for (const vx of verticals) doc.moveTo(vx, B.y).lineTo(vx, boxB).stroke()
   // Y|X divider — only through the value rows: the "Metres" coords sub-header
   // spans both Y and X, so the divider must not cross the header.
   doc.moveTo(R.x + cX, hSep).lineTo(R.x + cX, boxB).stroke()
+  // SIDES|METRES divider — data rows only (below hSep), not through the heading.
+  doc.moveTo(R.x + 32, hSep).lineTo(R.x + 32, boxB).stroke()
   // Side-label | direction-value divider inside DIRECTIONS — through the data rows only
   // (below hSep) so it does not cut the centred "DIRECTIONS" header.
   doc.moveTo(dirSplitX, hSep).lineTo(dirSplitX, boxB).stroke()

@@ -53,6 +53,13 @@ function centroidPt(ptRing) {
   }
 }
 
+// The ruled table's actual bottom Y for a given data-row count. Mirrors drawTable's
+// internal layout (Constants row at tableY+30, +11 per data row, +9 for the closing
+// box rule), so other content can be anchored below a short table.
+function tableBottomY(tableY, rowCount) {
+  return tableY + 39 + rowCount * 11
+}
+
 function drawTable(doc, layout, table, loLabel) {
   const { constRow, coordinateRows, sideRows } = table
   const R = layout.table
@@ -146,7 +153,7 @@ function drawTable(doc, layout, table, loLabel) {
   // Grid: no outer box — the column dividers run up to the top neat-line border
   // and the header/data rule spans the full width to the left/right neat-lines.
   const B = layout.border
-  const boxB = ry + 9
+  const boxB = tableBottomY(R.y, rows)
   const hSep = R.y + 28 // header/data separator (below the three header rows)
   // Group dividers, full height (the SIDES|METRES split is data-rows-only, below).
   const verticals = [R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
@@ -162,6 +169,9 @@ function drawTable(doc, layout, table, loLabel) {
   doc.moveTo(dirSplitX, hSep).lineTo(dirSplitX, boxB).stroke()
   doc.moveTo(B.x, hSep).lineTo(B.x + B.width, hSep).stroke()
   doc.restore()
+  // The actual bottom of the ruled table (< the fixed table band for short tables),
+  // so callers can anchor the blocks below it snugly.
+  return boxB
 }
 
 function drawBeaconDescription(doc, layout, groups) {
@@ -459,6 +469,38 @@ export async function generateDiagramPDF(options, logger) {
     logger?.warn?.(`[Diagram] buffer failed: ${e?.message}`)
   }
   const extent = buffer.length ? ringExtent(buffer) : parcelExtent(subject)
+
+  // --- Reflow the mid-page blocks around the *actual* table height. ---
+  // The fixed table band is sized for the largest parcels; a typical short table
+  // leaves it mostly empty. Anchor the Description-of-Beacons and Approval blocks
+  // just below the real table bottom, then let the figure grow upward into the
+  // reclaimed space, with the figure + scale bar centred as a group between the
+  // blocks and the "The figure ..." statement.
+  const sidesTable = buildSidesTable(geometry, options.beacons)
+  const beaconGroups = buildBeaconDescription(geometry, options.beacons)
+  const tableRows = Math.max(sidesTable.coordinateRows.length, sidesTable.sideRows.length)
+  const tableBottom = tableBottomY(layout.table.y, tableRows)
+  const BEACON_DESC_GAP = 8
+  layout.beaconDesc = { ...layout.beaconDesc, y: tableBottom + BEACON_DESC_GAP }
+  layout.approved = { ...layout.approved, y: tableBottom + BEACON_DESC_GAP }
+  // Visual bottom of the two blocks: the Approval text runs to ~63 pt (three rows),
+  // the beacon list to a heading + one row per description group; take the lower.
+  const approvalContentH = 63
+  const beaconContentH = 11 + Math.max(1, beaconGroups.length) * 11
+  const blocksBottom = tableBottom + BEACON_DESC_GAP + Math.max(approvalContentH, beaconContentH)
+  // Region for the figure + scale bar group: below the blocks, above the statement.
+  // Centre the group with equal top/bottom margins; reserve the scale bar's band and
+  // a small gap beneath the figure.
+  const REGION_MARGIN = 10
+  const FIG_SCALE_GAP = 6
+  const scaleBarH = layout.scaleBar.height
+  const regionH = layout.statement.y - blocksBottom
+  const figureH = Math.max(140, regionH - 2 * REGION_MARGIN - FIG_SCALE_GAP - scaleBarH)
+  layout.figure = { ...layout.figure, y: blocksBottom + REGION_MARGIN, height: figureH }
+  layout.scaleBar = { ...layout.scaleBar, y: layout.figure.y + figureH + FIG_SCALE_GAP }
+  // North arrow tracks the figure's new top.
+  layout.northArrow = { ...layout.northArrow, y: layout.figure.y + 8 }
+
   const { denom, label } = pickDiagramScale(extent, layout.figure, requestedScale)
   const tf = makeTransform(extent, layout.figure, denom)
 
@@ -581,8 +623,10 @@ export async function generateDiagramPDF(options, logger) {
 
   // resolveLoSystem already returns the full "Lo NN" label.
   const loLabel = resolveLoSystem(null, metadata, options.projection)
-  drawTable(doc, layout, buildSidesTable(geometry, options.beacons), loLabel)
-  drawBeaconDescription(doc, layout, buildBeaconDescription(geometry, options.beacons))
+  // Table + blocks + figure positions were reflowed above (see "Reflow the mid-page
+  // blocks"); here we just render into them.
+  drawTable(doc, layout, sidesTable, loLabel)
+  drawBeaconDescription(doc, layout, beaconGroups)
   drawNorthArrow(doc, layout)
   drawApprovedBox(doc, layout)
   drawScaleBar(doc, layout, denom)

@@ -393,6 +393,49 @@ function drawStatement(doc, layout, geometry, metadata) {
   doc.restore()
 }
 
+// Spread a single line's words across `width` (full justification). PDFKit's
+// align:'justify' never stretches a paragraph's last line, so a one-liner needs
+// manual word spacing.
+function drawJustifiedLine(doc, text, x, y, width) {
+  const words = String(text).split(/\s+/).filter(Boolean)
+  if (words.length === 0) return
+  if (words.length === 1) { doc.text(words[0], x, y, { lineBreak: false }); return }
+  const wordsW = words.reduce((s, w) => s + doc.widthOfString(w), 0)
+  const gap = Math.max(0, (width - wordsW) / (words.length - 1))
+  let cx = x
+  for (const w of words) {
+    doc.text(w, cx, y, { lineBreak: false })
+    cx += doc.widthOfString(w) + gap
+  }
+}
+
+// Even 4-row baseline grid for a reference cell of height [top..bottom]. Shared by
+// all three columns so their text lines up row-for-row.
+function refRowY(top, bottom) {
+  const row = (bottom - top) / 4                     // even line band over the cell height
+  return (i) => top + row * i + (row - 7) / 2        // centre a ~7pt line in its band
+}
+
+// Render a top-band reference cell (parent diagram / original title diagram) on the
+// shared 4-row grid:
+//   1. <line1>                        full-justified across the cell
+//   2. "No. <no>" .......... "annexed to"  ("annexed to" right-justified, padded)
+//   3. <annexedTo> (deed type)        left-justified, only when available
+//   4. "No. <deedNo>"                 starting at the cell's horizontal centre
+function drawDiagramRefCell(doc, { xLeft, xRight, top, bottom, pad, line1, no, annexedTo, deedNo }) {
+  const cx = xLeft + pad
+  const cw = (xRight - xLeft) - 2 * pad
+  const y = refRowY(top, bottom)
+  const rightPad = 4
+  drawJustifiedLine(doc, line1, cx, y(0), cw)
+  doc.text(`No. ${no}`, cx, y(1), { lineBreak: false })
+  doc.text('annexed to', cx, y(1), { width: cw - rightPad, align: 'right' })
+  // Deed type on row 3 only when present ("if available"); the deed-No. row anchors at
+  // the cell centre and shows the number when present ("No. " alone otherwise).
+  if (annexedTo) doc.text(annexedTo, cx, y(2), { lineBreak: false })
+  doc.text(`No. ${deedNo}`, xLeft + (xRight - xLeft) / 2, y(3), { lineBreak: false })
+}
+
 function drawReferenceGrid(doc, layout, grid) {
   const R = layout.refGrid
   const W = R.width, H = R.height
@@ -404,7 +447,13 @@ function drawReferenceGrid(doc, layout, grid) {
   const x0 = R.x, x1 = R.x + W / 3, xR = B.x + B.width
   const x2 = x1 + (xR - x1) / 2                              // parent | original-title (top band)
   const t1 = x1 + (xR - x1) / 3, t2 = x1 + 2 * (xR - x1) / 3 // File | G.P. | S.R. thirds
-  const r1 = R.y + H * 0.25, r2 = R.y + H * 0.50, r3 = R.y + H * 0.75
+  // Compilation is a short row anchored on the bottom neat-line. The File|G.P.|S.R.
+  // row keeps its height; the parent/original-title band above grows to absorb the
+  // space freed by the shorter compilation row.
+  const COMP_H = 14
+  const r3 = bottom - COMP_H                  // compilation row top
+  const r2 = r3 - H * 0.25                     // File|G.P.|S.R. row top / top band bottom
+  const compCenterY = r3 + (COMP_H - 7) / 2    // vertical centre of a 7pt line in the row
 
   doc.save().lineWidth(0.5).strokeColor('#000')
   // Top border (full width) + the left-column divider (full height).
@@ -422,25 +471,39 @@ function drawReferenceGrid(doc, layout, grid) {
   doc.font('Helvetica').fontSize(7).fillColor('#000')
   const pad = 3
   const wL = (x1 - x0) - 2 * pad
-  // Left column. The annexation reference (Deed of Transfer, Certificate of
-  // Registered Title, etc.) is filled by the SG office after submission — we print
-  // only the lead-in and the "No." / "dated" labels (blank entries, no dots). No
-  // deed type is pre-printed, as the target instrument varies.
-  doc.text('This diagram is annexed to', x0 + pad, R.y + 6, { width: wL })
+  // Left column — the current diagram's annexation, on the same row grid as the
+  // parent/original-title cells (row 0 aligns across all three columns). "No." and
+  // "dated" share row 1, with "dated" starting at the column's horizontal centre; both
+  // values are filled by the SG office after lodgment, so they stay blank (labels only).
+  const lY = refRowY(R.y, r2)
   const colMid = x0 + (x1 - x0) / 2
-  doc.text('No.', x0 + pad, R.y + 26)
-  doc.text('dated', colMid, R.y + 26)
-  // Right-aligned within the left column, level with "Compilation" on the bottom row.
-  doc.text('Surveyor-General', x0 + pad, r3 + 5, { width: wL, align: 'right' })
-  // Top band: parent (+ Deed of Transfer) on the left, original title on the right.
-  doc.text(`The immediate parent diagram is No. ${grid.parentDiagramNo}  annexed to ${grid.parentDiagramAnnexedTo}`, x1 + pad, R.y + 6, { width: (x2 - x1) - 2 * pad })
-  doc.text(`Deed of Transfer No. ${grid.deedOfTransferNo}`, x1 + pad, r1 + 4, { width: (x2 - x1) - 2 * pad })
-  doc.text(`The original title diagram is No. ${grid.originalTitleDiagramNo}`, x2 + pad, R.y + 6, { width: (xR - x2) - 2 * pad })
-  // Full-width File | G.P. | S.R. row, then Compilation — both run to the right neat-line.
-  doc.text(`File : ${grid.fileNo}`, x1 + pad, r2 + 4, { width: (t1 - x1) - 2 * pad })
-  doc.text(`G.P. : ${grid.registrationGp}`, t1 + pad, r2 + 4, { width: (t2 - t1) - 2 * pad })
-  doc.text(`S.R. : ${grid.srNo}`, t2 + pad, r2 + 4, { width: (xR - t2) - 2 * pad })
-  doc.text(`Compilation : ${grid.compilation}`, x1 + pad, r3 + 4, { width: (xR - x1) - 2 * pad })
+  doc.text('This diagram is annexed to', x0 + pad, lY(0), { width: wL })
+  doc.text('No.', x0 + pad, lY(1), { lineBreak: false })
+  doc.text('dated', colMid, lY(1), { lineBreak: false })
+  // Right-aligned within the left column, vertically level with the centred
+  // "Compilation :" in the short bottom row.
+  doc.text('Surveyor-General', x0 + pad, compCenterY, { width: wL, align: 'right' })
+  // Top band: parent-diagram cell (left) and original-title cell (right), both on the
+  // same 4-row layout. Deed type + No. come from the property's title-deed metadata
+  // (deed type shown only when available); the diagram number differs per cell.
+  drawDiagramRefCell(doc, {
+    xLeft: x1, xRight: x2, top: R.y, bottom: r2, pad,
+    line1: 'The immediate parent diagram is', no: grid.parentDiagramNo,
+    annexedTo: grid.parentDiagramAnnexedTo, deedNo: grid.deedOfTransferNo,
+  })
+  drawDiagramRefCell(doc, {
+    xLeft: x2, xRight: xR, top: R.y, bottom: r2, pad,
+    line1: 'The original title diagram is', no: grid.originalTitleDiagramNo,
+    annexedTo: grid.parentDiagramAnnexedTo, deedNo: grid.deedOfTransferNo,
+  })
+  // File | G.P. | S.R. row: each entry centred (horizontally + vertically) in its own
+  // column cell.
+  const fileCenterY = r2 + ((r3 - r2) - 7) / 2
+  doc.text(`File : ${grid.fileNo}`, x1, fileCenterY, { width: t1 - x1, align: 'center' })
+  doc.text(`G.P. : ${grid.registrationGp}`, t1, fileCenterY, { width: t2 - t1, align: 'center' })
+  doc.text(`S.R. : ${grid.srNo}`, t2, fileCenterY, { width: xR - t2, align: 'center' })
+  // Compilation left-justified, vertically centred in its short bottom row.
+  doc.text(`Compilation : ${grid.compilation}`, x1 + pad, compCenterY, { lineBreak: false })
   doc.restore()
 }
 

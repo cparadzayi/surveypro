@@ -8,7 +8,10 @@ const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   max: 20, // Maximum number of clients
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  // Cold start loads ~30 route modules (pdfkit, proj4, turf, …) which can block the
+  // event loop past a tight window, delaying the very first handshake. 2s timed out
+  // the startup probe (below) and process.exit(1) killed the server. 10s is safe.
+  connectionTimeoutMillis: 10000,
 })
 
 // Test the connection

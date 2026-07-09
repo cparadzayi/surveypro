@@ -12,6 +12,12 @@ export interface SaveDocumentOptions {
   documentType: 'field-book' | 'calculations-part1' | 'coordinate-list' | 'area-computation' | 'report-on-survey' | 'dsg-certificate'
   fileName: string
   pdfBlob: Blob
+  /**
+   * Opt in to replacing an existing file. The backend refuses to clobber an
+   * existing product with 409 EXISTS unless this is true. Use for rolling
+   * "…_Latest" snapshots that are meant to be regenerated.
+   */
+  overwrite?: boolean
 }
 
 export interface SaveDocumentResult {
@@ -24,7 +30,7 @@ export interface SaveDocumentResult {
  * Save a generated PDF document to the project directory
  */
 export async function saveDocument(options: SaveDocumentOptions): Promise<SaveDocumentResult> {
-  const { workingDirectory, documentType, fileName, pdfBlob } = options
+  const { workingDirectory, documentType, fileName, pdfBlob, overwrite } = options
 
   try {
     // Get the appropriate subfolder based on document type
@@ -59,6 +65,7 @@ export async function saveDocument(options: SaveDocumentOptions): Promise<SaveDo
     const formData = new FormData()
     formData.append('file', pdfBlob, fileName)
     formData.append('filePath', filePath)
+    if (overwrite) formData.append('overwrite', 'true')
 
     const response = await fetch(`${API_BASE}/documents/save`, {
       method: 'POST',
@@ -66,8 +73,11 @@ export async function saveDocument(options: SaveDocumentOptions): Promise<SaveDo
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || 'Failed to save document')
+      // The backend uses `message` for classified write errors (e.g. locked file)
+      // and `error` for the 409 EXISTS gate — read both so the real reason isn't
+      // masked by the generic fallback.
+      const body = await response.json().catch(() => ({}))
+      throw new Error(body.message || body.error || 'Failed to save document')
     }
 
     const result = await response.json()

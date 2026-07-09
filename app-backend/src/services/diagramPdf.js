@@ -72,12 +72,9 @@ function drawTable(doc, layout, table, loLabel) {
   // Y / X sub-column widths, used to centre the coordinate figures in their cells.
   const yColW = cX - cY
   const xColW = (layout.sgNoBox.x - 4) - (R.x + cX)
+  // Y / X figures and the Constants row are centred within their sub-columns.
   const ctrY = { width: yColW, align: 'center' }
   const ctrX = { width: xColW, align: 'center' }
-  // Y / X figures (and the Constants row) are right-justified, padded 3pt off the
-  // Y|X divider and the DIAGRAM S.G. No. divider respectively.
-  const rY = { width: yColW - 3, align: 'right' }
-  const rX = { width: xColW - 3, align: 'right' }
   // Whole CO-ORDINATES group width (spans the Y and X sub-columns).
   const coordGroupW = (layout.sgNoBox.x - 4) - (R.x + cY)
   const ctrCoord = { width: coordGroupW, align: 'center' }
@@ -128,8 +125,8 @@ function drawTable(doc, layout, table, loLabel) {
   // Constants row + coordinate/side rows. The "Const." label and beacon names
   // are in the rightmost (SG No.) column.
   let ry = R.y + 30
-  doc.text(constRow.y, R.x + cY, ry, rY)
-  doc.text(constRow.x, R.x + cX, ry, rX)
+  doc.text(constRow.y, R.x + cY, ry, ctrY)
+  doc.text(constRow.x, R.x + cX, ry, ctrX)
   doc.text('Constants', cSg, ry)
   for (let i = 0; i < rows; i++) {
     ry += 11
@@ -144,8 +141,8 @@ function drawTable(doc, layout, table, loLabel) {
     }
     if (coordinateRows[i]) {
       doc.text(coordinateRows[i].letter, cLetX, ry, ctrLet)
-      doc.text(coordinateRows[i].y, R.x + cY, ry, rY)
-      doc.text(coordinateRows[i].x, R.x + cX, ry, rX)
+      doc.text(coordinateRows[i].y, R.x + cY, ry, ctrY)
+      doc.text(coordinateRows[i].x, R.x + cX, ry, ctrX)
       doc.text(coordinateRows[i].beaconName ?? '', cSg, ry)
     }
   }
@@ -325,13 +322,17 @@ function drawScaleBar(doc, layout, denom) {
   const seg = snapScaleBarSegment(barGroundM / 3)
   const w = seg * ptPerM
   const barY = R.y + 10
-  const x0 = R.x + w // ground zero, after the left (subdivided) segment
+  // Centre the 3-segment bar (width 3w) on the region centre — the same x as the figure
+  // sequence "A.B.C…A" above it — so the two read as vertically symmetric. Snapping makes
+  // 3w ≠ R.width, so the bar is re-centred rather than left-anchored at R.x.
+  const bx = R.x + R.width / 2 - 1.5 * w
+  const x0 = bx + w // ground zero, after the left (subdivided) segment
   doc.save().lineWidth(1).strokeColor('#000').font('Helvetica').fontSize(6.5)
   // Left segment subdivided into 5 alternating ticks (a fine ruler left of 0).
   const subN = 5
   const subW = w / subN
   for (let i = 0; i < subN; i++) {
-    const sx = R.x + i * subW
+    const sx = bx + i * subW
     if (i % 2 === 0) doc.rect(sx, barY, subW, 4).fillAndStroke('#000', '#000')
     else doc.rect(sx, barY, subW, 4).stroke()
   }
@@ -343,12 +344,14 @@ function drawScaleBar(doc, layout, denom) {
   }
   // Tick labels: seg | 0 | seg | 2*seg, centred under each tick.
   const lbl = (val, cx) => doc.fillColor('#000').text(String(Math.round(val)), cx - 8, R.y, { width: 16, align: 'center' })
-  lbl(seg, R.x)
+  lbl(seg, bx)
   lbl(0, x0)
   lbl(seg, x0 + w)
   lbl(2 * seg, x0 + 2 * w)
   doc.text('metres', x0 + 2 * w + 6, barY)
-  doc.text(`Scale 1 : ${denom}`, R.x + R.width / 2 - 30, R.y + 20)
+  // Caption centred on the region centre (= the figure sequence "A.B.C…A" centre above),
+  // so it stays symmetric under the bar regardless of the number's width.
+  doc.text(`Scale 1 : ${denom}`, R.x, R.y + 20, { width: R.width, align: 'center' })
   doc.restore()
 }
 
@@ -382,7 +385,8 @@ function drawStatement(doc, layout, geometry, metadata) {
     doc.fontSize(desigSize)
   }
   doc.text(desigText, R.x, R.y + 30, { width: R.width, lineBreak: false })
-  doc.font('Helvetica').fontSize(8).text(
+  // Same 9pt as the "The figure … of land called" block above.
+  doc.font('Helvetica').fontSize(9).text(
     `situate in the district of ${metadata.district ?? ''}.`, R.x, R.y + 44)
   // Extra row above "Surveyed … by me" (below "situate in the district of …") for
   // visual separation.
@@ -496,12 +500,12 @@ function drawReferenceGrid(doc, layout, grid) {
     line1: 'The original title diagram is', no: grid.originalTitleDiagramNo,
     annexedTo: grid.parentDiagramAnnexedTo, deedNo: grid.deedOfTransferNo,
   })
-  // File | G.P. | S.R. row: each entry centred (horizontally + vertically) in its own
-  // column cell.
+  // File | G.P. | S.R. row: each entry left-justified in its own column cell,
+  // vertically centred in the row.
   const fileCenterY = r2 + ((r3 - r2) - 7) / 2
-  doc.text(`File : ${grid.fileNo}`, x1, fileCenterY, { width: t1 - x1, align: 'center' })
-  doc.text(`G.P. : ${grid.registrationGp}`, t1, fileCenterY, { width: t2 - t1, align: 'center' })
-  doc.text(`S.R. : ${grid.srNo}`, t2, fileCenterY, { width: xR - t2, align: 'center' })
+  doc.text(`File : ${grid.fileNo}`, x1 + pad, fileCenterY, { lineBreak: false })
+  doc.text(`G.P. : ${grid.registrationGp}`, t1 + pad, fileCenterY, { lineBreak: false })
+  doc.text(`S.R. : ${grid.srNo}`, t2 + pad, fileCenterY, { lineBreak: false })
   // Compilation left-justified, vertically centred in its short bottom row.
   doc.text(`Compilation : ${grid.compilation}`, x1 + pad, compCenterY, { lineBreak: false })
   doc.restore()

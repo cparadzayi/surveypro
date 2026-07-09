@@ -104,7 +104,10 @@ export async function generateComprehensiveLatestPDF(
         workingDirectory,
         documentType: 'calculations-part1',
         fileName: filename,
-        pdfBlob: blob
+        pdfBlob: blob,
+        // Comprehensive_Latest.pdf is a rolling snapshot — regenerating must
+        // replace the previous one rather than 409 on the overwrite gate.
+        overwrite: true
       })
 
       if (saveResult.success) {

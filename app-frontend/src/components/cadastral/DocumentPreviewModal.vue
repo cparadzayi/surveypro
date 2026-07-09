@@ -192,13 +192,28 @@ async function saveToProject() {
   isSaving.value = true
   
   try {
-    const result = await saveDocument({
+    let result = await saveDocument({
       workingDirectory: props.workingDirectory,
       documentType: props.documentType,
       fileName: props.fileName,
       pdfBlob: props.pdfBlob
     })
-    
+
+    // User-initiated save: if the file already exists, ask before clobbering it
+    // (rather than silently overwriting or hard-failing on the 409 gate).
+    if (!result.success && result.code === 'EXISTS') {
+      if (!confirm(`"${props.fileName}" already exists in the project. Overwrite it?`)) {
+        return
+      }
+      result = await saveDocument({
+        workingDirectory: props.workingDirectory,
+        documentType: props.documentType,
+        fileName: props.fileName,
+        pdfBlob: props.pdfBlob,
+        overwrite: true
+      })
+    }
+
     if (result.success && result.filePath) {
       savedPath.value = result.filePath
       emit('saved', result.filePath)

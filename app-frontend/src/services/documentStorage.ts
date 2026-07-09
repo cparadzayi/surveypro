@@ -24,6 +24,8 @@ export interface SaveDocumentResult {
   success: boolean
   filePath?: string
   error?: string
+  /** Backend failure code, e.g. 'EXISTS' (overwrite gate) — lets callers prompt. */
+  code?: string
 }
 
 /**
@@ -75,9 +77,13 @@ export async function saveDocument(options: SaveDocumentOptions): Promise<SaveDo
     if (!response.ok) {
       // The backend uses `message` for classified write errors (e.g. locked file)
       // and `error` for the 409 EXISTS gate — read both so the real reason isn't
-      // masked by the generic fallback.
-      const body = await response.json().catch(() => ({}))
-      throw new Error(body.message || body.error || 'Failed to save document')
+      // masked, and surface `code` so callers can prompt-and-retry with overwrite.
+      const body = await response.json().catch(() => ({} as Record<string, unknown>))
+      return {
+        success: false,
+        error: (body.message as string) || (body.error as string) || 'Failed to save document',
+        code: body.code as string | undefined,
+      }
     }
 
     const result = await response.json()

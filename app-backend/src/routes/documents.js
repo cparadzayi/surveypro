@@ -299,14 +299,32 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(404).send({ ok: false, error: 'File not found' })
       }
 
+      // On Windows, cmd's `start` and most PDF viewers can't handle a path over
+      // MAX_PATH (260). Node's fs.* accept it (libuv uses \\?\ internally), so the
+      // existence check above passes — but the launch would silently fail. Fall back
+      // to the file's 8.3 short path (which fits) for over-long paths.
+      let openPath = filePath
+      if (process.platform === 'win32' && filePath.length >= 256) {
+        try {
+          const { stdout } = await execAsync(`for %I in ("${filePath}") do @echo %~sI`)
+          const short = stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).pop()
+          if (short && short !== filePath && fs.existsSync(short)) {
+            openPath = short
+            fastify.log.info(`[OPEN] using 8.3 short path for over-long path: ${short}`)
+          }
+        } catch (e) {
+          fastify.log.warn(`[OPEN] short-path fallback failed: ${e?.message}`)
+        }
+      }
+
       // Open file with default application
       let command
       if (process.platform === 'win32') {
-        command = `start "" "${filePath}"`
+        command = `start "" "${openPath}"`
       } else if (process.platform === 'darwin') {
-        command = `open "${filePath}"`
+        command = `open "${openPath}"`
       } else {
-        command = `xdg-open "${filePath}"`
+        command = `xdg-open "${openPath}"`
       }
 
       await execAsync(command)

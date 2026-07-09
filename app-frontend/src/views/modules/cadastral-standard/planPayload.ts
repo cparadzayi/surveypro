@@ -84,6 +84,12 @@ export function buildPlanPayload(ctx: PlanPayloadContext): VectorGeoPDFRequest {
   }
 }
 
+// Cap the designation part of a plan filename. A general plan covering many stands
+// yields a designation of 150+ chars, which pushes the full output path past
+// Windows' 260-char MAX_PATH and breaks save/open. 60 keeps the filename short while
+// staying recognisable; the whole designation still lives inside the PDF.
+export const PLAN_BASENAME_DESIGNATION_MAX = 60
+
 export function composePlanBaseName(
   planType: string,
   designation: string | undefined,
@@ -91,7 +97,10 @@ export function composePlanBaseName(
 ): string {
   const id = (designation && designation.trim()) || String(projectId ?? 'project')
   const safe = id.replace(/[^\w.-]+/g, '_')
-  return `${planType}-${safe}`
+  const capped = safe.length > PLAN_BASENAME_DESIGNATION_MAX
+    ? safe.slice(0, PLAN_BASENAME_DESIGNATION_MAX).replace(/[_.-]+$/, '')
+    : safe
+  return `${planType}-${capped}`
 }
 
 /**

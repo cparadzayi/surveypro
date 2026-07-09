@@ -81,6 +81,14 @@ describe('composePlanBaseName', () => {
   it('falls back to projectId when designation is blank', () => {
     expect(composePlanBaseName('working-plan', '   ', 7)).toBe('working-plan-7')
   })
+  it('caps a very long designation so the output path stays under MAX_PATH', () => {
+    const huge = 'STANDS 2283-2287 2297-2323 2384-2389 2398-2400 2434-2463 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A'
+    const base = composePlanBaseName('general-developed', huge, 7)
+    // planType prefix (18) + '-' (1) + capped designation (<=60) => filename well under MAX_PATH
+    expect(base.length).toBeLessThanOrEqual('general-developed'.length + 1 + 60)
+    expect(base.startsWith('general-developed-STANDS_2283')).toBe(true)
+    expect(base.endsWith('_')).toBe(false)
+  })
 })
 
 describe('resolveSubjectDesignation', () => {

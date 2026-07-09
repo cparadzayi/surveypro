@@ -746,7 +746,10 @@ const generateReport = async () => {
           workingDirectory: workflowState.projectInfo.workingDirectory,
           documentType: 'report-on-survey',
           fileName,
-          pdfBlob: pdf
+          pdfBlob: pdf,
+          // Auto-save of the latest report for this SR number — regenerating must
+          // replace the previous one rather than 409 on the overwrite gate.
+          overwrite: true
         })
         
         if (result.success) {

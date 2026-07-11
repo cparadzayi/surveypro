@@ -23,6 +23,7 @@ import { boxesIntersect, isRectWithinBounds } from "../utils/collisionPrimitives
 import { placeBlocks } from "./blockPlacementEngine.js";
 import { findPoleOfInaccessibility } from '../utils/labelPlacer.js';
 import { planSheetLayout } from './sheetLayoutPlanner.js';
+import { findBlockPosition } from './dxfBlockPlacer.js';
 import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlanner.js';
 import {
   PT_TO_MM, MM_TO_PT,
@@ -12195,6 +12196,74 @@ async function _generateGeoPDFInner(options, logger) {
   logger.info(
     `[PDFKit] 📐 Registered ${finalTickMarkBounds.length} tick marks in Layer 5 collision registry`
   );
+
+  // ── Tick-mark avoidance for bottom-zone blocks (PDF port of DXF's _placeClear) ──
+  // planSheetLayout runs with tickMarkBounds:[] so PDF and DXF feed it the SAME
+  // obstacle set and choose the SAME primary layout. But that leaves the four
+  // geodetic corner ticks (cross + Y=/X= axis labels) unreserved, so a relocatable
+  // block — most often the Outside Figure Data table sitting in a figure corner —
+  // can land on a tick and cover its axis values. DXF fixes this in a post-planner
+  // pass (dxfGenerator.js `_placeClear`, whose obstacle set includes `_crossBounds`);
+  // mirror it here. Any relocatable block whose slot overlaps a tick region is moved
+  // into clear whitespace via the shared placer (findBlockPosition — the same scanner
+  // DXF uses), avoiding the figure, the fixed blocks, the ticks, and the other
+  // relocatable blocks. Blocks already clear of every tick keep their planner slot,
+  // so PDF↔DXF parity is preserved everywhere the ticks aren't in the way.
+  const _tickRects = finalTickMarkBounds.map((t) => ({
+    x: t.x, y: t.y, width: t.width, height: t.height,
+  }));
+  if (_tickRects.length > 0) {
+    const _asRect = (p) =>
+      p && p.width > 0 && p.height > 0
+        ? { x: p.x, y: p.y, width: p.width, height: p.height }
+        : null;
+    // Fixed blocks (do NOT relocate) seed the obstacle set so relocations avoid them.
+    const _fixedObstacles = [
+      blockPositions.titleBlock,
+      blockPositions.scheduleOfAreas,
+      blockPositions.endorsement,
+    ].map(_asRect).filter(Boolean);
+    const _occupied = [..._fixedObstacles, ..._tickRects];
+    const _relocPoly =
+      _polyForPlanner && _polyForPlanner.length >= 3 ? _polyForPlanner : null;
+    const _overlapsAnyTick = (r) => _tickRects.some((t) => rectanglesOverlap(r, t, 0));
+    // Widest-first (matches DXF task ordering) so the hardest-to-fit blocks claim
+    // whitespace before the smaller ones do.
+    const _relocatable = ['outsideFigureData', 'beaconDescription', 'surveyStatement', 'sgSignature', 'scaleBar', 'northArrow']
+      .map((name) => ({ name, rect: _asRect(blockPositions[name]) }))
+      .filter((t) => t.rect)
+      .sort((a, b) => b.rect.width - a.rect.width);
+    for (const t of _relocatable) {
+      if (!_overlapsAnyTick(t.rect)) {
+        _occupied.push(t.rect); // already clear — keep planner slot, seed as obstacle
+        continue;
+      }
+      const found = findBlockPosition({
+        block: { width: t.rect.width, height: t.rect.height },
+        mapBounds,
+        polygon: _relocPoly,
+        placedBlocks: _occupied,
+        buffer: 6,
+        blockSpacing: 8,
+        scanStep: 10,
+        tableMinWidth: t.rect.width,
+        logger,
+      });
+      if (found) {
+        blockPositions[t.name].x = found.x;
+        blockPositions[t.name].y = found.y;
+        _occupied.push({ x: found.x, y: found.y, width: t.rect.width, height: t.rect.height });
+        logger.info(
+          `[PDFKit] 📐 Relocated ${t.name} clear of tick marks → (${found.x.toFixed(1)}, ${found.y.toFixed(1)})`
+        );
+      } else {
+        _occupied.push(t.rect); // no clear slot — keep planner slot (tick renderer still deflects its labels)
+        logger.warn(
+          `[PDFKit] ⚠️ ${t.name} overlaps a tick mark but no clear slot was found — keeping planner slot`
+        );
+      }
+    }
+  }
 
   // Step 5b: Draw all data blocks BEFORE tick marks so that blockPositions reflects
   // the actual rendered positions when tick mark label collision checks run.

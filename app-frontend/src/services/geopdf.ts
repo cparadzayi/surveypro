@@ -46,6 +46,15 @@ export interface VectorGeoPDFRequest {
     firm?: string
     licenseNumber?: string
     priorDiagrams?: string[]
+    // Diagram: side annotations for the single subject figure.
+    sideAnnotations?: Array<{ side: string; role: string; label?: string; widthM?: number }>
+    // General plans: road/servitude/contiguous annotations per tagged subject
+    // (Outside Figure perimeter and/or individual stands), each with its own ring.
+    adjoiningSubjects?: Array<{
+      subjectId?: string
+      ring: [number, number][]
+      annotations: Array<{ side: string; role: string; label?: string; widthM?: number }>
+    }>
   }
   // New top-level field for the beacon-description block
   beaconGroups?: Array<{ points: string; description: string }>

@@ -73,6 +73,7 @@ import { findBlockPosition } from './dxfBlockPlacer.js'
 import { selectFigureScale } from '../utils/si727Constants.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 import { roundBearingSouth } from '../utils/zim-geo.js'
+import { emitSubjectAdjoiningFeaturesDxf } from './adjoiningFeaturesDxf.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
 // External consumers (tests, other modules) keep importing from dxfGenerator.js.
@@ -656,6 +657,8 @@ export function generateDXF(options, logger) {
     { name: 'GRID',            color: 8 },
     { name: 'MARGIN_GUIDES',   color: 8 },
     { name: 'OUTSIDE_FIGURE_LABELS', color: 8 },
+    { name: 'ADJOINING',            color: 7 },  // road/contiguous labels + contiguous stubs
+    { name: 'ADJOINING_SERVITUDE',  color: 5 },  // servitude strip outline + label (blue)
   ];
 
   // Track extents
@@ -1320,6 +1323,39 @@ export function generateDXF(options, logger) {
     }
   }
   logger.info(`[DXF] Parcels: ${parcelCount}, Edge labels: ${edgeLabelCount}`);
+
+  // ── 3b. Adjoining features (roads / servitudes / contiguous neighbours) ──
+  // Drawn from metadata.adjoiningSubjects (one entry per tagged subject: the
+  // Outside Figure perimeter and/or individual stands, each carrying its own Cape
+  // Lo ring). Emitted BEFORE beacon circles (deferred to the end) so the circles
+  // sit on top, matching the PDF z-order. Roads are label-only (no fill); servitude
+  // strips are outline quads; contiguous neighbours get dashed-style outward stubs.
+  if (Array.isArray(metadata.adjoiningSubjects) && metadata.adjoiningSubjects.length) {
+    const PT_PER_MM = 72 / 25.4;
+    const _adjGeo = {
+      textHeight: ptToGround(7, S),
+      stubLen:    ptToGround(6 * PT_PER_MM, S),
+      bandLen:    ptToGround(12, S),
+      standoff:   ptToGround(1.3 * PT_PER_MM, S),
+    };
+    let _adjDrawn = 0;
+    for (const subj of metadata.adjoiningSubjects) {
+      const ring = Array.isArray(subj?.ring) ? subj.ring : null;
+      const anns = Array.isArray(subj?.annotations) ? subj.annotations : null;
+      if (!ring || ring.length < 3 || !anns || anns.length === 0) continue;
+      let r = ring;
+      const f = r[0], l = r[r.length - 1];
+      if (f && l && f[0] === l[0] && f[1] === l[1]) r = r.slice(0, -1);
+      if (r.length < 3) continue;
+      const ptRing = r.map(([yy, xx]) => { const pt = capeLoToDxfSouthUp(yy, xx); trackPt(pt); return pt; });
+      emitSubjectAdjoiningFeaturesDxf({
+        addLine, addText, ptRing, annotations: anns, geo: _adjGeo,
+        servitudeLayer: 'ADJOINING_SERVITUDE', defaultLayer: 'ADJOINING',
+      }, logger);
+      _adjDrawn++;
+    }
+    logger.info(`[DXF] Adjoining features rendered for ${_adjDrawn} subject(s)`);
+  }
 
   // ── 4. Beacons (filtered to outside figure + 2m buffer) ──
   const BEACON_BUFFER = 2; // metres

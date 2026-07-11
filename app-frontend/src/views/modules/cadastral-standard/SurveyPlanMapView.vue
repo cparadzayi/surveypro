@@ -289,8 +289,8 @@
             <option value="working-plan">Working Plan</option>
           </select>
         </div>
-        <div v-if="isDiagramMode" class="config-group diagram-subject-hint">
-          <label class="config-label">Diagram subject</label>
+        <div v-if="isSideAnnotationMode" class="config-group diagram-subject-hint">
+          <label class="config-label">{{ isDiagramMode ? 'Diagram subject' : 'Annotation subject' }}</label>
           <ParcelSelect
             :options="diagramSubjectOptions"
             v-model="selectedDiagramParcelId"
@@ -298,10 +298,13 @@
             @select="onDiagramSubjectPicked"
           />
           <p v-if="!selectedDiagramParcelId" class="mt-1 text-xs text-amber-600">
-            👆 Or click the parcel on the map to choose the diagram subject.
+            👆 {{ isDiagramMode
+              ? 'Or click the parcel on the map to choose the diagram subject.'
+              : 'Pick the Outside Figure or a stand, then click its sides to tag roads / servitudes / contiguous neighbours.' }}
           </p>
           <p v-else class="mt-1 text-xs text-green-700">
-            ✓ Diagram subject: <strong>Stand {{ selectedDiagramStand }}</strong>
+            ✓ {{ isDiagramMode ? 'Diagram subject' : 'Subject' }}:
+            <strong>{{ selectedDiagramStand ? `Stand ${selectedDiagramStand}` : 'Outside Figure' }}</strong>
           </p>
         </div>
 
@@ -737,7 +740,13 @@ const selectedDiagramStand = computed(() => {
 })
 
 const diagramSubjectOptions = computed(() =>
-  buildParcelOptions(parcels.value, { excludeId: getOutsideFigureParcel()?.id ?? null }))
+  // Diagram: the subject is a single stand, so the Outside Figure is excluded.
+  // General plans annotate roads/servitudes/contiguous neighbours on the Outside
+  // Figure perimeter AND (optionally) individual stands, so the Outside Figure is
+  // a selectable subject there.
+  buildParcelOptions(parcels.value, {
+    excludeId: isDiagramMode.value ? (getOutsideFigureParcel()?.id ?? null) : null,
+  }))
 
 function onDiagramSubjectPicked(option: { id: string | number }) {
   applyDiagramHighlight(option.id)
@@ -757,6 +766,12 @@ function zoomToParcel(id: string | number) {
 }
 
 const isDiagramMode = computed(() => getPlanTypeMeta(config.value.planType).subjectMode === 'single-parcel')
+const isGeneralPlanMode = computed(() =>
+  config.value.planType === 'general-undeveloped' || config.value.planType === 'general-developed')
+// The side-annotation UI (subject picker + click-a-side classifier) is shared by
+// the Diagram and the General Plans. On general plans the tagged sides drive the
+// same road/servitude/contiguous rendering (roads label-only, no burnt-sienna).
+const isSideAnnotationMode = computed(() => isDiagramMode.value || isGeneralPlanMode.value)
 const exportFormats = reactive({ pdf: true, dxf: true })
 const planTypeLabel = computed(() => getPlanTypeMeta(config.value.planType).label)
 
@@ -1916,7 +1931,7 @@ function updateSubjectSidesLayer() {
   const srcId = 'diagram-subject-sides'
   const feats: any[] = []
   const subj = parcels.value.find((p: any) => String(p.id) === String(selectedDiagramParcelId.value))
-  if (isDiagramMode.value && subj?.geom) {
+  if (isSideAnnotationMode.value && subj?.geom) {
     const tf = transformParcelGeometry(subj.geom)
     const ring = tf?.geometry?.coordinates?.[0] as [number, number][] | undefined
     if (ring) {
@@ -1958,7 +1973,7 @@ function updateSubjectSidesLayer() {
 }
 
 function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
-  if (!map.value || !isDiagramMode.value) return
+  if (!map.value || !isSideAnnotationMode.value) return
   // Side classification takes priority over re-selecting the subject.
   const hitLayer = 'diagram-subject-sides-hit'
   if (map.value.getLayer(hitLayer)) {
@@ -2016,6 +2031,28 @@ function clearSideEditor() {
   activeSideEditor.value = null
   updateSubjectSidesLayer()
   persistSideAnnotations()
+}
+
+/** The subject's Cape Lo outer ring ([Y, X] pairs), or null. Works for any
+ *  parcel including the Outside Figure. Vertex order matches subjectSides() so the
+ *  side letters resolve to the same edges on the backend. */
+function capeLoRingForSubject(subjectId: string | number): [number, number][] | null {
+  const p = parcels.value.find((x: any) => String(x.id) === String(subjectId))
+  const ring = p?.geom?.coordinates?.[0]
+  return Array.isArray(ring) && ring.length >= 3 ? (ring as [number, number][]) : null
+}
+
+/** One entry per tagged subject: its Cape Lo ring + its side annotations. Drives
+ *  the general-plan road/servitude/contiguous rendering in the PDF and DXF. */
+function buildAdjoiningSubjects(): Array<{ subjectId: string; ring: [number, number][]; annotations: SideAnnotation[] }> {
+  const out: Array<{ subjectId: string; ring: [number, number][]; annotations: SideAnnotation[] }> = []
+  for (const [subjectId, annotations] of Object.entries(sideAnnotationsBySubject.value)) {
+    if (!Array.isArray(annotations) || annotations.length === 0) continue
+    const ring = capeLoRingForSubject(subjectId)
+    if (!ring) continue
+    out.push({ subjectId, ring, annotations })
+  }
+  return out
 }
 
 async function persistSideAnnotations() {
@@ -3992,6 +4029,12 @@ function gatherPlanContext(): PlanPayloadContext {
     priorDiagrams: props.projectInfo.priorDiagrams || [],
     ...diagramReferenceMetadata(props.projectInfo as any),
     sideAnnotations: currentSideAnnotations.value,
+    // General plans render road/servitude/contiguous annotations for EVERY tagged
+    // subject (the Outside Figure perimeter and/or individual stands), so send the
+    // whole per-subject set, each entry carrying its own Cape Lo ring (no backend
+    // id-matching needed). Empty for the diagram, which renders its single subject
+    // from `sideAnnotations` via its own renderer.
+    adjoiningSubjects: isDiagramMode.value ? [] : buildAdjoiningSubjects(),
   }
 
   let beaconLabels = generateBeaconLabelsForPDF()

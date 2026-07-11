@@ -24,6 +24,7 @@ import { placeBlocks } from "./blockPlacementEngine.js";
 import { findPoleOfInaccessibility } from '../utils/labelPlacer.js';
 import { planSheetLayout } from './sheetLayoutPlanner.js';
 import { findBlockPosition } from './dxfBlockPlacer.js';
+import { drawSubjectAdjoiningFeatures } from './adjoiningFeatures.js';
 import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlanner.js';
 import {
   PT_TO_MM, MM_TO_PT,
@@ -11381,6 +11382,42 @@ async function _generateGeoPDFInner(options, logger) {
       outsideFigureBoundary,
       metadata?.planType || 'general-undeveloped'
     );
+  }
+
+  // Step 2b: Adjoining features (roads / servitudes / contiguous neighbours) from
+  // the per-subject side annotations. Drawn AFTER the parcel & outside-figure
+  // boundaries but BEFORE beacons, so the beacon circles knock out any strip/stub
+  // lines underneath — the same z-order the diagram uses. Roads are LABEL-ONLY on
+  // general plans (no burnt-sienna fill); servitudes keep the blue defined-width
+  // strip and contiguous neighbours the dashed outward stubs. Each subject carries
+  // its own ring, so no parcel-id matching is needed.
+  const _adjoiningSubjects = Array.isArray(metadata?.adjoiningSubjects)
+    ? metadata.adjoiningSubjects
+    : [];
+  if (_adjoiningSubjects.length > 0) {
+    const _ptPerGroundM = (72 / 25.4) * 1000 / (optimalScale?.value || 1000);
+    let _drawn = 0;
+    for (const subj of _adjoiningSubjects) {
+      const ring = Array.isArray(subj?.ring) ? subj.ring : null;
+      const anns = Array.isArray(subj?.annotations) ? subj.annotations : null;
+      if (!ring || ring.length < 3 || !anns || anns.length === 0) continue;
+      // Drop a trailing closing-duplicate vertex, then transform each Cape Lo
+      // [Y, X] to PDF points against the SAME extent/bounds as the boundaries.
+      let r = ring;
+      const f = r[0], l = r[r.length - 1];
+      if (f && l && f[0] === l[0] && f[1] === l[1]) r = r.slice(0, -1);
+      if (r.length < 3) continue;
+      const ptRing = r.map(([yy, xx]) =>
+        transformCoords(yy, xx, calculatedExtent, figureBounds)
+      );
+      drawSubjectAdjoiningFeatures(
+        doc,
+        { ptRing, annotations: anns, ptPerGroundM: _ptPerGroundM },
+        logger
+      );
+      _drawn++;
+    }
+    logger.info(`[PDFKit] 🛣️  Rendered adjoining features for ${_drawn} subject(s)`);
   }
 
   // Step 3: Render beacons with labels (collision detection enabled)

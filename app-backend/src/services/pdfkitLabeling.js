@@ -704,12 +704,21 @@ class LabelingSystem {
         return true;
       };
 
-      // Placement priority mirrors the reference plan style:
-      //   1. Horizontal at POI, largest → smallest font   (preferred — labels read naturally)
-      //   2. Horizontal sliding along long axis from POI  (narrow parcel, different cross-section)
-      //   3. Rotated (longestAngle) at POI, largest → smallest font (last resort for tight parcels)
-      //   4. Rotated sliding along long axis              (very narrow diagonal strips)
-      //   5. Absolute fallback — horizontal at POI, centre-inside only, minimum font
+      // Placement priority. The CENTROID is the primary anchor so PDF matches the
+      // DXF stand-label placer (dxfLabelPlacer.findStandLabelPosition anchors every
+      // stand number at the shoelace centroid). The POI (pole of inaccessibility —
+      // the widest interior point) used to be primary, but on irregular parcels it
+      // drifts toward the widest lobe, so PDF and DXF disagreed on those stands
+      // (e.g. an L-shaped stand's number sat in the fat arm on the PDF but at the
+      // true centroid on the DXF). POI now serves as the fit-fallback when a
+      // centroid-anchored label won't fit inside the polygon.
+      //   1. Horizontal at CENTROID  (preferred — matches DXF, reads naturally)
+      //   2. Horizontal at POI       (centroid label didn't fit)
+      //   3. Horizontal sliding along long axis from POI
+      //   4. Rotated at CENTROID     (parcel too narrow for horizontal text)
+      //   5. Rotated at POI
+      //   6. Rotated sliding along long axis
+      //   7. Absolute fallback — centre-inside only, minimum font
       //
       // Rotation cap: ±25° — keeps labels legible and close to horizontal.
       const cappedAngle = Math.max(-25, Math.min(25, longestAngle));
@@ -717,18 +726,27 @@ class LabelingSystem {
       const axDx = Math.cos(aRad), axDy = Math.sin(aRad);
       const maxSlide = Math.max(pgW, pgH);
 
+      // Place at a fixed anchor, trying the font ladder largest→smallest; the first
+      // size whose rotated bbox fits inside the polygon wins. Returns true if placed.
+      const tryAnchor = (ax, ay, angle) => {
+        for (const fs of fontSizes) {
+          if (labelFitsAt(ax, ay, angle, fs)) {
+            drawStandLabel(ax, ay, angle, fs);
+            return true;
+          }
+        }
+        return false;
+      };
+
       let placed = false;
 
-      // Phase 1: Horizontal at POI
-      for (const fs of fontSizes) {
-        if (labelFitsAt(poi.x, poi.y, 0, fs)) {
-          drawStandLabel(poi.x, poi.y, 0, fs);
-          placed = true;
-          break;
-        }
-      }
+      // Phase 1: Horizontal at CENTROID (primary — DXF parity)
+      if (tryAnchor(centroid.x, centroid.y, 0)) placed = true;
 
-      // Phase 2: Horizontal — slide along long axis through POI
+      // Phase 2: Horizontal at POI (centroid label didn't fit)
+      if (!placed && tryAnchor(poi.x, poi.y, 0)) placed = true;
+
+      // Phase 3: Horizontal — slide along long axis through POI
       if (!placed) {
         outer: for (const fs of fontSizes) {
           for (let t = 0.05; t <= 1; t += 0.05) {
@@ -745,18 +763,14 @@ class LabelingSystem {
         }
       }
 
-      // Phase 3: Rotated at POI (for parcels too narrow to fit horizontal text)
-      if (!placed) {
-        for (const fs of fontSizes) {
-          if (labelFitsAt(poi.x, poi.y, cappedAngle, fs)) {
-            drawStandLabel(poi.x, poi.y, cappedAngle, fs);
-            placed = true;
-            break;
-          }
-        }
-      }
+      // Phase 4: Rotated at CENTROID (parcel too narrow for horizontal text —
+      // prefer the centroid position over POI so we still match the DXF anchor).
+      if (!placed && tryAnchor(centroid.x, centroid.y, cappedAngle)) placed = true;
 
-      // Phase 4: Rotated — slide along long axis
+      // Phase 5: Rotated at POI (for parcels too narrow to fit horizontal text)
+      if (!placed && tryAnchor(poi.x, poi.y, cappedAngle)) placed = true;
+
+      // Phase 6: Rotated — slide along long axis
       if (!placed) {
         outer2: for (const fs of fontSizes) {
           for (let t = 0.05; t <= 1; t += 0.05) {
@@ -773,12 +787,17 @@ class LabelingSystem {
         }
       }
 
-      // Phase 5: Absolute fallback — centre-inside only, minimum font, horizontal
+      // Phase 7: Absolute fallback — centre-inside only, minimum font, horizontal.
+      // Prefer the centroid (DXF anchor) when it's inside the polygon; only fall
+      // back to the POI when the centroid lies outside (concave parcel).
       if (!placed) {
         const fs = Math.max(7, standFontSize - 2);
-        const origin = isPointInPolygonSimple([poi.x, poi.y], polygon) ? poi : centroid;
+        const centroidInside = isPointInPolygonSimple([centroid.x, centroid.y], polygon);
+        const origin = centroidInside
+          ? centroid
+          : (isPointInPolygonSimple([poi.x, poi.y], polygon) ? poi : centroid);
         drawStandLabel(origin.x, origin.y, 0, fs);
-        if (origin === centroid) this.logger.info(`[Labeling] ⚡ centroid fallback for stand label: ${stand}`);
+        if (origin === poi) this.logger.info(`[Labeling] ⚡ POI fallback for stand label (centroid outside): ${stand}`);
       }
     });
 

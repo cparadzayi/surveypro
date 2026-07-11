@@ -1333,7 +1333,9 @@ export function generateDXF(options, logger) {
   if (Array.isArray(metadata.adjoiningSubjects) && metadata.adjoiningSubjects.length) {
     const PT_PER_MM = 72 / 25.4;
     const _adjGeo = {
-      textHeight: ptToGround(7, S),
+      // Match the DXF stand-number font (bucketed then capped at 10 pt) so the
+      // road/servitude/contiguous labels are uniform with the parcel labels.
+      textHeight: ptToGround(10, S),
       stubLen:    ptToGround(6 * PT_PER_MM, S),
       bandLen:    ptToGround(12, S),
       standoff:   ptToGround(1.3 * PT_PER_MM, S),

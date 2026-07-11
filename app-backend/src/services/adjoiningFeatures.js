@@ -25,6 +25,10 @@ const CONTIG_STUB_PT = 6 * PT_PER_MM      // dashed outward stub length
 const ROAD_LABEL_STANDOFF_PT = 1.3 * PT_PER_MM  // push the road name just off the edge
 const LABEL_BAND_PT = 12                  // clear the boundary's vertex/beacon labels
 const CONTIG_LABEL_OFF_PT = CONTIG_STUB_PT + 6  // horizontal label beyond the stub
+// Match the stand (parcel) number font for a uniform look on the sheet. The PDF
+// stand-label placer renders a normal parcel's number at 11 pt (pdfkitLabeling
+// analyzeParcelGeom), so road/servitude/contiguous labels use the same size.
+const LABEL_FONT_PT = 11
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -100,7 +104,7 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
 
     // ── Label ──
     if (ann.label) {
-      doc.save().font('Helvetica').fontSize(7).fillColor('#000000')
+      doc.save().font('Helvetica').fontSize(LABEL_FONT_PT).fillColor('#000000')
       const labelText = ann.role === 'road' && ann.widthM > 0
         ? `${ann.label} ${formatSI(ann.widthM, 2)}m`
         : ann.label
@@ -122,12 +126,12 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
         const off = stripPt + LABEL_BAND_PT
         const lx = mid.x + perpX * off, ly = mid.y + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })
-        doc.text(labelText, lx - labelW / 2, ly - 3.5, { lineBreak: false })
+        doc.text(labelText, lx - labelW / 2, ly - LABEL_FONT_PT / 2, { lineBreak: false })
       } else {
         // Contiguous: horizontal outward label beyond the dashed stub.
         const off = CONTIG_LABEL_OFF_PT
         const lx = mid.x + perpX * off, ly = mid.y + perpY * off
-        doc.text(labelText, lx - labelW / 2, ly - 3.5, { lineBreak: false })
+        doc.text(labelText, lx - labelW / 2, ly - LABEL_FONT_PT / 2, { lineBreak: false })
       }
       doc.restore()
     }

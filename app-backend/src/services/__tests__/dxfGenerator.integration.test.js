@@ -688,10 +688,10 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
     return texts
   }
 
-  test('schedule title "SCHEDULE OF AREAS" is emitted on TITLE_BLOCK', () => {
+  test('schedule title "SCHEDULE OF AREAS" is NOT emitted (label removed)', () => {
     const { buffer } = generateDXF(sampleFixture, fakeLogger)
     const titleBlockTexts = collectTextsByLayer(buffer.toString(), 'TITLE_BLOCK')
-    expect(titleBlockTexts).toContain('SCHEDULE OF AREAS')
+    expect(titleBlockTexts).not.toContain('SCHEDULE OF AREAS')
   })
 
   test('all six SI 727 column headers appear as TEXT entities on TITLE_BLOCK', () => {
@@ -1026,7 +1026,7 @@ describe('dxfGenerator integration — bottom-zone topology (3-v4)', () => {
     const r = generateDXF(sampleFixture, fakeLogger)
     const dxf = r.buffer.toString()
     expect(dxf).toContain('OUTSIDE FIGURE DATA')      // OFD title
-    expect(dxf).toContain('SCHEDULE OF AREAS')        // schedule title
+    expect(dxf).not.toContain('SCHEDULE OF AREAS')    // schedule title removed (label deleted)
     expect(dxf).toContain('BEACON DESCRIPTION')       // beacon header (singular — matches PDF)
     expect(dxf).toContain('Surveyed in May 2026')     // statement date line — PDF-style "Month YYYY"
     expect(dxf).toContain('Approved')                 // SG box title
@@ -1091,9 +1091,10 @@ describe('dxfGenerator integration — bottom-zone topology (3-v4)', () => {
     const r = generateDXF(dense, fakeLogger)
     const dxf = r.buffer.toString()
 
-    // The schedule TITLE 'SCHEDULE OF AREAS' must appear at least once.
+    // The 'SCHEDULE OF AREAS' label was removed from the plan — it must NOT appear.
+    // (Schedule placement is still asserted below via the scheduleOverflow phase.)
     const titleCount = (dxf.match(/SCHEDULE OF AREAS/g) || []).length
-    expect(titleCount).toBeGreaterThanOrEqual(1)
+    expect(titleCount).toBe(0)
 
     // The test documents the NEW capability — pre-3-v4 the schedule was
     // clamped above drawDivY and 40 stands would have produced
@@ -1134,9 +1135,9 @@ describe('dxfGenerator integration — schedule split + dynamic columns (2026-06
     if (sched) {
       expect(sched.phase).not.toBe('consolidation-zero-fit')
     }
-    // At least one schedule sub-table title was emitted.
+    // The 'SCHEDULE OF AREAS' label was removed from the plan — it must NOT appear.
     const titleCount = (r.buffer.toString().match(/SCHEDULE OF AREAS/g) || []).length
-    expect(titleCount).toBeGreaterThan(0)
+    expect(titleCount).toBe(0)
   })
 
   test('schedule column widths accommodate each header at width factor 1.0 (CAD viewer safety)', () => {

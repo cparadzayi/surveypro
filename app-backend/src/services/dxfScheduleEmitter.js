@@ -111,18 +111,10 @@ export function emitScheduleOfAreasTopological({
     currentSheetSize: sheetSize,
   })
 
-  // Helper: emit the "SCHEDULE OF AREAS" title placeholder near the top-left
-  // of the drawing zone. Used by every path that fails to place any sub-table,
-  // so the user always sees there's a schedule that couldn't fit (the
-  // structured `scheduleOverflow` warn alone isn't visible in the DXF).
-  const emitTitlePlaceholder = () => {
-    addText(
-      'TITLE_BLOCK',
-      drawingZone.x + mm(3),
-      drawingZone.y + drawingZone.height - mm(5),
-      'SCHEDULE OF AREAS', hHead, 0, 'BOLD',
-    )
-  }
+  // The "SCHEDULE OF AREAS" title has been removed from the plan, so the overflow
+  // placeholder is a no-op. The structured `scheduleOverflow` warn still signals
+  // that a schedule could not be placed.
+  const emitTitlePlaceholder = () => {}
 
   // 3. Initial-budget overflow.
   if (!layout.fits) {

@@ -312,20 +312,16 @@ describe('addScheduleTable', () => {
     ...overrides,
   })
 
-  test('emits the title with BOLD style at (x, y)', () => {
+  test('does NOT emit the "SCHEDULE OF AREAS" title (label removed from the plan)', () => {
     const { textCalls, addText, addLine } = mockPrimitives()
     addScheduleTable({ ...defaultArgs({ addText, addLine }) })
-    const titleCalls = textCalls.filter(c => c.text === 'SCHEDULE OF AREAS')
-    expect(titleCalls).toHaveLength(1)
-    expect(titleCalls[0].style).toBe('BOLD')
-    expect(titleCalls[0].x).toBe(0)
-    expect(titleCalls[0].y).toBe(1000)
+    expect(textCalls.some(c => c.text === 'SCHEDULE OF AREAS')).toBe(false)
   })
 
-  test('emits the (cont\'d) title when titleText is "SCHEDULE OF AREAS (cont\'d)"', () => {
+  test('does NOT emit the (cont\'d) title either', () => {
     const { textCalls, addText, addLine } = mockPrimitives()
     addScheduleTable({ ...defaultArgs({ addText, addLine, titleText: "SCHEDULE OF AREAS (cont'd)" }) })
-    expect(textCalls.some(c => c.text === "SCHEDULE OF AREAS (cont'd)")).toBe(true)
+    expect(textCalls.some(c => c.text === "SCHEDULE OF AREAS (cont'd)")).toBe(false)
   })
 
   test('emits all six SI 727 column headers', () => {

@@ -393,9 +393,10 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     expect(warns.length).toBe(1)
     expect(['initial-budget', 'consolidation-zero-fit']).toContain(warns[0].payload.phase)
 
-    // Title placeholder is emitted regardless of which path failed.
+    // The "SCHEDULE OF AREAS" label was removed from the plan, so the overflow
+    // placeholder is a no-op — no title is emitted.
     const titlePlaceholders = h.calls.addText.filter(args => args[3] === 'SCHEDULE OF AREAS')
-    expect(titlePlaceholders.length).toBe(1)
+    expect(titlePlaceholders.length).toBe(0)
   })
 
   test('11. stand-conservation invariant holds across all paths', () => {
@@ -450,7 +451,7 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     })
 
     const titlePlaceholders = h.calls.addText.filter(args => args[3] === 'SCHEDULE OF AREAS')
-    expect(titlePlaceholders.length).toBe(1)
+    expect(titlePlaceholders.length).toBe(0)
     const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
     expect(warns.length).toBe(1)
     expect(warns[0].payload.phase).toBe('initial-budget')
@@ -608,8 +609,9 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
     expect(result.placedStandCount).toBe(3)
     expect(result.missingStandCount).toBe(0)
     expect(h.calls.warn.length).toBe(0)
+    // The "SCHEDULE OF AREAS" title was removed from the plan.
     const titleCalls = h.calls.addText.filter(args => args[3] === 'SCHEDULE OF AREAS')
-    expect(titleCalls.length).toBe(1)
+    expect(titleCalls.length).toBe(0)
   })
 
   test('2. zero stands → returns early, no warn, no emissions', () => {
@@ -674,23 +676,25 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
     expect(result.southmostY).toBe(17)
   })
 
-  test("6. cont'd titles: first 'SCHEDULE OF AREAS', subsequent \"SCHEDULE OF AREAS (cont'd)\"", () => {
+  test("6. multi-table split still occurs, but NO 'SCHEDULE OF AREAS' titles are emitted", () => {
     // Drawing height 60 → effective 32 after the placer's 14-unit edge margin
     // subtraction on top + bottom → fits 6 rows/table (rowsPerColumn) → 12 rows → 2 tables.
     const features = makeFeatures(12)
     const drawingZone = { x: 0, y: 0, width: 600, height: 60 }
-    emitScheduleOfAreasTopological({
+    const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
       drawingZone, polygon: null, sheetSize: 'ISO_A2',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
 
+    // The schedule still splits into multiple tables (split behaviour unchanged) …
+    expect(result.placedTables.length).toBeGreaterThanOrEqual(2)
+    // … but the title label was removed, so no title text of either form is drawn.
     const titles = h.calls.addText
       .map(args => args[3])
       .filter(t => typeof t === 'string' && t.startsWith('SCHEDULE OF AREAS'))
-    expect(titles[0]).toBe('SCHEDULE OF AREAS')
-    expect(titles[1]).toBe("SCHEDULE OF AREAS (cont'd)")
+    expect(titles.length).toBe(0)
   })
 
   test('20. seedPlacedBlocks parameter — candidate overlapping the seed is rejected', () => {

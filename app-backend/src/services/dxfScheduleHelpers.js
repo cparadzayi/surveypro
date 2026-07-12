@@ -175,11 +175,13 @@ export function addScheduleTable({
   // padding when scaled by the body font size.
   const H_PAD = hBody * 0.3
 
-  // ── Title (above the bordered table, at the caller-supplied (x, y)). ──
-  addText(layer, x, y, titleText, hHead, 0, 'BOLD')
+  // Schedule title ("SCHEDULE OF AREAS") intentionally omitted — the column
+  // headers identify the table. `titleText` is still accepted for signature
+  // stability but no longer drawn.
 
   // ── Bordered table layout ──
-  // Top of the bordered area sits one title-row-height below the title.
+  // The title row height is retained so the table's sizing / placement is
+  // unchanged (tableTopY still steps down one title row).
   const tableTopY = y - hHead * 1.6
 
   // DEED merged-header row (spans NUMBER + DATE columns). Height matches

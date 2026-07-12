@@ -8634,21 +8634,14 @@ export function drawScheduleOfAreasMultiTable(
     }
 
     doc.save();
+    // Force black text: the removed title used to set the fill, and the header /
+    // data draws below don't — without this they inherit the previous fill (the
+    // beacon circles' white), rendering the values invisibly.
+    doc.fillColor("#000000");
 
-    // Title
-    doc
-      .fontSize(9)
-      .font("Helvetica-Bold")
-      .fillColor("#000000")
-      .text(
-        _t.isContinuation ? `SCHEDULE OF AREAS (cont'd)` : "SCHEDULE OF AREAS",
-        currentTableX,
-        currentTableY,
-        {
-          width: tableWidth,
-          align: "center",
-        }
-      );
+    // Schedule title ("SCHEDULE OF AREAS") intentionally omitted — the column
+    // headers identify the table. The titleSpacing strip is retained so table
+    // sizing/placement is unchanged.
 
     // Header
     const headerY = currentTableY + titleSpacing;
@@ -8858,16 +8851,14 @@ function drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY, scheduleC
   const headerHeight = 25;
 
   doc.save();
+  // Force black text: the removed title used to set the fill, and the header /
+  // data draws below don't — without this they inherit the previous fill (the
+  // beacon circles' white), rendering the values invisibly.
+  doc.fillColor("#000000");
 
-  // Title
-  doc
-    .fontSize(9)
-    .font("Helvetica-Bold")
-    .fillColor("#000000")
-    .text("SCHEDULE OF AREAS", tableX, tableY, {
-      width: tableWidth,
-      align: "center",
-    });
+  // Schedule title ("SCHEDULE OF AREAS") intentionally omitted — the column
+  // headers identify the table. The title strip is retained so table sizing /
+  // placement is unchanged.
 
   // Table header - Row 1
   const headerY = tableY + 15;
@@ -9107,18 +9098,14 @@ function drawScheduleOfAreasMultiColumn(
   const standsPerColumn = Math.ceil(standCount / numColumns);
 
   doc.save();
+  // Force black text: the removed title used to set the fill, and the header /
+  // data draws below don't — without this they inherit the previous fill (the
+  // beacon circles' white), rendering the values invisibly.
+  doc.fillColor("#000000");
 
-  // Title (spans all columns)
-  const totalWidth =
-    columnWidth * numColumns + columnSpacing * (numColumns - 1);
-  doc
-    .fontSize(9)
-    .font("Helvetica-Bold")
-    .fillColor("#000000")
-    .text("SCHEDULE OF AREAS", tableX, tableY, {
-      width: totalWidth,
-      align: "center",
-    });
+  // Schedule title ("SCHEDULE OF AREAS") intentionally omitted — the column
+  // headers identify the table. The titleHeight strip is retained so table
+  // sizing / placement is unchanged.
 
   // Draw each column
   for (let col = 0; col < numColumns; col++) {

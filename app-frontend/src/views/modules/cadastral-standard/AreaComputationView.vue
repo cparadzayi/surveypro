@@ -338,6 +338,7 @@ import type { CadastralWorkflowState } from '../../../types/cadastral';
 import { usePolygonDrawing } from '../../../composables/usePolygonDrawing';
 import { useParcelManagement, type ParcelPoint } from '../../../composables/useParcelManagement';
 import { coordinateTransform } from '../../../services/coordinateTransform';
+import { nextDesignation } from '../../../utils/parcelNumbering';
 
 // Inject workflow state
 const workflowState = inject<CadastralWorkflowState>('workflowState');
@@ -387,6 +388,26 @@ const filteredPoints = ref<ParcelPoint[]>([]);
 const selectedPoints = ref<ParcelPoint[]>([]);
 const parcelDesignation = ref('');
 const showLabels = ref(true);
+
+// The designation of the most-recently-added parcel, used to pre-fill the next
+// one (auto-incrementing to expedite digitizing sequential parcels).
+function lastDesignation(): string {
+  const list = parcels.value;
+  return list.length ? (list[list.length - 1]?.designation ?? '') : '';
+}
+
+// Pre-fill the Quick Parcel Builder's designation field with the next number the
+// moment the user starts selecting points for a new parcel, unless they've
+// already typed something. clearSelection() empties it after each save, so this
+// re-fills on the next selection.
+watch(
+  () => selectedPoints.value.length,
+  (count, prev) => {
+    if (count > 0 && prev === 0 && !parcelDesignation.value) {
+      parcelDesignation.value = nextDesignation(lastDesignation());
+    }
+  }
+);
 const currentZoom = ref(0);
 const labelBounds = ref<Array<{ minX: number; maxX: number; minY: number; maxY: number; pointId: string }>>([]);
 
@@ -807,8 +828,12 @@ async function handlePolygonComplete(points: L.LatLng[]) {
     return;
   }
   
-  // Prompt for designation
-  const designation = prompt('Enter parcel designation (e.g., LOT 1, STAND 2283):');
+  // Prompt for designation, pre-filled with the next auto-incremented number
+  // (based on the last-entered parcel) so sequential digitizing is faster.
+  const designation = prompt(
+    'Enter parcel designation (e.g., LOT 1, STAND 2283):',
+    nextDesignation(lastDesignation())
+  );
   if (!designation) return;
   
   // Create polygon on map

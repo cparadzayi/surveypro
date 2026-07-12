@@ -53,7 +53,19 @@ input has no digit run or is empty/nullish. When `existing` is supplied it steps
 the number forward (bounded loop) until the candidate is not already present
 (normalised, case/whitespace-insensitive), so a duplicate is never proposed.
 
-### Wiring in `AreaComputationView.vue`
+### Wiring — BOTH digitizing viewers
+
+The cadastral step has two interchangeable map viewers (a `switch-viewer`
+toggle), and **each has its own parcel-designation `prompt()`**. Both must be
+wired or the pre-fill silently does nothing on whichever viewer the surveyor is
+actually using:
+
+- **Leaflet** — `AreaComputationView.vue` (`handlePolygonComplete` prompt +
+  Quick Parcel Builder inline field).
+- **MapLibre** — `MapLibreAreaView.vue` (`completePolygon` prompt at the point
+  the parcel is created; it already had a duplicate-designation guard).
+
+#### `AreaComputationView.vue` (Leaflet)
 
 Two creation paths both end at `addParcel(designation, points, polygon)`:
 
@@ -70,6 +82,13 @@ Helpers in the view:
 - `lastDesignation()` reads `parcels.value[parcels.value.length - 1]?.designation ?? ''`.
 - `existingDesignations()` returns every parcel's designation on the plan.
 - `suggestNextDesignation()` = `nextDesignation(lastDesignation(), existingDesignations())`.
+
+#### `MapLibreAreaView.vue` (MapLibre)
+
+`completePolygon()` pre-fills its `prompt()` default with
+`nextDesignation(last, existing)`, deriving `last`/`existing` inline from the
+same `parcels` ref. New parcels here are created only through this prompt (no
+separate inline field), so this single call covers the viewer.
 
 ## Testing
 

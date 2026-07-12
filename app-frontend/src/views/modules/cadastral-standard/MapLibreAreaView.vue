@@ -903,6 +903,7 @@ import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow'
 import api from '../../../services/api';
 import { saveDocument } from '../../../services/documentStorage';
 import { validateParcel, formatValidationMessage, type ValidationResult } from '../../../services/parcelValidation';
+import { nextDesignation } from '../../../utils/parcelNumbering';
 import type { DetectedParcel } from '../../../utils/automatedParcelDetector';
 import type { ParcelDetectionResult } from '../../../services/parcelDetection';
 import PointRenamePanel from '../../../components/cadastral/PointRenamePanel.vue';
@@ -3740,8 +3741,17 @@ async function completePolygon() {
     return;
   }
   
-  // Prompt for designation
-  const designation = prompt('Enter parcel designation (e.g., LOT 1, STAND 2283):');
+  // Prompt for designation, pre-filled with the next auto-incremented number
+  // (based on the last-entered parcel, skipping any designation already on the
+  // plan) so sequential digitizing is faster. The field stays editable.
+  const _existing = parcels.value.map((p: any) => p.designation ?? '').filter(Boolean);
+  const _last = parcels.value.length
+    ? (parcels.value[parcels.value.length - 1]?.designation ?? '')
+    : '';
+  const designation = prompt(
+    'Enter parcel designation (e.g., LOT 1, STAND 2283):',
+    nextDesignation(_last, _existing)
+  );
   if (!designation || designation.trim() === '') {
     console.log('[MapLibre] Polygon completion cancelled - no designation provided');
     return;

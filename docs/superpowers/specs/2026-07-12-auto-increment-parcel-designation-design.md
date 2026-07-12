@@ -32,35 +32,44 @@ Rules:
 - Preserve everything before and after that run (prefix + suffix).
 - Preserve zero-padding width (`007` → `008`).
 - No digits anywhere, or no parcels yet → return empty string (no pre-fill).
+- **Skip-to-next-free:** the candidate is stepped forward (keeping the same
+  format) until it lands on a designation not already present on the plan, so a
+  duplicate is never proposed. Comparison is case- and whitespace-insensitive.
+  E.g. last-entered `STAND 314` with `STAND 315`/`STAND 316` already present →
+  `STAND 317`.
 
 ## Design
 
 ### Pure helper — `app-frontend/src/utils/parcelNumbering.ts`
 
 ```ts
-export function nextDesignation(last: string): string
+export function nextDesignation(last: string, existing?: Iterable<string>): string
 ```
 
 Isolated, side-effect-free, unit-tested. Uses a regex that captures the last
 digit run: `/^(.*?)(\d+)(\D*)$/`. Increments the captured digits, re-pads to the
 original width, and reassembles `prefix + next + suffix`. Returns `''` when the
-input has no digit run or is empty/nullish.
+input has no digit run or is empty/nullish. When `existing` is supplied it steps
+the number forward (bounded loop) until the candidate is not already present
+(normalised, case/whitespace-insensitive), so a duplicate is never proposed.
 
 ### Wiring in `AreaComputationView.vue`
 
 Two creation paths both end at `addParcel(designation, points, polygon)`:
 
 1. **Polygon drawing** (`handlePolygonComplete`): pass the computed value as the
-   native prompt default —
-   `prompt('Enter parcel designation …', nextDesignation(lastDesignation()))`.
+   native prompt default — `prompt('Enter parcel designation …', suggestNextDesignation())`.
 
 2. **Quick Parcel Builder** (inline `parcelDesignation` field): a watcher on
-   `selectedPoints.length` pre-fills the field with `nextDesignation(...)` the
+   `selectedPoints.length` pre-fills the field with `suggestNextDesignation()` the
    moment the user starts selecting points for a new parcel **and** the field is
    empty. After a save, `clearSelection` empties the field; the watcher re-fills
    it on the next selection.
 
-`lastDesignation()` reads `parcels.value[parcels.value.length - 1]?.designation ?? ''`.
+Helpers in the view:
+- `lastDesignation()` reads `parcels.value[parcels.value.length - 1]?.designation ?? ''`.
+- `existingDesignations()` returns every parcel's designation on the plan.
+- `suggestNextDesignation()` = `nextDesignation(lastDesignation(), existingDesignations())`.
 
 ## Testing
 
@@ -71,6 +80,8 @@ default and a small watcher over the pure helper.
 
 ## Out of scope (YAGNI)
 
-- Cross-session / database max-number lookup.
-- Gap filling (e.g. 314, 316 → 315).
+- Cross-session / database max-number lookup (existence check is scoped to the
+  parcels currently on the plan in-session).
+- Gap filling (e.g. 314, 316 → 315) — the skip-to-next-free rule always moves
+  forward from last-entered + 1, never backwards into a lower gap.
 - A new modal component (existing prompt + inline field are pre-filled in place).

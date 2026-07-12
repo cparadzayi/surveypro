@@ -396,6 +396,17 @@ function lastDesignation(): string {
   return list.length ? (list[list.length - 1]?.designation ?? '') : '';
 }
 
+// Every designation already on the plan, so nextDesignation can skip past any
+// number that is already taken instead of proposing a duplicate.
+function existingDesignations(): string[] {
+  return parcels.value.map(p => p.designation ?? '').filter(Boolean);
+}
+
+// Next auto-incremented, collision-free designation to pre-fill.
+function suggestNextDesignation(): string {
+  return nextDesignation(lastDesignation(), existingDesignations());
+}
+
 // Pre-fill the Quick Parcel Builder's designation field with the next number the
 // moment the user starts selecting points for a new parcel, unless they've
 // already typed something. clearSelection() empties it after each save, so this
@@ -404,7 +415,7 @@ watch(
   () => selectedPoints.value.length,
   (count, prev) => {
     if (count > 0 && prev === 0 && !parcelDesignation.value) {
-      parcelDesignation.value = nextDesignation(lastDesignation());
+      parcelDesignation.value = suggestNextDesignation();
     }
   }
 );
@@ -832,7 +843,7 @@ async function handlePolygonComplete(points: L.LatLng[]) {
   // (based on the last-entered parcel) so sequential digitizing is faster.
   const designation = prompt(
     'Enter parcel designation (e.g., LOT 1, STAND 2283):',
-    nextDesignation(lastDesignation())
+    suggestNextDesignation()
   );
   if (!designation) return;
   

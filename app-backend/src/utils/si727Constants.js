@@ -11,6 +11,12 @@ export const SI727_SHEET_SIZES = [
   { code: 'ISO A0', name: 'ISO_A0', width: 1189, height: 841, area: 999949 }
 ]
 
+// Fixed footer statement required on every General Plan, centred near the bottom
+// margin. The trailing blank is where the Surveyor-General's survey record number
+// is entered. Shared by the PDF (pdfkitGeoPDF) and DXF (dxfGenerator) renderers.
+export const GENERAL_PLAN_RECORD_STATEMENT =
+  'THE CO-ORDINATES OF ALL POINTS DEPICTED ON THIS GENERAL PLAN ARE FILED IN SURVEY RECORD NUMBER          '
+
 // Regulation 63 - Margins
 export const SI727_MARGINS = {
   left: 50,      // mm

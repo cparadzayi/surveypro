@@ -70,7 +70,7 @@ import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlann
 import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon } from './dxfGeometry.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
-import { selectFigureScale } from '../utils/si727Constants.js'
+import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT } from '../utils/si727Constants.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 import { roundBearingSouth } from '../utils/zim-geo.js'
 import { emitSubjectAdjoiningFeaturesDxf } from './adjoiningFeaturesDxf.js'
@@ -1757,6 +1757,13 @@ export function generateDXF(options, logger) {
   // omitted here for 1:1 PDF parity. `drawDivY` is still used as a y-coord
   // boundary by the schedule placer and the bottom-zone layout below.
   addMarginGuides('MARGIN_GUIDES', pageL, pageR, pageT, pageB, cntL, cntR, cntT, cntB)
+
+  // General-plan footer: SI 727 survey-record-number statement, centred near the
+  // bottom margin within the drawing space (content area — endorsement margin
+  // excluded). General plans only; matches the PDF (pdfkitGeoPDF).
+  if (planType === 'general-developed' || planType === 'general-undeveloped') {
+    addTextC(TB, (cntL + cntR) / 2, cntB + ptToGround(4, S), GENERAL_PLAN_RECORD_STATEMENT, ptToGround(9, S))
+  }
 
   // â”€â”€ A) TITLE ZONE (within top margin area, centered in content) â”€â”€
   const txC = (cntL + cntR) / 2; // center of content area

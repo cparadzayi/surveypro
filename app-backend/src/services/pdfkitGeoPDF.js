@@ -7,6 +7,7 @@ import {
   SI727_PRESCRIBED_SCALES,
   SI727_SHEET_SIZES,
   SI727_MARGINS,
+  GENERAL_PLAN_RECORD_STATEMENT,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
 import { computeScheduleColumnWidths, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment } from "../../../app-shared/block-definitions.js";
@@ -12364,6 +12365,24 @@ async function _generateGeoPDFInner(options, logger) {
   drawSurveyorGeneralSignature(doc, mapBounds, blockPositions.sgSignature);
 
   drawEndorsementBlock(doc, blockPositions.endorsement);
+
+  // General-plan footer: the SI 727 survey-record-number statement, centred near
+  // the bottom margin within the drawing space. mapBounds excludes the right
+  // endorsement margin, so centring on mapBounds reads as centred in the drawing
+  // area. General plans only — diagrams / working plans don't carry it.
+  {
+    const _pt = metadata?.planType;
+    if (_pt === 'general-developed' || _pt === 'general-undeveloped') {
+      const _fs = 9;
+      doc.save().font('Helvetica').fontSize(_fs).fillColor('#000000');
+      const _y = mapBounds.y + mapBounds.height - _fs - 4; // just above the bottom margin
+      doc.text(GENERAL_PLAN_RECORD_STATEMENT, mapBounds.x, _y, {
+        width: mapBounds.width, align: 'center', lineBreak: false,
+      });
+      doc.restore();
+      logger.info('[PDFKit] 🧾 General-plan survey-record-number statement rendered');
+    }
+  }
 
   // 3-v7: structured warnings for each surrounding block that overlaps the polygon.
   // Mirrors DXF's per-block OverlapsPolygon warnings (same category names).

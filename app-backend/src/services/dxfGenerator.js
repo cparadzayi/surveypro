@@ -932,18 +932,35 @@ export function generateDXF(options, logger) {
       { x: xL, y: yB }, { x: xR, y: yB },
     ];
     const bounds = [];
+    // Axis-label FORMAT ported from the PDF's renderOutsideFigureTickMarks:
+    // "Y = +96 900" / "X = +2 247 600" — explicit +/- sign and space-grouped
+    // thousands (vs the old bare "Y=96900"). Same value convention: Y = Cape Lo
+    // Westing (−x), X = Cape Lo Southing (−y).
+    const fmtAxis = (v) => {
+      const a = Math.round(Math.abs(v)).toLocaleString('en-US').replace(/,/g, ' ')
+      return (v >= 0 ? '+' : '-') + a
+    }
     for (const c of corners) {
       addLine(layer, c.x - arm, c.y, c.x + arm, c.y);   // horizontal arm
       addLine(layer, c.x, c.y - arm, c.x, c.y + arm);   // vertical arm
-      // Westing (Y) above the vertical arm; Southing (X) right of the horizontal arm.
-      addText(layer, c.x - arm, c.y + arm + off, `Y=${Math.round(-c.x)}`, lblH, 0);
-      addText(layer, c.x + arm + off, c.y - lblH / 2, `X=${Math.round(-c.y)}`, lblH, 0);
-      // Reserve a band covering the cross + both labels (X= runs right; Y= runs up).
+      // Westing (Y) reads UP the vertical arm (rotated 90°, matching the PDF);
+      // Southing (X) reads horizontally to the right of the horizontal arm.
+      const yLabel = `Y = ${fmtAxis(-c.x)}`;
+      const xLabel = `X = ${fmtAxis(-c.y)}`;
+      // A 90°-rotated DXF TEXT grows UP from the insertion point with its glyph
+      // height extending LEFT, so offset the baseline by +lblH/2 to centre the
+      // vertical label column over the arm.
+      addText(layer, c.x + lblH / 2, c.y + arm + off, yLabel, lblH, 90);
+      addText(layer, c.x + arm + off, c.y - lblH / 2, xLabel, lblH, 0);
+      // Reserve a band covering the cross + both labels (X runs right; Y runs up).
+      // Sized to the actual label strings (0.55 = STYLE width factor).
+      const yLabelW = yLabel.length * lblH * 0.55;
+      const xLabelW = xLabel.length * lblH * 0.55;
       bounds.push({
         x:      c.x - arm - mm(2),
         y:      c.y - arm - mm(2),
-        width:  2 * arm + off + mm(26),          // room for the X= southing string
-        height: 2 * arm + off + lblH + mm(2),    // room for the Y= westing string
+        width:  2 * arm + off + xLabelW + mm(2),
+        height: 2 * arm + off + yLabelW + mm(2),
       });
     }
     return bounds;
@@ -1942,6 +1959,20 @@ export function generateDXF(options, logger) {
 
   const plannerMeasure = (str, { size }) => String(str).length * size * 0.55;
 
+  // Reserve the geodetic corner crosses (the "+" plus its Y=/X= axis labels) as
+  // planner obstacles so the schedule and every other block is placed CLEAR of
+  // them — the DXF has no PDF-style label deflection, so an un-reserved cross
+  // would let a label overrun the schedule. Same shift/flip into the planner's
+  // y-down point frame as the other obstacles (o.y is the ground min-corner, so
+  // o.y + o.height is the top edge measured down from cntT).
+  const _crossBoundsForPlanner = (_crossBounds || []).map((o) => ({
+    name: 'tickCross',
+    x: (o.x - cntL) * M_TO_PT,
+    y: (cntT - (o.y + o.height)) * M_TO_PT,
+    width:  o.width  * M_TO_PT,
+    height: o.height * M_TO_PT,
+  }));
+
   // ── 3-v7 diagnostic: log the planner inputs so PDF↔DXF discrepancies can be
   // traced from the same request.  Remove once polygon-handoff is verified.
   const _diagPolyBbox = (polyPtsForPlanner && polyPtsForPlanner.length)
@@ -1970,12 +2001,11 @@ export function generateDXF(options, logger) {
     mapFeatureBounds:  { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt, pdfPoints: polyPtsForPlanner, parcelSegments: parcelSegmentsForPlanner },
     scale:             { value: S, label: `1:${S}` },
     extent:            { minX: pageL, maxX: pageR, minY: pageB, maxY: pageT },
-    // 3-v8 follow-up: match PDF (which now also passes []) so the planner
-    // sees identical obstacle sets and makes identical placement decisions.
-    // The titleZone/northArrow/scaleBar items previously injected here are
-    // already represented by calculateBlockPositions' internal prePlaced
-    // path, so removing them here doesn't lose collision coverage.
-    tickMarkBounds:    [],
+    // Reserve the geodetic corner crosses so blocks (esp. the schedule) never
+    // overlap a tick mark or its Y=/X= axis label. (The PDF passes [] here and
+    // instead deflects its tick LABELS around blocks at draw time; the DXF has no
+    // such deflection, so it reserves the crosses up-front for the same result.)
+    tickMarkBounds:    _crossBoundsForPlanner,
     polyPts:           polyPtsForPlanner,
     measureText:       plannerMeasure,
     logger,
@@ -2099,7 +2129,11 @@ export function generateDXF(options, logger) {
     beaconGroups.length ? beaconPos : null,
     scaleBarPos,
     northArrowPos,
-  ].filter(Boolean).map(_inflate);
+  ].filter(Boolean).map(_inflate)
+    // Also keep balanced/mirrored sub-tables off the geodetic corner crosses.
+    // _crossBounds are ground min-corner rects (y = bottom); these obstacles use
+    // y = TOP, so lift each by its own height before inflating.
+    .concat((_crossBounds || []).map((o) => _inflate({ x: o.x, y: o.y + o.height, width: o.width, height: o.height })));
   const _placedTablesBalanced = _placedTablesGround
     ? balanceScheduleTables(_placedTablesGround, dCX, cntL, cntR, _scheduleObstacles)
     : null;

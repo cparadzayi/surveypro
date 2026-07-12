@@ -338,10 +338,10 @@ describe('generateDXF — coordinate grid ticks', () => {
     expect(entityCount(dxf, 'TEXT', 'GRID')).toBeGreaterThan(0)
   })
 
-  test('renders 4 corner reference crosses with Y= / X= coordinate labels (PDF parity)', () => {
+  test('renders 4 corner reference crosses with Y = / X = coordinate labels (PDF parity)', () => {
     // Ports the PDF's renderOutsideFigureTickMarks: a "+" at each of the figure's
-    // four coordinate corners (8 arm LINEs) labelled Y=<westing> / X=<southing>,
-    // instead of scattered single-value edge ticks that float for diagonal figures.
+    // four coordinate corners (8 arm LINEs) labelled "Y = <westing>" / "X = <southing>"
+    // — same format as the PDF (explicit +/- sign, space-grouped thousands).
     const { buffer } = generateDXF(opts, fakeLogger)
     const dxf = buffer.toString()
     // 4 crosses × 2 arms = 8 GRID LINEs.
@@ -355,9 +355,9 @@ describe('generateDXF — coordinate grid ticks', () => {
       const t = (e.match(/^\s*1\r?\n\s*([^\r\n]+)/m) || [])[1]
       if (t) labels.push(t.trim())
     }
-    // Each cross has a Y= and an X= label → 4 of each.
-    expect(labels.filter(t => /^Y=-?\d+$/.test(t))).toHaveLength(4)
-    expect(labels.filter(t => /^X=-?\d+$/.test(t))).toHaveLength(4)
+    // Each cross has a "Y = +N" and an "X = +N" label → 4 of each.
+    expect(labels.filter(t => /^Y = [+-][\d ]+$/.test(t))).toHaveLength(4)
+    expect(labels.filter(t => /^X = [+-][\d ]+$/.test(t))).toHaveLength(4)
   })
 })
 

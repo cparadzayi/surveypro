@@ -903,7 +903,7 @@ import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow'
 import api from '../../../services/api';
 import { saveDocument } from '../../../services/documentStorage';
 import { validateParcel, formatValidationMessage, type ValidationResult } from '../../../services/parcelValidation';
-import { suggestNextDesignation } from '../../../utils/parcelNumbering';
+import { nextDesignation } from '../../../utils/parcelNumbering';
 import type { DetectedParcel } from '../../../utils/automatedParcelDetector';
 import type { ParcelDetectionResult } from '../../../services/parcelDetection';
 import PointRenamePanel from '../../../components/cadastral/PointRenamePanel.vue';
@@ -1977,6 +1977,11 @@ const setInsertAfter = (index: number | null) => {
 
 // Parcels
 const parcels = ref<Parcel[]>([]);
+
+// Designation the surveyor last entered THIS session, used to pre-fill the next
+// one (last-entered + 1). Deliberately not derived from parcels[] order — the
+// list is seeded from the DB with the Outside Figure last, which is not a stand.
+const lastEnteredDesignation = ref('');
 
 // Beacon labels (intelligent labeling: suffix inside parcels, full names outside)
 interface BeaconLabel {
@@ -3741,14 +3746,17 @@ async function completePolygon() {
     return;
   }
   
-  // Prompt for designation, pre-filled with the next auto-incremented number.
-  // The guess is based on the HIGHEST-numbered stand on the plan (not list
-  // order — the Outside Figure loads last and must not seed it), skipping any
-  // number already taken. The field stays editable.
+  // Prompt for designation, pre-filled with (last-entered + 1). The guess is
+  // based on the designation the surveyor last entered THIS session, skipping
+  // any number already on the plan. It is empty until the first parcel of the
+  // session is entered by hand. The field stays editable.
   const _existing = parcels.value.map((p: any) => p.designation ?? '').filter(Boolean);
-  const _suggestion = suggestNextDesignation(_existing);
+  const _suggestion = lastEnteredDesignation.value
+    ? nextDesignation(lastEnteredDesignation.value, _existing)
+    : '';
   console.log('[MapLibre] 🔢 Next-designation suggestion', {
-    suggestion: _suggestion || '(empty — no numbered stand to extrapolate from)',
+    lastEntered: lastEnteredDesignation.value || '(none yet this session)',
+    suggestion: _suggestion || '(empty — first parcel of the session)',
     existingCount: _existing.length,
   });
   const designation = prompt(
@@ -3855,6 +3863,9 @@ async function completePolygon() {
   // Add to parcels list (computing)
   parcels.value.push(parcel);
   const parcelIndex = parcels.value.length - 1;
+
+  // Remember what was just entered so the next parcel pre-fills as this + 1.
+  lastEnteredDesignation.value = parcel.designation;
   
   // Reset drawing state
   isDrawing.value = false;

@@ -338,7 +338,7 @@ import type { CadastralWorkflowState } from '../../../types/cadastral';
 import { usePolygonDrawing } from '../../../composables/usePolygonDrawing';
 import { useParcelManagement, type ParcelPoint } from '../../../composables/useParcelManagement';
 import { coordinateTransform } from '../../../services/coordinateTransform';
-import { suggestNextDesignation as computeNextDesignation } from '../../../utils/parcelNumbering';
+import { nextDesignation } from '../../../utils/parcelNumbering';
 
 // Inject workflow state
 const workflowState = inject<CadastralWorkflowState>('workflowState');
@@ -389,16 +389,22 @@ const selectedPoints = ref<ParcelPoint[]>([]);
 const parcelDesignation = ref('');
 const showLabels = ref(true);
 
-// Every designation already on the plan, used to pick the highest-numbered
-// stand to extrapolate from and to skip any number that is already taken.
+// Designation the surveyor last entered THIS session, used to pre-fill the next
+// one (last-entered + 1). Deliberately not derived from parcels[] order.
+const lastEnteredDesignation = ref('');
+
+// Every designation already on the plan, so the suggestion can skip any number
+// that is already taken instead of proposing a duplicate.
 function existingDesignations(): string[] {
   return parcels.value.map(p => p.designation ?? '').filter(Boolean);
 }
 
-// Next auto-incremented, collision-free designation to pre-fill. Based on the
-// highest-numbered stand (not list order — the Outside Figure loads last).
+// Next (last-entered + 1) collision-free designation to pre-fill. Empty until
+// the first parcel of the session is entered by hand.
 function suggestNextDesignation(): string {
-  return computeNextDesignation(existingDesignations());
+  return lastEnteredDesignation.value
+    ? nextDesignation(lastEnteredDesignation.value, existingDesignations())
+    : '';
 }
 
 // Pre-fill the Quick Parcel Builder's designation field with the next number the
@@ -859,6 +865,9 @@ async function handlePolygonComplete(points: L.LatLng[]) {
   
   // Add parcel
   await addParcel(designation, matched, polygon);
+
+  // Remember what was just entered so the next parcel pre-fills as this + 1.
+  lastEnteredDesignation.value = designation;
 }
 
 // Manual selection functions
@@ -909,9 +918,12 @@ async function saveManualParcel() {
     className: 'bg-white px-3 py-2 rounded shadow-lg font-semibold'
   });
   
+  // Remember what was just entered so the next parcel pre-fills as this + 1.
+  lastEnteredDesignation.value = parcelDesignation.value;
+
   // Add parcel
   await addParcel(parcelDesignation.value, selectedPoints.value, polygon);
-  
+
   // Clear selection
   clearSelection();
 }

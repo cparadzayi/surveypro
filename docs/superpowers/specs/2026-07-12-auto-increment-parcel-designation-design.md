@@ -11,17 +11,18 @@ next number can be predicted. Pre-filling it expedites digitizing many parcels.
 
 ## Behaviour
 
-After a parcel is created, the next designation is pre-filled by finding the
-parcel with the **highest trailing number** on the plan and incrementing it by 1,
-while preserving that parcel's format. The field is always editable, so a wrong
-guess costs one keystroke to correct.
+The next designation is pre-filled with **(last-entered + 1)**: the designation
+the surveyor entered for the previous parcel **this session**, incremented by 1,
+preserving its format and skipping any number already on the plan. It is empty
+until the first parcel of the session is entered by hand (matching "…once the
+user has completed digitizing the next parcel"). The field is always editable.
 
-> **Why highest-number, not list order:** an earlier version incremented the
+> **Why session-tracked, not list order:** an earlier version incremented the
 > *last element* of the parcels array. After a DB reload that element is the
 > **Outside Figure** parcel (loaded last), so it proposed nonsense like
-> `OUTSIDE FIGURE MAG1 SH3`. The Outside Figure is now excluded and the guess is
-> driven by the maximum stand number, which is what "the last parcel is 314"
-> actually means during sequential digitizing.
+> `OUTSIDE FIGURE MAG1 SH3`. "Last-entered" therefore means a value tracked in a
+> `ref` that is set whenever the surveyor creates a parcel — never read from
+> `parcels[]` order.
 
 Examples:
 
@@ -51,20 +52,18 @@ Rules:
 
 ```ts
 export function nextDesignation(last: string, existing?: Iterable<string>): string
-export function suggestNextDesignation(existing: Iterable<string>): string
 ```
 
-`nextDesignation` is the low-level primitive: it captures the last digit run of
-`last` (`/^(.*?)(\d+)(\D*)$/`), increments it, re-pads to the original width, and
+Isolated, side-effect-free, unit-tested. Captures the last digit run of `last`
+(`/^(.*?)(\d+)(\D*)$/`), increments it, re-pads to the original width, and
 reassembles `prefix + next + suffix`; with `existing` supplied it steps forward
 (bounded loop) until the candidate is not already present (normalised,
 case/whitespace-insensitive), so a duplicate is never proposed. Returns `''` when
-there is no digit run.
+`last` has no digit run or is empty/nullish.
 
-`suggestNextDesignation` is what the views call: it scans `existing`, skips the
-Outside Figure, picks the designation with the **highest trailing number**, and
-returns `nextDesignation(thatOne, existing)`. Returns `''` when no numbered
-parcel exists. Both are isolated, side-effect-free, and unit-tested.
+Each view tracks the last-entered designation in a `ref` (set when a parcel is
+created) and calls `nextDesignation(lastEntered, existing)`; the `ref` is empty
+until the first parcel of the session, so the first suggestion is blank.
 
 ### Wiring — BOTH digitizing viewers
 
@@ -91,17 +90,19 @@ Two creation paths both end at `addParcel(designation, points, polygon)`:
    empty. After a save, `clearSelection` empties the field; the watcher re-fills
    it on the next selection.
 
-Helpers in the view:
+State/helpers in the view:
+- `lastEnteredDesignation` ref — set to the designation each time a parcel is
+  created (in `handlePolygonComplete` and `saveManualParcel`).
 - `existingDesignations()` returns every parcel's designation on the plan.
-- `suggestNextDesignation()` = `suggestNextDesignation(existingDesignations())`
-  (the util, imported aliased).
+- `suggestNextDesignation()` = `lastEnteredDesignation ? nextDesignation(lastEnteredDesignation, existingDesignations()) : ''`.
 
 #### `MapLibreAreaView.vue` (MapLibre)
 
-`completePolygon()` pre-fills its `prompt()` default with
-`suggestNextDesignation(existing)`, deriving `existing` from the same `parcels`
-ref. New parcels here are created only through this prompt (no separate inline
-field), so this single call covers the viewer.
+Same `lastEnteredDesignation` ref, set right after the new parcel is pushed in
+`completePolygon()`. That function pre-fills its `prompt()` default with
+`nextDesignation(lastEnteredDesignation, existing)`. New parcels here are created
+only through this prompt (no separate inline field), so this single call covers
+the viewer.
 
 ## Testing
 

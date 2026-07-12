@@ -12137,6 +12137,28 @@ async function _generateGeoPDFInner(options, logger) {
     scheduleColumnWidthsPt: _scheduleColumnWidthsPt,
   });
 
+  // Reserve the four geodetic corner tick crosses (the "+" plus its Y=/X= axis
+  // labels) as planner obstacles so the schedule — and every other block — is
+  // placed CLEAR of the ticks from the outset. This mirrors the DXF, which
+  // passes its equivalent `_crossBoundsForPlanner` into planSheetLayout
+  // (dxfGenerator.js). PDF previously passed [] here and relied on a
+  // post-planner relocation pass, but that pass treats scheduleOfAreas as a
+  // FIXED obstacle (it never moves it), so a schedule anchored in a figure
+  // corner could land on a tick and cover its axis values. Passing [] also
+  // silently DIVERGED from DXF once DXF began reserving its crosses — both
+  // sides now reserve the crosses, restoring parity. titleBlockBounds is
+  // omitted (null) because the planner hasn't run yet; the corner crosses sit
+  // at fixed sheet corners and don't depend on it.
+  const _plannerTickBounds = calculateTickMarkBounds(
+    outsideFigure,
+    calculatedExtent,
+    mapBounds,
+    logger
+  );
+  logger.info(
+    `[PDFKit] 📐 Reserving ${_plannerTickBounds.length} corner tick crosses as planner obstacles (parity with DXF)`
+  );
+
   const blockPositions = planSheetLayout({
     metadata,
     parcels: filteredParcels,
@@ -12147,14 +12169,7 @@ async function _generateGeoPDFInner(options, logger) {
     logger,
     scale: optimalScale,
     extent: calculatedExtent,
-    // 3-v8 follow-up: pass [] so PDF and DXF feed the planner identical
-    // obstacle sets. The 4 corner tick-mark reservations only existed on the
-    // PDF side and caused the planner to pick different schedule/OFD/SG
-    // anchor zones than DXF. PDF's tick-mark renderer already does its own
-    // collision avoidance at draw time (per "Y label … has collisions in all
-    // placements — skipping label" diagnostics), so dropping them here only
-    // affects the planner's pre-render decisions, not the visible ticks.
-    tickMarkBounds: [],
+    tickMarkBounds: _plannerTickBounds,
     zOrderCollisionRegistry,
     // 3-v8 follow-up: omit figureBounds so PDF's scale bar gets sized off
     // mapBounds.width — same calc DXF already uses. Previously PDF's scale
@@ -12273,13 +12288,12 @@ async function _generateGeoPDFInner(options, logger) {
   );
 
   // ── Tick-mark avoidance for bottom-zone blocks (PDF port of DXF's _placeClear) ──
-  // planSheetLayout runs with tickMarkBounds:[] so PDF and DXF feed it the SAME
-  // obstacle set and choose the SAME primary layout. But that leaves the four
-  // geodetic corner ticks (cross + Y=/X= axis labels) unreserved, so a relocatable
-  // block — most often the Outside Figure Data table sitting in a figure corner —
-  // can land on a tick and cover its axis values. DXF fixes this in a post-planner
-  // pass (dxfGenerator.js `_placeClear`, whose obstacle set includes `_crossBounds`);
-  // mirror it here. Any relocatable block whose slot overlaps a tick region is moved
+  // planSheetLayout now runs WITH the corner tick crosses reserved (see
+  // _plannerTickBounds above), so the schedule and all blocks are already placed
+  // clear of the ticks. This pass is a refinement/defense-in-depth using the
+  // title-aware finalTickMarkBounds (which can shift a Y/X label to dodge the
+  // title block, producing a slightly different rect than the planner saw). Any
+  // relocatable block whose final slot still overlaps a tick region is moved
   // into clear whitespace via the shared placer (findBlockPosition — the same scanner
   // DXF uses), avoiding the figure, the fixed blocks, the ticks, and the other
   // relocatable blocks. Blocks already clear of every tick keep their planner slot,

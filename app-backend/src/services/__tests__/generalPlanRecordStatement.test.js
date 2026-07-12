@@ -16,7 +16,12 @@ describe('General Plan survey-record-number footer (DXF)', () => {
 
   test('renders on a general-developed plan', () => {
     const { buffer } = generateDXF({ ...sampleMinimalPlan, planType: 'general-developed' }, fakeLogger)
-    expect(buffer.toString()).toContain(NEEDLE)
+    const dxf = buffer.toString()
+    expect(dxf).toContain(NEEDLE)
+    // Bottom-margin footer fields
+    expect(dxf).toContain('COMPILATION')
+    expect(dxf).toContain('S.R.')
+    expect(dxf).toContain('B...')
   })
 
   test('renders on a general-undeveloped plan', () => {
@@ -26,6 +31,8 @@ describe('General Plan survey-record-number footer (DXF)', () => {
 
   test('absent when the plan type is not a general plan', () => {
     const { buffer } = generateDXF({ ...sampleMinimalPlan, planType: 'diagram' }, fakeLogger)
-    expect(buffer.toString()).not.toContain(NEEDLE)
+    const dxf = buffer.toString()
+    expect(dxf).not.toContain(NEEDLE)
+    expect(dxf).not.toContain('COMPILATION')
   })
 })

@@ -70,7 +70,7 @@ import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlann
 import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon } from './dxfGeometry.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
-import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT } from '../utils/si727Constants.js'
+import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER } from '../utils/si727Constants.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 import { roundBearingSouth } from '../utils/zim-geo.js'
 import { emitSubjectAdjoiningFeaturesDxf } from './adjoiningFeaturesDxf.js'
@@ -1763,6 +1763,14 @@ export function generateDXF(options, logger) {
   // excluded). General plans only; matches the PDF (pdfkitGeoPDF).
   if (planType === 'general-developed' || planType === 'general-undeveloped') {
     addTextC(TB, (cntL + cntR) / 2, cntB + ptToGround(4, S), GENERAL_PLAN_RECORD_STATEMENT, ptToGround(9, S))
+    // Bottom-margin footer line, BELOW the content bottom edge (south-up: smaller
+    // y). Three fill-in fields: left at cntL, centred, right-aligned at cntR.
+    const _fh = ptToGround(9, S)
+    const _fy = cntB - _fh - ptToGround(4, S)
+    const _rt = GENERAL_PLAN_MARGIN_FOOTER.right
+    addText(TB, cntL, _fy, GENERAL_PLAN_MARGIN_FOOTER.left, _fh, 0)                       // left-justified
+    addTextC(TB, (cntL + cntR) / 2, _fy, GENERAL_PLAN_MARGIN_FOOTER.center, _fh)          // centred
+    addText(TB, cntR - _rt.length * _fh * 0.55, _fy, _rt, _fh, 0)                         // right-justified (0.55 = STYLE width factor)
   }
 
   // â”€â”€ A) TITLE ZONE (within top margin area, centered in content) â”€â”€

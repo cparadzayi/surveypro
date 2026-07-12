@@ -17,6 +17,15 @@ export const SI727_SHEET_SIZES = [
 export const GENERAL_PLAN_RECORD_STATEMENT =
   'THE CO-ORDINATES OF ALL POINTS DEPICTED ON THIS GENERAL PLAN ARE FILED IN SURVEY RECORD NUMBER          '
 
+// General Plan bottom-margin footer line (drawn in the margin BELOW the drawing
+// space): three fill-in fields spread left / centre / right. Shared by the PDF
+// and DXF renderers.
+export const GENERAL_PLAN_MARGIN_FOOTER = {
+  left: 'B...',
+  center: 'S.R.',
+  right: 'COMPILATION .......',
+}
+
 // Regulation 63 - Margins
 export const SI727_MARGINS = {
   left: 50,      // mm

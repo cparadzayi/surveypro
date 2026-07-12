@@ -8,6 +8,7 @@ import {
   SI727_SHEET_SIZES,
   SI727_MARGINS,
   GENERAL_PLAN_RECORD_STATEMENT,
+  GENERAL_PLAN_MARGIN_FOOTER,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
 import { computeScheduleColumnWidths, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment } from "../../../app-shared/block-definitions.js";
@@ -12379,8 +12380,14 @@ async function _generateGeoPDFInner(options, logger) {
       doc.text(GENERAL_PLAN_RECORD_STATEMENT, mapBounds.x, _y, {
         width: mapBounds.width, align: 'center', lineBreak: false,
       });
+      // Bottom-margin footer line, BELOW the drawing-space bottom edge: three
+      // fill-in fields spread left / centre / right across the drawing width.
+      const _fy = mapBounds.y + mapBounds.height + 8;
+      doc.text(GENERAL_PLAN_MARGIN_FOOTER.left,   mapBounds.x, _fy, { width: mapBounds.width, align: 'left',   lineBreak: false });
+      doc.text(GENERAL_PLAN_MARGIN_FOOTER.center, mapBounds.x, _fy, { width: mapBounds.width, align: 'center', lineBreak: false });
+      doc.text(GENERAL_PLAN_MARGIN_FOOTER.right,  mapBounds.x, _fy, { width: mapBounds.width, align: 'right',  lineBreak: false });
       doc.restore();
-      logger.info('[PDFKit] 🧾 General-plan survey-record-number statement rendered');
+      logger.info('[PDFKit] 🧾 General-plan survey-record-number statement + margin footer rendered');
     }
   }
 

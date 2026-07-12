@@ -16824,13 +16824,6 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
     "y": -2200048.3,
   },
   {
-    "h": 3.2,
-    "layer": "TITLE_BLOCK",
-    "text": "Date ............................",
-    "x": -50733.1,
-    "y": -2200044.8,
-  },
-  {
     "h": 2.5,
     "layer": "TITLE_BLOCK",
     "text": "20",
@@ -16913,6 +16906,13 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
     "text": "A. Mukandi",
     "x": -49783,
     "y": -2200043.1,
+  },
+  {
+    "h": 3.2,
+    "layer": "TITLE_BLOCK",
+    "text": "Date ............................",
+    "x": -50733.1,
+    "y": -2200042,
   },
   {
     "h": 2.5,
@@ -17003,7 +17003,7 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
     "layer": "TITLE_BLOCK",
     "text": "For Surveyor General",
     "x": -50721.7,
-    "y": -2200035.6,
+    "y": -2200032.8,
   },
   {
     "h": 2.5,
@@ -17258,13 +17258,6 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
     "y": -2200021.9,
   },
   {
-    "h": 4.2,
-    "layer": "TITLE_BLOCK",
-    "text": "Approved",
-    "x": -50713.6,
-    "y": -2200016.6,
-  },
-  {
     "h": 2.5,
     "layer": "TITLE_BLOCK",
     "text": "20",
@@ -17347,6 +17340,13 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
     "text": "A. Mukandi",
     "x": -49783,
     "y": -2200016.6,
+  },
+  {
+    "h": 4.2,
+    "layer": "TITLE_BLOCK",
+    "text": "Approved",
+    "x": -50713.6,
+    "y": -2200013.8,
   },
   {
     "h": 2.5,

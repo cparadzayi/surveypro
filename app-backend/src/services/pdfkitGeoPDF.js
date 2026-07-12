@@ -6459,8 +6459,12 @@ export function calculateBlockPositions(
   const northArrowHeight = 85;
 
   // --- SG Signature ---
-  const sgWidth  = 200;
-  const sgHeight = 80;
+  // Source from the shared config so the planner reserves EXACTLY what
+  // drawSurveyorGeneralSignature (and the DXF renderer) draw. A hardcoded copy
+  // here once drifted (80 vs the box's 110), so the taller box overflowed its
+  // reserved slot into the bottom margin/footer.
+  const sgWidth  = BLOCKS.SURVEYOR_GENERAL_BOX.width;
+  const sgHeight = BLOCKS.SURVEYOR_GENERAL_BOX.height;
 
   logger.info({
     msg: "[PDFKit] 📐 Dynamic block dimensions",

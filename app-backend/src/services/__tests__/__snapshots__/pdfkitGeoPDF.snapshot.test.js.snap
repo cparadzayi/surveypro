@@ -7176,22 +7176,6 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "y": 697.8,
   },
   {
-    "font": "g_d0_f3",
-    "page": 1,
-    "size": 9,
-    "text": "Date ............................",
-    "x": 209.9,
-    "y": 764.4,
-  },
-  {
-    "font": "g_d0_f3",
-    "page": 1,
-    "size": 9,
-    "text": "For Surveyor General",
-    "x": 212.8,
-    "y": 790.4,
-  },
-  {
     "font": "g_d0_f1",
     "page": 1,
     "size": 8.6,
@@ -7270,14 +7254,6 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "text": "DATE",
     "x": 1152.1,
     "y": 841.5,
-  },
-  {
-    "font": "g_d0_f3",
-    "page": 1,
-    "size": 12,
-    "text": "Approved",
-    "x": 230.3,
-    "y": 842.2,
   },
   {
     "font": "g_d0_f1",
@@ -7392,6 +7368,14 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "y": 885.4,
   },
   {
+    "font": "g_d0_f3",
+    "page": 1,
+    "size": 9,
+    "text": "Date ............................",
+    "x": 209.9,
+    "y": 932.4,
+  },
+  {
     "font": "g_d0_f2",
     "page": 1,
     "size": 8,
@@ -7422,6 +7406,14 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "text": "The figure AB.BC.CD.DA.AB represents 2 stands and public places being A portion of Test Township situate in the district of Test District.",
     "x": 400.2,
     "y": 956.4,
+  },
+  {
+    "font": "g_d0_f3",
+    "page": 1,
+    "size": 9,
+    "text": "For Surveyor General",
+    "x": 212.8,
+    "y": 958.4,
   },
   {
     "font": "g_d0_f3",
@@ -7462,6 +7454,14 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "text": "of",
     "x": 696,
     "y": 1009.6,
+  },
+  {
+    "font": "g_d0_f3",
+    "page": 1,
+    "size": 12,
+    "text": "Approved",
+    "x": 230.3,
+    "y": 1010.2,
   },
   {
     "font": "g_d0_f1",
@@ -8343,14 +8343,6 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
   {
     "font": "g_d1_f3",
     "page": 1,
-    "size": 9,
-    "text": "Date ............................",
-    "x": 209.9,
-    "y": 764.4,
-  },
-  {
-    "font": "g_d1_f3",
-    "page": 1,
     "size": 7,
     "text": "101",
     "x": 997.9,
@@ -8363,14 +8355,6 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "text": "4875",
     "x": 1030.1,
     "y": 778.8,
-  },
-  {
-    "font": "g_d1_f3",
-    "page": 1,
-    "size": 9,
-    "text": "For Surveyor General",
-    "x": 212.8,
-    "y": 790.4,
   },
   {
     "font": "g_d1_f3",
@@ -8509,14 +8493,6 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "y": 840.4,
   },
   {
-    "font": "g_d1_f3",
-    "page": 1,
-    "size": 12,
-    "text": "Approved",
-    "x": 230.3,
-    "y": 842.2,
-  },
-  {
     "font": "g_d1_f1",
     "page": 1,
     "size": 9,
@@ -8557,6 +8533,14 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "y": 885.4,
   },
   {
+    "font": "g_d1_f3",
+    "page": 1,
+    "size": 9,
+    "text": "Date ............................",
+    "x": 209.9,
+    "y": 932.4,
+  },
+  {
     "font": "g_d1_f2",
     "page": 1,
     "size": 8,
@@ -8587,6 +8571,14 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "text": "The figure AB.BC.CD.DA.AB represents 12 stands and public places being A portion of Maglas Township situate in the district of Bulawayo.",
     "x": 400.2,
     "y": 956.4,
+  },
+  {
+    "font": "g_d1_f3",
+    "page": 1,
+    "size": 9,
+    "text": "For Surveyor General",
+    "x": 212.8,
+    "y": 958.4,
   },
   {
     "font": "g_d1_f3",
@@ -8627,6 +8619,14 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "text": "of",
     "x": 696,
     "y": 1009.6,
+  },
+  {
+    "font": "g_d1_f3",
+    "page": 1,
+    "size": 12,
+    "text": "Approved",
+    "x": 230.3,
+    "y": 1010.2,
   },
   {
     "font": "g_d1_f1",

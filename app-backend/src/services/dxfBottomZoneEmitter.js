@@ -142,8 +142,10 @@ export function sizeOFDTable(outsideFigureData, fonts, mm) {
 /**
  * Compute size of the Surveyor-General Approval Box.
  *
- * SURVEYOR_GENERAL_BOX is a constant 200 × 80 PDF points. Returns the
- * ground-metre equivalents via the injected `mm` converter.
+ * Dimensions come from the shared SURVEYOR_GENERAL_BOX config (do NOT hardcode
+ * a copy — the planner and both renderers must agree, or the box overflows its
+ * reserved slot). Returns the ground-metre equivalents via the injected `mm`
+ * converter.
  *
  * @param {(x:number)=>number} mm
  * @returns {{width:number, height:number}}

@@ -1,6 +1,7 @@
 import { describe, test, expect } from '@jest/globals';
 import { planSheetLayout } from '../sheetLayoutPlanner.js';
 import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
+import BLOCKS from '../../../../app-shared/block-definitions.js';
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} };
 const fakeMeasure = (str, { size }) => String(str).length * size * 0.55;
@@ -42,6 +43,17 @@ describe('planSheetLayout — output shape', () => {
   test('title block has fixed width 650pt', () => {
     const r = plan(sampleMinimalPlan);
     expect(r.titleBlock.width).toBe(650);
+  });
+
+  // Regression guard: the planner must reserve the SAME dimensions the renderer
+  // draws (BLOCKS.SURVEYOR_GENERAL_BOX). A hardcoded copy in the planner once
+  // drifted (reserved 80pt while the box was drawn 110pt), so the S-G box
+  // overflowed its slot into the bottom margin/footer. Sourcing from the shared
+  // config keeps them locked together.
+  test('sgSignature slot matches the drawn SURVEYOR_GENERAL_BOX dimensions', () => {
+    const r = plan(sampleMinimalPlan);
+    expect(r.sgSignature.height).toBe(BLOCKS.SURVEYOR_GENERAL_BOX.height);
+    expect(r.sgSignature.width).toBe(BLOCKS.SURVEYOR_GENERAL_BOX.width);
   });
 
   test('schedule of areas: single column for the 2-stand fixture', () => {

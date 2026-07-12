@@ -88,7 +88,9 @@ export const OUTSIDE_FIGURE_DATA = {
   },
 
   rowHeight: 12,        // drawOutsideFigureData:10729
-  headerHeight: 15,     // drawOutsideFigureData:10730 (column header row)
+  // Column-header row. Tall enough for the DIRECTION header PLUS a "° ' \"" unit
+  // sub-line whose symbols sit over the degree / minute / second value columns.
+  headerHeight: 24,
   headerBoxHeight: 40,  // drawOutsideFigureData:10731 (title + CO-ORDINATES box)
   fontSize: 9,          // drawOutsideFigureData:10741, 10907 (body + headers)
   headerFontSize: 9,    // same as body — PDF uses one size throughout

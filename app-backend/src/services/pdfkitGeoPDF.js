@@ -6368,9 +6368,11 @@ export function calculateBlockPositions(
   }
   const ofdWidth  = _ofdCol1 + _ofdCol2 + _ofdCol3 + _ofdCol4 + _ofdCol5 + _ofdCol6;
   const ofdRows   = outsideFigureData?.edges?.length ?? 0;
-  // Exact values from drawOutsideFigureData: headerBoxHeight=40, rowHeight=12
-  // pos.y = header top; tableY = pos.y + 40; rows start at pos.y + 40.
-  const ofdHeight = 40 + 15 + ofdRows * 12; // headerBoxHeight(40) + columnHeader(15) + rows*rowHeight(12)
+  // Exact values from drawOutsideFigureData: headerBoxHeight=40, rowHeight=12.
+  // pos.y = header top; tableY = pos.y + 40; rows start at pos.y + 40. The
+  // column-header row height is sourced from the shared config (it grew to fit
+  // the DIRECTION "° ' \"" unit sub-line).
+  const ofdHeight = 40 + BLOCKS.OUTSIDE_FIGURE_DATA.headerHeight + ofdRows * 12;
 
   // --- Schedule of Areas ---
   // Exact values from drawScheduleOfAreasSingleColumn:
@@ -9315,6 +9317,20 @@ function findBeaconNameByCoordinates(y, x, beacons, tolerance = 1.0) {
   return null;
 }
 
+// Split an OFD direction string ("D°MM'SS\"" from the frontend, or a bare
+// "D MM SS") into its degree / minute / second parts so each can be rendered
+// under the "° ' \"" unit sub-headers. Returns strings ('' for any absent part).
+function parseDirectionDMS(dir) {
+  if (dir == null) return { d: "", m: "", s: "" };
+  const str = String(dir).trim();
+  if (!str) return { d: "", m: "", s: "" };
+  const sym = str.match(/(-?\d+)\s*°\s*(\d+)\s*['′’]\s*(\d+)/);
+  if (sym) return { d: sym[1], m: sym[2], s: sym[3] };
+  const parts = str.split(/\s+/).filter(Boolean);
+  if (parts.length >= 3) return { d: parts[0], m: parts[1], s: parts[2] };
+  return { d: str, m: "", s: "" };
+}
+
 function drawOutsideFigureData(
   doc,
   outsideFigureData,
@@ -9364,6 +9380,17 @@ function drawOutsideFigureData(
 
   // Calculate total table width dynamically
   const tableWidth = col1 + col2 + col3 + col4 + col5 + col6;
+
+  // DIRECTION column (col3) is split into degree / minute / second sub-columns so
+  // the values line up under the "° ' \"" unit sub-headers (diagram convention).
+  const _dirDegW = Math.round(col3 * 0.44);
+  const _dirMinW = Math.round(col3 * 0.28);
+  const _dirSecW = col3 - _dirDegW - _dirMinW;
+  const dirSub = (dirLeft) => ({
+    deg: { x: dirLeft,                         w: _dirDegW },
+    min: { x: dirLeft + _dirDegW,              w: _dirMinW },
+    sec: { x: dirLeft + _dirDegW + _dirMinW,   w: _dirSecW },
+  });
 
   // Position is guaranteed in-bounds by the placement system — do NOT clamp.
   // Clamping would move the block away from its registered position, causing overlaps.
@@ -9526,14 +9553,27 @@ function drawOutsideFigureData(
         width: col4,
         align: "center",
       })
-      .text("+ 0.00", tableX + col1 + col2 + col3 + col4, tableY + 4, {
+      .text("+ 0,00", tableX + col1 + col2 + col3 + col4, tableY + 4, {
         width: col5,
         align: "center",
       })
-      .text("+ 0.00", tableX + col1 + col2 + col3 + col4 + col5, tableY + 4, {
+      .text("+ 0,00", tableX + col1 + col2 + col3 + col4 + col5, tableY + 4, {
         width: col6,
         align: "center",
       });
+
+    // "° ' \"" unit sub-headers, centred over the degree / minute / second columns
+    // (below the "DIRECTION" header). ASCII °, ' and " — the Unicode prime glyphs
+    // render as garbage in PDFKit's built-in Helvetica.
+    {
+      const ds = dirSub(tableX + col1 + col2);
+      doc
+        .fontSize(8)
+        .font("Helvetica-Bold")
+        .text("°", ds.deg.x, tableY + 14, { width: ds.deg.w, align: "center" })
+        .text("'", ds.min.x, tableY + 14, { width: ds.min.w, align: "center" })
+        .text('"', ds.sec.x, tableY + 14, { width: ds.sec.w, align: "center" });
+    }
 
     // Vertical lines for columns
     let currentX = tableX + col1;
@@ -9663,16 +9703,13 @@ function drawOutsideFigureData(
       );
     }
 
-    // Add +/- prefix to coordinates to match coordinate list format
+    // Add +/- prefix to coordinates. SI 727 / diagram convention: comma decimal
+    // separator (see the diagram's formatSI) — so "97123.45" reads "+97123,45".
     const y = edgeY
-      ? edgeY >= 0
-        ? `+${edgeY.toFixed(2)}`
-        : edgeY.toFixed(2)
+      ? (edgeY >= 0 ? `+${edgeY.toFixed(2)}` : edgeY.toFixed(2)).replace(".", ",")
       : "";
     const x = edgeX
-      ? edgeX >= 0
-        ? `+${edgeX.toFixed(2)}`
-        : edgeX.toFixed(2)
+      ? (edgeX >= 0 ? `+${edgeX.toFixed(2)}` : edgeX.toFixed(2)).replace(".", ",")
       : "";
 
     doc.rect(tableX, currentY, tableWidth, rowHeight).stroke();
@@ -9711,11 +9748,23 @@ function drawOutsideFigureData(
       .text(distance, tableX + col1, currentY + 3, {
         width: col2,
         align: "center",
-      }) // Metres: center
-      .text(direction, tableX + col1 + col2, currentY + 3, {
-        width: col3 - 2.5 * MM_TO_PT,
-        align: "right",
-      }) // DIRECTION: right-aligned with 2.5mm spacing from right edge
+      }); // Metres: center
+
+    // DIRECTION: degree / minute / second aligned under the "° ' \"" sub-headers.
+    {
+      const ds = dirSub(tableX + col1 + col2);
+      const dms = parseDirectionDMS(direction);
+      doc
+        .fontSize(9)
+        .font("Helvetica")
+        .text(dms.d, ds.deg.x, currentY + 3, { width: ds.deg.w, align: "center" })
+        .text(dms.m, ds.min.x, currentY + 3, { width: ds.min.w, align: "center" })
+        .text(dms.s, ds.sec.x, currentY + 3, { width: ds.sec.w, align: "center" });
+    }
+
+    doc
+      .fontSize(9)
+      .font("Helvetica")
       .text(pointId, tableX + col1 + col2 + col3, currentY + 3, {
         width: col4,
         align: "center",

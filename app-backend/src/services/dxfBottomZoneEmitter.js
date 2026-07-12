@@ -23,6 +23,19 @@ import {
 /** PDF point → paper-millimetre conversion. 1 pt = 1/72 inch = 25.4/72 mm. */
 const PT_TO_MM_GEN = 25.4 / 72
 
+/** Split an OFD direction ("D°MM'SS\"" or "D MM SS") into degree/minute/second
+ *  strings so each aligns under the "° ' \"" unit sub-headers. */
+function parseDirDMS(dir) {
+  if (dir == null) return { d: '', m: '', s: '' }
+  const str = String(dir).trim()
+  if (!str) return { d: '', m: '', s: '' }
+  const sym = str.match(/(-?\d+)\s*°\s*(\d+)\s*['′’]\s*(\d+)/)
+  if (sym) return { d: sym[1], m: sym[2], s: sym[3] }
+  const parts = str.split(/\s+/).filter(Boolean)
+  if (parts.length >= 3) return { d: parts[0], m: parts[1], s: parts[2] }
+  return { d: str, m: '', s: '' }
+}
+
 /**
  * DXF character-width-to-text-height ratio. Matches the STYLE widthFactor
  * settled in sub-project 3-v3 for 1:1 PDF parity at print scale.
@@ -307,9 +320,20 @@ export function emitOFDTable(addText, addLine, position, outsideFigureData, font
   addText(layer, x[6] - ptG(4) - ofBodyH * 0.55, yYMX, 'X', ofBodyH, 0)
 
   // ── Column-header row ──
-  const yHdr = yHBbot - headerRowH * 0.5 - ofBodyH * 0.4
-  const headers = ['SIDES', 'Metres', 'DIRECTION', 'Constants', '+ 0.00', '+ 0.00']
+  // Headers sit near the TOP of the (taller) row; the DIRECTION column carries a
+  // "° ' \"" unit sub-line below its header, over the degree/minute/second values.
+  const yHdr   = yHBbot - ptG(6)  - ofBodyH * 0.4
+  const yUnits = yHBbot - ptG(16) - ofBodyH * 0.4
+  const headers = ['SIDES', 'Metres', 'DIRECTION', 'Constants', '+ 0,00', '+ 0,00']
   for (let i = 0; i < 6; i++) cText(x[i], x[i + 1], yHdr, headers[i], ofBodyH, 'BOLD')
+  // DIRECTION degree/minute/second sub-columns (44% / 28% / 28% of the column).
+  const dW   = x[3] - x[2]
+  const dDeg = [x[2],             x[2] + dW * 0.44]
+  const dMin = [x[2] + dW * 0.44, x[2] + dW * 0.72]
+  const dSec = [x[2] + dW * 0.72, x[3]]
+  cText(dDeg[0], dDeg[1], yUnits, '°', ofBodyH, 'BOLD')
+  cText(dMin[0], dMin[1], yUnits, "'", ofBodyH, 'BOLD')
+  cText(dSec[0], dSec[1], yUnits, '"', ofBodyH, 'BOLD')
 
   // ── Data rows ──
   let yr = yCHbot
@@ -317,10 +341,16 @@ export function emitOFDTable(addText, addLine, position, outsideFigureData, font
     const yv = yr - dataRowH * 0.5 - ofBodyH * 0.4
     const distM = edgeDistanceMetres(edge)              // accepts `distance` or `metres`
     const dist = distM != null ? distM.toFixed(2) : ''
-    const yV   = typeof edge.y === 'number' ? (edge.y >= 0 ? '+' : '') + edge.y.toFixed(2) : ''
-    const xV   = typeof edge.x === 'number' ? (edge.x >= 0 ? '+' : '') + edge.x.toFixed(2) : ''
-    const vals = [edge.side || '', dist, edge.direction || '', edge.pointId || '', yV, xV]
-    for (let i = 0; i < 6; i++) cText(x[i], x[i + 1], yv, vals[i], ofBodyH)
+    // SI 727 / diagram convention: comma decimal separator.
+    const yV   = typeof edge.y === 'number' ? ((edge.y >= 0 ? '+' : '') + edge.y.toFixed(2)).replace('.', ',') : ''
+    const xV   = typeof edge.x === 'number' ? ((edge.x >= 0 ? '+' : '') + edge.x.toFixed(2)).replace('.', ',') : ''
+    const vals = [edge.side || '', dist, '', edge.pointId || '', yV, xV]
+    for (let i = 0; i < 6; i++) if (i !== 2) cText(x[i], x[i + 1], yv, vals[i], ofBodyH)
+    // DIRECTION: degree / minute / second aligned under the "° ' \"" units.
+    const dms = parseDirDMS(edge.direction)
+    cText(dDeg[0], dDeg[1], yv, dms.d, ofBodyH)
+    cText(dMin[0], dMin[1], yv, dms.m, ofBodyH)
+    cText(dSec[0], dSec[1], yv, dms.s, ofBodyH)
     yr -= dataRowH
   }
 }

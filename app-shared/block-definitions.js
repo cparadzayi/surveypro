@@ -119,7 +119,7 @@ export const SURVEYOR_GENERAL_BOX = {
 
 // Beacon Description
 export const BEACON_DESCRIPTION = {
-  title: 'BEACON DESCRIPTION',
+  title: 'DESCRIPTION OF BEACONS',
   titleFont: { family: 'Helvetica-Bold', size: 9 },
   
   // Use grouped text format (SI 727 compliant)

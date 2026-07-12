@@ -432,7 +432,7 @@ describe('dxfGenerator integration — sample fixture', () => {
     expect(dxf).toMatch(/Surveyor-General/)
     expect(dxf).toMatch(/Dispensation Certificate/)
     expect(dxf).toMatch(/\brelates\b/)  // statement wraps across TEXT entities
-    expect(dxf).toMatch(/BEACON DESCRIPTION\b/)   // singular — matches the PDF title
+    expect(dxf).toMatch(/DESCRIPTION OF BEACONS\b/)   // matches the PDF title
     expect(dxf).toMatch(/Permanent concrete pillars/)
     // Old field-label layout + prior diagrams are gone (PDF carries neither here);
     // and no surveyor-certification line.
@@ -1027,7 +1027,7 @@ describe('dxfGenerator integration — bottom-zone topology (3-v4)', () => {
     const dxf = r.buffer.toString()
     expect(dxf).toContain('OUTSIDE FIGURE DATA')      // OFD title
     expect(dxf).not.toContain('SCHEDULE OF AREAS')    // schedule title removed (label deleted)
-    expect(dxf).toContain('BEACON DESCRIPTION')       // beacon header (singular — matches PDF)
+    expect(dxf).toContain('DESCRIPTION OF BEACONS')   // beacon header (matches the PDF title)
     expect(dxf).toContain('Surveyed in May 2026')     // statement date line — PDF-style "Month YYYY"
     expect(dxf).toContain('Approved')                 // SG box title
   })

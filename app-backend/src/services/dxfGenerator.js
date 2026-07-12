@@ -1011,7 +1011,7 @@ export function generateDXF(options, logger) {
     const headerH = mm(4)
     const rowH = mm(3.5)
     let y = zoneTop
-    addText(layer, zoneL, y, 'BEACON DESCRIPTION', headerH, 0, 'BOLD')   // singular — matches PDF
+    addText(layer, zoneL, y, 'DESCRIPTION OF BEACONS', headerH, 0, 'BOLD')   // matches the PDF title
     // Separator LINE — sits just below the header text (DXF text grows UP from the
     // baseline). It must clear the first row below it: the previous mm(1) gap put
     // the line inside the first row's mm(2.4)-tall text, cutting across it. Hug the

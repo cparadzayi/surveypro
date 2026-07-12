@@ -394,7 +394,7 @@ describe('generateDXF — beacon description block', () => {
   test('emits header + per-group TEXT entities on TITLE_BLOCK layer', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
     const dxf = buffer.toString()
-    expect(dxf).toMatch(/BEACON DESCRIPTION\b/)   // singular — matches the PDF title
+    expect(dxf).toMatch(/DESCRIPTION OF BEACONS\b/)   // matches the PDF title
     expect(dxf).toMatch(/Permanent concrete pillars/)
     expect(dxf).toMatch(/Iron pegs/)
   })
@@ -418,7 +418,7 @@ describe('generateDXF — beacon description block', () => {
       metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
     }, fakeLogger)
     const dxf = buffer.toString()
-    expect(dxf).toMatch(/BEACON DESCRIPTION\b/)
+    expect(dxf).toMatch(/DESCRIPTION OF BEACONS\b/)
     expect(dxf).toMatch(/REMA, SCENIC, SLE : 50mm Iron Pipe in Concrete/)
     expect(dxf).toMatch(/Others : 12mm iron peg in concrete/)
   })

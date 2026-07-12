@@ -56,6 +56,19 @@ describe('planSheetLayout — output shape', () => {
     expect(r.sgSignature.width).toBe(BLOCKS.SURVEYOR_GENERAL_BOX.width);
   });
 
+  // Same drift guard for the fixed-bbox North Arrow and the (height-only) Scale
+  // Bar — the planner must reserve exactly what the shared config declares.
+  test('northArrow slot matches the drawn NORTH_ARROW bounding box', () => {
+    const r = plan(sampleMinimalPlan);
+    expect(r.northArrow.width).toBe(BLOCKS.NORTH_ARROW.blockWidth);
+    expect(r.northArrow.height).toBe(BLOCKS.NORTH_ARROW.blockHeight);
+  });
+
+  test('scaleBar reserved height matches SCALE_BAR.reservedHeight', () => {
+    const r = plan(sampleMinimalPlan);
+    expect(r.scaleBar.height).toBe(BLOCKS.SCALE_BAR.reservedHeight);
+  });
+
   test('schedule of areas: single column for the 2-stand fixture', () => {
     const r = plan(sampleMinimalPlan);
     expect(r.scheduleOfAreas._schedNumCols ?? 1).toBe(1);

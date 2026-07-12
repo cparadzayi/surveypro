@@ -6451,12 +6451,15 @@ export function calculateBlockPositions(
   const roundTo        = rawSeg < 5 ? 1 : rawSeg < 20 ? 5 : rawSeg < 100 ? 10 : rawSeg < 500 ? 50 : 100;
   const segMeters      = Math.max(roundTo, Math.round(rawSeg / roundTo) * roundTo);
   const segPt          = segMeters / metersPerPt;
-  const scaleBarWidth  = segPt * 4 + 55; // 4 segments + METRES label
-  const scaleBarHeight = 85; // FIELD READABLE: increased for 14pt fonts (was 72)
+  const scaleBarWidth  = segPt * 4 + 55; // 4 segments + METRES label (dynamic)
+  // Height sourced from shared config so the reserved slot can't drift from the
+  // renderer (see the S-G box drift bug fixed alongside this).
+  const scaleBarHeight = BLOCKS.SCALE_BAR.reservedHeight;
 
-  // --- North Arrow ---
-  const northArrowWidth  = 70;
-  const northArrowHeight = 85;
+  // --- North Arrow --- reserved bbox sourced from shared config (matches the
+  // renderer's boxW/boxH exactly; single source of truth).
+  const northArrowWidth  = BLOCKS.NORTH_ARROW.blockWidth;
+  const northArrowHeight = BLOCKS.NORTH_ARROW.blockHeight;
 
   // --- SG Signature ---
   // Source from the shared config so the planner reserves EXACTLY what
@@ -10181,9 +10184,10 @@ function drawEndorsementBlock(doc, position) {
  * @param {Object} position - Centrally calculated collision-free position
  */
 function drawNorthArrow(doc, bounds, position) {
-  // North Arrow bounding box (must match engine: northArrowWidth=70, northArrowHeight=85)
-  const boxW = 70;
-  const boxH = 85;
+  // North Arrow bounding box — sourced from the shared config so the renderer
+  // and the planner (calculateBlockPositions) can never drift apart.
+  const boxW = BLOCKS.NORTH_ARROW.blockWidth;
+  const boxH = BLOCKS.NORTH_ARROW.blockHeight;
 
   // Trust the collision-free position from the placement engine — do NOT clamp/override.
   // position is the TOP-LEFT corner of the bounding box.

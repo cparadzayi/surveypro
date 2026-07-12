@@ -265,7 +265,14 @@ export const NORTH_ARROW = {
   strokeWidth: 1.5,
   fillColor: '#000000',
   position: 'top-right',
-  offset: { x: -50, y: 20 }
+  offset: { x: -50, y: 20 },
+  // Reserved layout bounding box (PDF pts). SINGLE SOURCE OF TRUTH: the block
+  // planner reserves this slot and the renderer draws the compass rose to fill
+  // it — keep them sourced from here so they can never drift (see the S-G box
+  // drift bug). The rose is 35 pt above+below centre + ~15 pt for the "TN"
+  // label → 85 pt tall.
+  blockWidth: 70,
+  blockHeight: 85
 }
 
 // Scale Bar
@@ -275,7 +282,13 @@ export const SCALE_BAR = {
   
   barHeight: 4,
   barColor: '#000000',
-  
+
+  // Reserved layout height (PDF pts) the block planner sets aside for the scale
+  // bar. Unlike the N-arrow / S-G box, the scale bar's WIDTH is dynamic (depends
+  // on scale + segment count), so only the height is pinned here. The renderer
+  // draws a shorter bar (~64 pt) WITHIN this slot; keep this ≥ the drawn height.
+  reservedHeight: 85,
+
   labelFont: { family: 'Helvetica', size: 9 },
   scaleFont: { family: 'Helvetica-Bold', size: 9 },
   

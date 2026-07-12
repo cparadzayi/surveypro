@@ -58,3 +58,39 @@ export function nextDesignation(last: string, existing?: Iterable<string>): stri
 
   return `${prefix}${String(base).padStart(width, '0')}${suffix}`
 }
+
+/** Trailing-integer value of a designation, or null when it has no digits. */
+function trailingNumber(designation: string): number | null {
+  const m = String(designation).match(/^(.*?)(\d+)(\D*)$/)
+  return m ? Number(m[2]) : null
+}
+
+/**
+ * Suggest the next designation for a NEW parcel, given every designation
+ * currently on the plan.
+ *
+ * Rather than trusting list order (which is unreliable — e.g. the Outside
+ * Figure parcel is loaded last), it picks the parcel with the HIGHEST trailing
+ * number and increments that, skipping any number already taken. The Outside
+ * Figure is excluded so its "…SH2" suffix can never seed the guess.
+ *
+ * Returns '' when there is no numbered parcel to extrapolate from.
+ *
+ *   suggestNextDesignation(['314', '315', '325', 'OUTSIDE FIGURE X'])  === '326'
+ *   suggestNextDesignation(['STAND 271', 'STAND 349'])                 === 'STAND 350'
+ *   suggestNextDesignation([])                                         === ''
+ */
+export function suggestNextDesignation(existing: Iterable<string>): string {
+  let best: string | null = null
+  let bestVal = -Infinity
+  for (const d of existing) {
+    if (!d || /outside\s*figure/i.test(d)) continue
+    const val = trailingNumber(d)
+    if (val === null) continue
+    if (val > bestVal) {
+      bestVal = val
+      best = d
+    }
+  }
+  return best === null ? '' : nextDesignation(best, existing)
+}

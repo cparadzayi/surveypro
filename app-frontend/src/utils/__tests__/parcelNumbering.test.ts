@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { nextDesignation } from '../parcelNumbering'
+import { nextDesignation, suggestNextDesignation } from '../parcelNumbering'
 
 describe('nextDesignation', () => {
   it('increments a prefixed designation, keeping the prefix', () => {
@@ -73,6 +73,32 @@ describe('nextDesignation', () => {
 
     it('still returns empty when the input has no digits', () => {
       expect(nextDesignation('Remainder', ['Remainder'])).toBe('')
+    })
+  })
+
+  describe('suggestNextDesignation (highest-numbered stand)', () => {
+    it('bases the guess on the highest number, not list order', () => {
+      // Outside Figure is last in the list but must not seed the guess.
+      const existing = ['314', '315', '325', '326', 'OUTSIDE FIGURE MAG1 SH2']
+      expect(suggestNextDesignation(existing)).toBe('327')
+    })
+
+    it('ignores the Outside Figure even when it is the only entry with a suffix number', () => {
+      expect(suggestNextDesignation(['OUTSIDE FIGURE MAG1 SH2'])).toBe('')
+    })
+
+    it('preserves the format of the highest-numbered parcel', () => {
+      expect(suggestNextDesignation(['STAND 271', 'STAND 349'])).toBe('STAND 350')
+    })
+
+    it('skips a taken number when stepping forward', () => {
+      // Max is 325; 326 already exists, so it must skip to 327.
+      expect(suggestNextDesignation(['324', '325', '326'])).toBe('327')
+    })
+
+    it('returns empty for an empty list or a list with no numbered parcels', () => {
+      expect(suggestNextDesignation([])).toBe('')
+      expect(suggestNextDesignation(['Remainder', 'OUTSIDE FIGURE X'])).toBe('')
     })
   })
 })

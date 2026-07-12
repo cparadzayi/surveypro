@@ -11,10 +11,17 @@ next number can be predicted. Pre-filling it expedites digitizing many parcels.
 
 ## Behaviour
 
-After a parcel is created, the next designation is pre-filled by taking the
-**last-entered** parcel's designation and incrementing its trailing number by 1,
-while preserving the surrounding format. The field is always editable, so a wrong
+After a parcel is created, the next designation is pre-filled by finding the
+parcel with the **highest trailing number** on the plan and incrementing it by 1,
+while preserving that parcel's format. The field is always editable, so a wrong
 guess costs one keystroke to correct.
+
+> **Why highest-number, not list order:** an earlier version incremented the
+> *last element* of the parcels array. After a DB reload that element is the
+> **Outside Figure** parcel (loaded last), so it proposed nonsense like
+> `OUTSIDE FIGURE MAG1 SH3`. The Outside Figure is now excluded and the guess is
+> driven by the maximum stand number, which is what "the last parcel is 314"
+> actually means during sequential digitizing.
 
 Examples:
 
@@ -44,14 +51,20 @@ Rules:
 
 ```ts
 export function nextDesignation(last: string, existing?: Iterable<string>): string
+export function suggestNextDesignation(existing: Iterable<string>): string
 ```
 
-Isolated, side-effect-free, unit-tested. Uses a regex that captures the last
-digit run: `/^(.*?)(\d+)(\D*)$/`. Increments the captured digits, re-pads to the
-original width, and reassembles `prefix + next + suffix`. Returns `''` when the
-input has no digit run or is empty/nullish. When `existing` is supplied it steps
-the number forward (bounded loop) until the candidate is not already present
-(normalised, case/whitespace-insensitive), so a duplicate is never proposed.
+`nextDesignation` is the low-level primitive: it captures the last digit run of
+`last` (`/^(.*?)(\d+)(\D*)$/`), increments it, re-pads to the original width, and
+reassembles `prefix + next + suffix`; with `existing` supplied it steps forward
+(bounded loop) until the candidate is not already present (normalised,
+case/whitespace-insensitive), so a duplicate is never proposed. Returns `''` when
+there is no digit run.
+
+`suggestNextDesignation` is what the views call: it scans `existing`, skips the
+Outside Figure, picks the designation with the **highest trailing number**, and
+returns `nextDesignation(thatOne, existing)`. Returns `''` when no numbered
+parcel exists. Both are isolated, side-effect-free, and unit-tested.
 
 ### Wiring — BOTH digitizing viewers
 
@@ -79,16 +92,16 @@ Two creation paths both end at `addParcel(designation, points, polygon)`:
    it on the next selection.
 
 Helpers in the view:
-- `lastDesignation()` reads `parcels.value[parcels.value.length - 1]?.designation ?? ''`.
 - `existingDesignations()` returns every parcel's designation on the plan.
-- `suggestNextDesignation()` = `nextDesignation(lastDesignation(), existingDesignations())`.
+- `suggestNextDesignation()` = `suggestNextDesignation(existingDesignations())`
+  (the util, imported aliased).
 
 #### `MapLibreAreaView.vue` (MapLibre)
 
 `completePolygon()` pre-fills its `prompt()` default with
-`nextDesignation(last, existing)`, deriving `last`/`existing` inline from the
-same `parcels` ref. New parcels here are created only through this prompt (no
-separate inline field), so this single call covers the viewer.
+`suggestNextDesignation(existing)`, deriving `existing` from the same `parcels`
+ref. New parcels here are created only through this prompt (no separate inline
+field), so this single call covers the viewer.
 
 ## Testing
 

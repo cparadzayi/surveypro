@@ -903,7 +903,7 @@ import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow'
 import api from '../../../services/api';
 import { saveDocument } from '../../../services/documentStorage';
 import { validateParcel, formatValidationMessage, type ValidationResult } from '../../../services/parcelValidation';
-import { nextDesignation } from '../../../utils/parcelNumbering';
+import { suggestNextDesignation } from '../../../utils/parcelNumbering';
 import type { DetectedParcel } from '../../../utils/automatedParcelDetector';
 import type { ParcelDetectionResult } from '../../../services/parcelDetection';
 import PointRenamePanel from '../../../components/cadastral/PointRenamePanel.vue';
@@ -3741,29 +3741,41 @@ async function completePolygon() {
     return;
   }
   
-  // Prompt for designation, pre-filled with the next auto-incremented number
-  // (based on the last-entered parcel, skipping any designation already on the
-  // plan) so sequential digitizing is faster. The field stays editable.
+  // Prompt for designation, pre-filled with the next auto-incremented number.
+  // The guess is based on the HIGHEST-numbered stand on the plan (not list
+  // order — the Outside Figure loads last and must not seed it), skipping any
+  // number already taken. The field stays editable.
   const _existing = parcels.value.map((p: any) => p.designation ?? '').filter(Boolean);
-  const _last = parcels.value.length
-    ? (parcels.value[parcels.value.length - 1]?.designation ?? '')
-    : '';
+  const _suggestion = suggestNextDesignation(_existing);
+  console.log('[MapLibre] 🔢 Next-designation suggestion', {
+    suggestion: _suggestion || '(empty — no numbered stand to extrapolate from)',
+    existingCount: _existing.length,
+  });
   const designation = prompt(
     'Enter parcel designation (e.g., LOT 1, STAND 2283):',
-    nextDesignation(_last, _existing)
+    _suggestion
   );
   if (!designation || designation.trim() === '') {
     console.log('[MapLibre] Polygon completion cancelled - no designation provided');
     return;
   }
-  
-  // === Check for duplicate designation ===
-  const duplicateParcel = parcels.value.find(p => 
-    p.designation.toLowerCase() === designation.trim().toLowerCase()
+
+  // === Check for duplicate designation (case/whitespace-insensitive) ===
+  const _submitted = designation.trim();
+  const duplicateParcel = parcels.value.find(p =>
+    (p.designation ?? '').trim().toLowerCase() === _submitted.toLowerCase()
   );
   if (duplicateParcel) {
-    overlapMessage.value = `Duplicate designation: Parcel "${designation.trim()}" already exists. Each parcel must have a unique designation.`;
-    console.warn('[MapLibre] ❌ Duplicate designation detected - parcel rejected');
+    overlapMessage.value =
+      `Duplicate designation: "${_submitted}" already exists in this project. ` +
+      `It may have been created earlier and loaded from a previous save, or added by parcel detection. ` +
+      `Each parcel must have a unique designation — delete the existing one or choose a different number.`;
+    console.warn('[MapLibre] ❌ Duplicate designation rejected', {
+      submitted: _submitted,
+      suggested: _suggestion,
+      matchedExisting: duplicateParcel.designation,
+      totalParcelsInList: parcels.value.length,
+    });
     return;
   }
   

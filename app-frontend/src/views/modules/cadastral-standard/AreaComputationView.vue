@@ -338,7 +338,7 @@ import type { CadastralWorkflowState } from '../../../types/cadastral';
 import { usePolygonDrawing } from '../../../composables/usePolygonDrawing';
 import { useParcelManagement, type ParcelPoint } from '../../../composables/useParcelManagement';
 import { coordinateTransform } from '../../../services/coordinateTransform';
-import { nextDesignation } from '../../../utils/parcelNumbering';
+import { suggestNextDesignation as computeNextDesignation } from '../../../utils/parcelNumbering';
 
 // Inject workflow state
 const workflowState = inject<CadastralWorkflowState>('workflowState');
@@ -389,22 +389,16 @@ const selectedPoints = ref<ParcelPoint[]>([]);
 const parcelDesignation = ref('');
 const showLabels = ref(true);
 
-// The designation of the most-recently-added parcel, used to pre-fill the next
-// one (auto-incrementing to expedite digitizing sequential parcels).
-function lastDesignation(): string {
-  const list = parcels.value;
-  return list.length ? (list[list.length - 1]?.designation ?? '') : '';
-}
-
-// Every designation already on the plan, so nextDesignation can skip past any
-// number that is already taken instead of proposing a duplicate.
+// Every designation already on the plan, used to pick the highest-numbered
+// stand to extrapolate from and to skip any number that is already taken.
 function existingDesignations(): string[] {
   return parcels.value.map(p => p.designation ?? '').filter(Boolean);
 }
 
-// Next auto-incremented, collision-free designation to pre-fill.
+// Next auto-incremented, collision-free designation to pre-fill. Based on the
+// highest-numbered stand (not list order — the Outside Figure loads last).
 function suggestNextDesignation(): string {
-  return nextDesignation(lastDesignation(), existingDesignations());
+  return computeNextDesignation(existingDesignations());
 }
 
 // Pre-fill the Quick Parcel Builder's designation field with the next number the

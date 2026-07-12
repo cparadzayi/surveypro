@@ -230,11 +230,15 @@ export function emitSGBox(addText, addLine, addRect, position, size, fonts, mm, 
   const sgDateY   = sgBoxTopY - mm(SG.dateYOffset          * PT_TO_MM_GEN)
   const sgSigInset = mm(SG.signatureLineInset * PT_TO_MM_GEN)
 
+  // Centre every label: addText is baseline-LEFT, so shift the insertion left by
+  // half the estimated string width (0.55 = STYLE width factor) to centre on aCX.
+  const centreX = (text, h) => aCX - (String(text).length * h * 0.55) / 2
+
   addRect(layer, sgBoxL, sgBoxBotY, sgBoxR, sgBoxTopY)
-  addText(layer, aCX, sgTitleY, 'Approved', fonts.sgTitleH, 0)
+  addText(layer, centreX('Approved', fonts.sgTitleH), sgTitleY, 'Approved', fonts.sgTitleH, 0)
   addLine(layer, sgBoxL + sgSigInset, sgSigY, sgBoxR - sgSigInset, sgSigY)
-  addText(layer, aCX, sgForY,  'For Surveyor General', fonts.sgBodyH)
-  addText(layer, aCX, sgDateY, SG.dateText,            fonts.sgBodyH)
+  addText(layer, centreX('For Surveyor General', fonts.sgBodyH), sgForY, 'For Surveyor General', fonts.sgBodyH)
+  addText(layer, centreX(SG.dateText, fonts.sgBodyH), sgDateY, SG.dateText, fonts.sgBodyH)
 }
 
 /**

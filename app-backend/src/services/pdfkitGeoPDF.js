@@ -9955,14 +9955,14 @@ function drawSurveyorGeneralSignature(doc, mapBounds, position) {
       align: "center",
     });
 
-  // "Date ......" field
+  // "Date ......" field — centre-justified like the other box elements.
   const dateY = blockY + SG.dateYOffset;
   doc
     .fontSize(SG.bodyFontSize)
     .font(SG.bodyFont)
-    .text(SG.dateText, blockX + SG.dateXOffset, dateY, {
-      width: blockWidth - SG.dateXOffset * 2,
-      align: "left",
+    .text(SG.dateText, blockX, dateY, {
+      width: blockWidth,
+      align: "center",
     });
 
   doc.restore();

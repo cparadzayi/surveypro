@@ -98,17 +98,19 @@ export const OUTSIDE_FIGURE_DATA = {
 // Surveyor-General / Approved signature box — values from
 // pdfkitGeoPDF.js:drawSurveyorGeneralSignature at line 11382-11436.
 export const SURVEYOR_GENERAL_BOX = {
-  width: 200,                   // pdfkitGeoPDF.js:11383
-  height: 80,                   // pdfkitGeoPDF.js:11384
-  titleFontSize: 12,            //                :11398 — "Approved" text
-  titleFont: 'Helvetica',       //                :11399 — regular (NOT bold)
-  bodyFontSize: 9,              //                :11421/11431 — "For Surveyor General", "Date ..."
+  width: 200,
+  height: 110,                  // taller rows so the S-G can sign above the line and date cleanly
+  titleFontSize: 12,            // "Approved" text
+  titleFont: 'Helvetica',       // regular (NOT bold)
+  bodyFontSize: 9,              // "For Surveyor General", "Date ..."
   bodyFont: 'Helvetica',
-  // Vertical offsets from box top, in PDF points.
-  titleYOffset:       15,       //                :11396 — `blockY + 15`
-  signatureLineYOffset: 40,     //                :11407 — `blockY + 40`
-  forSGYOffset:       48,       //                :11419 — `signatureY + 8`
-  dateYOffset:        60,       //                :11429 — `blockHeight - 20`
+  // Vertical offsets from box top, in PDF points. Spread out to leave a generous
+  // signing gap between "Approved" and the signature line, and room to write the
+  // date below "For Surveyor General".
+  titleYOffset:       16,       // "Approved" near the top
+  signatureLineYOffset: 62,     // ~46 pt of clear signing space above the line
+  forSGYOffset:       70,       // labels the signature line (8 pt below it)
+  dateYOffset:        96,       // room below to write the date
   // Signature-line horizontal margins (PDF uses 20-pt inset on each side).
   signatureLineInset: 20,       //                :11408 — `lineMargin`
   signatureLineDash:  { dash: 2, space: 2 },

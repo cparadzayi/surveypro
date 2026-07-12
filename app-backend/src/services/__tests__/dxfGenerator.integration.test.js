@@ -54,13 +54,13 @@ describe('dxfGenerator integration — block-definitions consumption', () => {
 
   test('SURVEYOR_GENERAL_BOX has the dimension fields both generators rely on', () => {
     expect(SURVEYOR_GENERAL_BOX.width).toBe(200)
-    expect(SURVEYOR_GENERAL_BOX.height).toBe(80)
+    expect(SURVEYOR_GENERAL_BOX.height).toBe(110)
     expect(SURVEYOR_GENERAL_BOX.titleFontSize).toBe(12)
     expect(SURVEYOR_GENERAL_BOX.bodyFontSize).toBe(9)
-    expect(SURVEYOR_GENERAL_BOX.titleYOffset).toBe(15)
-    expect(SURVEYOR_GENERAL_BOX.signatureLineYOffset).toBe(40)
-    expect(SURVEYOR_GENERAL_BOX.forSGYOffset).toBe(48)
-    expect(SURVEYOR_GENERAL_BOX.dateYOffset).toBe(60)
+    expect(SURVEYOR_GENERAL_BOX.titleYOffset).toBe(16)
+    expect(SURVEYOR_GENERAL_BOX.signatureLineYOffset).toBe(62)
+    expect(SURVEYOR_GENERAL_BOX.forSGYOffset).toBe(70)
+    expect(SURVEYOR_GENERAL_BOX.dateYOffset).toBe(96)
   })
 
   test('SCHEDULE_OF_AREAS columns match what the PDF drawer hardcodes (260 pt total)', () => {

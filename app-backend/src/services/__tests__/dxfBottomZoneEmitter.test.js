@@ -75,9 +75,9 @@ describe('sizeOFDTable', () => {
 describe('sizeSGBox', () => {
   test('returns SURVEYOR_GENERAL_BOX dims scaled by PT_TO_MM_GEN', () => {
     const result = sizeSGBox(mm)
-    // SURVEYOR_GENERAL_BOX is 200 × 80 pt.
+    // SURVEYOR_GENERAL_BOX is 200 × 110 pt.
     expect(result.width).toBeCloseTo(200 * (25.4 / 72), 3)
-    expect(result.height).toBeCloseTo(80 * (25.4 / 72), 3)
+    expect(result.height).toBeCloseTo(110 * (25.4 / 72), 3)
   })
 })
 
@@ -293,8 +293,11 @@ describe('placeBottomZoneBlocks orchestrator', () => {
     expect(warnings.find(w => w.cat === 'sgOverflow')).toBeTruthy()
     expect(sgEmittedAt).not.toBeNull()
     // SG box width ≈ 70.6 mm. Bottom-right top-left x = cntR - 3 - width.
-    // "Approved" is centred at (sgBoxL + sgBoxR)/2 = cntR - 3 - width/2.
-    const expectedTitleX = 250 - 3 - (200 * (25.4/72)) / 2
+    // aCX = (sgBoxL + sgBoxR)/2 = cntR - 3 - width/2. "Approved" is centred ON aCX
+    // by shifting its baseline-left insertion left by half the estimated width
+    // (len * height * 0.55; sgTitleH = 3.5).
+    const aCX = 250 - 3 - (200 * (25.4 / 72)) / 2
+    const expectedTitleX = aCX - ('Approved'.length * 3.5 * 0.55) / 2
     expect(sgEmittedAt.x).toBeCloseTo(expectedTitleX, 1)
   })
 

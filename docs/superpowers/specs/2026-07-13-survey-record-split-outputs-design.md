@@ -84,14 +84,22 @@ sections route correctly. Required additions: `areas-consistency` →
 `coordinate-list`→coordinate-list, `calculations-part1`→calculations. Keep the
 existing `area-computation` mapping untouched for backward compatibility.
 
-Canonical files written (rolling snapshots, `overwrite:true`):
+Canonical files written (rolling snapshots, `overwrite:true`). Filenames are
+project-name-prefixed so different projects' section files stay distinguishable.
+`<Project>` = the record's project name sanitized the same way
+`getOutputFilePaths` does (`projectName.replace(/[^a-zA-Z0-9-_]/g, '_')`):
 
 | Section | documentType | Folder | Filename |
 |---|---|---|---|
-| Field book | `field-book` | `output/field-book/` | `FieldBook.pdf` |
-| Coordinate list | `coordinate-list` | `output/coordinate-list/` | `CoordinateList.pdf` |
-| Calculations | `calculations-part1` | `output/calculations/` | `Calculations.pdf` |
-| Areas & consistency | `areas-consistency` | `output/survey-record/` | `AreasAndConsistency.pdf` |
+| Field book | `field-book` | `output/field-book/` | `<Project>_FieldBook.pdf` |
+| Coordinate list | `coordinate-list` | `output/coordinate-list/` | `<Project>_CoordinateList.pdf` |
+| Calculations | `calculations-part1` | `output/calculations/` | `<Project>_Calculations.pdf` |
+| Areas & consistency | `areas-consistency` | `output/survey-record/` | `<Project>_AreasAndConsistency.pdf` |
+
+Because the project name is stable across regenerations, each file overwrites its
+prior snapshot (rolling), while remaining distinct from other projects' files.
+The folder-aware matcher (section C) keys off the subfolder + name keyword, so the
+`<Project>_` prefix does not affect matching (the keyword is still a substring).
 
 `Comprehensive_Latest.pdf` continues to be written to `output/calculations/`
 unchanged (the collated whole). The cover/letter blob is exposed by step A2 but is

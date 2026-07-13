@@ -5,6 +5,7 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { classifyFsWriteError } from '../utils/fsWriteErrors.js'
 import { writeFileWithRetry } from '../utils/fsWriteRetry.js'
+import { collectOutputManifest } from '../utils/outputManifest.js'
 
 const execAsync = promisify(exec)
 
@@ -169,6 +170,23 @@ export default async function documentRoutes(fastify, options) {
     } catch (error) {
       fastify.log.error(error)
       return reply.code(500).send({ ok: false, error: 'Failed to list documents' })
+    }
+  })
+
+  // Recursive manifest of every file under output/ and input/ (all extensions).
+  // Used by the comprehensive-record letter to tick enclosed documents that exist.
+  fastify.get('/documents/output-manifest', async (request, reply) => {
+    try {
+      const { workingDirectory } = request.query
+      if (!workingDirectory) {
+        return reply.code(400).send({ ok: false, error: 'Working directory required' })
+      }
+      const absolutePath = resolveWorkingDirectory(workingDirectory)
+      const files = collectOutputManifest(absolutePath)
+      return { ok: true, files }
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.code(500).send({ ok: false, error: 'Failed to build output manifest' })
     }
   })
 

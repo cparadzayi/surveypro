@@ -29,6 +29,7 @@ export interface ComprehensivePDFResult {
   filePath?: string
   error?: string
   pdfBlob?: Blob
+  areasOnlyBlob?: Blob
 }
 
 /**
@@ -74,7 +75,7 @@ export async function generateComprehensiveLatestPDF(
     const { generateAreaConsistencyPDF } = useAreaConsistencyPDF()
 
     // Generate merged PDF with continuous page numbering
-    const mergedPdfBytes = await generateAreaConsistencyPDF(
+    const areaResult = await generateAreaConsistencyPDF(
       computedParcels,
       projectName,
       calcPart1Blob,
@@ -83,12 +84,15 @@ export async function generateComprehensiveLatestPDF(
       coordinatePoints  // Pass coordinate points for spatial matching
     )
 
-    if (!mergedPdfBytes) {
+    if (!areaResult) {
       return {
         success: false,
         error: 'PDF generation returned no data'
       }
     }
+
+    const mergedPdfBytes = areaResult.merged
+    const areasOnlyBlob = areaResult.areasOnly
 
     console.log('[ComprehensivePDF] ✅ PDF generated successfully')
 
@@ -121,7 +125,8 @@ export async function generateComprehensiveLatestPDF(
         return {
           success: true,
           filePath: saveResult.filePath,
-          pdfBlob: blob
+          pdfBlob: blob,
+          areasOnlyBlob
         }
       } else {
         console.error('[ComprehensivePDF] ❌ Failed to save PDF:', saveResult.error)
@@ -141,7 +146,8 @@ export async function generateComprehensiveLatestPDF(
       
       return {
         success: true,
-        pdfBlob: blob
+        pdfBlob: blob,
+        areasOnlyBlob
       }
     }
   } catch (error: any) {

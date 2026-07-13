@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { LODGEMENT_DOCUMENTS, type LodgementDocumentStatus } from './lodgementDocuments';
 
 /**
  * Cover Page Generator for Surveyor General Submission
@@ -28,6 +29,9 @@ export interface CoverPageInfo {
   // Survey Details
   surveyType?: string; // e.g., "SURVEY OF LOTS 1-12 OF LOT 84 OF SUBDIVISION B..."
   pointsAnalyzed?: number;
+
+  // Enclosed-documents tick state (present ⇒ ticked). Absent ⇒ all unticked.
+  documents?: LodgementDocumentStatus[];
 }
 
 export class CoverPageGenerator {
@@ -159,27 +163,29 @@ export class CoverPageGenerator {
     pdf.text('Please find enclosed herewith the following documents for your examination and approval:', this.marginLeft, yPosition);
     yPosition += 10;
     
-    // Document List
-    const documents = [
-      'Field book',
-      'Coordinate List and Calculations',
-      'General Plan',
-      'Working Plan',
-      'Report on Survey',
-      'Dispensation Certificate',
-      'Checklist',
-      'DSG Certificate (1/96)',
-      'Permit/Instruction and layout',
-      'Beacon receipt',
-      'Searches'
-    ];
-    
-    documents.forEach((doc, index) => {
-      pdf.text(`${index + 1}.`, this.marginLeft + 5, yPosition);
-      pdf.text(doc, this.marginLeft + 15, yPosition);
-      yPosition += 6;
+    // Document List with tick boxes (ticked when the record exists on disk)
+    const docItems: LodgementDocumentStatus[] =
+      info.documents && info.documents.length
+        ? info.documents
+        : LODGEMENT_DOCUMENTS.map((label) => ({ label, present: false }));
+
+    const boxSize = 3.5;
+    docItems.forEach((doc) => {
+      const boxX = this.marginLeft + 5;
+      const boxY = yPosition - boxSize; // align box bottom near the text baseline
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.3);
+      pdf.rect(boxX, boxY, boxSize, boxSize);
+      if (doc.present) {
+        pdf.setLineWidth(0.5);
+        // simple check mark inside the box
+        pdf.line(boxX + 0.7, boxY + boxSize * 0.55, boxX + boxSize * 0.42, boxY + boxSize - 0.6);
+        pdf.line(boxX + boxSize * 0.42, boxY + boxSize - 0.6, boxX + boxSize - 0.5, boxY + 0.5);
+      }
+      pdf.text(doc.label, this.marginLeft + 12, yPosition);
+      yPosition += 6.5;
     });
-    
+
     yPosition += 10;
     
     // Closing

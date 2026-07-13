@@ -21,10 +21,22 @@ describe('checkLodgementDocuments', () => {
     expect(missing).not.toContain('General Plan');
   });
 
-  it('treats everything as missing and skips the fetch when no working directory', async () => {
+  it("skips the fetch when no working directory; only the record's own sections tick", async () => {
     const { documents, missing } = await checkLodgementDocuments(undefined);
     expect(getOutputManifest).not.toHaveBeenCalled();
-    expect(missing.length).toBe(documents.length);
-    expect(documents.every(d => !d.present)).toBe(true);
+    const present = documents.filter(d => d.present).map(d => d.label).sort();
+    expect(present).toEqual(['Coordinate List and Calculations', 'Field book']);
+    expect(missing).toContain('General Plan');
+    expect(missing).not.toContain('Field book');
+  });
+
+  it("ticks the record's own sections even when the manifest lacks them", async () => {
+    (getOutputManifest as any).mockResolvedValue({ files: [] });
+    const { documents, missing } = await checkLodgementDocuments('some/dir');
+    const by = Object.fromEntries(documents.map(d => [d.label, d.present]));
+    expect(by['Field book']).toBe(true);
+    expect(by['Coordinate List and Calculations']).toBe(true);
+    expect(missing).not.toContain('Field book');
+    expect(missing).not.toContain('Coordinate List and Calculations');
   });
 });

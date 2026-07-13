@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LODGEMENT_DOCUMENTS, resolveLodgementDocuments, type ManifestFile } from '../lodgementDocuments';
+import { LODGEMENT_DOCUMENTS, resolveLodgementDocuments, markRecordSectionsPresent, type ManifestFile } from '../lodgementDocuments';
 
 describe('LODGEMENT_DOCUMENTS', () => {
   it('lists the 11 canonical items in order', () => {
@@ -75,5 +75,17 @@ describe('resolveLodgementDocuments — empty', () => {
     const result = resolveLodgementDocuments([]);
     expect(result.map(r => r.label)).toEqual(LODGEMENT_DOCUMENTS);
     expect(result.every(r => r.present === false)).toBe(true);
+  });
+});
+
+describe('markRecordSectionsPresent', () => {
+  it("forces the record's own sections present, leaves others unchanged", () => {
+    const base = resolveLodgementDocuments([]); // all absent
+    const marked = markRecordSectionsPresent(base);
+    const by = Object.fromEntries(marked.map(r => [r.label, r.present]));
+    expect(by['Field book']).toBe(true);
+    expect(by['Coordinate List and Calculations']).toBe(true);
+    expect(by['General Plan']).toBe(false);
+    expect(by['Beacon receipt']).toBe(false);
   });
 });

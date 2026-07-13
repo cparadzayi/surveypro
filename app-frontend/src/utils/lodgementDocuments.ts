@@ -62,3 +62,18 @@ export function resolveLodgementDocuments(files: ManifestFile[]): LodgementDocum
     return { label, present };
   });
 }
+
+/** Enclosed-document labels that the comprehensive record itself always produces. */
+export const RECORD_ENCLOSED_SECTIONS = ['Field book', 'Coordinate List and Calculations'] as const;
+
+/**
+ * Force the record's own sections to present. The comprehensive record encloses the
+ * field book, coordinate list, and calculations by construction, but their split files
+ * are written during generation — after the on-disk manifest is read — so the disk check
+ * alone would show them missing on the generating run. Marking them present reflects that
+ * they are always part of the record being produced.
+ */
+export function markRecordSectionsPresent(documents: LodgementDocumentStatus[]): LodgementDocumentStatus[] {
+  const forced = new Set<string>(RECORD_ENCLOSED_SECTIONS);
+  return documents.map((d) => (forced.has(d.label) ? { ...d, present: true } : d));
+}

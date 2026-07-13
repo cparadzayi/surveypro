@@ -1,5 +1,5 @@
 import { getOutputManifest } from '@/services/documentStorage'
-import { resolveLodgementDocuments, type LodgementDocumentStatus, type ManifestFile } from '@/utils/lodgementDocuments'
+import { resolveLodgementDocuments, markRecordSectionsPresent, type LodgementDocumentStatus, type ManifestFile } from '@/utils/lodgementDocuments'
 
 /**
  * Determine which enclosed documents exist in the project output/input folders.
@@ -14,7 +14,7 @@ export async function checkLodgementDocuments(
     const manifest = await getOutputManifest(workingDirectory)
     files = manifest.files
   }
-  const documents = resolveLodgementDocuments(files)
+  const documents = markRecordSectionsPresent(resolveLodgementDocuments(files))
   const missing = documents.filter((d) => !d.present).map((d) => d.label)
   return { documents, missing }
 }

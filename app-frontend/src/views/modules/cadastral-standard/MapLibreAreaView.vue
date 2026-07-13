@@ -6613,10 +6613,10 @@ async function generatePDF(computedParcels: Parcel[], calculationsPart1PDF?: Fil
       
       if (action) {
         // Download to user's downloads folder
-        downloadMergedPDF(result, projectName);
+        downloadMergedPDF(result.merged, projectName);
       } else {
         // Save to project's working directory
-        await saveMergedPDFToProject(result, projectName);
+        await saveMergedPDFToProject(result.merged, projectName);
       }
     } else if (calculationsPart1PDF) {
       console.log('[MapLibre] ✅ Merged PDF generated successfully');

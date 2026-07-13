@@ -631,6 +631,7 @@ import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation } from '@/utils/planDesignation';
 import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
+import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
 
 // Props
 const props = defineProps<{
@@ -4501,7 +4502,25 @@ async function generateComprehensivePDF() {
       a.click()
       URL.revokeObjectURL(url)
     }
-    
+
+    // Save each section of the record as its own file for independent retrieval.
+    if (workingDirectory && result.sections && finalResult.areasOnlyBlob) {
+      const split = await saveSurveyRecordSections({
+        workingDirectory,
+        projectName,
+        sections: {
+          fieldBook: result.sections.fieldBook,
+          coordinateList: result.sections.coordinateList,
+          calculations: result.sections.calculations,
+          areas: finalResult.areasOnlyBlob,
+        },
+      });
+      if (split.failed.length) {
+        console.warn('[ComprehensivePDF] ⚠️ Some record sections did not save:',
+          split.failed.map(f => `${f.label}: ${f.error}`).join('; '));
+      }
+    }
+
     console.log('[ComprehensivePDF] ✅ Complete Survey Record generation complete')
     
   } catch (error: any) {

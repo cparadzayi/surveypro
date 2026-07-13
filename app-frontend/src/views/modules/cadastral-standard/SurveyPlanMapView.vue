@@ -629,6 +629,8 @@ import { paperSizeOptionsFor } from './paperSizeOptions'
 import { subjectSides, upsertAnnotation, removeAnnotation, annotationsForSubject, withSubjectAnnotations, hydrateAnnotationsMap, type SideAnnotation, type SideRole } from './sideAnnotations'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
+import { buildPlanDesignation } from '@/utils/planDesignation';
+import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
 
 // Props
 const props = defineProps<{
@@ -4279,7 +4281,28 @@ async function generateComprehensivePDF() {
     const licenseNumber = workflowSurveyorInfo?.licenseNumber || config.value.licenseNumber || props.projectInfo.licenseNumber || ''
     const surveyDate = workflowSurveyorInfo?.surveyDate || config.value.surveyDate || new Date().toISOString().split('T')[0]
     const district = props.projectInfo.district || projectSetupData?.district || 'Unknown District'
-    
+
+    // Existence check for enclosed documents (ticks + optional warning).
+    const recordWorkingDirectory = (props.projectInfo as any).workingDirectory
+    const { documents: lodgementDocs, missing: missingDocs } =
+      await checkLodgementDocuments(recordWorkingDirectory)
+    if (recordWorkingDirectory && missingDocs.length) {
+      const proceed = window.confirm(
+        `⚠ ${missingDocs.length} document(s) not found in the output folder:\n` +
+        missingDocs.map((m) => `  • ${m}`).join('\n') +
+        `\n\nGenerate anyway?`
+      )
+      if (!proceed) {
+        console.log('[ComprehensivePDF] Generation cancelled by user (missing documents)')
+        return
+      }
+    }
+
+    // Stand names for the subject line (exclude the Outside Figure parcel).
+    const recordStandNames = (dbParcels as any[])
+      .map((p) => String(p.stand ?? p.designation ?? '').trim())
+      .filter((s) => s && !s.toLowerCase().includes('outside figure'))
+
     const coverPageInfo: CoverPageInfo = {
       firmName: 'C PARADZAYI LAND SURVEYORS',
       firmSubtitle: 'Cadastral, Engineering, Topographic & Mining Surveyors',
@@ -4293,7 +4316,11 @@ async function generateComprehensivePDF() {
       licenseNumber: licenseNumber,
       surveyDate: surveyDate,
       district: district,
-      surveyType: props.projectInfo.surveyType || `SURVEY OF ${projectName.toUpperCase()}`,
+      surveyType:
+        buildPlanDesignation(recordStandNames, (props.projectInfo as any).surveyOf || workflowSurveyorInfo?.surveyOf || '')
+        || props.projectInfo.surveyType
+        || `SURVEY OF ${projectName.toUpperCase()}`,
+      documents: lodgementDocs,
       pointsAnalyzed: surveyPoints.length
     }
     

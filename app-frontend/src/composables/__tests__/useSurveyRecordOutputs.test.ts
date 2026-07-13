@@ -44,4 +44,19 @@ describe('saveSurveyRecordSections', () => {
     expect(res.failed.length).toBe(1);
     expect(res.failed[0].error).toBe('locked');
   });
+
+  it('catches a thrown saveDocument and still runs the remaining saves', async () => {
+    (saveDocument as any)
+      .mockResolvedValueOnce({ success: true, filePath: 'a' })
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({ success: true, filePath: 'c' })
+      .mockResolvedValueOnce({ success: true, filePath: 'd' });
+    const res = await saveSurveyRecordSections({
+      workingDirectory: 'C:/proj', projectName: 'P', sections,
+    });
+    expect(saveDocument).toHaveBeenCalledTimes(4);
+    expect(res.saved.length).toBe(3);
+    expect(res.failed.length).toBe(1);
+    expect(res.failed[0].error).toBe('boom');
+  });
 });

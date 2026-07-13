@@ -28,9 +28,14 @@ comprehensive survey record (`Comprehensive_Latest.pdf`). Two changes:
     which sets `surveyType = 'SURVEY OF ' + surveyorInfo.projectTitle.toUpperCase()`.
   - `SurveyPlanMapView.vue` (Survey Plan export), equivalent `coverPageInfo` near
     the `generateWithTwoPass` call (~line 4394).
-- The **general plan** title wording comes from `formatDesignation(projectInfo)`,
-  currently a local function in `SurveyPlanMapView.vue:4908`. It returns strings
-  like `STANDS 207 - 270, 340 - 345 MAGLAS TOWNSHIP` — no "SURVEY OF" prefix.
+- The **general plan** title wording is built on the **backend** by
+  `_buildTitleBlockTexts` (`app-backend/src/services/pdfkitGeoPDF.js:4897`) from
+  geometry: `getStandsInsideOutsideFigure(parcels, outsideFigureData)` →
+  `formatStandRanges(...)` (compresses to `207 - 270, 340 - 345`) + a township
+  string extracted from `metadata.surveyOf`, combined as
+  `Stands 207 - 270, 340 - 345 Maglas Township` — no "SURVEY OF" prefix.
+  (The frontend `formatDesignation()` in `SurveyPlanMapView.vue:4908` is **dead
+  code**, never called, and does NOT reproduce this — do not use it.)
 - The letter runs in-browser (jsPDF), so it cannot read disk. A backend endpoint
   `GET /documents/list` already exists (`app-backend/src/routes/documents.js:122`)
   but scans only a subset of subfolders and only `.pdf` files.
@@ -40,21 +45,32 @@ comprehensive survey record (`Comprehensive_Latest.pdf`). Two changes:
 
 ## Part 1 — Subject line matches the general plan
 
-- Extract `formatDesignation()` from `SurveyPlanMapView.vue` into a shared,
-  unit-tested util: `app-frontend/src/utils/planDesignation.ts`. Keep the existing
-  behaviour exactly (priority `surveyOf` > `designation`/`standReference`, township
-  suffix handling, ranges/farms/LOT branches). Re-import it in `SurveyPlanMapView.vue`
-  to replace the local copy (no behavioural change there).
+Reproduce the backend's general-plan title wording on the frontend, from the
+record's `computedParcels`, so the letter subject matches the plan. (Chosen over a
+new backend endpoint because the pieces are small and pure; it reproduces the
+backend's own fallback exactly, which equals the plan whenever all stands sit
+inside the figure — the normal case.)
+
+- Create a shared, unit-tested util `app-frontend/src/utils/planDesignation.ts`:
+  - `formatStandRanges(standNames: string[]): string` — a faithful port of the
+    backend function (`pdfkitGeoPDF.js:4789`): split numeric vs non-numeric, sort
+    numerics ascending, compress consecutive runs into `a - b`, append non-numerics,
+    join with `, `.
+  - `extractTownship(surveyOf: string): string` — mirrors the backend
+    (`pdfkitGeoPDF.js:4905-4907`): strip a leading `Stands? <nums>` prefix and any
+    trailing ` of …` clause from `surveyOf`.
+  - `buildPlanDesignation(standNames: string[], surveyOf: string): string` — returns
+    `STANDS <ranges> <TOWNSHIP>` (uppercased to match the plan title) when ranges
+    exist, else `STANDS <TOWNSHIP>` / '' fallbacks.
 - At **both** comprehensive-doc call sites, set
-  `surveyType = formatDesignation(projectInfo)` instead of
-  `'SURVEY OF ' + projectTitle.toUpperCase()`.
-  - `projectInfo` here means the object carrying `surveyOf`, `designation`/
-    `standReference`, and `township`. In `MapLibreAreaView` these come from
-    `workflowState.surveyorInfo` / `workflowState.projectInfo`; confirm the fields
-    are present during implementation and fall back gracefully (the function
-    already returns sensible defaults).
+  `surveyType = buildPlanDesignation(standNames, surveyOf)` where `standNames` is
+  derived from the record's `computedParcels` (each parcel's `stand`/`designation`,
+  excluding the Outside Figure parcel) and `surveyOf` comes from the view's
+  surveyor/project info. Falls back to the previous `SURVEY OF …` string only when
+  the result is empty.
 - `cover-page.ts` already prints `RE: ${info.surveyType}`; with the new value it
   reads identically to the general plan. No change to the `RE:` rendering itself.
+- The dead `formatDesignation()` in `SurveyPlanMapView.vue` is deleted.
 
 ## Part 2 — Tick boxes + existence check
 
@@ -117,9 +133,10 @@ empty boxes). No dialog in that case.
 
 ## Testing
 
-- `planDesignation.test.ts` — port the current `formatDesignation` behaviour with
-  cases: single stand, numeric range, multi-range, farm names, LOT designation,
-  `surveyOf` passthrough, township-already-included, empty/default.
+- `planDesignation.test.ts` — cover `formatStandRanges` (single, consecutive run,
+  multiple runs `207-270, 340-345`, non-numeric names, empty), `extractTownship`
+  (strips `Stands N-M` prefix and ` of …` suffix), and `buildPlanDesignation`
+  (full `STANDS 207 - 270, 340 - 345 MAGLAS TOWNSHIP`, no-township, empty).
 - `lodgementDocuments.test.ts` — given representative file-name lists, assert the
   correct `present` flags per item (including a case where several are missing).
 - Backend: a small test for `/documents/output-manifest` over a temp folder tree
@@ -127,6 +144,13 @@ empty boxes). No dialog in that case.
 
 ## Approaches considered
 
+- **Subject source:** port `formatStandRanges` + township extraction to the
+  frontend and build from `computedParcels` (chosen) vs. a new backend endpoint
+  running the exact `_buildTitleBlockTexts` logic vs. reusing
+  `props.projectInfo.designation` verbatim. The port is small/pure and reproduces
+  the backend's own fallback; a backend endpoint would be byte-identical in edge
+  cases but needs the outside-figure polygon server-side; the stored field is not
+  guaranteed to equal the plan title (and is absent in `MapLibreAreaView`).
 - **Existence check:** keyword scan of the output tree (chosen) vs. auto-tick only
   SurveyPro-generated docs vs. exact expected filenames. Keyword scan ticks both
   generated and manually-dropped-in records and tolerates naming drift.

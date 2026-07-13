@@ -120,6 +120,26 @@ export async function getProjectDocuments(workingDirectory: string) {
 }
 
 /**
+ * Recursive manifest of every file under the project's output/ and input/ folders.
+ * Never throws — returns an empty list on any error.
+ */
+export async function getOutputManifest(
+  workingDirectory: string
+): Promise<{ files: { name: string; relDir: string }[] }> {
+  try {
+    const response = await fetch(
+      `${API_BASE}/documents/output-manifest?workingDirectory=${encodeURIComponent(workingDirectory)}`
+    )
+    if (!response.ok) throw new Error('Failed to fetch output manifest')
+    const body = await response.json()
+    return { files: Array.isArray(body.files) ? body.files : [] }
+  } catch (error) {
+    console.error('Error fetching output manifest:', error)
+    return { files: [] }
+  }
+}
+
+/**
  * Open a saved document in the system's default PDF viewer
  */
 export async function openDocument(filePath: string) {

@@ -4904,64 +4904,6 @@ function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-GB')
 }
 
-// SI 727 Title Block Formatting Functions
-function formatDesignation(projectInfo: any): string {
-  // Format stand/lot designation according to SI 727 examples
-  // Examples:
-  // "STANDS 1-60 WIDDICOMBE TOWNSHIP"
-  // "LOTS 1-8 OF SUBDIVISION A OF LOT 1 BLOCK C OF HATFIELD"
-  // "ALPHA, BETA, GAMMA" (for farms)
-  
-  // Priority: surveyOf > designation > standReference > default
-  // surveyOf typically contains the full "Survey of Stand X, Township Y" text
-  const surveyOf = projectInfo.surveyOf || ''
-  const designation = projectInfo.designation || projectInfo.standReference || ''
-  const township = projectInfo.township || 'TOWNSHIP NAME'
-  
-  // If surveyOf is provided and looks like a complete description, use it directly
-  if (surveyOf && surveyOf.length > 10) {
-    // Extract the core designation from "Survey of Stand X, Township Y" format
-    // Remove common prefixes like "Survey of ", "Stand ", etc.
-    let cleanedSurveyOf = surveyOf
-      .replace(/^Survey\s+of\s+/i, '')
-      .replace(/^Stand\s+/i, 'STAND ')
-      .replace(/^Stands\s+/i, 'STANDS ')
-      .replace(/^Lot\s+/i, 'LOT ')
-      .replace(/^Lots\s+/i, 'LOTS ')
-      .trim()
-    
-    return cleanedSurveyOf.toUpperCase()
-  }
-  
-  // Fallback to designation if surveyOf not available
-  if (!designation) {
-    return 'STAND NUMBER'
-  }
-  
-  // Check if designation already includes township
-  if (designation.toUpperCase().includes(township.toUpperCase())) {
-    return designation.toUpperCase()
-  }
-  
-  // Format: "STANDS [designation] [TOWNSHIP]"
-  if (designation.match(/^\d+(-\d+)?$/)) {
-    // Single stand or range: "1" or "1-60"
-    return `STANDS ${designation} ${township.toUpperCase()}`
-  } else if (designation.match(/^\d+(-\d+)?(,\s*\d+(-\d+)?)*$/)) {
-    // Multiple ranges: "565-594, 601-620"
-    return `STANDS ${designation} ${township.toUpperCase()}`
-  } else if (designation.match(/^[A-Z]+(\s*,\s*[A-Z]+)*$/i)) {
-    // Farm names: "ALPHA, BETA, GAMMA"
-    return designation.toUpperCase()
-  } else if (designation.toUpperCase().startsWith('LOT')) {
-    // Already formatted as LOT designation
-    return designation.toUpperCase()
-  } else {
-    // Complex designation - use as is
-    return designation.toUpperCase()
-  }
-}
-
 function calculateStandCount(designation: string): number {
   // Calculate the number of stands from a designation string
   // Examples:

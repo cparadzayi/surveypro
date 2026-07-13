@@ -3,13 +3,13 @@
  * Handles saving generated PDFs to project working directory
  */
 
-import { getProjectDirectoryStructure } from '../utils/project-directory'
+import { getProjectDirectoryStructure, type ProjectDirectoryStructure } from '../utils/project-directory'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3042/api'
 
 export interface SaveDocumentOptions {
   workingDirectory: string
-  documentType: 'field-book' | 'calculations-part1' | 'coordinate-list' | 'area-computation' | 'report-on-survey' | 'dsg-certificate'
+  documentType: 'field-book' | 'calculations-part1' | 'coordinate-list' | 'area-computation' | 'areas-consistency' | 'report-on-survey' | 'dsg-certificate'
   fileName: string
   pdfBlob: Blob
   /**
@@ -28,6 +28,30 @@ export interface SaveDocumentResult {
   code?: string
 }
 
+/** Map a document type to its target output subfolder. */
+export function resolveTargetFolder(
+  documentType: SaveDocumentOptions['documentType'],
+  structure: ProjectDirectoryStructure
+): string {
+  switch (documentType) {
+    case 'field-book':
+      return structure.fieldBook
+    case 'calculations-part1':
+    case 'area-computation':
+      return structure.calculations
+    case 'areas-consistency':
+      return structure.surveyRecord
+    case 'coordinate-list':
+      return structure.coordinateList
+    case 'report-on-survey':
+      return structure.reports
+    case 'dsg-certificate':
+      return structure.certificates
+    default:
+      throw new Error(`Unknown document type: ${documentType}`)
+  }
+}
+
 /**
  * Save a generated PDF document to the project directory
  */
@@ -37,28 +61,7 @@ export async function saveDocument(options: SaveDocumentOptions): Promise<SaveDo
   try {
     // Get the appropriate subfolder based on document type
     const structure = getProjectDirectoryStructure(workingDirectory)
-    let targetFolder: string
-
-    switch (documentType) {
-      case 'field-book':
-        targetFolder = structure.fieldBook
-        break
-      case 'calculations-part1':
-      case 'area-computation':
-        targetFolder = structure.calculations
-        break
-      case 'coordinate-list':
-        targetFolder = structure.coordinateList
-        break
-      case 'report-on-survey':
-        targetFolder = structure.reports
-        break
-      case 'dsg-certificate':
-        targetFolder = structure.certificates
-        break
-      default:
-        throw new Error(`Unknown document type: ${documentType}`)
-    }
+    const targetFolder = resolveTargetFolder(documentType, structure)
 
     // Construct full file path
     const filePath = `${targetFolder}/${fileName}`

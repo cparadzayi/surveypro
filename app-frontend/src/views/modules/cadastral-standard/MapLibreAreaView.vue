@@ -909,6 +909,8 @@ import type { ParcelDetectionResult } from '../../../services/parcelDetection';
 import PointRenamePanel from '../../../components/cadastral/PointRenamePanel.vue';
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
+import { buildPlanDesignation } from '@/utils/planDesignation';
+import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
 
 const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../components/ParcelDetectionPanel.vue'));
 
@@ -6253,6 +6255,27 @@ async function exportAreaConsistencyPDF() {
       centralMeridian: workflowState?.projectInfo?.centralMeridian || 29
     };
     
+    // Existence check for enclosed documents (ticks + optional warning).
+    const recordWorkingDirectory = workflowState?.projectInfo?.workingDirectory;
+    const { documents: lodgementDocs, missing: missingDocs } =
+      await checkLodgementDocuments(recordWorkingDirectory);
+    if (recordWorkingDirectory && missingDocs.length) {
+      const proceed = window.confirm(
+        `⚠ ${missingDocs.length} document(s) not found in the output folder:\n` +
+        missingDocs.map((m) => `  • ${m}`).join('\n') +
+        `\n\nGenerate anyway?`
+      );
+      if (!proceed) {
+        console.log('[MapLibre] Comprehensive record generation cancelled by user (missing documents)');
+        return;
+      }
+    }
+
+    // Stand names for the subject line (exclude the Outside Figure parcel).
+    const recordStandNames = computedParcels
+      .map((p: any) => String(p.stand ?? p.designation ?? '').trim())
+      .filter((s: string) => s && !s.toLowerCase().includes('outside figure'));
+
     // Cover page information
     const coverPageInfo = {
       firmName: 'C PARADZAYI LAND SURVEYORS',
@@ -6268,7 +6291,10 @@ async function exportAreaConsistencyPDF() {
       licenseNumber: surveyorInfo.licenseNumber,
       surveyDate: surveyorInfo.surveyDate,
       district: surveyorInfo.district,
-      surveyType: `SURVEY OF ${surveyorInfo.projectTitle.toUpperCase()}`,
+      surveyType:
+        buildPlanDesignation(recordStandNames, workflowState?.surveyorInfo?.surveyOf || '')
+        || `SURVEY OF ${surveyorInfo.projectTitle.toUpperCase()}`,
+      documents: lodgementDocs,
       pointsAnalyzed: surveyPoints.length
     };
     

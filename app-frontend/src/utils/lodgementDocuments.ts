@@ -45,7 +45,7 @@ const DOCUMENT_RULES: Record<string, DocRule> = {
   'Working Plan': { kind: 'generated', folders: ['working-plans'], keyword: /working.?plan/i },
   'Report on Survey': { kind: 'generated', folders: ['survey-record', 'reports'], keyword: /report|survey.?record/i },
   'DSG Certificate (1/96)': { kind: 'generated', folders: ['certificates'], keyword: /dsg|1.?96/i },
-  'Dispensation Certificate': { kind: 'external', keyword: /dispensation/i },
+  'Dispensation Certificate': { kind: 'generated', folders: ['certificates'], keyword: /dispensation/i },
   'Checklist': { kind: 'external', keyword: /check.?list/i },
   'Permit/Instruction and layout': { kind: 'external', keyword: /permit|instruction|layout/i },
   'Beacon receipt': { kind: 'external', keyword: /beacon.*receipt/i },

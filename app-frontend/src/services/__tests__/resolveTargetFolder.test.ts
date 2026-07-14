@@ -15,6 +15,10 @@ describe('resolveTargetFolder', () => {
     expect(resolveTargetFolder('dsg-certificate', structure)).toBe(structure.certificates);
   });
 
+  it('routes dispensation-certificate to the certificates folder', () => {
+    expect(resolveTargetFolder('dispensation-certificate', structure)).toBe(structure.certificates)
+  })
+
   it('throws on an unknown document type', () => {
     expect(() => resolveTargetFolder('nope' as any, structure)).toThrow(/Unknown document type/);
   });

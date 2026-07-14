@@ -9,7 +9,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3042/api'
 
 export interface SaveDocumentOptions {
   workingDirectory: string
-  documentType: 'field-book' | 'calculations-part1' | 'coordinate-list' | 'area-computation' | 'areas-consistency' | 'report-on-survey' | 'dsg-certificate'
+  documentType: 'field-book' | 'calculations-part1' | 'coordinate-list' | 'area-computation' | 'areas-consistency' | 'report-on-survey' | 'dsg-certificate' | 'dispensation-certificate'
   fileName: string
   pdfBlob: Blob
   /**
@@ -46,6 +46,7 @@ export function resolveTargetFolder(
     case 'report-on-survey':
       return structure.reports
     case 'dsg-certificate':
+    case 'dispensation-certificate':
       return structure.certificates
     default:
       throw new Error(`Unknown document type: ${documentType}`)

@@ -401,8 +401,9 @@ export interface CadastralWorkflowState {
     | 'coordinate-list'
     | 'qgis-export'
     | 'area-computation'
+    | 'servitudes'
     | 'survey-plan'
-    | 'report-on-survey' 
+    | 'report-on-survey'
     | 'dsg-certificate';
   
   /** Imported data */

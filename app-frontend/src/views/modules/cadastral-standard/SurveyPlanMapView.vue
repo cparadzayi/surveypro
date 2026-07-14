@@ -4507,7 +4507,6 @@ async function generateComprehensivePDF() {
     if (workingDirectory && result.sections && finalResult.areasOnlyBlob) {
       const split = await saveSurveyRecordSections({
         workingDirectory,
-        projectName,
         sections: {
           fieldBook: result.sections.fieldBook,
           coordinateList: result.sections.coordinateList,

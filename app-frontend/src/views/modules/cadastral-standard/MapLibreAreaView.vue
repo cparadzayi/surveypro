@@ -6528,7 +6528,6 @@ async function generateComprehensivePDF(
     if (recordWorkingDirectory && twoPassSections && result.areasOnlyBlob) {
       const split = await saveSurveyRecordSections({
         workingDirectory: recordWorkingDirectory,
-        projectName,
         sections: {
           fieldBook: twoPassSections.fieldBook,
           coordinateList: twoPassSections.coordinateList,

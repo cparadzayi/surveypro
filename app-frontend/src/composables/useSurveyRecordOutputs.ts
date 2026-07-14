@@ -9,18 +9,12 @@ export interface SurveyRecordSections {
 
 export interface SaveSurveyRecordOptions {
   workingDirectory: string
-  projectName: string
   sections: SurveyRecordSections
 }
 
 export interface SaveSurveyRecordResult {
   saved: string[]
   failed: { label: string; error: string }[]
-}
-
-/** Sanitize a project name for use in a filename (mirrors getOutputFilePaths). */
-function safeName(projectName: string): string {
-  return (projectName || 'project').replace(/[^a-zA-Z0-9-_]/g, '_')
 }
 
 /**
@@ -31,14 +25,13 @@ function safeName(projectName: string): string {
 export async function saveSurveyRecordSections(
   opts: SaveSurveyRecordOptions
 ): Promise<SaveSurveyRecordResult> {
-  const { workingDirectory, projectName, sections } = opts
-  const safe = safeName(projectName)
+  const { workingDirectory, sections } = opts
 
   const jobs: Array<{ label: string; documentType: SaveDocumentOptions['documentType']; fileName: string; pdfBlob: Blob }> = [
-    { label: 'Field book', documentType: 'field-book', fileName: `${safe}_FieldBook.pdf`, pdfBlob: sections.fieldBook },
-    { label: 'Coordinate List', documentType: 'coordinate-list', fileName: `${safe}_CoordinateList.pdf`, pdfBlob: sections.coordinateList },
-    { label: 'Calculations', documentType: 'calculations-part1', fileName: `${safe}_Calculations.pdf`, pdfBlob: sections.calculations },
-    { label: 'Areas & Consistency', documentType: 'areas-consistency', fileName: `${safe}_AreasAndConsistency.pdf`, pdfBlob: sections.areas },
+    { label: 'Field book', documentType: 'field-book', fileName: 'FieldBook.pdf', pdfBlob: sections.fieldBook },
+    { label: 'Coordinate List', documentType: 'coordinate-list', fileName: 'CoordinateList.pdf', pdfBlob: sections.coordinateList },
+    { label: 'Calculations', documentType: 'calculations-part1', fileName: 'Calculations.pdf', pdfBlob: sections.calculations },
+    { label: 'Areas & Consistency', documentType: 'areas-consistency', fileName: 'AreasAndConsistency.pdf', pdfBlob: sections.areas },
   ]
 
   const saved: string[] = []

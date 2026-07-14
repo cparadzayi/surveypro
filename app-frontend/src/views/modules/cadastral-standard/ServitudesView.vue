@@ -310,6 +310,7 @@ import api from '@/services/api'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { subjectSides, hydrateAnnotationsMap, annotationsForSubject, type SideAnnotation } from './sideAnnotations'
+import { pickDiagramSubjectId } from './diagramSubjectPick'
 import {
   SERVITUDE_TYPE_LABELS,
   newServitudeId,
@@ -427,14 +428,23 @@ function transformParcelGeometryForMap(geom: any): { type: 'Feature'; geometry: 
     }
   }
   if (geometry?.type === 'Feature' && geometry?.geometry) geometry = geometry.geometry
+
+  // ⭐ CHECK CRS on the ORIGINAL (pre-flatten) geometry object — the
+  // MultiPolygon→Polygon rewrite below builds a fresh object with no `.crs`,
+  // so the check must run first or an already-WGS84 MultiPolygon parcel gets
+  // wrongly re-transformed through capeLoArrayToWGS84 (SurveyPlanMapView.vue:
+  // 3216-3295 does the CRS check before the Polygon/MultiPolygon branching —
+  // mirrored here).
+  const crs = geometry?.crs
+  const crsName = crs?.properties?.name || crs?.name || ''
+  const isAlreadyWGS84 = crsName.includes('EPSG:4326') || crsName.includes('WGS84')
+
   if (geometry?.type === 'MultiPolygon' && Array.isArray(geometry.coordinates?.[0])) {
     geometry = { type: 'Polygon', coordinates: geometry.coordinates[0] }
   }
   if (geometry?.type !== 'Polygon' || !Array.isArray(geometry.coordinates)) return null
 
-  const crs = geometry?.crs
-  const crsName = crs?.properties?.name || crs?.name || ''
-  if (crsName.includes('EPSG:4326') || crsName.includes('WGS84')) {
+  if (isAlreadyWGS84) {
     return { type: 'Feature', geometry: { type: 'Polygon', coordinates: geometry.coordinates }, properties: {} }
   }
 
@@ -579,12 +589,10 @@ function onMapClick(e: maplibregl.MapMouseEvent) {
   if (!fillLayers.length) return
   const hits = map.value.queryRenderedFeatures(e.point, { layers: fillLayers })
   if (!hits.length) return
-  const hitIds = new Set(hits.map((h) => h.layer.id))
-  const candidates = parcels.value.filter((p: any) => hitIds.has(`parcel-${p.id}-fill`))
-  if (!candidates.length) return
-  // Prefer the smallest overlapping stand (mirrors pickDiagramSubjectId's intent).
-  candidates.sort((a: any, b: any) => (Number(a.area_m2) || Infinity) - (Number(b.area_m2) || Infinity))
-  selectedParcelId.value = candidates[0].id
+  const hitLayerIds = hits.map((h) => h.layer.id)
+  const pickedId = pickDiagramSubjectId(hitLayerIds, parcels.value, null)
+  if (pickedId == null) return
+  selectedParcelId.value = pickedId
 }
 
 /** Mirrors SurveyPlanMapView.vue's map init (1564-1620): raster OSM + satellite

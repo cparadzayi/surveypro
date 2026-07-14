@@ -58,4 +58,18 @@ describe('resolveBeaconPair', () => {
     expect(resolveBeaconPair(sides, edges, 'ZZ')).toBeNull()
     expect(resolveBeaconPair(sides, [{ from: {}, to: {} }], 'AB')).toBeNull()
   })
+  it('spatially matches beacon names when edge endpoints only carry coordinates', () => {
+    const coordinatePoints = [
+      { name: '10b', y: 0, x: 10 },
+      { name: '10c', y: 10, x: 10 },
+    ]
+    const spatialEdges = [
+      { from: {}, to: {} },
+      { from: { y: 0, x: 10 }, to: { y: 10, x: 10 } },
+      { from: {}, to: {} },
+      { from: {}, to: {} },
+    ]
+    expect(resolveBeaconPair(sides, spatialEdges, 'BC', coordinatePoints))
+      .toEqual({ fromBeacon: '10b', toBeacon: '10c' })
+  })
 })

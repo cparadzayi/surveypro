@@ -26,7 +26,7 @@ describe('generateAndSaveDispensation', () => {
     expect(genArg.portion).toBe('developed')
     expect(genArg.standCount).toBe(1)
     expect(genArg.totalArea).toBe(174)
-    expect(genArg.rows[0].servitudeText).toContain('1620a – 1620b')
+    expect(genArg.rows[0].boundary).toContain('1620a – 1620b')
     expect(saveDocument).toHaveBeenCalledWith(expect.objectContaining({
       workingDirectory: 'C:/proj', documentType: 'dispensation-certificate',
       fileName: 'DispensationDeveloped.pdf', overwrite: true,

@@ -14,8 +14,8 @@ const base: DispensationCertificateData = {
   standCount: 2,
   totalArea: 349,
   rows: [
-    { stand: '1620', areaM2: 174, servitudeText: 'The boundary (1620a – 1620b) is subject to a Party wall servitude between Stand 1620 and Stand 1621' },
-    { stand: '1621', areaM2: 175, servitudeText: 'The boundary (1620a – 1620b) is subject to a Party wall servitude between Stand 1620 and Stand 1621' },
+    { stand: '1620', areaM2: 174, boundary: '1620a – 1620b', servitudeType: 'Party wall' },
+    { stand: '1621', areaM2: 175, boundary: '1620a – 1620b', servitudeType: 'Party wall' },
   ],
 }
 
@@ -26,7 +26,7 @@ describe('generateDispensationCertificatePDF', () => {
     expect(pageCount).toBeGreaterThanOrEqual(1)
   })
   it('renders the undeveloped variant with many rows across pages', async () => {
-    const rows = Array.from({ length: 80 }, (_, i) => ({ stand: String(1600 + i), areaM2: 200, servitudeText: '' }))
+    const rows = Array.from({ length: 80 }, (_, i) => ({ stand: String(1600 + i), areaM2: 200, boundary: '', servitudeType: '' }))
     const { blob, pageCount } = await generateDispensationCertificatePDF({ ...base, portion: 'undeveloped', rows, standCount: 80 })
     expect(blob.size).toBeGreaterThan(0)
     expect(pageCount).toBeGreaterThanOrEqual(2)

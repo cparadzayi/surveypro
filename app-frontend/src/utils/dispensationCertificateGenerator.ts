@@ -49,13 +49,20 @@ export async function generateDispensationCertificatePDF(
   metaLine('General Plan', data.generalPlanNumber)
   metaLine('SG number', data.sgNumber)
   metaLine('System', data.loZone)
+  const showServ = data.portion === 'developed'
+  if (showServ) {
+    line('The boundary is subject to the servitude shown.', { size: 8 })
+  }
   y += 3
 
   // Table
-  const showServ = data.portion === 'developed'
+  const remaining = showServ ? contentW - 24 - 28 : contentW - 40 - 46
   const cols = showServ
-    ? [{ w: 28, t: 'STAND No.' }, { w: 34, t: 'AREA (m²)' }, { w: contentW - 62, t: 'DETAILS OF SERVITUDES' }]
-    : [{ w: 40, t: 'STAND No.' }, { w: 46, t: 'AREA (m²)' }, { w: contentW - 86, t: 'DETAILS OF SERVITUDES' }]
+    ? [
+        { w: 24, t: 'STAND No.' }, { w: 28, t: 'AREA (m²)' },
+        { w: remaining / 2, t: 'BOUNDARY' }, { w: remaining / 2, t: 'SERVITUDE' },
+      ]
+    : [{ w: 40, t: 'STAND No.' }, { w: 46, t: 'AREA (m²)' }, { w: remaining, t: 'DETAILS OF SERVITUDES' }]
 
   const drawHeaderRow = () => {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
@@ -68,11 +75,16 @@ export async function generateDispensationCertificatePDF(
 
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
   for (const r of data.rows) {
-    const servLines = showServ && r.servitudeText ? doc.splitTextToSize(r.servitudeText, cols[2].w - 3) : ['']
-    const rowH = Math.max(6, servLines.length * 4 + 2)
+    const boundaryCol = showServ ? cols[2] : null
+    const servCol = showServ ? cols[3] : cols[2]
+    const boundaryLines = showServ && r.boundary ? doc.splitTextToSize(r.boundary, boundaryCol!.w - 3) : ['']
+    const servLines = r.servitudeType ? doc.splitTextToSize(r.servitudeType, servCol.w - 3) : ['']
+    const rowH = Math.max(6, Math.max(boundaryLines.length, servLines.length) * 4 + 2)
     if (y + rowH > pageH - M.bottom) { doc.addPage(); y = M.top; drawHeaderRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9) }
     let x = M.left
-    const cells = [r.stand, r.areaM2 ? String(Math.round(r.areaM2)) : '', showServ ? servLines : ['']]
+    const cells = showServ
+      ? [r.stand, r.areaM2 ? String(Math.round(r.areaM2)) : '', boundaryLines, servLines]
+      : [r.stand, r.areaM2 ? String(Math.round(r.areaM2)) : '', servLines]
     for (let i = 0; i < cols.length; i++) {
       doc.rect(x, y - 4, cols[i].w, rowH)
       const val = cells[i]

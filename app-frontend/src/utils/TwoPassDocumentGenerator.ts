@@ -32,6 +32,11 @@ export interface TwoPassDocumentData {
 
 export interface TwoPassDocumentResult {
   pdf: Blob
+  sections: {
+    fieldBook: Blob
+    coordinateList: Blob
+    calculations: Blob
+  }
   measurements: DocumentMeasurements
   totalPages: number
 }
@@ -67,7 +72,7 @@ export class TwoPassDocumentGenerator {
     // PASS 2: Rendering
     console.log('📖 PASS 2: RENDERING FINAL PDF')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    const pdf = await this.renderPass(data, measurements)
+    const rendered = await this.renderPass(data, measurements)
     const renderTime = Date.now() - startTime - measureTime
     const totalTime = Date.now() - startTime
     
@@ -78,7 +83,8 @@ export class TwoPassDocumentGenerator {
     console.log(`   - Total Pages: ${measurements.totalPages}`)
     
     return {
-      pdf,
+      pdf: rendered.merged,
+      sections: rendered.sections,
       measurements,
       totalPages: measurements.totalPages
     }
@@ -137,7 +143,7 @@ export class TwoPassDocumentGenerator {
   private async renderPass(
     data: TwoPassDocumentData,
     measurements: DocumentMeasurements
-  ): Promise<Blob> {
+  ): Promise<{ merged: Blob; sections: { fieldBook: Blob; coordinateList: Blob; calculations: Blob } }> {
     const pdfs: Blob[] = []
     
     // 1. Generate Field Book
@@ -173,12 +179,19 @@ export class TwoPassDocumentGenerator {
       console.log(`     ✓ ${measurements.areas.pages} pages generated`)
     }
     
-    // 5. Merge all PDFs
+    // 5. Merge all sections into the collated body
     console.log('  🔗 Merging PDFs...')
-    const finalPDF = await this.mergePDFs(pdfs)
+    const merged = await this.mergePDFs(pdfs)
     console.log(`     ✓ Final document assembled`)
-    
-    return finalPDF
+
+    return {
+      merged,
+      sections: {
+        fieldBook: fieldBookResult.pdf,
+        coordinateList: coordListPDF,
+        calculations: calcsPDF,
+      },
+    }
   }
   
   // ========================================

@@ -83,7 +83,10 @@ export class ComprehensiveDocumentGenerator {
   async generateWithTwoPass(
     data: ComprehensiveDocumentData,
     useTwoPass: boolean = true
-  ): Promise<ComprehensiveDocumentResult & { measurements?: DocumentMeasurements }> {
+  ): Promise<ComprehensiveDocumentResult & {
+    measurements?: DocumentMeasurements;
+    sections?: { cover: Blob; fieldBook: Blob; coordinateList: Blob; calculations: Blob };
+  }> {
     console.log('[ComprehensiveDoc] 🎯 Using TWO-PASS generation for 100% accurate cross-references');
     
     // Filter out TRIG beacons (they only appear in Coordinate List)
@@ -131,7 +134,13 @@ export class ComprehensiveDocumentGenerator {
       actualCoordListLastPage: result.measurements.coordinateList.endPage,
       actualCalcStartPage: result.measurements.calculations.startPage,
       actualCalcLastPage: result.measurements.calculations.endPage,
-      measurements: result.measurements
+      measurements: result.measurements,
+      sections: {
+        cover: coverPageBlob,
+        fieldBook: result.sections.fieldBook,
+        coordinateList: result.sections.coordinateList,
+        calculations: result.sections.calculations,
+      },
     };
   }
   

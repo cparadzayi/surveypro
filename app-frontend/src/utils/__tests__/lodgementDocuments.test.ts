@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LODGEMENT_DOCUMENTS, resolveLodgementDocuments } from '../lodgementDocuments';
+import { LODGEMENT_DOCUMENTS, resolveLodgementDocuments, markRecordSectionsPresent, type ManifestFile } from '../lodgementDocuments';
 
 describe('LODGEMENT_DOCUMENTS', () => {
   it('lists the 11 canonical items in order', () => {
@@ -19,35 +19,73 @@ describe('LODGEMENT_DOCUMENTS', () => {
   });
 });
 
-describe('resolveLodgementDocuments', () => {
-  it('ticks items whose keyword matches a file name, leaves others unticked', () => {
+const f = (name: string, relDir: string): ManifestFile => ({ name, relDir });
+
+describe('resolveLodgementDocuments — generated docs (folder + keyword)', () => {
+  it('ticks a generated item only when BOTH its folder and keyword match', () => {
     const files = [
-      'MAG1_FieldBook.pdf',
-      'Comprehensive_Latest.pdf',      // coordinate/calc
-      'GENERAL-PLAN-Maglas.pdf',
-      'Report_on_Survey.pdf',
-      'DSG-Certificate-1-96.pdf',
-      'beacon-receipt.jpg',
+      f('MAG1_FieldBook.pdf', 'output/field-book'),
+      f('MAG1_CoordinateList.pdf', 'output/coordinate-list'),
+      f('Comprehensive_Latest.pdf', 'output/calculations'),
+      f('GENERAL-PLAN-Maglas.pdf', 'output/general-plans'),
+      f('DSG-1-96.pdf', 'output/certificates'),
     ];
-    const result = resolveLodgementDocuments(files);
-    const by = Object.fromEntries(result.map(r => [r.label, r.present]));
+    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
     expect(by['Field book']).toBe(true);
     expect(by['Coordinate List and Calculations']).toBe(true);
     expect(by['General Plan']).toBe(true);
-    expect(by['Report on Survey']).toBe(true);
     expect(by['DSG Certificate (1/96)']).toBe(true);
-    expect(by['Beacon receipt']).toBe(true);
-    // not provided:
     expect(by['Working Plan']).toBe(false);
-    expect(by['Dispensation Certificate']).toBe(false);
-    expect(by['Checklist']).toBe(false);
-    expect(by['Permit/Instruction and layout']).toBe(false);
-    expect(by['Searches']).toBe(false);
   });
 
-  it('returns all-unticked for an empty file list, preserving order', () => {
+  it('does NOT tick a generated item when the keyword matches but the folder is wrong', () => {
+    // A field-book-named file sitting in the calculations folder must not tick "Field book".
+    const files = [f('MAG1_FieldBook.pdf', 'output/calculations')];
+    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
+    expect(by['Field book']).toBe(false);
+  });
+
+  it('does NOT let a stray "196" in an unrelated folder tick the DSG certificate', () => {
+    const files = [f('coords_196_points.pdf', 'output/coordinate-list')];
+    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
+    expect(by['DSG Certificate (1/96)']).toBe(false);
+  });
+});
+
+describe('resolveLodgementDocuments — external docs (input/ keyword)', () => {
+  it('ticks an external item when a matching file is anywhere under input/', () => {
+    const files = [
+      f('beacon-receipt-scan.jpg', 'input'),
+      f('title-search.pdf', 'input/searches'),
+    ];
+    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
+    expect(by['Beacon receipt']).toBe(true);
+    expect(by['Searches']).toBe(true);
+  });
+
+  it('does NOT tick an external item when the keyword file is under output/ instead of input/', () => {
+    const files = [f('permit-layout.pdf', 'output/general-plans')];
+    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
+    expect(by['Permit/Instruction and layout']).toBe(false);
+  });
+});
+
+describe('resolveLodgementDocuments — empty', () => {
+  it('returns all-unticked, preserving order, for no files', () => {
     const result = resolveLodgementDocuments([]);
     expect(result.map(r => r.label)).toEqual(LODGEMENT_DOCUMENTS);
     expect(result.every(r => r.present === false)).toBe(true);
+  });
+});
+
+describe('markRecordSectionsPresent', () => {
+  it("forces the record's own sections present, leaves others unchanged", () => {
+    const base = resolveLodgementDocuments([]); // all absent
+    const marked = markRecordSectionsPresent(base);
+    const by = Object.fromEntries(marked.map(r => [r.label, r.present]));
+    expect(by['Field book']).toBe(true);
+    expect(by['Coordinate List and Calculations']).toBe(true);
+    expect(by['General Plan']).toBe(false);
+    expect(by['Beacon receipt']).toBe(false);
   });
 });

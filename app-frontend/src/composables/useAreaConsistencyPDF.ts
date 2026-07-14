@@ -504,7 +504,7 @@ export async function generateAreaConsistencyPDF(
     parcelId: string;
   }>,
   coordinatePoints?: any[]
-): Promise<Uint8Array | void> {
+): Promise<{ merged: Uint8Array; areasOnly: Blob } | void> {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -650,17 +650,18 @@ export async function generateAreaConsistencyPDF(
   
   // Handle PDF output and page numbering
   if (calculationsPart1PDF) {
-    // Merge with Calculations Part 1 and continue page numbering
+    // Areas as its own document (independent retrieval) — captured before the merge.
+    const areasOnly = new Blob([doc.output('arraybuffer')], { type: 'application/pdf' });
+
     const mergedPdfBytes = await mergeWithCalculationsPart1(
-      doc, 
-      calculationsPart1PDF, 
-      projectName, 
+      doc,
+      calculationsPart1PDF,
+      projectName,
       pageWidth,
       lastDisplayedPageNumber
     );
-    
-    // Return merged PDF for caller to handle (download or save to project)
-    return mergedPdfBytes;
+
+    return { merged: mergedPdfBytes, areasOnly };
   } else {
     // Standalone PDF - add page numbers starting from 1
     const totalPages = doc.getNumberOfPages();

@@ -911,6 +911,7 @@ import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation } from '@/utils/planDesignation';
 import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
+import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
 
 const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../components/ParcelDetectionPanel.vue'));
 
@@ -6428,7 +6429,7 @@ async function exportAreaConsistencyPDF() {
       : result.actualCalcLastPage;
     
     // Continue with Area & Consistency section
-    await generateComprehensivePDF(computedParcels, result.pdf, surveyorInfo.projectTitle, lastDisplayedPageNumber);
+    await generateComprehensivePDF(computedParcels, result.pdf, surveyorInfo.projectTitle, lastDisplayedPageNumber, result.sections);
     
   } catch (error: any) {
     console.error('[MapLibre] ❌ Error generating comprehensive document:', error);
@@ -6445,7 +6446,8 @@ async function generateComprehensivePDF(
   computedParcels: Parcel[],
   calcPart1Blob: Blob,
   projectName: string,
-  lastDisplayedPageNumber: number
+  lastDisplayedPageNumber: number,
+  twoPassSections?: { cover: Blob; fieldBook: Blob; coordinateList: Blob; calculations: Blob }
 ) {
   try {
     console.log('[MapLibre] 📄 Generating Cumulative Comprehensive PDF...');
@@ -6521,6 +6523,24 @@ async function generateComprehensivePDF(
       }
     }
     
+    // Save each section of the record as its own file for independent retrieval.
+    const recordWorkingDirectory = workflowState?.projectInfo?.workingDirectory;
+    if (recordWorkingDirectory && twoPassSections && result.areasOnlyBlob) {
+      const split = await saveSurveyRecordSections({
+        workingDirectory: recordWorkingDirectory,
+        sections: {
+          fieldBook: twoPassSections.fieldBook,
+          coordinateList: twoPassSections.coordinateList,
+          calculations: twoPassSections.calculations,
+          areas: result.areasOnlyBlob,
+        },
+      });
+      if (split.failed.length) {
+        console.warn('[MapLibre] ⚠️ Some record sections did not save:',
+          split.failed.map(f => `${f.label}: ${f.error}`).join('; '));
+      }
+    }
+
     console.log('[MapLibre] ✅ Comprehensive PDF generated successfully');
     console.log('[MapLibre] 📄 Filename: Comprehensive_Latest.pdf');
     
@@ -6613,10 +6633,10 @@ async function generatePDF(computedParcels: Parcel[], calculationsPart1PDF?: Fil
       
       if (action) {
         // Download to user's downloads folder
-        downloadMergedPDF(result, projectName);
+        downloadMergedPDF(result.merged, projectName);
       } else {
         // Save to project's working directory
-        await saveMergedPDFToProject(result, projectName);
+        await saveMergedPDFToProject(result.merged, projectName);
       }
     } else if (calculationsPart1PDF) {
       console.log('[MapLibre] ✅ Merged PDF generated successfully');

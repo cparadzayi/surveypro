@@ -5,6 +5,8 @@ export interface SideAnnotation {
   role: SideRole
   label?: string
   widthM?: number
+  /** Set on role:'servitude' entries that are a derived mirror of a Servitude record. */
+  servitudeId?: string
 }
 
 export interface SubjectSide {

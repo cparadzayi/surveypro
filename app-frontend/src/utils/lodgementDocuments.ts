@@ -38,7 +38,10 @@ type DocRule =
 const DOCUMENT_RULES: Record<string, DocRule> = {
   'Field book': { kind: 'generated', folders: ['field-book'], keyword: /field.?book/i },
   'Coordinate List and Calculations': { kind: 'generated', folders: ['coordinate-list', 'calculations'], keyword: /coordinate|calc|comprehensive/i },
-  'General Plan': { kind: 'generated', folders: ['general-plans'], keyword: /general.?plan/i },
+  // Plans are saved as `<planType>-<designation>.pdf`; the general-plans folder holds the
+  // general-developed / general-undeveloped / general-plan slugs — all General Plan products,
+  // all starting with "general". Folder-gated, so the keyword need only confirm the product.
+  'General Plan': { kind: 'generated', folders: ['general-plans'], keyword: /general/i },
   'Working Plan': { kind: 'generated', folders: ['working-plans'], keyword: /working.?plan/i },
   'Report on Survey': { kind: 'generated', folders: ['survey-record', 'reports'], keyword: /report|survey.?record/i },
   'DSG Certificate (1/96)': { kind: 'generated', folders: ['certificates'], keyword: /dsg|1.?96/i },

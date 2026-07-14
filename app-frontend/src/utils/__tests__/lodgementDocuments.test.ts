@@ -38,6 +38,18 @@ describe('resolveLodgementDocuments — generated docs (folder + keyword)', () =
     expect(by['Working Plan']).toBe(false);
   });
 
+  it('ticks General Plan for the real plan-type-slug filenames (developed/undeveloped)', () => {
+    // Plans are saved as `<planType>-<designation>.pdf`; the general-plans folder
+    // receives general-developed / general-undeveloped / general-plan slugs, all
+    // of which are General Plan products.
+    const developed = [f('general-developed-STANDS_271-339_346-349_MAGLAS.pdf', 'output/general-plans')];
+    const undeveloped = [f('general-undeveloped-LOT_5_BORROWDALE.pdf', 'output/general-plans')];
+    const byDev = Object.fromEntries(resolveLodgementDocuments(developed).map(r => [r.label, r.present]));
+    const byUndev = Object.fromEntries(resolveLodgementDocuments(undeveloped).map(r => [r.label, r.present]));
+    expect(byDev['General Plan']).toBe(true);
+    expect(byUndev['General Plan']).toBe(true);
+  });
+
   it('does NOT tick a generated item when the keyword matches but the folder is wrong', () => {
     // A field-book-named file sitting in the calculations folder must not tick "Field book".
     const files = [f('MAG1_FieldBook.pdf', 'output/calculations')];

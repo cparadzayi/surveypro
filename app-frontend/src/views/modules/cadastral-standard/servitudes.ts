@@ -90,3 +90,56 @@ export function resolveBeaconPair(
 
 // Re-export for consumers that build the mirror (Task 2 adds functions here too).
 export type { SideAnnotation }
+
+/**
+ * Rebuild the role:'servitude' mirror in a per-subject annotation map from the
+ * servitude records (the single source of truth). road/contiguous entries are
+ * left untouched. Each servitude entry carries servitudeId back to its record.
+ */
+export function syncServitudeMirror(
+  annotationsBySubject: Record<string, SideAnnotation[]>,
+  servitudes: Servitude[],
+): Record<string, SideAnnotation[]> {
+  const out: Record<string, SideAnnotation[]> = {}
+  for (const [subjectId, list] of Object.entries(annotationsBySubject)) {
+    out[subjectId] = list.filter((a) => a.role !== 'servitude')
+  }
+  for (const s of servitudes) {
+    const entry: SideAnnotation = {
+      side: s.side,
+      role: 'servitude',
+      label: s.beneficiary || s.purpose || undefined,
+      widthM: s.widthM,
+      servitudeId: s.id,
+    }
+    if (!out[s.subjectId]) out[s.subjectId] = []
+    out[s.subjectId].push(entry)
+  }
+  return out
+}
+
+/**
+ * One-time migration: turn legacy role:'servitude' annotations (no servitudeId)
+ * into Servitude records so pre-existing projects adopt the model. Type defaults
+ * to 'party-wall' for the surveyor to confirm; the annotation label becomes purpose.
+ */
+export function backfillServitudesFromAnnotations(
+  annotationsBySubject: Record<string, SideAnnotation[]>,
+): Servitude[] {
+  const out: Servitude[] = []
+  for (const [subjectId, list] of Object.entries(annotationsBySubject)) {
+    for (const a of list) {
+      if (a.role === 'servitude' && !a.servitudeId) {
+        out.push({
+          id: newServitudeId(),
+          subjectId,
+          side: a.side,
+          type: 'party-wall',
+          widthM: a.widthM,
+          purpose: a.label || undefined,
+        })
+      }
+    }
+  }
+  return out
+}

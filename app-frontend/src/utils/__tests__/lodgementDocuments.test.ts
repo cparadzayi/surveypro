@@ -62,6 +62,18 @@ describe('resolveLodgementDocuments — generated docs (folder + keyword)', () =
     const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
     expect(by['DSG Certificate (1/96)']).toBe(false);
   });
+
+  it('ticks Dispensation Certificate from a generated file in output/certificates', () => {
+    const files = [f('DispensationDeveloped.pdf', 'output/certificates')];
+    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
+    expect(by['Dispensation Certificate']).toBe(true);
+  });
+
+  it('does NOT tick Dispensation Certificate from a /dispensation/ file under input/ any more (now folder-gated)', () => {
+    const files = [f('my-dispensation.pdf', 'input')];
+    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
+    expect(by['Dispensation Certificate']).toBe(false);
+  });
 });
 
 describe('resolveLodgementDocuments — external docs (input/ keyword)', () => {

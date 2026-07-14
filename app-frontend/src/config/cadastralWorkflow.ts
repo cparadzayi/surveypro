@@ -127,9 +127,21 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     generatesDocument: true
   },
   
+  servitudes: {
+    id: 'servitudes',
+    order: 9,
+    label: 'Servitudes',
+    description: 'Identify boundary servitudes and generate dispensation certificates',
+    icon: '⚖️',
+    dbKey: 'servitudes',
+    requires: ['area_computation'],
+    canEdit: true,
+    generatesDocument: true
+  },
+
   survey_plan: {
     id: 'survey_plan',
-    order: 9,
+    order: 10,
     label: 'Survey Plan',
     description: 'Generate General Plans, Diagrams, or Working Plans',
     icon: '🗺️',
@@ -138,10 +150,10 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     canEdit: true,
     generatesDocument: true
   },
-  
+
   report_on_survey: {
     id: 'report_on_survey',
-    order: 10,
+    order: 11,
     label: 'Report on Survey',
     description: 'Standalone survey report',
     icon: '📄',
@@ -150,10 +162,10 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     canEdit: true,
     generatesDocument: true
   },
-  
+
   dsg_certificate: {
     id: 'dsg_certificate',
-    order: 11,
+    order: 12,
     label: 'DSG Certificate',
     description: 'Final certificate generation',
     icon: '🏆',

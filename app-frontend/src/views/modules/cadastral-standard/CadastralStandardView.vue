@@ -1082,6 +1082,9 @@
         @continue="handleSurveyPlanContinue"
       />
 
+      <!-- Step 8.5: Servitudes -->
+      <ServitudesView v-if="workflowState.currentStep === 'servitudes'" />
+
       <!-- Step 9: Report on Survey -->
       <ReportOnSurveyView v-if="workflowState.currentStep === 'report-on-survey'" />
 
@@ -1092,7 +1095,7 @@
       <DSGCertificateView v-if="workflowState.currentStep === 'dsg-certificate'" />
 
       <!-- Other steps (under development) -->
-      <div v-show="workflowState.currentStep !== 'csv-import' && workflowState.currentStep !== 'field-book' && workflowState.currentStep !== 'calculations-part1' && workflowState.currentStep !== 'coordinate-list' && workflowState.currentStep !== 'qgis-export' && workflowState.currentStep !== 'area-computation' && workflowState.currentStep !== 'survey-plan' && workflowState.currentStep !== 'report-on-survey' && workflowState.currentStep !== 'dsg-certificate'" class="bg-white shadow rounded-lg p-6">
+      <div v-show="workflowState.currentStep !== 'csv-import' && workflowState.currentStep !== 'field-book' && workflowState.currentStep !== 'calculations-part1' && workflowState.currentStep !== 'coordinate-list' && workflowState.currentStep !== 'qgis-export' && workflowState.currentStep !== 'area-computation' && workflowState.currentStep !== 'servitudes' && workflowState.currentStep !== 'survey-plan' && workflowState.currentStep !== 'report-on-survey' && workflowState.currentStep !== 'dsg-certificate'" class="bg-white shadow rounded-lg p-6">
         <div class="text-center py-12">
           <div class="text-4xl mb-4">🚧</div>
           <h2 class="text-xl font-semibold text-gray-900 mb-2">
@@ -1272,6 +1275,7 @@ import MapLibreAreaView from './MapLibreAreaView.vue';
 import SurveyPlanViewNew from './SurveyPlanViewNew.vue';
 import ReportOnSurveyView from './ReportOnSurveyView.vue';
 import DSGCertificateView from './DSGCertificateView.vue';
+import ServitudesView from './ServitudesView.vue';
 import Areas2View from '../lite/areas2/Areas2View.vue';
 import ProjectSetupView from './ProjectSetupView.vue';
 import ControlPointSelectionView from './ControlPointSelectionView.vue';
@@ -1543,6 +1547,7 @@ const workflowSteps = [
   { id: 'coordinate-list', name: 'Coordinate List' },
   { id: 'qgis-export', name: 'QGIS Export & Digitization' },
   { id: 'area-computation', name: 'Area Computation' },
+  { id: 'servitudes', name: 'Servitudes' },
   { id: 'report-on-survey', name: 'Report on Survey' },
   { id: 'dsg-certificate', name: 'DSG Certificate' }
 ];

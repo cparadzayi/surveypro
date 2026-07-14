@@ -1082,6 +1082,9 @@
         @continue="handleSurveyPlanContinue"
       />
 
+      <!-- Step 8.5: Servitudes -->
+      <ServitudesView v-if="(workflowState.currentStep as string) === 'servitudes'" />
+
       <!-- Step 9: Report on Survey -->
       <ReportOnSurveyView v-if="workflowState.currentStep === 'report-on-survey'" />
 
@@ -1272,6 +1275,7 @@ import MapLibreAreaView from './MapLibreAreaView.vue';
 import SurveyPlanViewNew from './SurveyPlanViewNew.vue';
 import ReportOnSurveyView from './ReportOnSurveyView.vue';
 import DSGCertificateView from './DSGCertificateView.vue';
+import ServitudesView from './ServitudesView.vue';
 import Areas2View from '../lite/areas2/Areas2View.vue';
 import ProjectSetupView from './ProjectSetupView.vue';
 import ControlPointSelectionView from './ControlPointSelectionView.vue';
@@ -1543,6 +1547,7 @@ const workflowSteps = [
   { id: 'coordinate-list', name: 'Coordinate List' },
   { id: 'qgis-export', name: 'QGIS Export & Digitization' },
   { id: 'area-computation', name: 'Area Computation' },
+  { id: 'servitudes', name: 'Servitudes' },
   { id: 'report-on-survey', name: 'Report on Survey' },
   { id: 'dsg-certificate', name: 'DSG Certificate' }
 ];

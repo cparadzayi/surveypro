@@ -59,7 +59,9 @@ export function hydrateServitudes(raw: unknown): Servitude[] {
   if (!Array.isArray(raw)) return []
   return raw.filter(
     (x): x is Servitude =>
-      !!x && typeof x === 'object' && typeof (x as any).id === 'string',
+      !!x && typeof x === 'object' && typeof (x as any).id === 'string' &&
+      typeof (x as any).subjectId === 'string' && typeof (x as any).side === 'string' &&
+      typeof (x as any).type === 'string',
   )
 }
 

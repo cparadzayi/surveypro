@@ -23,8 +23,10 @@ describe('servitude list helpers', () => {
     const list = [s({ id: '1', subjectId: '10' }), s({ id: '2', subjectId: '20' })]
     expect(servitudesForSubject(list, '10').map(x => x.id)).toEqual(['1'])
   })
-  it('hydrate drops malformed entries', () => {
-    expect(hydrateServitudes([s({ id: '1' }), null, { id: '2' }, 42])).toHaveLength(2)
+  it('hydrate keeps well-formed records, drops malformed ones (bare id, null, non-objects)', () => {
+    // s({id:'1'}) is a complete Servitude; { id: '2' } lacks subjectId/side/type → dropped.
+    expect(hydrateServitudes([s({ id: '1' }), null, { id: '2' }, 42])).toHaveLength(1)
+    expect(hydrateServitudes([s({ id: '1' }), s({ id: '2' })])).toHaveLength(2)
     expect(hydrateServitudes('nope')).toEqual([])
   })
 })

@@ -17,9 +17,9 @@
         <div class="flex-1">
           <h3 class="text-sm font-semibold text-blue-900">How this works</h3>
           <p class="mt-1 text-sm text-blue-800">
-            Select a stand, then click one of its boundary sides to attach a servitude. Saved servitudes are
-            mirrored onto the General Plan / Diagram rendering automatically — you never need to annotate a
-            side twice.
+            Select a stand — on the map or from the list — then click one of its boundary sides — on the map
+            or in the list — to attach a servitude. Saved servitudes are mirrored onto the General Plan /
+            Diagram rendering automatically — you never need to annotate a side twice.
           </p>
         </div>
       </div>
@@ -36,6 +36,29 @@
         />
         <p v-if="loading" class="mt-2 text-xs text-gray-500">Loading parcels…</p>
         <p v-else-if="!parcels.length" class="mt-2 text-xs text-gray-500">No parcels found for this project.</p>
+      </div>
+
+      <!-- Interactive map (additive — the dropdown + side list below remain a fallback) -->
+      <div v-if="parcels.length" class="bg-white border border-gray-200 rounded-lg p-6">
+        <div class="flex items-center justify-between mb-2">
+          <label class="block text-sm font-semibold text-gray-900">Map</label>
+          <p class="text-xs text-gray-500">Click a stand to select it, then click a boundary to attach a servitude.</p>
+        </div>
+        <div ref="mapContainer" class="servitude-map-container"></div>
+        <p v-if="mapInitError" class="mt-2 text-xs text-amber-600">
+          Map preview unavailable ({{ mapInitError }}) — use the stand picker and side list below instead.
+        </p>
+        <div class="mt-2 flex items-center gap-4 text-xs text-gray-500">
+          <span class="inline-flex items-center gap-1">
+            <span class="inline-block w-3 h-0.5 align-middle" style="background:#1F6FB2"></span> Servitude
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <span class="inline-block w-3 h-0.5 align-middle" style="background:#B7410E"></span> Road
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <span class="inline-block w-3 h-0.5 align-middle border-t border-dashed border-gray-500"></span> Contiguous
+          </span>
+        </div>
       </div>
 
       <!-- Boundary sides + editor -->
@@ -277,13 +300,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import { capeLoArrayToWGS84, calculateWGS84Bounds, type CapeLoPoint } from '@/utils/coordinateTransform'
 import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
 import { listLandParcels } from '@/services/spatial'
 import api from '@/services/api'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
-import { subjectSides, hydrateAnnotationsMap, type SideAnnotation } from './sideAnnotations'
+import { subjectSides, hydrateAnnotationsMap, annotationsForSubject, type SideAnnotation } from './sideAnnotations'
 import {
   SERVITUDE_TYPE_LABELS,
   newServitudeId,
@@ -365,6 +391,272 @@ function ringForParcel(p: any): [number, number][] | null {
 const sides = computed(() => {
   const ring = selectedParcel.value ? ringForParcel(selectedParcel.value) : null
   return ring ? subjectSides(ring) : []
+})
+
+// ---------------------------------------------------------------------------
+// Interactive map (self-contained — reuses the pattern from SurveyPlanMapView.vue
+// without importing from it). The map is additive: it only changes how a stand
+// or boundary side gets SELECTED; the ParcelSelect dropdown + side list below
+// remain a fully-working fallback.
+// ---------------------------------------------------------------------------
+
+const mapContainer = ref<HTMLDivElement | null>(null)
+const map = ref<maplibregl.Map | null>(null)
+const mapInitError = ref<string | null>(null)
+let mapInitialized = false
+
+/** Central meridian for Cape Lo → WGS84 transforms. Same source + fallback
+ *  SurveyPlanMapView uses (`config.value.centralMeridian` there defaults to 31
+ *  from `projectInfo.centralMeridian || 31`). */
+function currentMeridian(): number {
+  const cm = workflowState.projectInfo?.centralMeridian
+  return cm != null && Number.isFinite(Number(cm)) ? Number(cm) : 31
+}
+
+/** Replicates the Polygon path of SurveyPlanMapView.vue's transformParcelGeometry
+ *  (SurveyPlanMapView.vue:3216-3295): parse if string, unwrap Feature, pass through
+ *  if already WGS84, else transform each ring with capeLoArrayToWGS84. */
+function transformParcelGeometryForMap(geom: any): { type: 'Feature'; geometry: { type: 'Polygon'; coordinates: [number, number][][] }; properties: Record<string, never> } | null {
+  let geometry = geom
+  if (!geometry) return null
+  if (typeof geometry === 'string') {
+    try {
+      geometry = JSON.parse(geometry)
+    } catch {
+      return null
+    }
+  }
+  if (geometry?.type === 'Feature' && geometry?.geometry) geometry = geometry.geometry
+  if (geometry?.type === 'MultiPolygon' && Array.isArray(geometry.coordinates?.[0])) {
+    geometry = { type: 'Polygon', coordinates: geometry.coordinates[0] }
+  }
+  if (geometry?.type !== 'Polygon' || !Array.isArray(geometry.coordinates)) return null
+
+  const crs = geometry?.crs
+  const crsName = crs?.properties?.name || crs?.name || ''
+  if (crsName.includes('EPSG:4326') || crsName.includes('WGS84')) {
+    return { type: 'Feature', geometry: { type: 'Polygon', coordinates: geometry.coordinates }, properties: {} }
+  }
+
+  const zone = currentMeridian()
+  const coordinates = geometry.coordinates.map((ring: number[][]) => {
+    const capeLoPoints: CapeLoPoint[] = ring.map((c: number[], i: number) => ({ id: `v${i}`, x: c[0], y: c[1] }))
+    return capeLoArrayToWGS84(capeLoPoints, zone).map((p) => [p.lng, p.lat] as [number, number])
+  })
+  return { type: 'Feature', geometry: { type: 'Polygon', coordinates }, properties: {} }
+}
+
+function addParcelLayersToMap() {
+  if (!map.value) return
+  for (const p of parcels.value) {
+    const sourceId = `parcel-${p.id}`
+    if (map.value.getSource(sourceId)) continue
+    const feature = transformParcelGeometryForMap(p.geom)
+    if (!feature) continue
+    map.value.addSource(sourceId, { type: 'geojson', data: feature as any })
+    map.value.addLayer({
+      id: `${sourceId}-fill`,
+      type: 'fill',
+      source: sourceId,
+      paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.12 },
+    })
+    map.value.addLayer({
+      id: `${sourceId}-outline`,
+      type: 'line',
+      source: sourceId,
+      paint: { 'line-color': '#0f172a', 'line-width': 2 },
+    })
+  }
+  highlightSelectedParcelOnMap()
+}
+
+/** Stronger fill/outline for the selected stand — mirrors applyDiagramHighlight. */
+function highlightSelectedParcelOnMap() {
+  if (!map.value) return
+  parcels.value.forEach((p: any) => {
+    const fillId = `parcel-${p.id}-fill`
+    const outlineId = `parcel-${p.id}-outline`
+    if (!map.value!.getLayer(fillId) || !map.value!.getLayer(outlineId)) return
+    const isSelected = selectedParcelId.value != null && String(p.id) === String(selectedParcelId.value)
+    map.value!.setPaintProperty(fillId, 'fill-opacity', isSelected ? 0.35 : 0.12)
+    map.value!.setPaintProperty(outlineId, 'line-color', isSelected ? '#2563eb' : '#0f172a')
+    map.value!.setPaintProperty(outlineId, 'line-width', isSelected ? 4 : 2)
+  })
+}
+
+function fitMapToParcels() {
+  if (!map.value) return
+  const points: { id: string; lng: number; lat: number }[] = []
+  for (const p of parcels.value) {
+    const feature = transformParcelGeometryForMap(p.geom)
+    const ring = feature?.geometry?.coordinates?.[0]
+    if (!ring) continue
+    ring.forEach((c, i) => points.push({ id: `${p.id}-${i}`, lng: c[0], lat: c[1] }))
+  }
+  if (!points.length) return
+  try {
+    const bounds = calculateWGS84Bounds(points as any)
+    map.value.fitBounds(
+      [[bounds.minLng, bounds.minLat], [bounds.maxLng, bounds.maxLat]],
+      { padding: 40, animate: false },
+    )
+  } catch (e: any) {
+    console.warn('[Servitudes] fitBounds failed:', e?.message)
+  }
+}
+
+/** Clickable boundary-side layer for the SELECTED stand only — mirrors
+ *  SurveyPlanMapView.vue's updateSubjectSidesLayer (1932-1976): solid layer for
+ *  road/servitude, dashed for contiguous/unannotated, plus a wide transparent
+ *  hit layer for easy clicking. Role colours come from the same mirror map this
+ *  view already loads (`annotations`). */
+function updateSidesMapLayer() {
+  if (!map.value) return
+  const srcId = 'servitude-map-sides'
+  const feats: any[] = []
+  if (selectedParcel.value?.geom) {
+    const feature = transformParcelGeometryForMap(selectedParcel.value.geom)
+    const wgsRing = feature?.geometry?.coordinates?.[0]
+    if (wgsRing) {
+      const roleBySide = new Map(
+        annotationsForSubject(annotations.value, selectedParcelId.value).map((a) => [a.side, a.role]),
+      )
+      for (const s of subjectSides(wgsRing)) {
+        feats.push({
+          type: 'Feature',
+          properties: { side: s.side, role: roleBySide.get(s.side) ?? '' },
+          geometry: { type: 'LineString', coordinates: [s.a, s.b] },
+        })
+      }
+    }
+  }
+  const data = { type: 'FeatureCollection', features: feats } as any
+  const existing = map.value.getSource(srcId) as any
+  if (existing) {
+    existing.setData(data)
+    return
+  }
+  map.value.addSource(srcId, { type: 'geojson', data })
+  const colour = ['match', ['get', 'role'], 'road', '#B7410E', 'servitude', '#1F6FB2', 'contiguous', '#000000', '#9aa0a6'] as any
+  map.value.addLayer({
+    id: `${srcId}-solid`, type: 'line', source: srcId,
+    filter: ['any', ['==', ['get', 'role'], 'road'], ['==', ['get', 'role'], 'servitude']] as any,
+    paint: { 'line-color': colour, 'line-width': 4 },
+  })
+  map.value.addLayer({
+    id: `${srcId}-dashed`, type: 'line', source: srcId,
+    filter: ['!', ['any', ['==', ['get', 'role'], 'road'], ['==', ['get', 'role'], 'servitude']]] as any,
+    paint: { 'line-color': colour, 'line-width': 4, 'line-dasharray': [2, 2] },
+  })
+  map.value.addLayer({
+    id: `${srcId}-hit`, type: 'line', source: srcId,
+    paint: { 'line-color': '#000000', 'line-opacity': 0, 'line-width': 14 },
+  })
+  map.value.on('mouseenter', `${srcId}-hit`, () => { if (map.value) map.value.getCanvas().style.cursor = 'pointer' })
+  map.value.on('mouseleave', `${srcId}-hit`, () => { if (map.value) map.value.getCanvas().style.cursor = '' })
+}
+
+/** Mirrors onMapClickSelectParcel (SurveyPlanMapView.vue:1978-2011): a hit on the
+ *  subject-sides layer takes priority and drives the SAME selectSide() the side
+ *  list uses; otherwise pick the smallest overlapping stand under the click and
+ *  set the SAME selectedParcelId the ParcelSelect dropdown sets. */
+function onMapClick(e: maplibregl.MapMouseEvent) {
+  if (!map.value) return
+  const hitLayer = 'servitude-map-sides-hit'
+  if (map.value.getLayer(hitLayer)) {
+    const sideHits = map.value.queryRenderedFeatures(e.point, { layers: [hitLayer] })
+    if (sideHits.length) {
+      const side = String(sideHits[0].properties?.side ?? '')
+      if (side) {
+        selectSide(side)
+        return
+      }
+    }
+  }
+  const fillLayers = parcels.value
+    .map((p: any) => `parcel-${p.id}-fill`)
+    .filter((id: string) => map.value!.getLayer(id))
+  if (!fillLayers.length) return
+  const hits = map.value.queryRenderedFeatures(e.point, { layers: fillLayers })
+  if (!hits.length) return
+  const hitIds = new Set(hits.map((h) => h.layer.id))
+  const candidates = parcels.value.filter((p: any) => hitIds.has(`parcel-${p.id}-fill`))
+  if (!candidates.length) return
+  // Prefer the smallest overlapping stand (mirrors pickDiagramSubjectId's intent).
+  candidates.sort((a: any, b: any) => (Number(a.area_m2) || Infinity) - (Number(b.area_m2) || Infinity))
+  selectedParcelId.value = candidates[0].id
+}
+
+/** Mirrors SurveyPlanMapView.vue's map init (1564-1620): raster OSM + satellite
+ *  style, fixed Zimbabwe-ish default center, fit to data once parcels are drawn.
+ *  Best-effort: guarded on container + parcels, wrapped in try/catch so the
+ *  dropdown + side list keep working if the map can't initialise. */
+function initServitudeMap() {
+  if (mapInitialized || !mapContainer.value || !parcels.value.length) return
+  mapInitialized = true
+  try {
+    map.value = new maplibregl.Map({
+      container: mapContainer.value,
+      preserveDrawingBuffer: true,
+      style: {
+        version: 8,
+        sources: {
+          'osm-raster': {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '© OpenStreetMap contributors',
+          },
+          satellite: {
+            type: 'raster',
+            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+            tileSize: 256,
+            maxzoom: 19,
+            attribution: '© Esri',
+          },
+        },
+        layers: [
+          { id: 'background', type: 'background', paint: { 'background-color': '#f0f0f0' } },
+          { id: 'satellite-layer', type: 'raster', source: 'satellite' },
+          { id: 'osm-layer', type: 'raster', source: 'osm-raster', layout: { visibility: 'none' } },
+        ],
+      } as any,
+      center: [29.8, -19.4],
+      zoom: 16,
+      minZoom: 10,
+      maxZoom: 20,
+    } as any)
+    map.value.addControl(new maplibregl.NavigationControl(), 'top-right')
+
+    map.value.on('error', (e: any) => {
+      console.warn('[Servitudes] map tile error:', e?.error)
+    })
+
+    map.value.on('load', () => {
+      try {
+        addParcelLayersToMap()
+        fitMapToParcels()
+        updateSidesMapLayer()
+        map.value!.on('click', onMapClick)
+      } catch (e: any) {
+        console.warn('[Servitudes] map load handler failed:', e?.message)
+        mapInitError.value = e?.message || 'Map failed to render parcels'
+      }
+    })
+  } catch (e: any) {
+    console.warn('[Servitudes] map init failed:', e?.message)
+    mapInitError.value = e?.message || 'Map unavailable'
+    map.value = null
+  }
+}
+
+// Rebuild the highlight + clickable sides whenever the selected stand changes,
+// or whenever a servitude is saved/deleted (syncAndPersist reassigns `servitudes`
+// and `annotations`, so the side the user just saved recolours to servitude-blue).
+watch([selectedParcelId, servitudes, annotations], () => {
+  if (!map.value) return
+  highlightSelectedParcelOnMap()
+  updateSidesMapLayer()
 })
 
 const subjectServitudes = computed(() =>
@@ -577,6 +869,19 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+  // The map container only renders (v-if="parcels.length") once parcels have
+  // loaded — wait a tick so mapContainer.value is attached before initialising.
+  await nextTick()
+  initServitudeMap()
+})
+
+onUnmounted(() => {
+  try {
+    map.value?.remove()
+  } catch (e: any) {
+    console.warn('[Servitudes] map teardown failed:', e?.message)
+  }
+  map.value = null
 })
 </script>
 
@@ -584,5 +889,12 @@ onMounted(async () => {
 .servitudes-view {
   min-height: 100vh;
   background-color: #f9fafb;
+}
+
+.servitude-map-container {
+  height: 420px;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
 }
 </style>

@@ -62,10 +62,12 @@ export async function generateDispensationCertificatePDF(
   para(data.surveyTitle || `SURVEY OF ${(data.township || '').toUpperCase()}`, { size: 11, style: 'bold', lh: 6, gap: 5 })
   line(`DISTRICT: ${(data.district || '').toUpperCase()}`, { size: 10, style: 'bold', gap: 8 })
   const showServ = data.portion === 'developed'
-  if (showServ) {
-    line('The boundary is subject to the servitude shown.', { size: 8 })
-  }
-  y += 3
+  // Core certification statement. The GP number is blank (hand-filled on lodgement) unless provided.
+  const gpNo = data.generalPlanNumber && data.generalPlanNumber.trim() ? data.generalPlanNumber.trim() : '______________'
+  para(
+    `This is to certify that diagrams have been dispensed with in respect of stands represented on General Plan ${gpNo} which are listed in the following schedule.`,
+    { size: 10, gap: 4 },
+  )
 
   // Table
   const remaining = showServ ? contentW - 24 - 28 : contentW - 40 - 46

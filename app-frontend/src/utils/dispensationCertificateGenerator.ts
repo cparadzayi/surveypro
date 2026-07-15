@@ -69,21 +69,46 @@ export async function generateDispensationCertificatePDF(
     { size: 10, gap: 4 },
   )
 
-  // Table
+  // Table columns (widths shared by header + data rows).
   const remaining = showServ ? contentW - 24 - 28 : contentW - 40 - 46
   const cols = showServ
-    ? [
-        { w: 24, t: 'STAND No.' }, { w: 28, t: 'AREA (m²)' },
-        { w: remaining / 2, t: 'BOUNDARY' }, { w: remaining / 2, t: 'SERVITUDE' },
-      ]
-    : [{ w: 40, t: 'STAND No.' }, { w: 46, t: 'AREA (m²)' }, { w: remaining, t: 'DETAILS OF SERVITUDES' }]
+    ? [{ w: 24 }, { w: 28 }, { w: remaining / 2 }, { w: remaining / 2 }]
+    : [{ w: 40 }, { w: 46 }, { w: remaining }]
 
+  // Developed: a grouped header where "DETAILS OF SERVITUDES" spans the boundary +
+  // servitude columns, over the legend, over the numbered (1)/(2) sub-columns.
   const drawHeaderRow = () => {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
-    let x = M.left
-    const rowY = y
-    for (const c of cols) { doc.rect(x, rowY - 4, c.w, 7); doc.text(c.t, x + 1.5, rowY, { maxWidth: c.w - 3 }); x += c.w }
-    y += 7
+    const top = y - 4
+    if (showServ) {
+      const [wStand, wArea, wB, wS] = cols.map((c) => c.w)
+      const xStand = M.left, xArea = xStand + wStand, xGroup = xArea + wArea, xServ = xGroup + wB
+      const wGroup = wB + wS
+      const b1 = 6, b2 = 6, b3 = 6, HH = b1 + b2 + b3
+      doc.rect(xStand, top, wStand, HH)
+      doc.rect(xArea, top, wArea, HH)
+      doc.rect(xGroup, top, wGroup, HH)
+      doc.line(xGroup, top + b1, xGroup + wGroup, top + b1)
+      doc.line(xGroup, top + b1 + b2, xGroup + wGroup, top + b1 + b2)
+      doc.line(xServ, top + b1 + b2, xServ, top + HH)
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
+      doc.text('STAND No.', xStand + 1.5, top + HH / 2 + 1, { maxWidth: wStand - 3 })
+      doc.text(['AREA', 'SQUARE METRES'], xArea + 1.5, top + HH / 2 - 2, { maxWidth: wArea - 3 })
+      doc.text('DETAILS OF SERVITUDES', xGroup + wGroup / 2, top + b1 - 1.5, { align: 'center', maxWidth: wGroup - 3 })
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+      doc.text('The boundary (1) is subject to a (2) servitude', xGroup + wGroup / 2, top + b1 + b2 - 1.8, { align: 'center', maxWidth: wGroup - 3 })
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
+      doc.text('1', xGroup + wB / 2, top + HH - 1.8, { align: 'center' })
+      doc.text('2', xServ + wS / 2, top + HH - 1.8, { align: 'center' })
+      y += HH
+    } else {
+      const HH = 10
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
+      let x = M.left
+      doc.rect(x, top, cols[0].w, HH); doc.text('STAND No.', x + 1.5, top + HH / 2 + 1, { maxWidth: cols[0].w - 3 }); x += cols[0].w
+      doc.rect(x, top, cols[1].w, HH); doc.text(['AREA', 'SQUARE METRES'], x + 1.5, top + HH / 2 - 2, { maxWidth: cols[1].w - 3 }); x += cols[1].w
+      doc.rect(x, top, cols[2].w, HH); doc.text('DETAILS OF SERVITUDES', x + 1.5, top + HH / 2 + 1, { maxWidth: cols[2].w - 3 })
+      y += HH
+    }
   }
   drawHeaderRow()
 

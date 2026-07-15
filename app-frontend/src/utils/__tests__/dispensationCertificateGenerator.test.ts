@@ -3,10 +3,11 @@ import { generateDispensationCertificatePDF, type DispensationCertificateData } 
 
 const base: DispensationCertificateData = {
   portion: 'developed',
-  heading: 'DISPENSATION CERTIFICATE — DEVELOPED PORTION',
   township: 'MAGLAS TOWNSHIP',
   district: 'SHABANI',
   generalPlanNumber: 'GP 1234',
+  certificateNumber: '47',
+  surveyTitle: 'SURVEY OF STANDS 1620 - 1621 MAGLAS TOWNSHIP OF MAGLAS',
   dispensationClause: 'Regulation 78 of the Land Survey Regulations',
   surveyorName: 'F. Chitsike',
   licenseNumber: 'RL 123',
@@ -22,6 +23,13 @@ const base: DispensationCertificateData = {
 describe('generateDispensationCertificatePDF', () => {
   it('returns a non-empty PDF blob and at least one page (developed)', async () => {
     const { blob, pageCount } = await generateDispensationCertificatePDF(base)
+    expect(blob.size).toBeGreaterThan(0)
+    expect(pageCount).toBeGreaterThanOrEqual(1)
+  })
+  it('renders without a heading field and with a blank certificate number', async () => {
+    const { blob, pageCount } = await generateDispensationCertificatePDF({
+      ...base, certificateNumber: undefined, surveyTitle: undefined,
+    })
     expect(blob.size).toBeGreaterThan(0)
     expect(pageCount).toBeGreaterThanOrEqual(1)
   })

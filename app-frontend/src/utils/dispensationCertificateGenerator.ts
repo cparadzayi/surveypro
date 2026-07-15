@@ -3,7 +3,7 @@ import type { CertificateRow } from './dispensationCertificate'
 
 export interface DispensationCertificateData {
   portion: 'developed' | 'undeveloped'
-  heading: string
+  heading?: string
   township: string
   parentProperty?: string
   district?: string
@@ -11,6 +11,10 @@ export interface DispensationCertificateData {
   generalPlanNumber?: string
   sgNumber?: string
   loZone?: string
+  /** Editable certificate number (blank underline when empty). */
+  certificateNumber?: string
+  /** Pre-built "SURVEY OF STANDS <ranges> <township>" title line. */
+  surveyTitle?: string
   rows: CertificateRow[]
   standCount: number
   totalArea: number
@@ -40,15 +44,23 @@ export async function generateDispensationCertificatePDF(
     y += opts.gap ?? 6
   }
 
-  // Header
-  line(data.heading, { size: 13, style: 'bold', align: 'center', gap: 9 })
-  const metaLine = (label: string, value?: string) => { if (value) line(`${label}: ${value}`) }
-  metaLine('Township', data.township)
-  metaLine('Parent property', data.parentProperty)
-  metaLine('District / Province', [data.district, data.province].filter(Boolean).join(' / ') || undefined)
-  metaLine('General Plan', data.generalPlanNumber)
-  metaLine('SG number', data.sgNumber)
-  metaLine('System', data.loZone)
+  // Wrapped left-aligned paragraph (advances y by the number of wrapped lines).
+  const para = (txt: string, opts: { size?: number; style?: 'normal' | 'bold'; lh?: number; gap?: number } = {}) => {
+    doc.setFont('helvetica', opts.style ?? 'normal')
+    doc.setFontSize(opts.size ?? 10)
+    const wrapped = doc.splitTextToSize(txt, contentW)
+    doc.text(wrapped, M.left, y)
+    y += wrapped.length * (opts.lh ?? 5) + (opts.gap ?? 3)
+  }
+
+  // Header — formal certificate block (Page i of N is stamped per-page in the post-pass below).
+  const year = data.date && /^\d{4}/.test(data.date) ? data.date.slice(0, 4) : String(new Date().getFullYear())
+  const certNo = data.certificateNumber && data.certificateNumber.trim() ? data.certificateNumber.trim() : '______________'
+  line('CERTIFICATE', { size: 13, style: 'bold', align: 'center', gap: 9 })
+  line(`NO. ${certNo}          OF ${year}`, { size: 10, gap: 6 })
+  para('(Issued in terms of Section 49 of the Land Survey Act Chapter 20:12)', { size: 9, gap: 5 })
+  para(data.surveyTitle || `SURVEY OF ${(data.township || '').toUpperCase()}`, { size: 11, style: 'bold', lh: 6, gap: 5 })
+  line(`DISTRICT: ${(data.district || '').toUpperCase()}`, { size: 10, style: 'bold', gap: 8 })
   const showServ = data.portion === 'developed'
   if (showServ) {
     line('The boundary is subject to the servitude shown.', { size: 8 })
@@ -113,7 +125,15 @@ export async function generateDispensationCertificatePDF(
   footer('For office use — Surveyor-General:', 'bold')
   footer('Approved: ____________________     Date: ____________________')
 
+  // Stamp "Page i of N" at the top of every page (N is only known after layout).
   const pageCount = doc.getNumberOfPages()
+  for (let p = 1; p <= pageCount; p++) {
+    doc.setPage(p)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text(`Page ${p} of ${pageCount}`, M.left, 12)
+  }
+
   const blob = doc.output('blob')
   return { blob, pageCount }
 }

@@ -1,6 +1,7 @@
 import { saveDocument } from '@/services/documentStorage'
 import { generateDispensationCertificatePDF } from '@/utils/dispensationCertificateGenerator'
 import { buildCertificateRows, type CertificateParcel } from '@/utils/dispensationCertificate'
+import { formatStandRanges } from '@/utils/planDesignation'
 import type { Servitude } from '@/views/modules/cadastral-standard/servitudes'
 
 export interface DispensationHeader {
@@ -11,6 +12,7 @@ export interface DispensationHeader {
   generalPlanNumber?: string
   sgNumber?: string
   loZone?: string
+  certificateNumber?: string
   dispensationClause: string
   surveyorName: string
   licenseNumber?: string
@@ -32,11 +34,21 @@ export async function generateAndSaveDispensation(
   const { workingDirectory, portion, parcels, servitudes, header } = opts
   try {
     const rows = buildCertificateRows(parcels, servitudes, portion)
-    const heading = `DISPENSATION CERTIFICATE — ${portion === 'developed' ? 'DEVELOPED' : 'UNDEVELOPED'} PORTION`
+    // "SURVEY OF STANDS <ranges> <township>" — ranges via the shared general-plan formatter.
+    const standNames = [...new Set(parcels.map((p) => String(p.stand)).filter(Boolean))]
+    const ranges = formatStandRanges(standNames)
+    const township = (header.township || '').trim()
+    const surveyTitle = (
+      ranges
+        ? `SURVEY OF STANDS ${ranges}${township ? ` ${township}` : ''}`
+        : township
+          ? `SURVEY OF ${township}`
+          : 'SURVEY'
+    ).toUpperCase()
     const { blob } = await generateDispensationCertificatePDF({
       portion,
-      heading,
       ...header,
+      surveyTitle,
       rows,
       standCount: parcels.length,
       totalArea: parcels.reduce((sum, p) => sum + (p.area_m2 ?? 0), 0),

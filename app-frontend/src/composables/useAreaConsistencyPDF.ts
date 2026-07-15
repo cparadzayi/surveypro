@@ -16,63 +16,11 @@ import { PDFDocument } from 'pdf-lib';
 import type { AreaComputeResponse } from '../services/compute';
 import type { Parcel } from './useAreaCompliance';
 import { listCoordinatePoints } from '@/services/spatial';
+import { isGenericFallbackName, findBeaconNameBySpatialMatch } from '@/utils/beaconNameMatch';
 
 // Cache for coordinate points to avoid repeated API calls
 let cachedCoordinatePoints: any[] | null = null;
 let cachedProjectId: number | null = null;
-
-/**
- * Helper to detect generic fallback names like "PEGGINGA", "P1", etc.
- */
-function isGenericFallbackName(name: string): boolean {
-  if (!name) return true;
-  const genericPatterns = [
-    /^PEGGING[A-Z]$/,           // PEGGINGA, PEGGINGB, etc.
-    /^[A-Z]+[A-Z]$/,            // STANDA, STANDB, etc. (stand name + letter)
-    /^P\d+$/,                   // P1, P2, etc.
-    /^[A-Z]$/,                   // Single letters A, B, C...
-    /^POINT\d+$/,               // POINT1, POINT2...
-    /^BEACON\d+$/               // BEACON1, BEACON2...
-  ];
-  return genericPatterns.some(pattern => pattern.test(name));
-}
-
-/**
- * Find actual beacon name by spatial matching to coordinate points
- */
-function findBeaconNameBySpatialMatch(
-  y: number,
-  x: number,
-  coordinatePoints: any[],
-  isGenericFallback = false
-): string | null {
-  const tolerance = 2.0; // 2 meter tolerance
-  let closestMatch = null;
-  let closestDist = Infinity;
-
-  for (const cp of coordinatePoints) {
-    const cpY = Number(cp.y); // Westing
-    const cpX = Number(cp.x); // Southing
-    const dist = Math.sqrt(Math.pow(cpY - y, 2) + Math.pow(cpX - x, 2));
-
-    if (dist < closestDist) {
-      closestDist = dist;
-      closestMatch = cp.name;
-    }
-
-    if (dist < tolerance) {
-      return cp.name;
-    }
-  }
-
-  // Extended tolerance for generic fallback detection
-  if (isGenericFallback && closestMatch && closestDist < tolerance * 5) {
-    console.log(`[PDF] ✅ Found close match for generic fallback: ${closestMatch} (${closestDist.toFixed(3)}m) with extended tolerance`);
-    return closestMatch;
-  }
-
-  return null;
-}
 
 interface TraverseRow {
   beaconName: string;

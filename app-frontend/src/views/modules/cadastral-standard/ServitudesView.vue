@@ -226,6 +226,10 @@
             <input v-model="header.sgNumber" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
           </div>
           <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Certificate No. (optional)</label>
+            <input v-model="header.certificateNumber" type="text" placeholder="blank = hand-filled" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
+          </div>
+          <div>
             <label class="block text-xs font-medium text-gray-700 mb-1">Lo zone (optional)</label>
             <input v-model="header.loZone" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
           </div>
@@ -305,7 +309,7 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { capeLoArrayToWGS84, calculateWGS84Bounds, type CapeLoPoint } from '@/utils/coordinateTransform'
 import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
-import { listLandParcels } from '@/services/spatial'
+import { listLandParcels, listCoordinatePoints } from '@/services/spatial'
 import api from '@/services/api'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
@@ -333,6 +337,7 @@ const { workflowState, projectId } = useCadastralWorkflow()
 const parcels = ref<any[]>([])
 const servitudes = ref<Servitude[]>([])
 const annotations = ref<Record<string, SideAnnotation[]>>({})
+const coordinatePoints = ref<any[]>([])
 
 const loading = ref(false)
 const savingRecord = ref(false)
@@ -371,6 +376,7 @@ const header = ref<DispensationHeader>({
   generalPlanNumber: '',
   sgNumber: '',
   loZone: '',
+  certificateNumber: '',
   dispensationClause: '',
   surveyorName: '',
   licenseNumber: '',
@@ -674,7 +680,9 @@ const servitudeSideSet = computed(() => new Set(subjectServitudes.value.map((s) 
 
 const resolvedBeacons = computed(() => {
   if (!selectedSide.value) return null
-  return resolveBeaconPair(sides.value, selectedParcel.value?.metadata?.edges || [], selectedSide.value)
+  return resolveBeaconPair(
+    sides.value, selectedParcel.value?.metadata?.edges || [], selectedSide.value, coordinatePoints.value,
+  )
 })
 
 function resetForm() {
@@ -759,7 +767,9 @@ async function saveServitude() {
   savingRecord.value = true
   try {
     const subjectId = String(selectedParcelId.value)
-    const beacons = resolveBeaconPair(sides.value, selectedParcel.value?.metadata?.edges || [], selectedSide.value)
+    const beacons = resolveBeaconPair(
+      sides.value, selectedParcel.value?.metadata?.edges || [], selectedSide.value, coordinatePoints.value,
+    )
     const record: Servitude = {
       id: editingId.value ?? newServitudeId(),
       subjectId,
@@ -828,6 +838,34 @@ async function loadParcels() {
   }
 }
 
+async function loadCoordinatePoints() {
+  if (!projectId.value) return
+  try {
+    coordinatePoints.value = await listCoordinatePoints(projectId.value)
+  } catch (e: any) {
+    console.warn('[Servitudes] failed to load coordinate points:', e?.message)
+  }
+}
+
+/** Legacy coverage: records saved before beacon resolution shipped only carry
+ *  `side` (e.g. "BC"). Re-resolve fromBeacon/toBeacon from the current parcels'
+ *  ring + edges and the loaded coordinate points so the certificate shows real
+ *  beacon names for those too. Does not mutate/persist `servitudes` — the
+ *  resolved copies are only used for this generation run. When the parcel or
+ *  side can't be resolved, the beacons are left undefined and the row falls
+ *  back to the raw side (buildCertificateRows' `s.side` fallback). */
+function resolveServitudesForCertificate(list: Servitude[]): Servitude[] {
+  return list.map((s) => {
+    const parcel = parcels.value.find((p: any) => String(p.id) === s.subjectId)
+    const ring = parcel ? ringForParcel(parcel) : null
+    const sidesForParcel = ring ? subjectSides(ring) : []
+    const beacons = resolveBeaconPair(
+      sidesForParcel, parcel?.metadata?.edges || [], s.side, coordinatePoints.value,
+    )
+    return { ...s, fromBeacon: beacons?.fromBeacon, toBeacon: beacons?.toBeacon }
+  })
+}
+
 async function generate() {
   if (!projectId.value) return
   generating.value = true
@@ -843,7 +881,7 @@ async function generate() {
       workingDirectory: workflowState.projectInfo.workingDirectory || '',
       portion: portion.value,
       parcels: certParcels,
-      servitudes: servitudes.value,
+      servitudes: resolveServitudesForCertificate(servitudes.value),
       header: header.value,
     })
     if (result.saved) {
@@ -872,7 +910,7 @@ function goNext() {
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([loadParcels(), loadServitudesAndAnnotations()])
+    await Promise.all([loadParcels(), loadServitudesAndAnnotations(), loadCoordinatePoints()])
     applyHeaderDefaults()
   } finally {
     loading.value = false

@@ -1,4 +1,5 @@
 import type { SideAnnotation, SubjectSide } from './sideAnnotations'
+import { resolveBeaconNameForPoint } from '@/utils/beaconNameMatch'
 
 export type ServitudeType =
   | 'party-wall' | 'right-of-way' | 'sewer' | 'water' | 'electricity'
@@ -65,25 +66,24 @@ export function hydrateServitudes(raw: unknown): Servitude[] {
   )
 }
 
-const beaconOf = (pt: any): string | null => (pt?.id || pt?.name || null)
-
 /**
  * Map a letter side (e.g. 'BC') to its beacon-name pair using the parcel's
  * ring-ordered edges. `sides` (from subjectSides) and `edges` (metadata.edges)
- * are both in ring order, so the side's index indexes the edge. Returns null
- * when the side is unknown or the edge endpoints have no beacon name.
+ * are both in ring order, so the side's index indexes the edge. Endpoint names
+ * are resolved via `resolveBeaconNameForPoint` — the edge's own id/name when
+ * present and not a generic fallback (e.g. "BC"), else a spatial match against
+ * `coordinatePoints`. Returns null when the side is unknown or either endpoint
+ * has no beacon name.
  */
 export function resolveBeaconPair(
-  sides: SubjectSide[],
-  edges: any[],
-  side: string,
+  sides: SubjectSide[], edges: any[], side: string, coordinatePoints: any[] = [],
 ): { fromBeacon: string; toBeacon: string } | null {
   const idx = sides.findIndex((s) => s.side === side)
   if (idx < 0) return null
   const edge = edges?.[idx]
   if (!edge) return null
-  const fromBeacon = beaconOf(edge.from)
-  const toBeacon = beaconOf(edge.to)
+  const fromBeacon = resolveBeaconNameForPoint(edge.from, coordinatePoints)
+  const toBeacon = resolveBeaconNameForPoint(edge.to, coordinatePoints)
   if (!fromBeacon || !toBeacon) return null
   return { fromBeacon, toBeacon }
 }

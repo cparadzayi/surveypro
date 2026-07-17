@@ -690,6 +690,7 @@ import { useSurveyAdjustmentStore } from '@/stores/surveyAdjustmentStore'
 import { f3, f4, f4s, formatDMS, SAMPLE_DATA } from '@/utils/surveyMath'
 import { generateBeaconAdjustmentReport } from '@/utils/beaconAdjustmentReport'
 import { medianPairwiseDistance } from '@/utils/si727'
+import { parseBeaconCsv, CSV_HEADER } from '@/utils/beaconComparisonCsv'
 
 // ── STORE ─────────────────────────────────────────────────────────────────────
 const store = useSurveyAdjustmentStore()
@@ -726,7 +727,6 @@ function downloadReport() {
 }
 
 // ── CSV TEMPLATE DOWNLOAD ─────────────────────────────────────────────────────
-const CSV_HEADER = 'Beacon,Hist_Y,Hist_X,Survey_Y,Survey_X'
 
 /** Build & download a CSV template pre-filled with the sample beacons.
  *  Y = Westing, X = Southing (Cape Lo). */
@@ -747,40 +747,6 @@ function downloadTemplate() {
 }
 
 // ── CSV UPLOAD / PARSE ────────────────────────────────────────────────────────
-/**
- * Parse a beacon-comparison CSV into rows of { name, eH, nH, eS, nS }.
- * Tolerates an optional header line and blank rows; throws on malformed input.
- */
-function parseBeaconCsv(text) {
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
-  if (lines.length === 0) throw new Error('The file is empty.')
-
-  // Treat the first line as a header unless its numeric columns parse as numbers.
-  const firstCols = lines[0].split(',')
-  const firstLooksLikeData =
-    firstCols.length >= 5 && firstCols.slice(1, 5).every(c => Number.isFinite(parseFloat(c)))
-  const dataLines = firstLooksLikeData ? lines : lines.slice(1)
-
-  const rows = dataLines.map((line, i) => {
-    const cols = line.split(',').map(s => s.trim())
-    if (cols.length < 5) {
-      throw new Error(
-        `Row ${i + 1}: expected 5 columns (${CSV_HEADER}), found ${cols.length}.`,
-      )
-    }
-    const [name, yH, xH, yS, xS] = cols
-    const nums = { yH: Number(yH), xH: Number(xH), yS: Number(yS), xS: Number(xS) }
-    for (const [k, v] of Object.entries(nums)) {
-      if (!Number.isFinite(v)) {
-        throw new Error(`Row ${i + 1} (${name || 'unnamed'}): "${k}" is not a valid number.`)
-      }
-    }
-    return { name: name || `BM ${String(i + 1).padStart(3, '0')}`, ...nums }
-  })
-
-  if (rows.length < 3) throw new Error('Need at least 3 beacons to run a comparison.')
-  return rows
-}
 
 async function handleUpload(event) {
   const input = event.target

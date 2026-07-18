@@ -3,15 +3,7 @@
   <!-- Lite • Compare — Beacon Coordinate Comparison & Least Squares Adjustment -->
   <!-- Section 67(5): 4-param Helmert · iterative data snooping · W-test · χ²    -->
   <!-- ─────────────────────────────────────────────────────────────────────── -->
-  <ModuleScaffold
-    title="Beacon Comparison & Adjustment"
-    description="Section 67(5) — Cape Lo P(Y,X), South-oriented. 4-parameter Helmert least-squares with iterative data snooping (W-test, chi-square)."
-    :breadcrumbs="[
-      { label: 'Lite', to: '/modules/lite' },
-      { label: 'Transform' },
-      { label: 'Beacon Comparison' },
-    ]"
-  >
+  <component :is="embedded ? 'div' : ModuleScaffold" v-bind="scaffoldProps">
     <div class="space-y-4">
 
       <!-- CONFIGURATION ────────────────────────────────────────────────────── -->
@@ -679,7 +671,7 @@
 
       </div><!-- /results -->
     </div>
-  </ModuleScaffold>
+  </component>
 </template>
 
 <script setup>
@@ -691,6 +683,23 @@ import { f3, f4, f4s, formatDMS, SAMPLE_DATA } from '@/utils/surveyMath'
 import { generateBeaconAdjustmentReport } from '@/utils/beaconAdjustmentReport'
 import { medianPairwiseDistance } from '@/utils/si727'
 import { parseBeaconCsv, CSV_HEADER } from '@/utils/beaconComparisonCsv'
+
+const props = defineProps({ embedded: { type: Boolean, default: false } })
+
+const scaffoldProps = computed(() =>
+  props.embedded
+    ? {}
+    : {
+        title: 'Beacon Comparison & Adjustment',
+        description:
+          'Section 67(5) — Cape Lo P(Y,X), South-oriented. 4-parameter Helmert least-squares with iterative data snooping (W-test, chi-square).',
+        breadcrumbs: [
+          { label: 'Lite', to: '/modules/lite' },
+          { label: 'Transform' },
+          { label: 'Beacon Comparison' },
+        ],
+      },
+)
 
 // ── STORE ─────────────────────────────────────────────────────────────────────
 const store = useSurveyAdjustmentStore()

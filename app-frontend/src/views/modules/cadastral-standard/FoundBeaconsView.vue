@@ -99,9 +99,3 @@ async function saveAssessment() {
   }
 }
 </script>
-
-<style scoped>
-.found-beacons-view {
-  @apply min-h-screen bg-gray-50;
-}
-</style>

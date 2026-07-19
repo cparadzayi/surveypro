@@ -28,6 +28,7 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
       yH: 0, xH: 0,   // historical Westing (Y) / Southing (X)
       yS: 0, xS: 0,   // survey Westing (Y) / Southing (X)
     })
+    result.value = null   // any edit invalidates the prior adjustment
   }
 
   function removePoint(id) {
@@ -37,7 +38,7 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
 
   function updatePoint(id, field, val) {
     const p = points.value.find(p => p.id === id)
-    if (p) p[field] = val
+    if (p) { p[field] = val; result.value = null }   // any edit invalidates the prior adjustment
   }
 
   function loadSample() {

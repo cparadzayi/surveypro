@@ -2201,13 +2201,16 @@ async function handleDataImported(points: CadastralPoint[]) {
       console.log(`[CSV Import] 📊 Project ID: ${selectedProjectId.value}`);
       console.log(`[CSV Import] 📊 Total points to export: ${points.length}`);
       
-      // Prepare points for database export
+      // Prepare points for database export. Send status as its own field (persisted
+      // to coordinate_points.status per migration 079) so the restore fallback can
+      // recover it; keep description clean (no longer folding status into it).
       const dbPoints = points.map(point => ({
         name: point.id,
         y: point.original.y,
         x: point.original.x,
         elevation: undefined,
-        description: point.description || point.status || ''
+        description: point.description || '',
+        status: point.status || undefined
       }));
       
       console.log(`[CSV Import] 📊 Prepared ${dbPoints.length} points for batch export`);

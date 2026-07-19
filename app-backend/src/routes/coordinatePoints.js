@@ -46,6 +46,7 @@ export default async function coordinatePointRoutes(app) {
           x: { type: 'number' },
           elevation: { type: 'number' },
           description: { type: 'string' },
+          status: { type: 'string' },
           survey_date: { type: 'string' },
           surveyor: { type: 'string' }
         }
@@ -61,6 +62,7 @@ export default async function coordinatePointRoutes(app) {
       x: data.x,
       elevation: data.elevation,
       description: data.description,
+      status: data.status,
       surveyDate: data.survey_date,
       surveyor: data.surveyor
     })

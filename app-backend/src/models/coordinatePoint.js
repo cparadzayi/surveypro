@@ -26,13 +26,13 @@ export default {
 
     // No transformation needed - geometry is already stored in project's native CRS
     const result = await dbConnection.query(
-      `SELECT 
-        id, project_id, name, geom, elevation, description,
+      `SELECT
+        id, project_id, name, geom, elevation, description, status,
         survey_date, surveyor, created_at, updated_at,
         ST_X(geom) as y,
         ST_Y(geom) as x
-       FROM coordinate_points 
-       WHERE project_id = $1 
+       FROM coordinate_points
+       WHERE project_id = $1
        ORDER BY name`,
       [projectId]
     )
@@ -50,7 +50,7 @@ export default {
     return result.rows[0]
   },
 
-  async create(dbConnection = db, { projectId, name, y, x, elevation, description, surveyDate, surveyor, srid }) {
+  async create(dbConnection = db, { projectId, name, y, x, elevation, description, status, surveyDate, surveyor, srid }) {
     // Get SRID from project's central meridian if not provided
     let finalSrid = srid;
     if (!finalSrid) {
@@ -68,11 +68,11 @@ export default {
     // Store geometry in project's native SRID (NOT forced to Lo 31)
     // Each project's data stays in its own central meridian
     const result = await dbConnection.query(
-      `INSERT INTO coordinate_points 
-       (project_id, name, geom, elevation, description, survey_date, surveyor) 
-       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), ${finalSrid}), $5, $6, $7, $8) 
+      `INSERT INTO coordinate_points
+       (project_id, name, geom, elevation, description, status, survey_date, surveyor)
+       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), ${finalSrid}), $5, $6, $7, $8, $9)
        RETURNING *`,
-      [projectId, name, y, x, elevation, description, surveyDate, surveyor]
+      [projectId, name, y, x, elevation, description, status || null, surveyDate, surveyor]
     )
     
     console.log('[CoordinatePoint] ✅ Stored in project CRS:', {
@@ -146,6 +146,7 @@ export default {
           x: pt.x,
           elevation: pt.elevation,
           description: pt.description,
+          status: pt.status,
           count: 1,
           coordinates: [{ y: pt.y, x: pt.x }]
         });
@@ -158,7 +159,8 @@ export default {
       y: p.y,
       x: p.x,
       elevation: p.elevation,
-      description: p.description
+      description: p.description,
+      status: p.status
     }));
     
     console.log(`[CoordinatePoint.batchCreate] 📊 Pre-processing complete:`);
@@ -187,19 +189,20 @@ export default {
         for (const pt of chunk) {
           // ST_MakePoint(Westing, Southing) in project's native CRS
           // Store directly in project's SRID (NOT transformed to Lo 31)
-          values.push(`($${paramIndex}, $${paramIndex+1}, ST_SetSRID(ST_MakePoint($${paramIndex+2}, $${paramIndex+3}), ${srid}), $${paramIndex+4}, $${paramIndex+5})`)
-          params.push(projectId, pt.name, pt.y, pt.x, pt.elevation || null, pt.description || null)
-          paramIndex += 6
+          values.push(`($${paramIndex}, $${paramIndex+1}, ST_SetSRID(ST_MakePoint($${paramIndex+2}, $${paramIndex+3}), ${srid}), $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6})`)
+          params.push(projectId, pt.name, pt.y, pt.x, pt.elevation || null, pt.description || null, pt.status || null)
+          paramIndex += 7
         }
 
         const sql = `
-          INSERT INTO coordinate_points (project_id, name, geom, elevation, description)
+          INSERT INTO coordinate_points (project_id, name, geom, elevation, description, status)
           VALUES ${values.join(', ')}
-          ON CONFLICT (project_id, name) 
-          DO UPDATE SET 
+          ON CONFLICT (project_id, name)
+          DO UPDATE SET
             geom = EXCLUDED.geom,
             elevation = EXCLUDED.elevation,
             description = EXCLUDED.description,
+            status = EXCLUDED.status,
             updated_at = CURRENT_TIMESTAMP
           RETURNING *
         `

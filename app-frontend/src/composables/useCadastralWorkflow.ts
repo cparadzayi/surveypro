@@ -197,7 +197,13 @@ function setImportedPoints(points: CadastralPoint[]) {
         console.log('    - mappedPoints[0].x:', mappedPoints[0].x);
       }
       
-      saveWorkflowState('complete', {
+      // Pin the persistence to the explicit 'csv-import' step, NOT the ambient
+      // currentStep. This deferred save runs ~100ms later, by which time callers
+      // (e.g. handleDataImported) may have advanced currentStep to 'field-book' —
+      // using saveWorkflowState('complete') would then write points under the
+      // wrong step key, so the reload restore (which reads step_data['csv-import']
+      // .points) would never find them.
+      saveStepData('csv-import', {
         points: mappedPoints,
         coordinate_count: points.length,
         file_imported_at: new Date().toISOString()
@@ -339,7 +345,25 @@ async function loadWorkflowState(surveyProjectId: number) {
           console.log('  - First restored point.original.y:', workflowState.importedPoints[0].original.y);
         }
       }
-      
+
+      // Fallback: if the JSON point-copy is absent (older projects, or a save that
+      // never landed on the csv-import step), rebuild importedPoints from the
+      // authoritative coordinate_points table so downstream steps (Field Book,
+      // Coordinate List) work on revisit.
+      if ((!workflowState.importedPoints || workflowState.importedPoints.length === 0) && surveyProjectId) {
+        try {
+          const { listCoordinatePoints } = await import('../services/spatial')
+          const { coordinateToImportedPoint } = await import('./importedPointFromCoordinate')
+          const cps = await listCoordinatePoints(Number(surveyProjectId))
+          if (cps?.length) {
+            workflowState.importedPoints = cps.map(coordinateToImportedPoint) as any
+            console.log(`✅ Restored ${workflowState.importedPoints.length} imported points from coordinate_points (fallback)`)
+          }
+        } catch (e: any) {
+          console.warn('⚠️ coordinate_points fallback failed:', e?.message)
+        }
+      }
+
       // Restore surveyorInfo if it exists in any step_data
       const latestStepWithSurveyorInfo = Object.values(dbState.step_data || {})
         .reverse()

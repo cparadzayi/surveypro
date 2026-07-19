@@ -2820,14 +2820,18 @@ function handleFoundBeaconsSave(data: { beacons: any[]; comparisonConfig: any })
   console.log('[Found Beacons] Comparison method:', data.comparisonConfig.method);
   console.log('[Found Beacons] Tolerance:', data.comparisonConfig.toleranceThreshold);
   
-  // Auto-trigger Field Book generation
-  console.log('[Found Beacons] 🤖 Auto-triggering Field Book generation...');
+  // Advance to Field Book. Only auto-generate when survey points are actually loaded —
+  // the beacon-comparison save must not surface an unrelated "no imported points" error
+  // (e.g. when revisiting Found Beacons on a project whose csv-import step_data lacks points).
   workflowState.currentStep = 'field-book';
-  
-  // Trigger Field Book generation after a brief delay
-  setTimeout(async () => {
-    await generateFieldBook();
-  }, 500);
+  if (workflowState.importedPoints && workflowState.importedPoints.length > 0) {
+    console.log('[Found Beacons] 🤖 Auto-triggering Field Book generation...');
+    setTimeout(async () => {
+      await generateFieldBook();
+    }, 500);
+  } else {
+    console.warn('[Found Beacons] Field Book auto-generation skipped: no imported points loaded for this project.');
+  }
 }
 
 async function generateFieldBook() {

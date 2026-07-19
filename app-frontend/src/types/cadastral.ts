@@ -292,6 +292,9 @@ export interface BeaconComparisonConfig {
   
   /** Tolerance threshold (meters) */
   toleranceThreshold: number; // e.g., 0.020 for urban, 0.200 for rural
+
+  /** How accept/reject was decided (e.g. Helmert LSQ + W-test summary). Printed in place of the tolerance line when present. */
+  adjustmentSummary?: string;
   
   /** Inter-beacon checks (for sketch method) */
   interBeaconChecks?: {

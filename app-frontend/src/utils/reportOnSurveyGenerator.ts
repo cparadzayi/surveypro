@@ -356,9 +356,16 @@ export class ReportOnSurveyGenerator {
       this.currentY += this.lineHeight;
     }
     
-    this.doc.text(`Tolerance Threshold: ±${comparison.toleranceThreshold.toFixed(3)}m`, this.margin + 5, this.currentY);
-    this.currentY += this.lineHeight + 3;
-    
+    // Prefer an explicit adjustment summary (Helmert LSQ + W-test); fall back to the legacy tolerance line.
+    const adjustmentLine = comparison.adjustmentSummary
+      || `Tolerance Threshold: ±${comparison.toleranceThreshold.toFixed(3)}m`;
+    const adjustmentLines = this.doc.splitTextToSize(adjustmentLine, this.pageWidth - this.margin * 2 - 10);
+    adjustmentLines.forEach((line: string) => {
+      this.doc.text(line, this.margin + 5, this.currentY);
+      this.currentY += this.lineHeight;
+    });
+    this.currentY += 3;
+
     // Tabulation table (if applicable)
     if (comparison.method === 'tabulation' || comparison.method === 'both') {
       this.addBeaconComparisonTable(reportData);

@@ -50,13 +50,24 @@ describe('buildComparisonConfig', () => {
     expect(cfg.toleranceThreshold).toBeCloseTo(0.02, 6)
     expect(cfg.currentSRNumber).toBe('')  // parent overrides
     expect(cfg.conclusion).toMatch(/adopt the positions of all found beacons/i)
+    expect(cfg.adjustmentSummary).toMatch(/Helmert least-squares.*W-test/i)
   })
 
-  it('lists rejected beacons in the conclusion and honours an explicit tolerance/method', () => {
+  it('describes rejects as W-test outliers (not "exceeded tolerance") and honours explicit tolerance/method', () => {
     const cfg = buildComparisonConfig(points, result, { method: 'both', toleranceThreshold: 0.2 })
     expect(cfg.method).toBe('both')
     expect(cfg.toleranceThreshold).toBe(0.2)
     expect(cfg.conclusion).toMatch(/87A/)
+    expect(cfg.conclusion).toMatch(/W-test/i)
+    expect(cfg.conclusion).not.toMatch(/exceeded tolerance/i)
+  })
+
+  it('includes the posteriori σ₀ in the adjustment summary when the result carries it', () => {
+    const cfg = buildComparisonConfig(points, {
+      pts: [{ id: 1, name: '86B', finalStatus: 'ACCEPT' as const }],
+      adj: { stats: { s0: 0.0123 } },
+    })
+    expect(cfg.adjustmentSummary).toMatch(/0\.0123 m/)
   })
 })
 

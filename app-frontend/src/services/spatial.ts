@@ -140,6 +140,7 @@ export interface CoordinatePoint {
   x: number  // Extracted from geometry
   elevation?: number
   description?: string
+  status?: string  // Point type: F=Fixed, P=Peg, etc. (migration 079)
   survey_date?: string
   surveyor?: string
   created_at: string
@@ -188,6 +189,7 @@ export async function createCoordinatePoint(data: {
   x: number
   elevation?: number
   description?: string
+  status?: string
   survey_date?: string
   surveyor?: string
 }) {
@@ -227,6 +229,7 @@ export async function batchCreateCoordinatePoints(projectId: number, points: Arr
   x: number
   elevation?: number
   description?: string
+  status?: string
 }>) {
   const r = await api.post<{ ok: boolean; data: CoordinatePoint[]; count: number }>('/coordinate-points/batch', {
     project_id: projectId.toString(),

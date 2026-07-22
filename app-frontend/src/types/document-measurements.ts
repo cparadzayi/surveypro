@@ -96,7 +96,10 @@ export interface DocumentMeasurements {
   
   /** Areas & Consistencies section */
   areas: AreasMeasurement
-  
+
+  /** Beacon Comparison Report section (SI 727 s.67(5)); omitted or pages: 0 when skipped */
+  beaconComparison?: SectionMeasurement
+
   /** Total document page count */
   totalPages: number
   

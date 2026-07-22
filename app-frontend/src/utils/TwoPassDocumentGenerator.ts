@@ -9,18 +9,24 @@
  */
 
 import { PDFDocument } from 'pdf-lib'
-import type { 
-  DocumentMeasurements, 
+import type {
+  DocumentMeasurements,
   CalculationsMeasurement,
   FieldBookMeasurement,
   CoordinateListMeasurement,
-  AreasMeasurement 
+  AreasMeasurement
 } from '../types/document-measurements'
 import type { CalculationsPart1Result } from '../types/adjusted-coordinates'
 import { CalculationsPart1Generator, type SurveyPoint } from './calculations-part1'
 import { CoordinateListGenerator, type SurveyorInfo } from './coordinate-list'
 import { FieldBookGenerator } from './field-book'
 import type { AdjustedCoordinate } from '../types/adjusted-coordinates'
+import type { SectionMeasurement } from '../types/document-measurements'
+import type { ReportOnSurveyData } from '../types/cadastral'
+import {
+  generateBeaconComparisonReportPDF,
+  type BeaconComparisonReportOptions,
+} from './beaconComparisonReportGenerator'
 
 export interface TwoPassDocumentData {
   surveyPoints: SurveyPoint[]
@@ -28,6 +34,9 @@ export interface TwoPassDocumentData {
   surveyorInfo: SurveyorInfo
   projectControlPoints?: any[]
   parcels?: any[]
+  /** SI 727 s.67(5) Beacon Comparison Report inputs; omit to skip the section */
+  reportData?: ReportOnSurveyData | null
+  reportOptions?: BeaconComparisonReportOptions
 }
 
 export interface TwoPassDocumentResult {
@@ -36,6 +45,7 @@ export interface TwoPassDocumentResult {
     fieldBook: Blob
     coordinateList: Blob
     calculations: Blob
+    beaconComparison?: Blob
   }
   measurements: DocumentMeasurements
   totalPages: number
@@ -106,34 +116,44 @@ export class TwoPassDocumentGenerator {
     const coordListMeasure = await this.measureCoordinateList(data)
     console.log(`     ✓ ${coordListMeasure.pages} pages (${coordListMeasure.startPage}-${coordListMeasure.endPage})`)
     
-    // 3. Measure Calculations Part 1 (starts AFTER Coordinate List ends)
+    // 3. Measure the Beacon Comparison Report (0 pages when there is no comparison data)
+    console.log('  📐 Measuring Beacon Comparison Report...')
+    const beaconMeasure = await this.measureBeaconComparison(data, coordListMeasure)
+    console.log(beaconMeasure.pages > 0
+      ? `     ✓ ${beaconMeasure.pages} pages (${beaconMeasure.startPage}-${beaconMeasure.endPage})`
+      : '     ✓ skipped (no comparison data)')
+
+    // 4. Measure Calculations Part 1 (starts AFTER the Beacon Comparison Report)
     console.log('  🧮 Measuring Calculations Part 1...')
-    const calcsMeasure = await this.measureCalculations(data, coordListMeasure)
+    const calcStartPage = coordListMeasure.endPage + beaconMeasure.pages + 1
+    const calcsMeasure = await this.measureCalculations(data, calcStartPage)
     console.log(`     ✓ ${calcsMeasure.pages} pages (${calcsMeasure.startPage}-${calcsMeasure.endPage})`)
     console.log(`     ✓ ${Object.keys(calcsMeasure.pointPageMap).length} points tracked`)
-    
-    // 4. Measure Areas (if parcels exist) - starts AFTER Calculations
+
+    // 5. Measure Areas (if parcels exist) - starts AFTER Calculations
     console.log('  📐 Measuring Areas & Consistencies...')
     const areasMeasure = this.measureAreas(data, calcsMeasure)
     console.log(`     ✓ ${areasMeasure.pages} pages (${areasMeasure.startPage}-${areasMeasure.endPage})`)
-    
+
     const measurements: DocumentMeasurements = {
       fieldBook: fieldBookMeasure,
       calculations: calcsMeasure,
       coordinateList: coordListMeasure,
+      beaconComparison: beaconMeasure,
       areas: areasMeasure,
       totalPages: areasMeasure.endPage,
       measuredAt: new Date(),
       measurementDuration: Date.now() - measureStart
     }
-    
+
     console.log('\n  📊 MEASUREMENT SUMMARY:')
     console.log(`     Field Book:      Pages E1-E${fieldBookMeasure.pages}`)
     console.log(`     Coordinate List: Pages ${coordListMeasure.startPage}-${coordListMeasure.endPage}`)
+    console.log(`     Beacon Comparison: Pages ${beaconMeasure.startPage}-${beaconMeasure.endPage}`)
     console.log(`     Calculations:    Pages ${calcsMeasure.startPage}-${calcsMeasure.endPage}`)
     console.log(`     Areas:           Pages ${areasMeasure.startPage}-${areasMeasure.endPage}`)
     console.log(`     TOTAL:           ${measurements.totalPages} pages`)
-    
+
     return measurements
   }
   
@@ -143,7 +163,10 @@ export class TwoPassDocumentGenerator {
   private async renderPass(
     data: TwoPassDocumentData,
     measurements: DocumentMeasurements
-  ): Promise<{ merged: Blob; sections: { fieldBook: Blob; coordinateList: Blob; calculations: Blob } }> {
+  ): Promise<{
+    merged: Blob;
+    sections: { fieldBook: Blob; coordinateList: Blob; calculations: Blob; beaconComparison?: Blob }
+  }> {
     const pdfs: Blob[] = []
     
     // 1. Generate Field Book
@@ -162,8 +185,23 @@ export class TwoPassDocumentGenerator {
     )
     pdfs.push(coordListPDF)
     console.log(`     ✓ ${measurements.coordinateList.pages} pages with accurate cross-refs`)
-    
-    // 3. Generate Calculations Part 1
+
+    // 3. Generate the Beacon Comparison Report (before Calculations, in sequence)
+    let beaconComparisonPDF: Blob | undefined
+    if ((measurements.beaconComparison?.pages || 0) > 0) {
+      console.log('  📐 Rendering Beacon Comparison Report...')
+      const beaconResult = await this.renderBeaconComparisonReport(
+        data,
+        measurements.beaconComparison!.startPage
+      )
+      if (beaconResult) {
+        beaconComparisonPDF = beaconResult.pdf
+        pdfs.push(beaconResult.pdf)
+        console.log(`     ✓ ${beaconResult.pageCount} pages generated`)
+      }
+    }
+
+    // 4. Generate Calculations Part 1
     console.log('  🧮 Rendering Calculations Part 1...')
     const calcsPDF = await this.renderCalculations(
       data,
@@ -171,15 +209,15 @@ export class TwoPassDocumentGenerator {
     )
     pdfs.push(calcsPDF)
     console.log(`     ✓ ${measurements.calculations.pages} pages generated`)
-    
-    // 4. Generate Areas (if parcels exist)
+
+    // 5. Generate Areas (if parcels exist)
     if (data.parcels && data.parcels.length > 0) {
       console.log('  📐 Rendering Areas & Consistencies...')
       // TODO: Implement areas rendering
       console.log(`     ✓ ${measurements.areas.pages} pages generated`)
     }
-    
-    // 5. Merge all sections into the collated body
+
+    // 6. Merge all sections into the collated body
     console.log('  🔗 Merging PDFs...')
     const merged = await this.mergePDFs(pdfs)
     console.log(`     ✓ Final document assembled`)
@@ -190,6 +228,7 @@ export class TwoPassDocumentGenerator {
         fieldBook: fieldBookResult.pdf,
         coordinateList: coordListPDF,
         calculations: calcsPDF,
+        ...(beaconComparisonPDF ? { beaconComparison: beaconComparisonPDF } : {}),
       },
     }
   }
@@ -221,14 +260,9 @@ export class TwoPassDocumentGenerator {
   
   private async measureCalculations(
     data: TwoPassDocumentData,
-    coordListMeasure: CoordinateListMeasurement
+    calcStartPage: number
   ): Promise<CalculationsMeasurement> {
-    // Calculations starts AFTER Coordinate List ends
-    const coordListLastPage = coordListMeasure.endPage
-    const calcStartPage = coordListLastPage + 1
-    
-    console.log(`     → Coordinate List ends at page: ${coordListLastPage}`)
-    console.log(`     → Calculations will start at page: ${coordListLastPage} + 1 = ${calcStartPage}`)
+    console.log(`     → Calculations will start at page: ${calcStartPage}`)
     console.log(`     → Generating Calculations Part 1 to measure actual pages...`)
     
     // ⚠️ IMPORTANT: We must actually generate Calculations to get accurate page count
@@ -297,6 +331,43 @@ export class TwoPassDocumentGenerator {
     }
   }
   
+  /**
+   * Render the Beacon Comparison Report once to learn its real page count (K).
+   * Returns a zero-page measurement when there is no comparison data, which
+   * leaves the Calculations start page exactly where it is today.
+   */
+  private async measureBeaconComparison(
+    data: TwoPassDocumentData,
+    coordListMeasure: CoordinateListMeasurement
+  ): Promise<SectionMeasurement> {
+    const startPage = coordListMeasure.endPage + 1
+    const result = await this.renderBeaconComparisonReport(data, startPage)
+    const pages = result?.pageCount ?? 0
+    return {
+      pages,
+      startPage,
+      endPage: startPage + pages - 1
+    }
+  }
+
+  /**
+   * Render the Beacon Comparison Report at the given start page, or null when
+   * there is nothing to compare.
+   */
+  private async renderBeaconComparisonReport(
+    data: TwoPassDocumentData,
+    startingPage: number
+  ): Promise<{ pdf: Blob; pageCount: number } | null> {
+    if (!data.reportData) return null
+    const options: BeaconComparisonReportOptions = data.reportOptions || {
+      surveyorName: data.surveyorInfo.name,
+      licenseNumber: data.surveyorInfo.licenseNumber,
+      surveyDate: data.surveyorInfo.surveyDate,
+      surveyOf: data.surveyorInfo.projectTitle
+    }
+    return generateBeaconComparisonReportPDF(data.reportData, options, startingPage)
+  }
+
   private measureAreas(
     data: TwoPassDocumentData,
     calcsMeasure: CalculationsMeasurement

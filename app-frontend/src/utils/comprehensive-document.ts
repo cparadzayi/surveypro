@@ -22,6 +22,8 @@ import type { AdjustedCoordinate } from '@/types/adjusted-coordinates';
 import type { SurveyorInfo } from '@/utils/coordinate-list';
 import { TwoPassDocumentGenerator } from '@/utils/TwoPassDocumentGenerator';
 import type { DocumentMeasurements } from '@/types/document-measurements';
+import type { ReportOnSurveyData } from '@/types/cadastral';
+import type { BeaconComparisonReportOptions } from '@/utils/beaconComparisonReportGenerator';
 
 export interface ComprehensiveDocumentData {
   // Project Information
@@ -53,6 +55,10 @@ export interface ComprehensiveDocumentData {
     clearance: number;
     parcelId: string;
   }>;
+
+  // Beacon Comparison Report (SI 727 s.67(5)) — omit to skip the section
+  reportData?: ReportOnSurveyData | null;
+  reportOptions?: BeaconComparisonReportOptions;
 }
 
 export interface ComprehensiveDocumentResult {
@@ -85,7 +91,13 @@ export class ComprehensiveDocumentGenerator {
     useTwoPass: boolean = true
   ): Promise<ComprehensiveDocumentResult & {
     measurements?: DocumentMeasurements;
-    sections?: { cover: Blob; fieldBook: Blob; coordinateList: Blob; calculations: Blob };
+    sections?: {
+      cover: Blob;
+      fieldBook: Blob;
+      coordinateList: Blob;
+      calculations: Blob;
+      beaconComparison?: Blob;
+    };
   }> {
     console.log('[ComprehensiveDoc] 🎯 Using TWO-PASS generation for 100% accurate cross-references');
     
@@ -108,7 +120,9 @@ export class ComprehensiveDocumentGenerator {
       adjustedCoordinates: data.adjustedCoordinates,
       surveyorInfo: data.surveyorInfo,
       projectControlPoints: data.projectControlPoints,
-      parcels: data.parcels
+      parcels: data.parcels,
+      reportData: data.reportData,
+      reportOptions: data.reportOptions
     });
     
     // Generate cover page separately
@@ -140,6 +154,9 @@ export class ComprehensiveDocumentGenerator {
         fieldBook: result.sections.fieldBook,
         coordinateList: result.sections.coordinateList,
         calculations: result.sections.calculations,
+        ...(result.sections.beaconComparison
+          ? { beaconComparison: result.sections.beaconComparison }
+          : {}),
       },
     };
   }

@@ -5,6 +5,10 @@
 
 import { jsPDF } from 'jspdf';
 import type { ReportOnSurveyData, FoundBeacon } from '../types/cadastral';
+import {
+  renderBeaconComparison,
+  type BeaconComparisonCursor,
+} from './beaconComparisonSection';
 
 interface ReportGenerationOptions {
   surveyorName: string;
@@ -320,130 +324,22 @@ export class ReportOnSurveyGenerator {
 
   /**
    * Add Beacon Comparison (SI 727 Section 67(5))
+   * Delegates to the shared renderer so the standalone Beacon Comparison Report
+   * and this inline block stay identical.
    */
   private addBeaconComparison(reportData: ReportOnSurveyData): void {
     if (!reportData.beaconComparison) return;
-    
-    this.checkPageBreak(60);
-    
-    this.doc.setFontSize(11);
-    this.doc.setFont('helvetica', 'bold');
-    this.doc.text('BEACON COMPARISON (SI 727 Section 67(5))', this.margin, this.currentY);
-    this.currentY += this.lineHeight + 2;
-    
-    this.doc.setFont('helvetica', 'normal');
-    this.doc.setFontSize(10);
-    
-    const comparison = reportData.beaconComparison;
-    
-    // Method
-    const methodLabels: Record<string, string> = {
-      'tabulation': 'Tabulation of Co-ordinates',
-      'sketch': 'Comparison Sketch',
-      'both': 'Both Tabulation and Sketch'
+
+    const cursor: BeaconComparisonCursor = {
+      doc: this.doc,
+      margin: this.margin,
+      lineHeight: this.lineHeight,
+      pageWidth: this.pageWidth,
+      pageHeight: this.pageHeight,
+      y: this.currentY,
     };
-    
-    this.doc.text(`Method: ${methodLabels[comparison.method]}`, this.margin + 5, this.currentY);
-    this.currentY += this.lineHeight;
-    
-    if (comparison.currentSRNumber) {
-      this.doc.text(`Current Survey: ${comparison.currentSRNumber}`, this.margin + 5, this.currentY);
-      this.currentY += this.lineHeight;
-    }
-    
-    if (comparison.originalSRNumber) {
-      this.doc.text(`Original Survey: ${comparison.originalSRNumber}`, this.margin + 5, this.currentY);
-      this.currentY += this.lineHeight;
-    }
-    
-    // Prefer an explicit adjustment summary (Helmert LSQ + W-test); fall back to the legacy tolerance line.
-    const adjustmentLine = comparison.adjustmentSummary
-      || `Tolerance Threshold: ±${comparison.toleranceThreshold.toFixed(3)}m`;
-    const adjustmentLines = this.doc.splitTextToSize(adjustmentLine, this.pageWidth - this.margin * 2 - 10);
-    adjustmentLines.forEach((line: string) => {
-      this.doc.text(line, this.margin + 5, this.currentY);
-      this.currentY += this.lineHeight;
-    });
-    this.currentY += 3;
-
-    // Tabulation table (if applicable)
-    if (comparison.method === 'tabulation' || comparison.method === 'both') {
-      this.addBeaconComparisonTable(reportData);
-    }
-    
-    // Conclusion
-    if (comparison.conclusion) {
-      this.currentY += 5;
-      this.doc.setFont('helvetica', 'bold');
-      this.doc.text('Conclusion:', this.margin + 5, this.currentY);
-      this.currentY += this.lineHeight;
-      
-      this.doc.setFont('helvetica', 'normal');
-      const lines = this.doc.splitTextToSize(comparison.conclusion, this.pageWidth - this.margin * 2 - 10);
-      lines.forEach((line: string) => {
-        this.checkPageBreak(10);
-        this.doc.text(line, this.margin + 10, this.currentY);
-        this.currentY += this.lineHeight;
-      });
-    }
-    
-    this.currentY += 5;
-  }
-
-  /**
-   * Add beacon comparison table
-   */
-  private addBeaconComparisonTable(reportData: ReportOnSurveyData): void {
-    const beaconsWithOriginal = reportData.beacons?.filter(b => 
-      b.originalData && b.originalData.coordinates
-    ) || [];
-    
-    if (beaconsWithOriginal.length === 0) return;
-    
-    this.checkPageBreak(80);
-    
-    // Table header
-    this.doc.setFont('helvetica', 'bold');
-    this.doc.setFontSize(9);
-    
-    const colX = [this.margin + 5, 40, 70, 100, 130, 155];
-    const rowHeight = 6;
-    
-    this.doc.text('Beacon', colX[0], this.currentY);
-    this.doc.text('Original Y', colX[1], this.currentY);
-    this.doc.text('Original X', colX[2], this.currentY);
-    this.doc.text('New Y', colX[3], this.currentY);
-    this.doc.text('New X', colX[4], this.currentY);
-    this.doc.text('Δ (m)', colX[5], this.currentY);
-    
-    this.currentY += rowHeight;
-    this.addHorizontalLine();
-    this.currentY += 2;
-    
-    // Table rows
-    this.doc.setFont('helvetica', 'normal');
-    this.doc.setFontSize(8);
-    
-    beaconsWithOriginal.forEach(beacon => {
-      this.checkPageBreak(15);
-      
-      const origY = beacon.originalData?.coordinates?.y?.toFixed(3) || '-';
-      const origX = beacon.originalData?.coordinates?.x?.toFixed(3) || '-';
-      const newY = beacon.currentCoordinates?.y?.toFixed(3) || '-';
-      const newX = beacon.currentCoordinates?.x?.toFixed(3) || '-';
-      const distance = beacon.discrepancy?.distance?.toFixed(3) || '-';
-      
-      this.doc.text(beacon.beaconId, colX[0], this.currentY);
-      this.doc.text(origY, colX[1], this.currentY);
-      this.doc.text(origX, colX[2], this.currentY);
-      this.doc.text(newY, colX[3], this.currentY);
-      this.doc.text(newX, colX[4], this.currentY);
-      this.doc.text(distance, colX[5], this.currentY);
-      
-      this.currentY += rowHeight;
-    });
-    
-    this.currentY += 3;
+    renderBeaconComparison(cursor, reportData);
+    this.currentY = cursor.y;
   }
 
   /**

@@ -6,6 +6,7 @@
 
 import { jsPDF } from 'jspdf';
 import type { ReportOnSurveyData, FoundBeacon } from '../types/cadastral';
+import { stampSequentialPageNumbers } from './pdfPageNumber';
 
 interface ReportGenerationOptions {
   surveyorName: string;
@@ -42,7 +43,8 @@ export class NarrativeReportOnSurveyGenerator {
    */
   async generate(
     reportData: ReportOnSurveyData,
-    options: ReportGenerationOptions
+    options: ReportGenerationOptions,
+    startingPage?: number
   ): Promise<{ pdf: Blob; pageCount: number }> {
     console.log('[NarrativeReportOnSurvey] Generating PDF...', reportData);
 
@@ -69,6 +71,12 @@ export class NarrativeReportOnSurveyGenerator {
     
     // Signature section
     this.addSignatureSection(options);
+
+    // Collated into Comprehensive_Latest.pdf: continue the document's page
+    // sequence. Standalone (no startingPage): leave the report unnumbered.
+    if (startingPage !== undefined) {
+      stampSequentialPageNumbers(this.doc, startingPage);
+    }
 
     const pageCount = this.doc.getNumberOfPages();
     const pdfBlob = this.doc.output('blob');
@@ -441,11 +449,15 @@ export class NarrativeReportOnSurveyGenerator {
 
 /**
  * Generate Narrative Report on Survey PDF
+ *
+ * @param startingPage - When provided, stamps in-sequence page numbers so the
+ *   report can be collated at the end of Comprehensive_Latest.pdf.
  */
 export async function generateNarrativeReportOnSurveyPDF(
   reportData: ReportOnSurveyData,
-  options: ReportGenerationOptions
+  options: ReportGenerationOptions,
+  startingPage?: number
 ): Promise<{ pdf: Blob; pageCount: number }> {
   const generator = new NarrativeReportOnSurveyGenerator();
-  return await generator.generate(reportData, options);
+  return await generator.generate(reportData, options, startingPage);
 }

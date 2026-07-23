@@ -632,6 +632,7 @@ import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation } from '@/utils/planDesignation';
 import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
 import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
+import { buildReportDataFromWorkflow } from '@/utils/reportDataFromWorkflow';
 
 // Props
 const props = defineProps<{
@@ -4418,7 +4419,23 @@ async function generateComprehensivePDF() {
     // Generate Field Book, Coordinate List, and Calculations Part 1 using TWO-PASS
     console.log('[ComprehensivePDF] 🎯 Generating Field Book, Coordinate List, and Calculations Part 1...')
     const generator = new ComprehensiveDocumentGenerator()
-    
+
+    // Rebuilt from the persisted workflow state (step_data['report-on-survey']).
+    const reportData = buildReportDataFromWorkflow(workflowState)
+    const reportOptions = {
+      surveyorName: surveyorInfo.name || '',
+      licenseNumber: surveyorInfo.licenseNumber || '',
+      surveyDate: surveyorInfo.surveyDate || '',
+      surveyOf: surveyorInfo.projectTitle || projectName || '',
+    }
+    const narrativeOptions = {
+      ...reportOptions,
+      firm: (surveyorInfo as any).firm || '',
+      address: (surveyorInfo as any).address || '',
+      district: (surveyorInfo as any).district || '',
+      assistant: 'N/A',
+    }
+
     const result = await generator.generateWithTwoPass({
       projectInfo: coverPageInfo,
       surveyorInfo: surveyorInfo,
@@ -4433,7 +4450,9 @@ async function generateComprehensivePDF() {
         coordinates: p.points.map(pt => ({ x: pt.x, y: pt.y })),
         area: (p.areaResult?.area?.display as any)?.hectares || (p.areaResult?.area?.abs_m2 ? p.areaResult.area.abs_m2 / 10000 : 0)
       })),
-      beaconLabels: intelligentPreview.value?.beaconLabels || []
+      beaconLabels: intelligentPreview.value?.beaconLabels || [],
+      reportData,
+      reportOptions
     })
     
     console.log('[ComprehensivePDF] ✅ Field Book + Coordinate List + Calculations Part 1 generated')
@@ -4470,9 +4489,11 @@ async function generateComprehensivePDF() {
             })
           }
         }
-      }
+      },
+      reportData,
+      narrativeOptions
     })
-    
+
     if (!finalResult.success) {
       throw new Error(finalResult.error || 'PDF generation failed')
     }
@@ -4512,6 +4533,8 @@ async function generateComprehensivePDF() {
           coordinateList: result.sections.coordinateList,
           calculations: result.sections.calculations,
           areas: finalResult.areasOnlyBlob,
+          beaconComparison: result.sections.beaconComparison,
+          reportOnSurvey: finalResult.narrativeBlob,
         },
       });
       if (split.failed.length) {

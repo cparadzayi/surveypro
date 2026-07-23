@@ -912,6 +912,7 @@ import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation } from '@/utils/planDesignation';
 import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
 import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
+import { buildReportDataFromWorkflow } from '@/utils/reportDataFromWorkflow';
 
 const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../components/ParcelDetectionPanel.vue'));
 
@@ -6386,7 +6387,23 @@ async function exportAreaConsistencyPDF() {
     // 2. PASS 2: Render with accurate cross-references
     // 3. Merge everything together
     console.log('[MapLibre] 🎯 Using TWO-PASS generation for accurate cross-references...');
-    
+
+    // Both collated reports are rebuilt from workflow state at collation time.
+    const reportData = buildReportDataFromWorkflow(workflowState);
+    const reportOptions = {
+      surveyorName: workflowState?.surveyorInfo?.landSurveyor || '',
+      licenseNumber: workflowState?.surveyorInfo?.licenseNumber || '',
+      surveyDate: workflowState?.surveyorInfo?.surveyDate || '',
+      surveyOf: workflowState?.surveyorInfo?.surveyOf || surveyorInfo.projectTitle || '',
+    };
+    const narrativeOptions = {
+      ...reportOptions,
+      firm: workflowState?.surveyorInfo?.firm || '',
+      address: workflowState?.surveyorInfo?.address || '',
+      district: workflowState?.projectInfo?.district || '',
+      assistant: 'N/A',
+    };
+
     const result = await generator.generateWithTwoPass({
       projectInfo: coverPageInfo,
       surveyorInfo: surveyorInfo,
@@ -6401,7 +6418,9 @@ async function exportAreaConsistencyPDF() {
         coordinates: p.points.map(pt => ({ x: pt.x, y: pt.y })),
         area: (p.areaResult?.area?.display as any)?.hectares || (p.areaResult?.area?.abs_m2 ? p.areaResult.area.abs_m2 / 10000 : 0)
       })),
-      beaconLabels: beaconLabels.value
+      beaconLabels: beaconLabels.value,
+      reportData,
+      reportOptions
     });
     
     console.log('[MapLibre] ✅ Comprehensive document generated with TWO-PASS approach');
@@ -6429,7 +6448,14 @@ async function exportAreaConsistencyPDF() {
       : result.actualCalcLastPage;
     
     // Continue with Area & Consistency section
-    await generateComprehensivePDF(computedParcels, result.pdf, surveyorInfo.projectTitle, lastDisplayedPageNumber, result.sections);
+    await generateComprehensivePDF(
+      computedParcels,
+      result.pdf,
+      surveyorInfo.projectTitle,
+      lastDisplayedPageNumber,
+      result.sections,
+      { reportData, narrativeOptions }
+    );
     
   } catch (error: any) {
     console.error('[MapLibre] ❌ Error generating comprehensive document:', error);
@@ -6447,7 +6473,8 @@ async function generateComprehensivePDF(
   calcPart1Blob: Blob,
   projectName: string,
   lastDisplayedPageNumber: number,
-  twoPassSections?: { cover: Blob; fieldBook: Blob; coordinateList: Blob; calculations: Blob }
+  twoPassSections?: { cover: Blob; fieldBook: Blob; coordinateList: Blob; calculations: Blob; beaconComparison?: Blob },
+  reportInputs?: { reportData: any; narrativeOptions: any }
 ) {
   try {
     console.log('[MapLibre] 📄 Generating Cumulative Comprehensive PDF...');
@@ -6485,7 +6512,9 @@ async function generateComprehensivePDF(
       workingDirectory,
       onNewParcels: async (parcels) => {
         await markParcelsAsIncludedInPdf(newParcels);
-      }
+      },
+      reportData: reportInputs?.reportData,
+      narrativeOptions: reportInputs?.narrativeOptions
     });
     
     if (!result.success) {
@@ -6533,6 +6562,8 @@ async function generateComprehensivePDF(
           coordinateList: twoPassSections.coordinateList,
           calculations: twoPassSections.calculations,
           areas: result.areasOnlyBlob,
+          beaconComparison: twoPassSections.beaconComparison,
+          reportOnSurvey: result.narrativeBlob,
         },
       });
       if (split.failed.length) {

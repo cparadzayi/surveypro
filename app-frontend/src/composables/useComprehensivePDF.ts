@@ -11,6 +11,21 @@ import { useAreaConsistencyPDF } from './useAreaConsistencyPDF'
 import { saveDocument } from '@/services/documentStorage'
 import { listCoordinatePoints } from '@/services/spatial'
 import type { Parcel } from './useAreaCompliance'
+import { PDFDocument } from 'pdf-lib'
+import { generateNarrativeReportOnSurveyPDF } from '@/utils/reportOnSurveyNarrativeGenerator'
+import { isReportDataEmpty } from '@/utils/reportDataFromWorkflow'
+import type { ReportOnSurveyData } from '@/types/cadastral'
+
+export interface NarrativeReportOptions {
+  surveyorName: string
+  licenseNumber: string
+  firm: string
+  address: string
+  surveyDate: string
+  surveyOf: string
+  district?: string
+  assistant?: string
+}
 
 export interface ComprehensivePDFOptions {
   computedParcels: Parcel[]
@@ -22,6 +37,9 @@ export interface ComprehensivePDFOptions {
   workingDirectory?: string
   onNewParcels?: (parcels: Parcel[]) => Promise<void>
   skipParcelTracking?: boolean // Set to true for Survey Plan export (no parcel tracking needed)
+  /** Narrative Report of Survey, appended at the very end; omit to skip it */
+  reportData?: ReportOnSurveyData | null
+  narrativeOptions?: NarrativeReportOptions
 }
 
 export interface ComprehensivePDFResult {
@@ -30,6 +48,48 @@ export interface ComprehensivePDFResult {
   error?: string
   pdfBlob?: Blob
   areasOnlyBlob?: Blob
+  /** The narrative section on its own, for the Reports folder copy */
+  narrativeBlob?: Blob
+}
+
+/**
+ * Append the narrative Report of Survey to the collated body.
+ *
+ * The narrative is numbered as a continuation after Areas: Areas' own page count
+ * is read back from the rendered areas section, so the first narrative page is
+ * calculationsEndPage + areasPages + 1. Nothing cross-references the narrative,
+ * so this is a pure tail append.
+ *
+ * Returns the body unchanged (and no narrative blob) when there is no report data.
+ */
+export async function appendNarrativeReport(
+  mergedPdfBytes: Uint8Array,
+  areasOnlyBlob: Blob,
+  calculationsEndPage: number,
+  reportData: ReportOnSurveyData | null | undefined,
+  narrativeOptions: NarrativeReportOptions | undefined
+): Promise<{ merged: Uint8Array; narrativeBlob?: Blob }> {
+  if (!reportData || isReportDataEmpty(reportData) || !narrativeOptions) {
+    console.log('[ComprehensivePDF] ℹ️ No report data — skipping narrative Report of Survey')
+    return { merged: mergedPdfBytes }
+  }
+
+  const areasDoc = await PDFDocument.load(await areasOnlyBlob.arrayBuffer())
+  const narrativeStartPage = calculationsEndPage + areasDoc.getPageCount() + 1
+  console.log('[ComprehensivePDF] 📝 Appending Report of Survey from page', narrativeStartPage)
+
+  const narrative = await generateNarrativeReportOnSurveyPDF(
+    reportData,
+    narrativeOptions,
+    narrativeStartPage
+  )
+
+  const bodyDoc = await PDFDocument.load(mergedPdfBytes)
+  const narrativeDoc = await PDFDocument.load(await narrative.pdf.arrayBuffer())
+  const copied = await bodyDoc.copyPages(narrativeDoc, narrativeDoc.getPageIndices())
+  copied.forEach((page) => bodyDoc.addPage(page))
+
+  return { merged: await bodyDoc.save(), narrativeBlob: narrative.pdf }
 }
 
 /**
@@ -50,7 +110,9 @@ export async function generateComprehensiveLatestPDF(
     beaconLabels = [],
     workingDirectory,
     onNewParcels,
-    skipParcelTracking = false
+    skipParcelTracking = false,
+    reportData,
+    narrativeOptions
   } = options
 
   try {
@@ -91,13 +153,23 @@ export async function generateComprehensiveLatestPDF(
       }
     }
 
-    const mergedPdfBytes = areaResult.merged
     const areasOnlyBlob = areaResult.areasOnly
+
+    // Fold the narrative Report of Survey in at the very bottom of the record.
+    const withNarrative = await appendNarrativeReport(
+      areaResult.merged,
+      areasOnlyBlob,
+      lastDisplayedPageNumber,
+      reportData,
+      narrativeOptions
+    )
+    const mergedPdfBytes = withNarrative.merged
+    const narrativeBlob = withNarrative.narrativeBlob
 
     console.log('[ComprehensivePDF] ✅ PDF generated successfully')
 
     // Create blob
-    const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' })
+    const blob = new Blob([mergedPdfBytes as any], { type: 'application/pdf' })
     const filename = 'Comprehensive_Latest.pdf'
 
     // Save to project folder if working directory provided
@@ -126,7 +198,8 @@ export async function generateComprehensiveLatestPDF(
           success: true,
           filePath: saveResult.filePath,
           pdfBlob: blob,
-          areasOnlyBlob
+          areasOnlyBlob,
+          narrativeBlob
         }
       } else {
         console.error('[ComprehensivePDF] ❌ Failed to save PDF:', saveResult.error)
@@ -137,7 +210,8 @@ export async function generateComprehensiveLatestPDF(
         return {
           success: false,
           error: saveResult.error,
-          pdfBlob: blob
+          pdfBlob: blob,
+          narrativeBlob
         }
       }
     } else {
@@ -147,7 +221,8 @@ export async function generateComprehensiveLatestPDF(
       return {
         success: true,
         pdfBlob: blob,
-        areasOnlyBlob
+        areasOnlyBlob,
+        narrativeBlob
       }
     }
   } catch (error: any) {

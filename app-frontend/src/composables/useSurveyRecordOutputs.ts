@@ -5,6 +5,10 @@ export interface SurveyRecordSections {
   coordinateList: Blob
   calculations: Blob
   areas: Blob
+  /** SI 727 s.67(5) Beacon Comparison Report — copied into the Calculations folder */
+  beaconComparison?: Blob
+  /** Narrative Report of Survey — copied into the Reports folder */
+  reportOnSurvey?: Blob
 }
 
 export interface SaveSurveyRecordOptions {
@@ -33,6 +37,15 @@ export async function saveSurveyRecordSections(
     { label: 'Calculations', documentType: 'calculations-part1', fileName: 'Calculations.pdf', pdfBlob: sections.calculations },
     { label: 'Areas & Consistency', documentType: 'areas-consistency', fileName: 'AreasAndConsistency.pdf', pdfBlob: sections.areas },
   ]
+
+  // Both reports are optional: absent when the project has no beacon comparison
+  // or no Report on Survey data.
+  if (sections.beaconComparison) {
+    jobs.push({ label: 'Beacon Comparison', documentType: 'calculations-part1', fileName: 'BeaconComparison.pdf', pdfBlob: sections.beaconComparison })
+  }
+  if (sections.reportOnSurvey) {
+    jobs.push({ label: 'Report on Survey', documentType: 'report-on-survey', fileName: 'ReportOnSurvey.pdf', pdfBlob: sections.reportOnSurvey })
+  }
 
   const saved: string[] = []
   const failed: { label: string; error: string }[] = []

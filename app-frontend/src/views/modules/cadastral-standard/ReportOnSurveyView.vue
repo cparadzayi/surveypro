@@ -472,7 +472,7 @@ import { useSmartSuggestions } from '../../../composables/useSmartSuggestions'
 import SmartSuggestionDropdown from '../../../components/SmartSuggestionDropdown.vue'
 import type { ReportOnSurveyData } from '../../../types/cadastral'
 
-const { workflowState } = useCadastralWorkflow()
+const { workflowState, saveStepData } = useCadastralWorkflow()
 
 // Smart Suggestions
 const {
@@ -670,8 +670,9 @@ function handleKeyDown(event: KeyboardEvent, field: string) {
 }
 
 // Save draft
-const saveDraft = () => {
+const saveDraft = async () => {
   workflowState.reportOnSurvey = { ...reportData.value }
+  await saveStepData('report-on-survey', { report_data: workflowState.reportOnSurvey })
   console.log('[ReportOnSurvey] Draft saved')
   alert('✅ Draft saved successfully!')
 }
@@ -695,9 +696,10 @@ const generateReport = async () => {
   try {
     isGenerating.value = true
     
-    // Save to workflow state
+    // Save to workflow state (and persist for the collated document)
     workflowState.reportOnSurvey = { ...reportData.value }
-    
+    await saveStepData('report-on-survey', { report_data: workflowState.reportOnSurvey })
+
     console.log('[ReportOnSurvey] Generating PDF...', reportData.value, 'Format:', reportFormat.value)
     
     // Prepare generation options

@@ -387,7 +387,17 @@ async function loadWorkflowState(surveyProjectId: number) {
         workflowState.adjustedCoordinates = dbState.step_data['calculations-part1'].adjusted_coordinates
         console.log(`✅ Restored ${workflowState.adjustedCoordinates.length} adjusted coordinates`)
       }
-      
+
+      // Restore the Report on Survey so the collated document can rebuild both
+      // the Beacon Comparison Report and the narrative without the user having
+      // to revisit the Report on Survey step.
+      if (dbState.step_data?.['report-on-survey']?.report_data) {
+        workflowState.reportOnSurvey = dbState.step_data['report-on-survey'].report_data
+        console.log(
+          `✅ Restored Report on Survey (${workflowState.reportOnSurvey?.beacons?.length || 0} beacons)`
+        )
+      }
+
       // Restore projectInfo from project-setup step
       if (dbState.step_data?.['project-setup']) {
         const setupData = dbState.step_data['project-setup']

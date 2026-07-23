@@ -1336,6 +1336,7 @@ const {
   linkToProject,
   loadWorkflowState,
   setCurrentStep,
+  saveStepData,
   completeCurrentStep
 } = useCadastralWorkflow();
 
@@ -2822,7 +2823,11 @@ function handleFoundBeaconsSave(data: { beacons: any[]; comparisonConfig: any })
   console.log('[Found Beacons] ✅ Beacon data and comparison config saved.');
   console.log('[Found Beacons] Comparison method:', data.comparisonConfig.method);
   console.log('[Found Beacons] Tolerance:', data.comparisonConfig.toleranceThreshold);
-  
+
+  // Persist so the Survey Plan export (which rebuilds workflow state from the
+  // backend) can collate the Beacon Comparison Report.
+  saveStepData('report-on-survey', { report_data: workflowState.reportOnSurvey });
+
   // Advance to Field Book. Only auto-generate when survey points are actually loaded —
   // the beacon-comparison save must not surface an unrelated "no imported points" error
   // (e.g. when revisiting Found Beacons on a project whose csv-import step_data lacks points).

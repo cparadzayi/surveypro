@@ -195,6 +195,12 @@ export class TwoPassDocumentGenerator {
         measurements.beaconComparison!.startPage
       )
       if (beaconResult) {
+        if (beaconResult.pageCount !== measurements.beaconComparison!.pages) {
+          console.warn(
+            `[TwoPassDocumentGenerator] Beacon Comparison page count drifted between passes: ` +
+            `Pass 1 measured ${measurements.beaconComparison!.pages} pages, Pass 2 rendered ${beaconResult.pageCount} pages.`
+          )
+        }
         beaconComparisonPDF = beaconResult.pdf
         pdfs.push(beaconResult.pdf)
         console.log(`     ✓ ${beaconResult.pageCount} pages generated`)

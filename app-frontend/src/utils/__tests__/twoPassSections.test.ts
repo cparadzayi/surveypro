@@ -1,6 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import { PDFDocument } from 'pdf-lib';
 import { ComprehensiveDocumentGenerator } from '../comprehensive-document';
+import { TwoPassDocumentGenerator } from '../TwoPassDocumentGenerator';
+import { CoordinateListGenerator } from '../coordinate-list';
 import type { ReportOnSurveyData } from '@/types/cadastral';
 
 // Minimal-but-real inputs: two observed points + one parcel are enough to render
@@ -115,5 +118,109 @@ describe('generateWithTwoPass — section blobs', () => {
     expect(result.measurements!.areas.startPage).toBe(
       result.measurements!.calculations.endPage + 1
     );
+  }, 30000);
+
+  // Finding 1 (Important): the stamped page numbers say Beacon Comparison sits
+  // between Coordinate List and Calculations, but nothing previously asserted
+  // that the PHYSICAL merge order (the `pdfs.push(...)` sequence in
+  // TwoPassDocumentGenerator.renderPass) agrees with that. If someone moved the
+  // beacon push after the calculations push, every existing test above stays
+  // green (measurements/page numbers are computed in Pass 1 and never touched)
+  // while the merged PDF's physical page order would contradict its own
+  // stamped numbers.
+  //
+  // Byte-level page-content inspection (e.g. searching decoded content streams
+  // for section-specific text) was considered but rejected: it would require
+  // reaching into pdf-lib's low-level stream-decoding internals and assumes
+  // jsPDF's compression settings never change — fragile and coupled to
+  // implementation details unrelated to the claim under test. Spying on the
+  // merge step instead asserts exactly the behaviour in question — the order
+  // of blobs hand to `mergePDFs` — using the very same Blob references
+  // exposed via `result.sections`, so it is precise and order-sensitive: it
+  // fails immediately if the beacon push is reordered relative to coordinate
+  // list / calculations, and passes only when beacon sits strictly between them.
+  it('physically merges Field Book -> Coordinate List -> Beacon Comparison -> Calculations in that order', async () => {
+    const mergeSpy = vi.spyOn(TwoPassDocumentGenerator.prototype as any, 'mergePDFs');
+
+    const gen = new ComprehensiveDocumentGenerator();
+    const result = await gen.generateWithTwoPass({
+      ...baseData, reportData, reportOptions,
+    } as any);
+
+    expect(mergeSpy).toHaveBeenCalledTimes(1);
+    const mergedBlobs = mergeSpy.mock.calls[0][0] as Blob[];
+
+    const fieldBookIdx = mergedBlobs.indexOf(result.sections!.fieldBook);
+    const coordListIdx = mergedBlobs.indexOf(result.sections!.coordinateList);
+    const beaconIdx = mergedBlobs.indexOf(result.sections!.beaconComparison!);
+    const calcIdx = mergedBlobs.indexOf(result.sections!.calculations);
+
+    // Every section must actually be present in the merged input...
+    expect(fieldBookIdx).toBeGreaterThanOrEqual(0);
+    expect(coordListIdx).toBeGreaterThanOrEqual(0);
+    expect(beaconIdx).toBeGreaterThanOrEqual(0);
+    expect(calcIdx).toBeGreaterThanOrEqual(0);
+    // ...and in the order the stamped page numbers promise.
+    expect(fieldBookIdx).toBeLessThan(coordListIdx);
+    expect(coordListIdx).toBeLessThan(beaconIdx);
+    expect(beaconIdx).toBeLessThan(calcIdx);
+
+    // Sanity cross-check: independently re-derive the expected total page
+    // count from each rendered section blob (not from `measurements`, which
+    // also projects unimplemented Areas pages) and confirm the final merged
+    // PDF (2 cover pages + the four sections) matches it.
+    const countPages = async (blob: Blob) =>
+      (await PDFDocument.load(await blob.arrayBuffer())).getPageCount();
+
+    const [coverAndBodyPages, fieldBookPages, coordListPages, beaconPages, calcPages] =
+      await Promise.all([
+        countPages(result.pdf),
+        countPages(result.sections!.fieldBook),
+        countPages(result.sections!.coordinateList),
+        countPages(result.sections!.beaconComparison!),
+        countPages(result.sections!.calculations),
+      ]);
+
+    expect(coverAndBodyPages).toBe(
+      2 /* cover */ + fieldBookPages + coordListPages + beaconPages + calcPages
+    );
+
+    mergeSpy.mockRestore();
+  }, 30000);
+
+  // Finding 2 (Important): nothing verified that the point -> calculation-page
+  // lookup handed to the Coordinate List renderer actually carries the
+  // SHIFTED page numbers (i.e. shifted past the K-page Beacon Comparison
+  // Report). Spying on `generateCoordinateListPDF` captures exactly what the
+  // renderer received (as opposed to re-deriving it from `measurements`,
+  // which is produced by the same code path and could agree with itself
+  // while still being wrong relative to what's rendered).
+  it('hands the Coordinate List renderer a calc-page lookup shifted past the Beacon Comparison Report', async () => {
+    const genSpy = vi.spyOn(CoordinateListGenerator.prototype, 'generateCoordinateListPDF');
+
+    const gen = new ComprehensiveDocumentGenerator();
+    const result = await gen.generateWithTwoPass({
+      ...baseData, reportData, reportOptions,
+    } as any);
+
+    // The measure pass calls generateCoordinateListPDF once with no calc
+    // lookup (4th arg undefined); the render pass calls it again with the
+    // accurate, shifted lookup. Find that render-pass call.
+    const renderCall = genSpy.mock.calls.find((call) => call[3] !== undefined);
+    expect(renderCall).toBeDefined();
+    const calcPageLookup = renderCall![3] as Record<string, number>;
+
+    const coordEnd = result.measurements!.coordinateList.endPage;
+    const beaconPages = result.measurements!.beaconComparison!.pages;
+    expect(beaconPages).toBeGreaterThanOrEqual(1);
+    const minShiftedPage = coordEnd + beaconPages + 1;
+
+    const lookupValues = Object.values(calcPageLookup);
+    expect(lookupValues.length).toBeGreaterThan(0);
+    for (const page of lookupValues) {
+      expect(page).toBeGreaterThanOrEqual(minShiftedPage);
+    }
+
+    genSpy.mockRestore();
   }, 30000);
 });

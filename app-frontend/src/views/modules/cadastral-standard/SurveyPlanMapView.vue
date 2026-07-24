@@ -4430,9 +4430,9 @@ async function generateComprehensivePDF() {
     }
     const narrativeOptions = {
       ...reportOptions,
-      firm: (surveyorInfo as any).firm || '',
-      address: (surveyorInfo as any).address || '',
-      district: (surveyorInfo as any).district || '',
+      firm: surveyorInfo.firm || '',
+      address: surveyorInfo.address || '',
+      district: surveyorInfo.district || '',
       assistant: 'N/A',
     }
 
@@ -4501,17 +4501,28 @@ async function generateComprehensivePDF() {
     // Show success message
     if (finalResult.filePath) {
       console.log('[ComprehensivePDF] ✅ Comprehensive_Latest.pdf saved to:', finalResult.filePath)
+      const contentsLines = [
+        `• Cover Letter (professional letterhead)`,
+        `• CALCULATIONS PART 1 Title Page`,
+        `• Electronic Field Book (${surveyPoints.length} points)`,
+        `• Coordinate List`,
+      ]
+      if (result.sections?.beaconComparison) {
+        contentsLines.push(`• Beacon Comparison Report`)
+      }
+      contentsLines.push(
+        `• Calculations (duplicate analysis)`,
+        `• Area & Consistency (${computedParcels.length} parcels)`,
+      )
+      if (finalResult.narrativeBlob) {
+        contentsLines.push(`• Report of Survey`)
+      }
       alert(
         `✅ Complete Survey Record Generated!\n\n` +
         `Document: Comprehensive_Latest.pdf\n` +
         `Location: ${finalResult.filePath}\n\n` +
         `This document contains:\n` +
-        `• Cover Letter (professional letterhead)\n` +
-        `• CALCULATIONS PART 1 Title Page\n` +
-        `• Electronic Field Book (${surveyPoints.length} points)\n` +
-        `• Coordinate List\n` +
-        `• Calculations (duplicate analysis)\n` +
-        `• Area & Consistency (${computedParcels.length} parcels)\n\n` +
+        `${contentsLines.join('\n')}\n\n` +
         `The document provides a complete survey record.`
       )
     } else if (finalResult.pdfBlob) {

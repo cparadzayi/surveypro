@@ -85,7 +85,7 @@ export function renderBeaconComparison(
   // Prefer an explicit adjustment summary (Helmert LSQ + W-test); fall back to the legacy tolerance line.
   const adjustmentLine =
     comparison.adjustmentSummary ||
-    `Tolerance Threshold: ±${comparison.toleranceThreshold.toFixed(3)}m`;
+    `Tolerance Threshold: ±${(comparison.toleranceThreshold ?? 0).toFixed(3)}m`;
   const adjustmentLines = cursor.doc.splitTextToSize(
     adjustmentLine,
     cursor.pageWidth - cursor.margin * 2 - 10

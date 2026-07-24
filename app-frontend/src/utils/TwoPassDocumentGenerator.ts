@@ -14,14 +14,14 @@ import type {
   CalculationsMeasurement,
   FieldBookMeasurement,
   CoordinateListMeasurement,
-  AreasMeasurement
+  AreasMeasurement,
+  SectionMeasurement
 } from '../types/document-measurements'
 import type { CalculationsPart1Result } from '../types/adjusted-coordinates'
 import { CalculationsPart1Generator, type SurveyPoint } from './calculations-part1'
 import { CoordinateListGenerator, type SurveyorInfo } from './coordinate-list'
 import { FieldBookGenerator } from './field-book'
 import type { AdjustedCoordinate } from '../types/adjusted-coordinates'
-import type { SectionMeasurement } from '../types/document-measurements'
 import type { ReportOnSurveyData } from '../types/cadastral'
 import {
   generateBeaconComparisonReportPDF,

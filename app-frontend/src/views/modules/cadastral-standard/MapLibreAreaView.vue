@@ -888,7 +888,7 @@ import { capeLoToWGS84, capeLoArrayToWGS84, calculateWGS84Bounds, geoJsonToCapeL
 import { areaCompute, type AreaComputeResponse } from '../../../services/compute';
 import { useAreaCompliance, type AreaType, type Parcel } from '../../../composables/useAreaCompliance';
 import { useParcelGeometry } from '../../../composables/useParcelGeometry';
-import { useComprehensivePDF } from '../../../composables/useComprehensivePDF';
+import { useComprehensivePDF, type NarrativeReportOptions } from '../../../composables/useComprehensivePDF';
 import { useAreaConsistencyPDF } from '../../../composables/useAreaConsistencyPDF';
 import { CalculationsPart1Generator, type SurveyPoint } from '../../../utils/calculations-part1';
 import { ComprehensiveDocumentGenerator } from '../../../utils/comprehensive-document';
@@ -913,6 +913,7 @@ import { buildPlanDesignation } from '@/utils/planDesignation';
 import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
 import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
 import { buildReportDataFromWorkflow } from '@/utils/reportDataFromWorkflow';
+import type { ReportOnSurveyData } from '@/types/cadastral';
 
 const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../components/ParcelDetectionPanel.vue'));
 
@@ -6474,7 +6475,7 @@ async function generateComprehensivePDF(
   projectName: string,
   lastDisplayedPageNumber: number,
   twoPassSections?: { cover: Blob; fieldBook: Blob; coordinateList: Blob; calculations: Blob; beaconComparison?: Blob },
-  reportInputs?: { reportData: any; narrativeOptions: any }
+  reportInputs?: { reportData: ReportOnSurveyData | null; narrativeOptions: NarrativeReportOptions }
 ) {
   try {
     console.log('[MapLibre] 📄 Generating Cumulative Comprehensive PDF...');

@@ -16,6 +16,7 @@
  * CRS/extent machinery.
  */
 import { edgeStrip } from './diagram/edgeStrip.js'
+import { contiguousMarks } from './diagram/contiguousMarks.js'
 import { formatSI } from './diagram/numberFormat.js'
 
 const PT_PER_MM = 72 / 25.4
@@ -95,10 +96,11 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
       doc.closePath().fill()
       doc.restore()
     } else if (ann.role === 'contiguous') {
+      const marks = contiguousMarks(a, b, ann.end)
       const st = edgeStrip(a, b, CONTIG_STUB_PT, cen) // st[3]=a+out, st[2]=b+out
       doc.save().dash(3, { space: 2 }).lineWidth(0.6).strokeColor('#000000')
-      doc.moveTo(a[0], a[1]).lineTo(st[3][0], st[3][1]).stroke()
-      doc.moveTo(b[0], b[1]).lineTo(st[2][0], st[2][1]).stroke()
+      if (marks.stubFrom) doc.moveTo(a[0], a[1]).lineTo(st[3][0], st[3][1]).stroke()
+      if (marks.stubTo) doc.moveTo(b[0], b[1]).lineTo(st[2][0], st[2][1]).stroke()
       doc.undash().restore()
     }
 
@@ -128,9 +130,11 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
         doc.rotate(angleDeg, { origin: [lx, ly] })
         doc.text(labelText, lx - labelW / 2, ly - LABEL_FONT_PT / 2, { lineBreak: false })
       } else {
-        // Contiguous: horizontal outward label beyond the dashed stub.
+        // Contiguous: horizontal outward label beyond the dashed stub, centred on the
+        // abutting extent (whole side, or the tagged half).
+        const m = contiguousMarks([p1.x, p1.y], [p2.x, p2.y], ann.end)
         const off = CONTIG_LABEL_OFF_PT
-        const lx = mid.x + perpX * off, ly = mid.y + perpY * off
+        const lx = m.labelAnchor[0] + perpX * off, ly = m.labelAnchor[1] + perpY * off
         doc.text(labelText, lx - labelW / 2, ly - LABEL_FONT_PT / 2, { lineBreak: false })
       }
       doc.restore()

@@ -122,3 +122,61 @@ describe('drawSubjectAdjoiningFeatures — role behaviour', () => {
     expect(doc.calls).toHaveLength(0)
   })
 })
+
+// Minimal chainable PDFKit stand-in that records moveTo/lineTo/text.
+function fakeDocNewStyle() {
+  const calls = { moveTo: [], lineTo: [], text: [] }
+  const doc = new Proxy({}, {
+    get(_t, k) {
+      if (k === 'widthOfString') return () => 10
+      if (k === 'moveTo') return (x, y) => { calls.moveTo.push([x, y]); return doc }
+      if (k === 'lineTo') return (x, y) => { calls.lineTo.push([x, y]); return doc }
+      if (k === 'text') return (t, x, y) => { calls.text.push([t, x, y]); return doc }
+      return () => doc  // save/restore/dash/undash/lineWidth/strokeColor/fillColor/font/fontSize
+    },
+  })
+  return { doc, calls }
+}
+
+// Square subject ring in PDF points; side 'AB' = edge 0→1, a=(0,0) b=(100,0).
+const ptRing = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+
+describe('drawSubjectAdjoiningFeatures — contiguous terminal offsets', () => {
+  test("end:'both' draws two stubs", () => {
+    const { doc, calls } = fakeDocNewStyle()
+    drawSubjectAdjoiningFeatures(doc, {
+      ptRing, ptPerGroundM: 1,
+      annotations: [{ side: 'AB', role: 'contiguous', label: 'N', end: 'both' }],
+    })
+    expect(calls.moveTo).toHaveLength(2)
+  })
+
+  test('missing end draws two stubs (back-compat)', () => {
+    const { doc, calls } = fakeDocNewStyle()
+    drawSubjectAdjoiningFeatures(doc, {
+      ptRing, ptPerGroundM: 1,
+      annotations: [{ side: 'AB', role: 'contiguous', label: 'N' }],
+    })
+    expect(calls.moveTo).toHaveLength(2)
+  })
+
+  test("end:'from' draws one stub, starting at terminal A", () => {
+    const { doc, calls } = fakeDocNewStyle()
+    drawSubjectAdjoiningFeatures(doc, {
+      ptRing, ptPerGroundM: 1,
+      annotations: [{ side: 'AB', role: 'contiguous', label: 'N', end: 'from' }],
+    })
+    expect(calls.moveTo).toHaveLength(1)
+    expect(calls.moveTo[0]).toEqual([0, 0])
+  })
+
+  test("end:'to' draws one stub, starting at terminal B", () => {
+    const { doc, calls } = fakeDocNewStyle()
+    drawSubjectAdjoiningFeatures(doc, {
+      ptRing, ptPerGroundM: 1,
+      annotations: [{ side: 'AB', role: 'contiguous', label: 'N', end: 'to' }],
+    })
+    expect(calls.moveTo).toHaveLength(1)
+    expect(calls.moveTo[0]).toEqual([100, 0])
+  })
+})

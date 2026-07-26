@@ -9,6 +9,8 @@ import { offsetPolygonPt } from './diagram/offsetPolygon.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
+import { contiguousMarks } from './diagram/contiguousMarks.js'
+import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
 import { formatSI } from './diagram/numberFormat.js'
 import {
@@ -207,6 +209,13 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
   // Road/servitude names sit beyond the vertex-letter band so they clear the letters
   // (which stay snug to their beacons). ~beaconR + gap + letter height ≈ the band.
   const vertexBandPt = beaconRadiusPt(denom) + 14
+  // Side lookups for road-end handling: a road extends past a corner unless the flanking
+  // side is ANOTHER road (an L-junction, where the bands just meet); it bends to a
+  // contiguous offshoot if one is drawn there, else extends straight along the road axis.
+  const contiguousSides = new Set(
+    annotations.filter((x) => x && x.role === 'contiguous' && x.side).map((x) => x.side))
+  const roadSides = new Set(
+    annotations.filter((x) => x && x.role === 'road' && x.side).map((x) => x.side))
 
   for (const ann of annotations) {
     if (!ann || !ann.side || !ann.role) continue
@@ -225,17 +234,44 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
     const mid = { px: (p1.px + p2.px) / 2, py: (p1.py + p2.py) / 2 }
 
     if (ann.role === 'road' || ann.role === 'servitude') {
-      let widthPt = ROAD_STRIP_PT
+      let q = null
       if (ann.role === 'servitude') {
         if (!(ann.widthM > 0)) {
           logger?.warn?.(`[Diagram] servitude ${ann.side} has no widthM; drawing label only`)
-          widthPt = 0
         } else {
-          widthPt = ann.widthM * ptPerGroundM
+          q = edgeStrip(a, b, ann.widthM * ptPerGroundM, cen)
         }
+      } else {
+        // Road: a thin ribbon along the frontage. At each corner that is an OPEN road end
+        // (flanking side is not another road) the band extends past the corner — bending to
+        // run flush along a contiguous offshoot if one is drawn there (align, no divergence),
+        // otherwise extending straight along the road axis so the road reads as continuing
+        // beyond the parcel. At a road↔road corner (L-junction) it just meets its neighbour.
+        const flankA = geometry.vertices[(i - 1 + n) % n].letter + geometry.vertices[i].letter
+        const flankB = geometry.vertices[(i + 1) % n].letter + geometry.vertices[(i + 2) % n].letter
+        const axLen = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+        const ax = [(b[0] - a[0]) / axLen, (b[1] - a[1]) / axLen] // unit A→B (road axis)
+        const inner = []
+        if (!roadSides.has(flankA)) {
+          if (contiguousSides.has(flankA)) {
+            const prev = subjPt[(i - 1 + n) % n]
+            inner.push(edgeStrip([prev.px, prev.py], a, CONTIG_STUB_PT, cen)[2]) // bend to offshoot tip
+          } else {
+            inner.push([a[0] - ax[0] * CONTIG_STUB_PT, a[1] - ax[1] * CONTIG_STUB_PT]) // straight past A
+          }
+        }
+        inner.push(a, b)
+        if (!roadSides.has(flankB)) {
+          if (contiguousSides.has(flankB)) {
+            const next = subjPt[(i + 2) % n]
+            inner.push(edgeStrip(b, [next.px, next.py], CONTIG_STUB_PT, cen)[3]) // bend to offshoot tip
+          } else {
+            inner.push([b[0] + ax[0] * CONTIG_STUB_PT, b[1] + ax[1] * CONTIG_STUB_PT]) // straight past B
+          }
+        }
+        q = roadBandRibbon(inner, ROAD_STRIP_PT, cen)
       }
-      if (widthPt > 0) {
-        const q = edgeStrip(a, b, widthPt, cen)
+      if (q && q.length >= 3) {
         doc.save()
           .fillColor(ann.role === 'road' ? BURNT_SIENNA : SERVITUDE_BLUE)
           .fillOpacity(STRIP_FILL_OPACITY)
@@ -245,11 +281,14 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         doc.restore()
       }
     } else if (ann.role === 'contiguous') {
-      // Short dashed outward stubs at each endpoint to hint the neighbour continues.
+      // Dashed outward stub at each abutting terminal (both when the neighbour spans the
+      // side; one when it abuts near a single terminal). Which ends + the label anchor
+      // come from the shared contiguousMarks helper.
+      const marks = contiguousMarks(a, b, ann.end)
       const st = edgeStrip(a, b, CONTIG_STUB_PT, cen) // st[3]=a+out, st[2]=b+out
       doc.save().dash(3, { space: 2 }).lineWidth(0.6).strokeColor('#000000')
-      doc.moveTo(a[0], a[1]).lineTo(st[3][0], st[3][1]).stroke()
-      doc.moveTo(b[0], b[1]).lineTo(st[2][0], st[2][1]).stroke()
+      if (marks.stubFrom) doc.moveTo(a[0], a[1]).lineTo(st[3][0], st[3][1]).stroke()
+      if (marks.stubTo) doc.moveTo(b[0], b[1]).lineTo(st[2][0], st[2][1]).stroke()
       doc.undash().restore()
     }
 
@@ -277,7 +316,11 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         doc.rotate(angleDeg, { origin: [lx, ly] })
         doc.text(labelText, lx - labelW / 2, ly - 3.5, { lineBreak: false })
       } else {
-        const pos = placeVertexLabel(mid, subjCentroid, {
+        // Centre the neighbour label on the abutting extent (whole side, or the tagged
+        // half) rather than always the side midpoint.
+        const m = contiguousMarks(a, b, ann.end)
+        const anchor = { px: m.labelAnchor[0], py: m.labelAnchor[1] }
+        const pos = placeVertexLabel(anchor, subjCentroid, {
           beaconR: 0, gap: 2, labelW, labelH: 7,
           segments: subjSegs.concat(neighbourSegs, labelObstacles),
         })

@@ -25,6 +25,13 @@
           <label v-if="activeSideEditor.role === 'servitude' || activeSideEditor.role === 'road'">Width (m)
             <input v-model.number="activeSideEditor.widthM" type="number" min="0" step="0.1" />
           </label>
+          <label v-if="activeSideEditor.role === 'contiguous'">Abutment
+            <select v-model="activeSideEditor.end">
+              <option value="from">From terminal ({{ activeSideEditor.side[0] }})</option>
+              <option value="both">Midway (spans side)</option>
+              <option value="to">To terminal ({{ activeSideEditor.side[1] }})</option>
+            </select>
+          </label>
           <div class="side-modal-actions">
             <button type="button" class="btn-primary" @click="saveSideEditor">Save</button>
             <button type="button" @click="clearSideEditor">Clear</button>
@@ -626,7 +633,7 @@ import {
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
 import { pickDiagramSubjectId } from './diagramSubjectPick'
 import { paperSizeOptionsFor } from './paperSizeOptions'
-import { subjectSides, upsertAnnotation, removeAnnotation, annotationsForSubject, withSubjectAnnotations, hydrateAnnotationsMap, type SideAnnotation, type SideRole } from './sideAnnotations'
+import { subjectSides, upsertAnnotation, removeAnnotation, annotationsForSubject, withSubjectAnnotations, hydrateAnnotationsMap, fractionAlongSide, endFromFraction, type SideAnnotation, type SideRole } from './sideAnnotations'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation } from '@/utils/planDesignation';
@@ -737,7 +744,7 @@ const refinedBeaconLabels = ref<Array<{
 const selectedDiagramParcelId = ref<string | number | null>(null)
 const sideAnnotationsBySubject = ref<Record<string, SideAnnotation[]>>({})
 const currentSideAnnotations = computed(() => annotationsForSubject(sideAnnotationsBySubject.value, selectedDiagramParcelId.value))
-const activeSideEditor = ref<{ side: string; role: SideRole; label: string; widthM: number | null } | null>(null)
+const activeSideEditor = ref<{ side: string; role: SideRole; label: string; widthM: number | null; end: 'from' | 'to' | 'both' } | null>(null)
 const selectedDiagramStand = computed(() => {
   const p = parcels.value.find((x: any) => String(x.id) === String(selectedDiagramParcelId.value))
   return p?.stand ?? null
@@ -1985,9 +1992,24 @@ function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
     if (sideHits.length) {
       const side = String(sideHits[0].properties?.side ?? '')
       if (side) {
+        // Which terminal(s)? Project the click onto the side in SCREEN space (metric-accurate
+        // for short sides) to get a fraction from the 'from' terminal, then classify.
+        const coords = (sideHits[0].geometry as any)?.coordinates as [number, number][] | undefined
+        let end: 'from' | 'to' | 'both' = 'both'
+        if (coords && coords.length >= 2) {
+          const pa = map.value!.project(coords[0] as any)
+          const pb = map.value!.project(coords[1] as any)
+          end = endFromFraction(fractionAlongSide([pa.x, pa.y], [pb.x, pb.y], [e.point.x, e.point.y]))
+        }
+        // One annotation per side. Editing an existing contiguous entry shows its stored
+        // abutment; a fresh tag takes the abutment implied by where you clicked.
         const cur = currentSideAnnotations.value.find(a => a.side === side)
         activeSideEditor.value = {
-          side, role: cur?.role ?? 'contiguous', label: cur?.label ?? '', widthM: cur?.widthM ?? null,
+          side,
+          role: cur?.role ?? 'contiguous',
+          label: cur?.label ?? '',
+          widthM: cur?.widthM ?? null,
+          end: cur?.role === 'contiguous' ? (cur.end ?? 'both') : end,
         }
         return
       }
@@ -2019,6 +2041,7 @@ function saveSideEditor() {
     role: ed.role,
     label: ed.label?.trim() || undefined,
     widthM: (ed.role === 'servitude' || ed.role === 'road') && ed.widthM != null ? ed.widthM : undefined,
+    end: ed.role === 'contiguous' ? ed.end : undefined,
   }
   const list = upsertAnnotation(currentSideAnnotations.value, ann)
   sideAnnotationsBySubject.value = withSubjectAnnotations(sideAnnotationsBySubject.value, selectedDiagramParcelId.value, list)

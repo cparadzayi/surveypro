@@ -18,6 +18,7 @@
 import { edgeStrip } from './diagram/edgeStrip.js'
 import { formatSI } from './diagram/numberFormat.js'
 import { sideToEdgeIndex } from './adjoiningFeatures.js'
+import { contiguousMarks } from './diagram/contiguousMarks.js'
 
 /** Approximate DXF TEXT width for centring (STYLE/entity width factor is 0.55). */
 function textWidth(text, height) {
@@ -74,9 +75,10 @@ export function emitSubjectAdjoiningFeaturesDxf({
         addLine(servitudeLayer, s[0], s[1], t[0], t[1])
       }
     } else if (ann.role === 'contiguous') {
+      const marks = contiguousMarks(a, b, ann.end)
       const st = edgeStrip(a, b, stubLen, cen) // st[3]=a+out, st[2]=b+out
-      addLine(defaultLayer, a[0], a[1], st[3][0], st[3][1])
-      addLine(defaultLayer, b[0], b[1], st[2][0], st[2][1])
+      if (marks.stubFrom) addLine(defaultLayer, a[0], a[1], st[3][0], st[3][1])
+      if (marks.stubTo) addLine(defaultLayer, b[0], b[1], st[2][0], st[2][1])
     }
 
     // ── Label ──
@@ -101,9 +103,11 @@ export function emitSubjectAdjoiningFeaturesDxf({
         const iy = cy - Math.sin(aRad) * (lw / 2)
         addText(layer, ix, iy, labelText, textHeight, angleDeg)
       } else {
-        // Contiguous: horizontal outward label beyond the stub.
+        // Contiguous: horizontal outward label beyond the stub, centred on the abutting
+        // extent (whole side, or the tagged half).
+        const m = contiguousMarks(a, b, ann.end)
         const off = stubLen + bandLen * 0.5
-        const cx = mid.x + perpX * off, cy = mid.y + perpY * off
+        const cx = m.labelAnchor[0] + perpX * off, cy = m.labelAnchor[1] + perpY * off
         addText(defaultLayer, cx - lw / 2, cy - textHeight / 2, labelText, textHeight, 0)
       }
     }

@@ -71,3 +71,36 @@ describe('emitSubjectAdjoiningFeaturesDxf', () => {
     expect(r.texts).toHaveLength(0)
   })
 })
+
+const ring = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
+const geo2 = { textHeight: 2, stubLen: 3, bandLen: 2, standoff: 1 }
+
+function collect(annotations) {
+  const lines = [], texts = []
+  emitSubjectAdjoiningFeaturesDxf({
+    addLine: (layer, x1, y1, x2, y2) => lines.push([x1, y1, x2, y2]),
+    addText: (layer, x, y, t) => texts.push([x, y, t]),
+    ptRing: ring, annotations, geo: geo2,
+    servitudeLayer: 'SERV', defaultLayer: 'DEF',
+  })
+  return { lines, texts }
+}
+
+describe('emitSubjectAdjoiningFeaturesDxf — contiguous terminal offsets', () => {
+  test("end:'both' emits two stub lines", () => {
+    expect(collect([{ side: 'AB', role: 'contiguous', label: 'N', end: 'both' }]).lines).toHaveLength(2)
+  })
+  test('missing end emits two stub lines (back-compat)', () => {
+    expect(collect([{ side: 'AB', role: 'contiguous', label: 'N' }]).lines).toHaveLength(2)
+  })
+  test("end:'from' emits one stub line from terminal A", () => {
+    const { lines } = collect([{ side: 'AB', role: 'contiguous', label: 'N', end: 'from' }])
+    expect(lines).toHaveLength(1)
+    expect(lines[0].slice(0, 2)).toEqual([0, 0])
+  })
+  test("end:'to' emits one stub line from terminal B", () => {
+    const { lines } = collect([{ side: 'AB', role: 'contiguous', label: 'N', end: 'to' }])
+    expect(lines).toHaveLength(1)
+    expect(lines[0].slice(0, 2)).toEqual([100, 0])
+  })
+})

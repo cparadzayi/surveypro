@@ -26,10 +26,10 @@ const SERVITUDE_BLUE = '#1F6FB2'
 const ROAD_STRIP_PT = 1.3 * PT_PER_MM          // nominal, like the inner band
 const STRIP_FILL_OPACITY = 0.6                 // colour must not obscure detail
 const CONTIG_STUB_PT = 6 * PT_PER_MM
-// The burnt-sienna road band extends OUT to the same depth as the contiguous offshoot
-// stubs, so the road colour reaches the end of the offshoots (rather than the thin
-// nominal ROAD_STRIP_PT band). The offshoots themselves keep their own (black) colour.
-const ROAD_BAND_PT = CONTIG_STUB_PT
+// A road band keeps the thin ROAD_STRIP_PT WIDTH but is extended in LENGTH past each
+// terminal by this much, so the fill reaches the extremes of the flanking contiguous
+// offshoots instead of stopping short at the corners. (= the offshoot stub length.)
+const ROAD_END_EXTEND_PT = CONTIG_STUB_PT
 
 function docToBuffer(doc) {
   const chunks = []
@@ -230,7 +230,8 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
     const mid = { px: (p1.px + p2.px) / 2, py: (p1.py + p2.py) / 2 }
 
     if (ann.role === 'road' || ann.role === 'servitude') {
-      let widthPt = ROAD_BAND_PT   // road band reaches the offshoot depth
+      let widthPt = ROAD_STRIP_PT   // thin band, same WIDTH as the internal band
+      let ea = a, eb = b
       if (ann.role === 'servitude') {
         if (!(ann.widthM > 0)) {
           logger?.warn?.(`[Diagram] servitude ${ann.side} has no widthM; drawing label only`)
@@ -238,9 +239,17 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         } else {
           widthPt = ann.widthM * ptPerGroundM
         }
+      } else {
+        // Road: keep the thin width but EXTEND the band's length past each terminal along
+        // the edge, so the fill reaches the extremes of the flanking contiguous offshoots.
+        const dx = b[0] - a[0], dy = b[1] - a[1]
+        const L = Math.hypot(dx, dy) || 1
+        const ux = dx / L, uy = dy / L
+        ea = [a[0] - ux * ROAD_END_EXTEND_PT, a[1] - uy * ROAD_END_EXTEND_PT]
+        eb = [b[0] + ux * ROAD_END_EXTEND_PT, b[1] + uy * ROAD_END_EXTEND_PT]
       }
       if (widthPt > 0) {
-        const q = edgeStrip(a, b, widthPt, cen)
+        const q = edgeStrip(ea, eb, widthPt, cen)
         doc.save()
           .fillColor(ann.role === 'road' ? BURNT_SIENNA : SERVITUDE_BLUE)
           .fillOpacity(STRIP_FILL_OPACITY)
@@ -279,11 +288,7 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         if (angleDeg > 90 || angleDeg < -90) angleDeg += 180 // keep the text upright
         // Push the name out past the strip AND the vertex-letter band, so it clears
         // the figure vertex labels (which stay close to their beacons).
-        // Push the name past the actual band depth: roads now use the deeper ROAD_BAND_PT
-        // (so the label clears the extended burnt-sienna), servitudes use their own width.
-        const stripPt = ann.role === 'road'
-          ? ROAD_BAND_PT
-          : (ann.widthM > 0 ? ann.widthM * ptPerGroundM : ROAD_STRIP_PT)
+        const stripPt = ann.role === 'servitude' && ann.widthM > 0 ? ann.widthM * ptPerGroundM : ROAD_STRIP_PT
         const off = stripPt + vertexBandPt
         const lx = mid.px + perpX * off, ly = mid.py + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })

@@ -69,9 +69,13 @@ Rules:
 `upsertAnnotation` / `removeAnnotation` are updated to honour the composite key for
 contiguous entries while preserving side-only behaviour for road/servitude.
 
-## Click → intent (both digitizing viewers)
+## Click → intent
 
-The click-a-side handlers already receive the map click point. Add a shared helper that
+Side-annotation tagging (the click-a-side road/servitude/contiguous picker) lives **only** in
+`SurveyPlanMapView.vue` — this is the diagram / general-plan step. The digitize step's viewers
+(`MapLibreAreaView.vue`, `AreaComputationView.vue`) have no side-tagging UI and are not touched.
+
+The click-a-side handler already receives the map click point. Add a shared pure helper that
 projects the click onto the hit side and returns a fraction `t ∈ [0, 1]` measured from the
 `from` terminal:
 
@@ -81,9 +85,9 @@ t < 1/3            → end = 'from'   (near terminal A)
 t > 2/3            → end = 'to'     (near terminal B)
 ```
 
-- The projection helper lives in `sideAnnotations.ts` (pure, unit-tested) and is called by
-  **both** `SurveyPlanMapView.vue` and `MapLibreAreaView.vue` — the cadastral digitize step
-  has two map viewers and side-tagging UX must be wired into both (existing convention).
+- The `t → end` classifier lives in `sideAnnotations.ts` (pure, unit-tested). The projection
+  itself is done in the viewer using screen-space pixel coordinates (`map.project()` of the
+  side endpoints vs the click's `e.point`) for metric-accurate results on short sides.
 - The editor pre-fills `end` from `t`, and — because `end` is now a first-class field — the
   editor exposes an **`end` override control** (From terminal / Midway / To terminal) so the
   surveyor can correct a mis-registered click. The control is shown only for the contiguous
@@ -151,9 +155,8 @@ from the single `both` neighbour (stubs at A and B, one centred label).
 ## Files touched
 
 Frontend:
-- `app-frontend/src/views/modules/cadastral-standard/sideAnnotations.ts` (model, projection helper, keying)
+- `app-frontend/src/views/modules/cadastral-standard/sideAnnotations.ts` (model, `t → end` classifier, keying)
 - `app-frontend/src/views/modules/cadastral-standard/SurveyPlanMapView.vue` (click handler, editor `end` control)
-- `app-frontend/src/views/modules/cadastral-standard/MapLibreAreaView.vue` (click handler parity)
 
 Backend:
 - `app-backend/src/services/diagram/contiguousMarks.js` (new shared helper)

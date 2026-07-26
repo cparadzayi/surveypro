@@ -106,4 +106,19 @@ describe('generateDiagramPDF', () => {
     const r = await generateDiagramPDF(options, logger)
     expect(r.pdfBuffer.slice(0, 5).toString()).toBe('%PDF-')
   })
+
+  test('renders single-terminal and both contiguous annotations without error', async () => {
+    for (const end of ['from', 'to', 'both', undefined]) {
+      const withContig = {
+        ...options,
+        metadata: {
+          ...options.metadata,
+          sideAnnotations: [{ side: 'AB', role: 'contiguous', label: 'STAND 86', end }],
+        },
+      }
+      const r = await generateDiagramPDF(withContig, logger)
+      expect(r.pdfBuffer.slice(0, 5).toString()).toBe('%PDF-')
+      expect(r.pdfBuffer.length).toBeGreaterThan(2000)
+    }
+  })
 })

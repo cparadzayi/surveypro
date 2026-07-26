@@ -209,10 +209,13 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
   // Road/servitude names sit beyond the vertex-letter band so they clear the letters
   // (which stay snug to their beacons). ~beaconR + gap + letter height ≈ the band.
   const vertexBandPt = beaconRadiusPt(denom) + 14
-  // Which sides carry a contiguous offshoot — a road end only bends to follow an offshoot
-  // that is actually drawn on the flanking side.
+  // Side lookups for road-end handling: a road extends past a corner unless the flanking
+  // side is ANOTHER road (an L-junction, where the bands just meet); it bends to a
+  // contiguous offshoot if one is drawn there, else extends straight along the road axis.
   const contiguousSides = new Set(
     annotations.filter((x) => x && x.role === 'contiguous' && x.side).map((x) => x.side))
+  const roadSides = new Set(
+    annotations.filter((x) => x && x.role === 'road' && x.side).map((x) => x.side))
 
   for (const ann of annotations) {
     if (!ann || !ann.side || !ann.role) continue
@@ -239,21 +242,32 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
           q = edgeStrip(a, b, ann.widthM * ptPerGroundM, cen)
         }
       } else {
-        // Road: a thin band along the frontage that BENDS at each end to run flush along
-        // the flanking contiguous offshoot (so it aligns with the offshoot instead of
-        // overshooting straight along the road axis). The offshoot tip at a terminal is
-        // that flanking side's stub end — computed exactly as the offshoot is drawn.
+        // Road: a thin ribbon along the frontage. At each corner that is an OPEN road end
+        // (flanking side is not another road) the band extends past the corner — bending to
+        // run flush along a contiguous offshoot if one is drawn there (align, no divergence),
+        // otherwise extending straight along the road axis so the road reads as continuing
+        // beyond the parcel. At a road↔road corner (L-junction) it just meets its neighbour.
         const flankA = geometry.vertices[(i - 1 + n) % n].letter + geometry.vertices[i].letter
         const flankB = geometry.vertices[(i + 1) % n].letter + geometry.vertices[(i + 2) % n].letter
+        const axLen = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+        const ax = [(b[0] - a[0]) / axLen, (b[1] - a[1]) / axLen] // unit A→B (road axis)
         const inner = []
-        if (contiguousSides.has(flankA)) {
-          const prev = subjPt[(i - 1 + n) % n]
-          inner.push(edgeStrip([prev.px, prev.py], a, CONTIG_STUB_PT, cen)[2]) // a + outNormal·stub
+        if (!roadSides.has(flankA)) {
+          if (contiguousSides.has(flankA)) {
+            const prev = subjPt[(i - 1 + n) % n]
+            inner.push(edgeStrip([prev.px, prev.py], a, CONTIG_STUB_PT, cen)[2]) // bend to offshoot tip
+          } else {
+            inner.push([a[0] - ax[0] * CONTIG_STUB_PT, a[1] - ax[1] * CONTIG_STUB_PT]) // straight past A
+          }
         }
         inner.push(a, b)
-        if (contiguousSides.has(flankB)) {
-          const next = subjPt[(i + 2) % n]
-          inner.push(edgeStrip(b, [next.px, next.py], CONTIG_STUB_PT, cen)[3]) // b + outNormal·stub
+        if (!roadSides.has(flankB)) {
+          if (contiguousSides.has(flankB)) {
+            const next = subjPt[(i + 2) % n]
+            inner.push(edgeStrip(b, [next.px, next.py], CONTIG_STUB_PT, cen)[3]) // bend to offshoot tip
+          } else {
+            inner.push([b[0] + ax[0] * CONTIG_STUB_PT, b[1] + ax[1] * CONTIG_STUB_PT]) // straight past B
+          }
         }
         q = roadBandRibbon(inner, ROAD_STRIP_PT, cen)
       }

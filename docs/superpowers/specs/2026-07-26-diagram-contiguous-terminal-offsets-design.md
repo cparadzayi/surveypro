@@ -28,13 +28,20 @@ currently discarded — only the side identity (`'AB'`) survives.
 
 ## Desired behaviour
 
+> **Design revision (2026-07-26, post-implementation):** the label is **always centred on
+> the side**, and **one label per side** is drawn. The click position (and the `end` field)
+> controls **only where the stub(s) go** — never the label position or count. This replaced an
+> earlier iteration that put a single-terminal label at the quarter-point and allowed two
+> neighbours (two labels) per side; that proved cluttered and non-standard. The table below
+> reflects the final behaviour.
+
 | Case | Surveyor action | Offsets drawn | Label position |
 |------|-----------------|---------------|----------------|
 | 1. Spans the side (coincident with both terminals) | Click **midway** between terminals | Stubs at **both** terminals (A and B) | Side **midpoint** |
-| 2. Abuts near one terminal | Click **near that terminal** | Stub at **that terminal only** | **Quarter-point** — midway between the tagged terminal and the side midpoint |
+| 2. Abuts near one terminal | Click **near that terminal** | Stub at **that terminal only** | Side **midpoint** (centred) |
 
-A single side may carry **up to two** contiguous neighbours (one per terminal), each with
-its own label and single-terminal offset; each occupies its half of the side.
+A side carries **one** contiguous label, always centred. The `end` field records which
+terminal(s) the neighbour abuts and therefore which stub(s) are drawn.
 
 ## Data model (`app-frontend/.../sideAnnotations.ts`)
 
@@ -58,16 +65,11 @@ Rules:
 
 - **Missing `end` ⇒ `'both'`.** Every annotation saved before this change renders exactly
   as today. No migration required.
-- **Contiguous keying is `side` + `end`.** A side holds **either** one `'both'` entry
-  **or** up to two single-end entries (`'from'` and `'to'`). `'both'` is exclusive:
-  - adding a single-end entry to a side that already has a `'both'` entry removes the
-    `'both'` entry;
-  - adding a `'both'` entry removes any `'from'`/`'to'` entries on that side.
-- **Roads / servitudes are unchanged** — still one-per-side, keyed by `side` alone, `end`
-  ignored.
-
-`upsertAnnotation` / `removeAnnotation` are updated to honour the composite key for
-contiguous entries while preserving side-only behaviour for road/servitude.
+- **One annotation per side, every role (contiguous included).** `upsertAnnotation` /
+  `removeAnnotation` key on `side` alone; re-tagging a side replaces its entry. `end` is just
+  a field on the single contiguous entry that controls stub placement — there is no `side`+`end`
+  composite key and no two-neighbours-per-side. (An earlier iteration keyed contiguous entries
+  by `side`+`end` to allow two neighbours; the design revision above dropped it.)
 
 ## Click → intent
 
@@ -106,48 +108,46 @@ renderers stay in lockstep:
 
 ```
 // app-backend/src/services/diagram/contiguousMarks.js
-// a, b, mid: {x, y} in the caller's coordinate space (PDF points or DXF ground units).
+// a, b: [x, y] terminal points in the caller's coordinate space (PDF points or DXF ground units).
 // end: 'from' | 'to' | 'both' (undefined ⇒ 'both').
-// Returns which vertices get a dashed outward stub and where the label anchors.
-contiguousMarks(a, b, mid, end) -> {
-  stubs: Array<{x, y}>,   // terminal points to draw an outward stub from (1 or 2 entries)
-  labelAnchor: {x, y},    // point the label is centred on (before outward offset)
+// Returns which terminal(s) get a dashed outward stub and where the label anchors.
+contiguousMarks(a, b, end) -> {
+  stubFrom: boolean,          // draw an outward stub at terminal a?
+  stubTo: boolean,            // draw an outward stub at terminal b?
+  labelAnchor: [x, y],        // point the label is centred on (before outward offset)
 }
 ```
 
-Anchor geometry:
+Geometry (the label anchor is the side midpoint for **every** `end`; only the stubs vary):
 
-- `end: 'both'`  → `stubs = [a, b]`, `labelAnchor = mid`
-- `end: 'from'`  → `stubs = [a]`,   `labelAnchor = midpoint(a, mid)`   (quarter-point A↔mid)
-- `end: 'to'`    → `stubs = [b]`,   `labelAnchor = midpoint(mid, b)`   (quarter-point mid↔B)
+- `end: 'both'`  → `stubFrom = true,  stubTo = true`,  `labelAnchor = mid`
+- `end: 'from'`  → `stubFrom = true,  stubTo = false`, `labelAnchor = mid`
+- `end: 'to'`    → `stubFrom = false, stubTo = true`,  `labelAnchor = mid`
 
 Each renderer keeps its own drawing primitives (PDFKit `dash().stroke()`, general-plan
-variant, DXF `addLine`/`addText`) and its own outward-offset + collision handling. Only the
-**terminal set** and the **label anchor** now come from `contiguousMarks`. The diagram's
-collision-aware label placement (`placeVertexLabel`) is unchanged; it simply starts from the
-new anchor instead of always `mid`.
-
-Because a single-end neighbour occupies half the side, two neighbours tagged on one side
-(`from` + `to`) yield stubs at A and B with two labels, one per half — visually distinct
-from the single `both` neighbour (stubs at A and B, one centred label).
+variant, DXF `addLine`/`addText`) and its own outward-offset + collision handling. It gates
+each stub on `stubFrom` / `stubTo` and centres the label on `labelAnchor`. The diagram's
+collision-aware label placement (`placeVertexLabel`) is unchanged; it starts from the anchor
+(the side midpoint) exactly as before.
 
 ## Scope boundaries (YAGNI)
 
 - **Contiguous only.** Roads and servitudes are whole-side strips; partial strips are out of
   scope.
-- **No fractional extent stored.** The click fraction only selects the terminal; the abutting
-  extent is always "half the side". No per-annotation offset fraction is persisted.
-- **No new beacon/corner** is introduced at the meeting point of two neighbours; the midpoint
-  is implied, not a surveyed vertex.
+- **No fractional extent stored.** The click fraction only selects which terminal(s) get a
+  stub (`end`); no per-annotation offset fraction is persisted, and the label is always centred.
+- **One label per side.** A side never carries more than one contiguous label; the abutment is
+  a property of that single neighbour.
 
 ## Testing
 
 - `contiguousMarks` (new, backend unit test): all of `both` / `from` / `to`, plus the
-  `undefined ⇒ both` default; assert stub count (1 vs 2) and label-anchor coordinates.
+  `undefined ⇒ both` default; assert stub gating (`stubFrom`/`stubTo`) and that `labelAnchor`
+  is the side midpoint for every `end`.
 - Click → `t` → `end` projection (frontend unit test): points near each terminal and midway,
   including degenerate zero-length guard.
-- Model rules (frontend unit test): two-per-side upsert (`from` + `to` coexist), `both`
-  exclusivity (adding a single end drops `both` and vice-versa), road/servitude unaffected.
+- Model rules (frontend unit test): one entry per side (re-tagging replaces), `end` round-trips
+  on the stored entry, tagging as road replaces a contiguous entry, road/servitude unaffected.
 - Renderer smoke assertions: extend the existing `diagramPdf` / adjoining suites to cover a
   single-terminal annotation producing **one** stub vs a `both`/legacy annotation producing
   **two**.

@@ -2001,11 +2001,9 @@ function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
           const pb = map.value!.project(coords[1] as any)
           end = endFromFraction(fractionAlongSide([pa.x, pa.y], [pb.x, pb.y], [e.point.x, e.point.y]))
         }
-        // Prefer an existing entry that matches this end (contiguous), else the side's
-        // road/servitude entry, else start fresh.
-        const cur = currentSideAnnotations.value.find(a =>
-          a.side === side && (a.role !== 'contiguous' || (a.end ?? 'both') === end))
-          ?? currentSideAnnotations.value.find(a => a.side === side)
+        // One annotation per side. Editing an existing contiguous entry shows its stored
+        // abutment; a fresh tag takes the abutment implied by where you clicked.
+        const cur = currentSideAnnotations.value.find(a => a.side === side)
         activeSideEditor.value = {
           side,
           role: cur?.role ?? 'contiguous',
@@ -2055,8 +2053,7 @@ function saveSideEditor() {
 function clearSideEditor() {
   const ed = activeSideEditor.value
   if (!ed || selectedDiagramParcelId.value == null) return
-  const list = removeAnnotation(
-    currentSideAnnotations.value, ed.side, ed.role === 'contiguous' ? ed.end : undefined)
+  const list = removeAnnotation(currentSideAnnotations.value, ed.side)
   sideAnnotationsBySubject.value = withSubjectAnnotations(sideAnnotationsBySubject.value, selectedDiagramParcelId.value, list)
   activeSideEditor.value = null
   updateSubjectSidesLayer()

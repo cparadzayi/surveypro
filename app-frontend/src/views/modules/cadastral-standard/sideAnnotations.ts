@@ -52,52 +52,18 @@ export function subjectSides(ring: [number, number][]): SubjectSide[] {
   return sides
 }
 
-/** Effective end for a contiguous entry (absent ⇒ 'both'). */
-function contigEnd(a: SideAnnotation): 'from' | 'to' | 'both' {
-  return a.end ?? 'both'
-}
-
-/**
- * Insert/replace an annotation. Roads & servitudes are one-per-side (any existing
- * entry for the side is replaced). Contiguous entries are keyed by side+end with
- * 'both' exclusive: a side holds EITHER one 'both' OR up to two single-end entries.
- * Returns a new array.
- */
+/** Replace the entry for `ann.side` if present, else append. One annotation per
+ *  side for every role (contiguous included): a side carries a single centred label,
+ *  and its `end` only controls where the abutment stub(s) are drawn. Returns a new array. */
 export function upsertAnnotation(list: SideAnnotation[], ann: SideAnnotation): SideAnnotation[] {
-  if (ann.role === 'contiguous') {
-    const end = ann.end ?? 'both'
-    const out = list.filter((a) => {
-      if (a.side !== ann.side) return true          // other sides untouched
-      if (a.role !== 'contiguous') return false     // side changes to contiguous: drop road/servitude
-      if (end === 'both') return false              // 'both' replaces every contiguous entry here
-      // single end: drop any 'both' on this side and the same-end entry
-      return contigEnd(a) !== 'both' && contigEnd(a) !== end
-    })
-    out.push({ ...ann, end })
-    return out
-  }
-  // road / servitude: exactly one entry per side.
   const out = list.filter((a) => a.side !== ann.side)
   out.push(ann)
   return out
 }
 
-/**
- * Drop annotations for `side`. With `end` omitted, removes ALL entries on the side
- * (legacy behaviour). With `end` given, removes the matching contiguous entry (by
- * effective end) or the side's road/servitude entry. Returns a new array.
- */
-export function removeAnnotation(
-  list: SideAnnotation[],
-  side: string,
-  end?: 'from' | 'to' | 'both',
-): SideAnnotation[] {
-  if (end == null) return list.filter((a) => a.side !== side)
-  return list.filter((a) => {
-    if (a.side !== side) return true
-    if (a.role !== 'contiguous') return false       // remove the road/servitude on this side
-    return contigEnd(a) !== end                     // keep other-end contiguous neighbours
-  })
+/** Drop the entry for `side`. Returns a new array. */
+export function removeAnnotation(list: SideAnnotation[], side: string): SideAnnotation[] {
+  return list.filter((a) => a.side !== side)
 }
 
 /** The list for a subject id (string or number), or [] (incl. null id). */

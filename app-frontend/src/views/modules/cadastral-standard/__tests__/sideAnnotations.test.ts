@@ -71,68 +71,31 @@ describe('hydrateAnnotationsMap', () => {
   })
 })
 
-describe('contiguous end keying', () => {
-  test('two contiguous neighbours coexist on one side (from + to)', () => {
+describe('contiguous end field (one entry per side)', () => {
+  test('a side holds a single contiguous entry: re-tagging replaces it', () => {
     let list: SideAnnotation[] = []
     list = upsertAnnotation(list, { side: 'AB', role: 'contiguous', label: 'N1', end: 'from' })
     list = upsertAnnotation(list, { side: 'AB', role: 'contiguous', label: 'N2', end: 'to' })
     const ab = list.filter(a => a.side === 'AB')
-    expect(ab).toHaveLength(2)
-    expect(ab.map(a => a.end).sort()).toEqual(['from', 'to'])
-  })
-
-  test("'both' is exclusive: it replaces any single-end entries on the side", () => {
-    let list: SideAnnotation[] = [
-      { side: 'AB', role: 'contiguous', label: 'N1', end: 'from' },
-      { side: 'AB', role: 'contiguous', label: 'N2', end: 'to' },
-    ]
-    list = upsertAnnotation(list, { side: 'AB', role: 'contiguous', label: 'N3', end: 'both' })
-    const ab = list.filter(a => a.side === 'AB')
     expect(ab).toHaveLength(1)
-    expect(ab[0]).toMatchObject({ end: 'both', label: 'N3' })
+    expect(ab[0]).toMatchObject({ label: 'N2', end: 'to' })
   })
 
-  test('adding a single end replaces an existing both on the side', () => {
-    let list: SideAnnotation[] = [{ side: 'AB', role: 'contiguous', label: 'B', end: 'both' }]
-    list = upsertAnnotation(list, { side: 'AB', role: 'contiguous', label: 'F', end: 'from' })
-    const ab = list.filter(a => a.side === 'AB')
-    expect(ab).toHaveLength(1)
-    expect(ab[0]).toMatchObject({ end: 'from', label: 'F' })
+  test('the end field round-trips on the stored entry', () => {
+    let list: SideAnnotation[] = []
+    list = upsertAnnotation(list, { side: 'CD', role: 'contiguous', label: 'STAND 86', end: 'both' })
+    expect(list.find(a => a.side === 'CD')?.end).toBe('both')
   })
 
-  test('re-tagging the same end replaces just that entry', () => {
-    let list: SideAnnotation[] = [
-      { side: 'AB', role: 'contiguous', label: 'F1', end: 'from' },
-      { side: 'AB', role: 'contiguous', label: 'T1', end: 'to' },
-    ]
-    list = upsertAnnotation(list, { side: 'AB', role: 'contiguous', label: 'F2', end: 'from' })
-    const ab = list.filter(a => a.side === 'AB')
-    expect(ab).toHaveLength(2)
-    expect(ab.find(a => a.end === 'from')).toMatchObject({ label: 'F2' })
-    expect(ab.find(a => a.end === 'to')).toMatchObject({ label: 'T1' })
-  })
-
-  test('tagging a side as road drops any contiguous entries on it', () => {
-    let list: SideAnnotation[] = [
-      { side: 'AB', role: 'contiguous', label: 'F', end: 'from' },
-      { side: 'AB', role: 'contiguous', label: 'T', end: 'to' },
-    ]
+  test('tagging a side as road replaces its contiguous entry', () => {
+    let list: SideAnnotation[] = [{ side: 'AB', role: 'contiguous', label: 'N', end: 'from' }]
     list = upsertAnnotation(list, { side: 'AB', role: 'road', label: 'Klein Road' })
     expect(list.filter(a => a.side === 'AB')).toEqual([{ side: 'AB', role: 'road', label: 'Klein Road' }])
   })
 
-  test('removeAnnotation with end removes only the matching contiguous entry', () => {
+  test('removeAnnotation drops the side entry', () => {
     const list: SideAnnotation[] = [
-      { side: 'AB', role: 'contiguous', label: 'F', end: 'from' },
-      { side: 'AB', role: 'contiguous', label: 'T', end: 'to' },
-    ]
-    const out = removeAnnotation(list, 'AB', 'from')
-    expect(out).toEqual([{ side: 'AB', role: 'contiguous', label: 'T', end: 'to' }])
-  })
-
-  test('removeAnnotation without end removes all entries on the side (legacy)', () => {
-    const list: SideAnnotation[] = [
-      { side: 'AB', role: 'contiguous', label: 'F', end: 'from' },
+      { side: 'AB', role: 'contiguous', label: 'N', end: 'from' },
       { side: 'BC', role: 'road', label: 'R' },
     ]
     expect(removeAnnotation(list, 'AB')).toEqual([{ side: 'BC', role: 'road', label: 'R' }])

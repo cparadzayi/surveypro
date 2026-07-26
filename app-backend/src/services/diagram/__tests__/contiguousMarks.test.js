@@ -17,22 +17,22 @@ describe('contiguousMarks', () => {
     })
   })
 
-  test("from: stub at A only, label at the A-half quarter-point", () => {
+  test("from: stub at A only, label still centred on the side", () => {
     expect(contiguousMarks(a, b, 'from')).toEqual({
-      stubFrom: true, stubTo: false, labelAnchor: [25, 0],
+      stubFrom: true, stubTo: false, labelAnchor: [50, 0],
     })
   })
 
-  test("to: stub at B only, label at the B-half quarter-point", () => {
+  test("to: stub at B only, label still centred on the side", () => {
     expect(contiguousMarks(a, b, 'to')).toEqual({
-      stubFrom: false, stubTo: true, labelAnchor: [75, 0],
+      stubFrom: false, stubTo: true, labelAnchor: [50, 0],
     })
   })
 
-  test("works off-axis (diagonal side)", () => {
-    // a=(0,0) b=(40,80) -> mid (20,40); from-anchor = midpoint(a,mid) = (10,20)
+  test("works off-axis (diagonal side): label at the side midpoint", () => {
+    // a=(0,0) b=(40,80) -> mid (20,40); the label is centred regardless of end.
     expect(contiguousMarks([0, 0], [40, 80], 'from')).toEqual({
-      stubFrom: true, stubTo: false, labelAnchor: [10, 20],
+      stubFrom: true, stubTo: false, labelAnchor: [20, 40],
     })
   })
 })

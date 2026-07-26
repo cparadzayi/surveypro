@@ -7,6 +7,10 @@ export interface SideAnnotation {
   widthM?: number
   /** Set on role:'servitude' entries that are a derived mirror of a Servitude record. */
   servitudeId?: string
+  /** contiguous only: which terminal(s) the abutment offset sits at.
+   *  'from' = first-letter vertex (A of 'AB'), 'to' = second (B), 'both' = whole side.
+   *  Absent ⇒ 'both' (back-compat with data saved before this field existed). */
+  end?: 'from' | 'to' | 'both'
 }
 
 export interface SubjectSide {
@@ -48,16 +52,52 @@ export function subjectSides(ring: [number, number][]): SubjectSide[] {
   return sides
 }
 
-/** Replace the entry for `ann.side` if present, else append. Returns a new array. */
+/** Effective end for a contiguous entry (absent ⇒ 'both'). */
+function contigEnd(a: SideAnnotation): 'from' | 'to' | 'both' {
+  return a.end ?? 'both'
+}
+
+/**
+ * Insert/replace an annotation. Roads & servitudes are one-per-side (any existing
+ * entry for the side is replaced). Contiguous entries are keyed by side+end with
+ * 'both' exclusive: a side holds EITHER one 'both' OR up to two single-end entries.
+ * Returns a new array.
+ */
 export function upsertAnnotation(list: SideAnnotation[], ann: SideAnnotation): SideAnnotation[] {
+  if (ann.role === 'contiguous') {
+    const end = ann.end ?? 'both'
+    const out = list.filter((a) => {
+      if (a.side !== ann.side) return true          // other sides untouched
+      if (a.role !== 'contiguous') return false     // side changes to contiguous: drop road/servitude
+      if (end === 'both') return false              // 'both' replaces every contiguous entry here
+      // single end: drop any 'both' on this side and the same-end entry
+      return contigEnd(a) !== 'both' && contigEnd(a) !== end
+    })
+    out.push({ ...ann, end })
+    return out
+  }
+  // road / servitude: exactly one entry per side.
   const out = list.filter((a) => a.side !== ann.side)
   out.push(ann)
   return out
 }
 
-/** Drop the entry for `side`. Returns a new array. */
-export function removeAnnotation(list: SideAnnotation[], side: string): SideAnnotation[] {
-  return list.filter((a) => a.side !== side)
+/**
+ * Drop annotations for `side`. With `end` omitted, removes ALL entries on the side
+ * (legacy behaviour). With `end` given, removes the matching contiguous entry (by
+ * effective end) or the side's road/servitude entry. Returns a new array.
+ */
+export function removeAnnotation(
+  list: SideAnnotation[],
+  side: string,
+  end?: 'from' | 'to' | 'both',
+): SideAnnotation[] {
+  if (end == null) return list.filter((a) => a.side !== side)
+  return list.filter((a) => {
+    if (a.side !== side) return true
+    if (a.role !== 'contiguous') return false       // remove the road/servitude on this side
+    return contigEnd(a) !== end                     // keep other-end contiguous neighbours
+  })
 }
 
 /** The list for a subject id (string or number), or [] (incl. null id). */
@@ -86,4 +126,26 @@ export function hydrateAnnotationsMap(raw: unknown): Record<string, SideAnnotati
     if (Array.isArray(v)) out[k] = v as SideAnnotation[]
   }
   return out
+}
+
+/** Clamp of the scalar projection of `p` onto segment `pa→pb`, as t ∈ [0,1] from pa.
+ *  Points are screen-space [x, y]. Degenerate (zero-length) segment returns 0. */
+export function fractionAlongSide(
+  pa: [number, number],
+  pb: [number, number],
+  p: [number, number],
+): number {
+  const dx = pb[0] - pa[0], dy = pb[1] - pa[1]
+  const len2 = dx * dx + dy * dy
+  if (len2 === 0) return 0
+  const t = ((p[0] - pa[0]) * dx + (p[1] - pa[1]) * dy) / len2
+  return t < 0 ? 0 : t > 1 ? 1 : t
+}
+
+/** Map a click fraction to a contiguous `end`: outer thirds → nearest terminal,
+ *  middle third → both. Boundaries (1/3, 2/3) fall in the middle band. */
+export function endFromFraction(t: number): 'from' | 'to' | 'both' {
+  if (t < 1 / 3) return 'from'
+  if (t > 2 / 3) return 'to'
+  return 'both'
 }

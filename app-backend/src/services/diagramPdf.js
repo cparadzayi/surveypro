@@ -10,6 +10,7 @@ import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neig
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
 import { contiguousMarks } from './diagram/contiguousMarks.js'
+import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
 import { formatSI } from './diagram/numberFormat.js'
 import {
@@ -26,10 +27,6 @@ const SERVITUDE_BLUE = '#1F6FB2'
 const ROAD_STRIP_PT = 1.3 * PT_PER_MM          // nominal, like the inner band
 const STRIP_FILL_OPACITY = 0.6                 // colour must not obscure detail
 const CONTIG_STUB_PT = 6 * PT_PER_MM
-// A road band keeps the thin ROAD_STRIP_PT WIDTH but is extended in LENGTH past each
-// terminal by this much, so the fill reaches the extremes of the flanking contiguous
-// offshoots instead of stopping short at the corners. (= the offshoot stub length.)
-const ROAD_END_EXTEND_PT = CONTIG_STUB_PT
 
 function docToBuffer(doc) {
   const chunks = []
@@ -212,6 +209,10 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
   // Road/servitude names sit beyond the vertex-letter band so they clear the letters
   // (which stay snug to their beacons). ~beaconR + gap + letter height ≈ the band.
   const vertexBandPt = beaconRadiusPt(denom) + 14
+  // Which sides carry a contiguous offshoot — a road end only bends to follow an offshoot
+  // that is actually drawn on the flanking side.
+  const contiguousSides = new Set(
+    annotations.filter((x) => x && x.role === 'contiguous' && x.side).map((x) => x.side))
 
   for (const ann of annotations) {
     if (!ann || !ann.side || !ann.role) continue
@@ -230,26 +231,33 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
     const mid = { px: (p1.px + p2.px) / 2, py: (p1.py + p2.py) / 2 }
 
     if (ann.role === 'road' || ann.role === 'servitude') {
-      let widthPt = ROAD_STRIP_PT   // thin band, same WIDTH as the internal band
-      let ea = a, eb = b
+      let q = null
       if (ann.role === 'servitude') {
         if (!(ann.widthM > 0)) {
           logger?.warn?.(`[Diagram] servitude ${ann.side} has no widthM; drawing label only`)
-          widthPt = 0
         } else {
-          widthPt = ann.widthM * ptPerGroundM
+          q = edgeStrip(a, b, ann.widthM * ptPerGroundM, cen)
         }
       } else {
-        // Road: keep the thin width but EXTEND the band's length past each terminal along
-        // the edge, so the fill reaches the extremes of the flanking contiguous offshoots.
-        const dx = b[0] - a[0], dy = b[1] - a[1]
-        const L = Math.hypot(dx, dy) || 1
-        const ux = dx / L, uy = dy / L
-        ea = [a[0] - ux * ROAD_END_EXTEND_PT, a[1] - uy * ROAD_END_EXTEND_PT]
-        eb = [b[0] + ux * ROAD_END_EXTEND_PT, b[1] + uy * ROAD_END_EXTEND_PT]
+        // Road: a thin band along the frontage that BENDS at each end to run flush along
+        // the flanking contiguous offshoot (so it aligns with the offshoot instead of
+        // overshooting straight along the road axis). The offshoot tip at a terminal is
+        // that flanking side's stub end — computed exactly as the offshoot is drawn.
+        const flankA = geometry.vertices[(i - 1 + n) % n].letter + geometry.vertices[i].letter
+        const flankB = geometry.vertices[(i + 1) % n].letter + geometry.vertices[(i + 2) % n].letter
+        const inner = []
+        if (contiguousSides.has(flankA)) {
+          const prev = subjPt[(i - 1 + n) % n]
+          inner.push(edgeStrip([prev.px, prev.py], a, CONTIG_STUB_PT, cen)[2]) // a + outNormal·stub
+        }
+        inner.push(a, b)
+        if (contiguousSides.has(flankB)) {
+          const next = subjPt[(i + 2) % n]
+          inner.push(edgeStrip(b, [next.px, next.py], CONTIG_STUB_PT, cen)[3]) // b + outNormal·stub
+        }
+        q = roadBandRibbon(inner, ROAD_STRIP_PT, cen)
       }
-      if (widthPt > 0) {
-        const q = edgeStrip(ea, eb, widthPt, cen)
+      if (q && q.length >= 3) {
         doc.save()
           .fillColor(ann.role === 'road' ? BURNT_SIENNA : SERVITUDE_BLUE)
           .fillOpacity(STRIP_FILL_OPACITY)

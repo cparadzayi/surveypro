@@ -279,6 +279,12 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         for (let k = 1; k < q.length; k++) doc.lineTo(q[k][0], q[k][1])
         doc.closePath().fill()
         doc.restore()
+        // Register the colour band as a label obstacle so vertex/neighbour letters get
+        // placed CLEAR of it — the road/servitude fill must never sit behind lettering.
+        for (let k = 0; k < q.length; k++) {
+          const s = q[k], t = q[(k + 1) % q.length]
+          labelObstacles.push([{ px: s[0], py: s[1] }, { px: t[0], py: t[1] }])
+        }
       }
     } else if (ann.role === 'contiguous') {
       // Dashed outward stub at each abutting terminal (both when the neighbour spans the
@@ -290,6 +296,9 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
       if (marks.stubFrom) doc.moveTo(a[0], a[1]).lineTo(st[3][0], st[3][1]).stroke()
       if (marks.stubTo) doc.moveTo(b[0], b[1]).lineTo(st[2][0], st[2][1]).stroke()
       doc.undash().restore()
+      // Keep letters off the offshoot stubs too.
+      if (marks.stubFrom) labelObstacles.push([{ px: a[0], py: a[1] }, { px: st[3][0], py: st[3][1] }])
+      if (marks.stubTo) labelObstacles.push([{ px: b[0], py: b[1] }, { px: st[2][0], py: st[2][1] }])
     }
 
     // Label the feature. Roads read ALONG the edge (rotated), just outside the strip;

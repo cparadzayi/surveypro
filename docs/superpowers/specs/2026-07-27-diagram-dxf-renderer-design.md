@@ -98,22 +98,52 @@ the `/vector` handler for the PDF side. Same request payload shape both branches
 receive (`parcels, beacons, outsideFigureData, metadata, projection, scale, sheetSize,
 orientation, planType`).
 
-## Coordinate space & Y-flip
+## Coordinate space: real ground coordinates (revised)
 
-`diagramPdf.js` computes the entire layout (table cells, figure position, scale bar, etc.)
-in **PDF points**, PDF's y-DOWN convention. `diagramDxf.js` runs the *exact same* layout
-call (`computeDiagramLayout`, `makeTransform`, …) to get identical positions, then converts
-every point to **millimetres with a Y-flip** at the moment of emission:
+**Correction to the original design:** a plain paper-mm conversion (dividing PDF points by
+points-per-mm) would draw the whole diagram floating near ground-space origin (0,0),
+disconnected from the parcel's real Cape Lo location — useless for CAD overlay, and
+inconsistent with `dxfGenerator.js`'s own convention. `dxfGenerator.js` instead places
+parcel geometry at its **true, unscaled ground (Cape Lo) coordinates** via
+`capeLoToDxfSouthUp(y, x) -> {x: -y, y: -x}` (exported from `dxfGenerator.js`), and
+positions its title-block/table content in **ground metres, sized via `ptToGround`/
+`mmToGround` at the plan's own scale `S`**, anchored to the drawing's real extent centre —
+the standard survey-CAD convention (plot at 1:S and the sheet reproduces correctly around
+the real parcel location).
 
+`diagramDxf.js` reuses `diagramPdf.js`'s exact PDF-point layout math (`computeDiagramLayout`,
+`pickDiagramScale`, `makeTransform`) unchanged, then applies **one conversion function** that
+maps every page-point coordinate — figure geometry AND every annotation block alike — into
+ground DXF coordinates:
+
+```js
+const groundPerPt = ptToGround(1, denom)          // ground metres per PDF point at this diagram's scale
+const figCenterPx = layout.figure.x + layout.figure.width / 2
+const figCenterPy = layout.figure.y + layout.figure.height / 2
+const centerY = (extent.minY + extent.maxY) / 2   // canonical Cape Lo Y/X centre of the drawing extent
+const centerX = (extent.minX + extent.maxX) / 2
+const groundCenter = { x: -centerY, y: -centerX } // = capeLoToDxfSouthUp(centerY, centerX)
+
+function pageToGround({ px, py }) {
+  return {
+    x: groundCenter.x + (px - figCenterPx) * groundPerPt,
+    y: groundCenter.y - (py - figCenterPy) * groundPerPt,   // PDF y-down → ground y-up
+  }
+}
 ```
-mmX = pt.px / (72 / 25.4)
-mmY = (pageHeightPt - pt.py) / (72 / 25.4)
-```
 
-This is the same convention `dxfGenerator.js` uses (ground/paper mm, y-up), so both DXF
-outputs open at consistent orientation in CAD software. All the shared helpers operate on
-plain `{px, py}`/`[x,y]` values and are convention-agnostic — the flip happens only in
-`diagramDxf.js`'s emission layer, never inside a shared helper.
+This is verified algebraically (not just asserted): composing `pageToGround(tf(v))` for any
+geographic vertex `v` transformed by the shared `makeTransform` reduces EXACTLY to
+`capeLoToDxfSouthUp(v.y, v.x)` — i.e. the subject figure, beacons, and adjoining features
+land at their true, real Cape Lo ground coordinates automatically, with **no separate
+code path** needed for geometry vs. annotation. Every other block (border, table, beacon
+description, north arrow, approved box, scale bar, statement, reference grid) is already
+computed in the same page-point space by the shared layout helpers, so the identical
+`pageToGround` call places all of them in ground-metres, correctly scaled and anchored
+around the real parcel location — matching `dxfGenerator.js`'s own technique.
+
+Text/symbol sizes (font heights, beacon radius, line widths) convert via the same scalar:
+`groundPerPt * sizeInPt` (equivalently `ptToGround(sizeInPt, denom)`).
 
 ## Colour / line-art conventions
 

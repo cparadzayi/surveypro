@@ -27,6 +27,8 @@ const SERVITUDE_BLUE = '#1F6FB2'
 const ROAD_STRIP_PT = 1.3 * PT_PER_MM          // nominal, like the inner band
 const STRIP_FILL_OPACITY = 0.6                 // colour must not obscure detail
 const CONTIG_STUB_PT = 6 * PT_PER_MM
+// Perpendicular clearance a contiguous-parcel label keeps from the abutting boundary.
+const CONTIG_LABEL_MARGIN = 5
 
 function docToBuffer(doc) {
   const chunks = []
@@ -329,12 +331,24 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         // half) rather than always the side midpoint.
         const m = contiguousMarks(a, b, ann.end)
         const anchor = { px: m.labelAnchor[0], py: m.labelAnchor[1] }
+        const labelH = 7
+        // Stand the label a CONSISTENT perpendicular margin off the boundary, whatever the
+        // digit count. placeVertexLabel centres the box at (beaconR + gap + half) along the
+        // outward normal; the box reaches back toward the line by `extent` (its half-size
+        // projected onto that normal), so its near edge sits at gap + half - extent. Solve
+        // that for a fixed CONTIG_LABEL_MARGIN — otherwise a narrow label like "88" nestles
+        // onto a diagonal edge while a wider "404" gets pushed clear.
+        let ox = anchor.px - subjCentroid.px, oy = anchor.py - subjCentroid.py
+        const ol = Math.hypot(ox, oy) || 1; ox /= ol; oy /= ol
+        const extent = (labelW / 2) * Math.abs(ox) + (labelH / 2) * Math.abs(oy)
+        const half = Math.max(labelW, labelH) / 2
+        const gap = Math.max(2, CONTIG_LABEL_MARGIN + extent - half)
         const pos = placeVertexLabel(anchor, subjCentroid, {
-          beaconR: 0, gap: 2, labelW, labelH: 7,
+          beaconR: 0, gap, labelW, labelH,
           segments: subjSegs.concat(neighbourSegs, labelObstacles),
         })
         doc.text(labelText, pos.x, pos.y)
-        labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
+        labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: labelH }))
       }
       doc.restore()
     }

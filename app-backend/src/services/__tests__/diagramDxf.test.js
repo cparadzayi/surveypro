@@ -163,4 +163,15 @@ describe('generateDiagramDXF', () => {
     expect(text).toContain('SOLID')
     expect(text).toMatch(/Scale 1 : \d+/)
   })
+
+  test('renders the statement block', async () => {
+    const r = await generateDiagramDXF(options, logger)
+    const text = r.dxfBuffer.toString('utf8')
+    expect(text).toContain('STATEMENT\n')
+    expect(text).toContain('The figure')
+    expect(text).toContain('represents')
+    expect(text).toContain('of land called')
+    expect(text).toContain('STAND 302 BRACKENHURST')
+    expect(text).toContain('Land Surveyor')
+  })
 })

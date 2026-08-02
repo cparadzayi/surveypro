@@ -323,6 +323,31 @@ function drawScaleBarDxf(w, layout, denom, toG, toGLen) {
   { const g = toG({ px: R.x + R.width / 2, py: R.y + 20 }); w.addTextC('SCALE_BAR', g.x, g.y, `Scale 1 : ${denom}`, toGLen(6.5)) }
 }
 
+function drawStatementDxf(w, layout, geometry, metadata, toG, toGLen) {
+  const R = layout.statement
+  const seq = buildFigureRepresents(geometry)
+  const area = formatDiagramArea(geometry.area)
+  const designation = resolveStatementDesignation(geometry.designation, geometry.stand, metadata.designation)
+  const parent = metadata.parentProperty ? ` OF ${metadata.parentProperty}` : ''
+  const surveyDate = metadata.surveyDate ?? metadata.date
+
+  { const g = toG({ px: R.x, py: R.y + 9 }); w.addText('STATEMENT', g.x, g.y, 'The figure', toGLen(9)) }
+  { const g = toG({ px: R.x, py: R.y + 20 }); w.addText('STATEMENT', g.x, g.y, 'represents', toGLen(9)) }
+  { const g = toG({ px: R.x + R.width / 2, py: R.y + 9 }); w.addTextC('STATEMENT', g.x, g.y, seq, toGLen(9)) }
+  { const g = toG({ px: R.x + R.width / 2, py: R.y + 21 }); w.addTextC('STATEMENT', g.x, g.y, area, toGLen(9)) }
+  { const g = toG({ px: R.x + R.width, py: R.y + 21 }); w.addTextR('STATEMENT', g.x, g.y, 'of land called', toGLen(9)) }
+
+  const desigText = `${designation}${parent}`
+  let desigSize = 11
+  while (desigSize > 7.5 && textWidth(desigText, desigSize) > R.width) desigSize -= 0.5
+  { const g = toG({ px: R.x, py: R.y + 30 + desigSize }); w.addText('STATEMENT', g.x, g.y, desigText, toGLen(desigSize)) }
+
+  { const g = toG({ px: R.x, py: R.y + 53 }); w.addText('STATEMENT', g.x, g.y, `situate in the district of ${metadata.district ?? ''}.`, toGLen(9)) }
+  const surveyedLine = `Surveyed in ${surveyDate ? new Date(surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`
+  { const g = toG({ px: R.x, py: R.y + 70 }); w.addText('STATEMENT', g.x, g.y, surveyedLine, toGLen(9)) }
+  { const g = toG({ px: R.x + R.width, py: R.y + 90 }); w.addTextR('STATEMENT', g.x, g.y, 'Land Surveyor', toGLen(9)) }
+}
+
 export async function generateDiagramDXF(options, logger) {
   const { parcels, metadata = {}, scale: requestedScale } = options
   const sheetSize = options.sheetSize === 'A3' ? 'A3' : 'A4'
@@ -491,6 +516,8 @@ export async function generateDiagramDXF(options, logger) {
   drawNorthArrowDxf(w, layout, toG, toGLen)
   drawApprovedBoxDxf(w, layout, toG, toGLen)
   drawScaleBarDxf(w, layout, denom, toG, toGLen)
+
+  drawStatementDxf(w, layout, geometry, metadata, toG, toGLen)
 
   const allPoints = [b0, b1, b2, b3]
   const extMin = { x: Math.min(...allPoints.map((p) => p.x)), y: Math.min(...allPoints.map((p) => p.y)) }

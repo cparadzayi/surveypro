@@ -49,15 +49,95 @@ function makeReportData(overrides: Partial<ReportOnSurveyData> = {}): ReportOnSu
   } as ReportOnSurveyData;
 }
 
-/** Render into a real jsPDF while capturing every string written. */
-function renderCapturing(reportData: ReportOnSurveyData): { written: string[]; cursor: BeaconComparisonCursor } {
+function makeReportDataWithEdges(): ReportOnSurveyData {
+  const base = makeReportData();
+  base.beacons = [
+    ...base.beacons,
+    {
+      beaconId: '86B',
+      status: 'found',
+      currentCoordinates: { y: 50060.2, x: 2200050.3 },
+      originalData: { coordinates: { y: 50060.19, x: 2200050.28 }, srNumber: 'SR 21/2016', source: 'previous-survey' },
+      discrepancy: { dy: 0.01, dx: 0.02, distance: 0.022 },
+    },
+  ];
+  base.beaconComparison!.edgeCompliance = {
+    surveyClass: 'B',
+    rows: [
+      {
+        from: '85c', to: '86B', dH: 67.19, dS: 67.21, dDiff: 0.02, dAllow: 0.05, distOk: true,
+        brgH: 130.5, brgS: 130.502, dirDiffSec: 7.2, dirAllowSec: 45.0, dirOk: true, pass: true,
+      },
+    ],
+    summary: { totalLines: 1, distPass: 1, dirPass: 1, bothPass: 1, meanScale: 1.0003, meanSwingDeg: 0.002 },
+  };
+  return base;
+}
+
+function makeReportDataWithFailingEdge(): ReportOnSurveyData {
+  const data = makeReportDataWithEdges();
+  data.beaconComparison!.edgeCompliance!.rows[0] = {
+    ...data.beaconComparison!.edgeCompliance!.rows[0],
+    distOk: false, dirOk: false, pass: false,
+  };
+  return data;
+}
+
+/** Render into a real jsPDF while capturing every string written, plus every line/ellipse
+ *  drawn and the draw colour in effect at the time (mirrors jsPDF's own internal state
+ *  model of a "current draw colour" set by setDrawColor and read by line/ellipse). */
+function renderCapturing(reportData: ReportOnSurveyData): {
+  written: string[];
+  cursor: BeaconComparisonCursor;
+  lines: Array<{ color: [number, number, number]; x1: number; y1: number; x2: number; y2: number }>;
+  ellipses: Array<{ color: [number, number, number] }>;
+} {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const written: string[] = [];
+  const lines: Array<{ color: [number, number, number]; x1: number; y1: number; x2: number; y2: number }> = [];
+  const ellipses: Array<{ color: [number, number, number] }> = [];
+  let currentDrawColor: [number, number, number] = [0, 0, 0];
+
   const originalText = doc.text.bind(doc);
   (doc as any).text = (text: any, ...rest: any[]) => {
     written.push(Array.isArray(text) ? text.join(' ') : String(text));
     return (originalText as any)(text, ...rest);
   };
+
+  const originalSetDrawColor = doc.setDrawColor.bind(doc);
+  (doc as any).setDrawColor = (...args: any[]) => {
+    if (args.length >= 3) currentDrawColor = [args[0], args[1], args[2]];
+    else if (args.length === 1) currentDrawColor = [args[0], args[0], args[0]];
+    return (originalSetDrawColor as any)(...args);
+  };
+
+  const originalLine = doc.line.bind(doc);
+  (doc as any).line = (x1: number, y1: number, x2: number, y2: number, ...rest: any[]) => {
+    lines.push({ color: currentDrawColor, x1, y1, x2, y2 });
+    return (originalLine as any)(x1, y1, x2, y2, ...rest);
+  };
+
+  // jsPDF's own `circle()` is implemented as `this.ellipse(x, y, r, r, style)` internally, so
+  // without this guard every beacon marker (drawn via doc.circle) would also land in the
+  // `ellipses` capture meant only for tolerance-violation circling. Track "inside a circle()
+  // call" so those pass-through calls are excluded.
+  let inCircleCall = false;
+  const originalCircle = doc.circle.bind(doc);
+  (doc as any).circle = (...args: any[]) => {
+    inCircleCall = true;
+    try {
+      return (originalCircle as any)(...args);
+    } finally {
+      inCircleCall = false;
+    }
+  };
+
+  const originalEllipse = doc.ellipse.bind(doc);
+  (doc as any).ellipse = (...args: any[]) => {
+    if (!inCircleCall) ellipses.push({ color: currentDrawColor });
+    return (originalEllipse as any)(...args);
+  };
+
   const cursor: BeaconComparisonCursor = {
     doc,
     margin: 20,
@@ -67,7 +147,7 @@ function renderCapturing(reportData: ReportOnSurveyData): { written: string[]; c
     y: 20,
   };
   renderBeaconComparison(cursor, reportData);
-  return { written, cursor };
+  return { written, cursor, lines, ellipses };
 }
 
 describe('hasBeaconComparisonData', () => {
@@ -114,6 +194,71 @@ describe('renderBeaconComparison', () => {
   it('advances the cursor', () => {
     const { cursor } = renderCapturing(makeReportData());
     expect(cursor.y).toBeGreaterThan(20);
+  });
+});
+
+describe('renderBeaconComparisonSketch (via renderBeaconComparison)', () => {
+  it('renders the sketch heading, scale caption, beacon names and distance figures when edgeCompliance is present', () => {
+    const { written } = renderCapturing(makeReportDataWithEdges());
+    expect(written).toContain('BEACON COMPARISON SKETCH');
+    expect(written.some((w) => w.startsWith('Scale 1 : '))).toBe(true);
+    expect(written).toContain('85c');
+    expect(written).toContain('86B');
+    expect(written).toContain('67.190'); // historical distance
+    expect(written).toContain('67.210'); // survey distance
+    expect(written.some((w) => /SI 727 Class B/.test(w))).toBe(true);
+  });
+
+  it('does nothing (no crash, no sketch heading) when edgeCompliance is absent', () => {
+    const { written } = renderCapturing(makeReportData());
+    expect(written).not.toContain('BEACON COMPARISON SKETCH');
+  });
+
+  it('does nothing when edgeCompliance has zero rows', () => {
+    const data = makeReportDataWithEdges();
+    data.beaconComparison!.edgeCompliance!.rows = [];
+    const { written } = renderCapturing(data);
+    expect(written).not.toContain('BEACON COMPARISON SKETCH');
+  });
+
+  it('still renders (no crash) when a failing edge is present, distinct from the passing case', () => {
+    const { written } = renderCapturing(makeReportDataWithFailingEdge());
+    expect(written).toContain('BEACON COMPARISON SKETCH');
+    expect(written).toContain('67.190');
+    expect(written).toContain('67.210');
+  });
+
+  it('advances the cursor past the tabulation position', () => {
+    const { cursor: cursorWithSketch } = renderCapturing(makeReportDataWithEdges());
+    const { cursor: cursorWithoutSketch } = renderCapturing(makeReportData());
+    expect(cursorWithSketch.y).toBeGreaterThan(cursorWithoutSketch.y);
+  });
+
+  it('draws every ray in plain black regardless of pass/fail, and circles only the failing figures', () => {
+    const passing = renderCapturing(makeReportDataWithEdges());
+    const failing = renderCapturing(makeReportDataWithFailingEdge());
+
+    // Rays are ALWAYS plain black -- never recoloured by pass/fail status, in either fixture.
+    expect(passing.lines.length).toBeGreaterThan(0);
+    expect(passing.lines.every((l) => l.color[0] === 0 && l.color[1] === 0 && l.color[2] === 0)).toBe(true);
+    expect(failing.lines.length).toBeGreaterThan(0);
+    expect(failing.lines.every((l) => l.color[0] === 0 && l.color[1] === 0 && l.color[2] === 0)).toBe(true);
+
+    // A passing edge circles nothing; the failing fixture flips BOTH distOk and dirOk to
+    // false, so both the survey-distance figure and the swing figure get circled (2 ellipses).
+    expect(passing.ellipses.length).toBe(0);
+    expect(failing.ellipses.length).toBe(2);
+  });
+
+  it('renders a negative swing with an explicit minus sign, not wrapped into [0,360)', () => {
+    const data = makeReportDataWithEdges();
+    data.beaconComparison!.edgeCompliance!.rows[0] = {
+      ...data.beaconComparison!.edgeCompliance!.rows[0],
+      dirDiffSec: -7200, // -2 degrees exactly
+    };
+    const { written } = renderCapturing(data);
+    expect(written.some((w) => w.startsWith('-2°'))).toBe(true);
+    expect(written.some((w) => w.startsWith('357°') || w.startsWith('358°'))).toBe(false);
   });
 });
 

@@ -296,16 +296,22 @@ export interface BeaconComparisonConfig {
   /** How accept/reject was decided (e.g. Helmert LSQ + W-test summary). Printed in place of the tolerance line when present. */
   adjustmentSummary?: string;
   
-  /** Inter-beacon checks (for sketch method) */
-  interBeaconChecks?: {
-    beaconPair: [string, string]; // e.g., ["85c", "84a"]
-    originalDistance?: number;
-    newDistance?: number;
-    distanceDifference?: number;
-    originalBearing?: number;
-    newBearing?: number;
-    bearingDifference?: number;
-  }[];
+  /** SI 727 s.67(5) inter-beacon (edge) compliance — distance AND direction/swing checks for
+   *  every pair of accepted beacons. Source of truth for the comparison sketch. Populated
+   *  from si727.js's edgeCompliance(), already computed by every comparison run. */
+  edgeCompliance?: {
+    surveyClass: 'B' | 'C';
+    rows: Array<{
+      from: string; to: string;
+      dH: number; dS: number; dDiff: number; dAllow: number; distOk: boolean;
+      brgH: number; brgS: number; dirDiffSec: number; dirAllowSec: number; dirOk: boolean;
+      pass: boolean;
+    }>;
+    summary: {
+      totalLines: number; distPass: number; dirPass: number; bothPass: number;
+      meanScale: number | null; meanSwingDeg: number | null;
+    };
+  };
   
   /** Conclusion statement */
   conclusion?: string; // e.g., "From the above comparison, I adopt the positions of all found beacons."

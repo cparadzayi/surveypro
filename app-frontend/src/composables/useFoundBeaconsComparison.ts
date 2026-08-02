@@ -2,10 +2,23 @@ import type { FoundBeacon, BeaconComparisonConfig } from '@/types/cadastral'
 import type { HistoricalPointCSV } from '@/services/historicalSurveyPoints'
 
 export interface StorePoint { id: number; name: string; yH: number; xH: number; yS: number; xS: number }
+export interface EdgeRow {
+  from: string; to: string
+  dH: number; dS: number; dDiff: number; dAllow: number; distOk: boolean
+  brgH: number; brgS: number; dirDiffSec: number; dirAllowSec: number; dirOk: boolean
+  pass: boolean
+}
+export interface EdgeSummary {
+  totalLines: number; distPass: number; dirPass: number; bothPass: number
+  meanScale: number | null; meanSwingDeg: number | null
+}
 export interface EngineResult {
   pts: Array<{ id: number; name: string; finalStatus: 'ACCEPT' | 'REJECT' }>
   /** Posteriori unit-weight standard error from the Helmert adjustment (metres). */
   adj?: { stats?: { s0?: number } }
+  /** SI 727 s.67(5) inter-beacon edge compliance (si727.js's edgeCompliance() result). */
+  edges?: { rows: EdgeRow[]; summary: EdgeSummary }
+  surveyClass?: 'B' | 'C'
 }
 
 /** Map comparison points (+ engine result) to the Report on Survey FoundBeacon[] shape. */
@@ -52,6 +65,13 @@ export function buildComparisonConfig(
     toleranceThreshold: opts.toleranceThreshold ?? 0.02,
     adjustmentSummary,
     conclusion,
+    ...(result?.edges ? {
+      edgeCompliance: {
+        surveyClass: result.surveyClass ?? 'B',
+        rows: result.edges.rows,
+        summary: result.edges.summary,
+      },
+    } : {}),
   }
 }
 

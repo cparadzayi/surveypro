@@ -90,3 +90,32 @@ describe('pointsFromExistingBeacons', () => {
     expect(rows).toEqual([{ name: '86B', yH: -85728.77, xH: 2143972.22, yS: -85728.70, xS: 2143972.14 }])
   })
 })
+
+describe('buildComparisonConfig — edgeCompliance carry-through', () => {
+  const edgeRow = {
+    from: '86B', to: '87A', dH: 67.19, dS: 67.21, dDiff: 0.02, dAllow: 0.05, distOk: true,
+    brgH: 130.5, brgS: 130.502, dirDiffSec: 7.2, dirAllowSec: 45.0, dirOk: true, pass: true,
+  }
+  const edgeSummary = { totalLines: 1, distPass: 1, dirPass: 1, bothPass: 1, meanScale: 1.0003, meanSwingDeg: 0.002 }
+
+  it('populates edgeCompliance from result.edges + result.surveyClass when present', () => {
+    const cfg = buildComparisonConfig(points, {
+      pts: [{ id: 1, name: '86B', finalStatus: 'ACCEPT' as const }, { id: 2, name: '87A', finalStatus: 'ACCEPT' as const }],
+      edges: { rows: [edgeRow], summary: edgeSummary },
+      surveyClass: 'B',
+    })
+    expect(cfg.edgeCompliance).toEqual({ surveyClass: 'B', rows: [edgeRow], summary: edgeSummary })
+  })
+
+  it('omits edgeCompliance when result has no edges', () => {
+    const cfg = buildComparisonConfig(points, {
+      pts: [{ id: 1, name: '86B', finalStatus: 'ACCEPT' as const }],
+    })
+    expect(cfg.edgeCompliance).toBeUndefined()
+  })
+
+  it('omits edgeCompliance when result is null', () => {
+    const cfg = buildComparisonConfig(points, null)
+    expect(cfg.edgeCompliance).toBeUndefined()
+  })
+})

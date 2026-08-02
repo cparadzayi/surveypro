@@ -182,6 +182,14 @@ const SKETCH_HEIGHT_MM = 140;
 const RED: [number, number, number] = [220, 0, 0];
 const BLACK: [number, number, number] = [0, 0, 0];
 
+/** Signed DMS: formatDMS() wraps into [0,360), which loses the sign of a swing value
+ *  (already wrapped to (-180,180] by si727.js's edgeCompliance) -- prefix the sign
+ *  ourselves and format the magnitude. */
+function formatSignedDMS(deg: number): string {
+  const sign = deg < 0 ? '-' : '';
+  return `${sign}${formatDMS(Math.abs(deg))}`;
+}
+
 function renderBeaconComparisonSketch(
   cursor: BeaconComparisonCursor,
   reportData: ReportOnSurveyData,
@@ -275,7 +283,7 @@ function renderBeaconComparisonSketch(
 
     const histText = row.dH.toFixed(3);
     const survText = row.dS.toFixed(3);
-    const swingText = formatDMS(row.dirDiffSec / 3600);
+    const swingText = formatSignedDMS(row.dirDiffSec / 3600);
 
     cursor.doc.setTextColor(...BLACK);
     cursor.doc.text(histText, base.mmX, base.mmY);

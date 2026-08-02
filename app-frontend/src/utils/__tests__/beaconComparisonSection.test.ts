@@ -83,15 +83,61 @@ function makeReportDataWithFailingEdge(): ReportOnSurveyData {
   return data;
 }
 
-/** Render into a real jsPDF while capturing every string written. */
-function renderCapturing(reportData: ReportOnSurveyData): { written: string[]; cursor: BeaconComparisonCursor } {
+/** Render into a real jsPDF while capturing every string written, plus every line/ellipse
+ *  drawn and the draw colour in effect at the time (mirrors jsPDF's own internal state
+ *  model of a "current draw colour" set by setDrawColor and read by line/ellipse). */
+function renderCapturing(reportData: ReportOnSurveyData): {
+  written: string[];
+  cursor: BeaconComparisonCursor;
+  lines: Array<{ color: [number, number, number]; x1: number; y1: number; x2: number; y2: number }>;
+  ellipses: Array<{ color: [number, number, number] }>;
+} {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const written: string[] = [];
+  const lines: Array<{ color: [number, number, number]; x1: number; y1: number; x2: number; y2: number }> = [];
+  const ellipses: Array<{ color: [number, number, number] }> = [];
+  let currentDrawColor: [number, number, number] = [0, 0, 0];
+
   const originalText = doc.text.bind(doc);
   (doc as any).text = (text: any, ...rest: any[]) => {
     written.push(Array.isArray(text) ? text.join(' ') : String(text));
     return (originalText as any)(text, ...rest);
   };
+
+  const originalSetDrawColor = doc.setDrawColor.bind(doc);
+  (doc as any).setDrawColor = (...args: any[]) => {
+    if (args.length >= 3) currentDrawColor = [args[0], args[1], args[2]];
+    else if (args.length === 1) currentDrawColor = [args[0], args[0], args[0]];
+    return (originalSetDrawColor as any)(...args);
+  };
+
+  const originalLine = doc.line.bind(doc);
+  (doc as any).line = (x1: number, y1: number, x2: number, y2: number, ...rest: any[]) => {
+    lines.push({ color: currentDrawColor, x1, y1, x2, y2 });
+    return (originalLine as any)(x1, y1, x2, y2, ...rest);
+  };
+
+  // jsPDF's own `circle()` is implemented as `this.ellipse(x, y, r, r, style)` internally, so
+  // without this guard every beacon marker (drawn via doc.circle) would also land in the
+  // `ellipses` capture meant only for tolerance-violation circling. Track "inside a circle()
+  // call" so those pass-through calls are excluded.
+  let inCircleCall = false;
+  const originalCircle = doc.circle.bind(doc);
+  (doc as any).circle = (...args: any[]) => {
+    inCircleCall = true;
+    try {
+      return (originalCircle as any)(...args);
+    } finally {
+      inCircleCall = false;
+    }
+  };
+
+  const originalEllipse = doc.ellipse.bind(doc);
+  (doc as any).ellipse = (...args: any[]) => {
+    if (!inCircleCall) ellipses.push({ color: currentDrawColor });
+    return (originalEllipse as any)(...args);
+  };
+
   const cursor: BeaconComparisonCursor = {
     doc,
     margin: 20,
@@ -101,7 +147,7 @@ function renderCapturing(reportData: ReportOnSurveyData): { written: string[]; c
     y: 20,
   };
   renderBeaconComparison(cursor, reportData);
-  return { written, cursor };
+  return { written, cursor, lines, ellipses };
 }
 
 describe('hasBeaconComparisonData', () => {
@@ -186,6 +232,33 @@ describe('renderBeaconComparisonSketch (via renderBeaconComparison)', () => {
     const { cursor: cursorWithSketch } = renderCapturing(makeReportDataWithEdges());
     const { cursor: cursorWithoutSketch } = renderCapturing(makeReportData());
     expect(cursorWithSketch.y).toBeGreaterThan(cursorWithoutSketch.y);
+  });
+
+  it('draws every ray in plain black regardless of pass/fail, and circles only the failing figures', () => {
+    const passing = renderCapturing(makeReportDataWithEdges());
+    const failing = renderCapturing(makeReportDataWithFailingEdge());
+
+    // Rays are ALWAYS plain black -- never recoloured by pass/fail status, in either fixture.
+    expect(passing.lines.length).toBeGreaterThan(0);
+    expect(passing.lines.every((l) => l.color[0] === 0 && l.color[1] === 0 && l.color[2] === 0)).toBe(true);
+    expect(failing.lines.length).toBeGreaterThan(0);
+    expect(failing.lines.every((l) => l.color[0] === 0 && l.color[1] === 0 && l.color[2] === 0)).toBe(true);
+
+    // A passing edge circles nothing; the failing fixture flips BOTH distOk and dirOk to
+    // false, so both the survey-distance figure and the swing figure get circled (2 ellipses).
+    expect(passing.ellipses.length).toBe(0);
+    expect(failing.ellipses.length).toBe(2);
+  });
+
+  it('renders a negative swing with an explicit minus sign, not wrapped into [0,360)', () => {
+    const data = makeReportDataWithEdges();
+    data.beaconComparison!.edgeCompliance!.rows[0] = {
+      ...data.beaconComparison!.edgeCompliance!.rows[0],
+      dirDiffSec: -7200, // -2 degrees exactly
+    };
+    const { written } = renderCapturing(data);
+    expect(written.some((w) => w.startsWith('-2°'))).toBe(true);
+    expect(written.some((w) => w.startsWith('357°') || w.startsWith('358°'))).toBe(false);
   });
 });
 

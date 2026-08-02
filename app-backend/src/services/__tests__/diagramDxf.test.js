@@ -152,4 +152,15 @@ describe('generateDiagramDXF', () => {
     expect(text).toContain('BEACON_DESC\n')
     expect(text).toContain('Description of Beacons')
   })
+
+  test('renders north arrow, approved box, and scale bar', async () => {
+    const r = await generateDiagramDXF(options, logger)
+    const text = r.dxfBuffer.toString('utf8')
+    expect(text).toContain('NORTH_ARROW\n')
+    expect(text).toContain('APPROVED\n')
+    expect(text).toContain('for Surveyor-General')
+    expect(text).toContain('SCALE_BAR\n')
+    expect(text).toContain('SOLID')
+    expect(text).toMatch(/Scale 1 : \d+/)
+  })
 })

@@ -269,6 +269,60 @@ function drawBeaconDescriptionDxf(w, layout, groups, toG, toGLen) {
   }
 }
 
+function drawNorthArrowDxf(w, layout, toG, toGLen) {
+  const R = layout.northArrow
+  const cx = R.x + R.width / 2
+  const shaftTop = toG({ px: cx, py: R.y }), shaftBottom = toG({ px: cx, py: R.y + R.height })
+  w.addLine('NORTH_ARROW', shaftBottom.x, shaftBottom.y, shaftTop.x, shaftTop.y)
+  const headL = toG({ px: cx - 4, py: R.y + 8 }), headTip = toG({ px: cx, py: R.y }), headR = toG({ px: cx + 4, py: R.y + 8 })
+  w.addLine('NORTH_ARROW', headL.x, headL.y, headTip.x, headTip.y)
+  w.addLine('NORTH_ARROW', headTip.x, headTip.y, headR.x, headR.y)
+  const gT = toG({ px: cx - 9, py: R.y + R.height - 14 + 7 })
+  w.addText('NORTH_ARROW', gT.x, gT.y, 'T', toGLen(7))
+  const gN = toG({ px: cx + 4, py: R.y + R.height - 14 + 7 })
+  w.addText('NORTH_ARROW', gN.x, gN.y, 'N', toGLen(7))
+}
+
+function drawApprovedBoxDxf(w, layout, toG, toGLen) {
+  const R = layout.approved
+  const cx = R.x + R.width / 2
+  const g1 = toG({ px: cx, py: R.y + 5 }); w.addTextC('APPROVED', g1.x, g1.y, 'Approved', toGLen(7))
+  const g2 = toG({ px: cx, py: R.y + 31 }); w.addTextC('APPROVED', g2.x, g2.y, 'for Surveyor-General', toGLen(7))
+  const g3 = toG({ px: cx, py: R.y + 55 }); w.addTextC('APPROVED', g3.x, g3.y, 'Date ....................', toGLen(7))
+}
+
+function drawScaleBarDxf(w, layout, denom, toG, toGLen) {
+  const R = layout.scaleBar
+  const PT_PER_MM = 72 / 25.4
+  const ptPerM = PT_PER_MM * 1000 / denom
+  const barGroundM = (R.width / PT_PER_MM) * denom / 1000
+  const seg = snapScaleBarSegment(barGroundM / 3)
+  const segW = seg * ptPerM
+  const barY = R.y + 10
+  const bx = R.x + R.width / 2 - 1.5 * segW
+  const x0 = bx + segW
+  const barH = 4
+  const subN = 5, subW = segW / subN
+
+  for (let idx = 0; idx < subN; idx += 2) {
+    const c1 = toG({ px: bx + idx * subW, py: barY }), c2 = toG({ px: bx + (idx + 1) * subW, py: barY + barH })
+    w.addSolidRect('SCALE_BAR', c1.x, c1.y, c2.x, c2.y)
+  }
+  { const c1 = toG({ px: x0 + segW, py: barY }), c2 = toG({ px: x0 + 2 * segW, py: barY + barH })
+    w.addSolidRect('SCALE_BAR', c1.x, c1.y, c2.x, c2.y) }
+  const f0 = toG({ px: bx, py: barY }), f1 = toG({ px: bx + 3 * segW, py: barY })
+  const f2 = toG({ px: bx + 3 * segW, py: barY + barH }), f3 = toG({ px: bx, py: barY + barH })
+  w.addPolylineOutline('SCALE_BAR', [f0, f1, f2, f3], true)
+
+  const lbl = (val, cxPt) => { const g = toG({ px: cxPt, py: R.y }); w.addTextC('SCALE_BAR', g.x, g.y, String(Math.round(val)), toGLen(6.5)) }
+  lbl(seg, bx)
+  lbl(0, x0)
+  lbl(seg, x0 + segW)
+  lbl(2 * seg, x0 + 2 * segW)
+  { const g = toG({ px: x0 + 2 * segW + 6, py: barY }); w.addText('SCALE_BAR', g.x, g.y, 'metres', toGLen(6.5)) }
+  { const g = toG({ px: R.x + R.width / 2, py: R.y + 20 }); w.addTextC('SCALE_BAR', g.x, g.y, `Scale 1 : ${denom}`, toGLen(6.5)) }
+}
+
 export async function generateDiagramDXF(options, logger) {
   const { parcels, metadata = {}, scale: requestedScale } = options
   const sheetSize = options.sheetSize === 'A3' ? 'A3' : 'A4'
@@ -433,6 +487,10 @@ export async function generateDiagramDXF(options, logger) {
   const loLabel = resolveLoSystem(null, metadata, options.projection)
   drawTableDxf(w, layout, sidesTable, loLabel, toG, toGLen)
   drawBeaconDescriptionDxf(w, layout, beaconGroups, toG, toGLen)
+
+  drawNorthArrowDxf(w, layout, toG, toGLen)
+  drawApprovedBoxDxf(w, layout, toG, toGLen)
+  drawScaleBarDxf(w, layout, denom, toG, toGLen)
 
   const allPoints = [b0, b1, b2, b3]
   const extMin = { x: Math.min(...allPoints.map((p) => p.x)), y: Math.min(...allPoints.map((p) => p.y)) }

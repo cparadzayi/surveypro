@@ -181,6 +181,25 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
 
       fastify.log.info(`[DXF] Request planType=${JSON.stringify(planType)} beaconLabels=${Array.isArray(beaconLabels) ? beaconLabels.length : 'none'}`)
 
+      if (planType === 'diagram') {
+        fastify.log.info('[DXF] 📐 Diagram plan type → single-stand Diagram DXF renderer')
+        const { generateDiagramDXF } = await import('../services/diagramDxf.js')
+        const diagram = await generateDiagramDXF(
+          { parcels, beacons, metadata, projection, scale, sheetSize: (sheetSize === 'A3' ? 'A3' : 'A4'), orientation: 'portrait' },
+          fastify.log
+        )
+        const ts = Date.now()
+        reply
+          .type('application/dxf')
+          .headers({
+            'Content-Disposition': `attachment; filename="diagram-${ts}.dxf"`,
+            'X-Used-Scale': diagram.scale,
+            'X-Used-Sheet-Size': diagram.sheetSize,
+          })
+          .send(diagram.dxfBuffer)
+        return
+      }
+
       const { generateDXF } = await import('../services/dxfGenerator.js')
 
       const { buffer, warnings } = generateDXF(

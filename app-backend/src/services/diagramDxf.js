@@ -207,9 +207,9 @@ function drawTableDxf(w, layout, table, loLabel, toG, toGLen) {
   { const g = gT(cSg, R.y); w.addText('TABLE', g.x, g.y, 'DIAGRAM S.G. No.', toGLen(H)) }
 
   { const g = gT(coordMidX, R.y + 10); w.addTextC('TABLE', g.x, g.y, loLabel, toGLen(h)) }
-  { const g = gT(xDeg, R.y + 19); w.addTextC('TABLE', g.x, g.y, '°', toGLen(h)) }
-  { const g = gT(xMin, R.y + 19); w.addTextC('TABLE', g.x, g.y, "'", toGLen(h)) }
-  { const g = gT(xSec, R.y + 19); w.addTextC('TABLE', g.x, g.y, '"', toGLen(h)) }
+  { const g = gT(xDeg + 11, R.y + 19); w.addTextC('TABLE', g.x, g.y, '°', toGLen(h)) }
+  { const g = gT(xMin + 7, R.y + 19); w.addTextC('TABLE', g.x, g.y, "'", toGLen(h)) }
+  { const g = gT(xSec + 7, R.y + 19); w.addTextC('TABLE', g.x, g.y, '"', toGLen(h)) }
   { const g = gT(yColMidX, R.y + 19); w.addTextC('TABLE', g.x, g.y, 'Y', toGLen(h)) }
   { const g = gT(coordMidX, R.y + 19); w.addTextC('TABLE', g.x, g.y, 'Metres', toGLen(h)) }
   { const g = gT(xColMidX, R.y + 19); w.addTextC('TABLE', g.x, g.y, 'X', toGLen(h)) }
@@ -226,9 +226,9 @@ function drawTableDxf(w, layout, table, loLabel, toG, toGLen) {
       { const g = gT(metresMidX, ry); w.addTextC('TABLE', g.x, g.y, sideRows[i].metres, toGLen(h)) }
       { const g = gT(cDirX + 11, ry); w.addTextC('TABLE', g.x, g.y, sideRows[i].side, toGLen(h)) }
       const [dd, mm, ss] = String(sideRows[i].direction).split(' ')
-      { const g = gT(xDeg, ry); w.addTextC('TABLE', g.x, g.y, dd ?? '', toGLen(h)) }
-      { const g = gT(xMin, ry); w.addTextC('TABLE', g.x, g.y, mm ?? '', toGLen(h)) }
-      { const g = gT(xSec, ry); w.addTextC('TABLE', g.x, g.y, ss ?? '', toGLen(h)) }
+      { const g = gT(xDeg + 11, ry); w.addTextC('TABLE', g.x, g.y, dd ?? '', toGLen(h)) }
+      { const g = gT(xMin + 7, ry); w.addTextC('TABLE', g.x, g.y, mm ?? '', toGLen(h)) }
+      { const g = gT(xSec + 7, ry); w.addTextC('TABLE', g.x, g.y, ss ?? '', toGLen(h)) }
     }
     if (coordinateRows[i]) {
       { const g = gT(letMidX, ry); w.addTextC('TABLE', g.x, g.y, coordinateRows[i].letter, toGLen(h)) }

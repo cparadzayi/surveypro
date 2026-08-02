@@ -57,6 +57,127 @@ function tableBottomY(tableY, rowCount) {
   return tableY + 39 + rowCount * 11
 }
 
+function drawAdjoiningFeaturesDxf(w, ctx, logger) {
+  const { annotations, geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs, toG, toGLen } = ctx
+  if (!Array.isArray(annotations) || annotations.length === 0) return
+  const n = geometry.vertices.length
+  const PT_PER_MM = 72 / 25.4
+  const ptPerGroundM = PT_PER_MM * 1000 / denom
+  const cen = [subjCentroid.px, subjCentroid.py]
+  const vertexBandPt = beaconRadiusPt(denom) + 14
+  const contiguousSides = new Set(annotations.filter((x) => x && x.role === 'contiguous' && x.side).map((x) => x.side))
+  const roadSides = new Set(annotations.filter((x) => x && x.role === 'road' && x.side).map((x) => x.side))
+
+  for (const ann of annotations) {
+    if (!ann || !ann.side || !ann.role) continue
+    let i = -1
+    for (let k = 0; k < n; k++) {
+      if (geometry.vertices[k].letter + geometry.vertices[(k + 1) % n].letter === ann.side) { i = k; break }
+    }
+    if (i < 0) { logger?.warn?.(`[DiagramDXF] adjoining: side ${ann.side} not found`); continue }
+
+    const p1 = subjPt[i]
+    const p2 = subjPt[(i + 1) % n]
+    const a = [p1.px, p1.py]
+    const b = [p2.px, p2.py]
+    const mid = { px: (p1.px + p2.px) / 2, py: (p1.py + p2.py) / 2 }
+
+    if (ann.role === 'road' || ann.role === 'servitude') {
+      let q = null
+      if (ann.role === 'servitude') {
+        if (ann.widthM > 0) q = edgeStrip(a, b, ann.widthM * ptPerGroundM, cen)
+        else logger?.warn?.(`[DiagramDXF] servitude ${ann.side} has no widthM; drawing label only`)
+      } else {
+        const flankA = geometry.vertices[(i - 1 + n) % n].letter + geometry.vertices[i].letter
+        const flankB = geometry.vertices[(i + 1) % n].letter + geometry.vertices[(i + 2) % n].letter
+        const axLen = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+        const ax = [(b[0] - a[0]) / axLen, (b[1] - a[1]) / axLen]
+        const inner = []
+        if (!roadSides.has(flankA)) {
+          if (contiguousSides.has(flankA)) {
+            const prev = subjPt[(i - 1 + n) % n]
+            inner.push(edgeStrip([prev.px, prev.py], a, CONTIG_STUB_PT, cen)[2])
+          } else {
+            inner.push([a[0] - ax[0] * CONTIG_STUB_PT, a[1] - ax[1] * CONTIG_STUB_PT])
+          }
+        }
+        inner.push(a, b)
+        if (!roadSides.has(flankB)) {
+          if (contiguousSides.has(flankB)) {
+            const next = subjPt[(i + 2) % n]
+            inner.push(edgeStrip(b, [next.px, next.py], CONTIG_STUB_PT, cen)[3])
+          } else {
+            inner.push([b[0] + ax[0] * CONTIG_STUB_PT, b[1] + ax[1] * CONTIG_STUB_PT])
+          }
+        }
+        q = roadBandRibbon(inner, ROAD_STRIP_PT, cen)
+      }
+      if (q && q.length >= 3) {
+        const layer = ann.role === 'road' ? 'DIAGRAM_ROAD' : 'ADJOINING_SERVITUDE'
+        const gPts = q.map(([x, y]) => toG({ px: x, py: y }))
+        w.addPolylineOutline(layer, gPts, true)
+        for (let k = 0; k < q.length; k++) {
+          const s = q[k], t = q[(k + 1) % q.length]
+          labelObstacles.push([{ px: s[0], py: s[1] }, { px: t[0], py: t[1] }])
+        }
+      }
+    } else if (ann.role === 'contiguous') {
+      const marks = contiguousMarks(a, b, ann.end)
+      const st = edgeStrip(a, b, CONTIG_STUB_PT, cen)
+      if (marks.stubFrom) {
+        const g1 = toG({ px: a[0], py: a[1] }), g2 = toG({ px: st[3][0], py: st[3][1] })
+        w.addLine('ADJOINING', g1.x, g1.y, g2.x, g2.y)
+        labelObstacles.push([{ px: a[0], py: a[1] }, { px: st[3][0], py: st[3][1] }])
+      }
+      if (marks.stubTo) {
+        const g1 = toG({ px: b[0], py: b[1] }), g2 = toG({ px: st[2][0], py: st[2][1] })
+        w.addLine('ADJOINING', g1.x, g1.y, g2.x, g2.y)
+        labelObstacles.push([{ px: b[0], py: b[1] }, { px: st[2][0], py: st[2][1] }])
+      }
+    }
+
+    if (ann.label) {
+      const labelText = ann.role === 'road' && ann.widthM > 0 ? `${ann.label} ${formatSI(ann.widthM, 2)}m` : ann.label
+      const labelH = 7
+      const labelW = textWidth(labelText, labelH)
+      if (ann.role === 'road' || ann.role === 'servitude') {
+        const ex = p2.px - p1.px, ey = p2.py - p1.py
+        const len = Math.hypot(ex, ey) || 1
+        let perpX = -ey / len, perpY = ex / len
+        if (perpX * (subjCentroid.px - mid.px) + perpY * (subjCentroid.py - mid.py) > 0) { perpX = -perpX; perpY = -perpY }
+        let angleDeg = Math.atan2(ey, ex) * 180 / Math.PI
+        if (angleDeg > 90 || angleDeg < -90) angleDeg += 180
+        const stripPt = ann.role === 'servitude' && ann.widthM > 0 ? ann.widthM * ptPerGroundM : ROAD_STRIP_PT
+        const off = stripPt + vertexBandPt
+        const lx = mid.px + perpX * off, ly = mid.py + perpY * off
+        // Centred + rotated: pre-shift the LEFT-justified insertion point back along the
+        // reading direction by half the text width (the technique adjoiningFeaturesDxf.js
+        // already uses for this exact case — DXF's justification codes don't combine
+        // reliably with rotation across viewers).
+        const aRad = angleDeg * Math.PI / 180
+        const ix = lx - Math.cos(aRad) * (labelW / 2)
+        const iy = ly - Math.sin(aRad) * (labelW / 2)
+        const g = toG({ px: ix, py: iy })
+        w.addText(ann.role === 'servitude' ? 'ADJOINING_SERVITUDE' : 'DIAGRAM_ROAD', g.x, g.y, labelText, toGLen(labelH), -angleDeg)
+      } else {
+        const m = contiguousMarks(a, b, ann.end)
+        const anchor = { px: m.labelAnchor[0], py: m.labelAnchor[1] }
+        let ox = anchor.px - subjCentroid.px, oy = anchor.py - subjCentroid.py
+        const ol = Math.hypot(ox, oy) || 1; ox /= ol; oy /= ol
+        const extent = (labelW / 2) * Math.abs(ox) + (labelH / 2) * Math.abs(oy)
+        const half = Math.max(labelW, labelH) / 2
+        const gap = Math.max(2, CONTIG_LABEL_MARGIN + extent - half)
+        const pos = placeVertexLabel(anchor, subjCentroid, {
+          beaconR: 0, gap, labelW, labelH, segments: subjSegs.concat(neighbourSegs, labelObstacles),
+        })
+        const g = toG({ px: pos.x, py: pos.y + labelH })
+        w.addText('ADJOINING', g.x, g.y, labelText, toGLen(labelH))
+        labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: labelH }))
+      }
+    }
+  }
+}
+
 export async function generateDiagramDXF(options, logger) {
   const { parcels, metadata = {}, scale: requestedScale } = options
   const sheetSize = options.sheetSize === 'A3' ? 'A3' : 'A4'
@@ -212,6 +333,11 @@ export async function generateDiagramDXF(options, logger) {
   //   8. statement
   //   9. reference grid
   // ---
+
+  drawAdjoiningFeaturesDxf(w, {
+    annotations: metadata.sideAnnotations,
+    geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs, toG, toGLen,
+  }, logger)
 
   const allPoints = [b0, b1, b2, b3]
   const extMin = { x: Math.min(...allPoints.map((p) => p.x)), y: Math.min(...allPoints.map((p) => p.y)) }

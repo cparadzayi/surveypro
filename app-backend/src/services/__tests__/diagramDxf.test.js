@@ -89,4 +89,43 @@ describe('generateDiagramDXF', () => {
     expect(text).toContain('NEIGHBOURS\n')
     expect(text.trim().endsWith('0\nEOF')).toBe(true)
   })
+
+  test('renders adjoining-feature annotations (road/servitude/contiguous), skipping unmatched sides', async () => {
+    const withAdjoining = {
+      ...options,
+      metadata: {
+        ...options.metadata,
+        sideAnnotations: [
+          { side: 'AB', role: 'road', label: 'Klein Road' },
+          { side: 'BC', role: 'servitude', label: 'Water servitude', widthM: 3 },
+          { side: 'CD', role: 'contiguous', label: 'STAND 303 BRACKENHURST' },
+          { side: 'ZZ', role: 'road', label: 'nowhere' },
+        ],
+      },
+    }
+    const r = await generateDiagramDXF(withAdjoining, logger)
+    const text = r.dxfBuffer.toString('utf8')
+    expect(text).toContain('DIAGRAM_ROAD\n')
+    expect(text).toContain('ADJOINING_SERVITUDE\n')
+    expect(text).toContain('ADJOINING\n')
+    expect(text).toContain('Klein Road')
+    expect(text).toContain('Water servitude')
+    expect(text).toContain('STAND 303 BRACKENHURST')
+  })
+
+  test('is unchanged (no crash) when sideAnnotations is absent', async () => {
+    const r = await generateDiagramDXF(options, logger)
+    expect(r.dxfBuffer.toString('utf8').trim().endsWith('0\nEOF')).toBe(true)
+  })
+
+  test('renders single-terminal and both contiguous annotations without error', async () => {
+    for (const end of ['from', 'to', 'both', undefined]) {
+      const withContig = {
+        ...options,
+        metadata: { ...options.metadata, sideAnnotations: [{ side: 'AB', role: 'contiguous', label: 'STAND 86', end }] },
+      }
+      const r = await generateDiagramDXF(withContig, logger)
+      expect(r.dxfBuffer.toString('utf8')).toContain('STAND 86')
+    }
+  })
 })

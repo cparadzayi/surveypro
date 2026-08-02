@@ -174,4 +174,25 @@ describe('generateDiagramDXF', () => {
     expect(text).toContain('STAND 302 BRACKENHURST')
     expect(text).toContain('Land Surveyor')
   })
+
+  test('renders the reference grid (reg-53)', async () => {
+    const r = await generateDiagramDXF({
+      ...options,
+      metadata: { ...options.metadata, fileNo: '5/2023', srNo: '118/2023' },
+    }, logger)
+    const text = r.dxfBuffer.toString('utf8')
+    expect(text).toContain('GRID\n')
+    expect(text).toContain('This diagram is annexed to')
+    // 'The immediate parent diagram is' / 'The original title diagram is' are rendered via
+    // justifiedLineDxf, which (like diagramPdf.js's drawJustifiedLine) emits one DXF TEXT
+    // entity per word so the line can be spread to fill the cell width — so the phrase never
+    // appears as one contiguous substring in the buffer. Assert the constituent words instead.
+    expect(text).toContain('immediate')
+    expect(text).toContain('parent')
+    expect(text).toContain('original')
+    expect(text).toContain('title')
+    expect(text).toContain('File : 5/2023')
+    expect(text).toContain('S.R. : 118/2023')
+    expect(text).toContain('Surveyor-General')
+  })
 })

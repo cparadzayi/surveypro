@@ -348,6 +348,88 @@ function drawStatementDxf(w, layout, geometry, metadata, toG, toGLen) {
   { const g = toG({ px: R.x + R.width, py: R.y + 90 }); w.addTextR('STATEMENT', g.x, g.y, 'Land Surveyor', toGLen(9)) }
 }
 
+// Spread a single line's words across `width` via manual per-word spacing (no native
+// DXF justify-across-width primitive — mirrors diagramPdf.js's drawJustifiedLine).
+function justifiedLineDxf(w, layer, text, x, y, width, height, toG, toGLen) {
+  const words = String(text).split(/\s+/).filter(Boolean)
+  if (words.length === 0) return
+  if (words.length === 1) { const g = toG({ px: x, py: y }); w.addText(layer, g.x, g.y, words[0], toGLen(height)); return }
+  const wordsW = words.reduce((s, wd) => s + textWidth(wd, height), 0)
+  const gap = Math.max(0, (width - wordsW) / (words.length - 1))
+  let cx = x
+  for (const wd of words) {
+    const g = toG({ px: cx, py: y })
+    w.addText(layer, g.x, g.y, wd, toGLen(height))
+    cx += textWidth(wd, height) + gap
+  }
+}
+
+function refRowY(top, bottom) {
+  const row = (bottom - top) / 4
+  return (i) => top + row * i + (row - 7) / 2 + 7 // +7: DXF baseline vs. PDF top-left
+}
+
+function drawDiagramRefCellDxf(w, { xLeft, xRight, top, bottom, pad, line1, no, annexedTo, deedNo }, toG, toGLen) {
+  const cx = xLeft + pad
+  const cw = (xRight - xLeft) - 2 * pad
+  const y = refRowY(top, bottom)
+  const rightPad = 4
+  justifiedLineDxf(w, 'GRID', line1, cx, y(0), cw, 7, toG, toGLen)
+  { const g = toG({ px: cx, py: y(1) }); w.addText('GRID', g.x, g.y, `No. ${no}`, toGLen(7)) }
+  { const g = toG({ px: xRight - rightPad, py: y(1) }); w.addTextR('GRID', g.x, g.y, 'annexed to', toGLen(7)) }
+  if (annexedTo) { const g = toG({ px: cx, py: y(2) }); w.addText('GRID', g.x, g.y, annexedTo, toGLen(7)) }
+  { const g = toG({ px: xLeft + (xRight - xLeft) / 2, py: y(3) }); w.addText('GRID', g.x, g.y, `No. ${deedNo}`, toGLen(7)) }
+}
+
+function drawReferenceGridDxf(w, layout, grid, toG, toGLen) {
+  const R = layout.refGrid
+  const W = R.width
+  const B = layout.border
+  const bottom = B.y + B.height
+  const x0 = R.x, x1 = R.x + W / 3, xR = B.x + B.width
+  const x2 = x1 + (xR - x1) / 2
+  const t1 = x1 + (xR - x1) / 3, t2 = x1 + 2 * (xR - x1) / 3
+  const COMP_H = 14
+  const r3 = bottom - COMP_H
+  const r2 = r3 - R.height * 0.25
+  const compCenterY = r3 + (COMP_H - 7) / 2 + 7
+
+  const line = (px1, py1, px2, py2) => { const g1 = toG({ px: px1, py: py1 }), g2 = toG({ px: px2, py: py2 }); w.addLine('GRID', g1.x, g1.y, g2.x, g2.y) }
+  line(B.x, R.y, B.x + B.width, R.y)
+  line(x1, R.y, x1, bottom)
+  line(x2, R.y, x2, r2)
+  line(x1, r2, xR, r2)
+  line(x1, r3, xR, r3)
+  line(t1, r2, t1, r3)
+  line(t2, r2, t2, r3)
+
+  const pad = 3
+  const wL = (x1 - x0) - 2 * pad
+  const lY = refRowY(R.y, r2)
+  const colMid = x0 + (x1 - x0) / 2
+  { const g = toG({ px: x0 + pad, py: lY(0) }); w.addText('GRID', g.x, g.y, 'This diagram is annexed to', toGLen(7)) }
+  { const g = toG({ px: x0 + pad, py: lY(1) }); w.addText('GRID', g.x, g.y, 'No.', toGLen(7)) }
+  { const g = toG({ px: colMid, py: lY(1) }); w.addText('GRID', g.x, g.y, 'dated', toGLen(7)) }
+  { const g = toG({ px: x0 + wL + pad, py: compCenterY }); w.addTextR('GRID', g.x, g.y, 'Surveyor-General', toGLen(7)) }
+
+  drawDiagramRefCellDxf(w, {
+    xLeft: x1, xRight: x2, top: R.y, bottom: r2, pad,
+    line1: 'The immediate parent diagram is', no: grid.parentDiagramNo,
+    annexedTo: grid.parentDiagramAnnexedTo, deedNo: grid.deedOfTransferNo,
+  }, toG, toGLen)
+  drawDiagramRefCellDxf(w, {
+    xLeft: x2, xRight: xR, top: R.y, bottom: r2, pad,
+    line1: 'The original title diagram is', no: grid.originalTitleDiagramNo,
+    annexedTo: grid.parentDiagramAnnexedTo, deedNo: grid.deedOfTransferNo,
+  }, toG, toGLen)
+
+  const fileCenterY = r2 + ((r3 - r2) - 7) / 2 + 7
+  { const g = toG({ px: x1 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `File : ${grid.fileNo}`, toGLen(7)) }
+  { const g = toG({ px: t1 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `G.P. : ${grid.registrationGp}`, toGLen(7)) }
+  { const g = toG({ px: t2 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `S.R. : ${grid.srNo}`, toGLen(7)) }
+  { const g = toG({ px: x1 + pad, py: compCenterY }); w.addText('GRID', g.x, g.y, `Compilation : ${grid.compilation}`, toGLen(7)) }
+}
+
 export async function generateDiagramDXF(options, logger) {
   const { parcels, metadata = {}, scale: requestedScale } = options
   const sheetSize = options.sheetSize === 'A3' ? 'A3' : 'A4'
@@ -495,15 +577,6 @@ export async function generateDiagramDXF(options, logger) {
     labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
   }
 
-  // --- Tasks 4-9 insert their drawing blocks here, in generateDiagramPDF's order:
-  //   4. adjoining features (road/servitude/contiguous)
-  //   5. sides/directions/co-ordinates table
-  //   6. description of beacons
-  //   7. north arrow, approved box, scale bar
-  //   8. statement
-  //   9. reference grid
-  // ---
-
   drawAdjoiningFeaturesDxf(w, {
     annotations: metadata.sideAnnotations,
     geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs, toG, toGLen,
@@ -518,6 +591,8 @@ export async function generateDiagramDXF(options, logger) {
   drawScaleBarDxf(w, layout, denom, toG, toGLen)
 
   drawStatementDxf(w, layout, geometry, metadata, toG, toGLen)
+
+  drawReferenceGridDxf(w, layout, buildReferenceGrid(metadata), toG, toGLen)
 
   const allPoints = [b0, b1, b2, b3]
   const extMin = { x: Math.min(...allPoints.map((p) => p.x)), y: Math.min(...allPoints.map((p) => p.y)) }

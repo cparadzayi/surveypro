@@ -4,6 +4,8 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { f3, f4, f4s, formatDMS } from '@/utils/surveyMath'
 import { planScaleMmPerM, chooseExaggeration, scaleBarMetres, sanitizeReportFilename } from '@/utils/beaconReportGeometry'
+import { computeExtent, pickSketchScale, makeSketchTransform, midpointOffset } from '@/utils/beaconComparisonSketchLayout'
+import { formatSignedDMS } from '@/utils/beaconComparisonSection'
 
 const NAVY = [30, 58, 92]
 
@@ -355,6 +357,121 @@ class BeaconAdjustmentReport {
     note.forEach((ln, i) => this.doc.text(ln, 14, y + i * 4))
   }
 
+  addEdgeComplianceSketch(result) {
+    const edges = result.edges
+    if (!edges || !edges.rows.length) return
+
+    const byName = {}
+    for (const p of result.pts) byName[p.name] = { y: p.yH, x: p.xH }
+    const names = new Set()
+    for (const row of edges.rows) { names.add(row.from); names.add(row.to) }
+    const points = Array.from(names)
+      .map((name) => ({ name, pt: byName[name] }))
+      .filter((p) => !!p.pt)
+    if (points.length < 2) return
+
+    this.doc.addPage('a4', 'portrait'); this.y = this.margin
+    this.sectionTitle('Comparison Sketch — SI 727 §67(5)')
+
+    const boxX = this.margin, boxYtop = this.y, boxW = this.pw - 2 * this.margin, boxH = 170
+    this.doc.setDrawColor(120); this.doc.setLineWidth(0.3); this.doc.rect(boxX, boxYtop, boxW, boxH)
+
+    const pad = 16
+    const areaMm = { width: boxW - 2 * pad, height: boxH - 2 * pad }
+    const extent = computeExtent(points.map((p) => p.pt))
+    const { denom, label } = pickSketchScale(extent, areaMm)
+    const originMm = { x: boxX + pad, y: boxYtop + pad }
+    const transform = makeSketchTransform(extent, areaMm, denom, originMm)
+    const positioned = new Map(points.map((p) => [p.name, transform(p.pt)]))
+
+    // Rays -- always plain black, drawn before annotations so text sits on top.
+    this.doc.setDrawColor(0, 0, 0); this.doc.setLineWidth(0.25)
+    for (const row of edges.rows) {
+      const a = positioned.get(row.from), b = positioned.get(row.to)
+      if (!a || !b) continue
+      this.doc.line(a.mmX, a.mmY, b.mmX, b.mmY)
+    }
+
+    // Beacon points + outward-offset name labels.
+    const cx = points.reduce((s, p) => s + (positioned.get(p.name)?.mmX ?? 0), 0) / points.length
+    const cy = points.reduce((s, p) => s + (positioned.get(p.name)?.mmY ?? 0), 0) / points.length
+    this.doc.setFontSize(7); this.doc.setTextColor(20, 20, 20)
+    for (const p of points) {
+      const pos = positioned.get(p.name)
+      this.doc.setDrawColor(0, 0, 0)
+      this.doc.circle(pos.mmX, pos.mmY, 1.3, 'S')
+      let ux = pos.mmX - cx, uy = pos.mmY - cy
+      const ulen = Math.hypot(ux, uy) || 1
+      ux /= ulen; uy /= ulen
+      this.doc.text(p.name, pos.mmX + ux * 3.5, pos.mmY + uy * 3.5)
+    }
+
+    // Per-ray annotations: historical distance (black), survey distance (red), signed
+    // swing (black), stacked beside the ray midpoint, alternating sides to reduce
+    // overlap. Failing distance/direction figures get circled in red, independently.
+    this.doc.setFontSize(5.5)
+    edges.rows.forEach((row, idx) => {
+      const a = positioned.get(row.from), b = positioned.get(row.to)
+      if (!a || !b) return
+      const side = idx % 2 === 0 ? 1 : -1
+      const base = midpointOffset(a, b, 2.2, side)
+
+      const histText = row.dH.toFixed(3)
+      const survText = row.dS.toFixed(3)
+      const swingText = formatSignedDMS(row.dirDiffSec / 3600)
+
+      this.doc.setTextColor(0, 0, 0)
+      this.doc.text(histText, base.mmX, base.mmY)
+      this.doc.setTextColor(220, 0, 0)
+      this.doc.text(survText, base.mmX, base.mmY + 2.0)
+      this.doc.setTextColor(0, 0, 0)
+      this.doc.text(swingText, base.mmX, base.mmY + 4.0)
+
+      if (!row.distOk) {
+        const w = this.doc.getTextWidth(survText)
+        this.doc.setDrawColor(220, 0, 0); this.doc.setLineWidth(0.12)
+        this.doc.ellipse(base.mmX + w / 2, base.mmY + 2.0 - 0.9, w / 2 + 0.8, 1.5, 'S')
+      }
+      if (!row.dirOk) {
+        const w = this.doc.getTextWidth(swingText)
+        this.doc.setDrawColor(220, 0, 0); this.doc.setLineWidth(0.12)
+        this.doc.ellipse(base.mmX + w / 2, base.mmY + 4.0 - 0.9, w / 2 + 0.8, 1.5, 'S')
+      }
+    })
+
+    // Tick-marked scale bar (bottom-left), matching addDisplacementPlot's own style.
+    const mmPerM = 1000 / denom
+    const barM = scaleBarMetres(mmPerM, 40), barMm = barM * mmPerM
+    const sbx = boxX + pad, sby = boxYtop + boxH - 8
+    this.doc.setDrawColor(40); this.doc.setLineWidth(0.5)
+    this.doc.line(sbx, sby, sbx + barMm, sby)
+    this.doc.line(sbx, sby - 1.2, sbx, sby + 1.2)
+    this.doc.line(sbx + barMm, sby - 1.2, sbx + barMm, sby + 1.2)
+    this.doc.setFontSize(7); this.doc.setTextColor(40)
+    this.doc.text('0', sbx, sby + 4); this.doc.text(`${barM} m`, sbx + barMm, sby + 4, { align: 'right' })
+
+    // South arrow (bottom-right), matching addDisplacementPlot's own style.
+    const ax = boxX + boxW - pad - 4
+    const ay0 = boxYtop + boxH - pad - 16, ay1 = boxYtop + boxH - pad
+    this.doc.setDrawColor(40); this.doc.setLineWidth(0.6); this.doc.line(ax, ay0, ax, ay1)
+    this._arrowhead(ax, ay0, ax, ay1, false, [40, 40, 40])
+    this.doc.setFontSize(8); this.doc.setTextColor(40); this.doc.text('S', ax, ay1 + 4, { align: 'center' })
+
+    // Callout + SI 727 summary under the box.
+    this.y = boxYtop + boxH + 6
+    this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(60)
+    this.doc.text(
+      `Scale ${label}. Black = historical, Red = current survey, Circled = outside SI 727 tolerance.`,
+      this.margin, this.y, { maxWidth: this.pw - 2 * this.margin })
+    this.y += 6
+    const s = edges.summary
+    this.doc.setTextColor(20)
+    this.doc.text(
+      `SI 727 Class ${result.surveyClass || 'B'} · ${s.bothPass} of ${s.totalLines} lines pass both checks`,
+      this.margin, this.y)
+    this.y += 12
+  }
+
   addFooters() {
     const n = this.doc.getNumberOfPages()
     for (let i = 1; i <= n; i++) {
@@ -376,6 +493,7 @@ class BeaconAdjustmentReport {
     this.addTransformationResiduals(result)
     this.addReliabilityValidation(result)
     this.addEdgeCompliance(result)
+    this.addEdgeComplianceSketch(result)
     this.addFooters()
     return this.doc
   }

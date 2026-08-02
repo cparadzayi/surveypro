@@ -49,6 +49,40 @@ function makeReportData(overrides: Partial<ReportOnSurveyData> = {}): ReportOnSu
   } as ReportOnSurveyData;
 }
 
+function makeReportDataWithEdges(): ReportOnSurveyData {
+  const base = makeReportData();
+  base.beacons = [
+    ...base.beacons,
+    {
+      beaconId: '86B',
+      status: 'found',
+      currentCoordinates: { y: 50060.2, x: 2200050.3 },
+      originalData: { coordinates: { y: 50060.19, x: 2200050.28 }, srNumber: 'SR 21/2016', source: 'previous-survey' },
+      discrepancy: { dy: 0.01, dx: 0.02, distance: 0.022 },
+    },
+  ];
+  base.beaconComparison!.edgeCompliance = {
+    surveyClass: 'B',
+    rows: [
+      {
+        from: '85c', to: '86B', dH: 67.19, dS: 67.21, dDiff: 0.02, dAllow: 0.05, distOk: true,
+        brgH: 130.5, brgS: 130.502, dirDiffSec: 7.2, dirAllowSec: 45.0, dirOk: true, pass: true,
+      },
+    ],
+    summary: { totalLines: 1, distPass: 1, dirPass: 1, bothPass: 1, meanScale: 1.0003, meanSwingDeg: 0.002 },
+  };
+  return base;
+}
+
+function makeReportDataWithFailingEdge(): ReportOnSurveyData {
+  const data = makeReportDataWithEdges();
+  data.beaconComparison!.edgeCompliance!.rows[0] = {
+    ...data.beaconComparison!.edgeCompliance!.rows[0],
+    distOk: false, dirOk: false, pass: false,
+  };
+  return data;
+}
+
 /** Render into a real jsPDF while capturing every string written. */
 function renderCapturing(reportData: ReportOnSurveyData): { written: string[]; cursor: BeaconComparisonCursor } {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -114,6 +148,44 @@ describe('renderBeaconComparison', () => {
   it('advances the cursor', () => {
     const { cursor } = renderCapturing(makeReportData());
     expect(cursor.y).toBeGreaterThan(20);
+  });
+});
+
+describe('renderBeaconComparisonSketch (via renderBeaconComparison)', () => {
+  it('renders the sketch heading, scale caption, beacon names and distance figures when edgeCompliance is present', () => {
+    const { written } = renderCapturing(makeReportDataWithEdges());
+    expect(written).toContain('BEACON COMPARISON SKETCH');
+    expect(written.some((w) => w.startsWith('Scale 1 : '))).toBe(true);
+    expect(written).toContain('85c');
+    expect(written).toContain('86B');
+    expect(written).toContain('67.190'); // historical distance
+    expect(written).toContain('67.210'); // survey distance
+    expect(written.some((w) => /SI 727 Class B/.test(w))).toBe(true);
+  });
+
+  it('does nothing (no crash, no sketch heading) when edgeCompliance is absent', () => {
+    const { written } = renderCapturing(makeReportData());
+    expect(written).not.toContain('BEACON COMPARISON SKETCH');
+  });
+
+  it('does nothing when edgeCompliance has zero rows', () => {
+    const data = makeReportDataWithEdges();
+    data.beaconComparison!.edgeCompliance!.rows = [];
+    const { written } = renderCapturing(data);
+    expect(written).not.toContain('BEACON COMPARISON SKETCH');
+  });
+
+  it('still renders (no crash) when a failing edge is present, distinct from the passing case', () => {
+    const { written } = renderCapturing(makeReportDataWithFailingEdge());
+    expect(written).toContain('BEACON COMPARISON SKETCH');
+    expect(written).toContain('67.190');
+    expect(written).toContain('67.210');
+  });
+
+  it('advances the cursor past the tabulation position', () => {
+    const { cursor: cursorWithSketch } = renderCapturing(makeReportDataWithEdges());
+    const { cursor: cursorWithoutSketch } = renderCapturing(makeReportData());
+    expect(cursorWithSketch.y).toBeGreaterThan(cursorWithoutSketch.y);
   });
 });
 

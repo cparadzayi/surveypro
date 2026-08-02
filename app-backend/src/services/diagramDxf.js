@@ -200,41 +200,41 @@ function drawTableDxf(w, layout, table, loLabel, toG, toGLen) {
   const gT = (x, y) => toG({ px: x, py: y })
   const H = 7.5, h = 7
 
-  w.addTextC('TABLE', gT(sideMidX, R.y).x, gT(sideMidX, R.y).y, 'SIDES', toGLen(H))
-  w.addTextC('TABLE', gT(metresMidX, R.y).x, gT(metresMidX, R.y).y, 'METRES', toGLen(H))
-  w.addTextC('TABLE', gT(dirMidX, R.y).x, gT(dirMidX, R.y).y, 'DIRECTIONS', toGLen(H))
-  w.addTextC('TABLE', gT(coordMidX, R.y).x, gT(coordMidX, R.y).y, 'CO-ORDINATES', toGLen(H))
-  { const g = gT(cSg, R.y); w.addText('TABLE', g.x, g.y, 'DIAGRAM S.G. No.', toGLen(H)) }
+  w.addTextC('TABLE', gT(sideMidX, R.y + H).x, gT(sideMidX, R.y + H).y, 'SIDES', toGLen(H))
+  w.addTextC('TABLE', gT(metresMidX, R.y + H).x, gT(metresMidX, R.y + H).y, 'METRES', toGLen(H))
+  w.addTextC('TABLE', gT(dirMidX, R.y + H).x, gT(dirMidX, R.y + H).y, 'DIRECTIONS', toGLen(H))
+  w.addTextC('TABLE', gT(coordMidX, R.y + H).x, gT(coordMidX, R.y + H).y, 'CO-ORDINATES', toGLen(H))
+  { const g = gT(cSg, R.y + H); w.addText('TABLE', g.x, g.y, 'DIAGRAM S.G. No.', toGLen(H)) }
 
-  { const g = gT(coordMidX, R.y + 10); w.addTextC('TABLE', g.x, g.y, loLabel, toGLen(h)) }
-  { const g = gT(xDeg + 11, R.y + 19); w.addTextC('TABLE', g.x, g.y, '°', toGLen(h)) }
-  { const g = gT(xMin + 7, R.y + 19); w.addTextC('TABLE', g.x, g.y, "'", toGLen(h)) }
-  { const g = gT(xSec + 7, R.y + 19); w.addTextC('TABLE', g.x, g.y, '"', toGLen(h)) }
-  { const g = gT(yColMidX, R.y + 19); w.addTextC('TABLE', g.x, g.y, 'Y', toGLen(h)) }
-  { const g = gT(coordMidX, R.y + 19); w.addTextC('TABLE', g.x, g.y, 'Metres', toGLen(h)) }
-  { const g = gT(xColMidX, R.y + 19); w.addTextC('TABLE', g.x, g.y, 'X', toGLen(h)) }
+  { const g = gT(coordMidX, R.y + 10 + h); w.addTextC('TABLE', g.x, g.y, loLabel, toGLen(h)) }
+  { const g = gT(xDeg + 11, R.y + 19 + h); w.addTextC('TABLE', g.x, g.y, '°', toGLen(h)) }
+  { const g = gT(xMin + 7, R.y + 19 + h); w.addTextC('TABLE', g.x, g.y, "'", toGLen(h)) }
+  { const g = gT(xSec + 7, R.y + 19 + h); w.addTextC('TABLE', g.x, g.y, '"', toGLen(h)) }
+  { const g = gT(yColMidX, R.y + 19 + h); w.addTextC('TABLE', g.x, g.y, 'Y', toGLen(h)) }
+  { const g = gT(coordMidX, R.y + 19 + h); w.addTextC('TABLE', g.x, g.y, 'Metres', toGLen(h)) }
+  { const g = gT(xColMidX, R.y + 19 + h); w.addTextC('TABLE', g.x, g.y, 'X', toGLen(h)) }
 
   let ry = R.y + 30
-  { const g = gT(yColMidX, ry); w.addTextC('TABLE', g.x, g.y, constRow.y, toGLen(h)) }
-  { const g = gT(xColMidX, ry); w.addTextC('TABLE', g.x, g.y, constRow.x, toGLen(h)) }
-  { const g = gT(cSg, ry); w.addText('TABLE', g.x, g.y, 'Constants', toGLen(h)) }
+  { const g = gT(yColMidX, ry + h); w.addTextC('TABLE', g.x, g.y, constRow.y, toGLen(h)) }
+  { const g = gT(xColMidX, ry + h); w.addTextC('TABLE', g.x, g.y, constRow.x, toGLen(h)) }
+  { const g = gT(cSg, ry + h); w.addText('TABLE', g.x, g.y, 'Constants', toGLen(h)) }
 
   for (let i = 0; i < rows; i++) {
     ry += 11
     if (sideRows[i]) {
-      { const g = gT(sideMidX, ry); w.addTextC('TABLE', g.x, g.y, sideRows[i].side, toGLen(h)) }
-      { const g = gT(metresMidX, ry); w.addTextC('TABLE', g.x, g.y, sideRows[i].metres, toGLen(h)) }
-      { const g = gT(cDirX + 11, ry); w.addTextC('TABLE', g.x, g.y, sideRows[i].side, toGLen(h)) }
+      { const g = gT(sideMidX, ry + h); w.addTextC('TABLE', g.x, g.y, sideRows[i].side, toGLen(h)) }
+      { const g = gT(metresMidX, ry + h); w.addTextC('TABLE', g.x, g.y, sideRows[i].metres, toGLen(h)) }
+      { const g = gT(cDirX + 11, ry + h); w.addTextC('TABLE', g.x, g.y, sideRows[i].side, toGLen(h)) }
       const [dd, mm, ss] = String(sideRows[i].direction).split(' ')
-      { const g = gT(xDeg + 11, ry); w.addTextC('TABLE', g.x, g.y, dd ?? '', toGLen(h)) }
-      { const g = gT(xMin + 7, ry); w.addTextC('TABLE', g.x, g.y, mm ?? '', toGLen(h)) }
-      { const g = gT(xSec + 7, ry); w.addTextC('TABLE', g.x, g.y, ss ?? '', toGLen(h)) }
+      { const g = gT(xDeg + 11, ry + h); w.addTextC('TABLE', g.x, g.y, dd ?? '', toGLen(h)) }
+      { const g = gT(xMin + 7, ry + h); w.addTextC('TABLE', g.x, g.y, mm ?? '', toGLen(h)) }
+      { const g = gT(xSec + 7, ry + h); w.addTextC('TABLE', g.x, g.y, ss ?? '', toGLen(h)) }
     }
     if (coordinateRows[i]) {
-      { const g = gT(letMidX, ry); w.addTextC('TABLE', g.x, g.y, coordinateRows[i].letter, toGLen(h)) }
-      { const g = gT(yColMidX, ry); w.addTextC('TABLE', g.x, g.y, coordinateRows[i].y, toGLen(h)) }
-      { const g = gT(xColMidX, ry); w.addTextC('TABLE', g.x, g.y, coordinateRows[i].x, toGLen(h)) }
-      { const g = gT(cSg, ry); w.addText('TABLE', g.x, g.y, coordinateRows[i].beaconName ?? '', toGLen(h)) }
+      { const g = gT(letMidX, ry + h); w.addTextC('TABLE', g.x, g.y, coordinateRows[i].letter, toGLen(h)) }
+      { const g = gT(yColMidX, ry + h); w.addTextC('TABLE', g.x, g.y, coordinateRows[i].y, toGLen(h)) }
+      { const g = gT(xColMidX, ry + h); w.addTextC('TABLE', g.x, g.y, coordinateRows[i].x, toGLen(h)) }
+      { const g = gT(cSg, ry + h); w.addText('TABLE', g.x, g.y, coordinateRows[i].beaconName ?? '', toGLen(h)) }
     }
   }
 
@@ -251,18 +251,18 @@ function drawTableDxf(w, layout, table, loLabel, toG, toGLen) {
 
 function drawBeaconDescriptionDxf(w, layout, groups, toG, toGLen) {
   const R = layout.beaconDesc
-  const g0 = toG({ px: R.x, py: R.y })
+  const g0 = toG({ px: R.x, py: R.y + 8 })
   w.addText('BEACON_DESC', g0.x, g0.y, 'Description of Beacons', toGLen(8))
   if (groups.length === 0) {
-    const g = toG({ px: R.x, py: R.y + 11 })
+    const g = toG({ px: R.x, py: R.y + 11 + 8 })
     w.addText('BEACON_DESC', g.x, g.y, 'All          :', toGLen(8))
   } else if (groups.length === 1) {
-    const g = toG({ px: R.x, py: R.y + 11 })
+    const g = toG({ px: R.x, py: R.y + 11 + 8 })
     w.addText('BEACON_DESC', g.x, g.y, `All          : ${groups[0].description}`, toGLen(8))
   } else {
     let y = R.y + 11
     for (const grp of groups) {
-      const g = toG({ px: R.x, py: y })
+      const g = toG({ px: R.x, py: y + 8 })
       w.addText('BEACON_DESC', g.x, g.y, `${grp.names}  :  ${grp.description}`, toGLen(8))
       y += 11
     }
@@ -286,9 +286,9 @@ function drawNorthArrowDxf(w, layout, toG, toGLen) {
 function drawApprovedBoxDxf(w, layout, toG, toGLen) {
   const R = layout.approved
   const cx = R.x + R.width / 2
-  const g1 = toG({ px: cx, py: R.y + 5 }); w.addTextC('APPROVED', g1.x, g1.y, 'Approved', toGLen(7))
-  const g2 = toG({ px: cx, py: R.y + 31 }); w.addTextC('APPROVED', g2.x, g2.y, 'for Surveyor-General', toGLen(7))
-  const g3 = toG({ px: cx, py: R.y + 55 }); w.addTextC('APPROVED', g3.x, g3.y, 'Date ....................', toGLen(7))
+  const g1 = toG({ px: cx, py: R.y + 5 + 7 }); w.addTextC('APPROVED', g1.x, g1.y, 'Approved', toGLen(7))
+  const g2 = toG({ px: cx, py: R.y + 31 + 7 }); w.addTextC('APPROVED', g2.x, g2.y, 'for Surveyor-General', toGLen(7))
+  const g3 = toG({ px: cx, py: R.y + 55 + 7 }); w.addTextC('APPROVED', g3.x, g3.y, 'Date ....................', toGLen(7))
 }
 
 function drawScaleBarDxf(w, layout, denom, toG, toGLen) {
@@ -314,13 +314,13 @@ function drawScaleBarDxf(w, layout, denom, toG, toGLen) {
   const f2 = toG({ px: bx + 3 * segW, py: barY + barH }), f3 = toG({ px: bx, py: barY + barH })
   w.addPolylineOutline('SCALE_BAR', [f0, f1, f2, f3], true)
 
-  const lbl = (val, cxPt) => { const g = toG({ px: cxPt, py: R.y }); w.addTextC('SCALE_BAR', g.x, g.y, String(Math.round(val)), toGLen(6.5)) }
+  const lbl = (val, cxPt) => { const g = toG({ px: cxPt, py: R.y + 6.5 }); w.addTextC('SCALE_BAR', g.x, g.y, String(Math.round(val)), toGLen(6.5)) }
   lbl(seg, bx)
   lbl(0, x0)
   lbl(seg, x0 + segW)
   lbl(2 * seg, x0 + 2 * segW)
-  { const g = toG({ px: x0 + 2 * segW + 6, py: barY }); w.addText('SCALE_BAR', g.x, g.y, 'metres', toGLen(6.5)) }
-  { const g = toG({ px: R.x + R.width / 2, py: R.y + 20 }); w.addTextC('SCALE_BAR', g.x, g.y, `Scale 1 : ${denom}`, toGLen(6.5)) }
+  { const g = toG({ px: x0 + 2 * segW + 6, py: barY + 6.5 }); w.addText('SCALE_BAR', g.x, g.y, 'metres', toGLen(6.5)) }
+  { const g = toG({ px: R.x + R.width / 2, py: R.y + 20 + 6.5 }); w.addTextC('SCALE_BAR', g.x, g.y, `Scale 1 : ${denom}`, toGLen(6.5)) }
 }
 
 function drawStatementDxf(w, layout, geometry, metadata, toG, toGLen) {

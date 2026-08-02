@@ -139,4 +139,17 @@ describe('generateDiagramDXF', () => {
     expect(text).toContain('DIAGRAM S.G. No.')
     expect(text).toContain('Constants')
   })
+
+  test('renders the Description of Beacons block', async () => {
+    const withBeacons = {
+      ...options,
+      beacons: { type: 'FeatureCollection', features: [
+        { type: 'Feature', properties: { name: '302A', description: '12mm iron peg' }, geometry: { type: 'Point', coordinates: [0, 0] } },
+      ] },
+    }
+    const r = await generateDiagramDXF(withBeacons, logger)
+    const text = r.dxfBuffer.toString('utf8')
+    expect(text).toContain('BEACON_DESC\n')
+    expect(text).toContain('Description of Beacons')
+  })
 })

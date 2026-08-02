@@ -249,6 +249,26 @@ function drawTableDxf(w, layout, table, loLabel, toG, toGLen) {
   { const g1 = gT(B.x, hSep), g2 = gT(B.x + B.width, hSep); w.addLine('TABLE', g1.x, g1.y, g2.x, g2.y) }
 }
 
+function drawBeaconDescriptionDxf(w, layout, groups, toG, toGLen) {
+  const R = layout.beaconDesc
+  const g0 = toG({ px: R.x, py: R.y })
+  w.addText('BEACON_DESC', g0.x, g0.y, 'Description of Beacons', toGLen(8))
+  if (groups.length === 0) {
+    const g = toG({ px: R.x, py: R.y + 11 })
+    w.addText('BEACON_DESC', g.x, g.y, 'All          :', toGLen(8))
+  } else if (groups.length === 1) {
+    const g = toG({ px: R.x, py: R.y + 11 })
+    w.addText('BEACON_DESC', g.x, g.y, `All          : ${groups[0].description}`, toGLen(8))
+  } else {
+    let y = R.y + 11
+    for (const grp of groups) {
+      const g = toG({ px: R.x, py: y })
+      w.addText('BEACON_DESC', g.x, g.y, `${grp.names}  :  ${grp.description}`, toGLen(8))
+      y += 11
+    }
+  }
+}
+
 export async function generateDiagramDXF(options, logger) {
   const { parcels, metadata = {}, scale: requestedScale } = options
   const sheetSize = options.sheetSize === 'A3' ? 'A3' : 'A4'
@@ -412,6 +432,7 @@ export async function generateDiagramDXF(options, logger) {
 
   const loLabel = resolveLoSystem(null, metadata, options.projection)
   drawTableDxf(w, layout, sidesTable, loLabel, toG, toGLen)
+  drawBeaconDescriptionDxf(w, layout, beaconGroups, toG, toGLen)
 
   const allPoints = [b0, b1, b2, b3]
   const extMin = { x: Math.min(...allPoints.map((p) => p.x)), y: Math.min(...allPoints.map((p) => p.y)) }

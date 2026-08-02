@@ -132,8 +132,79 @@ export async function generateDiagramDXF(options, logger) {
   const b3 = toG({ px: layout.border.x, py: layout.border.y + layout.border.height })
   w.addPolylineOutline('BORDER', [b0, b1, b2, b3], true)
 
-  // --- Tasks 3-9 insert their drawing blocks here, in generateDiagramPDF's order:
-  //   3. subject figure (boundary, band, beacons, letters, neighbours)
+  // Abutting neighbours: clip to the 10m buffer, faint outline + label.
+  const neighbourSegs = []
+  const neighbourLabels = []
+  if (buffer.length) {
+    for (const nb of neighbours) {
+      if (isOutsideFigureFeature(nb)) continue
+      const nbRing = nb?.geometry?.coordinates?.[0] ?? []
+      const strips = clipRingToPolygon(nbRing, buffer)
+      if (!strips.length) continue
+      for (const strip of strips) {
+        for (const [a, b2s] of neighbourBoundaryEdges(strip, nbRing)) {
+          const pa = tf(a), pb = tf(b2s)
+          w.addLine('NEIGHBOURS', ...Object.values(toG(pa)), ...Object.values(toG(pb)))
+          neighbourSegs.push([pa, pb])
+        }
+      }
+      const stand = nb.properties?.stand ?? nb.properties?.designation ?? ''
+      if (stand) {
+        neighbourLabels.push({ anchor: centroidPt(strips[0].map((pt) => tf(pt))), text: String(stand) })
+      }
+    }
+  }
+
+  // Subject: boundary + inner green figure-band (outline only — DXF has no fill).
+  const subjPt = geometry.vertices.map((v) => tf([v.y, v.x]))
+  const inner = offsetPolygonPt(subjPt.map((pt) => [pt.px, pt.py]), -INNER_BAND_PT)
+  w.addPolylineOutline('FIGURE', subjPt.map((pt) => toG(pt)), true)
+  for (const ring of inner) {
+    w.addPolylineOutline('FIGURE_BAND', ring.map(([x, y]) => toG({ px: x, py: y })), true)
+  }
+
+  const subjCentroid = centroidPt(subjPt)
+  const subjSegs = subjPt.map((pt, i) => [pt, subjPt[(i + 1) % subjPt.length]])
+  const labelObstacles = []
+  const boxToSegs = (bx) => {
+    const c1 = { px: bx.x, py: bx.y }, c2 = { px: bx.x + bx.w, py: bx.y }
+    const c3 = { px: bx.x + bx.w, py: bx.y + bx.h }, c4 = { px: bx.x, py: bx.y + bx.h }
+    return [[c1, c2], [c2, c3], [c3, c4], [c4, c1], [c1, c3], [c2, c4]]
+  }
+
+  // Beacon circles (plain open circle — DXF cannot replicate the PDF's white-fill
+  // knockout look; accepted difference, see Global Constraints).
+  const beaconR = beaconRadiusPt(denom)
+  for (const pt of subjPt) {
+    const g = toG(pt)
+    w.addCircle('BEACONS', g.x, g.y, toGLen(beaconR))
+  }
+
+  // Vertex letters — reuses placeVertexLabel UNCHANGED (PDF-point collision math);
+  // only the final emitted position is converted to ground.
+  geometry.vertices.forEach((v, i) => {
+    const pt = subjPt[i]
+    const labelW = textWidth(v.letter, 8)
+    const pos = placeVertexLabel(pt, subjCentroid, {
+      beaconR, labelW, labelH: 8, gap: 2, segments: subjSegs.concat(neighbourSegs, labelObstacles),
+    })
+    const g = toG({ px: pos.x, py: pos.y + 8 }) // DXF TEXT insertion is baseline, PDF's is top-left
+    w.addText('FIGURE_LABELS', g.x, g.y, v.letter, toGLen(8))
+    labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 8 }))
+  })
+
+  // Neighbour stand labels.
+  for (const nl of neighbourLabels) {
+    const labelW = textWidth(nl.text, 7)
+    const pos = placeVertexLabel(nl.anchor, subjCentroid, {
+      beaconR: 0, gap: 1, labelW, labelH: 7, segments: subjSegs.concat(neighbourSegs, labelObstacles),
+    })
+    const g = toG({ px: pos.x, py: pos.y + 7 })
+    w.addText('NEIGHBOURS', g.x, g.y, nl.text, toGLen(7))
+    labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
+  }
+
+  // --- Tasks 4-9 insert their drawing blocks here, in generateDiagramPDF's order:
   //   4. adjoining features (road/servitude/contiguous)
   //   5. sides/directions/co-ordinates table
   //   6. description of beacons

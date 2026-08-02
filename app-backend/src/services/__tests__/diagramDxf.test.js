@@ -195,4 +195,18 @@ describe('generateDiagramDXF', () => {
     expect(text).toContain('S.R. : 118/2023')
     expect(text).toContain('Surveyor-General')
   })
+
+  test('renders with beacons + Lo system without error and stays a well-formed DXF', async () => {
+    const withBeacons = {
+      ...options,
+      beacons: { type: 'FeatureCollection', features: [
+        { type: 'Feature', properties: { name: '302A', description: '12mm iron peg' }, geometry: { type: 'Point', coordinates: [0, 0] } },
+      ] },
+    }
+    const r = await generateDiagramDXF(withBeacons, logger)
+    const text = r.dxfBuffer.toString('utf8')
+    expect(text.startsWith('  0\nSECTION\n')).toBe(true)
+    expect(text.trim().endsWith('0\nEOF')).toBe(true)
+    expect(r.dxfBuffer.length).toBeGreaterThan(2000)
+  })
 })

@@ -128,4 +128,15 @@ describe('generateDiagramDXF', () => {
       expect(r.dxfBuffer.toString('utf8')).toContain('STAND 86')
     }
   })
+
+  test('renders the sides/directions/co-ordinates table', async () => {
+    const r = await generateDiagramDXF(options, logger)
+    const text = r.dxfBuffer.toString('utf8')
+    expect(text).toContain('TABLE\n')
+    expect(text).toContain('SIDES')
+    expect(text).toContain('DIRECTIONS')
+    expect(text).toContain('CO-ORDINATES')
+    expect(text).toContain('DIAGRAM S.G. No.')
+    expect(text).toContain('Constants')
+  })
 })

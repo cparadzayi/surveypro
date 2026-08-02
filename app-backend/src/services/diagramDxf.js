@@ -178,6 +178,77 @@ function drawAdjoiningFeaturesDxf(w, ctx, logger) {
   }
 }
 
+function drawTableDxf(w, layout, table, loLabel, toG, toGLen) {
+  const { constRow, coordinateRows, sideRows } = table
+  const R = layout.table
+  const cSide = 0, cDir = 76, cLetter = 158, cY = 198, cX = 260
+  const cSg = layout.sgNoBox.x + 2
+  const rows = Math.max(coordinateRows.length, sideRows.length)
+  const cDirX = R.x + 70
+  const dirSplitX = cDirX + 24
+  const xDeg = R.x + 97, xMin = R.x + 119, xSec = R.x + 133
+  const cLetX = R.x + 150
+  const cMetresX = R.x + 32
+  const yColMidX = R.x + cY + (cX - cY) / 2
+  const xColMidX = R.x + cX + ((layout.sgNoBox.x - 4) - (R.x + cX)) / 2
+  const coordMidX = R.x + cY + ((layout.sgNoBox.x - 4) - (R.x + cY)) / 2
+  const sideMidX = R.x + cSide + 15
+  const metresMidX = cMetresX + 19
+  const dirMidX = cDirX + 40
+  const letMidX = cLetX + 21.5
+
+  const gT = (x, y) => toG({ px: x, py: y })
+  const H = 7.5, h = 7
+
+  w.addTextC('TABLE', gT(sideMidX, R.y).x, gT(sideMidX, R.y).y, 'SIDES', toGLen(H))
+  w.addTextC('TABLE', gT(metresMidX, R.y).x, gT(metresMidX, R.y).y, 'METRES', toGLen(H))
+  w.addTextC('TABLE', gT(dirMidX, R.y).x, gT(dirMidX, R.y).y, 'DIRECTIONS', toGLen(H))
+  w.addTextC('TABLE', gT(coordMidX, R.y).x, gT(coordMidX, R.y).y, 'CO-ORDINATES', toGLen(H))
+  { const g = gT(cSg, R.y); w.addText('TABLE', g.x, g.y, 'DIAGRAM S.G. No.', toGLen(H)) }
+
+  { const g = gT(coordMidX, R.y + 10); w.addTextC('TABLE', g.x, g.y, loLabel, toGLen(h)) }
+  { const g = gT(xDeg, R.y + 19); w.addTextC('TABLE', g.x, g.y, '°', toGLen(h)) }
+  { const g = gT(xMin, R.y + 19); w.addTextC('TABLE', g.x, g.y, "'", toGLen(h)) }
+  { const g = gT(xSec, R.y + 19); w.addTextC('TABLE', g.x, g.y, '"', toGLen(h)) }
+  { const g = gT(yColMidX, R.y + 19); w.addTextC('TABLE', g.x, g.y, 'Y', toGLen(h)) }
+  { const g = gT(coordMidX, R.y + 19); w.addTextC('TABLE', g.x, g.y, 'Metres', toGLen(h)) }
+  { const g = gT(xColMidX, R.y + 19); w.addTextC('TABLE', g.x, g.y, 'X', toGLen(h)) }
+
+  let ry = R.y + 30
+  { const g = gT(yColMidX, ry); w.addTextC('TABLE', g.x, g.y, constRow.y, toGLen(h)) }
+  { const g = gT(xColMidX, ry); w.addTextC('TABLE', g.x, g.y, constRow.x, toGLen(h)) }
+  { const g = gT(cSg, ry); w.addText('TABLE', g.x, g.y, 'Constants', toGLen(h)) }
+
+  for (let i = 0; i < rows; i++) {
+    ry += 11
+    if (sideRows[i]) {
+      { const g = gT(sideMidX, ry); w.addTextC('TABLE', g.x, g.y, sideRows[i].side, toGLen(h)) }
+      { const g = gT(metresMidX, ry); w.addTextC('TABLE', g.x, g.y, sideRows[i].metres, toGLen(h)) }
+      { const g = gT(cDirX + 11, ry); w.addTextC('TABLE', g.x, g.y, sideRows[i].side, toGLen(h)) }
+      const [dd, mm, ss] = String(sideRows[i].direction).split(' ')
+      { const g = gT(xDeg, ry); w.addTextC('TABLE', g.x, g.y, dd ?? '', toGLen(h)) }
+      { const g = gT(xMin, ry); w.addTextC('TABLE', g.x, g.y, mm ?? '', toGLen(h)) }
+      { const g = gT(xSec, ry); w.addTextC('TABLE', g.x, g.y, ss ?? '', toGLen(h)) }
+    }
+    if (coordinateRows[i]) {
+      { const g = gT(letMidX, ry); w.addTextC('TABLE', g.x, g.y, coordinateRows[i].letter, toGLen(h)) }
+      { const g = gT(yColMidX, ry); w.addTextC('TABLE', g.x, g.y, coordinateRows[i].y, toGLen(h)) }
+      { const g = gT(xColMidX, ry); w.addTextC('TABLE', g.x, g.y, coordinateRows[i].x, toGLen(h)) }
+      { const g = gT(cSg, ry); w.addText('TABLE', g.x, g.y, coordinateRows[i].beaconName ?? '', toGLen(h)) }
+    }
+  }
+
+  const B = layout.border
+  const boxB = R.y + 39 + rows * 11
+  const hSep = R.y + 28
+  const verticals = [R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
+  for (const vx of verticals) { const g1 = gT(vx, B.y), g2 = gT(vx, boxB); w.addLine('TABLE', g1.x, g1.y, g2.x, g2.y) }
+  { const g1 = gT(R.x + cX, hSep), g2 = gT(R.x + cX, boxB); w.addLine('TABLE', g1.x, g1.y, g2.x, g2.y) }
+  { const g1 = gT(R.x + 32, hSep), g2 = gT(R.x + 32, boxB); w.addLine('TABLE', g1.x, g1.y, g2.x, g2.y) }
+  { const g1 = gT(dirSplitX, hSep), g2 = gT(dirSplitX, boxB); w.addLine('TABLE', g1.x, g1.y, g2.x, g2.y) }
+  { const g1 = gT(B.x, hSep), g2 = gT(B.x + B.width, hSep); w.addLine('TABLE', g1.x, g1.y, g2.x, g2.y) }
+}
+
 export async function generateDiagramDXF(options, logger) {
   const { parcels, metadata = {}, scale: requestedScale } = options
   const sheetSize = options.sheetSize === 'A3' ? 'A3' : 'A4'
@@ -338,6 +409,9 @@ export async function generateDiagramDXF(options, logger) {
     annotations: metadata.sideAnnotations,
     geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs, toG, toGLen,
   }, logger)
+
+  const loLabel = resolveLoSystem(null, metadata, options.projection)
+  drawTableDxf(w, layout, sidesTable, loLabel, toG, toGLen)
 
   const allPoints = [b0, b1, b2, b3]
   const extMin = { x: Math.min(...allPoints.map((p) => p.x)), y: Math.min(...allPoints.map((p) => p.y)) }

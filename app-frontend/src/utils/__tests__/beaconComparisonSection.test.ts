@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import {
   hasBeaconComparisonData,
   renderBeaconComparison,
+  formatSignedDMS,
   type BeaconComparisonCursor,
 } from '../beaconComparisonSection';
 import { stampSequentialPageNumbers } from '../pdfPageNumber';
@@ -275,5 +276,15 @@ describe('stampSequentialPageNumbers', () => {
     };
     stampSequentialPageNumbers(doc, 140);
     expect(written).toEqual(['140', '141', '142']);
+  });
+});
+
+describe('formatSignedDMS (exported for reuse by beaconAdjustmentReport.js)', () => {
+  it('prefixes a minus sign for negative input instead of wrapping into [0,360)', () => {
+    expect(formatSignedDMS(-2)).toBe('-2°00\'00.0"');
+  });
+
+  it('formats positive input identically to formatDMS', () => {
+    expect(formatSignedDMS(2)).toBe('2°00\'00.0"');
   });
 });

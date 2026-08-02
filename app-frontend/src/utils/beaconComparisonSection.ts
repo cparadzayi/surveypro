@@ -185,7 +185,7 @@ const BLACK: [number, number, number] = [0, 0, 0];
 /** Signed DMS: formatDMS() wraps into [0,360), which loses the sign of a swing value
  *  (already wrapped to (-180,180] by si727.js's edgeCompliance) -- prefix the sign
  *  ourselves and format the magnitude. */
-function formatSignedDMS(deg: number): string {
+export function formatSignedDMS(deg: number): string {
   const sign = deg < 0 ? '-' : '';
   return `${sign}${formatDMS(Math.abs(deg))}`;
 }

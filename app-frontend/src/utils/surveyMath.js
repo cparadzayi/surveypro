@@ -358,6 +358,7 @@ export function iterativeAdjust(inputPoints, critW, sig0) {
 export const f3  = v => (typeof v === 'number' ? v.toFixed(3) : '—')
 export const f4  = v => (typeof v === 'number' ? v.toFixed(4) : '—')
 export const f4s = v => (typeof v === 'number' ? (v >= 0 ? '+' : '') + v.toFixed(4) : '—')
+export const f3s = v => (typeof v === 'number' ? (v >= 0 ? '+' : '') + v.toFixed(3) : '—')
 
 export function formatDMS(dd) {
   if (typeof dd !== 'number') return '—'

@@ -446,8 +446,8 @@ class BeaconAdjustmentReport {
       const distDiffText = `(${f3s(row.dDiff)})`
       const brgHText = formatDMS(row.brgH), brgSText = formatDMS(row.brgS)
       const dirDiffText = `(${formatSignedDMS(row.dirDiffSec / 3600)})`
-      const line1 = `${histText} → ${survText} ${distDiffText}`
-      const line2 = `${brgHText} → ${brgSText} ${dirDiffText}`
+      const line1 = `${histText} -> ${survText} ${distDiffText}`
+      const line2 = `${brgHText} -> ${brgSText} ${dirDiffText}`
       const boxWidth = Math.max(this.doc.getTextWidth(line1), this.doc.getTextWidth(line2))
 
       const otherPolylines = edgeGeom
@@ -457,13 +457,13 @@ class BeaconAdjustmentReport {
 
       this._drawColoredLine(anchor.mmX, anchor.mmY, [
         { text: histText, color: BLACK },
-        { text: ' → ', color: ARROW_GREY },
+        { text: ' -> ', color: ARROW_GREY },
         { text: survText, color: RED },
         { text: ' ' + distDiffText, color: row.distOk ? BLACK : RED },
       ])
       this._drawColoredLine(anchor.mmX, anchor.mmY + LINE_GAP, [
         { text: brgHText, color: BLACK },
-        { text: ' → ', color: ARROW_GREY },
+        { text: ' -> ', color: ARROW_GREY },
         { text: brgSText, color: RED },
         { text: ' ' + dirDiffText, color: row.dirOk ? BLACK : RED },
       ])

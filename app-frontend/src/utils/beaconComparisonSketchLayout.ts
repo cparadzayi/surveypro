@@ -129,7 +129,9 @@ export function polylineIntersectsRect(polyline: PointMm[], r: RectMm): boolean 
 // for the first anchor whose text bounding box (boxWidthMm x boxHeightMm) clears every
 // polyline in otherPolylines. Falls back to the minimum offset on the preferred side if
 // no clear position is found (a documented best-effort limit for pathologically dense
-// clusters of near-coincident edges).
+// clusters of near-coincident edges) -- deliberately the closest position to the ray it
+// labels, not the farthest tried, so a mislabeled-looking annotation still sits next to
+// its own ray rather than floating unattached near an unrelated one.
 export function findClearAnchor(
   a: PointMm, b: PointMm, side: 1 | -1, minOffsetMm: number,
   boxWidthMm: number, boxHeightMm: number, otherPolylines: PointMm[][],

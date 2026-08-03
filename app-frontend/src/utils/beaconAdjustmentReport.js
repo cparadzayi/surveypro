@@ -4,7 +4,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { f3, f4, f4s, formatDMS } from '@/utils/surveyMath'
 import { planScaleMmPerM, chooseExaggeration, scaleBarMetres, sanitizeReportFilename } from '@/utils/beaconReportGeometry'
-import { computeExtent, pickSketchScale, makeSketchTransform, midpointOffset } from '@/utils/beaconComparisonSketchLayout'
+import { computeExtent, pickSketchScale, makeSketchTransform, midpointOffset, sampleCubicBezier, curveControlPoints } from '@/utils/beaconComparisonSketchLayout'
 import { formatSignedDMS } from '@/utils/beaconComparisonSection'
 
 const NAVY = [30, 58, 92]
@@ -370,10 +370,12 @@ class BeaconAdjustmentReport {
       .filter((p) => !!p.pt)
     if (points.length < 2) return
 
-    this.doc.addPage('a4', 'portrait'); this.y = this.margin
+    this.doc.addPage('a4', 'landscape'); this.y = this.margin
     this.sectionTitle('Comparison Sketch — SI 727 §67(5)')
 
-    const boxX = this.margin, boxYtop = this.y, boxW = this.pw - 2 * this.margin, boxH = 170
+    const pageW = this.doc.internal.pageSize.getWidth()
+    const pageH = this.doc.internal.pageSize.getHeight()
+    const boxX = this.margin, boxYtop = this.y, boxW = pageW - 2 * this.margin, boxH = pageH - boxYtop - 40
     this.doc.setDrawColor(120); this.doc.setLineWidth(0.3); this.doc.rect(boxX, boxYtop, boxW, boxH)
 
     const pad = 16
@@ -384,13 +386,24 @@ class BeaconAdjustmentReport {
     const transform = makeSketchTransform(extent, areaMm, denom, originMm)
     const positioned = new Map(points.map((p) => [p.name, transform(p.pt)]))
 
-    // Rays -- always plain black, drawn before annotations so text sits on top.
+    // Rays -- curved (cubic Bezier), always plain black, drawn before annotations so text
+    // sits on top. Bow side/depth vary deterministically per edge so near-parallel or
+    // overlapping edges fan visually apart; each curve is also sampled into a polyline
+    // and kept in edgeGeom so annotation placement (below) can stay clear of every OTHER
+    // ray, not just its own.
     this.doc.setDrawColor(0, 0, 0); this.doc.setLineWidth(0.25)
-    for (const row of edges.rows) {
+    const edgeGeom = edges.rows.map((row, idx) => {
       const a = positioned.get(row.from), b = positioned.get(row.to)
-      if (!a || !b) continue
-      this.doc.line(a.mmX, a.mmY, b.mmX, b.mmY)
-    }
+      if (!a || !b) return null
+      const side = idx % 2 === 0 ? 1 : -1
+      const length = Math.hypot(b.mmX - a.mmX, b.mmY - a.mmY)
+      const bowMm = Math.min(4 + 3 * (idx % 3), length * 0.35)
+      const { cp1, cp2 } = curveControlPoints(a, b, bowMm, side)
+      this.doc.moveTo(a.mmX, a.mmY)
+      this.doc.curveTo(cp1.mmX, cp1.mmY, cp2.mmX, cp2.mmY, b.mmX, b.mmY)
+      this.doc.stroke()
+      return { a, b, side, bowMm, polyline: sampleCubicBezier(a, cp1, cp2, b, 10) }
+    })
 
     // Beacon points + outward-offset name labels.
     const cx = points.reduce((s, p) => s + (positioned.get(p.name)?.mmX ?? 0), 0) / points.length

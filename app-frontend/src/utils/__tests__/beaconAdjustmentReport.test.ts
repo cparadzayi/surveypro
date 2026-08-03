@@ -61,29 +61,40 @@ function makeResult(overrides: Partial<any> = {}) {
 function renderCapturing(result: any) {
   // This file's own, pre-existing addDisplacementPlot draws its own colored (blue/red)
   // vector lines and marker circles on an earlier page, before addEdgeComplianceSketch's
-  // page is ever created -- so a plain, document-wide capture of every line()/ellipse()
-  // call would wrongly attribute that unrelated section's colors to the sketch. Each
-  // captured line/ellipse is tagged with the active page number (jsPDF's real, unpatched
-  // `internal.getCurrentPageInfo().pageNumber`) and the result is filtered down to just the
-  // highest page number reached -- addEdgeComplianceSketch is the last section to call
-  // addPage() before addFooters() runs (addFooters only revisits existing pages via
-  // setPage(), it never creates new ones), so that highest page number is always its page.
+  // page is ever created -- so a plain, document-wide capture of every call would wrongly
+  // attribute that unrelated section's colors to the sketch. Each captured item is tagged
+  // with the active page number (jsPDF's real, unpatched `internal.getCurrentPageInfo().
+  // pageNumber`) and the result is filtered down to just the highest page number reached --
+  // addEdgeComplianceSketch is the last section to call addPage() before addFooters() runs
+  // (addFooters only revisits existing pages via setPage(), it never creates new ones), so
+  // that highest page number is always its page.
   const written: string[] = [];
-  const rawLines: Array<{ color: [number, number, number]; x1: number; y1: number; x2: number; y2: number; page: number }> = [];
+  // Same content as `written`, but paired with the draw colour active at the moment each
+  // text() call happened -- needed to verify the old=black/new=red/diff-by-tolerance
+  // colour convention, which plain string capture can't distinguish (Task 4).
+  const textsColored: Array<{ text: string; color: [number, number, number] }> = [];
+  const rawCurves: Array<{ color: [number, number, number]; x1: number; y1: number; x2: number; y2: number; page: number }> = [];
   const rawEllipses: Array<{ color: [number, number, number]; page: number }> = [];
   let currentDrawColor: [number, number, number] = [0, 0, 0];
+  // Text colour (doc.setTextColor) is a separate jsPDF channel from draw colour
+  // (doc.setDrawColor, used for lines/curves/circles) -- both need their own tracked
+  // state and their own patch, or textsColored would silently capture the wrong colour.
+  let currentTextColor: [number, number, number] = [0, 0, 0];
+  let lastMoveTo = { x: 0, y: 0 };
 
   // Save prior own-property state of jsPDF.API for each patched key so we can restore
   // it exactly afterward (present-with-value vs. absent) rather than mutating the shared,
   // global plugin registry permanently for later test files.
-  const patchedKeys = ['text', 'setDrawColor', 'line', 'circle', 'ellipse', 'save'] as const;
+  const patchedKeys = ['text', 'setDrawColor', 'setTextColor', 'moveTo', 'curveTo', 'stroke', 'circle', 'ellipse', 'save'] as const;
   const priorState = new Map<string, { had: boolean; value: any }>();
   for (const k of patchedKeys) {
     priorState.set(k, { had: Object.prototype.hasOwnProperty.call(jsPDF.API, k), value: (jsPDF.API as any)[k] });
   }
 
   (jsPDF.API as any).text = function (text: any) {
-    written.push(Array.isArray(text) ? text.join(' ') : String(text));
+    const str = Array.isArray(text) ? text.join(' ') : String(text);
+    written.push(str);
+    textsColored.push({ text: str, color: currentTextColor });
     return this;
   };
   (jsPDF.API as any).setDrawColor = function (...args: any[]) {
@@ -91,18 +102,32 @@ function renderCapturing(result: any) {
     else if (args.length === 1) currentDrawColor = [args[0], args[0], args[0]];
     return this;
   };
-  (jsPDF.API as any).line = function (x1: number, y1: number, x2: number, y2: number) {
-    const page = this.internal.getCurrentPageInfo().pageNumber;
-    rawLines.push({ color: currentDrawColor, x1, y1, x2, y2, page });
+  (jsPDF.API as any).setTextColor = function (...args: any[]) {
+    if (args.length >= 3) currentTextColor = [args[0], args[1], args[2]];
+    else if (args.length === 1) currentTextColor = [args[0], args[0], args[0]];
     return this;
   };
+  // Rays are drawn as cubic Bezier curves via jsPDF's path API (moveTo -> curveTo ->
+  // stroke), one curve per edge, instead of a single doc.line() call. moveTo records the
+  // curve's start point; curveTo captures the full curve (start from the preceding
+  // moveTo, both control points are discarded -- only start/end matter for these tests --
+  // end point, and the draw colour active at that moment) tagged with the current page.
+  (jsPDF.API as any).moveTo = function (x: number, y: number) {
+    lastMoveTo = { x, y };
+    return this;
+  };
+  (jsPDF.API as any).curveTo = function (_x1: number, _y1: number, _x2: number, _y2: number, x3: number, y3: number) {
+    const page = this.internal.getCurrentPageInfo().pageNumber;
+    rawCurves.push({ color: currentDrawColor, x1: lastMoveTo.x, y1: lastMoveTo.y, x2: x3, y2: y3, page });
+    return this;
+  };
+  (jsPDF.API as any).stroke = function () { return this; };
   // jsPDF's own circle() is implemented internally as this.ellipse(x,y,r,r,style) -- without
-  // this guard, every beacon-marker circle (drawn via doc.circle in the new method, AND the
-  // historical/survey dots this file's OWN addDisplacementPlot draws elsewhere) would also
-  // land in the `ellipses` capture meant only for tolerance-violation circling. We reproduce
-  // that same real relationship here (our circle override calls `this.ellipse(...)`, i.e. our
-  // own patched ellipse below) so the guard has something to guard against, exactly as it
-  // would against the real built-in.
+  // this guard, every beacon-marker circle (drawn via doc.circle, AND the historical/survey
+  // dots this file's OWN addDisplacementPlot draws elsewhere) would also land in the
+  // `ellipses` capture. We reproduce that same real relationship here (our circle override
+  // calls `this.ellipse(...)`, i.e. our own patched ellipse below) so the guard has
+  // something to guard against, exactly as it would against the real built-in.
   let inCircleCall = false;
   (jsPDF.API as any).circle = function (x: number, y: number, r: number, style: string) {
     inCircleCall = true;
@@ -134,18 +159,13 @@ function renderCapturing(result: any) {
       else delete (jsPDF.API as any)[k];
     }
   }
-  const sketchPage = Math.max(0, ...rawLines.map((l) => l.page), ...rawEllipses.map((e) => e.page));
-  const onSketchPage = rawLines.filter((l) => l.page === sketchPage);
-  // addEdgeComplianceSketch draws its rays first -- one doc.line() per edge row, right after
-  // `setDrawColor(0, 0, 0)` -- and only afterward draws its grey (40,40,40) scale-bar ticks
-  // and south-arrow shaft, which are cartographic chrome, not rays, and are intentionally
-  // grey like this file's own addDisplacementPlot scale bar/south arrow. So the first
-  // edges.rows.length captured lines on the sketch page are exactly the rays; keep only
-  // those so the "every ray is black" check isn't tripped up by unrelated grey chrome.
-  const nEdges: number = result?.edges?.rows?.length ?? 0;
-  const lines = onSketchPage.slice(0, nEdges).map(({ color, x1, y1, x2, y2 }) => ({ color, x1, y1, x2, y2 }));
+  const sketchPage = Math.max(0, ...rawCurves.map((l) => l.page), ...rawEllipses.map((e) => e.page));
+  // addEdgeComplianceSketch draws its rays as curveTo() calls; nothing else on this page
+  // (or any page) uses curveTo() (the scale bar and south arrow use doc.line()), so every
+  // captured curve on the sketch page is exactly one ray -- no slicing/filtering needed.
+  const curves = rawCurves.filter((l) => l.page === sketchPage).map(({ color, x1, y1, x2, y2 }) => ({ color, x1, y1, x2, y2 }));
   const ellipses = rawEllipses.filter((e) => e.page === sketchPage).map(({ color }) => ({ color }));
-  return { written, lines, ellipses };
+  return { written, textsColored, curves, ellipses };
 }
 
 describe('addEdgeComplianceSketch (via generateBeaconAdjustmentReport)', () => {
@@ -161,9 +181,9 @@ describe('addEdgeComplianceSketch (via generateBeaconAdjustmentReport)', () => {
   });
 
   it('draws every ray in plain black regardless of pass/fail, and circles only the failing figures', () => {
-    const { lines, ellipses } = renderCapturing(makeResult());
-    expect(lines.length).toBeGreaterThan(0);
-    expect(lines.every((l) => l.color[0] === 0 && l.color[1] === 0 && l.color[2] === 0)).toBe(true);
+    const { curves, ellipses } = renderCapturing(makeResult());
+    expect(curves.length).toBeGreaterThan(0);
+    expect(curves.every((l) => l.color[0] === 0 && l.color[1] === 0 && l.color[2] === 0)).toBe(true);
     // 3 edges: 86B-87A and 87A-87B pass both checks (0 circles each); 86B-87B fails both
     // (2 circles: distance figure + swing figure) -> 2 ellipses total.
     expect(ellipses.length).toBe(2);

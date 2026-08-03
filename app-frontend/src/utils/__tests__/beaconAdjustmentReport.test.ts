@@ -1,0 +1,182 @@
+import { describe, it, expect } from 'vitest';
+import { jsPDF } from 'jspdf';
+
+// generateBeaconAdjustmentReport calls doc.save(...) directly (a browser download side
+// effect) rather than returning the document, so these tests intercept jsPDF's
+// constructor-level methods the same way beaconComparisonSection.test.ts's renderCapturing
+// does: patch calls before constructing, capture them, then let save() run (jsdom's default
+// test environment has no real download mechanism, so save() is a no-op side effect here,
+// not something we need to prevent).
+//
+// NOTE on patch target: jspdf@3's jsPDF() constructor does `return API` (a plain object
+// built from local closures), not `this` — confirmed empirically (`new jsPDF() instanceof
+// jsPDF` is `false`, and `doc.text !== jsPDF.prototype.text`). So `jsPDF.prototype.*` is
+// never consulted by real instances and patching it silently intercepts nothing. What DOES
+// get consulted: the constructor copies every own-enumerable key of the static `jsPDF.API`
+// plugin registry onto each new instance (overriding the built-ins) via a loop late in its
+// body. So we patch `jsPDF.API.<method>` instead, which reliably lands on every instance
+// constructed afterward while it's in place, and we save/restore its exact prior own-property
+// state (present-with-value vs. absent) so the global registry isn't left mutated for later
+// test files. Because `jsPDF.API` starts with none of these six keys, our patched functions
+// fully replace the built-ins (no real "original" to call through to on this path) — verified
+// this doesn't break `addPage`/`autoTable`/`getNumberOfPages`, none of which depend on
+// `text`/`line`/`circle`/`ellipse`/`setDrawColor`/`save` actually rendering anything.
+import { generateBeaconAdjustmentReport } from '../beaconAdjustmentReport';
+
+function makeResult(overrides: Partial<any> = {}) {
+  const pts = [
+    { id: 1, name: '86B', yH: 50000.0, xH: 2200000.0, yS: 50000.02, xS: 2200000.03,
+      dY: 0.02, dX: 0.03, vY: 0.001, vX: -0.001, resDist: 0.001, resBrg: 90, wMax: 0.4, finalStatus: 'ACCEPT',
+      yT: 50000.01, xT: 2200000.02, tvY: 0.001, tvX: -0.001, tResid: 0.001, tBrg: 90, rY: 0.8, rX: 0.8 },
+    { id: 2, name: '87A', yH: 50140.0, xH: 2200150.0, yS: 50140.01, xS: 2200150.02,
+      dY: 0.01, dX: 0.02, vY: 0.001, vX: -0.001, resDist: 0.001, resBrg: 90, wMax: 0.3, finalStatus: 'ACCEPT',
+      yT: 50140.005, xT: 2200150.01, tvY: 0.001, tvX: -0.001, tResid: 0.001, tBrg: 90, rY: 0.85, rX: 0.85 },
+    { id: 3, name: '87B', yH: 50060.0, xH: 2200070.0, yS: 50060.03, xS: 2200070.01,
+      dY: 0.03, dX: 0.01, vY: 0.001, vX: -0.001, resDist: 0.001, resBrg: 90, wMax: 0.5, finalStatus: 'ACCEPT',
+      yT: 50060.015, xT: 2200070.005, tvY: 0.001, tvX: -0.001, tResid: 0.001, tBrg: 90, rY: 0.82, rX: 0.82 },
+  ];
+  const edgeRow = (from: string, to: string, distOk: boolean, dirOk: boolean) => ({
+    from, to, dH: 140.0, dS: 140.05, dDiff: 0.05, dAllow: 0.04,
+    distOk, brgH: 130.5, brgS: 130.502, dirDiffSec: -7200, dirAllowSec: 45.0, dirOk,
+    pass: distOk && dirOk,
+  });
+  return {
+    adj: {
+      params: { TY: 0.02, TX: -0.01, scale: 1.0001, ppm: 100, rotDeg: 0.001, se: { TY: 0.01, TX: 0.01, scale: 1e-4, ppm: 10, rotSec: 5 } },
+      stats: { sig0: 0.01, s0: 0.02, DOF: 2, chi2: 3, chi2L: 0.1, chi2U: 6 },
+    },
+    pts,
+    log: [{ iter: 1, n: 3, s0: 0.02, chi2: 3, chi2L: 0.1, chi2U: 6 }],
+    converged: true,
+    loo: { rows: [], rmsLoo: 0.01, maxLoo: 0.02, note: null },
+    edges: {
+      rows: [edgeRow('86B', '87A', true, true), edgeRow('86B', '87B', false, false), edgeRow('87A', '87B', true, true)],
+      summary: { totalLines: 3, distPass: 2, dirPass: 2, bothPass: 2, meanScale: 1.0001, meanSwingDeg: -0.001 },
+    },
+    surveyClass: 'B',
+    ...overrides,
+  };
+}
+
+function renderCapturing(result: any) {
+  // This file's own, pre-existing addDisplacementPlot draws its own colored (blue/red)
+  // vector lines and marker circles on an earlier page, before addEdgeComplianceSketch's
+  // page is ever created -- so a plain, document-wide capture of every line()/ellipse()
+  // call would wrongly attribute that unrelated section's colors to the sketch. Each
+  // captured line/ellipse is tagged with the active page number (jsPDF's real, unpatched
+  // `internal.getCurrentPageInfo().pageNumber`) and the result is filtered down to just the
+  // highest page number reached -- addEdgeComplianceSketch is the last section to call
+  // addPage() before addFooters() runs (addFooters only revisits existing pages via
+  // setPage(), it never creates new ones), so that highest page number is always its page.
+  const written: string[] = [];
+  const rawLines: Array<{ color: [number, number, number]; x1: number; y1: number; x2: number; y2: number; page: number }> = [];
+  const rawEllipses: Array<{ color: [number, number, number]; page: number }> = [];
+  let currentDrawColor: [number, number, number] = [0, 0, 0];
+
+  // Save prior own-property state of jsPDF.API for each patched key so we can restore
+  // it exactly afterward (present-with-value vs. absent) rather than mutating the shared,
+  // global plugin registry permanently for later test files.
+  const patchedKeys = ['text', 'setDrawColor', 'line', 'circle', 'ellipse', 'save'] as const;
+  const priorState = new Map<string, { had: boolean; value: any }>();
+  for (const k of patchedKeys) {
+    priorState.set(k, { had: Object.prototype.hasOwnProperty.call(jsPDF.API, k), value: (jsPDF.API as any)[k] });
+  }
+
+  (jsPDF.API as any).text = function (text: any) {
+    written.push(Array.isArray(text) ? text.join(' ') : String(text));
+    return this;
+  };
+  (jsPDF.API as any).setDrawColor = function (...args: any[]) {
+    if (args.length >= 3) currentDrawColor = [args[0], args[1], args[2]];
+    else if (args.length === 1) currentDrawColor = [args[0], args[0], args[0]];
+    return this;
+  };
+  (jsPDF.API as any).line = function (x1: number, y1: number, x2: number, y2: number) {
+    const page = this.internal.getCurrentPageInfo().pageNumber;
+    rawLines.push({ color: currentDrawColor, x1, y1, x2, y2, page });
+    return this;
+  };
+  // jsPDF's own circle() is implemented internally as this.ellipse(x,y,r,r,style) -- without
+  // this guard, every beacon-marker circle (drawn via doc.circle in the new method, AND the
+  // historical/survey dots this file's OWN addDisplacementPlot draws elsewhere) would also
+  // land in the `ellipses` capture meant only for tolerance-violation circling. We reproduce
+  // that same real relationship here (our circle override calls `this.ellipse(...)`, i.e. our
+  // own patched ellipse below) so the guard has something to guard against, exactly as it
+  // would against the real built-in.
+  let inCircleCall = false;
+  (jsPDF.API as any).circle = function (x: number, y: number, r: number, style: string) {
+    inCircleCall = true;
+    try {
+      return this.ellipse(x, y, r, r, style);
+    } finally {
+      inCircleCall = false;
+    }
+  };
+  (jsPDF.API as any).ellipse = function () {
+    if (!inCircleCall) {
+      const page = this.internal.getCurrentPageInfo().pageNumber;
+      rawEllipses.push({ color: currentDrawColor, page });
+    }
+    return this;
+  };
+  // jsPDF's own save() writes to the DOM in a browser; under Vitest's default environment
+  // it may throw or no-op. Stub it so the report-generation call completes without a real
+  // download, matching how this file is actually invoked (CompareView.vue's button handler
+  // doesn't await anything after calling it either).
+  (jsPDF.API as any).save = function () { return this; };
+
+  try {
+    generateBeaconAdjustmentReport(result, { surveyorName: 'Test', plsNumber: '1', location: 'X', priorSurvey: 'SR 1/2026', date: '2026-08-02', critW: 2.576 });
+  } finally {
+    for (const k of patchedKeys) {
+      const prior = priorState.get(k)!;
+      if (prior.had) (jsPDF.API as any)[k] = prior.value;
+      else delete (jsPDF.API as any)[k];
+    }
+  }
+  const sketchPage = Math.max(0, ...rawLines.map((l) => l.page), ...rawEllipses.map((e) => e.page));
+  const onSketchPage = rawLines.filter((l) => l.page === sketchPage);
+  // addEdgeComplianceSketch draws its rays first -- one doc.line() per edge row, right after
+  // `setDrawColor(0, 0, 0)` -- and only afterward draws its grey (40,40,40) scale-bar ticks
+  // and south-arrow shaft, which are cartographic chrome, not rays, and are intentionally
+  // grey like this file's own addDisplacementPlot scale bar/south arrow. So the first
+  // edges.rows.length captured lines on the sketch page are exactly the rays; keep only
+  // those so the "every ray is black" check isn't tripped up by unrelated grey chrome.
+  const nEdges: number = result?.edges?.rows?.length ?? 0;
+  const lines = onSketchPage.slice(0, nEdges).map(({ color, x1, y1, x2, y2 }) => ({ color, x1, y1, x2, y2 }));
+  const ellipses = rawEllipses.filter((e) => e.page === sketchPage).map(({ color }) => ({ color }));
+  return { written, lines, ellipses };
+}
+
+describe('addEdgeComplianceSketch (via generateBeaconAdjustmentReport)', () => {
+  it('renders the sketch heading, beacon names, and distance/swing figures', () => {
+    const { written } = renderCapturing(makeResult());
+    expect(written).toContain('Comparison Sketch — SI 727 §67(5)');
+    expect(written).toContain('86B');
+    expect(written).toContain('87A');
+    expect(written).toContain('87B');
+    expect(written).toContain('140.000'); // historical distance
+    expect(written).toContain('140.050'); // survey distance
+    expect(written.some((w) => /SI 727 Class B/.test(w))).toBe(true);
+  });
+
+  it('draws every ray in plain black regardless of pass/fail, and circles only the failing figures', () => {
+    const { lines, ellipses } = renderCapturing(makeResult());
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.every((l) => l.color[0] === 0 && l.color[1] === 0 && l.color[2] === 0)).toBe(true);
+    // 3 edges: 86B-87A and 87A-87B pass both checks (0 circles each); 86B-87B fails both
+    // (2 circles: distance figure + swing figure) -> 2 ellipses total.
+    expect(ellipses.length).toBe(2);
+  });
+
+  it('renders a negative swing with an explicit minus sign, not wrapped into [0,360)', () => {
+    const { written } = renderCapturing(makeResult());
+    expect(written.some((w) => w.startsWith('-2°'))).toBe(true);
+    expect(written.some((w) => w.startsWith('357°') || w.startsWith('358°'))).toBe(false);
+  });
+
+  it('does nothing (no sketch heading) when there are no edges', () => {
+    const { written } = renderCapturing(makeResult({ edges: { rows: [], summary: { totalLines: 0, distPass: 0, dirPass: 0, bothPass: 0, meanScale: null, meanSwingDeg: null } } }));
+    expect(written).not.toContain('Comparison Sketch — SI 727 §67(5)');
+  });
+});

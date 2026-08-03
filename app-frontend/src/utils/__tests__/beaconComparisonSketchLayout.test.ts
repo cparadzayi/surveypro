@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { computeExtent, pickSketchScale, makeSketchTransform, midpointOffset } from '../beaconComparisonSketchLayout'
+import {
+  computeExtent, pickSketchScale, makeSketchTransform, midpointOffset,
+  sampleCubicBezier, curveControlPoints, boxAtAnchor, pointInRect,
+  segmentsIntersect, polylineIntersectsRect, findClearAnchor,
+} from '../beaconComparisonSketchLayout'
 
 describe('computeExtent', () => {
   it('returns the min/max Y and X across all points', () => {
@@ -90,5 +94,111 @@ describe('midpointOffset', () => {
   it('does not divide by zero for coincident points', () => {
     const p = { mmX: 3, mmY: 4 }
     expect(() => midpointOffset(p, p, 2)).not.toThrow()
+  })
+})
+
+describe('sampleCubicBezier', () => {
+  it('returns n+1 points including exact endpoints', () => {
+    const a = { mmX: 0, mmY: 0 }, b = { mmX: 10, mmY: 10 }
+    const samples = sampleCubicBezier(a, a, b, b, 10)
+    expect(samples).toHaveLength(11)
+    expect(samples[0]).toEqual(a)
+    expect(samples[10]).toEqual(b)
+  })
+})
+
+describe('curveControlPoints + sampleCubicBezier', () => {
+  it('bows a straight horizontal chord toward side=1 by half the bow distance at its midpoint', () => {
+    const a = { mmX: 0, mmY: 0 }, b = { mmX: 10, mmY: 0 }
+    const { cp1, cp2 } = curveControlPoints(a, b, 4, 1)
+    const samples = sampleCubicBezier(a, cp1, cp2, b, 2)
+    expect(samples).toHaveLength(3)
+    expect(samples[0]).toEqual(a)
+    expect(samples[2]).toEqual(b)
+    expect(samples[1].mmX).toBeCloseTo(5, 6)
+    // Standard quadratic-to-cubic conversion makes the t=0.5 sample land at
+    // chordMidpoint + 0.5*bowOffset, not at the full bow -- this is that midpoint.
+    expect(samples[1].mmY).toBeCloseTo(2, 6)
+  })
+
+  it('bows to the opposite side for side=-1', () => {
+    const a = { mmX: 0, mmY: 0 }, b = { mmX: 10, mmY: 0 }
+    const { cp1, cp2 } = curveControlPoints(a, b, 4, -1)
+    const samples = sampleCubicBezier(a, cp1, cp2, b, 2)
+    expect(samples[1].mmY).toBeCloseTo(-2, 6)
+  })
+})
+
+describe('boxAtAnchor + pointInRect', () => {
+  it('builds a rectangle around the anchor padded by the given box size', () => {
+    const rect = boxAtAnchor({ mmX: 10, mmY: 10 }, 6, 4)
+    expect(pointInRect({ mmX: 10, mmY: 10 }, rect)).toBe(true)
+    expect(pointInRect({ mmX: 100, mmY: 100 }, rect)).toBe(false)
+  })
+})
+
+describe('segmentsIntersect', () => {
+  it('detects a simple X-crossing', () => {
+    expect(segmentsIntersect(
+      { mmX: 0, mmY: 0 }, { mmX: 10, mmY: 10 },
+      { mmX: 0, mmY: 10 }, { mmX: 10, mmY: 0 },
+    )).toBe(true)
+  })
+
+  it('returns false for parallel non-overlapping segments', () => {
+    expect(segmentsIntersect(
+      { mmX: 0, mmY: 0 }, { mmX: 10, mmY: 0 },
+      { mmX: 0, mmY: 5 }, { mmX: 10, mmY: 5 },
+    )).toBe(false)
+  })
+
+  it('returns false for segments that do not reach each other', () => {
+    expect(segmentsIntersect(
+      { mmX: 0, mmY: 0 }, { mmX: 1, mmY: 0 },
+      { mmX: 5, mmY: -5 }, { mmX: 5, mmY: 5 },
+    )).toBe(false)
+  })
+})
+
+describe('polylineIntersectsRect', () => {
+  const rect = { x0: 4, y0: 4, x1: 6, y1: 6 }
+
+  it('detects a polyline segment passing through the rectangle', () => {
+    const poly = [{ mmX: 0, mmY: 5 }, { mmX: 10, mmY: 5 }]
+    expect(polylineIntersectsRect(poly, rect)).toBe(true)
+  })
+
+  it('returns false when the polyline stays clear of the rectangle', () => {
+    const poly = [{ mmX: 0, mmY: 20 }, { mmX: 10, mmY: 20 }]
+    expect(polylineIntersectsRect(poly, rect)).toBe(false)
+  })
+
+  it('detects a lone polyline point that lies inside the rectangle', () => {
+    const poly = [{ mmX: 5, mmY: 5 }]
+    expect(polylineIntersectsRect(poly, rect)).toBe(true)
+  })
+})
+
+describe('findClearAnchor', () => {
+  it('picks the minimum offset on the preferred side when nothing blocks it', () => {
+    const a = { mmX: 0, mmY: 0 }, b = { mmX: 10, mmY: 0 }
+    const anchor = findClearAnchor(a, b, 1, 3, 2, 2, [], 2.5, 30)
+    expect(anchor.mmX).toBeCloseTo(5, 6)
+    expect(anchor.mmY).toBeCloseTo(3, 6)
+  })
+
+  it('steps outward past a blocking polyline on the preferred side', () => {
+    const a = { mmX: 0, mmY: 0 }, b = { mmX: 10, mmY: 0 }
+    const blocker = [{ mmX: 0, mmY: 3 }, { mmX: 10, mmY: 3 }]
+    const anchor = findClearAnchor(a, b, 1, 3, 2, 2, [blocker], 2.5, 30)
+    expect(anchor.mmY).toBeGreaterThan(3)
+  })
+
+  it('falls back to the opposite side when the preferred side is blocked all the way to the cap', () => {
+    const a = { mmX: 0, mmY: 0 }, b = { mmX: 10, mmY: 0 }
+    const blockers: Array<{ mmX: number; mmY: number }[]> = []
+    for (let off = 2; off <= 32; off += 2) blockers.push([{ mmX: 0, mmY: off }, { mmX: 10, mmY: off }])
+    const anchor = findClearAnchor(a, b, 1, 3, 2, 2, blockers, 2.5, 30)
+    expect(anchor.mmY).toBeLessThan(0)
   })
 })

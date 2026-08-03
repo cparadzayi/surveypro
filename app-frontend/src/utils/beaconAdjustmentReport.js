@@ -453,7 +453,7 @@ class BeaconAdjustmentReport {
       const otherPolylines = edgeGeom
         .filter((g, i) => g && i !== idx)
         .map((g) => g.polyline)
-      const anchor = findClearAnchor(a, b, side, bowMm + 1.5, boxWidth, BOX_HEIGHT, otherPolylines, 2.5, 30)
+      const anchor = findClearAnchor(a, b, side, bowMm + 1.5, boxWidth, BOX_HEIGHT, otherPolylines, 1.25, 60)
 
       this._drawColoredLine(anchor.mmX, anchor.mmY, [
         { text: histText, color: BLACK },

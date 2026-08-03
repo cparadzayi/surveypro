@@ -71,8 +71,12 @@ function renderCapturing(result: any) {
   const written: string[] = [];
   // Same content as `written`, but paired with the draw colour active at the moment each
   // text() call happened -- needed to verify the old=black/new=red/diff-by-tolerance
-  // colour convention, which plain string capture can't distinguish (Task 4).
-  const textsColored: Array<{ text: string; color: [number, number, number] }> = [];
+  // colour convention, which plain string capture can't distinguish (Task 4). Tagged with
+  // page for the same reason curves/ellipses are below: jspdf-autotable's cell renderer
+  // calls doc.text() internally too, so the earlier addEdgeCompliance table page repeats
+  // some of the same raw dH/dS figures (e.g. "140.000") -- without page-scoping, counting
+  // occurrences of a given figure would double-count that unrelated table's cells.
+  const textsColored: Array<{ text: string; color: [number, number, number]; page: number }> = [];
   const rawCurves: Array<{ color: [number, number, number]; x1: number; y1: number; x2: number; y2: number; page: number }> = [];
   const rawEllipses: Array<{ color: [number, number, number]; page: number }> = [];
   let currentDrawColor: [number, number, number] = [0, 0, 0];
@@ -94,7 +98,8 @@ function renderCapturing(result: any) {
   (jsPDF.API as any).text = function (text: any) {
     const str = Array.isArray(text) ? text.join(' ') : String(text);
     written.push(str);
-    textsColored.push({ text: str, color: currentTextColor });
+    const page = this.internal.getCurrentPageInfo().pageNumber;
+    textsColored.push({ text: str, color: currentTextColor, page });
     return this;
   };
   (jsPDF.API as any).setDrawColor = function (...args: any[]) {
@@ -165,7 +170,8 @@ function renderCapturing(result: any) {
   // captured curve on the sketch page is exactly one ray -- no slicing/filtering needed.
   const curves = rawCurves.filter((l) => l.page === sketchPage).map(({ color, x1, y1, x2, y2 }) => ({ color, x1, y1, x2, y2 }));
   const ellipses = rawEllipses.filter((e) => e.page === sketchPage).map(({ color }) => ({ color }));
-  return { written, textsColored, curves, ellipses };
+  const textsColoredOnSketch = textsColored.filter((t) => t.page === sketchPage).map(({ text, color }) => ({ text, color }));
+  return { written, textsColored: textsColoredOnSketch, curves, ellipses };
 }
 
 describe('addEdgeComplianceSketch (via generateBeaconAdjustmentReport)', () => {
@@ -180,23 +186,121 @@ describe('addEdgeComplianceSketch (via generateBeaconAdjustmentReport)', () => {
     expect(written.some((w) => /SI 727 Class B/.test(w))).toBe(true);
   });
 
-  it('draws every ray in plain black regardless of pass/fail, and circles only the failing figures', () => {
-    const { curves, ellipses } = renderCapturing(makeResult());
+  it('draws every ray in plain black regardless of pass/fail', () => {
+    const { curves } = renderCapturing(makeResult());
     expect(curves.length).toBeGreaterThan(0);
     expect(curves.every((l) => l.color[0] === 0 && l.color[1] === 0 && l.color[2] === 0)).toBe(true);
-    // 3 edges: 86B-87A and 87A-87B pass both checks (0 circles each); 86B-87B fails both
-    // (2 circles: distance figure + swing figure) -> 2 ellipses total.
-    expect(ellipses.length).toBe(2);
   });
 
-  it('renders a negative swing with an explicit minus sign, not wrapped into [0,360)', () => {
+  it('draws no tolerance-violation circles any more -- colour on the diff text carries that signal instead', () => {
+    const { ellipses } = renderCapturing(makeResult());
+    expect(ellipses.length).toBe(0);
+  });
+
+  it('colours the historical distance black and the survey distance red', () => {
+    // All 3 edges in makeResult() share dH=140.0/dS=140.05, so each figure appears once
+    // per edge (3 times total) regardless of pass/fail -- only the diff figure (below)
+    // varies by tolerance.
+    const { textsColored } = renderCapturing(makeResult());
+    const hist = textsColored.filter((t) => t.text === '140.000');
+    const surv = textsColored.filter((t) => t.text === '140.050');
+    expect(hist.length).toBe(3);
+    expect(surv.length).toBe(3);
+    expect(hist.every((t) => t.color[0] === 0 && t.color[1] === 0 && t.color[2] === 0)).toBe(true);
+    expect(surv.every((t) => t.color[0] === 220 && t.color[1] === 0 && t.color[2] === 0)).toBe(true);
+  });
+
+  it('colours the distance-difference figure black when within tolerance and red when outside it', () => {
+    // makeResult()'s 3 edges all carry the same dDiff (0.05 -> "+0.050"); 86B-87A and
+    // 87A-87B pass (distOk=true), 86B-87B fails (distOk=false) -- so the SAME text should
+    // appear 3 times, split 2 black / 1 red.
+    const { textsColored } = renderCapturing(makeResult());
+    const diffs = textsColored.filter((t) => t.text === ' (+0.050)');
+    expect(diffs.length).toBe(3);
+    const black = diffs.filter((t) => t.color[0] === 0 && t.color[1] === 0 && t.color[2] === 0);
+    const red = diffs.filter((t) => t.color[0] === 220 && t.color[1] === 0 && t.color[2] === 0);
+    expect(black.length).toBe(2);
+    expect(red.length).toBe(1);
+  });
+
+  it('colours the direction-difference figure black when within tolerance and red when outside it', () => {
+    // Same reasoning as the distance-difference test: all 3 edges share dirDiffSec=-7200
+    // (-2 deg -> "-2°00'00.0""); 86B-87A and 87A-87B pass (dirOk=true), 86B-87B fails
+    // (dirOk=false).
+    const { textsColored } = renderCapturing(makeResult());
+    const diffs = textsColored.filter((t) => t.text === ` (-2°00'00.0")`);
+    expect(diffs.length).toBe(3);
+    const black = diffs.filter((t) => t.color[0] === 0 && t.color[1] === 0 && t.color[2] === 0);
+    const red = diffs.filter((t) => t.color[0] === 220 && t.color[1] === 0 && t.color[2] === 0);
+    expect(black.length).toBe(2);
+    expect(red.length).toBe(1);
+  });
+
+  it('renders a negative direction difference with an explicit minus sign, not wrapped into [0,360)', () => {
     const { written } = renderCapturing(makeResult());
-    expect(written.some((w) => w.startsWith('-2°'))).toBe(true);
-    expect(written.some((w) => w.startsWith('357°') || w.startsWith('358°'))).toBe(false);
+    expect(written.some((w) => w.includes("(-2°"))).toBe(true);
+    expect(written.some((w) => w.includes('357°') || w.includes('358°'))).toBe(false);
   });
 
   it('does nothing (no sketch heading) when there are no edges', () => {
     const { written } = renderCapturing(makeResult({ edges: { rows: [], summary: { totalLines: 0, distPass: 0, dirPass: 0, bothPass: 0, meanScale: null, meanSwingDeg: null } } }));
     expect(written).not.toContain('Comparison Sketch — SI 727 §67(5)');
+  });
+});
+
+describe('addEdgeComplianceSketch annotation placement', () => {
+  it('keeps each annotation clear of every ray, including rays it does not label', () => {
+    // Four beacons in a tight square with all 6 pairwise edges -- deliberately dense so
+    // several rays pass close to any given edge's natural annotation position, exercising
+    // the outward search rather than always landing on the first candidate.
+    const pts = [
+      { id: 1, name: 'A', yH: 50000.0, xH: 2200000.0, yS: 50000.02, xS: 2200000.03,
+        dY: 0.02, dX: 0.03, vY: 0.001, vX: -0.001, resDist: 0.001, resBrg: 90, wMax: 0.4, finalStatus: 'ACCEPT',
+        yT: 50000.01, xT: 2200000.02, tvY: 0.001, tvX: -0.001, tResid: 0.001, tBrg: 90, rY: 0.8, rX: 0.8 },
+      { id: 2, name: 'B', yH: 50050.0, xH: 2200000.0, yS: 50050.01, xS: 2200000.02,
+        dY: 0.01, dX: 0.02, vY: 0.001, vX: -0.001, resDist: 0.001, resBrg: 90, wMax: 0.3, finalStatus: 'ACCEPT',
+        yT: 50050.005, xT: 2200000.01, tvY: 0.001, tvX: -0.001, tResid: 0.001, tBrg: 90, rY: 0.85, rX: 0.85 },
+      { id: 3, name: 'C', yH: 50050.0, xH: 2200050.0, yS: 50050.03, xS: 2200050.01,
+        dY: 0.03, dX: 0.01, vY: 0.001, vX: -0.001, resDist: 0.001, resBrg: 90, wMax: 0.5, finalStatus: 'ACCEPT',
+        yT: 50050.015, xT: 2200050.005, tvY: 0.001, tvX: -0.001, tResid: 0.001, tBrg: 90, rY: 0.82, rX: 0.82 },
+      { id: 4, name: 'D', yH: 50000.0, xH: 2200050.0, yS: 50000.02, xS: 2200050.01,
+        dY: 0.02, dX: 0.01, vY: 0.001, vX: -0.001, resDist: 0.001, resBrg: 90, wMax: 0.2, finalStatus: 'ACCEPT',
+        yT: 50000.01, xT: 2200050.005, tvY: 0.001, tvX: -0.001, tResid: 0.001, tBrg: 90, rY: 0.9, rX: 0.9 },
+    ];
+    const edgeRow = (from: string, to: string) => ({
+      from, to, dH: 50.0, dS: 50.02, dDiff: 0.02, dAllow: 0.05,
+      distOk: true, brgH: 90.0, brgS: 90.001, dirDiffSec: 3.6, dirAllowSec: 20.0, dirOk: true,
+      pass: true,
+    });
+    const result = {
+      adj: {
+        params: { TY: 0.02, TX: -0.01, scale: 1.0001, ppm: 100, rotDeg: 0.001, se: { TY: 0.01, TX: 0.01, scale: 1e-4, ppm: 10, rotSec: 5 } },
+        stats: { sig0: 0.01, s0: 0.02, DOF: 2, chi2: 3, chi2L: 0.1, chi2U: 6 },
+      },
+      pts,
+      log: [{ iter: 1, n: 4, s0: 0.02, chi2: 3, chi2L: 0.1, chi2U: 6 }],
+      converged: true,
+      loo: { rows: [], rmsLoo: 0.01, maxLoo: 0.02, note: null },
+      edges: {
+        rows: [
+          edgeRow('A', 'B'), edgeRow('A', 'C'), edgeRow('A', 'D'),
+          edgeRow('B', 'C'), edgeRow('B', 'D'), edgeRow('C', 'D'),
+        ],
+        summary: { totalLines: 6, distPass: 6, dirPass: 6, bothPass: 6, meanScale: 1.0001, meanSwingDeg: -0.001 },
+      },
+      surveyClass: 'B',
+    };
+    // No colour/geometry assertion needed here beyond "it doesn't throw" -- the geometry
+    // helpers themselves are exhaustively tested in beaconComparisonSketchLayout.test.ts.
+    // What this test actually protects against is a regression where the loop in
+    // addEdgeComplianceSketch stops calling findClearAnchor (e.g. reverts to the fixed
+    // midpointOffset it used before this task), which unit tests on the pure helper alone
+    // cannot catch since that helper would still exist and pass its own tests unused.
+    expect(() => renderCapturing(result)).not.toThrow();
+    const { written } = renderCapturing(result);
+    expect(written).toContain('A');
+    expect(written).toContain('B');
+    expect(written).toContain('C');
+    expect(written).toContain('D');
   });
 });

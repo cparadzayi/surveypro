@@ -2,9 +2,9 @@
 // SI 727 §67(5) beacon comparison examination report (client-side jsPDF).
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { f3, f4, f4s, formatDMS } from '@/utils/surveyMath'
+import { f3, f4, f4s, f3s, formatDMS } from '@/utils/surveyMath'
 import { planScaleMmPerM, chooseExaggeration, scaleBarMetres, sanitizeReportFilename } from '@/utils/beaconReportGeometry'
-import { computeExtent, pickSketchScale, makeSketchTransform, midpointOffset, sampleCubicBezier, curveControlPoints } from '@/utils/beaconComparisonSketchLayout'
+import { computeExtent, pickSketchScale, makeSketchTransform, midpointOffset, sampleCubicBezier, curveControlPoints, findClearAnchor } from '@/utils/beaconComparisonSketchLayout'
 import { formatSignedDMS } from '@/utils/beaconComparisonSection'
 
 const NAVY = [30, 58, 92]
@@ -97,6 +97,15 @@ class BeaconAdjustmentReport {
     else if (rej) this.doc.setFillColor(220, 38, 38)
     else this.doc.setFillColor(70, 90, 200)
     this.doc.triangle(x2, y2, bx - uy * w, by + ux * w, bx + uy * w, by - ux * w, 'F')
+  }
+
+  _drawColoredLine(x, y, segments) {
+    let cx = x
+    for (const seg of segments) {
+      this.doc.setTextColor(seg.color[0], seg.color[1], seg.color[2])
+      this.doc.text(seg.text, cx, y)
+      cx += this.doc.getTextWidth(seg.text)
+    }
   }
 
   addDisplacementPlot(result) {
@@ -419,37 +428,45 @@ class BeaconAdjustmentReport {
       this.doc.text(p.name, pos.mmX + ux * 3.5, pos.mmY + uy * 3.5)
     }
 
-    // Per-ray annotations: historical distance (black), survey distance (red), signed
-    // swing (black), stacked beside the ray midpoint, alternating sides to reduce
-    // overlap. Failing distance/direction figures get circled in red, independently.
+    // Per-ray annotations: two lines, "old -> new (diff)" for distance then direction.
+    // Old/historical is black, new/survey is red, and the parenthesised difference is
+    // black when within SI 727 tolerance and red when outside it. Anchored just clear of
+    // the ray's own curve, then searched outward (this ray's bow side first, then the
+    // opposite side) until the annotation's bounding box clears every OTHER ray's sampled
+    // curve -- not just avoiding this ray, avoiding all of them.
+    const ARROW_GREY = [130, 130, 130], BLACK = [0, 0, 0], RED = [220, 0, 0]
+    const LINE_GAP = 2.2, BOX_HEIGHT = LINE_GAP + 3.0
     this.doc.setFontSize(5.5)
     edges.rows.forEach((row, idx) => {
-      const a = positioned.get(row.from), b = positioned.get(row.to)
-      if (!a || !b) return
-      const side = idx % 2 === 0 ? 1 : -1
-      const base = midpointOffset(a, b, 2.2, side)
+      const geom = edgeGeom[idx]
+      if (!geom) return
+      const { a, b, side, bowMm } = geom
 
-      const histText = row.dH.toFixed(3)
-      const survText = row.dS.toFixed(3)
-      const swingText = formatSignedDMS(row.dirDiffSec / 3600)
+      const histText = row.dH.toFixed(3), survText = row.dS.toFixed(3)
+      const distDiffText = `(${f3s(row.dDiff)})`
+      const brgHText = formatDMS(row.brgH), brgSText = formatDMS(row.brgS)
+      const dirDiffText = `(${formatSignedDMS(row.dirDiffSec / 3600)})`
+      const line1 = `${histText} → ${survText} ${distDiffText}`
+      const line2 = `${brgHText} → ${brgSText} ${dirDiffText}`
+      const boxWidth = Math.max(this.doc.getTextWidth(line1), this.doc.getTextWidth(line2))
 
-      this.doc.setTextColor(0, 0, 0)
-      this.doc.text(histText, base.mmX, base.mmY)
-      this.doc.setTextColor(220, 0, 0)
-      this.doc.text(survText, base.mmX, base.mmY + 2.0)
-      this.doc.setTextColor(0, 0, 0)
-      this.doc.text(swingText, base.mmX, base.mmY + 4.0)
+      const otherPolylines = edgeGeom
+        .filter((g, i) => g && i !== idx)
+        .map((g) => g.polyline)
+      const anchor = findClearAnchor(a, b, side, bowMm + 1.5, boxWidth, BOX_HEIGHT, otherPolylines, 2.5, 30)
 
-      if (!row.distOk) {
-        const w = this.doc.getTextWidth(survText)
-        this.doc.setDrawColor(220, 0, 0); this.doc.setLineWidth(0.12)
-        this.doc.ellipse(base.mmX + w / 2, base.mmY + 2.0 - 0.9, w / 2 + 0.8, 1.5, 'S')
-      }
-      if (!row.dirOk) {
-        const w = this.doc.getTextWidth(swingText)
-        this.doc.setDrawColor(220, 0, 0); this.doc.setLineWidth(0.12)
-        this.doc.ellipse(base.mmX + w / 2, base.mmY + 4.0 - 0.9, w / 2 + 0.8, 1.5, 'S')
-      }
+      this._drawColoredLine(anchor.mmX, anchor.mmY, [
+        { text: histText, color: BLACK },
+        { text: ' → ', color: ARROW_GREY },
+        { text: survText, color: RED },
+        { text: ' ' + distDiffText, color: row.distOk ? BLACK : RED },
+      ])
+      this._drawColoredLine(anchor.mmX, anchor.mmY + LINE_GAP, [
+        { text: brgHText, color: BLACK },
+        { text: ' → ', color: ARROW_GREY },
+        { text: brgSText, color: RED },
+        { text: ' ' + dirDiffText, color: row.dirOk ? BLACK : RED },
+      ])
     })
 
     // Tick-marked scale bar (bottom-left), matching addDisplacementPlot's own style.
@@ -474,8 +491,8 @@ class BeaconAdjustmentReport {
     this.y = boxYtop + boxH + 6
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(60)
     this.doc.text(
-      `Scale ${label}. Black = historical, Red = current survey, Circled = outside SI 727 tolerance.`,
-      this.margin, this.y, { maxWidth: this.pw - 2 * this.margin })
+      `Scale ${label}. Black = historical, Red = current survey. Differences black = within SI 727 tolerance, red = outside.`,
+      this.margin, this.y, { maxWidth: pageW - 2 * this.margin })
     this.y += 6
     const s = edges.summary
     this.doc.setTextColor(20)

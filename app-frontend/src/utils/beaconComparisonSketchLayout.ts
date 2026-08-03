@@ -37,13 +37,22 @@ export function pickSketchScale(extent: ExtentM, areaMm: AreaMm): { denom: numbe
   return { denom, label: `1 : ${denom}` }
 }
 
+// The ground extent's drawn size in mm at a given scale denominator, independent of
+// whatever area it will be centred within. Used both by makeSketchTransform (to compute
+// its centring offset) and by callers that want to size a bounding box tightly around the
+// content itself, rather than always filling a fixed, possibly ill-fitting area.
+export function computeDrawSizeMm(extent: ExtentM, denom: number): AreaMm {
+  const widthM = extent.maxY - extent.minY || 1
+  const heightM = extent.maxX - extent.minX || 1
+  return { width: (widthM / denom) * 1000, height: (heightM / denom) * 1000 }
+}
+
 export function makeSketchTransform(
   extent: ExtentM, areaMm: AreaMm, denom: number, originMm: { x: number; y: number },
 ): (pt: { y: number; x: number }) => PointMm {
   const widthM = extent.maxY - extent.minY || 1
   const heightM = extent.maxX - extent.minX || 1
-  const drawWmm = (widthM / denom) * 1000
-  const drawHmm = (heightM / denom) * 1000
+  const { width: drawWmm, height: drawHmm } = computeDrawSizeMm(extent, denom)
   const ox = originMm.x + (areaMm.width - drawWmm) / 2
   const oy = originMm.y + (areaMm.height - drawHmm) / 2
   return (pt) => ({

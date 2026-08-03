@@ -4,7 +4,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { f3, f4, f4s, f3s, formatDMS } from '@/utils/surveyMath'
 import { planScaleMmPerM, chooseExaggeration, scaleBarMetres, sanitizeReportFilename } from '@/utils/beaconReportGeometry'
-import { computeExtent, pickSketchScale, makeSketchTransform, midpointOffset, sampleCubicBezier, curveControlPoints, findClearAnchor } from '@/utils/beaconComparisonSketchLayout'
+import { computeExtent, pickSketchScale, makeSketchTransform, midpointOffset, sampleCubicBezier, curveControlPoints, findClearAnchor, computeDrawSizeMm } from '@/utils/beaconComparisonSketchLayout'
 import { formatSignedDMS } from '@/utils/beaconComparisonSection'
 
 const NAVY = [30, 58, 92]
@@ -379,18 +379,40 @@ class BeaconAdjustmentReport {
       .filter((p) => !!p.pt)
     if (points.length < 2) return
 
-    this.doc.addPage('a4', 'landscape'); this.y = this.margin
+    this.doc.addPage('a4', 'portrait'); this.y = this.margin
     this.sectionTitle('Comparison Sketch — SI 727 §67(5)')
 
     const pageW = this.doc.internal.pageSize.getWidth()
     const pageH = this.doc.internal.pageSize.getHeight()
-    const boxX = this.margin, boxYtop = this.y, boxW = pageW - 2 * this.margin, boxH = pageH - boxYtop - 40
+    const boxX = this.margin, boxYtop = this.y
+    const maxBoxW = pageW - 2 * this.margin, maxBoxH = pageH - boxYtop - 40
+
+    // Size the box to the network's own shape rather than always filling the full
+    // available page area: a wide/flat beacon layout (the common case) in a tall
+    // portrait box would otherwise leave a large empty gap above the content once
+    // centred, since the fitted scale only needs a fraction of the available height.
+    // Pick the scale against the maximum available area first (so nothing gets
+    // needlessly zoomed in), then shrink the box to just wrap the resulting drawn
+    // size (+ padding), floored so there's always room for the scale bar/south arrow.
+    //
+    // chromeH reserves a dedicated band below the content area for the south arrow --
+    // without it, a beacon sitting at the network's southern/eastern extremity maps
+    // exactly to the content area's bottom edge, which used to have generous slack
+    // above the box's true bottom (back when the box always filled the full page) but
+    // has none once the box is tightened to the content: the arrow (anchored to the
+    // box's own bottom-right corner) would then be drawn right on top of that beacon
+    // and its annotation. Reserving this band keeps content and chrome from ever
+    // sharing the same vertical space, independent of where extremal beacons land.
+    const pad = 16
+    const chromeH = 24
+    const extent = computeExtent(points.map((p) => p.pt))
+    const { denom, label } = pickSketchScale(extent, { width: maxBoxW - 2 * pad, height: maxBoxH - 2 * pad - chromeH })
+    const drawSize = computeDrawSizeMm(extent, denom)
+    const boxW = Math.min(maxBoxW, drawSize.width + 2 * pad)
+    const boxH = Math.max(60, Math.min(maxBoxH, drawSize.height + 2 * pad + chromeH))
     this.doc.setDrawColor(120); this.doc.setLineWidth(0.3); this.doc.rect(boxX, boxYtop, boxW, boxH)
 
-    const pad = 16
-    const areaMm = { width: boxW - 2 * pad, height: boxH - 2 * pad }
-    const extent = computeExtent(points.map((p) => p.pt))
-    const { denom, label } = pickSketchScale(extent, areaMm)
+    const areaMm = { width: boxW - 2 * pad, height: boxH - 2 * pad - chromeH }
     const originMm = { x: boxX + pad, y: boxYtop + pad }
     const transform = makeSketchTransform(extent, areaMm, denom, originMm)
     const positioned = new Map(points.map((p) => [p.name, transform(p.pt)]))

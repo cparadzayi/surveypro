@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   computeExtent, pickSketchScale, makeSketchTransform, midpointOffset,
   sampleCubicBezier, curveControlPoints, boxAtAnchor, pointInRect,
-  segmentsIntersect, polylineIntersectsRect, findClearAnchor,
+  segmentsIntersect, polylineIntersectsRect, findClearAnchor, computeDrawSizeMm,
 } from '../beaconComparisonSketchLayout'
 
 describe('computeExtent', () => {
@@ -35,6 +35,20 @@ describe('pickSketchScale', () => {
   it('does not divide by zero for a degenerate (zero-width) extent', () => {
     const extent = { minY: 5, maxY: 5, minX: 0, maxX: 20 }
     expect(() => pickSketchScale(extent, { width: 150, height: 100 })).not.toThrow()
+  })
+})
+
+describe('computeDrawSizeMm', () => {
+  it('computes the drawn width/height at a given scale, independent of any target area', () => {
+    const extent = { minY: 0, maxY: 20, minX: 0, maxX: 10 } // 20m wide, 10m tall
+    const size = computeDrawSizeMm(extent, 200) // 1:200 -> 20m = 100mm, 10m = 50mm
+    expect(size.width).toBeCloseTo(100, 6)
+    expect(size.height).toBeCloseTo(50, 6)
+  })
+
+  it('does not divide by zero for a degenerate (zero-width) extent', () => {
+    const extent = { minY: 5, maxY: 5, minX: 0, maxX: 20 }
+    expect(() => computeDrawSizeMm(extent, 100)).not.toThrow()
   })
 })
 

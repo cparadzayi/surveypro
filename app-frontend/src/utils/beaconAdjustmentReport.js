@@ -4,7 +4,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { f3, f4, f4s, f3s, formatDMS } from '@/utils/surveyMath'
 import { planScaleMmPerM, chooseExaggeration, scaleBarMetres, sanitizeReportFilename } from '@/utils/beaconReportGeometry'
-import { computeSketchLayout } from '@/utils/beaconComparisonSketchLayout'
+import { computeSketchLayout, SKETCH_LINE_GAP } from '@/utils/beaconComparisonSketchLayout'
 import { formatSignedDMS } from '@/utils/beaconComparisonSection'
 
 const NAVY = [30, 58, 92]
@@ -420,10 +420,24 @@ class BeaconAdjustmentReport {
     // failing that by A0, whichever candidate came closest). Nothing here touches a real
     // jsPDF page or draws anything -- computeSketchLayout is pure. See
     // docs/superpowers/specs/2026-08-04-beacon-sketch-paper-sizing-design.md.
+    //
+    // Known performance limit: for a very dense all-pairs network (20+ beacons, 190+
+    // edges), evaluating all 10 candidates is synchronous and can take several seconds
+    // with no user feedback, since no candidate ever reaches zero violations at that
+    // density (measured ~9s at 30 beacons/435 edges) -- bestSoFarViolations below prunes
+    // clearly-losing candidates early, but only saves a few percent in practice, since
+    // violations accumulate at close to one per edge across most of each candidate's
+    // loop rather than concentrating late where pruning would help. Realistic SI 727
+    // comparisons (8-12 beacons) stay well under a second and are unaffected. A real fix
+    // (spatial indexing instead of the current brute-force O(edges) collision scans, or
+    // a UI-level progress indicator in the calling component) is a deliberately deferred
+    // follow-up, not addressed here.
     let best = null
     for (const c of SHEET_CANDIDATES) {
       const maxAreaMm = { width: c.w - 2 * this.margin, height: c.h - boxOrigin.y - 40 }
-      const layout = computeSketchLayout(points, edgeSpecs, boxOrigin, maxAreaMm, measureText)
+      const layout = computeSketchLayout(
+        points, edgeSpecs, boxOrigin, maxAreaMm, measureText, best ? best.layout.violations : Infinity,
+      )
       if (!best || layout.violations < best.layout.violations) best = { fmt: c.fmt, orientation: c.orientation, layout }
       if (layout.violations === 0) break
     }
@@ -465,7 +479,6 @@ class BeaconAdjustmentReport {
     // colour-coded text at them. old/historical black, new/survey red, arrow grey, and
     // the parenthesised difference black when within SI 727 tolerance, red when outside.
     const ARROW_GREY = [130, 130, 130], BLACK = [0, 0, 0], RED = [220, 0, 0]
-    const LINE_GAP = 2.2
     this.doc.setFontSize(5.5)
     edges.rows.forEach((row, idx) => {
       const ann = annotations[idx]
@@ -477,7 +490,7 @@ class BeaconAdjustmentReport {
         { text: spec.survText, color: RED },
         { text: ' ' + spec.distDiffText, color: row.distOk ? BLACK : RED },
       ])
-      this._drawColoredLine(ann.anchor.mmX, ann.anchor.mmY + LINE_GAP, [
+      this._drawColoredLine(ann.anchor.mmX, ann.anchor.mmY + SKETCH_LINE_GAP, [
         { text: spec.brgHText, color: BLACK },
         { text: ' -> ', color: ARROW_GREY },
         { text: spec.brgSText, color: RED },

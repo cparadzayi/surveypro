@@ -197,12 +197,17 @@ export interface SketchLayoutResult {
   positioned: Map<string, PointMm>
   edgeGeom: Array<SketchEdgeGeom | null>
   annotations: Array<SketchAnnotationPlacement | null>
+  // Count of annotations that couldn't be placed fully clear of rays/other
+  // annotations/the content bounds. Useful as a relative comparator between candidate
+  // layouts (fewer is better), but NOT a literal total overlap count: each annotation
+  // contributes at most 1 regardless of how many things it overlaps, and placement is
+  // order-dependent since only previously-placed annotations are checked against.
   violations: number
 }
 
 const SKETCH_PAD = 16
 const SKETCH_CHROME_H = 24
-const SKETCH_LINE_GAP = 2.2
+export const SKETCH_LINE_GAP = 2.2
 const SKETCH_BOX_HEIGHT = SKETCH_LINE_GAP + 3.0
 
 // Computes the full geometry for one comparison-sketch render attempt -- beacon
@@ -218,6 +223,7 @@ export function computeSketchLayout(
   boxOrigin: { x: number; y: number },
   maxAreaMm: AreaMm,
   measureText: (s: string) => number,
+  bestSoFarViolations = Infinity,
 ): SketchLayoutResult {
   const boxX = boxOrigin.x, boxYtop = boxOrigin.y
   const extent = computeExtent(points.map((p) => p.pt))
@@ -267,9 +273,17 @@ export function computeSketchLayout(
 
   let violations = 0
   const placedRects: RectMm[] = []
-  const annotations: Array<SketchAnnotationPlacement | null> = edgeSpecs.map((spec, idx) => {
+  // Explicit loop (not .map) so a candidate that's already worse than the best-known
+  // result so far can break out early instead of placing every remaining annotation --
+  // see the pruning docs on the bestSoFarViolations parameter above. Entries for edges
+  // never reached this way stay null, which is fine: a candidate abandoned early already
+  // ties-or-loses on violation count, so it can never become the caller's chosen `best`
+  // and its geometry (including these null annotations) is never drawn.
+  const annotations: Array<SketchAnnotationPlacement | null> = new Array(edgeSpecs.length).fill(null)
+  for (let idx = 0; idx < edgeSpecs.length; idx++) {
+    const spec = edgeSpecs[idx]
     const geom = edgeGeom[idx]
-    if (!geom) return null
+    if (!geom) continue
     const boxWidth = Math.max(measureText(spec.line1), measureText(spec.line2))
     const otherPolylines = edgeGeom
       .filter((g, i) => g && i !== idx)
@@ -286,8 +300,9 @@ export function computeSketchLayout(
       !placedRects.some((other) => rectsOverlap(rect, other))
     if (!clear) violations++
     placedRects.push(rect)
-    return { anchor, rect }
-  })
+    annotations[idx] = { anchor, rect }
+    if (violations >= bestSoFarViolations) break
+  }
 
   return { denom, label, boxX, boxYtop, boxW, boxH, pad: SKETCH_PAD, positioned, edgeGeom, annotations, violations }
 }

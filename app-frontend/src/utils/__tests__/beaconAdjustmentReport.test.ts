@@ -85,6 +85,7 @@ function renderCapturing(result: any) {
   // state and their own patch, or textsColored would silently capture the wrong colour.
   let currentTextColor: [number, number, number] = [0, 0, 0];
   let lastMoveTo = { x: 0, y: 0 };
+  let sketchPageW = 0, sketchPageH = 0;
 
   // Save prior own-property state of jsPDF.API for each patched key so we can restore
   // it exactly afterward (present-with-value vs. absent) rather than mutating the shared,
@@ -152,8 +153,14 @@ function renderCapturing(result: any) {
   // jsPDF's own save() writes to the DOM in a browser; under Vitest's default environment
   // it may throw or no-op. Stub it so the report-generation call completes without a real
   // download, matching how this file is actually invoked (CompareView.vue's button handler
-  // doesn't await anything after calling it either).
-  (jsPDF.API as any).save = function () { return this; };
+  // doesn't await anything after calling it either). It also runs with the sketch page
+  // still "current" (addFooters only revisits pages via setPage(), ending on the last one
+  // added -- the sketch page -- so this is the right moment to read its real, chosen size.
+  (jsPDF.API as any).save = function () {
+    sketchPageW = this.internal.pageSize.getWidth();
+    sketchPageH = this.internal.pageSize.getHeight();
+    return this;
+  };
 
   try {
     generateBeaconAdjustmentReport(result, { surveyorName: 'Test', plsNumber: '1', location: 'X', priorSurvey: 'SR 1/2026', date: '2026-08-02', critW: 2.576 });
@@ -171,7 +178,7 @@ function renderCapturing(result: any) {
   const curves = rawCurves.filter((l) => l.page === sketchPage).map(({ color, x1, y1, x2, y2 }) => ({ color, x1, y1, x2, y2 }));
   const ellipses = rawEllipses.filter((e) => e.page === sketchPage).map(({ color }) => ({ color }));
   const textsColoredOnSketch = textsColored.filter((t) => t.page === sketchPage).map(({ text, color }) => ({ text, color }));
-  return { written, textsColored: textsColoredOnSketch, curves, ellipses };
+  return { written, textsColored: textsColoredOnSketch, curves, ellipses, sketchPageW, sketchPageH };
 }
 
 describe('addEdgeComplianceSketch (via generateBeaconAdjustmentReport)', () => {
@@ -302,5 +309,70 @@ describe('addEdgeComplianceSketch annotation placement', () => {
     expect(written).toContain('B');
     expect(written).toContain('C');
     expect(written).toContain('D');
+  });
+});
+
+describe('addEdgeComplianceSketch paper size selection', () => {
+  it('stays on A4 portrait for a sparse network that already fits collision-free', () => {
+    const { sketchPageW, sketchPageH } = renderCapturing(makeResult());
+    expect(sketchPageW).toBeCloseTo(210, 0);
+    expect(sketchPageH).toBeCloseTo(297, 0);
+  });
+
+  it('escalates beyond A4 for a dense, real-world-scale network', () => {
+    const N = 12;
+    const names = Array.from({ length: N }, (_, i) => `P${i + 1}`);
+    const pts = names.map((name, i) => {
+      const yH = 50000 + (i % 4) * 80 + i * 3, xH = 2200000 + Math.floor(i / 4) * 90 + i * 5;
+      return {
+        id: i + 1, name, yH, xH, yS: yH + 0.07, xS: xH - 0.05,
+        dY: 0.07, dX: -0.05, vY: 0.01, vX: -0.01, resDist: 0.014, resBrg: 90, wMax: 0.8, finalStatus: 'ACCEPT',
+        yT: yH + 0.035, xT: xH - 0.025, tvY: 0.01, tvX: -0.01, tResid: 0.014, tBrg: 90, rY: 0.82, rX: 0.82,
+      };
+    });
+    const rows: any[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const a = pts[i], b = pts[j];
+        const dH = Math.hypot(b.yH - a.yH, b.xH - a.xH);
+        const dS = Math.hypot(b.yS - a.yS, b.xS - a.xS);
+        const brgH = (Math.atan2(b.yH - a.yH, b.xH - a.xH) * 180 / Math.PI + 360) % 360;
+        const brgS = (Math.atan2(b.yS - a.yS, b.xS - a.xS) * 180 / Math.PI + 360) % 360;
+        const dirDiffSec = ((brgS - brgH + 540) % 360 - 180) * 3600;
+        rows.push({
+          from: a.name, to: b.name, dH, dS, dDiff: dS - dH, dAllow: 0.05,
+          distOk: Math.abs(dS - dH) <= 0.05,
+          brgH, brgS, dirDiffSec, dirAllowSec: 30,
+          dirOk: Math.abs(dirDiffSec) <= 30,
+          pass: false,
+        });
+      }
+    }
+    const result = {
+      adj: {
+        params: { TY: 0.07, TX: -0.05, scale: 1.0001, ppm: 100, rotDeg: 0.001, se: { TY: 0.01, TX: 0.01, scale: 1e-4, ppm: 10, rotSec: 5 } },
+        stats: { sig0: 0.01, s0: 0.02, DOF: 2, chi2: 3, chi2L: 0.1, chi2U: 6 },
+      },
+      pts,
+      log: [{ iter: 1, n: pts.length, s0: 0.02, chi2: 3, chi2L: 0.1, chi2U: 6 }],
+      converged: true,
+      loo: { rows: [], rmsLoo: 0.01, maxLoo: 0.02, note: null },
+      edges: {
+        rows,
+        summary: {
+          totalLines: rows.length,
+          distPass: rows.filter((r) => r.distOk).length,
+          dirPass: rows.filter((r) => r.dirOk).length,
+          bothPass: rows.filter((r) => r.distOk && r.dirOk).length,
+          meanScale: 1.0, meanSwingDeg: 0,
+        },
+      },
+      surveyClass: 'B',
+    };
+    const { sketchPageW, sketchPageH } = renderCapturing(result);
+    // A4 portrait is 210x297mm, A4 landscape is 297x210mm -- this network (12 points, 66
+    // all-pairs edges) is dense enough that neither orientation fits collision-free, so
+    // the chosen sheet must be a larger ISO size (A3 or beyond) in at least one dimension.
+    expect(Math.max(sketchPageW, sketchPageH)).toBeGreaterThan(297);
   });
 });

@@ -4,10 +4,21 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { f3, f4, f4s, f3s, formatDMS } from '@/utils/surveyMath'
 import { planScaleMmPerM, chooseExaggeration, scaleBarMetres, sanitizeReportFilename } from '@/utils/beaconReportGeometry'
-import { computeExtent, pickSketchScale, makeSketchTransform, midpointOffset, sampleCubicBezier, curveControlPoints, findClearAnchor, computeDrawSizeMm } from '@/utils/beaconComparisonSketchLayout'
+import { computeSketchLayout } from '@/utils/beaconComparisonSketchLayout'
 import { formatSignedDMS } from '@/utils/beaconComparisonSection'
 
 const NAVY = [30, 58, 92]
+
+// Standard ISO A-series page dimensions in mm, matching jsPDF's own built-in page-format
+// table exactly (confirmed against jspdf/dist/jspdf.node.js's pageFormats constant) --
+// used to evaluate paper-size candidates before any real page exists.
+const SHEET_LADDER = [
+  ['a4', 210, 297], ['a3', 297, 420], ['a2', 420, 594], ['a1', 594, 841], ['a0', 841, 1189],
+]
+const SHEET_CANDIDATES = SHEET_LADDER.flatMap(([fmt, pw, ph]) => [
+  { fmt, orientation: 'portrait', w: pw, h: ph },
+  { fmt, orientation: 'landscape', w: ph, h: pw },
+])
 
 class BeaconAdjustmentReport {
   constructor() {
@@ -379,61 +390,60 @@ class BeaconAdjustmentReport {
       .filter((p) => !!p.pt)
     if (points.length < 2) return
 
-    this.doc.addPage('a4', 'portrait'); this.y = this.margin
+    // Build every annotation's text once, up front -- text-width measurement (needed to
+    // size each annotation's collision box) only depends on the currently-set font/size,
+    // never on page dimensions, so this is identical across every paper-size candidate
+    // below and the eventual real render; no need to rebuild it per candidate.
+    this.doc.setFontSize(5.5)
+    const edgeSpecs = edges.rows.map((row) => {
+      const histText = row.dH.toFixed(3), survText = row.dS.toFixed(3)
+      const distDiffText = `(${f3s(row.dDiff)})`
+      const brgHText = formatDMS(row.brgH), brgSText = formatDMS(row.brgS)
+      const dirDiffText = `(${formatSignedDMS(row.dirDiffSec / 3600)})`
+      return {
+        from: row.from, to: row.to,
+        line1: `${histText} -> ${survText} ${distDiffText}`,
+        line2: `${brgHText} -> ${brgSText} ${dirDiffText}`,
+        histText, survText, distDiffText, brgHText, brgSText, dirDiffText,
+      }
+    })
+    const measureText = (s) => this.doc.getTextWidth(s)
+
+    // The title always lands at the same offset regardless of which page size is
+    // eventually chosen (sectionTitle's own +5 advance is fixed), so the box's
+    // page-relative origin is known before any page exists -- every candidate below
+    // shares this same origin; only the available width/height budget changes.
+    const boxOrigin = { x: this.margin, y: this.margin + 5 }
+
+    // Try the ISO paper ladder smallest-first, both orientations at each size, and keep
+    // the first candidate that renders every ray and every annotation collision-free (or,
+    // failing that by A0, whichever candidate came closest). Nothing here touches a real
+    // jsPDF page or draws anything -- computeSketchLayout is pure. See
+    // docs/superpowers/specs/2026-08-04-beacon-sketch-paper-sizing-design.md.
+    let best = null
+    for (const c of SHEET_CANDIDATES) {
+      const maxAreaMm = { width: c.w - 2 * this.margin, height: c.h - boxOrigin.y - 40 }
+      const layout = computeSketchLayout(points, edgeSpecs, boxOrigin, maxAreaMm, measureText)
+      if (!best || layout.violations < best.layout.violations) best = { fmt: c.fmt, orientation: c.orientation, layout }
+      if (layout.violations === 0) break
+    }
+
+    this.doc.addPage(best.fmt, best.orientation); this.y = this.margin
     this.sectionTitle('Comparison Sketch — SI 727 §67(5)')
 
     const pageW = this.doc.internal.pageSize.getWidth()
-    const pageH = this.doc.internal.pageSize.getHeight()
-    const boxX = this.margin, boxYtop = this.y
-    const maxBoxW = pageW - 2 * this.margin, maxBoxH = pageH - boxYtop - 40
-
-    // Size the box to the network's own shape rather than always filling the full
-    // available page area: a wide/flat beacon layout (the common case) in a tall
-    // portrait box would otherwise leave a large empty gap above the content once
-    // centred, since the fitted scale only needs a fraction of the available height.
-    // Pick the scale against the maximum available area first (so nothing gets
-    // needlessly zoomed in), then shrink the box to just wrap the resulting drawn
-    // size (+ padding), floored so there's always room for the scale bar/south arrow.
-    //
-    // chromeH reserves a dedicated band below the content area for the south arrow --
-    // without it, a beacon sitting at the network's southern/eastern extremity maps
-    // exactly to the content area's bottom edge, which used to have generous slack
-    // above the box's true bottom (back when the box always filled the full page) but
-    // has none once the box is tightened to the content: the arrow (anchored to the
-    // box's own bottom-right corner) would then be drawn right on top of that beacon
-    // and its annotation. Reserving this band keeps content and chrome from ever
-    // sharing the same vertical space, independent of where extremal beacons land.
-    const pad = 16
-    const chromeH = 24
-    const extent = computeExtent(points.map((p) => p.pt))
-    const { denom, label } = pickSketchScale(extent, { width: maxBoxW - 2 * pad, height: maxBoxH - 2 * pad - chromeH })
-    const drawSize = computeDrawSizeMm(extent, denom)
-    const boxW = Math.min(maxBoxW, drawSize.width + 2 * pad)
-    const boxH = Math.max(60, Math.min(maxBoxH, drawSize.height + 2 * pad + chromeH))
+    const { denom, label, boxX, boxYtop, boxW, boxH, pad, positioned, edgeGeom, annotations } = best.layout
     this.doc.setDrawColor(120); this.doc.setLineWidth(0.3); this.doc.rect(boxX, boxYtop, boxW, boxH)
 
-    const areaMm = { width: boxW - 2 * pad, height: boxH - 2 * pad - chromeH }
-    const originMm = { x: boxX + pad, y: boxYtop + pad }
-    const transform = makeSketchTransform(extent, areaMm, denom, originMm)
-    const positioned = new Map(points.map((p) => [p.name, transform(p.pt)]))
-
     // Rays -- curved (cubic Bezier), always plain black, drawn before annotations so text
-    // sits on top. Bow side/depth vary deterministically per edge so near-parallel or
-    // overlapping edges fan visually apart; each curve is also sampled into a polyline
-    // and kept in edgeGeom so annotation placement (below) can stay clear of every OTHER
-    // ray, not just its own.
+    // sits on top. Geometry (control points, sampled polyline) was already computed by
+    // computeSketchLayout during the trial above; drawing it here does no new math.
     this.doc.setDrawColor(0, 0, 0); this.doc.setLineWidth(0.25)
-    const edgeGeom = edges.rows.map((row, idx) => {
-      const a = positioned.get(row.from), b = positioned.get(row.to)
-      if (!a || !b) return null
-      const side = idx % 2 === 0 ? 1 : -1
-      const length = Math.hypot(b.mmX - a.mmX, b.mmY - a.mmY)
-      const bowMm = Math.min(4 + 3 * (idx % 3), length * 0.35)
-      const { cp1, cp2 } = curveControlPoints(a, b, bowMm, side)
-      this.doc.moveTo(a.mmX, a.mmY)
-      this.doc.curveTo(cp1.mmX, cp1.mmY, cp2.mmX, cp2.mmY, b.mmX, b.mmY)
+    edgeGeom.forEach((geom) => {
+      if (!geom) return
+      this.doc.moveTo(geom.a.mmX, geom.a.mmY)
+      this.doc.curveTo(geom.cp1.mmX, geom.cp1.mmY, geom.cp2.mmX, geom.cp2.mmY, geom.b.mmX, geom.b.mmY)
       this.doc.stroke()
-      return { a, b, side, bowMm, polyline: sampleCubicBezier(a, cp1, cp2, b, 10) }
     })
 
     // Beacon points + outward-offset name labels.
@@ -450,44 +460,28 @@ class BeaconAdjustmentReport {
       this.doc.text(p.name, pos.mmX + ux * 3.5, pos.mmY + uy * 3.5)
     }
 
-    // Per-ray annotations: two lines, "old -> new (diff)" for distance then direction.
-    // Old/historical is black, new/survey is red, and the parenthesised difference is
-    // black when within SI 727 tolerance and red when outside it. Anchored just clear of
-    // the ray's own curve, then searched outward (this ray's bow side first, then the
-    // opposite side) until the annotation's bounding box clears every OTHER ray's sampled
-    // curve -- not just avoiding this ray, avoiding all of them.
+    // Per-ray annotations: anchors were already found (avoiding every ray and every
+    // earlier annotation) by computeSketchLayout during the trial above -- just draw the
+    // colour-coded text at them. old/historical black, new/survey red, arrow grey, and
+    // the parenthesised difference black when within SI 727 tolerance, red when outside.
     const ARROW_GREY = [130, 130, 130], BLACK = [0, 0, 0], RED = [220, 0, 0]
-    const LINE_GAP = 2.2, BOX_HEIGHT = LINE_GAP + 3.0
+    const LINE_GAP = 2.2
     this.doc.setFontSize(5.5)
     edges.rows.forEach((row, idx) => {
-      const geom = edgeGeom[idx]
-      if (!geom) return
-      const { a, b, side, bowMm } = geom
-
-      const histText = row.dH.toFixed(3), survText = row.dS.toFixed(3)
-      const distDiffText = `(${f3s(row.dDiff)})`
-      const brgHText = formatDMS(row.brgH), brgSText = formatDMS(row.brgS)
-      const dirDiffText = `(${formatSignedDMS(row.dirDiffSec / 3600)})`
-      const line1 = `${histText} -> ${survText} ${distDiffText}`
-      const line2 = `${brgHText} -> ${brgSText} ${dirDiffText}`
-      const boxWidth = Math.max(this.doc.getTextWidth(line1), this.doc.getTextWidth(line2))
-
-      const otherPolylines = edgeGeom
-        .filter((g, i) => g && i !== idx)
-        .map((g) => g.polyline)
-      const anchor = findClearAnchor(a, b, side, bowMm + 1.5, boxWidth, BOX_HEIGHT, otherPolylines, 1.25, 60)
-
-      this._drawColoredLine(anchor.mmX, anchor.mmY, [
-        { text: histText, color: BLACK },
+      const ann = annotations[idx]
+      const spec = edgeSpecs[idx]
+      if (!ann) return
+      this._drawColoredLine(ann.anchor.mmX, ann.anchor.mmY, [
+        { text: spec.histText, color: BLACK },
         { text: ' -> ', color: ARROW_GREY },
-        { text: survText, color: RED },
-        { text: ' ' + distDiffText, color: row.distOk ? BLACK : RED },
+        { text: spec.survText, color: RED },
+        { text: ' ' + spec.distDiffText, color: row.distOk ? BLACK : RED },
       ])
-      this._drawColoredLine(anchor.mmX, anchor.mmY + LINE_GAP, [
-        { text: brgHText, color: BLACK },
+      this._drawColoredLine(ann.anchor.mmX, ann.anchor.mmY + LINE_GAP, [
+        { text: spec.brgHText, color: BLACK },
         { text: ' -> ', color: ARROW_GREY },
-        { text: brgSText, color: RED },
-        { text: ' ' + dirDiffText, color: row.dirOk ? BLACK : RED },
+        { text: spec.brgSText, color: RED },
+        { text: ' ' + spec.dirDiffText, color: row.dirOk ? BLACK : RED },
       ])
     })
 

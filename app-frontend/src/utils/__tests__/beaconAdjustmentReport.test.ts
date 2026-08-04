@@ -373,6 +373,10 @@ describe('addEdgeComplianceSketch paper size selection', () => {
     // A4 portrait is 210x297mm, A4 landscape is 297x210mm -- this network (12 points, 66
     // all-pairs edges) is dense enough that neither orientation fits collision-free, so
     // the chosen sheet must be a larger ISO size (A3 or beyond) in at least one dimension.
-    expect(Math.max(sketchPageW, sketchPageH)).toBeGreaterThan(297);
+    // 300mm is comfortably clear of A4's true ~297mm in either orientation (jsPDF's own A4
+    // constant converts to 297.00008mm -- a hair over 297 purely from unit-conversion
+    // rounding, not genuine escalation) while still well under A3's 420mm, so this
+    // correctly detects "escalated past A4" without being fooled by that rounding noise.
+    expect(Math.max(sketchPageW, sketchPageH)).toBeGreaterThan(300);
   });
 });

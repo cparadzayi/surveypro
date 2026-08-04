@@ -236,6 +236,20 @@ export function computeSketchLayout(
     return { a, b, side, bowMm, cp1, cp2, polyline: sampleCubicBezier(a, cp1, cp2, b, 10) }
   })
 
+  // Scale-invariant escape hatch: the search radius must grow with how zoomed-in the
+  // drawing is, not stay fixed -- otherwise a bigger sheet doesn't help annotations
+  // escape a beacon's local ray-convergence crowding (every edge from one beacon meets at
+  // that beacon regardless of paper size, so that local density is scale-invariant), which
+  // is exactly what a fixed-mm radius fails to address. Scaled off this network's own
+  // average ray length in mm at the scale just chosen; floored at the original fixed
+  // values so small/sparse networks (already fine at the fixed radius) aren't affected.
+  const rayLengths = edgeGeom
+    .filter((g): g is SketchEdgeGeom => g !== null)
+    .map((g) => Math.hypot(g.b.mmX - g.a.mmX, g.b.mmY - g.a.mmY))
+  const avgRayLenMm = rayLengths.length ? rayLengths.reduce((s, v) => s + v, 0) / rayLengths.length : 0
+  const searchMaxOffsetMm = Math.max(60, avgRayLenMm * 0.5)
+  const searchStepMm = Math.max(1.25, searchMaxOffsetMm / 50)
+
   let violations = 0
   const placedRects: RectMm[] = []
   const annotations: Array<SketchAnnotationPlacement | null> = edgeSpecs.map((spec, idx) => {
@@ -247,7 +261,7 @@ export function computeSketchLayout(
       .map((g) => (g as SketchEdgeGeom).polyline)
     const anchor = findClearAnchor(
       geom.a, geom.b, geom.side, geom.bowMm + 1.5, boxWidth, SKETCH_BOX_HEIGHT,
-      otherPolylines, 1.25, 60, placedRects,
+      otherPolylines, searchStepMm, searchMaxOffsetMm, placedRects,
     )
     const rect = boxAtAnchor(anchor, boxWidth, SKETCH_BOX_HEIGHT)
     const clear = !otherPolylines.some((poly) => polylineIntersectsRect(poly, rect)) &&

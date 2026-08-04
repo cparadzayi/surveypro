@@ -289,6 +289,28 @@ describe('computeSketchLayout', () => {
     expect(layout.violations).toBeGreaterThan(0)
   })
 
+  it('trends toward fewer-or-equal violations as available area grows (scale-aware search radius)', () => {
+    // Same dense all-pairs fixture as the "over-crowded network" test above (15 points,
+    // 105 edges). This is the regression test for the paper-size-escalation bug: with a
+    // FIXED-mm search radius, a bigger maxAreaMm draws the same network at a smaller scale
+    // denominator (longer rays in mm) without the collision search reaching any further to
+    // compensate, so violations could stay flat or even worsen on bigger "paper". With the
+    // radius scaled off the network's own average ray length in mm, a much bigger area
+    // budget must never produce MORE violations than a small one.
+    const N = 15
+    const points = Array.from({ length: N }, (_, i) => ({
+      name: `P${i}`,
+      pt: { y: (i % 5) * 20, x: Math.floor(i / 5) * 20 },
+    }))
+    const edgeSpecs: Array<{ from: string; to: string; line1: string; line2: string }> = []
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) edgeSpecs.push({ from: points[i].name, to: points[j].name, line1, line2 })
+    }
+    const small = computeSketchLayout(points, edgeSpecs, { x: 0, y: 0 }, { width: 150, height: 110 }, measureText)
+    const large = computeSketchLayout(points, edgeSpecs, { x: 0, y: 0 }, { width: 700, height: 550 }, measureText)
+    expect(large.violations).toBeLessThanOrEqual(small.violations)
+  })
+
   it('positions edgeGeom/annotations null for a row referencing an unknown beacon name', () => {
     const points = [{ name: 'A', pt: { y: 0, x: 0 } }, { name: 'B', pt: { y: 10, x: 0 } }]
     const edgeSpecs = [{ from: 'A', to: 'MISSING', line1, line2 }]

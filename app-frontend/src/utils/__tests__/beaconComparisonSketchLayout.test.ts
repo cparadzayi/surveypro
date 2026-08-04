@@ -3,6 +3,7 @@ import {
   computeExtent, pickSketchScale, makeSketchTransform, midpointOffset,
   sampleCubicBezier, curveControlPoints, boxAtAnchor, pointInRect,
   segmentsIntersect, polylineIntersectsRect, findClearAnchor, computeDrawSizeMm,
+  rectsOverlap,
 } from '../beaconComparisonSketchLayout'
 
 describe('computeExtent', () => {
@@ -214,5 +215,37 @@ describe('findClearAnchor', () => {
     for (let off = 2; off <= 32; off += 2) blockers.push([{ mmX: 0, mmY: off }, { mmX: 10, mmY: off }])
     const anchor = findClearAnchor(a, b, 1, 3, 2, 2, blockers, 2.5, 30)
     expect(anchor.mmY).toBeLessThan(0)
+  })
+})
+
+describe('rectsOverlap', () => {
+  it('detects overlapping rectangles', () => {
+    expect(rectsOverlap({ x0: 0, y0: 0, x1: 10, y1: 10 }, { x0: 5, y0: 5, x1: 15, y1: 15 })).toBe(true)
+  })
+
+  it('returns false for rectangles that do not touch', () => {
+    expect(rectsOverlap({ x0: 0, y0: 0, x1: 10, y1: 10 }, { x0: 20, y0: 20, x1: 30, y1: 30 })).toBe(false)
+  })
+
+  it('treats exactly touching edges as overlapping (inclusive boundary)', () => {
+    expect(rectsOverlap({ x0: 0, y0: 0, x1: 10, y1: 10 }, { x0: 10, y0: 0, x1: 20, y1: 10 })).toBe(true)
+  })
+})
+
+describe('findClearAnchor with otherRects', () => {
+  it('avoids a previously-placed annotation rectangle even when no ray polyline blocks it', () => {
+    const a = { mmX: 0, mmY: 0 }, b = { mmX: 10, mmY: 0 }
+    // Sits exactly where the minimum-offset (offset=3, side=1) anchor's box would land
+    // (boxAtAnchor((5,3), 2, 2) === {x0:4, y0:0.8, x1:8, y1:6}) -- no ray polylines
+    // involved at all, so this can only be avoided via the new otherRects exclusion set.
+    const blockingRect = { x0: 4, y0: 0.8, x1: 8, y1: 6 }
+    const anchor = findClearAnchor(a, b, 1, 3, 2, 2, [], 2.5, 30, [blockingRect])
+    expect(anchor.mmY).toBeGreaterThan(3)
+  })
+
+  it('still works with otherRects omitted (existing callers unaffected)', () => {
+    const a = { mmX: 0, mmY: 0 }, b = { mmX: 10, mmY: 0 }
+    const anchor = findClearAnchor(a, b, 1, 3, 2, 2, [], 2.5, 30)
+    expect(anchor.mmY).toBeCloseTo(3, 6)
   })
 })

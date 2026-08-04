@@ -133,10 +133,15 @@ export function polylineIntersectsRect(polyline: PointMm[], r: RectMm): boolean 
   return false
 }
 
+export function rectsOverlap(r1: RectMm, r2: RectMm): boolean {
+  return r1.x0 <= r2.x1 && r2.x0 <= r1.x1 && r1.y0 <= r2.y1 && r2.y0 <= r1.y1
+}
+
 // Searches outward from ray a->b, starting at minOffsetMm on the preferred side, in
 // stepMm increments up to maxOffsetMm, then retries the same range on the opposite side,
 // for the first anchor whose text bounding box (boxWidthMm x boxHeightMm) clears every
-// polyline in otherPolylines. Falls back to the minimum offset on the preferred side if
+// polyline in otherPolylines AND every rectangle in otherRects (previously-placed
+// annotations, when supplied). Falls back to the minimum offset on the preferred side if
 // no clear position is found (a documented best-effort limit for pathologically dense
 // clusters of near-coincident edges) -- deliberately the closest position to the ray it
 // labels, not the farthest tried, so a mislabeled-looking annotation still sits next to
@@ -144,13 +149,15 @@ export function polylineIntersectsRect(polyline: PointMm[], r: RectMm): boolean 
 export function findClearAnchor(
   a: PointMm, b: PointMm, side: 1 | -1, minOffsetMm: number,
   boxWidthMm: number, boxHeightMm: number, otherPolylines: PointMm[][],
-  stepMm = 2.5, maxOffsetMm = 30,
+  stepMm = 2.5, maxOffsetMm = 30, otherRects: RectMm[] = [],
 ): PointMm {
   for (const trySide of [side, (side * -1) as 1 | -1]) {
     for (let offset = minOffsetMm; offset <= maxOffsetMm; offset += stepMm) {
       const anchor = midpointOffset(a, b, offset, trySide)
       const rect = boxAtAnchor(anchor, boxWidthMm, boxHeightMm)
-      if (!otherPolylines.some((poly) => polylineIntersectsRect(poly, rect))) return anchor
+      const clearOfRays = !otherPolylines.some((poly) => polylineIntersectsRect(poly, rect))
+      const clearOfRects = !otherRects.some((other) => rectsOverlap(rect, other))
+      if (clearOfRays && clearOfRects) return anchor
     }
   }
   return midpointOffset(a, b, minOffsetMm, side)

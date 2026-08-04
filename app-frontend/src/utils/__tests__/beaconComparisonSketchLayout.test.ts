@@ -3,7 +3,7 @@ import {
   computeExtent, pickSketchScale, makeSketchTransform, midpointOffset,
   sampleCubicBezier, curveControlPoints, boxAtAnchor, pointInRect,
   segmentsIntersect, polylineIntersectsRect, findClearAnchor, computeDrawSizeMm,
-  rectsOverlap,
+  rectsOverlap, computeSketchLayout,
 } from '../beaconComparisonSketchLayout'
 
 describe('computeExtent', () => {
@@ -247,5 +247,54 @@ describe('findClearAnchor with otherRects', () => {
     const a = { mmX: 0, mmY: 0 }, b = { mmX: 10, mmY: 0 }
     const anchor = findClearAnchor(a, b, 1, 3, 2, 2, [], 2.5, 30)
     expect(anchor.mmY).toBeCloseTo(3, 6)
+  })
+})
+
+describe('computeSketchLayout', () => {
+  const measureText = (s: string) => s.length * 1.2
+  const line1 = '10.000 -> 10.000 (+0.000)'
+  const line2 = "0°00'00.0\" -> 0°00'00.0\" (0°00'00.0\")"
+
+  it('reports zero violations for a small, well-spaced network', () => {
+    const points = [
+      { name: 'A', pt: { y: 0, x: 0 } },
+      { name: 'B', pt: { y: 100, x: 0 } },
+      { name: 'C', pt: { y: 50, x: 100 } },
+    ]
+    const edgeSpecs = [
+      { from: 'A', to: 'B', line1, line2 },
+      { from: 'A', to: 'C', line1, line2 },
+      { from: 'B', to: 'C', line1, line2 },
+    ]
+    const layout = computeSketchLayout(points, edgeSpecs, { x: 0, y: 0 }, { width: 400, height: 400 }, measureText)
+    expect(layout.violations).toBe(0)
+    expect(layout.edgeGeom.every((g) => g !== null)).toBe(true)
+    expect(layout.annotations.every((ann) => ann !== null)).toBe(true)
+    expect(layout.positioned.size).toBe(3)
+  })
+
+  it('reports a nonzero violation count for a dense, over-crowded network', () => {
+    const N = 15
+    const points = Array.from({ length: N }, (_, i) => ({
+      name: `P${i}`,
+      pt: { y: (i % 5) * 20, x: Math.floor(i / 5) * 20 },
+    }))
+    const edgeSpecs: Array<{ from: string; to: string; line1: string; line2: string }> = []
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) edgeSpecs.push({ from: points[i].name, to: points[j].name, line1, line2 })
+    }
+    // 105 all-pairs edges/annotations squeezed into a 150x110mm candidate area -- far too
+    // little room for every annotation to clear every ray and every other annotation.
+    const layout = computeSketchLayout(points, edgeSpecs, { x: 0, y: 0 }, { width: 150, height: 110 }, measureText)
+    expect(layout.violations).toBeGreaterThan(0)
+  })
+
+  it('positions edgeGeom/annotations null for a row referencing an unknown beacon name', () => {
+    const points = [{ name: 'A', pt: { y: 0, x: 0 } }, { name: 'B', pt: { y: 10, x: 0 } }]
+    const edgeSpecs = [{ from: 'A', to: 'MISSING', line1, line2 }]
+    const layout = computeSketchLayout(points, edgeSpecs, { x: 0, y: 0 }, { width: 200, height: 200 }, measureText)
+    expect(layout.edgeGeom[0]).toBeNull()
+    expect(layout.annotations[0]).toBeNull()
+    expect(layout.violations).toBe(0)
   })
 })

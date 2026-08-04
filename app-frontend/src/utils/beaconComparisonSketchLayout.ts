@@ -162,3 +162,100 @@ export function findClearAnchor(
   }
   return midpointOffset(a, b, minOffsetMm, side)
 }
+
+export interface SketchEdgeGeom {
+  a: PointMm
+  b: PointMm
+  side: 1 | -1
+  bowMm: number
+  cp1: PointMm
+  cp2: PointMm
+  polyline: PointMm[]
+}
+
+export interface SketchAnnotationPlacement {
+  anchor: PointMm
+  rect: RectMm
+}
+
+export interface SketchLayoutResult {
+  denom: number
+  label: string
+  boxX: number
+  boxYtop: number
+  boxW: number
+  boxH: number
+  pad: number
+  positioned: Map<string, PointMm>
+  edgeGeom: Array<SketchEdgeGeom | null>
+  annotations: Array<SketchAnnotationPlacement | null>
+  violations: number
+}
+
+const SKETCH_PAD = 16
+const SKETCH_CHROME_H = 24
+const SKETCH_LINE_GAP = 2.2
+const SKETCH_BOX_HEIGHT = SKETCH_LINE_GAP + 3.0
+
+// Computes the full geometry for one comparison-sketch render attempt -- beacon
+// positions, per-ray curves, and every annotation's collision-avoiding placement --
+// entirely independent of any real page: boxOrigin is given rather than assumed, and
+// text widths come from an injected measureText callback rather than a live jsPDF
+// instance. This lets a caller cheaply try several candidate page sizes (see
+// docs/superpowers/plans/2026-08-04-beacon-sketch-paper-sizing.md) before committing to
+// one and drawing it for real, since this function itself never draws anything.
+export function computeSketchLayout(
+  points: Array<{ name: string; pt: { y: number; x: number } }>,
+  edgeSpecs: Array<{ from: string; to: string; line1: string; line2: string }>,
+  boxOrigin: { x: number; y: number },
+  maxAreaMm: AreaMm,
+  measureText: (s: string) => number,
+): SketchLayoutResult {
+  const boxX = boxOrigin.x, boxYtop = boxOrigin.y
+  const extent = computeExtent(points.map((p) => p.pt))
+  const { denom, label } = pickSketchScale(extent, {
+    width: maxAreaMm.width - 2 * SKETCH_PAD,
+    height: maxAreaMm.height - 2 * SKETCH_PAD - SKETCH_CHROME_H,
+  })
+  const drawSize = computeDrawSizeMm(extent, denom)
+  const boxW = Math.min(maxAreaMm.width, drawSize.width + 2 * SKETCH_PAD)
+  const boxH = Math.max(60, Math.min(maxAreaMm.height, drawSize.height + 2 * SKETCH_PAD + SKETCH_CHROME_H))
+
+  const areaMm = { width: boxW - 2 * SKETCH_PAD, height: boxH - 2 * SKETCH_PAD - SKETCH_CHROME_H }
+  const originMm = { x: boxX + SKETCH_PAD, y: boxYtop + SKETCH_PAD }
+  const transform = makeSketchTransform(extent, areaMm, denom, originMm)
+  const positioned = new Map(points.map((p) => [p.name, transform(p.pt)]))
+
+  const edgeGeom: Array<SketchEdgeGeom | null> = edgeSpecs.map((spec, idx) => {
+    const a = positioned.get(spec.from), b = positioned.get(spec.to)
+    if (!a || !b) return null
+    const side: 1 | -1 = idx % 2 === 0 ? 1 : -1
+    const length = Math.hypot(b.mmX - a.mmX, b.mmY - a.mmY)
+    const bowMm = Math.min(4 + 3 * (idx % 3), length * 0.35)
+    const { cp1, cp2 } = curveControlPoints(a, b, bowMm, side)
+    return { a, b, side, bowMm, cp1, cp2, polyline: sampleCubicBezier(a, cp1, cp2, b, 10) }
+  })
+
+  let violations = 0
+  const placedRects: RectMm[] = []
+  const annotations: Array<SketchAnnotationPlacement | null> = edgeSpecs.map((spec, idx) => {
+    const geom = edgeGeom[idx]
+    if (!geom) return null
+    const boxWidth = Math.max(measureText(spec.line1), measureText(spec.line2))
+    const otherPolylines = edgeGeom
+      .filter((g, i) => g && i !== idx)
+      .map((g) => (g as SketchEdgeGeom).polyline)
+    const anchor = findClearAnchor(
+      geom.a, geom.b, geom.side, geom.bowMm + 1.5, boxWidth, SKETCH_BOX_HEIGHT,
+      otherPolylines, 1.25, 60, placedRects,
+    )
+    const rect = boxAtAnchor(anchor, boxWidth, SKETCH_BOX_HEIGHT)
+    const clear = !otherPolylines.some((poly) => polylineIntersectsRect(poly, rect)) &&
+      !placedRects.some((other) => rectsOverlap(rect, other))
+    if (!clear) violations++
+    placedRects.push(rect)
+    return { anchor, rect }
+  })
+
+  return { denom, label, boxX, boxYtop, boxW, boxH, pad: SKETCH_PAD, positioned, edgeGeom, annotations, violations }
+}

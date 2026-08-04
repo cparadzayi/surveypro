@@ -250,6 +250,30 @@ describe('findClearAnchor with otherRects', () => {
   })
 })
 
+describe('findClearAnchor with boundsRect', () => {
+  it('rejects a candidate anchor that would land outside a supplied boundsRect', () => {
+    const a = { mmX: 0, mmY: 0 }, b = { mmX: 10, mmY: 0 }
+    // On this horizontal ray, every offset moves the anchor (and its box) only
+    // vertically -- mmX stays fixed at the chord midpoint (5) regardless of offset or
+    // side -- so constrain boundsRect on the Y axis: every side=1 candidate's box top
+    // edge (mmY + 3) is always well above y1=-1, so the whole preferred-side sweep must
+    // be rejected and the search falls through to side=-1, then keeps stepping outward
+    // on that side (past the naive min-offset anchor at mmY=-3, whose box still pokes
+    // through y1=-1) until an offset is reached whose box is fully within bounds.
+    const boundsRect = { x0: -100, y0: -100, x1: 100, y1: -1 }
+    const anchor = findClearAnchor(a, b, 1, 3, 2, 2, [], 2.5, 30, [], boundsRect)
+    const rect = boxAtAnchor(anchor, 2, 2)
+    expect(rect.y1).toBeLessThanOrEqual(-1)
+    expect(anchor.mmY).toBeLessThan(-3) // searched past the naive (unbounded) fallback position
+  })
+
+  it('still works with boundsRect omitted (no containment constraint)', () => {
+    const a = { mmX: 0, mmY: 0 }, b = { mmX: 10, mmY: 0 }
+    const anchor = findClearAnchor(a, b, 1, 3, 2, 2, [], 2.5, 30)
+    expect(anchor.mmY).toBeCloseTo(3, 6)
+  })
+})
+
 describe('computeSketchLayout', () => {
   const measureText = (s: string) => s.length * 1.2
   const line1 = '10.000 -> 10.000 (+0.000)'
@@ -318,5 +342,40 @@ describe('computeSketchLayout', () => {
     expect(layout.edgeGeom[0]).toBeNull()
     expect(layout.annotations[0]).toBeNull()
     expect(layout.violations).toBe(0)
+  })
+
+  it('keeps every placed annotation inside the content area, even with the scaled search radius', () => {
+    // Same 15-point grid as the over-crowded/trends-toward-fewer-violations fixtures above,
+    // but a STAR topology (every edge from P0 to every other point, i.e. real beacon-ray
+    // convergence at one point) rather than the full all-pairs graph those tests use. The
+    // all-pairs K15 graph (105 edges) is adversarial by design -- verified empirically that
+    // it still leaves some annotations out of bounds even at absurdly large maxAreaMm (2000mm
+    // x 1500mm), because once the scale ladder bottoms out at its finest rung the drawn
+    // geometry (and so the search radius, which scales off it) stops growing no matter how
+    // much more paper is offered, so "just make maxAreaMm bigger" can't converge to zero for
+    // that fixture. The star topology reproduces the same convergence-at-a-beacon crowding
+    // the scaled-radius fix targets (see computeSketchLayout's own comment on this) without
+    // that pathological ceiling, so a real bounded solution exists for every annotation here.
+    const N = 15
+    const points = Array.from({ length: N }, (_, i) => ({
+      name: `P${i}`,
+      pt: { y: (i % 5) * 20, x: Math.floor(i / 5) * 20 },
+    }))
+    const edgeSpecs: Array<{ from: string; to: string; line1: string; line2: string }> = []
+    for (let j = 1; j < N; j++) edgeSpecs.push({ from: points[0].name, to: points[j].name, line1, line2 })
+    const maxAreaMm = { width: 900, height: 700 }
+    const layout = computeSketchLayout(points, edgeSpecs, { x: 0, y: 0 }, maxAreaMm, measureText)
+    const contentRect = {
+      x0: layout.boxX + layout.pad, y0: layout.boxYtop + layout.pad,
+      x1: layout.boxX + layout.boxW - layout.pad, y1: layout.boxYtop + layout.boxH - layout.pad - 24, // SKETCH_CHROME_H
+    }
+    expect(layout.violations).toBe(0)
+    for (const ann of layout.annotations) {
+      if (!ann) continue
+      expect(ann.rect.x0).toBeGreaterThanOrEqual(contentRect.x0 - 0.01)
+      expect(ann.rect.x1).toBeLessThanOrEqual(contentRect.x1 + 0.01)
+      expect(ann.rect.y0).toBeGreaterThanOrEqual(contentRect.y0 - 0.01)
+      expect(ann.rect.y1).toBeLessThanOrEqual(contentRect.y1 + 0.01)
+    }
   })
 })

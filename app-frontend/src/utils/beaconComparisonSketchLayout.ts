@@ -141,23 +141,31 @@ export function rectsOverlap(r1: RectMm, r2: RectMm): boolean {
 // stepMm increments up to maxOffsetMm, then retries the same range on the opposite side,
 // for the first anchor whose text bounding box (boxWidthMm x boxHeightMm) clears every
 // polyline in otherPolylines AND every rectangle in otherRects (previously-placed
-// annotations, when supplied). Falls back to the minimum offset on the preferred side if
-// no clear position is found (a documented best-effort limit for pathologically dense
-// clusters of near-coincident edges) -- deliberately the closest position to the ray it
-// labels, not the farthest tried, so a mislabeled-looking annotation still sits next to
-// its own ray rather than floating unattached near an unrelated one.
+// annotations, when supplied) AND, when boundsRect is supplied, stays fully contained
+// within it (the sketch's drawable content area -- excluding it lets an unbounded caller
+// keep the old unconstrained behaviour). Falls back to the minimum offset on the
+// preferred side if no clear position is found (a documented best-effort limit for
+// pathologically dense clusters of near-coincident edges) -- deliberately the closest
+// position to the ray it labels, not the farthest tried, so a mislabeled-looking
+// annotation still sits next to its own ray rather than floating unattached near an
+// unrelated one. Note this fallback does NOT itself check boundsRect: it's the same
+// documented last-resort behaviour as before, and containment is enforced by the caller
+// counting it as a violation instead (see computeSketchLayout).
 export function findClearAnchor(
   a: PointMm, b: PointMm, side: 1 | -1, minOffsetMm: number,
   boxWidthMm: number, boxHeightMm: number, otherPolylines: PointMm[][],
-  stepMm = 2.5, maxOffsetMm = 30, otherRects: RectMm[] = [],
+  stepMm = 2.5, maxOffsetMm = 30, otherRects: RectMm[] = [], boundsRect?: RectMm,
 ): PointMm {
+  const withinBounds = (rect: RectMm) =>
+    !boundsRect ||
+    (rect.x0 >= boundsRect.x0 && rect.x1 <= boundsRect.x1 && rect.y0 >= boundsRect.y0 && rect.y1 <= boundsRect.y1)
   for (const trySide of [side, (side * -1) as 1 | -1]) {
     for (let offset = minOffsetMm; offset <= maxOffsetMm; offset += stepMm) {
       const anchor = midpointOffset(a, b, offset, trySide)
       const rect = boxAtAnchor(anchor, boxWidthMm, boxHeightMm)
       const clearOfRays = !otherPolylines.some((poly) => polylineIntersectsRect(poly, rect))
       const clearOfRects = !otherRects.some((other) => rectsOverlap(rect, other))
-      if (clearOfRays && clearOfRects) return anchor
+      if (clearOfRays && clearOfRects && withinBounds(rect)) return anchor
     }
   }
   return midpointOffset(a, b, minOffsetMm, side)
@@ -223,6 +231,13 @@ export function computeSketchLayout(
 
   const areaMm = { width: boxW - 2 * SKETCH_PAD, height: boxH - 2 * SKETCH_PAD - SKETCH_CHROME_H }
   const originMm = { x: boxX + SKETCH_PAD, y: boxYtop + SKETCH_PAD }
+  // The drawable content area's bounding rect, used to keep annotation placement from
+  // escaping into the chrome (scale bar/south arrow/caption) below the box or off the
+  // page entirely -- see findClearAnchor's boundsRect parameter.
+  const contentRect: RectMm = {
+    x0: originMm.x, y0: originMm.y,
+    x1: originMm.x + areaMm.width, y1: originMm.y + areaMm.height,
+  }
   const transform = makeSketchTransform(extent, areaMm, denom, originMm)
   const positioned = new Map(points.map((p) => [p.name, transform(p.pt)]))
 
@@ -261,10 +276,13 @@ export function computeSketchLayout(
       .map((g) => (g as SketchEdgeGeom).polyline)
     const anchor = findClearAnchor(
       geom.a, geom.b, geom.side, geom.bowMm + 1.5, boxWidth, SKETCH_BOX_HEIGHT,
-      otherPolylines, searchStepMm, searchMaxOffsetMm, placedRects,
+      otherPolylines, searchStepMm, searchMaxOffsetMm, placedRects, contentRect,
     )
     const rect = boxAtAnchor(anchor, boxWidth, SKETCH_BOX_HEIGHT)
-    const clear = !otherPolylines.some((poly) => polylineIntersectsRect(poly, rect)) &&
+    const withinBounds = rect.x0 >= contentRect.x0 && rect.x1 <= contentRect.x1 &&
+      rect.y0 >= contentRect.y0 && rect.y1 <= contentRect.y1
+    const clear = withinBounds &&
+      !otherPolylines.some((poly) => polylineIntersectsRect(poly, rect)) &&
       !placedRects.some((other) => rectsOverlap(rect, other))
     if (!clear) violations++
     placedRects.push(rect)

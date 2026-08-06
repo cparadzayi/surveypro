@@ -207,7 +207,7 @@
                 Type of Deed or Title
               </label>
               <select
-                :value="deedTypeSelectValue(setupData.parentDiagramAnnexedTo)"
+                :value="deedTypeSelectValue(setupData.parentDiagramAnnexedTo, parentDeedTypeIsOther)"
                 @change="onDeedTypeChange($event, 'parentDiagramAnnexedTo')"
                 class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
@@ -217,7 +217,7 @@
                 <option value="Other">Other</option>
               </select>
               <input
-                v-if="deedTypeSelectValue(setupData.parentDiagramAnnexedTo) === 'Other'"
+                v-if="deedTypeSelectValue(setupData.parentDiagramAnnexedTo, parentDeedTypeIsOther) === 'Other'"
                 v-model="setupData.parentDiagramAnnexedTo"
                 type="text"
                 class="mt-2 w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -253,7 +253,7 @@
                 Type of Deed or Title
               </label>
               <select
-                :value="deedTypeSelectValue(setupData.originalTitleAnnexedTo)"
+                :value="deedTypeSelectValue(setupData.originalTitleAnnexedTo, originalTitleDeedTypeIsOther)"
                 @change="onDeedTypeChange($event, 'originalTitleAnnexedTo')"
                 class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
@@ -263,7 +263,7 @@
                 <option value="Other">Other</option>
               </select>
               <input
-                v-if="deedTypeSelectValue(setupData.originalTitleAnnexedTo) === 'Other'"
+                v-if="deedTypeSelectValue(setupData.originalTitleAnnexedTo, originalTitleDeedTypeIsOther) === 'Other'"
                 v-model="setupData.originalTitleAnnexedTo"
                 type="text"
                 class="mt-2 w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -661,14 +661,23 @@ function formatDateForInput(dateString: string | null | undefined): string {
 
 const DEED_TYPE_PRESETS = ['Deed of Transfer', 'Certificate of Registered Title']
 
-function deedTypeSelectValue(current: string): string {
-  if (current === '' || DEED_TYPE_PRESETS.includes(current)) return current
+// Tracks an in-progress "Other" selection whose text field is still empty, so the
+// dropdown can distinguish "nothing chosen yet" from "user picked Other and hasn't
+// typed a custom value yet" — both states share an empty setupData field.
+const parentDeedTypeIsOther = ref(false)
+const originalTitleDeedTypeIsOther = ref(false)
+
+function deedTypeSelectValue(current: string, otherChosen: boolean): string {
+  if (current === '') return otherChosen ? 'Other' : ''
+  if (DEED_TYPE_PRESETS.includes(current)) return current
   return 'Other'
 }
 
 function onDeedTypeChange(event: Event, field: 'parentDiagramAnnexedTo' | 'originalTitleAnnexedTo') {
   const value = (event.target as HTMLSelectElement).value
   setupData.value[field] = value === 'Other' ? '' : value
+  const flag = field === 'parentDiagramAnnexedTo' ? parentDeedTypeIsOther : originalTitleDeedTypeIsOther
+  flag.value = value === 'Other'
 }
 
 function onProjectChange() {
@@ -690,6 +699,8 @@ function onProjectChange() {
     setupData.value.parentDiagramAnnexedTo = project.parent_diagram_annexed_to || ''
     setupData.value.originalTitleDiagramNo = project.original_title_diagram_no || ''
     setupData.value.originalTitleAnnexedTo = project.original_title_annexed_to || ''
+    parentDeedTypeIsOther.value = false
+    originalTitleDeedTypeIsOther.value = false
     setupData.value.originalTitleDeedNo = project.original_title_deed_no || ''
     setupData.value.srNo = project.sr_no || ''
     setupData.value.fileNo = project.file_no || ''

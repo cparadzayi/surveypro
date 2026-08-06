@@ -4,7 +4,8 @@
  */
 const KEYS = [
   'deedOfTransferNo', 'parentDiagramNo', 'parentDiagramAnnexedTo',
-  'originalTitleDiagramNo', 'srNo', 'fileNo', 'gpNo',
+  'originalTitleDiagramNo', 'originalTitleAnnexedTo', 'originalTitleDeedNo',
+  'srNo', 'fileNo', 'gpNo',
 ]
 
 export function buildReferenceGrid(metadata) {

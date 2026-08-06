@@ -27,4 +27,15 @@ describe('buildReferenceGrid', () => {
     expect(g.srNo).toBe('')
     expect(g.parentDiagramNo).toBe('')
   })
+
+  test('carries original title deed fields independently of the parent diagram ones', () => {
+    const g = buildReferenceGrid({
+      parentDiagramAnnexedTo: 'Deed of Transfer', deedOfTransferNo: '1166/77',
+      originalTitleAnnexedTo: 'Certificate of Registered Title', originalTitleDeedNo: '2201/64',
+    })
+    expect(g.parentDiagramAnnexedTo).toBe('Deed of Transfer')
+    expect(g.deedOfTransferNo).toBe('1166/77')
+    expect(g.originalTitleAnnexedTo).toBe('Certificate of Registered Title')
+    expect(g.originalTitleDeedNo).toBe('2201/64')
+  })
 })

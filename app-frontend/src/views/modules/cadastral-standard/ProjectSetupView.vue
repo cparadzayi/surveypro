@@ -189,42 +189,58 @@
               </p>
             </div>
 
-            <!-- Diagram details (SI 727 single-stand Diagram reference grid) -->
+            <!-- Immediate parent diagram (SI 727 single-stand Diagram reference grid) -->
+            <h3 class="text-sm font-semibold text-gray-700 pt-2">Immediate Parent Diagram</h3>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">
-                Deed of Transfer No.
-              </label>
-              <input
-                v-model="setupData.deedOfTransferNo"
-                type="text"
-                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g. 3326/72"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">
-                Immediate parent diagram No.
+                Immediate Parent Diagram No.
               </label>
               <input
                 v-model="setupData.parentDiagramNo"
                 type="text"
                 class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g. 8055/57"
+                placeholder="e.g. 8057/77"
               />
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">
-                Parent diagram annexed to
+                Type of Deed or Title
               </label>
+              <select
+                :value="deedTypeSelectValue(setupData.parentDiagramAnnexedTo)"
+                @change="onDeedTypeChange($event, 'parentDiagramAnnexedTo')"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select type...</option>
+                <option value="Deed of Transfer">Deed of Transfer</option>
+                <option value="Certificate of Registered Title">Certificate of Registered Title</option>
+                <option value="Other">Other</option>
+              </select>
               <input
+                v-if="deedTypeSelectValue(setupData.parentDiagramAnnexedTo) === 'Other'"
                 v-model="setupData.parentDiagramAnnexedTo"
                 type="text"
-                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                class="mt-2 w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g. Deed of Grant"
               />
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">
-                Original title diagram No.
+                Deed / Certificate No.
+              </label>
+              <input
+                v-model="setupData.deedOfTransferNo"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g. 1166/77"
+              />
+            </div>
+
+            <!-- Original title diagram -->
+            <h3 class="text-sm font-semibold text-gray-700 pt-2">Original Title Diagram</h3>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Original Title Diagram No.
               </label>
               <input
                 v-model="setupData.originalTitleDiagramNo"
@@ -232,6 +248,41 @@
                 class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Type of Deed or Title
+              </label>
+              <select
+                :value="deedTypeSelectValue(setupData.originalTitleAnnexedTo)"
+                @change="onDeedTypeChange($event, 'originalTitleAnnexedTo')"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select type...</option>
+                <option value="Deed of Transfer">Deed of Transfer</option>
+                <option value="Certificate of Registered Title">Certificate of Registered Title</option>
+                <option value="Other">Other</option>
+              </select>
+              <input
+                v-if="deedTypeSelectValue(setupData.originalTitleAnnexedTo) === 'Other'"
+                v-model="setupData.originalTitleAnnexedTo"
+                type="text"
+                class="mt-2 w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g. Deed of Grant"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Deed / Certificate No.
+              </label>
+              <input
+                v-model="setupData.originalTitleDeedNo"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g. 2201/64"
+              />
+            </div>
+
+            <!-- S.R. / File / G.P. -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">
                 S.R. No.
@@ -491,6 +542,8 @@ const emit = defineEmits<{
     parentDiagramNo?: string
     parentDiagramAnnexedTo?: string
     originalTitleDiagramNo?: string
+    originalTitleAnnexedTo?: string
+    originalTitleDeedNo?: string
     srNo?: string
     fileNo?: string
     gpNo?: string
@@ -521,6 +574,8 @@ const setupData = ref({
   parentDiagramNo: '',
   parentDiagramAnnexedTo: '',
   originalTitleDiagramNo: '',
+  originalTitleAnnexedTo: '',
+  originalTitleDeedNo: '',
   srNo: '',
   fileNo: '',
   gpNo: '',
@@ -604,6 +659,18 @@ function formatDateForInput(dateString: string | null | undefined): string {
   }
 }
 
+const DEED_TYPE_PRESETS = ['Deed of Transfer', 'Certificate of Registered Title']
+
+function deedTypeSelectValue(current: string): string {
+  if (current === '' || DEED_TYPE_PRESETS.includes(current)) return current
+  return 'Other'
+}
+
+function onDeedTypeChange(event: Event, field: 'parentDiagramAnnexedTo' | 'originalTitleAnnexedTo') {
+  const value = (event.target as HTMLSelectElement).value
+  setupData.value[field] = value === 'Other' ? '' : value
+}
+
 function onProjectChange() {
   console.log('[ProjectSetup] Project changed:', setupData.value.projectId)
   
@@ -622,6 +689,8 @@ function onProjectChange() {
     setupData.value.parentDiagramNo = project.parent_diagram_no || ''
     setupData.value.parentDiagramAnnexedTo = project.parent_diagram_annexed_to || ''
     setupData.value.originalTitleDiagramNo = project.original_title_diagram_no || ''
+    setupData.value.originalTitleAnnexedTo = project.original_title_annexed_to || ''
+    setupData.value.originalTitleDeedNo = project.original_title_deed_no || ''
     setupData.value.srNo = project.sr_no || ''
     setupData.value.fileNo = project.file_no || ''
     setupData.value.gpNo = project.gp_no || ''
@@ -835,6 +904,8 @@ async function completeSetup() {
       parentDiagramNo: setupData.value.parentDiagramNo || undefined,
       parentDiagramAnnexedTo: setupData.value.parentDiagramAnnexedTo || undefined,
       originalTitleDiagramNo: setupData.value.originalTitleDiagramNo || undefined,
+      originalTitleAnnexedTo: setupData.value.originalTitleAnnexedTo || undefined,
+      originalTitleDeedNo: setupData.value.originalTitleDeedNo || undefined,
       srNo: setupData.value.srNo || undefined,
       fileNo: setupData.value.fileNo || undefined,
       gpNo: setupData.value.gpNo || undefined,

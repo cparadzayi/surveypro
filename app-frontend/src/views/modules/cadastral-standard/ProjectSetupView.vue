@@ -725,6 +725,9 @@ function onProjectChange() {
     console.log('[ProjectSetup]   - Instruments:', setupData.value.instruments)
     console.log('[ProjectSetup]   - Lo Zone:', setupData.value.loZone)
     console.log('[ProjectSetup]   - Working Directory:', setupData.value.workingDirectory)
+  } else {
+    parentDeedTypeIsOther.value = false
+    originalTitleDeedTypeIsOther.value = false
   }
 }
 

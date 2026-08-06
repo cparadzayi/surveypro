@@ -1930,6 +1930,8 @@ async function handleProjectSetupComplete(setupData: {
   parentDiagramNo?: string;
   parentDiagramAnnexedTo?: string;
   originalTitleDiagramNo?: string;
+  originalTitleAnnexedTo?: string;
+  originalTitleDeedNo?: string;
   srNo?: string;
   fileNo?: string;
   gpNo?: string;
@@ -2064,6 +2066,8 @@ async function handleProjectSetupComplete(setupData: {
   workflowState.projectInfo.parentDiagramNo = setupData.parentDiagramNo;
   workflowState.projectInfo.parentDiagramAnnexedTo = setupData.parentDiagramAnnexedTo;
   workflowState.projectInfo.originalTitleDiagramNo = setupData.originalTitleDiagramNo;
+  workflowState.projectInfo.originalTitleAnnexedTo = setupData.originalTitleAnnexedTo;
+  workflowState.projectInfo.originalTitleDeedNo = setupData.originalTitleDeedNo;
   workflowState.projectInfo.srNo = setupData.srNo;
   workflowState.projectInfo.fileNo = setupData.fileNo;
   workflowState.projectInfo.gpNo = setupData.gpNo;
@@ -2098,6 +2102,8 @@ async function handleProjectSetupComplete(setupData: {
         parentDiagramNo: setupData.parentDiagramNo,
         parentDiagramAnnexedTo: setupData.parentDiagramAnnexedTo,
         originalTitleDiagramNo: setupData.originalTitleDiagramNo,
+        originalTitleAnnexedTo: setupData.originalTitleAnnexedTo,
+        originalTitleDeedNo: setupData.originalTitleDeedNo,
         srNo: setupData.srNo,
         fileNo: setupData.fileNo,
         gpNo: setupData.gpNo,

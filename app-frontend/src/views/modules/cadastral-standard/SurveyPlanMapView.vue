@@ -666,6 +666,8 @@ const props = defineProps<{
     parentDiagramNo?: string
     parentDiagramAnnexedTo?: string
     originalTitleDiagramNo?: string
+    originalTitleAnnexedTo?: string
+    originalTitleDeedNo?: string
     srNo?: string
     fileNo?: string
     gpNo?: string

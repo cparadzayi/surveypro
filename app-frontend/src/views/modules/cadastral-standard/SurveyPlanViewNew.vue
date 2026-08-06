@@ -161,6 +161,8 @@ const projectInfo = computed(() => {
     parentDiagramNo: project?.parent_diagram_no || props.workflowState?.projectInfo?.parentDiagramNo || '',
     parentDiagramAnnexedTo: project?.parent_diagram_annexed_to || props.workflowState?.projectInfo?.parentDiagramAnnexedTo || '',
     originalTitleDiagramNo: project?.original_title_diagram_no || props.workflowState?.projectInfo?.originalTitleDiagramNo || '',
+    originalTitleAnnexedTo: project?.original_title_annexed_to || props.workflowState?.projectInfo?.originalTitleAnnexedTo || '',
+    originalTitleDeedNo: project?.original_title_deed_no || props.workflowState?.projectInfo?.originalTitleDeedNo || '',
     srNo: project?.sr_no || props.workflowState?.projectInfo?.srNo || '',
     fileNo: project?.file_no || props.workflowState?.projectInfo?.fileNo || '',
     gpNo: project?.gp_no || props.workflowState?.projectInfo?.gpNo || '',

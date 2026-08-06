@@ -420,7 +420,7 @@ function drawReferenceGridDxf(w, layout, grid, toG, toGLen) {
   drawDiagramRefCellDxf(w, {
     xLeft: x2, xRight: xR, top: R.y, bottom: r2, pad,
     line1: 'The original title diagram is', no: grid.originalTitleDiagramNo,
-    annexedTo: grid.parentDiagramAnnexedTo, deedNo: grid.deedOfTransferNo,
+    annexedTo: grid.originalTitleAnnexedTo, deedNo: grid.originalTitleDeedNo,
   }, toG, toGLen)
 
   const fileCenterY = r2 + ((r3 - r2) - 7) / 2 + 7

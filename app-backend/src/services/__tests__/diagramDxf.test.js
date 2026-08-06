@@ -196,6 +196,24 @@ describe('generateDiagramDXF', () => {
     expect(text).toContain('Surveyor-General')
   })
 
+  test('the original title diagram cell renders its own deed type/No., independent of the parent diagram cell', async () => {
+    const r = await generateDiagramDXF({
+      ...options,
+      metadata: {
+        ...options.metadata,
+        parentDiagramAnnexedTo: 'Deed of Transfer', deedOfTransferNo: '1166/77',
+        originalTitleAnnexedTo: 'Certificate of Registered Title', originalTitleDeedNo: '2201/64',
+      },
+    }, logger)
+    const text = r.dxfBuffer.toString('utf8')
+    // annexedTo and "No. <deedNo>" are drawn as single TEXT entities (not word-split), so the
+    // full strings are contiguous substrings in the buffer.
+    expect(text).toContain('Deed of Transfer')
+    expect(text).toContain('No. 1166/77')
+    expect(text).toContain('Certificate of Registered Title')
+    expect(text).toContain('No. 2201/64')
+  })
+
   test('renders with beacons + Lo system without error and stays a well-formed DXF', async () => {
     const withBeacons = {
       ...options,

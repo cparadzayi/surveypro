@@ -555,8 +555,8 @@ function drawReferenceGrid(doc, layout, grid) {
   // "Compilation :" in the short bottom row.
   doc.text('Surveyor-General', x0 + pad, compCenterY, { width: wL, align: 'right' })
   // Top band: parent-diagram cell (left) and original-title cell (right), both on the
-  // same 4-row layout. Deed type + No. come from the property's title-deed metadata
-  // (deed type shown only when available); the diagram number differs per cell.
+  // same 4-row layout. Each cell has its own deed type + No. (deed type shown only when
+  // available) — they're often different documents, so they're captured independently.
   drawDiagramRefCell(doc, {
     xLeft: x1, xRight: x2, top: R.y, bottom: r2, pad,
     line1: 'The immediate parent diagram is', no: grid.parentDiagramNo,
@@ -565,7 +565,7 @@ function drawReferenceGrid(doc, layout, grid) {
   drawDiagramRefCell(doc, {
     xLeft: x2, xRight: xR, top: R.y, bottom: r2, pad,
     line1: 'The original title diagram is', no: grid.originalTitleDiagramNo,
-    annexedTo: grid.parentDiagramAnnexedTo, deedNo: grid.deedOfTransferNo,
+    annexedTo: grid.originalTitleAnnexedTo, deedNo: grid.originalTitleDeedNo,
   })
   // File | G.P. | S.R. row: each entry left-justified in its own column cell,
   // vertically centred in the row.

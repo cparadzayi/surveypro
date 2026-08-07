@@ -638,6 +638,30 @@ export function computeScheduleColumnWidths({
 }
 
 /**
+ * 15cm at print scale, in PDF points (150mm / 25.4mm-per-inch * 72pt-per-inch).
+ * The Schedule of Areas targets this width so it reads clearly when printed,
+ * regardless of how narrow its content-fit columns would otherwise be.
+ */
+export const SCHEDULE_TARGET_WIDTH_PT = 150 * (72 / 25.4)
+
+/**
+ * Scales a set of column widths UP (never down) so they sum to at least
+ * targetWidthPt, preserving each column's relative share of the total.
+ * Widths that already sum to targetWidthPt or more are returned unchanged —
+ * the table never shrinks below what its content needs.
+ *
+ * @param {number[]} widths
+ * @param {number} targetWidthPt
+ * @returns {number[]}
+ */
+export function scaleColumnWidthsToTarget(widths, targetWidthPt) {
+  const sum = widths.reduce((a, b) => a + b, 0)
+  if (sum <= 0 || sum >= targetWidthPt) return widths
+  const scale = targetWidthPt / sum
+  return widths.map((w) => w * scale)
+}
+
+/**
  * Plan how to split a schedule of totalRows stands across the available
  * whitespace gaps. Greedy: largest-capacity gap first, fills with as many
  * rows as it holds.

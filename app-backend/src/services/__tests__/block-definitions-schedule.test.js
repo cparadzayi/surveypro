@@ -6,6 +6,8 @@
 import { describe, test, expect } from '@jest/globals'
 import {
   computeScheduleColumnWidths,
+  scaleColumnWidthsToTarget,
+  SCHEDULE_TARGET_WIDTH_PT,
   planScheduleSplit,
   edgeDistanceMetres,
   classifyBeaconGroups,
@@ -107,6 +109,33 @@ describe('computeScheduleColumnWidths', () => {
     expect(calls.some(c => c.fontSize === 6)).toBe(true)
     // At least one data call at fontSize=7.
     expect(calls.some(c => c.fontSize === 7 && c.text === '1')).toBe(true)
+  })
+})
+
+describe('scaleColumnWidthsToTarget', () => {
+  test('scales widths up proportionally to reach the target', () => {
+    const widths = [10, 20, 10, 10, 10, 20] // sum 80
+    const scaled = scaleColumnWidthsToTarget(widths, 160)
+    expect(scaled.reduce((a, b) => a + b, 0)).toBeCloseTo(160, 5)
+    for (let i = 0; i < widths.length; i++) {
+      expect(scaled[i]).toBeCloseTo(widths[i] * 2, 5)
+    }
+  })
+
+  test('does not shrink widths that already meet or exceed the target', () => {
+    const widths = [50, 60, 40, 40, 35, 50] // sum 275
+    const scaled = scaleColumnWidthsToTarget(widths, 200)
+    expect(scaled).toEqual(widths)
+  })
+
+  test('widths summing exactly to the target are returned unchanged', () => {
+    const widths = [40, 40] // sum 80
+    const scaled = scaleColumnWidthsToTarget(widths, 80)
+    expect(scaled).toEqual(widths)
+  })
+
+  test('SCHEDULE_TARGET_WIDTH_PT is 15cm in PDF points', () => {
+    expect(SCHEDULE_TARGET_WIDTH_PT).toBeCloseTo(150 * 72 / 25.4, 5)
   })
 })
 

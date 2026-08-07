@@ -1,7 +1,7 @@
 import { diagramReferenceMetadata } from '../diagramReferenceMetadata'
 
 describe('diagramReferenceMetadata', () => {
-  it('carries all nine fields through', () => {
+  it('carries all ten fields through', () => {
     const r = diagramReferenceMetadata({
       deedOfTransferNo: '3326/72',
       parentDiagramNo: '8055/57',
@@ -12,6 +12,7 @@ describe('diagramReferenceMetadata', () => {
       srNo: '118/2023',
       fileNo: '8/2916',
       gpNo: 'GP-1',
+      compilation: 'J. Moyo',
     })
     expect(r).toEqual({
       deedOfTransferNo: '3326/72',
@@ -23,6 +24,7 @@ describe('diagramReferenceMetadata', () => {
       srNo: '118/2023',
       fileNo: '8/2916',
       gpNo: 'GP-1',
+      compilation: 'J. Moyo',
     })
   })
 
@@ -33,21 +35,22 @@ describe('diagramReferenceMetadata', () => {
     expect(r.deedOfTransferNo).toBe('')
     expect(r.originalTitleAnnexedTo).toBe('')
     expect(r.originalTitleDeedNo).toBe('')
+    expect(r.compilation).toBe('')
   })
 
   it('handles null/undefined input', () => {
     const empty = {
       deedOfTransferNo: '', parentDiagramNo: '', parentDiagramAnnexedTo: '',
       originalTitleDiagramNo: '', originalTitleAnnexedTo: '', originalTitleDeedNo: '',
-      srNo: '', fileNo: '', gpNo: '',
+      srNo: '', fileNo: '', gpNo: '', compilation: '',
     }
     expect(diagramReferenceMetadata(null)).toEqual(empty)
     expect(diagramReferenceMetadata(undefined)).toEqual(empty)
   })
 
-  it('exposes exactly the nine contract keys', () => {
+  it('exposes exactly the ten contract keys', () => {
     expect(Object.keys(diagramReferenceMetadata({})).sort()).toEqual([
-      'deedOfTransferNo', 'fileNo', 'gpNo', 'originalTitleAnnexedTo',
+      'compilation', 'deedOfTransferNo', 'fileNo', 'gpNo', 'originalTitleAnnexedTo',
       'originalTitleDeedNo', 'originalTitleDiagramNo', 'parentDiagramAnnexedTo',
       'parentDiagramNo', 'srNo',
     ])

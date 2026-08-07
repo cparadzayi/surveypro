@@ -315,6 +315,17 @@
                 class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Compilation
+              </label>
+              <input
+                v-model="setupData.compilation"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g. J. Moyo"
+              />
+            </div>
 
             <!-- District -->
             <div>
@@ -547,6 +558,7 @@ const emit = defineEmits<{
     srNo?: string
     fileNo?: string
     gpNo?: string
+    compilation?: string
     district: string
     surveyDate: string
     surveyOf: string
@@ -579,6 +591,7 @@ const setupData = ref({
   srNo: '',
   fileNo: '',
   gpNo: '',
+  compilation: '',
   surveyDate: '',
   surveyOf: '',
   instruments: '',
@@ -705,6 +718,7 @@ function onProjectChange() {
     setupData.value.srNo = project.sr_no || ''
     setupData.value.fileNo = project.file_no || ''
     setupData.value.gpNo = project.gp_no || ''
+    setupData.value.compilation = project.compilation || ''
     setupData.value.district = project.district || ''
     setupData.value.wholePortion = project.whole_portion || 'the whole'
     setupData.value.surveyDate = formatDateForInput(project.survey_date)
@@ -923,6 +937,7 @@ async function completeSetup() {
       srNo: setupData.value.srNo || undefined,
       fileNo: setupData.value.fileNo || undefined,
       gpNo: setupData.value.gpNo || undefined,
+      compilation: setupData.value.compilation || undefined,
       district: setupData.value.district,
       surveyDate: setupData.value.surveyDate,
       surveyOf: setupData.value.surveyOf,

@@ -1935,6 +1935,7 @@ async function handleProjectSetupComplete(setupData: {
   srNo?: string;
   fileNo?: string;
   gpNo?: string;
+  compilation?: string;
   district: string;
   surveyDate: string;
   surveyOf: string;
@@ -2071,6 +2072,7 @@ async function handleProjectSetupComplete(setupData: {
   workflowState.projectInfo.srNo = setupData.srNo;
   workflowState.projectInfo.fileNo = setupData.fileNo;
   workflowState.projectInfo.gpNo = setupData.gpNo;
+  workflowState.projectInfo.compilation = setupData.compilation;
   workflowState.projectInfo.workingDirectory = setupData.workingDirectory;
   workflowState.projectInfo.wholePortion = setupData.wholePortion;
   workflowState.projectInfo.centralMeridian = setupData.loZone;
@@ -2107,6 +2109,7 @@ async function handleProjectSetupComplete(setupData: {
         srNo: setupData.srNo,
         fileNo: setupData.fileNo,
         gpNo: setupData.gpNo,
+        compilation: setupData.compilation,
         district: setupData.district,
         surveyDate: setupData.surveyDate,
         designation: setupData.surveyOf,

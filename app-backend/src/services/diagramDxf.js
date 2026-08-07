@@ -425,7 +425,7 @@ function drawReferenceGridDxf(w, layout, grid, toG, toGLen) {
 
   const fileCenterY = r2 + ((r3 - r2) - 7) / 2 + 7
   { const g = toG({ px: x1 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `File : ${grid.fileNo}`, toGLen(7)) }
-  { const g = toG({ px: t1 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `G.P. : ${grid.registrationGp}`, toGLen(7)) }
+  { const g = toG({ px: t1 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `G.P. : ${grid.gpNo}`, toGLen(7)) }
   { const g = toG({ px: t2 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `S.R. : ${grid.srNo}`, toGLen(7)) }
   { const g = toG({ px: x1 + pad, py: compCenterY }); w.addText('GRID', g.x, g.y, `Compilation : ${grid.compilation}`, toGLen(7)) }
 }

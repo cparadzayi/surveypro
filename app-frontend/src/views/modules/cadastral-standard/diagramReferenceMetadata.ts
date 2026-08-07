@@ -8,6 +8,7 @@ export interface DiagramReferenceFields {
   srNo?: string | null
   fileNo?: string | null
   gpNo?: string | null
+  compilation?: string | null
 }
 
 const DIAGRAM_REFERENCE_KEYS: (keyof DiagramReferenceFields)[] = [
@@ -20,10 +21,11 @@ const DIAGRAM_REFERENCE_KEYS: (keyof DiagramReferenceFields)[] = [
   'srNo',
   'fileNo',
   'gpNo',
+  'compilation',
 ]
 
 /**
- * Pick the nine project-level diagram reference fields from a projectInfo-like
+ * Pick the ten project-level diagram reference fields from a projectInfo-like
  * object, normalising missing/null values to '' so the renderer metadata is
  * stable and complete. These exact keys are the contract sub-projects 2b/2c
  * (the Diagram PDF/DXF renderers) read from `metadata`.

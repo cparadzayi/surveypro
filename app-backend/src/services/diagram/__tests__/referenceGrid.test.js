@@ -10,8 +10,9 @@ describe('buildReferenceGrid', () => {
     })
     expect(g.deedOfTransferNo).toBe('3326/72')
     expect(g.srNo).toBe('118/2023')
+    expect(g.gpNo).toBe('GP1')
     expect(g.annexedToNo).toBe('')
-    expect(g.registrationGp).toBe('')
+    expect(g.annexedToDate).toBe('')
     expect(g.compilation).toBe('')
   })
 
@@ -37,5 +38,15 @@ describe('buildReferenceGrid', () => {
     expect(g.deedOfTransferNo).toBe('1166/77')
     expect(g.originalTitleAnnexedTo).toBe('Certificate of Registered Title')
     expect(g.originalTitleDeedNo).toBe('2201/64')
+  })
+
+  test('carries compilation from metadata (no longer SG-office-only)', () => {
+    const g = buildReferenceGrid({ compilation: 'J. Moyo' })
+    expect(g.compilation).toBe('J. Moyo')
+  })
+
+  test('missing compilation becomes an empty string', () => {
+    const g = buildReferenceGrid({})
+    expect(g.compilation).toBe('')
   })
 })

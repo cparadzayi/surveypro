@@ -5,7 +5,7 @@
 const KEYS = [
   'deedOfTransferNo', 'parentDiagramNo', 'parentDiagramAnnexedTo',
   'originalTitleDiagramNo', 'originalTitleAnnexedTo', 'originalTitleDeedNo',
-  'srNo', 'fileNo', 'gpNo',
+  'srNo', 'fileNo', 'gpNo', 'compilation',
 ]
 
 export function buildReferenceGrid(metadata) {
@@ -18,7 +18,5 @@ export function buildReferenceGrid(metadata) {
   // Surveyor-General's office fills these after submission → always blank.
   grid.annexedToNo = ''
   grid.annexedToDate = ''
-  grid.registrationGp = ''
-  grid.compilation = ''
   return grid
 }

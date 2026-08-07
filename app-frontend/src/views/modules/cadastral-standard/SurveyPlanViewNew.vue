@@ -166,6 +166,7 @@ const projectInfo = computed(() => {
     srNo: project?.sr_no || props.workflowState?.projectInfo?.srNo || '',
     fileNo: project?.file_no || props.workflowState?.projectInfo?.fileNo || '',
     gpNo: project?.gp_no || props.workflowState?.projectInfo?.gpNo || '',
+    compilation: project?.compilation || props.workflowState?.projectInfo?.compilation || '',
     // Working directory for auto-saving files to project folder
     workingDirectory: project?.working_directory || props.workflowState?.projectInfo?.workingDirectory || '',
     // Project name for file naming

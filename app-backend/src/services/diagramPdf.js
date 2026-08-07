@@ -571,7 +571,7 @@ function drawReferenceGrid(doc, layout, grid) {
   // vertically centred in the row.
   const fileCenterY = r2 + ((r3 - r2) - 7) / 2
   doc.text(`File : ${grid.fileNo}`, x1 + pad, fileCenterY, { lineBreak: false })
-  doc.text(`G.P. : ${grid.registrationGp}`, t1 + pad, fileCenterY, { lineBreak: false })
+  doc.text(`G.P. : ${grid.gpNo}`, t1 + pad, fileCenterY, { lineBreak: false })
   doc.text(`S.R. : ${grid.srNo}`, t2 + pad, fileCenterY, { lineBreak: false })
   // Compilation left-justified, vertically centred in its short bottom row.
   doc.text(`Compilation : ${grid.compilation}`, x1 + pad, compCenterY, { lineBreak: false })

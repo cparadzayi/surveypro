@@ -196,6 +196,16 @@ describe('generateDiagramDXF', () => {
     expect(text).toContain('Surveyor-General')
   })
 
+  test('renders the captured G.P. No. and Compilation values (both previously SG-office-only)', async () => {
+    const r = await generateDiagramDXF({
+      ...options,
+      metadata: { ...options.metadata, gpNo: 'GP-4471', compilation: 'J. Moyo' },
+    }, logger)
+    const text = r.dxfBuffer.toString('utf8')
+    expect(text).toContain('G.P. : GP-4471')
+    expect(text).toContain('Compilation : J. Moyo')
+  })
+
   test('the original title diagram cell renders its own deed type/No., independent of the parent diagram cell', async () => {
     const r = await generateDiagramDXF({
       ...options,

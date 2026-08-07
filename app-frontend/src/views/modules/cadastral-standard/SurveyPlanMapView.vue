@@ -671,6 +671,7 @@ const props = defineProps<{
     srNo?: string
     fileNo?: string
     gpNo?: string
+    compilation?: string
   }
 }>()
 

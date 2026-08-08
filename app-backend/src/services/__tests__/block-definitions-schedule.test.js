@@ -8,6 +8,9 @@ import {
   computeScheduleColumnWidths,
   scaleColumnWidthsToTarget,
   SCHEDULE_TARGET_WIDTH_PT,
+  layoutScheduleColumnsFixedStandArea,
+  SCHEDULE_STAND_WIDTH_PT,
+  SCHEDULE_AREA_WIDTH_PT,
   planScheduleSplit,
   edgeDistanceMetres,
   classifyBeaconGroups,
@@ -136,6 +139,55 @@ describe('scaleColumnWidthsToTarget', () => {
 
   test('SCHEDULE_TARGET_WIDTH_PT is 15cm in PDF points', () => {
     expect(SCHEDULE_TARGET_WIDTH_PT).toBeCloseTo(150 * 72 / 25.4, 5)
+  })
+})
+
+describe('layoutScheduleColumnsFixedStandArea', () => {
+  test('fixes STAND and AREAS widths and splits the remainder equally across the other four columns', () => {
+    const rawWidths = [10, 10, 10, 10, 10, 10] // all comfortably below the fixed/equal-split floors
+    const result = layoutScheduleColumnsFixedStandArea(rawWidths, 200)
+    expect(result[0]).toBe(40)
+    expect(result[1]).toBe(45)
+    const equalShare = (200 - 40 - 45) / 4 // 28.75
+    for (const w of result.slice(2)) {
+      expect(w).toBeCloseTo(equalShare, 5)
+    }
+    expect(result.reduce((a, b) => a + b, 0)).toBeCloseTo(200, 5)
+  })
+
+  test('never shrinks STAND or AREAS below their own content-fit width', () => {
+    const rawWidths = [60, 5, 5, 5, 5, 5] // STAND needs more than the fixed 40
+    const result = layoutScheduleColumnsFixedStandArea(rawWidths, 200)
+    expect(result[0]).toBe(60)
+    expect(result[1]).toBe(45)
+    const equalShare = (200 - 60 - 45) / 4
+    for (const w of result.slice(2)) {
+      expect(w).toBeCloseTo(equalShare, 5)
+    }
+    expect(result.reduce((a, b) => a + b, 0)).toBeCloseTo(200, 5)
+  })
+
+  test('never shrinks the equal-split columns below the widest content-fit width among them', () => {
+    const rawWidths = [5, 5, 5, 5, 5, 120] // SURVEYOR-GENERAL needs more than an even split
+    const result = layoutScheduleColumnsFixedStandArea(rawWidths, 200)
+    expect(result[0]).toBe(40)
+    expect(result[1]).toBe(45)
+    for (const w of result.slice(2)) {
+      expect(w).toBe(120)
+    }
+    // Total exceeds the target here — content need wins over the target width.
+    expect(result.reduce((a, b) => a + b, 0)).toBeCloseTo(565, 5)
+  })
+
+  test('defaults to SCHEDULE_TARGET_WIDTH_PT when no target is given', () => {
+    const rawWidths = [10, 10, 10, 10, 10, 10]
+    const result = layoutScheduleColumnsFixedStandArea(rawWidths)
+    expect(result.reduce((a, b) => a + b, 0)).toBeCloseTo(SCHEDULE_TARGET_WIDTH_PT, 5)
+  })
+
+  test('SCHEDULE_STAND_WIDTH_PT and SCHEDULE_AREA_WIDTH_PT are 40 and 45', () => {
+    expect(SCHEDULE_STAND_WIDTH_PT).toBe(40)
+    expect(SCHEDULE_AREA_WIDTH_PT).toBe(45)
   })
 })
 

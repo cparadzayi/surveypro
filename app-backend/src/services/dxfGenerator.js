@@ -27,7 +27,7 @@ import {
   SURVEYOR_GENERAL_BOX,
   formatStandRanges,
   computeScheduleColumnWidths,
-  scaleColumnWidthsToTarget,
+  layoutScheduleColumnsFixedStandArea,
   SCHEDULE_TARGET_WIDTH_PT,
   edgeDistanceMetres,
   classifyBeaconGroups,
@@ -1919,8 +1919,9 @@ export function generateDXF(options, logger) {
     bodyFontSize:   7,
     measureText:    dxfScheduleMeasure,
   });
-  // Widen to 15cm at print scale, preserving each column's relative share.
-  const scheduleColumnWidthsPt = scaleColumnWidthsToTarget(rawScheduleColumnWidthsPt, SCHEDULE_TARGET_WIDTH_PT);
+  // STAND No. / AREAS SQUARE METRES pinned to fixed widths; the remaining
+  // 4 columns split what's left of the 15cm target equally.
+  const scheduleColumnWidthsPt = layoutScheduleColumnsFixedStandArea(rawScheduleColumnWidthsPt, SCHEDULE_TARGET_WIDTH_PT);
   const scheduleColumnWidthsG = scheduleColumnWidthsPt.map(w => mm(w * PT_TO_MM_GEN));
 
   // ── 3-v5: Bottom-zone positions come from the shared sheet-layout planner ──

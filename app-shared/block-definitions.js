@@ -662,6 +662,41 @@ export function scaleColumnWidthsToTarget(widths, targetWidthPt) {
 }
 
 /**
+ * Fixed widths (in PDF points, same print-scale space as SCHEDULE_TARGET_WIDTH_PT)
+ * for the STAND No. and AREAS SQUARE METRES columns of the Schedule of Areas.
+ */
+export const SCHEDULE_STAND_WIDTH_PT = 40
+export const SCHEDULE_AREA_WIDTH_PT = 45
+
+/**
+ * Lays out the Schedule of Areas' 6 column widths using a fixed-width policy
+ * for the first two columns and an equal split of the remainder across the
+ * other four:
+ *   - STAND No. and AREAS SQUARE METRES are pinned to SCHEDULE_STAND_WIDTH_PT
+ *     / SCHEDULE_AREA_WIDTH_PT (never narrower than their own content-fit
+ *     width, so short values like stand numbers never overflow).
+ *   - DIAGRAM NUMBER, DEED NUMBER, DEED DATE, and SURVEYOR-GENERAL split
+ *     whatever's left of targetWidthPt equally — but never narrower than the
+ *     widest content-fit width among those four, so long values (e.g. a
+ *     lengthy diagram or deed number) still fit.
+ *
+ * Column order matches SCHEDULE_OF_AREAS.singleColumn.columns:
+ *   [stand, area, diagram, deedNumber, deedDate, surveyor]
+ *
+ * @param {number[]} rawWidths - content-fit widths, e.g. from computeScheduleColumnWidths
+ * @param {number} [targetWidthPt=SCHEDULE_TARGET_WIDTH_PT]
+ * @returns {number[]} 6 column widths
+ */
+export function layoutScheduleColumnsFixedStandArea(rawWidths, targetWidthPt = SCHEDULE_TARGET_WIDTH_PT) {
+  const [rawStand, rawArea, ...rawRest] = rawWidths
+  const stand = Math.max(SCHEDULE_STAND_WIDTH_PT, rawStand)
+  const area = Math.max(SCHEDULE_AREA_WIDTH_PT, rawArea)
+  const rawRestMax = Math.max(...rawRest)
+  const equalShare = Math.max((targetWidthPt - stand - area) / rawRest.length, rawRestMax)
+  return [stand, area, ...rawRest.map(() => equalShare)]
+}
+
+/**
  * Plan how to split a schedule of totalRows stands across the available
  * whitespace gaps. Greedy: largest-capacity gap first, fills with as many
  * rows as it holds.

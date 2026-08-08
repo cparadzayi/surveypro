@@ -11,7 +11,7 @@ import {
   GENERAL_PLAN_MARGIN_FOOTER,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths, scaleColumnWidthsToTarget, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment } from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -12014,8 +12014,9 @@ async function _generateGeoPDFInner(options, logger) {
         bodyFontSize:   7,   // matches drawScheduleOfAreasSingleColumn body font
         measureText:    _pdfScheduleMeasurer,
       });
-      // Widen to 15cm at print scale, preserving each column's relative share.
-      return scaleColumnWidthsToTarget(_rawWidths, SCHEDULE_TARGET_WIDTH_PT);
+      // STAND No. / AREAS SQUARE METRES pinned to fixed widths; the remaining
+      // 4 columns split what's left of the 15cm target equally.
+      return layoutScheduleColumnsFixedStandArea(_rawWidths, SCHEDULE_TARGET_WIDTH_PT);
     } catch (e) {
       logger.warn?.(`[PDFKit] computeScheduleColumnWidths fell back to static: ${e.message}`);
       return null;   // planner falls back to static via the Task 4 guard

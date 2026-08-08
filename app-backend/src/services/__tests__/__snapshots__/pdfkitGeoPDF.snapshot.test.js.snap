@@ -7,7 +7,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1765",
-    "x": 659.9,
+    "x": 657.8,
     "y": 40,
   },
   {
@@ -15,7 +15,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 40,
   },
   {
@@ -23,7 +23,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1845",
-    "x": 1095.1,
+    "x": 1093,
     "y": 40,
   },
   {
@@ -31,7 +31,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 40,
   },
   {
@@ -39,7 +39,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1925",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 40,
   },
   {
@@ -47,7 +47,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 40,
   },
   {
@@ -55,7 +55,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1764",
-    "x": 659.9,
+    "x": 657.8,
     "y": 55,
   },
   {
@@ -63,7 +63,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 55,
   },
   {
@@ -71,7 +71,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1844",
-    "x": 1095.1,
+    "x": 1093,
     "y": 55,
   },
   {
@@ -79,7 +79,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 55,
   },
   {
@@ -87,7 +87,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1924",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 55,
   },
   {
@@ -95,7 +95,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 55,
   },
   {
@@ -103,7 +103,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1763",
-    "x": 659.9,
+    "x": 657.8,
     "y": 70,
   },
   {
@@ -111,7 +111,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 70,
   },
   {
@@ -119,7 +119,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1843",
-    "x": 1095.1,
+    "x": 1093,
     "y": 70,
   },
   {
@@ -127,7 +127,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 70,
   },
   {
@@ -135,7 +135,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1923",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 70,
   },
   {
@@ -143,7 +143,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 70,
   },
   {
@@ -151,7 +151,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1762",
-    "x": 659.9,
+    "x": 657.8,
     "y": 85,
   },
   {
@@ -159,7 +159,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 85,
   },
   {
@@ -167,7 +167,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1842",
-    "x": 1095.1,
+    "x": 1093,
     "y": 85,
   },
   {
@@ -175,7 +175,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 85,
   },
   {
@@ -183,7 +183,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1922",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 85,
   },
   {
@@ -191,7 +191,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 85,
   },
   {
@@ -199,7 +199,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1761",
-    "x": 659.9,
+    "x": 657.8,
     "y": 100,
   },
   {
@@ -207,7 +207,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 100,
   },
   {
@@ -215,7 +215,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1841",
-    "x": 1095.1,
+    "x": 1093,
     "y": 100,
   },
   {
@@ -223,7 +223,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 100,
   },
   {
@@ -231,7 +231,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1921",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 100,
   },
   {
@@ -239,7 +239,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 100,
   },
   {
@@ -247,7 +247,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1760",
-    "x": 659.9,
+    "x": 657.8,
     "y": 115,
   },
   {
@@ -255,7 +255,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 115,
   },
   {
@@ -263,7 +263,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1840",
-    "x": 1095.1,
+    "x": 1093,
     "y": 115,
   },
   {
@@ -271,7 +271,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 115,
   },
   {
@@ -279,7 +279,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1920",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 115,
   },
   {
@@ -287,7 +287,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 115,
   },
   {
@@ -295,7 +295,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1759",
-    "x": 659.9,
+    "x": 657.8,
     "y": 130,
   },
   {
@@ -303,7 +303,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 130,
   },
   {
@@ -311,7 +311,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1839",
-    "x": 1095.1,
+    "x": 1093,
     "y": 130,
   },
   {
@@ -319,7 +319,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 130,
   },
   {
@@ -327,7 +327,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1919",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 130,
   },
   {
@@ -335,7 +335,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 130,
   },
   {
@@ -343,7 +343,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1758",
-    "x": 659.9,
+    "x": 657.8,
     "y": 145,
   },
   {
@@ -351,7 +351,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 145,
   },
   {
@@ -359,7 +359,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1838",
-    "x": 1095.1,
+    "x": 1093,
     "y": 145,
   },
   {
@@ -367,7 +367,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 145,
   },
   {
@@ -375,7 +375,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1918",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 145,
   },
   {
@@ -383,7 +383,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 145,
   },
   {
@@ -391,7 +391,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1757",
-    "x": 659.9,
+    "x": 657.8,
     "y": 160,
   },
   {
@@ -399,7 +399,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 160,
   },
   {
@@ -407,7 +407,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1837",
-    "x": 1095.1,
+    "x": 1093,
     "y": 160,
   },
   {
@@ -415,7 +415,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 160,
   },
   {
@@ -423,7 +423,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1917",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 160,
   },
   {
@@ -431,7 +431,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 160,
   },
   {
@@ -439,7 +439,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1756",
-    "x": 659.9,
+    "x": 657.8,
     "y": 175,
   },
   {
@@ -447,7 +447,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 175,
   },
   {
@@ -455,7 +455,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1836",
-    "x": 1095.1,
+    "x": 1093,
     "y": 175,
   },
   {
@@ -463,7 +463,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 175,
   },
   {
@@ -471,7 +471,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1916",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 175,
   },
   {
@@ -479,7 +479,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 175,
   },
   {
@@ -511,7 +511,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1755",
-    "x": 659.9,
+    "x": 657.8,
     "y": 190,
   },
   {
@@ -519,7 +519,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 190,
   },
   {
@@ -527,7 +527,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1835",
-    "x": 1095.1,
+    "x": 1093,
     "y": 190,
   },
   {
@@ -535,7 +535,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 190,
   },
   {
@@ -543,7 +543,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1915",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 190,
   },
   {
@@ -551,7 +551,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 190,
   },
   {
@@ -575,7 +575,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1754",
-    "x": 659.9,
+    "x": 657.8,
     "y": 205,
   },
   {
@@ -583,7 +583,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 205,
   },
   {
@@ -591,7 +591,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1834",
-    "x": 1095.1,
+    "x": 1093,
     "y": 205,
   },
   {
@@ -599,7 +599,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 205,
   },
   {
@@ -607,7 +607,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1914",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 205,
   },
   {
@@ -615,7 +615,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 205,
   },
   {
@@ -631,7 +631,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1753",
-    "x": 659.9,
+    "x": 657.8,
     "y": 220,
   },
   {
@@ -639,7 +639,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 220,
   },
   {
@@ -647,7 +647,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1833",
-    "x": 1095.1,
+    "x": 1093,
     "y": 220,
   },
   {
@@ -655,7 +655,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 220,
   },
   {
@@ -663,7 +663,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1913",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 220,
   },
   {
@@ -671,7 +671,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 220,
   },
   {
@@ -695,7 +695,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1752",
-    "x": 659.9,
+    "x": 657.8,
     "y": 235,
   },
   {
@@ -703,7 +703,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 235,
   },
   {
@@ -711,7 +711,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1832",
-    "x": 1095.1,
+    "x": 1093,
     "y": 235,
   },
   {
@@ -719,7 +719,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 235,
   },
   {
@@ -727,7 +727,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1912",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 235,
   },
   {
@@ -735,7 +735,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 235,
   },
   {
@@ -743,7 +743,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1751",
-    "x": 659.9,
+    "x": 657.8,
     "y": 250,
   },
   {
@@ -751,7 +751,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 250,
   },
   {
@@ -759,7 +759,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1831",
-    "x": 1095.1,
+    "x": 1093,
     "y": 250,
   },
   {
@@ -767,7 +767,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 250,
   },
   {
@@ -775,7 +775,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1911",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 250,
   },
   {
@@ -783,7 +783,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 250,
   },
   {
@@ -791,7 +791,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1750",
-    "x": 659.9,
+    "x": 657.8,
     "y": 265,
   },
   {
@@ -799,7 +799,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 265,
   },
   {
@@ -807,7 +807,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1830",
-    "x": 1095.1,
+    "x": 1093,
     "y": 265,
   },
   {
@@ -815,7 +815,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 265,
   },
   {
@@ -823,7 +823,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1910",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 265,
   },
   {
@@ -831,7 +831,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 265,
   },
   {
@@ -1007,7 +1007,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1749",
-    "x": 659.9,
+    "x": 657.8,
     "y": 280,
   },
   {
@@ -1015,7 +1015,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 280,
   },
   {
@@ -1023,7 +1023,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1829",
-    "x": 1095.1,
+    "x": 1093,
     "y": 280,
   },
   {
@@ -1031,7 +1031,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 280,
   },
   {
@@ -1039,7 +1039,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1909",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 280,
   },
   {
@@ -1047,7 +1047,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 280,
   },
   {
@@ -1055,7 +1055,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1748",
-    "x": 659.9,
+    "x": 657.8,
     "y": 295,
   },
   {
@@ -1063,7 +1063,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 295,
   },
   {
@@ -1071,7 +1071,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1828",
-    "x": 1095.1,
+    "x": 1093,
     "y": 295,
   },
   {
@@ -1079,7 +1079,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 295,
   },
   {
@@ -1087,7 +1087,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1908",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 295,
   },
   {
@@ -1095,7 +1095,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 295,
   },
   {
@@ -1103,7 +1103,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1747",
-    "x": 659.9,
+    "x": 657.8,
     "y": 310,
   },
   {
@@ -1111,7 +1111,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 310,
   },
   {
@@ -1119,7 +1119,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1827",
-    "x": 1095.1,
+    "x": 1093,
     "y": 310,
   },
   {
@@ -1127,7 +1127,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 310,
   },
   {
@@ -1135,7 +1135,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1907",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 310,
   },
   {
@@ -1143,7 +1143,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 310,
   },
   {
@@ -1151,7 +1151,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1746",
-    "x": 659.9,
+    "x": 657.8,
     "y": 325,
   },
   {
@@ -1159,7 +1159,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 325,
   },
   {
@@ -1167,7 +1167,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1826",
-    "x": 1095.1,
+    "x": 1093,
     "y": 325,
   },
   {
@@ -1175,7 +1175,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 325,
   },
   {
@@ -1183,7 +1183,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1906",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 325,
   },
   {
@@ -1191,7 +1191,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 325,
   },
   {
@@ -1199,7 +1199,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1745",
-    "x": 659.9,
+    "x": 657.8,
     "y": 340,
   },
   {
@@ -1207,7 +1207,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 340,
   },
   {
@@ -1215,7 +1215,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1825",
-    "x": 1095.1,
+    "x": 1093,
     "y": 340,
   },
   {
@@ -1223,7 +1223,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 340,
   },
   {
@@ -1231,7 +1231,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1905",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 340,
   },
   {
@@ -1239,7 +1239,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 340,
   },
   {
@@ -1247,7 +1247,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1744",
-    "x": 659.9,
+    "x": 657.8,
     "y": 355,
   },
   {
@@ -1255,7 +1255,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 355,
   },
   {
@@ -1263,7 +1263,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1824",
-    "x": 1095.1,
+    "x": 1093,
     "y": 355,
   },
   {
@@ -1271,7 +1271,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 355,
   },
   {
@@ -1279,7 +1279,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1904",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 355,
   },
   {
@@ -1287,7 +1287,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 355,
   },
   {
@@ -1455,7 +1455,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1743",
-    "x": 659.9,
+    "x": 657.8,
     "y": 370,
   },
   {
@@ -1463,7 +1463,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 370,
   },
   {
@@ -1471,7 +1471,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1823",
-    "x": 1095.1,
+    "x": 1093,
     "y": 370,
   },
   {
@@ -1479,7 +1479,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 370,
   },
   {
@@ -1487,7 +1487,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1903",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 370,
   },
   {
@@ -1495,7 +1495,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 370,
   },
   {
@@ -1503,7 +1503,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1742",
-    "x": 659.9,
+    "x": 657.8,
     "y": 385,
   },
   {
@@ -1511,7 +1511,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 385,
   },
   {
@@ -1519,7 +1519,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1822",
-    "x": 1095.1,
+    "x": 1093,
     "y": 385,
   },
   {
@@ -1527,7 +1527,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 385,
   },
   {
@@ -1535,7 +1535,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1902",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 385,
   },
   {
@@ -1543,7 +1543,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 385,
   },
   {
@@ -1551,7 +1551,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1741",
-    "x": 659.9,
+    "x": 657.8,
     "y": 400,
   },
   {
@@ -1559,7 +1559,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 400,
   },
   {
@@ -1567,7 +1567,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1821",
-    "x": 1095.1,
+    "x": 1093,
     "y": 400,
   },
   {
@@ -1575,7 +1575,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 400,
   },
   {
@@ -1583,7 +1583,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1901",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 400,
   },
   {
@@ -1591,7 +1591,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 400,
   },
   {
@@ -1599,7 +1599,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1740",
-    "x": 659.9,
+    "x": 657.8,
     "y": 415,
   },
   {
@@ -1607,7 +1607,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 415,
   },
   {
@@ -1615,7 +1615,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1820",
-    "x": 1095.1,
+    "x": 1093,
     "y": 415,
   },
   {
@@ -1623,7 +1623,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 415,
   },
   {
@@ -1631,7 +1631,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1900",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 415,
   },
   {
@@ -1639,7 +1639,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 415,
   },
   {
@@ -1647,7 +1647,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1739",
-    "x": 659.9,
+    "x": 657.8,
     "y": 430,
   },
   {
@@ -1655,7 +1655,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 430,
   },
   {
@@ -1663,7 +1663,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1819",
-    "x": 1095.1,
+    "x": 1093,
     "y": 430,
   },
   {
@@ -1671,7 +1671,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 430,
   },
   {
@@ -1679,7 +1679,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1899",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 430,
   },
   {
@@ -1687,7 +1687,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 430,
   },
   {
@@ -1695,7 +1695,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1738",
-    "x": 659.9,
+    "x": 657.8,
     "y": 445,
   },
   {
@@ -1703,7 +1703,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 445,
   },
   {
@@ -1711,7 +1711,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1818",
-    "x": 1095.1,
+    "x": 1093,
     "y": 445,
   },
   {
@@ -1719,7 +1719,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 445,
   },
   {
@@ -1727,7 +1727,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1898",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 445,
   },
   {
@@ -1735,7 +1735,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 445,
   },
   {
@@ -1903,7 +1903,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1737",
-    "x": 659.9,
+    "x": 657.8,
     "y": 460,
   },
   {
@@ -1911,7 +1911,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 460,
   },
   {
@@ -1919,7 +1919,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1817",
-    "x": 1095.1,
+    "x": 1093,
     "y": 460,
   },
   {
@@ -1927,7 +1927,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 460,
   },
   {
@@ -1935,7 +1935,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1897",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 460,
   },
   {
@@ -1943,7 +1943,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 460,
   },
   {
@@ -1951,7 +1951,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1736",
-    "x": 659.9,
+    "x": 657.8,
     "y": 475,
   },
   {
@@ -1959,7 +1959,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 475,
   },
   {
@@ -1967,7 +1967,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1816",
-    "x": 1095.1,
+    "x": 1093,
     "y": 475,
   },
   {
@@ -1975,7 +1975,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 475,
   },
   {
@@ -1983,7 +1983,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1896",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 475,
   },
   {
@@ -1991,7 +1991,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 475,
   },
   {
@@ -1999,7 +1999,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1735",
-    "x": 659.9,
+    "x": 657.8,
     "y": 490,
   },
   {
@@ -2007,7 +2007,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 490,
   },
   {
@@ -2015,7 +2015,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1815",
-    "x": 1095.1,
+    "x": 1093,
     "y": 490,
   },
   {
@@ -2023,7 +2023,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 490,
   },
   {
@@ -2031,7 +2031,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1895",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 490,
   },
   {
@@ -2039,7 +2039,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 490,
   },
   {
@@ -2047,7 +2047,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1734",
-    "x": 659.9,
+    "x": 657.8,
     "y": 505,
   },
   {
@@ -2055,7 +2055,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 505,
   },
   {
@@ -2063,7 +2063,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1814",
-    "x": 1095.1,
+    "x": 1093,
     "y": 505,
   },
   {
@@ -2071,7 +2071,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 505,
   },
   {
@@ -2079,7 +2079,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1894",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 505,
   },
   {
@@ -2087,7 +2087,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 505,
   },
   {
@@ -2095,7 +2095,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1733",
-    "x": 659.9,
+    "x": 657.8,
     "y": 520,
   },
   {
@@ -2103,7 +2103,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 520,
   },
   {
@@ -2111,7 +2111,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1813",
-    "x": 1095.1,
+    "x": 1093,
     "y": 520,
   },
   {
@@ -2119,7 +2119,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 520,
   },
   {
@@ -2127,7 +2127,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1893",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 520,
   },
   {
@@ -2135,7 +2135,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 520,
   },
   {
@@ -2143,7 +2143,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1732",
-    "x": 659.9,
+    "x": 657.8,
     "y": 535,
   },
   {
@@ -2151,7 +2151,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 535,
   },
   {
@@ -2159,7 +2159,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1812",
-    "x": 1095.1,
+    "x": 1093,
     "y": 535,
   },
   {
@@ -2167,7 +2167,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 535,
   },
   {
@@ -2175,7 +2175,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1892",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 535,
   },
   {
@@ -2183,7 +2183,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 535,
   },
   {
@@ -2351,7 +2351,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1731",
-    "x": 659.9,
+    "x": 657.8,
     "y": 550,
   },
   {
@@ -2359,7 +2359,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 550,
   },
   {
@@ -2367,7 +2367,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1811",
-    "x": 1095.1,
+    "x": 1093,
     "y": 550,
   },
   {
@@ -2375,7 +2375,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 550,
   },
   {
@@ -2383,7 +2383,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1891",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 550,
   },
   {
@@ -2391,7 +2391,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 550,
   },
   {
@@ -2399,7 +2399,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1730",
-    "x": 659.9,
+    "x": 657.8,
     "y": 565,
   },
   {
@@ -2407,7 +2407,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 565,
   },
   {
@@ -2415,7 +2415,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1810",
-    "x": 1095.1,
+    "x": 1093,
     "y": 565,
   },
   {
@@ -2423,7 +2423,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 565,
   },
   {
@@ -2431,7 +2431,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1890",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 565,
   },
   {
@@ -2439,7 +2439,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 565,
   },
   {
@@ -2447,7 +2447,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1729",
-    "x": 659.9,
+    "x": 657.8,
     "y": 580,
   },
   {
@@ -2455,7 +2455,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 580,
   },
   {
@@ -2463,7 +2463,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1809",
-    "x": 1095.1,
+    "x": 1093,
     "y": 580,
   },
   {
@@ -2471,7 +2471,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 580,
   },
   {
@@ -2479,7 +2479,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1889",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 580,
   },
   {
@@ -2487,7 +2487,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 580,
   },
   {
@@ -2495,7 +2495,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1728",
-    "x": 659.9,
+    "x": 657.8,
     "y": 595,
   },
   {
@@ -2503,7 +2503,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 595,
   },
   {
@@ -2511,7 +2511,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1808",
-    "x": 1095.1,
+    "x": 1093,
     "y": 595,
   },
   {
@@ -2519,7 +2519,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 595,
   },
   {
@@ -2527,7 +2527,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1888",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 595,
   },
   {
@@ -2535,7 +2535,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 595,
   },
   {
@@ -2543,7 +2543,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1727",
-    "x": 659.9,
+    "x": 657.8,
     "y": 610,
   },
   {
@@ -2551,7 +2551,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 610,
   },
   {
@@ -2559,7 +2559,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1807",
-    "x": 1095.1,
+    "x": 1093,
     "y": 610,
   },
   {
@@ -2567,7 +2567,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 610,
   },
   {
@@ -2575,7 +2575,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1887",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 610,
   },
   {
@@ -2583,7 +2583,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 610,
   },
   {
@@ -2591,7 +2591,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1726",
-    "x": 659.9,
+    "x": 657.8,
     "y": 625,
   },
   {
@@ -2599,7 +2599,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 625,
   },
   {
@@ -2607,7 +2607,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1806",
-    "x": 1095.1,
+    "x": 1093,
     "y": 625,
   },
   {
@@ -2615,7 +2615,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 625,
   },
   {
@@ -2623,7 +2623,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1886",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 625,
   },
   {
@@ -2631,7 +2631,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 625,
   },
   {
@@ -2799,7 +2799,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1725",
-    "x": 659.9,
+    "x": 657.8,
     "y": 640,
   },
   {
@@ -2807,7 +2807,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 640,
   },
   {
@@ -2815,7 +2815,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1805",
-    "x": 1095.1,
+    "x": 1093,
     "y": 640,
   },
   {
@@ -2823,7 +2823,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 640,
   },
   {
@@ -2831,7 +2831,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1885",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 640,
   },
   {
@@ -2839,7 +2839,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 640,
   },
   {
@@ -2847,7 +2847,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1724",
-    "x": 659.9,
+    "x": 657.8,
     "y": 655,
   },
   {
@@ -2855,7 +2855,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 655,
   },
   {
@@ -2863,7 +2863,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1804",
-    "x": 1095.1,
+    "x": 1093,
     "y": 655,
   },
   {
@@ -2871,7 +2871,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 655,
   },
   {
@@ -2879,7 +2879,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1884",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 655,
   },
   {
@@ -2887,7 +2887,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 655,
   },
   {
@@ -2895,7 +2895,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1723",
-    "x": 659.9,
+    "x": 657.8,
     "y": 670,
   },
   {
@@ -2903,7 +2903,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 670,
   },
   {
@@ -2911,7 +2911,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1803",
-    "x": 1095.1,
+    "x": 1093,
     "y": 670,
   },
   {
@@ -2919,7 +2919,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 670,
   },
   {
@@ -2927,7 +2927,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1883",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 670,
   },
   {
@@ -2935,7 +2935,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 670,
   },
   {
@@ -2943,7 +2943,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1722",
-    "x": 659.9,
+    "x": 657.8,
     "y": 685,
   },
   {
@@ -2951,7 +2951,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 685,
   },
   {
@@ -2959,7 +2959,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1802",
-    "x": 1095.1,
+    "x": 1093,
     "y": 685,
   },
   {
@@ -2967,7 +2967,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 685,
   },
   {
@@ -2975,7 +2975,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1882",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 685,
   },
   {
@@ -2983,7 +2983,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 685,
   },
   {
@@ -2991,7 +2991,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1721",
-    "x": 659.9,
+    "x": 657.8,
     "y": 700,
   },
   {
@@ -2999,7 +2999,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 700,
   },
   {
@@ -3007,7 +3007,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1801",
-    "x": 1095.1,
+    "x": 1093,
     "y": 700,
   },
   {
@@ -3015,7 +3015,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 700,
   },
   {
@@ -3023,7 +3023,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1881",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 700,
   },
   {
@@ -3031,7 +3031,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 700,
   },
   {
@@ -3039,7 +3039,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1720",
-    "x": 659.9,
+    "x": 657.8,
     "y": 715,
   },
   {
@@ -3047,7 +3047,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 715,
   },
   {
@@ -3055,7 +3055,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1800",
-    "x": 1095.1,
+    "x": 1093,
     "y": 715,
   },
   {
@@ -3063,7 +3063,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 715,
   },
   {
@@ -3071,7 +3071,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1880",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 715,
   },
   {
@@ -3079,7 +3079,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 715,
   },
   {
@@ -3247,7 +3247,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1719",
-    "x": 659.9,
+    "x": 657.8,
     "y": 730,
   },
   {
@@ -3255,7 +3255,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 730,
   },
   {
@@ -3263,7 +3263,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1799",
-    "x": 1095.1,
+    "x": 1093,
     "y": 730,
   },
   {
@@ -3271,7 +3271,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 730,
   },
   {
@@ -3279,7 +3279,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1879",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 730,
   },
   {
@@ -3287,7 +3287,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 730,
   },
   {
@@ -3295,7 +3295,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1718",
-    "x": 659.9,
+    "x": 657.8,
     "y": 745,
   },
   {
@@ -3303,7 +3303,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 745,
   },
   {
@@ -3311,7 +3311,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1798",
-    "x": 1095.1,
+    "x": 1093,
     "y": 745,
   },
   {
@@ -3319,7 +3319,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 745,
   },
   {
@@ -3327,7 +3327,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1878",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 745,
   },
   {
@@ -3335,7 +3335,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 745,
   },
   {
@@ -3343,7 +3343,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1717",
-    "x": 659.9,
+    "x": 657.8,
     "y": 760,
   },
   {
@@ -3351,7 +3351,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 760,
   },
   {
@@ -3359,7 +3359,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1797",
-    "x": 1095.1,
+    "x": 1093,
     "y": 760,
   },
   {
@@ -3367,7 +3367,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 760,
   },
   {
@@ -3375,7 +3375,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1877",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 760,
   },
   {
@@ -3383,7 +3383,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 760,
   },
   {
@@ -3391,7 +3391,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1716",
-    "x": 659.9,
+    "x": 657.8,
     "y": 775,
   },
   {
@@ -3399,7 +3399,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 775,
   },
   {
@@ -3407,7 +3407,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1796",
-    "x": 1095.1,
+    "x": 1093,
     "y": 775,
   },
   {
@@ -3415,7 +3415,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 775,
   },
   {
@@ -3423,7 +3423,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1876",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 775,
   },
   {
@@ -3431,7 +3431,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 775,
   },
   {
@@ -3439,7 +3439,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1715",
-    "x": 659.9,
+    "x": 657.8,
     "y": 790,
   },
   {
@@ -3447,7 +3447,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 790,
   },
   {
@@ -3455,7 +3455,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1795",
-    "x": 1095.1,
+    "x": 1093,
     "y": 790,
   },
   {
@@ -3463,7 +3463,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 790,
   },
   {
@@ -3471,7 +3471,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1875",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 790,
   },
   {
@@ -3479,7 +3479,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 790,
   },
   {
@@ -3487,7 +3487,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1714",
-    "x": 659.9,
+    "x": 657.8,
     "y": 805,
   },
   {
@@ -3495,7 +3495,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 805,
   },
   {
@@ -3503,7 +3503,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1794",
-    "x": 1095.1,
+    "x": 1093,
     "y": 805,
   },
   {
@@ -3511,7 +3511,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 805,
   },
   {
@@ -3519,7 +3519,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1874",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 805,
   },
   {
@@ -3527,7 +3527,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 805,
   },
   {
@@ -3695,7 +3695,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1713",
-    "x": 659.9,
+    "x": 657.8,
     "y": 820,
   },
   {
@@ -3703,7 +3703,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 820,
   },
   {
@@ -3711,7 +3711,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1793",
-    "x": 1095.1,
+    "x": 1093,
     "y": 820,
   },
   {
@@ -3719,7 +3719,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 820,
   },
   {
@@ -3727,7 +3727,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1873",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 820,
   },
   {
@@ -3735,7 +3735,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 820,
   },
   {
@@ -3743,7 +3743,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1712",
-    "x": 659.9,
+    "x": 657.8,
     "y": 835,
   },
   {
@@ -3751,7 +3751,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 835,
   },
   {
@@ -3759,7 +3759,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1792",
-    "x": 1095.1,
+    "x": 1093,
     "y": 835,
   },
   {
@@ -3767,7 +3767,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 835,
   },
   {
@@ -3775,7 +3775,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1872",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 835,
   },
   {
@@ -3783,7 +3783,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 835,
   },
   {
@@ -3791,7 +3791,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1711",
-    "x": 659.9,
+    "x": 657.8,
     "y": 850,
   },
   {
@@ -3799,7 +3799,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 850,
   },
   {
@@ -3807,7 +3807,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1791",
-    "x": 1095.1,
+    "x": 1093,
     "y": 850,
   },
   {
@@ -3815,7 +3815,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 850,
   },
   {
@@ -3823,7 +3823,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1871",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 850,
   },
   {
@@ -3831,7 +3831,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 850,
   },
   {
@@ -3839,7 +3839,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1710",
-    "x": 659.9,
+    "x": 657.8,
     "y": 865,
   },
   {
@@ -3847,7 +3847,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 865,
   },
   {
@@ -3855,7 +3855,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1790",
-    "x": 1095.1,
+    "x": 1093,
     "y": 865,
   },
   {
@@ -3863,7 +3863,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 865,
   },
   {
@@ -3871,7 +3871,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1870",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 865,
   },
   {
@@ -3879,7 +3879,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 865,
   },
   {
@@ -3887,7 +3887,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1709",
-    "x": 659.9,
+    "x": 657.8,
     "y": 880,
   },
   {
@@ -3895,7 +3895,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 880,
   },
   {
@@ -3903,7 +3903,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1789",
-    "x": 1095.1,
+    "x": 1093,
     "y": 880,
   },
   {
@@ -3911,7 +3911,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 880,
   },
   {
@@ -3919,7 +3919,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1869",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 880,
   },
   {
@@ -3927,7 +3927,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 880,
   },
   {
@@ -3935,7 +3935,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1708",
-    "x": 659.9,
+    "x": 657.8,
     "y": 895,
   },
   {
@@ -3943,7 +3943,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 895,
   },
   {
@@ -3951,7 +3951,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1788",
-    "x": 1095.1,
+    "x": 1093,
     "y": 895,
   },
   {
@@ -3959,7 +3959,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 895,
   },
   {
@@ -3967,7 +3967,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1868",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 895,
   },
   {
@@ -3975,7 +3975,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 895,
   },
   {
@@ -4143,7 +4143,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1707",
-    "x": 659.9,
+    "x": 657.8,
     "y": 910,
   },
   {
@@ -4151,7 +4151,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 910,
   },
   {
@@ -4159,7 +4159,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1787",
-    "x": 1095.1,
+    "x": 1093,
     "y": 910,
   },
   {
@@ -4167,7 +4167,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 910,
   },
   {
@@ -4175,7 +4175,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1867",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 910,
   },
   {
@@ -4183,7 +4183,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 910,
   },
   {
@@ -4191,7 +4191,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1706",
-    "x": 659.9,
+    "x": 657.8,
     "y": 925,
   },
   {
@@ -4199,7 +4199,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 925,
   },
   {
@@ -4207,7 +4207,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1786",
-    "x": 1095.1,
+    "x": 1093,
     "y": 925,
   },
   {
@@ -4215,7 +4215,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 925,
   },
   {
@@ -4223,7 +4223,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1866",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 925,
   },
   {
@@ -4231,7 +4231,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 925,
   },
   {
@@ -4239,7 +4239,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1705",
-    "x": 659.9,
+    "x": 657.8,
     "y": 940,
   },
   {
@@ -4247,7 +4247,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 940,
   },
   {
@@ -4255,7 +4255,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1785",
-    "x": 1095.1,
+    "x": 1093,
     "y": 940,
   },
   {
@@ -4263,7 +4263,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 940,
   },
   {
@@ -4271,7 +4271,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1865",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 940,
   },
   {
@@ -4279,7 +4279,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 940,
   },
   {
@@ -4287,7 +4287,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1704",
-    "x": 659.9,
+    "x": 657.8,
     "y": 955,
   },
   {
@@ -4295,7 +4295,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 955,
   },
   {
@@ -4303,7 +4303,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1784",
-    "x": 1095.1,
+    "x": 1093,
     "y": 955,
   },
   {
@@ -4311,7 +4311,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 955,
   },
   {
@@ -4319,7 +4319,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1864",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 955,
   },
   {
@@ -4327,7 +4327,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 955,
   },
   {
@@ -4335,7 +4335,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1703",
-    "x": 659.9,
+    "x": 657.8,
     "y": 970,
   },
   {
@@ -4343,7 +4343,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 970,
   },
   {
@@ -4351,7 +4351,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1783",
-    "x": 1095.1,
+    "x": 1093,
     "y": 970,
   },
   {
@@ -4359,7 +4359,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 970,
   },
   {
@@ -4367,7 +4367,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1863",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 970,
   },
   {
@@ -4375,7 +4375,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 970,
   },
   {
@@ -4383,7 +4383,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1702",
-    "x": 659.9,
+    "x": 657.8,
     "y": 985,
   },
   {
@@ -4391,7 +4391,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 985,
   },
   {
@@ -4399,7 +4399,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1782",
-    "x": 1095.1,
+    "x": 1093,
     "y": 985,
   },
   {
@@ -4407,7 +4407,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 985,
   },
   {
@@ -4415,7 +4415,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1862",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 985,
   },
   {
@@ -4423,7 +4423,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 985,
   },
   {
@@ -4591,7 +4591,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1701",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1000,
   },
   {
@@ -4599,7 +4599,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1000,
   },
   {
@@ -4607,7 +4607,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1781",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1000,
   },
   {
@@ -4615,7 +4615,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1000,
   },
   {
@@ -4623,7 +4623,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1861",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1000,
   },
   {
@@ -4631,7 +4631,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1000,
   },
   {
@@ -4639,7 +4639,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1700",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1015,
   },
   {
@@ -4647,7 +4647,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1015,
   },
   {
@@ -4655,7 +4655,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1780",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1015,
   },
   {
@@ -4663,7 +4663,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1015,
   },
   {
@@ -4671,7 +4671,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1860",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1015,
   },
   {
@@ -4679,7 +4679,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1015,
   },
   {
@@ -4687,7 +4687,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1699",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1030,
   },
   {
@@ -4695,7 +4695,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1030,
   },
   {
@@ -4703,7 +4703,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1779",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1030,
   },
   {
@@ -4711,7 +4711,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1030,
   },
   {
@@ -4719,7 +4719,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1859",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1030,
   },
   {
@@ -4727,7 +4727,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1030,
   },
   {
@@ -4735,7 +4735,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1698",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1045,
   },
   {
@@ -4743,7 +4743,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1045,
   },
   {
@@ -4751,7 +4751,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1778",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1045,
   },
   {
@@ -4759,7 +4759,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1045,
   },
   {
@@ -4767,7 +4767,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1858",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1045,
   },
   {
@@ -4775,7 +4775,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1045,
   },
   {
@@ -4783,7 +4783,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1697",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1060,
   },
   {
@@ -4791,7 +4791,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1060,
   },
   {
@@ -4799,7 +4799,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1777",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1060,
   },
   {
@@ -4807,7 +4807,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1060,
   },
   {
@@ -4815,7 +4815,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1857",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1060,
   },
   {
@@ -4823,7 +4823,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1060,
   },
   {
@@ -4831,7 +4831,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1696",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1075,
   },
   {
@@ -4839,7 +4839,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1075,
   },
   {
@@ -4847,7 +4847,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1776",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1075,
   },
   {
@@ -4855,7 +4855,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1075,
   },
   {
@@ -4863,7 +4863,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1856",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1075,
   },
   {
@@ -4871,7 +4871,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1075,
   },
   {
@@ -5039,7 +5039,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1695",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1090,
   },
   {
@@ -5047,7 +5047,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1090,
   },
   {
@@ -5055,7 +5055,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1775",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1090,
   },
   {
@@ -5063,7 +5063,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1090,
   },
   {
@@ -5071,7 +5071,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1855",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1090,
   },
   {
@@ -5079,7 +5079,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1090,
   },
   {
@@ -5087,7 +5087,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1694",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1105,
   },
   {
@@ -5095,7 +5095,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1105,
   },
   {
@@ -5103,7 +5103,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1774",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1105,
   },
   {
@@ -5111,7 +5111,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1105,
   },
   {
@@ -5119,7 +5119,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1854",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1105,
   },
   {
@@ -5127,7 +5127,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1105,
   },
   {
@@ -5143,7 +5143,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1693",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1120,
   },
   {
@@ -5151,7 +5151,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1120,
   },
   {
@@ -5159,7 +5159,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1773",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1120,
   },
   {
@@ -5167,7 +5167,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1120,
   },
   {
@@ -5175,7 +5175,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1853",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1120,
   },
   {
@@ -5183,7 +5183,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1120,
   },
   {
@@ -5191,7 +5191,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1692",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1135,
   },
   {
@@ -5199,7 +5199,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1135,
   },
   {
@@ -5207,7 +5207,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1772",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1135,
   },
   {
@@ -5215,7 +5215,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1135,
   },
   {
@@ -5223,7 +5223,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1852",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1135,
   },
   {
@@ -5231,7 +5231,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1135,
   },
   {
@@ -5247,7 +5247,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1691",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1150,
   },
   {
@@ -5255,7 +5255,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1150,
   },
   {
@@ -5263,7 +5263,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1771",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1150,
   },
   {
@@ -5271,7 +5271,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1150,
   },
   {
@@ -5279,7 +5279,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1851",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1150,
   },
   {
@@ -5287,7 +5287,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1150,
   },
   {
@@ -5295,7 +5295,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1690",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1165,
   },
   {
@@ -5303,7 +5303,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1165,
   },
   {
@@ -5311,7 +5311,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1770",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1165,
   },
   {
@@ -5319,7 +5319,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1165,
   },
   {
@@ -5327,7 +5327,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1850",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1165,
   },
   {
@@ -5335,7 +5335,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1165,
   },
   {
@@ -5503,7 +5503,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1689",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1180,
   },
   {
@@ -5511,7 +5511,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1180,
   },
   {
@@ -5519,7 +5519,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1769",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1180,
   },
   {
@@ -5527,7 +5527,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1180,
   },
   {
@@ -5535,7 +5535,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1849",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1180,
   },
   {
@@ -5543,7 +5543,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1180,
   },
   {
@@ -5559,7 +5559,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1688",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1195,
   },
   {
@@ -5567,7 +5567,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1195,
   },
   {
@@ -5575,7 +5575,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1768",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1195,
   },
   {
@@ -5583,7 +5583,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1195,
   },
   {
@@ -5591,7 +5591,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1848",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1195,
   },
   {
@@ -5599,7 +5599,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1195,
   },
   {
@@ -5607,7 +5607,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1687",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1210,
   },
   {
@@ -5615,7 +5615,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1210,
   },
   {
@@ -5623,7 +5623,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1767",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1210,
   },
   {
@@ -5631,7 +5631,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1210,
   },
   {
@@ -5639,7 +5639,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1847",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1210,
   },
   {
@@ -5647,7 +5647,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1210,
   },
   {
@@ -5655,7 +5655,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1686",
-    "x": 659.9,
+    "x": 657.8,
     "y": 1225,
   },
   {
@@ -5663,7 +5663,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 710.4,
+    "x": 702.2,
     "y": 1225,
   },
   {
@@ -5671,7 +5671,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1766",
-    "x": 1095.1,
+    "x": 1093,
     "y": 1225,
   },
   {
@@ -5679,7 +5679,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1145.6,
+    "x": 1137.4,
     "y": 1225,
   },
   {
@@ -5687,7 +5687,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1846",
-    "x": 1530.3,
+    "x": 1528.2,
     "y": 1225,
   },
   {
@@ -5695,7 +5695,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "875",
-    "x": 1580.8,
+    "x": 1572.6,
     "y": 1225,
   },
   {
@@ -5703,7 +5703,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "METRES",
-    "x": 703.7,
+    "x": 695.5,
     "y": 1238.7,
   },
   {
@@ -5711,7 +5711,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "METRES",
-    "x": 1138.9,
+    "x": 1130.7,
     "y": 1238.7,
   },
   {
@@ -5719,7 +5719,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "METRES",
-    "x": 1574.1,
+    "x": 1565.9,
     "y": 1238.7,
   },
   {
@@ -5727,7 +5727,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "NUMBER",
-    "x": 829.2,
+    "x": 845,
     "y": 1240.7,
   },
   {
@@ -5735,7 +5735,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DATE",
-    "x": 911.5,
+    "x": 935.4,
     "y": 1240.7,
   },
   {
@@ -5743,23 +5743,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "NUMBER",
-    "x": 1264.4,
-    "y": 1240.7,
-  },
-  {
-    "font": "g_d2_f1",
-    "page": 1,
-    "size": 6,
-    "text": "DATE",
-    "x": 1346.7,
-    "y": 1240.7,
-  },
-  {
-    "font": "g_d2_f1",
-    "page": 1,
-    "size": 6,
-    "text": "NUMBER",
-    "x": 1699.6,
+    "x": 1280.1,
     "y": 1240.7,
   },
   {
@@ -5767,7 +5751,23 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DATE",
-    "x": 1781.9,
+    "x": 1370.6,
+    "y": 1240.7,
+  },
+  {
+    "font": "g_d2_f1",
+    "page": 1,
+    "size": 6,
+    "text": "NUMBER",
+    "x": 1715.3,
+    "y": 1240.7,
+  },
+  {
+    "font": "g_d2_f1",
+    "page": 1,
+    "size": 6,
+    "text": "DATE",
+    "x": 1805.8,
     "y": 1240.7,
   },
   {
@@ -5775,7 +5775,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "No.",
-    "x": 662.9,
+    "x": 660.7,
     "y": 1242.7,
   },
   {
@@ -5783,7 +5783,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "NUMBER",
-    "x": 758.3,
+    "x": 759.9,
     "y": 1242.7,
   },
   {
@@ -5791,7 +5791,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "No.",
-    "x": 1098.1,
+    "x": 1095.9,
     "y": 1242.7,
   },
   {
@@ -5799,7 +5799,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "NUMBER",
-    "x": 1193.5,
+    "x": 1195.1,
     "y": 1242.7,
   },
   {
@@ -5807,7 +5807,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "No.",
-    "x": 1533.2,
+    "x": 1531.1,
     "y": 1242.7,
   },
   {
@@ -5815,7 +5815,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "NUMBER",
-    "x": 1628.7,
+    "x": 1630.3,
     "y": 1242.7,
   },
   {
@@ -5823,7 +5823,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "SQUARE",
-    "x": 703.6,
+    "x": 695.4,
     "y": 1245.7,
   },
   {
@@ -5831,7 +5831,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "SQUARE",
-    "x": 1138.8,
+    "x": 1130.6,
     "y": 1245.7,
   },
   {
@@ -5839,7 +5839,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "SQUARE",
-    "x": 1574,
+    "x": 1565.8,
     "y": 1245.7,
   },
   {
@@ -5847,7 +5847,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "SURVEYOR-GENERAL",
-    "x": 980.3,
+    "x": 996.1,
     "y": 1246.7,
   },
   {
@@ -5855,7 +5855,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "SURVEYOR-GENERAL",
-    "x": 1415.5,
+    "x": 1431.3,
     "y": 1246.7,
   },
   {
@@ -5863,7 +5863,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "SURVEYOR-GENERAL",
-    "x": 1850.7,
+    "x": 1866.5,
     "y": 1246.7,
   },
   {
@@ -5871,7 +5871,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "STAND",
-    "x": 657.6,
+    "x": 655.5,
     "y": 1249.7,
   },
   {
@@ -5879,7 +5879,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DIAGRAM",
-    "x": 757.3,
+    "x": 758.9,
     "y": 1249.7,
   },
   {
@@ -5887,7 +5887,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "STAND",
-    "x": 1092.8,
+    "x": 1090.7,
     "y": 1249.7,
   },
   {
@@ -5895,7 +5895,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DIAGRAM",
-    "x": 1192.5,
+    "x": 1194.1,
     "y": 1249.7,
   },
   {
@@ -5903,7 +5903,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "STAND",
-    "x": 1528,
+    "x": 1525.9,
     "y": 1249.7,
   },
   {
@@ -5911,7 +5911,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DIAGRAM",
-    "x": 1627.7,
+    "x": 1629.3,
     "y": 1249.7,
   },
   {
@@ -5919,7 +5919,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DEED",
-    "x": 869,
+    "x": 892.3,
     "y": 1251.7,
   },
   {
@@ -5927,7 +5927,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DEED",
-    "x": 1304.2,
+    "x": 1327.5,
     "y": 1251.7,
   },
   {
@@ -5935,7 +5935,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DEED",
-    "x": 1739.4,
+    "x": 1762.7,
     "y": 1251.7,
   },
   {
@@ -5943,7 +5943,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "AREAS",
-    "x": 705.7,
+    "x": 697.5,
     "y": 1252.7,
   },
   {
@@ -5951,7 +5951,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "AREAS",
-    "x": 1140.9,
+    "x": 1132.7,
     "y": 1252.7,
   },
   {
@@ -5959,7 +5959,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "AREAS",
-    "x": 1576.1,
+    "x": 1567.9,
     "y": 1252.7,
   },
   {
@@ -6972,7 +6972,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "2",
-    "x": 826,
+    "x": 822.2,
     "y": 626.8,
   },
   {
@@ -6980,7 +6980,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "3000",
-    "x": 872.3,
+    "x": 858.9,
     "y": 626.8,
   },
   {
@@ -7052,7 +7052,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "1",
-    "x": 826,
+    "x": 822.2,
     "y": 641.8,
   },
   {
@@ -7060,7 +7060,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "3000",
-    "x": 872.3,
+    "x": 858.9,
     "y": 641.8,
   },
   {
@@ -7092,7 +7092,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "METRES",
-    "x": 867.6,
+    "x": 854.2,
     "y": 655.5,
   },
   {
@@ -7148,7 +7148,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "NUMBER",
-    "x": 986.6,
+    "x": 1003.6,
     "y": 657.5,
   },
   {
@@ -7156,7 +7156,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DATE",
-    "x": 1058.8,
+    "x": 1094,
     "y": 657.5,
   },
   {
@@ -7164,7 +7164,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "No.",
-    "x": 823.1,
+    "x": 819.3,
     "y": 659.5,
   },
   {
@@ -7172,7 +7172,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "NUMBER",
-    "x": 926.3,
+    "x": 918.5,
     "y": 659.5,
   },
   {
@@ -7180,7 +7180,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "SQUARE",
-    "x": 867.4,
+    "x": 854,
     "y": 662.5,
   },
   {
@@ -7188,7 +7188,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "SURVEYOR-GENERAL",
-    "x": 1134.6,
+    "x": 1154.7,
     "y": 663.5,
   },
   {
@@ -7196,7 +7196,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "STAND",
-    "x": 817.9,
+    "x": 814.1,
     "y": 666.5,
   },
   {
@@ -7204,7 +7204,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DIAGRAM",
-    "x": 925.3,
+    "x": 917.5,
     "y": 666.5,
   },
   {
@@ -7212,7 +7212,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DEED",
-    "x": 1029,
+    "x": 1050.9,
     "y": 668.5,
   },
   {
@@ -7220,7 +7220,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "AREAS",
-    "x": 869.6,
+    "x": 856.2,
     "y": 669.5,
   },
   {
@@ -8073,7 +8073,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "111",
-    "x": 830.1,
+    "x": 826.3,
     "y": 668.8,
   },
   {
@@ -8081,7 +8081,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 668.8,
   },
   {
@@ -8113,7 +8113,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "110",
-    "x": 830.1,
+    "x": 826.3,
     "y": 683.8,
   },
   {
@@ -8121,7 +8121,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 683.8,
   },
   {
@@ -8153,7 +8153,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "109",
-    "x": 830.1,
+    "x": 826.3,
     "y": 698.8,
   },
   {
@@ -8161,7 +8161,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 698.8,
   },
   {
@@ -8169,7 +8169,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "108",
-    "x": 830.1,
+    "x": 826.3,
     "y": 713.8,
   },
   {
@@ -8177,7 +8177,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 713.8,
   },
   {
@@ -8217,7 +8217,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "107",
-    "x": 830.1,
+    "x": 826.3,
     "y": 728.8,
   },
   {
@@ -8225,7 +8225,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 728.8,
   },
   {
@@ -8233,7 +8233,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "106",
-    "x": 830.1,
+    "x": 826.3,
     "y": 743.8,
   },
   {
@@ -8241,7 +8241,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 743.8,
   },
   {
@@ -8249,7 +8249,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "105",
-    "x": 830.1,
+    "x": 826.3,
     "y": 758.8,
   },
   {
@@ -8257,7 +8257,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 758.8,
   },
   {
@@ -8265,7 +8265,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "104",
-    "x": 830.1,
+    "x": 826.3,
     "y": 773.8,
   },
   {
@@ -8273,7 +8273,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 773.8,
   },
   {
@@ -8281,7 +8281,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "103",
-    "x": 830.1,
+    "x": 826.3,
     "y": 788.8,
   },
   {
@@ -8289,7 +8289,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 788.8,
   },
   {
@@ -8297,7 +8297,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "102",
-    "x": 830.1,
+    "x": 826.3,
     "y": 803.8,
   },
   {
@@ -8305,7 +8305,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 803.8,
   },
   {
@@ -8313,7 +8313,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "101",
-    "x": 830.1,
+    "x": 826.3,
     "y": 818.8,
   },
   {
@@ -8321,7 +8321,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 818.8,
   },
   {
@@ -8337,7 +8337,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "100",
-    "x": 830.1,
+    "x": 826.3,
     "y": 833.8,
   },
   {
@@ -8345,7 +8345,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 7,
     "text": "4875",
-    "x": 880.3,
+    "x": 866.9,
     "y": 833.8,
   },
   {
@@ -8369,7 +8369,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "METRES",
-    "x": 875.6,
+    "x": 862.2,
     "y": 847.5,
   },
   {
@@ -8377,7 +8377,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "NUMBER",
-    "x": 994.6,
+    "x": 1011.6,
     "y": 849.5,
   },
   {
@@ -8385,7 +8385,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DATE",
-    "x": 1066.8,
+    "x": 1102,
     "y": 849.5,
   },
   {
@@ -8393,7 +8393,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "No.",
-    "x": 831.1,
+    "x": 827.3,
     "y": 851.5,
   },
   {
@@ -8401,7 +8401,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "NUMBER",
-    "x": 934.3,
+    "x": 926.5,
     "y": 851.5,
   },
   {
@@ -8409,7 +8409,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "SQUARE",
-    "x": 875.4,
+    "x": 862,
     "y": 854.5,
   },
   {
@@ -8417,7 +8417,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "SURVEYOR-GENERAL",
-    "x": 1142.6,
+    "x": 1162.7,
     "y": 855.5,
   },
   {
@@ -8425,7 +8425,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "STAND",
-    "x": 825.9,
+    "x": 822.1,
     "y": 858.5,
   },
   {
@@ -8433,7 +8433,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DIAGRAM",
-    "x": 933.3,
+    "x": 925.5,
     "y": 858.5,
   },
   {
@@ -8449,7 +8449,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "DEED",
-    "x": 1037,
+    "x": 1058.9,
     "y": 860.5,
   },
   {
@@ -8457,7 +8457,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 6,
     "text": "AREAS",
-    "x": 877.6,
+    "x": 864.2,
     "y": 861.5,
   },
   {

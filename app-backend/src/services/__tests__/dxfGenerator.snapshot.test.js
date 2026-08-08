@@ -12,11 +12,16 @@ function extractTextEntities(dxfString) {
   const blocks = dxfString.split(/^\s*0\s*\n\s*TEXT\s*\n/m);
   for (let i = 1; i < blocks.length; i++) {
     const b = blocks[i];
-    const layer = b.match(/\s*8\s*\n\s*([^\n]+)/)?.[1]?.trim() ?? '';
-    const x = parseFloat(b.match(/\s*10\s*\n\s*([-\d.]+)/)?.[1] ?? 'NaN');
-    const y = parseFloat(b.match(/\s*20\s*\n\s*([-\d.]+)/)?.[1] ?? 'NaN');
-    const h = parseFloat(b.match(/\s*40\s*\n\s*([-\d.]+)/)?.[1] ?? 'NaN');
-    const text = b.match(/\s*1\s*\n\s*([^\n]+)/)?.[1]?.trim() ?? '';
+    // Group-code lines must be anchored to the whole line (^...$/m) — a
+    // naive `\s*<code>\s*\n` can match a code digit that's actually the
+    // trailing digit of a coordinate value (e.g. y=-2199912.9911 ends in
+    // "1" right before a newline, which a bare `\s*1\s*\n` mistakes for
+    // the group-code-1 (text) line).
+    const layer = b.match(/^\s*8\s*$\n\s*([^\n]+)/m)?.[1]?.trim() ?? '';
+    const x = parseFloat(b.match(/^\s*10\s*$\n\s*([-\d.]+)/m)?.[1] ?? 'NaN');
+    const y = parseFloat(b.match(/^\s*20\s*$\n\s*([-\d.]+)/m)?.[1] ?? 'NaN');
+    const h = parseFloat(b.match(/^\s*40\s*$\n\s*([-\d.]+)/m)?.[1] ?? 'NaN');
+    const text = b.match(/^\s*1\s*$\n\s*([^\n]+)/m)?.[1]?.trim() ?? '';
     if (!text) continue;
     items.push({
       layer, text,

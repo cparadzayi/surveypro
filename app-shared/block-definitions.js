@@ -500,6 +500,62 @@ export function snapScaleBarSegment(rawSegmentMeters) {
   return 100
 }
 
+// Picks the largest "nice" round ground-metre interval whose paper spacing,
+// at the given scale, stays at or under targetPaperMm. Used to space
+// coordinate-grid tick marks close enough together that a Surveyor-General
+// can check any adjacent pair with a standard 30cm scale ruler — unlike
+// snapScaleBarSegment (smallest nice number >= half a raw segment, for the
+// scale bar's own graduation), this solves the opposite constraint.
+const GRID_NICE_NUMBERS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
+
+export function chooseTickIntervalMetres(scaleDenominator, targetPaperMm = 250) {
+  const maxIntervalM = (targetPaperMm * scaleDenominator) / 1000
+  let chosen = GRID_NICE_NUMBERS[0]
+  for (const n of GRID_NICE_NUMBERS) {
+    if (n > maxIntervalM) break
+    chosen = n
+  }
+  return chosen
+}
+
+// Generates tick points along all 4 edges of a bounding rectangle at a
+// fixed interval, replacing "4 corners only" coordinate tick marks with
+// enough intermediate points that no two adjacent ticks exceed a
+// ruler-safe paper distance. Axis-agnostic: callers supply whatever two
+// ground-coordinate axes they use (Cape Lo Y/X, DXF ground x/y, etc.) as
+// a/b. Each of the 4 corners is the shared endpoint of two edges, so this
+// dedupes by (a,b) before returning.
+export function computeGridTickPositions({ aMin, aMax, bMin, bMax, intervalM }) {
+  const steppedRange = (start, end, step) => {
+    const vals = []
+    for (let v = start; v < end; v += step) vals.push(v)
+    vals.push(end)
+    return vals
+  }
+  const aValues = steppedRange(aMin, aMax, intervalM)
+  const bValues = steppedRange(bMin, bMax, intervalM)
+
+  const seen = new Set()
+  const points = []
+  const addPoint = (a, b) => {
+    const key = `${a},${b}`
+    if (seen.has(key)) return
+    seen.add(key)
+    points.push({ a, b })
+  }
+  // Top/bottom edges: a varies, b fixed at bMin/bMax.
+  for (const a of aValues) {
+    addPoint(a, bMin)
+    addPoint(a, bMax)
+  }
+  // Left/right edges: b varies, a fixed at aMin/aMax.
+  for (const b of bValues) {
+    addPoint(aMin, b)
+    addPoint(aMax, b)
+  }
+  return points
+}
+
 // Resolve the Lo coordinate-system label ("Lo 29") shown in the OUTSIDE FIGURE
 // DATA header. Single source of truth so the DXF and PDF never disagree, in
 // priority order:

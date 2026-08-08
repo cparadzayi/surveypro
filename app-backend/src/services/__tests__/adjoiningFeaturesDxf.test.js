@@ -47,7 +47,7 @@ describe('emitSubjectAdjoiningFeaturesDxf', () => {
     expect(r.texts[0].layer).toBe('ADJ_S')
   })
 
-  it('contiguous: two outward stubs + horizontal label', () => {
+  it('contiguous: two outward stubs + label reading along the edge', () => {
     const r = recorder()
     emitSubjectAdjoiningFeaturesDxf({
       ...r, ptRing: square, geo, servitudeLayer: 'ADJ_S', defaultLayer: 'ADJ',
@@ -56,7 +56,7 @@ describe('emitSubjectAdjoiningFeaturesDxf', () => {
     expect(r.lines).toHaveLength(2)
     expect(r.lines.every((l) => l.layer === 'ADJ')).toBe(true)
     expect(r.texts[0].text).toBe('STAND 500')
-    expect(r.texts[0].rotation).toBe(0) // horizontal
+    expect(r.texts[0].rotation).not.toBe(0) // reads along the edge, like road/servitude
   })
 
   it('unresolved side warns and draws nothing', () => {

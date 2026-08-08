@@ -104,6 +104,16 @@ describe('drawSubjectAdjoiningFeatures — role behaviour', () => {
     expect(texts(doc)[0]).toBe('STAND 500')
   })
 
+  it('contiguous label reads ALONG the edge like road/servitude, so a long name tracks a diagonal boundary', () => {
+    const doc = fakeDoc()
+    drawSubjectAdjoiningFeatures(doc, {
+      ptRing: square,
+      annotations: [{ side: 'CD', role: 'contiguous', label: 'Shabani Mine Surface Rights A' }],
+      ptPerGroundM: 1,
+    })
+    expect(has(doc, 'rotate')).toBe(true)
+  })
+
   it('skips an unresolved side and warns', () => {
     const doc = fakeDoc()
     const warn = jest.fn()

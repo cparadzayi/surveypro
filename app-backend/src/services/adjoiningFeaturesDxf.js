@@ -89,26 +89,32 @@ export function emitSubjectAdjoiningFeaturesDxf({
       const lw = textWidth(labelText, textHeight)
       const layer = ann.role === 'servitude' ? servitudeLayer : defaultLayer
 
+      // Read ALONG the edge, just outside the boundary — same convention for every
+      // role (road/servitude/contiguous) so a long neighbour name tracks a diagonal
+      // boundary instead of sitting horizontal and swinging back across the line.
+      let angleDeg = Math.atan2(ey, ex) * 180 / Math.PI
+      if (angleDeg > 90 || angleDeg < -90) angleDeg += 180 // keep text upright
+      const aRad = angleDeg * Math.PI / 180
+
       if (ann.role === 'road' || ann.role === 'servitude') {
-        // Read ALONG the edge, just outside the boundary (past the strip, if any).
-        let angleDeg = Math.atan2(ey, ex) * 180 / Math.PI
-        if (angleDeg > 90 || angleDeg < -90) angleDeg += 180 // keep text upright
+        // Just outside the boundary (past the strip, if any).
         const stripW = ann.role === 'servitude' && ann.widthM > 0 ? ann.widthM : standoff
         const off = stripW + bandLen
         const cx = mid.x + perpX * off, cy = mid.y + perpY * off
         // Shift the baseline-left insertion back along the reading direction so the
         // text is centred on (cx, cy).
-        const aRad = angleDeg * Math.PI / 180
         const ix = cx - Math.cos(aRad) * (lw / 2)
         const iy = cy - Math.sin(aRad) * (lw / 2)
         addText(layer, ix, iy, labelText, textHeight, angleDeg)
       } else {
-        // Contiguous: horizontal outward label beyond the stub, centred on the abutting
-        // extent (whole side, or the tagged half).
+        // Contiguous: outward label beyond the stub, centred on the abutting extent
+        // (whole side, or the tagged half).
         const m = contiguousMarks(a, b, ann.end)
         const off = stubLen + bandLen * 0.5
         const cx = m.labelAnchor[0] + perpX * off, cy = m.labelAnchor[1] + perpY * off
-        addText(defaultLayer, cx - lw / 2, cy - textHeight / 2, labelText, textHeight, 0)
+        const ix = cx - Math.cos(aRad) * (lw / 2)
+        const iy = cy - Math.sin(aRad) * (lw / 2)
+        addText(defaultLayer, ix, iy, labelText, textHeight, angleDeg)
       }
     }
   }

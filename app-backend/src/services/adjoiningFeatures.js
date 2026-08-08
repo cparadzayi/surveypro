@@ -118,10 +118,14 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
       let perpX = -ey / len, perpY = ex / len
       if (perpX * (cen[0] - mid.x) + perpY * (cen[1] - mid.y) > 0) { perpX = -perpX; perpY = -perpY }
 
+      // Read ALONG the edge, just outside the boundary — same convention for every role
+      // (road/servitude/contiguous) so a long neighbour name tracks a diagonal boundary
+      // instead of sitting horizontal and swinging back across the line.
+      let angleDeg = Math.atan2(ey, ex) * 180 / Math.PI
+      if (angleDeg > 90 || angleDeg < -90) angleDeg += 180 // keep text upright
+
       if (ann.role === 'road' || ann.role === 'servitude') {
-        // Read ALONG the edge, just outside the boundary (past the strip, if any).
-        let angleDeg = Math.atan2(ey, ex) * 180 / Math.PI
-        if (angleDeg > 90 || angleDeg < -90) angleDeg += 180 // keep text upright
+        // Just outside the boundary (past the strip, if any).
         const stripPt = ann.role === 'servitude' && ann.widthM > 0
           ? ann.widthM * ptPerGroundM
           : ROAD_LABEL_STANDOFF_PT
@@ -130,11 +134,12 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
         doc.rotate(angleDeg, { origin: [lx, ly] })
         doc.text(labelText, lx - labelW / 2, ly - LABEL_FONT_PT / 2, { lineBreak: false })
       } else {
-        // Contiguous: horizontal outward label beyond the dashed stub, centred on the
-        // abutting extent (whole side, or the tagged half).
+        // Contiguous: outward label beyond the dashed stub, centred on the abutting
+        // extent (whole side, or the tagged half).
         const m = contiguousMarks([p1.x, p1.y], [p2.x, p2.y], ann.end)
         const off = CONTIG_LABEL_OFF_PT
         const lx = m.labelAnchor[0] + perpX * off, ly = m.labelAnchor[1] + perpY * off
+        doc.rotate(angleDeg, { origin: [lx, ly] })
         doc.text(labelText, lx - labelW / 2, ly - LABEL_FONT_PT / 2, { lineBreak: false })
       }
       doc.restore()

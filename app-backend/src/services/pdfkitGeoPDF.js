@@ -8838,6 +8838,58 @@ export function drawScheduleOfAreasMultiTable(
 }
 
 /**
+ * Draws the Schedule of Areas grid: outer top/left/bottom border (the right
+ * edge is intentionally omitted — columns read as continuous vertical bands),
+ * the header/body divider rule, and column dividers running the full table
+ * height. The DEED-NUMBER|DEED-DATE divider only starts at the sub-header row
+ * (headerY + 12) so it doesn't cut through the merged "DEED" header above it.
+ * No per-row horizontal lines are drawn — rows are not individually boxed.
+ *
+ * Text (headers + data cells) is drawn separately by the caller; this
+ * function only strokes lines.
+ *
+ * @param {PDFDocument} doc
+ * @param {Object} args
+ * @param {number} args.x - Left edge of the table.
+ * @param {number} args.headerY - Top of the header row.
+ * @param {number} args.headerHeight - Header row height (25pt in this table).
+ * @param {number[]} args.colWidths - 6 column widths, same order as
+ *        SCHEDULE_OF_AREAS.singleColumn.columns (stand, area, diagram,
+ *        deedNumber, deedDate, surveyor).
+ * @param {number} args.rowHeight - Height of one data row.
+ * @param {number} args.rowCount - Number of data rows below the header.
+ */
+export function drawScheduleTableGrid(doc, { x, headerY, headerHeight, colWidths, rowHeight, rowCount }) {
+  const tableWidth = colWidths.reduce((s, w) => s + w, 0);
+  const deedHeaderY = headerY + 12;
+  const deedStartX = x + colWidths[0] + colWidths[1] + colWidths[2];
+  const bottomY = headerY + headerHeight + rowCount * rowHeight;
+
+  doc.lineWidth(0.5);
+
+  // Outer border: top, left, bottom — no right edge.
+  doc.moveTo(x, headerY).lineTo(x + tableWidth, headerY).stroke();
+  doc.moveTo(x, headerY).lineTo(x, bottomY).stroke();
+  doc.moveTo(x, bottomY).lineTo(x + tableWidth, bottomY).stroke();
+
+  // Header/body divider.
+  doc.moveTo(x, headerY + headerHeight).lineTo(x + tableWidth, headerY + headerHeight).stroke();
+
+  // DEED merged-header divider (spans just the DEED-NUMBER + DEED-DATE columns).
+  doc.moveTo(deedStartX, deedHeaderY).lineTo(deedStartX + colWidths[3] + colWidths[4], deedHeaderY).stroke();
+
+  // Column dividers — full table height, except DEED-NUMBER|DEED-DATE (index 3)
+  // which starts at the sub-header row so it doesn't cut through the merged
+  // DEED header.
+  let cx = x;
+  for (let i = 0; i < colWidths.length - 1; i++) {
+    cx += colWidths[i];
+    const topY = (i === 3) ? deedHeaderY : headerY;
+    doc.moveTo(cx, topY).lineTo(cx, bottomY).stroke();
+  }
+}
+
+/**
  * Draw Schedule of Areas - Single column (for ≤50 stands)
  * Full SI 727 6-column format
  */

@@ -1797,7 +1797,8 @@ function renderOutsideFigureTickMarks(
   logger,
   titleBlockBounds = null,
   blockPositions = null,
-  polygonPdfPoints = []
+  polygonPdfPoints = [],
+  scaleDenominator = 500
 ) {
   // - Tight label coupling: 5pt offset (was 20pt)
   // - Professional font: 8pt (was 10pt)
@@ -1986,12 +1987,11 @@ function renderOutsideFigureTickMarks(
     }
   }
 
-  const tickMarks = [
-    { name: "top-left", y: actualY_min, x: topX }, // Actual NW corner (adjusted for title block)
-    { name: "top-right", y: actualY_max, x: topX }, // Actual NE corner (adjusted for title block)
-    { name: "bottom-left", y: actualY_min, x: bottomX }, // Actual SW corner (adjusted for map bounds)
-    { name: "bottom-right", y: actualY_max, x: bottomX }, // Actual SE corner (adjusted for map bounds)
-  ];
+  const _tickIntervalM = chooseTickIntervalMetres(scaleDenominator);
+  const _tickPoints = computeGridTickPositions({
+    aMin: actualY_min, aMax: actualY_max, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
+  });
+  const tickMarks = _tickPoints.map((pt, i) => ({ name: `grid-${i}`, y: pt.a, x: pt.b }));
 
   // Compute polygon centroid in PDF space for label direction heuristic
   let _polyCx = 0, _polyCy = 0;
@@ -12411,7 +12411,8 @@ async function _generateGeoPDFInner(options, logger) {
     logger,
     blockPositions.titleBlock,
     blockPositions,
-    _topoPolyPts  // Polygon PDF points for label collision avoidance
+    _topoPolyPts,  // Polygon PDF points for label collision avoidance
+    scale?.value ?? 500
   );
 
   // Step 6: (blocks already drawn above in Step 5b)

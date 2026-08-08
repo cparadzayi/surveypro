@@ -11,7 +11,7 @@ import {
   GENERAL_PLAN_MARGIN_FOOTER,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment } from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, chooseTickIntervalMetres, computeGridTickPositions } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -1557,7 +1557,8 @@ function calculateTickMarkBounds(
   extent,
   mapBounds,
   logger,
-  titleBlockBounds = null
+  titleBlockBounds = null,
+  scaleDenominator = 500
 ) {
   if (
     !outsideFigure ||
@@ -1682,13 +1683,13 @@ function calculateTickMarkBounds(
     }
   }
 
-  // Calculate bounds for all 4 tick marks at ROUNDED polygon corners
-  const tickMarks = [
-    { name: "top-left",     y: actualY_min, x: topX },    // NW corner (Y rounded down)
-    { name: "top-right",    y: actualY_max, x: topX },    // NE corner (Y rounded up)
-    { name: "bottom-left",  y: actualY_min, x: bottomX }, // SW corner (Y rounded down)
-    { name: "bottom-right", y: actualY_max, x: bottomX }, // SE corner (Y rounded up)
-  ];
+  // Generate tick points along all 4 edges at a scale-safe interval (30cm
+  // ruler compliance) instead of just the 4 corners.
+  const _tickIntervalM = chooseTickIntervalMetres(scaleDenominator);
+  const _tickPoints = computeGridTickPositions({
+    aMin: actualY_min, aMax: actualY_max, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
+  });
+  const tickMarks = _tickPoints.map((pt, i) => ({ name: `grid-${i}`, y: pt.a, x: pt.b }));
 
   const tickMarkBounds = [];
 
@@ -11920,7 +11921,8 @@ async function _generateGeoPDFInner(options, logger) {
     calculatedExtent,
     mapBounds,  // Use full drawing area within margins
     logger,
-    null
+    null,
+    scale?.value ?? 500
   );
   logger.info(
     `[PDFKit] 📐 Pass 1: Calculated ${initialTickMarkBounds.length} initial tick mark reserved regions`
@@ -12085,7 +12087,9 @@ async function _generateGeoPDFInner(options, logger) {
     outsideFigure,
     calculatedExtent,
     mapBounds,
-    logger
+    logger,
+    null,
+    scale?.value ?? 500
   );
   logger.info(
     `[PDFKit] 📐 Reserving ${_plannerTickBounds.length} corner tick crosses as planner obstacles (parity with DXF)`
@@ -12205,7 +12209,8 @@ async function _generateGeoPDFInner(options, logger) {
     calculatedExtent,
     mapBounds,  // Use full drawing area within margins
     logger,
-    blockPositions.titleBlock
+    blockPositions.titleBlock,
+    scale?.value ?? 500
   );
   logger.info(
     `[PDFKit] 📐 Pass 2: Recalculated ${finalTickMarkBounds.length} final tick mark positions (avoiding title block)`

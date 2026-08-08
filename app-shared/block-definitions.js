@@ -31,7 +31,7 @@ export const SCHEDULE_OF_AREAS = {
       { key: 'diagram', label: 'DIAGRAM\nNUMBER', width: 40, align: 'center' },
       { key: 'deedNumber', label: 'NUMBER', width: 40, align: 'center', parentHeader: 'DEED' },
       { key: 'deedDate', label: 'DATE', width: 35, align: 'center', parentHeader: 'DEED' },
-      { key: 'surveyor', label: 'SURVEYOR-\nGENERAL', width: 50, align: 'center' }
+      { key: 'surveyor', label: 'SURVEYOR-GENERAL', width: 50, align: 'center' }
     ],
     rowHeight: 15,
     headerHeight: 25,
@@ -50,7 +50,7 @@ export const SCHEDULE_OF_AREAS = {
       { key: 'diagram', label: 'DIAGRAM\nNUMBER', width: 40, align: 'center' },
       { key: 'deedNumber', label: 'NUMBER', width: 40, align: 'center', parentHeader: 'DEED' },
       { key: 'deedDate', label: 'DATE', width: 35, align: 'center', parentHeader: 'DEED' },
-      { key: 'surveyor', label: 'SURVEYOR-\nGENERAL', width: 50, align: 'center' }
+      { key: 'surveyor', label: 'SURVEYOR-GENERAL', width: 50, align: 'center' }
     ],
     rowHeight: 15,
     headerHeight: 25,

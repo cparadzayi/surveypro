@@ -243,24 +243,19 @@ export function addScheduleTable({
   }
 
   // ── Grid lines ──
-  // Outer border (top, bottom, left, right).
-  addLine(layer, x,         tableTopY, rightEdge, tableTopY)
-  addLine(layer, x,         dataBotY,  rightEdge, dataBotY)
-  addLine(layer, x,         dataBotY,  x,         tableTopY)
-  addLine(layer, rightEdge, dataBotY,  rightEdge, tableTopY)
+  // Outer border: top, left, bottom. The right edge is intentionally omitted
+  // — columns read as continuous vertical bands, not a closed box.
+  addLine(layer, x, tableTopY, rightEdge, tableTopY)
+  addLine(layer, x, dataBotY,  rightEdge, dataBotY)
+  addLine(layer, x, dataBotY,  x,         tableTopY)
 
   // DEED row ↔ sub-header row divider (only across DEED columns,
   // matches PDF drawScheduleOfAreasSingleColumn:10301-10304).
   addLine(layer, deedStartX, deedRowBotY, deedEndX, deedRowBotY)
 
-  // Sub-header row ↔ data divider (full width).
+  // Sub-header row ↔ data divider (full width). No per-row horizontal
+  // dividers below this — rows read as continuous vertical columns.
   addLine(layer, x, subHeaderBotY, rightEdge, subHeaderBotY)
-
-  // Between every two adjacent data rows.
-  for (let r = 1; r < dataRows.length; r++) {
-    const dividerY = dataTopY - r * rH
-    addLine(layer, x, dividerY, rightEdge, dividerY)
-  }
 
   // Vertical column dividers between the 6 columns.
   // The DEED|DATE divider (between col 3 and col 4) only starts at the

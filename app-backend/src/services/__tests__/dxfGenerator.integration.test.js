@@ -804,6 +804,15 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
     // clears the figure — so the overlap warning is gone AND no stand is dropped
     // (scheduleOverflow stays null). The protrusion geometry is the calibrated
     // reproduction; see dxfGenerator.js guarded-re-split block.
+    //
+    // Scale recalibrated 1:750 → 1:1200 for the Schedule of Areas 15cm-width
+    // change: the table's paper footprint grew ~1.635× (150mm target vs the old
+    // ~91.7mm content-fit width), so at 1:750 the guarded re-split no longer had
+    // enough whitespace to seat every stand (verified: it fell through to the
+    // 'planner' placement mode, missing 100+ of 240 stands at every resplit
+    // attempt). 1:1200 ≈ 750 × 1.635 restores the same relative proportions
+    // between the figure and the now-wider table, and was verified to bring
+    // missingStandCount back to 0 with no figure overlap.
     const co = sampleMaglasPlan.outsideFigureData.coordinates
     const yMin = co[0].y, yMax = co[1].y, xMin = co[0].x, xMax = co[2].x
     const protY = yMax + (yMax - yMin) * 0.25
@@ -816,7 +825,7 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
       ],
     }
     const { warnings } = generateDXF(
-      { ...sampleMaglasPlan, outsideFigureData: irregularOFD, scale: { value: 750, label: '1:750' }, sheetSize: 'ISO_A0', orientation: 'landscape' },
+      { ...sampleMaglasPlan, outsideFigureData: irregularOFD, scale: { value: 1200, label: '1:1200' }, sheetSize: 'ISO_A0', orientation: 'landscape' },
       fakeLogger,
     )
     expect(warnings.summary.scheduleOfAreasOverlapsPolygon).toBeUndefined()

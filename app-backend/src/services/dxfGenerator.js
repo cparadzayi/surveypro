@@ -27,6 +27,8 @@ import {
   SURVEYOR_GENERAL_BOX,
   formatStandRanges,
   computeScheduleColumnWidths,
+  scaleColumnWidthsToTarget,
+  SCHEDULE_TARGET_WIDTH_PT,
   edgeDistanceMetres,
   classifyBeaconGroups,
   snapScaleBarSegment,
@@ -1911,12 +1913,14 @@ export function generateDXF(options, logger) {
   // different anchor sides. See scheduleMeasurer.js for the documented
   // trade-off around CAD-viewer width-factor compliance.
   const dxfScheduleMeasure = buildScheduleMeasurer(6, 7);
-  const scheduleColumnWidthsPt = computeScheduleColumnWidths({
+  const rawScheduleColumnWidthsPt = computeScheduleColumnWidths({
     dataRows:       surveyedFeatures.map(extractScheduleRow),
     headerFontSize: 6,
     bodyFontSize:   7,
     measureText:    dxfScheduleMeasure,
   });
+  // Widen to 15cm at print scale, preserving each column's relative share.
+  const scheduleColumnWidthsPt = scaleColumnWidthsToTarget(rawScheduleColumnWidthsPt, SCHEDULE_TARGET_WIDTH_PT);
   const scheduleColumnWidthsG = scheduleColumnWidthsPt.map(w => mm(w * PT_TO_MM_GEN));
 
   // ── 3-v5: Bottom-zone positions come from the shared sheet-layout planner ──

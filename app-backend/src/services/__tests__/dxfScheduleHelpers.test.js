@@ -338,6 +338,15 @@ describe('addScheduleTable', () => {
     expect(texts.some(t => t.startsWith('SURVEYOR'))).toBe(true)
   })
 
+  test('emits "SURVEYOR-GENERAL" as a single text entry, not split across two lines', () => {
+    const { textCalls, addText, addLine } = mockPrimitives()
+    addScheduleTable({ ...defaultArgs({ addText, addLine }) })
+    const texts = textCalls.map(c => c.text)
+    expect(texts).toContain('SURVEYOR-GENERAL')
+    expect(texts).not.toContain('SURVEYOR-')
+    expect(texts).not.toContain('GENERAL')
+  })
+
   test('emits the DEED parent header centered above NUMBER + DATE', () => {
     const { textCalls, addText, addLine } = mockPrimitives()
     const args = defaultArgs({ addText, addLine })
@@ -407,23 +416,18 @@ describe('addScheduleTable', () => {
   // Mirrors pdfkitGeoPDF.js:drawScheduleOfAreasSingleColumn.
   // ───────────────────────────────────────────────────────────────────────
 
-  test('emits the four outer-border lines forming a rectangle', () => {
+  test('emits three outer-border lines (top, left, bottom) — no right edge', () => {
     const { lineCalls, addText, addLine } = mockPrimitives()
     const dataRows = [{ stand: '1', area: '100', diagram: '', deedNumber: '', deedDate: '', surveyor: '' }]
     const args = defaultArgs({ addText, addLine, dataRows })
     addScheduleTable(args)
-    // Outer border has 4 unique lines: top, bottom, left, right.
-    // With columnWidths [10,12,10,10,10,12] → rightEdge = 0 + 64.
     const tableTopY = args.y - args.hHead * 1.6
-    const top    = lineCalls.find(l => l.y1 === tableTopY && l.y2 === tableTopY && l.x1 === 0 && l.x2 === 64)
-    const left   = lineCalls.find(l => l.x1 === 0  && l.x2 === 0  && l.y1 !== l.y2)
-    const right  = lineCalls.find(l => l.x1 === 64 && l.x2 === 64 && l.y1 !== l.y2)
+    const top   = lineCalls.find(l => l.y1 === tableTopY && l.y2 === tableTopY && l.x1 === 0 && l.x2 === 64)
+    const left  = lineCalls.find(l => l.x1 === 0  && l.x2 === 0  && l.y1 !== l.y2)
+    const right = lineCalls.find(l => l.x1 === 64 && l.x2 === 64 && l.y1 !== l.y2)
     expect(top).toBeDefined()
     expect(left).toBeDefined()
-    expect(right).toBeDefined()
-    // Bottom line: any full-width horizontal line below the title-relative top.
-    const horizontals = lineCalls.filter(l => l.y1 === l.y2 && l.x1 === 0 && l.x2 === 64)
-    expect(horizontals.length).toBeGreaterThanOrEqual(2)   // at least top + bottom
+    expect(right).toBeUndefined()
   })
 
   test('emits 5 vertical column dividers between the 6 columns', () => {
@@ -437,7 +441,7 @@ describe('addScheduleTable', () => {
     }
   })
 
-  test('emits a horizontal divider between every pair of adjacent data rows', () => {
+  test('does NOT emit a horizontal divider between data rows (only top, header/body divider, and bottom)', () => {
     const { lineCalls, addText, addLine } = mockPrimitives()
     const dataRows = [
       { stand: '1', area: '100', diagram: '', deedNumber: '', deedDate: '', surveyor: '' },
@@ -446,12 +450,10 @@ describe('addScheduleTable', () => {
       { stand: '4', area: '400', diagram: '', deedNumber: '', deedDate: '', surveyor: '' },
     ]
     addScheduleTable({ ...defaultArgs({ addText, addLine, dataRows }) })
-    // Full-width horizontal lines (y1 === y2 and span the table width).
     const fullWidthHorizontals = lineCalls.filter(l =>
       l.y1 === l.y2 && l.x1 === 0 && l.x2 === 64)
-    // Expected horizontals: top + bottom (outer) + header/data + 3 between-data dividers = 6.
-    // Allow ≥ 5 to keep the test resilient to header-divider ordering.
-    expect(fullWidthHorizontals.length).toBeGreaterThanOrEqual(5)
+    // Exactly 3 regardless of row count: outer top, header/body divider, outer bottom.
+    expect(fullWidthHorizontals.length).toBe(3)
   })
 
   test('DEED|DATE internal divider is shorter than full column dividers', () => {

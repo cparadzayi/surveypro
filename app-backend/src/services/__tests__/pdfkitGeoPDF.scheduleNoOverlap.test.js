@@ -32,4 +32,23 @@ describe('Schedule of Areas placement no longer collides when outsideFigure is a
 
     expect(result.warnings.scheduleOfAreasOverlapsPolygon).toBeUndefined()
   })
+
+  test(
+    'sgSignature has no clear slot on sampleRealisticPlan at its auto-escalated size — ' +
+      'documented limitation: the only width-sized gap (below the title block, above the ' +
+      'figure) is 119.8pt tall but only 105.8pt usable after clearances, 4.2pt short of the ' +
+      '110pt block height; see docs/superpowers/specs/2026-08-09-relocation-pass-figure-accuracy-design.md',
+    async () => {
+      const logger = { info: () => {}, warn: () => {}, error: () => {} }
+      const result = await generateGeoPDF(sampleRealisticPlan, logger)
+
+      expect(result.warnings.sgSignatureOverlapsPolygon).toBeDefined()
+      expect(result.warnings.sgSignatureOverlapsPolygon.position).toEqual({
+        x: expect.any(Number),
+        y: expect.any(Number),
+        width: 200,
+        height: 110,
+      })
+    }
+  )
 })

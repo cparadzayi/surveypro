@@ -10601,7 +10601,7 @@ export async function generateGeoPDF(options, logger) {
 }
 
 async function _generateGeoPDFInner(options, logger) {
-  const {
+  let {
     parcels,
     beacons,
     annotations,
@@ -10912,6 +10912,28 @@ async function _generateGeoPDFInner(options, logger) {
     ];
     const _bboxMsg = `outsideFigureBoundary bbox: Y:${minY.toFixed(1)}-${maxY.toFixed(1)}, X:${minX.toFixed(1)}-${maxX.toFixed(1)}, pts:${outsideFigureBoundary.length}`;
     logger.info({ msg: "[PDFKit] 📐 outsideFigureBoundary rebuilt as extent bbox", bbox: _bboxMsg });
+  }
+
+  // The schedule/tick collision-avoidance polygon (mapFeatureBounds.pdfPoints,
+  // fed to buildPlannerObstacles as `outsideFigure`) has historically only
+  // recognized the figure via this literal `outsideFigure` GeoJSON field —
+  // unlike outsideFigureBoundary above, it never fell back to the rebuilt
+  // extent bbox. When outsideFigure is absent, synthesize an equivalent
+  // GeoJSON Polygon from outsideFigureBoundary (the full-coverage extent
+  // bbox rebuilt just above, not the sparse 4-point OFD-edges polygon) so
+  // every downstream consumer of `outsideFigure` — schedule/tick-mark
+  // collision avoidance, beacon filtering, map positioning — sees a real
+  // figure instead of treating the whole map as empty space.
+  if (!(outsideFigure?.features?.length > 0) && outsideFigureBoundary?.length >= 4) {
+    outsideFigure = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [outsideFigureBoundary] },
+        properties: {},
+      }],
+    };
+    logger.info('[PDFKit] 🗺️  No outsideFigure supplied — using the extent bbox as the collision-avoidance figure boundary');
   }
 
   // Select appropriate page size per SI 727 Section 62

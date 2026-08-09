@@ -39,6 +39,10 @@ describe('Schedule of Areas placement no longer collides when outsideFigure is a
       'figure) is 119.8pt tall but only 105.8pt usable after clearances, 4.2pt short of the ' +
       '110pt block height; see docs/superpowers/specs/2026-08-09-relocation-pass-figure-accuracy-design.md',
     async () => {
+      // Intentionally brittle: 200x110 is sgSignature's configured block size, not a
+      // fixture-derived value. If block-definitions.js changes those dimensions, this
+      // test breaking is expected — update the expectation deliberately, don't chase it
+      // as a mystery failure.
       const logger = { info: () => {}, warn: () => {}, error: () => {} }
       const result = await generateGeoPDF(sampleRealisticPlan, logger)
 

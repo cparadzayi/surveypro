@@ -18,4 +18,18 @@ describe('Schedule of Areas placement no longer collides when outsideFigure is a
     const { warnings } = await generateGeoPDF(sampleRealisticPlan, logger)
     expect(warnings?.scheduleOfAreasOverlapsPolygon).toBeFalsy()
   })
+
+  test('surveyStatement relocates clear of the accurate figure polygon, not just the approximate planner polygon', async () => {
+    const logger = { info: () => {}, warn: () => {}, error: () => {} }
+    const result = await generateGeoPDF(sampleRealisticPlan, logger)
+
+    expect(result.warnings.surveyStatementOverlapsPolygon).toBeUndefined()
+  })
+
+  test('scheduleOfAreas is unaffected by the relocation-pass change (separate escalation-based handling)', async () => {
+    const logger = { info: () => {}, warn: () => {}, error: () => {} }
+    const result = await generateGeoPDF(sampleRealisticPlan, logger)
+
+    expect(result.warnings.scheduleOfAreasOverlapsPolygon).toBeUndefined()
+  })
 })

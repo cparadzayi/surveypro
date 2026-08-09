@@ -12260,7 +12260,9 @@ async function _generateGeoPDFInner(options, logger) {
   const _tickRects = finalTickMarkBounds.map((t) => ({
     x: t.x, y: t.y, width: t.width, height: t.height,
   }));
-  if (_tickRects.length > 0) {
+  const _accurateFigurePoly =
+    mapFeatureBounds?.pdfPoints?.length >= 3 ? mapFeatureBounds.pdfPoints : null;
+  if (_tickRects.length > 0 || _accurateFigurePoly) {
     const _asRect = (p) =>
       p && p.width > 0 && p.height > 0
         ? { x: p.x, y: p.y, width: p.width, height: p.height }
@@ -12272,9 +12274,10 @@ async function _generateGeoPDFInner(options, logger) {
       blockPositions.endorsement,
     ].map(_asRect).filter(Boolean);
     const _occupied = [..._fixedObstacles, ..._tickRects];
-    const _relocPoly =
-      _polyForPlanner && _polyForPlanner.length >= 3 ? _polyForPlanner : null;
     const _overlapsAnyTick = (r) => _tickRects.some((t) => rectanglesOverlap(r, t, 0));
+    const _overlapsFigure = (r) =>
+      _accurateFigurePoly ? rectangleOverlapsPolygon(r, _accurateFigurePoly, 0) : false;
+    const _needsRelocation = (r) => _overlapsAnyTick(r) || _overlapsFigure(r);
     // Widest-first (matches DXF task ordering) so the hardest-to-fit blocks claim
     // whitespace before the smaller ones do.
     const _relocatable = ['outsideFigureData', 'beaconDescription', 'surveyStatement', 'sgSignature', 'scaleBar', 'northArrow']
@@ -12282,14 +12285,14 @@ async function _generateGeoPDFInner(options, logger) {
       .filter((t) => t.rect)
       .sort((a, b) => b.rect.width - a.rect.width);
     for (const t of _relocatable) {
-      if (!_overlapsAnyTick(t.rect)) {
+      if (!_needsRelocation(t.rect)) {
         _occupied.push(t.rect); // already clear — keep planner slot, seed as obstacle
         continue;
       }
       const found = findBlockPosition({
         block: { width: t.rect.width, height: t.rect.height },
         mapBounds,
-        polygon: _relocPoly,
+        polygon: _accurateFigurePoly,
         placedBlocks: _occupied,
         buffer: 6,
         blockSpacing: 8,
@@ -12302,12 +12305,12 @@ async function _generateGeoPDFInner(options, logger) {
         blockPositions[t.name].y = found.y;
         _occupied.push({ x: found.x, y: found.y, width: t.rect.width, height: t.rect.height });
         logger.info(
-          `[PDFKit] 📐 Relocated ${t.name} clear of tick marks → (${found.x.toFixed(1)}, ${found.y.toFixed(1)})`
+          `[PDFKit] 📐 Relocated ${t.name} clear of ticks/figure → (${found.x.toFixed(1)}, ${found.y.toFixed(1)})`
         );
       } else {
         _occupied.push(t.rect); // no clear slot — keep planner slot (tick renderer still deflects its labels)
         logger.warn(
-          `[PDFKit] ⚠️ ${t.name} overlaps a tick mark but no clear slot was found — keeping planner slot`
+          `[PDFKit] ⚠️ ${t.name} overlaps a tick mark or the figure but no clear slot was found — keeping planner slot`
         );
       }
     }

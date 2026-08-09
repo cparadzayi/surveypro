@@ -910,9 +910,12 @@ export function generateDXF(options, logger) {
     const lblH = mm(2.5);   // label text height
     const off  = mm(1.5);   // label gap from the arm tip
     // Snap the four corners OUTWARD to a round coordinate grid so every cross
-    // label is a clean multiple of 50 m (or 100 m for large figures) — the SI 727
-    // coordinate convention. drawL/B are the min corners (floor/out), drawR/T the
-    // max corners (ceil/out); labels = −coord, so they stay multiples too.
+    // label is a clean multiple of a scale-driven interval — chooseTickIntervalMetres
+    // picks the largest "nice" ground-metre interval (1/2/5/10/20/50/100/...) whose
+    // paper spacing at this plan's scale (S) stays within a ruler-safe target, so a
+    // Surveyor-General can check any adjacent pair with a standard 30cm scale ruler.
+    // drawL/B are the min corners (floor/out), drawR/T the max corners (ceil/out);
+    // labels = −coord, so they stay multiples too.
     const G = chooseTickIntervalMetres(S);
     let xL = Math.floor(drawL / G) * G, xR = Math.ceil(drawR / G) * G;
     let yB = Math.floor(drawB / G) * G, yT = Math.ceil(drawT / G) * G;

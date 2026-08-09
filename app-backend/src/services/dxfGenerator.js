@@ -33,6 +33,8 @@ import {
   classifyBeaconGroups,
   snapScaleBarSegment,
   resolveLoSystem,
+  chooseTickIntervalMetres,
+  computeGridTickPositions,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 
@@ -911,7 +913,7 @@ export function generateDXF(options, logger) {
     // label is a clean multiple of 50 m (or 100 m for large figures) — the SI 727
     // coordinate convention. drawL/B are the min corners (floor/out), drawR/T the
     // max corners (ceil/out); labels = −coord, so they stay multiples too.
-    const G = Math.max(drawR - drawL, drawT - drawB) > 1000 ? 100 : 50;
+    const G = chooseTickIntervalMetres(S);
     let xL = Math.floor(drawL / G) * G, xR = Math.ceil(drawR / G) * G;
     let yB = Math.floor(drawB / G) * G, yT = Math.ceil(drawT / G) * G;
     // Inward clamp (PDF parity). Footprint extents of a cross centred at (cx, cy):
@@ -929,10 +931,8 @@ export function generateDXF(options, logger) {
       for (g = 0; xL - padMin < areaL && xL + G < areaR && g < 1000; g++) xL += G;
       for (g = 0; xR + padR > areaR && xR - G > areaL && g < 1000; g++) xR -= G;
     }
-    const corners = [
-      { x: xL, y: yT }, { x: xR, y: yT },
-      { x: xL, y: yB }, { x: xR, y: yB },
-    ];
+    const _tickPoints = computeGridTickPositions({ aMin: xL, aMax: xR, bMin: yB, bMax: yT, intervalM: G });
+    const corners = _tickPoints.map(pt => ({ x: pt.a, y: pt.b }));
     const bounds = [];
     // Axis-label FORMAT ported from the PDF's renderOutsideFigureTickMarks:
     // "Y = +96 900" / "X = +2 247 600" — explicit +/- sign and space-grouped

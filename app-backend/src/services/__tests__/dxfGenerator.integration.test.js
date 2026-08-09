@@ -608,10 +608,15 @@ describe('dxfGenerator integration — corner crosses clamp to the drawing area'
     }
   })
 
-  test('still emits the full set of corner crosses (8 LINEs + 8 TEXT)', () => {
+  test('emits a full grid of crosses (more than just 4 corners) with matching LINE/TEXT counts', () => {
     const dxf = generateDXF(tallPlan, fakeLogger).buffer.toString()
-    expect(entityCount(dxf, 'LINE', 'GRID')).toBe(8)
-    expect(entityCount(dxf, 'TEXT', 'GRID')).toBe(8)
+    const lineCount = entityCount(dxf, 'LINE', 'GRID')
+    const textCount = entityCount(dxf, 'TEXT', 'GRID')
+    // Each cross = 2 arm LINEs + 2 coordinate-label TEXTs, so both counts are
+    // always even and equal to each other.
+    expect(lineCount).toBeGreaterThan(8) // more than the old 4-corners-only count
+    expect(lineCount % 2).toBe(0)
+    expect(textCount).toBe(lineCount)
   })
 })
 

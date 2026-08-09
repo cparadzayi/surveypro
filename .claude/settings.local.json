@@ -50,7 +50,11 @@
       "Bash(awk '{print $5}')",
       "Bash(taskkill //F //PID 49728)",
       "Bash(kill 2620)",
-      "Bash(taskkill //F //PID 34836)"
+      "Bash(taskkill //F //PID 34836)",
+      "Bash(C:/Users/mukan/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/review-package a5be11a *)",
+      "Bash(npx vitest *)",
+      "Read(//c/surveypro-may-2026/SurveyPro-nov-alpha/.worktrees/feat-diagram-deed-type-fields/**)",
+      "Bash(\"/c/Users/mukan/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/task-brief\" docs/superpowers/plans/2026-08-06-diagram-deed-type-fields.md 1)"
     ]
   }
 }

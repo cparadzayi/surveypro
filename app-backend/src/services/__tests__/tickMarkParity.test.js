@@ -63,11 +63,19 @@ const sharedPlan = {
   sheetSize: 'ISO_A2', scale: { value: 500, label: '1:500' },
 }
 
+// Normalize a "Y = +97 400" style label to a signed numeric value, so that
+// PDF's space-grouped-thousands formatting and DXF's own formatting compare
+// equal on value rather than on incidental whitespace.
+function normalizeYLabel(label) {
+  const digits = label.replace(/^Y = /, '').replace(/\s+/g, '')
+  return Number(digits)
+}
+
 describe('tick mark count parity between PDF and DXF', () => {
   test('both formats emit the same number of Y= coordinate labels for the same plan', async () => {
     const { pdfBuffer } = await generateGeoPDF(sharedPlan, fakeLogger)
     const decodedText = extractPdfText(pdfBuffer)
-    const pdfYLabels = (decodedText.match(/Y = [+-][\d ]+/g) || []).length
+    const pdfYLabels = decodedText.match(/Y = [+-][\d ]+/g) || []
 
     const { buffer: dxfBuffer } = generateDXF(sharedPlan, fakeLogger)
     const dxf = dxfBuffer.toString()
@@ -79,9 +87,15 @@ describe('tick mark count parity between PDF and DXF', () => {
       const t = (e.match(/^\s*1\r?\n\s*([^\r\n]+)/m) || [])[1]
       if (t) dxfLabels.push(t.trim())
     }
-    const dxfYLabels = dxfLabels.filter(t => /^Y = [+-][\d ]+$/.test(t)).length
+    const dxfYLabels = dxfLabels.filter(t => /^Y = [+-][\d ]+$/.test(t))
 
-    expect(pdfYLabels).toBe(dxfYLabels)
-    expect(pdfYLabels).toBeGreaterThan(4)
+    expect(pdfYLabels.length).toBe(dxfYLabels.length)
+    expect(pdfYLabels.length).toBeGreaterThan(4)
+
+    // Parity means both renderers place ticks at the same Y coordinates,
+    // not merely the same count — assert the actual coordinate sets match.
+    const pdfYValues = new Set(pdfYLabels.map(normalizeYLabel))
+    const dxfYValues = new Set(dxfYLabels.map(normalizeYLabel))
+    expect([...pdfYValues].sort((a, b) => a - b)).toEqual([...dxfYValues].sort((a, b) => a - b))
   })
 })

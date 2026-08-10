@@ -7217,6 +7217,28 @@ export function calculateBlockPositions(
     }
   }
 
+  // Escalate if the fluid multi-table search still leaves the schedule
+  // composite overlapping the figure. isScheduleWithFluidFallback (above)
+  // blanket-suppressed this on the assumption the fluid search always finds
+  // a clear slot — it doesn't: drawScheduleOfAreasMultiTable's fallback
+  // tiers (bounds-only / engine-startXY) can accept an overlapping anchor
+  // when no polygon-clear slot exists. Mirrors the single-table
+  // mandatory-block promotion above (same buffer=2 convention).
+  if (_schedNeedsSplit && _collisionPolyPts?.length > 0 && scheduleOfAreasFinal) {
+    const _schedRect = {
+      x: scheduleOfAreasFinal.x,
+      y: scheduleOfAreasFinal.y,
+      width: scheduleOfAreasFinal.width,
+      height: scheduleOfAreasFinal.height,
+    };
+    if (rectangleOverlapsPolygon(_schedRect, _collisionPolyPts, 2) && !needsScaleUp) {
+      needsScaleUp = true;
+      logger.warn(
+        "[PDFKit] ⚠️  Split schedule composite overlaps polygon after fluid search — promoting needsScaleUp for paper-size escalation"
+      );
+    }
+  }
+
   // ── ① Schedule balancing is applied at DRAW time by each generator (via the
   // shared balanceScheduleTables helper), NOT here. The planner can't reach the
   // figure polygon on the PDF side (polyPts=[] and mapFeatureBounds.pdfPoints is

@@ -73,4 +73,23 @@ describe('renderOutsideFigureTickMarks — grid compliance', () => {
     const yLabels = decodedText.match(/Y = [+-][\d ]+/g) || []
     expect(yLabels.length).toBeGreaterThan(4)
   })
+
+  test('left/right tick corners clamp inward when they would overflow the map edge (Westing axis)', async () => {
+    // shabaniLikePlan (defined above): a figure whose Y (Westing) extent,
+    // once snapped to the tick interval, would place a corner tick's label
+    // past the left or right map edge. Reuses the same Y0/X0/W/H shape as
+    // tickMarkParity.test.js's sharedPlan fixture.
+    const { pdfBuffer } = await generateGeoPDF(shabaniLikePlan, fakeLogger)
+    const decodedText = extractPdfText(pdfBuffer)
+    const yLabels = (decodedText.match(/Y = [+-][\d ]+/g) || []).map(s => s.trim())
+    // Before this task's fix, PDF's Y bounds were always the raw
+    // actualY_min/actualY_max (97300/97800 for this fixture) — never
+    // clamped. After the fix, if the left or right edge would overflow,
+    // the corresponding bound steps inward by _tickIntervalM. This
+    // fixture's DXF corner-cross output (already correct, unaffected by
+    // this task) shows Y clamping to 97400-97700 — assert PDF now matches.
+    expect(yLabels).toEqual(expect.arrayContaining(['Y = +97 400', 'Y = +97 700']))
+    expect(yLabels).not.toEqual(expect.arrayContaining(['Y = +97 300']))
+    expect(yLabels).not.toEqual(expect.arrayContaining(['Y = +97 800']))
+  })
 })

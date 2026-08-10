@@ -1679,10 +1679,47 @@ function calculateTickMarkBounds(
     }
   }
 
+  // Adjust Y (Westing) bounds for map left/right edges — mirrors the X-axis
+  // (Southing) clamp above, and ports DXF addCornerCrosses's four-sided
+  // clamp: PDF previously had no horizontal-edge clamp at all. Larger Y
+  // maps toward the LEFT page edge, smaller Y toward the RIGHT (verified
+  // empirically against transformCoords — see
+  // docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md).
+  let leftY = actualY_max;
+  let rightY = actualY_min;
+
+  const leftPdfPoint = transformCoords(actualY_max, actualX_min, extent, mapBounds);
+  if (leftPdfPoint.x < mapBounds.x + MAP_EDGE_MARGIN) {
+    let adjustedY = actualY_max;
+    let adjustedPdfPoint = leftPdfPoint;
+    while (
+      adjustedPdfPoint.x < mapBounds.x + MAP_EDGE_MARGIN &&
+      adjustedY > actualY_min
+    ) {
+      adjustedY -= _tickIntervalM;
+      adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);
+    }
+    leftY = adjustedY;
+  }
+
+  const rightPdfPoint = transformCoords(actualY_min, actualX_min, extent, mapBounds);
+  if (rightPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN) {
+    let adjustedY = actualY_min;
+    let adjustedPdfPoint = rightPdfPoint;
+    while (
+      adjustedPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN &&
+      adjustedY < actualY_max
+    ) {
+      adjustedY += _tickIntervalM;
+      adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);
+    }
+    rightY = adjustedY;
+  }
+
   // Generate tick points along all 4 edges at a scale-safe interval (30cm
   // ruler compliance) instead of just the 4 corners.
   const _tickPoints = computeGridTickPositions({
-    aMin: actualY_min, aMax: actualY_max, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
+    aMin: rightY, aMax: leftY, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
   });
   const tickMarks = _tickPoints.map((pt, i) => ({ name: `grid-${i}`, y: pt.a, x: pt.b }));
 
@@ -1976,8 +2013,45 @@ function renderOutsideFigureTickMarks(
     }
   }
 
+  // Adjust Y (Westing) bounds for map left/right edges — mirrors the X-axis
+  // (Southing) clamp above, and ports DXF addCornerCrosses's four-sided
+  // clamp: PDF previously had no horizontal-edge clamp at all. Larger Y
+  // maps toward the LEFT page edge, smaller Y toward the RIGHT (verified
+  // empirically against transformCoords — see
+  // docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md).
+  let leftY = actualY_max;
+  let rightY = actualY_min;
+
+  const leftPdfPoint = transformCoords(actualY_max, actualX_min, extent, mapBounds);
+  if (leftPdfPoint.x < mapBounds.x + MAP_EDGE_MARGIN) {
+    let adjustedY = actualY_max;
+    let adjustedPdfPoint = leftPdfPoint;
+    while (
+      adjustedPdfPoint.x < mapBounds.x + MAP_EDGE_MARGIN &&
+      adjustedY > actualY_min
+    ) {
+      adjustedY -= _tickIntervalM;
+      adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);
+    }
+    leftY = adjustedY;
+  }
+
+  const rightPdfPoint = transformCoords(actualY_min, actualX_min, extent, mapBounds);
+  if (rightPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN) {
+    let adjustedY = actualY_min;
+    let adjustedPdfPoint = rightPdfPoint;
+    while (
+      adjustedPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN &&
+      adjustedY < actualY_max
+    ) {
+      adjustedY += _tickIntervalM;
+      adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);
+    }
+    rightY = adjustedY;
+  }
+
   const _tickPoints = computeGridTickPositions({
-    aMin: actualY_min, aMax: actualY_max, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
+    aMin: rightY, aMax: leftY, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
   });
   const tickMarks = _tickPoints.map((pt, i) => ({ name: `grid-${i}`, y: pt.a, x: pt.b }));
 

@@ -6,14 +6,17 @@
 
 **Architecture:** Port DXF's `addCornerCrosses` unified-interval design into PDF's two near-duplicate tick-bound functions (`calculateTickMarkBounds`, `renderOutsideFigureTickMarks` in `pdfkitGeoPDF.js`), replacing their legacy dual grid-snap system with a single `chooseTickIntervalMetres(scaleDenominator)`-driven computation. No changes to DXF (already correct) or to tick-spacing logic (`computeGridTickPositions`, `chooseTickIntervalMetres` themselves) — only how the corner bounds fed into them are computed.
 
+**Revision note (added after Task 1 shipped):** Task 2's original test upgrade (assert real coordinate-value parity, not just count) surfaced a *second*, separate, pre-existing PDF/DXF divergence that Task 1 was never scoped to fix — an inward "clamp to drawing area" stage that PDF only applies to the Southing (top/bottom) axis, while DXF's `addCornerCrosses` applies it to all four sides. Scope extended (confirmed with user) to add the missing Westing (left/right) clamp to PDF, inserted as a new Task 2, pushing the original test-upgrade task to Task 3. See the spec's "Revision note" and "Design: Part 2" sections for the full root-cause trace and empirically-verified axis-direction math.
+
 **Tech Stack:** Node.js (ESM), Jest (`--experimental-vm-modules`), pdfkit. No new dependencies.
 
 ## Global Constraints
 
-- Do not modify `dxfGenerator.js` or `addCornerCrosses` — already correct, the reference implementation this port matches.
+- Do not modify `dxfGenerator.js` or `addCornerCrosses` — already correct, the reference implementation both Task 1 and Task 2 port from.
 - Do not modify `computeGridTickPositions` or `chooseTickIntervalMetres` in `app-shared/block-definitions.js` — only their call sites' inputs change.
-- Both `calculateTickMarkBounds` and `renderOutsideFigureTickMarks` must receive the identical change — they must stay in sync with each other (one computes reserved bounds for collision/placement, the other draws the actual ticks; today they already use the same legacy formula and must continue to match after this fix).
-- Do not deduplicate the two functions into one shared implementation — out of scope per the spec's rejected-alternatives section; keep them as two near-duplicate functions, both updated identically.
+- Both `calculateTickMarkBounds` and `renderOutsideFigureTickMarks` must receive identical changes in every task — they must stay in sync with each other (one computes reserved bounds for collision/placement, the other draws the actual ticks).
+- Do not deduplicate the two functions into one shared implementation — out of scope per the spec's rejected-alternatives section; keep them as two near-duplicate functions, both updated identically in every task.
+- Task 2's new left/right clamp must not add a title-block-style secondary obstruction check — DXF's `addCornerCrosses` only checks against a single drawing-area rectangle for all four sides; matching that keeps the addition scoped to what the reference implementation actually does.
 
 ---
 
@@ -21,11 +24,11 @@
 
 **Files:**
 - Modify: `app-backend/src/services/pdfkitGeoPDF.js` — `calculateTickMarkBounds` (~line 1555-1694) and `renderOutsideFigureTickMarks` (~line 1791-1994)
-- Test: `app-backend/src/services/__tests__/tickMarkParity.test.js` (upgraded in Task 2, after this task's fix is verified working)
+- Test: `app-backend/src/services/__tests__/tickMarkParity.test.js` (upgraded in Task 3, after Task 1 and Task 2's fixes are both verified working)
 
 **Interfaces:**
 - Consumes: `chooseTickIntervalMetres(scaleDenominator)` (already imported in `pdfkitGeoPDF.js` from `app-shared/block-definitions.js`, already called later in both functions today — this task only moves the call earlier and removes the later duplicate).
-- Produces: no new exports, no signature changes to either function. Both functions' returned tick-bound/tick-mark data now uses corner values computed via `chooseTickIntervalMetres` instead of the legacy 5m/10m/50m rule — this is the behavior change Task 2's tests verify.
+- Produces: no new exports, no signature changes to either function. Both functions' returned tick-bound/tick-mark data now uses corner values computed via `chooseTickIntervalMetres` instead of the legacy 5m/10m/50m rule — this is the behavior change Task 3's tests verify (alongside Task 2's clamp fix).
 
 Read the two functions first (`calculateTickMarkBounds` starts at line 1555, `renderOutsideFigureTickMarks` at line 1791 in the current `main`) to confirm exact line numbers haven't drifted before editing — match by the content shown below, not raw line numbers, if they have.
 
@@ -312,13 +315,141 @@ git commit -m "fix(pdf): use scale-aware tick interval for corner bounds, matchi
 
 ---
 
-## Task 2: Upgrade the parity test to real coordinate-value parity, full suite, visual verification
+## Task 2: Port DXF's four-sided clamp — add the missing Westing (left/right) clamp to PDF
+
+**Files:**
+- Modify: `app-backend/src/services/pdfkitGeoPDF.js` — `calculateTickMarkBounds` and `renderOutsideFigureTickMarks` (same two functions as Task 1)
+
+**Interfaces:**
+- Consumes: `transformCoords(y, x, extent, mapBounds)` (already imported in this file, from `pdfkitGeoPDF/geometry.js`), `MAP_EDGE_MARGIN` (already declared as a local const in both functions), `_tickIntervalM`, `actualY_min`/`actualY_max`/`actualX_min` (all produced by Task 1's change, already in scope).
+- Produces: no new exports. The `computeGridTickPositions` call's `aMin`/`aMax` arguments change from `actualY_min`/`actualY_max` to the new `rightY`/`leftY` variables this task introduces.
+
+- [ ] **Step 1: Write the failing test**
+
+Add a temporary, narrowly-scoped test to `app-backend/src/services/__tests__/pdfkitGeoPDF.tickMarks.test.js` (read it first to match its existing style) that will be superseded by Task 3's broader parity test but proves this specific fix in isolation first:
+
+```js
+  test('left/right tick corners clamp inward when they would overflow the map edge (Westing axis)', async () => {
+    // sharedPlan-style fixture from tickMarkParity.test.js: a figure whose
+    // Y (Westing) extent, once snapped to the tick interval, would place a
+    // corner tick's label past the left or right map edge. Reuse the same
+    // Y0/X0/W/H shape (import or inline it — match whichever this file's
+    // existing tests already do for their own fixtures).
+    const { pdfBuffer } = await generateGeoPDF(sharedPlan, fakeLogger)
+    const decodedText = extractPdfText(pdfBuffer)
+    const yLabels = (decodedText.match(/Y = [+-][\d ]+/g) || []).map(s => s.trim())
+    // Before this task's fix, PDF's Y bounds were always the raw
+    // actualY_min/actualY_max (97300/97800 for this fixture) — never
+    // clamped. After the fix, if the left or right edge would overflow,
+    // the corresponding bound steps inward by _tickIntervalM. This
+    // fixture's DXF corner-cross output (already correct, unaffected by
+    // this task) shows Y clamping to 97400-97700 — assert PDF now matches.
+    expect(yLabels).toEqual(expect.arrayContaining(['Y = +97 400', 'Y = +97 700']))
+    expect(yLabels).not.toEqual(expect.arrayContaining(['Y = +97 300']))
+    expect(yLabels).not.toEqual(expect.arrayContaining(['Y = +97 800']))
+  })
+```
+
+If `pdfkitGeoPDF.tickMarks.test.js` doesn't already import `generateGeoPDF`,
+`extractPdfText`-equivalent helpers, or a `sharedPlan`-style fixture, either
+import them from `tickMarkParity.test.js` (if exported) or inline the exact
+`sharedPlan` object from `tickMarkParity.test.js` (`Y0 = 97360, X0 =
+2247150, W = 370, H = 250` and its derived `parcels`/`beacons`/
+`outsideFigure`/`outsideFigureData`/`sheetSize: 'ISO_A2'`/`scale: { value:
+500, label: '1:500' }` — copy verbatim, it's a self-contained plan object
+at the top of that file).
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js pdfkitGeoPDF.tickMarks -t "left/right tick corners"`
+
+Expected: FAIL — `yLabels` still contains `'Y = +97 300'` and `'Y = +97 800'` (the un-clamped raw bounds), and does not yet contain the clamped `97400`/`97700` values, because PDF has no Westing clamp logic yet.
+
+- [ ] **Step 3: Implement the fix**
+
+In both `calculateTickMarkBounds` and `renderOutsideFigureTickMarks`,
+insert this new block immediately after the existing Southing
+(`topX`/`bottomX`) clamp logic (i.e., after the "Adjust bottom X for map
+bounds" block) and before the `computeGridTickPositions` call:
+
+```js
+
+  // Adjust Y (Westing) bounds for map left/right edges — mirrors the X-axis
+  // (Southing) clamp above, and ports DXF addCornerCrosses's four-sided
+  // clamp: PDF previously had no horizontal-edge clamp at all. Larger Y
+  // maps toward the LEFT page edge, smaller Y toward the RIGHT (verified
+  // empirically against transformCoords — see
+  // docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md).
+  let leftY = actualY_max;
+  let rightY = actualY_min;
+
+  const leftPdfPoint = transformCoords(actualY_max, actualX_min, extent, mapBounds);
+  if (leftPdfPoint.x < mapBounds.x + MAP_EDGE_MARGIN) {
+    let adjustedY = actualY_max;
+    let adjustedPdfPoint = leftPdfPoint;
+    while (
+      adjustedPdfPoint.x < mapBounds.x + MAP_EDGE_MARGIN &&
+      adjustedY > actualY_min
+    ) {
+      adjustedY -= _tickIntervalM;
+      adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);
+    }
+    leftY = adjustedY;
+  }
+
+  const rightPdfPoint = transformCoords(actualY_min, actualX_min, extent, mapBounds);
+  if (rightPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN) {
+    let adjustedY = actualY_min;
+    let adjustedPdfPoint = rightPdfPoint;
+    while (
+      adjustedPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN &&
+      adjustedY < actualY_max
+    ) {
+      adjustedY += _tickIntervalM;
+      adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);
+    }
+    rightY = adjustedY;
+  }
+```
+
+Then change the `computeGridTickPositions` call in both functions from:
+
+```js
+  const _tickPoints = computeGridTickPositions({
+    aMin: actualY_min, aMax: actualY_max, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
+  });
+```
+
+to:
+
+```js
+  const _tickPoints = computeGridTickPositions({
+    aMin: rightY, aMax: leftY, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
+  });
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js pdfkitGeoPDF.tickMarks`
+
+Expected: PASS — all tests in the file green, including the new one.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app-backend/src/services/pdfkitGeoPDF.js app-backend/src/services/__tests__/pdfkitGeoPDF.tickMarks.test.js
+git commit -m "fix(pdf): add missing Westing left/right tick clamp, matching DXF's four-sided clamp"
+```
+
+---
+
+## Task 3: Upgrade the parity test to real coordinate-value parity, full suite, visual verification
 
 **Files:**
 - Modify: `app-backend/src/services/__tests__/tickMarkParity.test.js`
 
 **Interfaces:**
-- Consumes: `generateGeoPDF`, `generateDXF` (already imported in the test file), the fix from Task 1.
+- Consumes: `generateGeoPDF`, `generateDXF` (already imported in the test file), the fixes from Task 1 and Task 2.
 - Produces: nothing new — test-only changes plus verification.
 
 - [ ] **Step 1: Upgrade the test to assert coordinate-value parity, not just count**
@@ -414,7 +545,7 @@ that imports `sharedPlan` from `tickMarkParity.test.js` (or reconstructs an
 equivalent small fixture), calls both `generateGeoPDF` and `generateDXF` on
 it, writes the PDF to a file, and logs both formats' extracted `Y =`/`X =`
 tick label sets. Confirm:
-- The two label sets are now identical (matching Task 2's test assertion).
+- The two label sets are now identical (matching this task's test assertion).
 - The rendered PDF's corner tick labels look sane (no visually misplaced or
   overlapping ticks) — open/read the PDF, don't just trust the warnings
   object.
@@ -426,6 +557,6 @@ beyond Steps 3/4's commits).
 
 ## Self-Review Notes
 
-- **Spec coverage:** The design's single core change (unify corner-snap onto `chooseTickIntervalMetres`) is applied identically to both functions in Task 1, exactly as the spec requires. The spec's edge cases (scale threading already correct, no new degenerate-value risk, internal PDF self-consistency preserved, DXF untouched) are all satisfied by construction — Task 1 doesn't touch DXF, and both PDF functions get the same substitution so they can't drift apart from each other. The spec's testing section (value-parity upgrade, full suite with snapshot, visual verification) is fully covered by Task 2.
+- **Spec coverage:** Design Part 1 (interval-snap unification) is applied identically to both functions in Task 1 — already implemented and task-reviewed with zero findings. Design Part 2 (Westing left/right clamp) is applied identically to both functions in Task 2, using the empirically-verified axis-direction math and mirroring the existing Southing clamp's structure. The spec's edge cases for both parts (scale threading, no new degenerate-value risk, internal PDF self-consistency, DXF untouched, loop-guard safety, axis direction verified not assumed) are satisfied by construction. The spec's testing section (value-parity upgrade, full suite with snapshot, visual verification) is covered by Task 3, which now depends on both Task 1 and Task 2 being complete first.
 - **No placeholders:** every step has literal, complete code or exact before/after text.
-- **Type/name consistency:** `_tickIntervalM`, `actualY_min`/`actualY_max`/`actualX_min`/`actualX_max` are used identically across both functions in Task 1 and referenced consistently in Task 2's test comment; no renamed variables between tasks.
+- **Type/name consistency:** `_tickIntervalM`, `actualY_min`/`actualY_max`/`actualX_min`/`actualX_max` (Task 1) and `leftY`/`rightY` (Task 2, consumed by Task 3's assertions only indirectly via rendered output) are used identically across both functions in each task; no renamed variables between tasks.

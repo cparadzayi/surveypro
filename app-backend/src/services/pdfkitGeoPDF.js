@@ -1706,9 +1706,12 @@ function calculateTickMarkBounds(
   if (rightPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN) {
     let adjustedY = actualY_min;
     let adjustedPdfPoint = rightPdfPoint;
+    // Guard against crossing the already-finalized left bound (mirrors DXF
+    // addCornerCrosses's "don't cross over" guard, e.g. xR - G > areaL) —
+    // without this, a figure overflowing both edges could invert rightY > leftY.
     while (
       adjustedPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN &&
-      adjustedY < actualY_max
+      adjustedY < leftY
     ) {
       adjustedY += _tickIntervalM;
       adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);
@@ -2040,9 +2043,12 @@ function renderOutsideFigureTickMarks(
   if (rightPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN) {
     let adjustedY = actualY_min;
     let adjustedPdfPoint = rightPdfPoint;
+    // Guard against crossing the already-finalized left bound (mirrors DXF
+    // addCornerCrosses's "don't cross over" guard, e.g. xR - G > areaL) —
+    // without this, a figure overflowing both edges could invert rightY > leftY.
     while (
       adjustedPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN &&
-      adjustedY < actualY_max
+      adjustedY < leftY
     ) {
       adjustedY += _tickIntervalM;
       adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);

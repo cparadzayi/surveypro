@@ -145,6 +145,12 @@ export function getNearestValidScale(targetScale) {
 // Regulation 32(2) - Minimum figure size
 export const MIN_FIGURE_SIZE_MM2 = 650
 
+// Surveyor-General relaxation (2026): the mandatory 1:500 General Plan scale
+// applies only when the majority of a township's stands are at or below this
+// area. Townships (developed or undeveloped) where the majority of stands
+// exceed this threshold may use any SI 727 prescribed scale.
+export const TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 = 200
+
 // Layout component dimensions
 export const LAYOUT_COMPONENTS = {
   titleBlock: { heightSmall: 60, heightMedium: 80, heightLarge: 100 },

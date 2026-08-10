@@ -420,6 +420,51 @@ export function formatAreaValue(areaM2) {
   }
 }
 
+/**
+ * Determine whether a township General Plan must use exactly 1:500, per the
+ * Surveyor-General's area-majority rule: mandatory only when the majority of
+ * stands (excluding Outside Figure) have area <= thresholdM2. Ties resolve to
+ * the mandate. Shared by pdfkitGeoPDF.js, dxfGenerator.js, and
+ * surveyPlanPreview.js so all three can never resolve this rule differently
+ * for the same parcels.
+ */
+export function resolveTownshipScaleMandate(parcels, thresholdM2 = 200) {
+  const features = parcels?.features || []
+  let atOrBelow = 0
+  let above = 0
+  for (const f of features) {
+    const props = f?.properties || {}
+    const isOutsideFigure =
+      props.isOutsideFigure === true ||
+      props.metadata?.isOutsideFigure === true ||
+      String(props.stand || '').toLowerCase().includes('outside figure') ||
+      String(props.designation || '').toLowerCase().includes('outside figure')
+    if (isOutsideFigure) continue
+
+    let area = Number(props.area_m2)
+    if (!Number.isFinite(area) || area <= 0) {
+      area = shoelaceAreaM2(f?.geometry?.coordinates?.[0])
+    }
+    if (area <= thresholdM2) atOrBelow++
+    else above++
+  }
+  return { mandatory500: atOrBelow >= above }
+}
+
+function shoelaceAreaM2(ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return 0
+  let coords = ring
+  // Unwrap double-nested [[ring]] the same way geopdf-vector.js does.
+  if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) coords = coords[0]
+  let a = 0
+  for (let i = 0; i < coords.length; i++) {
+    const [x1, y1] = coords[i]
+    const [x2, y2] = coords[(i + 1) % coords.length]
+    a += x1 * y2 - x2 * y1
+  }
+  return Math.abs(a / 2)
+}
+
 // Edge side-length (metres) for the Outside Figure Data table AND the figure
 // edge labels. Frontend / data payloads carry the side length under either
 // `distance` or `metres`; read both from a single helper so the OFD "Metres"

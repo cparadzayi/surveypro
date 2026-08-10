@@ -1,5 +1,34 @@
 # PDF/DXF coordinate tick corner-rounding parity
 
+## Revision note 3 (post-Task-3 attempt, scope stopped here — final)
+
+Task 3 (direction-aware footprint margins, "Design: Part 3" below) was
+implemented exactly as designed, then found empirically ineffective: for
+the test fixture, the snapped tick corner overshoots `mapBounds` by ~73pt
+even at a **zero** clamp margin — no margin-constant value Task 3 could
+produce (15-70pt) is remotely large enough to close a 73pt+ gap. Tracing
+further: DXF keeps the same coordinate row not because of a smaller margin
+constant, but because **PDF's `mapBounds` reserves less room for the same
+figure than DXF's content area does** — a `mapBounds`/content-area sizing
+question, not a tick-clamp-margin question. This is materially different
+in kind from Parts 1 and 2 (both were narrow, well-bounded gaps in the
+tick-corner logic itself); investigating it properly means understanding
+how PDF and DXF each allocate page/drawing-area space for a given figure —
+a broader, separate investigation.
+
+**Decision (confirmed with user):** stop here. Task 3's code is reverted
+(implemented complexity with no demonstrated benefit isn't worth keeping).
+Parts 1 and 2 — both genuine, verified, task-reviewed fixes — ship as the
+deliverable. The `mapBounds`/content-area sizing gap is written up as its
+own separate, tracked, NOT-yet-investigated item (see "Out of scope"
+below) rather than pursued further in this spec. `tickMarkParity.test.js`
+is corrected to characterize the actual current state honestly: Parts 1
+and 2 are verified working (PDF now uses the same scale-aware interval and
+clamps all 4 edges, matching DXF's mechanisms), and the residual count
+mismatch (10 PDF vs 12 DXF Y-labels for this fixture) is precisely
+root-caused to the mapBounds gap, not left as an unexplained "count-only"
+placeholder the way the pre-existing test was.
+
 ## Revision note (post-Task-1, second root cause discovered)
 
 Task 1 (unifying the floor/ceil corner-snap interval, merged as its own
@@ -298,7 +327,16 @@ rectangle for all four sides (no per-side secondary check beyond that), so
 matching that keeps this addition scoped to exactly what the reference
 implementation does, without inventing new behavior DXF doesn't have either.
 
-## Design: Part 3 (direction-aware margins — new, Task 4)
+## Design: Part 3 (direction-aware margins — attempted as Task 3, REVERTED, not shipped)
+
+**This design was implemented and then reverted — see "Revision note 3" at
+the top of this document.** It is correct as a port of DXF's per-direction
+margin structure, but empirically does not close the gap it was designed
+for for this fixture, because the actual gap is a `mapBounds`/content-area
+sizing difference (Part 3 assumed the gap was margin-size calibration).
+Left here for reference in case a future investigation into the
+`mapBounds` sizing gap finds this margin work useful as a component of a
+larger fix — it is not, on its own, wrong, just insufficient.
 
 DXF's `addCornerCrosses` (`dxfGenerator.js:908-936`) computes three
 distinct margins from the same physical footprint constants
@@ -457,6 +495,16 @@ anything else in either function before deciding whether to delete it).
 
 ## Out of scope
 
+- **The PDF/DXF `mapBounds`/content-area sizing gap** (found while
+  attempting Part 3, see "Revision note 3"): for some figures, PDF's
+  `mapBounds` (the drawing rectangle, narrowed by title block, schedule,
+  etc.) reserves less room than DXF's content area does for the same
+  input — verified for `tickMarkParity.test.js`'s fixture, where PDF's
+  snapped tick corner lands ~73pt outside `mapBounds` even at a zero
+  clamp margin. This is a distinct, broader question than tick-corner
+  rounding (how each format allocates page/drawing space for a figure at
+  all, not just where ticks land within that space) and needs its own
+  separate investigation and spec — not pursued here.
 - Any change to `dxfGenerator.js`'s `addCornerCrosses` — already correct,
   untouched.
 - Any change to tick *spacing* logic (`computeGridTickPositions`,

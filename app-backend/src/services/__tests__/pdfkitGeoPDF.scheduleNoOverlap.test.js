@@ -36,25 +36,18 @@ describe('Schedule of Areas placement no longer collides when outsideFigure is a
   })
 
   test(
-    'sgSignature has no clear slot on sampleRealisticPlan at its auto-escalated size — ' +
-      'documented limitation: the only width-sized gap (below the title block, above the ' +
-      'figure) is 119.8pt tall but only 105.8pt usable after clearances, 4.2pt short of the ' +
-      '110pt block height; see docs/superpowers/specs/2026-08-09-relocation-pass-figure-accuracy-design.md',
+    'sgSignature no longer overlaps on sampleRealisticPlan — previously a documented, ' +
+      'accepted limitation (4.2pt short of clearance, see ' +
+      'docs/superpowers/specs/2026-08-09-relocation-pass-figure-accuracy-design.md), ' +
+      'resolved as an unplanned side effect of the corner-rounding parity work (Task 2, ' +
+      'commit 835c178): PDF gained a left/right tick clamp it previously lacked, which ' +
+      'shifted the tick-mark obstacle set enough to free the ~4.2pt sgSignature was ' +
+      'previously missing — see docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md',
     async () => {
-      // Intentionally brittle: 200x110 is sgSignature's configured block size, not a
-      // fixture-derived value. If block-definitions.js changes those dimensions, this
-      // test breaking is expected — update the expectation deliberately, don't chase it
-      // as a mystery failure.
       const logger = { info: () => {}, warn: () => {}, error: () => {} }
       const result = await generateGeoPDF(sampleRealisticPlan, logger)
 
-      expect(result.warnings.sgSignatureOverlapsPolygon).toBeDefined()
-      expect(result.warnings.sgSignatureOverlapsPolygon.position).toEqual({
-        x: expect.any(Number),
-        y: expect.any(Number),
-        width: 200,
-        height: 110,
-      })
+      expect(result.warnings.sgSignatureOverlapsPolygon).toBeUndefined()
     }
   )
 

@@ -1588,22 +1588,18 @@ function calculateTickMarkBounds(
     maxX = Math.max(maxX, x);
   });
 
-  // Find grid coordinates (multiples of 50) - but keep actual polygon extent for tick placement
-  const GRID_INTERVAL = 50;
-  const gridY_min = Math.floor(minY / GRID_INTERVAL) * GRID_INTERVAL;
-  const gridY_max = Math.ceil(maxY / GRID_INTERVAL) * GRID_INTERVAL;
-  const gridX_min = Math.floor(minX / GRID_INTERVAL) * GRID_INTERVAL;
-  const gridX_max = Math.ceil(maxX / GRID_INTERVAL) * GRID_INTERVAL;
-
-  // Round Y (Westing) values to nearest multiple of 5 or 10 for clean cartographic labels
-  // Use multiples of 10 when the range is large (>200m), multiples of 5 otherwise
-  const _yRange = maxY - minY;
-  const _ySnap  = _yRange > 200 ? 10 : 5;
-  const actualY_min = Math.floor(minY / _ySnap) * _ySnap; // Round down to nearest snap
-  const actualY_max = Math.ceil(maxY  / _ySnap) * _ySnap; // Round up to nearest snap
-  // X (Southing) values: round to nearest multiple of 50 for clean cartographic labels
-  const actualX_min = Math.floor(minX / GRID_INTERVAL) * GRID_INTERVAL; // Round down to nearest 50
-  const actualX_max = Math.ceil(maxX  / GRID_INTERVAL) * GRID_INTERVAL; // Round up to nearest 50
+  // Corner bounds snap to the same scale-aware interval used for tick
+  // spacing (chooseTickIntervalMetres) — matches DXF's addCornerCrosses
+  // exactly, so both formats compute the same corner coordinates for the
+  // same plan. Previously this used a separate legacy 5m/10m/50m rule
+  // (predating this interval system) while only using the interval for
+  // spacing between ticks, not the bounds themselves — see
+  // docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md
+  const _tickIntervalM = chooseTickIntervalMetres(scaleDenominator);
+  const actualY_min = Math.floor(minY / _tickIntervalM) * _tickIntervalM;
+  const actualY_max = Math.ceil(maxY  / _tickIntervalM) * _tickIntervalM;
+  const actualX_min = Math.floor(minX / _tickIntervalM) * _tickIntervalM;
+  const actualX_max = Math.ceil(maxX  / _tickIntervalM) * _tickIntervalM;
 
   const TICK_LENGTH = 12; // Match renderOutsideFigureTickMarks()
   const MAP_EDGE_MARGIN = 30;
@@ -1613,17 +1609,17 @@ function calculateTickMarkBounds(
   let topX = actualX_min;
   let bottomX = actualX_max;
 
-  const topPdfPoint = transformCoords(gridY_min, gridX_min, extent, mapBounds);
+  const topPdfPoint = transformCoords(actualY_min, actualX_min, extent, mapBounds);
   if (topPdfPoint.y < mapBounds.y + MAP_EDGE_MARGIN) {
-    let adjustedX = gridX_min;
+    let adjustedX = actualX_min;
     let adjustedPdfPoint = topPdfPoint;
     while (
       adjustedPdfPoint.y < mapBounds.y + MAP_EDGE_MARGIN &&
-      adjustedX < gridX_max
+      adjustedX < actualX_max
     ) {
-      adjustedX += GRID_INTERVAL;
+      adjustedX += _tickIntervalM;
       adjustedPdfPoint = transformCoords(
-        gridY_min,
+        actualY_min,
         adjustedX,
         extent,
         mapBounds
@@ -1635,7 +1631,7 @@ function calculateTickMarkBounds(
   // Adjust for title block
   if (titleBlockBounds) {
     const adjustedTopPdfPoint = transformCoords(
-      gridY_min,
+      actualY_min,
       topX,
       extent,
       mapBounds
@@ -1651,26 +1647,26 @@ function calculateTickMarkBounds(
           titleBlockBounds.y +
             titleBlockBounds.height +
             TITLE_BLOCK_CLEARANCE &&
-        adjustedX < gridX_max
+        adjustedX < actualX_max
       ) {
-        adjustedX += GRID_INTERVAL;
-        testPdfPoint = transformCoords(gridY_min, adjustedX, extent, mapBounds);
+        adjustedX += _tickIntervalM;
+        testPdfPoint = transformCoords(actualY_min, adjustedX, extent, mapBounds);
       }
-      if (adjustedX < gridX_max) topX = adjustedX;
+      if (adjustedX < actualX_max) topX = adjustedX;
     }
   }
 
   // Adjust bottom X for map bounds
   const bottomPdfPoint = transformCoords(
-    gridY_min,
-    gridX_max,
+    actualY_min,
+    actualX_max,
     extent,
     mapBounds
   );
   if (bottomPdfPoint.y > mapBounds.y + mapBounds.height - MAP_EDGE_MARGIN) {
-    const adjustedX = gridX_max - GRID_INTERVAL;
+    const adjustedX = actualX_max - _tickIntervalM;
     const adjustedPdfPoint = transformCoords(
-      gridY_min,
+      actualY_min,
       adjustedX,
       extent,
       mapBounds
@@ -1685,7 +1681,6 @@ function calculateTickMarkBounds(
 
   // Generate tick points along all 4 edges at a scale-safe interval (30cm
   // ruler compliance) instead of just the 4 corners.
-  const _tickIntervalM = chooseTickIntervalMetres(scaleDenominator);
   const _tickPoints = computeGridTickPositions({
     aMin: actualY_min, aMax: actualY_max, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
   });
@@ -1850,16 +1845,21 @@ function renderOutsideFigureTickMarks(
     )}, ${maxY.toFixed(0)}], X=[${minX.toFixed(0)}, ${maxX.toFixed(0)}]`
   );
 
-  // Find grid coordinates (multiples of 50) near the polygon corners
-  // Round to nearest 50 OUTSIDE the polygon bounds
-  const GRID_INTERVAL = 50; // Use multiples of 50
-  const gridY_min = Math.floor(minY / GRID_INTERVAL) * GRID_INTERVAL; // Left (smaller Y = more West)
-  const gridY_max = Math.ceil(maxY / GRID_INTERVAL) * GRID_INTERVAL; // Right (larger Y = more East)
-  const gridX_min = Math.floor(minX / GRID_INTERVAL) * GRID_INTERVAL; // Top (smaller X = more North)
-  const gridX_max = Math.ceil(maxX / GRID_INTERVAL) * GRID_INTERVAL; // Bottom (larger X = more South)
+  // Corner bounds snap to the same scale-aware interval used for tick
+  // spacing (chooseTickIntervalMetres) — matches DXF's addCornerCrosses
+  // exactly, so both formats compute the same corner coordinates for the
+  // same plan. Previously this used a separate legacy 5m/10m/50m rule
+  // (predating this interval system) while only using the interval for
+  // spacing between ticks, not the bounds themselves — see
+  // docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md
+  const _tickIntervalM = chooseTickIntervalMetres(scaleDenominator);
+  const actualY_min = Math.floor(minY / _tickIntervalM) * _tickIntervalM;
+  const actualY_max = Math.ceil(maxY  / _tickIntervalM) * _tickIntervalM;
+  const actualX_min = Math.floor(minX / _tickIntervalM) * _tickIntervalM;
+  const actualX_max = Math.ceil(maxX  / _tickIntervalM) * _tickIntervalM;
 
   logger.info(
-    `[PDFKit] 📐 Grid tick coordinates (50m intervals): Y=[${gridY_min}, ${gridY_max}], X=[${gridX_min}, ${gridX_max}]`
+    `[PDFKit] 📐 Grid tick coordinates (${_tickIntervalM}m intervals): Y=[${actualY_min}, ${actualY_max}], X=[${actualX_min}, ${actualX_max}]`
   );
 
   // Tick mark dimensions - FIELD READABLE at arm's length
@@ -1871,17 +1871,6 @@ function renderOutsideFigureTickMarks(
   const TITLE_BLOCK_CLEARANCE = 80; // Minimum clearance from title block (pt)
   const MAP_EDGE_MARGIN = 30; // Minimum margin from map edge (pt)
 
-  // Round Y (Westing) values to nearest multiple of 5 or 10 for clean cartographic labels
-  // Use multiples of 10 when the range is large (>200m), multiples of 5 otherwise
-  // This ensures tick mark labels show clean round numbers (SI 727 cartographic standard)
-  const _yRange = maxY - minY;
-  const _ySnap  = _yRange > 200 ? 10 : 5;
-  const actualY_min = Math.floor(minY / _ySnap) * _ySnap; // Round down to nearest snap
-  const actualY_max = Math.ceil(maxY  / _ySnap) * _ySnap; // Round up to nearest snap
-  // X (Southing) values: round to nearest multiple of 50 for clean cartographic labels
-  const actualX_min = Math.floor(minX / GRID_INTERVAL) * GRID_INTERVAL; // Round down to nearest 50
-  const actualX_max = Math.ceil(maxX  / GRID_INTERVAL) * GRID_INTERVAL; // Round up to nearest 50
-
   // Define 4 tick mark positions at ACTUAL polygon corners
   // For top ticks, move X inward (larger X = more South) to avoid title block
   // For bottom ticks, ensure they stay within map bounds
@@ -1890,9 +1879,9 @@ function renderOutsideFigureTickMarks(
 
   // Adjust top X to ensure it's within map bounds and below title block
   // Title block is typically at the top center of the map
-  const topPdfPoint = transformCoords(gridY_min, gridX_min, extent, mapBounds);
+  const topPdfPoint = transformCoords(actualY_min, actualX_min, extent, mapBounds);
   logger.info(
-    `[PDFKit] 📐 Top tick initial position: Cape Lo X=${gridX_min}, PDF y=${topPdfPoint.y.toFixed(
+    `[PDFKit] 📐 Top tick initial position: Cape Lo X=${actualX_min}, PDF y=${topPdfPoint.y.toFixed(
       1
     )}, mapBounds.y=${mapBounds.y.toFixed(1)}`
   );
@@ -1909,15 +1898,15 @@ function renderOutsideFigureTickMarks(
   // First ensure top ticks are within map bounds
   if (topPdfPoint.y < mapBounds.y + MAP_EDGE_MARGIN) {
     // Top tick is outside map bounds - move down
-    let adjustedX = gridX_min;
+    let adjustedX = actualX_min;
     let adjustedPdfPoint = topPdfPoint;
     while (
       adjustedPdfPoint.y < mapBounds.y + MAP_EDGE_MARGIN &&
-      adjustedX < gridX_max
+      adjustedX < actualX_max
     ) {
-      adjustedX += GRID_INTERVAL;
+      adjustedX += _tickIntervalM;
       adjustedPdfPoint = transformCoords(
-        gridY_min,
+        actualY_min,
         adjustedX,
         extent,
         mapBounds
@@ -1925,13 +1914,13 @@ function renderOutsideFigureTickMarks(
     }
     topX = adjustedX;
     logger.info(
-      `[PDFKit] 📐 Adjusted top tick marks from X=${gridX_min} to X=${topX} to stay within map bounds`
+      `[PDFKit] 📐 Adjusted top tick marks from X=${actualX_min} to X=${topX} to stay within map bounds`
     );
   }
 
   // Then check title block collision
   const adjustedTopPdfPoint = transformCoords(
-    gridY_min,
+    actualY_min,
     topX,
     extent,
     mapBounds
@@ -1947,12 +1936,12 @@ function renderOutsideFigureTickMarks(
     while (
       testPdfPoint.y <
         titleBlockBounds.y + titleBlockBounds.height + TITLE_BLOCK_CLEARANCE &&
-      adjustedX < gridX_max
+      adjustedX < actualX_max
     ) {
-      adjustedX += GRID_INTERVAL;
-      testPdfPoint = transformCoords(gridY_min, adjustedX, extent, mapBounds);
+      adjustedX += _tickIntervalM;
+      testPdfPoint = transformCoords(actualY_min, adjustedX, extent, mapBounds);
     }
-    if (adjustedX < gridX_max) {
+    if (adjustedX < actualX_max) {
       topX = adjustedX;
       logger.info(
         `[PDFKit] 📐 Adjusted top tick marks to X=${topX} to avoid title block`
@@ -1962,16 +1951,16 @@ function renderOutsideFigureTickMarks(
 
   // Ensure bottom tick marks stay within map bounds
   const bottomPdfPoint = transformCoords(
-    gridY_min,
-    gridX_max,
+    actualY_min,
+    actualX_max,
     extent,
     mapBounds
   );
   if (bottomPdfPoint.y > mapBounds.y + mapBounds.height - MAP_EDGE_MARGIN) {
     // Move bottom tick marks up (decrease X = move North) to stay within map
-    const adjustedX = gridX_max - GRID_INTERVAL;
+    const adjustedX = actualX_max - _tickIntervalM;
     const adjustedPdfPoint = transformCoords(
-      gridY_min,
+      actualY_min,
       adjustedX,
       extent,
       mapBounds
@@ -1982,12 +1971,11 @@ function renderOutsideFigureTickMarks(
     ) {
       bottomX = adjustedX;
       logger.info(
-        `[PDFKit] 📐 Adjusted bottom tick marks from X=${gridX_max} to X=${bottomX} to stay within map bounds`
+        `[PDFKit] 📐 Adjusted bottom tick marks from X=${actualX_max} to X=${bottomX} to stay within map bounds`
       );
     }
   }
 
-  const _tickIntervalM = chooseTickIntervalMetres(scaleDenominator);
   const _tickPoints = computeGridTickPositions({
     aMin: actualY_min, aMax: actualY_max, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
   });

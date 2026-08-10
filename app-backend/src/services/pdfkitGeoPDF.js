@@ -9,9 +9,10 @@ import {
   SI727_MARGINS,
   GENERAL_PLAN_RECORD_STATEMENT,
   GENERAL_PLAN_MARGIN_FOOTER,
+  TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, chooseTickIntervalMetres, computeGridTickPositions } from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, chooseTickIntervalMetres, computeGridTickPositions, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -10339,28 +10340,16 @@ function checkMarginConstraint(extentWidth, extentHeight, figureBounds, scaleDen
  * the drawing area so that no part or label extrudes into the margin zones.
  * If the initial scale violates this constraint, the next larger scale
  * denominator is tried until the constraint is satisfied.
+ *
+ * SI 727 Reg 32(3): a township general plan (developed or undeveloped) is
+ * mandated at exactly 1:500 only when the majority of its stands are <=200m2
+ * (Surveyor-General relaxation, see resolveTownshipScaleMandate in
+ * app-shared/block-definitions.js). When the majority of stands exceed
+ * 200m2, any SI 727 prescribed scale may be used -- the mandate no longer
+ * depends on planType alone.
  */
-/**
- * SI 727 Reg 32(3) maximum denominator per plan type.
- * Both township general plan types must not be plotted at a scale smaller than 1:500.
- * Extents too large to fit at 1:500 trigger multi-sheet tiling (needsTiling=true).
- */
-// SI 727 Reg 32(3) scale rules by plan type:
-//  • DEVELOPED-township general plan — mandated at EXACTLY 1:500 (no edge
-//    distances/directions are shown). Capped here (≤500) and floored in the
-//    enlarge step, so it resolves to exactly 1:500 (tiling if the figure is too
-//    big to fit at 1:500).
-//  • UNDEVELOPED-township general plan — NO fixed scale. It may take any
-//    suitable scale that keeps stand numbers, beacon labels and edge
-//    distances/directions legible (no overcrowding/overlap) at the print scale,
-//    so it is intentionally NOT listed here (uncapped — enlarge to the best fit,
-//    with label-crowding detection stepping finer when needed). This matches the
-//    frontend, which only applies the ceiling for 'general-developed'.
-const SI727_MAX_DENOMINATOR_BY_PLAN = {
-  'general-developed':   500,
-};
 
-function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceMinDenominator = 0, planType = null) {
+function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceMinDenominator = 0, planType = null, mandatory500 = false) {
   const extentWidth = extent.maxY - extent.minY;   // metres (Y = Westing)
   const extentHeight = extent.maxX - extent.minX;  // metres (X = Southing)
 
@@ -10415,23 +10404,34 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
       (extentHeight * 1000) / _mapHmm,
     );
     let _autoMaxIdx = SI727_PRESCRIBED_SCALES.findIndex(s => s.value >= _minFit);
-    // SI 727 Reg 32(3): a DEVELOPED-township general plan is mandated at exactly
-    // 1:500 → never enlarge it finer than 1:500 (the applyPlanTypeCeiling() cap
-    // below prevents coarser, so it lands exactly on 1:500; if the figure is too
-    // big to fit at 1:500 the cap flags needsTiling). An UNDEVELOPED-township
-    // plan MAY use larger (finer) scales to accommodate the edge distances +
-    // directions it must show, so it is NOT floored here — the ceiling still
-    // caps it no coarser than 1:500.
-    const _exactMandateDenom = planType === 'general-developed' ? 500 : 0;
+    // SI 727 Reg 32(3): a township general plan is mandated at exactly 1:500
+    // when mandatory500 is true (majority of stands <=200m2) -> never enlarge
+    // it finer than 1:500 (the applyPlanTypeCeiling() cap below prevents
+    // coarser, so it lands exactly on 1:500; if the figure is too big to fit
+    // at 1:500 the cap flags needsTiling). When mandatory500 is false, the
+    // plan may use any prescribed scale, so it is NOT floored here.
+    const _exactMandateDenom = mandatory500 ? 500 : 0;
     if (_exactMandateDenom > 0) {
       const _floorIdx = SI727_PRESCRIBED_SCALES.findIndex(s => s.value >= _exactMandateDenom);
       if (_floorIdx !== -1) _autoMaxIdx = Math.max(_autoMaxIdx, _floorIdx);
     }
-    if (_autoMaxIdx !== -1 && _autoMaxIdx < candidateIndex) {
+    // When the mandate is active, the floor must apply even if it pushes the
+    // index ABOVE (coarser than) the naturally-resolved candidateIndex — e.g.
+    // a small extent that auto-fits finer than 1:500 must still be pulled
+    // back to exactly 1:500, not left at its natural auto-fit scale. Outside
+    // the mandate, this block only ever enlarges (moves to a smaller/finer
+    // index), never coarsens, hence the `< candidateIndex` guard stays for
+    // that branch.
+    if (_exactMandateDenom > 0 && _autoMaxIdx !== -1 && _autoMaxIdx !== candidateIndex) {
+      logger.info(
+        `[PDFKit] 📏 Adjusting figure to mandate: ${SI727_PRESCRIBED_SCALES[candidateIndex].label} → ` +
+        `${SI727_PRESCRIBED_SCALES[_autoMaxIdx].label} (floored/enlarged to the 1:${_exactMandateDenom} township mandate)`,
+      );
+      candidateIndex = _autoMaxIdx;
+    } else if (_exactMandateDenom === 0 && _autoMaxIdx !== -1 && _autoMaxIdx < candidateIndex) {
       logger.info(
         `[PDFKit] 📏 Enlarging figure: ${SI727_PRESCRIBED_SCALES[candidateIndex].label} → ` +
-        `${SI727_PRESCRIBED_SCALES[_autoMaxIdx].label} (largest SI 727 scale that fills the drawing area` +
-        `${_exactMandateDenom ? `, floored at the 1:${_exactMandateDenom} developed-township mandate` : ''})`,
+        `${SI727_PRESCRIBED_SCALES[_autoMaxIdx].label} (largest SI 727 scale that fills the drawing area)`,
       );
       candidateIndex = _autoMaxIdx;
     }
@@ -10479,7 +10479,7 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
       // Always apply the plan-type ceiling AFTER resolving the margin-fitting scale.
       // Previously only the exhausted-scales fallback called applyPlanTypeCeiling,
       // meaning large townships that resolved to e.g. 1:2000 bypassed the 1:500 ceiling entirely.
-      return applyPlanTypeCeiling(candidate, extent, mapBounds, planType, logger);
+      return applyPlanTypeCeiling(candidate, extent, mapBounds, planType, mandatory500, logger);
     }
     logger.info(`[PDFKit] 📏 Scale ${candidate.label} violates 90% margin (${check.mappedWmm.toFixed(1)}mm × ${check.mappedHmm.toFixed(1)}mm > ${check.maxWmm.toFixed(1)}mm × ${check.maxHmm.toFixed(1)}mm), stepping up`);
     finalIndex++;
@@ -10488,7 +10488,7 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
   // Exhausted all scales — use largest and warn
   const largest = SI727_PRESCRIBED_SCALES[SI727_PRESCRIBED_SCALES.length - 1];
   logger.warn(`[PDFKit] ⚠️ No SI 727 scale satisfies 90% margin constraint; using ${largest.label}`);
-  return applyPlanTypeCeiling(largest, extent, mapBounds, planType, logger);
+  return applyPlanTypeCeiling(largest, extent, mapBounds, planType, mandatory500, logger);
 }
 
 /**
@@ -10497,8 +10497,8 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
  * sets needsTiling=true on the returned scale object so the caller can
  * trigger multi-sheet tile generation.
  */
-function applyPlanTypeCeiling(scale, extent, mapBounds, planType, logger) {
-  const maxDenom = planType ? (SI727_MAX_DENOMINATOR_BY_PLAN[planType] ?? Infinity) : Infinity;
+function applyPlanTypeCeiling(scale, extent, mapBounds, planType, mandatory500, logger) {
+  const maxDenom = mandatory500 ? 500 : Infinity;
   if (maxDenom === Infinity || scale.value <= maxDenom) return scale;
 
   // Find the largest prescribed scale that is ≤ maxDenom
@@ -11180,13 +11180,19 @@ async function _generateGeoPDFInner(options, logger) {
   // Calculate optimal scale based on extent and adjusted figure area.
   // _forceMinDenominator forces the scale above a given denominator (used when
   // a previous render reported needsScaleUp and the caller retries with a higher scale).
+  // The 1:500 mandate now depends on stand-area majority, not planType alone
+  // (Surveyor-General relaxation) -- computed once here from the same
+  // `parcels` already in scope for this generation request.
+  const _applyScaleMandate = planType === 'general-developed' || planType === 'general-undeveloped';
+  const { mandatory500 } = resolveTownshipScaleMandate(parcels, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2);
   const optimalScale = calculateOptimalScale(
     calculatedExtent,
     figureBounds,
     logger,
     scale,
     _forceMinDenominator,
-    planType
+    planType,
+    _applyScaleMandate && mandatory500
   );
 
   // ── Expand extent proportionally when scale is stepped up ──

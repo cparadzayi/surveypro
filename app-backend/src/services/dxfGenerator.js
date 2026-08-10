@@ -35,6 +35,7 @@ import {
   resolveLoSystem,
   chooseTickIntervalMetres,
   computeGridTickPositions,
+  resolveTownshipScaleMandate,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 
@@ -74,7 +75,7 @@ import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlann
 import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon } from './dxfGeometry.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
-import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER } from '../utils/si727Constants.js'
+import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 } from '../utils/si727Constants.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 import { roundBearingSouth } from '../utils/zim-geo.js'
 import { emitSubjectAdjoiningFeaturesDxf } from './adjoiningFeaturesDxf.js'
@@ -605,16 +606,20 @@ export function generateDXF(options, logger) {
   });
   // SI 727 Reg 32(3) scale precedence (fallback when no PDF scale is handed off):
   //   1. declaredS — a supplied scale (PDF handoff) honored verbatim → parity.
-  //   2. DEVELOPED township GP — mandated at EXACTLY 1:500 (no edge labels;
-  //      tiles if the figure is too big to fit at 1:500).
-  //   3. Everything else (UNDEVELOPED township GP + unconstrained) — auto-
-  //      maximize to the largest SI 727 scale that fits. Undeveloped has no
-  //      fixed scale; the largest fitting figure gives the most room for stand
-  //      numbers, beacon labels and edge distances/directions to stay legible.
+  //   2. Township general plan mandated at EXACTLY 1:500 when the majority of
+  //      its stands are <=200m2 (Surveyor-General relaxation — mandatory500,
+  //      resolveTownshipScaleMandate, app-shared/block-definitions.js). This
+  //      no longer depends on planType alone: a 'general-undeveloped' plan
+  //      with mostly small stands is now also mandated, and a
+  //      'general-developed' plan with mostly large stands is no longer
+  //      forced to 1:500 (tiles if the figure is too big to fit at 1:500).
+  //   3. Otherwise — auto-maximize to the largest SI 727 scale that fits.
+  const _applyScaleMandate = planType === 'general-developed' || planType === 'general-undeveloped';
+  const { mandatory500 } = resolveTownshipScaleMandate(parcels, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2);
   let S;
   if (declaredS) {
     S = declaredS;
-  } else if (planType === 'general-developed') {
+  } else if (_applyScaleMandate && mandatory500) {
     S = 500;
   } else {
     S = _figFit.S;

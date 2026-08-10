@@ -11,7 +11,8 @@ import { placeLabels } from '../utils/labelPlacer.js'
 import { formatArea } from '../utils/formatters.js'
 import { calculateBeaconSymbolSize, calculateBeaconLabelSize } from '../utils/beaconSymbolStandards.js'
 import { authenticateWithSchema } from '../utils/schemaAuth.js'
-import { SI727_PRESCRIBED_SCALES } from '../utils/si727Constants.js'
+import { SI727_PRESCRIBED_SCALES, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 } from '../utils/si727Constants.js'
+import { resolveTownshipScaleMandate } from '../../../app-shared/block-definitions.js'
 
 /**
  * Survey Plan Preview Routes
@@ -28,10 +29,6 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
     const { projectId } = request.params
     const { scale, sheetSize, areaType, planType } = request.query
 
-    // SI 727 Reg 32(3): developed township → max denominator 500
-    const SI727_MAX_DENOM_BY_PLAN = { 'general-developed': 500 }
-    const maxDenominator = planType ? (SI727_MAX_DENOM_BY_PLAN[planType] ?? Infinity) : Infinity
-    
     try {
       // 1. Use database connection with surveyor schema (set by authenticateWithSchema middleware)
       const db = request.db
@@ -121,7 +118,20 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
           error: 'No valid parcel geometries found for this project'
         })
       }
-      
+
+      // Surveyor-General relaxation: the SI 727 Reg 32(3) mandatory 1:500
+      // ceiling applies only when the majority of stands are <=200m2
+      // (resolveTownshipScaleMandate, app-shared/block-definitions.js) --
+      // shared with the PDF/DXF generators so this preview's suggested scale
+      // and "too narrow" warning suppression match what will actually be
+      // produced. `parcels` here already carries real PostGIS ST_Area values.
+      const applyScaleMandate = planType === 'general-developed' || planType === 'general-undeveloped'
+      const { mandatory500 } = resolveTownshipScaleMandate(
+        { features: parcels.map(p => ({ properties: { area_m2: p.area_m2, stand: p.stand }, geometry: p.geometry })) },
+        TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2
+      )
+      const maxDenominator = (applyScaleMandate && mandatory500) ? 500 : Infinity
+
       // 5. Analyze survey
       const analysis = analyzeSurvey(coordinatePoints, parcels)
       

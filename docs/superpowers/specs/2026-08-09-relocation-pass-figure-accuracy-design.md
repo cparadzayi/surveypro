@@ -1,5 +1,22 @@
 # Relocation pass: use the accurate figure polygon, and trigger on real overlap
 
+## Update (2026-08-10): sgSignature limitation resolved
+
+The "no clear slot" limitation this spec documented for `sgSignature` on
+`sampleRealisticPlan` (a 4.2pt shortfall — see the "Edge cases" section
+below) was resolved as an **unplanned side effect** of unrelated later
+work: the PDF/DXF corner-rounding parity fix
+(`docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md`,
+Task 2, commit `835c178`) gave PDF a left/right coordinate-tick clamp it
+previously lacked entirely. That shifted the tick-mark obstacle set enough
+to free the exact ~4.2pt margin `sgSignature` was missing. Verified: on the
+same fixture, `generateGeoPDF` now returns zero warnings at all (previously
+`sgSignatureOverlapsPolygon` was the sole warning).
+`pdfkitGeoPDF.scheduleNoOverlap.test.js`'s corresponding test was updated
+to assert the resolved state. The rest of this document (the analysis of
+`surveyStatement`'s fix and the general relocation-pass design) is
+unaffected and still accurate.
+
 ## Problem
 
 After the PDF figure-boundary fallback fix (branch `pdf-figure-boundary-fallback`,

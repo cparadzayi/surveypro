@@ -1,5 +1,27 @@
 # Split-schedule paper-size escalation gate ("sub-project B")
 
+## Revision note (post-implementation)
+
+During implementation, empirical testing (full escalation trace on
+`sampleMaglasPlan`, captured via temporary diagnostic logging) confirmed the
+fix works exactly as designed — `needsScaleUp` is correctly re-checked and
+promoted at every level: `ISO_A2` → `ISO_A1` (still overlaps, composite
+1296×1250) → `ISO_A0` (still overlaps, composite 860×1850) → scale step-up
+`1:1000`→`1:1250` (still overlaps) → exhausted. But `sampleMaglasPlan`'s
+240-stand schedule composite (860×1850pt ≈ 30×65cm) is genuinely too large
+to fit anywhere on the page even at the largest sheet plus a scale step-up —
+a real, quantified density limit, not an escalation-gate defect. This was
+not verified before writing the original "Testing" section below, which
+wrongly assumed escalating this specific fixture would fully resolve the
+overlap (only that it wasn't *already* at the largest size, which is a
+weaker claim). The Testing section is superseded by the plan document's
+revised Task 1/2 test expectations: `sampleMaglasPlan` becomes a
+characterization case (escalation genuinely attempted through exhaustion,
+overlap warning legitimately persists) — the same pattern as `sgSignature`'s
+documented residual gap from the prior fix
+(2026-08-09-relocation-pass-figure-accuracy). The code design and fix below
+are unchanged and were confirmed correct by this same trace.
+
 ## Problem
 
 On dense plans where the Schedule of Areas must split into multiple

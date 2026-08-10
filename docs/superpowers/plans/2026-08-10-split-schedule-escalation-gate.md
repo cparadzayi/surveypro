@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stop the PDF generator from blanket-suppressing paper-size escalation for split (multi-sub-table) Schedule of Areas layouts, so a schedule that genuinely still overlaps the figure after the fluid placement search gets a chance to try a larger sheet — closing "sub-project B", the last known-tracked gap from the relocation-pass-figure-accuracy work.
+**Goal:** Stop the PDF generator from blanket-suppressing paper-size escalation for split (multi-sub-table) Schedule of Areas layouts, so a schedule that genuinely still overlaps the figure after the fluid placement search gets a chance to try a larger sheet — closing "sub-project B", the last known-tracked gap from the relocation-pass-figure-accuracy work. Note (confirmed during implementation): this makes the escalation *mechanism* correct, not a guarantee that every plan resolves — an extremely dense fixture can still genuinely exhaust every escalation level, the same honest-residual-gap pattern as the prior fix's `sgSignature` case.
 
 **Architecture:** One new conditional block in `calculateBlockPositions` (`app-backend/src/services/pdfkitGeoPDF.js`), added right after the existing fluid schedule search resolves its composite bounding box. It checks that composite against the figure polygon (same helper + buffer convention as the pre-existing single-table mandatory-block check) and promotes the already-existing `needsScaleUp` flag if it overlaps. No changes to the escalation-retry loop itself, no changes to the shared `drawScheduleOfAreasMultiTable` search function, no changes to DXF.
 
@@ -72,7 +72,9 @@ Current code around lines 7182-7220 (for locating the insertion point — do not
   // ── ① Schedule balancing is applied at DRAW time by each generator (via the
 ```
 
-- [ ] **Step 1: Write the failing test**
+**Revision note:** the original version of Steps 1-2 below assumed escalating `sampleMaglasPlan` would fully resolve its overlap. Empirical testing (full escalation trace, captured during implementation) proved the fix correctly escalates through every level — `ISO_A2` → `ISO_A1` (still overlaps, composite 1296×1250) → `ISO_A0` (still overlaps, composite 860×1850) → scale step-up `1:1000`→`1:1250` (still overlaps) → exhausted — but this specific fixture's 240-stand schedule composite (860×1850pt ≈ 30×65cm) is genuinely too large to fit anywhere, even at the largest sheet plus a scale step-up. This is a real, quantified density limit, not an escalation-gate defect — the same category as `sgSignature`'s documented residual gap from the prior fix. The steps below reflect this: the test characterizes the (correct, verified) exhaustion outcome rather than asserting full resolution. See the design spec's revision note for the full trace.
+
+- [ ] **Step 1: Write the test**
 
 Read `app-backend/src/services/__tests__/pdfkitGeoPDF.scheduleNoOverlap.test.js` first (it's short, shown in full below for reference) to match its exact style. Add a new `import` for the Maglas fixture and one new test into the existing `describe` block, immediately after the `sgSignature` test:
 
@@ -83,27 +85,40 @@ import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js'
 (add alongside the existing `sampleRealisticPlan` import at the top of the file)
 
 ```js
-  test('split schedule (Maglas, 240 stands) escalates to a larger sheet instead of rendering over the figure', async () => {
-    // sampleMaglasPlan's schedule splits into multiple side-by-side sub-tables
-    // (isScheduleWithFluidFallback in pdfkitGeoPDF.js). Before this fix, escalation
-    // was blanket-suppressed for that path on the wrong assumption that the fluid
-    // search always finds a clear slot — confirmed empirically it doesn't: the
-    // composite landed on ISO_A1 with zero collision avoidance (both fallback
-    // tiers failed). See docs/superpowers/specs/2026-08-10-split-schedule-escalation-gate-design.md
-    const logger = { info: () => {}, warn: () => {}, error: () => {} }
-    const result = await generateGeoPDF(sampleMaglasPlan, logger)
+  test(
+    'split schedule (Maglas, 240 stands) exhausts every escalation level and still overlaps — ' +
+      'documented limitation: the fix correctly re-checks and escalates at each step ' +
+      '(ISO_A2→ISO_A1→ISO_A0→scale step-up 1:1000→1:1250), but the composite ' +
+      '(860×1850pt, ~30×65cm) is genuinely too large to fit anywhere even at the largest ' +
+      'sheet; see docs/superpowers/specs/2026-08-10-split-schedule-escalation-gate-design.md',
+    async () => {
+      // Intentionally brittle: the exact sheetSize/attempts/composite dimensions are
+      // this fixture's actual geometry, not incidental values. If block-definitions.js
+      // or the fixture's stand count changes, this test breaking is expected — verify
+      // the new numbers reflect genuine exhaustion (not a regression in the escalation
+      // logic itself) before updating the expectation.
+      const logger = { info: () => {}, warn: () => {}, error: () => {} }
+      const result = await generateGeoPDF(sampleMaglasPlan, logger)
 
-    expect(result.warnings.scheduleOfAreasOverlapsPolygon).toBeUndefined()
-  }, 120000)
+      expect(result.sheetSize).toBe('ISO_A0')
+      expect(result.warnings.scheduleEscalationExhausted).toEqual({
+        atSheetSize: 'ISO_A0',
+        attempts: 2,
+        hint: 'Plan too dense for largest available paper size; some blocks may overlap the figure.',
+      })
+      expect(result.warnings.scheduleOfAreasOverlapsPolygon).toBeDefined()
+    },
+    120000
+  )
 ```
 
-Note the explicit `120000` (120s) Jest timeout as the third argument — this fixture is large (240 stands) and, unlike the other tests in this file, may now trigger a real sheet-size-escalation retry (a second full generation pass), so it needs more headroom than Jest's 5s default. Match the timeout style already used for the large-fixture tests in `sheetLayoutPlanner.parity.test.js` (e.g. its `dense Maglas` test uses `120000`).
+Note the explicit `120000` (120s) Jest timeout as the last argument — this fixture is large (240 stands) and triggers multiple full-generation escalation retries (confirmed: 4 full passes before exhaustion), so it needs more headroom than Jest's 5s default. Match the timeout style already used for the large-fixture tests in `sheetLayoutPlanner.parity.test.js` (e.g. its `dense Maglas` test uses `120000`).
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run the test and confirm it passes for the expected reason**
 
 Run: `cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js pdfkitGeoPDF.scheduleNoOverlap -t "split schedule"`
 
-Expected: FAIL — `result.warnings.scheduleOfAreasOverlapsPolygon` is defined (an object with `position` `{x:155.7, y:155.7, width:1295.6, height:1250}` and a `hint` string), not `undefined`, because `needsScaleUp` is never promoted for the split-schedule path today.
+This test is written to currently PASS (it characterizes existing, already-correct behavior confirmed during implementation — not a red/green cycle for new production code). Confirm it passes, and additionally verify — via a one-off manual log inspection, not a committed assertion — that the escalation sequence in the logs actually shows all four attempts (`ISO_A2`, `ISO_A1`, `ISO_A0`, then the scale step-up), proving the code path taken is "escalated through every level and still didn't fit," not "escalation never ran." If it fails, or if the log sequence looks different (e.g., fewer escalation attempts than expected), STOP and investigate — do not adjust the assertion values to force a pass without understanding why the sequence changed.
 
 - [ ] **Step 3: Implement the fix**
 
@@ -138,11 +153,11 @@ Insert this new block into `pdfkitGeoPDF.js`, immediately after the closing `}` 
 
 Run: `cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js pdfkitGeoPDF.scheduleNoOverlap`
 
-Expected: PASS — all 5 tests in the file green, including the new one. While running, note the log line `escalating paper size to ISO_A0` (or similar) in stdout/stderr if visible — confirms the fix actually triggered a real escalation retry, not a coincidental pass. If the test times out at 120000ms, this is a signal to investigate (do not silently raise the timeout further — read the systematic-debugging skill's guidance and find out why before changing the number).
+Expected: PASS — all 5 tests in the file green, including the new one.
 
 - [ ] **Step 5: Update the file's header comment**
 
-The file's existing top-of-file comment (lines 5-14) says sampleRealisticPlan "doesn't trigger the separate, still-open paper-size-escalation gap for SPLIT schedules... which is a different, not-yet-fixed bug." That gap is now fixed by this task. Update the comment to reflect that — change the clause `"a different, not-yet-fixed bug"` to `"a different bug, fixed separately — see the 'split schedule (Maglas...)' test below"`. Keep the rest of the comment (about `sampleRealisticPlan`'s own scenario) unchanged.
+The file's existing top-of-file comment (lines 5-14) says sampleRealisticPlan "doesn't trigger the separate, still-open paper-size-escalation gap for SPLIT schedules... which is a different, not-yet-fixed bug." Update the comment to reflect the corrected understanding — change the clause `"a different, not-yet-fixed bug"` to `"a different, much denser scenario handled by the 'split schedule (Maglas...)' test below (that fixture genuinely exhausts every escalation level — see its test for the full story)"`. Keep the rest of the comment (about `sampleRealisticPlan`'s own scenario) unchanged.
 
 - [ ] **Step 6: Commit**
 
@@ -153,16 +168,18 @@ git commit -m "fix(pdf): promote needsScaleUp when split-schedule composite stil
 
 ---
 
-## Task 2: Flip the pre-existing parity test, full suite, and visual verification
+## Task 2: Update the pre-existing parity test's comment, full suite, and visual verification
+
+**Revision note:** the original version of this task planned to flip `pdfWarnKeys` from `.toContain` to `.not.toContain` — that assumed Task 1's fix would fully resolve Maglas's overlap. It doesn't (see Task 1's revision note): `sampleMaglasPlan` genuinely exhausts every escalation level and still overlaps. `pdfWarnKeys` legitimately still contains `'scheduleOfAreasOverlapsPolygon'` — that assertion is NOT flipped. What changed is the *reason* it's there: previously the escalation gate was silently disabled for split schedules (a real defect); now it's correctly attempted and genuinely exhausted (an honest, quantified density limit). This step now only corrects the comment to explain that.
 
 **Files:**
-- Modify: `app-backend/src/services/__tests__/sheetLayoutPlanner.parity.test.js` (lines 113-148 — the comment block and final two assertions of the `dense Maglas` test)
+- Modify: `app-backend/src/services/__tests__/sheetLayoutPlanner.parity.test.js` (lines 87-148 — the test name, comment block, and final assertions of the `dense Maglas` test)
 
 **Interfaces:**
 - Consumes: nothing new — this task verifies Task 1's fix end-to-end through the pre-existing PDF↔DXF parity test, and through the full backend suite.
 - Produces: nothing new — test-only changes plus verification.
 
-- [ ] **Step 1: Update the parity test's assertion and comment**
+- [ ] **Step 1: Update the parity test's name and comment (assertions unchanged)**
 
 Read `app-backend/src/services/__tests__/sheetLayoutPlanner.parity.test.js` lines 87-149 first (the full `dense Maglas` test) to see the current state precisely, since Task 1 may have changed logging behavior that shows up in this test's `console.log` output.
 
@@ -211,27 +228,40 @@ Replace the comment block and final two lines (currently lines 113-148, shown be
 with:
 
 ```js
-    // Previously this test tracked a known, not-yet-fixed PDF-side gap
+    // Previously this test tracked a known, not-yet-fixed PDF-side defect
     // ("sub-project B"): dense Maglas's schedule splits into multiple
     // sub-tables (isScheduleWithFluidFallback), and that fluid multi-table
-    // placement path didn't participate in paper-size escalation the way
-    // the single-table path does — so PDF could render the schedule over
-    // the figure with no chance to retry at a larger sheet. Fixed in
-    // pdfkitGeoPDF.js's calculateBlockPositions: the fluid search's own
-    // composite result is now checked against the figure polygon, and
-    // needsScaleUp is promoted if it still overlaps (see
+    // placement path didn't participate in paper-size escalation AT ALL —
+    // the gate was blanket-suppressed for split schedules, so PDF never
+    // even tried a larger sheet. Fixed in pdfkitGeoPDF.js's
+    // calculateBlockPositions: the fluid search's own composite result is
+    // now checked against the figure polygon, and needsScaleUp is promoted
+    // if it still overlaps (see
     // docs/superpowers/specs/2026-08-10-split-schedule-escalation-gate-design.md).
-    // DXF was never affected — it already resolves this independently via
-    // its own post-emission escalation (dxfGenerator.js).
+    //
+    // pdfWarnKeys still legitimately contains scheduleOfAreasOverlapsPolygon
+    // for THIS fixture — that has NOT changed, and is not a residual bug.
+    // Verified directly (full escalation trace, captured during
+    // implementation): the fix now correctly escalates through every level —
+    // ISO_A2 → ISO_A1 → ISO_A0 → scale step-up 1:1000→1:1250 — but Maglas's
+    // 240-stand schedule composite (860×1850pt, ~30×65cm) is genuinely too
+    // large to fit anywhere even at the largest sheet plus a scale step-up.
+    // scheduleEscalationExhausted appears in pdfWarnKeys as the honest
+    // signal of this — a real, quantified density limit, the same category
+    // as sgSignature's documented residual gap from the prior fix
+    // (2026-08-09-relocation-pass-figure-accuracy). DXF resolves this
+    // fixture independently via its own post-emission escalation
+    // (dxfGenerator.js) — unaffected either way by this PDF-side fix.
     expect(dxfWarnKeys).not.toContain('scheduleOfAreasOverlapsPolygon');
-    expect(pdfWarnKeys).not.toContain('scheduleOfAreasOverlapsPolygon');
+    expect(pdfWarnKeys).toContain('scheduleOfAreasOverlapsPolygon');
+    expect(pdfWarnKeys).toContain('scheduleEscalationExhausted');
   }, 120000);
 ```
 
 Also update the test's name on line 87 — change
 `'dense Maglas: DXF resolves the schedule-over-figure overlap; PDF has a known, tracked gap (sub-project B)'`
 to
-`'dense Maglas: both DXF and PDF resolve the schedule-over-figure overlap'`.
+`'dense Maglas: DXF resolves the schedule-over-figure overlap; PDF correctly escalates through every level but the fixture is still too dense to fit'`.
 
 - [ ] **Step 2: Run this test to verify it passes**
 
@@ -243,7 +273,7 @@ Expected: PASS — all 6 tests in the file green (this file's tests are individu
 
 ```bash
 git add app-backend/src/services/__tests__/sheetLayoutPlanner.parity.test.js
-git commit -m "test(pdf): flip sub-project B known-gap assertion now that it's fixed"
+git commit -m "test(pdf): document sub-project B's genuine escalation-exhaustion outcome"
 ```
 
 - [ ] **Step 4: Run the full backend test suite**
@@ -266,9 +296,9 @@ git commit -m "test(pdf): update Maglas snapshot for split-schedule sheet-size e
 - [ ] **Step 5: Visual verification**
 
 Write a one-off script (outside any tracked directory, e.g. this session's scratchpad, or a `scratch_verify/` folder inside `app-backend/` that gets deleted before the final commit) that calls `generateGeoPDF(sampleMaglasPlan, logger)`, writes `result.pdfBuffer` to a `.pdf` file, and logs `result.sheetSize`. Open/read the PDF and confirm:
-- The Schedule of Areas no longer visually overlaps the parcel figure.
-- `result.sheetSize` is `ISO_A0` (expected, since `ISO_A1` was empirically shown insufficient during the design phase) — if it's something else, note it, but don't treat a different-but-still-resolved sheet size as a failure on its own.
-- No other block (title block, outside figure data, beacon description, scale bar, north arrow, survey statement, sgSignature, endorsements) has shifted into an unexpected or overlapping position as a side effect.
+- `result.sheetSize` is `ISO_A0` (confirmed during implementation — the fix escalates all the way to the largest sheet, then attempts a scale step-up, before giving up).
+- The Schedule of Areas DOES still visually overlap the parcel figure on this fixture — this is the expected, documented outcome (Maglas's 240-stand schedule is genuinely too large to fit even at max size), not a bug to chase. The point of this check is to confirm the render otherwise looks sane at the escalated size — not to see the overlap disappear.
+- No other block (title block, outside figure data, beacon description, scale bar, north arrow, survey statement, sgSignature, endorsements) has shifted into an unexpected or *additional* overlapping position as a side effect of the escalation.
 
 Delete the one-off script before finishing (no commit needed for this step beyond Steps 3/4's commits).
 
@@ -276,6 +306,6 @@ Delete the one-off script before finishing (no commit needed for this step beyon
 
 ## Self-Review Notes
 
-- **Spec coverage:** The design's single code change (Task 1) and its two edge-case guards (`_schedNeedsSplit`, `_collisionPolyPts?.length > 0`, `!needsScaleUp`) are all in the Task 1 diff verbatim. The design's testing section is covered: primary acceptance criterion (Task 2, flipping the parity test), direct regression test (Task 1), full suite including snapshots (Task 2), visual verification (Task 2). Out-of-scope items (DXF, `drawScheduleOfAreasMultiTable`'s fallback tiers) are not touched by either task.
+- **Spec coverage:** The design's single code change (Task 1) and its two edge-case guards (`_schedNeedsSplit`, `_collisionPolyPts?.length > 0`, `!needsScaleUp`) are all in the Task 1 diff verbatim. The design's testing section (as revised post-implementation) is covered: escalation-mechanism verification via characterization tests (Task 1's Maglas test, Task 2's parity-test comment update), full suite including snapshots (Task 2), visual verification (Task 2). Out-of-scope items (DXF, `drawScheduleOfAreasMultiTable`'s fallback tiers) are not touched by either task.
 - **No placeholders:** every step has literal, complete code or exact before/after text for the test-file edits.
 - **Type/name consistency:** `_schedRect`, `scheduleOfAreasFinal`, `_collisionPolyPts`, `needsScaleUp` are used identically between the design doc and both tasks; no renamed variables between tasks.

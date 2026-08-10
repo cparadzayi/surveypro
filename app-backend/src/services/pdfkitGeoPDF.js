@@ -7224,6 +7224,11 @@ export function calculateBlockPositions(
   // tiers (bounds-only / engine-startXY) can accept an overlapping anchor
   // when no polygon-clear slot exists. Mirrors the single-table
   // mandatory-block promotion above (same buffer=2 convention).
+  // Note: this checks the search's pre-balance composite, not the final
+  // rendered rect — draw-time balanceScheduleTables (below) can still shift
+  // the schedule after this decision is made, same as the single-table
+  // check above. Pre-existing property of the whole escalation system, not
+  // specific to this gate.
   if (_schedNeedsSplit && _collisionPolyPts?.length > 0 && scheduleOfAreasFinal) {
     const _schedRect = {
       x: scheduleOfAreasFinal.x,

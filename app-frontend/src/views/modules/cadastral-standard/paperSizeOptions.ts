@@ -1,9 +1,11 @@
+import { SI727_GENERAL_PLAN_SHEET_SIZES } from '../../../../../app-shared/si727SheetSizes.js'
+
 export interface PaperSizeOption {
   value: string
   label: string
 }
 
-// Diagram sheets are portrait A4/A3; other plan types use the SI 727 ISO ladder.
+// Diagram sheets are portrait A4/A3; other plan types use the SI 727 Section 62(1) ladder.
 const DIAGRAM: PaperSizeOption[] = [
   { value: 'A4', label: 'A4 (210×297mm)' },
   { value: 'A3', label: 'A3 (297×420mm)' },
@@ -11,9 +13,10 @@ const DIAGRAM: PaperSizeOption[] = [
 
 const GENERAL: PaperSizeOption[] = [
   { value: 'auto', label: 'Auto (Recommended)' },
-  { value: 'ISO_A2', label: 'ISO A2 (594×420mm)' },
-  { value: 'ISO_A1', label: 'ISO A1 (841×594mm)' },
-  { value: 'ISO_A0', label: 'ISO A0 (1189×841mm)' },
+  ...SI727_GENERAL_PLAN_SHEET_SIZES.map((s) => ({
+    value: s.name,
+    label: `${s.width} × ${s.height}mm`,
+  })),
 ]
 
 export function paperSizeOptionsFor(planType: string): PaperSizeOption[] {

@@ -561,6 +561,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick, reactive } from 'vue'
+import { SI727_GENERAL_PLAN_SHEET_SIZES } from '../../../../../app-shared/si727SheetSizes.js'
 
 defineOptions({ name: 'SurveyPlanMapView' })
 import maplibregl from 'maplibre-gl'
@@ -707,7 +708,7 @@ const exportOptions = ref<ExportOptions>({
 const config = ref({
   planType: (props.projectInfo as any)?.planType || 'general-undeveloped',  // Accept from parent component
   scale: 'auto', // Auto-select optimal SI 727 scale
-  sheetSize: 'auto' as 'auto' | 'ISO_A2' | 'ISO_A1' | 'ISO_A0' | 'A4' | 'A3',
+  sheetSize: 'auto' as 'auto' | 'SI727_500x400' | 'SI727_800x500' | 'SI727_1000x800' | 'A4' | 'A3',
   surveyorName: props.projectInfo.surveyorName || '',
   licenseNumber: props.projectInfo.licenseNumber || '',
   surveyDate: toDateInputFormat(props.projectInfo.surveyDate) || toDateInputFormat(new Date()),
@@ -4172,7 +4173,7 @@ async function generatePlanDocuments() {
             outsideFigureData: outsideFigureData.value || undefined,
             beaconGroups: formatBeaconDescriptionGroups(coordinatePoints.value),
             scale: usedScale || intelligentPreview.value?.scale?.label || config.value.scale || '1:1000',
-            sheetSize: result.usedSheetSize || intelligentPreview.value?.sheetSize || 'ISO_A0',
+            sheetSize: result.usedSheetSize || intelligentPreview.value?.sheetSize || 'SI727_1000x800',
             orientation: 'landscape',
             centralMeridian: parseInt(config.value.centralMeridian || '31'),
             generatedAt: new Date(),
@@ -4184,7 +4185,7 @@ async function generatePlanDocuments() {
     }
 
     if (exportFormats.dxf) {
-      const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: payload.sheetSize || 'ISO_A2' }
+      const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: payload.sheetSize || 'SI727_500x400' }
       const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload)
       docs.dxf = blob
       if (warningCount > 0 && warningsSummary) {
@@ -4903,23 +4904,18 @@ async function exportSurveyPlanSummary() {
   isExporting.value = true
   
   try {
-    // Get paper dimensions based on selected sheet size
-    // ISO A-series paper sizes as approved by Surveyor General
-    const paperDimensionsMap: Record<string, { width: number; height: number }> = {
-      'ISO_A0': { width: 1189, height: 841 },  // Landscape
-      'ISO_A1': { width: 841, height: 594 },   // Landscape
-      'ISO_A2': { width: 594, height: 420 },   // Landscape
-      'A0': { width: 1189, height: 841 },
-      'A1': { width: 841, height: 594 },
-      'A2': { width: 594, height: 420 }
-    }
+    // Get paper dimensions based on selected sheet size (real SI 727
+    // Section 62(1) sizes — single source of truth in app-shared).
+    const paperDimensionsMap: Record<string, { width: number; height: number }> = Object.fromEntries(
+      SI727_GENERAL_PLAN_SHEET_SIZES.map((s) => [s.name, { width: s.width, height: s.height }])
+    )
     
     // Get selected sheet and scale from config
     const sheetConfig = config.value.sheetSize || 'auto'
     const scaleConfig = config.value.scale || 'auto'
     
     // Default to ISO A1 for auto (most common survey plan size)
-    const selectedSheet = sheetConfig === 'auto' ? 'ISO_A1' : sheetConfig
+    const selectedSheet = sheetConfig === 'auto' ? 'SI727_800x500' : sheetConfig
     
     // Get scale value
     const selectedScale = scaleConfig === 'auto' ? '1:2000' : scaleConfig

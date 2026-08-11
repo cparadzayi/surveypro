@@ -1696,8 +1696,8 @@ export function generateDXF(options, logger) {
   const pageH = mm(paper.h);   // full paper height in ground
 
   // Content area dimensions (inside margins, excluding endorsements)
-  const contentW = pageW - mL - mR;   // 594 - 50 - 150 = 394mm
-  const contentH = pageH - mT - mB;   // 420 - 50 - 50 = 320mm
+  const contentW = pageW - mL - mR;   // e.g. 500 - 50 - 150 = 300mm at SI727_500x400
+  const contentH = pageH - mT - mB;   // e.g. 400 - 50 - 50 = 300mm at SI727_500x400
 
   // Surveyed parcels (hoisted: needed both to measure the title band below and,
   // later, for the figure-description text + Schedule of Areas). Sharing the one

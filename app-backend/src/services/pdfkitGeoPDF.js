@@ -6396,8 +6396,22 @@ export function calculateBlockPositions(
   zOrderCollisionRegistry = null,
   figureBounds = null,
   polyPts = [],
-  scheduleColumnWidthsPt = null,   // NEW
+  scheduleColumnWidthsPt = null,
+  accurateFigurePolygon = null,   // NEW: real (non-re-centered) figure polygon,
+                                   // used ONLY for the escalation-gate collision
+                                   // checks below, never for placement search.
 ) {
+  // The escalation gate must check against the REAL figure position, not the
+  // idealized/re-centered polygon buildPlannerObstacles() hands the engine's
+  // own candidate search (mapFeatureBounds.pdfPoints / polyPts stay as-is for
+  // that search — changing those would reintroduce PDF/DXF placement
+  // divergence). Falls back to mapFeatureBounds.pdfPoints only if no caller
+  // supplies the accurate polygon (should not happen after this change).
+  // See docs/superpowers/specs/2026-08-11-block-placement-real-paper-robustness-design.md.
+  const _gatePolyPts = (accurateFigurePolygon && accurateFigurePolygon.length >= 3)
+    ? accurateFigurePolygon
+    : mapFeatureBounds?.pdfPoints;
+
   // Validate scale parameter
   if (!scale || !scale.value || !scale.label) {
     logger.error({
@@ -7195,7 +7209,7 @@ export function calculateBlockPositions(
   // Mandatory blocks that overlap the polygon trigger paper-size escalation.
   const _mandatoryBlockNames = new Set(["outsideFigureData", "scheduleOfAreas", "scaleBar", "surveyStatement"]);
   let _polyCollisionOnMandatory = false;
-  const _collisionPolyPts = mapFeatureBounds?.pdfPoints;
+  const _collisionPolyPts = _gatePolyPts;
   if (_collisionPolyPts?.length > 0) {
     for (const blk of allPlacedBlocks) {
       if (blk.height === 0) continue;
@@ -12236,6 +12250,10 @@ async function _generateGeoPDFInner(options, logger) {
     // stacker into picking a different anchor for scheduleOfAreas.
     // figureBounds: figureBounds,
     polyPts: _polyForPlanner,
+    accurateFigurePolygon: mapFeatureBounds.pdfPoints,   // NEW — the accurate
+                                                          // outer variable
+                                                          // (built ~12000-12027),
+                                                          // NOT mapFeatureBoundsForPlanner.
     measureText: pdfKitMeasureText,
     scheduleColumnWidthsPt: _scheduleColumnWidthsPt,
   });

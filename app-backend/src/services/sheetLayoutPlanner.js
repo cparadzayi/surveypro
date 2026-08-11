@@ -47,6 +47,11 @@ function makeMeasureProxy(measureText) {
  * @param {Array}    [args.tickMarkBounds=[]] - pre-seeded obstacle bboxes
  * @param {object}   [args.figureBounds=null] - figure bbox in PDF points
  * @param {Array}    [args.polyPts=[]]        - closed polygon vertices in PDF points
+ * @param {Array}   [args.accurateFigurePolygon=null] - real (non-re-centered)
+ *                                       figure polygon in the same PDF-point
+ *                                       frame as mapBounds; used only for the
+ *                                       escalation-gate collision check, not
+ *                                       for placement search.
  * @param {Function} args.measureText         - (str, { family, size }) => width in pt
  * @param {object}   args.logger              - { info, warn, error }
  * @returns {object} blockPositions
@@ -58,7 +63,10 @@ export function planSheetLayout(args) {
     tickMarkBounds = [], figureBounds = null, polyPts = [],
     zOrderCollisionRegistry = null,
     measureText,
-    scheduleColumnWidthsPt = null,   // NEW
+    scheduleColumnWidthsPt = null,
+    accurateFigurePolygon = null,   // NEW: real figure polygon for the
+                                     // escalation gate only — see
+                                     // docs/superpowers/specs/2026-08-11-block-placement-real-paper-robustness-design.md
   } = args;
 
   if (!scale || !scale.value || !scale.label) {
@@ -83,7 +91,8 @@ export function planSheetLayout(args) {
     mapBounds, mapFeatureBounds, logger, scale, extent,
     tickMarkBounds, zOrderCollisionRegistry,
     figureBounds, polyPtsClosed,
-    scheduleColumnWidthsPt,        // NEW 15th positional arg
+    scheduleColumnWidthsPt,
+    accurateFigurePolygon,        // NEW 16th positional arg
   );
 
   // Endorsement block — fixed right-margin position. Mirrors the inline

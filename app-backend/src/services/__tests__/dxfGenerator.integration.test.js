@@ -441,7 +441,14 @@ describe('dxfGenerator integration — sample fixture', () => {
   })
 
   test('clean fixture produces zero warnings', () => {
-    expect(warnings.count).toBe(0)
+    // Was toBe(0) under the old ISO_A2 substitute paper (594x420mm). Under the
+    // real (smaller) SI 727 500x400mm sheet, sgSignatureOverlapsPolygon now
+    // fires for this fixture (same documented block-placement whitespace
+    // limitation as pdfkitGeoPDF.scheduleNoOverlap.test.js — see
+    // docs/superpowers/specs/2026-08-11-block-placement-real-paper-robustness-design.md),
+    // bumping the count by 1. Same root cause as the other three
+    // warnings.count assertions changed in this file.
+    expect(warnings.count).toBe(1)
   })
 })
 
@@ -460,7 +467,10 @@ describe('dxfGenerator integration — graceful degradation', () => {
     })
     const { buffer, warnings } = generateDXF(bad, fakeLogger)
     expect(Buffer.isBuffer(buffer)).toBe(true)
-    expect(warnings.count).toBe(2)
+    // Was toBe(2) under the old ISO_A2 substitute paper — the +1 is the same
+    // sgSignatureOverlapsPolygon limitation noted at line ~444 above, additive
+    // to this test's own 2 intentional bad-input warnings.
+    expect(warnings.count).toBe(3)
     expect(warnings.summary.beacons).toBe(1)
     expect(warnings.summary.parcels).toBe(1)
   })
@@ -536,7 +546,9 @@ describe('dxfGenerator integration — SI 727 title-block lines', () => {
 
   test('clean sampleFixture still produces zero warnings after title-block changes', () => {
     const { warnings } = generateDXF(sampleFixture, fakeLogger)
-    expect(warnings.count).toBe(0)
+    // Was toBe(0) — same sgSignatureOverlapsPolygon limitation noted at line
+    // ~444 above (real SI 727 paper, not a title-block regression).
+    expect(warnings.count).toBe(1)
   })
 })
 
@@ -575,9 +587,25 @@ describe('dxfGenerator integration — corner crosses clamp to the drawing area'
     return { L: Math.min(...xs), R: Math.max(...xs), B: Math.min(...ys), T: Math.max(...ys) }
   }
 
-  // A tall figure (~160 m) at 1:500 on A2 nearly fills the content height; before
-  // the inward clamp its outward-snapped corner crosses spilled into the margins.
-  const Y0 = 50000, X0 = 2200000, W = 90, H = 160
+  // A wide figure (~180 m) at 1:500; before the inward clamp its outward-snapped
+  // corner crosses spilled into the margins.
+  //
+  // Retuned 2026-08-11 for the real (smaller) SI 727 paper sizes: the original
+  // W=90/H=160 (sized to nearly fill the old 594x420mm ISO_A2-substitute content
+  // height) now degenerates to exactly 4 corners under SI727_500x400 → escalated
+  // SI727_800x500 — the escalated sheet's content HEIGHT is exactly 2 grid-tick
+  // intervals (200m at G=100m/1:500), and the outward-snap-then-inward-clamp
+  // logic always collapses a 2-interval vertical span back down to exactly 1
+  // interval (no headroom survives), regardless of how tall H is made. The
+  // escalated sheet's content WIDTH is 3 intervals (300m), which does leave
+  // enough headroom for an intermediate tick to survive the clamp — so this
+  // fixture now drives the "more than 4 corners" grid-tick code path through
+  // the WIDTH axis (W=180) instead of height, preserving the test's original
+  // intent (exercising intermediate ticks) on a fixture shape that actually
+  // achieves it under the real paper sizes. Verified empirically (see task-3
+  // report's Fix pass section) — W in roughly (150,270] with H=90 all reproduce
+  // 3 tick columns; W=90/H=160 (and any H-only variation at this W) does not.
+  const Y0 = 50000, X0 = 2200000, W = 180, H = 90
   const ring = [[Y0, X0], [Y0 + W, X0], [Y0 + W, X0 + H], [Y0, X0 + H], [Y0, X0]]
   const tallPlan = {
     metadata: { designation: 'Stand 1 Test', township: 'T', district: 'D', standCount: 1, standRange: '1', beaconSequence: 'ABCDA', date: '2026-06-27', centralMeridian: 29 },
@@ -737,20 +765,29 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
 
   test('clean sampleFixture still produces zero warnings + scheduleOverflow null', () => {
     const { warnings } = generateDXF(sampleFixture, fakeLogger)
-    expect(warnings.count).toBe(0)
+    // Was toBe(0) — same sgSignatureOverlapsPolygon limitation noted at line
+    // ~444 above (real SI 727 paper, not a schedule-columns regression).
+    expect(warnings.count).toBe(1)
     expect(warnings.summary.scheduleOverflow).toBeNull()
   })
 
-  test('overflow fixture (200 parcels) triggers paper-size escalation and fits at A0', () => {
-    // 3-v7: DXF now mirrors PDF's paper-size escalation. When the planner
-    // returns needsScaleUp at A2, the generator recurses up the SHEET_ORDER
-    // ladder (A2 → A1 → A0). For this fixture, 200 parcels exceed the
-    // schedule budget at A2/A1 but fit at A0 — so escalation succeeds and
-    // neither scheduleOverflow nor scheduleEscalationExhausted fires.
+  test('overflow fixture (200 parcels) triggers paper-size escalation and gracefully exhausts at the largest real SI 727 sheet', () => {
+    // 3-v7: DXF mirrors PDF's paper-size escalation. When the planner returns
+    // needsScaleUp, the generator recurses up the SHEET_ORDER ladder
+    // (SI727_500x400 → SI727_800x500 → SI727_1000x800).
+    //
+    // Renamed 2026-08-11: this fixture used to escalate cleanly and fit at the
+    // old ISO_A0 substitute (1189x841mm = 999,949mm²). The real largest SI 727
+    // sheet, SI727_1000x800 (1000x800mm = 800,000mm²), is genuinely ~20%
+    // smaller in area — so for this same 200-parcel density, escalation now
+    // climbs the full ladder and still exhausts at SI727_1000x800. This is
+    // correct, not a bug: the "too dense for largest available paper" fallback
+    // handles it gracefully (no crash, no NaN, no thrown error), which is what
+    // this test now asserts. See task-3 report's Fix pass section for the
+    // verified exact values.
     //
     // The escalation log lines are observable on `logger.warn` for the
-    // diagnostic narrative; the lack of structured warnings is the success
-    // signal.
+    // diagnostic narrative.
     const manyParcels = []
     for (let i = 1; i <= 200; i++) {
       manyParcels.push({
@@ -768,15 +805,21 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
       warn:  (...a) => capturedWarn.push(a.map(String).join(' ')),
       error: () => {},
     }
-    const { warnings } = generateDXF(overflowFixture, captureLogger)
+    const { buffer, warnings } = generateDXF(overflowFixture, captureLogger)
     // Escalation log lines should mention the climb up the ladder.
     const climbLines = capturedWarn.filter(s =>
       /Blocks unplaceable on SI727_(500x400|800x500|1000x800) — escalating to SI727_(500x400|800x500|1000x800)/.test(s))
     expect(climbLines.length).toBeGreaterThanOrEqual(1)
-    // After escalation the schedule fits at A0; no structured exhaustion or
-    // overflow warning should fire.
-    expect(warnings.summary.scheduleEscalationExhausted).toBeUndefined()
-    expect(warnings.summary.scheduleOverflow).toBeNull()
+    // Graceful exhaustion, not a clean fit: even at the largest real SI 727
+    // sheet this 200-parcel density is too dense to seat every schedule block
+    // without overlapping the figure. Still handled gracefully — no crash, no
+    // NaN, a valid buffer is still produced — which is what's asserted below.
+    expect(Buffer.isBuffer(buffer)).toBe(true)
+    expect(warnings.summary.scheduleEscalationExhausted).toEqual({
+      atSheetSize: 'SI727_1000x800',
+      attempts: 2,
+      hint: 'Plan too dense for largest available paper size; some blocks may overlap the figure.',
+    })
   })
 
   test('schedule pinned to a sheet where its sub-tables overlap the figure escalates instead of rendering the overlap', () => {

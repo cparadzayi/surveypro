@@ -4914,7 +4914,7 @@ async function exportSurveyPlanSummary() {
     const sheetConfig = config.value.sheetSize || 'auto'
     const scaleConfig = config.value.scale || 'auto'
     
-    // Default to ISO A1 for auto (most common survey plan size)
+    // Default to SI727_800x500 for auto (most common survey plan size)
     const selectedSheet = sheetConfig === 'auto' ? 'SI727_800x500' : sheetConfig
     
     // Get scale value

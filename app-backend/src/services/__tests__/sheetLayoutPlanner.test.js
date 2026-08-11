@@ -6,7 +6,9 @@ import BLOCKS from '../../../../app-shared/block-definitions.js';
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} };
 const fakeMeasure = (str, { size }) => String(str).length * size * 0.55;
 
-// SI727_500x400 = 594 x 420 mm = 1684 x 1190 pt (1 pt = 25.4/72 mm).
+// Synthetic mapBounds equivalent to the old 594x420mm ISO_A2 substitute —
+// not tied to the real SI727_500x400 sheet (500x400mm); this fixture just
+// needs a plausible drawing area, not the actual SI 727 dimensions.
 const A2_MAP_BOUNDS = { x: 14, y: 14, width: 1684 - 28, height: 1190 - 28 };
 
 function plan(fixture) {

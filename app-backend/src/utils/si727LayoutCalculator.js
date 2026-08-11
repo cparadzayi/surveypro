@@ -7,7 +7,7 @@ import { SI727_SHEET_SIZES, SI727_MARGINS, LAYOUT_COMPONENTS } from './si727Cons
 
 /**
  * Calculate SI 727 compliant sheet layout
- * @param {string} sheetSize - 'ISO_A2', 'ISO_A1', or 'ISO_A0'
+ * @param {string} sheetSize - 'SI727_500x400', 'SI727_800x500', or 'SI727_1000x800'
  * @param {number} parcelCount - Number of parcels
  * @param {number} beaconExceptionCount - Number of beacon exceptions
  * @returns {Object} Complete layout specification
@@ -15,15 +15,15 @@ import { SI727_SHEET_SIZES, SI727_MARGINS, LAYOUT_COMPONENTS } from './si727Cons
 export function calculateSI727Layout(sheetSize, parcelCount = 0, beaconExceptionCount = 0) {
   const sheet = SI727_SHEET_SIZES.find(s => s.name === sheetSize)
   if (!sheet) {
-    throw new Error(`Invalid sheet size: ${sheetSize}. Must be 'ISO_A2', 'ISO_A1', or 'ISO_A0'`)
+    throw new Error(`Invalid sheet size: ${sheetSize}. Must be 'SI727_500x400', 'SI727_800x500', or 'SI727_1000x800'`)
   }
   
   const margins = SI727_MARGINS
   
   // Title block height based on sheet size
-  const titleBlockHeight = sheetSize === 'ISO_A0' 
+  const titleBlockHeight = sheetSize === 'SI727_1000x800'
     ? LAYOUT_COMPONENTS.titleBlock.heightLarge
-    : sheetSize === 'ISO_A1'
+    : sheetSize === 'SI727_800x500'
     ? LAYOUT_COMPONENTS.titleBlock.heightMedium
     : LAYOUT_COMPONENTS.titleBlock.heightSmall
   
@@ -101,7 +101,7 @@ export function calculateSI727Layout(sheetSize, parcelCount = 0, beaconException
   }
   
   return {
-    sheet: { width: sheet.width, height: sheet.height, name: sheet.name, code: sheet.code },
+    sheet: { width: sheet.width, height: sheet.height, name: sheet.name },
     margins: { ...margins },  // Return a copy, not reference
     titleBlock,
     drawingArea,
@@ -143,7 +143,7 @@ export function determineOptimalSheetSize(extent, scale, parcelCount = 0, beacon
   const results = []
   
   // PREMIUM QUALITY: Evaluate A2, A1, A0 in order of preference
-  for (const sheetSize of ['ISO_A2', 'ISO_A1', 'ISO_A0']) {
+  for (const sheetSize of ['SI727_500x400', 'SI727_800x500', 'SI727_1000x800']) {
     const layout = calculateSI727Layout(sheetSize, parcelCount, 0)
     const { drawingArea } = layout
     

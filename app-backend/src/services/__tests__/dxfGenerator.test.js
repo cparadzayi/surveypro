@@ -95,7 +95,7 @@ describe('generateDXF return shape', () => {
     metadata: { surveyor: 'Test Surveyor', date: '2026-05-31' },
     projection: 'EPSG:22291',
     scale: '1:500',
-    sheetSize: 'ISO_A2',
+    sheetSize: 'SI727_500x400',
   }
   const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
 
@@ -122,7 +122,7 @@ describe('generateDXF — layers + UCS table additions', () => {
     outsideFigureData: null,
     metadata: {},
     scale: '1:500',
-    sheetSize: 'ISO_A2',
+    sheetSize: 'SI727_500x400',
   }
   const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} }
 
@@ -156,7 +156,7 @@ describe('generateDXF — graceful degradation on bad inputs', () => {
             properties: { pointId: 'X2' } },
         ],
       },
-      metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+      metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
     }
     const { warnings } = generateDXF(opts, fakeLogger)
     expect(warnings.summary.beacons).toBe(1)
@@ -171,7 +171,7 @@ describe('generateDXF — graceful degradation on bad inputs', () => {
           properties: { stand: 'X' } },
       ]},
       beacons: { features: [] },
-      metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+      metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
     }
     const { warnings } = generateDXF(opts, fakeLogger)
     expect(warnings.summary.parcels).toBe(1)
@@ -185,7 +185,7 @@ describe('generateDXF — graceful degradation on bad inputs', () => {
           properties: { stand: 'MIXED' } },
       ]},
       beacons: { features: [] },
-      metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+      metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
     }
     const { buffer, warnings } = generateDXF(opts, fakeLogger)
     expect(warnings.summary.parcels).toBe(1)
@@ -207,7 +207,7 @@ describe('generateDXF — beacon symbol differentiation', () => {
     outsideFigureData: null,
     metadata: {},
     scale: '1:500',
-    sheetSize: 'ISO_A2',
+    sheetSize: 'SI727_500x400',
   }
   test('every beacon emits a plain open CIRCLE with no radial/cross LINEs', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
@@ -226,7 +226,7 @@ describe('generateDXF — north arrow', () => {
     parcels: { features: [] },
     beacons: { features: [] },
     outsideFigureData: null,
-    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+    metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
   }
   test('emits the PDF-style compass rose on NORTH_ARROW layer', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
@@ -249,7 +249,7 @@ describe('generateDXF — scale bar', () => {
     parcels: { features: [] },
     beacons: { features: [] },
     outsideFigureData: null,
-    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+    metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
   }
   test('emits centreline + tick LINEs and metre labels on SCALE_BAR', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
@@ -329,7 +329,7 @@ describe('generateDXF — coordinate grid ticks', () => {
       ],
       constants: { pointId: 'A', y: 50000, x: 2200000 },
     },
-    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+    metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
   }
   test('emits at least some tick LINEs and coordinate labels on GRID layer', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
@@ -371,7 +371,7 @@ describe('generateDXF — margin guides', () => {
     parcels: { features: [] },
     beacons: { features: [] },
     outsideFigureData: null,
-    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+    metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
   }
   test('emits corner tick + crop-mark LINEs on MARGIN_GUIDES', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
@@ -389,7 +389,7 @@ describe('generateDXF — beacon description block', () => {
     parcels: { features: [] },
     beacons: { features: [] },
     outsideFigureData: null,
-    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+    metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
     beaconGroups: [
       { points: 'BM 001–BM 003', description: 'Permanent concrete pillars' },
       { points: 'BM 004–BM 008', description: 'Iron pegs with cement collar' },
@@ -419,7 +419,7 @@ describe('generateDXF — beacon description block', () => {
         { type: 'Feature', geometry: { type: 'Point', coordinates: [50080, 2200055] }, properties: { pointId: '102C' } },
       ] },
       outsideFigureData: null,
-      metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+      metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
     }, fakeLogger)
     const dxf = buffer.toString()
     expect(dxf).toMatch(/DESCRIPTION OF BEACONS\b/)
@@ -434,7 +434,7 @@ describe('generateDXF — outside-figure annotation foundation', () => {
     parcels: { features: [] },
     beacons: { features: [] },
     outsideFigureData: null,
-    metadata: {}, scale: '1:500', sheetSize: 'ISO_A2',
+    metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
   }
   test('declares the OUTSIDE_FIGURE_LABELS layer', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
@@ -473,7 +473,7 @@ describe('generateDXF — title block (PDF-matched, SI 727)', () => {
       surveyor: 'J. Doe',
       date: '2026-05-31',
     },
-    scale: '1:500', sheetSize: 'ISO_A2',
+    scale: '1:500', sheetSize: 'SI727_500x400',
   }
 
   test('heading mirrors the PDF: "GENERAL PLAN" / "of" / "Stands … Township"', () => {
@@ -505,7 +505,7 @@ describe('generateDXF — endorsement zone (PDF-aligned table)', () => {
       surveyor: 'J. Doe',
       licenseNumber: 'PLS 1234',
     },
-    scale: '1:500', sheetSize: 'ISO_A2',
+    scale: '1:500', sheetSize: 'SI727_500x400',
   }
   test('emits the ENDORSEMENTS table (No./STATEMENT/Date/Surveyor-General) + Dispensation row', () => {
     const { buffer } = generateDXF(opts, fakeLogger)

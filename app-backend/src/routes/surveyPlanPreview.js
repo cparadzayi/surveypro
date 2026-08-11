@@ -247,7 +247,7 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
       // optimiser understands; ignore a non-ISO sheet here so the preview never
       // crashes (the diagram renderer sizes itself from the chosen A4/A3 directly).
       const isoSheetSize =
-        (sheetSize === 'ISO_A2' || sheetSize === 'ISO_A1' || sheetSize === 'ISO_A0') ? sheetSize : undefined
+        (sheetSize === 'SI727_500x400' || sheetSize === 'SI727_800x500' || sheetSize === 'SI727_1000x800') ? sheetSize : undefined
 
       if (scale && isoSheetSize) {
         // Both explicitly provided
@@ -285,7 +285,7 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
         const minScaleDenominator = scaleResult.minScaleForLegibility || scaleResult.recommended.value
 
         // Try sheets from smallest to largest; for each sheet find smallest SI 727 scale that fits
-        const sheetOrder = ['ISO_A2', 'ISO_A1', 'ISO_A0']
+        const sheetOrder = ['SI727_500x400', 'SI727_800x500', 'SI727_1000x800']
         let bestCombo = null
 
         for (const sheet of sheetOrder) {
@@ -308,7 +308,7 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
               SI727_PRESCRIBED_SCALES.find(s => s.value === maxDenominator) ||
               { value: maxDenominator, label: `1:${maxDenominator}` }
             bestCombo = { sheet, scale: ceilingScale, layout: sheetLayout, needsTiling: true }
-            break // ISO_A2 at ceiling is as good as any — front-end tile grid picks sheet size
+            break // SI727_500x400 at ceiling is as good as any — front-end tile grid picks sheet size
           }
 
           const candidateScales = SI727_PRESCRIBED_SCALES
@@ -338,9 +338,9 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
           layout = bestCombo.layout
         } else {
           // Fallback: A0 at recommended scale
-          selectedSheetSize = 'ISO_A0'
+          selectedSheetSize = 'SI727_1000x800'
           selectedScale = scaleResult.recommended
-          layout = calculateSI727Layout('ISO_A0', parcels.length, 0)
+          layout = calculateSI727Layout('SI727_1000x800', parcels.length, 0)
         }
 
         const needsTilingFlag = bestCombo?.needsTiling

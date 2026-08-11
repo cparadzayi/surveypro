@@ -7,7 +7,7 @@ import {
 
 describe('sheetEscalation constants', () => {
   test('SHEET_ORDER is the canonical A2→A1→A0 ladder', () => {
-    expect(SHEET_ORDER).toEqual(['ISO_A2', 'ISO_A1', 'ISO_A0']);
+    expect(SHEET_ORDER).toEqual(['SI727_500x400', 'SI727_800x500', 'SI727_1000x800']);
   });
 
   test('MAX_SHEET_UP_ATTEMPTS allows climbing the full ladder once', () => {
@@ -17,15 +17,15 @@ describe('sheetEscalation constants', () => {
 
 describe('nextSheetUp', () => {
   test('A2 → A1', () => {
-    expect(nextSheetUp('ISO_A2')).toBe('ISO_A1');
+    expect(nextSheetUp('SI727_500x400')).toBe('SI727_800x500');
   });
 
   test('A1 → A0', () => {
-    expect(nextSheetUp('ISO_A1')).toBe('ISO_A0');
+    expect(nextSheetUp('SI727_800x500')).toBe('SI727_1000x800');
   });
 
   test('A0 → null (already at top of ladder)', () => {
-    expect(nextSheetUp('ISO_A0')).toBeNull();
+    expect(nextSheetUp('SI727_1000x800')).toBeNull();
   });
 
   test('unknown sheet → null', () => {

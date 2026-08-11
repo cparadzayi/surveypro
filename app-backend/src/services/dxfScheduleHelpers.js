@@ -15,7 +15,7 @@ import { SCHEDULE_OF_AREAS, formatAreaValue } from '../../../app-shared/block-de
  * Sheet ladder ordered smallest → largest. Index in this array maps to
  * valid Schedule of Areas starting sizes.
  */
-const SHEET_LADDER = ['ISO_A2', 'ISO_A1', 'ISO_A0']
+const SHEET_LADDER = ['SI727_500x400', 'SI727_800x500', 'SI727_1000x800']
 
 /**
  * Conversion factor: 1 PDF point = 0.352778 mm (1/72 inch × 25.4 mm/inch).

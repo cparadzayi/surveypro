@@ -6,7 +6,7 @@ import BLOCKS from '../../../../app-shared/block-definitions.js';
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} };
 const fakeMeasure = (str, { size }) => String(str).length * size * 0.55;
 
-// ISO_A2 = 594 x 420 mm = 1684 x 1190 pt (1 pt = 25.4/72 mm).
+// SI727_500x400 = 594 x 420 mm = 1684 x 1190 pt (1 pt = 25.4/72 mm).
 const A2_MAP_BOUNDS = { x: 14, y: 14, width: 1684 - 28, height: 1190 - 28 };
 
 function plan(fixture) {

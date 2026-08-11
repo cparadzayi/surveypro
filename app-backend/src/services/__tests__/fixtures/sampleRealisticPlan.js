@@ -59,6 +59,6 @@ export const sampleRealisticPlan = {
       { name: 'D', y: 50000.000, x: 2200200.000 },
     ],
   },
-  sheetSize: 'ISO_A2',
+  sheetSize: 'SI727_500x400',
   scale: { value: 1000, label: '1:1000' },
 };

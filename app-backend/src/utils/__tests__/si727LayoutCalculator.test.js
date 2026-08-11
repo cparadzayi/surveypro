@@ -1,10 +1,12 @@
 /**
  * Unit tests for SI 727 Layout Calculator
  *
- * Sheet sizes use the ISO names the source + live consumer (surveyPlanPreview)
- * rely on: ISO_A2 (594×420), ISO_A1 (841×594), ISO_A0 (1189×841). Drawing-area
- * width = sheet.width − 50 (left) − 150 (right). Title-block height: ISO_A2 60,
- * ISO_A1 80, ISO_A0 100.
+ * Sheet sizes use the SI 727 Section 62(1) names the source + live consumer
+ * (surveyPlanPreview) rely on: SI727_500x400 (500×400), SI727_800x500 (800×500),
+ * SI727_1000x800 (1000×800) — real prescribed sizes, not the old ISO_A2/A1/A0
+ * substitute dimensions (594×420/841×594/1189×841) this file used before the
+ * Task 3 rename sweep. Drawing-area width = sheet.width − 50 (left) − 150 (right).
+ * Title-block height: SI727_500x400 60, SI727_800x500 80, SI727_1000x800 100.
  */
 
 import { describe, test, expect } from '@jest/globals'
@@ -17,33 +19,43 @@ import {
 
 describe('SI727 Layout Calculator', () => {
   describe('calculateSI727Layout', () => {
-    test('ISO_A2 sheet has correct dimensions', () => {
-      const layout = calculateSI727Layout('ISO_A2', 5, 2)
+    test('SI727_500x400 sheet has correct dimensions', () => {
+      const layout = calculateSI727Layout('SI727_500x400', 5, 2)
 
-      expect(layout.sheet.width).toBe(594)
-      expect(layout.sheet.height).toBe(420)
-      expect(layout.sheet.name).toBe('ISO_A2')
-      expect(layout.sheet.code).toBe('ISO A2')
+      // was 594 under ISO_A2 (594x420mm substitute); now 500 under the real SI 727
+      // Section 62(1) size (500x400mm) — confirmed empirically via Jest actual output.
+      expect(layout.sheet.width).toBe(500)
+      // was 420 under ISO_A2; now 400 under SI727_500x400.
+      expect(layout.sheet.height).toBe(400)
+      expect(layout.sheet.name).toBe('SI727_500x400')
+      // layout.sheet.code was dropped (Task 3, si727LayoutCalculator.js) — confirmed via
+      // grep that nothing downstream reads it; the sheet object no longer carries it.
     })
 
-    test('ISO_A1 sheet has correct dimensions', () => {
-      const layout = calculateSI727Layout('ISO_A1', 10, 3)
+    test('SI727_800x500 sheet has correct dimensions', () => {
+      const layout = calculateSI727Layout('SI727_800x500', 10, 3)
 
-      expect(layout.sheet.width).toBe(841)
-      expect(layout.sheet.height).toBe(594)
-      expect(layout.sheet.name).toBe('ISO_A1')
+      // was 841 under ISO_A1 (841x594mm substitute); now 800 under the real SI 727
+      // Section 62(1) size (800x500mm) — confirmed empirically via Jest actual output.
+      expect(layout.sheet.width).toBe(800)
+      // was 594 under ISO_A1; now 500 under SI727_800x500.
+      expect(layout.sheet.height).toBe(500)
+      expect(layout.sheet.name).toBe('SI727_800x500')
     })
 
-    test('ISO_A0 sheet has correct dimensions', () => {
-      const layout = calculateSI727Layout('ISO_A0', 20, 5)
+    test('SI727_1000x800 sheet has correct dimensions', () => {
+      const layout = calculateSI727Layout('SI727_1000x800', 20, 5)
 
-      expect(layout.sheet.width).toBe(1189)
-      expect(layout.sheet.height).toBe(841)
-      expect(layout.sheet.name).toBe('ISO_A0')
+      // was 1189 under ISO_A0 (1189x841mm substitute); now 1000 under the real SI 727
+      // Section 62(1) size (1000x800mm) — confirmed empirically via Jest actual output.
+      expect(layout.sheet.width).toBe(1000)
+      // was 841 under ISO_A0; now 800 under SI727_1000x800.
+      expect(layout.sheet.height).toBe(800)
+      expect(layout.sheet.name).toBe('SI727_1000x800')
     })
 
     test('Margins are SI 727 compliant', () => {
-      const layout = calculateSI727Layout('ISO_A1', 10, 3)
+      const layout = calculateSI727Layout('SI727_800x500', 10, 3)
 
       expect(layout.margins.left).toBe(50)
       expect(layout.margins.right).toBe(150)
@@ -52,17 +64,19 @@ describe('SI727 Layout Calculator', () => {
     })
 
     test('Drawing area respects margins', () => {
-      const layout = calculateSI727Layout('ISO_A1', 10, 3)
+      const layout = calculateSI727Layout('SI727_800x500', 10, 3)
 
-      const expectedWidth = 841 - 50 - 150  // 641mm
+      // was 841-50-150=641mm under ISO_A1; now 800-50-150=600mm under SI727_800x500
+      // (real sheet.width=800) — confirmed empirically via Jest actual output.
+      const expectedWidth = 800 - 50 - 150  // 600mm
       expect(layout.drawingArea.width).toBe(expectedWidth)
       expect(layout.drawingArea.x).toBe(50)
     })
 
     test('Title block height varies by sheet size', () => {
-      const small = calculateSI727Layout('ISO_A2', 5, 2)
-      const medium = calculateSI727Layout('ISO_A1', 10, 3)
-      const large = calculateSI727Layout('ISO_A0', 20, 5)
+      const small = calculateSI727Layout('SI727_500x400', 5, 2)
+      const medium = calculateSI727Layout('SI727_800x500', 10, 3)
+      const large = calculateSI727Layout('SI727_1000x800', 20, 5)
 
       expect(small.titleBlock.height).toBe(60)
       expect(medium.titleBlock.height).toBe(80)
@@ -70,8 +84,8 @@ describe('SI727 Layout Calculator', () => {
     })
 
     test('Beacon descriptions height is adaptive', () => {
-      const noExceptions = calculateSI727Layout('ISO_A1', 10, 0)
-      const threeExceptions = calculateSI727Layout('ISO_A1', 10, 3)
+      const noExceptions = calculateSI727Layout('SI727_800x500', 10, 0)
+      const threeExceptions = calculateSI727Layout('SI727_800x500', 10, 3)
 
       expect(threeExceptions.beaconDescriptions.height).toBeGreaterThan(
         noExceptions.beaconDescriptions.height
@@ -84,8 +98,8 @@ describe('SI727 Layout Calculator', () => {
     })
 
     test('Schedule height is adaptive to parcel count', () => {
-      const fewParcels = calculateSI727Layout('ISO_A1', 2, 0)
-      const manyParcels = calculateSI727Layout('ISO_A1', 10, 0)
+      const fewParcels = calculateSI727Layout('SI727_800x500', 2, 0)
+      const manyParcels = calculateSI727Layout('SI727_800x500', 10, 0)
 
       expect(manyParcels.scheduleOfAreas.height).toBeGreaterThan(
         fewParcels.scheduleOfAreas.height
@@ -98,7 +112,7 @@ describe('SI727 Layout Calculator', () => {
     })
 
     test('All layout components are present', () => {
-      const layout = calculateSI727Layout('ISO_A1', 10, 3)
+      const layout = calculateSI727Layout('SI727_800x500', 10, 3)
 
       expect(layout).toHaveProperty('sheet')
       expect(layout).toHaveProperty('margins')
@@ -112,7 +126,7 @@ describe('SI727 Layout Calculator', () => {
     })
 
     test('Drawing area has positive dimensions', () => {
-      const layout = calculateSI727Layout('ISO_A2', 5, 2)
+      const layout = calculateSI727Layout('SI727_500x400', 5, 2)
 
       expect(layout.drawingArea.width).toBeGreaterThan(0)
       expect(layout.drawingArea.height).toBeGreaterThan(0)
@@ -121,11 +135,12 @@ describe('SI727 Layout Calculator', () => {
 
   describe('calculateRealWorldDimensions', () => {
     test('Calculates correct dimensions at 1:1000 scale', () => {
-      const layout = calculateSI727Layout('ISO_A1', 10, 3)
+      const layout = calculateSI727Layout('SI727_800x500', 10, 3)
       const dimensions = calculateRealWorldDimensions(layout, 1000)
 
-      // Drawing area is 641mm wide at 1:1000 = 641m
-      expect(dimensions.widthMeters).toBe(641)
+      // was 641mm (841-50-150) under ISO_A1 at 1:1000 = 641m; now 600mm
+      // (800-50-150) under SI727_800x500 at 1:1000 = 600m — confirmed empirically.
+      expect(dimensions.widthMeters).toBe(600)
 
       // Should have hectares
       expect(dimensions).toHaveProperty('areaHectares')
@@ -133,15 +148,16 @@ describe('SI727 Layout Calculator', () => {
     })
 
     test('Calculates correct dimensions at 1:2500 scale', () => {
-      const layout = calculateSI727Layout('ISO_A0', 20, 5)
+      const layout = calculateSI727Layout('SI727_1000x800', 20, 5)
       const dimensions = calculateRealWorldDimensions(layout, 2500)
 
-      // Drawing area is 989mm wide at 1:2500 = 2472.5m
-      expect(dimensions.widthMeters).toBe(2472.5)
+      // was 989mm (1189-50-150) under ISO_A0 at 1:2500 = 2472.5m; now 800mm
+      // (1000-50-150) under SI727_1000x800 at 1:2500 = 2000m — confirmed empirically.
+      expect(dimensions.widthMeters).toBe(2000)
     })
 
     test('Area in hectares is correct', () => {
-      const layout = calculateSI727Layout('ISO_A2', 5, 2)
+      const layout = calculateSI727Layout('SI727_500x400', 5, 2)
       const dimensions = calculateRealWorldDimensions(layout, 1000)
 
       const expectedArea = (dimensions.widthMeters * dimensions.heightMeters) / 10000
@@ -154,8 +170,8 @@ describe('SI727 Layout Calculator', () => {
       const extent = { width: 50, height: 40 }  // Very small extent
       const result = determineOptimalSheetSize(extent, 1000, 3)
 
-      // Should fit on ISO_A2 or ISO_A1 (both acceptable)
-      expect(['ISO_A2', 'ISO_A1']).toContain(result.recommended)
+      // Should fit on SI727_500x400 or SI727_800x500 (both acceptable)
+      expect(['SI727_500x400', 'SI727_800x500']).toContain(result.recommended)
       expect(result.requiresMultiSheet).toBe(false)
     })
 
@@ -163,16 +179,16 @@ describe('SI727 Layout Calculator', () => {
       const extent = { width: 150, height: 120 }  // Medium extent
       const result = determineOptimalSheetSize(extent, 1000, 8)
 
-      // Should fit on ISO_A1 or ISO_A0 (both acceptable)
-      expect(['ISO_A1', 'ISO_A0']).toContain(result.recommended)
+      // Should fit on SI727_800x500 or SI727_1000x800 (both acceptable)
+      expect(['SI727_800x500', 'SI727_1000x800']).toContain(result.recommended)
       expect(result.requiresMultiSheet).toBe(false)
     })
 
     test('Large extent requires the largest sheet', () => {
-      const extent = { width: 500, height: 400 }  // 500m x 400m (fits ISO_A0 at 1:1000)
+      const extent = { width: 500, height: 400 }  // 500m x 400m (fits SI727_1000x800 at 1:1000)
       const result = determineOptimalSheetSize(extent, 1000, 20)
 
-      expect(result.recommended).toBe('ISO_A0')
+      expect(result.recommended).toBe('SI727_1000x800')
       expect(result.requiresMultiSheet).toBe(false)
     })
 
@@ -181,7 +197,7 @@ describe('SI727 Layout Calculator', () => {
       const result = determineOptimalSheetSize(extent, 1000, 30)
 
       expect(result.requiresMultiSheet).toBe(true)
-      expect(result.recommended).toBe('ISO_A0')  // Largest available
+      expect(result.recommended).toBe('SI727_1000x800')  // Largest available
     })
 
     test('Returns analysis for all sheet sizes', () => {
@@ -189,9 +205,9 @@ describe('SI727 Layout Calculator', () => {
       const result = determineOptimalSheetSize(extent, 1000, 10)
 
       expect(result.analysis).toHaveLength(3)
-      expect(result.analysis[0].sheetSize).toBe('ISO_A2')
-      expect(result.analysis[1].sheetSize).toBe('ISO_A1')
-      expect(result.analysis[2].sheetSize).toBe('ISO_A0')
+      expect(result.analysis[0].sheetSize).toBe('SI727_500x400')
+      expect(result.analysis[1].sheetSize).toBe('SI727_800x500')
+      expect(result.analysis[2].sheetSize).toBe('SI727_1000x800')
     })
 
     test('Utilization is calculated correctly', () => {
@@ -203,17 +219,17 @@ describe('SI727 Layout Calculator', () => {
     })
 
     test('Selects smallest fitting sheet', () => {
-      const extent = { width: 150, height: 120 }  // Should fit ISO_A1
+      const extent = { width: 150, height: 120 }  // Should fit SI727_800x500
       const result = determineOptimalSheetSize(extent, 1000, 5)
 
-      // Should recommend ISO_A1 (smallest that fits)
-      expect(result.recommended).toBe('ISO_A1')
+      // Should recommend SI727_800x500 (smallest that fits)
+      expect(result.recommended).toBe('SI727_800x500')
     })
   })
 
   describe('validateSI727Layout', () => {
     test('Valid layout passes all checks', () => {
-      const layout = calculateSI727Layout('ISO_A0', 20, 5)
+      const layout = calculateSI727Layout('SI727_1000x800', 20, 5)
       const validation = validateSI727Layout(layout)
 
       expect(validation.valid).toBe(true)
@@ -223,7 +239,7 @@ describe('SI727 Layout Calculator', () => {
     })
 
     test('Detects invalid margins', () => {
-      const layout = calculateSI727Layout('ISO_A1', 10, 3)
+      const layout = calculateSI727Layout('SI727_800x500', 10, 3)
       layout.margins.left = 40  // Invalid
 
       const validation = validateSI727Layout(layout)
@@ -234,7 +250,7 @@ describe('SI727 Layout Calculator', () => {
     })
 
     test('Detects invalid sheet size', () => {
-      const layout = calculateSI727Layout('ISO_A1', 10, 3)
+      const layout = calculateSI727Layout('SI727_800x500', 10, 3)
       layout.sheet.width = 700  // Invalid size
 
       const validation = validateSI727Layout(layout)
@@ -244,7 +260,7 @@ describe('SI727 Layout Calculator', () => {
     })
 
     test('Warns about small drawing areas', () => {
-      const layout = calculateSI727Layout('ISO_A2', 5, 2)
+      const layout = calculateSI727Layout('SI727_500x400', 5, 2)
       layout.drawingArea.width = 150  // Very small
 
       const validation = validateSI727Layout(layout)
@@ -253,7 +269,7 @@ describe('SI727 Layout Calculator', () => {
     })
 
     test('Detects invalid drawing area dimensions', () => {
-      const layout = calculateSI727Layout('ISO_A1', 10, 3)
+      const layout = calculateSI727Layout('SI727_800x500', 10, 3)
       layout.drawingArea.width = -100  // Invalid
 
       const validation = validateSI727Layout(layout)
@@ -272,7 +288,7 @@ describe('SI727 Layout Calculator', () => {
 
       const sizeResult = determineOptimalSheetSize(extent, scale, parcelCount)
       // Accept any valid sheet size
-      expect(['ISO_A2', 'ISO_A1', 'ISO_A0']).toContain(sizeResult.recommended)
+      expect(['SI727_500x400', 'SI727_800x500', 'SI727_1000x800']).toContain(sizeResult.recommended)
 
       // 2. Calculate layout with minimal components
       const layout = calculateSI727Layout(sizeResult.recommended, parcelCount, 0)
@@ -298,7 +314,7 @@ describe('SI727 Layout Calculator', () => {
 
       const sizeResult = determineOptimalSheetSize(extent, scale, parcelCount)
       // Accept any valid sheet size (at 1:5000, 300m = 60mm)
-      expect(['ISO_A2', 'ISO_A1', 'ISO_A0']).toContain(sizeResult.recommended)
+      expect(['SI727_500x400', 'SI727_800x500', 'SI727_1000x800']).toContain(sizeResult.recommended)
 
       const layout = calculateSI727Layout(sizeResult.recommended, parcelCount, 0)
 

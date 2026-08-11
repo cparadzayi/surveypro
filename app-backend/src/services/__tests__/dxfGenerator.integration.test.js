@@ -592,7 +592,7 @@ describe('dxfGenerator integration — corner crosses clamp to the drawing area'
       ],
       coordinates: ring.slice(0, 4).map((c, i) => ({ name: 'ABCD'[i], y: c[0], x: c[1] })),
     },
-    sheetSize: 'ISO_A2', scale: { value: 500, label: '1:500' },
+    sheetSize: 'SI727_500x400', scale: { value: 500, label: '1:500' },
   }
 
   test('all GRID corner-cross geometry stays within the content rectangle', () => {
@@ -663,7 +663,7 @@ describe('dxfGenerator integration — OFD Metres accepts `metres` payloads', ()
         { name: 'C', y: Y0 + 100, x: X0 + 60 }, { name: 'D', y: Y0, x: X0 + 60 },
       ],
     },
-    sheetSize: 'ISO_A2', scale: { value: 500, label: '1:500' },
+    sheetSize: 'SI727_500x400', scale: { value: 500, label: '1:500' },
   }
 
   test('OFD Metres column is populated from `metres` (not left blank)', () => {
@@ -771,7 +771,7 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
     const { warnings } = generateDXF(overflowFixture, captureLogger)
     // Escalation log lines should mention the climb up the ladder.
     const climbLines = capturedWarn.filter(s =>
-      /Blocks unplaceable on ISO_A[210] — escalating to ISO_A[210]/.test(s))
+      /Blocks unplaceable on SI727_(500x400|800x500|1000x800) — escalating to SI727_(500x400|800x500|1000x800)/.test(s))
     expect(climbLines.length).toBeGreaterThanOrEqual(1)
     // After escalation the schedule fits at A0; no structured exhaustion or
     // overflow warning should fire.
@@ -793,7 +793,7 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
     // The dense Maglas fixture pinned to A1/1:1250 reproduces this: the planner
     // accepts A1 but the emitted sub-tables overlap; escalation to A0 fits.
     const { warnings } = generateDXF(
-      { ...sampleMaglasPlan, scale: { value: 1250, label: '1:1250' }, sheetSize: 'ISO_A1', orientation: 'landscape' },
+      { ...sampleMaglasPlan, scale: { value: 1250, label: '1:1250' }, sheetSize: 'SI727_800x500', orientation: 'landscape' },
       fakeLogger,
     )
     expect(warnings.summary.scheduleOfAreasOverlapsPolygon).toBeUndefined()
@@ -830,7 +830,7 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
       ],
     }
     const { warnings } = generateDXF(
-      { ...sampleMaglasPlan, outsideFigureData: irregularOFD, scale: { value: 1200, label: '1:1200' }, sheetSize: 'ISO_A0', orientation: 'landscape' },
+      { ...sampleMaglasPlan, outsideFigureData: irregularOFD, scale: { value: 1200, label: '1:1200' }, sheetSize: 'SI727_1000x800', orientation: 'landscape' },
       fakeLogger,
     )
     expect(warnings.summary.scheduleOfAreasOverlapsPolygon).toBeUndefined()
@@ -856,7 +856,7 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
       ],
     }
     const { warnings } = generateDXF(
-      { ...sampleMaglasPlan, outsideFigureData: irregularOFD, scale: { value: 750, label: '1:750' }, sheetSize: 'ISO_A0', orientation: 'landscape' },
+      { ...sampleMaglasPlan, outsideFigureData: irregularOFD, scale: { value: 750, label: '1:750' }, sheetSize: 'SI727_1000x800', orientation: 'landscape' },
       fakeLogger,
     )
     const onSchedule = Object.keys(warnings.summary).filter(
@@ -880,7 +880,7 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
       ],
     }
     const { warnings } = generateDXF(
-      { ...sampleMaglasPlan, outsideFigureData: irregularOFD, scale: { value: 750, label: '1:750' }, sheetSize: 'ISO_A0', orientation: 'landscape' },
+      { ...sampleMaglasPlan, outsideFigureData: irregularOFD, scale: { value: 750, label: '1:750' }, sheetSize: 'SI727_1000x800', orientation: 'landscape' },
       fakeLogger,
     )
     // Neither the scale bar nor the North arrow may end up over the figure or the
@@ -940,7 +940,7 @@ describe('dxfGenerator — cartographic text hierarchy', () => {
           { name: 'C', y: yBase + ofW, x: xBase + ofH }, { name: 'D', y: yBase, x: xBase + ofH },
         ],
       },
-      sheetSize: 'ISO_A2', scale: { value: 1000, label: '1:1000' },
+      sheetSize: 'SI727_500x400', scale: { value: 1000, label: '1:1000' },
     }
   })()
 
@@ -1142,7 +1142,7 @@ describe('dxfGenerator integration — schedule split + dynamic columns (2026-06
     const fixture = {
       ...sampleFixture,
       parcels: { type: 'FeatureCollection', features },
-      sheetSize: 'ISO_A0',
+      sheetSize: 'SI727_1000x800',
     }
     const r = generateDXF(fixture, fakeLogger)
     const sched = r.warnings.summary.scheduleOverflow

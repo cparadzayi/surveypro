@@ -87,6 +87,6 @@ export const sampleMaglasPlan = {
       { name: 'D', y: ofYmin, x: ofXmax },
     ],
   },
-  sheetSize: 'ISO_A2',
+  sheetSize: 'SI727_500x400',
   scale: { value: 1000, label: '1:1000' },
 };

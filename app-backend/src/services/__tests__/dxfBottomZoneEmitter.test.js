@@ -206,7 +206,7 @@ describe('placeBottomZoneBlocks orchestrator', () => {
     outsideFigureData: { edges: [{ side: 'AB', distance: 10, direction: 'N', pointId: 'P1', y: 1, x: 2 }] },
     beaconGroups: [{ points: 'A', description: 'iron peg' }],
     metadata: { date: '2026-01-01', surveyor: 'John Doe' },
-    sheetSize: 'ISO_A2',
+    sheetSize: 'SI727_500x400',
     fonts: { hBody: 2, hSub: 2.5, rH: 3, hHead: 2.5,
              ofTitleH: 3, ofBodyH: 2.5, ofRowH: 4,
              sgTitleH: 3.5, sgBodyH: 2.5 },

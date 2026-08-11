@@ -5,7 +5,7 @@
  * in Cape Lo Lo 29 coordinates.
  * 2 surveyed parcels (left rectangle + right rectangle within the OF bounds),
  * 6 beacons (3 placed: A, B, C along the southern edge; 3 found: D, E, F along
- * the northern edge), 2 beaconGroups, 2 priorDiagrams, scale 1:1000, ISO_A2.
+ * the northern edge), 2 beaconGroups, 2 priorDiagrams, scale 1:1000, SI727_500x400.
  *
  * DESIGN NOTES
  * ─────────────────────────────────────────────────────────────────────────────
@@ -104,5 +104,5 @@ export const sampleFixture = {
   ],
   projection: 'EPSG:22291',
   scale: '1:1000',
-  sheetSize: 'ISO_A2',
+  sheetSize: 'SI727_500x400',
 }

@@ -12,7 +12,7 @@ import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js'
 // reproduced the reported overlap bug. Checking the returned `warnings` object
 // (not raw log text) reflects only the final, actually-returned attempt: if
 // escalation resolves the overlap on a retry (as it now does for this fixture,
-// ISO_A2→ISO_A1), scheduleOfAreasOverlapsPolygon is correctly never set, even
+// SI727_500x400→SI727_800x500), scheduleOfAreasOverlapsPolygon is correctly never set, even
 // though an earlier, superseded attempt did warn transiently.
 describe('Schedule of Areas placement no longer collides when outsideFigure is absent', () => {
   test('final returned result has no scheduleOfAreas/figure overlap warning', async () => {
@@ -54,7 +54,7 @@ describe('Schedule of Areas placement no longer collides when outsideFigure is a
   test(
     'split schedule (Maglas, 240 stands) exhausts every escalation level and still overlaps — ' +
       'documented limitation: the fix correctly re-checks and escalates at each step ' +
-      '(ISO_A2→ISO_A1→ISO_A0→scale step-up 1:1000→1:1250), but the composite ' +
+      '(SI727_500x400→SI727_800x500→SI727_1000x800→scale step-up 1:1000→1:1250), but the composite ' +
       '(860×1850pt, ~30×65cm) is genuinely too large to fit anywhere even at the largest ' +
       'sheet; see docs/superpowers/specs/2026-08-10-split-schedule-escalation-gate-design.md',
     async () => {
@@ -66,9 +66,9 @@ describe('Schedule of Areas placement no longer collides when outsideFigure is a
       const logger = { info: () => {}, warn: () => {}, error: () => {} }
       const result = await generateGeoPDF(sampleMaglasPlan, logger)
 
-      expect(result.sheetSize).toBe('ISO_A0')
+      expect(result.sheetSize).toBe('SI727_1000x800')
       expect(result.warnings.scheduleEscalationExhausted).toEqual({
-        atSheetSize: 'ISO_A0',
+        atSheetSize: 'SI727_1000x800',
         attempts: 2,
         hint: 'Plan too dense for largest available paper size; some blocks may overlap the figure.',
       })

@@ -62,7 +62,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     const { features, drawingZone } = consolidationFixture()
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -80,7 +80,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     const { features, drawingZone } = consolidationFixture()
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -98,7 +98,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     const { features, drawingZone } = consolidationFixture()
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -115,7 +115,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     const drawingZone = { x: 0, y: 0, width: 400, height: 120 }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -148,7 +148,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon, sheetSize: 'ISO_A2',
+      drawingZone, polygon, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn,
       logger,
@@ -165,7 +165,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     const drawingZone = { x: 0, y: 0, width: 1000, height: 80 }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
       seedPlacedBlocks: [{ x: 0, y: 0, width: 600, height: 80, name: 'ofd' }],
@@ -193,7 +193,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     const drawingZone = { x: 0, y: 0, width: 1000, height: 200 }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon, sheetSize: 'ISO_A2',
+      drawingZone, polygon, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -224,7 +224,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     const drawingZone = { x: 0, y: 0, width: 1000, height: 200 }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon, sheetSize: 'ISO_A2',
+      drawingZone, polygon, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -272,7 +272,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn,
       logger,
@@ -310,7 +310,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     const features = makeFeatures(40)
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon, sheetSize: 'ISO_A2',
+      drawingZone, polygon, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -360,7 +360,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon, sheetSize: 'ISO_A2',
+      drawingZone, polygon, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn,
       logger,
@@ -384,7 +384,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     const drawingZone = { x: 0, y: 0, width: 40, height: 40 }
     emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -412,7 +412,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     const features = makeFeatures(24)
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon, sheetSize: 'ISO_A2',
+      drawingZone, polygon, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -425,7 +425,7 @@ describe('emitScheduleOfAreasTopological — consolidation pass', () => {
     const drawingZone = { x: 0, y: 0, width: 600, height: 80 }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -445,7 +445,7 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     const drawingZone = { x: 0, y: 0, width: 10, height: 5 }
     emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -464,7 +464,7 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     const drawingZone = { x: 0, y: 0, width: 100, height: 100 }
     emitScheduleOfAreasTopological({
       surveyedFeatures: makeFeatures(100),
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -472,18 +472,18 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
     expect(warns.length).toBe(1)
     const payload = warns[0].payload
-    expect(payload).toHaveProperty('atSheetSize', 'ISO_A2')
+    expect(payload).toHaveProperty('atSheetSize', 'SI727_500x400')
     expect(payload).toHaveProperty('phase', 'initial-budget')
     // Either escalation field is acceptable; initial-budget uses requiredSheetSize.
     expect(payload.requiredSheetSize || payload.recommendedSheetSize).toBeTruthy()
   })
 
   test('15. sheet escalation uses nextLargerSheet(sheetSize)', () => {
-    // ISO_A1 + small overflow zone → escalation field = ISO_A0.
+    // SI727_800x500 + small overflow zone → escalation field = SI727_1000x800.
     const drawingZone = { x: 0, y: 0, width: 100, height: 100 }
     emitScheduleOfAreasTopological({
       surveyedFeatures: makeFeatures(100),
-      drawingZone, polygon: null, sheetSize: 'ISO_A1',
+      drawingZone, polygon: null, sheetSize: 'SI727_800x500',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -491,7 +491,7 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     const warns = h.calls.warn.filter(w => w.cat === 'scheduleOverflow')
     expect(warns.length).toBe(1)
     const escalation = warns[0].payload.requiredSheetSize || warns[0].payload.recommendedSheetSize
-    expect(escalation).toBe('ISO_A0')
+    expect(escalation).toBe('SI727_1000x800')
   })
 
   test('16. polygon with rectangle obstacle → placements avoid the polygon', () => {
@@ -505,7 +505,7 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     const features = makeFeatures(6)
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon, sheetSize: 'ISO_A2',
+      drawingZone, polygon, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -524,7 +524,7 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     const drawingZone = { x: 0, y: 0, width: 100, height: 100 }
     emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -550,7 +550,7 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     const drawingZone = { x: 0, y: 0, width: 600, height: 88 }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -572,7 +572,7 @@ describe('emitScheduleOfAreasTopological — overflow & edge cases', () => {
     const drawingZone = { x: 0, y: 0, width: 400, height: 300 }
     emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn,
       logger,
@@ -599,7 +599,7 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
       surveyedFeatures: features,
       drawingZone,
       polygon: null,
-      sheetSize: 'ISO_A2',
+      sheetSize: 'SI727_500x400',
       fonts: h.fonts,
       helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
@@ -619,7 +619,7 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
       surveyedFeatures: [],
       drawingZone: { x: 0, y: 0, width: 400, height: 300 },
       polygon: null,
-      sheetSize: 'ISO_A2',
+      sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -637,7 +637,7 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
       surveyedFeatures: features,
       drawingZone: { x: 0, y: 0, width: 400, height: 300 },
       polygon: null,
-      sheetSize: 'ISO_A2',
+      sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -653,7 +653,7 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
       surveyedFeatures: features,
       drawingZone: { x: 0, y: 0, width: 400, height: 300 },
       polygon: null,
-      sheetSize: 'ISO_A2',
+      sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -667,7 +667,7 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
       surveyedFeatures: makeFeatures(50),
       drawingZone: { x: 0, y: 17, width: 5, height: 5 },
       polygon: null,
-      sheetSize: 'ISO_A2',
+      sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -683,7 +683,7 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
     const drawingZone = { x: 0, y: 0, width: 600, height: 60 }
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
-      drawingZone, polygon: null, sheetSize: 'ISO_A2',
+      drawingZone, polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -704,7 +704,7 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
       surveyedFeatures: makeFeatures(3),
       drawingZone: { x: 0, y: 0, width: 600, height: 80 },
       polygon:     null,
-      sheetSize:   'ISO_A2',
+      sheetSize:   'SI727_500x400',
       fonts:       h.fonts,
       helpers:     h.helpers,
       addText:     h.addText,
@@ -726,7 +726,7 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
     const without = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
       drawingZone: { x: 0, y: 0, width: 600, height: 80 },
-      polygon: null, sheetSize: 'ISO_A2',
+      polygon: null, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
     })
@@ -734,7 +734,7 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
     const withEmpty = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
       drawingZone: { x: 0, y: 0, width: 600, height: 80 },
-      polygon: null, sheetSize: 'ISO_A2',
+      polygon: null, sheetSize: 'SI727_500x400',
       fonts: h2.fonts, helpers: h2.helpers,
       addText: h2.addText, addLine: h2.addLine, warn: h2.warn, logger: h2.logger,
       seedPlacedBlocks: [],
@@ -765,7 +765,7 @@ describe('emitScheduleOfAreasTopological — happy path (no consolidation)', () 
     const result = emitScheduleOfAreasTopological({
       surveyedFeatures: features,
       drawingZone: { x: 0, y: 0, width: 600, height: 80 },
-      polygon, sheetSize: 'ISO_A2',
+      polygon, sheetSize: 'SI727_500x400',
       fonts: h.fonts, helpers: h.helpers,
       addText: h.addText, addLine: h.addLine, warn: h.warn, logger: h.logger,
       seedPlacedBlocks,

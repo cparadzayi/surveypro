@@ -1,4 +1,4 @@
-// Minimal fixture: 2 stands in a 100x60m outside figure, 4 beacons, scale 1:500, ISO_A2.
+// Minimal fixture: 2 stands in a 100x60m outside figure, 4 beacons, scale 1:500, SI727_500x400.
 export const sampleMinimalPlan = {
   metadata: {
     designation: 'Stands 1 - 2 Test Township',
@@ -44,6 +44,6 @@ export const sampleMinimalPlan = {
       { name: 'D', y: 50000.000, x: 2200060.000 },
     ],
   },
-  sheetSize: 'ISO_A2',
+  sheetSize: 'SI727_500x400',
   scale: { value: 500, label: '1:500' },
 };

@@ -7,9 +7,9 @@ import { nextLargerSheet, extractScheduleRow, computeScheduleLayout, addSchedule
 
 describe('nextLargerSheet', () => {
   test.each([
-    ['ISO_A2', 'ISO_A1'],
-    ['ISO_A1', 'ISO_A0'],
-    ['ISO_A0', 'multi-sheet-required'],
+    ['SI727_500x400', 'SI727_800x500'],
+    ['SI727_800x500', 'SI727_1000x800'],
+    ['SI727_1000x800', 'multi-sheet-required'],
   ])('%s → %s', (input, expected) => {
     expect(nextLargerSheet(input)).toBe(expected)
   })
@@ -139,7 +139,7 @@ describe('computeScheduleLayout', () => {
     zoneHeight: 150,
     rowHeight:  6,            // ≈ pt(7) * 1.6 in mm
     headerHeight: 12,
-    currentSheetSize: 'ISO_A2',
+    currentSheetSize: 'SI727_500x400',
   }
 
   test('rowCount: 0 → fits single, rowsPerTable: 0, columnWidths sum to zoneWidth', () => {
@@ -184,7 +184,7 @@ describe('computeScheduleLayout', () => {
     expect(sum).toBeLessThanOrEqual(230 + 0.01)
   })
 
-  test('overflow at A2 → not-fits, recommendedSheetSize ISO_A1', () => {
+  test('overflow at A2 → not-fits, recommendedSheetSize SI727_800x500', () => {
     // Narrow zone + many rows → cant fit even 2 multi-tables
     const out = computeScheduleLayout({
       ...base,
@@ -192,18 +192,18 @@ describe('computeScheduleLayout', () => {
       rowCount: 200,    // 200 / 23 = 9 tables; need ~9 * 230 + 8*8 = 2134mm
     })
     expect(out.fits).toBe(false)
-    expect(out.recommendedSheetSize).toBe('ISO_A1')
+    expect(out.recommendedSheetSize).toBe('SI727_800x500')
   })
 
-  test('overflow at A1 → ISO_A0', () => {
+  test('overflow at A1 → SI727_1000x800', () => {
     const out = computeScheduleLayout({
       ...base,
       zoneWidth: 110,
       rowCount: 200,
-      currentSheetSize: 'ISO_A1',
+      currentSheetSize: 'SI727_800x500',
     })
     expect(out.fits).toBe(false)
-    expect(out.recommendedSheetSize).toBe('ISO_A0')
+    expect(out.recommendedSheetSize).toBe('SI727_1000x800')
   })
 
   test('overflow at A0 → multi-sheet-required', () => {
@@ -211,7 +211,7 @@ describe('computeScheduleLayout', () => {
       ...base,
       zoneWidth: 110,
       rowCount: 500,
-      currentSheetSize: 'ISO_A0',
+      currentSheetSize: 'SI727_1000x800',
     })
     expect(out.fits).toBe(false)
     expect(out.recommendedSheetSize).toBe('multi-sheet-required')
@@ -261,7 +261,7 @@ describe('computeScheduleLayout', () => {
     // sheet rather than silently shrink columns to ~22%.
     const out = computeScheduleLayout({ ...base, zoneWidth: 50, rowCount: 30 })
     expect(out.fits).toBe(false)
-    expect(out.recommendedSheetSize).toBe('ISO_A1')
+    expect(out.recommendedSheetSize).toBe('SI727_800x500')
   })
 
   test('rowCount requiring 3 tables that fit width-wise → fits with numTables: 3', () => {

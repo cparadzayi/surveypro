@@ -97,6 +97,6 @@ export const sampleDevelopedLargeStandsPlan = {
       { name: 'D', y: ofYmin, x: ofXmax },
     ],
   },
-  sheetSize: 'ISO_A2',
+  sheetSize: 'SI727_500x400',
   planType: 'general-developed',
 };

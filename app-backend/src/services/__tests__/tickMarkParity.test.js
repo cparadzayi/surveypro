@@ -60,7 +60,7 @@ const sharedPlan = {
     ],
     coordinates: ring.slice(0, 4).map((c, i) => ({ name: 'ABCD'[i], y: c[0], x: c[1] })),
   },
-  sheetSize: 'ISO_A2', scale: { value: 500, label: '1:500' },
+  sheetSize: 'SI727_500x400', scale: { value: 500, label: '1:500' },
 }
 
 describe('tick mark count parity between PDF and DXF', () => {
@@ -107,7 +107,17 @@ describe('tick mark count parity between PDF and DXF', () => {
     // own terms, which is why this exact number changed — not a
     // regression, a more honest count that surfaces the real, separate,
     // now-documented gap instead of masking it.
+    //
+    // Task 3 (SI 727 native sheet sizes): this fixture's sheetSize was
+    // renamed ISO_A2 -> SI727_500x400, which is a real, smaller drawing
+    // area (500x400mm vs the old 594x420mm substitute), not just a string
+    // swap. DXF's grid-tick emission has less room for intermediate ticks
+    // on the smaller sheet, so its Y-label count dropped from 12 to 10 —
+    // confirmed empirically via Jest actual output. This happens to close
+    // the PDF/DXF count gap for this specific fixture (both now 10), but
+    // the underlying mapBounds/content-area sizing gap this test documents
+    // is unrelated and remains open (see comment above).
     expect(pdfYLabels.length).toBe(10)
-    expect(dxfYLabels.length).toBe(12)
+    expect(dxfYLabels.length).toBe(10)
   })
 })

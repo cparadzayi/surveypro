@@ -125,7 +125,7 @@ describe('3-v7 Maglas parity', () => {
     // for THIS fixture — that has NOT changed, and is not a residual bug.
     // Verified directly (full escalation trace, captured during
     // implementation): the fix now correctly escalates through every level —
-    // ISO_A2 → ISO_A1 → ISO_A0 → scale step-up 1:1000→1:1250 — but Maglas's
+    // SI727_500x400 → SI727_800x500 → SI727_1000x800 → scale step-up 1:1000→1:1250 — but Maglas's
     // 240-stand schedule composite (860×1850pt, ~30×65cm) is genuinely too
     // large to fit anywhere even at the largest sheet plus a scale step-up.
     // scheduleEscalationExhausted appears in pdfWarnKeys as the honest

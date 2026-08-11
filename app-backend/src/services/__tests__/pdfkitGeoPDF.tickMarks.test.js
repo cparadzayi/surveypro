@@ -62,7 +62,7 @@ const shabaniLikePlan = {
     ],
     coordinates: ring.slice(0, 4).map((c, i) => ({ name: 'ABCD'[i], y: c[0], x: c[1] })),
   },
-  sheetSize: 'ISO_A2', scale: { value: 500, label: '1:500' },
+  sheetSize: 'SI727_500x400', scale: { value: 500, label: '1:500' },
 }
 
 describe('renderOutsideFigureTickMarks — grid compliance', () => {

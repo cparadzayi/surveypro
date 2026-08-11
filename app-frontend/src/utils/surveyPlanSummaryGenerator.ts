@@ -416,7 +416,7 @@ export class SurveyPlanSummaryGenerator {
 
   /**
    * Format paper size name for display
-   * Note: System uses ISO A-series paper sizes as approved by Surveyor General
+   * Note: General Plan sizes are SI 727 Section 62(1) prescribed sizes; Diagram sizes (A3/A4) are ISO A-series
    * Returns just the paper name without dimensions (dimensions shown separately)
    */
   private formatPaperSizeName(paperSize: string): string {

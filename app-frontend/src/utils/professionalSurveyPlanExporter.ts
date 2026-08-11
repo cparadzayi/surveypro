@@ -182,7 +182,7 @@ function getTitleBlockFontScale(pdf: jsPDF): number {
 }
 
 /**
- * Calculate optimal sheet size based on Outside Figure extent (ISO A-series)
+ * Calculate optimal sheet size based on Outside Figure extent (SI 727 Section 62(1))
  * Uses the spatial dimensions of the Outside Figure to determine appropriate sheet size
  */
 export function calculateOptimalSheetSize(

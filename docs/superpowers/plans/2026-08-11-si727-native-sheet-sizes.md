@@ -12,7 +12,7 @@
 
 - New identifiers: `SI727_500x400` (was `ISO_A2`), `SI727_800x500` (was `ISO_A1`), `SI727_1000x800` (was `ISO_A0`) — smallest to largest, same relative order as before.
 - `ISO_A4`/`ISO_A3` (Diagram plan type) are never renamed or touched anywhere in this plan.
-- The `code` field (e.g. `'ISO A2'`, the old human-readable space-form) is dropped entirely — display strings are built directly from `width`/`height`.
+- The old human-readable space-form value (e.g. `'ISO A2'`) is gone from every sheet-size record — display strings are built directly from `width`/`height`. `pageSize.code` (an internal PDF-generator-only field, not part of the shared table) survives Task 2 with corrected semantics: it now holds the canonical name (e.g. `'SI727_500x400'`) instead of the old space-form, since `pageSize.name` is a display string and can't double as the identifier.
 - `sheetSize` is never persisted in the database (confirmed: zero references in `app-backend/migrations` or `app-backend/src/models`) — no migration needed.
 - Backend tests run via `cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js <pattern>` (bare `npx jest` fails — ESM).
 - Frontend tests run via `cd app-frontend && npm run test` (= `vitest run`).

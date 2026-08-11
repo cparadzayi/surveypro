@@ -524,7 +524,7 @@ export function generateDXF(options, logger) {
     metadata = {},
     projection = 'Cape Lo',
     scale,
-    sheetSize = 'ISO_A2',
+    sheetSize = 'SI727_500x400',
     // Page orientation. Shared from the PDF (PDF↔DXF parity): the PDF decides
     // scale + sheet size + orientation and the DXF consumes them verbatim.
     // 'landscape' (default) = width > height; 'portrait' swaps the paper dims.
@@ -548,7 +548,7 @@ export function generateDXF(options, logger) {
 
   const declaredS = parseScaleDenom(scale);
   // Normalize sheetSize input: accept both 'SI727_1000x800' (underscore, canonical)
-  // and 'SI 727 1000x800' (space, used in some legacy logs/headers from si727Constants.code).
+  // and 'SI727 1000x800' (space, an underscore-vs-space variant of the same name).
   // Without this, a space-form input misses PAPER_SIZES and falls back to the smallest SI 727 size.
   const normalizedSheetSize = typeof sheetSize === 'string'
     ? sheetSize.replace(/\s+/g, '_')
@@ -2045,7 +2045,7 @@ export function generateDXF(options, logger) {
 
   // 3-v7: paper-size escalation. Mirrors pdfkitGeoPDF.js:13497-13559.
   // Uses normalizedSheetSize so the ladder lookup matches even when callers
-  // sent the space form (e.g. 'ISO A0' from si727Constants.code).
+  // sent the space-separated variant of the canonical name (e.g. 'SI727 1000x800').
   const _sheetSizeUpAttempt = options._sheetSizeUpAttempt ?? 0;
   if (blockPositions.needsScaleUp && _sheetSizeUpAttempt < MAX_SHEET_UP_ATTEMPTS) {
     const nextSheet = nextSheetUp(normalizedSheetSize);

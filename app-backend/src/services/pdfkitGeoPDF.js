@@ -52,7 +52,7 @@ import { InsetManager } from './pdfkitGeoPDF/insetManager.js';
 
 // SI 727 of 1979 Section 62 - Prescribed page sizes for general plans
 // Original SI 727 Section 62(1) sizes: 500x400mm, 800x500mm, 1000x800mm
-// Current practice (approved by Surveyor-General): ISO A-series landscape
+// Current practice (approved by Surveyor-General): native SI 727 sizes, landscape orientation
 //   SI727_500x400: 500mm x 400mm  |  SI727_800x500: 800mm x 500mm  |  SI727_1000x800: 1000mm x 800mm
 // Page size selection is handled by selectPageSize() using SI727_SHEET_SIZES from si727Constants.js
 
@@ -12052,9 +12052,11 @@ async function _generateGeoPDFInner(options, logger) {
   // =========================================================================
   // LABEL CROWDING ESCALATION
   // When edge labels can't find collision-free positions, escalate:
-  //   1. FIRST try the next larger paper size (A2→A1→A0) at the SAME scale.
-  //   2. ONLY if at A0, try the next smaller scale denominator (e.g. 1:2500→1:2000)
-  //      so edges become longer on paper, giving more room for label text.
+  //   1. FIRST try the next larger paper size (the same smallest→largest SI 727
+  //      sheet-size sequence) at the SAME scale.
+  //   2. ONLY if already at the largest sheet size, try the next smaller scale
+  //      denominator (e.g. 1:2500→1:2000) so edges become longer on paper,
+  //      giving more room for label text.
   // =========================================================================
   const MAX_LABEL_ESCALATION = 2;
   const labelCollisions = parcelRenderResult?.labelCollisions || 0;
@@ -12253,9 +12255,11 @@ async function _generateGeoPDFInner(options, logger) {
   // PAPER-SIZE ESCALATION (preferred) then SCALE STEP-UP (last resort)
   //
   // When mandatory blocks can't be placed without polygon overlap:
-  //   1. FIRST try the next larger paper size (A2→A1→A0) at the SAME scale.
-  //      This preserves legibility per SI 727 §32(2).
-  //   2. ONLY if already at A0 (largest), try the next higher scale denominator.
+  //   1. FIRST try the next larger paper size (the same smallest→largest SI 727
+  //      sheet-size sequence) at the SAME scale. This preserves legibility per
+  //      SI 727 §32(2).
+  //   2. ONLY if already at the largest sheet size, try the next higher scale
+  //      denominator.
   // =========================================================================
   const MAX_SCALE_UP_ATTEMPTS = 1;
   let suggestedScale = null;

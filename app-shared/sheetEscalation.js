@@ -2,8 +2,8 @@ import { SI727_GENERAL_PLAN_SHEET_SIZES } from './si727SheetSizes.js';
 
 /**
  * SI 727 paper-size escalation ladder. Shared between pdfkitGeoPDF.js and
- * dxfGenerator.js so both formats follow the same A2 → A1 → A0 sequence
- * when the planner returns needsScaleUp.
+ * dxfGenerator.js so both formats follow the same smallest→largest SI 727
+ * sheet-size sequence when the planner returns needsScaleUp.
  *
  * Spec: docs/superpowers/specs/2026-06-12-three-way-planner-alignment-design.md
  */

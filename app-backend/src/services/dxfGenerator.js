@@ -38,6 +38,7 @@ import {
   resolveTownshipScaleMandate,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
+import { SI727_GENERAL_PLAN_SHEET_SIZES } from '../../../app-shared/si727SheetSizes.js';
 
 /** Conversion factor: 1 PDF point = 0.352778 mm. block-definitions values
  *  are in PDF pts (matching the PDF generator's native unit); the DXF
@@ -438,13 +439,19 @@ function parseScaleDenom(scale) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** ISO paper sizes in mm (landscape orientation: width > height) */
+/**
+ * Paper sizes in mm (landscape orientation: width > height). ISO_A4/ISO_A3
+ * are the Diagram plan type's genuine ISO sizes (unrelated SI 727
+ * provision, unchanged). The other three are the real SI 727 Section
+ * 62(1) General Plan sizes, sourced from the shared table so this can
+ * never drift from si727Constants.js / the frontend picker again.
+ */
 const PAPER_SIZES = {
   'ISO_A4': { w: 297, h: 210 },
   'ISO_A3': { w: 420, h: 297 },
-  'ISO_A2': { w: 594, h: 420 },
-  'ISO_A1': { w: 841, h: 594 },
-  'ISO_A0': { w: 1189, h: 841 },
+  ...Object.fromEntries(
+    SI727_GENERAL_PLAN_SHEET_SIZES.map((s) => [s.name, { w: s.width, h: s.height }])
+  ),
 };
 
 // SHEET_LADDER, SCHEDULE_HEADER_HEIGHT_MM, nextLargerSheet, extractScheduleRow,
@@ -540,13 +547,13 @@ export function generateDXF(options, logger) {
   const isDevelopedPlan = planType === 'general-developed';
 
   const declaredS = parseScaleDenom(scale);
-  // Normalize sheetSize input: accept both 'ISO_A0' (underscore, canonical) and
-  // 'ISO A0' (space, used in some legacy logs/headers from si727Constants.code).
-  // Without this, an 'ISO A0' input misses PAPER_SIZES and falls back to A2.
+  // Normalize sheetSize input: accept both 'SI727_1000x800' (underscore, canonical)
+  // and 'SI 727 1000x800' (space, used in some legacy logs/headers from si727Constants.code).
+  // Without this, a space-form input misses PAPER_SIZES and falls back to the smallest SI 727 size.
   const normalizedSheetSize = typeof sheetSize === 'string'
     ? sheetSize.replace(/\s+/g, '_')
     : sheetSize;
-  const _basePaper = PAPER_SIZES[normalizedSheetSize] || PAPER_SIZES['ISO_A2'];
+  const _basePaper = PAPER_SIZES[normalizedSheetSize] || PAPER_SIZES['SI727_500x400'];
   // Honor the shared orientation (from the PDF). PAPER_SIZES are stored
   // landscape (w > h); a 'portrait' request swaps the dimensions.
   const paper = orientation === 'portrait'

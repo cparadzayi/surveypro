@@ -53,7 +53,7 @@ import { InsetManager } from './pdfkitGeoPDF/insetManager.js';
 // SI 727 of 1979 Section 62 - Prescribed page sizes for general plans
 // Original SI 727 Section 62(1) sizes: 500x400mm, 800x500mm, 1000x800mm
 // Current practice (approved by Surveyor-General): ISO A-series landscape
-//   ISO A2: 594mm x 420mm  |  ISO A1: 841mm x 594mm  |  ISO A0: 1189mm x 841mm
+//   SI727_500x400: 500mm x 400mm  |  SI727_800x500: 800mm x 500mm  |  SI727_1000x800: 1000mm x 800mm
 // Page size selection is handled by selectPageSize() using SI727_SHEET_SIZES from si727Constants.js
 
 /**
@@ -10524,9 +10524,7 @@ function applyPlanTypeCeiling(scale, extent, mapBounds, planType, mandatory500, 
 
 /**
  * Select appropriate page size based on survey extent
- * SI 727 Section 62(1) original sizes: 500×400mm, 800×500mm, 1000×800mm
- * Current Surveyor-General approved practice: ISO A-series landscape
- *   ISO A2: 594×420mm | ISO A1: 841×594mm | ISO A0: 1189×841mm
+ * SI 727 Section 62(1) prescribed sizes: 500×400mm, 800×500mm, 1000×800mm
  * Uses next larger size for better label spacing and cleaner presentation
  */
 function selectPageSize(extent, logger, requestedSheetSize, requestedScale) {
@@ -10536,8 +10534,8 @@ function selectPageSize(extent, logger, requestedSheetSize, requestedScale) {
     if (sheet) {
       const pageSize = {
         size: [sheet.width * MM_TO_PT, sheet.height * MM_TO_PT],
-        name: `${sheet.width}mm × ${sheet.height}mm (${sheet.code})`,
-        code: sheet.code,
+        name: `${sheet.width}mm × ${sheet.height}mm`,
+        code: sheet.name,
       };
       logger.info({
         msg: "[PDFKit] 📄 Page size from intelligentPreview",
@@ -10582,8 +10580,8 @@ function selectPageSize(extent, logger, requestedSheetSize, requestedScale) {
   const sheet = SI727_SHEET_SIZES[selectedIndex];
   const pageSize = {
     size: [sheet.width * MM_TO_PT, sheet.height * MM_TO_PT],
-    name: `${sheet.width}mm × ${sheet.height}mm (${sheet.code})`,
-    code: sheet.code,
+    name: `${sheet.width}mm × ${sheet.height}mm`,
+    code: sheet.name,
   };
 
   logger.info({
@@ -10708,7 +10706,7 @@ async function _generateGeoPDFInner(options, logger) {
     outsideFigureData, // Full Outside Figure data with edges, constants, etc.
     beaconLabels, // UI's beacon-to-parcel mapping for consistent labeling
     scale,        // e.g. '1:2000' from intelligentPreview
-    sheetSize,    // e.g. 'ISO_A2' from intelligentPreview
+    sheetSize,    // e.g. 'SI727_500x400' from intelligentPreview
     planType = null, // SI 727 plan type: 'general-developed' | 'general-undeveloped' | etc.
     tileExtent = null, // When set, override extent recalculation with this tile window {minY,maxY,minX,maxX}
     tileLabel = null,  // e.g. "Sheet 2 of 6" — added to title block when tiling
@@ -12061,14 +12059,13 @@ async function _generateGeoPDFInner(options, logger) {
   const MAX_LABEL_ESCALATION = 2;
   const labelCollisions = parcelRenderResult?.labelCollisions || 0;
   if (labelCollisions > 0 && _labelEscalationAttempt < MAX_LABEL_ESCALATION) {
-    const LABEL_SHEET_ORDER = ['ISO_A2', 'ISO_A1', 'ISO_A0'];
-    const currentSheet = sheetSize || 'ISO_A2';
-    const sheetIdx = LABEL_SHEET_ORDER.indexOf(currentSheet);
-    const canGoBiggerPaper = sheetIdx >= 0 && sheetIdx < LABEL_SHEET_ORDER.length - 1;
+    const currentSheet = sheetSize || 'SI727_500x400';
+    const sheetIdx = SHEET_ORDER.indexOf(currentSheet);
+    const canGoBiggerPaper = sheetIdx >= 0 && sheetIdx < SHEET_ORDER.length - 1;
 
     if (canGoBiggerPaper) {
       // ── PAPER-SIZE ESCALATION for labels ──
-      const nextSheet = LABEL_SHEET_ORDER[sheetIdx + 1];
+      const nextSheet = SHEET_ORDER[sheetIdx + 1];
       logger.warn(
         `[PDFKit] 🏷️ Label crowding detected (${labelCollisions} collisions) on ${currentSheet} at ${optimalScale.label} — ` +
         `escalating paper to ${nextSheet} (attempt ${_labelEscalationAttempt + 1}/${MAX_LABEL_ESCALATION})`
@@ -12265,7 +12262,7 @@ async function _generateGeoPDFInner(options, logger) {
 
   if (blockPositions.needsScaleUp) {
     // Determine current sheet size name
-    const currentSheetName = sheetSize || 'ISO_A2';
+    const currentSheetName = sheetSize || 'SI727_500x400';
     const canEscalateSheet = nextSheetUp(currentSheetName) !== null
       && _sheetSizeUpAttempt < MAX_SHEET_UP_ATTEMPTS;
 
@@ -12319,7 +12316,7 @@ async function _generateGeoPDFInner(options, logger) {
     }
     // 3-v7: emit identical structured warning as DXF on escalation exhaustion.
     warnings.scheduleEscalationExhausted = {
-      atSheetSize: sheetSize || 'ISO_A2',
+      atSheetSize: sheetSize || 'SI727_500x400',
       attempts: _sheetSizeUpAttempt,
       hint: 'Plan too dense for largest available paper size; some blocks may overlap the figure.',
     };
@@ -12656,7 +12653,7 @@ async function _generateGeoPDFInner(options, logger) {
     tileGrid = {
       scaleDenominator: optimalScale.value,
       scaleLabel: optimalScale.label,
-      sheetSize: String(pageSize.code || '').replace(/\s+/g, '_') || null,
+      sheetSize: pageSize.code || null,
       cols,
       rows,
       totalSheets: cols * rows,
@@ -12676,12 +12673,11 @@ async function _generateGeoPDFInner(options, logger) {
     });
   }
 
-  // sheetSize returned in underscore form ('ISO_A0') for round-trip consistency:
-  // intelligentPreview / PAPER_SIZES / DXF generator all key by this form.
-  // pageSize.code is 'ISO A0' (space form, human-readable); normalize to
-  // underscored canonical name before returning. pageSize.name is the FULL
-  // display string ('1189mm × 841mm (ISO A0)') — don't use that here.
-  const _returnedSheetSize = String(pageSize.code || '').replace(/\s+/g, '_') || null;
+  // sheetSize returned as the canonical name (e.g. 'SI727_1000x800') for
+  // round-trip consistency: intelligentPreview / PAPER_SIZES / DXF
+  // generator all key by this form. pageSize.name is the display string
+  // ('1000mm × 800mm') — don't use that here.
+  const _returnedSheetSize = pageSize.code || null;
   // Orientation the PDF laid out at (width >= height ⇒ landscape). Shared with the
   // DXF so PDF↔DXF stay in lockstep on scale + sheet size + orientation.
   // NOTE: pageSize carries `size: [wPt, hPt]` (no .width/.height fields).

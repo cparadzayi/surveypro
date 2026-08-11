@@ -3,13 +3,10 @@
  * Constants for automated survey plan production
  */
 
-// ISO A-series Sheet Sizes (Approved by Surveyor-General for survey plans)
-// Landscape orientation by default (width > height)
-export const SI727_SHEET_SIZES = [
-  { code: 'ISO A2', name: 'ISO_A2', width: 594, height: 420, area: 249480 },
-  { code: 'ISO A1', name: 'ISO_A1', width: 841, height: 594, area: 499554 },
-  { code: 'ISO A0', name: 'ISO_A0', width: 1189, height: 841, area: 999949 }
-]
+// SI 727 Section 62(1) prescribed General Plan sheet sizes — single source
+// of truth in app-shared/si727SheetSizes.js, re-exported here under the
+// same name so every existing importer of SI727_SHEET_SIZES is unaffected.
+export { SI727_GENERAL_PLAN_SHEET_SIZES as SI727_SHEET_SIZES } from '../../../app-shared/si727SheetSizes.js'
 
 // Fixed footer statement required on every General Plan, centred near the bottom
 // margin. The trailing blank is where the Surveyor-General's survey record number

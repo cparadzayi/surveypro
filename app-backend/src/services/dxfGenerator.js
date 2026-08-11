@@ -2027,6 +2027,11 @@ export function generateDXF(options, logger) {
     // such deflection, so it reserves the crosses up-front for the same result.)
     tickMarkBounds:    _crossBoundsForPlanner,
     polyPts:           polyPtsForPlanner,
+    accurateFigurePolygon: figurePolygon,   // NEW — already computed above
+                                             // (~1887-1889) from the Outside
+                                             // Figure ring; may be null, which
+                                             // calculateBlockPositions handles
+                                             // via its own fallback.
     measureText:       plannerMeasure,
     logger,
     scheduleColumnWidthsPt,
@@ -2391,6 +2396,28 @@ export function generateDXF(options, logger) {
   _warnIfOverlap('sgSignature');
   _warnIfOverlap('scaleBar');
   _warnIfOverlap('northArrow');
+
+  // Second escalation checkpoint, mirroring the schedule one above
+  // (~2251-2275) but for sgSignature. Its own placement (_placeClear)
+  // already searches the real figure polygon and can correctly determine
+  // there's no clear slot — that failure just wasn't wired into any
+  // escalation retry until now. See
+  // docs/superpowers/specs/2026-08-11-block-placement-real-paper-robustness-design.md.
+  if (warnings.summary.sgSignatureOverlapsPolygon
+      && _sheetSizeUpAttempt < MAX_SHEET_UP_ATTEMPTS) {
+    const nextSheet = nextSheetUp(normalizedSheetSize);
+    if (nextSheet) {
+      logger.warn(
+        `[DXF] sgSignature overlaps the figure on ${normalizedSheetSize} — ` +
+        `escalating to ${nextSheet} (attempt ${_sheetSizeUpAttempt + 1}/${MAX_SHEET_UP_ATTEMPTS})`
+      );
+      return generateDXF({
+        ...options,
+        sheetSize: nextSheet,
+        _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
+      }, logger);
+    }
+  }
 
   logger.info(`[DXF] Shared planner placement complete: 5 surrounding blocks emitted`);
 

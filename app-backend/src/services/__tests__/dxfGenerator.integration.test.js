@@ -441,14 +441,7 @@ describe('dxfGenerator integration — sample fixture', () => {
   })
 
   test('clean fixture produces zero warnings', () => {
-    // Was toBe(0) under the old ISO_A2 substitute paper (594x420mm). Under the
-    // real (smaller) SI 727 500x400mm sheet, sgSignatureOverlapsPolygon now
-    // fires for this fixture (same documented block-placement whitespace
-    // limitation as pdfkitGeoPDF.scheduleNoOverlap.test.js — see
-    // docs/superpowers/specs/2026-08-11-block-placement-real-paper-robustness-design.md),
-    // bumping the count by 1. Same root cause as the other three
-    // warnings.count assertions changed in this file.
-    expect(warnings.count).toBe(1)
+    expect(warnings.count).toBe(0)
   })
 })
 
@@ -467,10 +460,7 @@ describe('dxfGenerator integration — graceful degradation', () => {
     })
     const { buffer, warnings } = generateDXF(bad, fakeLogger)
     expect(Buffer.isBuffer(buffer)).toBe(true)
-    // Was toBe(2) under the old ISO_A2 substitute paper — the +1 is the same
-    // sgSignatureOverlapsPolygon limitation noted at line ~444 above, additive
-    // to this test's own 2 intentional bad-input warnings.
-    expect(warnings.count).toBe(3)
+    expect(warnings.count).toBe(2)
     expect(warnings.summary.beacons).toBe(1)
     expect(warnings.summary.parcels).toBe(1)
   })
@@ -546,9 +536,7 @@ describe('dxfGenerator integration — SI 727 title-block lines', () => {
 
   test('clean sampleFixture still produces zero warnings after title-block changes', () => {
     const { warnings } = generateDXF(sampleFixture, fakeLogger)
-    // Was toBe(0) — same sgSignatureOverlapsPolygon limitation noted at line
-    // ~444 above (real SI 727 paper, not a title-block regression).
-    expect(warnings.count).toBe(1)
+    expect(warnings.count).toBe(0)
   })
 })
 
@@ -765,26 +753,28 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
 
   test('clean sampleFixture still produces zero warnings + scheduleOverflow null', () => {
     const { warnings } = generateDXF(sampleFixture, fakeLogger)
-    // Was toBe(0) — same sgSignatureOverlapsPolygon limitation noted at line
-    // ~444 above (real SI 727 paper, not a schedule-columns regression).
-    expect(warnings.count).toBe(1)
+    expect(warnings.count).toBe(0)
     expect(warnings.summary.scheduleOverflow).toBeNull()
   })
 
-  test('overflow fixture (200 parcels) triggers paper-size escalation and gracefully exhausts at the largest real SI 727 sheet', () => {
+  test('overflow fixture (200 parcels) triggers paper-size escalation and fits cleanly at the largest real SI 727 sheet', () => {
     // 3-v7: DXF mirrors PDF's paper-size escalation. When the planner returns
     // needsScaleUp, the generator recurses up the SHEET_ORDER ladder
     // (SI727_500x400 → SI727_800x500 → SI727_1000x800).
     //
-    // Renamed 2026-08-11: this fixture used to escalate cleanly and fit at the
-    // old ISO_A0 substitute (1189x841mm = 999,949mm²). The real largest SI 727
-    // sheet, SI727_1000x800 (1000x800mm = 800,000mm²), is genuinely ~20%
-    // smaller in area — so for this same 200-parcel density, escalation now
-    // climbs the full ladder and still exhausts at SI727_1000x800. This is
-    // correct, not a bug: the "too dense for largest available paper" fallback
-    // handles it gracefully (no crash, no NaN, no thrown error), which is what
-    // this test now asserts. See task-3 report's Fix pass section for the
-    // verified exact values.
+    // Renamed 2026-08-11 (block-placement-robustness Task 2): the pre-emission
+    // escalation gate previously checked mandatory-block↔polygon collisions
+    // against the idealized/re-centered polygon buildPlannerObstacles() hands
+    // the placement engine's own candidate search (mapFeatureBounds.pdfPoints).
+    // That polygon can sit somewhere the REAL figure isn't, so it produced a
+    // false "mandatory block overlaps polygon" collision that kept
+    // needsScaleUp true all the way up the ladder, exhausting escalation at
+    // SI727_1000x800 even though the real figure had room. Task 2 threads the
+    // accurate figurePolygon into the same gate (mirroring Task 1's PDF fix),
+    // so that false collision no longer registers: the schedule + all
+    // bottom-zone blocks now fit cleanly (0 warnings) after climbing the full
+    // ladder. See
+    // docs/superpowers/specs/2026-08-11-block-placement-real-paper-robustness-design.md.
     //
     // The escalation log lines are observable on `logger.warn` for the
     // diagnostic narrative.
@@ -810,16 +800,12 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
     const climbLines = capturedWarn.filter(s =>
       /Blocks unplaceable on SI727_(500x400|800x500|1000x800) — escalating to SI727_(500x400|800x500|1000x800)/.test(s))
     expect(climbLines.length).toBeGreaterThanOrEqual(1)
-    // Graceful exhaustion, not a clean fit: even at the largest real SI 727
-    // sheet this 200-parcel density is too dense to seat every schedule block
-    // without overlapping the figure. Still handled gracefully — no crash, no
-    // NaN, a valid buffer is still produced — which is what's asserted below.
+    // Clean fit, not exhaustion: with the accurate figure polygon gating
+    // escalation, this 200-parcel density fits at the largest real SI 727
+    // sheet with zero warnings — no crash, no NaN, no residual overlap.
     expect(Buffer.isBuffer(buffer)).toBe(true)
-    expect(warnings.summary.scheduleEscalationExhausted).toEqual({
-      atSheetSize: 'SI727_1000x800',
-      attempts: 2,
-      hint: 'Plan too dense for largest available paper size; some blocks may overlap the figure.',
-    })
+    expect(warnings.summary.scheduleEscalationExhausted).toBeUndefined()
+    expect(warnings.count).toBe(0)
   })
 
   test('schedule pinned to a sheet where its sub-tables overlap the figure escalates instead of rendering the overlap', () => {

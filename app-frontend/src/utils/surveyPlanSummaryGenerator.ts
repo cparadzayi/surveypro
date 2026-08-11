@@ -421,12 +421,9 @@ export class SurveyPlanSummaryGenerator {
    */
   private formatPaperSizeName(paperSize: string): string {
     const sizeMap: Record<string, string> = {
-      'ISO_A0': 'ISO A0',
-      'ISO_A1': 'ISO A1',
-      'ISO_A2': 'ISO A2',
-      'A0': 'ISO A0',
-      'A1': 'ISO A1',
-      'A2': 'ISO A2',
+      'SI727_500x400':  '500 x 400mm',
+      'SI727_800x500':  '800 x 500mm',
+      'SI727_1000x800': '1000 x 800mm',
       'A3': 'ISO A3',
       'A4': 'ISO A4'
     };

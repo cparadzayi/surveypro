@@ -60,7 +60,7 @@ export interface VectorGeoPDFRequest {
   beaconGroups?: Array<{ points: string; description: string }>
   // Scale and sheet size (from intelligentPreview recommendation)
   scale?: string        // e.g. '1:2000'
-  sheetSize?: string    // e.g. 'ISO_A2'
+  sheetSize?: string    // e.g. 'SI727_500x400'
   // Page orientation. For PDF↔DXF parity the PDF decides scale + sheetSize +
   // orientation and the DXF export forwards the PDF's chosen values verbatim.
   orientation?: 'landscape' | 'portrait'

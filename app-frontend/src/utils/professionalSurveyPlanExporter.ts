@@ -56,7 +56,7 @@ export interface SurveyPlanData {
 }
 
 export interface ExportOptions {
-  sheetSize: 'ISO_A2' | 'ISO_A1' | 'ISO_A0'  // ISO A-series sizes approved by Surveyor-General
+  sheetSize: 'SI727_500x400' | 'SI727_800x500' | 'SI727_1000x800'  // SI 727 Section 62(1) sizes
   orientation: 'landscape' | 'portrait'
   resolution: 'print' | 'screen' // print = 300dpi, screen = 150dpi
   includeGrid: boolean
@@ -64,7 +64,7 @@ export interface ExportOptions {
 }
 
 export interface OptimalScaleAndSheet {
-  sheetSize: 'ISO_A2' | 'ISO_A1' | 'ISO_A0'
+  sheetSize: 'SI727_500x400' | 'SI727_800x500' | 'SI727_1000x800'
   scaleDenominator: number
   scaleLabel: string
   /** Present when the outside figure requires multiple sheets at the chosen scale */
@@ -79,7 +79,7 @@ export interface TileGrid {
   /** SI 727 scale denominator used for every tile sheet */
   scaleDenominator: number
   scaleLabel: string
-  sheetSize: 'ISO_A2' | 'ISO_A1' | 'ISO_A0'
+  sheetSize: 'SI727_500x400' | 'SI727_800x500' | 'SI727_1000x800'
   /** Columns (East–West) of the grid */
   cols: number
   /** Rows (North–South) of the grid */
@@ -111,12 +111,12 @@ export interface TileGrid {
   }>
 }
 
-// ISO A-series Sheet Sizes (mm) - Approved by Surveyor-General
+// SI 727 Section 62(1) prescribed General Plan sheet sizes (mm).
 // Landscape orientation by default (width > height)
 const SHEET_SIZES = {
-  ISO_A2: { width: 594, height: 420 },  // ISO A2 (249,480 mm²)
-  ISO_A1: { width: 841, height: 594 },  // ISO A1 (499,554 mm²)
-  ISO_A0: { width: 1189, height: 841 }  // ISO A0 (999,949 mm²)
+  SI727_500x400:  { width: 500,  height: 400 },  // 200,000 mm²
+  SI727_800x500:  { width: 800,  height: 500 },  // 400,000 mm²
+  SI727_1000x800: { width: 1000, height: 800 }   // 800,000 mm²
 }
 
 // SI 727 Standard Margins (mm)
@@ -189,12 +189,12 @@ export function calculateOptimalSheetSize(
   outsideFigureExtent: { width: number; height: number } | null,
   parcelCount: number = 0,
   totalArea: number = 0
-): 'ISO_A2' | 'ISO_A1' | 'ISO_A0' {
+): 'SI727_500x400' | 'SI727_800x500' | 'SI727_1000x800' {
   // If no outside figure extent provided, use parcel-based heuristics
   if (!outsideFigureExtent) {
-    if (parcelCount > 50 || totalArea > 500000) return 'ISO_A0'
-    if (parcelCount > 10 || totalArea > 100000) return 'ISO_A1'
-    return 'ISO_A2'
+    if (parcelCount > 50 || totalArea > 500000) return 'SI727_1000x800'
+    if (parcelCount > 10 || totalArea > 100000) return 'SI727_800x500'
+    return 'SI727_500x400'
   }
   
   // Calculate required drawing area (extent + margins + overlays)
@@ -227,18 +227,18 @@ export function calculateOptimalSheetSize(
   console.log('[SheetSizeCalc] 📐 Map size needed:', mapWidthMm.toFixed(1) + 'mm × ' + mapHeightMm.toFixed(1) + 'mm')
   console.log('[SheetSizeCalc] 📐 Total size needed:', totalWidthNeeded.toFixed(1) + 'mm × ' + totalHeightNeeded.toFixed(1) + 'mm')
   
-  // Select sheet size (ISO A-series landscape)
-  // ISO_A2: 594×420mm, ISO_A1: 841×594mm, ISO_A0: 1189×841mm
-  if (totalWidthNeeded > 841 || totalHeightNeeded > 594) {
-    console.log('[SheetSizeCalc] ✅ Selected: ISO_A0 (1189×841mm)')
-    return 'ISO_A0'
+  // Select sheet size (SI 727 Section 62(1) landscape)
+  // SI727_500x400: 500×400mm, SI727_800x500: 800×500mm, SI727_1000x800: 1000×800mm
+  if (totalWidthNeeded > SHEET_SIZES.SI727_800x500.width || totalHeightNeeded > SHEET_SIZES.SI727_800x500.height) {
+    console.log('[SheetSizeCalc] ✅ Selected: SI727_1000x800 (1000×800mm)')
+    return 'SI727_1000x800'
   }
-  if (totalWidthNeeded > 594 || totalHeightNeeded > 420) {
-    console.log('[SheetSizeCalc] ✅ Selected: ISO_A1 (841×594mm)')
-    return 'ISO_A1'
+  if (totalWidthNeeded > SHEET_SIZES.SI727_500x400.width || totalHeightNeeded > SHEET_SIZES.SI727_500x400.height) {
+    console.log('[SheetSizeCalc] ✅ Selected: SI727_800x500 (800×500mm)')
+    return 'SI727_800x500'
   }
-  console.log('[SheetSizeCalc] ✅ Selected: ISO_A2 (594×420mm)')
-  return 'ISO_A2'
+  console.log('[SheetSizeCalc] ✅ Selected: SI727_500x400 (500×400mm)')
+  return 'SI727_500x400'
 }
 
 function parseScaleDenominator(scale: string): number | null {
@@ -668,7 +668,7 @@ export function calculateOptimalScaleAndSheet(
     console.log(`[ScaleOptimizer] 🔒 SI 727 Reg 32(3) ceiling: max denominator = ${maxDenominator} (planType=${options?.planType})`)
   }
 
-  const sheetOrder: Array<'ISO_A2' | 'ISO_A1' | 'ISO_A0'> = ['ISO_A2', 'ISO_A1', 'ISO_A0']
+  const sheetOrder: Array<'SI727_500x400' | 'SI727_800x500' | 'SI727_1000x800'> = ['SI727_500x400', 'SI727_800x500', 'SI727_1000x800']
   let best: OptimalScaleAndSheet | null = null
 
   for (const sheetSize of sheetOrder) {
@@ -725,7 +725,7 @@ export function calculateOptimalScaleAndSheet(
       )
       console.log(`[ScaleOptimizer] 🗺️ Multi-sheet tiling at ${scaleDenominator} on ${sheetSize}: ${tileGrid.cols}×${tileGrid.rows} = ${tileGrid.totalSheets} sheets`)
       // Keep the candidate with the fewest tiles — larger sheets always win here.
-      // Do NOT break: continue iterating so ISO_A0 (fewest tiles) is preferred over ISO_A2.
+      // Do NOT break: continue iterating so SI727_1000x800 (fewest tiles) is preferred over SI727_500x400.
       if (!best?.tileGrid || tileGrid.totalSheets < best.tileGrid.totalSheets) {
         best = { sheetSize, scaleDenominator, scaleLabel: `1:${scaleDenominator}`, tileGrid }
       }
@@ -773,7 +773,7 @@ export function calculateOptimalScaleAndSheet(
   if (best) return best
 
   // Fallback: largest sheet with a scale that fits (or tiling if ceiling is hit)
-  const fallbackSheet: 'ISO_A0' = 'ISO_A0'
+  const fallbackSheet: 'SI727_1000x800' = 'SI727_1000x800'
   const sheet = SHEET_SIZES[fallbackSheet]
   const pageWidth = orientation === 'landscape' ? sheet.width : sheet.height
   const pageHeight = orientation === 'landscape' ? sheet.height : sheet.width
@@ -829,7 +829,7 @@ export function computeTileGrid(
   extentWidthM: number,
   extentHeightM: number,
   scaleDenominator: number,
-  sheetSize: 'ISO_A2' | 'ISO_A1' | 'ISO_A0',
+  sheetSize: 'SI727_500x400' | 'SI727_800x500' | 'SI727_1000x800',
   orientation: 'landscape' | 'portrait',
   plotWindowWidthMm: number,
   plotWindowHeightMm: number,

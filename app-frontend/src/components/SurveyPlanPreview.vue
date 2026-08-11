@@ -35,9 +35,9 @@
           <label>Sheet Size</label>
           <select v-model="selectedSheetSize" @change="onSheetSizeChange">
             <option :value="null">Auto (Recommended)</option>
-            <option value="ISO_A2">ISO A2 (594×420mm)</option>
-            <option value="ISO_A1">ISO A1 (841×594mm)</option>
-            <option value="ISO_A0">ISO A0 (1189×841mm)</option>
+            <option value="SI727_500x400">500 × 400mm</option>
+            <option value="SI727_800x500">800 × 500mm</option>
+            <option value="SI727_1000x800">1000 × 800mm</option>
           </select>
         </div>
         

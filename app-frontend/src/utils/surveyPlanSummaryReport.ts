@@ -32,7 +32,7 @@ export interface SurveyPlanSummaryData {
     description: string
   }>
   scale: string
-  sheetSize: string        // e.g. "ISO_A2"
+  sheetSize: string        // e.g. "SI727_500x400"
   orientation: string      // e.g. "landscape"
   centralMeridian: number
   generatedAt?: Date
@@ -57,9 +57,9 @@ function formatDate(iso: string): string {
 
 function sheetLabel(sheetSize: string, orientation: string): string {
   const labels: Record<string, string> = {
-    ISO_A2: 'ISO A2 (594 × 420 mm)',
-    ISO_A1: 'ISO A1 (841 × 594 mm)',
-    ISO_A0: 'ISO A0 (1189 × 841 mm)'
+    SI727_500x400:  '500 × 400 mm',
+    SI727_800x500:  '800 × 500 mm',
+    SI727_1000x800: '1000 × 800 mm'
   }
   const base = labels[sheetSize] || sheetSize
   return `${base} — ${orientation}`

@@ -12,7 +12,7 @@ import {
   TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, computeGridTickPositions, computeConfinedTickGrid, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, computeGridTickPositions, computeConfinedTickGrid, computeTickValues, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -1600,217 +1600,64 @@ function calculateTickMarkBounds(
   const { intervalM: _tickIntervalM, aMin: actualY_min, aMax: actualY_max, bMin: actualX_min, bMax: actualX_max } =
     computeConfinedTickGrid({ aMin: minY, aMax: maxY, bMin: minX, bMax: maxX, scaleDenominator });
 
-  const TICK_LENGTH = 12; // Match renderOutsideFigureTickMarks()
-  const MAP_EDGE_MARGIN = 30;
-  const TITLE_BLOCK_CLEARANCE = 80;
+  // Reserved obstacle bands for the planner. These MUST describe what
+  // renderOutsideFigureTickMarks actually draws — border (graticule) ticks on
+  // the neatline plus their labels, not free-standing crosses — or blocks would
+  // dodge empty space while overlapping real ticks.
+  const TICK_LENGTH = 12;   // MUST match renderOutsideFigureTickMarks()
+  const LABEL_OFFSET = 4;   // MUST match renderOutsideFigureTickMarks()
+  const FONT_SIZE = 7;      // MUST match renderOutsideFigureTickMarks()
+  const CHAR_WIDTH = 4.5;   // MUST match renderOutsideFigureTickMarks()
 
-  // Adjust top X for map bounds - use actual polygon extent
-  let topX = actualX_min;
-  let bottomX = actualX_max;
-
-  const topPdfPoint = transformCoords(actualY_min, actualX_min, extent, mapBounds);
-  if (topPdfPoint.y < mapBounds.y + MAP_EDGE_MARGIN) {
-    let adjustedX = actualX_min;
-    let adjustedPdfPoint = topPdfPoint;
-    while (
-      adjustedPdfPoint.y < mapBounds.y + MAP_EDGE_MARGIN &&
-      adjustedX < actualX_max
-    ) {
-      adjustedX += _tickIntervalM;
-      adjustedPdfPoint = transformCoords(
-        actualY_min,
-        adjustedX,
-        extent,
-        mapBounds
-      );
-    }
-    topX = adjustedX;
-  }
-
-  // Adjust for title block
-  if (titleBlockBounds) {
-    const adjustedTopPdfPoint = transformCoords(
-      actualY_min,
-      topX,
-      extent,
-      mapBounds
-    );
-    if (
-      adjustedTopPdfPoint.y <
-      titleBlockBounds.y + titleBlockBounds.height + TITLE_BLOCK_CLEARANCE
-    ) {
-      let adjustedX = topX;
-      let testPdfPoint = adjustedTopPdfPoint;
-      while (
-        testPdfPoint.y <
-          titleBlockBounds.y +
-            titleBlockBounds.height +
-            TITLE_BLOCK_CLEARANCE &&
-        adjustedX < actualX_max
-      ) {
-        adjustedX += _tickIntervalM;
-        testPdfPoint = transformCoords(actualY_min, adjustedX, extent, mapBounds);
-      }
-      if (adjustedX < actualX_max) topX = adjustedX;
-    }
-  }
-
-  // Adjust bottom X for map bounds
-  const bottomPdfPoint = transformCoords(
-    actualY_min,
-    actualX_max,
-    extent,
-    mapBounds
-  );
-  if (bottomPdfPoint.y > mapBounds.y + mapBounds.height - MAP_EDGE_MARGIN) {
-    const adjustedX = actualX_max - _tickIntervalM;
-    const adjustedPdfPoint = transformCoords(
-      actualY_min,
-      adjustedX,
-      extent,
-      mapBounds
-    );
-    if (
-      adjustedPdfPoint.y <=
-      mapBounds.y + mapBounds.height - MAP_EDGE_MARGIN
-    ) {
-      bottomX = adjustedX;
-    }
-  }
-
-  // Adjust Y (Westing) bounds for map left/right edges — mirrors the X-axis
-  // (Southing) clamp above, and ports DXF addCornerCrosses's four-sided
-  // clamp: PDF previously had no horizontal-edge clamp at all. Larger Y
-  // maps toward the LEFT page edge, smaller Y toward the RIGHT (verified
-  // empirically against transformCoords — see
-  // docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md).
-  let leftY = actualY_max;
-  let rightY = actualY_min;
-
-  const leftPdfPoint = transformCoords(actualY_max, actualX_min, extent, mapBounds);
-  if (leftPdfPoint.x < mapBounds.x + MAP_EDGE_MARGIN) {
-    let adjustedY = actualY_max;
-    let adjustedPdfPoint = leftPdfPoint;
-    while (
-      adjustedPdfPoint.x < mapBounds.x + MAP_EDGE_MARGIN &&
-      adjustedY > actualY_min
-    ) {
-      adjustedY -= _tickIntervalM;
-      adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);
-    }
-    leftY = adjustedY;
-  }
-
-  const rightPdfPoint = transformCoords(actualY_min, actualX_min, extent, mapBounds);
-  if (rightPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN) {
-    let adjustedY = actualY_min;
-    let adjustedPdfPoint = rightPdfPoint;
-    // Guard against crossing the already-finalized left bound (mirrors DXF
-    // addCornerCrosses's "don't cross over" guard, e.g. xR - G > areaL) —
-    // without this, a figure overflowing both edges could invert rightY > leftY.
-    while (
-      adjustedPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN &&
-      adjustedY < leftY
-    ) {
-      adjustedY += _tickIntervalM;
-      adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);
-    }
-    rightY = adjustedY;
-  }
-
-  // Generate tick points along all 4 edges at a scale-safe interval (30cm
-  // ruler compliance) instead of just the 4 corners.
-  const _tickPoints = computeGridTickPositions({
-    aMin: rightY, aMax: leftY, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
-  });
-  const tickMarks = _tickPoints.map((pt, i) => ({ name: `grid-${i}`, y: pt.a, x: pt.b }));
-
+  const formatCoord = (value) => {
+    const formatted = Math.abs(value).toLocaleString("en-US").replace(/,/g, " ");
+    return value >= 0 ? `+${formatted}` : `-${formatted}`;
+  };
+  const edgeL = mapBounds.x;
+  const edgeR = mapBounds.x + mapBounds.width;
+  const edgeT = mapBounds.y;
+  const edgeB = mapBounds.y + mapBounds.height;
   const tickMarkBounds = [];
 
-  tickMarks.forEach((tick) => {
-    const pdfPoint = transformCoords(tick.y, tick.x, extent, mapBounds);
+  for (const yv of computeTickValues({ min: actualY_min, max: actualY_max, intervalM: _tickIntervalM })) {
+    const pt = transformCoords(yv, actualX_min, extent, mapBounds);
+    if (!Number.isFinite(pt.x) || pt.x < edgeL || pt.x > edgeR) continue;
+    const labelW = Math.ceil(`Y = ${formatCoord(yv)}`.length * CHAR_WIDTH);
+    const ly = edgeB - TICK_LENGTH - LABEL_OFFSET;
+    tickMarkBounds.push({
+      name: `tick-grid-Y-${yv}`,
+      x: pt.x - FONT_SIZE, y: ly - labelW,
+      width: 2 * FONT_SIZE, height: labelW + TICK_LENGTH + LABEL_OFFSET,
+      centerX: pt.x, centerY: edgeB, capeLo: { y: yv, x: null },
+    });
+    tickMarkBounds.push({
+      name: `tick-grid-Ytop-${yv}`,
+      x: pt.x - FONT_SIZE, y: edgeT,
+      width: 2 * FONT_SIZE, height: TICK_LENGTH,
+      centerX: pt.x, centerY: edgeT, capeLo: { y: yv, x: null },
+    });
+  }
+  for (const xv of computeTickValues({ min: actualX_min, max: actualX_max, intervalM: _tickIntervalM })) {
+    const pt = transformCoords(actualY_min, xv, extent, mapBounds);
+    if (!Number.isFinite(pt.y) || pt.y < edgeT || pt.y > edgeB) continue;
+    const labelW = Math.ceil(`X = ${formatCoord(xv)}`.length * CHAR_WIDTH);
+    tickMarkBounds.push({
+      name: `tick-grid-X-${xv}`,
+      x: edgeL, y: pt.y - FONT_SIZE / 2 - 1,
+      width: TICK_LENGTH + LABEL_OFFSET + labelW, height: FONT_SIZE + 2,
+      centerX: edgeL, centerY: pt.y, capeLo: { y: null, x: xv },
+    });
+    tickMarkBounds.push({
+      name: `tick-grid-Xright-${xv}`,
+      x: edgeR - TICK_LENGTH, y: pt.y - FONT_SIZE / 2 - 1,
+      width: TICK_LENGTH, height: FONT_SIZE + 2,
+      centerX: edgeR, centerY: pt.y, capeLo: { y: null, x: xv },
+    });
+  }
 
-    // Check if within map Y bounds only (X check excluded: ticks are at grid Y values
-    // that may be outside the figure extent in X but are still valid tick positions)
-    if (
-      pdfPoint.y < mapBounds.y + MAP_EDGE_MARGIN ||
-      pdfPoint.y > mapBounds.y + mapBounds.height - MAP_EDGE_MARGIN
-    ) {
-      return;
-    }
-
-    // Calculate ACTUAL tick mark bounds based on real rendering positions
-    // MUST match the exact constants used in renderOutsideFigureTickMarks()
-    const FONT_SIZE = 7; // Tick mark coordinate labels — MUST match renderOutsideFigureTickMarks()
-    const LABEL_OFFSET = 4; // Tight coupling - MUST match renderOutsideFigureTickMarks()
-    const LABEL_CLEARANCE = 3; // Clearance between label and tick arm
-
-    // Format coordinate to get actual label text
-    const formatCoord = (value) => {
-      const absValue = Math.abs(value);
-      const formatted = absValue.toLocaleString("en-US").replace(/,/g, " ");
-      return value >= 0 ? `+${formatted}` : `-${formatted}`;
-    };
-
-    const yLabel = `Y = ${formatCoord(tick.y)}`; // e.g., "Y = +96 450"
-    const xLabel = `X = ${formatCoord(tick.x)}`; // e.g., "X = +2 247 600"
-
-    // Estimate text widths (7pt bold font, ~4.5pt per character average)
-    const CHAR_WIDTH = 4.5;
-    const yLabelWidth = yLabel.length * CHAR_WIDTH; // Rotated vertical, becomes height
-    const xLabelWidth = xLabel.length * CHAR_WIDTH; // Horizontal text width
-
-    // Calculate tick mark arm endpoints
-    const tickTop = pdfPoint.y - TICK_LENGTH;
-    const tickBottom = pdfPoint.y + TICK_LENGTH;
-    const tickLeft = pdfPoint.x - TICK_LENGTH;
-    const tickRight = pdfPoint.x + TICK_LENGTH;
-
-    // Y label: Rotated 90°, primary position = above the vertical arm tip
-    // Bounds cover the text block sitting above tickTop
-    const yLabelHeight = FONT_SIZE + 2;
-    const yLabelLeft   = pdfPoint.x - yLabelHeight / 2;
-    const yLabelRight  = pdfPoint.x + yLabelHeight / 2;
-    const yLabelTop    = tickTop - LABEL_OFFSET - yLabelWidth;
-    const yLabelBottom = tickTop - LABEL_OFFSET;
-
-    // X label: Horizontal, primary position = right of the horizontal arm tip
-    const xLabelHeight = FONT_SIZE + 2;
-    const xLabelLeft   = tickRight + LABEL_OFFSET;
-    const xLabelRight  = xLabelLeft + xLabelWidth;
-    const xLabelTop    = pdfPoint.y - xLabelHeight / 2;
-    const xLabelBottom = pdfPoint.y + xLabelHeight / 2;
-
-    // Calculate bounding box that encompasses BOTH labels AND the tick cross
-    // Add 5pt safety margin for collision detection
-    const bounds = {
-      name: `tick-${tick.name}`,
-      x: Math.min(tickLeft, yLabelLeft, xLabelLeft) - 5,
-      y: Math.min(tickTop, yLabelTop, xLabelTop) - 5,
-      width:
-        Math.max(tickRight, yLabelRight, xLabelRight) -
-        Math.min(tickLeft, yLabelLeft, xLabelLeft) +
-        10,
-      height:
-        Math.max(tickBottom, yLabelBottom, xLabelBottom) -
-        Math.min(tickTop, yLabelTop, xLabelTop) +
-        10,
-      centerX: pdfPoint.x,
-      centerY: pdfPoint.y,
-      capeLo: { y: tick.y, x: tick.x },
-    };
-
-    tickMarkBounds.push(bounds);
-    logger.info(
-      `[PDFKit] 📐 Tick mark ${tick.name} reserved bounds: (${bounds.x.toFixed(
-        0
-      )}, ${bounds.y.toFixed(0)}) ${bounds.width.toFixed(
-
-        0
-      )}x${bounds.height.toFixed(0)}`
-    );
-  });
-
+  logger.info(
+    `[PDFKit] 📐 Reserved ${tickMarkBounds.length} border-tick obstacle bands`
+  );
   return tickMarkBounds;
 }
 
@@ -1899,698 +1746,82 @@ function renderOutsideFigureTickMarks(
     `[PDFKit] 📐 Grid tick coordinates (${_tickIntervalM}m intervals): Y=[${actualY_min}, ${actualY_max}], X=[${actualX_min}, ${actualX_max}]`
   );
 
-  // Tick mark dimensions - FIELD READABLE at arm's length
-  const TICK_LENGTH = 12; // Length of each arm of the cross (pt)
-  const TICK_WIDTH = 1.5; // Line width (pt) - thicker for visibility
-  const LABEL_OFFSET = 4; // Offset from tick to label (pt)
-  const LABEL_CLEARANCE = 3; // Minimum clearance between label and tick mark arm (pt)
-  const FONT_SIZE = 7; // Tick mark coordinate labels — crisp, field-readable at print scale
-  const TITLE_BLOCK_CLEARANCE = 80; // Minimum clearance from title block (pt)
-  const MAP_EDGE_MARGIN = 30; // Minimum margin from map edge (pt)
+  // Tick geometry — field readable at arm's length.
+  const TICK_LENGTH = 12;  // border tick length, drawn inward from the neatline (pt)
+  const TICK_WIDTH = 1.5;
+  const LABEL_OFFSET = 4;
+  const FONT_SIZE = 7;
 
-  // Define 4 tick mark positions at ACTUAL polygon corners
-  // For top ticks, move X inward (larger X = more South) to avoid title block
-  // For bottom ticks, ensure they stay within map bounds
-  let topX = actualX_min;
-  let bottomX = actualX_max;
+  // The grid VALUES above stay confined to the figure's true extent, so every
+  // label is a round coordinate that genuinely falls inside the Outside Figure.
+  // WHERE they are drawn is a separate question, and the answer is border
+  // (graticule) ticks on the map neatline — never crosses over the figure. A
+  // cross on the figure obscures stand boundaries and numbers, and for a convex
+  // figure the only way to keep crosses off it is to snap the grid rectangle
+  // outward around it, which puts every label a full interval beyond the true
+  // extent — the exact defect the inward rounding removed. Border ticks satisfy
+  // both constraints at once. Mirrors dxfGenerator.js addBorderTicks.
+  //
+  // This replaced ~690 lines of cross placement: map-edge clamps, title-block
+  // avoidance and per-label direction heuristics all existed to keep a free
+  // standing cross inside the drawing area and clear of blocks. A tick sitting
+  // ON the neatline cannot overflow, so none of it is needed.
+  const yValues = computeTickValues({ min: actualY_min, max: actualY_max, intervalM: _tickIntervalM });
+  const xValues = computeTickValues({ min: actualX_min, max: actualX_max, intervalM: _tickIntervalM });
 
-  // Adjust top X to ensure it's within map bounds and below title block
-  // Title block is typically at the top center of the map
-  const topPdfPoint = transformCoords(actualY_min, actualX_min, extent, mapBounds);
-  logger.info(
-    `[PDFKit] 📐 Top tick initial position: Cape Lo X=${actualX_min}, PDF y=${topPdfPoint.y.toFixed(
-      1
-    )}, mapBounds.y=${mapBounds.y.toFixed(1)}`
-  );
-  logger.info(
-    `[PDFKit] 📐 Title block bounds: ${
-      titleBlockBounds
-        ? `y=${titleBlockBounds.y?.toFixed(
-            1
-          )}, height=${titleBlockBounds.height?.toFixed(1)}`
-        : "NULL"
-    }`
-  );
+  const formatCoord = (value) => {
+    const formatted = Math.abs(value).toLocaleString("en-US").replace(/,/g, " ");
+    return value >= 0 ? `+${formatted}` : `-${formatted}`;
+  };
+  const CHAR_WIDTH = 4.5;  // 7pt Helvetica-Bold average advance
 
-  // First ensure top ticks are within map bounds
-  if (topPdfPoint.y < mapBounds.y + MAP_EDGE_MARGIN) {
-    // Top tick is outside map bounds - move down
-    let adjustedX = actualX_min;
-    let adjustedPdfPoint = topPdfPoint;
-    while (
-      adjustedPdfPoint.y < mapBounds.y + MAP_EDGE_MARGIN &&
-      adjustedX < actualX_max
-    ) {
-      adjustedX += _tickIntervalM;
-      adjustedPdfPoint = transformCoords(
-        actualY_min,
-        adjustedX,
-        extent,
-        mapBounds
-      );
-    }
-    topX = adjustedX;
-    logger.info(
-      `[PDFKit] 📐 Adjusted top tick marks from X=${actualX_min} to X=${topX} to stay within map bounds`
-    );
-  }
-
-  // Then check title block collision
-  const adjustedTopPdfPoint = transformCoords(
-    actualY_min,
-    topX,
-    extent,
-    mapBounds
-  );
-  if (
-    titleBlockBounds &&
-    adjustedTopPdfPoint.y <
-      titleBlockBounds.y + titleBlockBounds.height + TITLE_BLOCK_CLEARANCE
-  ) {
-    // Move top tick marks down (increase X = move South) to clear title block
-    let adjustedX = topX;
-    let testPdfPoint = adjustedTopPdfPoint;
-    while (
-      testPdfPoint.y <
-        titleBlockBounds.y + titleBlockBounds.height + TITLE_BLOCK_CLEARANCE &&
-      adjustedX < actualX_max
-    ) {
-      adjustedX += _tickIntervalM;
-      testPdfPoint = transformCoords(actualY_min, adjustedX, extent, mapBounds);
-    }
-    if (adjustedX < actualX_max) {
-      topX = adjustedX;
-      logger.info(
-        `[PDFKit] 📐 Adjusted top tick marks to X=${topX} to avoid title block`
-      );
-    }
-  }
-
-  // Ensure bottom tick marks stay within map bounds
-  const bottomPdfPoint = transformCoords(
-    actualY_min,
-    actualX_max,
-    extent,
-    mapBounds
-  );
-  if (bottomPdfPoint.y > mapBounds.y + mapBounds.height - MAP_EDGE_MARGIN) {
-    // Move bottom tick marks up (decrease X = move North) to stay within map
-    const adjustedX = actualX_max - _tickIntervalM;
-    const adjustedPdfPoint = transformCoords(
-      actualY_min,
-      adjustedX,
-      extent,
-      mapBounds
-    );
-    if (
-      adjustedPdfPoint.y <=
-      mapBounds.y + mapBounds.height - MAP_EDGE_MARGIN
-    ) {
-      bottomX = adjustedX;
-      logger.info(
-        `[PDFKit] 📐 Adjusted bottom tick marks from X=${actualX_max} to X=${bottomX} to stay within map bounds`
-      );
-    }
-  }
-
-  // Adjust Y (Westing) bounds for map left/right edges — mirrors the X-axis
-  // (Southing) clamp above, and ports DXF addCornerCrosses's four-sided
-  // clamp: PDF previously had no horizontal-edge clamp at all. Larger Y
-  // maps toward the LEFT page edge, smaller Y toward the RIGHT (verified
-  // empirically against transformCoords — see
-  // docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md).
-  let leftY = actualY_max;
-  let rightY = actualY_min;
-
-  const leftPdfPoint = transformCoords(actualY_max, actualX_min, extent, mapBounds);
-  if (leftPdfPoint.x < mapBounds.x + MAP_EDGE_MARGIN) {
-    let adjustedY = actualY_max;
-    let adjustedPdfPoint = leftPdfPoint;
-    while (
-      adjustedPdfPoint.x < mapBounds.x + MAP_EDGE_MARGIN &&
-      adjustedY > actualY_min
-    ) {
-      adjustedY -= _tickIntervalM;
-      adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);
-    }
-    leftY = adjustedY;
-  }
-
-  const rightPdfPoint = transformCoords(actualY_min, actualX_min, extent, mapBounds);
-  if (rightPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN) {
-    let adjustedY = actualY_min;
-    let adjustedPdfPoint = rightPdfPoint;
-    // Guard against crossing the already-finalized left bound (mirrors DXF
-    // addCornerCrosses's "don't cross over" guard, e.g. xR - G > areaL) —
-    // without this, a figure overflowing both edges could invert rightY > leftY.
-    while (
-      adjustedPdfPoint.x > mapBounds.x + mapBounds.width - MAP_EDGE_MARGIN &&
-      adjustedY < leftY
-    ) {
-      adjustedY += _tickIntervalM;
-      adjustedPdfPoint = transformCoords(adjustedY, actualX_min, extent, mapBounds);
-    }
-    rightY = adjustedY;
-  }
-
-  const _tickPoints = computeGridTickPositions({
-    aMin: rightY, aMax: leftY, bMin: topX, bMax: bottomX, intervalM: _tickIntervalM,
-  });
-  const tickMarks = _tickPoints.map((pt, i) => ({ name: `grid-${i}`, y: pt.a, x: pt.b }));
-
-  // Compute polygon centroid in PDF space for label direction heuristic
-  let _polyCx = 0, _polyCy = 0;
-  if (polygonPdfPoints.length > 0) {
-    for (const pt of polygonPdfPoints) { _polyCx += pt.x; _polyCy += pt.y; }
-    _polyCx /= polygonPdfPoints.length;
-    _polyCy /= polygonPdfPoints.length;
-    logger.info(`[PDFKit] 📐 Polygon centroid for tick label direction: (${_polyCx.toFixed(0)}, ${_polyCy.toFixed(0)})`);
-  }
-
+  const edgeL = mapBounds.x;
+  const edgeR = mapBounds.x + mapBounds.width;
+  const edgeT = mapBounds.y;                       // PDF y grows downward
+  const edgeB = mapBounds.y + mapBounds.height;
   const placedTickMarks = [];
 
-  tickMarks.forEach((tick) => {
-    // Transform Cape Lo coordinates to PDF coordinates
-    const pdfPoint = transformCoords(tick.y, tick.x, extent, mapBounds);
+  doc.save();
+  doc.lineWidth(TICK_WIDTH).strokeColor("#000000").fillColor("#000000");
+  doc.fontSize(FONT_SIZE).font("Helvetica-Bold");
 
-    // Check if tick mark is within map bounds (Y-axis only: avoid title block top and bottom edge).
-    // Tick marks are intentionally placed at grid-aligned Y values that may be outside the figure
-    // extent in X, so no X-margin check is applied here.
-    if (
-      pdfPoint.y < mapBounds.y + MAP_EDGE_MARGIN ||
-      pdfPoint.y > mapBounds.y + mapBounds.height - MAP_EDGE_MARGIN
-    ) {
-      logger.info(
-        `[PDFKit] ⏭️  Tick mark ${tick.name} at (${tick.y}, ${tick.x}) is outside map Y bounds margin, skipping`
-      );
-      return;
-    }
-
-    // Log tick mark position for debugging
-    const isTopTick = tick.name.includes("top");
-    logger.info(
-      `[PDFKit] 📍 Tick mark ${tick.name}: PDF y=${pdfPoint.y.toFixed(
-        1
-      )}, titleBlock=${
-        titleBlockBounds
-          ? `y=${titleBlockBounds.y?.toFixed(
-              1
-            )}, h=${titleBlockBounds.height?.toFixed(1)}, bottom=${(
-              titleBlockBounds.y + titleBlockBounds.height
-            ).toFixed(1)}`
-          : "none"
-      }`
-    );
-
-    // Top tick marks are positioned below the title block by adjustment logic
-
-    // Check collision with existing elements
-    const tickBounds = {
-      x: pdfPoint.x - TICK_LENGTH - 50,
-      y: pdfPoint.y - TICK_LENGTH - 20,
-      width: TICK_LENGTH * 2 + 100,
-      height: TICK_LENGTH * 2 + 40,
-    };
-
-    // ⭐ HARD BLOCK COLLISION CHECK: Skip tick mark entirely if it overlaps any placed block
-    // This prevents tick crosses from rendering over data tables (e.g. Outside Figure Data)
-    if (blockPositions) {
-      const blocksToAvoid = [
-        blockPositions.outsideFigureData,
-        blockPositions.scheduleOfAreas,
-        blockPositions.beaconDescription,
-        blockPositions.surveyStatement,
-        blockPositions.scaleBar,
-        blockPositions.sgSignature,
-        titleBlockBounds,
-      ].filter(Boolean);
-
-      const tickCross = {
-        x: pdfPoint.x - TICK_LENGTH - 5,
-        y: pdfPoint.y - TICK_LENGTH - 5,
-        width: TICK_LENGTH * 2 + 10,
-        height: TICK_LENGTH * 2 + 10,
-      };
-
-      // Log overlaps for diagnostics but do NOT skip the tick cross.
-      // The cross is a small geodetic reference mark that must always render.
-      // Labels have their own per-placement collision detection below.
-      const overlapsBlock = blocksToAvoid.some(b =>
-        b.width > 0 && b.height > 0 &&
-        !(tickCross.x + tickCross.width < b.x ||
-          tickCross.x > b.x + b.width ||
-          tickCross.y + tickCross.height < b.y ||
-          tickCross.y > b.y + b.height)
-      );
-      if (overlapsBlock) {
-        logger.info(`[PDFKit] ℹ️ Tick mark ${tick.name} cross near a placed block — rendering cross, labels will be deflected`);
-      }
-    }
-
-    if (
-      collisionDetector &&
-      collisionDetector.hasCollision(
-        tickBounds.x,
-        tickBounds.y,
-        tickBounds.width,
-        tickBounds.height
-      )
-    ) {
-      logger.info(
-        `[PDFKit] ⚠️ Tick mark ${tick.name} collision detected, will still render`
-      );
-    }
-
-    // Draw the cross/tick mark
+  // Vertical grid lines (constant Cape Westing Y) meet the top and bottom
+  // borders. The transform is axis-aligned, so PDF x depends only on Y.
+  for (const yv of yValues) {
+    const pt = transformCoords(yv, actualX_min, extent, mapBounds);
+    if (!Number.isFinite(pt.x) || pt.x < edgeL || pt.x > edgeR) continue;
+    doc.moveTo(pt.x, edgeT).lineTo(pt.x, edgeT + TICK_LENGTH).stroke();
+    doc.moveTo(pt.x, edgeB).lineTo(pt.x, edgeB - TICK_LENGTH).stroke();
+    const label = `Y = ${formatCoord(yv)}`;
+    const labelW = Math.ceil(label.length * CHAR_WIDTH);
+    // Reads up the tick, inside the bottom border.
+    const lx = pt.x, ly = edgeB - TICK_LENGTH - LABEL_OFFSET;
     doc.save();
-    doc.lineWidth(TICK_WIDTH).strokeColor("#000000");
-
-    // Vertical line (|)
-    doc
-      .moveTo(pdfPoint.x, pdfPoint.y - TICK_LENGTH)
-      .lineTo(pdfPoint.x, pdfPoint.y + TICK_LENGTH)
-      .stroke();
-
-    // Horizontal line (-)
-    doc
-      .moveTo(pdfPoint.x - TICK_LENGTH, pdfPoint.y)
-      .lineTo(pdfPoint.x + TICK_LENGTH, pdfPoint.y)
-      .stroke();
-
+    doc.rotate(-90, { origin: [lx, ly] });
+    doc.text(label, lx, ly - FONT_SIZE / 2, { lineBreak: false });
     doc.restore();
+    const bounds = { x: lx - FONT_SIZE, y: ly - labelW, width: 2 * FONT_SIZE, height: labelW + TICK_LENGTH + LABEL_OFFSET };
+    placedTickMarks.push({ name: `grid-Y-${yv}`, capeLo: { y: yv, x: null }, pdf: { x: pt.x, y: edgeB }, bounds });
+    if (collisionDetector) collisionDetector.addRegion(bounds.x, bounds.y, bounds.width, bounds.height);
+  }
 
-    // Format coordinate labels
-    // Y = Westing (e.g., "+96 900" or "Y +96 900")
-    // X = Southing (e.g., "+2 247 600" or "X +2 247 600")
-    const formatCoord = (value) => {
-      const absValue = Math.abs(value);
-      // Format with spaces for thousands (e.g., 2 247 600)
-      const formatted = absValue.toLocaleString("en-US").replace(/,/g, " ");
-      return value >= 0 ? `+${formatted}` : `-${formatted}`;
-    };
+  // Horizontal grid lines (constant Cape Southing X) meet the left and right
+  // borders; PDF y depends only on X.
+  for (const xv of xValues) {
+    const pt = transformCoords(actualY_min, xv, extent, mapBounds);
+    if (!Number.isFinite(pt.y) || pt.y < edgeT || pt.y > edgeB) continue;
+    doc.moveTo(edgeL, pt.y).lineTo(edgeL + TICK_LENGTH, pt.y).stroke();
+    doc.moveTo(edgeR, pt.y).lineTo(edgeR - TICK_LENGTH, pt.y).stroke();
+    const label = `X = ${formatCoord(xv)}`;
+    const labelW = Math.ceil(label.length * CHAR_WIDTH);
+    const lx = edgeL + TICK_LENGTH + LABEL_OFFSET, ly = pt.y - FONT_SIZE / 2;
+    doc.text(label, lx, ly, { lineBreak: false });
+    const bounds = { x: edgeL, y: ly - 1, width: TICK_LENGTH + LABEL_OFFSET + labelW, height: FONT_SIZE + 2 };
+    placedTickMarks.push({ name: `grid-X-${xv}`, capeLo: { y: null, x: xv }, pdf: { x: edgeL, y: pt.y }, bounds });
+    if (collisionDetector) collisionDetector.addRegion(bounds.x, bounds.y, bounds.width, bounds.height);
+  }
 
-    const yLabel = `Y = ${formatCoord(tick.y)}`;
-    const xLabel = `X = ${formatCoord(tick.x)}`;
-
-    // Estimate label dimensions for collision detection
-    // Accurate calculation for 7pt Helvetica-Bold: ~4.5pt average character width
-    const CHAR_WIDTH = 4.5;
-    const xLabelWidth = Math.ceil(xLabel.length * CHAR_WIDTH);
-    const xLabelHeight = FONT_SIZE + 2; // Minimal padding
-    const yLabelWidth = Math.ceil(yLabel.length * CHAR_WIDTH); // When rotated, this becomes height
-    const yLabelHeight = FONT_SIZE + 2; // When rotated, this becomes width
-
-    // Helper function to check if label bounds collide with a block
-    const checkBlockCollision = (labelX, labelY, labelW, labelH, block) => {
-      if (!block || !block.x || !block.y || !block.width || !block.height)
-        return false;
-      return !(
-        labelX + labelW < block.x ||
-        labelX > block.x + block.width ||
-        labelY + labelH < block.y ||
-        labelY > block.y + block.height
-      );
-    };
-
-    // ========== CARTOGRAPHIC STANDARD LABEL POSITIONING ==========
-    // Calculate tick mark arm endpoints for clearance checking
-    const tickTop = pdfPoint.y - TICK_LENGTH;
-    const tickBottom = pdfPoint.y + TICK_LENGTH;
-    const tickLeft = pdfPoint.x - TICK_LENGTH;
-    const tickRight = pdfPoint.x + TICK_LENGTH;
-
-    // Default Y label position: above the vertical arm tip (cartographic standard)
-    // Shift by yLabelWidth/2 so the label's near edge — not its centre — sits at the arm tip
-    let yLabelTranslateX = pdfPoint.x;
-    let yLabelTranslateY = tickTop - LABEL_OFFSET - yLabelWidth / 2;
-    let yLabelPlacement = "above-vertical-arm";
-
-    // Default X label position: right of the horizontal arm tip (cartographic standard)
-    let xLabelX = tickRight + LABEL_OFFSET;
-    let xLabelY = pdfPoint.y - xLabelHeight / 2;
-    let xLabelPlacement = "right-of-horizontal-arm";
-
-    // Track whether collision-free placement was found (default true = render when no blocks to check)
-    let foundClearYPlacement = true;
-    let foundClearXPlacement = true;
-
-    // Check collision with all blocks if blockPositions provided
-    if (blockPositions) {
-      // Log block positions for debugging
-      logger.info(
-        `[PDFKit] 🔍 Tick ${tick.name} at PDF (${pdfPoint.x.toFixed(
-          1
-        )}, ${pdfPoint.y.toFixed(1)}) - checking collisions with blocks:`
-      );
-      logger.info(
-        `[PDFKit]   - scaleBar: ${
-          blockPositions.scaleBar
-            ? `(${blockPositions.scaleBar.x?.toFixed(
-                1
-              )}, ${blockPositions.scaleBar.y?.toFixed(
-                1
-              )}) ${blockPositions.scaleBar.width?.toFixed(
-                1
-              )}x${blockPositions.scaleBar.height?.toFixed(1)}`
-            : "undefined"
-        }`
-      );
-      logger.info(
-        `[PDFKit]   - outsideFigureData: ${
-          blockPositions.outsideFigureData
-            ? `(${blockPositions.outsideFigureData.x?.toFixed(
-                1
-              )}, ${blockPositions.outsideFigureData.y?.toFixed(
-                1
-              )}) ${blockPositions.outsideFigureData.width?.toFixed(
-                1
-              )}x${blockPositions.outsideFigureData.height?.toFixed(1)}`
-            : "undefined"
-        }`
-      );
-
-      const blocksToCheck = [
-        { name: "titleBlock", block: titleBlockBounds },
-        { name: "outsideFigureData", block: blockPositions.outsideFigureData },
-        { name: "scheduleOfAreas", block: blockPositions.scheduleOfAreas },
-        { name: "beaconDescription", block: blockPositions.beaconDescription },
-        { name: "surveyStatement", block: blockPositions.surveyStatement },
-        { name: "scaleBar", block: blockPositions.scaleBar },
-        { name: "northArrow", block: blockPositions.northArrow },
-      ].filter((b) => b.block); // Only check blocks that exist
-
-      // ========== Y LABEL COLLISION DETECTION (Rotated 90°) ==========
-      // Y label positioned PERPENDICULAR to vertical tick arm (cartographic standard)
-      // When rotated -90°, the label extends upward from the translation point
-      // Width becomes height, height becomes width after rotation
-      // ⭐ EXTENDED PLACEMENTS: Added larger offsets to escape big block collisions
-      // ── CARTOGRAPHIC STANDARD: labels anchored to arm tips, never detached ──
-      // Y label: rotated 90°, sits along the vertical arm.
-      //   Primary   → above the top arm tip (text runs upward from arm end)
-      //   Fallback  → below the bottom arm tip
-      //   Last resort → left / right beside the arm (perpendicular)
-      const _yAbove = {
-          name: "above-vertical-arm",
-          translateX: pdfPoint.x,
-          // Shift centre up by yLabelWidth/2 so the near edge of the label sits at the arm tip
-          translateY: tickTop - LABEL_OFFSET - yLabelWidth / 2,
-          boundsX: pdfPoint.x - yLabelHeight / 2,
-          boundsY: tickTop - LABEL_OFFSET - yLabelWidth,
-          boundsW: yLabelHeight,
-          boundsH: yLabelWidth,
-      };
-      const _yBelow = {
-          name: "below-vertical-arm",
-          translateX: pdfPoint.x,
-          // Shift centre down by yLabelWidth/2 so the near edge of the label sits at the arm tip
-          translateY: tickBottom + LABEL_OFFSET + yLabelWidth / 2,
-          boundsX: pdfPoint.x - yLabelHeight / 2,
-          boundsY: tickBottom + LABEL_OFFSET,
-          boundsW: yLabelHeight,
-          boundsH: yLabelWidth,
-      };
-      const _yLeft = {
-          name: "left-of-vertical-arm",
-          translateX: pdfPoint.x - LABEL_OFFSET - yLabelHeight,
-          translateY: pdfPoint.y,
-          boundsX: pdfPoint.x - LABEL_OFFSET - yLabelHeight,
-          boundsY: pdfPoint.y - yLabelWidth / 2,
-          boundsW: yLabelHeight,
-          boundsH: yLabelWidth,
-      };
-      const _yRight = {
-          name: "right-of-vertical-arm",
-          translateX: pdfPoint.x + LABEL_OFFSET,
-          translateY: pdfPoint.y,
-          boundsX: pdfPoint.x + LABEL_OFFSET,
-          boundsY: pdfPoint.y - yLabelWidth / 2,
-          boundsW: yLabelHeight,
-          boundsH: yLabelWidth,
-      };
-
-      // Prefer above/below (arm-tip-coupled), side positions only as last resort
-      let yLabelPlacements;
-      if (polygonPdfPoints.length > 0) {
-        const tickIsAbovePoly = pdfPoint.y < _polyCy;
-        // Prefer the arm tip pointing AWAY from the polygon interior
-        yLabelPlacements = tickIsAbovePoly
-          ? [_yAbove, _yBelow, _yLeft, _yRight]
-          : [_yBelow, _yAbove, _yLeft, _yRight];
-      } else {
-        yLabelPlacements = [_yAbove, _yBelow, _yLeft, _yRight];
-      }
-
-      logger.info(
-        `[PDFKit] 📏 Y label "${yLabel}" dimensions: ${yLabelWidth.toFixed(
-          1
-        )}w x ${yLabelHeight.toFixed(1)}h (rotated)`
-      );
-
-      foundClearYPlacement = false;
-      for (const placement of yLabelPlacements) {
-        let hasCollision = false;
-        const labelBounds = {
-          x: placement.boundsX,
-          y: placement.boundsY,
-          right: placement.boundsX + placement.boundsW,
-          bottom: placement.boundsY + placement.boundsH,
-        };
-
-        logger.info(
-          `[PDFKit] 🔍 Testing Y label placement '${
-            placement.name
-          }': (${labelBounds.x.toFixed(1)}, ${labelBounds.y.toFixed(
-            1
-          )}) to (${labelBounds.right.toFixed(1)}, ${labelBounds.bottom.toFixed(
-            1
-          )})`
-        );
-
-        // Check block collisions only (polygon check removed: tick crosses sit on the
-        // polygon boundary by definition, so arm-tip positions always falsely fail it)
-        if (!hasCollision) {
-          for (const { name, block } of blocksToCheck) {
-            if (
-              checkBlockCollision(
-                placement.boundsX,
-                placement.boundsY,
-                placement.boundsW,
-                placement.boundsH,
-                block
-              )
-            ) {
-              hasCollision = true;
-              logger.info(
-                `[PDFKit] ⚠️  Y label at ${tick.name} placement '${
-                  placement.name
-                }' collides with ${name} at (${block.x?.toFixed(
-                  1
-                )}, ${block.y?.toFixed(1)}) ${block.width?.toFixed(
-                  1
-                )}x${block.height?.toFixed(1)}`
-              );
-              break;
-            }
-          }
-        }
-
-        if (!hasCollision) {
-          yLabelTranslateX = placement.translateX;
-          yLabelTranslateY = placement.translateY;
-          yLabelPlacement = placement.name;
-          foundClearYPlacement = true;
-          logger.info(
-            `[PDFKit] ✅ Y label at ${tick.name} using '${placement.name}' placement (collision-free)`
-          );
-          break;
-        }
-      }
-
-      if (!foundClearYPlacement) {
-        logger.warn(
-          `[PDFKit] ⚠️  Y label at ${tick.name} has collisions in all placements — skipping label`
-        );
-      }
-
-      // ========== X LABEL COLLISION DETECTION ==========
-      // X label positioned PERPENDICULAR to horizontal tick arm (cartographic standard)
-      // ── CARTOGRAPHIC STANDARD: X label anchored to horizontal arm tips ──
-      // Primary   → right of right arm tip
-      // Fallback  → left of left arm tip
-      // Last resort → above / below the cross centre
-      const _xRight = {
-          name: "right-of-horizontal-arm",
-          x: tickRight + LABEL_OFFSET,
-          y: pdfPoint.y - xLabelHeight / 2,
-      };
-      const _xLeft = {
-          name: "left-of-horizontal-arm",
-          x: tickLeft - LABEL_OFFSET - xLabelWidth,
-          y: pdfPoint.y - xLabelHeight / 2,
-      };
-      const _xAbove = {
-          name: "above-horizontal-arm",
-          x: pdfPoint.x - xLabelWidth / 2,
-          y: tickTop - LABEL_OFFSET - xLabelHeight,
-      };
-      const _xBelow = {
-          name: "below-horizontal-arm",
-          x: pdfPoint.x - xLabelWidth / 2,
-          y: tickBottom + LABEL_OFFSET,
-      };
-
-      // Prefer right/left (arm-tip-coupled), above/below only as last resort
-      let xLabelPlacements;
-      if (polygonPdfPoints.length > 0) {
-        const tickIsLeftOfPoly = pdfPoint.x < _polyCx;
-        // Prefer the arm tip pointing AWAY from the polygon interior
-        xLabelPlacements = tickIsLeftOfPoly
-          ? [_xLeft, _xRight, _xAbove, _xBelow]
-          : [_xRight, _xLeft, _xAbove, _xBelow];
-      } else {
-        xLabelPlacements = [_xRight, _xLeft, _xAbove, _xBelow];
-      }
-
-      logger.info(
-        `[PDFKit] 📏 X label "${xLabel}" dimensions: ${xLabelWidth.toFixed(
-          1
-        )}w x ${xLabelHeight.toFixed(1)}h`
-      );
-
-      foundClearXPlacement = false;
-      for (const placement of xLabelPlacements) {
-        let hasCollision = false;
-        const labelBounds = {
-          x: placement.x,
-          y: placement.y,
-          right: placement.x + xLabelWidth,
-          bottom: placement.y + xLabelHeight,
-        };
-
-        logger.info(
-          `[PDFKit] 🔍 Testing X label placement '${
-            placement.name
-          }': (${labelBounds.x.toFixed(1)}, ${labelBounds.y.toFixed(
-            1
-          )}) to (${labelBounds.right.toFixed(1)}, ${labelBounds.bottom.toFixed(
-            1
-          )})`
-        );
-
-        // Check block collisions only (polygon check removed: same reason as Y label)
-        if (!hasCollision) {
-          for (const { name, block } of blocksToCheck) {
-            if (
-              checkBlockCollision(
-                placement.x,
-                placement.y,
-                xLabelWidth,
-                xLabelHeight,
-                block
-              )
-            ) {
-              hasCollision = true;
-              logger.info(
-                `[PDFKit] ⚠️  X label at ${tick.name} placement '${
-                  placement.name
-                }' collides with ${name} at (${block.x?.toFixed(
-                  1
-                )}, ${block.y?.toFixed(1)}) ${block.width?.toFixed(
-                  1
-                )}x${block.height?.toFixed(1)}`
-              );
-              break;
-            }
-          }
-        }
-
-        if (!hasCollision) {
-          xLabelX = placement.x;
-          xLabelY = placement.y;
-          xLabelPlacement = placement.name;
-          foundClearXPlacement = true;
-          logger.info(
-            `[PDFKit] ✅ X label at ${tick.name} using '${placement.name}' placement (collision-free)`
-          );
-          break;
-        }
-      }
-
-      if (!foundClearXPlacement) {
-        logger.warn(
-          `[PDFKit] ⚠️  X label at ${tick.name} has collisions in all placements — skipping label`
-        );
-      }
-    }
-
-    // Position labels based on tick location with collision avoidance
-    // Only render labels that found a collision-free position
-    doc.save();
-    doc.fontSize(FONT_SIZE).fillColor("#000000").font("Helvetica-Bold");
-
-    // Y label (Westing) - always render at best arm-tip position
-    {
-      doc.save();
-      doc.translate(yLabelTranslateX, yLabelTranslateY);
-      doc.rotate(-90);
-      // White rect halo for field contrast
-      const _yLw = doc.widthOfString(yLabel, { font: 'Helvetica-Bold', size: FONT_SIZE });
-      const _yHp = 1.5;
-      doc.rect(-_yLw / 2 - _yHp, -FONT_SIZE / 2 - _yHp, _yLw + _yHp * 2, FONT_SIZE + _yHp * 2)
-        .fillColor('#FFFFFF').fill();
-      doc.fillColor('#000000').text(yLabel, -_yLw / 2, -FONT_SIZE / 2, { lineBreak: false });
-      doc.restore();
-    }
-
-    // X label (Southing) - always render at best arm-tip position
-    {
-      // White rect halo for field contrast
-      const _xLw = doc.widthOfString(xLabel, { font: 'Helvetica-Bold', size: FONT_SIZE });
-      const _xHp = 1.5;
-      doc.rect(xLabelX - _xHp, xLabelY - FONT_SIZE / 2 - _xHp, _xLw + _xHp * 2, FONT_SIZE + _xHp * 2)
-        .fillColor('#FFFFFF').fill();
-      doc.fillColor('#000000').text(xLabel, xLabelX, xLabelY - FONT_SIZE / 2, { lineBreak: false });
-    }
-
-    doc.restore();
-
-    // Register tick mark for collision detection
-    if (collisionDetector) {
-      collisionDetector.addRegion(
-        tickBounds.x,
-        tickBounds.y,
-        tickBounds.width,
-        tickBounds.height
-      );
-
-      collisionDetector.addRegion(
-        yLabelTranslateX - yLabelHeight / 2,
-        yLabelTranslateY - yLabelWidth / 2,
-        yLabelHeight,
-        yLabelWidth
-      );
-      collisionDetector.addRegion(
-        xLabelX,
-        xLabelY,
-        xLabelWidth,
-        xLabelHeight
-      );
-    }
-
-    placedTickMarks.push({
-      name: tick.name,
-      capeLo: { y: tick.y, x: tick.x },
-      pdf: { x: pdfPoint.x, y: pdfPoint.y },
-      bounds: tickBounds,
-    });
-
-    logger.info(
-      `[PDFKit] ✅ Tick mark ${tick.name}: Cape Lo (Y=${tick.y}, X=${
-        tick.x
-      }) → PDF (${pdfPoint.x.toFixed(1)}, ${pdfPoint.y.toFixed(1)})`
-    );
-  });
-
+  doc.restore();
   logger.info(
     `[PDFKit] ✅ Rendered ${placedTickMarks.length} tick marks around Outside Figure`
   );

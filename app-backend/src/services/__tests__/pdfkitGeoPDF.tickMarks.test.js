@@ -66,12 +66,23 @@ const shabaniLikePlan = {
 }
 
 describe('renderOutsideFigureTickMarks — grid compliance', () => {
-  test('emits more than 4 tick marks for a figure whose extent exceeds ruler range', async () => {
+  test('emits an intermediate grid tick, not just the two extremes, on each axis', async () => {
     const { pdfBuffer } = await generateGeoPDF(shabaniLikePlan, fakeLogger)
     const decodedText = extractPdfText(pdfBuffer)
-    // Every tick label follows "Y = <sign><digits with spaces>"; count occurrences.
-    const yLabels = decodedText.match(/Y = [+-][\d ]+/g) || []
-    expect(yLabels.length).toBeGreaterThan(4)
+    // Ticks are now BORDER (graticule) ticks on the map neatline rather than
+    // crosses over the figure, so each grid VALUE is labelled once per axis
+    // instead of once per perimeter cross. The old ">4" count counted crosses;
+    // under this model the meaningful property is that the grid is not degenerate
+    // — at least one tick between the two extremes, so a Surveyor-General has an
+    // adjacent pair to check with a 30cm scale ruler.
+    const yLabels = [...new Set(decodedText.match(/Y = [+-][\d ]+/g) || [])]
+    const xLabels = [...new Set(decodedText.match(/X = [+-][\d ]+/g) || [])]
+    // Fixture Y 97360-97730, X 2247150-2247400 at 1:500 -> interval 100,
+    // giving Y 97400/97500/97600/97700 and X 2247200/2247300/2247400.
+    expect(yLabels.length).toBe(4)
+    expect(xLabels.length).toBe(3)
+    expect(yLabels.length).toBeGreaterThan(2)
+    expect(xLabels.length).toBeGreaterThan(2)
   })
 
   test('left/right tick corners clamp inward when they would overflow the map edge (Westing axis)', async () => {

@@ -134,7 +134,15 @@ describe('tick mark count parity between PDF and DXF', () => {
     // more-inward starting point and this clamp-dominated fixture is
     // insensitive to the change. computeInwardTickBounds' own rounding is
     // covered directly in block-definitions-tickmarks.test.js.
-    expect(pdfYLabels.length).toBe(10)
-    expect(dxfYLabels.length).toBe(10)
+    //
+    // Border ticks (2026-08-21): both formats now draw graticule ticks on the
+    // drawing-area neatline instead of crosses over the figure, so each grid
+    // VALUE is labelled once per axis rather than once per perimeter cross.
+    // That is why the count drops from 10 to 4 — not a regression, a different
+    // and smaller set of marks. This fixture resolves to interval 100 with Y
+    // values 97400/97500/97600/97700. The two formats agreeing is the point of
+    // this test, so assert equality directly rather than two literals.
+    expect(pdfYLabels.length).toBe(4)
+    expect(dxfYLabels.length).toBe(pdfYLabels.length)
   })
 })

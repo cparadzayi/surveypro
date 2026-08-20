@@ -35,6 +35,7 @@ import {
   resolveLoSystem,
   computeGridTickPositions,
   computeConfinedTickGrid,
+  computeTickValues,
   resolveTownshipScaleMandate,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
@@ -917,74 +918,60 @@ export function generateDXF(options, logger) {
    * renderOutsideFigureTickMarks map-edge clamp (pdfkitGeoPDF.js:1903-1982).
    * Stepping by the grid interval keeps every label a clean round coordinate.
    */
-  function addCornerCrosses(layer, drawL, drawR, drawT, drawB, areaL, areaR, areaB, areaT) {
-    const arm  = mm(4);     // cross-arm half length
-    const lblH = mm(2.5);   // label text height
-    const off  = mm(1.5);   // label gap from the arm tip
-    // Snap the four corners INWARD to a round coordinate grid so every cross
-    // label is a clean multiple of a scale-driven interval, and no tick ever
-    // falls beyond the Outside Figure's true extent (this used to round
-    // outward, wasting up to a full interval of margin per side).
-    // computeConfinedTickGrid picks the largest "nice" ground-metre interval
-    // (1/2/5/10/20/25/50/75/100/...) whose paper spacing at this plan's scale
-    // (S) stays within a ruler-safe target, so a Surveyor-General can check
-    // any adjacent pair with a standard 30cm scale ruler — stepping that
-    // interval down if confinement would otherwise leave an axis with nothing
-    // between its two corner crosses. labels = −coord, so they stay multiples
-    // too. See
+  function addBorderTicks(layer, drawL, drawR, drawT, drawB, areaL, areaR, areaB, areaT) {
+    const tick = mm(4);      // tick length, straddling the neatline inward
+    const lblH = mm(2.5);    // label text height
+    const off  = mm(1.5);    // label gap from the tick
+    // Grid VALUES come from the figure's own extent, rounded inward to a
+    // scale-aware interval, so every label is a clean round coordinate that
+    // genuinely falls within the Outside Figure — see
     // docs/superpowers/specs/2026-08-12-tick-marks-confined-to-figure-bounds-design.md
-    const { intervalM: G, aMin: xL0, aMax: xR0, bMin: yB0, bMax: yT0 } =
+    // Where those ticks are DRAWN is a separate question: as border (graticule)
+    // ticks on the drawing-area neatline, never as crosses over the figure. A
+    // cross sitting on the figure obscures stand boundaries and numbers, and the
+    // only way to keep crosses off a convex figure is to snap the grid rectangle
+    // outward around it — which puts every label a full interval beyond the
+    // figure's true extent, the exact defect the inward rounding removed. Border
+    // ticks satisfy both: nothing is drawn on the figure, and the labels stay
+    // confined and round.
+    const { intervalM: G, aMin: xL, aMax: xR, bMin: yB, bMax: yT } =
       computeConfinedTickGrid({ aMin: drawL, aMax: drawR, bMin: drawB, bMax: drawT, scaleDenominator: S });
-    // let, not const — the edge-avoidance clamp loops below mutate all four.
-    let xL = xL0, xR = xR0, yB = yB0, yT = yT0;
-    // Inward clamp (PDF parity). Footprint extents of a cross centred at (cx, cy):
-    //   left  = cx − arm − mm(2)            right = cx + arm + off + mm(24)  (X= label)
-    //   bottom = cy − arm − mm(2)            top  = cy + arm + off + lblH + mm(2)  (Y= label)
-    // Step each shared grid line inward by G until that footprint sits inside the
-    // drawing area. Guarded so a too-small area can't loop forever or cross over.
-    if ([areaL, areaR, areaB, areaT].every(Number.isFinite)) {
-      const padR = arm + off + mm(24);          // X= label runs right
-      const padTop = arm + off + lblH + mm(2);  // Y= label runs up
-      const padMin = arm + mm(2);               // bare arm on the other two sides
-      let g;
-      for (g = 0; yT + padTop > areaT && yT - G > areaB && g < 1000; g++) yT -= G;
-      for (g = 0; yB - padMin < areaB && yB + G < areaT && g < 1000; g++) yB += G;
-      for (g = 0; xL - padMin < areaL && xL + G < areaR && g < 1000; g++) xL += G;
-      for (g = 0; xR + padR > areaR && xR - G > areaL && g < 1000; g++) xR -= G;
-    }
-    const _tickPoints = computeGridTickPositions({ aMin: xL, aMax: xR, bMin: yB, bMax: yT, intervalM: G });
-    const corners = _tickPoints.map(pt => ({ x: pt.a, y: pt.b }));
-    const bounds = [];
+    // No edge-avoidance clamping: a tick sits ON the neatline by construction,
+    // so it cannot overflow the drawing area the way a free-standing cross could.
+    const xValues = computeTickValues({ min: xL, max: xR, intervalM: G });
+    const yValues = computeTickValues({ min: yB, max: yT, intervalM: G });
     // Axis-label FORMAT ported from the PDF's renderOutsideFigureTickMarks:
     // "Y = +96 900" / "X = +2 247 600" — explicit +/- sign and space-grouped
-    // thousands (vs the old bare "Y=96900"). Same value convention: Y = Cape Lo
-    // Westing (−x), X = Cape Lo Southing (−y).
+    // thousands. Same value convention: Y = Cape Lo Westing (-x), X = Cape Lo
+    // Southing (-y).
     const fmtAxis = (v) => {
       const a = Math.round(Math.abs(v)).toLocaleString('en-US').replace(/,/g, ' ')
       return (v >= 0 ? '+' : '-') + a
     }
-    for (const c of corners) {
-      addLine(layer, c.x - arm, c.y, c.x + arm, c.y);   // horizontal arm
-      addLine(layer, c.x, c.y - arm, c.x, c.y + arm);   // vertical arm
-      // Westing (Y) reads UP the vertical arm (rotated 90°, matching the PDF);
-      // Southing (X) reads horizontally to the right of the horizontal arm.
-      const yLabel = `Y = ${fmtAxis(-c.x)}`;
-      const xLabel = `X = ${fmtAxis(-c.y)}`;
-      // A 90°-rotated DXF TEXT grows UP from the insertion point with its glyph
-      // height extending LEFT, so offset the baseline by +lblH/2 to centre the
-      // vertical label column over the arm.
-      addText(layer, c.x + lblH / 2, c.y + arm + off, yLabel, lblH, 90);
-      addText(layer, c.x + arm + off, c.y - lblH / 2, xLabel, lblH, 0);
-      // Reserve a band covering the cross + both labels (X runs right; Y runs up).
-      // Sized to the actual label strings (0.55 = STYLE width factor).
-      const yLabelW = yLabel.length * lblH * 0.55;
-      const xLabelW = xLabel.length * lblH * 0.55;
-      bounds.push({
-        x:      c.x - arm - mm(2),
-        y:      c.y - arm - mm(2),
-        width:  2 * arm + off + xLabelW + mm(2),
-        height: 2 * arm + off + yLabelW + mm(2),
-      });
+    const bounds = [];
+    // Vertical grid lines (constant DXF x = Cape Westing): tick the top and
+    // bottom borders. Label reads UP the tick, rotated 90 degrees.
+    for (const xv of xValues) {
+      const label = `Y = ${fmtAxis(-xv)}`;
+      const labelW = label.length * lblH * 0.55;
+      addLine(layer, xv, areaT, xv, areaT - tick);
+      addLine(layer, xv, areaB, xv, areaB + tick);
+      // A 90-rotated DXF TEXT grows UP from its insertion point with the glyph
+      // height extending LEFT, so offset by +lblH/2 to centre it over the tick.
+      addText(layer, xv + lblH / 2, areaB + tick + off, label, lblH, 90);
+      bounds.push({ x: xv - lblH, y: areaB, width: 2 * lblH, height: tick + off + labelW + mm(2) });
+      bounds.push({ x: xv - lblH, y: areaT - tick, width: 2 * lblH, height: tick });
+    }
+    // Horizontal grid lines (constant DXF y = Cape Southing): tick the left and
+    // right borders. Label reads horizontally, inward from the left tick.
+    for (const yv of yValues) {
+      const label = `X = ${fmtAxis(-yv)}`;
+      const labelW = label.length * lblH * 0.55;
+      addLine(layer, areaL, yv, areaL + tick, yv);
+      addLine(layer, areaR, yv, areaR - tick, yv);
+      addText(layer, areaL + tick + off, yv - lblH / 2, label, lblH, 0);
+      bounds.push({ x: areaL, y: yv - lblH, width: tick + off + labelW + mm(2), height: 2 * lblH });
+      bounds.push({ x: areaR - tick, y: yv - lblH, width: tick, height: 2 * lblH });
     }
     return bounds;
   }
@@ -1865,10 +1852,10 @@ export function generateDXF(options, logger) {
   // bottom-right corner) makes the schedule collide with them, because the
   // schedule dutifully dodges the planner's slots, not the renderer's position.
 
-  // Coordinate reference crosses at the figure's four corners (SI 727 frame).
+  // Coordinate reference ticks on the drawing-area neatline (SI 727 frame).
   // _crossBounds is reserved as an obstacle in the collision-avoidance pass so no
   // block covers a cross or its coordinate label.
-  const _crossBounds = addCornerCrosses('GRID', dL, dR, dT, dB, cntL, cntR, cntB, cntT)
+  const _crossBounds = addBorderTicks('GRID', dL, dR, dT, dB, cntL, cntR, cntB, cntT)
 
   // â”€â”€ B) ENDORSEMENTS (right-margin table) â”€â”€
   // Fills the right-margin strip from the drawing-area right margin (endDivX)

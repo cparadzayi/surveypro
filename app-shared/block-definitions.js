@@ -581,6 +581,16 @@ function steppedRange(start, end, step) {
   return vals
 }
 
+// Tick coordinate values along ONE axis — the same stepping computeGridTickPositions
+// uses, exposed for border ticks. A border tick is drawn where each grid line meets
+// the drawing-area neatline, so a renderer needs the per-axis VALUES rather than the
+// perimeter point list: each a-value gets a tick on the top and bottom borders, each
+// b-value one on the left and right. Shared by pdfkitGeoPDF.js and dxfGenerator.js so
+// the two formats tick identical coordinates.
+export function computeTickValues({ min, max, intervalM }) {
+  return steppedRange(min, max, intervalM)
+}
+
 export function computeGridTickPositions({ aMin, aMax, bMin, bMax, intervalM }) {
   const aValues = steppedRange(aMin, aMax, intervalM)
   const bValues = steppedRange(bMin, bMax, intervalM)

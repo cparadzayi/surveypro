@@ -68,17 +68,22 @@ function formatSurveyDate(dateInput) {
   }
 }
 
+// The plan carries the surveyor's ROLE, never their identity. Replaces the
+// former two-row `<name>` + `(Land Surveyor, Zim)` pair, so neither the name
+// nor a licence number reaches the rendered plan. Shared by sizeStatement and
+// emitStatement so the measured height can never disagree with what is drawn.
+const SIGNATORY_LABEL = 'Land Surveyor'
+
 /**
  * Compute size of the Survey Date Statement block.
  *
  * The statement is a stack of up to three lines:
  *   - `Surveyed in <date> by me`               (height: fonts.hBody, gap: rH * 1.5)
- *   - <surveyor name>                          (height: fonts.hSub,  gap: rH)
- *   - `(Land Surveyor, Zim)`                   (height: fonts.hBody, gap: rH * 1.5)
+ *   - `Land Surveyor`                          (height: fonts.hSub,  gap: rH * 1.5)
  *
- * Lines emit only when their metadata key is present. The surveyor name
- * and "(Land Surveyor, Zim)" emit together: presence of `metadata.surveyor`
- * implies both rows.
+ * Lines emit only when their metadata key is present. The signatory row is
+ * still gated on `metadata.surveyor` — its presence is what says the plan
+ * has a signatory — but the name itself is never rendered.
  *
  * Returns {0,0} when no lines would emit → orchestrator skips emission.
  *
@@ -97,8 +102,7 @@ export function sizeStatement(metadata, fonts) {
     })
   }
   if (metadata.surveyor) {
-    lines.push({ text: metadata.surveyor,       height: hSub,  gap: rH })
-    lines.push({ text: '(Land Surveyor, Zim)',  height: hBody, gap: rH * 1.5 })
+    lines.push({ text: SIGNATORY_LABEL, height: hSub, gap: rH * 1.5 })
   }
   if (lines.length === 0) return { width: 0, height: 0 }
 
@@ -207,9 +211,7 @@ export function emitStatement(addText, position, metadata, fonts, layer) {
     cY -= rH * 1.5
   }
   if (metadata.surveyor) {
-    addText(layer, position.x, cY, metadata.surveyor, hSub, 0, 'BOLD')
-    cY -= rH
-    addText(layer, position.x, cY, '(Land Surveyor, Zim)', hBody, 0, undefined)
+    addText(layer, position.x, cY, SIGNATORY_LABEL, hSub, 0, 'BOLD')
     cY -= rH * 1.5
   }
 }

@@ -41,11 +41,15 @@ describe('sizeStatement', () => {
     expect(result.width).toBeGreaterThan(0)
   })
 
-  test('width tracks the longest of the three candidate lines', () => {
+  test('a long surveyor name does not widen the block — the name is never rendered', () => {
     const long = 'X'.repeat(120)
     const result = sizeStatement({ date: '2026', surveyor: long }, fonts)
-    // Longest candidate is the surveyor name → width = 120 chars * hBody * 0.55.
-    expect(result.width).toBeCloseTo(120 * fonts.hBody * 0.55, 3)
+    // The name used to be a rendered row, so it drove the width. It is now
+    // replaced by the fixed 'Land Surveyor' label, leaving the date statement
+    // "Surveyed in January 2026 by me" (30 chars) as the longest rendered line.
+    expect(result.width).toBeCloseTo(30 * fonts.hBody * 0.55, 3)
+    // Name length is not a factor at all — a 2-char name sizes identically.
+    expect(sizeStatement({ date: '2026', surveyor: 'Jo' }, fonts).width).toBeCloseTo(result.width, 3)
   })
 })
 
@@ -115,12 +119,15 @@ describe('emitStatement', () => {
     const position = { x: 100, y: 200 }   // top-left of bbox (south-up: high y)
     emitStatement(r.addText, position, metadata, fonts, 'TITLE_BLOCK')
 
-    // Expect 3 addText calls: date line, surveyor (bold), '(Land Surveyor, Zim)'.
-    expect(r.calls.addText).toHaveLength(3)
+    // Expect 2 addText calls: date line, then the generic signatory row.
+    // The surveyor's NAME must never be rendered — metadata.surveyor only
+    // gates whether the row appears at all.
+    expect(r.calls.addText).toHaveLength(2)
     expect(r.calls.addText[0]).toEqual(['TITLE_BLOCK', 100, 200, 'Surveyed in June 2026 by me', fonts.hBody, 0, undefined])
-    expect(r.calls.addText[1][3]).toBe('John Doe')
-    expect(r.calls.addText[1][6]).toBe('BOLD')          // surveyor row is bold
-    expect(r.calls.addText[2][3]).toBe('(Land Surveyor, Zim)')
+    expect(r.calls.addText[1][3]).toBe('Land Surveyor')
+    expect(r.calls.addText[1][6]).toBe('BOLD')          // signatory row is bold
+    // The name supplied in metadata appears nowhere in the emitted text.
+    expect(r.calls.addText.map(c => c[3]).join(' | ')).not.toContain('John Doe')
   })
 
   test('records nothing when metadata has neither date nor surveyor', () => {

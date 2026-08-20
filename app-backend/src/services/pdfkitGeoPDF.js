@@ -9951,37 +9951,19 @@ function drawSurveyStatement(doc, metadata, mapBounds, position) {
   const lineHeight = 14;
   const surveyorY = blockY + lineHeight + 5 + signatureSpace;
 
-  // Surveyor name
+  // Signatory line. Deliberately generic: the plan carries the surveyor's
+  // ROLE, never their identity. This replaced three lines — metadata.surveyor,
+  // "(Land Surveyor, Zim)" and "Lic. No: <n>" — so neither the name nor the
+  // licence number reaches the rendered plan. blockHeight above is a fixed
+  // approximation, so dropping two lines does not disturb placement.
   doc
     .fontSize(10)
     .font("Helvetica-Bold")
-    .text(metadata.surveyor || "Land Surveyor", blockX, surveyorY, {
+    .text("Land Surveyor", blockX, surveyorY, {
       width: blockWidth,
       align: alignment,
       continued: false,
     });
-
-  // Surveyor title on next line
-  const titleY = surveyorY + lineHeight;
-  doc
-    .fontSize(9)
-    .font("Helvetica")
-    .text("(Land Surveyor, Zim)", blockX, titleY, {
-      width: blockWidth,
-      align: alignment,
-    });
-
-  // License number (if available)
-  if (metadata.licenseNumber) {
-    const licenseY = titleY + lineHeight;
-    doc
-      .fontSize(9)
-      .font("Helvetica")
-      .text(`Lic. No: ${metadata.licenseNumber}`, blockX, licenseY, {
-        width: blockWidth,
-        align: alignment,
-      });
-  }
 
   doc.restore();
 }

@@ -1529,14 +1529,13 @@ function drawSurveyStatement(pdf: jsPDF, data: SurveyPlanData, area: any) {
   pdf.setLineWidth(0.3)
   pdf.rect(centerX - 40, y + 5, 80, 20)
   
+  // Signatory line. Deliberately generic: the plan carries the surveyor's
+  // ROLE, never their identity. Replaced surveyorName + '(Land Surveyor, Zim)'
+  // + 'Lic. No: <n>', matching the backend generators (pdfkitGeoPDF.js and
+  // dxfBottomZoneEmitter.js) so every plan-producing path agrees.
   pdf.setFont(FONTS.body.family, 'bold')
-  pdf.setFontSize(10)  // Increased from 7pt
-  pdf.text(data.projectInfo.surveyorName, centerX, y + 15, { align: 'center' })
-  
-  pdf.setFont(FONTS.small.family, FONTS.small.weight)
-  pdf.setFontSize(FONTS.small.size)
-  pdf.text('(Land Surveyor, Zim)', centerX, y + 19, { align: 'center' })
-  pdf.text(`Lic. No: ${data.projectInfo.licenseNumber}`, centerX, y + 23, { align: 'center' })
+  pdf.setFontSize(10)
+  pdf.text('Land Surveyor', centerX, y + 15, { align: 'center' })
 }
 
 /**

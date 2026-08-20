@@ -570,13 +570,18 @@ export function chooseTickIntervalMetres(scaleDenominator, targetPaperMm = 250) 
 // ground-coordinate axes they use (Cape Lo Y/X, DXF ground x/y, etc.) as
 // a/b. Each of the 4 corners is the shared endpoint of two edges, so this
 // dedupes by (a,b) before returning.
+// Tick values along one axis: every whole interval step from start, plus the
+// exact end point. Module-scope so computeConfinedTickGrid's density check
+// counts ticks exactly as computeGridTickPositions will emit them — the two
+// drifting apart is the same class of bug the shared-helper work fixes.
+function steppedRange(start, end, step) {
+  const vals = []
+  for (let v = start; v < end; v += step) vals.push(v)
+  vals.push(end)
+  return vals
+}
+
 export function computeGridTickPositions({ aMin, aMax, bMin, bMax, intervalM }) {
-  const steppedRange = (start, end, step) => {
-    const vals = []
-    for (let v = start; v < end; v += step) vals.push(v)
-    vals.push(end)
-    return vals
-  }
   const aValues = steppedRange(aMin, aMax, intervalM)
   const bValues = steppedRange(bMin, bMax, intervalM)
 
@@ -635,6 +640,51 @@ export function computeInwardTickBounds({ aMin, aMax, bMin, bMax, intervalM }) {
   const a = roundInward(aMin, aMax)
   const b = roundInward(bMin, bMax)
   return { aMin: a.min, aMax: a.max, bMin: b.min, bMax: b.max }
+}
+
+// Ticks packed closer than this on paper read as clutter rather than a usable
+// reference grid, so interval step-down never goes below it. Counterpart to
+// chooseTickIntervalMetres' 250mm upper bound (30cm-ruler reach).
+const MIN_TICK_PAPER_MM = 25
+
+/**
+ * Resolve BOTH the tick interval and the inward-rounded corner bounds for a
+ * figure, so the grid is confined to the figure AND still carries at least
+ * one tick between opposite corners on each axis.
+ *
+ * chooseTickIntervalMetres alone picks the largest ruler-safe interval, which
+ * is right for spacing but can leave a small figure with nothing but its 4
+ * corner crosses once bounds round inward: a 180m extent at a 100m interval
+ * confines to 50000-50100, just 2 ticks, with no intermediate pair for a
+ * Surveyor-General to check against a 30cm scale ruler. This walks the same
+ * nice-number ladder downward from that pick and returns the COARSEST rung
+ * where both axes carry minTicksPerAxis ticks, bounded below by
+ * MIN_TICK_PAPER_MM so a tiny figure can't produce a cluttered grid. When no
+ * rung satisfies the density floor, the ruler-safe pick is kept unchanged.
+ *
+ * Returns computeGridTickPositions' input shape plus the resolved intervalM,
+ * so callers destructure one call instead of pairing chooseTickIntervalMetres
+ * with computeInwardTickBounds themselves. Shared by pdfkitGeoPDF.js
+ * (calculateTickMarkBounds, renderOutsideFigureTickMarks) and dxfGenerator.js
+ * (addCornerCrosses) — see
+ * docs/superpowers/specs/2026-08-12-tick-marks-confined-to-figure-bounds-design.md
+ */
+export function computeConfinedTickGrid({
+  aMin, aMax, bMin, bMax, scaleDenominator,
+  targetPaperMm = 250, minTicksPerAxis = 3, minPaperMm = MIN_TICK_PAPER_MM,
+}) {
+  const coarsest = chooseTickIntervalMetres(scaleDenominator, targetPaperMm)
+  const minIntervalM = (minPaperMm * scaleDenominator) / 1000
+  const rungs = GRID_NICE_NUMBERS.filter(n => n <= coarsest && n >= minIntervalM)
+  // Coarsest first — keep the ruler-safe pick unless it starves an axis.
+  for (let i = rungs.length - 1; i >= 0; i--) {
+    const intervalM = rungs[i]
+    const bounds = computeInwardTickBounds({ aMin, aMax, bMin, bMax, intervalM })
+    const aTicks = steppedRange(bounds.aMin, bounds.aMax, intervalM).length
+    const bTicks = steppedRange(bounds.bMin, bounds.bMax, intervalM).length
+    if (aTicks >= minTicksPerAxis && bTicks >= minTicksPerAxis) return { intervalM, ...bounds }
+  }
+  return { intervalM: coarsest, ...computeInwardTickBounds({ aMin, aMax, bMin, bMax, intervalM: coarsest }) }
 }
 
 // Resolve the Lo coordinate-system label ("Lo 29") shown in the OUTSIDE FIGURE

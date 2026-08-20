@@ -33,9 +33,8 @@ import {
   classifyBeaconGroups,
   snapScaleBarSegment,
   resolveLoSystem,
-  chooseTickIntervalMetres,
   computeGridTickPositions,
-  computeInwardTickBounds,
+  computeConfinedTickGrid,
   resolveTownshipScaleMandate,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
@@ -923,17 +922,19 @@ export function generateDXF(options, logger) {
     const lblH = mm(2.5);   // label text height
     const off  = mm(1.5);   // label gap from the arm tip
     // Snap the four corners INWARD to a round coordinate grid so every cross
-    // label is a clean multiple of a scale-driven interval — chooseTickIntervalMetres
-    // picks the largest "nice" ground-metre interval (1/2/5/10/20/25/50/75/100/...)
-    // whose paper spacing at this plan's scale (S) stays within a ruler-safe
-    // target, so a Surveyor-General can check any adjacent pair with a
-    // standard 30cm scale ruler. Rounding inward (not outward) guarantees no
-    // tick ever falls beyond the Outside Figure's true extent — see
+    // label is a clean multiple of a scale-driven interval, and no tick ever
+    // falls beyond the Outside Figure's true extent (this used to round
+    // outward, wasting up to a full interval of margin per side).
+    // computeConfinedTickGrid picks the largest "nice" ground-metre interval
+    // (1/2/5/10/20/25/50/75/100/...) whose paper spacing at this plan's scale
+    // (S) stays within a ruler-safe target, so a Surveyor-General can check
+    // any adjacent pair with a standard 30cm scale ruler — stepping that
+    // interval down if confinement would otherwise leave an axis with nothing
+    // between its two corner crosses. labels = −coord, so they stay multiples
+    // too. See
     // docs/superpowers/specs/2026-08-12-tick-marks-confined-to-figure-bounds-design.md
-    // labels = −coord, so they stay multiples too.
-    const G = chooseTickIntervalMetres(S);
-    const { aMin: xL0, aMax: xR0, bMin: yB0, bMax: yT0 } =
-      computeInwardTickBounds({ aMin: drawL, aMax: drawR, bMin: drawB, bMax: drawT, intervalM: G });
+    const { intervalM: G, aMin: xL0, aMax: xR0, bMin: yB0, bMax: yT0 } =
+      computeConfinedTickGrid({ aMin: drawL, aMax: drawR, bMin: drawB, bMax: drawT, scaleDenominator: S });
     // let, not const — the edge-avoidance clamp loops below mutate all four.
     let xL = xL0, xR = xR0, yB = yB0, yT = yT0;
     // Inward clamp (PDF parity). Footprint extents of a cross centred at (cx, cy):

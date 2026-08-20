@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals'
-import { chooseTickIntervalMetres, computeGridTickPositions, computeInwardTickBounds } from '../../../../app-shared/block-definitions.js'
+import { chooseTickIntervalMetres, computeGridTickPositions, computeInwardTickBounds, computeConfinedTickGrid } from '../../../../app-shared/block-definitions.js'
 
 describe('chooseTickIntervalMetres', () => {
   test('1:500 scale picks 100m (200mm paper spacing)', () => {
@@ -133,5 +133,65 @@ describe('GRID_NICE_NUMBERS includes 25 and 75', () => {
     expect(chooseTickIntervalMetres(2500)).toBe(500)
     expect(chooseTickIntervalMetres(500, 300)).toBe(100)
     expect(chooseTickIntervalMetres(1000, 300)).toBe(200)
+  })
+})
+
+describe('computeConfinedTickGrid', () => {
+  const ticksOn = (min, max, interval) => computeGridTickPositions({ aMin: min, aMax: max, bMin: 0, bMax: interval, intervalM: interval }).filter(p => p.b === 0).length
+
+  test('keeps the ruler-safe interval when both axes already carry an intermediate tick', () => {
+    // Y 50000-50500, X 2200000-2200420 at 1:1000 -> interval 200 gives
+    // Y 50000/50200/50400 (3) and X 2200000/2200200/2200400 (3). No step-down.
+    const g = computeConfinedTickGrid({ aMin: 50000, aMax: 50500, bMin: 2200000, bMax: 2200420, scaleDenominator: 1000 })
+    expect(g.intervalM).toBe(200)
+    expect(g).toEqual({ intervalM: 200, aMin: 50000, aMax: 50400, bMin: 2200000, bMax: 2200400 })
+  })
+
+  test('steps the interval down when inward rounding would leave an axis with only its 2 corners', () => {
+    // The dxfGenerator integration fixture: Y 50000-50180, X 2200000-2200090
+    // at 1:500. Interval 100 confines to Y 50000-50100 / X 2200000-2200090 —
+    // 2 ticks per axis, i.e. corner crosses only, no ruler-checkable pair
+    // between them. Stepping down restores a real grid.
+    const g = computeConfinedTickGrid({ aMin: 50000, aMax: 50180, bMin: 2200000, bMax: 2200090, scaleDenominator: 500 })
+    expect(g.intervalM).toBeLessThan(100)
+    expect(ticksOn(g.aMin, g.aMax, g.intervalM)).toBeGreaterThanOrEqual(3)
+    expect(ticksOn(g.bMin, g.bMax, g.intervalM)).toBeGreaterThanOrEqual(3)
+  })
+
+  test('step-down never breaks confinement — bounds stay inside the true extent', () => {
+    const g = computeConfinedTickGrid({ aMin: 50000, aMax: 50180, bMin: 2200000, bMax: 2200090, scaleDenominator: 500 })
+    expect(g.aMin).toBeGreaterThanOrEqual(50000)
+    expect(g.aMax).toBeLessThanOrEqual(50180)
+    expect(g.bMin).toBeGreaterThanOrEqual(2200000)
+    expect(g.bMax).toBeLessThanOrEqual(2200090)
+  })
+
+  test('the originally-reported Shabani plan resolves to the range its spec expected', () => {
+    // True extent measured off the shipped pre-fix DXF's drawn geometry.
+    // At 1:1000 the ruler-safe pick is 200m, which confines to just
+    // 97400/97600 — the spec's stated expectation is 97400-97700, which
+    // only a 100m interval can produce.
+    const g = computeConfinedTickGrid({ aMin: 97364.86, aMax: 97720.42, bMin: 2247103.54, bMax: 2247428.84, scaleDenominator: 1000 })
+    expect(g.intervalM).toBe(100)
+    expect(g.aMin).toBe(97400)
+    expect(g.aMax).toBe(97700)
+    expect(g.bMin).toBe(2247200)
+    expect(g.bMax).toBe(2247400)
+  })
+
+  test('never steps down past the paper-readability floor, even if density is unreachable', () => {
+    // A 12m figure at 1:500: no ladder rung can give 3 ticks per axis without
+    // ticks landing a couple of mm apart on paper. Keep the coarse pick
+    // rather than emitting a cluttered grid.
+    const g = computeConfinedTickGrid({ aMin: 50000, aMax: 50012, bMin: 2200000, bMax: 2200012, scaleDenominator: 500 })
+    const paperMm = (g.intervalM * 1000) / 500
+    expect(paperMm).toBeGreaterThanOrEqual(25)
+  })
+
+  test('every resolved interval still respects the 30cm-ruler upper bound', () => {
+    for (const scale of [250, 500, 1000, 1500, 2500, 5000]) {
+      const g = computeConfinedTickGrid({ aMin: 50000, aMax: 50500, bMin: 2200000, bMax: 2200420, scaleDenominator: scale })
+      expect((g.intervalM * 1000) / scale).toBeLessThanOrEqual(250)
+    }
   })
 })

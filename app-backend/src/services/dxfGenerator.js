@@ -35,6 +35,7 @@ import {
   resolveLoSystem,
   chooseTickIntervalMetres,
   computeGridTickPositions,
+  computeInwardTickBounds,
   resolveTownshipScaleMandate,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
@@ -921,16 +922,20 @@ export function generateDXF(options, logger) {
     const arm  = mm(4);     // cross-arm half length
     const lblH = mm(2.5);   // label text height
     const off  = mm(1.5);   // label gap from the arm tip
-    // Snap the four corners OUTWARD to a round coordinate grid so every cross
+    // Snap the four corners INWARD to a round coordinate grid so every cross
     // label is a clean multiple of a scale-driven interval — chooseTickIntervalMetres
-    // picks the largest "nice" ground-metre interval (1/2/5/10/20/50/100/...) whose
-    // paper spacing at this plan's scale (S) stays within a ruler-safe target, so a
-    // Surveyor-General can check any adjacent pair with a standard 30cm scale ruler.
-    // drawL/B are the min corners (floor/out), drawR/T the max corners (ceil/out);
+    // picks the largest "nice" ground-metre interval (1/2/5/10/20/25/50/75/100/...)
+    // whose paper spacing at this plan's scale (S) stays within a ruler-safe
+    // target, so a Surveyor-General can check any adjacent pair with a
+    // standard 30cm scale ruler. Rounding inward (not outward) guarantees no
+    // tick ever falls beyond the Outside Figure's true extent — see
+    // docs/superpowers/specs/2026-08-12-tick-marks-confined-to-figure-bounds-design.md
     // labels = −coord, so they stay multiples too.
     const G = chooseTickIntervalMetres(S);
-    let xL = Math.floor(drawL / G) * G, xR = Math.ceil(drawR / G) * G;
-    let yB = Math.floor(drawB / G) * G, yT = Math.ceil(drawT / G) * G;
+    const { aMin: xL0, aMax: xR0, bMin: yB0, bMax: yT0 } =
+      computeInwardTickBounds({ aMin: drawL, aMax: drawR, bMin: drawB, bMax: drawT, intervalM: G });
+    // let, not const — the edge-avoidance clamp loops below mutate all four.
+    let xL = xL0, xR = xR0, yB = yB0, yT = yT0;
     // Inward clamp (PDF parity). Footprint extents of a cross centred at (cx, cy):
     //   left  = cx − arm − mm(2)            right = cx + arm + off + mm(24)  (X= label)
     //   bottom = cy − arm − mm(2)            top  = cy + arm + off + lblH + mm(2)  (Y= label)

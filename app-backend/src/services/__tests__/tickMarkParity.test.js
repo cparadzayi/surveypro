@@ -118,9 +118,12 @@ describe('tick mark count parity between PDF and DXF', () => {
     // the underlying mapBounds/content-area sizing gap this test documents
     // is unrelated and remains open (see comment above).
     //
-    // Inward tick bounds (2026-08-12, computeInwardTickBounds): both PDF
-    // call sites now round the figure's true min/max INWARD instead of
-    // outward. Both counts stay at 10 and — verified by dumping the actual
+    // Inward tick bounds (2026-08-12, computeInwardTickBounds): all three
+    // call sites — PDF's calculateTickMarkBounds and
+    // renderOutsideFigureTickMarks, and DXF's addCornerCrosses — now share
+    // one helper that rounds the figure's true min/max INWARD instead of
+    // outward, so the two formats still resolve identical corner bounds.
+    // Both counts stay at 10 and — verified by dumping the actual
     // decoded label values before and after — the emitted labels are
     // byte-identical (Y 97400..97700, X 2247200..2247400). That is not the
     // fix failing to apply: for THIS fixture the pre-existing map-edge

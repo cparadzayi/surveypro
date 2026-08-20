@@ -117,6 +117,20 @@ describe('tick mark count parity between PDF and DXF', () => {
     // the PDF/DXF count gap for this specific fixture (both now 10), but
     // the underlying mapBounds/content-area sizing gap this test documents
     // is unrelated and remains open (see comment above).
+    //
+    // Inward tick bounds (2026-08-12, computeInwardTickBounds): both PDF
+    // call sites now round the figure's true min/max INWARD instead of
+    // outward. Both counts stay at 10 and — verified by dumping the actual
+    // decoded label values before and after — the emitted labels are
+    // byte-identical (Y 97400..97700, X 2247200..2247400). That is not the
+    // fix failing to apply: for THIS fixture the pre-existing map-edge
+    // clamp (the ~73pt mapBounds gap documented above) was already walking
+    // the outward-rounded bounds all the way down to exactly the values
+    // inward rounding now produces directly. The clamp only ever moves
+    // bounds further inward, so it composes on top of the new, already
+    // more-inward starting point and this clamp-dominated fixture is
+    // insensitive to the change. computeInwardTickBounds' own rounding is
+    // covered directly in block-definitions-tickmarks.test.js.
     expect(pdfYLabels.length).toBe(10)
     expect(dxfYLabels.length).toBe(10)
   })

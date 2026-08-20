@@ -12,7 +12,7 @@ import {
   TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, chooseTickIntervalMetres, computeGridTickPositions, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, chooseTickIntervalMetres, computeGridTickPositions, computeInwardTickBounds, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -1589,18 +1589,16 @@ function calculateTickMarkBounds(
     maxX = Math.max(maxX, x);
   });
 
-  // Corner bounds snap to the same scale-aware interval used for tick
-  // spacing (chooseTickIntervalMetres) — matches DXF's addCornerCrosses
-  // exactly, so both formats compute the same corner coordinates for the
-  // same plan. Previously this used a separate legacy 5m/10m/50m rule
-  // (predating this interval system) while only using the interval for
-  // spacing between ticks, not the bounds themselves — see
-  // docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md
+  // Corner bounds round INWARD to the same scale-aware interval used for
+  // tick spacing (chooseTickIntervalMetres) — matches DXF's
+  // addCornerCrosses exactly, so both formats compute the same corner
+  // coordinates for the same plan, and neither ever places a tick beyond
+  // the Outside Figure's true extent (previously rounded outward, wasting
+  // up to one full interval of margin on every side) — see
+  // docs/superpowers/specs/2026-08-12-tick-marks-confined-to-figure-bounds-design.md
   const _tickIntervalM = chooseTickIntervalMetres(scaleDenominator);
-  const actualY_min = Math.floor(minY / _tickIntervalM) * _tickIntervalM;
-  const actualY_max = Math.ceil(maxY  / _tickIntervalM) * _tickIntervalM;
-  const actualX_min = Math.floor(minX / _tickIntervalM) * _tickIntervalM;
-  const actualX_max = Math.ceil(maxX  / _tickIntervalM) * _tickIntervalM;
+  const { aMin: actualY_min, aMax: actualY_max, bMin: actualX_min, bMax: actualX_max } =
+    computeInwardTickBounds({ aMin: minY, aMax: maxY, bMin: minX, bMax: maxX, intervalM: _tickIntervalM });
 
   const TICK_LENGTH = 12; // Match renderOutsideFigureTickMarks()
   const MAP_EDGE_MARGIN = 30;
@@ -1886,18 +1884,16 @@ function renderOutsideFigureTickMarks(
     )}, ${maxY.toFixed(0)}], X=[${minX.toFixed(0)}, ${maxX.toFixed(0)}]`
   );
 
-  // Corner bounds snap to the same scale-aware interval used for tick
-  // spacing (chooseTickIntervalMetres) — matches DXF's addCornerCrosses
-  // exactly, so both formats compute the same corner coordinates for the
-  // same plan. Previously this used a separate legacy 5m/10m/50m rule
-  // (predating this interval system) while only using the interval for
-  // spacing between ticks, not the bounds themselves — see
-  // docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md
+  // Corner bounds round INWARD to the same scale-aware interval used for
+  // tick spacing (chooseTickIntervalMetres) — matches DXF's
+  // addCornerCrosses exactly, so both formats compute the same corner
+  // coordinates for the same plan, and neither ever places a tick beyond
+  // the Outside Figure's true extent (previously rounded outward, wasting
+  // up to one full interval of margin on every side) — see
+  // docs/superpowers/specs/2026-08-12-tick-marks-confined-to-figure-bounds-design.md
   const _tickIntervalM = chooseTickIntervalMetres(scaleDenominator);
-  const actualY_min = Math.floor(minY / _tickIntervalM) * _tickIntervalM;
-  const actualY_max = Math.ceil(maxY  / _tickIntervalM) * _tickIntervalM;
-  const actualX_min = Math.floor(minX / _tickIntervalM) * _tickIntervalM;
-  const actualX_max = Math.ceil(maxX  / _tickIntervalM) * _tickIntervalM;
+  const { aMin: actualY_min, aMax: actualY_max, bMin: actualX_min, bMax: actualX_max } =
+    computeInwardTickBounds({ aMin: minY, aMax: maxY, bMin: minX, bMax: maxX, intervalM: _tickIntervalM });
 
   logger.info(
     `[PDFKit] 📐 Grid tick coordinates (${_tickIntervalM}m intervals): Y=[${actualY_min}, ${actualY_max}], X=[${actualX_min}, ${actualX_max}]`

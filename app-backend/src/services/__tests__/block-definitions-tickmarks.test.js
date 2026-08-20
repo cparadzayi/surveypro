@@ -86,6 +86,23 @@ describe('computeInwardTickBounds', () => {
     expect(result).toEqual({ aMin: 97420, aMax: 97480, bMin: 2247150, bMax: 2247180 })
   })
 
+  test('falls back when exactly ONE round multiple fits — a zero-extent range is not usable', () => {
+    // Regression: the DXF minimal fixture's X axis is 2200000-2200060 at a
+    // 100m interval. ceil(2200000/100)*100 === floor(2200060/100)*100 ===
+    // 2200000, so inward rounding collapses the axis to zero extent. That is
+    // not a valid grid: computeGridTickPositions turns a zero-extent axis into
+    // a single LINE of crosses instead of a rectangle framing the figure,
+    // silently dropping the whole opposite axis's labels. Needs the same
+    // exact-bounds fallback as the narrower-than-one-interval case.
+    const result = computeInwardTickBounds({ aMin: 2200000, aMax: 2200060, bMin: 50000, bMax: 50100, intervalM: 100 })
+    expect(result.aMin).toBe(2200000)
+    expect(result.aMax).toBe(2200060)
+    expect(result.aMax).toBeGreaterThan(result.aMin)
+    // The on-grid b axis still rounds normally.
+    expect(result.bMin).toBe(50000)
+    expect(result.bMax).toBe(50100)
+  })
+
   test('each axis falls back independently — one axis on-grid, the other too narrow', () => {
     const result = computeInwardTickBounds({ aMin: 97400, aMax: 97700, bMin: 2247150, bMax: 2247180, intervalM: 100 })
     expect(result.aMin).toBe(97400)

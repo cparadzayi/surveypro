@@ -606,10 +606,15 @@ export function computeGridTickPositions({ aMin, aMax, bMin, bMax, intervalM }) 
  * multiple on each axis, so no tick mark ever falls outside the figure's
  * actual bounds. Ticks still land on nice round numbers — they're just one
  * interval short of the figure's true extent rather than one interval
- * beyond it. Falls back to the exact min/max on an axis where the figure
- * is smaller than one interval (no round multiple strictly between min and
- * max) — still guarantees confinement, just without a round label in that
- * rare case.
+ * beyond it. Falls back to the exact min/max on an axis where fewer than
+ * TWO round multiples fit inside the figure — both the no-multiple case
+ * (figure narrower than one interval) and the exactly-one-multiple case,
+ * where inward rounding would otherwise collapse the axis to zero extent.
+ * A zero-extent axis is not a usable grid: computeGridTickPositions turns
+ * it into a single LINE of ticks instead of a rectangle framing the
+ * figure, silently dropping every label on the opposite axis. The fallback
+ * still guarantees confinement, just without a round label in that rare
+ * case.
  *
  * Axis-agnostic (aMin/aMax/bMin/bMax, not Y/X) like computeGridTickPositions
  * — its return shape is exactly that function's input shape, so callers can
@@ -625,7 +630,7 @@ export function computeInwardTickBounds({ aMin, aMax, bMin, bMax, intervalM }) {
   const roundInward = (min, max) => {
     const inwardMin = Math.ceil(min / intervalM) * intervalM
     const inwardMax = Math.floor(max / intervalM) * intervalM
-    return inwardMin <= inwardMax ? { min: inwardMin, max: inwardMax } : { min, max }
+    return inwardMin < inwardMax ? { min: inwardMin, max: inwardMax } : { min, max }
   }
   const a = roundInward(aMin, aMax)
   const b = roundInward(bMin, bMax)

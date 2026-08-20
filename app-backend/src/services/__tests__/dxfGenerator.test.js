@@ -338,18 +338,23 @@ describe('generateDXF — coordinate grid ticks', () => {
     expect(entityCount(dxf, 'TEXT', 'GRID')).toBeGreaterThan(0)
   })
 
-  test('renders grid reference crosses along all 4 edges with Y = / X = coordinate labels (PDF parity)', () => {
-    // Ports the PDF's renderOutsideFigureTickMarks: a "+" at each grid point
-    // around the figure's perimeter (not just the 4 corners), each labelled
-    // "Y = <westing>" / "X = <southing>" — same format as the PDF (explicit
-    // +/- sign, space-grouped thousands). This fixture is a 200m x 200m
-    // extent at 1:500, so chooseTickIntervalMetres picks a 100m interval —
-    // 3 grid values per axis, 8 unique perimeter points (see
-    // block-definitions-tickmarks.test.js for the general-case math).
+  test('renders border ticks on all 4 edges with Y = / X = coordinate labels (PDF parity)', () => {
+    // Ports the PDF's renderOutsideFigureTickMarks. Ticks are BORDER
+    // (graticule) ticks on the drawing-area neatline, not crosses over the
+    // figure: a cross sitting on the figure obscures stand boundaries and
+    // numbers, and keeping crosses off a convex figure would require snapping
+    // the grid rectangle outward around it — putting every label a full
+    // interval beyond the figure's true extent. Labels keep the PDF format
+    // (explicit +/- sign, space-grouped thousands).
+    //
+    // This fixture is a 200m x 200m extent at 1:500 -> a 100m interval, so 3
+    // grid values per axis. Each of the 3 vertical grid lines is ticked on the
+    // top AND bottom borders, each of the 3 horizontal ones on the left AND
+    // right: 3*2 + 3*2 = 12 LINEs. Under the old cross model this was 8
+    // perimeter crosses x 2 arms = 16.
     const { buffer } = generateDXF(opts, fakeLogger)
     const dxf = buffer.toString()
-    // 8 crosses × 2 arms = 16 GRID LINEs.
-    expect(entityCount(dxf, 'LINE', 'GRID')).toBe(16)
+    expect(entityCount(dxf, 'LINE', 'GRID')).toBe(12)
     // Collect GRID-layer TEXT labels.
     const labels = []
     const parts = dxf.split(/^\s*0\s*\r?\n/m)
@@ -359,9 +364,9 @@ describe('generateDXF — coordinate grid ticks', () => {
       const t = (e.match(/^\s*1\r?\n\s*([^\r\n]+)/m) || [])[1]
       if (t) labels.push(t.trim())
     }
-    // Each cross has a "Y = +N" and an "X = +N" label → 8 of each.
-    expect(labels.filter(t => /^Y = [+-][\d ]+$/.test(t))).toHaveLength(8)
-    expect(labels.filter(t => /^X = [+-][\d ]+$/.test(t))).toHaveLength(8)
+    // One label per grid VALUE per axis (not one per cross): 3 of each.
+    expect(labels.filter(t => /^Y = [+-][\d ]+$/.test(t))).toHaveLength(3)
+    expect(labels.filter(t => /^X = [+-][\d ]+$/.test(t))).toHaveLength(3)
   })
 })
 

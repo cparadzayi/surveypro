@@ -551,7 +551,7 @@ export function snapScaleBarSegment(rawSegmentMeters) {
 // can check any adjacent pair with a standard 30cm scale ruler — unlike
 // snapScaleBarSegment (smallest nice number >= half a raw segment, for the
 // scale bar's own graduation), this solves the opposite constraint.
-const GRID_NICE_NUMBERS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
+const GRID_NICE_NUMBERS = [1, 2, 5, 10, 20, 25, 50, 75, 100, 200, 500, 1000, 2000, 5000, 10000]
 
 export function chooseTickIntervalMetres(scaleDenominator, targetPaperMm = 250) {
   const maxIntervalM = (targetPaperMm * scaleDenominator) / 1000
@@ -599,6 +599,37 @@ export function computeGridTickPositions({ aMin, aMax, bMin, bMax, intervalM }) 
     addPoint(aMax, b)
   }
   return points
+}
+
+/**
+ * Round a figure's true min/max INWARD to the nearest tick-interval
+ * multiple on each axis, so no tick mark ever falls outside the figure's
+ * actual bounds. Ticks still land on nice round numbers — they're just one
+ * interval short of the figure's true extent rather than one interval
+ * beyond it. Falls back to the exact min/max on an axis where the figure
+ * is smaller than one interval (no round multiple strictly between min and
+ * max) — still guarantees confinement, just without a round label in that
+ * rare case.
+ *
+ * Axis-agnostic (aMin/aMax/bMin/bMax, not Y/X) like computeGridTickPositions
+ * — its return shape is exactly that function's input shape, so callers can
+ * pass this helper's output straight into computeGridTickPositions. Shared
+ * by pdfkitGeoPDF.js (calculateTickMarkBounds, renderOutsideFigureTickMarks)
+ * and dxfGenerator.js (addCornerCrosses) so all three resolve identical
+ * corner bounds for the same figure — previously three independent
+ * outward-rounding copies, the same class of drift risk already fixed once
+ * for the rounding rule itself, see
+ * docs/superpowers/specs/2026-08-10-pdf-dxf-corner-rounding-parity-design.md
+ */
+export function computeInwardTickBounds({ aMin, aMax, bMin, bMax, intervalM }) {
+  const roundInward = (min, max) => {
+    const inwardMin = Math.ceil(min / intervalM) * intervalM
+    const inwardMax = Math.floor(max / intervalM) * intervalM
+    return inwardMin <= inwardMax ? { min: inwardMin, max: inwardMax } : { min, max }
+  }
+  const a = roundInward(aMin, aMax)
+  const b = roundInward(bMin, bMax)
+  return { aMin: a.min, aMax: a.max, bMin: b.min, bMax: b.max }
 }
 
 // Resolve the Lo coordinate-system label ("Lo 29") shown in the OUTSIDE FIGURE

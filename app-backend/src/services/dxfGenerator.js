@@ -918,60 +918,78 @@ export function generateDXF(options, logger) {
    * renderOutsideFigureTickMarks map-edge clamp (pdfkitGeoPDF.js:1903-1982).
    * Stepping by the grid interval keeps every label a clean round coordinate.
    */
-  function addBorderTicks(layer, drawL, drawR, drawT, drawB, areaL, areaR, areaB, areaT) {
-    const tick = mm(4);      // tick length, straddling the neatline inward
+  function addFigureEdgeTicks(layer, drawL, drawR, drawT, drawB, areaL, areaR, areaB, areaT) {
+    const gap  = mm(2);      // clearance between the figure edge and the tick
+    const tick = mm(4);      // tick length, drawn OUTWARD away from the figure
     const lblH = mm(2.5);    // label text height
     const off  = mm(1.5);    // label gap from the tick
     // Grid VALUES come from the figure's own extent, rounded inward to a
     // scale-aware interval, so every label is a clean round coordinate that
     // genuinely falls within the Outside Figure — see
     // docs/superpowers/specs/2026-08-12-tick-marks-confined-to-figure-bounds-design.md
-    // Where those ticks are DRAWN is a separate question: as border (graticule)
-    // ticks on the drawing-area neatline, never as crosses over the figure. A
-    // cross sitting on the figure obscures stand boundaries and numbers, and the
-    // only way to keep crosses off a convex figure is to snap the grid rectangle
-    // outward around it — which puts every label a full interval beyond the
-    // figure's true extent, the exact defect the inward rounding removed. Border
-    // ticks satisfy both: nothing is drawn on the figure, and the labels stay
-    // confined and round.
+    //
+    // Ticks are drawn just OUTSIDE the figure's bounding box, hugging it. Two
+    // properties follow. Nothing is ever drawn within the Outside Figure
+    // polygon: the polygon is contained by its own bbox, so a mark placed
+    // outside that bbox is necessarily outside the polygon, whatever shape it
+    // is. And each tick still marks its true coordinate — the offset is
+    // PERPENDICULAR to the grid line it marks, so the coordinate the label
+    // states is exact, exactly as a graticule tick works. Each grid line is
+    // therefore labelled once, on the axis it belongs to.
     const { intervalM: G, aMin: xL, aMax: xR, bMin: yB, bMax: yT } =
       computeConfinedTickGrid({ aMin: drawL, aMax: drawR, bMin: drawB, bMax: drawT, scaleDenominator: S });
-    // No edge-avoidance clamping: a tick sits ON the neatline by construction,
-    // so it cannot overflow the drawing area the way a free-standing cross could.
     const xValues = computeTickValues({ min: xL, max: xR, intervalM: G });
     const yValues = computeTickValues({ min: yB, max: yT, intervalM: G });
     // Axis-label FORMAT ported from the PDF's renderOutsideFigureTickMarks:
     // "Y = +96 900" / "X = +2 247 600" — explicit +/- sign and space-grouped
-    // thousands. Same value convention: Y = Cape Lo Westing (-x), X = Cape Lo
-    // Southing (-y).
+    // thousands. Y = Cape Lo Westing (-x), X = Cape Lo Southing (-y).
     const fmtAxis = (v) => {
       const a = Math.round(Math.abs(v)).toLocaleString('en-US').replace(/,/g, ' ')
       return (v >= 0 ? '+' : '-') + a
     }
     const bounds = [];
-    // Vertical grid lines (constant DXF x = Cape Westing): tick the top and
-    // bottom borders. Label reads UP the tick, rotated 90 degrees.
+    const fits = (lo, hi, min, max) => lo >= min && hi <= max;
+    // Vertical grid lines (constant DXF x = Cape Westing): tick below the
+    // figure's bottom edge and above its top edge. Label reads UP, above the
+    // top tick, growing away from the figure.
     for (const xv of xValues) {
       const label = `Y = ${fmtAxis(-xv)}`;
       const labelW = label.length * lblH * 0.55;
-      addLine(layer, xv, areaT, xv, areaT - tick);
-      addLine(layer, xv, areaB, xv, areaB + tick);
+      if (fits(drawB - gap - tick, drawB - gap, areaB, areaT)) {
+        addLine(layer, xv, drawB - gap, xv, drawB - gap - tick);
+        bounds.push({ x: xv - lblH, y: drawB - gap - tick, width: 2 * lblH, height: tick + gap });
+      }
+      if (fits(drawT + gap, drawT + gap + tick, areaB, areaT)) {
+        addLine(layer, xv, drawT + gap, xv, drawT + gap + tick);
+        bounds.push({ x: xv - lblH, y: drawT + gap, width: 2 * lblH, height: tick + gap });
+      }
       // A 90-rotated DXF TEXT grows UP from its insertion point with the glyph
       // height extending LEFT, so offset by +lblH/2 to centre it over the tick.
-      addText(layer, xv + lblH / 2, areaB + tick + off, label, lblH, 90);
-      bounds.push({ x: xv - lblH, y: areaB, width: 2 * lblH, height: tick + off + labelW + mm(2) });
-      bounds.push({ x: xv - lblH, y: areaT - tick, width: 2 * lblH, height: tick });
+      const ly = drawT + gap + tick + off;
+      if (fits(ly, ly + labelW, areaB, areaT) && fits(xv - lblH, xv + lblH, areaL, areaR)) {
+        addText(layer, xv + lblH / 2, ly, label, lblH, 90);
+        bounds.push({ x: xv - lblH, y: ly, width: 2 * lblH, height: labelW });
+      }
     }
-    // Horizontal grid lines (constant DXF y = Cape Southing): tick the left and
-    // right borders. Label reads horizontally, inward from the left tick.
+    // Horizontal grid lines (constant DXF y = Cape Southing): tick left of the
+    // figure's left edge and right of its right edge. Label runs right of the
+    // right tick, growing away from the figure.
     for (const yv of yValues) {
       const label = `X = ${fmtAxis(-yv)}`;
       const labelW = label.length * lblH * 0.55;
-      addLine(layer, areaL, yv, areaL + tick, yv);
-      addLine(layer, areaR, yv, areaR - tick, yv);
-      addText(layer, areaL + tick + off, yv - lblH / 2, label, lblH, 0);
-      bounds.push({ x: areaL, y: yv - lblH, width: tick + off + labelW + mm(2), height: 2 * lblH });
-      bounds.push({ x: areaR - tick, y: yv - lblH, width: tick, height: 2 * lblH });
+      if (fits(drawL - gap - tick, drawL - gap, areaL, areaR)) {
+        addLine(layer, drawL - gap, yv, drawL - gap - tick, yv);
+        bounds.push({ x: drawL - gap - tick, y: yv - lblH, width: tick + gap, height: 2 * lblH });
+      }
+      if (fits(drawR + gap, drawR + gap + tick, areaL, areaR)) {
+        addLine(layer, drawR + gap, yv, drawR + gap + tick, yv);
+        bounds.push({ x: drawR + gap, y: yv - lblH, width: tick + gap, height: 2 * lblH });
+      }
+      const lx = drawR + gap + tick + off;
+      if (fits(lx, lx + labelW, areaL, areaR) && fits(yv - lblH, yv + lblH, areaB, areaT)) {
+        addText(layer, lx, yv - lblH / 2, label, lblH, 0);
+        bounds.push({ x: lx, y: yv - lblH, width: labelW, height: 2 * lblH });
+      }
     }
     return bounds;
   }
@@ -1852,10 +1870,10 @@ export function generateDXF(options, logger) {
   // bottom-right corner) makes the schedule collide with them, because the
   // schedule dutifully dodges the planner's slots, not the renderer's position.
 
-  // Coordinate reference ticks on the drawing-area neatline (SI 727 frame).
+  // Coordinate reference ticks hugging the outside of the figure (SI 727 frame).
   // _crossBounds is reserved as an obstacle in the collision-avoidance pass so no
   // block covers a cross or its coordinate label.
-  const _crossBounds = addBorderTicks('GRID', dL, dR, dT, dB, cntL, cntR, cntB, cntT)
+  const _crossBounds = addFigureEdgeTicks('GRID', dL, dR, dT, dB, cntL, cntR, cntB, cntT)
 
   // â”€â”€ B) ENDORSEMENTS (right-margin table) â”€â”€
   // Fills the right-margin strip from the drawing-area right margin (endDivX)

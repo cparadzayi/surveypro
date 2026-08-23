@@ -81,3 +81,42 @@ describe('TICK_GEOMETRY_MM', () => {
     expect(TICK_GEOMETRY_MM.labelHeight).toBe(2.5)
   })
 })
+
+// ── PDF/DXF clearance parity ────────────────────────────────────────────────
+// The PDF renderer must reject a candidate cross for the same reason the DXF
+// one does: it lies across drawn detail. Both apply this rectangle-vs-segment
+// test, so a cross rejected in one format is rejected in the other.
+import { _hitsSegments } from '../pdfkitGeoPDF.js'
+
+describe('_hitsSegments — the shared clearance rule', () => {
+  const rect = { x: 100, y: 100, width: 20, height: 20 }
+
+  test('a boundary crossing the mark is rejected', () => {
+    // Vertical parcel edge straight through the middle of the cross.
+    expect(_hitsSegments(rect, [{ x1: 110, y1: 50, x2: 110, y2: 200 }])).toBe(true)
+  })
+
+  test('a boundary clipping one corner is rejected', () => {
+    expect(_hitsSegments(rect, [{ x1: 90, y1: 110, x2: 110, y2: 90 }])).toBe(true)
+  })
+
+  test('a mark wholly inside a parcel is ALLOWED — the reference places these', () => {
+    // Parcel edges well clear on every side: the cross sits in open interior.
+    const farEdges = [
+      { x1: 0, y1: 0, x2: 500, y2: 0 },
+      { x1: 500, y1: 0, x2: 500, y2: 500 },
+      { x1: 500, y1: 500, x2: 0, y2: 500 },
+      { x1: 0, y1: 500, x2: 0, y2: 0 },
+    ]
+    expect(_hitsSegments(rect, farEdges)).toBe(false)
+  })
+
+  test('a boundary passing nearby but not touching is allowed', () => {
+    expect(_hitsSegments(rect, [{ x1: 130, y1: 50, x2: 130, y2: 200 }])).toBe(false)
+  })
+
+  test('no segments supplied means nothing to avoid', () => {
+    expect(_hitsSegments(rect, [])).toBe(false)
+    expect(_hitsSegments(rect, undefined)).toBe(false)
+  })
+})

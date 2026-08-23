@@ -1558,15 +1558,46 @@ function renderOutsideFigureLabels(
 // wholly inside it). A coordinate cross inside the figure is correct; one lying
 // across a boundary line obscures it.
 function _crossesOutline(r, pts) {
+  // NOTE: this module's lineSegmentsIntersect takes {x1,y1,x2,y2} objects,
+  // NOT the [{x,y},{x,y}] pairs dxfGeometry.js uses. Passing the wrong shape
+  // destructures to undefined and silently reports 'no intersection', which
+  // disables the clearance test rather than failing loudly.
   const edges = [
-    [{ x: r.x, y: r.y }, { x: r.x + r.width, y: r.y }],
-    [{ x: r.x + r.width, y: r.y }, { x: r.x + r.width, y: r.y + r.height }],
-    [{ x: r.x + r.width, y: r.y + r.height }, { x: r.x, y: r.y + r.height }],
-    [{ x: r.x, y: r.y + r.height }, { x: r.x, y: r.y }],
+    { x1: r.x, y1: r.y, x2: r.x + r.width, y2: r.y },
+    { x1: r.x + r.width, y1: r.y, x2: r.x + r.width, y2: r.y + r.height },
+    { x1: r.x + r.width, y1: r.y + r.height, x2: r.x, y2: r.y + r.height },
+    { x1: r.x, y1: r.y + r.height, x2: r.x, y2: r.y },
   ];
   for (let i = 0; i < pts.length; i++) {
-    const seg = [pts[i], pts[(i + 1) % pts.length]];
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const seg = { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
     for (const e of edges) if (lineSegmentsIntersect(seg, e)) return true;
+  }
+  return false;
+}
+// True when a rectangle straddles any of the supplied segments. A coordinate
+// cross may sit inside a parcel — the reference plan's do — but must not lie
+// across a boundary line or a stand number. Same test dxfGenerator.js applies
+// to its own drawn detail, so the two formats reject the same candidates.
+export function _hitsSegments(r, segments) {
+  if (!segments || !segments.length) return false;
+  // NOTE: this module's lineSegmentsIntersect takes {x1,y1,x2,y2} objects,
+  // NOT the [{x,y},{x,y}] pairs dxfGeometry.js uses. Passing the wrong shape
+  // destructures to undefined and silently reports 'no intersection', which
+  // disables the clearance test rather than failing loudly.
+  const edges = [
+    { x1: r.x, y1: r.y, x2: r.x + r.width, y2: r.y },
+    { x1: r.x + r.width, y1: r.y, x2: r.x + r.width, y2: r.y + r.height },
+    { x1: r.x + r.width, y1: r.y + r.height, x2: r.x, y2: r.y + r.height },
+    { x1: r.x, y1: r.y + r.height, x2: r.x, y2: r.y },
+  ];
+  for (const sg of segments) {
+    // Cheap bbox reject before the exact test — there can be thousands.
+    if (Math.max(sg.x1, sg.x2) < r.x || Math.min(sg.x1, sg.x2) > r.x + r.width) continue;
+    if (Math.max(sg.y1, sg.y2) < r.y || Math.min(sg.y1, sg.y2) > r.y + r.height) continue;
+    // A segment fully inside the rect crosses no edge, so catch that too.
+    if (sg.x1 >= r.x && sg.x1 <= r.x + r.width && sg.y1 >= r.y && sg.y1 <= r.y + r.height) return true;
+    for (const e of edges) if (lineSegmentsIntersect(sg, e)) return true;
   }
   return false;
 }
@@ -1576,7 +1607,8 @@ function calculateTickMarkBounds(
   mapBounds,
   logger,
   titleBlockBounds = null,
-  scaleDenominator = 500
+  scaleDenominator = 500,
+  parcelSegments = []
 ) {
   if (
     !outsideFigure ||
@@ -1647,6 +1679,7 @@ function calculateTickMarkBounds(
     const r = _footprint(pt, yW, xW);
     if (r.x < areaL || r.x + r.width > areaR || r.y < areaT || r.y + r.height > areaB) continue;
     if (_onFigureEdge(r)) continue;
+    if (_hitsSegments(r, parcelSegments)) continue;
     tickMarkBounds.push({ name: `tick-grid-${node.y}-${node.x}`, ...r, centerX: pt.x, centerY: pt.y, capeLo: { y: node.y, x: node.x } });
   }
   logger.info(
@@ -1673,7 +1706,8 @@ function renderOutsideFigureTickMarks(
   titleBlockBounds = null,
   blockPositions = null,
   polygonPdfPoints = [],
-  scaleDenominator = 500
+  scaleDenominator = 500,
+  parcelSegments = []
 ) {
   // - Tight label coupling: 5pt offset (was 20pt)
   // - Professional font: 8pt (was 10pt)
@@ -1767,6 +1801,7 @@ function renderOutsideFigureTickMarks(
     const r = _footprint(pt, yW, xW);
     if (r.x < areaL || r.x + r.width > areaR || r.y < areaT || r.y + r.height > areaB) continue;
     if (_onFigureEdge(r)) continue;
+    if (_hitsSegments(r, parcelSegments)) continue;
     if (collisionDetector && collisionDetector.hasCollision(r.x, r.y, r.width, r.height)) continue;
     // Intersecting axis lines.
     doc.moveTo(pt.x, pt.y - TICK_LENGTH).lineTo(pt.x, pt.y + TICK_LENGTH).stroke();
@@ -11225,7 +11260,8 @@ async function _generateGeoPDFInner(options, logger) {
     mapBounds,  // Use full drawing area within margins
     logger,
     null,
-    scale?.value ?? 500
+    scale?.value ?? 500,
+    _parcelSegments,
   );
   logger.info(
     `[PDFKit] 📐 Pass 1: Calculated ${initialTickMarkBounds.length} initial tick mark reserved regions`
@@ -11393,7 +11429,8 @@ async function _generateGeoPDFInner(options, logger) {
     mapBounds,
     logger,
     null,
-    scale?.value ?? 500
+    scale?.value ?? 500,
+    _parcelSegments,
   );
   logger.info(
     `[PDFKit] 📐 Reserving ${_plannerTickBounds.length} corner tick crosses as planner obstacles (parity with DXF)`
@@ -11520,7 +11557,8 @@ async function _generateGeoPDFInner(options, logger) {
     mapBounds,  // Use full drawing area within margins
     logger,
     blockPositions.titleBlock,
-    scale?.value ?? 500
+    scale?.value ?? 500,
+    _parcelSegments,
   );
   logger.info(
     `[PDFKit] 📐 Pass 2: Recalculated ${finalTickMarkBounds.length} final tick mark positions (avoiding title block)`
@@ -11725,7 +11763,8 @@ async function _generateGeoPDFInner(options, logger) {
     blockPositions.titleBlock,
     blockPositions,
     _topoPolyPts,  // Polygon PDF points for label collision avoidance
-    scale?.value ?? 500
+    scale?.value ?? 500,
+    _parcelSegments,  // parcel boundaries, so no cross lands over a stand
   );
 
   // Step 6: (blocks already drawn above in Step 5b)

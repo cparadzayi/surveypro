@@ -120,3 +120,26 @@ describe('_hitsSegments — the shared clearance rule', () => {
     expect(_hitsSegments(rect, undefined)).toBe(false)
   })
 })
+
+import { _hitsRects } from '../pdfkitGeoPDF.js'
+
+describe('_hitsRects — stand-number clearance', () => {
+  const rect = { x: 100, y: 100, width: 20, height: 20 }
+
+  test('a stand number under the mark is rejected', () => {
+    expect(_hitsRects(rect, [{ x: 110, y: 110, width: 30, height: 10 }])).toBe(true)
+  })
+
+  test('a stand number merely touching the edge is rejected', () => {
+    expect(_hitsRects(rect, [{ x: 118, y: 118, width: 5, height: 5 }])).toBe(true)
+  })
+
+  test('a stand number clear of the mark is allowed', () => {
+    expect(_hitsRects(rect, [{ x: 200, y: 200, width: 30, height: 10 }])).toBe(false)
+  })
+
+  test('no rects supplied means nothing to avoid', () => {
+    expect(_hitsRects(rect, [])).toBe(false)
+    expect(_hitsRects(rect, undefined)).toBe(false)
+  })
+})

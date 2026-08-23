@@ -12,7 +12,7 @@ import {
   TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeTickGrid, formatTickLabel } from "../../../app-shared/tickMarks.js";
+import { selectTickGrid, formatTickLabel } from "../../../app-shared/tickMarks.js";
 import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
@@ -1579,6 +1579,17 @@ function _crossesOutline(r, pts) {
 // cross may sit inside a parcel — the reference plan's do — but must not lie
 // across a boundary line or a stand number. Same test dxfGenerator.js applies
 // to its own drawn detail, so the two formats reject the same candidates.
+// True when a rectangle overlaps any of the supplied rectangles — used for
+// stand-number labels, which a coordinate cross must not cover.
+export function _hitsRects(r, rects) {
+  if (!rects || !rects.length) return false;
+  for (const d of rects) {
+    if (!(r.x + r.width < d.x || r.x > d.x + d.width ||
+          r.y + r.height < d.y || r.y > d.y + d.height)) return true;
+  }
+  return false;
+}
+
 export function _hitsSegments(r, segments) {
   if (!segments || !segments.length) return false;
   // NOTE: this module's lineSegmentsIntersect takes {x1,y1,x2,y2} objects,
@@ -1608,7 +1619,8 @@ function calculateTickMarkBounds(
   logger,
   titleBlockBounds = null,
   scaleDenominator = 500,
-  parcelSegments = []
+  parcelSegments = [],
+  detailRects = []
 ) {
   if (
     !outsideFigure ||
@@ -1643,9 +1655,7 @@ function calculateTickMarkBounds(
   // cannot drift apart. Crosses sit ON the coordinate grid across the figure —
   // the reference plan places most of its crosses inside the figure — and are
   // skipped only where they would cover drawn detail.
-  const { intervalM: _tickIntervalM, nodes: _nodes } = computeTickGrid({
-    yMin: minY, yMax: maxY, xMin: minX, xMax: maxX, scaleDenominator,
-  });
+  const _tickGridInput = { yMin: minY, yMax: maxY, xMin: minX, xMax: maxX, scaleDenominator };
   const TICK_LENGTH = 12;   // ~4mm arm at print scale; matches TICK_GEOMETRY_MM
   const LABEL_OFFSET = 4;
   const FONT_SIZE = 7;
@@ -1670,16 +1680,27 @@ function calculateTickMarkBounds(
     const [cy, cx] = normalizeCapeLoYX(c[0], c[1]);
     return transformCoords(cy, cx, extent, mapBounds);
   });
-  const tickMarkBounds = [];
-  for (const node of _nodes) {
+  const _rectFor = (node) => {
     const pt = transformCoords(node.y, node.x, extent, mapBounds);
-    if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
+    if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return null;
     const yW = Math.ceil(formatTickLabel('Y', node.y).length * CHAR_WIDTH);
     const xW = Math.ceil(formatTickLabel('X', node.x).length * CHAR_WIDTH);
-    const r = _footprint(pt, yW, xW);
-    if (r.x < areaL || r.x + r.width > areaR || r.y < areaT || r.y + r.height > areaB) continue;
-    if (_onFigureEdge(r)) continue;
-    if (_hitsSegments(r, parcelSegments)) continue;
+    return { pt, r: _footprint(pt, yW, xW) };
+  };
+  const _isClear = (node) => {
+    const f = _rectFor(node); if (!f) return false;
+    const r = f.r;
+    if (r.x < areaL || r.x + r.width > areaR || r.y < areaT || r.y + r.height > areaB) return false;
+    if (_onFigureEdge(r)) return false;
+    if (_hitsSegments(r, parcelSegments)) return false;
+    if (_hitsRects(r, detailRects)) return false;
+    return true;
+  };
+  const { intervalM: _tickIntervalM, nodes: _nodes } = selectTickGrid({ ..._tickGridInput, isClear: _isClear });
+  const tickMarkBounds = [];
+  for (const node of _nodes) {
+    const f = _rectFor(node); if (!f) continue;
+    const pt = f.pt, r = f.r;
     tickMarkBounds.push({ name: `tick-grid-${node.y}-${node.x}`, ...r, centerX: pt.x, centerY: pt.y, capeLo: { y: node.y, x: node.x } });
   }
   logger.info(
@@ -1707,7 +1728,8 @@ function renderOutsideFigureTickMarks(
   blockPositions = null,
   polygonPdfPoints = [],
   scaleDenominator = 500,
-  parcelSegments = []
+  parcelSegments = [],
+  detailRects = []
 ) {
   // - Tight label coupling: 5pt offset (was 20pt)
   // - Professional font: 8pt (was 10pt)
@@ -1764,9 +1786,7 @@ function renderOutsideFigureTickMarks(
   // cannot drift apart. Crosses sit ON the coordinate grid across the figure —
   // the reference plan places most of its crosses inside the figure — and are
   // skipped only where they would cover drawn detail.
-  const { intervalM: _tickIntervalM, nodes: _nodes } = computeTickGrid({
-    yMin: minY, yMax: maxY, xMin: minX, xMax: maxX, scaleDenominator,
-  });
+  const _tickGridInput = { yMin: minY, yMax: maxY, xMin: minX, xMax: maxX, scaleDenominator };
   const TICK_LENGTH = 12;   // ~4mm arm at print scale; matches TICK_GEOMETRY_MM
   const LABEL_OFFSET = 4;
   const FONT_SIZE = 7;
@@ -1791,18 +1811,29 @@ function renderOutsideFigureTickMarks(
   doc.save();
   doc.lineWidth(1.5).strokeColor("#000000").fillColor("#000000");
   doc.fontSize(FONT_SIZE).font("Helvetica-Bold");
-  for (const node of _nodes) {
+  const _rectFor = (node) => {
     const pt = transformCoords(node.y, node.x, extent, mapBounds);
-    if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
+    if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return null;
+    const yW = Math.ceil(formatTickLabel('Y', node.y).length * CHAR_WIDTH);
+    const xW = Math.ceil(formatTickLabel('X', node.x).length * CHAR_WIDTH);
+    return { pt, r: _footprint(pt, yW, xW) };
+  };
+  const _isClear = (node) => {
+    const f = _rectFor(node); if (!f) return false;
+    const r = f.r;
+    if (r.x < areaL || r.x + r.width > areaR || r.y < areaT || r.y + r.height > areaB) return false;
+    if (_onFigureEdge(r)) return false;
+    if (_hitsSegments(r, parcelSegments)) return false;
+    if (_hitsRects(r, detailRects)) return false;
+    if (collisionDetector && collisionDetector.hasCollision(r.x, r.y, r.width, r.height)) return false;
+    return true;
+  };
+  const { intervalM: _tickIntervalM, nodes: _nodes } = selectTickGrid({ ..._tickGridInput, isClear: _isClear });
+  for (const node of _nodes) {
+    const f = _rectFor(node); if (!f) continue;
+    const pt = f.pt, r = f.r;
     const yLabel = formatTickLabel('Y', node.y);
     const xLabel = formatTickLabel('X', node.x);
-    const yW = Math.ceil(yLabel.length * CHAR_WIDTH);
-    const xW = Math.ceil(xLabel.length * CHAR_WIDTH);
-    const r = _footprint(pt, yW, xW);
-    if (r.x < areaL || r.x + r.width > areaR || r.y < areaT || r.y + r.height > areaB) continue;
-    if (_onFigureEdge(r)) continue;
-    if (_hitsSegments(r, parcelSegments)) continue;
-    if (collisionDetector && collisionDetector.hasCollision(r.x, r.y, r.width, r.height)) continue;
     // Intersecting axis lines.
     doc.moveTo(pt.x, pt.y - TICK_LENGTH).lineTo(pt.x, pt.y + TICK_LENGTH).stroke();
     doc.moveTo(pt.x - TICK_LENGTH, pt.y).lineTo(pt.x + TICK_LENGTH, pt.y).stroke();
@@ -2090,7 +2121,7 @@ function renderParcels(
   );
 
   // Return label crowding info for paper/scale escalation
-  return { labelCollisions: labelingSystem.labelCollisions };
+  return { labelCollisions: labelingSystem.labelCollisions, standLabelRects: labelingSystem.standLabelRects };
 }
 
 /**
@@ -10676,6 +10707,7 @@ async function _generateGeoPDFInner(options, logger) {
     filteredParcels.features &&
     filteredParcels.features.length > 0
   ) {
+    // eslint-disable-next-line no-var
     var parcelRenderResult = renderParcels(
       doc,
       filteredParcels,
@@ -10689,6 +10721,11 @@ async function _generateGeoPDFInner(options, logger) {
       metadata?.planType || 'general-undeveloped'
     );
   }
+
+  // Stand-number rectangles actually drawn, so coordinate crosses can avoid
+  // them the way dxfGenerator.js avoids its own. Empty when parcels were not
+  // rendered, which simply means nothing to dodge.
+  const _standLabelRects = parcelRenderResult?.standLabelRects ?? [];
 
   // Step 2b: Adjoining features (roads / servitudes / contiguous neighbours) from
   // the per-subject side annotations. Drawn AFTER the parcel & outside-figure
@@ -11559,6 +11596,7 @@ async function _generateGeoPDFInner(options, logger) {
     blockPositions.titleBlock,
     scale?.value ?? 500,
     _parcelSegments,
+    _standLabelRects,
   );
   logger.info(
     `[PDFKit] 📐 Pass 2: Recalculated ${finalTickMarkBounds.length} final tick mark positions (avoiding title block)`
@@ -11765,6 +11803,7 @@ async function _generateGeoPDFInner(options, logger) {
     _topoPolyPts,  // Polygon PDF points for label collision avoidance
     scale?.value ?? 500,
     _parcelSegments,  // parcel boundaries, so no cross lands over a stand
+    _standLabelRects,  // and stand numbers, matching the DXF side
   );
 
   // Step 6: (blocks already drawn above in Step 5b)

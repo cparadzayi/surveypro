@@ -624,17 +624,17 @@ describe('dxfGenerator integration — corner crosses clamp to the drawing area'
     }
   })
 
-  test('emits a full border-tick grid (more than just the 4 extremes), one label per grid line', () => {
+  test('emits a real coordinate-cross grid, every cross carrying both axis labels', () => {
     const dxf = generateDXF(tallPlan, fakeLogger).buffer.toString()
     const lineCount = entityCount(dxf, 'LINE', 'GRID')
     const textCount = entityCount(dxf, 'TEXT', 'GRID')
-    // Border ticks: each grid line is ticked on BOTH opposite borders (2 LINEs)
-    // but labelled ONCE, so text is exactly half of lines. Under the old cross
-    // model each cross carried 2 arms AND 2 labels, making them equal — that
-    // invariant belongs to crosses, not to border ticks.
+    // A coordinate cross is 2 intersecting axis LINEs plus a Y and an X label,
+    // so the two counts are equal and both even. (The intermediate border-tick
+    // model labelled each grid line once, making text exactly half of lines —
+    // that invariant belonged to border ticks and no longer applies.)
     expect(lineCount).toBeGreaterThan(8) // a real grid, not just the 4 extremes
     expect(lineCount % 2).toBe(0)
-    expect(textCount).toBe(lineCount / 2)
+    expect(textCount).toBe(lineCount)
   })
 })
 

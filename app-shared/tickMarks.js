@@ -88,3 +88,36 @@ export const TICK_GEOMETRY_MM = {
   labelHeight: 2.5,
   labelGap: 1.5,      // clearance from arm tip to label
 }
+
+/**
+ * Grid nodes that actually survive the caller's clearance test, stepping the
+ * interval finer if too few do.
+ *
+ * A cross is only drawn where it misses drawn detail, so a coarse grid can be
+ * unlucky: when a figure's extent happens to be exactly grid-aligned, EVERY
+ * node lands on its boundary and nothing survives, leaving a plan with no
+ * coordinate reference at all. Halving the interval moves nodes off the
+ * boundary and into clear interior, which is the same density the reference
+ * plan carries (roughly one node in three drawn).
+ *
+ * `isClear(node)` is the renderer's own test — it alone knows what it has
+ * drawn. Returns the coarsest interval whose clear nodes reach minMarks, or
+ * the finest tried if none does.
+ */
+export function selectTickGrid({
+  yMin, yMax, xMin, xMax, scaleDenominator, isClear, minMarks = 3,
+  targetPaperMm = REFERENCE_TARGET_PAPER_MM,
+}) {
+  let best = null
+  // Each step halves the paper target, so the interval walks down the ladder.
+  for (let step = 0; step < 3; step++) {
+    const target = targetPaperMm / Math.pow(2, step)
+    const { intervalM, nodes } = computeTickGrid({ yMin, yMax, xMin, xMax, scaleDenominator, targetPaperMm: target })
+    const clear = nodes.filter(isClear)
+    if (best === null || clear.length > best.nodes.length) best = { intervalM, nodes: clear }
+    if (clear.length >= minMarks) return { intervalM, nodes: clear }
+    // A finer target that resolves to the same rung cannot change the outcome.
+    if (step > 0 && intervalM === best.intervalM && clear.length === best.nodes.length) break
+  }
+  return best ?? { intervalM: chooseTickIntervalMetres(scaleDenominator, targetPaperMm), nodes: [] }
+}

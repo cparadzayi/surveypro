@@ -73,7 +73,7 @@ import { planSheetLayout } from './sheetLayoutPlanner.js'
 import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlanner.js'
 import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon, lineSegmentsIntersect } from './dxfGeometry.js'
-import { computeTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-shared/tickMarks.js'
+import { selectTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-shared/tickMarks.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
 import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 } from '../utils/si727Constants.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
@@ -931,12 +931,23 @@ export function generateDXF(options, logger) {
     const arm  = mm(TICK_GEOMETRY_MM.armHalfLength);
     const lblH = mm(TICK_GEOMETRY_MM.labelHeight);
     const off  = mm(TICK_GEOMETRY_MM.labelGap);
-    const { nodes } = computeTickGrid({
-      yMin: -drawR, yMax: -drawL, xMin: -drawT, xMax: -drawB, scaleDenominator: S,
-    });
+    const footprintFor = (node) => {
+      const cx = -node.y, cy = -node.x;   // Cape Lo -> DXF ground
+      const yW = formatTickLabel('Y', node.y).length * lblH * 0.55;
+      const xW = formatTickLabel('X', node.x).length * lblH * 0.55;
+      return {
+        x: cx - arm - mm(2), y: cy - arm - mm(2),
+        width: 2 * arm + off + xW + mm(2), height: 2 * arm + off + yW + mm(2),
+      };
+    };
+    // Does a candidate's footprint cover anything already drawn? Parcel
+    // boundary segments and stand-number labels are collected as they are
+    // emitted (_detailSegments / _detailRects), so this sees the real plan
+    // rather than an approximation of it.
     const hitsDetail = (r) => {
       for (const d of _detailRects) {
-        if (!(r.x + r.width < d.x || r.x > d.x + d.width || r.y + r.height < d.y || r.y > d.y + d.height)) return true;
+        if (!(r.x + r.width < d.x || r.x > d.x + d.width ||
+              r.y + r.height < d.y || r.y > d.y + d.height)) return true;
       }
       const edges = [
         [{ x: r.x, y: r.y }, { x: r.x + r.width, y: r.y }],
@@ -945,30 +956,35 @@ export function generateDXF(options, logger) {
         [{ x: r.x, y: r.y + r.height }, { x: r.x, y: r.y }],
       ];
       for (const [p1, p2] of _detailSegments) {
-        // Cheap reject before the exact test.
+        // Cheap bbox reject before the exact test — there can be thousands.
         if (Math.max(p1.x, p2.x) < r.x || Math.min(p1.x, p2.x) > r.x + r.width) continue;
         if (Math.max(p1.y, p2.y) < r.y || Math.min(p1.y, p2.y) > r.y + r.height) continue;
+        if (p1.x >= r.x && p1.x <= r.x + r.width && p1.y >= r.y && p1.y <= r.y + r.height) return true;
+        // NOTE: dxfGeometry's lineSegmentsIntersect takes [{x,y},{x,y}] pairs,
+        // unlike the PDF module's {x1,y1,x2,y2} form.
         for (const e of edges) if (lineSegmentsIntersect([p1, p2], e)) return true;
       }
       return false;
     };
+    // A cross is drawn only where it clears drawn detail. selectTickGrid steps
+    // the interval finer if too few nodes survive — a figure whose extent is
+    // exactly grid-aligned would otherwise put every node on its own boundary
+    // and leave the plan with no coordinate reference at all.
+    const { nodes } = selectTickGrid({
+      yMin: -drawR, yMax: -drawL, xMin: -drawT, xMax: -drawB, scaleDenominator: S,
+      isClear: (node) => {
+        const r = footprintFor(node);
+        if (r.x < areaL || r.x + r.width > areaR) return false;
+        if (r.y < areaB || r.y + r.height > areaT) return false;
+        return !hitsDetail(r);
+      },
+    });
     const bounds = [];
     for (const node of nodes) {
       const cx = -node.y, cy = -node.x;   // Cape Lo -> DXF ground
       const yLabel = formatTickLabel('Y', node.y);
       const xLabel = formatTickLabel('X', node.x);
-      const rect = {
-        x:      cx - arm - mm(2),
-        y:      cy - arm - mm(2),
-        width:  2 * arm + off + xLabel.length * lblH * 0.55 + mm(2),
-        height: 2 * arm + off + yLabel.length * lblH * 0.55 + mm(2),
-      };
-      // Must fit the drawing area, and must not cover drawn detail. Crosses
-      // over the figure are expected and correct; crosses over a stand boundary
-      // or a stand number are the defect this skips (stands 211/212).
-      if (rect.x < areaL || rect.x + rect.width > areaR) continue;
-      if (rect.y < areaB || rect.y + rect.height > areaT) continue;
-      if (hitsDetail(rect)) continue;
+      const rect = footprintFor(node);
       addLine(layer, cx - arm, cy, cx + arm, cy);   // horizontal axis line
       addLine(layer, cx, cy - arm, cx, cy + arm);   // vertical axis line
       // A 90-rotated DXF TEXT grows UP from its insertion point with the glyph

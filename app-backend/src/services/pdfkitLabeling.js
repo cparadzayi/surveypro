@@ -115,6 +115,7 @@ class LabelingSystem {
     this.edgeOccurrences = new Map();
     // Label crowding tracking — counts edges where collision-free placement failed
     this.labelCollisions = 0;
+    this.standLabelRects = []
   }
 
   // ── Scale-based font limits (field-readable: min 8pt for any text) ──────────
@@ -683,6 +684,10 @@ class LabelingSystem {
           .text(labelText, -lw / 2, -lh / 2, { lineBreak: false });
         this.doc.restore();
         this.collisionDetector.addRegion(cx - rw / 2, cy - rh / 2, rw, rh, 1);
+        // Also recorded explicitly: coordinate crosses must avoid stand numbers,
+        // and calculateTickMarkBounds reserves obstacles with no collision
+        // detector to consult. Mirrors dxfGenerator.js's _detailRects.
+        this.standLabelRects.push({ x: cx - rw / 2, y: cy - rh / 2, width: rw, height: rh });
         rendered++;
       };
 

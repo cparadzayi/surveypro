@@ -33,9 +33,6 @@ import {
   classifyBeaconGroups,
   snapScaleBarSegment,
   resolveLoSystem,
-  computeGridTickPositions,
-  computeConfinedTickGrid,
-  computeTickValues,
   resolveTownshipScaleMandate,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
@@ -75,7 +72,8 @@ import {
 import { planSheetLayout } from './sheetLayoutPlanner.js'
 import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlanner.js'
 import { buildScheduleMeasurer } from './scheduleMeasurer.js'
-import { rectangleOverlapsPolygon } from './dxfGeometry.js'
+import { rectangleOverlapsPolygon, lineSegmentsIntersect } from './dxfGeometry.js'
+import { computeTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-shared/tickMarks.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
 import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 } from '../utils/si727Constants.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
@@ -918,78 +916,66 @@ export function generateDXF(options, logger) {
    * renderOutsideFigureTickMarks map-edge clamp (pdfkitGeoPDF.js:1903-1982).
    * Stepping by the grid interval keeps every label a clean round coordinate.
    */
-  function addFigureEdgeTicks(layer, drawL, drawR, drawT, drawB, areaL, areaR, areaB, areaT) {
-    const gap  = mm(2);      // clearance between the figure edge and the tick
-    const tick = mm(4);      // tick length, drawn OUTWARD away from the figure
-    const lblH = mm(2.5);    // label text height
-    const off  = mm(1.5);    // label gap from the tick
-    // Grid VALUES come from the figure's own extent, rounded inward to a
-    // scale-aware interval, so every label is a clean round coordinate that
-    // genuinely falls within the Outside Figure — see
-    // docs/superpowers/specs/2026-08-12-tick-marks-confined-to-figure-bounds-design.md
-    //
-    // Ticks are drawn just OUTSIDE the figure's bounding box, hugging it. Two
-    // properties follow. Nothing is ever drawn within the Outside Figure
-    // polygon: the polygon is contained by its own bbox, so a mark placed
-    // outside that bbox is necessarily outside the polygon, whatever shape it
-    // is. And each tick still marks its true coordinate — the offset is
-    // PERPENDICULAR to the grid line it marks, so the coordinate the label
-    // states is exact, exactly as a graticule tick works. Each grid line is
-    // therefore labelled once, on the axis it belongs to.
-    const { intervalM: G, aMin: xL, aMax: xR, bMin: yB, bMax: yT } =
-      computeConfinedTickGrid({ aMin: drawL, aMax: drawR, bMin: drawB, bMax: drawT, scaleDenominator: S });
-    const xValues = computeTickValues({ min: xL, max: xR, intervalM: G });
-    const yValues = computeTickValues({ min: yB, max: yT, intervalM: G });
-    // Axis-label FORMAT ported from the PDF's renderOutsideFigureTickMarks:
-    // "Y = +96 900" / "X = +2 247 600" — explicit +/- sign and space-grouped
-    // thousands. Y = Cape Lo Westing (-x), X = Cape Lo Southing (-y).
-    const fmtAxis = (v) => {
-      const a = Math.round(Math.abs(v)).toLocaleString('en-US').replace(/,/g, ' ')
-      return (v >= 0 ? '+' : '-') + a
-    }
+  // Drawn detail a coordinate cross must not cover: parcel boundary segments
+  // and stand-number labels, collected as they are emitted. The reference plan
+  // places crosses freely INSIDE the figure but never on top of detail, so the
+  // rule is clearance, not exclusion — see app-shared/tickMarks.js.
+  const _detailSegments = [];
+  const _detailRects = [];
+
+  function addCoordinateCrosses(layer, drawL, drawR, drawT, drawB, areaL, areaR, areaB, areaT) {
+    // Interval, grid nodes, label text and mark geometry all come from the
+    // single source of truth in app-shared/tickMarks.js, so this and the PDF
+    // renderer cannot drift apart. drawL/R/B/T are DXF ground metres, where
+    // x = -CapeY and y = -CapeX; the grid is computed in Cape Lo and mapped back.
+    const arm  = mm(TICK_GEOMETRY_MM.armHalfLength);
+    const lblH = mm(TICK_GEOMETRY_MM.labelHeight);
+    const off  = mm(TICK_GEOMETRY_MM.labelGap);
+    const { nodes } = computeTickGrid({
+      yMin: -drawR, yMax: -drawL, xMin: -drawT, xMax: -drawB, scaleDenominator: S,
+    });
+    const hitsDetail = (r) => {
+      for (const d of _detailRects) {
+        if (!(r.x + r.width < d.x || r.x > d.x + d.width || r.y + r.height < d.y || r.y > d.y + d.height)) return true;
+      }
+      const edges = [
+        [{ x: r.x, y: r.y }, { x: r.x + r.width, y: r.y }],
+        [{ x: r.x + r.width, y: r.y }, { x: r.x + r.width, y: r.y + r.height }],
+        [{ x: r.x + r.width, y: r.y + r.height }, { x: r.x, y: r.y + r.height }],
+        [{ x: r.x, y: r.y + r.height }, { x: r.x, y: r.y }],
+      ];
+      for (const [p1, p2] of _detailSegments) {
+        // Cheap reject before the exact test.
+        if (Math.max(p1.x, p2.x) < r.x || Math.min(p1.x, p2.x) > r.x + r.width) continue;
+        if (Math.max(p1.y, p2.y) < r.y || Math.min(p1.y, p2.y) > r.y + r.height) continue;
+        for (const e of edges) if (lineSegmentsIntersect([p1, p2], e)) return true;
+      }
+      return false;
+    };
     const bounds = [];
-    const fits = (lo, hi, min, max) => lo >= min && hi <= max;
-    // Vertical grid lines (constant DXF x = Cape Westing): tick below the
-    // figure's bottom edge and above its top edge. Label reads UP, above the
-    // top tick, growing away from the figure.
-    for (const xv of xValues) {
-      const label = `Y = ${fmtAxis(-xv)}`;
-      const labelW = label.length * lblH * 0.55;
-      if (fits(drawB - gap - tick, drawB - gap, areaB, areaT)) {
-        addLine(layer, xv, drawB - gap, xv, drawB - gap - tick);
-        bounds.push({ x: xv - lblH, y: drawB - gap - tick, width: 2 * lblH, height: tick + gap });
-      }
-      if (fits(drawT + gap, drawT + gap + tick, areaB, areaT)) {
-        addLine(layer, xv, drawT + gap, xv, drawT + gap + tick);
-        bounds.push({ x: xv - lblH, y: drawT + gap, width: 2 * lblH, height: tick + gap });
-      }
+    for (const node of nodes) {
+      const cx = -node.y, cy = -node.x;   // Cape Lo -> DXF ground
+      const yLabel = formatTickLabel('Y', node.y);
+      const xLabel = formatTickLabel('X', node.x);
+      const rect = {
+        x:      cx - arm - mm(2),
+        y:      cy - arm - mm(2),
+        width:  2 * arm + off + xLabel.length * lblH * 0.55 + mm(2),
+        height: 2 * arm + off + yLabel.length * lblH * 0.55 + mm(2),
+      };
+      // Must fit the drawing area, and must not cover drawn detail. Crosses
+      // over the figure are expected and correct; crosses over a stand boundary
+      // or a stand number are the defect this skips (stands 211/212).
+      if (rect.x < areaL || rect.x + rect.width > areaR) continue;
+      if (rect.y < areaB || rect.y + rect.height > areaT) continue;
+      if (hitsDetail(rect)) continue;
+      addLine(layer, cx - arm, cy, cx + arm, cy);   // horizontal axis line
+      addLine(layer, cx, cy - arm, cx, cy + arm);   // vertical axis line
       // A 90-rotated DXF TEXT grows UP from its insertion point with the glyph
-      // height extending LEFT, so offset by +lblH/2 to centre it over the tick.
-      const ly = drawT + gap + tick + off;
-      if (fits(ly, ly + labelW, areaB, areaT) && fits(xv - lblH, xv + lblH, areaL, areaR)) {
-        addText(layer, xv + lblH / 2, ly, label, lblH, 90);
-        bounds.push({ x: xv - lblH, y: ly, width: 2 * lblH, height: labelW });
-      }
-    }
-    // Horizontal grid lines (constant DXF y = Cape Southing): tick left of the
-    // figure's left edge and right of its right edge. Label runs right of the
-    // right tick, growing away from the figure.
-    for (const yv of yValues) {
-      const label = `X = ${fmtAxis(-yv)}`;
-      const labelW = label.length * lblH * 0.55;
-      if (fits(drawL - gap - tick, drawL - gap, areaL, areaR)) {
-        addLine(layer, drawL - gap, yv, drawL - gap - tick, yv);
-        bounds.push({ x: drawL - gap - tick, y: yv - lblH, width: tick + gap, height: 2 * lblH });
-      }
-      if (fits(drawR + gap, drawR + gap + tick, areaL, areaR)) {
-        addLine(layer, drawR + gap, yv, drawR + gap + tick, yv);
-        bounds.push({ x: drawR + gap, y: yv - lblH, width: tick + gap, height: 2 * lblH });
-      }
-      const lx = drawR + gap + tick + off;
-      if (fits(lx, lx + labelW, areaL, areaR) && fits(yv - lblH, yv + lblH, areaB, areaT)) {
-        addText(layer, lx, yv - lblH / 2, label, lblH, 0);
-        bounds.push({ x: lx, y: yv - lblH, width: labelW, height: 2 * lblH });
-      }
+      // height extending LEFT, so offset by +lblH/2 to centre it over the arm.
+      addText(layer, cx + lblH / 2, cy + arm + off, yLabel, lblH, 90);
+      addText(layer, cx + arm + off, cy - lblH / 2, xLabel, lblH, 0);
+      bounds.push(rect);
     }
     return bounds;
   }
@@ -1195,6 +1181,10 @@ export function generateDXF(options, logger) {
         const pt = capeLoToDxfSouthUp(c[0], c[1]); trackPt(pt); return pt;
       });
       addTrimmedPolygon('PARCELS', polyPts, beaconRadius);
+      for (let _i = 0; _i < polyPts.length; _i++) {
+        const _a = polyPts[_i], _b = polyPts[(_i + 1) % polyPts.length];
+        _detailSegments.push([_a, _b]);
+      }
       parcelCount++;
 
       // â”€â”€ Stand label: shoelace centroid + 4d's iterative font-shrink â”€â”€
@@ -1238,9 +1228,11 @@ export function generateDXF(options, logger) {
       });
       if (standPos && Number.isFinite(standPos.x) && Number.isFinite(standPos.y)) {
         addText('STAND_NUMBERS', standPos.x, standPos.y, String(stand), standPos.fontHeight, longestAngle, 'BOLD');
+        _detailRects.push({ x: standPos.x - String(stand).length * standPos.fontHeight * 0.55, y: standPos.y - standPos.fontHeight, width: String(stand).length * standPos.fontHeight * 1.1, height: standPos.fontHeight * 2 });
       } else if (Number.isFinite(centroid.x) && Number.isFinite(centroid.y)) {
         // Fallback: existing inline behavior. Matches pre-4d output for degenerate polygons.
         addText('STAND_NUMBERS', centroid.x, centroid.y, String(stand), standHeight, longestAngle, 'BOLD');
+        _detailRects.push({ x: centroid.x - String(stand).length * standHeight * 0.55, y: centroid.y - standHeight, width: String(stand).length * standHeight * 1.1, height: standHeight * 2 });
       }
 
       // â”€â”€ Edge labels with shared-edge topology â”€â”€
@@ -1870,10 +1862,15 @@ export function generateDXF(options, logger) {
   // bottom-right corner) makes the schedule collide with them, because the
   // schedule dutifully dodges the planner's slots, not the renderer's position.
 
-  // Coordinate reference ticks hugging the outside of the figure (SI 727 frame).
+  // Coordinate reference crosses outside the figure outline (SI 727 frame).
   // _crossBounds is reserved as an obstacle in the collision-avoidance pass so no
   // block covers a cross or its coordinate label.
-  const _crossBounds = addFigureEdgeTicks('GRID', dL, dR, dT, dB, cntL, cntR, cntB, cntT)
+  // Built here (not further down) so the coordinate crosses can test each candidate
+  // against the real figure outline before drawing it.
+  const figurePolygon = (ofResult && Array.isArray(ofResult.vertices) && ofResult.vertices.length >= 4)
+    ? ofResult.vertices.slice(0, -1).map(v => capeLoToDxfSouthUp(v.y, v.x))
+    : null;
+  const _crossBounds = addCoordinateCrosses('GRID', dL, dR, dT, dB, cntL, cntR, cntB, cntT)
 
   // â”€â”€ B) ENDORSEMENTS (right-margin table) â”€â”€
   // Fills the right-margin strip from the drawing-area right margin (endDivX)
@@ -1895,9 +1892,6 @@ export function generateDXF(options, logger) {
   // DXF ground-metre {x, y}. Convert via capeLoToDxfSouthUp and drop
   // the trailing closing duplicate so polygon edges aren't double-
   // counted by the topology scanner.
-  const figurePolygon = (ofResult && Array.isArray(ofResult.vertices) && ofResult.vertices.length >= 4)
-    ? ofResult.vertices.slice(0, -1).map(v => capeLoToDxfSouthUp(v.y, v.x))
-    : null;
 
   const contentArea = {
     x:      cntL,

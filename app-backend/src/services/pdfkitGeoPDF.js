@@ -12,7 +12,8 @@ import {
   TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, computeGridTickPositions, computeConfinedTickGrid, computeTickValues, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
+import { computeTickGrid, formatTickLabel } from "../../../app-shared/tickMarks.js";
+import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -1553,6 +1554,22 @@ function renderOutsideFigureLabels(
  * Used to reserve space for tick marks before placing other blocks
  * Returns array of tick mark bounds that other blocks should avoid
  */
+// True when a rectangle straddles a polygon's outline (as opposed to sitting
+// wholly inside it). A coordinate cross inside the figure is correct; one lying
+// across a boundary line obscures it.
+function _crossesOutline(r, pts) {
+  const edges = [
+    [{ x: r.x, y: r.y }, { x: r.x + r.width, y: r.y }],
+    [{ x: r.x + r.width, y: r.y }, { x: r.x + r.width, y: r.y + r.height }],
+    [{ x: r.x + r.width, y: r.y + r.height }, { x: r.x, y: r.y + r.height }],
+    [{ x: r.x, y: r.y + r.height }, { x: r.x, y: r.y }],
+  ];
+  for (let i = 0; i < pts.length; i++) {
+    const seg = [pts[i], pts[(i + 1) % pts.length]];
+    for (const e of edges) if (lineSegmentsIntersect(seg, e)) return true;
+  }
+  return false;
+}
 function calculateTickMarkBounds(
   outsideFigure,
   extent,
@@ -1589,72 +1606,51 @@ function calculateTickMarkBounds(
     maxX = Math.max(maxX, x);
   });
 
-  // Corner bounds round INWARD to a scale-aware interval — matches DXF's
-  // addCornerCrosses exactly, so both formats compute the same corner
-  // coordinates for the same plan, and neither ever places a tick beyond
-  // the Outside Figure's true extent (previously rounded outward, wasting
-  // up to one full interval of margin on every side). computeConfinedTickGrid
-  // also steps the interval down when confinement would otherwise leave an
-  // axis with nothing but its 2 corner crosses — see
-  // docs/superpowers/specs/2026-08-12-tick-marks-confined-to-figure-bounds-design.md
-  const { intervalM: _tickIntervalM, aMin: actualY_min, aMax: actualY_max, bMin: actualX_min, bMax: actualX_max } =
-    computeConfinedTickGrid({ aMin: minY, aMax: maxY, bMin: minX, bMax: maxX, scaleDenominator });
-
-  // Reserved obstacle bands for the planner. These MUST describe what
-  // renderOutsideFigureTickMarks actually draws — border (graticule) ticks on
-  // ticks hugging the OUTSIDE of the figure plus their labels — or blocks would
-  // dodge empty space while overlapping real ticks.
-  const TICK_LENGTH = 12;   // MUST match renderOutsideFigureTickMarks()
-  const LABEL_OFFSET = 4;   // MUST match renderOutsideFigureTickMarks()
-  const FONT_SIZE = 7;      // MUST match renderOutsideFigureTickMarks()
-  const CHAR_WIDTH = 4.5;   // MUST match renderOutsideFigureTickMarks()
-
-  const formatCoord = (value) => {
-    const formatted = Math.abs(value).toLocaleString("en-US").replace(/,/g, " ");
-    return value >= 0 ? `+${formatted}` : `-${formatted}`;
-  };
-  const GAP = 6;  // clearance between the figure edge and the tick (pt)
-  // Figure bounding box in PDF space. Ticks hug the OUTSIDE of it: the polygon
-  // is contained by its own bbox, so a mark outside that bbox is necessarily
-  // outside the polygon whatever shape it is. The offset is PERPENDICULAR to
-  // the grid line each tick marks, so the coordinate its label states stays
-  // exact — a graticule tick, not a displaced cross. Mirrors DXF
-  // addFigureEdgeTicks.
-  const _c1 = transformCoords(actualY_min, actualX_min, extent, mapBounds);
-  const _c2 = transformCoords(actualY_max, actualX_max, extent, mapBounds);
-  const figL = Math.min(_c1.x, _c2.x), figR = Math.max(_c1.x, _c2.x);
-  const figT = Math.min(_c1.y, _c2.y), figB = Math.max(_c1.y, _c2.y);  // PDF y grows down
+  // Interval, grid nodes, label text and mark geometry all come from the single
+  // source of truth in app-shared/tickMarks.js, so this and dxfGenerator.js
+  // cannot drift apart. Crosses sit ON the coordinate grid across the figure —
+  // the reference plan places most of its crosses inside the figure — and are
+  // skipped only where they would cover drawn detail.
+  const { intervalM: _tickIntervalM, nodes: _nodes } = computeTickGrid({
+    yMin: minY, yMax: maxY, xMin: minX, xMax: maxX, scaleDenominator,
+  });
+  const TICK_LENGTH = 12;   // ~4mm arm at print scale; matches TICK_GEOMETRY_MM
+  const LABEL_OFFSET = 4;
+  const FONT_SIZE = 7;
+  const CHAR_WIDTH = 4.5;   // 7pt Helvetica-Bold average advance
   const areaL = mapBounds.x, areaR = mapBounds.x + mapBounds.width;
   const areaT = mapBounds.y, areaB = mapBounds.y + mapBounds.height;
-  const fits = (lo, hi, min, max) => lo >= min && hi <= max;
+  const _footprint = (pt, yW, xW) => ({
+    x: pt.x - TICK_LENGTH - 5,
+    y: pt.y - TICK_LENGTH - LABEL_OFFSET - yW - 5,
+    width: TICK_LENGTH * 2 + LABEL_OFFSET + xW + 10,
+    height: TICK_LENGTH * 2 + LABEL_OFFSET + yW + 10,
+  });
+  // Clearance signals available here: the figure outline and whatever the
+  // collision detector has already registered. Weaker than the DXF side, which
+  // also tests parcel boundaries and stand-number labels — closing that gap
+  // needs parcel segments plumbed into this function.
+  const _onFigureEdge = (r) => polygonPdfPoints.length >= 3 &&
+    rectangleOverlapsPolygon(r, polygonPdfPoints, 0) &&
+    !polygonPdfPoints.every(v => v.x > r.x && v.x < r.x + r.width && v.y > r.y && v.y < r.y + r.height) &&
+    _crossesOutline(r, polygonPdfPoints);
+  const polygonPdfPoints = coordinates.map((c) => {
+    const [cy, cx] = normalizeCapeLoYX(c[0], c[1]);
+    return transformCoords(cy, cx, extent, mapBounds);
+  });
   const tickMarkBounds = [];
-
-  for (const yv of computeTickValues({ min: actualY_min, max: actualY_max, intervalM: _tickIntervalM })) {
-    const pt = transformCoords(yv, actualX_min, extent, mapBounds);
-    if (!Number.isFinite(pt.x)) continue;
-    const labelW = Math.ceil(`Y = ${formatCoord(yv)}`.length * CHAR_WIDTH);
-    const ly = figT - GAP - TICK_LENGTH - LABEL_OFFSET;
-    if (!fits(ly - labelW, ly, areaT, areaB) || !fits(pt.x - FONT_SIZE, pt.x + FONT_SIZE, areaL, areaR)) continue;
-    tickMarkBounds.push({
-      name: `tick-grid-Y-${yv}`, x: pt.x - FONT_SIZE, y: ly - labelW,
-      width: 2 * FONT_SIZE, height: labelW + TICK_LENGTH + LABEL_OFFSET,
-      centerX: pt.x, centerY: figT, capeLo: { y: yv, x: null },
-    });
-  }
-  for (const xv of computeTickValues({ min: actualX_min, max: actualX_max, intervalM: _tickIntervalM })) {
-    const pt = transformCoords(actualY_min, xv, extent, mapBounds);
-    if (!Number.isFinite(pt.y)) continue;
-    const labelW = Math.ceil(`X = ${formatCoord(xv)}`.length * CHAR_WIDTH);
-    const lx = figR + GAP + TICK_LENGTH + LABEL_OFFSET;
-    if (!fits(lx, lx + labelW, areaL, areaR) || !fits(pt.y - FONT_SIZE, pt.y + FONT_SIZE, areaT, areaB)) continue;
-    tickMarkBounds.push({
-      name: `tick-grid-X-${xv}`, x: figR + GAP, y: pt.y - FONT_SIZE / 2 - 1,
-      width: TICK_LENGTH + LABEL_OFFSET + labelW, height: FONT_SIZE + 2,
-      centerX: figR, centerY: pt.y, capeLo: { y: null, x: xv },
-    });
+  for (const node of _nodes) {
+    const pt = transformCoords(node.y, node.x, extent, mapBounds);
+    if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
+    const yW = Math.ceil(formatTickLabel('Y', node.y).length * CHAR_WIDTH);
+    const xW = Math.ceil(formatTickLabel('X', node.x).length * CHAR_WIDTH);
+    const r = _footprint(pt, yW, xW);
+    if (r.x < areaL || r.x + r.width > areaR || r.y < areaT || r.y + r.height > areaB) continue;
+    if (_onFigureEdge(r)) continue;
+    tickMarkBounds.push({ name: `tick-grid-${node.y}-${node.x}`, ...r, centerX: pt.x, centerY: pt.y, capeLo: { y: node.y, x: node.x } });
   }
   logger.info(
-    `[PDFKit] 📐 Reserved ${tickMarkBounds.length} figure-edge tick obstacle bands`
+    `[PDFKit] 📐 Reserved ${tickMarkBounds.length} coordinate-cross obstacle bands`
   );
   return tickMarkBounds;
 }
@@ -1729,111 +1725,60 @@ function renderOutsideFigureTickMarks(
     )}, ${maxY.toFixed(0)}], X=[${minX.toFixed(0)}, ${maxX.toFixed(0)}]`
   );
 
-  // Corner bounds round INWARD to a scale-aware interval — matches DXF's
-  // addCornerCrosses exactly, so both formats compute the same corner
-  // coordinates for the same plan, and neither ever places a tick beyond
-  // the Outside Figure's true extent (previously rounded outward, wasting
-  // up to one full interval of margin on every side). computeConfinedTickGrid
-  // also steps the interval down when confinement would otherwise leave an
-  // axis with nothing but its 2 corner crosses — see
-  // docs/superpowers/specs/2026-08-12-tick-marks-confined-to-figure-bounds-design.md
-  const { intervalM: _tickIntervalM, aMin: actualY_min, aMax: actualY_max, bMin: actualX_min, bMax: actualX_max } =
-    computeConfinedTickGrid({ aMin: minY, aMax: maxY, bMin: minX, bMax: maxX, scaleDenominator });
-
-  logger.info(
-    `[PDFKit] 📐 Grid tick coordinates (${_tickIntervalM}m intervals): Y=[${actualY_min}, ${actualY_max}], X=[${actualX_min}, ${actualX_max}]`
-  );
-
-  // Tick geometry — field readable at arm's length.
-  const TICK_LENGTH = 12;  // tick length, drawn OUTWARD away from the figure (pt)
-  const TICK_WIDTH = 1.5;
+  // Interval, grid nodes, label text and mark geometry all come from the single
+  // source of truth in app-shared/tickMarks.js, so this and dxfGenerator.js
+  // cannot drift apart. Crosses sit ON the coordinate grid across the figure —
+  // the reference plan places most of its crosses inside the figure — and are
+  // skipped only where they would cover drawn detail.
+  const { intervalM: _tickIntervalM, nodes: _nodes } = computeTickGrid({
+    yMin: minY, yMax: maxY, xMin: minX, xMax: maxX, scaleDenominator,
+  });
+  const TICK_LENGTH = 12;   // ~4mm arm at print scale; matches TICK_GEOMETRY_MM
   const LABEL_OFFSET = 4;
   const FONT_SIZE = 7;
-
-  // The grid VALUES above stay confined to the figure's true extent, so every
-  // label is a round coordinate that genuinely falls inside the Outside Figure.
-  // WHERE they are drawn is a separate question, and the answer is border
-  // (graticule) ticks on the map neatline — never crosses over the figure. A
-  // cross on the figure obscures stand boundaries and numbers, and for a convex
-  // figure the only way to keep crosses off it is to snap the grid rectangle
-  // outward around it, which puts every label a full interval beyond the true
-  // extent — the exact defect the inward rounding removed. Border ticks satisfy
-  // both constraints at once. Mirrors dxfGenerator.js addFigureEdgeTicks.
-  //
-  // This replaced ~690 lines of cross placement: map-edge clamps, title-block
-  // avoidance and per-label direction heuristics all existed to keep a free
-  // standing cross inside the drawing area and clear of blocks. A tick sitting
-  // ON the neatline cannot overflow, so none of it is needed.
-  const yValues = computeTickValues({ min: actualY_min, max: actualY_max, intervalM: _tickIntervalM });
-  const xValues = computeTickValues({ min: actualX_min, max: actualX_max, intervalM: _tickIntervalM });
-
-  const formatCoord = (value) => {
-    const formatted = Math.abs(value).toLocaleString("en-US").replace(/,/g, " ");
-    return value >= 0 ? `+${formatted}` : `-${formatted}`;
-  };
-  const CHAR_WIDTH = 4.5;  // 7pt Helvetica-Bold average advance
-
-  const GAP = 6;  // clearance between the figure edge and the tick (pt)
-  // Figure bounding box in PDF space. Ticks hug the OUTSIDE of it: the polygon
-  // is contained by its own bbox, so a mark outside that bbox is necessarily
-  // outside the polygon whatever shape it is. The offset is PERPENDICULAR to
-  // the grid line each tick marks, so the coordinate its label states stays
-  // exact — a graticule tick, not a displaced cross. Mirrors DXF
-  // addFigureEdgeTicks.
-  const _c1 = transformCoords(actualY_min, actualX_min, extent, mapBounds);
-  const _c2 = transformCoords(actualY_max, actualX_max, extent, mapBounds);
-  const figL = Math.min(_c1.x, _c2.x), figR = Math.max(_c1.x, _c2.x);
-  const figT = Math.min(_c1.y, _c2.y), figB = Math.max(_c1.y, _c2.y);  // PDF y grows down
+  const CHAR_WIDTH = 4.5;   // 7pt Helvetica-Bold average advance
   const areaL = mapBounds.x, areaR = mapBounds.x + mapBounds.width;
   const areaT = mapBounds.y, areaB = mapBounds.y + mapBounds.height;
-  const fits = (lo, hi, min, max) => lo >= min && hi <= max;
+  const _footprint = (pt, yW, xW) => ({
+    x: pt.x - TICK_LENGTH - 5,
+    y: pt.y - TICK_LENGTH - LABEL_OFFSET - yW - 5,
+    width: TICK_LENGTH * 2 + LABEL_OFFSET + xW + 10,
+    height: TICK_LENGTH * 2 + LABEL_OFFSET + yW + 10,
+  });
+  // Clearance signals available here: the figure outline and whatever the
+  // collision detector has already registered. Weaker than the DXF side, which
+  // also tests parcel boundaries and stand-number labels — closing that gap
+  // needs parcel segments plumbed into this function.
+  const _onFigureEdge = (r) => polygonPdfPoints.length >= 3 &&
+    rectangleOverlapsPolygon(r, polygonPdfPoints, 0) &&
+    !polygonPdfPoints.every(v => v.x > r.x && v.x < r.x + r.width && v.y > r.y && v.y < r.y + r.height) &&
+    _crossesOutline(r, polygonPdfPoints);
   const placedTickMarks = [];
-
   doc.save();
-  doc.lineWidth(TICK_WIDTH).strokeColor("#000000").fillColor("#000000");
+  doc.lineWidth(1.5).strokeColor("#000000").fillColor("#000000");
   doc.fontSize(FONT_SIZE).font("Helvetica-Bold");
-
-  // Vertical grid lines (constant Cape Westing Y): tick above the figure's top
-  // edge and below its bottom edge; label above the top tick, reading up.
-  for (const yv of yValues) {
-    const pt = transformCoords(yv, actualX_min, extent, mapBounds);
-    if (!Number.isFinite(pt.x)) continue;
-    const label = `Y = ${formatCoord(yv)}`;
-    const labelW = Math.ceil(label.length * CHAR_WIDTH);
-    if (fits(figT - GAP - TICK_LENGTH, figT - GAP, areaT, areaB))
-      doc.moveTo(pt.x, figT - GAP).lineTo(pt.x, figT - GAP - TICK_LENGTH).stroke();
-    if (fits(figB + GAP, figB + GAP + TICK_LENGTH, areaT, areaB))
-      doc.moveTo(pt.x, figB + GAP).lineTo(pt.x, figB + GAP + TICK_LENGTH).stroke();
-    const ly = figT - GAP - TICK_LENGTH - LABEL_OFFSET;
-    if (fits(ly - labelW, ly, areaT, areaB) && fits(pt.x - FONT_SIZE, pt.x + FONT_SIZE, areaL, areaR)) {
-      doc.save();
-      doc.rotate(-90, { origin: [pt.x, ly] });
-      doc.text(label, pt.x, ly - FONT_SIZE / 2, { lineBreak: false });
-      doc.restore();
-      const bounds = { x: pt.x - FONT_SIZE, y: ly - labelW, width: 2 * FONT_SIZE, height: labelW + TICK_LENGTH + LABEL_OFFSET };
-      placedTickMarks.push({ name: `grid-Y-${yv}`, capeLo: { y: yv, x: null }, pdf: { x: pt.x, y: figT }, bounds });
-      if (collisionDetector) collisionDetector.addRegion(bounds.x, bounds.y, bounds.width, bounds.height);
-    }
-  }
-
-  // Horizontal grid lines (constant Cape Southing X): tick left of the figure's
-  // left edge and right of its right edge; label right of the right tick.
-  for (const xv of xValues) {
-    const pt = transformCoords(actualY_min, xv, extent, mapBounds);
-    if (!Number.isFinite(pt.y)) continue;
-    const label = `X = ${formatCoord(xv)}`;
-    const labelW = Math.ceil(label.length * CHAR_WIDTH);
-    if (fits(figL - GAP - TICK_LENGTH, figL - GAP, areaL, areaR))
-      doc.moveTo(figL - GAP, pt.y).lineTo(figL - GAP - TICK_LENGTH, pt.y).stroke();
-    if (fits(figR + GAP, figR + GAP + TICK_LENGTH, areaL, areaR))
-      doc.moveTo(figR + GAP, pt.y).lineTo(figR + GAP + TICK_LENGTH, pt.y).stroke();
-    const lx = figR + GAP + TICK_LENGTH + LABEL_OFFSET;
-    if (fits(lx, lx + labelW, areaL, areaR) && fits(pt.y - FONT_SIZE, pt.y + FONT_SIZE, areaT, areaB)) {
-      doc.text(label, lx, pt.y - FONT_SIZE / 2, { lineBreak: false });
-      const bounds = { x: figR + GAP, y: pt.y - FONT_SIZE / 2 - 1, width: TICK_LENGTH + LABEL_OFFSET + labelW, height: FONT_SIZE + 2 };
-      placedTickMarks.push({ name: `grid-X-${xv}`, capeLo: { y: null, x: xv }, pdf: { x: figR, y: pt.y }, bounds });
-      if (collisionDetector) collisionDetector.addRegion(bounds.x, bounds.y, bounds.width, bounds.height);
-    }
+  for (const node of _nodes) {
+    const pt = transformCoords(node.y, node.x, extent, mapBounds);
+    if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) continue;
+    const yLabel = formatTickLabel('Y', node.y);
+    const xLabel = formatTickLabel('X', node.x);
+    const yW = Math.ceil(yLabel.length * CHAR_WIDTH);
+    const xW = Math.ceil(xLabel.length * CHAR_WIDTH);
+    const r = _footprint(pt, yW, xW);
+    if (r.x < areaL || r.x + r.width > areaR || r.y < areaT || r.y + r.height > areaB) continue;
+    if (_onFigureEdge(r)) continue;
+    if (collisionDetector && collisionDetector.hasCollision(r.x, r.y, r.width, r.height)) continue;
+    // Intersecting axis lines.
+    doc.moveTo(pt.x, pt.y - TICK_LENGTH).lineTo(pt.x, pt.y + TICK_LENGTH).stroke();
+    doc.moveTo(pt.x - TICK_LENGTH, pt.y).lineTo(pt.x + TICK_LENGTH, pt.y).stroke();
+    const ly = pt.y - TICK_LENGTH - LABEL_OFFSET;
+    doc.save();
+    doc.rotate(-90, { origin: [pt.x, ly] });
+    doc.text(yLabel, pt.x, ly - FONT_SIZE / 2, { lineBreak: false });
+    doc.restore();
+    doc.text(xLabel, pt.x + TICK_LENGTH + LABEL_OFFSET, pt.y - FONT_SIZE / 2, { lineBreak: false });
+    placedTickMarks.push({ name: `grid-${node.y}-${node.x}`, capeLo: { y: node.y, x: node.x }, pdf: { x: pt.x, y: pt.y }, bounds: r });
+    if (collisionDetector) collisionDetector.addRegion(r.x, r.y, r.width, r.height);
   }
   doc.restore();
   logger.info(

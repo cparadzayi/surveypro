@@ -66,41 +66,34 @@ const shabaniLikePlan = {
 }
 
 describe('renderOutsideFigureTickMarks — grid compliance', () => {
-  test('emits an intermediate grid tick, not just the two extremes, on each axis', async () => {
+  test('emits a coordinate grid with intermediate nodes, every cross carrying both axes', async () => {
     const { pdfBuffer } = await generateGeoPDF(shabaniLikePlan, fakeLogger)
     const decodedText = extractPdfText(pdfBuffer)
-    // Ticks are now BORDER (graticule) ticks on the map neatline rather than
-    // crosses over the figure, so each grid VALUE is labelled once per axis
-    // instead of once per perimeter cross. The old ">4" count counted crosses;
-    // under this model the meaningful property is that the grid is not degenerate
-    // — at least one tick between the two extremes, so a Surveyor-General has an
-    // adjacent pair to check with a 30cm scale ruler.
-    const yLabels = [...new Set(decodedText.match(/Y = [+-][\d ]+/g) || [])]
-    const xLabels = [...new Set(decodedText.match(/X = [+-][\d ]+/g) || [])]
-    // Fixture Y 97360-97730, X 2247150-2247400 at 1:500 -> interval 100,
-    // giving Y 97400/97500/97600/97700 and X 2247200/2247300/2247400.
-    expect(yLabels.length).toBe(4)
-    expect(xLabels.length).toBe(3)
-    expect(yLabels.length).toBeGreaterThan(2)
-    expect(xLabels.length).toBeGreaterThan(2)
+    const ys = [...new Set(decodedText.match(/Y = [+-]\d+/g) || [])]
+    const xs = [...new Set(decodedText.match(/X = [+-]\d+/g) || [])]
+    // A coordinate cross marks a grid INTERSECTION, so it carries both a Y and
+    // an X label — the convention on the Surveyor-General reference plan.
+    expect(ys.length).toBeGreaterThan(2)
+    expect(xs.length).toBeGreaterThan(2)
   })
 
-  test('left/right tick corners clamp inward when they would overflow the map edge (Westing axis)', async () => {
-    // shabaniLikePlan (defined above): a figure whose Y (Westing) extent,
-    // once snapped to the tick interval, would place a corner tick's label
-    // past the left or right map edge. Reuses the same Y0/X0/W/H shape as
-    // tickMarkParity.test.js's sharedPlan fixture.
+  test('labels use the reference format — signed, no thousands separators', async () => {
     const { pdfBuffer } = await generateGeoPDF(shabaniLikePlan, fakeLogger)
     const decodedText = extractPdfText(pdfBuffer)
-    const yLabels = (decodedText.match(/Y = [+-][\d ]+/g) || []).map(s => s.trim())
-    // Before this task's fix, PDF's Y bounds were always the raw
-    // actualY_min/actualY_max (97300/97800 for this fixture) — never
-    // clamped. After the fix, if the left or right edge would overflow,
-    // the corresponding bound steps inward by _tickIntervalM. This
-    // fixture's DXF corner-cross output (already correct, unaffected by
-    // this task) shows Y clamping to 97400-97700 — assert PDF now matches.
-    expect(yLabels).toEqual(expect.arrayContaining(['Y = +97 400', 'Y = +97 700']))
-    expect(yLabels).not.toEqual(expect.arrayContaining(['Y = +97 300']))
-    expect(yLabels).not.toEqual(expect.arrayContaining(['Y = +97 800']))
+    // The reference plan writes "X = +2247100", grouping nothing. The old
+    // space-grouped form ("X = +2 247 100") was ours, not the standard.
+    expect(decodedText).toMatch(/Y = \+97\d{3}/)
+    expect(decodedText).not.toMatch(/Y = \+97 \d/)
+    expect(decodedText).not.toMatch(/X = \+2 247/)
+  })
+
+  test('every grid node sits on a whole multiple of the interval', async () => {
+    const { pdfBuffer } = await generateGeoPDF(shabaniLikePlan, fakeLogger)
+    const decodedText = extractPdfText(pdfBuffer)
+    const ys = [...new Set(decodedText.match(/Y = [+-]\d+/g) || [])]
+      .map(t => Math.abs(Number(t.replace('Y = ', ''))))
+    expect(ys.length).toBeGreaterThan(0)
+    // 1:500 with the reference's 100mm paper target resolves to a 50m grid.
+    for (const v of ys) expect(v % 50).toBe(0)
   })
 })

@@ -354,6 +354,39 @@ export function iterativeAdjust(inputPoints, critW, sig0) {
   return { error: 'Did not converge within 25 iterations', pts, log, danishLog }
 }
 
+/**
+ * Fold beacons that were held OUT of the adjustment back into its result — shaped exactly
+ * as iterativeAdjust shapes its own rejects, and restored to the caller's beacon order.
+ *
+ * Used when a beacon is condemned before the fit rather than by it (the SI 727 Second
+ * Schedule check is purely geometric and runs first). Holding such a beacon out keeps the
+ * reported transformation, residuals and LOO describing only the beacons actually
+ * accepted, while this puts it back in the schedule and on the sketch — its failing rays
+ * are the evidence for rejecting it, so it must not disappear from the comparison.
+ *
+ * @param {object} result    a completed iterativeAdjust result
+ * @param {Array}  excluded  the input points held out of it
+ * @param {string} source    value for rejSource, e.g. 'si727'
+ */
+export function mergeExcludedBeacons(result, excluded, source) {
+  if (result.error || !excluded || !excluded.length) return result
+  const P = result.adj.params
+  const shaped = excluded.map(p => {
+    const { yT, xT } = helmertApply(P, p.yH, p.xH)
+    const tvY = yT - p.yS, tvX = xT - p.xS
+    return {
+      ...p,
+      rejIter: 0, rejSource: source, finalStatus: 'REJECT',
+      dY: p.yS - p.yH, dX: p.xS - p.xH,
+      rawDist: Math.sqrt((p.yS - p.yH) ** 2 + (p.xS - p.xH) ** 2),
+      rawBrg: bearingSouth(p.yS - p.yH, p.xS - p.xH),
+      yT, xT, tvY, tvX,
+      tResid: Math.sqrt(tvY * tvY + tvX * tvX), tBrg: bearingSouth(tvY, tvX),
+    }
+  })
+  return { ...result, pts: [...result.pts, ...shaped].sort((a, b) => a.id - b.id) }
+}
+
 // ── FORMATTING HELPERS ────────────────────────────────────────────────────────
 export const f3  = v => (typeof v === 'number' ? v.toFixed(3) : '—')
 export const f4  = v => (typeof v === 'number' ? v.toFixed(4) : '—')

@@ -380,3 +380,76 @@ describe('addEdgeComplianceSketch paper size selection', () => {
     expect(Math.max(sketchPageW, sketchPageH)).toBeGreaterThan(300);
   });
 });
+
+/**
+ * The certification is the page an examiner reads first. It must not headline a
+ * recommendation drawn from the statistics alone while the statutory edge table two pages
+ * later tells a different story — so it consults the Second Schedule result directly, and
+ * says which test condemned which beacon.
+ */
+describe('addCertification consults the Second Schedule', () => {
+  const withScheduleReject = () => {
+    const r = makeResult();
+    r.pts[2] = { ...r.pts[2], finalStatus: 'REJECT', rejSource: 'si727', wMax: null };
+    return r;
+  };
+  const withWTestReject = () => {
+    const r = makeResult();
+    r.pts[2] = { ...r.pts[2], finalStatus: 'REJECT', rejSource: 'wtest', wMax: 3.1 };
+    return r;
+  };
+
+  it('names the Schedule-rejected beacons and cites the paragraphs that condemned them', () => {
+    const { written } = renderCapturing(withScheduleReject());
+    const cert = written.find((w) => /^Recommendation:/.test(w)) ?? '';
+    expect(cert).toMatch(/Second Schedule limits of error \(paras 7\(1\), 8\)/);
+    expect(cert).toContain('87B');
+  });
+
+  it('attributes a W-test rejection to the W-test, not to the Schedule', () => {
+    const { written } = renderCapturing(withWTestReject());
+    const cert = written.find((w) => /^Recommendation:/.test(w)) ?? '';
+    expect(cert).toMatch(/W-test/);
+    expect(cert).not.toMatch(/Second Schedule limits of error \(paras/);
+  });
+
+  it('reports the line pass rate even when no beacon is rejected outright', () => {
+    // makeResult()'s network has 2 of 3 lines passing and every beacon accepted: the
+    // uniformly-poor-network case, where a relative outlier test flags nobody.
+    const { written } = renderCapturing(makeResult());
+    expect(written.some((w) => /1 of 3 .*exceed|2 of 3 .*within/.test(w))).toBe(true);
+  });
+
+  it('states the Second Schedule tally alongside the beacon counts', () => {
+    const { written } = renderCapturing(makeResult());
+    expect(written.some((w) => /Second Schedule/.test(w) && /class B/i.test(w))).toBe(true);
+  });
+});
+
+describe('rejected beacons stay in the comparison', () => {
+  const withScheduleReject = () => {
+    const r = makeResult();
+    r.pts[2] = { ...r.pts[2], finalStatus: 'REJECT', rejSource: 'si727', wMax: null };
+    return r;
+  };
+
+  it('still draws a rejected beacon and its rays on the sketch', () => {
+    const { textsColored, curves } = renderCapturing(withScheduleReject());
+    expect(textsColored.some((t) => t.text === '87B')).toBe(true);
+    // 3 beacons, 3 edges -- none dropped because one was rejected.
+    expect(curves.length).toBe(3);
+  });
+
+  it('marks the rejected beacon red on the sketch while accepted ones stay black', () => {
+    const { textsColored } = renderCapturing(withScheduleReject());
+    const label = (name: string) => textsColored.find((t) => t.text === name);
+    expect(label('87B')!.color).toEqual([220, 0, 0]);
+    expect(label('86B')!.color).toEqual([20, 20, 20]);
+  });
+
+  it('records which test rejected each beacon in the comparison schedule', () => {
+    const { written } = renderCapturing(withScheduleReject());
+    expect(written).toContain('Rejected by');
+    expect(written).toContain('SI 727');
+  });
+});

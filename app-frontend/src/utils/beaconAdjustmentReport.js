@@ -9,6 +9,10 @@ import { formatSignedDMS } from '@/utils/beaconComparisonSection'
 
 const NAVY = [30, 58, 92]
 
+// Which test condemned a beacon. 'si727' is the Second Schedule severity verdict
+// (si727.js's severityVerdict); the other two come from iterativeAdjust's own statistics.
+const REJ_SOURCE_LABEL = { si727: 'SI 727', wtest: 'W-test', danish: 'Danish' }
+
 // Standard ISO A-series page dimensions in mm, matching jsPDF's own built-in page-format
 // table exactly (confirmed against jspdf/dist/jspdf.node.js's pageFormats constant) --
 // used to evaluate paper-size candidates before any real page exists.
@@ -184,22 +188,53 @@ class BeaconAdjustmentReport {
   }
 
   addCertification(result, meta) {
-    this.ensureSpace(60)
+    this.ensureSpace(66)
     this.sectionTitle('Certification')
     const acc = result.pts.filter(p => p.finalStatus === 'ACCEPT').length
     const rej = result.pts.filter(p => p.finalStatus === 'REJECT')
+    // Which authority condemned each beacon: the Second Schedule severity verdict, or
+    // the adjustment's own statistics. Naming them separately is what stops this page --
+    // the one an examiner reads first -- from contradicting the edge-compliance table.
+    const schedRej = rej.filter(p => p.rejSource === 'si727')
+    const statRej = rej.filter(p => p.rejSource !== 'si727')
+    const names = ps => ps.map(p => p.name).join(', ')
     const s = result.adj.stats
     const chiOk = s.chi2 >= s.chi2L && s.chi2 <= s.chi2U
+    const es = result.edges ? result.edges.summary : null
+    const linesFailing = es ? es.totalLines - es.bothPass : 0
     let line
-    if (!result.converged) line = 'Did not converge within 25 iterations — REFER for manual review.'
-    else if (rej.length > 0) line = `Referred — ${rej.length} beacon(s) exceed tolerance: ${rej.map(p => p.name).join(', ')}.`
-    else if (!chiOk) line = 'Recommended with note — chi-square test outside bounds; review a priori Sigma-0.'
-    else line = 'Recommended for approval — all compared beacons within tolerance.'
+    if (!result.converged) {
+      line = 'Did not converge within 25 iterations — REFER for manual review.'
+    } else if (rej.length > 0) {
+      const parts = []
+      if (schedRej.length)
+        parts.push(`${schedRej.length} beacon(s) fail the Second Schedule limits of error (paras 7(1), 8): ${names(schedRej)}`)
+      if (statRej.length)
+        parts.push(`${statRej.length} beacon(s) rejected by the W-test: ${names(statRej)}`)
+      line = `Referred — ${parts.join('; ')}.`
+    } else if (linesFailing > 0) {
+      // No beacon is an outlier RELATIVE to its own network -- but a uniformly poor
+      // network raises its own median, so severityVerdict can never flag one. That blind
+      // spot is reported here rather than left for the reader to notice two pages later.
+      line = `Recommended with note — no single beacon stands out as an outlier, but ${linesFailing} of ${es.totalLines} `
+        + 'compared lines exceed the Second Schedule limits of error; examine the network as a whole.'
+    } else if (!chiOk) {
+      line = 'Recommended with note — chi-square test outside bounds; review a priori Sigma-0.'
+    } else {
+      line = 'Recommended for approval — all compared beacons and lines within the Second Schedule limits of error.'
+    }
 
     this.doc.setFontSize(9); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(20)
     this.doc.text(
       `Beacons compared: ${result.pts.length}.  Accepted: ${acc}.  Rejected: ${rej.length}.  W-test critical value: ${meta.critW}.`,
-      this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 6
+      this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 5
+    if (es) {
+      this.doc.text(
+        `Second Schedule (class ${result.surveyClass || 'B'}): ${es.bothPass} of ${es.totalLines} compared lines within the limits of error; `
+        + `${es.distPass} pass the distance limit (para 7(1)), ${es.dirPass} the direction limit (para 8).`,
+        this.margin, this.y, { maxWidth: this.pw - 2 * this.margin })
+    }
+    this.y += 6
     this.doc.setFont('helvetica', 'bold')
     this.doc.text(`Recommendation: ${line}`, this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 16
 
@@ -223,19 +258,21 @@ class BeaconAdjustmentReport {
       f4s(p.dY), f4s(p.dX), f4s(p.vY), f4s(p.vX),
       f4(p.resDist), formatDMS(p.resBrg),
       (p.wMax != null ? p.wMax.toFixed(2) : '—'), p.finalStatus || '—',
+      p.finalStatus === 'REJECT' ? (REJ_SOURCE_LABEL[p.rejSource] || '—') : '—',
     ])
     autoTable(this.doc, {
       startY: 18, margin: { left: 14, right: 14 },
-      head: [['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'dY', 'dX', 'vY', 'vX', 'Dist', 'Brg (S)', 'W-max', 'Status']],
+      head: [['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'dY', 'dX', 'vY', 'vX', 'Dist', 'Brg (S)', 'W-max', 'Status', 'Rejected by']],
       body,
       styles: { fontSize: 7.5, cellPadding: 1, halign: 'right' },
       // SI 727 §67(5): historical = black (default), survey (Y/X) = red.
       columnStyles: {
         0: { halign: 'left' },
         3: { textColor: [220, 38, 38] }, 4: { textColor: [220, 38, 38] },
-        12: { halign: 'center' },
+        12: { halign: 'center' }, 13: { halign: 'center' },
       },
       headStyles: { fillColor: NAVY, halign: 'center', fontSize: 7.5 },
+      // Status stays at index 12: the new 'Rejected by' column is appended AFTER it.
       didParseCell: d => { if (d.section === 'body' && body[d.row.index][12] === 'REJECT') d.cell.styles.fillColor = [252, 226, 226] },
     })
     const fy = this.doc.lastAutoTable.finalY + 5
@@ -460,17 +497,26 @@ class BeaconAdjustmentReport {
       this.doc.stroke()
     })
 
-    // Beacon points + outward-offset name labels.
+    // Sketch-wide colour convention: historical black, survey red, arrows grey.
+    const ARROW_GREY = [130, 130, 130], BLACK = [0, 0, 0], RED = [220, 0, 0]
+    const BEACON_BLACK = [20, 20, 20]
+
+    // Beacon points + outward-offset name labels. A beacon rejected by EITHER test is
+    // drawn red but keeps its place and all its rays: those failing rays ARE the evidence
+    // for rejecting it, so dropping it from the sketch would hide the reason.
+    const rejectedNames = new Set(result.pts.filter(p => p.finalStatus === 'REJECT').map(p => p.name))
     const cx = points.reduce((s, p) => s + (positioned.get(p.name)?.mmX ?? 0), 0) / points.length
     const cy = points.reduce((s, p) => s + (positioned.get(p.name)?.mmY ?? 0), 0) / points.length
-    this.doc.setFontSize(7); this.doc.setTextColor(20, 20, 20)
+    this.doc.setFontSize(7)
     for (const p of points) {
       const pos = positioned.get(p.name)
-      this.doc.setDrawColor(0, 0, 0)
+      const rgb = rejectedNames.has(p.name) ? RED : BEACON_BLACK
+      this.doc.setDrawColor(rgb[0], rgb[1], rgb[2])
       this.doc.circle(pos.mmX, pos.mmY, 1.3, 'S')
       let ux = pos.mmX - cx, uy = pos.mmY - cy
       const ulen = Math.hypot(ux, uy) || 1
       ux /= ulen; uy /= ulen
+      this.doc.setTextColor(rgb[0], rgb[1], rgb[2])
       this.doc.text(p.name, pos.mmX + ux * 3.5, pos.mmY + uy * 3.5)
     }
 
@@ -478,7 +524,6 @@ class BeaconAdjustmentReport {
     // earlier annotation) by computeSketchLayout during the trial above -- just draw the
     // colour-coded text at them. old/historical black, new/survey red, arrow grey, and
     // the parenthesised difference black when within SI 727 tolerance, red when outside.
-    const ARROW_GREY = [130, 130, 130], BLACK = [0, 0, 0], RED = [220, 0, 0]
     this.doc.setFontSize(5.5)
     edges.rows.forEach((row, idx) => {
       const ann = annotations[idx]
@@ -520,7 +565,8 @@ class BeaconAdjustmentReport {
     this.y = boxYtop + boxH + 6
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(60)
     this.doc.text(
-      `Scale ${label}. Black = historical, Red = current survey. Differences black = within SI 727 tolerance, red = outside.`,
+      `Scale ${label}. Black = historical, Red = current survey. Differences black = within SI 727 tolerance, red = outside. `
+      + 'Beacons circled and named in red were rejected.',
       this.margin, this.y, { maxWidth: pageW - 2 * this.margin })
     this.y += 6
     const s = edges.summary

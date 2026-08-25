@@ -23,6 +23,10 @@
 
 - [ ] **Step 1: Write the module**
 
+> **Superseded 2026-08-23:** the class C `distFactor` below is wrong — Second Schedule
+> para 7(1)(b) prescribes 0,02, not 0,015 (0,015 belongs to para 7(2)(b), the
+> angle-subtended check). Corrected in `si727.js`; do not copy the constant from here.
+
 ```js
 // app-frontend/src/utils/si727.js
 // Pure SI 727 (1979) comparison-sketch tolerances + helpers. No jsPDF/Vue imports.

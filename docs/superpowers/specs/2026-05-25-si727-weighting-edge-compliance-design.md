@@ -52,11 +52,23 @@ we change only where σ₀ comes from and ADD the edge computation + reporting.
 
 ## SI 727 formulas
 
+> **Correction (2026-08-23):** the class C distance factor was originally specified as
+> 0.015. That is the constant from Second Schedule para 7(2)(b) — the limit on the *angle
+> subtended at a beacon*, a different test this design does not implement. Para 7(1)(b),
+> which governs the distance comparison, prescribes **0,02**; class C tolerance was 25 %
+> too tight. Corrected below and in `si727.js`, pinned by `si727.test.ts`.
+
+Both taken from the Second Schedule of the Land Survey (General) Regulations, 1979
+(pp. 3299–3300) — para 7(1) for distances and para 8 for directions, the paragraphs
+governing acceptance of a **previous** survey's co-ordinates. Deliberately not para 5
+("Distances", 0,01/0,04/0,06), which limits a ground distance against the same survey's
+own co-ordinates. Paras 7 and 8 define class B and class C only; class A does not apply.
+
 - Distance allowable difference: `Δd_allow = factor · √(0.075·f + 0.00015·f²)`,
-  `factor` = 0.01 (class B) / 0.015 (class C), `f` = length (m) of the **shorter**
-  of the two compared lines.
+  `factor` = 0.01 (class B, para 7(1)(a)) / 0.02 (class C, para 7(1)(b)), `f` = length (m)
+  of the **shorter** of the two compared lines.
 - Direction allowable difference: `T_allow = K / (S + 300)` arc-seconds,
-  `K` = 15000 (class B) / 45000 (class C), `S` = ray length (m).
+  `K` = 15000 (class B, para 8(a)) / 45000 (class C, para 8(b)), `S` = ray length (m).
 
 ## Architecture
 
@@ -64,8 +76,8 @@ we change only where σ₀ comes from and ADD the edge computation + reporting.
 
 ```js
 export const SI727_CLASS = {
-  B: { distFactor: 0.01,  dirK: 15000 },
-  C: { distFactor: 0.015, dirK: 45000 },
+  B: { distFactor: 0.01, dirK: 15000 },
+  C: { distFactor: 0.02, dirK: 45000 },
 }
 export function distanceToleranceM(f, cls)       // factor·√(0.075f + 0.00015f²)
 export function directionToleranceArcsec(S, cls) // K/(S+300)

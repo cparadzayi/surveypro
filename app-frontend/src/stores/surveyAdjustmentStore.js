@@ -4,8 +4,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { iterativeAdjust, SAMPLE_DATA } from '@/utils/surveyMath'
-import { suggestedSigma0, edgeCompliance } from '@/utils/si727'
+import { iterativeAdjust, mergeExcludedBeacons, SAMPLE_DATA } from '@/utils/surveyMath'
+import { suggestedSigma0, edgeCompliance, severityVerdict } from '@/utils/si727'
 
 let nextId = SAMPLE_DATA.length + 1
 
@@ -83,15 +83,32 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
     result.value = null
     if (sigma0Auto.value) sigma0.value = suggestedSigma0(points.value, surveyClass.value)
     try {
-      const res = iterativeAdjust(points.value, critW.value, sigma0.value)
+      // 1. SI 727 Second Schedule check, over the WHOLE network. It is purely geometric —
+      //    it never uses the least-squares solution — so it runs first and decides which
+      //    beacons the statute condemns before the adjustment is fitted at all. Edges are
+      //    computed over every beacon, rejected ones included: their failing rays are the
+      //    evidence for rejecting them and must stay on the sketch and in the table.
+      const edges = edgeCompliance(points.value, surveyClass.value)
+      const verdict = severityVerdict(edges.rows)
+      const condemned = new Set(verdict.rejected)
+      const held = points.value.filter(p => condemned.has(p.name))
+      const fitted = points.value.filter(p => !condemned.has(p.name))
+
+      // 2. Statistical adjustment on whatever the statute left standing, so the reported
+      //    transformation, residuals and LOO describe only the beacons actually accepted.
+      //    Fall back to the full set if the verdict would leave too few to adjust.
+      const usingVerdict = held.length > 0 && fitted.length >= 3
+      const res = iterativeAdjust(usingVerdict ? fitted : points.value, critW.value, sigma0.value)
       if (res.error) {
         error.value = res.error
-      } else {
-        const accepted = res.pts.filter(p => p.finalStatus === 'ACCEPT')
-        res.edges = edgeCompliance(accepted, surveyClass.value)
-        res.surveyClass = surveyClass.value
-        result.value = res
+        return
       }
+      // 3. Put the condemned beacons back, marked REJECT / rejSource 'si727'.
+      const merged = usingVerdict ? mergeExcludedBeacons(res, held, 'si727') : res
+      merged.edges = edges
+      merged.surveyClass = surveyClass.value
+      merged.si727Verdict = { ...verdict, applied: usingVerdict }
+      result.value = merged
     } catch (e) {
       error.value = e.message
     }

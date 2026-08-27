@@ -262,3 +262,6 @@ compute the data this feature consumes):
   Report and the inline Report on Survey automatically, with no change to either file)
 - `app-frontend/src/utils/beaconComparisonGenerator.ts` (orphaned/dead code — left alone,
   not deleted as part of this feature; a separate cleanup decision)
+  — **that decision was taken on 2026-08-27: the file has since been deleted.** It was an
+  HTML-string generator superseded by `beaconComparisonSection.ts`, and it carried a flat
+  ±0.020 m "acceptable tolerance" with no basis in the SI 727 Second Schedule.

@@ -64,6 +64,10 @@ All frontend components for the beacon comparison feature have been successfully
 
 #### **New File Created:**
 - `app-frontend/src/utils/beaconComparisonGenerator.ts`
+  — **deleted 2026-08-27.** Never imported by anything; superseded by
+  `app-frontend/src/utils/beaconComparisonSection.ts`, the shared jsPDF renderer used by
+  both the Report on Survey and the standalone Beacon Comparison Report. The rest of this
+  Phase 3 section describes a file that no longer exists.
 
 #### **Functions Implemented:**
 
@@ -337,7 +341,7 @@ CONCLUSION:
 3. `BEACON_COMPARISON_EXAMPLES.md` - Output examples
 4. `FOUND_BEACONS_ENHANCED_SPEC.md` - Component specification
 5. `BEACON_COMPARISON_IMPLEMENTATION_SUMMARY.md` - Phase 1 summary
-6. `app-frontend/src/utils/beaconComparisonGenerator.ts` - **Generator utilities**
+6. ~~`app-frontend/src/utils/beaconComparisonGenerator.ts` - **Generator utilities**~~ (deleted 2026-08-27, never used)
 7. `BEACON_COMPARISON_FINAL_IMPLEMENTATION.md` - This document
 
 ### **Modified Files:**

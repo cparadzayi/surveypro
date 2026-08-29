@@ -4,14 +4,20 @@
  * Tests basic functionality to ensure the generator works correctly
  */
 
+import { setActivePinia, createPinia } from 'pinia'
 import { CoordinateListGenerator } from '../coordinate-list'
 import type { AdjustedCoordinate } from '../../types/adjusted-coordinates'
 import type { SurveyorInfo } from '../coordinate-list'
 
 describe('CoordinateListGenerator - Smoke Test', () => {
   let generator: CoordinateListGenerator
-  
+
   beforeEach(() => {
+    // generateCoordinateListPDF reaches for useSurveyLookupStore() (coordinate-list.ts),
+    // which needs an active Pinia. The app installs one via app.use(pinia) at startup;
+    // outside a component there is none unless a test sets it, so do that here. A fresh
+    // Pinia per test also keeps store state from leaking between cases.
+    setActivePinia(createPinia())
     generator = new CoordinateListGenerator()
   })
   

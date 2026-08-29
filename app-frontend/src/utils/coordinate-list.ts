@@ -381,7 +381,14 @@ export class CoordinateListGenerator {
     let currentSectionIndex = 0;
     let pointIndexInSection = 0;
     let isFirstPageOfDocument = true;
-    
+
+    // Nothing to lay out. The caller filters out empty sections, so an empty coordinate
+    // list leaves no sections at all -- and the code below indexes sections[0] directly.
+    // The document is still valid: generateCoverPage() has already added the cover page.
+    if (sections.length === 0) {
+      return;
+    }
+
     // Start first page
     pdf.addPage();
     this.addPageNumber(pdf, this.currentPage);

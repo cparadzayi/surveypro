@@ -61,17 +61,43 @@ export class AutomatedParcelDetector {
   detectParcels(points: AdjustedCoordinate[]): DetectedParcel[] {
     console.log(`[ParcelDetector] 🔍 Starting detection on ${points.length} points...`)
     
-    // Step 1: Use topological reconstruction for cadastral data
+    // Step 1: Cluster by the designation named in each point's description
+    // ("STAND 1439 CORNER" -> "STAND 1439"). This is the primary strategy: where a
+    // surveyor has stated which parcel a beacon belongs to, that statement is
+    // authoritative -- a beacon ID such as 1438A names the NEIGHBOURING stand it is
+    // shared with, so it cannot be trusted over an explicit description.
+    const designationParcels = this.clusterByDesignation(points)
+    const designatedPointIds = new Set<string>()
+    for (const clusterPoints of designationParcels.values()) {
+      for (const point of clusterPoints) designatedPointIds.add(point.pointId)
+    }
+    console.log(`[ParcelDetector] 🏷️ Designation clustering found ${designationParcels.size} parcels`)
+
+    // Step 2: Topological reconstruction covers the points no description named. It runs
+    // over the FULL point set, not just the leftovers, because it reasons about shared
+    // corners and nearest neighbours and would lose that context on a subset; clusters it
+    // builds from already-designated points are discarded when merging below.
     const topologicalParcels = this.topologicalParcelReconstruction(points)
     console.log(`[ParcelDetector] 🗺️ Topological reconstruction found ${topologicalParcels.size} parcels`)
-    
-    // Step 2: Detect road reserves and linear features
+
+    // Step 3: Detect road reserves and linear features
     const roadReserves = this.detectRoadReserves(points)
     console.log(`[ParcelDetector] 🛣️ Road reserve detection found ${roadReserves.size} linear features`)
-    
-    // Combine topological parcels and road reserves
+
+    // Designation clusters win; a topological cluster is kept only where it claims no
+    // point that a description already spoke for.
+    const topologicalFallback = new Map<string, AdjustedCoordinate[]>()
+    for (const [designation, clusterPoints] of topologicalParcels) {
+      if (clusterPoints.some(p => designatedPointIds.has(p.pointId))) continue
+      topologicalFallback.set(designation, clusterPoints)
+    }
+    if (topologicalParcels.size !== topologicalFallback.size) {
+      console.log(`[ParcelDetector] 🏷️ ${topologicalParcels.size - topologicalFallback.size} topological parcels superseded by explicit designations`)
+    }
+
     const validClusters = new Map<string, AdjustedCoordinate[]>([
-      ...topologicalParcels,
+      ...designationParcels,
+      ...topologicalFallback,
       ...roadReserves
     ])
     
@@ -1353,8 +1379,24 @@ export class AutomatedParcelDetector {
     }
     score *= pointFactor
     
-    // Closure factor (0m = 1.0, 1m = 0.5, 2m+ = 0.0) - PRIMARY QUALITY INDICATOR
-    const closureFactor = Math.max(0, 1 - closureGap / 2)
+    // Closure factor - PRIMARY QUALITY INDICATOR.
+    // `closureGap` is the step from the last ordered corner back to the first. These
+    // points are a polygon's DISTINCT corners, so that step is simply the closing SIDE
+    // (13 m on a 13x24 m stand), not a misclosure -- an ordered corner list closes by
+    // definition. Judging it against an absolute 2 m tolerance therefore scored 0 for
+    // every well-formed parcel, which is why nothing was ever detected.
+    // The gap does still carry a real signal, so keep it in scale-relative form: a
+    // closing step far longer than the polygon's own typical side means the ordering
+    // never really closed and a corner is missing.
+    const sides: number[] = []
+    for (let i = 0; i < points.length - 1; i++) {
+      sides.push(this.distance(points[i], points[i + 1]))
+    }
+    const sortedSides = [...sides].sort((a, b) => a - b)
+    const typicalSide = sortedSides.length ? sortedSides[Math.floor(sortedSides.length / 2)] : 0
+    const closureRatio = typicalSide > 0 ? closureGap / typicalSide : 0
+    // Within 1.5x the typical side is an ordinary closing side; beyond that, fall off.
+    const closureFactor = closureRatio <= 1.5 ? 1.0 : Math.max(0, 1 - (closureRatio - 1.5))
     score *= closureFactor
     
     // Area factor (within range = 1.0, outside = 0.5)

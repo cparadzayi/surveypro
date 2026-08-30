@@ -67,10 +67,6 @@ export class AutomatedParcelDetector {
     // authoritative -- a beacon ID such as 1438A names the NEIGHBOURING stand it is
     // shared with, so it cannot be trusted over an explicit description.
     const designationParcels = this.clusterByDesignation(points)
-    const designatedPointIds = new Set<string>()
-    for (const clusterPoints of designationParcels.values()) {
-      for (const point of clusterPoints) designatedPointIds.add(point.pointId)
-    }
     console.log(`[ParcelDetector] 🏷️ Designation clustering found ${designationParcels.size} parcels`)
 
     // Step 2: Topological reconstruction covers the points no description named. It runs
@@ -84,20 +80,40 @@ export class AutomatedParcelDetector {
     const roadReserves = this.detectRoadReserves(points)
     console.log(`[ParcelDetector] 🛣️ Road reserve detection found ${roadReserves.size} linear features`)
 
-    // Designation clusters win; a topological cluster is kept only where it claims no
-    // point that a description already spoke for.
-    const topologicalFallback = new Map<string, AdjustedCoordinate[]>()
+    // Merge the two, by UNION rather than replacement. A description does not describe a
+    // whole parcel -- it speaks for the one beacon it is attached to -- so a stated
+    // designation must ADD that beacon to its parcel, not shrink the parcel down to only
+    // the beacons that happened to be described. (Replacing here left a stand with the
+    // single described point and no polygon at all.)
+    const mergedClusters = new Map<string, AdjustedCoordinate[]>()
     for (const [designation, clusterPoints] of topologicalParcels) {
-      if (clusterPoints.some(p => designatedPointIds.has(p.pointId))) continue
-      topologicalFallback.set(designation, clusterPoints)
+      mergedClusters.set(designation, [...clusterPoints])
     }
-    if (topologicalParcels.size !== topologicalFallback.size) {
-      console.log(`[ParcelDetector] 🏷️ ${topologicalParcels.size - topologicalFallback.size} topological parcels superseded by explicit designations`)
+    for (const [designation, clusterPoints] of designationParcels) {
+      const list = mergedClusters.get(designation) ?? []
+      for (const point of clusterPoints) {
+        if (!list.some(q => q.pointId === point.pointId)) list.push(point)
+      }
+      mergedClusters.set(designation, list)
+    }
+
+    // Where a description DID name a parcel, that beacon belongs to that parcel and to no
+    // other -- so drop it from any cluster topology guessed it into. Clusters emptied this
+    // way simply fail the 3-point minimum in processCluster and yield no parcel.
+    const statedOwner = new Map<string, string>()
+    for (const [designation, clusterPoints] of designationParcels) {
+      for (const point of clusterPoints) statedOwner.set(point.pointId, designation)
+    }
+    if (statedOwner.size > 0) {
+      for (const [designation, clusterPoints] of mergedClusters) {
+        mergedClusters.set(designation, clusterPoints.filter(
+          p => (statedOwner.get(p.pointId) ?? designation) === designation))
+      }
+      console.log(`[ParcelDetector] 🏷️ ${statedOwner.size} point(s) assigned by explicit description`)
     }
 
     const validClusters = new Map<string, AdjustedCoordinate[]>([
-      ...designationParcels,
-      ...topologicalFallback,
+      ...mergedClusters,
       ...roadReserves
     ])
     
@@ -900,18 +916,23 @@ export class AutomatedParcelDetector {
   }
   
   /**
-   * Cluster points by designation prefix
-   * 
-   * Extracts designation from point descriptions:
+   * Cluster points by the designation their DESCRIPTION states:
    * - "STAND 1439 CORNER" → "STAND 1439"
    * - "LOT 5 BEACON" → "LOT 5"
    * - "FARM 123A" → "FARM 123"
+   *
+   * Description only -- never the point-ID fallback. Real survey exports describe the
+   * beacon, not the parcel ("12mm iron peg in concrete"), so this correctly yields
+   * nothing for them and topological reconstruction handles the whole job. Letting the
+   * ID fallback in here would group a stand on its own points alone and discard the
+   * corners its neighbours recorded -- reporting half a stand (see
+   * designationFromPointId).
    */
   private clusterByDesignation(points: AdjustedCoordinate[]): Map<string, AdjustedCoordinate[]> {
     const clusters = new Map<string, AdjustedCoordinate[]>()
     
     for (const point of points) {
-      const designation = this.extractDesignation(point)
+      const designation = this.designationFromDescription(point)
       if (!designation) continue
       
       if (!clusters.has(designation)) {
@@ -936,9 +957,8 @@ export class AutomatedParcelDetector {
    * - Point ID: "S1439" → "STAND 1439"
    * - Point ID: "ST1439A" → "STAND 1439"
    */
-  private extractDesignation(point: AdjustedCoordinate): string | null {
+  private designationFromDescription(point: AdjustedCoordinate): string | null {
     const desc = point.description?.toUpperCase() || ''
-    const id = point.pointId.toUpperCase()
     
     // Pattern 1: Full keyword + number in description
     // "STAND 1439 CORNER" → "STAND 1439"
@@ -975,9 +995,31 @@ export class AutomatedParcelDetector {
       return `FARM ${match[1]}`
     }
     
+    return null
+  }
+
+  /** Description first, then the point-ID guess. Combined behaviour, unchanged. */
+  private extractDesignation(point: AdjustedCoordinate): string | null {
+    return this.designationFromDescription(point) ?? this.designationFromPointId(point)
+  }
+
+  /**
+   * Designation guessed from the point ID alone ("1439A" -> "STAND 1439").
+   *
+   * Deliberately separate from designationFromDescription: the two carry very
+   * different authority. A description is the surveyor stating which parcel a beacon
+   * bounds. A beacon ID does NOT reliably say that -- adjoining stands share one
+   * physical corner, and it is recorded under whichever stand's number the surveyor
+   * happened to use, so 2299A is routinely a corner of stand 2300. Grouping on the ID
+   * therefore reproduces exactly what topologicalParcelReconstruction() already does,
+   * but WITHOUT its shared-corner enrichment, and must never override it.
+   */
+  private designationFromPointId(point: AdjustedCoordinate): string | null {
+    const id = point.pointId.toUpperCase()
+
     // Pattern 5: Point ID with letter suffix
     // "1439A" → "STAND 1439"
-    match = id.match(/^(\d+)[A-Z]?$/)
+    let match = id.match(/^(\d+)[A-Z]?$/)
     if (match) {
       return `STAND ${match[1]}`
     }

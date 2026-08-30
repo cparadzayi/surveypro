@@ -206,3 +206,41 @@ describe('Area Formatting', () => {
     expect(parcels[0].areaFormatted).toBe('1.0000 ha')
   })
 })
+
+/**
+ * Real geometry from an October 2025 township survey (stand 2300 and its neighbour).
+ * Two things make it the case that matters:
+ *  - descriptions are BEACON TYPES, as real survey exports have them, naming no parcel;
+ *  - stand 2300's fourth corner is a real beacon recorded under the NEIGHBOUR's number
+ *    (2299A), because adjoining stands share one physical corner.
+ * The four corners form a 12.02 x 20.03 m rectangle = 241 m2. Grouping on the point-ID
+ * prefix alone sees only 2300A/C/D and reports a 120 m2 triangle -- exactly half.
+ */
+describe('shared corners recorded under a neighbouring stand number', () => {
+  const beacon = '12mm iron peg in concrete'
+  const township: AdjustedCoordinate[] = [
+    { pointId: '2300A', y: 96866.66, x: 2247921.94, description: beacon, status: 'P', surveyDate: '2025-10-26', calculationsPage: 0, fieldBookPage: 'E1' },
+    { pointId: '2300C', y: 96854.22, x: 2247941.72, description: beacon, status: 'P', surveyDate: '2025-10-26', calculationsPage: 0, fieldBookPage: 'E1' },
+    { pointId: '2300D', y: 96866.24, x: 2247941.97, description: beacon, status: 'P', surveyDate: '2025-10-26', calculationsPage: 0, fieldBookPage: 'E1' },
+    { pointId: '2299A', y: 96854.64, x: 2247921.69, description: beacon, status: 'P', surveyDate: '2025-10-26', calculationsPage: 0, fieldBookPage: 'E1' },
+  ]
+
+  it('claims the neighbour-numbered corner instead of reporting half the stand', () => {
+    const parcels = new AutomatedParcelDetector().detectParcels(township)
+    const stand = parcels.find(p => p.designation === 'STAND 2300')
+
+    expect(stand, 'STAND 2300 was not detected at all').toBeDefined()
+    expect(stand!.boundaryPoints).toContain('2299A')
+    expect(stand!.area).toBeGreaterThan(230)
+    expect(stand!.area).toBeLessThan(250)
+  })
+
+  it('still lets an explicit description override the point ID', () => {
+    // Same geometry, but the surveyor stated the parcel: 2299A is declared part of 2300.
+    const stated = township.map(p =>
+      p.pointId === '2299A' ? { ...p, description: 'STAND 2300 CORNER' } : p)
+    const parcels = new AutomatedParcelDetector().detectParcels(stated)
+    const stand = parcels.find(p => p.designation === 'STAND 2300')
+    expect(stand!.boundaryPoints).toContain('2299A')
+  })
+})

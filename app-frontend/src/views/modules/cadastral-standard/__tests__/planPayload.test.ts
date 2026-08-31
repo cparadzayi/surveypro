@@ -1,4 +1,4 @@
-import { buildPlanPayload, beaconsForParcel, composePlanBaseName, resolveSubjectDesignation, validateGenerateRequest, type PlanPayloadContext } from '../planPayload'
+import { buildPlanPayload, beaconsForParcel, composePlanBaseName, resolveSubjectDesignation, validateGenerateRequest, resolveScaleAndSheet, type PlanPayloadContext } from '../planPayload'
 
 const parcelA: GeoJSON.Feature = {
   type: 'Feature',
@@ -130,5 +130,33 @@ describe('validateGenerateRequest', () => {
   })
   it('accepts whole-set mode with parcels', () => {
     expect(validateGenerateRequest(whole, null, 3, { pdf: true, dxf: false }).ok).toBe(true)
+  })
+})
+
+describe('resolveScaleAndSheet', () => {
+  // General Plans previously read scale ONLY from the intelligentPreview round
+  // trip, so the surveyor's explicit choice reached the renderer only if that
+  // call succeeded — and a failed preview lost the manual selection along with
+  // the automatic one.
+  it('sends an explicit surveyor scale straight through for a general plan', () => {
+    expect(resolveScaleAndSheet('general-developed', { scale: '1:500', sheetSize: 'auto' }))
+      .toEqual({ scale: '1:500', sheetSize: undefined })
+  })
+
+  it('sends undefined on auto so the backend resolver decides', () => {
+    expect(resolveScaleAndSheet('general-undeveloped', { scale: 'auto', sheetSize: 'auto' }))
+      .toEqual({ scale: undefined, sheetSize: undefined })
+  })
+
+  it('passes an explicit sheet size through for a general plan', () => {
+    expect(resolveScaleAndSheet('general-undeveloped', { scale: 'auto', sheetSize: 'SI727_800x500' }))
+      .toEqual({ scale: undefined, sheetSize: 'SI727_800x500' })
+  })
+
+  it('keeps a diagram on its own A4/A3 sheets', () => {
+    expect(resolveScaleAndSheet('diagram', { scale: 'auto', sheetSize: 'A3' }))
+      .toEqual({ scale: undefined, sheetSize: 'A3' })
+    expect(resolveScaleAndSheet('diagram', { scale: '1:250', sheetSize: 'auto' }))
+      .toEqual({ scale: '1:250', sheetSize: 'A4' })
   })
 })

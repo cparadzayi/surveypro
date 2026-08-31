@@ -360,6 +360,10 @@
           <div v-if="intelligentPreview && config.scale === 'auto'" class="mt-1 text-xs text-indigo-600 font-medium">
             ✓ Recommended: {{ intelligentPreview.scale.label }}
           </div>
+          <div v-else-if="previewError" class="mt-1 text-xs text-amber-600">
+            ⚠ Preview unavailable ({{ previewError }}) — the plan will still generate;
+            scale and sheet are chosen by the server.
+          </div>
           <div class="mt-1 text-xs text-gray-500">
             Per SI 727 §32(2): Base scales or ×/÷ by 10ⁿ
           </div>
@@ -629,6 +633,7 @@ import { saveWithOverwritePrompt } from '@/services/workflowProductStorage'
 import { getPlanTypeMeta } from './planTypes'
 import {
   buildPlanPayload, composePlanBaseName, resolveSubjectDesignation, validateGenerateRequest,
+  resolveScaleAndSheet,
   type PlanPayloadContext, type PlanDocumentSet,
 } from './planPayload'
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
@@ -727,6 +732,10 @@ const topologyMarkers = ref<any[]>([])
 
 // Intelligent preview data (Phase 1-3 integration)
 const intelligentPreview = ref<PreviewData | null>(null)
+// Non-fatal: set when the intelligent-preview call fails. Generation still
+// works (scale/sheet come from the surveyor or the backend resolver), but the
+// recommendation badge and label overlays are missing, so say so.
+const previewError = ref<string | null>(null)
 const showTopology = ref(true)
 const showAdaptiveLabels = ref(true)
 const showLayoutGuides = ref(false)  // SI 727 layout overlay
@@ -1488,6 +1497,7 @@ async function loadIntelligentPreview() {
     })
     
     intelligentPreview.value = preview
+    previewError.value = null
     
     console.log('[SurveyPlanMap] ✅ Intelligent preview loaded:', {
       scale: preview.scale.label,
@@ -1564,7 +1574,11 @@ async function loadIntelligentPreview() {
       response: error.response?.data,
       status: error.response?.status
     })
-    // Non-critical - continue without intelligent features
+    // Generation no longer depends on this call — scale and sheet come from
+    // the surveyor's choice or the backend resolver — so a failure is not
+    // fatal. It IS still worth surfacing: the recommendation badge and the
+    // label/topology overlays silently disappear without it.
+    previewError.value = error?.response?.data?.error || error?.message || 'Preview unavailable'
   }
 }
 
@@ -4082,12 +4096,14 @@ function gatherPlanContext(): PlanPayloadContext {
   // Diagram: use the surveyor's explicit scale if chosen, otherwise leave it
   // undefined so the diagram renderer auto-picks an SI 727 scale responsive to
   // the subject parcel (not the whole-site intelligentPreview scale).
-  const resolvedScale = config.value.planType === 'diagram'
-    ? (config.value.scale && config.value.scale !== 'auto' ? config.value.scale : undefined)
-    : (intelligentPreview.value?.scale?.label || undefined)
-  const resolvedSheetSize = config.value.planType === 'diagram'
-    ? (config.value.sheetSize === 'A3' ? 'A3' : 'A4')
-    : (intelligentPreview.value?.sheetSize || undefined)
+  // The surveyor's explicit choice goes straight to the backend; 'auto' sends
+  // undefined and the shared resolver (app-shared/planSheeting.js) decides,
+  // reporting back through X-Used-Scale / X-Used-Sheet-Size. Deliberately NOT
+  // routed through intelligentPreview any more: that made a failed preview call
+  // lose the manual selection as well as the automatic one, and its recommended
+  // scale came from a drawing-area model that collapses as stand count rises.
+  const { scale: resolvedScale, sheetSize: resolvedSheetSize } =
+    resolveScaleAndSheet(config.value.planType, config.value)
   const _sheet = intelligentPreview.value?.layout?.sheet
   const orientation: 'landscape' | 'portrait' =
     _sheet ? (_sheet.width > _sheet.height ? 'landscape' : 'portrait') : 'landscape'

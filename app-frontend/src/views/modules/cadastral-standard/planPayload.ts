@@ -128,6 +128,34 @@ export function resolveSubjectDesignation(
   return `STAND ${stand}`
 }
 
+/**
+ * Scale + sheet size to send to the backend for a generation request.
+ *
+ * `undefined` means "auto": the backend's shared resolver
+ * (app-shared/planSheeting.js) picks, and reports back via the X-Used-Scale /
+ * X-Used-Sheet-Size response headers.
+ *
+ * General Plans used to source both values ONLY from the intelligentPreview
+ * round trip, so a surveyor's explicit choice reached the renderer only when
+ * that call succeeded — and a failed preview silently lost the manual
+ * selection along with the automatic one. The surveyor's choice now goes
+ * straight through.
+ */
+export function resolveScaleAndSheet(
+  planType: string,
+  config: { scale?: string; sheetSize?: string },
+): { scale: string | undefined; sheetSize: string | undefined } {
+  const explicit = (v: string | undefined) => (v && v !== 'auto' ? v : undefined)
+  const scale = explicit(config.scale)
+
+  // The Diagram plan type uses genuine ISO A4/A3 sheets (a different SI 727
+  // provision) and always resolves to one of them.
+  if (planType === 'diagram') {
+    return { scale, sheetSize: config.sheetSize === 'A3' ? 'A3' : 'A4' }
+  }
+  return { scale, sheetSize: explicit(config.sheetSize) }
+}
+
 export interface PlanDocumentSet {
   pdf?: Blob
   dxf?: Blob

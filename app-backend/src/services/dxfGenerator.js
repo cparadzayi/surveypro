@@ -76,6 +76,7 @@ import { rectangleOverlapsPolygon, lineSegmentsIntersect } from './dxfGeometry.j
 import { selectTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-shared/tickMarks.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
 import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 } from '../utils/si727Constants.js'
+import { resolvePlanSheeting } from '../../../app-shared/planSheeting.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 import { roundBearingSouth } from '../utils/zim-geo.js'
 import { emitSubjectAdjoiningFeaturesDxf } from './adjoiningFeaturesDxf.js'
@@ -610,6 +611,21 @@ export function generateDXF(options, logger) {
     paperWmm: paper.w,
     paperHmm: paper.h,
   });
+  // Shared sheeting ladder — the SAME resolver pdfkitGeoPDF consults, so PDF
+  // and DXF cannot resolve different scales for the same survey. Constrained to
+  // the sheet this run is rendering; the existing needsScaleUp escalation
+  // re-enters with the next sheet and re-consults the resolver, which is how
+  // the ladder gets walked.
+  const _sheeting = resolvePlanSheeting({
+    extentM: { widthM: drawW, heightM: drawH },
+    parcels,
+    planType,
+    declaredScale: declaredS || null,
+    declaredSheet: normalizedSheetSize || null,
+  });
+  const _pick = _sheeting.candidates.find((c) => c.sheetSize === normalizedSheetSize)
+             ?? _sheeting.candidates[0]
+             ?? null;
   // SI 727 Reg 32(3) scale precedence (fallback when no PDF scale is handed off):
   //   1. declaredS — a supplied scale (PDF handoff) honored verbatim → parity.
   //   2. Township general plan mandated at EXACTLY 1:500 when the majority of
@@ -622,8 +638,13 @@ export function generateDXF(options, logger) {
   //   3. Otherwise — auto-maximize to the largest SI 727 scale that fits.
   const _applyScaleMandate = planType === 'general-developed' || planType === 'general-undeveloped';
   const { mandatory500 } = resolveTownshipScaleMandate(parcels, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2);
+  // The resolver already encodes all three rules (declared → mandate → auto-fit)
+  // and is shared with the PDF, so it is the authority. _figFit is retained only
+  // for the diagnostic log line below.
   let S;
-  if (declaredS) {
+  if (_pick) {
+    S = _pick.scaleDenominator;
+  } else if (declaredS) {
     S = declaredS;
   } else if (_applyScaleMandate && mandatory500) {
     S = 500;
@@ -2570,5 +2591,12 @@ export function generateDXF(options, logger) {
   const sizeKB = (Buffer.byteLength(dxf, 'utf8') / 1024).toFixed(1);
   logger.info(`[DXF] Generation complete: ${sizeKB} KB, ${parcelCount} parcels, ${beaconCount} beacons, ${edgeLabelCount} edge labels, ${sharedEdges.size} shared edges`);
 
-  return { buffer: Buffer.from(dxf, 'utf8'), warnings };
+  // Resolved sheeting, mirroring the PDF's { scale, sheetSize } return so the
+  // route can report X-Used-Scale / X-Used-Sheet-Size for DXF too.
+  return {
+    buffer: Buffer.from(dxf, 'utf8'),
+    warnings,
+    scale: `1:${S}`,
+    sheetSize: normalizedSheetSize,
+  };
 }

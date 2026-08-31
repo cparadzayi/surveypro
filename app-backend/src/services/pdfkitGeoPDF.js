@@ -15,6 +15,7 @@ import BLOCKS from "../../../app-shared/block-definitions.js";
 import { selectTickGrid, formatTickLabel } from "../../../app-shared/tickMarks.js";
 import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
+import { resolvePlanSheeting } from '../../../app-shared/planSheeting.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
 import { getOutsideFigureVertices } from "./outsideFigureBeacons.js";
@@ -9630,14 +9631,22 @@ function checkMarginConstraint(extentWidth, extentHeight, figureBounds, scaleDen
  * depends on planType alone.
  */
 
-function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceMinDenominator = 0, planType = null, mandatory500 = false) {
+function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceMinDenominator = 0, planType = null, mandatory500 = false, authoritativeDenominator = 0) {
   const extentWidth = extent.maxY - extent.minY;   // metres (Y = Westing)
   const extentHeight = extent.maxX - extent.minX;  // metres (X = Southing)
 
   // --- Resolve initial candidate scale ---
   let candidateIndex = -1; // index into SI727_PRESCRIBED_SCALES
 
-  if (requestedScale) {
+  // The shared resolver (app-shared/planSheeting.js) has already applied the
+  // mandate / declared-scale / auto-fit rules and DXF is using its answer, so
+  // it wins over the raw requestedScale and suppresses the enlargement pass.
+  if (authoritativeDenominator > 0) {
+    const idx = SI727_PRESCRIBED_SCALES.findIndex(s => s.value === authoritativeDenominator);
+    if (idx !== -1) candidateIndex = idx;
+  }
+
+  if (candidateIndex === -1 && requestedScale) {
     const match = String(requestedScale).match(/1\s*:\s*(\d+)/);
     if (match) {
       const denominator = parseInt(match[1], 10);
@@ -9677,7 +9686,7 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
   // reclaim room if the enlarged figure crowds the schedule/blocks. Skipped
   // during a block-placement retry (forceMinDenominator > 0) so we don't undo a
   // scale-up that was needed to fit the blocks.
-  if (forceMinDenominator <= 0) {
+  if (forceMinDenominator <= 0 && authoritativeDenominator <= 0) {
     const _mapWmm = mapBounds.width / MM_TO_PT;
     const _mapHmm = mapBounds.height / MM_TO_PT;
     const _minFit = Math.max(
@@ -10310,9 +10319,36 @@ async function _generateGeoPDFInner(options, logger) {
     logger.info('[PDFKit] 🗺️  No outsideFigure supplied — using the extent bbox as the collision-avoidance figure boundary');
   }
 
-  // Select appropriate page size per SI 727 Section 62
-  // Honour sheetSize/scale from intelligentPreview when provided
-  const pageSize = selectPageSize(calculatedExtent, logger, sheetSize, scale);
+  // Shared sheeting ladder — the SAME resolver dxfGenerator consults, so PDF
+  // and DXF cannot resolve different scales for the same survey. It encodes all
+  // three rules in order: Reg 32(3) mandate → surveyor-declared scale → auto-fit.
+  const _sheeting = resolvePlanSheeting({
+    extentM: {
+      widthM: calculatedExtent.maxY - calculatedExtent.minY,
+      heightM: calculatedExtent.maxX - calculatedExtent.minX,
+    },
+    parcels,
+    planType,
+    declaredScale: parseInt(String(scale ?? '').match(/1\s*:\s*(\d+)/)?.[1] || '0', 10) || null,
+    declaredSheet: sheetSize || null,
+  });
+
+  // Select appropriate page size per SI 727 Section 62. An explicit sheetSize
+  // still wins; otherwise the resolver's best candidate names the sheet, rather
+  // than selectPageSize's hardcoded "fits at ≤1:5000" rule.
+  const pageSize = selectPageSize(
+    calculatedExtent, logger, sheetSize || _sheeting.candidates[0]?.sheetSize, scale,
+  );
+
+  // The candidate for the sheet actually being rendered. Authoritative: the
+  // enlargement pass in calculateOptimalScale is skipped for it, so PDF cannot
+  // drift finer than the shared answer DXF is using.
+  const _sheetingPick = _sheeting.candidates.find((c) => c.sheetSize === pageSize.code)
+                     ?? _sheeting.candidates[0]
+                     ?? null;
+  if (_sheetingPick) {
+    logger.info(`[PDFKit] 📐 Shared sheeting: ${_sheetingPick.reason}`);
+  }
 
   // Create PDF document
   const doc = new PDFDocument({
@@ -10471,7 +10507,10 @@ async function _generateGeoPDFInner(options, logger) {
     scale,
     _forceMinDenominator,
     planType,
-    _applyScaleMandate && mandatory500
+    _applyScaleMandate && mandatory500,
+    // Only authoritative on the first pass: a block-placement retry
+    // (_forceMinDenominator > 0) must be free to step past the shared answer.
+    _forceMinDenominator > 0 ? 0 : (_sheetingPick?.scaleDenominator ?? 0)
   );
 
   // ── Expand extent proportionally when scale is stepped up ──

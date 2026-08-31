@@ -4,14 +4,14 @@
  */
 
 import { analyzeSurvey } from '../utils/surveyAnalyzer.js'
-import { determineOptimalScale } from '../utils/scaleSelector.js'
-import { determineOptimalSheetSize, calculateSI727Layout } from '../utils/si727LayoutCalculator.js'
+import { calculateSI727Layout } from '../utils/si727LayoutCalculator.js'
 import { buildTopology } from '../utils/topologyBuilder.js'
 import { placeLabels } from '../utils/labelPlacer.js'
 import { formatArea } from '../utils/formatters.js'
 import { calculateBeaconSymbolSize, calculateBeaconLabelSize } from '../utils/beaconSymbolStandards.js'
 import { authenticateWithSchema } from '../utils/schemaAuth.js'
 import { SI727_PRESCRIBED_SCALES, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 } from '../utils/si727Constants.js'
+import { resolvePlanSheeting } from '../../../app-shared/planSheeting.js'
 import { resolveTownshipScaleMandate } from '../../../app-shared/block-definitions.js'
 
 /**
@@ -249,113 +249,43 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
       const isoSheetSize =
         (sheetSize === 'SI727_500x400' || sheetSize === 'SI727_800x500' || sheetSize === 'SI727_1000x800') ? sheetSize : undefined
 
-      if (scale && isoSheetSize) {
-        // Both explicitly provided
-        selectedScale = { value: parseInt(scale), label: `1:${scale}` }
-        selectedSheetSize = isoSheetSize
-        layout = calculateSI727Layout(isoSheetSize, parcels.length, 0)
-      } else if (scale) {
-        // Scale provided, pick smallest fitting sheet
-        selectedScale = { value: parseInt(scale), label: `1:${scale}` }
-        const extentForSheet = outsideFigureExtent || analysis.extent
-        const sheetResult = determineOptimalSheetSize(extentForSheet, selectedScale.value, parcels.length, beaconsForDensity.length)
-        selectedSheetSize = sheetResult.recommended
-        layout = calculateSI727Layout(selectedSheetSize, parcels.length, 0)
-      } else {
-        // Joint optimization: find smallest sheet + smallest SI 727 scale combination
-        const extentForOpt = outsideFigureExtent || analysis.extent
+      // Joint scale + sheet selection via the SHARED resolver — the same
+      // app-shared/planSheeting.js both generators consult, so this preview's
+      // recommendation is what the PDF and DXF will actually use.
+      //
+      // Replaces a local optimiser that sized candidates against
+      // calculateSI727Layout(...).drawingArea, whose schedule term grows with
+      // parcelCount: for a 240-stand plan it returned a 300x50mm drawing band
+      // and recommended 1:10000 (a 50 x 42mm figure on a 1000 x 800mm sheet).
+      const extentForOpt = outsideFigureExtent || analysis.extent
+      const sheeting = resolvePlanSheeting({
+        extentM: { widthM: extentForOpt.width, heightM: extentForOpt.height },
+        parcels: { type: 'FeatureCollection', features: parcels.map(p => ({
+          type: 'Feature', properties: { area_m2: p.area_m2, stand: p.stand }, geometry: p.geometry,
+        })) },
+        planType,
+        declaredScale: scale ? parseInt(scale, 10) : null,
+        declaredSheet: isoSheetSize || null,
+      })
 
-        // Calculate minimum scale from legibility constraint (boundary beacons only)
-        const beaconDensityForScale = {
-          ...analysis.density,
-          totalPoints: beaconsForDensity.length,
-          averageSpacing: extentForOpt.area > 0
-            ? Math.sqrt(extentForOpt.area / beaconsForDensity.length)
-            : analysis.density.averageSpacing
-        }
-        const scaleResult = determineOptimalScale(
-          { ...analysis, extent: extentForOpt, density: beaconDensityForScale },
-          areaType || 'urban'
-        )
-        // Use the LEGIBILITY minimum as the candidate floor (not the combined
-        // minScale). determineOptimalScale.minScale now also folds in the figure-
-        // size denominator, which as a lower bound would force the figure toward
-        // the 650mm² minimum (tiny). The joint optimisation enlarges to fill the
-        // sheet, so it must floor on legibility only — its documented intent.
-        const minScaleDenominator = scaleResult.minScaleForLegibility || scaleResult.recommended.value
+      const best = sheeting.candidates[0]
+      selectedScale     = { value: best.scaleDenominator, label: best.scaleLabel }
+      selectedSheetSize = best.sheetSize
+      layout            = calculateSI727Layout(best.sheetSize, parcels.length, 0)
 
-        // Try sheets from smallest to largest; for each sheet find smallest SI 727 scale that fits
-        const sheetOrder = ['SI727_500x400', 'SI727_800x500', 'SI727_1000x800']
-        let bestCombo = null
+      const needsTilingFlag = best.needsTiling
+      console.log('[SurveyPlanPreview] Joint Scale+Sheet Selection:', {
+        extent: `${extentForOpt.width.toFixed(1)}m x ${extentForOpt.height.toFixed(1)}m`,
+        reason: best.reason,
+        legibilityMaxDenominator: Number.isFinite(sheeting.legibilityMaxDenominator)
+          ? `1:${Math.floor(sheeting.legibilityMaxDenominator)}` : 'none',
+        mandatory500: sheeting.mandate.mandatory500,
+        selectedSheet: selectedSheetSize,
+        selectedScale: selectedScale.label,
+        multiSheet: needsTilingFlag ? 'yes (tile grid computed client-side)' : 'no',
+        candidates: sheeting.candidates.length,
+      })
 
-        for (const sheet of sheetOrder) {
-          const sheetLayout = calculateSI727Layout(sheet, parcels.length, 0)
-          const { drawingArea } = sheetLayout
-
-          // SI 727 Reg 32(3) may cap the denominator below the legibility minimum.
-          // When that happens the intersection of [minLegibility, maxDenominator] is empty,
-          // meaning the plan will require multi-sheet tiling at the ceiling scale.
-          // Handle both cases cleanly:
-          //   A) Normal: ceiling ≥ legibility → filter for best single-sheet fit
-          //   B) Ceiling < legibility → jump straight to ceiling, mark as tiling needed
-
-          const ceilingBelowLegibility =
-            maxDenominator !== Infinity && maxDenominator < minScaleDenominator
-
-          if (ceilingBelowLegibility) {
-            // Use the ceiling denominator directly — multi-sheet tiling will be required.
-            const ceilingScale =
-              SI727_PRESCRIBED_SCALES.find(s => s.value === maxDenominator) ||
-              { value: maxDenominator, label: `1:${maxDenominator}` }
-            bestCombo = { sheet, scale: ceilingScale, layout: sheetLayout, needsTiling: true }
-            break // SI727_500x400 at ceiling is as good as any — front-end tile grid picks sheet size
-          }
-
-          const candidateScales = SI727_PRESCRIBED_SCALES
-            .filter(s => s.value >= minScaleDenominator && s.value <= maxDenominator)
-            .sort((a, b) => a.value - b.value) // smallest denominator first (largest map)
-
-          for (const candidate of candidateScales) {
-            const mappedW = (extentForOpt.width / candidate.value) * 1000
-            const mappedH = (extentForOpt.height / candidate.value) * 1000
-            if (mappedW <= drawingArea.width && mappedH <= drawingArea.height) {
-              bestCombo = { sheet, scale: candidate, layout: sheetLayout }
-              break
-            }
-            // At the ceiling denominator and it still doesn't fit → multi-sheet needed
-            if (maxDenominator !== Infinity && candidate.value === maxDenominator) {
-              bestCombo = { sheet, scale: candidate, layout: sheetLayout, needsTiling: true }
-              break
-            }
-          }
-
-          if (bestCombo) break // stop at smallest fitting sheet
-        }
-
-        if (bestCombo) {
-          selectedSheetSize = bestCombo.sheet
-          selectedScale = bestCombo.scale
-          layout = bestCombo.layout
-        } else {
-          // Fallback: A0 at recommended scale
-          selectedSheetSize = 'SI727_1000x800'
-          selectedScale = scaleResult.recommended
-          layout = calculateSI727Layout('SI727_1000x800', parcels.length, 0)
-        }
-
-        const needsTilingFlag = bestCombo?.needsTiling
-        console.log('[SurveyPlanPreview] 📄 Joint Scale+Sheet Selection:', {
-          extent: `${extentForOpt.width.toFixed(1)}m × ${extentForOpt.height.toFixed(1)}m`,
-          minLegibilityScale: `1:${Math.round(minScaleDenominator)}`,
-          si727Ceiling: maxDenominator !== Infinity ? `1:${maxDenominator}` : 'none',
-          selectedSheet: selectedSheetSize,
-          selectedScale: selectedScale.label,
-          multiSheet: needsTilingFlag ? 'yes (tile grid will be computed client-side)' : 'no',
-          mappedSize: `${((extentForOpt.width / selectedScale.value) * 1000).toFixed(1)}mm × ${((extentForOpt.height / selectedScale.value) * 1000).toFixed(1)}mm`,
-          drawingArea: `${layout.drawingArea.width.toFixed(1)}mm × ${layout.drawingArea.height.toFixed(1)}mm`
-        })
-      }
-      
       // 8. Build topology
       const topology = buildTopology(parcels, coordinatePoints)
       

@@ -3,7 +3,10 @@
 ## Problem
 
 A surveyor generating a General Plan must pick the scale by hand. Leaving the
-Scale dropdown on its default (`auto`) does not reliably produce output.
+Scale dropdown on its default (`auto`) yields a plan drawn at a scale so coarse
+it is unusable — measured at 1:10000 for a 500 m × 420 m township, putting a
+50 × 42 mm figure on a 1000 × 800 mm sheet — and a PDF and DXF that disagree
+with each other about the scale.
 
 The system already contains everything needed to choose a scale automatically —
 five times over. None of the five is authoritative, they disagree with one
@@ -109,6 +112,51 @@ worse than no recommendation, because the escalation ladders
 (`dxfGenerator.js:2075`, and the PDF equivalent) are capped at
 `MAX_SHEET_UP_ATTEMPTS = 2` (`app-shared/sheetEscalation.js`).
 
+## Measured behaviour (2026-08-31)
+
+Confirmed by running the `sampleMaglasPlan` fixture (240 stands of 875 m²,
+extent 500 m × 420 m, mandate **not** active) through all three deciders.
+
+**What each decider says, per sheet:**
+
+| Decider | SI727_500x400 | SI727_800x500 | SI727_1000x800 |
+|---|---|---|---|
+| Preview joint optimiser | 1:10000 | 1:4000 | 1:1250 |
+| DXF `selectFigureScale` | 1:2500 | 1:1250 | 1:1000 |
+
+**What the generators actually produce:**
+
+| Input | PDF | DXF | Agree? |
+|---|---|---|---|
+| Auto — i.e. the preview's own recommendation (`1:10000` on `SI727_500x400`) | 1:10000 on SI727_1000x800 — figure **50 × 42 mm** | 1:10000, same sheet | yes |
+| Nothing declared | 1:1250 — figure 400 × 336 mm | **1:1000** — schedule renders over the figure | **no** |
+| Surveyor picks 1:1000 | **1:1250** (silently overridden) | 1:1000 — schedule over figure | **no** |
+
+Three conclusions, two of which amend this spec's original diagnosis:
+
+1. **`auto` does not fail to produce output — it produces an unusable one.**
+   The figure lands at 50 × 42 mm on a 1000 × 800 mm sheet: 0.26% of the sheet.
+   This is the reported symptom. The renderer is not at fault; it faithfully
+   honours a declared 1:10000.
+
+2. **The culprit is `calculateSI727Layout(...).drawingArea`.** For 240 stands
+   on SI727_500x400 it returns a drawing area of **300 × 50 mm** — its
+   `scheduleHeight` term grows with `parcelCount` (capped at 100 mm) and, with
+   the beacon-description and scale-bar strips, leaves a 50 mm-tall band. The
+   preview picks the smallest sheet that "fits" that band, yielding 1:10000.
+   The model degrades precisely in the high-stand-count case General Plans care
+   about.
+
+3. **PDF and DXF diverge whenever the scale is not pinned**, confirming the
+   docstring defect above. They agree in exactly one case — when the preview
+   pins both scale and sheet. The system's only current consistency guarantee
+   is its own bad recommendation. Fixing the recommendation *without* the
+   shared resolver would therefore expose the divergence rather than fix it.
+
+Also observed: at 1:1000 the DXF schedule renders over the figure
+(`scheduleOfAreasOverlapsPolygon` warning). PDF escapes the same collision via
+its 90%-margin step-up to 1:1250, which DXF has no equivalent of.
+
 ## What cannot be solved analytically
 
 Every pre-flight optimiser above reasons about the figure's **bounding box**.
@@ -139,7 +187,7 @@ export function resolvePlanSheeting({
       // …
     ],
     mandate:         { mandatory500, thresholdM2 },
-    legibilityFloor, // finest denominator the narrowest parcel tolerates
+    legibilityMaxDenominator, // coarsest denominator the narrowest stand tolerates
   }
 }
 ```
@@ -153,10 +201,35 @@ Inputs it reuses rather than reinvents:
 
 - `resolveTownshipScaleMandate` (`app-shared/block-definitions.js`) — the
   Reg 32(3) area-majority mandate, already shared by both generators.
-- `calculateMinimumScaleForLegibility` (`app-backend/src/utils/scaleSelector.js`)
-  — moves to `app-shared/` alongside the resolver. It is currently reachable
-  only from the preview route.
+- A legibility bound derived from the narrowest stand. **Not**
+  `calculateMinimumScaleForLegibility` (`app-backend/src/utils/scaleSelector.js`)
+  — see "Legibility is a ceiling, not a floor" below.
 - `SI727_PRESCRIBED_SCALES`, `SI727_GENERAL_PLAN_SHEET_SIZES`, `SHEET_ORDER`.
+
+### Legibility is a ceiling, not a floor
+
+Corrected during implementation; this reverses what earlier drafts of this spec
+said, following the code they described.
+
+`calculateMinimumScaleForLegibility` returns a denominator **floor** derived
+from *average beacon spacing*. Both halves of that are wrong for this purpose:
+
+- **Direction.** Legibility fails when a plan is drawn too *small*, i.e. at too
+  large a denominator. So legibility bounds the denominator from ABOVE. Treating
+  it as a floor forces a plan coarser the more room it has.
+- **Input.** Average beacon spacing is a proxy for crowding, not for whether a
+  label fits. Maglas has four outside-figure beacons across a 500 x 420m site,
+  giving ~229m average spacing and a floor near 1:30000 — which is the other
+  half of the 1:10000 defect, alongside the collapsing drawing area.
+
+The resolver instead computes
+`legibilityMaxDenominator = narrowestStandWidthM * 1000 / 7.5`, where 7.5mm is
+the existing minimum-label allowance (2.5mm glyph + 5mm clearance) and the
+narrowest stand width is the polygon-thickness walk ported from
+`analyzeParcelGeometry`. For Maglas that is 25m -> 1:3333.
+
+`calculateMinimumScaleForLegibility` is left in place; only the preview route
+stopped calling it.
 
 ### Ladder ordering
 
@@ -177,7 +250,7 @@ to the Surveyor-General, so avoiding it dominates sheet economy.
    `calculateOptimalScale`'s margin loop does today.
 
 3. **Auto.** Enumerate every `(sheet, scale)` pair with
-   `scale ≥ legibilityFloor`. Partition into non-tiling and tiling. Sort
+   `scale ≤ legibilityMaxDenominator`. Partition into non-tiling and tiling. Sort
    non-tiling by sheet index ascending, then denominator ascending (finest
    figure first within a sheet). Append tiling candidates last, same sort.
 
@@ -185,14 +258,23 @@ to the Surveyor-General, so avoiding it dominates sheet economy.
 escalation successors, since rule 2 requires the sheet to be free to climb.
 
 **Feasibility model in Phase 1.** Deciding `needsTiling` for a candidate needs
-*some* model of the available drawing area. Phase 1 uses the existing
-`calculateSI727Layout(sheetSize, parcelCount).drawingArea`
-(`si727LayoutCalculator.js:15`) — the preview optimiser's current model, moved
-to `app-shared/` with the resolver. This is deliberately a known-imperfect
-model: it is not what either renderer measures, which is precisely what Phase 2
-fixes. Phase 1's value is that all five call sites now share *one* imperfect
-model instead of holding three different ones, so disagreement becomes a single
-correctable number rather than a structural property.
+*some* model of the available drawing area. Phase 1 adopts
+**`selectFigureScale`'s reserve-fraction model** — sheet dimensions less the SI
+727 margins, times `reserveW = 0.72` / `reserveH = 0.85` — as the canonical
+one, moved into the resolver.
+
+It must **not** use `calculateSI727Layout(...).drawingArea`
+(`si727LayoutCalculator.js:15`). Measurement (see "Measured behaviour" above)
+shows that function is the direct cause of the reported bug: its drawing area
+collapses as stand count rises, returning 300×50mm for a 240-stand plan on
+SI727_500x400 and driving the 1:10000 recommendation. The reserve-fraction
+model is stand-count-independent and lands within one prescribed step of what
+both renderers actually resolve.
+
+This is still an approximation of the renderers' true `mapBounds` — Phase 2
+replaces it with the real thing. Phase 1's value is that all five call sites
+share *one* approximation that is close, instead of three that are far apart
+and one that is catastrophic.
 
 `reason` is a human-readable string that surfaces in the UI and the logs, so
 the choice is never opaque:
@@ -230,28 +312,26 @@ change that makes candidate #1 correct most of the time — but it moves the
 figure on every existing plan, so it carries the real regression risk. Phase 1
 is independently shippable and is not blocked by it.
 
-## Verification before coding
+## Verification — done 2026-08-31
 
-The structural defects above are all read directly from the source. The exact
-runtime failure the user observes on `auto` is **not** yet confirmed from a
-log. Before writing code, reproduce with the Maglas project
-(`MAG1_SH1_Shabani_2026-06-16`, 279 stands, the fixture already captured as
-`app-backend/src/services/__tests__/fixtures/sampleMaglasPlan.js`):
+Carried out against the `sampleMaglasPlan` fixture rather than a live project,
+which needs no database and is reproducible from the test suite. Results are in
+"Measured behaviour" above; the spec was amended before implementation on two
+points:
 
-1. Generate with Scale = `auto`, capture the backend log.
-2. Confirm whether `intelligentPreview` returned at all, what
-   `[SurveyPlanPreview] 📄 Joint Scale+Sheet Selection` logged, what
-   `[PDFKit] 📐 Forwarding scale=…` received, and whether the run ended in
-   exhausted `needsScaleUp` escalation.
+- the symptom is an unusable 50 × 42 mm figure, not a failure to render;
+- the Phase 1 feasibility model switched from
+  `calculateSI727Layout(...).drawingArea` to `selectFigureScale`'s
+  reserve-fraction model, the former having turned out to be the direct cause.
 
-If the observed failure turns out to have a different cause, this spec is
-amended before implementation rather than after.
+The structural defects in "Root cause" were read from source and are unchanged
+by the measurement.
 
 ## Testing
 
 - **Resolver unit tests** (`app-shared/__tests__/planSheeting.test.js`):
   mandate case, relaxed case, `declaredScale` honoured with sheet escalation,
-  `declaredScale` overridden by an active mandate, legibility floor, tiling
+  `declaredScale` overridden by an active mandate, legibility ceiling, tiling
   fallback, ladder ordering, and non-empty `candidates` for degenerate
   zero-extent input.
 - **PDF↔DXF parity test**: both generators resolve an identical
@@ -278,6 +358,31 @@ it synchronously and wait, per the backend ESM runner:
 ```bash
 cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js <pattern>
 ```
+
+## Implementation notes (2026-08-31)
+
+Phase 1 landed as designed, with two deviations recorded above: the legibility
+ceiling correction, and the Phase 1 feasibility model switching to
+`selectFigureScale`'s reserve fractions.
+
+**Parity-test cost.** The first cut of the parity suite ran every assertion
+end-to-end over the dense fixtures and took ~14 minutes (Maglas auto 320s, the
+declared-scale case 495s), because each PDF `needsScaleUp` escalation re-renders
+the whole plan. A test nobody will run is not a regression guard. Restructured
+to ~97s by keeping the PDF↔DXF end-to-end assertions on the light
+`sampleRealisticPlan` (~13s each) and covering the dense fixtures DXF-side,
+where a render is seconds. The pure-resolver suite carries the combinatorial
+cases at millisecond cost.
+
+**Escalation interaction.** Both generators consult the resolver constrained to
+the sheet currently being rendered. A block-placement failure escalates the
+sheet and re-enters the resolver, which is how the ladder gets walked — so the
+existing `needsScaleUp` / `_sheetSizeUpAttempt` machinery is preserved rather
+than replaced. In `pdfkitGeoPDF`, the resolver's denominator is authoritative
+only on the first pass; a retry (`_forceMinDenominator > 0`) passes 0 so it stays
+free to step past the shared answer, and `calculateOptimalScale`'s enlargement
+pass is suppressed whenever the resolver supplied the denominator, so PDF cannot
+drift finer than the answer DXF is using.
 
 ## Out of scope
 

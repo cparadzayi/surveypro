@@ -1612,6 +1612,32 @@ export function _hitsSegments(r, segments) {
   }
   return false;
 }
+/**
+ * The SI 727 blocks a coordinate cross must never be drawn across.
+ *
+ * Deliberately an explicit list rather than "every entry in blockPositions":
+ * blockPositions also carries mapFeatureBounds -- the drawing area itself, which the
+ * ticks legitimately sit inside -- along with non-geometry entries (needsScaleUp,
+ * placedBlocks). Treating those as obstacles would forbid every candidate position.
+ */
+const TICK_AVOID_BLOCKS = [
+  'titleBlock', 'scheduleOfAreas', 'outsideFigureData', 'beaconDescription',
+  'surveyStatement', 'sgSignature', 'endorsement', 'northArrow', 'scaleBar',
+];
+
+/** The rects from blockPositions that ticks must avoid, skipping absent/!finite ones. */
+function tickAvoidRects(blockPositions) {
+  if (!blockPositions) return [];
+  const out = [];
+  for (const name of TICK_AVOID_BLOCKS) {
+    const b = blockPositions[name];
+    if (!b) continue;
+    if (![b.x, b.y, b.width, b.height].every(Number.isFinite)) continue;
+    out.push({ name, x: b.x, y: b.y, width: b.width, height: b.height });
+  }
+  return out;
+}
+
 function calculateTickMarkBounds(
   outsideFigure,
   extent,
@@ -1818,6 +1844,12 @@ function renderOutsideFigureTickMarks(
     const xW = Math.ceil(formatTickLabel('X', node.x).length * CHAR_WIDTH);
     return { pt, r: _footprint(pt, yW, xW) };
   };
+  // Blocks are already placed by the time ticks are drawn, so their real rects are
+  // known here. collisionDetector only ever holds text labels (beacon/parcel/stand) --
+  // never the SI 727 tables -- so without this the crosses were free to land straight
+  // across the Schedule of Areas. selectTickGrid steps to a finer interval when
+  // candidates are rejected, so this costs ticks only where a block genuinely sits.
+  const _blockRects = tickAvoidRects(blockPositions);
   const _isClear = (node) => {
     const f = _rectFor(node); if (!f) return false;
     const r = f.r;
@@ -1825,6 +1857,7 @@ function renderOutsideFigureTickMarks(
     if (_onFigureEdge(r)) return false;
     if (_hitsSegments(r, parcelSegments)) return false;
     if (_hitsRects(r, detailRects)) return false;
+    if (_hitsRects(r, _blockRects)) return false;
     if (collisionDetector && collisionDetector.hasCollision(r.x, r.y, r.width, r.height)) return false;
     return true;
   };
@@ -11805,6 +11838,32 @@ async function _generateGeoPDFInner(options, logger) {
     _parcelSegments,  // parcel boundaries, so no cross lands over a stand
     _standLabelRects,  // and stand numbers, matching the DXF side
   );
+
+  // A coordinate cross drawn across a table is a plan defect -- the SI 727 blocks are
+  // the authoritative record and a cross through them obscures it. Ticks are rendered
+  // last, so this compares what was actually drawn against where the blocks actually
+  // landed, rather than against the reserved bounds computed before placement.
+  const _tickBlockRects = tickAvoidRects(blockPositions);
+  const _tickHits = [];
+  for (const tick of tickMarks ?? []) {
+    const r = tick?.bounds;
+    if (!r) continue;
+    for (const b of _tickBlockRects) {
+      if (r.x < b.x + b.width && b.x < r.x + r.width &&
+          r.y < b.y + b.height && b.y < r.y + r.height) {
+        _tickHits.push({ tick: tick.name, block: b.name });
+      }
+    }
+  }
+  if (_tickHits.length > 0) {
+    warnings.tickMarksOverlapBlocks = {
+      count: _tickHits.length,
+      hits: _tickHits.slice(0, 12),
+      hint: 'Coordinate tick marks drawn over a plan block (e.g. Schedule of Areas).',
+    };
+    logger.warn(`[PDFKit] ⚠️ ${_tickHits.length} tick mark(s) drawn over a block: `
+      + _tickHits.slice(0, 6).map(h => `${h.tick}->${h.block}`).join(', '));
+  }
 
   // Step 6: (blocks already drawn above in Step 5b)
   logger.info(

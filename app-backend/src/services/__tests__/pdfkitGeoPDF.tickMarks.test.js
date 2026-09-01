@@ -62,7 +62,13 @@ const shabaniLikePlan = {
     ],
     coordinates: ring.slice(0, 4).map((c, i) => ({ name: 'ABCD'[i], y: c[0], x: c[1] })),
   },
-  sheetSize: 'SI727_500x400', scale: { value: 500, label: '1:500' },
+  // A plain string, not { value, label } -- calculateOptimalScale's declared-scale
+  // match is `String(requestedScale).match(/1\s*:\s*(\d+)/)`, which stringifies an
+  // object to "[object Object]" and silently falls through to auto-resolution. That
+  // was masked before Task 5's scale-truth rewrite (auto happened to land near 1:500
+  // for this extent); after the rewrite auto lands elsewhere, so the fixture must
+  // actually declare the scale it claims to, or the grid below is not 1:500's.
+  sheetSize: 'SI727_500x400', scale: '1:500',
 }
 
 describe('renderOutsideFigureTickMarks — grid compliance', () => {

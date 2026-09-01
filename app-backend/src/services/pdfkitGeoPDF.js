@@ -15,7 +15,7 @@ import BLOCKS from "../../../app-shared/block-definitions.js";
 import { selectTickGrid, formatTickLabel } from "../../../app-shared/tickMarks.js";
 import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
-import { resolvePlanSheeting } from '../../../app-shared/planSheeting.js';
+import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION } from '../../../app-shared/planSheeting.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
 import { getOutsideFigureVertices } from "./outsideFigureBeacons.js";
@@ -1647,8 +1647,13 @@ function calculateTickMarkBounds(
   titleBlockBounds = null,
   scaleDenominator = 500,
   parcelSegments = [],
-  detailRects = []
+  detailRects = [],
+  // Transform box — the FIGURE box. Must match what renderOutsideFigureTickMarks
+  // uses, or the positions reserved here as obstacles sit somewhere the renderer
+  // never places a cross, and every candidate is rejected against them.
+  figureBox = null
 ) {
+  const _transformBox = figureBox || mapBounds;
   if (
     !outsideFigure ||
     !outsideFigure.features ||
@@ -1705,10 +1710,10 @@ function calculateTickMarkBounds(
     _crossesOutline(r, polygonPdfPoints);
   const polygonPdfPoints = coordinates.map((c) => {
     const [cy, cx] = normalizeCapeLoYX(c[0], c[1]);
-    return transformCoords(cy, cx, extent, mapBounds);
+    return transformCoords(cy, cx, extent, _transformBox);
   });
   const _rectFor = (node) => {
-    const pt = transformCoords(node.y, node.x, extent, mapBounds);
+    const pt = transformCoords(node.y, node.x, extent, _transformBox);
     if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return null;
     const yW = Math.ceil(formatTickLabel('Y', node.y).length * CHAR_WIDTH);
     const xW = Math.ceil(formatTickLabel('X', node.x).length * CHAR_WIDTH);
@@ -1756,8 +1761,16 @@ function renderOutsideFigureTickMarks(
   polygonPdfPoints = [],
   scaleDenominator = 500,
   parcelSegments = [],
-  detailRects = []
+  detailRects = [],
+  // The box that maps ground coordinates to paper — the FIGURE box, which since
+  // the figure became scale-true is no longer the same rectangle as mapBounds.
+  // The two are kept separate because they do different jobs here: this one puts
+  // the crosses on the drawing's own grid, while mapBounds remains the clearance
+  // area they may occupy. The grid snaps outward past the extent, so a node can
+  // sit just beyond the figure box and still belong on the sheet.
+  figureBox = null
 ) {
+  const _transformBox = figureBox || mapBounds;
   // - Tight label coupling: 5pt offset (was 20pt)
   // - Professional font: 8pt (was 10pt)
   // - 4 placement options per label (perpendicular to tick arms)
@@ -1839,7 +1852,7 @@ function renderOutsideFigureTickMarks(
   doc.lineWidth(1.5).strokeColor("#000000").fillColor("#000000");
   doc.fontSize(FONT_SIZE).font("Helvetica-Bold");
   const _rectFor = (node) => {
-    const pt = transformCoords(node.y, node.x, extent, mapBounds);
+    const pt = transformCoords(node.y, node.x, extent, _transformBox);
     if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return null;
     const yW = Math.ceil(formatTickLabel('Y', node.y).length * CHAR_WIDTH);
     const xW = Math.ceil(formatTickLabel('X', node.x).length * CHAR_WIDTH);
@@ -4781,11 +4794,6 @@ function drawTitleBlock(
  * @param {Object} figureBounds - Map figure bounds (scale bar must stay within this)
  */
 function drawScaleBar(doc, extent, mapBounds, scale, position, figureBounds) {
-  // Use figureBounds width for scale calculation (same logic as calculateBlockPositions)
-  const _figW = figureBounds ? figureBounds.width : mapBounds.width;
-  const mapWidthMeters = extent.maxY - extent.minY;
-  const metersPerPoint = mapWidthMeters / _figW;
-
   // Extract scale denominator from scale.label (e.g., "1:500" → 500)
   let denominator = 1000; // Default fallback
   if (scale && scale.label) {
@@ -4794,6 +4802,13 @@ function drawScaleBar(doc, extent, mapBounds, scale, position, figureBounds) {
       denominator = parseInt(match[1], 10);
     }
   }
+
+  // Ground metres per PDF point AT THE STATED SCALE. This used to be derived
+  // from the box (mapWidthMeters / figureBounds.width), which graduated the bar
+  // to a drawing whose scale was wrong and left it disagreeing with the ratio
+  // printed beside it. 1 pt = 0.352778 mm, so 1 pt spans denominator * 0.352778
+  // mm of ground, i.e. denominator * 0.000352778 metres.
+  const metersPerPoint = denominator * 0.000352778;
 
   // Calculate segment length to achieve consistent visual width (~40mm per segment for aesthetics)
   // Then round to nearest "nice" cartographic number for readability
@@ -9586,42 +9601,16 @@ function drawNorthArrow(doc, bounds, position) {
 }
 
 /**
- * Check whether the outside figure fits within the 90% margin constraint.
- * The mapped figure (at the given scale) must be centred within ≤90% of the
- * drawing area so that no part or label extrudes into the margin zones.
- *
- * @param {number} extentWidth  - Ground width of the outside figure in metres
- * @param {number} extentHeight - Ground height of the outside figure in metres
- * @param {object} figureBounds - PDF drawing area in points { width, height }
- * @param {number} scaleDenom   - Scale denominator (e.g. 2000 for 1:2000)
- * @returns {{ fits: boolean, mappedWmm: number, mappedHmm: number, maxWmm: number, maxHmm: number }}
- */
-function checkMarginConstraint(extentWidth, extentHeight, figureBounds, scaleDenom) {
-  const MARGIN_FACTOR = 0.75; // outside figure must occupy ≤75% of drawing area, leaving 25% for blocks
-  const drawingWmm = figureBounds.width / MM_TO_PT;
-  const drawingHmm = figureBounds.height / MM_TO_PT;
-  const maxWmm = drawingWmm * MARGIN_FACTOR;
-  const maxHmm = drawingHmm * MARGIN_FACTOR;
-  // Convert ground metres → paper millimetres at this scale
-  const mappedWmm = (extentWidth / scaleDenom) * 1000;
-  const mappedHmm = (extentHeight / scaleDenom) * 1000;
-  return {
-    fits: mappedWmm <= maxWmm && mappedHmm <= maxHmm,
-    mappedWmm,
-    mappedHmm,
-    maxWmm,
-    maxHmm,
-  };
-}
-
-/**
- * Calculate optimal scale based on extent and available map area
+ * Calculate optimal scale from the extent and the canonical available area.
  * SI 727 Section 32(2): Prescribed scales
  * Honours requestedScale from intelligentPreview when provided.
- * Applies a 90% margin constraint: the outside figure must fit within 90% of
- * the drawing area so that no part or label extrudes into the margin zones.
- * If the initial scale violates this constraint, the next larger scale
- * denominator is tried until the constraint is satisfied.
+ *
+ * The block-room budget that used to live here as checkMarginConstraint's
+ * MARGIN_FACTOR now lives in app-shared/planSheeting.js as FIGURE_MAX_FRACTION,
+ * so the resolver, the PDF and the DXF all apply ONE budget instead of the PDF
+ * applying its own. There is no step-up loop any more either: the figure is
+ * drawn at exactly the scale resolved here, so there is no mismatch between a
+ * printed label and a differently-sized drawing to reconcile.
  *
  * SI 727 Reg 32(3): a township general plan (developed or undeveloped) is
  * mandated at exactly 1:500 only when the majority of its stands are <=200m2
@@ -9631,7 +9620,7 @@ function checkMarginConstraint(extentWidth, extentHeight, figureBounds, scaleDen
  * depends on planType alone.
  */
 
-function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceMinDenominator = 0, planType = null, mandatory500 = false, authoritativeDenominator = 0) {
+function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceMinDenominator = 0, planType = null, mandatory500 = false, authoritativeDenominator = 0, pageSizeName = null) {
   const extentWidth = extent.maxY - extent.minY;   // metres (Y = Westing)
   const extentHeight = extent.maxX - extent.minX;  // metres (X = Southing)
 
@@ -9654,76 +9643,46 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
       if (candidateIndex === -1) {
         // Not in prescribed list — use as-is (no constraint stepping possible)
         logger.warn(`[PDFKit] ⚠️ Scale ${requestedScale} not in SI 727 prescribed list, using as-is`);
-        const synth = { value: denominator, label: `1:${denominator}`, category: 'custom' };
-        const check = checkMarginConstraint(extentWidth, extentHeight, mapBounds, denominator);
-        if (!check.fits) {
-          logger.warn(`[PDFKit] ⚠️ Custom scale ${requestedScale} violates 90% margin constraint (${check.mappedWmm.toFixed(1)}mm × ${check.mappedHmm.toFixed(1)}mm > ${check.maxWmm.toFixed(1)}mm × ${check.maxHmm.toFixed(1)}mm) but no prescribed alternative available`);
-        }
-        return synth;
+        return { value: denominator, label: `1:${denominator}`, category: 'custom' };
       }
     }
   }
 
   if (candidateIndex === -1) {
-    // Auto-calculate: find smallest SI 727 scale where the extent fits the drawing area
-    const mapWidthMM = mapBounds.width / MM_TO_PT;
-    const mapHeightMM = mapBounds.height / MM_TO_PT;
-    const scaleForWidth = (extentWidth * 1000) / mapWidthMM;
-    const scaleForHeight = (extentHeight * 1000) / mapHeightMM;
-    const minRequiredScale = Math.max(scaleForWidth, scaleForHeight);
+    // Auto: the finest prescribed scale whose figure fits inside the block-room
+    // budget of the canonical available area. Falls back to the caller's
+    // mapBounds only when no sheet name was supplied.
+    const area = pageSizeName
+      ? drawingAreaMm(pageSizeName)
+      : { widthMm: mapBounds.width / MM_TO_PT, heightMm: mapBounds.height / MM_TO_PT };
+    const minRequired = Math.max(
+      (extentWidth  * 1000) / (area.widthMm  * FIGURE_MAX_FRACTION),
+      (extentHeight * 1000) / (area.heightMm * FIGURE_MAX_FRACTION),
+    );
 
-    candidateIndex = SI727_PRESCRIBED_SCALES.findIndex(s => s.value >= minRequiredScale);
+    candidateIndex = SI727_PRESCRIBED_SCALES.findIndex(s => s.value >= minRequired);
     if (candidateIndex === -1) {
       candidateIndex = SI727_PRESCRIBED_SCALES.length - 1; // largest available
     }
   }
 
-  // --- ENLARGE the figure to dominate the sheet (SI 727 General Plan) ---
-  // The requested scale (from intelligentPreview) is often conservative, leaving
-  // the figure small on a large sheet. Step DOWN to the smallest denominator
-  // (largest figure) that still fits the drawing area, so the figure is the hero.
-  // The 90% margin loop below + forceMinDenominator (block-placement retry)
-  // reclaim room if the enlarged figure crowds the schedule/blocks. Skipped
-  // during a block-placement retry (forceMinDenominator > 0) so we don't undo a
-  // scale-up that was needed to fit the blocks.
-  if (forceMinDenominator <= 0 && authoritativeDenominator <= 0) {
-    const _mapWmm = mapBounds.width / MM_TO_PT;
-    const _mapHmm = mapBounds.height / MM_TO_PT;
-    const _minFit = Math.max(
-      (extentWidth * 1000) / _mapWmm,
-      (extentHeight * 1000) / _mapHmm,
-    );
-    let _autoMaxIdx = SI727_PRESCRIBED_SCALES.findIndex(s => s.value >= _minFit);
-    // SI 727 Reg 32(3): a township general plan is mandated at exactly 1:500
-    // when mandatory500 is true (majority of stands <=200m2) -> never enlarge
-    // it finer than 1:500 (the applyPlanTypeCeiling() cap below prevents
-    // coarser, so it lands exactly on 1:500; if the figure is too big to fit
-    // at 1:500 the cap flags needsTiling). When mandatory500 is false, the
-    // plan may use any prescribed scale, so it is NOT floored here.
-    const _exactMandateDenom = mandatory500 ? 500 : 0;
-    if (_exactMandateDenom > 0) {
-      const _floorIdx = SI727_PRESCRIBED_SCALES.findIndex(s => s.value >= _exactMandateDenom);
-      if (_floorIdx !== -1) _autoMaxIdx = Math.max(_autoMaxIdx, _floorIdx);
-    }
-    // When the mandate is active, the floor must apply even if it pushes the
-    // index ABOVE (coarser than) the naturally-resolved candidateIndex — e.g.
-    // a small extent that auto-fits finer than 1:500 must still be pulled
-    // back to exactly 1:500, not left at its natural auto-fit scale. Outside
-    // the mandate, this block only ever enlarges (moves to a smaller/finer
-    // index), never coarsens, hence the `< candidateIndex` guard stays for
-    // that branch.
-    if (_exactMandateDenom > 0 && _autoMaxIdx !== -1 && _autoMaxIdx !== candidateIndex) {
+  // --- SI 727 Reg 32(3) mandate floor ---
+  // The enlargement pass that used to live here is gone: the shared resolver now
+  // decides how large the figure should be, and the figure is drawn at exactly
+  // that scale rather than being fitted to the box and captioned afterwards.
+  //
+  // The mandate floor stays. applyPlanTypeCeiling below prevents a mandated plan
+  // from going COARSER than 1:500; this prevents it going finer, so a small
+  // extent that auto-fits at 1:400 is still pulled back to exactly 1:500. Only
+  // needed when the resolver did not already supply the answer.
+  if (forceMinDenominator <= 0 && authoritativeDenominator <= 0 && mandatory500) {
+    const _floorIdx = SI727_PRESCRIBED_SCALES.findIndex(s => s.value >= 500);
+    if (_floorIdx !== -1 && _floorIdx !== candidateIndex) {
       logger.info(
         `[PDFKit] 📏 Adjusting figure to mandate: ${SI727_PRESCRIBED_SCALES[candidateIndex].label} → ` +
-        `${SI727_PRESCRIBED_SCALES[_autoMaxIdx].label} (floored/enlarged to the 1:${_exactMandateDenom} township mandate)`,
+        `${SI727_PRESCRIBED_SCALES[_floorIdx].label} (1:500 township mandate)`,
       );
-      candidateIndex = _autoMaxIdx;
-    } else if (_exactMandateDenom === 0 && _autoMaxIdx !== -1 && _autoMaxIdx < candidateIndex) {
-      logger.info(
-        `[PDFKit] 📏 Enlarging figure: ${SI727_PRESCRIBED_SCALES[candidateIndex].label} → ` +
-        `${SI727_PRESCRIBED_SCALES[_autoMaxIdx].label} (largest SI 727 scale that fills the drawing area)`,
-      );
-      candidateIndex = _autoMaxIdx;
+      candidateIndex = _floorIdx;
     }
   }
 
@@ -9741,44 +9700,12 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
     }
   }
 
-  // --- Apply 90% margin constraint ---
-  // Step up through prescribed scales until the outside figure fits within 90%
-  // of the drawing area, ensuring no part or label extrudes into the margins.
-  let finalIndex = candidateIndex;
-  while (finalIndex < SI727_PRESCRIBED_SCALES.length) {
-    const candidate = SI727_PRESCRIBED_SCALES[finalIndex];
-    const check = checkMarginConstraint(extentWidth, extentHeight, mapBounds, candidate.value);
-    if (check.fits) {
-      if (finalIndex > candidateIndex) {
-        logger.info({
-          msg: "[PDFKit] 📏 Scale stepped up to satisfy 90% margin constraint",
-          from: SI727_PRESCRIBED_SCALES[candidateIndex].label,
-          to: candidate.label,
-          mappedSize: `${check.mappedWmm.toFixed(1)}mm × ${check.mappedHmm.toFixed(1)}mm`,
-          maxAllowed: `${check.maxWmm.toFixed(1)}mm × ${check.maxHmm.toFixed(1)}mm`,
-        });
-      } else {
-        logger.info({
-          msg: "[PDFKit] 📏 Scale satisfies 90% margin constraint",
-          scale: candidate.label,
-          source: requestedScale ? "intelligentPreview" : "auto-calculated",
-          mappedSize: `${check.mappedWmm.toFixed(1)}mm × ${check.mappedHmm.toFixed(1)}mm`,
-          maxAllowed: `${check.maxWmm.toFixed(1)}mm × ${check.maxHmm.toFixed(1)}mm`,
-        });
-      }
-      // Always apply the plan-type ceiling AFTER resolving the margin-fitting scale.
-      // Previously only the exhausted-scales fallback called applyPlanTypeCeiling,
-      // meaning large townships that resolved to e.g. 1:2000 bypassed the 1:500 ceiling entirely.
-      return applyPlanTypeCeiling(candidate, extent, mapBounds, planType, mandatory500, logger);
-    }
-    logger.info(`[PDFKit] 📏 Scale ${candidate.label} violates 90% margin (${check.mappedWmm.toFixed(1)}mm × ${check.mappedHmm.toFixed(1)}mm > ${check.maxWmm.toFixed(1)}mm × ${check.maxHmm.toFixed(1)}mm), stepping up`);
-    finalIndex++;
-  }
-
-  // Exhausted all scales — use largest and warn
-  const largest = SI727_PRESCRIBED_SCALES[SI727_PRESCRIBED_SCALES.length - 1];
-  logger.warn(`[PDFKit] ⚠️ No SI 727 scale satisfies 90% margin constraint; using ${largest.label}`);
-  return applyPlanTypeCeiling(largest, extent, mapBounds, planType, mandatory500, logger);
+  // The scale is resolved and the figure is drawn at exactly this size, so the
+  // plan-type ceiling is the only thing left to apply: Reg 32(3)'s 1:500 cap,
+  // and the needsTiling flag when the mandated scale will not fit the sheet.
+  return applyPlanTypeCeiling(
+    SI727_PRESCRIBED_SCALES[candidateIndex], extent, mapBounds, planType, mandatory500, logger,
+  );
 }
 
 /**
@@ -10333,12 +10260,26 @@ async function _generateGeoPDFInner(options, logger) {
     declaredSheet: sheetSize || null,
   });
 
-  // Select appropriate page size per SI 727 Section 62. An explicit sheetSize
-  // still wins; otherwise the resolver's best candidate names the sheet, rather
-  // than selectPageSize's hardcoded "fits at ≤1:5000" rule.
-  const pageSize = selectPageSize(
-    calculatedExtent, logger, sheetSize || _sheeting.candidates[0]?.sheetSize, scale,
-  );
+  // Select appropriate page size per SI 727 Section 62. The resolver's best
+  // candidate names the sheet, rather than selectPageSize's hardcoded
+  // "fits at ≤1:5000" rule.
+  //
+  // A declared sheet is a starting point, not a cap — see sheetLadder() in
+  // app-shared/planSheeting.js. Now that the figure is drawn at its true size
+  // rather than fitted to the box, a sheet too small for the honoured scale
+  // would push the figure off the page, so fall through to the smallest
+  // candidate that actually fits.
+  const _declaredSheetFits = sheetSize
+    && _sheeting.candidates.some((c) => c.sheetSize === sheetSize && !c.needsTiling);
+  const _resolvedSheetName = (sheetSize && !_declaredSheetFits)
+    ? (_sheeting.candidates[0]?.sheetSize ?? sheetSize)
+    : (sheetSize || _sheeting.candidates[0]?.sheetSize);
+  if (sheetSize && !_declaredSheetFits) {
+    logger.info(
+      `[PDFKit] 📐 Declared sheet ${sheetSize} cannot fit the figure at the honoured scale — escalating to ${_resolvedSheetName}`,
+    );
+  }
+  const pageSize = selectPageSize(calculatedExtent, logger, _resolvedSheetName, scale);
 
   // The candidate for the sheet actually being rendered. Authoritative: the
   // enlargement pass in calculateOptimalScale is skipped for it, so PDF cannot
@@ -10510,57 +10451,46 @@ async function _generateGeoPDFInner(options, logger) {
     _applyScaleMandate && mandatory500,
     // Only authoritative on the first pass: a block-placement retry
     // (_forceMinDenominator > 0) must be free to step past the shared answer.
-    _forceMinDenominator > 0 ? 0 : (_sheetingPick?.scaleDenominator ?? 0)
+    _forceMinDenominator > 0 ? 0 : (_sheetingPick?.scaleDenominator ?? 0),
+    // The sheet actually being rendered, so the auto branch measures the
+    // canonical available area rather than the caller's figureBounds.
+    pageSize.code || null,
   );
 
-  // ── Expand extent proportionally when scale is stepped up ──
-  // Without this, transformCoords maps the data extent to fill the figure bounds
-  // regardless of scale, so the polygon is always the same size on the page.
-  // When scale steps up (e.g. 1:2000 → 1:2500), expand the extent by the
-  // step-up ratio so the data fills a proportionally smaller area of the page
-  // (80% at 1:2500, 67% at 1:3000), creating whitespace for block placement.
+  // ── Size the figure box from the resolved scale ──
+  // The box IS the scale: transformCoords fits the extent into whatever box it
+  // is given, so making the box exactly extent/S wide lands the drawing on S by
+  // construction. insetFactor: 0 because the box carries no slack of its own.
+  //
+  // Horizontal alignment is unchanged in spirit: when the figure leaves a wide
+  // strip, push it left so the slack forms one contiguous right-hand column,
+  // which is where the Schedule of Areas prefers to sit.
   {
-    const requestedDenom = parseInt(String(scale).match(/1\s*:\s*(\d+)/)?.[1] || '0', 10);
-    if (requestedDenom > 0 && optimalScale.value > requestedDenom) {
-      const stepRatio = optimalScale.value / requestedDenom; // e.g. 2500/2000 = 1.25
-      const dataW = calculatedExtent.maxY - calculatedExtent.minY;
-      const dataH = calculatedExtent.maxX - calculatedExtent.minX;
-      const centreY = (calculatedExtent.minY + calculatedExtent.maxY) / 2;
-      const centreX = (calculatedExtent.minX + calculatedExtent.maxX) / 2;
-      const halfW = (dataW * stepRatio) / 2;
-      const halfH = (dataH * stepRatio) / 2;
-      calculatedExtent = {
-        minY: centreY - halfW,
-        maxY: centreY + halfW,
-        minX: centreX - halfH,
-        maxX: centreX + halfH,
-      };
-      logger.info({
-        msg: '[PDFKit] 📐 Extent expanded for block placement',
-        scale: optimalScale.label,
-        requestedScale: `1:${requestedDenom}`,
-        stepRatio: stepRatio.toFixed(2),
-        fillRatio: `${(100 / stepRatio).toFixed(0)}%`,
-        dataSize: `${dataW.toFixed(1)}m × ${dataH.toFixed(1)}m`,
-      });
-    }
-  }
+    const extWm = calculatedExtent.maxY - calculatedExtent.minY;
+    const extHm = calculatedExtent.maxX - calculatedExtent.minX;
+    const figW = (extWm / optimalScale.value) * 1000 * MM_TO_PT;
+    const figH = (extHm / optimalScale.value) * 1000 * MM_TO_PT;
 
-  // POLYGON ALIGNMENT OPTIMISATION
-  // Determine horizontal alignment of the polygon within figureBounds.
-  // When the polygon is narrower than the effective figure area, left-aligning
-  // concentrates the remaining horizontal slack into a single contiguous right-side
-  // strip — the preferred zone for schedule-of-areas placement (SI 727).
-  {
-    const extWm = calculatedExtent.maxY - calculatedExtent.minY; // easting range (m)
-    const extHm = calculatedExtent.maxX - calculatedExtent.minX; // northing range (m)
-    const effectiveW = figureBounds.width  * 0.90; // 5% inset each side
-    const effectiveH = figureBounds.height * 0.90;
-    const uScale     = Math.min(effectiveW / extWm, effectiveH / extHm);
-    const renderedW  = extWm * uScale;
-    const hSlack     = effectiveW - renderedW;
-    figureBounds.alignX = hSlack > 40 ? 'left' : 'center';
-    logger.info(`[PDFKit] Figure alignX=${figureBounds.alignX} (hSlack=${hSlack.toFixed(0)}pt, renderedW=${renderedW.toFixed(0)}pt, effectiveW=${effectiveW.toFixed(0)}pt)`);
+    const hSlack = figureBounds.width - figW;
+    const vSlack = figureBounds.height - figH;
+    const alignX = hSlack > 40 ? 'left' : 'center';
+
+    figureBounds = {
+      x: alignX === 'left' ? figureBounds.x : figureBounds.x + Math.max(0, hSlack) / 2,
+      y: figureBounds.y + Math.max(0, vSlack) / 2,
+      width: figW,
+      height: figH,
+      insetFactor: 0,
+      alignX,
+    };
+
+    logger.info({
+      msg: '[PDFKit] 📐 Figure box sized from the scale',
+      scale: optimalScale.label,
+      figure: `${(figW / MM_TO_PT).toFixed(1)}mm × ${(figH / MM_TO_PT).toFixed(1)}mm`,
+      slack: `${(hSlack / MM_TO_PT).toFixed(1)}mm × ${(vSlack / MM_TO_PT).toFixed(1)}mm`,
+      alignX,
+    });
   }
 
   logger.info({
@@ -11366,11 +11296,13 @@ async function _generateGeoPDFInner(options, logger) {
   const initialTickMarkBounds = calculateTickMarkBounds(
     outsideFigure,
     calculatedExtent,
-    mapBounds,  // Use full drawing area within margins
+    mapBounds,  // clearance area
     logger,
     null,
-    scale?.value ?? 500,
+    optimalScale.value,
     _parcelSegments,
+    [],
+    figureBounds,  // transform box — must match the renderer's
   );
   logger.info(
     `[PDFKit] 📐 Pass 1: Calculated ${initialTickMarkBounds.length} initial tick mark reserved regions`
@@ -11535,11 +11467,13 @@ async function _generateGeoPDFInner(options, logger) {
   const _plannerTickBounds = calculateTickMarkBounds(
     outsideFigure,
     calculatedExtent,
-    mapBounds,
+    mapBounds,  // clearance area
     logger,
     null,
-    scale?.value ?? 500,
+    optimalScale.value,
     _parcelSegments,
+    [],
+    figureBounds,  // transform box — must match the renderer's
   );
   logger.info(
     `[PDFKit] 📐 Reserving ${_plannerTickBounds.length} corner tick crosses as planner obstacles (parity with DXF)`
@@ -11597,8 +11531,10 @@ async function _generateGeoPDFInner(options, logger) {
   let suggestedScale = null;
 
   if (blockPositions.needsScaleUp) {
-    // Determine current sheet size name
-    const currentSheetName = sheetSize || 'SI727_500x400';
+    // The sheet actually rendered, not the one requested: on the auto path
+    // `sheetSize` is undefined and the resolver named the sheet, so defaulting
+    // to the smallest here would escalate from the wrong rung.
+    const currentSheetName = pageSize.code || sheetSize || 'SI727_500x400';
     const canEscalateSheet = nextSheetUp(currentSheetName) !== null
       && _sheetSizeUpAttempt < MAX_SHEET_UP_ATTEMPTS;
 
@@ -11613,6 +11549,20 @@ async function _generateGeoPDFInner(options, logger) {
         return await _generateGeoPDFInner({
           ...options,
           sheetSize: nextSheet,
+          // Carry the scale forward. Escalating the sheet exists to BUY
+          // whitespace for the blocks; re-resolving from scratch on the bigger
+          // sheet takes the resolver's finest fitting candidate instead, so the
+          // figure grows to eat exactly the room just gained and the blocks are
+          // no better off. Measured before this line existed: 1:1500 on
+          // 500x400 (200x130mm) escalated to 1:1000 on 800x500 (300x195mm) and
+          // then 1:500 on 1000x800 (600x390mm), failing placement every time
+          // and stopping only when the attempt cap ran out.
+          //
+          // Pinning the scale is also what the spec asks for in the equivalent
+          // case: an explicit scale is honoured and the SHEET escalates. A
+          // later coarsening is still possible — the scale step-up branch below
+          // and _forceMinDenominator both override a pinned scale upward.
+          scale: optimalScale.label,
           _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
           _scaleUpAttempt: 0, // reset scale attempts for the new sheet
         }, logger);
@@ -11663,12 +11613,13 @@ async function _generateGeoPDFInner(options, logger) {
   const finalTickMarkBounds = calculateTickMarkBounds(
     outsideFigure,
     calculatedExtent,
-    mapBounds,  // Use full drawing area within margins
+    mapBounds,  // clearance area
     logger,
     blockPositions.titleBlock,
-    scale?.value ?? 500,
+    optimalScale.value,
     _parcelSegments,
     _standLabelRects,
+    figureBounds,  // transform box — must match the renderer's
   );
   logger.info(
     `[PDFKit] 📐 Pass 2: Recalculated ${finalTickMarkBounds.length} final tick mark positions (avoiding title block)`
@@ -11867,15 +11818,22 @@ async function _generateGeoPDFInner(options, logger) {
     doc,
     outsideFigure,
     calculatedExtent,
-    mapBounds,  // Use full drawing area within margins
+    mapBounds,  // clearance area the crosses may occupy
     collisionDetector,
     logger,
     blockPositions.titleBlock,
     blockPositions,
     _topoPolyPts,  // Polygon PDF points for label collision avoidance
-    scale?.value ?? 500,
+    optimalScale.value,
     _parcelSegments,  // parcel boundaries, so no cross lands over a stand
     _standLabelRects,  // and stand numbers, matching the DXF side
+    // Place the crosses on the FIGURE's grid: they are the plan's coordinate
+    // reference, so they must come from the same transform that draws the
+    // figure, or the stated ground coordinates do not correspond to the
+    // drawing. Masked while both boxes were fitted to the extent (each produced
+    // its own proportional frame); now that the figure box carries the true
+    // scale the two disagree, and the figure is the one that is right.
+    figureBounds,
   );
 
   // A coordinate cross drawn across a table is a plan defect -- the SI 727 blocks are

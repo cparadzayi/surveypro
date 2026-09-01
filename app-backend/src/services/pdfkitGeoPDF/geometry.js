@@ -515,7 +515,9 @@ export function transformCoords(y, x, extent, pdfBounds) {
   const width = eastingMax - eastingMin;
   const height = northingMax - northingMin;
 
-  const INSET_FACTOR = 0.05;
+  // A caller that has already sized its box to the exact figure passes
+  // insetFactor: 0 — any inset would then shrink the drawing off its scale.
+  const INSET_FACTOR = pdfBounds.insetFactor ?? 0.05;
   const insetX = pdfBounds.width * INSET_FACTOR;
   const insetY = pdfBounds.height * INSET_FACTOR;
   const effectiveBounds = {
@@ -563,16 +565,11 @@ export function calculateMapBounds(pageWidth, pageHeight) {
     height: pageHeight - topMargin - bottomMargin,
   };
 
-  const figureScale = 0.95;
-  const figureWidth = mainBoundary.width * figureScale;
-  const figureHeight = mainBoundary.height * figureScale;
-
-  const figureBoundary = {
-    x: mainBoundary.x + (mainBoundary.width - figureWidth) / 2,
-    y: mainBoundary.y + (mainBoundary.height - figureHeight) / 2,
-    width: figureWidth,
-    height: figureHeight,
-  };
+  // The figure boundary is the available area, not a shrunken fraction of it.
+  // The caller subtracts the title band and then sizes the figure box from the
+  // resolved scale, so any fraction applied here would silently rescale the
+  // drawing.
+  const figureBoundary = { ...mainBoundary };
 
   return {
     main: mainBoundary,

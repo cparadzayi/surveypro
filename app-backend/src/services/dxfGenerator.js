@@ -2093,6 +2093,12 @@ export function generateDXF(options, logger) {
       return generateDXF({
         ...options,
         sheetSize: nextSheet,
+        // Carry the scale forward. Escalating the sheet exists to BUY room for
+        // the blocks; without this the retry re-resolves from scratch and takes
+        // the resolver's finest fitting candidate for the bigger sheet, so the
+        // figure grows to eat exactly the room just gained and the blocks are no
+        // better off. The PDF side had the same defect and the same fix.
+        scale: `1:${S}`,
         _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
       }, logger);
     }
@@ -2305,6 +2311,12 @@ export function generateDXF(options, logger) {
       return generateDXF({
         ...options,
         sheetSize: nextSheet,
+        // Carry the scale forward. Escalating the sheet exists to BUY room for
+        // the blocks; without this the retry re-resolves from scratch and takes
+        // the resolver's finest fitting candidate for the bigger sheet, so the
+        // figure grows to eat exactly the room just gained and the blocks are no
+        // better off. The PDF side had the same defect and the same fix.
+        scale: `1:${S}`,
         _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
       }, logger);
     }
@@ -2445,6 +2457,12 @@ export function generateDXF(options, logger) {
       return generateDXF({
         ...options,
         sheetSize: nextSheet,
+        // Carry the scale forward. Escalating the sheet exists to BUY room for
+        // the blocks; without this the retry re-resolves from scratch and takes
+        // the resolver's finest fitting candidate for the bigger sheet, so the
+        // figure grows to eat exactly the room just gained and the blocks are no
+        // better off. The PDF side had the same defect and the same fix.
+        scale: `1:${S}`,
         _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
       }, logger);
     }

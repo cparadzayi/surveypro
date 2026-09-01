@@ -57,11 +57,21 @@ describe('computeTickGrid', () => {
   test('returns every intersection, interior nodes included', () => {
     // The reference carries crosses inside the figure, so the grid must offer
     // interior nodes; which ones get drawn is the renderer's clearance test.
-    const { nodes } = computeTickGrid({
+    //
+    // This 200x200 extent is small enough that the division-cap rule (at least
+    // MIN_DIVISIONS_ACROSS_FIGURE=4 divisions across the figure's longest side)
+    // now binds ahead of the 100mm paper-spacing target: 200/4=50 < the
+    // paper-target's 100, so the interval is 50, not 100 -- a 5x5 grid, not
+    // 3x3. Before that rule existed the interval depended only on how much of
+    // the SHEET the figure occupied, which is what let a small, scale-true
+    // figure's declared-scale grid collapse to a handful of corner-only nodes
+    // (the defect the division cap fixes).
+    const { intervalM, nodes } = computeTickGrid({
       yMin: 0, yMax: 200, xMin: 0, xMax: 200, scaleDenominator: 1000,
     })
-    expect(nodes).toHaveLength(9)   // 3 x 3, not just the 8 perimeter points
-    expect(nodes).toContainEqual({ y: 100, x: 100 })  // the interior node
+    expect(intervalM).toBe(50)
+    expect(nodes).toHaveLength(25)   // 5 x 5, not just the 4 perimeter-only corners
+    expect(nodes).toContainEqual({ y: 100, x: 100 })  // an interior node
   })
 
   test('every node is a whole multiple of the interval', () => {

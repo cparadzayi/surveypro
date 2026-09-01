@@ -447,36 +447,45 @@ export default async function surveyProjectRoutes(fastify, options) {
         delete currentState.step_data[step]
         delete currentState.step_data['csv-import']  // Clear both variations
         delete currentState.step_data['import_csv']
-        
+
+        // Send the surveyor back to the step being reset.
+        //
+        // Without this the pointer stayed wherever it was, which stranded the
+        // project: the CSV import screen renders only when current_step is
+        // 'csv-import' AND no points are loaded, and the step navigation that
+        // would let you click back to it is itself hidden when there are no
+        // imported points. Resetting from a later step therefore removed every
+        // route back to the importer. The rest of workflow_state uses the
+        // hyphenated keys, so normalise the CSV step's two spellings onto it.
+        currentState.current_step =
+          (step === 'import_csv' || step === 'csv-import') ? 'csv-import' : step
+
         // If resetting CSV import step, also delete coordinate points from database
         if (step === 'import_csv' || step === 'csv-import') {
           try {
-            // Get surveyor schema for this project
-            const schemaResult = await db.query(
-              `SELECT spr.schema_name
-               FROM survey_projects sp
-               JOIN surveyor_profiles spr ON sp.surveyor_profile_id = spr.id
-               WHERE sp.id = $1`,
+            // `db` is already schema-scoped -- getSurveyorPool sets
+            // `search_path = <surveyor schema>, public` before every query -- so
+            // the unqualified table name resolves to the right schema.
+            //
+            // The previous implementation looked the project up via an
+            // unqualified `survey_projects JOIN surveyor_profiles` to discover
+            // the schema name. That join resolved to `public`, which holds only
+            // legacy projects, so for any project living in a surveyor schema it
+            // returned no row -- and the DELETE, guarded by `rows.length > 0`,
+            // never ran. The reset reported success while every coordinate point
+            // survived, and the stale points then re-hydrated the workflow on the
+            // next load.
+            const deleted = await db.query(
+              `DELETE FROM coordinate_points WHERE project_id = $1`,
               [id]
             )
-            
-            if (schemaResult.rows.length > 0) {
-              const schemaName = schemaResult.rows[0].schema_name
-              
-              // Delete coordinate points from surveyor schema
-              await db.query(
-                `DELETE FROM ${schemaName}.coordinate_points WHERE project_id = $1`,
-                [id]
-              )
-              
-              fastify.log.info(`[PATCH /workflow] Deleted coordinate points for project ${id} from schema ${schemaName}`)
-            }
+            fastify.log.info(`[PATCH /workflow] Deleted ${deleted.rowCount} coordinate point(s) for project ${id}`)
           } catch (error) {
             fastify.log.error(`[PATCH /workflow] Failed to delete coordinate points: ${error.message}`)
           }
         }
-        
-        fastify.log.info(`[PATCH /workflow] Step '${step}' reset`)
+
+        fastify.log.info(`[PATCH /workflow] Step '${step}' reset; current_step now '${currentState.current_step}'`)
       }
       
       // Check if workflow can be finalized (all required steps completed)

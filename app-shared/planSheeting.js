@@ -39,31 +39,39 @@ const MIN_LABEL_MM = 7.5;
 const MARGIN_LEFT = 50, MARGIN_RIGHT = 150, MARGIN_TOP = 50, MARGIN_BOTTOM = 50;
 
 /**
- * Fraction of the margin-inset sheet available to the figure. The remainder is
- * reserved for the schedule / coordinate blocks (width) and the title strip
- * (height). These are `selectFigureScale`'s long-standing reserve fractions,
- * promoted here as the canonical model.
- *
- * Deliberately NOT `calculateSI727Layout(...).drawingArea`: that function's
- * schedule term grows with stand count, collapsing to a 50mm-tall band for a
- * 240-stand plan and driving the 1:10000 recommendation this resolver exists
- * to fix. See the spec's "Measured behaviour" section.
+ * Paper millimetres reserved at the top of the sheet for the title block.
+ * Deliberately conservative: measured bands are 46.2 mm (DXF) and 51.9 mm (PDF)
+ * on sampleRealisticPlan. Each renderer passes its own measured band when it
+ * knows it; this estimate serves the preview, which is only ever a hint.
  */
-const RESERVE_W = 0.72, RESERVE_H = 0.85;
+export const TITLE_BAND_ESTIMATE_MM = 55;
 
 /**
- * Figure-available drawing area for one sheet, in millimetres.
- * Stand-count independent by design.
+ * Share of the available area the figure may occupy. The remainder is the
+ * budget for the Schedule of Areas, coordinate list and endorsement blocks.
+ *
+ * This is pdfkitGeoPDF's MARGIN_FACTOR, promoted rather than deleted. It is not
+ * a fudge: it is the only measured block-room reservation in the system, and
+ * without it an honest available area sends the resolver straight to a 100%-fill
+ * candidate on the smallest sheet, which then fails block placement and
+ * escalates — at a full re-render each time.
+ */
+export const FIGURE_MAX_FRACTION = 0.75;
+
+/**
+ * Figure-available drawing area for one sheet, in millimetres: the margin-inset
+ * sheet less the title band. Stand-count independent by design.
  *
  * @param {string} sheetName
+ * @param {{titleBandMm?: number}} [opts]
  * @returns {{ widthMm: number, heightMm: number }}
  */
-export function drawingAreaMm(sheetName) {
+export function drawingAreaMm(sheetName, { titleBandMm = TITLE_BAND_ESTIMATE_MM } = {}) {
   const sheet = SI727_GENERAL_PLAN_SHEET_SIZES.find((s) => s.name === sheetName);
   if (!sheet) throw new Error(`Unknown SI 727 sheet size: ${sheetName}`);
   return {
-    widthMm: (sheet.width - MARGIN_LEFT - MARGIN_RIGHT) * RESERVE_W,
-    heightMm: (sheet.height - MARGIN_TOP - MARGIN_BOTTOM) * RESERVE_H,
+    widthMm: sheet.width - MARGIN_LEFT - MARGIN_RIGHT,
+    heightMm: sheet.height - MARGIN_TOP - MARGIN_BOTTOM - titleBandMm,
   };
 }
 
@@ -129,10 +137,10 @@ function sheetLadder(declaredSheet) {
   return idx === -1 ? all : all.slice(idx);
 }
 
-function fitsOn(sheetName, extentM, denominator) {
-  const area = drawingAreaMm(sheetName);
-  return (extentM.widthM / denominator) * 1000 <= area.widthMm
-      && (extentM.heightM / denominator) * 1000 <= area.heightMm;
+function fitsOn(sheetName, extentM, denominator, titleBandMm) {
+  const area = drawingAreaMm(sheetName, { titleBandMm });
+  return (extentM.widthM / denominator) * 1000 <= area.widthMm * FIGURE_MAX_FRACTION
+      && (extentM.heightM / denominator) * 1000 <= area.heightMm * FIGURE_MAX_FRACTION;
 }
 
 /**
@@ -142,6 +150,7 @@ function fitsOn(sheetName, extentM, denominator) {
  * @param {string}  args.planType
  * @param {number} [args.declaredScale] Surveyor's explicit denominator
  * @param {string} [args.declaredSheet] Surveyor's explicit sheet name
+ * @param {number} [args.titleBandMm]   Renderer's measured title band, when known
  * @returns {{ candidates: Array, mandate: object, legibilityMaxDenominator: number }}
  */
 export function resolvePlanSheeting({
@@ -150,6 +159,7 @@ export function resolvePlanSheeting({
   planType,
   declaredScale = null,
   declaredSheet = null,
+  titleBandMm = TITLE_BAND_ESTIMATE_MM,
 }) {
   const applyMandate = MANDATE_PLAN_TYPES.has(planType);
   const { mandatory500 } = applyMandate
@@ -200,7 +210,7 @@ export function resolvePlanSheeting({
   const fitting = [];
   for (const sheetSize of sheets) {
     for (const d of denominators) {
-      if (fitsOn(sheetSize, extentM, d)) fitting.push(make(d, sheetSize, false));
+      if (fitsOn(sheetSize, extentM, d, titleBandMm)) fitting.push(make(d, sheetSize, false));
     }
   }
 
@@ -208,7 +218,7 @@ export function resolvePlanSheeting({
   // sheet, which is the least-bad multi-sheet cut.
   const coarsest = denominators[denominators.length - 1];
   const tiling = sheets
-    .filter((sheetSize) => !fitsOn(sheetSize, extentM, coarsest))
+    .filter((sheetSize) => !fitsOn(sheetSize, extentM, coarsest, titleBandMm))
     .map((sheetSize) => make(coarsest, sheetSize, true, 'figure exceeds the sheet — multi-sheet required'));
 
   const candidates = [...fitting, ...tiling];

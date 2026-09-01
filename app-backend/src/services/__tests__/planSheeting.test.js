@@ -162,6 +162,52 @@ describe('resolvePlanSheeting — surveyor overrides', () => {
   });
 });
 
+describe('drawingAreaMm — the real available area', () => {
+  test('is the margin-inset sheet less the title band', () => {
+    // 500 - 50 - 150 = 300 wide; 400 - 50 - 50 - 55 = 245 high.
+    expect(drawingAreaMm('SI727_500x400')).toEqual({ widthMm: 300, heightMm: 245 });
+    expect(drawingAreaMm('SI727_1000x800')).toEqual({ widthMm: 800, heightMm: 645 });
+  });
+
+  test('a measured title band overrides the estimate', () => {
+    expect(drawingAreaMm('SI727_500x400', { titleBandMm: 46.2 }).heightMm)
+      .toBeCloseTo(253.8, 6);
+  });
+});
+
+describe('resolvePlanSheeting — block-room ceiling', () => {
+  test('rejects a candidate that would leave no room for the blocks', () => {
+    // 300 x 195 m at 1:1000 is 300 x 195 mm — exactly the full 300 mm width of
+    // the smallest sheet's available area. 100% fill leaves the Schedule of
+    // Areas nowhere to go, so the finest feasible scale there is 1:1500
+    // (200 x 130 mm, inside 75% of 300 x 245).
+    const r = resolvePlanSheeting({
+      extentM: { widthM: 300, heightM: 195 },
+      parcels: stands(20, 5000),
+      planType: 'general-undeveloped',
+    });
+    const onSmallest = r.candidates
+      .filter((c) => c.sheetSize === 'SI727_500x400' && !c.needsTiling);
+
+    expect(onSmallest.length).toBeGreaterThan(0);
+    expect(onSmallest.every((c) => c.scaleDenominator >= 1500)).toBe(true);
+  });
+
+  test('every non-tiling candidate leaves at least a quarter of the area free', () => {
+    const r = resolvePlanSheeting({
+      extentM: { widthM: 500, heightM: 420 },
+      parcels: stands(240, 875),
+      planType: 'general-undeveloped',
+    });
+    for (const c of r.candidates.filter((x) => !x.needsTiling)) {
+      const area = drawingAreaMm(c.sheetSize);
+      const w = (500 / c.scaleDenominator) * 1000;
+      const h = (420 / c.scaleDenominator) * 1000;
+      expect(Math.max(w / area.widthMm, h / area.heightMm)).toBeLessThanOrEqual(0.75);
+    }
+  });
+});
+
 describe('resolvePlanSheeting — edge cases', () => {
   test('the mandate never applies to a working plan', () => {
     const r = resolvePlanSheeting({

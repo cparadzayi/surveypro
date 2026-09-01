@@ -299,18 +299,23 @@ the choice is never opaque:
 a designed path, makes a manual selection reach the renderer directly, and
 makes a preview failure non-fatal. It fixes the reported symptom.
 
-**Phase 2 — one drawing-area model.** Phase 1 guarantees both renderers walk
-the *same ladder*; it does not yet guarantee they stop at the same *rung*,
-because they still measure the available area differently (see "Why `auto`
-misses even when the preview succeeds"). Phase 2 promotes one canonical
-`drawingAreaFor(sheetName, { parcelCount, beaconExceptionCount })` into
-`app-shared/`, has the resolver use it for candidate feasibility, and has both
-`mapBounds` (PDF) and the DXF content area derive from it.
+**Phase 2 — one drawing-area model. SUPERSEDED 2026-09-01.** This paragraph
+scoped the wrong problem and is kept only for the record. It proposed promoting
+one canonical `drawingAreaFor(sheetName, { parcelCount, beaconExceptionCount })`
+into `app-shared/` so both renderers would stop on the same *rung* of the shared
+ladder, subsuming the tracked ~73pt PDF/DXF `mapBounds` sizing gap.
 
-Phase 2 subsumes the tracked ~73pt PDF/DXF `mapBounds` sizing gap and is the
-change that makes candidate #1 correct most of the time — but it moves the
-figure on every existing plan, so it carries the real regression risk. Phase 1
-is independently shippable and is not blocked by it.
+Measuring the renderers before implementing it showed the premise was false: the
+PDF does not draw at the scale it reports at all. It fits the figure to a box and
+prints a separately-computed denominator beside it, so `sampleRealisticPlan`
+renders at a true 1:439 whether it is labelled 1:600 or 1:1000 — the geometry is
+identical either way. Agreeing on a rung would have agreed on a number the PDF
+does not honour.
+
+Phase 2 is re-scoped in
+`2026-09-01-scale-truth-and-canonical-drawing-area-design.md`: the PDF draws at
+the resolved scale, with the canonical drawing area as the mechanism rather than
+the goal. Phase 1 remains independently shippable and is unaffected.
 
 ## Verification — done 2026-08-31
 

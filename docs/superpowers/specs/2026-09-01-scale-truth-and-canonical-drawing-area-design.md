@@ -24,11 +24,11 @@ marked `SCALE 1:1000` is entitled to 1 mm = 1 m.
 
 `sampleRealisticPlan`, rendered twice through `generateGeoPDF`:
 
-| Run | Stated | Sheet | figureBounds | Extent | True drawn scale | Error |
-|---|---|---|---|---|---|---|
-| true auto | 1:600 | SI727_1000x800 | 760.0 × 613.1 mm | 300.0 × 195.0 m | **1:439** | −26.9% |
-| declared `1:1000` | 1:1000 | SI727_1000x800 | 760.0 × 613.1 mm | 300.0 × 195.0 m | **1:439** | −56.1% |
-| declared `1:10000` | 1:10000 | SI727_1000x800 | 760.0 × 613.1 mm | 300.0 × 195.0 m | **1:439** | −95.6% |
+| Run | Stated | Sheet | Extent | Drawn figure | True drawn scale | Error | Oversized by |
+|---|---|---|---|---|---|---|---|
+| true auto | 1:600 | SI727_1000x800 | 300.0 × 195.0 m | 720 × 468 mm | **1:417** | −30.6% | 1.44× |
+| declared `1:1000` | 1:1000 | SI727_1000x800 | 300.0 × 195.0 m | 720 × 468 mm | **1:417** | −58.3% | 2.40× |
+| declared `1:10000` | 1:10000 | SI727_1000x800 | 300.0 × 195.0 m | 720 × 468 mm | **1:417** | −95.8% | 24× |
 
 The drawn geometry is identical in all three runs. Declaring a scale changes only
 the printed label; the figure occupies exactly the same area of paper either
@@ -42,12 +42,28 @@ as it does now. The DXF, being scale-true, genuinely did draw it. Phase 1
 therefore fixed a real defect in the DXF and in sheet/label selection, and left
 the PDF's drawing untouched — not what its commit message claims.
 
-**Method and its limit.** The true scale is derived from the renderer's own
-logged `figureBounds` and `extent` at the draw call site, applying the 5% inset
-and `min(scaleX, scaleY)` fit that `transformCoords` performs. `transformCoords`
-is pure and those are its exact inputs, so the derivation is sound — but it is a
-derivation, not a measurement taken from the emitted PDF. The test in "Testing"
-below closes that gap permanently by measuring the drawn output.
+**Method.** Measured from the emitted PDF, not derived. The plan draws corner
+coordinate crosses labelled with their exact ground values, and `pdfjs-dist`
+(already used by `pdfkitGeoPDF.snapshot.test.js`) extracts both the label text
+and its position in points. Two labels on the same row give millimetres per
+metre directly:
+
+```
+Y = +50000  at x = 2297.6 pt    Y = +50300  at x = 256.6 pt
+  -> 2041.0 pt over 300 m = 6.8033 pt/m
+X = +2200000 at y = 1795.6 pt   X = +2200200 at y = 435.0 pt
+  -> 1360.6 pt over 200 m = 6.8030 pt/m
+```
+
+Both axes agree to four significant figures, which confirms the transform is
+uniform and the measurement is not an artefact of one direction: 2.400 mm/m,
+a true 1:417.
+
+An earlier revision of this spec derived 1:439 instead, from the renderer's
+logged `figureBounds` and `extent` through `transformCoords`' inset and min-fit.
+That derivation was 5% optimistic. The difference does not change any conclusion
+— it makes the defect slightly worse — but it is the reason the test in
+"Testing" measures the emitted file rather than modelling the page.
 
 ## Root cause
 
@@ -273,7 +289,7 @@ Every existing plan becomes a materially different document. For
 
 | | Sheet | Stated | Drawn figure |
 |---|---|---|---|
-| today | SI727_1000x800 | 1:600 (true 1:439) | 683 × 444 mm |
+| today | SI727_1000x800 | 1:600 (true 1:417) | 720 × 468 mm |
 | after, no fill ceiling | SI727_500x400 | 1:1000 | 300 × 195 mm |
 | after, with §4's ceiling | SI727_500x400 | 1:1500 | **200 × 130 mm** |
 | after, if ordering preferred a larger figure | SI727_1000x800 | 1:500 | 600 × 390 mm |
@@ -281,7 +297,7 @@ Every existing plan becomes a materially different document. For
 Three things follow, in descending order of how likely they are to bite.
 
 **1. Label fitting is the primary regression surface — not block placement.**
-The figure shrinks ~3.4× linearly and ~11× by area while every text element keeps
+The figure shrinks 3.6× linearly and 13× by area while every text element keeps
 its point size, so stand numbers, beacon labels and edge labels all become
 relatively ~3× larger against the parcels they must fit inside. The adaptive
 labelling machinery and the cartographic font hierarchy (title 7 mm > designation

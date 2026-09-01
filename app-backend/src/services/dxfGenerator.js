@@ -76,7 +76,7 @@ import { rectangleOverlapsPolygon, lineSegmentsIntersect } from './dxfGeometry.j
 import { selectTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-shared/tickMarks.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
 import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 } from '../utils/si727Constants.js'
-import { resolvePlanSheeting } from '../../../app-shared/planSheeting.js'
+import { resolvePlanSheeting, blockRoomFraction } from '../../../app-shared/planSheeting.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 import { roundBearingSouth } from '../utils/zim-geo.js'
 import { emitSubjectAdjoiningFeaturesDxf } from './adjoiningFeaturesDxf.js'
@@ -584,6 +584,25 @@ export function generateDXF(options, logger) {
       for (const c of coords) { trackExt(capeLoToDxfSouthUp(c[0], c[1])); }
     }
   }
+  // The UNBUFFERED outside-figure extent, captured before the drawing buffer is
+  // applied below. This — not drawW/drawH — is what the shared sheeting resolver
+  // must be given: its `extentM` parameter is documented as the ground extent of
+  // the outside figure, and pdfkitGeoPDF passes exactly that (its
+  // calculatedExtent carries no beacon buffer). Feeding the resolver the padded
+  // extent made the DXF answer a different question from the PDF, so on any
+  // sheet where the 20m of padding crossed a ladder rung the two generators
+  // resolved different scales for the same survey — measured on
+  // sampleRealisticPlan's first escalation, where 300x195m resolves 1:1000 on
+  // SI727_800x500 and the padded 320x215m resolves 1:1250. That divergence was
+  // invisible while escalation pinned the scale, because both sides simply
+  // carried their (coincidentally equal) first-pass answer forward.
+  // extMinX/extMaxX are DXF-space X, which capeLoToDxfSouthUp maps from survey
+  // Y (Westing) — the same axis the PDF calls widthM. Keep that pairing.
+  const sheetingExtentM = {
+    widthM: (extMaxX - extMinX) || 100,
+    heightM: (extMaxY - extMinY) || 100,
+  };
+
   // Add 5m buffer for beacons that sit just outside the figure
   const extBuffer = 10; // metres
   extMinX -= extBuffer; extMinY -= extBuffer;
@@ -605,13 +624,26 @@ export function generateDXF(options, logger) {
   // the sheet this run is rendering; the existing needsScaleUp escalation
   // re-enters with the next sheet and re-consults the resolver, which is how
   // the ladder gets walked.
+  // Escalation tightens the BUDGET rather than pinning the scale: we only ever
+  // escalate because the blocks would not fit, so the retry demands more than
+  // the default 25% reserve and lets the resolver pick from its ladder as
+  // normal. The PDF applies the identical rule, so parity holds by
+  // construction. See BLOCK_ROOM_BUDGETS in app-shared/planSheeting.js.
+  const _blockRoomAttempt = options._blockRoomAttempt ?? 0;
+  const _blockRoomFraction = blockRoomFraction(_blockRoomAttempt);
   const _sheeting = resolvePlanSheeting({
-    extentM: { widthM: drawW, heightM: drawH },
+    extentM: sheetingExtentM,
     parcels,
     planType,
     declaredScale: declaredS || null,
     declaredSheet: normalizedSheetSize || null,
+    figureMaxFraction: _blockRoomFraction,
   });
+  if (_blockRoomAttempt > 0) {
+    logger.info(
+      `[DXF] Block-room retry ${_blockRoomAttempt}: figure budget tightened to ${_blockRoomFraction} of the drawing area`,
+    );
+  }
   const _pick = _sheeting.candidates.find((c) => c.sheetSize === normalizedSheetSize)
              ?? _sheeting.candidates[0]
              ?? null;
@@ -2093,12 +2125,15 @@ export function generateDXF(options, logger) {
       return generateDXF({
         ...options,
         sheetSize: nextSheet,
-        // Carry the scale forward. Escalating the sheet exists to BUY room for
-        // the blocks; without this the retry re-resolves from scratch and takes
-        // the resolver's finest fitting candidate for the bigger sheet, so the
-        // figure grows to eat exactly the room just gained and the blocks are no
-        // better off. The PDF side had the same defect and the same fix.
-        scale: `1:${S}`,
+        // Tighten the block-room budget instead of pinning the scale.
+        // Escalating the sheet exists to BUY room for the blocks; re-resolving
+        // the bigger sheet at the SAME budget takes the resolver's finest
+        // fitting candidate, so the figure grows to eat exactly the room just
+        // gained and the blocks are no better off. Pinning the scale instead
+        // strands a small figure on a big sheet. So the retry keeps the
+        // resolver authoritative and demands MORE room: the next rung of
+        // BLOCK_ROOM_BUDGETS. pdfkitGeoPDF.js applies the identical rule.
+        _blockRoomAttempt: _blockRoomAttempt + 1,
         _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
       }, logger);
     }
@@ -2311,12 +2346,15 @@ export function generateDXF(options, logger) {
       return generateDXF({
         ...options,
         sheetSize: nextSheet,
-        // Carry the scale forward. Escalating the sheet exists to BUY room for
-        // the blocks; without this the retry re-resolves from scratch and takes
-        // the resolver's finest fitting candidate for the bigger sheet, so the
-        // figure grows to eat exactly the room just gained and the blocks are no
-        // better off. The PDF side had the same defect and the same fix.
-        scale: `1:${S}`,
+        // Tighten the block-room budget instead of pinning the scale.
+        // Escalating the sheet exists to BUY room for the blocks; re-resolving
+        // the bigger sheet at the SAME budget takes the resolver's finest
+        // fitting candidate, so the figure grows to eat exactly the room just
+        // gained and the blocks are no better off. Pinning the scale instead
+        // strands a small figure on a big sheet. So the retry keeps the
+        // resolver authoritative and demands MORE room: the next rung of
+        // BLOCK_ROOM_BUDGETS. pdfkitGeoPDF.js applies the identical rule.
+        _blockRoomAttempt: _blockRoomAttempt + 1,
         _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
       }, logger);
     }
@@ -2457,12 +2495,15 @@ export function generateDXF(options, logger) {
       return generateDXF({
         ...options,
         sheetSize: nextSheet,
-        // Carry the scale forward. Escalating the sheet exists to BUY room for
-        // the blocks; without this the retry re-resolves from scratch and takes
-        // the resolver's finest fitting candidate for the bigger sheet, so the
-        // figure grows to eat exactly the room just gained and the blocks are no
-        // better off. The PDF side had the same defect and the same fix.
-        scale: `1:${S}`,
+        // Tighten the block-room budget instead of pinning the scale.
+        // Escalating the sheet exists to BUY room for the blocks; re-resolving
+        // the bigger sheet at the SAME budget takes the resolver's finest
+        // fitting candidate, so the figure grows to eat exactly the room just
+        // gained and the blocks are no better off. Pinning the scale instead
+        // strands a small figure on a big sheet. So the retry keeps the
+        // resolver authoritative and demands MORE room: the next rung of
+        // BLOCK_ROOM_BUDGETS. pdfkitGeoPDF.js applies the identical rule.
+        _blockRoomAttempt: _blockRoomAttempt + 1,
         _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
       }, logger);
     }

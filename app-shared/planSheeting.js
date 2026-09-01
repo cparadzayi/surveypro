@@ -59,6 +59,52 @@ export const TITLE_BAND_ESTIMATE_MM = 55;
 export const FIGURE_MAX_FRACTION = 0.75;
 
 /**
+ * Block-room budget per sheet-escalation attempt, indexed by attempt number.
+ *
+ * A renderer escalates the sheet BECAUSE the Schedule of Areas / coordinate
+ * list / endorsement blocks could not be placed. Re-resolving on the bigger
+ * sheet at the default 0.75 takes the finest candidate that now fits, so the
+ * figure grows to eat exactly the room just gained and the blocks are no better
+ * off (measured: sampleRealisticPlan ran 1:1500 on 500x400 -> 1:1000 on
+ * 800x500 -> 1:500 on 1000x800, failing placement every time). Pinning the
+ * scale instead walks the figure off the resolver's ladder and strands a
+ * postage stamp on a big sheet (measured: 1:2500 on 1000x800, 0.26 fill).
+ *
+ * So the retry keeps the resolver authoritative and simply DEMANDS MORE ROOM.
+ * Both renderers index this same array with their own escalation counter, so
+ * PDF/DXF parity holds by construction.
+ *
+ * WHY THE LADDER IS [0.75, 0.55] AND NOT THE [0.75, 0.6, 0.5] FIRST PROPOSED.
+ * Both retry rungs were measured, not computed. On sampleRealisticPlan the PDF
+ * cannot place its blocks around a 1:1000 figure on SI727_800x500 but can
+ * around 1:1250 (the DXF manages 1:1000 — the two measure placement against
+ * their own emitted block footprints). A 0.6 budget yields 1:1000 there, so the
+ * first retry would fail on the PDF side and the two formats would land on
+ * different sheets. The budgets that yield 1:1250 on that sheet are
+ * [0.452, 0.565).
+ *
+ * At the other end, sampleMaglasPlan exhausts the ladder: its 240-row Schedule
+ * of Areas needs more column height than even SI727_1000x800 offers, so it
+ * always lands on the largest sheet and the LAST rung decides its figure size.
+ * The budgets that keep it at 1:1250 (0.521 fill) rather than 1:1500 (0.434,
+ * under the 0.5 postage-stamp floor that guards the originally reported bug)
+ * are [0.521, 0.625).
+ *
+ * 0.55 is the only round value inside both windows, so one retry rung serves
+ * both and attempts past it clamp to it. Tightening further was measured to buy
+ * nothing: Maglas's schedule is unplaceable at 0.6, 0.55 AND 0.5 alike.
+ *
+ * Attempts past the end of the array clamp to the last (tightest) rung.
+ */
+export const BLOCK_ROOM_BUDGETS = [0.75, 0.55];
+
+/** The budget for a given escalation attempt, clamped to the ladder. */
+export function blockRoomFraction(attempt = 0) {
+  const i = Number.isFinite(attempt) ? Math.max(0, Math.trunc(attempt)) : 0;
+  return BLOCK_ROOM_BUDGETS[Math.min(i, BLOCK_ROOM_BUDGETS.length - 1)];
+}
+
+/**
  * Figure-available drawing area for one sheet, in millimetres: the margin-inset
  * sheet less the title band. Stand-count independent by design.
  *
@@ -137,10 +183,10 @@ function sheetLadder(declaredSheet) {
   return idx === -1 ? all : all.slice(idx);
 }
 
-function fitsOn(sheetName, extentM, denominator, titleBandMm) {
+function fitsOn(sheetName, extentM, denominator, titleBandMm, figureMaxFraction) {
   const area = drawingAreaMm(sheetName, { titleBandMm });
-  return (extentM.widthM / denominator) * 1000 <= area.widthMm * FIGURE_MAX_FRACTION
-      && (extentM.heightM / denominator) * 1000 <= area.heightMm * FIGURE_MAX_FRACTION;
+  return (extentM.widthM / denominator) * 1000 <= area.widthMm * figureMaxFraction
+      && (extentM.heightM / denominator) * 1000 <= area.heightMm * figureMaxFraction;
 }
 
 /**
@@ -151,6 +197,11 @@ function fitsOn(sheetName, extentM, denominator, titleBandMm) {
  * @param {number} [args.declaredScale] Surveyor's explicit denominator
  * @param {string} [args.declaredSheet] Surveyor's explicit sheet name
  * @param {number} [args.titleBandMm]   Renderer's measured title band, when known
+ * @param {number} [args.figureMaxFraction] Share of the available area the figure
+ *   may occupy. Defaults to FIGURE_MAX_FRACTION. A renderer that has already
+ *   FAILED block placement on a smaller sheet passes a tighter value on the
+ *   retry (see BLOCK_ROOM_BUDGETS), so escalating the sheet actually buys the
+ *   blocks room instead of handing it straight back to a finer figure.
  * @returns {{ candidates: Array, mandate: object, legibilityMaxDenominator: number }}
  */
 export function resolvePlanSheeting({
@@ -160,6 +211,7 @@ export function resolvePlanSheeting({
   declaredScale = null,
   declaredSheet = null,
   titleBandMm = TITLE_BAND_ESTIMATE_MM,
+  figureMaxFraction = FIGURE_MAX_FRACTION,
 }) {
   const applyMandate = MANDATE_PLAN_TYPES.has(planType);
   const { mandatory500 } = applyMandate
@@ -210,7 +262,7 @@ export function resolvePlanSheeting({
   const fitting = [];
   for (const sheetSize of sheets) {
     for (const d of denominators) {
-      if (fitsOn(sheetSize, extentM, d, titleBandMm)) fitting.push(make(d, sheetSize, false));
+      if (fitsOn(sheetSize, extentM, d, titleBandMm, figureMaxFraction)) fitting.push(make(d, sheetSize, false));
     }
   }
 
@@ -218,7 +270,7 @@ export function resolvePlanSheeting({
   // sheet, which is the least-bad multi-sheet cut.
   const coarsest = denominators[denominators.length - 1];
   const tiling = sheets
-    .filter((sheetSize) => !fitsOn(sheetSize, extentM, coarsest, titleBandMm))
+    .filter((sheetSize) => !fitsOn(sheetSize, extentM, coarsest, titleBandMm, figureMaxFraction))
     .map((sheetSize) => make(coarsest, sheetSize, true, 'figure exceeds the sheet — multi-sheet required'));
 
   const candidates = [...fitting, ...tiling];

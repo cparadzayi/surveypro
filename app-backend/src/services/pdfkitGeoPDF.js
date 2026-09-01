@@ -15,7 +15,7 @@ import BLOCKS from "../../../app-shared/block-definitions.js";
 import { selectTickGrid, formatTickLabel } from "../../../app-shared/tickMarks.js";
 import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
-import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION } from '../../../app-shared/planSheeting.js';
+import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION, blockRoomFraction } from '../../../app-shared/planSheeting.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
 import { getOutsideFigureVertices } from "./outsideFigureBeacons.js";
@@ -9625,7 +9625,7 @@ function drawNorthArrow(doc, bounds, position) {
  * depends on planType alone.
  */
 
-function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceMinDenominator = 0, planType = null, mandatory500 = false, authoritativeDenominator = 0, pageSizeName = null) {
+function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceMinDenominator = 0, planType = null, mandatory500 = false, authoritativeDenominator = 0, pageSizeName = null, figureMaxFraction = FIGURE_MAX_FRACTION) {
   const extentWidth = extent.maxY - extent.minY;   // metres (Y = Westing)
   const extentHeight = extent.maxX - extent.minX;  // metres (X = Southing)
 
@@ -9661,8 +9661,8 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
       ? drawingAreaMm(pageSizeName)
       : { widthMm: mapBounds.width / MM_TO_PT, heightMm: mapBounds.height / MM_TO_PT };
     const minRequired = Math.max(
-      (extentWidth  * 1000) / (area.widthMm  * FIGURE_MAX_FRACTION),
-      (extentHeight * 1000) / (area.heightMm * FIGURE_MAX_FRACTION),
+      (extentWidth  * 1000) / (area.widthMm  * figureMaxFraction),
+      (extentHeight * 1000) / (area.heightMm * figureMaxFraction),
     );
 
     candidateIndex = SI727_PRESCRIBED_SCALES.findIndex(s => s.value >= minRequired);
@@ -9949,6 +9949,7 @@ async function _generateGeoPDFInner(options, logger) {
     _forceMinDenominator = 0, // Internal: force scale above this denominator (scale step-up retry)
     _scaleUpAttempt = 0,      // Internal: how many scale step-ups have been attempted
     _sheetSizeUpAttempt = 0,  // Internal: how many paper-size escalations have been attempted
+    _blockRoomAttempt = 0,    // Internal: block-room budget rung (see blockRoomFraction)
     _labelEscalationAttempt = 0, // Internal: how many label-crowding escalations attempted
     // NEW: True GeoPDF options
     trueGeoPDF = false, // Enable true Vector GeoPDF capabilities
@@ -10267,6 +10268,13 @@ async function _generateGeoPDFInner(options, logger) {
   // Shared sheeting ladder — the SAME resolver dxfGenerator consults, so PDF
   // and DXF cannot resolve different scales for the same survey. It encodes all
   // three rules in order: Reg 32(3) mandate → surveyor-declared scale → auto-fit.
+  //
+  // Escalation tightens the BUDGET rather than pinning the scale: we only ever
+  // escalate because the blocks would not fit, so the retry demands more than
+  // the default 25% reserve and lets the resolver pick from its ladder as
+  // normal. The DXF applies the identical rule, so parity holds by
+  // construction. See BLOCK_ROOM_BUDGETS in app-shared/planSheeting.js.
+  const _blockRoomFraction = blockRoomFraction(_blockRoomAttempt);
   const _sheeting = resolvePlanSheeting({
     extentM: {
       widthM: calculatedExtent.maxY - calculatedExtent.minY,
@@ -10276,7 +10284,13 @@ async function _generateGeoPDFInner(options, logger) {
     planType,
     declaredScale: parseInt(String(scale ?? '').match(/1\s*:\s*(\d+)/)?.[1] || '0', 10) || null,
     declaredSheet: sheetSize || null,
+    figureMaxFraction: _blockRoomFraction,
   });
+  if (_blockRoomAttempt > 0) {
+    logger.info(
+      `[PDFKit] 📐 Block-room retry ${_blockRoomAttempt}: figure budget tightened to ${_blockRoomFraction} of the drawing area`,
+    );
+  }
 
   // Select appropriate page size per SI 727 Section 62. The resolver's best
   // candidate names the sheet, rather than selectPageSize's hardcoded
@@ -10473,6 +10487,9 @@ async function _generateGeoPDFInner(options, logger) {
     // The sheet actually being rendered, so the auto branch measures the
     // canonical available area rather than the caller's figureBounds.
     pageSize.code || null,
+    // Same tightened budget the resolver just used, so this fallback branch
+    // cannot hand back the room the escalation was meant to buy.
+    _blockRoomFraction,
   );
 
   // ── Size the figure box from the resolved scale ──
@@ -11567,20 +11584,23 @@ async function _generateGeoPDFInner(options, logger) {
         return await _generateGeoPDFInner({
           ...options,
           sheetSize: nextSheet,
-          // Carry the scale forward. Escalating the sheet exists to BUY
-          // whitespace for the blocks; re-resolving from scratch on the bigger
-          // sheet takes the resolver's finest fitting candidate instead, so the
-          // figure grows to eat exactly the room just gained and the blocks are
-          // no better off. Measured before this line existed: 1:1500 on
-          // 500x400 (200x130mm) escalated to 1:1000 on 800x500 (300x195mm) and
-          // then 1:500 on 1000x800 (600x390mm), failing placement every time
-          // and stopping only when the attempt cap ran out.
+          // Tighten the block-room budget instead of pinning the scale.
           //
-          // Pinning the scale is also what the spec asks for in the equivalent
-          // case: an explicit scale is honoured and the SHEET escalates. A
-          // later coarsening is still possible — the scale step-up branch below
-          // and _forceMinDenominator both override a pinned scale upward.
-          scale: optimalScale.label,
+          // Escalating the sheet exists to BUY whitespace for the blocks.
+          // Re-resolving the bigger sheet at the SAME 0.75 budget takes the
+          // resolver's finest fitting candidate, so the figure grows to eat
+          // exactly the room just gained and the blocks are no better off
+          // (measured: 1:1500 on 500x400 → 1:1000 on 800x500 → 1:500 on
+          // 1000x800, failing placement every time). Pinning the scale stops
+          // the runaway but strands a small figure on a big sheet (measured:
+          // Maglas 1:2500 on 1000x800, 0.26 fill — the postage-stamp defect
+          // this work exists to remove).
+          //
+          // So the retry keeps the resolver authoritative and simply demands
+          // MORE room: the next rung of BLOCK_ROOM_BUDGETS. The DXF escalation
+          // sites apply the identical rule, so PDF/DXF parity holds by
+          // construction rather than by coincidence.
+          _blockRoomAttempt: _blockRoomAttempt + 1,
           _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
           _scaleUpAttempt: 0, // reset scale attempts for the new sheet
         }, logger);
@@ -11589,8 +11609,25 @@ async function _generateGeoPDFInner(options, logger) {
         console.error(errMsg);
         logger.warn(`[PDFKit] ⚠️ Paper-size escalation failed — continuing at ${currentSheetName} with stacker fallback`);
       }
-    } else if (_scaleUpAttempt < MAX_SCALE_UP_ATTEMPTS) {
+    } else if (_scaleUpAttempt < MAX_SCALE_UP_ATTEMPTS && _blockRoomAttempt === 0) {
       // ── SCALE STEP-UP (only when at largest sheet or sheet escalation exhausted) ──
+      //
+      // Gated on _blockRoomAttempt === 0. This branch predates BLOCK_ROOM_BUDGETS
+      // and does the same job by a different route — shrink the figure to buy the
+      // blocks room — except that it walks one rung past whatever the resolver
+      // would allow, and the DXF has no counterpart, so every time it fires the
+      // two formats render the same survey at different scales.
+      //
+      // Once the block-room ladder has already been walked it is also measurably
+      // useless. Measured on sampleMaglasPlan, whose 240-row Schedule of Areas
+      // needs more column height than SI727_1000x800 can give at any scale:
+      // placement fails at 1:1250 AND at the stepped-up 1:1500, so the step-up
+      // bought nothing and cost 0.087 of fill (0.521 → 0.434, under the 0.5
+      // postage-stamp floor) plus parity with the DXF's 1:1250. Both formats now
+      // render the same figure and accept the same residual stacker overlap.
+      //
+      // A plan handed the largest sheet up front never enters the sheet ladder,
+      // so _blockRoomAttempt stays 0 and this remains its only escape.
       const _curIdx = SI727_PRESCRIBED_SCALES.findIndex(s => s.value === optimalScale.value);
       const _nextIdx = _curIdx !== -1 ? _curIdx + 1 : -1;
       const nextScale = _nextIdx !== -1 && _nextIdx < SI727_PRESCRIBED_SCALES.length

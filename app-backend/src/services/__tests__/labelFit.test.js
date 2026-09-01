@@ -8,10 +8,11 @@ import { measureDrawnScale } from './helpers/measureDrawnScale.js';
 const quiet = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
 const PT_PER_MM = 72 / 25.4;
 
-// Measured on the current renderer, 2026-09-01, before the scale-truth change:
+// Measured on the current renderer, 2026-09-01, before the scale-truth change,
+// on the AUTO scale/sheet path (see below) — NOT the fixture's pinned values.
 // `node --experimental-vm-modules node_modules/jest/bin/jest.js labelFit` with
 // this constant set to Infinity printed "[labelFit] 0 labels wider than their
-// stand" (fixture rendered at its pinned 1:1000 scale on SI727_500x400).
+// stand".
 // A non-zero baseline is a pre-existing defect, not a licence to grow it.
 const BASELINE_OVERFLOWING = 0;
 
@@ -38,8 +39,17 @@ function narrowestWidthM(ring) {
 
 describe('stand labels fit the stands they name', () => {
   test('no stand number is wider on paper than its own stand', async () => {
+    // The fixture's pinned scale/sheetSize must NOT be used here: today
+    // calculateOptimalScale overrides a pinned scale with a 90%-margin
+    // fit-to-box draw (shrinking the figure below what was declared), but
+    // after Task 5 an honoured pinned scale sizes the figure box from
+    // extent/scale directly — which, for this fixture, comes out LARGER, not
+    // smaller. That makes the pinned path unable to exercise the regression
+    // this guard exists to catch. Stripping scale/sheetSize exercises the
+    // auto-resolved path instead, mirroring planSheeting.parity.test.js.
+    const { scale: _s, sheetSize: _ss, ...rest } = sampleMaglasPlan;
     const { pdfBuffer } = await generateGeoPDF(
-      { ...sampleMaglasPlan, planType: 'general-undeveloped' }, quiet,
+      { ...rest, planType: 'general-undeveloped' }, quiet,
     );
     const { mmPerMetre } = await measureDrawnScale(pdfBuffer);
 

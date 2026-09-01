@@ -28,10 +28,19 @@ marked `SCALE 1:1000` is entitled to 1 mm = 1 m.
 |---|---|---|---|---|---|---|
 | true auto | 1:600 | SI727_1000x800 | 760.0 × 613.1 mm | 300.0 × 195.0 m | **1:439** | −26.9% |
 | declared `1:1000` | 1:1000 | SI727_1000x800 | 760.0 × 613.1 mm | 300.0 × 195.0 m | **1:439** | −56.1% |
+| declared `1:10000` | 1:10000 | SI727_1000x800 | 760.0 × 613.1 mm | 300.0 × 195.0 m | **1:439** | −95.6% |
 
-The drawn geometry is identical in both runs. Declaring a scale changes only
+The drawn geometry is identical in all three runs. Declaring a scale changes only
 the printed label; the figure occupies exactly the same area of paper either
 way. At 1:1000 the sheet is out by a factor of 2.3.
+
+**The drawn size is independent of the denominator at every value tested**, which
+has a consequence for the record. The symptom Phase 1 was written against — a
+50 × 42 mm figure on a 1000 × 800 sheet — was computed as `extent / denominator`,
+nominally. The PDF cannot have drawn a figure that small; it filled the page then
+as it does now. The DXF, being scale-true, genuinely did draw it. Phase 1
+therefore fixed a real defect in the DXF and in sheet/label selection, and left
+the PDF's drawing untouched — not what its commit message claims.
 
 **Method and its limit.** The true scale is derived from the renderer's own
 logged `figureBounds` and `extent` at the draw call site, applying the 5% inset
@@ -144,6 +153,11 @@ stood in for block room in a design where nothing measured it.
 bands. Each renderer passes its own measured band when it re-resolves, so the
 estimate is only ever used by the preview, which is a hint.
 
+Alongside it, `FIGURE_MAX_FRACTION = 0.75`: the share of the available area the
+figure may occupy, the remainder being the budget for the Schedule of Areas,
+coordinate list and endorsement blocks. This is `MARGIN_FACTOR` from
+`checkMarginConstraint`, promoted rather than deleted — see §4.
+
 ### §2 The PDF draws at the scale
 
 The change that makes the geometry correct.
@@ -161,7 +175,7 @@ scales are feasible.
 | `pdfkitGeoPDF.js` after scale resolution | set `figureBounds` to exactly `extent_m / S × 1000` mm in points, positioned by the existing `alignX` rule and below the band |
 | `geometry.js:518` `INSET_FACTOR` | becomes `pdfBounds.insetFactor ?? 0.05`; the scale-sized box passes `0`, so the min-fit lands exactly on `S`. No other caller changes |
 | `pdfkitGeoPDF.js:10521` | delete the extent-expansion block |
-| `pdfkitGeoPDF.js:9599` `checkMarginConstraint` | delete, with `MARGIN_FACTOR`; feasibility becomes "does the scale-sized figure fit the canonical area" |
+| `pdfkitGeoPDF.js:9599` `checkMarginConstraint` | delete the per-renderer check; its `MARGIN_FACTOR = 0.75` budget survives as the resolver's `FIGURE_MAX_FRACTION`, so feasibility becomes "does the scale-sized figure fit within 75% of the canonical area" |
 | `pdfkitGeoPDF.js:9633` `calculateOptimalScale` | walk the resolver ladder against the canonical area. `needsScaleUp` block-placement escalation is untouched |
 | `pdfkitGeoPDF.js:4787` `drawScaleBar` | derive `metersPerPoint` from `S`, not `_figW` |
 
@@ -181,16 +195,35 @@ This is what closes the tracked ~73pt PDF/DXF `mapBounds` sizing gap: the two
 formats stop allocating different amounts of page to the same figure because
 the figure's size stops being a function of the page at all.
 
-### §4 Whitespace for blocks
+### §4 Whitespace for blocks — a fill ceiling, not an ordering hint
 
-Feasibility carries no fudge factor. Among candidates that fit, order by
-leftover whitespace so block placement usually succeeds on the first render.
+An earlier draft of this section called `MARGIN_FACTOR = 0.75` a fudge, deleted
+it, and proposed ordering candidates by leftover whitespace instead. That was
+wrong, and the numbers show why.
 
-The distinction is load-bearing: whitespace is an **ordering hint, never a fit
-filter**. A legitimately tight plan must still be allowed to render rather than
-being escalated away from a scale it fits. This is also the tuning knob for
-escalation cost — each escalation re-renders the whole plan, which is why the
-dense Maglas fixture costs 280 s.
+`MARGIN_FACTOR` is not a fudge. Its comment states its job exactly — "outside
+figure must occupy ≤75% of drawing area, leaving 25% for blocks" — and it is the
+only place in the PDF that reserves block room against a measured quantity.
+Deleting it, combined with an honest (and therefore larger) available area, sends
+the resolver straight to the fullest candidate on the smallest sheet: for
+`sampleRealisticPlan`, 1:1000 on `SI727_500x400` at **100% fill**, a figure
+covering the entire drawing area with nowhere for the Schedule of Areas to go.
+Every such plan then fails block placement and escalates, at 280 s a render.
+
+Ordering cannot fix this. The ladder is ordered smaller-sheet-first, so a
+whitespace hint only re-orders candidates *within* one sheet; the sheet choice —
+which is what determines whether blocks fit — is already settled by the time the
+hint applies.
+
+So the budget belongs in **feasibility**: a candidate is feasible only if the
+scale-sized figure fits within `FIGURE_MAX_FRACTION` of the available area in
+both dimensions. That is what `checkMarginConstraint` was enforcing per-renderer;
+§1 promotes it to the shared model so all three consumers apply one budget
+instead of the PDF applying it alone.
+
+Escalation remains the fallback for the cases geometry cannot predict — block
+placement depends on the figure's shape, not its bounding box — but it stops
+being the *routine* path, which is what keeps the render cost bounded.
 
 ### §5 What this does not change
 
@@ -223,28 +256,59 @@ drawn geometry.
   15 mm, so the decision in §1 fails loudly if either title block changes.
 - **Declared scale is honoured metrically**: rendering at 1:1000 and at 1:2000
   produces figures whose drawn sizes differ by exactly 2×.
+- **Label fit**: stand numbers stay inside their parcels, and beacon labels stay
+  clear of the features they annotate, on the dense fixture. This must land
+  *before* §2, not after — it is the regression surface the existing suite is
+  blind to, and the one §2 is most likely to break (see Risk 1).
 - **Snapshot regeneration**: `pdfkitGeoPDF.snapshot.test.js` pins rendered text
-  x/y for three fixtures and will move wholesale. The diff must be read, not
-  accepted — it is the most likely place for a real regression to hide.
+  x/y for three fixtures. With both the sheet and the figure size changing, every
+  position moves, so the diff cannot be reviewed line by line. Regenerate it, then
+  judge the result by rendering a fixture and looking at it — the label-fit test
+  above is what actually guards this, not the snapshot.
 
 ## Risk
 
-Every existing plan's figure changes size, generally getting smaller. On the
-measured fixture the true denominator is 27–56% finer than the stated one, which
-means the figure is drawn 1.4× to 2.3× larger in each dimension than the scale
-claims. This is the correction, but it is not cosmetic:
+Every existing plan becomes a materially different document. For
+`sampleRealisticPlan`:
 
-- More plans will fail block placement at their first candidate and escalate,
-  and escalation is expensive.
-- Plans that previously "fit" only because fit-to-box shrank them may now need a
-  larger sheet or tiling.
-- The snapshot diff is large enough to hide a genuine defect inside an expected
-  change.
+| | Sheet | Stated | Drawn figure |
+|---|---|---|---|
+| today | SI727_1000x800 | 1:600 (true 1:439) | 683 × 444 mm |
+| after, no fill ceiling | SI727_500x400 | 1:1000 | 300 × 195 mm |
+| after, with §4's ceiling | SI727_500x400 | 1:1500 | **200 × 130 mm** |
+| after, if ordering preferred a larger figure | SI727_1000x800 | 1:500 | 600 × 390 mm |
+
+Three things follow, in descending order of how likely they are to bite.
+
+**1. Label fitting is the primary regression surface — not block placement.**
+The figure shrinks ~3.4× linearly and ~11× by area while every text element keeps
+its point size, so stand numbers, beacon labels and edge labels all become
+relatively ~3× larger against the parcels they must fit inside. The adaptive
+labelling machinery and the cartographic font hierarchy (title 7 mm > designation
+5 mm > stand labels capped at 3.5 mm) were both calibrated against figures drawn
+1.4–2.3× oversized. This is where the damage will be, and no existing test covers
+it directly.
+
+**2. The sheet-ordering preference now dominates the outcome.** The last two rows
+above differ by 3× in figure size and two sheet sizes, and the only difference
+between them is the "avoid tiling > smaller sheet > larger figure" ordering agreed
+during Phase 1 — when these numbers were hypothetical. Scale truth is not what
+makes the plan small; the ordering is. That choice should be re-confirmed with
+the surveyor against the real numbers before §2 lands, and it is a resolver-level
+change if it flips, not a rework of this design.
+
+**3. The snapshot diff will be total.** `pdfkitGeoPDF.snapshot.test.js` pins
+rendered text x/y for three fixtures; with the sheet and figure size both
+changing, effectively every position moves. It will show the damage from (1)
+rather than hide it, but it cannot be reviewed line by line — it needs to be
+regenerated and then judged by rendering a fixture and looking at it.
 
 Mitigation: land §1 and §3 (shared area, DXF feasibility) before §2, so the
 ladder is correct before the geometry moves; then §2 behind the drawn-geometry
-test, which fails loudly and specifically if the figure is not the size the
-scale demands.
+test, which fails loudly and specifically if the figure is not the size the scale
+demands. Add a label-fit assertion — stand numbers remain inside their parcels on
+the dense fixture — before §2 rather than after, since that is the failure mode
+the existing suite is blind to.
 
 ## Verification of one output against a real plan
 

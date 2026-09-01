@@ -91,6 +91,22 @@ describe('DXF consumes the shared resolver', () => {
       expect(dxf.scale).toBe(expected.scaleLabel);
     }, 120000);
   }
+
+  test('DXF honours the block-room ceiling, not just the raw fit', () => {
+    const { scale, sheetSize, ...rest } = sampleMaglasPlan;
+    const dxf = generateDXF({ ...rest, planType: 'general-undeveloped' }, quiet);
+
+    const denominator = Number(String(dxf.scale).split(':')[1]);
+    const area = drawingAreaMm(dxf.sheetSize);
+    const { widthM, heightM } = dxfExtentM(sampleMaglasPlan);
+    const fill = Math.max(
+      (widthM / denominator) * 1000 / area.widthMm,
+      (heightM / denominator) * 1000 / area.heightMm,
+    );
+
+    expect(fill).toBeLessThanOrEqual(0.75);
+    expect(fill).toBeGreaterThan(0.4); // and not absurdly small either
+  }, 120000);
 });
 
 /** Ground extent of a fixture's outside figure, as the DXF generator derives it. */

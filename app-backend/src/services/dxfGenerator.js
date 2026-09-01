@@ -591,20 +591,9 @@ export function generateDXF(options, logger) {
   const drawW = (extMaxX - extMinX) || 100;
   const drawH = (extMaxY - extMinY) || 100;
 
-  // â”€â”€ SI 727 scale selection: ENLARGE the figure to the largest prescribed
-  //    scale (smallest denominator) whose drawing still fits the sheet's
-  //    drawing area, so the figure dominates the plan like a real General Plan.
-  //    A declared scale is honoured only when it also fits; otherwise we enlarge
-  //    (declared too small) or shrink (declared overflows) to the best fit.
-  //
-  //    Available drawing area (paper-mm): content area (SI 727 margins: 50 left,
-  //    150 right for SG endorsements, 50 top/bottom) minus a reserve for the
-  //    schedule/co-ordinate column (right) and the title strip (top).
-  // Scale selection. PARITY: when a scale is supplied (the PDF shares its chosen
-  // scale with the DXF), honor it VERBATIM so the two render in lockstep. Only
-  // when NO scale is supplied do we auto-maximize the figure to the largest SI
-  // 727 prescribed scale that fits the sheet (uses the same shared helper the
-  // PDF uses for its own selection).
+  // Retained for the diagnostic log line below only. The shared resolver is the
+  // authority for the scale (see _sheeting); this fit model does not participate
+  // in the decision and must not be reintroduced into it.
   const _figFit = selectFigureScale({
     drawWidthM: drawW,
     drawHeightM: drawH,

@@ -11,6 +11,14 @@
  * Both generators must now agree, because both consult the shared resolver in
  * app-shared/planSheeting.js.
  *
+ * KNOWN GAP (Phase 2): both generators now START from the same resolver answer,
+ * but on dense plans each can still END elsewhere, because escalation is driven
+ * by each generator's own drawing-area model. Measured on Maglas: the resolver
+ * says 1:1250 on SI727_800x500; PDF's 90% margin loop overrides to 1:2000
+ * because its real figureBounds allows 246mm of height where the resolver's
+ * reserve model assumes 340mm. Unifying that model is Phase 2 of the spec. The
+ * end-to-end assertions below therefore hold for plans that do not escalate.
+ *
  * COST NOTE: a full PDF render of a dense fixture costs 300-500s because every
  * needsScaleUp escalation re-renders the whole plan. The end-to-end parity
  * assertions therefore use the light `sampleRealisticPlan` (~20s); the dense
@@ -20,7 +28,7 @@
 import { describe, test, expect } from '@jest/globals';
 import { generateGeoPDF } from '../pdfkitGeoPDF.js';
 import { generateDXF } from '../dxfGenerator.js';
-import { resolvePlanSheeting } from '../../../../app-shared/planSheeting.js';
+import { resolvePlanSheeting, drawingAreaMm } from '../../../../app-shared/planSheeting.js';
 import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js';
 import { sampleRealisticPlan } from './fixtures/sampleRealisticPlan.js';
 import { sampleDevelopedLargeStandsPlan } from './fixtures/sampleDevelopedLargeStandsPlan.js';
@@ -91,3 +99,30 @@ function dxfExtentM(fixture) {
   for (const c of fixture.outsideFigureData.coordinates) { ys.push(c.y); xs.push(c.x); }
   return { widthM: Math.max(...ys) - Math.min(...ys), heightM: Math.max(...xs) - Math.min(...xs) };
 }
+
+/**
+ * The reported bug, guarded end to end.
+ *
+ * Measured before the shared resolver existed: auto put a 50 x 42mm figure on a
+ * 1000 x 800mm sheet (8.8% fill) because the preview recommended 1:10000. This
+ * asserts the whole wired path — frontend sends nothing, resolver decides,
+ * renderer honours it — keeps the figure a usable size.
+ */
+describe('auto never produces a postage-stamp figure', () => {
+  test('Maglas on full auto fills a usable fraction of the sheet', async () => {
+    const { scale, sheetSize, ...rest } = sampleMaglasPlan;
+    const pdf = await generateGeoPDF({ ...rest, planType: 'general-undeveloped' }, quiet);
+
+    const denominator = Number(String(pdf.scale).split(':')[1]);
+    const { widthM, heightM } = dxfExtentM(sampleMaglasPlan);
+    const area = drawingAreaMm(pdf.sheetSize);
+    const fill = Math.max(
+      (widthM / denominator) * 1000 / area.widthMm,
+      (heightM / denominator) * 1000 / area.heightMm,
+    );
+
+    // Pre-fix this was 0.088. Anything below ~a third of the sheet is the
+    // postage-stamp failure returning.
+    expect(fill).toBeGreaterThan(0.5);
+  }, 600000);
+});

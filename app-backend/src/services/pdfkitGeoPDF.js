@@ -4824,10 +4824,15 @@ function drawScaleBar(doc, extent, mapBounds, scale, position, figureBounds) {
   // bar so both formats graduate identically).
   const segmentLength = snapScaleBarSegment(rawSegmentMeters);
 
-  const numSegments = 3; // 3 segments: 0 – 1× – 2× – 3× (clean, compact)
+  // `let`, not `const`: the fit clamps below reduce the segment count and the
+  // total length when the bar is wider than the figure allows. They always
+  // could, but the box used to be most of the page so the branch was
+  // unreachable; a scale-true figure can be narrow enough to enter it, and it
+  // threw "Assignment to constant variable" mid-render.
+  let numSegments = 3; // 3 segments: 0 – 1× – 2× – 3× (clean, compact)
 
   const segmentLengthPoints = segmentLength / metersPerPoint;
-  const totalLengthPoints = segmentLengthPoints * numSegments;
+  let totalLengthPoints = segmentLengthPoints * numSegments;
 
   const LABEL_FONT_SIZE = 9;   // graduation labels above bar
   const SCALE_FONT_SIZE = 9;   // "SCALE 1:XXXX" below bar
@@ -9716,11 +9721,20 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
  */
 function applyPlanTypeCeiling(scale, extent, mapBounds, planType, mandatory500, logger) {
   const maxDenom = mandatory500 ? 500 : Infinity;
-  if (maxDenom === Infinity || scale.value <= maxDenom) return scale;
+  if (maxDenom === Infinity) return scale;
 
-  // Find the largest prescribed scale that is ≤ maxDenom
-  const capped = [...SI727_PRESCRIBED_SCALES].reverse().find(s => s.value <= maxDenom);
+  // Whether or not the scale needs capping, a mandated plan must be TESTED for
+  // tiling at the mandated denominator. This used to return early whenever the
+  // scale was already at or finer than 1:500 — which is the normal case now that
+  // the shared resolver yields exactly 500 for a mandated township. So
+  // needsTiling was never set, and a township too large to fit at 1:500 rendered
+  // as a figure overflowing its sheet instead of tiling. optimalScale.needsTiling
+  // is the only thing that triggers tileGrid, so the overflow was silent.
+  const capped = scale.value <= maxDenom
+    ? scale
+    : [...SI727_PRESCRIBED_SCALES].reverse().find(s => s.value <= maxDenom);
   if (!capped) return scale; // shouldn't happen
+  const wasCapped = capped.value !== scale.value;
 
   const extentWidth  = extent.maxY - extent.minY;
   const extentHeight = extent.maxX - extent.minX;
@@ -9730,11 +9744,15 @@ function applyPlanTypeCeiling(scale, extent, mapBounds, planType, mandatory500, 
   const mappedHmm = (extentHeight / capped.value) * 1000;
   const needsTiling = mappedWmm > mapWidthMM || mappedHmm > mapHeightMM;
 
-  logger.warn(
-    `[PDFKit] 🔒 SI 727 Reg 32(3) ceiling for '${planType}': capping scale from ` +
-    `${scale.label} → ${capped.label} (max denominator = ${maxDenom})` +
-    (needsTiling ? ` — MULTI-SHEET TILING REQUIRED (${mappedWmm.toFixed(0)}mm × ${mappedHmm.toFixed(0)}mm > plot window)` : '')
-  );
+  if (wasCapped || needsTiling) {
+    logger.warn(
+      `[PDFKit] 🔒 SI 727 Reg 32(3) for '${planType}': ` +
+      (wasCapped
+        ? `capping scale from ${scale.label} → ${capped.label} (max denominator = ${maxDenom})`
+        : `mandated at ${capped.label}`) +
+      (needsTiling ? ` — MULTI-SHEET TILING REQUIRED (${mappedWmm.toFixed(0)}mm × ${mappedHmm.toFixed(0)}mm > plot window)` : '')
+    );
+  }
 
   return { ...capped, needsTiling };
 }

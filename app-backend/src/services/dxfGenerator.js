@@ -77,6 +77,7 @@ import { selectTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-
 import { findBlockPosition } from './dxfBlockPlacer.js'
 import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 } from '../utils/si727Constants.js'
 import { resolvePlanSheeting, blockRoomFraction } from '../../../app-shared/planSheeting.js'
+import { SI727_SCALE_LADDER } from '../../../app-shared/si727Scales.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 import { roundBearingSouth } from '../utils/zim-geo.js'
 import { emitSubjectAdjoiningFeaturesDxf } from './adjoiningFeaturesDxf.js'
@@ -1217,6 +1218,10 @@ export function generateDXF(options, logger) {
 
   // â”€â”€ 3. Parcels + stand numbers + edge labels â”€â”€
   let parcelCount = 0, edgeLabelCount = 0;
+  // Edge labels the placer could not fit inside their parcel at any offset.
+  // Mirrors pdfkitLabeling's labelCollisions so both renderers escalate on the
+  // same signal; see the label-crowding escalation near the end of this function.
+  let _labelCollisions = 0;
   if (parcels?.features) {
     for (const feature of parcels.features) {
       const props = feature.properties || {};
@@ -1366,6 +1371,17 @@ export function generateDXF(options, logger) {
           edgeStart: a, edgeEnd: b, polygon: polyPts,
           labelHeight: distHeight, labelWidth: distLabelWidth, angle: ang,
         });
+        // `fits === false` means the placer exhausted every offset and fell back
+        // to its best-effort max-offset position, i.e. the label will overhang
+        // its parcel. That is the DXF's equivalent of the PDF's
+        // labelCollisions++, which counts edge labels that had to tolerate a
+        // collision or a clip; counting the same event on both sides is what
+        // lets the two renderers escalate together.
+        //
+        // A null check cannot detect this: findEdgeLabelPosition returns a
+        // usable point either way and only returns null for a degenerate
+        // polygon or a zero-length edge.
+        if (!smartPos || smartPos.fits === false) _labelCollisions++;
 
         // Derive distance-label position + implied offset for stacking the bearing
         const distX = smartPos?.x ?? (mx + nx * edgeOffset);
@@ -2117,6 +2133,71 @@ export function generateDXF(options, logger) {
     surveyStatement:   blockPositions.surveyStatement   ? { x: +blockPositions.surveyStatement.x.toFixed(1),   y: +blockPositions.surveyStatement.y.toFixed(1) }   : null,
     sgSignature:       blockPositions.sgSignature       ? { x: +blockPositions.sgSignature.x.toFixed(1),       y: +blockPositions.sgSignature.y.toFixed(1) }       : null,
   });
+
+  // ── LABEL-CROWDING ESCALATION ──
+  // The PDF has had this since before the scale-truth work; the DXF had no
+  // counterpart, so the two renderers could resolve different sheets and scales
+  // for the same survey the moment labels crowded — a parity hole that only
+  // widened once the figure started being drawn at its true size.
+  //
+  // Note this escalates in the OPPOSITE direction to the block path below, and
+  // deliberately so. Blocks need whitespace, so that path DEMANDS MORE ROOM by
+  // tightening the block-room budget. Labels need their parcels bigger on paper,
+  // so this path lets the figure GROW: a larger sheet re-resolves to the finest
+  // candidate that now fits, and at the largest sheet the scale steps DOWN a rung
+  // (finer denominator = longer edges = more room for the text).
+  const _labelEscalationAttempt = options._labelEscalationAttempt ?? 0;
+  const MAX_LABEL_ESCALATION = 2;
+  if (_labelCollisions > 0 && _labelEscalationAttempt < MAX_LABEL_ESCALATION) {
+    const _nextLabelSheet = nextSheetUp(normalizedSheetSize);
+    if (_nextLabelSheet) {
+      logger.warn(
+        `[DXF] 🏷️ Label crowding (${_labelCollisions} edge labels unplaceable) on ` +
+        `${normalizedSheetSize} at 1:${S} — escalating paper to ${_nextLabelSheet} ` +
+        `(attempt ${_labelEscalationAttempt + 1}/${MAX_LABEL_ESCALATION})`
+      );
+      return generateDXF({
+        ...options,
+        sheetSize: _nextLabelSheet,
+        // No scale carried: on a bigger sheet the resolver's finest fitting
+        // candidate IS the desired outcome here, because a larger figure is what
+        // gives the labels room. This is the one place where re-resolving is
+        // right rather than self-defeating.
+        //
+        // The sheet counter is incremented too, exactly as the PDF's label path
+        // does. Without it the DXF would get more total sheet escalations than
+        // the PDF for the same survey, which is the divergence this whole
+        // mechanism exists to close.
+        _sheetSizeUpAttempt: (options._sheetSizeUpAttempt ?? 0) + 1,
+        _labelEscalationAttempt: _labelEscalationAttempt + 1,
+      }, logger);
+    }
+
+    // A scale the SURVEYOR declared is never stepped, even for labels: the spec's
+    // rule is that an explicit scale is honoured and the SHEET escalates instead.
+    // (The PDF's own label path predates that rule and still steps a declared
+    // scale; this side deliberately does not copy that.)
+    const _labelScaleDeclared = !!options.scale && !(options._scalePinned ?? false);
+    const _idx = SI727_SCALE_LADDER.indexOf(S);
+    const _finer = (!_labelScaleDeclared && _idx > 0) ? SI727_SCALE_LADDER[_idx - 1] : null;
+    if (_finer) {
+      logger.warn(
+        `[DXF] 🏷️ Label crowding (${_labelCollisions} edge labels unplaceable) at the largest ` +
+        `sheet — stepping scale down from 1:${S} to 1:${_finer} for more label room`
+      );
+      return generateDXF({
+        ...options,
+        scale: `1:${_finer}`,
+        _scalePinned: true,
+        _labelEscalationAttempt: _labelEscalationAttempt + 1,
+      }, logger);
+    }
+
+    logger.warn(
+      `[DXF] ⚠️ Label crowding (${_labelCollisions} edge labels unplaceable) but already at the ` +
+      `largest sheet and finest scale — accepting the overlaps`
+    );
+  }
 
   // 3-v7: paper-size escalation. Mirrors pdfkitGeoPDF.js:13497-13559.
   // Uses normalizedSheetSize so the ladder lookup matches even when callers

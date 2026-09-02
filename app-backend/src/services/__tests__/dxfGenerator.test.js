@@ -605,3 +605,75 @@ describe('computeOutsideFigureVertices', () => {
     expect(result.skippedCount).toBe(1)
   })
 })
+
+describe('generateDXF — label-crowding escalation', () => {
+  /**
+   * Long, narrow 6m x 40m stands. The 6m sides are too short for an edge
+   * distance label, so findEdgeLabelPosition exhausts every offset and falls
+   * back to its best-effort position -- the DXF's equivalent of the PDF's
+   * labelCollisions, and what this escalation reacts to.
+   *
+   * 240 m2 is deliberately ABOVE the 200 m2 Reg 32(3) threshold. A smaller
+   * stand crowds just as well but triggers the statutory 1:500 mandate, which
+   * overrides a declared scale for reasons that have nothing to do with labels
+   * -- and would make the declared-scale test below assert the wrong mechanism.
+   */
+  const tinyStands = () => ({
+    type: 'FeatureCollection',
+    features: [0, 1, 2, 3].map((i) => ({
+      type: 'Feature',
+      properties: { stand: String(100 + i), area_m2: 240 },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[i * 6, 0], [i * 6 + 6, 0], [i * 6 + 6, 40], [i * 6, 40], [i * 6, 0]]],
+      },
+    })),
+  })
+
+  function renderCapturingCrowding(extraOpts = {}) {
+    const warnings = []
+    const logger = {
+      info: () => {},
+      warn: (m) => {
+        const s = typeof m === 'string' ? m : (m?.msg || '')
+        if (/Label crowding/.test(s)) warnings.push(s)
+      },
+      error: () => {},
+      debug: () => {},
+    }
+    const dxf = generateDXF({
+      parcels: tinyStands(),
+      beacons: { features: [] },
+      outsideFigureData: null,
+      metadata: {},
+      planType: 'general-undeveloped',
+      ...extraOpts,
+    }, logger)
+    return { dxf, warnings }
+  }
+
+  test('escalates the sheet when edge labels cannot be placed, and terminates', () => {
+    const { dxf, warnings } = renderCapturingCrowding()
+
+    // It must actually fire — before this existed the DXF had no label-crowding
+    // path at all, so it silently kept a crowded plan while the PDF escalated,
+    // and the two could resolve different sheets for the same survey.
+    expect(warnings.length).toBeGreaterThan(0)
+    expect(warnings[0]).toMatch(/edge labels unplaceable/)
+
+    // And it must stop: MAX_LABEL_ESCALATION is 2, so at most two escalations
+    // regardless of how crowded the plan stays.
+    expect(warnings.length).toBeLessThanOrEqual(2)
+
+    // Escalation means BIGGER paper — a larger figure is what gives labels room.
+    // This is the opposite direction to the block-room path, deliberately.
+    expect(dxf.sheetSize).not.toBe('SI727_500x400')
+  }, 120000)
+
+  test('never steps a surveyor-declared scale, even when labels crowd', () => {
+    // Reg 32(3) aside, the spec's rule is that an explicit scale is honoured and
+    // the SHEET escalates instead. The scale must come back exactly as declared.
+    const { dxf } = renderCapturingCrowding({ scale: '1:750', sheetSize: 'SI727_500x400' })
+    expect(dxf.scale).toBe('1:750')
+  }, 120000)
+})

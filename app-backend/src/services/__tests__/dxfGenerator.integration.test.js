@@ -799,8 +799,17 @@ describe('dxfGenerator integration — Schedule of Areas SI 727 columns', () => 
     }
     const { buffer, warnings } = generateDXF(overflowFixture, captureLogger)
     // Escalation log lines should mention the climb up the ladder.
+    //
+    // Either cause counts. This fixture's parcels are 1m squares, so its edge
+    // labels cannot fit at any prescribed scale, and the label-crowding
+    // escalation (added to match the PDF, which has always escalated for labels
+    // before block placement runs) now climbs the ladder first. Blocks then fit
+    // on the bigger sheet and never report themselves unplaceable. What this
+    // test is actually about — the ladder IS climbed and the plan fits cleanly
+    // at the largest sheet with zero warnings — is unchanged and still asserted
+    // below.
     const climbLines = capturedWarn.filter(s =>
-      /Blocks unplaceable on SI727_(500x400|800x500|1000x800) — escalating to SI727_(500x400|800x500|1000x800)/.test(s))
+      /(Blocks unplaceable on|Label crowding \(\d+ edge labels unplaceable\) on) SI727_(500x400|800x500|1000x800).*escalating (to|paper to) SI727_(500x400|800x500|1000x800)/.test(s))
     expect(climbLines.length).toBeGreaterThanOrEqual(1)
     // Clean fit, not exhaustion: with the accurate figure polygon gating
     // escalation, this 200-parcel density fits at the largest real SI 727

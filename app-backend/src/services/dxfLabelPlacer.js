@@ -260,5 +260,9 @@ export function findEdgeLabelPosition({
     labelY = midY + perpNormY * offsetDir * maxOffset
   }
 
-  return { x: labelX, y: labelY }
+  // `fits` reports whether a position was actually found or the best-effort
+  // fallback above was used. Callers need it to count label crowding: the
+  // function returns a usable point either way, so a null check cannot detect
+  // the failure -- which is the PDF's `labelCollisions` signal on this side.
+  return { x: labelX, y: labelY, fits: isFullyInside }
 }

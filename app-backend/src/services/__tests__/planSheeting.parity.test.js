@@ -35,6 +35,7 @@ import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js';
 import { sampleRealisticPlan } from './fixtures/sampleRealisticPlan.js';
 import { sampleDevelopedLargeStandsPlan } from './fixtures/sampleDevelopedLargeStandsPlan.js';
 import { sampleUndevelopedSmallStandsPlan } from './fixtures/sampleUndevelopedSmallStandsPlan.js';
+import { measureDrawnScale } from './helpers/measureDrawnScale.js';
 
 const quiet = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
 
@@ -64,6 +65,30 @@ describe('PDF ↔ DXF sheeting parity — end to end', () => {
     expect(dxf.scale).toBe('1:750');
     expect(pdf.scale).toBe('1:750');
   }, 180000);
+
+  test('PDF and DXF draw the same figure at the same size', async () => {
+    const options = autoOptions(sampleRealisticPlan, 'general-undeveloped');
+
+    const pdf = await generateGeoPDF({ ...options }, quiet);
+    const dxf = generateDXF({ ...options }, quiet);
+
+    // Phase 1's parity suite compared the two reported labels, which agreed
+    // while the drawings did not: DXF is scale-true by construction, PDF was
+    // not (until Task 5). Compare the millimetre size of the figure each
+    // renderer actually drew — the PDF's measured from its emitted coordinate
+    // labels, the DXF's from its reported (scale-true) denominator.
+    const { mmPerMetre: pdfMmPerMetre } = await measureDrawnScale(pdf.pdfBuffer);
+    const dxfDenominator = Number(String(dxf.scale).split(':')[1]);
+    const dxfMmPerMetre = 1000 / dxfDenominator;
+
+    const { widthM, heightM } = dxfExtentM(sampleRealisticPlan);
+    const pdfSizeMm = { w: widthM * pdfMmPerMetre, h: heightM * pdfMmPerMetre };
+    const dxfSizeMm = { w: widthM * dxfMmPerMetre, h: heightM * dxfMmPerMetre };
+
+    expect(pdf.sheetSize).toBe(dxf.sheetSize);
+    expect(Math.abs(pdfSizeMm.w - dxfSizeMm.w) / dxfSizeMm.w).toBeLessThan(0.02);
+    expect(Math.abs(pdfSizeMm.h - dxfSizeMm.h) / dxfSizeMm.h).toBeLessThan(0.02);
+  }, 180000);
 });
 
 describe('DXF consumes the shared resolver', () => {
@@ -75,7 +100,7 @@ describe('DXF consumes the shared resolver', () => {
   ];
 
   for (const [name, fixture] of FIXTURES) {
-    test(`${name}: DXF renders a resolver candidate at a usable size`, () => {
+    test(`${name}: DXF renders a resolver candidate at a usable size`, async () => {
       const options = autoOptions(fixture, 'general-undeveloped');
       const dxf = generateDXF({ ...options, sheetSize: 'SI727_500x400' }, quiet);
 
@@ -113,7 +138,7 @@ describe('DXF consumes the shared resolver', () => {
                     .map(c => c.scaleLabel).join(', ') || 'none'})`,
       ).toBe(dxf.scale);
 
-      const fill = fillOf(fixture, dxf);
+      const fill = await fillOf(fixture, dxf);
       expect(fill).toBeLessThanOrEqual(0.75);
       // Reg 32(3) fixes a mandated township at exactly 1:500 whatever that does
       // to the fill, so the floor is only meaningful on the auto-fitted path.
@@ -121,11 +146,11 @@ describe('DXF consumes the shared resolver', () => {
     }, 120000);
   }
 
-  test('DXF honours the block-room ceiling, not just the raw fit', () => {
+  test('DXF honours the block-room ceiling, not just the raw fit', async () => {
     const { scale, sheetSize, ...rest } = sampleMaglasPlan;
     const dxf = generateDXF({ ...rest, planType: 'general-undeveloped' }, quiet);
 
-    const fill = fillOf(sampleMaglasPlan, dxf);
+    const fill = await fillOf(sampleMaglasPlan, dxf);
 
     expect(fill).toBeLessThanOrEqual(0.75);
     expect(fill).toBeGreaterThan(0.4); // and not absurdly small either
@@ -133,13 +158,34 @@ describe('DXF consumes the shared resolver', () => {
 });
 
 /**
- * Share of the canonical drawing area the rendered figure occupies, from the
- * (scale, sheet) a generator reports. The single measure both fill guards use.
+ * Share of the canonical drawing area the rendered figure occupies. The single
+ * measure both fill guards use — asymmetric on purpose, not fudged:
+ *
+ * PDF (has pdfBuffer): measured from the emitted file's own coordinate-cross
+ * labels via measureDrawnScale, NOT from rendered.scale. A label-derived fill
+ * would keep passing on a plan drawn at the wrong size, which is the original
+ * postage-stamp bug (a sheet marked 1:600 drawn at 1:417) — reading the label
+ * here would silently reintroduce it.
+ *
+ * DXF (no pdfBuffer): computed from the reported (scale, sheet), i.e. the
+ * label. There is no "measure the output" instrument for DXF, and none is
+ * needed: its geometry is emitted in ground metres and the paper frame sized
+ * via mmToGround, so it is scale-true by construction — its reported
+ * denominator IS what it drew.
  */
-function fillOf(fixture, rendered) {
-  const denominator = Number(String(rendered.scale).split(':')[1]);
+async function fillOf(fixture, rendered) {
   const area = drawingAreaMm(rendered.sheetSize);
   const { widthM, heightM } = dxfExtentM(fixture);
+
+  if (rendered.pdfBuffer) {
+    const { mmPerMetre } = await measureDrawnScale(rendered.pdfBuffer);
+    return Math.max(
+      (widthM * mmPerMetre) / area.widthMm,
+      (heightM * mmPerMetre) / area.heightMm,
+    );
+  }
+
+  const denominator = Number(String(rendered.scale).split(':')[1]);
   return Math.max(
     (widthM / denominator) * 1000 / area.widthMm,
     (heightM / denominator) * 1000 / area.heightMm,
@@ -166,10 +212,48 @@ describe('auto never produces a postage-stamp figure', () => {
     const { scale, sheetSize, ...rest } = sampleMaglasPlan;
     const pdf = await generateGeoPDF({ ...rest, planType: 'general-undeveloped' }, quiet);
 
-    const fill = fillOf(sampleMaglasPlan, pdf);
+    // fillOf measures this from the emitted PDF's own coordinate-cross labels
+    // (measureDrawnScale), not from pdf.scale: the earlier version of this
+    // guard computed fill from the reported label against the resolver's own
+    // model, so it validated the label — and would have kept passing on a
+    // plan drawn at the wrong size, which is the bug below.
+    const fill = await fillOf(sampleMaglasPlan, pdf);
 
-    // Pre-fix this was 0.088. Anything below ~a third of the sheet is the
-    // postage-stamp failure returning.
+    // Pre-fix this was 0.088 (label-derived). Anything below ~a third of the
+    // sheet is the postage-stamp failure returning.
     expect(fill).toBeGreaterThan(0.5);
   }, 600000);
+});
+
+describe('PDF ↔ DXF title band parity', () => {
+  test('the two renderers reserve title bands within 15mm of each other', async () => {
+    let pdfBandPt = null;
+    let dxfBandMm = null;
+    const capture = {
+      info: (m) => {
+        if (typeof m !== 'string') return;
+        const pdfHit = m.match(/Reserved ([\d.]+)pt title band/);
+        if (pdfHit) pdfBandPt = parseFloat(pdfHit[1]);
+        const dxfHit = m.match(/Reserved ([\d.]+)mm title band/);
+        if (dxfHit) dxfBandMm = parseFloat(dxfHit[1]);
+      },
+      warn: () => {}, error: () => {}, debug: () => {},
+    };
+    const options = autoOptions(sampleRealisticPlan, 'general-undeveloped');
+
+    await generateGeoPDF({ ...options }, capture);
+    generateDXF({ ...options }, capture);
+
+    expect(pdfBandPt).not.toBeNull();
+    expect(dxfBandMm).not.toBeNull();
+    const pdfBandMm = pdfBandPt / (72 / 25.4);
+
+    // Measured 2026-09-01: PDF 51.9mm, DXF 46.2mm — both read live here, not
+    // hardcoded, so this fails the moment either title formatter changes
+    // shape. This guards the decision NOT to share the title formatters
+    // between renderers: TITLE_BAND_ESTIMATE_MM = 55 in
+    // app-shared/planSheeting.js stays conservative above both only as long
+    // as this stays true.
+    expect(Math.abs(pdfBandMm - dxfBandMm)).toBeLessThan(15);
+  }, 180000);
 });

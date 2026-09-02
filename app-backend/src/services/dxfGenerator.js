@@ -1800,6 +1800,12 @@ export function generateDXF(options, logger) {
     + _videLines * hBody * 1.6               // Vide line
     + hBody;                                  // clearance gap below the last line
 
+  // Logged in paper mm (titleBandH is ground-metres at 1:S) so a test can read
+  // the actually-computed band without duplicating this formula. Mirrors the
+  // PDF's "Reserved Xpt title band" line — parsed by the parity suite's
+  // title-band-drift guard.
+  logger.info(`[DXF] 📐 Reserved ${(titleBandH * 1000 / S).toFixed(1)}mm title band`);
+
   // Page positioned so the drawing is centred horizontally, and vertically so a
   // top band is reserved for the title block with the figure fitted strictly
   // below it (matches the PDF's reserve-band-fit-figure-below strategy). The

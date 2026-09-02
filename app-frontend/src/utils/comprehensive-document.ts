@@ -13,6 +13,7 @@
 
 import { PDFDocument } from 'pdf-lib';
 import type { SurveyPoint } from '@/utils/coordinate-list';
+import type { SiteCalibration } from '@/utils/siteCalibration';
 import { PageAllocationService, type DuplicateAnalysis, type Parcel } from '@/services/pageAllocation';
 import { CoverPageGenerator, type CoverPageInfo } from '@/utils/cover-page';
 import { CoordinateListGenerator } from '@/utils/coordinate-list';
@@ -33,6 +34,9 @@ export interface ComprehensiveDocumentData {
   // Field Book Data
   fieldBookObservations?: any[]; // Raw observations for field book
   
+  /** GNSS site calibration; omit to skip the field book's calibration page */
+  siteCalibration?: SiteCalibration;
+
   // Survey Points
   surveyPoints: SurveyPoint[];
   adjustedCoordinates: AdjustedCoordinate[];
@@ -122,7 +126,8 @@ export class ComprehensiveDocumentGenerator {
       projectControlPoints: data.projectControlPoints,
       parcels: data.parcels,
       reportData: data.reportData,
-      reportOptions: data.reportOptions
+      reportOptions: data.reportOptions,
+      siteCalibration: data.siteCalibration
     });
     
     // Generate cover page separately
@@ -286,7 +291,8 @@ export class ComprehensiveDocumentGenerator {
             surveyorName: data.surveyorInfo.name,
             surveyDescription: data.projectInfo.projectTitle,
             surveyDate: data.surveyorInfo.surveyDate
-          }
+          },
+          data.siteCalibration
         );
         
         fieldBookBlob = new Blob([fieldBookResult.pdf.output('blob')], { type: 'application/pdf' });

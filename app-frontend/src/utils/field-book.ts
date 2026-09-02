@@ -6,6 +6,7 @@
 
 import jsPDF from 'jspdf';
 import { bankersRound } from './cadastral-precision';
+import type { SiteCalibration } from './siteCalibration';
 
 export interface FieldBookPoint {
   id: string;
@@ -47,7 +48,14 @@ export class FieldBookGenerator {
    */
   async generateFieldBookPDF(
     points: FieldBookPoint[],
-    metadata: FieldBookMetadata
+    metadata: FieldBookMetadata,
+    /**
+     * Optional GNSS site calibration. Rendered on its own page AFTER the point
+     * pages, so no point's E-number moves: pointPageMap is cross-referenced by
+     * the other documents, and placing the calibration first would renumber
+     * every page they point at.
+     */
+    calibration?: SiteCalibration
   ): Promise<{ pdf: jsPDF; pageCount: number; pointPageMap: Record<string, string> }> {
     const pdf = new jsPDF(this.options);
     
@@ -84,12 +92,153 @@ export class FieldBookGenerator {
     }
     
     console.log('[FieldBook] ✅ Point page map created:', Object.keys(this.pointPageMap).length, 'points tracked');
-    
+
+    let pageCount = totalPages;
+    if (calibration) {
+      if (totalPages > 0) pdf.addPage();
+      pageCount = totalPages + 1;
+      this.generateCalibrationPage(pdf, calibration, pageCount, metadata);
+      console.log(`[FieldBook] Generated calibration page E${pageCount}`);
+    }
+
     return {
       pdf,
-      pageCount: totalPages,
+      pageCount,
       pointPageMap: this.pointPageMap
     };
+  }
+
+  /**
+   * Render the GNSS site calibration page.
+   *
+   * A site calibration is the evidence that the GNSS observations were tied to
+   * the local grid, so the field book carries both halves of it: the adjusted
+   * parameters, and the residual at every control point. Parameters alone would
+   * not let a reader judge whether the fit was actually good.
+   */
+  private generateCalibrationPage(
+    pdf: jsPDF,
+    cal: SiteCalibration,
+    pageNumber: number,
+    metadata: FieldBookMetadata
+  ): void {
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const maxYPosition = pageHeight - 30;
+    const left = this.options.marginLeft;
+    const right = pageWidth - this.options.marginRight;
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(16);
+    pdf.text('ELECTRONIC FIELD BOOK', left, 25);
+
+    const pageLabel = `E${pageNumber}`;
+    pdf.text(pageLabel, right - pdf.getTextWidth(pageLabel), 25);
+
+    pdf.setFontSize(12);
+    pdf.text('GNSS SITE CALIBRATION', left, 38);
+
+    let y = 48;
+
+    // ── Adjusted parameters ──
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Adjusted parameters', left, y);
+    y += 7;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+
+    const h = cal.horizontal;
+    if (h) {
+      // Two columns of label/value so the block stays compact.
+      const rows: Array<[string, string]> = [
+        ['Rotation origin (Y)', h.rotationCentreEasting.toFixed(3)],
+        ['Rotation origin (X)', h.rotationCentreNorthing.toFixed(3)],
+        ['Rotation', `${h.rotationDegrees.toFixed(6)}°`],
+        ['Translation north', `${h.translationNorth.toFixed(4)} m`],
+        ['Translation east', `${h.translationEast.toFixed(4)} m`],
+        ['Scale Factor', h.scaleFactor.toFixed(9)],
+      ];
+      for (const [label, value] of rows) {
+        if (y > maxYPosition) break;
+        pdf.text(label, left, y);
+        pdf.text(value, left + 55, y);
+        y += 6;
+      }
+    } else {
+      pdf.text('No horizontal adjustment recorded.', left, y);
+      y += 6;
+    }
+
+    y += 2;
+
+    // A horizontal-only calibration must SAY so. Silence would read as
+    // "the vertical residuals were all zero", which is a different and much
+    // stronger claim than "no vertical adjustment was performed".
+    if (!cal.hasVertical) {
+      pdf.setFont('helvetica', 'italic');
+      pdf.text('Horizontal-only calibration — no vertical adjustment was performed.', left, y);
+      pdf.setFont('helvetica', 'normal');
+      y += 8;
+    }
+
+    // ── Summary ──
+    const s = cal.summary;
+    if (s.maxHorizontalResidual !== null) {
+      const worst = `${(s.maxHorizontalResidual * 1000).toFixed(1)} mm`;
+      const rms = s.rmsHorizontal !== null ? `${(s.rmsHorizontal * 1000).toFixed(1)} mm` : '—';
+      pdf.text(`Largest horizontal residual: ${worst}     RMS: ${rms}`, left, y);
+      y += 10;
+    }
+
+    // ── Per-pair residuals ──
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(10);
+    pdf.text('Control points', left, y);
+    y += 7;
+
+    pdf.setFontSize(9);
+    const cPoint = left;
+    const cCtrlY = left + 24;
+    const cCtrlX = cCtrlY + 32;
+    const cCalcY = cCtrlX + 32;
+    const cCalcX = cCalcY + 32;
+    const cRes = cCalcX + 32;
+
+    pdf.text('Point', cPoint, y);
+    pdf.text('Control Y', cCtrlY, y);
+    pdf.text('Control X', cCtrlX, y);
+    pdf.text('Calculated Y', cCalcY, y);
+    pdf.text('Calculated X', cCalcX, y);
+    pdf.text('Residual', cRes, y);
+    y += 3;
+    pdf.line(left, y, right, y);
+    y += 6;
+
+    pdf.setFont('helvetica', 'normal');
+    for (const pair of cal.pairs) {
+      if (y > maxYPosition) {
+        // Never silently truncate: a table that drops control points reads as a
+        // complete record and is worse than no table at all.
+        pdf.setFont('helvetica', 'italic');
+        pdf.text('… continued — remaining control points omitted for space.', left, y);
+        break;
+      }
+      pdf.text(pair.pointId, cPoint, y);
+      pdf.text(pair.controlEasting.toFixed(3), cCtrlY, y);
+      pdf.text(pair.controlNorthing.toFixed(3), cCtrlX, y);
+      pdf.text(pair.calculatedEasting.toFixed(3), cCalcY, y);
+      pdf.text(pair.calculatedNorthing.toFixed(3), cCalcX, y);
+      // Millimetres: residuals are millimetre-scale, and 0.0078 m reads far
+      // worse than 7.8 mm to the surveyor checking the fit.
+      pdf.text(`${(pair.horizontalResidual * 1000).toFixed(1)} mm`, cRes, y);
+      y += 6;
+    }
+
+    // Footer, matching the point pages.
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(metadata.surveyorName || '', left, pageHeight - 15);
   }
 
   /**

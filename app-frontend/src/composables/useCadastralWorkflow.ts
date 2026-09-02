@@ -1,5 +1,6 @@
 import { reactive, ref } from 'vue'
 import type { CadastralWorkflowState, CadastralPoint } from '../types/cadastral'
+import type { SiteCalibration } from '../utils/siteCalibration'
 import { useSurveyLookupStore } from '../stores/surveyLookup'
 import api from '../services/api'
 
@@ -217,6 +218,27 @@ function setImportedPoints(points: CadastralPoint[]) {
   }
 }
 
+/**
+ * Store a parsed GNSS site calibration and persist it.
+ *
+ * It rides in the SAME 'csv-import' step_data as the points, deliberately: the
+ * backend's update action merges rather than replaces, so the two coexist, and
+ * resetting the import step clears both. They are supplied together at the same
+ * step, so they should disappear together.
+ */
+function setSiteCalibration(calibration: SiteCalibration | null) {
+  if (calibration) {
+    workflowState.documents.siteCalibration = calibration
+  } else {
+    delete workflowState.documents.siteCalibration
+  }
+
+  if (!projectId.value) return
+  saveStepData('csv-import', { site_calibration: calibration }).catch(err => {
+    console.error('⚠️ Failed to save site calibration:', err)
+  })
+}
+
 function resetWorkflow() {
   workflowState.currentStep = 'csv-import';
   workflowState.importedPoints = [];
@@ -305,6 +327,15 @@ async function loadWorkflowState(surveyProjectId: number) {
       
       // Restore imported points if they exist (check both csv-import and import_csv for backwards compatibility)
       const csvStepData = dbState.step_data?.['csv-import'] || dbState.step_data?.import_csv;
+
+      // Restore the site calibration alongside the points. It is already a plain
+      // parsed object, so it needs no re-parsing — and it must be restored even
+      // when there are no points, since the two are independent.
+      if (csvStepData?.site_calibration) {
+        workflowState.documents.siteCalibration = csvStepData.site_calibration;
+        console.log('✅ Restored site calibration:', csvStepData.site_calibration.pairs?.length ?? 0, 'control pairs');
+      }
+
       console.log('🔍 [DEBUG] csvStepData found?', !!csvStepData);
       console.log('🔍 [DEBUG] csvStepData contents:', csvStepData);
       console.log('🔍 [DEBUG] csvStepData keys:', csvStepData ? Object.keys(csvStepData) : []);
@@ -651,6 +682,7 @@ export function useCadastralWorkflow() {
     
     // Data management
     setImportedPoints,
+    setSiteCalibration,
     
     // Reset functions
     resetWorkflow,

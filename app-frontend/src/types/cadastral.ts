@@ -1,9 +1,11 @@
 /**
  * Cadastral Standard Module Types
- * 
+ *
  * Defines TypeScript interfaces for the SurveyPro Cadastral Standard workflow
  * which handles production of digital cadastral records from reduced field notes.
  */
+
+import type { SiteCalibration } from '../utils/siteCalibration';
 
 /**
  * Status codes for survey points
@@ -442,6 +444,12 @@ export interface CadastralWorkflowState {
       pageCount: number;
     };
     dsgCertificate?: any;
+    /**
+     * Parsed GNSS site calibration, when the surveyor supplied one at the CSV
+     * import step. Optional throughout: a plan without a calibration must
+     * generate exactly as it did before this existed.
+     */
+    siteCalibration?: SiteCalibration;
   };
   
   /** Configuration */

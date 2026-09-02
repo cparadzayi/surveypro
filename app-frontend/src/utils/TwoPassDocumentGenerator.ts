@@ -9,6 +9,7 @@
  */
 
 import { PDFDocument } from 'pdf-lib'
+import type { SiteCalibration } from './siteCalibration'
 import type {
   DocumentMeasurements,
   CalculationsMeasurement,
@@ -37,6 +38,8 @@ export interface TwoPassDocumentData {
   /** SI 727 s.67(5) Beacon Comparison Report inputs; omit to skip the section */
   reportData?: ReportOnSurveyData | null
   reportOptions?: BeaconComparisonReportOptions
+  /** GNSS site calibration; omit to skip the field book's calibration page */
+  siteCalibration?: SiteCalibration
 }
 
 export interface TwoPassDocumentResult {
@@ -245,7 +248,11 @@ export class TwoPassDocumentGenerator {
   
   private measureFieldBook(data: TwoPassDocumentData): FieldBookMeasurement {
     const pointsPerPage = 27
-    const pages = Math.ceil(data.surveyPoints.length / pointsPerPage)
+    // The calibration adds one page AFTER the points, so it changes the page
+    // total but never a point's E-number -- pointPageMap below is built from the
+    // point index alone and is deliberately left untouched by it.
+    const calibrationPages = data.siteCalibration ? 1 : 0
+    const pages = Math.ceil(data.surveyPoints.length / pointsPerPage) + calibrationPages
     
     // Calculate point page map during measurement
     const pointPageMap: Record<string, string> = {}
@@ -436,7 +443,8 @@ export class TwoPassDocumentGenerator {
     
     const result = await this.fieldBookGenerator.generateFieldBookPDF(
       fieldBookPoints,
-      metadata
+      metadata,
+      data.siteCalibration
     )
     
     // Convert jsPDF to Blob and return with pointPageMap

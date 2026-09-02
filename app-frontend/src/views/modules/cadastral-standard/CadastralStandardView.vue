@@ -331,6 +331,65 @@
                 ✅ {{ workflowState.importedPoints.length }} points imported (Lo {{ selectedLoZone }})
               </p>
               
+              <!-- Optional: GNSS site calibration report.
+                   Separate from the CSV because it is optional — a plan without
+                   one must import and generate exactly as before. -->
+              <div class="mt-6 pt-6 border-t border-gray-200 text-left">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <p class="text-sm font-medium text-gray-700">
+                      GNSS Site Calibration <span class="font-normal text-gray-500">(optional)</span>
+                    </p>
+                    <p class="mt-1 text-xs text-gray-500">
+                      Trimble Site Calibration Report (.xml). Its parameters and residuals are
+                      added to the Electronic Field Book as evidence the GNSS observations were
+                      tied to the local grid.
+                    </p>
+                  </div>
+                  <input
+                    ref="calibrationInputRef"
+                    id="calibration-file-input"
+                    type="file"
+                    accept=".xml"
+                    @change="handleCalibrationFileChange"
+                    class="hidden"
+                  />
+                  <button
+                    @click="triggerCalibrationInput"
+                    :disabled="!selectedProjectId"
+                    :class="selectedProjectId
+                      ? 'border-blue-300 text-blue-700 bg-white hover:bg-blue-50'
+                      : 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'"
+                    class="shrink-0 inline-flex items-center px-4 py-2 border text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  >
+                    📡 {{ workflowState.documents.siteCalibration ? 'Replace' : 'Add' }} Calibration
+                  </button>
+                </div>
+
+                <p v-if="calibrationError" class="mt-2 text-sm text-red-600">
+                  ⚠️ {{ calibrationError }}
+                </p>
+                <div
+                  v-else-if="workflowState.documents.siteCalibration"
+                  class="mt-2 flex items-center gap-3 text-sm text-green-700"
+                >
+                  <span>
+                    ✅ Calibration loaded —
+                    {{ workflowState.documents.siteCalibration.pairs.length }} control
+                    {{ workflowState.documents.siteCalibration.pairs.length === 1 ? 'pair' : 'pairs' }}<template
+                      v-if="workflowState.documents.siteCalibration.summary.maxHorizontalResidual !== null"
+                    >, max residual
+                    {{ (workflowState.documents.siteCalibration.summary.maxHorizontalResidual * 1000).toFixed(1) }} mm</template>
+                  </span>
+                  <button
+                    @click="clearSiteCalibration"
+                    class="text-xs text-red-600 hover:text-red-800 underline"
+                  >
+                    remove
+                  </button>
+                </div>
+              </div>
+
               <div class="mt-6 text-sm text-gray-500">
                 <p>Required format: Point, Y, X, Status, Description, Date of survey</p>
                 <p class="mt-1">Sample: P2,97538.004,2247107.872,F,50mm Iron Pipe in Concrete,1/10/2025</p>
@@ -1303,6 +1362,7 @@ import {
 } from '../../../services/csvImports';
 // Spatial data export
 import { batchCreateCoordinatePoints } from '../../../services/spatial';
+import { parseSiteCalibration } from '../../../utils/siteCalibration';
 import CSVReimportDialog from '../../../components/cadastral/CSVReimportDialog.vue';
 import MergeAnalysisDialog from '../../../components/cadastral/MergeAnalysisDialog.vue';
 import LiveCSVValidator from '../../../components/cadastral/LiveCSVValidator.vue';
@@ -1326,6 +1386,7 @@ const {
   buildCoordinateList, 
   buildFieldBook, 
   setImportedPoints, 
+  setSiteCalibration,
   resetWorkflow: composableResetWorkflow,
   resetFieldBook,
   resetCalculationsPart1,
@@ -1383,6 +1444,8 @@ provide('workflowState', workflowState as any);
 // Component state
 const isGenerating = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const calibrationInputRef = ref<HTMLInputElement | null>(null);
+const calibrationError = ref<string>('');
 
 // ✅ Phase 1: CSV Template & Format Guide
 const showFormatGuide = ref(false);
@@ -2732,6 +2795,44 @@ async function handleFileChange(event: Event) {
       alert('Error reading file: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   }
+}
+
+function triggerCalibrationInput() {
+  calibrationInputRef.value?.click();
+}
+
+/**
+ * Load a Trimble GNSS site calibration report.
+ *
+ * Parsed at selection rather than at document generation, so a wrong or
+ * malformed file is reported while the surveyor still has the file dialog in
+ * mind — not hours later as a field book full of blanks.
+ */
+async function handleCalibrationFileChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+
+  calibrationError.value = '';
+  try {
+    const content = await readFileContent(file);
+    const calibration = parseSiteCalibration(content);
+    setSiteCalibration(calibration);
+    console.log(`✅ Site calibration loaded: ${calibration.pairs.length} control pairs`);
+  } catch (err: any) {
+    // Leave any previously loaded calibration alone: a failed pick should not
+    // silently discard a good one already in hand.
+    calibrationError.value = err?.message || 'Could not read the calibration file.';
+    console.error('❌ Site calibration import failed:', err);
+  } finally {
+    // Clear the input so re-picking the same file fires change again.
+    target.value = '';
+  }
+}
+
+function clearSiteCalibration() {
+  setSiteCalibration(null);
+  calibrationError.value = '';
 }
 
 function readFileContent(file: File): Promise<string> {

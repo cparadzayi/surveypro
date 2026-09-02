@@ -6409,6 +6409,9 @@ async function exportAreaConsistencyPDF() {
       projectInfo: coverPageInfo,
       surveyorInfo: surveyorInfo,
       fieldBookObservations: workflowState?.observations || [],
+      // Optional: adds the calibration page to the field book when one was
+      // imported at the CSV step; undefined leaves the document as before.
+      siteCalibration: workflowState?.documents?.siteCalibration,
       surveyPoints: surveyPoints,
       adjustedCoordinates: adjustedCoordinates,
       projectControlPoints: controlPoints,

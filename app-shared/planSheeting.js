@@ -72,7 +72,10 @@ export const FIGURE_MAX_FRACTION = 0.75;
  *
  * So the retry keeps the resolver authoritative and simply DEMANDS MORE ROOM.
  * Both renderers index this same array with their own escalation counter, so
- * PDF/DXF parity holds by construction.
+ * they apply the SAME BUDGET AT A GIVEN ATTEMPT NUMBER. That is what holds by
+ * construction -- not that they reach the same outcome, since the two measure
+ * block placement differently and can need different numbers of escalations.
+ * The parity suite asserts the outcome on fixtures whose counts do match.
  *
  * WHY THE LADDER IS [0.75, 0.55] AND NOT THE [0.75, 0.6, 0.5] FIRST PROPOSED.
  * Both retry rungs were measured, not computed. On sampleRealisticPlan the PDF

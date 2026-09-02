@@ -9699,7 +9699,15 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
       if (candidateIndex === -1) {
         // Not in prescribed list — use as-is (no constraint stepping possible)
         logger.warn(`[PDFKit] ⚠️ Scale ${requestedScale} not in SI 727 prescribed list, using as-is`);
-        return { value: denominator, label: `1:${denominator}`, category: 'custom' };
+        // Still route through the ceiling. Reg 32(3) is statutory, and this
+        // early return used to bypass it: unreachable on a first pass because
+        // the resolver supplies an authoritative 500 for a mandated township,
+        // but on a block-placement retry a mandated plan declared at e.g.
+        // 1:700 would have rendered uncapped.
+        return applyPlanTypeCeiling(
+          { value: denominator, label: `1:${denominator}`, category: 'custom' },
+          extent, mapBounds, planType, mandatory500, logger,
+        );
       }
     }
   }
@@ -10323,8 +10331,11 @@ async function _generateGeoPDFInner(options, logger) {
   // Escalation tightens the BUDGET rather than pinning the scale: we only ever
   // escalate because the blocks would not fit, so the retry demands more than
   // the default 25% reserve and lets the resolver pick from its ladder as
-  // normal. The DXF applies the identical rule, so parity holds by
-  // construction. See BLOCK_ROOM_BUDGETS in app-shared/planSheeting.js.
+  // normal. The DXF applies the identical rule, so both use the SAME BUDGET AT
+  // A GIVEN ATTEMPT NUMBER -- that much holds by construction. It does not
+  // follow that they land together: the two measure block placement
+  // differently and can need different escalation counts.
+  // See BLOCK_ROOM_BUDGETS in app-shared/planSheeting.js.
   const _blockRoomFraction = blockRoomFraction(_blockRoomAttempt);
   const _sheeting = resolvePlanSheeting({
     extentM: {
@@ -10474,46 +10485,12 @@ async function _generateGeoPDFInner(options, logger) {
     logger.info(`[PDFKit] 📐 Reserved ${_band.toFixed(0)}pt title band — figure fitted below (figureBounds.y=${figureBounds.y.toFixed(0)}, h=${figureBounds.height.toFixed(0)})`);
   }
 
-  // DYNAMIC MAP POSITIONING OPTIMIZATION
-  // Calculate polygon bounds in PDF space to determine optimal map position
-  let polygonPDFBounds = null;
-  let mapXOffset = 0;
-
-  // Reuse outsideFigureBoundary from filtering section for map positioning
-  if (outsideFigureBoundary && outsideFigureBoundary.length > 0) {
-    // Calculate polygon bounds using initial figure bounds
-    polygonPDFBounds = calculatePolygonPDFBounds(
-      outsideFigureBoundary,
-      calculatedExtent,
-      figureBounds
-    );
-
-    // Calculate optimal X offset based on polygon position
-    mapXOffset = calculateDynamicMapOffset(
-      polygonPDFBounds,
-      figureBounds,
-      logger
-    );
-
-    // Apply offset to figure bounds, clamped so the figure never extends
-    // past the right edge of mapBounds (i.e. never into the endorsement margin)
-    if (mapXOffset !== 0) {
-      const rawX = figureBounds.x + mapXOffset;
-      const maxAllowedX = mapBounds.x + mapBounds.width - figureBounds.width;
-      const clampedX = Math.min(rawX, maxAllowedX);
-      const clampedXLeft = Math.max(clampedX, mapBounds.x);
-      const actualOffset = clampedXLeft - figureBounds.x;
-      figureBounds = {
-        x: clampedXLeft,
-        y: figureBounds.y,
-        width: figureBounds.width,
-        height: figureBounds.height,
-      };
-      logger.info(
-        `[PDFKit] ✅ Applied ${actualOffset.toFixed(1)}pt X offset to figure bounds (requested ${mapXOffset}pt, clamped to stay within mapBounds right edge)`
-      );
-    }
-  }
+  // The dynamic X-offset block that used to sit here is gone. It nudged the
+  // figure horizontally and then clamped it inside mapBounds -- but now that
+  // calculateMapBounds returns the full available area as `figure`, the clamp
+  // always resolved back to mapBounds.x, so the offset was always 0 while the
+  // log still announced one as applied. Horizontal placement is decided by the
+  // alignX rule in the figure-box sizing block below.
 
 
   // Calculate optimal scale based on extent and adjusted figure area.
@@ -10591,7 +10568,6 @@ async function _generateGeoPDFInner(options, logger) {
       x: `${figureBounds.x.toFixed(1)}pt`,
       width: `${(figureBounds.width / MM_TO_PT).toFixed(1)}mm`,
       height: `${(figureBounds.height / MM_TO_PT).toFixed(1)}mm`,
-      xOffset: `${mapXOffset}pt`,
     },
     extentSize: {
       width: `${(calculatedExtent.maxY - calculatedExtent.minY).toFixed(2)}m`,
@@ -11406,7 +11382,14 @@ async function _generateGeoPDFInner(options, logger) {
   const MAX_LABEL_ESCALATION = 2;
   const labelCollisions = parcelRenderResult?.labelCollisions || 0;
   if (labelCollisions > 0 && _labelEscalationAttempt < MAX_LABEL_ESCALATION) {
-    const currentSheet = sheetSize || 'SI727_500x400';
+    // The sheet actually rendered, not the one requested — same fix as the
+    // block-placement path. On the auto path `sheetSize` is undefined and the
+    // resolver named the sheet, so reading the option made a plan rendering on
+    // SI727_1000x800 look like SI727_500x400: the retry then asked for
+    // SI727_800x500 and DOWNGRADED the paper, with the step-down branch
+    // unreachable. Harmless while this only moved a caption; it moves
+    // millimetres now that the figure is drawn at its true size.
+    const currentSheet = pageSize.code || sheetSize || 'SI727_500x400';
     const sheetIdx = SHEET_ORDER.indexOf(currentSheet);
     const canGoBiggerPaper = sheetIdx >= 0 && sheetIdx < SHEET_ORDER.length - 1;
 
@@ -11649,8 +11632,8 @@ async function _generateGeoPDFInner(options, logger) {
           //
           // So the retry keeps the resolver authoritative and simply demands
           // MORE room: the next rung of BLOCK_ROOM_BUDGETS. The DXF escalation
-          // sites apply the identical rule, so PDF/DXF parity holds by
-          // construction rather than by coincidence.
+          // sites apply the identical rule, so the two use the same budget at a
+          // given attempt number -- not necessarily the same number of attempts.
           _blockRoomAttempt: _blockRoomAttempt + 1,
           _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
           _scaleUpAttempt: 0, // reset scale attempts for the new sheet

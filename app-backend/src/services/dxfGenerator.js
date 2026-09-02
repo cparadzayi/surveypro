@@ -627,8 +627,11 @@ export function generateDXF(options, logger) {
   // Escalation tightens the BUDGET rather than pinning the scale: we only ever
   // escalate because the blocks would not fit, so the retry demands more than
   // the default 25% reserve and lets the resolver pick from its ladder as
-  // normal. The PDF applies the identical rule, so parity holds by
-  // construction. See BLOCK_ROOM_BUDGETS in app-shared/planSheeting.js.
+  // normal. The PDF applies the identical rule, so both use the SAME BUDGET AT
+  // A GIVEN ATTEMPT NUMBER -- that much holds by construction. It does not
+  // follow that they land together: the two measure block placement
+  // differently and can need different escalation counts.
+  // See BLOCK_ROOM_BUDGETS in app-shared/planSheeting.js.
   const _blockRoomAttempt = options._blockRoomAttempt ?? 0;
   const _blockRoomFraction = blockRoomFraction(_blockRoomAttempt);
   const _sheeting = resolvePlanSheeting({

@@ -49,9 +49,12 @@ describe('PDF text+position snapshot', () => {
     expect(items).toMatchSnapshot();
   }, 30000);
 
+  // 600000, matching labelFit: this case takes ~260s, and passed under the old
+  // 60s only because the render never yields — the first genuine `await` on that
+  // path would have turned it into a spurious red.
   test('Maglas fixture', async () => {
     const { pdfBuffer } = await generateGeoPDF(sampleMaglasPlan, fakeLogger);
     const items = await extractTextPositions(pdfBuffer);
     expect(items).toMatchSnapshot();
-  }, 60000);
+  }, 600000);
 });

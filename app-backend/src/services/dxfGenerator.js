@@ -663,18 +663,16 @@ export function generateDXF(options, logger) {
   const _applyScaleMandate = planType === 'general-developed' || planType === 'general-undeveloped';
   const { mandatory500 } = resolveTownshipScaleMandate(parcels, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2);
   // The resolver already encodes all three rules (declared → mandate → auto-fit)
-  // and is shared with the PDF, so it is the authority. _figFit is retained only
-  // for the diagnostic log line below.
-  let S;
-  if (_pick) {
-    S = _pick.scaleDenominator;
-  } else if (declaredS) {
-    S = declaredS;
-  } else if (_applyScaleMandate && mandatory500) {
-    S = 500;
-  } else {
-    S = _figFit.S;
-  }
+  // and is shared with the PDF, so it is the authority. It also guarantees at
+  // least one candidate — including tiling fallbacks for degenerate, zero-extent
+  // input, which its own unit tests pin — so `_pick` is always set in practice.
+  //
+  // The declared → mandate → _figFit chain that used to stand here was therefore
+  // unreachable. One defensive branch is kept in case that guarantee ever
+  // changes; _figFit itself survives only for the diagnostic log line below.
+  const S = _pick
+    ? _pick.scaleDenominator
+    : (declaredS || ((_applyScaleMandate && mandatory500) ? 500 : _figFit.S));
   const { minScaleToFit, fitScale } = _figFit;
 
   logger.info(`[DXF] Drawing extent: ${drawW.toFixed(1)}m x ${drawH.toFixed(1)}m`);

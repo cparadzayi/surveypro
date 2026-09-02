@@ -164,13 +164,25 @@ export function spansBothAxes(nodes) {
  * still spans both axes; failing that, the rung with the most clear nodes
  * among those tried.
  */
+/**
+ * The interval rungs a figure may use, coarsest first: every "nice" interval at
+ * or below the one the paper-spacing and division-cap rules pick for it.
+ *
+ * Exported because selectSpanningTickGrid in pdfkitGeoPDF.js walks the SAME
+ * ladder when it has to borrow nodes to recover a missing axis. Two copies of
+ * this expression would silently diverge the day either rule changes.
+ */
+export function tickRungLadder({ yMin, yMax, xMin, xMax, scaleDenominator, targetPaperMm = REFERENCE_TARGET_PAPER_MM }) {
+  const longestExtentM = Math.max(yMax - yMin, xMax - xMin)
+  const startInterval = chooseTickIntervalMetres(scaleDenominator, targetPaperMm, longestExtentM)
+  return GRID_NICE_NUMBERS.filter((n) => n <= startInterval).sort((a, b) => b - a)
+}
+
 export function selectTickGrid({
   yMin, yMax, xMin, xMax, scaleDenominator, isClear, minMarks = 3,
   targetPaperMm = REFERENCE_TARGET_PAPER_MM,
 }) {
-  const longestExtentM = Math.max(yMax - yMin, xMax - xMin)
-  const startInterval = chooseTickIntervalMetres(scaleDenominator, targetPaperMm, longestExtentM)
-  const rungs = GRID_NICE_NUMBERS.filter((n) => n <= startInterval).sort((a, b) => b - a)
+  const rungs = tickRungLadder({ yMin, yMax, xMin, xMax, scaleDenominator, targetPaperMm })
   let best = null
   let bestDiverse = null
   for (const intervalM of rungs) {

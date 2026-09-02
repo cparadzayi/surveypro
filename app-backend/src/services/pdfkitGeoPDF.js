@@ -12,7 +12,7 @@ import {
   TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, chooseTickIntervalMetres, GRID_NICE_NUMBERS } from "../../../app-shared/tickMarks.js";
+import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, tickRungLadder } from "../../../app-shared/tickMarks.js";
 import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION, blockRoomFraction } from '../../../app-shared/planSheeting.js';
@@ -1661,14 +1661,14 @@ function tickAvoidRects(blockPositions) {
  * same clearance test, nothing here loosens it -- until the missing axis
  * gets a second value, or the ladder is exhausted.
  */
-function selectSpanningTickGrid(gridInput, isClear, targetPaperMm) {
-  const primary = selectTickGrid({ ...gridInput, isClear, targetPaperMm });
+function selectSpanningTickGrid(gridInput, isClear) {
+  const primary = selectTickGrid({ ...gridInput, isClear });
   if (spansBothAxes(primary.nodes)) return primary;
 
-  const { yMin, yMax, xMin, xMax, scaleDenominator } = gridInput;
-  const longestExtentM = Math.max(yMax - yMin, xMax - xMin);
-  const startInterval = chooseTickIntervalMetres(scaleDenominator, targetPaperMm, longestExtentM);
-  const rungs = GRID_NICE_NUMBERS.filter((n) => n <= startInterval).sort((a, b) => b - a);
+  const { yMin, yMax, xMin, xMax } = gridInput;
+  // The SAME ladder selectTickGrid walked, from the shared module rather than a
+  // second copy of the expression here.
+  const rungs = tickRungLadder(gridInput);
 
   const haveY = new Set(primary.nodes.map((n) => n.y));
   const haveX = new Set(primary.nodes.map((n) => n.x));
@@ -1779,7 +1779,7 @@ function calculateTickMarkBounds(
     if (_hitsRects(r, detailRects)) return false;
     return true;
   };
-  const { intervalM: _tickIntervalM, nodes: _nodes } = selectSpanningTickGrid(_tickGridInput, _isClear);
+  const { nodes: _nodes } = selectSpanningTickGrid(_tickGridInput, _isClear);
   const tickMarkBounds = [];
   for (const node of _nodes) {
     const f = _rectFor(node); if (!f) continue;
@@ -1926,7 +1926,7 @@ function renderOutsideFigureTickMarks(
     if (collisionDetector && collisionDetector.hasCollision(r.x, r.y, r.width, r.height)) return false;
     return true;
   };
-  const { intervalM: _tickIntervalM, nodes: _nodes } = selectSpanningTickGrid(_tickGridInput, _isClear);
+  const { nodes: _nodes } = selectSpanningTickGrid(_tickGridInput, _isClear);
   for (const node of _nodes) {
     const f = _rectFor(node); if (!f) continue;
     const pt = f.pt, r = f.r;

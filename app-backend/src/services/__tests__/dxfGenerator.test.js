@@ -249,7 +249,15 @@ describe('generateDXF — scale bar', () => {
     parcels: { features: [] },
     beacons: { features: [] },
     outsideFigureData: null,
-    metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
+    // 1:1000, not 1:500. This fixture has no parcels or beacons, so the extent
+    // falls back to 100m square; at 1:500 that is a 200mm figure, which exceeds
+    // SI727_500x400's block-room budget (183.75mm of height), so the renderer
+    // now correctly escalates to SI727_800x500 and lays the bar out on a
+    // different sheet than this test means to exercise. The old pass depended on
+    // cramming a figure onto a sheet that could not hold it. At 1:1000 the
+    // figure is 100mm and genuinely fits, so the assertions below keep their
+    // original strength instead of being relaxed to accommodate the escalation.
+    metadata: {}, scale: '1:1000', sheetSize: 'SI727_500x400',
   }
   test('emits centreline + tick LINEs and metre labels on SCALE_BAR', () => {
     const { buffer } = generateDXF(opts, fakeLogger)

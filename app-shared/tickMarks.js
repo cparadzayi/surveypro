@@ -36,7 +36,7 @@
 // looser target (the old 250mm) picks 200m there and halves the grid density
 // against what the Surveyor-General actually issues.
 const REFERENCE_TARGET_PAPER_MM = 100
-const GRID_NICE_NUMBERS = [1, 2, 5, 10, 20, 25, 50, 75, 100, 200, 500, 1000, 2000, 5000, 10000]
+export const GRID_NICE_NUMBERS = [1, 2, 5, 10, 20, 25, 50, 75, 100, 200, 500, 1000, 2000, 5000, 10000]
 
 // The paper-spacing target alone sizes the interval off how much of the SHEET
 // the figure occupies, not off the figure itself. That was harmless while
@@ -73,7 +73,7 @@ export function chooseTickIntervalMetres(scaleDenominator, targetPaperMm = REFER
  * Factored out of computeTickGrid so selectTickGrid can drive the interval
  * directly (see its own comment for why that matters).
  */
-function gridNodesForInterval(intervalM, { yMin, yMax, xMin, xMax }) {
+export function gridNodesForInterval(intervalM, { yMin, yMax, xMin, xMax }) {
   const lo = (v) => Math.floor(v / intervalM) * intervalM
   const hi = (v) => Math.ceil(v / intervalM) * intervalM
   const nodes = []
@@ -124,7 +124,7 @@ export const TICK_GEOMETRY_MM = {
  * grid — nothing on it lets a reader interpolate the OTHER axis. So "enough"
  * crosses means both axes are actually represented, not just a node count.
  */
-function spansBothAxes(nodes) {
+export function spansBothAxes(nodes) {
   if (nodes.length < 2) return false
   const ys = new Set(nodes.map((n) => n.y))
   const xs = new Set(nodes.map((n) => n.x))

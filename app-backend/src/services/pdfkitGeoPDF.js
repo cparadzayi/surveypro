@@ -12,7 +12,7 @@ import {
   TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
-import { selectTickGrid, formatTickLabel } from "../../../app-shared/tickMarks.js";
+import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, chooseTickIntervalMetres, GRID_NICE_NUMBERS } from "../../../app-shared/tickMarks.js";
 import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION, blockRoomFraction } from '../../../app-shared/planSheeting.js';
@@ -1639,6 +1639,57 @@ function tickAvoidRects(blockPositions) {
   return out;
 }
 
+/**
+ * selectTickGrid guarantees both axes are represented -- but only against a
+ * SINGLE rung's own clearance test. It can't see that PDF generation layers
+ * MORE obstacles on top of the shared clearance rules (the title block, the
+ * Schedule of Areas, every label already placed) that tickMarks.js knows
+ * nothing about. Those extra obstacles can wipe out every candidate but one
+ * on EVERY rung selectTickGrid tries, so its own documented last resort --
+ * "the rung with the most clear nodes" -- legitimately returns a single-axis
+ * set: a coordinate grid along one line, which is not a coordinate grid.
+ *
+ * Measured on the dense Maglas fixture: the row that survives at interval=100
+ * sits in a completely different clear band of the sheet (page-y ~1799) than
+ * the one that survives at interval=50 (page-y ~1686) or interval=75
+ * (page-y ~608) -- a wide Schedule of Areas blocks one gap, a different gap
+ * stays open. Each of those rows is independently already-verified clear by
+ * the SAME isClear the caller passed in; selectTickGrid just never combines
+ * them because it picks one rung and commits to it. So when the primary
+ * result doesn't span both axes, walk the same coarsest-first rung ladder
+ * selectTickGrid itself uses and borrow nodes -- still governed by the exact
+ * same clearance test, nothing here loosens it -- until the missing axis
+ * gets a second value, or the ladder is exhausted.
+ */
+function selectSpanningTickGrid(gridInput, isClear, targetPaperMm) {
+  const primary = selectTickGrid({ ...gridInput, isClear, targetPaperMm });
+  if (spansBothAxes(primary.nodes)) return primary;
+
+  const { yMin, yMax, xMin, xMax, scaleDenominator } = gridInput;
+  const longestExtentM = Math.max(yMax - yMin, xMax - xMin);
+  const startInterval = chooseTickIntervalMetres(scaleDenominator, targetPaperMm, longestExtentM);
+  const rungs = GRID_NICE_NUMBERS.filter((n) => n <= startInterval).sort((a, b) => b - a);
+
+  const haveY = new Set(primary.nodes.map((n) => n.y));
+  const haveX = new Set(primary.nodes.map((n) => n.x));
+  const merged = [...primary.nodes];
+  for (const intervalM of rungs) {
+    if (spansBothAxes(merged)) break;
+    if (intervalM === primary.intervalM) continue;
+    const clear = gridNodesForInterval(intervalM, { yMin, yMax, xMin, xMax }).filter(isClear);
+    for (const node of clear) {
+      if (spansBothAxes(merged)) break;
+      const suppliesNewY = haveY.size < 2 && !haveY.has(node.y);
+      const suppliesNewX = haveX.size < 2 && !haveX.has(node.x);
+      if (!suppliesNewY && !suppliesNewX) continue;
+      merged.push(node);
+      haveY.add(node.y);
+      haveX.add(node.x);
+    }
+  }
+  return spansBothAxes(merged) ? { intervalM: primary.intervalM, nodes: merged } : primary;
+}
+
 function calculateTickMarkBounds(
   outsideFigure,
   extent,
@@ -1728,7 +1779,7 @@ function calculateTickMarkBounds(
     if (_hitsRects(r, detailRects)) return false;
     return true;
   };
-  const { intervalM: _tickIntervalM, nodes: _nodes } = selectTickGrid({ ..._tickGridInput, isClear: _isClear });
+  const { intervalM: _tickIntervalM, nodes: _nodes } = selectSpanningTickGrid(_tickGridInput, _isClear);
   const tickMarkBounds = [];
   for (const node of _nodes) {
     const f = _rectFor(node); if (!f) continue;
@@ -1875,7 +1926,7 @@ function renderOutsideFigureTickMarks(
     if (collisionDetector && collisionDetector.hasCollision(r.x, r.y, r.width, r.height)) return false;
     return true;
   };
-  const { intervalM: _tickIntervalM, nodes: _nodes } = selectTickGrid({ ..._tickGridInput, isClear: _isClear });
+  const { intervalM: _tickIntervalM, nodes: _nodes } = selectSpanningTickGrid(_tickGridInput, _isClear);
   for (const node of _nodes) {
     const f = _rectFor(node); if (!f) continue;
     const pt = f.pt, r = f.r;

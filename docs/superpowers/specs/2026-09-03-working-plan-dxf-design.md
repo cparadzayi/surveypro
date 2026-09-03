@@ -21,10 +21,13 @@ A reverse-engineered, zero-dependency ESM module supplied as
 
 | File | Purpose |
 |---|---|
-| `dxf-r12.js` | Minimal DXF R12 writer: LINE, POLYLINE, CIRCLE, POINT, SOLID, TEXT, INSERT, blocks, layers, linetypes, text styles |
+| `dxf-r12.js` | Minimal DXF R12 writer (`DxfDocument`): LINE, POLYLINE, CIRCLE, POINT, SOLID, TEXT, INSERT, blocks, layers, linetypes, text styles |
 | `working-plan.js` | `generateWorkingPlan(spec)` — sheet layout, symbols, grid, title block, approval box, locality inset |
-| `generate-brackenhurst.mjs` | Worked example rebuilding the Brackenhurst 403–405 sheet from coordinates |
+| `generate-brackenhurst.mjs` | Worked example rebuilding the Brackenhurst 403–405 sheet from the final coordinate list |
 | `Working_Plan_generated.dxf` | Reference output |
+
+`generateWorkingPlan(spec)` returns
+`{ dxf, scale, gridInterval: { e, n }, gridTicks, areas }`.
 
 ### Verified before designing, not assumed
 
@@ -37,18 +40,24 @@ A reverse-engineered, zero-dependency ESM module supplied as
   is **exactly** `capeLoToDxfSouthUp` in `dxfGenerator.js:256`, which returns
   `{ x: -y, y: -x }`. This is the likeliest source of silent breakage in a port
   and it already agrees.
+- `working-plan` is **already a first-class plan type**: `planTypes.ts` gives it
+  `PLAN_TYPE_META['working-plan']` (whole-set, no summary), and
+  `planTypeOutputSubdir` already routes it to `output/working-plans/`. The
+  plumbing exists; only the renderer is missing.
 
 ### The risk that turned out not to exist
 
 The module wants parcels as rings of **beacon names**
-(`ring: ['SD4','86B','87B','SD1','SD5']`), while our parcels are PostGIS
-polygons. INTEGRATION.md §6 supplies SQL to snap ring vertices back to beacon
-names by proximity, which implies the author hit this problem — and proximity
-snapping fails in the worst way, producing a plausible wrong plan rather than an
-error.
+(`ring: ['SD4','86B','87B','SD1','SD5']`), while our parcels are polygons.
+INTEGRATION.md §6 supplies SQL to snap ring vertices back to beacon names by
+proximity, which implies the author hit this problem — and proximity snapping
+fails in the worst way, producing a plausible wrong plan rather than an error.
+This codebase already carries such a matcher: `beaconsForParcel` in
+`planPayload.ts` links beacons to rings by coordinate coincidence at
+`VERTEX_TOL = 0.05` m, because "beacon features carry no parcel id".
 
-It is unnecessary here. `land_parcels.metadata.cape_lo_points` already stores
-each ring as named points:
+We do not need it. `land_parcels.metadata.cape_lo_points` already stores each
+ring as **named** points, in ring order:
 
 ```json
 {"x":2144027.04,"y":-85673.91,"id":"SD4","status":"P","description":"12mm iron peg in concrete"}
@@ -59,7 +68,7 @@ no conversion. No snapping, no tolerance, no nearest-neighbour ambiguity.
 
 ## Decisions taken
 
-**Replace, not add.** The Working Plan module stops routing its DXF through
+**Replace, not add.** The Working Plan stops routing its DXF through
 `SurveyPlanMapView`'s SI 727 pipeline and produces this A4 sheet instead. The
 current SI 727-style Working Plan DXF goes away — deliberately.
 
@@ -80,25 +89,32 @@ instead of scattering edits through 20 KB of vendored code.
 `generate-brackenhurst.mjs` is not vendored. Its `spec` object becomes a test
 fixture (below), which is the part with lasting value.
 
-### 2. Adapter — `buildWorkingPlanSpec`
+### 2. Adapter — in the frontend, beside `planPayload.ts`
 
-`app-backend/src/services/workingPlan/buildWorkingPlanSpec.js`. The only file
-that knows both our data model and the module's spec.
+`app-frontend/src/views/modules/cadastral-standard/workingPlanSpec.ts`.
 
-```
-buildWorkingPlanSpec({ parcels, metadata, surveyorInfo }) -> spec
+The adapter belongs on the frontend, not the backend, because that is where the
+data already is and where every other plan payload is built. `SurveyPlanMapView`
+holds `coordinatePoints.value` (the final coordinate list) and `parcels.value`
+(each with `metadata.cape_lo_points`), and it has already applied the
+swapped-coordinate correction that `exportBeaconsAsGeoJSON` performs. Rebuilding
+that in a backend route would duplicate live logic and invite divergence.
+`planPayload.ts` — pure, unit-tested, no Vue — is the precedent this follows.
+
+```ts
+buildWorkingPlanSpec(ctx: WorkingPlanSpecContext): WorkingPlanSpec
 ```
 
 | Spec field | Source |
 |---|---|
-| `beacons` | union of `metadata.cape_lo_points` across parcels → `{ name: p.id, X: p.x, Y: p.y, symbol, label: 'auto' }` |
-| `parcels` | `{ label: stand, ring: cape_lo_points.map(p => p.id) }` |
-| `title` | project designation and district, up to 4 lines |
-| `certificate` | surveyor name and survey date |
+| `beacons` | the final coordinate list → `{ name, X: x, Y: y, symbol, label: 'auto' }` |
+| `parcels` | `{ label: stand, ring: metadata.cape_lo_points.map(p => p.id) }` |
+| `title` | up to four lines: "Survey of", designation, parent property, district |
+| `certificate` | `{ line1, line2 }` from surveyor name and survey date |
 | `scale` | `'auto'` — the module picks and reports it |
 
-De-duplication is by name: a beacon shared between adjoining parcels appears
-once, and the ring references it from both.
+Only beacons a ring actually names are emitted, so the coordinate list's control
+and reference points do not inflate the sheet extent.
 
 **Symbol mapping, flagged as a judgement call.** The module takes `peg`, `rm` or
 `trig`. We store `status` (`F` found / `P` placed) plus a free-text description.
@@ -109,7 +125,7 @@ its own. This is the one mapping that can misrepresent a beacon on the plan, and
 it is deliberately conservative: an unrecognised description draws a peg rather
 than guessing.
 
-### 3. Backend route
+### 3. Backend route — stateless, like the DXF route beside it
 
 `app-backend/src/routes/workingPlan.js`, registered in `server.js` with an
 explicit prefix, following the `control-points` / `parcels` / `survey-plan`
@@ -118,36 +134,47 @@ pattern already there:
 ```
 app.register(route.default, { prefix: '/api/working-plan' })
 
-POST /api/working-plan/:projectId/dxf  ->  image/vnd.dxf
+POST /api/working-plan/dxf   body: the spec   ->   image/vnd.dxf
 ```
 
-Schema-aware, so it reads the surveyor's own `land_parcels` — the same mistake
-the Reset Import bug made (an unqualified lookup resolving to `public`) must not
-be repeated here. Returns the DXF body with `x-plan-scale`, `x-plan-grid` and
-`x-plan-areas` headers, matching INTEGRATION.md.
+It takes the spec in the request body rather than a project id. This mirrors
+`POST /api/geopdf/dxf` in `geopdf-vector.js`, which likewise receives
+frontend-assembled parcels and beacons and touches no database. The route
+therefore needs no schema-isolation handling, because it makes no query — which
+is also why the adapter is not here.
+
+Scale, grid interval and computed areas come back on `x-plan-scale`,
+`x-plan-grid` and `x-plan-areas` headers.
 
 `generateWorkingPlan` throws exactly one error —
-``unknown beacon "<name>"`` (`working-plan.js:160`) — when a ring names a beacon
-absent from the beacon list. That is a data problem the surveyor can act on, so
-it returns 400 with the beacon name intact rather than a 500.
+`generateWorkingPlan: unknown beacon "<name>"` (`working-plan.js:160`) — when a
+ring names a beacon absent from the beacon list. That is a data problem the
+surveyor can act on, so it returns 400 with the beacon name intact, not a 500.
 
-Generation stays in the backend, consistent with `dxfGenerator.js`.
+### 4. Frontend wiring — one branch, nothing else
 
-### 4. Frontend
+In `SurveyPlanMapView.vue`'s `generatePlanDocuments`, the DXF step currently
+reads:
 
-`WorkingPlanView.vue` calls the endpoint for its DXF instead of delegating to
-`SurveyPlanMapView`, and saves through the existing output-folder convention
-with its 409-EXISTS overwrite gate.
+```ts
+if (exportFormats.dxf) {
+  const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: ... }
+  const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload)
+  docs.dxf = blob
+```
 
-`documentStorage.ts` gains one `documentType: 'working-plan'` and its output
-subfolder — additive, touching no existing type.
+For `planType === 'working-plan'` it calls the new endpoint instead and assigns
+`docs.dxf`. Everything downstream is already correct and untouched:
+`composePlanBaseName` names the file, `planTypeOutputSubdir('working-plan')`
+returns `working-plans`, and `saveWithOverwritePrompt({ workingDirectory, subdir,
+fileName, blob }, confirmOverwrite)` writes it with the 409-EXISTS prompt.
 
-It also needs one small rename. `SaveDocumentOptions.pdfBlob` is PDF-named but
-already format-agnostic in behaviour: it is appended to the form as a plain
-`file`. A DXF would pass through it unchanged, but writing
-`pdfBlob: dxfBlob` at every working-plan save bakes a falsehood into the call
-site. The field becomes `blob`, updating its existing callers — mechanical, and
-the honest option.
+No change to `documentStorage.ts`. Plans do not go through `saveDocument` and
+have no `documentType`; they use the plan-file path above, whose argument is
+already called `blob`.
+
+`WorkingPlanView.vue` is unchanged. It already sets `planType: 'working-plan'`,
+which `SurveyPlanMapView` picks up at line 715.
 
 ### 5. Areas
 
@@ -158,19 +185,22 @@ cross-check, and the route surfaces them on a header for exactly that.
 
 ## Testing
 
-**Golden test — the load-bearing one.** The Brackenhurst spec must produce a DXF
+**Golden test — the load-bearing one.** Backend Jest. The Brackenhurst spec,
+lifted verbatim from `generate-brackenhurst.mjs`, must produce a DXF
 byte-identical to the shipped reference. This holds today (verified with `cmp`),
 so it pins the vendored module against accidental edits permanently. If someone
 "tidies" `working-plan.js`, this fails immediately and specifically.
 
-**Adapter tests**, against project 20's real stored parcels:
-- rings map to the beacon names in `cape_lo_points`, in order;
+**Route test.** Backend Jest: a valid spec returns the DXF body with the three
+headers; a ring naming a missing beacon returns 400 carrying that beacon's name.
+
+**Adapter tests.** Frontend Vitest, beside `planPayload.test.ts`:
+- rings map to the beacon names in `cape_lo_points`, in ring order;
 - a beacon shared between adjoining parcels appears once in `beacons` and in
   both rings;
-- symbol mapping, including a description that should yield `rm` and one that
-  should fall back to `peg`;
-- a ring naming a beacon absent from the beacon list surfaces the module's
-  message with the name in it, not a 500.
+- coordinate-list points that no ring names are excluded;
+- symbol mapping, including a description that yields `rm` and one that falls
+  back to `peg`.
 
 **No golden test for other jobs.** See below.
 
@@ -190,10 +220,17 @@ is not discovered later as a regression.
 **PDF and DXF will not match** for Working Plans until the follow-up PDF work
 lands.
 
+**Parcels without `cape_lo_points`.** Parcels imported from QGIS carry no
+`cape_lo_points` — `MapLibreAreaView.vue:5604` already tests for exactly that.
+Such a parcel cannot yield a named ring, so it is skipped with a warning rather
+than proximity-matched, and the caller is told which parcels were omitted.
+
 ## Out of scope
 
 - The matching A4 working-plan PDF.
 - Any change to General Plan or Diagram generation.
 - Writing the module's computed areas back to `land_parcels`.
-- `existing`, `roads` and `notes` spec fields: the module supports them, we have
-  no data model for them yet, and they are omitted rather than faked.
+- The `existing`, `roads`, `notes` and `inset` spec fields. The module supports
+  them and the golden fixture exercises them, but we have no data model for
+  dashed parent boundaries, road offsets or locality insets, so the adapter
+  omits them rather than faking them.

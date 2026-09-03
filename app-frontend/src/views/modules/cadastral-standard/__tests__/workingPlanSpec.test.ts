@@ -4,6 +4,7 @@ import {
   beaconSymbol,
   ringNames,
   workingPlanTitle,
+  workingPlanEmptyReason,
 } from '../workingPlanSpec'
 
 /** Beacons as exportBeaconsAsGeoJSON emits them: coordinates are [Y, X]. */
@@ -231,5 +232,93 @@ describe('buildWorkingPlanSpec — Outside Figure', () => {
     }))
     expect(spec.parcels.map(p => p.label)).toEqual(['404', 'Outside Figure'])
     expect(skippedParcels).toEqual([])
+  })
+})
+
+/**
+ * The guard that fires when nothing can be drawn used to say one fixed thing:
+ * "run Compute Area & Consistency so each parcel stores its beacon names."
+ *
+ * On the real project that first hit it, that advice was wrong. The parcels DID
+ * store their beacon names — all three of them, correctly. What was missing was
+ * the coordinate list, cleared by a CSV-import reset and never re-imported. The
+ * surveyor was sent to recompute areas that were already fine, and the actual
+ * fix (re-import in Step 2) was never mentioned.
+ *
+ * These cases are distinguishable from what the adapter already computes, so
+ * the message has no excuse to guess.
+ */
+describe('workingPlanEmptyReason', () => {
+  it('blames the empty coordinate list, not the parcels, when no beacons loaded', () => {
+    // The real project-20 case: rings are named and correct, the list is gone.
+    const result = buildWorkingPlanSpec(ctx({
+      beacons: { type: 'FeatureCollection', features: [] },
+      parcels: [parcel('403', ['87D', 'SD2', 'SD3']), parcel('404', ['86C', 'SD3', 'SD4'])],
+    }))
+    expect(result.spec.parcels).toEqual([])
+    expect(result.beaconCount).toBe(0)
+
+    const msg = workingPlanEmptyReason(result)
+    expect(msg).toMatch(/coordinate list/i)
+    expect(msg).toMatch(/Step 2/)
+    expect(msg).not.toMatch(/Compute Area/i)
+  })
+
+  it('names the specific boundary points the coordinate list is missing', () => {
+    const result = buildWorkingPlanSpec(ctx({
+      parcels: [parcel('404', ['SD4', 'SD5', 'GONE1']), parcel('403', ['SD3', 'SD6', 'GONE2'])],
+    }))
+    expect(result.spec.parcels).toEqual([])
+    expect(result.missingBeacons).toEqual(['GONE1', 'GONE2'])
+
+    const msg = workingPlanEmptyReason(result)
+    expect(msg).toContain('GONE1')
+    expect(msg).toContain('GONE2')
+    expect(msg).not.toMatch(/Compute Area/i)
+  })
+
+  it('caps a long missing-point list instead of pasting fifty names into an alert', () => {
+    const many = Array.from({ length: 20 }, (_, i) => `M${i + 1}`)
+    const result = buildWorkingPlanSpec(ctx({ parcels: [parcel('404', many)] }))
+
+    const msg = workingPlanEmptyReason(result)
+    expect(msg).toContain('M1')
+    expect(msg).toMatch(/\d+ more/)
+    expect(msg).not.toContain('M20')
+  })
+
+  it('sends the surveyor to Compute Area & Consistency only when rings are genuinely unnamed', () => {
+    // The one case the old message was actually right about.
+    const result = buildWorkingPlanSpec(ctx({
+      parcels: [{ stand: '404', metadata: {} }, { stand: '403', metadata: {} }],
+    }))
+    expect(result.parcelsWithoutNamedRing).toEqual(['404', '403'])
+
+    const msg = workingPlanEmptyReason(result)
+    expect(msg).toMatch(/Compute Area/i)
+    expect(msg).not.toMatch(/coordinate list is empty/i)
+  })
+
+  it('explains a project whose only parcel is the Outside Figure', () => {
+    // Nothing failed: there is simply no stand to draw. Saying "no parcel
+    // stores its beacon names" here would be a third wrong answer.
+    const of = {
+      id: 99, stand: 'Outside Figure',
+      metadata: { cape_lo_points: ['SD4', 'SD5', 'SD6'].map(id => ({ id, y: 0, x: 0 })) },
+    }
+    const result = buildWorkingPlanSpec(ctx({ parcels: [of], outsideFigureId: 99 }))
+    expect(result.spec.parcels).toEqual([])
+    expect(result.skippedParcels).toEqual([])
+
+    const msg = workingPlanEmptyReason(result)
+    expect(msg).toMatch(/Outside Figure/)
+    expect(msg).not.toMatch(/Compute Area/i)
+  })
+
+  it('still reports the beacon count when the plan builds fine', () => {
+    const result = buildWorkingPlanSpec(ctx())
+    expect(result.spec.parcels).toHaveLength(1)
+    expect(result.beaconCount).toBe(6)
+    expect(result.missingBeacons).toEqual([])
   })
 })

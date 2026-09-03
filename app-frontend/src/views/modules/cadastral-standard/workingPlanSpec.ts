@@ -32,6 +32,18 @@ export interface WorkingPlanSpec {
   approvalBox: boolean
 }
 
+export interface WorkingPlanSpecResult {
+  spec: WorkingPlanSpec
+  /** Parcels that could not be drawn, surfaced to the surveyor as a warning. */
+  skippedParcels: string[]
+  /** How many beacons the coordinate list supplied. Zero is its own diagnosis. */
+  beaconCount: number
+  /** Ring names no beacon matched, deduped, in first-seen order. */
+  missingBeacons: string[]
+  /** Parcels that stored no named ring at all. */
+  parcelsWithoutNamedRing: string[]
+}
+
 export interface WorkingPlanSpecContext {
   /** From exportBeaconsAsGeoJSON() — point coordinates are [Y, X] in Cape Lo. */
   beacons: GeoJSON.FeatureCollection
@@ -119,7 +131,7 @@ function certificateFrom(config: any): { line1: string; line2: string } {
 
 export function buildWorkingPlanSpec(
   ctx: WorkingPlanSpecContext,
-): { spec: WorkingPlanSpec; skippedParcels: string[] } {
+): WorkingPlanSpecResult {
   const byName = new Map<string, { X: number; Y: number; description: string }>()
   for (const f of ctx.beacons?.features ?? []) {
     if (f.geometry?.type !== 'Point') continue
@@ -133,6 +145,9 @@ export function buildWorkingPlanSpec(
 
   const parcels: WorkingPlanParcel[] = []
   const skippedParcels: string[] = []
+  const missingBeacons: string[] = []
+  const missingSeen = new Set<string>()
+  const parcelsWithoutNamedRing: string[] = []
   const used: string[] = []
   const seen = new Set<string>()
 
@@ -146,8 +161,21 @@ export function buildWorkingPlanSpec(
     }
     const label = String(p?.stand ?? p?.designation ?? p?.id ?? '').trim() || '(unnamed)'
     const ring = ringNames(p)
-    if (ring.length === 0 || ring.some(n => !byName.has(n))) {
+    // Two different failures, deliberately kept apart: a parcel that stores no
+    // named ring is a Compute Area & Consistency problem, while a ring naming a
+    // point the coordinate list lacks is an import problem. Collapsing them is
+    // what let the guard send a surveyor to recompute areas that were fine.
+    if (ring.length === 0) {
       skippedParcels.push(label)
+      parcelsWithoutNamedRing.push(label)
+      continue
+    }
+    const missing = ring.filter(n => !byName.has(n))
+    if (missing.length > 0) {
+      skippedParcels.push(label)
+      for (const n of missing) {
+        if (!missingSeen.has(n)) { missingSeen.add(n); missingBeacons.push(n) }
+      }
       continue
     }
     for (const n of ring) {
@@ -171,5 +199,49 @@ export function buildWorkingPlanSpec(
       approvalBox: true,
     },
     skippedParcels,
+    beaconCount: byName.size,
+    missingBeacons,
+    parcelsWithoutNamedRing,
   }
+}
+
+/** Most names to list in one alert before summarising the rest. */
+const MAX_NAMED_BEACONS = 8
+
+/**
+ * Why nothing could be drawn, in terms the surveyor can act on.
+ *
+ * This exists because the guard's single fixed message was wrong the first time
+ * it fired in anger: it told a surveyor to run Compute Area & Consistency when
+ * all three parcels already stored correct beacon names and the real problem was
+ * an empty coordinate list. The adapter can tell these cases apart, so it does.
+ */
+export function workingPlanEmptyReason(result: WorkingPlanSpecResult): string {
+  const { beaconCount, missingBeacons, parcelsWithoutNamedRing, skippedParcels } = result
+
+  if (beaconCount === 0) {
+    return 'The coordinate list for this project is empty, so no boundary point can be '
+      + 'matched. Import the coordinate list in Step 2 (CSV Import), then generate the '
+      + 'Working Plan again.'
+  }
+
+  if (missingBeacons.length > 0) {
+    const shown = missingBeacons.slice(0, MAX_NAMED_BEACONS).join(', ')
+    const rest = missingBeacons.length - MAX_NAMED_BEACONS
+    return `These boundary points are not in the coordinate list: ${shown}`
+      + (rest > 0 ? `, and ${rest} more` : '')
+      + '. Import or rename them in Step 2 (CSV Import), then generate the Working Plan again.'
+  }
+
+  if (parcelsWithoutNamedRing.length > 0) {
+    return 'No parcel stores its beacon names. Run Compute Area & Consistency so each parcel '
+      + 'records the names of its boundary points, then generate the Working Plan again.'
+  }
+
+  if (skippedParcels.length === 0) {
+    return 'There is no stand to draw — the only parcel in this project is the Outside Figure, '
+      + 'which a Working Plan does not draw.'
+  }
+
+  return 'No parcel could be drawn on the Working Plan.'
 }

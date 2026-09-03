@@ -626,7 +626,7 @@ import type { CoverPageInfo } from '@/utils/cover-page'
 import { listCoordinatePoints, listLandParcels, updateLandParcel } from '@/services/spatial'
 import { saveDocument } from '@/services/documentStorage'
 import { generateWorkingPlanDXF } from '@/services/workingPlan'
-import { buildWorkingPlanSpec } from './workingPlanSpec'
+import { buildWorkingPlanSpec, workingPlanEmptyReason } from './workingPlanSpec'
 import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
 import api from '@/services/api'
 import { buildWorkflowExcel } from '@/utils/workflowExcelExporter'
@@ -4165,7 +4165,11 @@ async function generatePlanDocuments() {
       outsideFigureId: getOutsideFigureParcel()?.id,
     })
     if (built.spec.parcels.length === 0) {
-      alert('No parcel has named boundary points. Run Compute Area & Consistency so each parcel stores its beacon names, then generate the Working Plan again.')
+      // Say which of the three things actually went wrong. The fixed message
+      // this replaces sent a surveyor to recompute areas that were already
+      // correct, when the real cause was a coordinate list cleared by an
+      // import reset and never re-imported.
+      alert(workingPlanEmptyReason(built))
       return
     }
     workingPlanSpec = built.spec

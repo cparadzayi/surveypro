@@ -379,7 +379,7 @@
                     {{ workflowState.documents.siteCalibration.pairs.length === 1 ? 'pair' : 'pairs' }}<template
                       v-if="workflowState.documents.siteCalibration.summary.maxHorizontalResidual !== null"
                     >, max residual
-                    {{ (workflowState.documents.siteCalibration.summary.maxHorizontalResidual * 1000).toFixed(1) }} mm</template>
+                    {{ workflowState.documents.siteCalibration.summary.maxHorizontalResidual.toFixed(3) }} m</template>
                   </span>
                   <button
                     @click="clearSiteCalibration"

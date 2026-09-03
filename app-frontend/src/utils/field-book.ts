@@ -185,8 +185,8 @@ export class FieldBookGenerator {
     // ── Summary ──
     const s = cal.summary;
     if (s.maxHorizontalResidual !== null) {
-      const worst = `${(s.maxHorizontalResidual * 1000).toFixed(1)} mm`;
-      const rms = s.rmsHorizontal !== null ? `${(s.rmsHorizontal * 1000).toFixed(1)} mm` : '—';
+      const worst = `${s.maxHorizontalResidual.toFixed(3)} m`;
+      const rms = s.rmsHorizontal !== null ? `${s.rmsHorizontal.toFixed(3)} m` : '—';
       pdf.text(`Largest horizontal residual: ${worst}     RMS: ${rms}`, left, y);
       y += 10;
     }
@@ -229,9 +229,9 @@ export class FieldBookGenerator {
       pdf.text(pair.controlNorthing.toFixed(3), cCtrlX, y);
       pdf.text(pair.calculatedEasting.toFixed(3), cCalcY, y);
       pdf.text(pair.calculatedNorthing.toFixed(3), cCalcX, y);
-      // Millimetres: residuals are millimetre-scale, and 0.0078 m reads far
-      // worse than 7.8 mm to the surveyor checking the fit.
-      pdf.text(`${(pair.horizontalResidual * 1000).toFixed(1)} mm`, cRes, y);
+      // Metres to three decimals, matching how the Trimble report itself states
+      // residuals, so the field book and the source can be compared line by line.
+      pdf.text(`${pair.horizontalResidual.toFixed(3)} m`, cRes, y);
       y += 6;
     }
 

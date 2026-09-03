@@ -73,6 +73,17 @@ describe('field book with a site calibration', () => {
     }
   })
 
+  it('states residuals in metres to three decimals, as the source report does', async () => {
+    const cal = parseSiteCalibration(sampleXml)
+    const { pdf } = await new FieldBookGenerator().generateFieldBookPDF(points, metadata, cal)
+    const text = (pdf as any).internal.pages.at(-1).join(' ')
+
+    // 0.0077985… m -> "0.008 m". Metres so the field book and the Trimble
+    // report can be compared line by line without converting units in your head.
+    expect(text).toContain('0.008 m')
+    expect(text).not.toMatch(/\bmm\b/)
+  })
+
   it('states plainly that a horizontal-only calibration had no vertical component', async () => {
     const cal = parseSiteCalibration(sampleXml)
     expect(cal.hasVertical).toBe(false)

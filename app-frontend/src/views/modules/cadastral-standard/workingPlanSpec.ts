@@ -39,6 +39,14 @@ export interface WorkingPlanSpecContext {
   parcels: any[]
   projectInfo: any
   config: any
+  /**
+   * The Outside Figure parcel's id, from getOutsideFigureParcel(). It is the
+   * remainder-of-parent figure General Plans draw around, not a stand on this
+   * sheet — the SI 727 path excludes it the same way, tagging it
+   * `isOutsideFigure` so the backend suppresses its label. Left undefined,
+   * behaviour is unchanged: the parcel draws like any other.
+   */
+  outsideFigureId?: unknown
 }
 
 /** A ring shorter than this is not a polygon. */
@@ -73,7 +81,10 @@ export function ringNames(parcel: any): string[] {
 
   // geom repeats the first vertex to close the ring; cape_lo_points normally
   // does not. If one has crept in, drop it so the first leg isn't drawn twice.
-  if (names.length > MIN_RING && names[0] === names[names.length - 1]) names.pop()
+  // >= (not >) so a degenerate ring like ['A','B','A'] -- two distinct points
+  // with a closing duplicate -- pops to ['A','B'] and correctly fails the
+  // length check below, instead of being accepted as a two-point "polygon".
+  if (names.length >= MIN_RING && names[0] === names[names.length - 1]) names.pop()
 
   return names.length >= MIN_RING ? names : []
 }
@@ -94,8 +105,11 @@ function certificateFrom(config: any): { line1: string; line2: string } {
   const name = String(config?.surveyorName ?? '').trim()
   const raw = config?.surveyDate
   const when = raw ? new Date(raw) : null
+  // timeZone: 'UTC' -- `new Date('2026-07-01')` parses as UTC midnight, so
+  // without pinning the render zone too, any negative-offset local timezone
+  // renders it as the last day of the PREVIOUS month.
   const month = when && !Number.isNaN(when.getTime())
-    ? when.toLocaleString('en-GB', { month: 'long', year: 'numeric' })
+    ? when.toLocaleString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
     : ''
   return {
     line1: month ? `Surveyed in ${month} by me,` : 'Surveyed by me,',
@@ -123,6 +137,13 @@ export function buildWorkingPlanSpec(
   const seen = new Set<string>()
 
   for (const p of ctx.parcels ?? []) {
+    // The Outside Figure is excluded by design, not by failure -- it must not
+    // land in skippedParcels, which is a warning surfaced to the surveyor as
+    // "Not drawn (no named boundary points)". Reporting it there would train
+    // surveyors to ignore a real warning.
+    if (ctx.outsideFigureId !== undefined && ctx.outsideFigureId !== null && p?.id === ctx.outsideFigureId) {
+      continue
+    }
     const label = String(p?.stand ?? p?.designation ?? p?.id ?? '').trim() || '(unnamed)'
     const ring = ringNames(p)
     if (ring.length === 0 || ring.some(n => !byName.has(n))) {

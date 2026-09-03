@@ -68,6 +68,12 @@ describe('ringNames', () => {
     const p = { stand: '404', metadata: { cape_lo_points: [{ id: 'SD4' }, { id: '' }, { id: 'SD6' }] } }
     expect(ringNames(p)).toEqual([])
   })
+
+  it('rejects a ring that is really just two distinct points with a closing duplicate', () => {
+    // Three raw vertices, but 'A' repeats: only two distinct points, which is
+    // not a polygon. Popping the duplicate must not leave a false 3-point ring.
+    expect(ringNames(parcel('404', ['A', 'B', 'A']))).toEqual([])
+  })
 })
 
 describe('beaconSymbol', () => {
@@ -188,5 +194,42 @@ describe('buildWorkingPlanSpec', () => {
     const { spec } = buildWorkingPlanSpec(ctx({ config: {} }))
     expect(spec.certificate.line1).toBe('Surveyed by me,')
     expect(spec.certificate.line2).toBe('Land Surveyor')
+  })
+
+  it('renders a first-of-month survey date in the correct month regardless of local timezone', () => {
+    // new Date('2026-07-01') is UTC midnight; a negative-offset local timezone
+    // rendering that without pinning timeZone: 'UTC' would print June, not July.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      config: { surveyorName: 'A. Surveyor', surveyDate: '2026-07-01' },
+    }))
+    expect(spec.certificate.line1).toBe('Surveyed in July 2026 by me,')
+  })
+})
+
+describe('buildWorkingPlanSpec — Outside Figure', () => {
+  // The Outside Figure carries a named ring like any other parcel (SD4/SD5/
+  // SD6/SD3 all resolve), so nothing about ringNames() rejects it -- it must
+  // be excluded explicitly, by id, via outsideFigureId.
+  const outsideFigure = {
+    id: 'of-1',
+    stand: 'Outside Figure',
+    metadata: { cape_lo_points: ['SD4', 'SD5', 'SD6', 'SD3'].map(id => ({ id, y: 0, x: 0, status: 'P', description: '' })) },
+  }
+
+  it('excludes the Outside Figure parcel from both spec.parcels and skippedParcels when outsideFigureId is set', () => {
+    const { spec, skippedParcels } = buildWorkingPlanSpec(ctx({
+      parcels: [parcel('404', ['SD4', 'SD5', 'SD6']), outsideFigure],
+      outsideFigureId: outsideFigure.id,
+    }))
+    expect(spec.parcels.map(p => p.label)).toEqual(['404'])
+    expect(skippedParcels).toEqual([])
+  })
+
+  it('leaves the Outside Figure parcel in place when no outsideFigureId is supplied', () => {
+    const { spec, skippedParcels } = buildWorkingPlanSpec(ctx({
+      parcels: [parcel('404', ['SD4', 'SD5', 'SD6']), outsideFigure],
+    }))
+    expect(spec.parcels.map(p => p.label)).toEqual(['404', 'Outside Figure'])
+    expect(skippedParcels).toEqual([])
   })
 })

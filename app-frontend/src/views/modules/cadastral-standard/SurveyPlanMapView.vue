@@ -4147,6 +4147,31 @@ async function generatePlanDocuments() {
     return
   }
 
+  // The Working Plan draws only parcels with a named ring. Check -- and build
+  // the spec -- before any generation work starts, not after the PDF block
+  // below has already run: a project with no named rings used to throw only
+  // once the save loop was reached, so a surveyor with QGIS-imported parcels
+  // got nothing at all instead of at least the PDF they'd otherwise have
+  // earned. Computed once here and reused below, so the fail-fast check and
+  // the sheet that actually gets drawn can never disagree.
+  let workingPlanSpec: ReturnType<typeof buildWorkingPlanSpec>['spec'] | null = null
+  let workingPlanSkipped: string[] = []
+  if (exportFormats.dxf && config.value.planType === 'working-plan') {
+    const built = buildWorkingPlanSpec({
+      beacons: exportBeaconsAsGeoJSON(),
+      parcels: parcels.value,
+      projectInfo: props.projectInfo,
+      config: config.value,
+      outsideFigureId: getOutsideFigureParcel()?.id,
+    })
+    if (built.spec.parcels.length === 0) {
+      alert('No parcel has named boundary points. Run Compute Area & Consistency so each parcel stores its beacon names, then generate the Working Plan again.')
+      return
+    }
+    workingPlanSpec = built.spec
+    workingPlanSkipped = built.skippedParcels
+  }
+
   isExporting.value = true
   try {
     await loadData()
@@ -4203,28 +4228,16 @@ async function generatePlanDocuments() {
       }
     }
 
-    let workingPlanSkipped: string[] = []
-    if (exportFormats.dxf && config.value.planType === 'working-plan') {
+    if (exportFormats.dxf && config.value.planType === 'working-plan' && workingPlanSpec) {
       // The Working Plan is an A4 sheet from its own renderer, not an SI 727
-      // plan. Built here from the final coordinate list and each parcel's
-      // named ring, so no proximity matching is involved.
-      const { spec, skippedParcels } = buildWorkingPlanSpec({
-        beacons: ctx.beacons,
-        parcels: parcels.value,
-        projectInfo: props.projectInfo,
-        config: config.value,
-      })
-      if (spec.parcels.length === 0) {
-        throw new Error(
-          'No parcel has named boundary points. Run Compute Area & Consistency so each parcel stores its beacon names, then generate the Working Plan again.'
-        )
-      }
-      workingPlanSkipped = skippedParcels
-      const { blob, scale } = await generateWorkingPlanDXF(spec)
+      // plan. Built (above, before any generation work) from the final
+      // coordinate list and each parcel's named ring, so no proximity matching
+      // is involved.
+      const { blob, scale } = await generateWorkingPlanDXF(workingPlanSpec)
       docs.dxf = blob
       if (scale) console.log(`[PlanDocs] Working plan drawn at 1:${scale}`)
-      if (skippedParcels.length) {
-        console.warn('[PlanDocs] Working plan omitted parcels with no named ring:', skippedParcels.join(', '))
+      if (workingPlanSkipped.length) {
+        console.warn('[PlanDocs] Working plan omitted parcels with no named ring:', workingPlanSkipped.join(', '))
       }
     } else if (exportFormats.dxf) {
       const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: payload.sheetSize || 'SI727_500x400' }

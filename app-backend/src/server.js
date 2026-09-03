@@ -25,7 +25,10 @@ await app.register(cors, {
     'X-Used-Scale',
     'X-Suggested-Scale',
     'X-Tile-Grid',
-    'X-Used-Sheet-Size'
+    'X-Used-Sheet-Size',
+    'X-Plan-Scale',
+    'X-Plan-Grid',
+    'X-Plan-Areas'
   ]
 })
 

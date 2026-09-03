@@ -1,0 +1,2 @@
+# DXF fixtures are compared byte-for-byte. Never touch their line endings.
+*.dxf -text

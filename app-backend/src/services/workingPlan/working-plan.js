@@ -1,0 +1,481 @@
+/**
+ * working-plan.js — Survey Plan Generation: working plan sheet as DXF.
+ *
+ * Layout constants below are measured from a Surveyor-General-style working
+ * plan (Stands 403-405 Brackenhurst Township, Gwelo District, 1:2000). They
+ * are all expressed in MILLIMETRES ON PAPER, so the same sheet design holds at
+ * any scale: a length on the ground is (mm * scale / 1000) metres.
+ *
+ * Coordinate convention (Zimbabwe Lo. systems):
+ *     DXF easting  =  -Y(Lo.)     Y is positive west
+ *     DXF northing =  -X(Lo.)     X is positive south
+ * which gives a conventional north-up, east-right drawing.
+ */
+
+import { DxfDocument } from './dxf-r12.js';
+
+/* ------------------------------------------------------------------ layout */
+
+export const SHEET = { width: 297, height: 210 };          // A4 landscape, mm
+
+export const LAYOUT = {
+  border: { x0: 0.5, y0: 0.5, x1: 296.5, y1: 209.5 },
+
+  // region the surveyed figure is centred in (mm from sheet top-left)
+  panel: { x0: 6, y0: 6, x1: 152, y1: 172 },
+
+  title: {
+    cx: 175.93,
+    baselines: [8.2, 20.3, 32.2, 44.2],   // up to four heading lines
+    scaleBaseline: 54.1,
+  },
+
+  northArrow: {
+    cx: 275.89, cy: 25.66,
+    north: 18.6, south: 39.7, side: 8.0, diagonal: 5.0, halfWidth: 1.31,
+    letters: { left: 'T', right: 'N', dxLeft: -4.0, dxRight: 1.2, baseline: 8.55 },
+  },
+
+  approval: {
+    box: { x0: 228.13, y0: 73.83, x1: 291.89, y1: 107.36 },
+    approvedBaseline: 78.76,
+    leader1: { y: 90.78, x0: 238.1, x1: 281.4 },
+    forBaseline: 95.60,
+    dateBaseline: 104.35, dateX: 238.8,
+    leader2: { y: 104.11, x0: 249.7, x1: 277.5 },
+  },
+
+  certificate: {
+    line1: { x: 5.50, baseline: 181.08 },
+    line2: { x: 19.94, baseline: 199.08 },
+  },
+
+  inset: { box: { x0: 162.9, y0: 109.69, x1: 291.97, y1: 196.13 } },
+
+  // cap heights, mm on paper
+  text: {
+    beacon: 2.05, grid: 2.05, parcel: 3.07, road: 3.07,
+    title: 3.95, scale: 3.03, approval: 3.06, certificate: 2.99,
+    insetTitle: 3.00, insetLabel: 2.05,
+  },
+
+  symbol: {
+    pegDia: 1.482,          // survey peg: single circle
+    rmOuterDia: 2.498,      // reference mark / found beacon: double circle
+    rmInnerDia: 1.482,
+    trigW: 2.963, trigH: 2.286, trigCircleDia: 1.524,
+    gridArm: 8.008,         // full length of a grid cross arm
+  },
+
+  // grid-label offsets from the cross centre, mm
+  gridLabel: { xDx: 4.45, xBaselineDy: 1.06, yDx: -1.02, yStartDy: 5.38 },
+
+  lineweight: 18,           // 0.18 mm, matching the source plot
+};
+
+/** Source plot pattern: 4.92 pt on / 3.00 pt off; leader dots 1.32 pt @ 2.59 pt. */
+const PT = 25.4 / 72;
+export const LINETYPES = {
+  PLANDASH: { on: 4.92 * PT, off: 3.00 * PT },
+  PLANDOT: { on: 1.32 * PT, off: 1.27 * PT },
+};
+
+export const LAYERS = [
+  ['BOUNDARY-NEW', 1, 'CONTINUOUS'],
+  ['BOUNDARY-EXIST', 3, 'PLANDASH'],
+  ['BEACONS', 2, 'CONTINUOUS'],
+  ['BEACON-TEXT', 2, 'CONTINUOUS'],
+  ['PARCEL-TEXT', 5, 'CONTINUOUS'],
+  ['GRID', 8, 'CONTINUOUS'],
+  ['GRID-TEXT', 8, 'CONTINUOUS'],
+  ['ROAD-TEXT', 4, 'CONTINUOUS'],
+  ['TITLE', 7, 'CONTINUOUS'],
+  ['APPROVAL', 7, 'CONTINUOUS'],
+  ['NORTH-ARROW', 7, 'CONTINUOUS'],
+  ['SHEET-BORDER', 9, 'CONTINUOUS'],
+  ['INSET', 9, 'CONTINUOUS'],
+];
+
+const STANDARD_SCALES = [200, 250, 500, 1000, 1250, 2000, 2500, 5000, 10000, 20000];
+const GRID_INTERVALS = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000];
+
+/* --------------------------------------------------------------- utilities */
+
+const loToGround = ({ X, Y }) => ({ e: -Y, n: -X });
+
+function centroid(pts) {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length];
+    const cr = x1 * y2 - x2 * y1;
+    a += cr; cx += (x1 + x2) * cr; cy += (y1 + y2) * cr;
+  }
+  a *= 0.5;
+  if (Math.abs(a) < 1e-9) {
+    return [pts.reduce((s, p) => s + p[0], 0) / pts.length,
+            pts.reduce((s, p) => s + p[1], 0) / pts.length];
+  }
+  return [cx / (6 * a), cy / (6 * a)];
+}
+
+export function ringArea(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length];
+    a += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(a) / 2;
+}
+
+function distToSegment([px, py], [x1, y1], [x2, y2]) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const L2 = dx * dx + dy * dy;
+  if (L2 === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / L2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+/* ------------------------------------------------------------- main routine */
+
+/**
+ * @param {object} spec
+ * @param {Array}  spec.beacons    [{ name, X, Y, symbol:'peg'|'rm'|'trig', label:'auto'|'N'|'NE'|... }]
+ * @param {Array}  spec.parcels    [{ label, ring:[beaconName], labelAt? }]
+ * @param {Array}  [spec.existing] [{ from, to, extendFrom?, extendTo? }]  dashed parent boundaries, mm extensions
+ * @param {Array}  [spec.roads]    [{ name, from, to, offset }]  offset in mm, +ve left of from->to
+ * @param {Array}  [spec.notes]    [{ text, X, Y, height? }]  e.g. neighbouring stand numbers
+ * @param {Array}  spec.title      up to four heading lines
+ * @param {number|'auto'} spec.scale
+ * @param {object} [spec.certificate] { line1, line2 }
+ * @param {boolean}[spec.approvalBox]
+ * @param {object} [spec.inset]    { scale, gridInterval, beacons:[{name,X,Y,symbol}] }
+ * @returns {{ dxf:string, scale:number, gridInterval:{e:number,n:number}, areas:object }}
+ */
+export function generateWorkingPlan(spec) {
+  const L = LAYOUT;
+  const byName = new Map(spec.beacons.map((b) => [b.name, { ...b, ...loToGround(b) }]));
+  const G = (name) => {
+    const b = byName.get(name);
+    if (!b) throw new Error(`generateWorkingPlan: unknown beacon "${name}"`);
+    return b;
+  };
+
+  /* ---- figure extent (boundary beacons only, so stray RMs don't blow it up) */
+  const ringPts = spec.parcels.flatMap((p) => p.ring.map((n) => [G(n).e, G(n).n]));
+  const extraPts = (spec.notes ?? []).map((t) => {
+    const g = loToGround(t); return [g.e, g.n];
+  });
+  const all = ringPts.concat(extraPts);
+  const bb = {
+    e0: Math.min(...all.map((p) => p[0])), e1: Math.max(...all.map((p) => p[0])),
+    n0: Math.min(...all.map((p) => p[1])), n1: Math.max(...all.map((p) => p[1])),
+  };
+
+  /* ---- scale */
+  const panelW = L.panel.x1 - L.panel.x0;
+  const panelH = L.panel.y1 - L.panel.y0;
+  let scale = spec.scale;
+  if (scale === 'auto' || scale == null) {
+    const need = Math.max((bb.e1 - bb.e0) / panelW, (bb.n1 - bb.n0) / panelH) * 1000 * 1.15;
+    scale = STANDARD_SCALES.find((s) => s >= need) ?? STANDARD_SCALES.at(-1);
+  }
+  const mm = (v) => (v * scale) / 1000;              // paper mm -> ground metres
+
+  /* ---- sheet placement: centre the figure in the plan panel */
+  const panelCx = (L.panel.x0 + L.panel.x1) / 2;
+  const panelCy = (L.panel.y0 + L.panel.y1) / 2;
+  const originE = (bb.e0 + bb.e1) / 2 - mm(panelCx);
+  const originN = (bb.n0 + bb.n1) / 2 + mm(panelCy);
+  /** sheet millimetres (from top-left) -> ground */
+  const S = (x, y) => [originE + mm(x), originN - mm(y)];
+  /** ground -> sheet millimetres */
+  const toSheet = (e, n) => [((e - originE) / scale) * 1000, ((originN - n) / scale) * 1000];
+
+  /* ---- document scaffold */
+  const doc = new DxfDocument({ ltscale: 1.0, insunits: 6 });
+  doc.addLinetype('PLANDASH', 'Plan boundary dash ____ ____ ____',
+    [mm(LINETYPES.PLANDASH.on + LINETYPES.PLANDASH.off),
+      mm(LINETYPES.PLANDASH.on), -mm(LINETYPES.PLANDASH.off)]);
+  doc.addLinetype('PLANDOT', 'Leader dots . . . . . . . .',
+    [mm(LINETYPES.PLANDOT.on + LINETYPES.PLANDOT.off),
+      mm(LINETYPES.PLANDOT.on), -mm(LINETYPES.PLANDOT.off)]);
+  for (const [n, c, lt] of LAYERS) doc.addLayer(n, c, lt, L.lineweight);
+  doc.addStyle('ARIAL', 'arial.ttf');
+  doc.addStyle('ARIAL-BOLD', 'arialbd.ttf');
+  doc.addStyle('SERIF', 'times.ttf');
+
+  const circlePts = (r, n = 32) => Array.from({ length: n }, (_, i) => {
+    const a = (2 * Math.PI * i) / n;
+    return [r * Math.cos(a), r * Math.sin(a)];
+  });
+
+  doc.addBlock('BCN_PEG', (b) => {
+    b.point([0, 0]);
+    b.polyline(circlePts(mm(L.symbol.pegDia / 2)), { closed: true });
+  });
+  doc.addBlock('BCN_RM', (b) => {
+    b.point([0, 0]);
+    b.polyline(circlePts(mm(L.symbol.rmOuterDia / 2)), { closed: true });
+    b.polyline(circlePts(mm(L.symbol.rmInnerDia / 2)), { closed: true });
+  });
+  doc.addBlock('BCN_TRIG', (b) => {
+    const w = mm(L.symbol.trigW) / 2, h = mm(L.symbol.trigH);
+    const tri = [[0, h * 0.62], [-w, -h * 0.38], [w, -h * 0.38]];
+    b.point([0, 0]);
+    b.solid(tri);
+    b.polyline(circlePts(mm(L.symbol.trigCircleDia / 2), 24), { closed: true });
+  });
+
+  const d = doc.sink;
+
+  /* ---- sheet border */
+  d.polyline([S(L.border.x0, L.border.y0), S(L.border.x1, L.border.y0),
+    S(L.border.x1, L.border.y1), S(L.border.x0, L.border.y1)],
+  { layer: 'SHEET-BORDER', closed: true });
+
+  /* ---- parcel boundaries */
+  const areas = {};
+  for (const p of spec.parcels) {
+    const pts = p.ring.map((n) => [G(n).e, G(n).n]);
+    d.polyline(pts, { layer: 'BOUNDARY-NEW', closed: true });
+    areas[p.label] = ringArea(pts);
+    const [cx, cy] = p.labelAt ? Object.values(loToGround(p.labelAt)) : centroid(pts);
+    d.text(p.label, [cx, cy - mm(L.text.parcel) / 2], mm(L.text.parcel),
+      { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
+  }
+
+  /* ---- existing (dashed) parent boundaries, with optional extensions */
+  for (const ex of spec.existing ?? []) {
+    const a = G(ex.from), b = G(ex.to);
+    const ux = b.e - a.e, uy = b.n - a.n;
+    const len = Math.hypot(ux, uy) || 1;
+    const [dx, dy] = [ux / len, uy / len];
+    const p0 = [a.e - dx * mm(ex.extendFrom ?? 0), a.n - dy * mm(ex.extendFrom ?? 0)];
+    const p1 = [b.e + dx * mm(ex.extendTo ?? 0), b.n + dy * mm(ex.extendTo ?? 0)];
+    d.line(p0, p1, { layer: 'BOUNDARY-EXIST' });
+  }
+
+  /* ---- beacons and their names */
+  const figCx = (bb.e0 + bb.e1) / 2, figCy = (bb.n0 + bb.n1) / 2;
+  const h = mm(L.text.beacon);
+  const r = mm(L.symbol.rmOuterDia / 2);
+
+  // occupied rectangles, so labels do not sit on top of each other or a symbol
+  const occupied = [];
+  const hits = (rect) => occupied.some((o) =>
+    rect[0] < o[2] && rect[2] > o[0] && rect[1] < o[3] && rect[3] > o[1]);
+  const textRect = (s, x, y, hgt, align) => {
+    const w = 0.63 * hgt * s.length;
+    const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+    return [x0, y - hgt * 0.15, x0 + w, y + hgt];
+  };
+  for (const b of byName.values()) occupied.push([b.e - r, b.n - r, b.e + r, b.n + r]);
+
+  const ORDER = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  for (const b of byName.values()) {
+    const block = { peg: 'BCN_PEG', rm: 'BCN_RM', trig: 'BCN_TRIG' }[b.symbol ?? 'peg'];
+    d.insert(block, [b.e, b.n], { layer: 'BEACONS' });
+
+    let pos = b.label ?? 'auto';
+    if (pos === 'auto') {
+      const ang = Math.atan2(b.n - figCy, b.e - figCx) * 180 / Math.PI;
+      pos = ['E', 'NE', 'N', 'NW', 'W', 'SW', 'S', 'SE']
+        [Math.round(((ang + 360) % 360) / 45) % 8];
+    }
+    if (pos === 'none') continue;
+    const gap = r + mm(0.5);
+    const place = (p) => ({
+      N: [0, gap + mm(0.4), 'center'], S: [0, -(gap + h + mm(0.2)), 'center'],
+      E: [gap, -h / 2, 'left'], W: [-gap, -h / 2, 'right'],
+      NE: [gap * 0.5, gap * 0.9, 'left'], NW: [-gap * 0.5, gap * 0.9, 'right'],
+      SE: [gap * 0.5, -(gap * 0.9 + h), 'left'], SW: [-gap * 0.5, -(gap * 0.9 + h), 'right'],
+    }[p]);
+
+    // preferred position first, then the rest of the compass
+    const tries = [pos, ...ORDER.slice(ORDER.indexOf(pos) + 1), ...ORDER.slice(0, ORDER.indexOf(pos))];
+    let P = place(pos), rect = null;
+    for (const t of tries) {
+      const c = place(t);
+      const rc = textRect(b.name, b.e + c[0], b.n + c[1], h, c[2]);
+      if (!hits(rc)) { P = c; rect = rc; break; }
+    }
+    if (!rect) rect = textRect(b.name, b.e + P[0], b.n + P[1], h, P[2]);
+    occupied.push(rect);
+    d.text(b.name, [b.e + P[0], b.n + P[1]], h,
+      { layer: 'BEACON-TEXT', style: 'ARIAL', align: P[2] });
+  }
+
+  /* ---- free notes (neighbouring stand numbers etc.) */
+  for (const t of spec.notes ?? []) {
+    const g = loToGround(t);
+    d.text(t.text, [g.e, g.n], mm(t.height ?? L.text.parcel),
+      { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
+  }
+
+  /* ---- road names, set along the road with a perpendicular offset */
+  for (const rd of spec.roads ?? []) {
+    const a = G(rd.from), b = G(rd.to);
+    let ang = Math.atan2(b.n - a.n, b.e - a.e);
+    let flip = false;
+    if (ang > Math.PI / 2 || ang < -Math.PI / 2) { ang += Math.PI; flip = true; }
+    const [sx, sy] = flip ? [b.e, b.n] : [a.e, a.n];
+    // put the name on the side of the line away from the surveyed figure,
+    // unless the caller has forced a side with a signed offset
+    let off = mm(Math.abs(rd.offset ?? 3));
+    if (rd.offset != null && rd.offset < 0) off = -off;
+    else {
+      const mx = (a.e + b.e) / 2, my = (a.n + b.n) / 2;
+      const side = -Math.sin(ang) * (figCx - mx) + Math.cos(ang) * (figCy - my);
+      if (side > 0) off = -off;
+    }
+    const px = -Math.sin(ang) * off, py = Math.cos(ang) * off;
+    const along = mm(rd.along ?? 6);
+    const rh = mm(L.text.road);
+    const rx = sx + px + Math.cos(ang) * along;
+    const ry = sy + py + Math.sin(ang) * along;
+    d.text(rd.name, [rx, ry], rh,
+      { layer: 'ROAD-TEXT', style: 'ARIAL', rotation: ang * 180 / Math.PI,
+        widthFactor: rd.widthFactor ?? 1.2 });
+    // reserve the rotated label so grid ticks are not placed on top of it
+    const rw = 0.63 * rh * (rd.widthFactor ?? 1.2) * rd.name.length;
+    const corners = [[0, 0], [rw, 0], [rw, rh], [0, rh]].map(([u, v]) => [
+      rx + u * Math.cos(ang) - v * Math.sin(ang),
+      ry + u * Math.sin(ang) + v * Math.cos(ang)]);
+    occupied.push([Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1])),
+      Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))]);
+  }
+
+  /* ---- coordinate grid */
+  const pick = (span) => GRID_INTERVALS.find((i) => (i / scale) * 1000 >= 40)
+    ?? GRID_INTERVALS.at(-1);
+  const gi = spec.gridInterval ?? pick();
+  const arm = mm(L.symbol.gridArm) / 2;
+  const inset = 10;                                   // keep ticks off the panel edge
+  const segments = spec.parcels.flatMap((p) => p.ring.map((n, i) => [
+    [G(n).e, G(n).n],
+    [G(p.ring[(i + 1) % p.ring.length]).e, G(p.ring[(i + 1) % p.ring.length]).n]]));
+
+  const [pe0] = S(L.panel.x0 + inset, 0), [pe1] = S(L.panel.x1 - inset, 0);
+  const pn1 = S(0, L.panel.y0 + inset)[1], pn0 = S(0, L.panel.y1 - inset)[1];
+  const gridInterval = { e: gi, n: gi };
+  let placed = 0;
+  for (let e = Math.ceil(pe0 / gi) * gi; e <= pe1; e += gi) {
+    for (let n = Math.ceil(pn0 / gi) * gi; n <= pn1; n += gi) {
+      // the cross plus both of its labels must be clear of the figure,
+      // of every beacon symbol, and of every label already placed
+      const gw = mm(L.gridLabel.xDx + 0.63 * L.text.grid * 13);
+      const tickRect = [e - arm - mm(2), n - mm(L.gridLabel.yStartDy + 12),
+        e + gw, n + arm + mm(2)];
+      const clearOfLines = segments.every((s) => distToSegment([e, n], s[0], s[1]) > mm(7));
+      const clearOfNotes = (spec.notes ?? []).every((t) => {
+        const g = loToGround(t);
+        return Math.hypot(g.e - e, g.n - n) > mm(9);
+      });
+      if (!clearOfLines || !clearOfNotes || hits(tickRect)) continue;
+      occupied.push(tickRect);
+      d.line([e - arm, n], [e + arm, n], { layer: 'GRID' });
+      d.line([e, n - arm], [e, n + arm], { layer: 'GRID' });
+      const gh = mm(L.text.grid);
+      const Xlo = -n, Ylo = -e;
+      d.text(`X = ${Xlo >= 0 ? '+' : ''}${Xlo.toFixed(0)}`,
+        [e + mm(L.gridLabel.xDx), n - mm(L.gridLabel.xBaselineDy)], gh,
+        { layer: 'GRID-TEXT', style: 'ARIAL' });
+      d.text(`Y = ${Ylo.toFixed(0)}`,
+        [e + mm(L.gridLabel.yDx), n - mm(L.gridLabel.yStartDy)], gh,
+        { layer: 'GRID-TEXT', style: 'ARIAL', rotation: -90 });
+      placed++;
+    }
+  }
+
+  /* ---- title block */
+  const th = mm(L.text.title);
+  spec.title.slice(0, 4).forEach((line, i) => {
+    d.text(line, S(L.title.cx, L.title.baselines[i]), th,
+      { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
+  });
+  d.text(`Scale 1:${scale}`, S(L.title.cx, L.title.scaleBaseline), mm(L.text.scale),
+    { layer: 'TITLE', style: 'ARIAL', align: 'center' });
+
+  /* ---- north arrow */
+  const na = L.northArrow;
+  const rays = [
+    [90, na.north], [270, na.south], [0, na.side], [180, na.side],
+    [45, na.diagonal], [135, na.diagonal], [225, na.diagonal], [315, na.diagonal],
+  ];
+  for (const [deg, len] of rays) {
+    const a = (deg * Math.PI) / 180;
+    const tip = S(na.cx + Math.cos(a) * len, na.cy - Math.sin(a) * len);
+    const b1 = S(na.cx - Math.sin(a) * na.halfWidth, na.cy - Math.cos(a) * na.halfWidth);
+    const b2 = S(na.cx + Math.sin(a) * na.halfWidth, na.cy + Math.cos(a) * na.halfWidth);
+    d.polyline([b1, tip, b2], { layer: 'NORTH-ARROW' });
+  }
+  d.text(na.letters.left, S(na.cx + na.letters.dxLeft, na.letters.baseline), mm(2.12),
+    { layer: 'NORTH-ARROW', style: 'ARIAL' });
+  d.text(na.letters.right, S(na.cx + na.letters.dxRight, na.letters.baseline), mm(2.12),
+    { layer: 'NORTH-ARROW', style: 'ARIAL' });
+
+  /* ---- approval box */
+  if (spec.approvalBox !== false) {
+    const A = L.approval, ah = mm(L.text.approval);
+    d.polyline([S(A.box.x0, A.box.y0), S(A.box.x1, A.box.y0),
+      S(A.box.x1, A.box.y1), S(A.box.x0, A.box.y1)],
+    { layer: 'APPROVAL', closed: true });
+    d.text('Approved', S((A.box.x0 + A.box.x1) / 2, A.approvedBaseline), ah,
+      { layer: 'APPROVAL', style: 'SERIF', align: 'center' });
+    d.line(S(A.leader1.x0, A.leader1.y), S(A.leader1.x1, A.leader1.y),
+      { layer: 'APPROVAL', linetype: 'PLANDOT' });
+    d.text('for Surveyor General', S((A.box.x0 + A.box.x1) / 2, A.forBaseline), ah,
+      { layer: 'APPROVAL', style: 'SERIF', align: 'center' });
+    d.text('Date:', S(A.dateX, A.dateBaseline), ah, { layer: 'APPROVAL', style: 'SERIF' });
+    d.line(S(A.leader2.x0, A.leader2.y), S(A.leader2.x1, A.leader2.y),
+      { layer: 'APPROVAL', linetype: 'PLANDOT' });
+  }
+
+  /* ---- surveyor's certificate */
+  if (spec.certificate) {
+    const ch = mm(L.text.certificate);
+    d.text(spec.certificate.line1, S(L.certificate.line1.x, L.certificate.line1.baseline),
+      ch, { layer: 'TITLE', style: 'ARIAL-BOLD' });
+    d.text(spec.certificate.line2, S(L.certificate.line2.x, L.certificate.line2.baseline),
+      ch, { layer: 'TITLE', style: 'ARIAL-BOLD' });
+  }
+
+  /* ---- locality inset (its own, much smaller, scale) */
+  if (spec.inset) {
+    const B = L.inset.box;
+    d.polyline([S(B.x0, B.y0), S(B.x1, B.y0), S(B.x1, B.y1), S(B.x0, B.y1)],
+      { layer: 'INSET', closed: true });
+    d.text('Inset (not to scale)', S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
+      { layer: 'INSET', style: 'ARIAL-BOLD' });
+
+    const iScale = spec.inset.scale;
+    const ib = spec.inset.beacons.map((b) => ({ ...b, ...loToGround(b) }));
+    const ic = {
+      e: (Math.min(...ib.map((b) => b.e)) + Math.max(...ib.map((b) => b.e))) / 2,
+      n: (Math.min(...ib.map((b) => b.n)) + Math.max(...ib.map((b) => b.n))) / 2,
+    };
+    const boxCx = (B.x0 + B.x1) / 2, boxCy = (B.y0 + B.y1) / 2;
+    // ground position on the SHEET for an inset ground coordinate
+    const I = (e, n) => S(boxCx + ((e - ic.e) / iScale) * 1000,
+      boxCy - ((n - ic.n) / iScale) * 1000);
+    const iSym = mm(1.0);
+    for (const b of ib) {
+      const at = I(b.e, b.n);
+      if (b.symbol === 'trig') {
+        const w = iSym, hh = iSym * 1.55;
+        d.solid([[at[0], at[1] + hh * 0.62], [at[0] - w, at[1] - hh * 0.38],
+          [at[0] + w, at[1] - hh * 0.38]], { layer: 'INSET' });
+      } else {
+        d.polyline(circlePts(iSym * 0.85, 24).map(([x, y]) => [at[0] + x, at[1] + y]),
+          { layer: 'INSET', closed: true });
+        d.polyline(circlePts(iSym * 0.5, 24).map(([x, y]) => [at[0] + x, at[1] + y]),
+          { layer: 'INSET', closed: true });
+      }
+      d.text(b.name, [at[0], at[1] + mm(1.8)], mm(L.text.insetLabel),
+        { layer: 'INSET', style: 'ARIAL', align: 'center' });
+    }
+  }
+
+  return { dxf: doc.toString(), scale, gridInterval, gridTicks: placed, areas };
+}

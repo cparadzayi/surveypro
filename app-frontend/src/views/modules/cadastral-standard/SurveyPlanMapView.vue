@@ -625,6 +625,8 @@ import { siteCalibrationFrom } from '@/utils/siteCalibration'
 import type { CoverPageInfo } from '@/utils/cover-page'
 import { listCoordinatePoints, listLandParcels, updateLandParcel } from '@/services/spatial'
 import { saveDocument } from '@/services/documentStorage'
+import { generateWorkingPlanDXF } from '@/services/workingPlan'
+import { buildWorkingPlanSpec } from './workingPlanSpec'
 import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
 import api from '@/services/api'
 import { buildWorkflowExcel } from '@/utils/workflowExcelExporter'
@@ -4201,7 +4203,30 @@ async function generatePlanDocuments() {
       }
     }
 
-    if (exportFormats.dxf) {
+    let workingPlanSkipped: string[] = []
+    if (exportFormats.dxf && config.value.planType === 'working-plan') {
+      // The Working Plan is an A4 sheet from its own renderer, not an SI 727
+      // plan. Built here from the final coordinate list and each parcel's
+      // named ring, so no proximity matching is involved.
+      const { spec, skippedParcels } = buildWorkingPlanSpec({
+        beacons: ctx.beacons,
+        parcels: parcels.value,
+        projectInfo: props.projectInfo,
+        config: config.value,
+      })
+      if (spec.parcels.length === 0) {
+        throw new Error(
+          'No parcel has named boundary points. Run Compute Area & Consistency so each parcel stores its beacon names, then generate the Working Plan again.'
+        )
+      }
+      workingPlanSkipped = skippedParcels
+      const { blob, scale } = await generateWorkingPlanDXF(spec)
+      docs.dxf = blob
+      if (scale) console.log(`[PlanDocs] Working plan drawn at 1:${scale}`)
+      if (skippedParcels.length) {
+        console.warn('[PlanDocs] Working plan omitted parcels with no named ring:', skippedParcels.join(', '))
+      }
+    } else if (exportFormats.dxf) {
       const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: payload.sheetSize || 'SI727_500x400' }
       const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload)
       docs.dxf = blob
@@ -4251,7 +4276,10 @@ async function generatePlanDocuments() {
       else throw new Error(res.error || `Failed to save ${fileName}`)
     }
     const summaryMsg = `Saved to output/${subdir}/:\n${saved.join('\n') || '(none)'}` +
-      (skipped.length ? `\n\nKept existing (not overwritten):\n${skipped.join('\n')}` : '')
+      (skipped.length ? `\n\nKept existing (not overwritten):\n${skipped.join('\n')}` : '') +
+      (workingPlanSkipped.length
+        ? `\n\nNot drawn (no named boundary points):\n${workingPlanSkipped.join('\n')}`
+        : '')
     alert(summaryMsg)
     emit('export-complete', { format: config.value.planType, filename: saved[0] || '' })
   } catch (error: any) {

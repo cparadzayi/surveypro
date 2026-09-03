@@ -88,6 +88,9 @@ for (const file of routeFiles) {
     } else if (routeName === 'survey-projects') {
       app.register(route.default, { prefix: '/api/survey-projects' })
       app.log.info(`✅ Registered route: /api/survey-projects (${file})`)
+    } else if (routeName === 'workingPlan') {
+      app.register(route.default, { prefix: '/api/working-plan' })
+      app.log.info(`✅ Registered route: /api/working-plan (${file})`)
     } else if (routeName === 'csvImports') {
       app.register(route.default, { prefix: '/api' })
       app.log.info(`✅ Registered route: /api/csv-imports (${file})`)

@@ -68,3 +68,6 @@ app-backend/_*
 # entire frontend module.
 /cadastral-standard/
 /sample docs/
+
+# SDD scratch: ledgers, briefs, reports, review packages. Not part of the repo.
+/.superpowers/sdd/

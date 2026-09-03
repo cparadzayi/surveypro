@@ -621,6 +621,7 @@ import {
 import { generateSurveyPlanSummaryPDF, type SurveyPlanSummaryData } from '@/utils/surveyPlanSummaryGenerator'
 import { CalculationsPart1Generator, type SurveyPoint } from '@/utils/calculations-part1'
 import { ComprehensiveDocumentGenerator, type ComprehensiveDocumentData } from '@/utils/comprehensive-document'
+import { siteCalibrationFrom } from '@/utils/siteCalibration'
 import type { CoverPageInfo } from '@/utils/cover-page'
 import { listCoordinatePoints, listLandParcels, updateLandParcel } from '@/services/spatial'
 import { saveDocument } from '@/services/documentStorage'
@@ -4485,7 +4486,7 @@ async function generateComprehensivePDF() {
       fieldBookObservations: observations,
       // Optional: adds the calibration page to the field book when one was
       // imported at the CSV step; undefined leaves the document as before.
-      siteCalibration: workflowState.documents?.siteCalibration,
+      siteCalibration: siteCalibrationFrom(workflowState),
       surveyPoints: surveyPoints,
       adjustedCoordinates: adjustedCoordinates,
       projectControlPoints: controlPoints,

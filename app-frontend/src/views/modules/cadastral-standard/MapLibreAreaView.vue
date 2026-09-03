@@ -892,6 +892,7 @@ import { useComprehensivePDF, type NarrativeReportOptions } from '../../../compo
 import { useAreaConsistencyPDF } from '../../../composables/useAreaConsistencyPDF';
 import { CalculationsPart1Generator, type SurveyPoint } from '../../../utils/calculations-part1';
 import { ComprehensiveDocumentGenerator } from '../../../utils/comprehensive-document';
+import { siteCalibrationFrom } from '../../../utils/siteCalibration';
 import { PageAllocationService } from '../../../services/pageAllocation';
 import { autoSaveStepProducts } from '../../../services/workflowProductStorage';
 import { polygon as turfPolygon, featureCollection } from '@turf/helpers';
@@ -6411,7 +6412,7 @@ async function exportAreaConsistencyPDF() {
       fieldBookObservations: workflowState?.observations || [],
       // Optional: adds the calibration page to the field book when one was
       // imported at the CSV step; undefined leaves the document as before.
-      siteCalibration: workflowState?.documents?.siteCalibration,
+      siteCalibration: siteCalibrationFrom(workflowState),
       surveyPoints: surveyPoints,
       adjustedCoordinates: adjustedCoordinates,
       projectControlPoints: controlPoints,

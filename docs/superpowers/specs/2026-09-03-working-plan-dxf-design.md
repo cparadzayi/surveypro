@@ -108,13 +108,23 @@ buildWorkingPlanSpec(ctx: WorkingPlanSpecContext): WorkingPlanSpec
 | Spec field | Source |
 |---|---|
 | `beacons` | the final coordinate list → `{ name, X: x, Y: y, symbol, label: 'auto' }` |
-| `parcels` | `{ label: stand, ring: metadata.cape_lo_points.map(p => p.id) }` |
+| `parcels` | `{ label: stand, ring: metadata.cape_lo_points.map(p => p.id) }`, **excluding the Outside Figure** |
 | `title` | up to four lines: "Survey of", designation, parent property, district |
 | `certificate` | `{ line1, line2 }` from surveyor name and survey date |
 | `scale` | `'auto'` — the module picks and reports it |
 
 Only beacons a ring actually names are emitted, so the coordinate list's control
 and reference points do not inflate the sheet extent.
+
+**The Outside Figure is excluded.** It is the one member of `parcels.value` that
+is not a stand, and the SI 727 path already treats it specially:
+`exportParcelsAsGeoJSON` tags it `isOutsideFigure: true` so the backend
+suppresses its label. Without the same handling here the module draws it as an
+ordinary parcel and prints its `stand` string — which contains the words
+"Outside Figure" — across the centre of the sheet. It is skipped silently, not
+reported in `skippedParcels`: that list warns about parcels that *failed* to
+resolve, and burying a by-design exclusion in it would train surveyors to ignore
+a real warning.
 
 **Symbol mapping, flagged as a judgement call.** The module takes `peg`, `rm` or
 `trig`. We store `status` (`F` found / `P` placed) plus a free-text description.
@@ -134,7 +144,7 @@ pattern already there:
 ```
 app.register(route.default, { prefix: '/api/working-plan' })
 
-POST /api/working-plan/dxf   body: the spec   ->   image/vnd.dxf
+POST /api/working-plan/dxf   body: the spec   ->   application/dxf
 ```
 
 It takes the spec in the request body rather than a project id. This mirrors

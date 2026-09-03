@@ -215,3 +215,156 @@ export function siteCalibrationFrom(workflowState: any): SiteCalibration | undef
       ?? stepData?.import_csv?.site_calibration
       ?? undefined
 }
+
+// ── HTML export ─────────────────────────────────────────────────────────────
+//
+// Trimble Business Center exports the same report as XML and as HTML, and a
+// surveyor may have either. The HTML is a table of label/value cells rather
+// than a schema, so it is read by walking those cells rather than by path.
+//
+// Two things it does that the XML does not:
+//  - angles are DMS strings with a hemisphere letter (S19°26'54.71908"), not
+//    radians;
+//  - absent values are the literal "?", which must read as absent rather than
+//    as zero or NaN — "no vertical adjustment was performed" is a different
+//    statement from "the vertical shift was zero".
+//
+// It also rounds to three decimals, so the XML remains the better source when
+// both are available.
+
+/** "S19°26'54.71908"" → -19.4485…  ; hemisphere letter carries the sign. */
+function dmsToDegrees(raw: string | undefined): number {
+  if (!raw) return NaN
+  const hemisphere = /^\s*([NSEW])/i.exec(raw)?.[1]?.toUpperCase()
+  // Any non-numeric run separates the parts, so this does not depend on the
+  // degree glyph surviving an encoding round-trip.
+  const parts = raw.replace(/^\s*[NSEW]/i, '').split(/[^0-9.]+/).filter(Boolean).map(Number)
+  if (parts.length === 0 || parts.some(Number.isNaN)) return NaN
+  const [d = 0, m = 0, s = 0] = parts
+  const magnitude = Math.abs(d) + m / 60 + s / 3600
+  return hemisphere === 'S' || hemisphere === 'W' ? -magnitude : magnitude
+}
+
+/** Strips the unit suffix; Trimble's "?" for an absent value reads as null. */
+function measure(raw: string | undefined): number | null {
+  if (raw === undefined) return null
+  const cleaned = raw.replace(/[^0-9.\-+eE]/g, '')
+  if (cleaned === '' || raw.includes('?')) return null
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? n : null
+}
+
+/** One "Point" block: its name plus the label/value cells that follow it. */
+interface HtmlBlock { name: string; fields: Record<string, string> }
+
+function readPointBlocks(cells: string[], from: number): HtmlBlock[] {
+  const blocks: HtmlBlock[] = []
+  for (let i = from; i < cells.length; i++) {
+    if (cells[i] !== 'Point') continue
+    const block: HtmlBlock = { name: cells[i + 1] ?? '', fields: {} }
+    for (let j = i + 2; j < cells.length - 1; j += 2) {
+      if (cells[j] === 'Point') break
+      block.fields[cells[j]] = cells[j + 1]
+    }
+    blocks.push(block)
+  }
+  return blocks
+}
+
+export function parseSiteCalibrationHtml(html: string): SiteCalibration {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const text = doc.body?.textContent ?? ''
+  if (!/Site Calibration Report/i.test(text)) {
+    throw new Error('This file is not a Trimble Site Calibration Report.')
+  }
+
+  // Leaf cells only, in document order. The report nests tables, so an outer
+  // <td> holds the concatenated text of everything inside it; taking only cells
+  // that contain no further table yields a clean label/value interleaving.
+  // Labels are <th> and carry a trailing colon; values are <td>.
+  const cells = Array.from(doc.querySelectorAll('td, th'))
+    .filter((cell) => !cell.querySelector('table'))
+    .map((cell) => (cell.textContent ?? '').replace(/\s+/g, ' ').trim())
+
+  /** Value of the cell following the first cell whose label matches. */
+  const after = (label: string): string | undefined => {
+    const i = cells.findIndex((c) => c.replace(/:$/, '').toLowerCase() === label.toLowerCase())
+    return i === -1 ? undefined : cells[i + 1]
+  }
+
+  const scale = measure(after('Scale factor'))
+  const horizontal: SiteCalibrationHorizontal | null = scale === null ? null : {
+    rotationCentreNorthing: measure(after('Origin northing')) ?? NaN,
+    rotationCentreEasting: measure(after('Origin easting')) ?? NaN,
+    rotationDegrees: dmsToDegrees(after('Rotation')),
+    translationNorth: measure(after('Translation north')) ?? NaN,
+    translationEast: measure(after('Translation east')) ?? NaN,
+    scaleFactor: scale,
+  }
+
+  // Summary table: the "Horizontal" row reads max | rms | point. Anchored on the
+  // "Maximum residual" header so it cannot latch onto the word "Horizontal"
+  // used as a pair's Type further down the report.
+  const summaryHeader = cells.findIndex((c) => /^Maximum residual/i.test(c))
+  const hIdx = summaryHeader === -1 ? -1 : cells.indexOf('Horizontal', summaryHeader)
+  const summaryRow = hIdx === -1 ? [] : cells.slice(hIdx + 1, hIdx + 4)
+  const summary: SiteCalibrationSummary = {
+    maxHorizontalResidual: measure(summaryRow[0]),
+    rmsHorizontal: measure(summaryRow[1]),
+    maxHorizontalResidualPointSerial: summaryRow[2] && !summaryRow[2].includes('?') ? summaryRow[2] : null,
+    maxVerticalInclination: null,
+  }
+
+  // Point blocks arrive in threes: the GNSS point (carries Latitude), the
+  // calculated point (carries a residual), then the grid point (carries Type).
+  // Start after the three column headers, so the summary's own "Point" header
+  // is not mistaken for the first point block.
+  const gridHeader = cells.findIndex((c) => c === 'Grid Point')
+  const blocks = readPointBlocks(cells, gridHeader === -1 ? 0 : gridHeader + 1)
+  const pairs: SiteCalibrationPair[] = []
+  for (let i = 0; i + 2 < blocks.length; i += 3) {
+    const [gnss, calc, grid] = [blocks[i], blocks[i + 1], blocks[i + 2]]
+    if (!('Latitude' in gnss.fields)) continue
+    pairs.push({
+      pointId: grid.name,
+      globalPointId: gnss.name,
+      usage: grid.fields['Type'] ?? '',
+      globalLatitudeDegrees: dmsToDegrees(gnss.fields['Latitude']),
+      globalLongitudeDegrees: dmsToDegrees(gnss.fields['Longitude']),
+      globalHeight: measure(gnss.fields['Height']) ?? NaN,
+      controlNorthing: measure(grid.fields['Northing']) ?? NaN,
+      controlEasting: measure(grid.fields['Easting']) ?? NaN,
+      controlElevation: measure(grid.fields['Elevation']) ?? NaN,
+      calculatedNorthing: measure(calc.fields['Northing']) ?? NaN,
+      calculatedEasting: measure(calc.fields['Easting']) ?? NaN,
+      calculatedElevation: measure(calc.fields['Elevation']) ?? NaN,
+      horizontalResidual: measure(calc.fields['Horiz. residual']) ?? NaN,
+      verticalResidual: measure(calc.fields['Vert. residual']),
+    })
+  }
+
+  // A vertical section of all "?" means none was performed.
+  const verticalShift = measure(after('Vertical shift at origin'))
+  const hasVertical = verticalShift !== null || pairs.some((p) => p.verticalResidual !== null)
+
+  return {
+    reportName: 'Site Calibration Report',
+    projectIdentifier: after('Name') ?? '',
+    horizontal,
+    vertical: null,
+    hasVertical,
+    summary,
+    pairs,
+  }
+}
+
+/**
+ * Parse either export. Sniffs the content rather than trusting the extension:
+ * a surveyor renaming a file should not silently produce an empty report.
+ */
+export function parseCalibrationReport(content: string): SiteCalibration {
+  if (/<\s*(html|!DOCTYPE\s+html)/i.test(content) || /<\s*table/i.test(content)) {
+    return parseSiteCalibrationHtml(content)
+  }
+  return parseSiteCalibration(content)
+}

@@ -341,7 +341,7 @@
                       GNSS Site Calibration <span class="font-normal text-gray-500">(optional)</span>
                     </p>
                     <p class="mt-1 text-xs text-gray-500">
-                      Trimble Site Calibration Report (.xml). Its parameters and residuals are
+                      Trimble Site Calibration Report (.xml or .html). Its parameters and residuals are
                       added to the Electronic Field Book as evidence the GNSS observations were
                       tied to the local grid.
                     </p>
@@ -350,7 +350,7 @@
                     ref="calibrationInputRef"
                     id="calibration-file-input"
                     type="file"
-                    accept=".xml"
+                    accept=".xml,.html,.xhtml,.htm"
                     @change="handleCalibrationFileChange"
                     class="hidden"
                   />
@@ -1362,7 +1362,7 @@ import {
 } from '../../../services/csvImports';
 // Spatial data export
 import { batchCreateCoordinatePoints } from '../../../services/spatial';
-import { parseSiteCalibration } from '../../../utils/siteCalibration';
+import { parseCalibrationReport } from '../../../utils/siteCalibration';
 import CSVReimportDialog from '../../../components/cadastral/CSVReimportDialog.vue';
 import MergeAnalysisDialog from '../../../components/cadastral/MergeAnalysisDialog.vue';
 import LiveCSVValidator from '../../../components/cadastral/LiveCSVValidator.vue';
@@ -2816,7 +2816,7 @@ async function handleCalibrationFileChange(event: Event) {
   calibrationError.value = '';
   try {
     const content = await readFileContent(file);
-    const calibration = parseSiteCalibration(content);
+    const calibration = parseCalibrationReport(content);
     setSiteCalibration(calibration);
     console.log(`✅ Site calibration loaded: ${calibration.pairs.length} control pairs`);
   } catch (err: any) {

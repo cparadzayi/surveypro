@@ -223,6 +223,25 @@ for *this* survey and considerably less about others. The first genuinely new
 evidence comes from a different job with different beacon naming, and until then
 the golden test guards the module's stability, not its generality.
 
+**The vendored module emitted invalid R12, and every automated check missed
+it.** `dxf-r12.js` wrote group code 370 (lineweight) on each LAYER entry while
+declaring `$ACADVER = AC1009`. Group 370 arrived with AutoCAD 2000; in an R12
+file AutoCAD rejects the entire drawing. Nothing caught it: the golden test
+compared bytes against a reference carrying the same defect, `ezdxf` parsed and
+audited the file with zero errors and zero fixes, and the route and integration
+tests asserted status, headers and absence of `NaN` -- all of which passed while
+the sheet would not open. Only opening it in AutoCAD failed.
+
+The module is therefore now a deliberate one-line fork of upstream, the golden
+fixture was regenerated from the corrected code (32,706 -> 32,615 bytes), and a
+new invariant test rejects ANY group code that postdates the declared DXF
+version. That invariant matters more than the byte comparison: byte-matching
+only pins drift from a known file, and the known file was wrong.
+
+The lesson generalises past this bug: a DXF is not verified because a library
+parsed it. Lenient parsers accept what AutoCAD refuses, so a CAD deliverable
+needs opening in CAD before anyone calls it done.
+
 **Replacement removes the current output.** The SI 727-style Working Plan DXF
 disappears the moment this ships. That is the decision taken, recorded here so it
 is not discovered later as a regression.

@@ -85,7 +85,13 @@ export class DxfDocument {
     g(0, 'TABLE'); g(2, 'LAYER'); g(70, this.layers.length);
     for (const l of this.layers) {
       g(0, 'LAYER'); g(2, l.name); g(70, 0); g(62, l.color); g(6, l.linetype);
-      g(370, l.lineweight);
+      // Group 370 (lineweight) does not exist in R12 -- it arrived with AutoCAD
+      // 2000 (AC1015). Emitting it in a file whose $ACADVER says AC1009 makes
+      // AutoCAD reject the whole drawing, while lenient parsers (ezdxf) accept it
+      // silently. That is how it survived: every automated check passed and only
+      // AutoCAD refused to open the sheet. In R12 weight is carried by layer
+      // colour via the plot configuration, so there is nothing to write here.
+      // l.lineweight stays on the layer definition for a later-version target.
     }
     g(0, 'ENDTAB');
 

@@ -8,10 +8,22 @@ import { brackenhurstSpec } from './fixtures/brackenhurstSpec.js'
 const here = dirname(fileURLToPath(import.meta.url))
 
 /**
- * dxf-r12.js and working-plan.js are vendored VERBATIM and must stay that way.
- * This test is the enforcement: it compares the rendered sheet against the
- * shipped reference byte for byte, so any edit to the module -- including a
- * well-meant reformat -- fails here immediately and specifically.
+ * dxf-r12.js and working-plan.js are vendored, and this test pins their output
+ * byte for byte so no well-meant reformat can drift it.
+ *
+ * The fixture is NO LONGER the file the module's author shipped. That file --
+ * and every build of the module before 2026-09-03 -- wrote group code 370
+ * (lineweight) on each LAYER entry while declaring $ACADVER = AC1009. Group 370
+ * arrived with AutoCAD 2000; in an R12 file it is invalid, and AutoCAD rejects
+ * the whole drawing. Lenient parsers do not: ezdxf read the broken file with
+ * zero errors and zero fixes, which is precisely why this suite, the route
+ * tests and the integration test all passed while the sheet would not open.
+ *
+ * So dxf-r12.js is now a deliberate fork of upstream by exactly that one
+ * emission, and the fixture was regenerated from the corrected module
+ * (32,706 -> 32,615 bytes, the 13 removed 370 pairs). Re-syncing from upstream
+ * must not reintroduce it -- the invariant test below is what guards that, and
+ * it is the one that matters more than the byte comparison.
  */
 describe('generateWorkingPlan — golden', () => {
   const reference = readFileSync(join(here, 'fixtures', 'Working_Plan_reference.dxf'), 'utf8')
@@ -47,6 +59,26 @@ describe('generateWorkingPlan — golden', () => {
       roads: [],
     }
     expect(() => generateWorkingPlan(spec)).toThrow('generateWorkingPlan: unknown beacon "SD9"')
+  })
+
+  test('emits no group code that postdates the DXF version it declares', () => {
+    // The guard for the class of bug that shipped a sheet AutoCAD would not
+    // open. A byte comparison only catches drift from a known-good file; this
+    // catches a NEW post-R12 code even if someone regenerates the fixture to
+    // match it. 370=lineweight, 390=plot style, 100=subclass, 5/330=handles,
+    // 347=material -- all R13+ or later, all invalid under $ACADVER AC1009.
+    const { dxf } = generateWorkingPlan(brackenhurstSpec)
+    const lines = dxf.split('\n')
+
+    expect(lines[lines.indexOf('$ACADVER') + 2]).toBe('AC1009')
+
+    const POST_R12 = new Set(['5', '100', '330', '347', '370', '390'])
+    const offenders = new Map()
+    for (let i = 0; i < lines.length - 1; i += 2) {
+      const code = lines[i].trim()
+      if (POST_R12.has(code)) offenders.set(code, (offenders.get(code) ?? 0) + 1)
+    }
+    expect(Object.fromEntries(offenders)).toEqual({})
   })
 
   test('picks a scale itself when asked to', () => {

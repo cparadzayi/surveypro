@@ -257,6 +257,7 @@ import ControlPointMapView from '@/components/cadastral/ControlPointMapView.vue'
 import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
 import { useSurveyors } from '@/composables/useSurveyors'
 import { capeLoToWGS84 } from '@/utils/coordinateTransform'
+import { siteCalibrationFrom, matchCalibrationControlPoints } from '@/utils/siteCalibration'
 import axios from 'axios'
 
 const { workflowState, saveWorkflowState, completeCurrentStep } = useCadastralWorkflow()
@@ -534,8 +535,9 @@ async function fetchControlPoints() {
         }
       }
       
-      // Auto-select points within 20km if survey center exists and no previous selection
-      if (surveyCenter.value && !autoSelectionApplied.value && controlPointsSelection.value.points.length === 0) {
+      // Auto-select if the surveyor has not already chosen. No survey-center
+      // requirement: a site calibration can drive the selection on its own.
+      if (!autoSelectionApplied.value && controlPointsSelection.value.points.length === 0) {
         autoSelectNearbyPoints()
       }
     }
@@ -548,8 +550,45 @@ async function fetchControlPoints() {
 
 // Auto-select control points within specified radius using GAUSS COORDINATES
 function autoSelectNearbyPoints() {
-  if (!surveyCenter.value || controlPoints.value.length === 0) {
-    console.warn('[ControlPointSelection] Cannot auto-select: missing survey center or control points')
+  if (controlPoints.value.length === 0) {
+    console.warn('[ControlPointSelection] Cannot auto-select: control points not loaded')
+    return
+  }
+
+  // A GNSS site calibration names the control this survey was actually tied to,
+  // so it beats a radius search -- which offers whatever happens to be nearby,
+  // including stations the surveyor never observed. Needs no survey centre.
+  const fromCalibration = matchCalibrationControlPoints(
+    siteCalibrationFrom(workflowState),
+    controlPoints.value,
+  )
+  if (fromCalibration.ids.length > 0) {
+    controlPointsSelection.value.points = fromCalibration.ids
+    autoSelectionApplied.value = true
+    console.log(
+      `[ControlPointSelection] ✅ Selected ${fromCalibration.ids.length} control point(s) named in the site calibration: ${fromCalibration.matched.join(', ')}`
+    )
+    if (fromCalibration.unmatched.length > 0) {
+      // Never silently drop these: "4 selected" when the report named 5 leaves
+      // the surveyor with no way to know which one to add by hand.
+      console.warn('[ControlPointSelection] ⚠️ Calibration control not in the registry:', fromCalibration.unmatched.join(', '))
+      alert(
+        `Selected ${fromCalibration.matched.length} control point(s) from the site calibration report.
+
+` +
+        `These were named in the report but are not in the control registry — add them manually:
+` +
+        fromCalibration.unmatched.join(', ')
+      )
+    } else {
+      showSuccessMessage.value = true
+      setTimeout(() => { showSuccessMessage.value = false }, 5000)
+    }
+    return
+  }
+
+  if (!surveyCenter.value) {
+    console.warn('[ControlPointSelection] Cannot auto-select by radius: missing survey center')
     return
   }
   

@@ -368,3 +368,46 @@ export function parseCalibrationReport(content: string): SiteCalibration {
   }
   return parseSiteCalibration(content)
 }
+
+/**
+ * The control points a site calibration used, matched against the national
+ * control registry so they can be pre-selected.
+ *
+ * Matching is on the registry's `monu_num` -- the designation, e.g. "50/T" --
+ * because that is what a calibration report names. `monu_name` is the
+ * monument's name ("THORNHILL") and never appears in the report's grid column.
+ *
+ * Unmatched ids are returned rather than dropped: a surveyor told "4 selected"
+ * when their report named 5 has no way to know which one to add by hand.
+ */
+export function matchCalibrationControlPoints(
+  calibration: { pairs?: Array<{ pointId?: string }> } | null | undefined,
+  controlPoints: Array<{ id: number; monu_num?: string | null }>,
+): { ids: number[]; matched: string[]; unmatched: string[] } {
+  const byDesignation = new Map<string, number>()
+  for (const cp of controlPoints ?? []) {
+    const key = String(cp?.monu_num ?? '').trim().toUpperCase()
+    if (!key || byDesignation.has(key)) continue
+    byDesignation.set(key, cp.id)
+  }
+
+  const ids: number[] = []
+  const matched: string[] = []
+  const unmatched: string[] = []
+  const seen = new Set<string>()
+
+  for (const pair of calibration?.pairs ?? []) {
+    const raw = String(pair?.pointId ?? '').trim()
+    if (!raw) continue
+    const key = raw.toUpperCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    const id = byDesignation.get(key)
+    if (id === undefined) { unmatched.push(raw); continue }
+    ids.push(id)
+    matched.push(raw)
+  }
+
+  return { ids, matched, unmatched }
+}

@@ -119,7 +119,10 @@ export const LINETYPES = {
 export const LAYERS = [
   ['BOUNDARY-NEW', 1, 'CONTINUOUS'],
   ['BOUNDARY-EXIST', 3, 'PLANDASH'],
-  ['ADJOINING', 7, 'CONTINUOUS'],
+  // Dotted: a surrounding property is indicated, not surveyed. This diverges
+  // from the diagram, which draws its abutment stubs solid -- the working
+  // plan was asked for dotted and the request is the authority here.
+  ['ADJOINING', 7, 'PLANDOT'],
   ['BEACONS', 2, 'CONTINUOUS'],
   ['BEACON-TEXT', 2, 'CONTINUOUS'],
   ['PARCEL-TEXT', 5, 'CONTINUOUS'],

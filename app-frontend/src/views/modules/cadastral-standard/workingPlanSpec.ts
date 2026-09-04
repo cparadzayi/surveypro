@@ -74,7 +74,9 @@ export interface WorkingPlanInsetBeacon {
   name: string
   X: number
   Y: number
-  symbol: 'trig' | 'rm'
+  /** The station's own conventional sign. The inset renderer draws the whole
+   *  Fifth Schedule set, so a working station appears as a working station. */
+  symbol: WorkingPlanSymbol
 }
 
 export interface WorkingPlanInset {
@@ -216,11 +218,23 @@ function buildInset(
   }
   if (control.length === 0 || figure.length === 0) return undefined
 
+  // A real station inside the site, drawn with its own conventional sign --
+  // the reference sheet marks the site with BASE, a working station, not with a
+  // synthetic point. Preference runs marked station, unmarked station, then
+  // reference mark; failing all three, the boundary beacon nearest the middle
+  // of the figure, which is still a real beacon with a real name.
+  const cx = figure.reduce((t, b) => t + b.X, 0) / figure.length
+  const cy = figure.reduce((t, b) => t + b.Y, 0) / figure.length
+  const preferred = ['ws', 'wsu', 'rm']
+  const chosen =
+    preferred.map(s => figure.find(b => b.symbol === s)).find(Boolean) ??
+    figure.reduce((best, b) =>
+      Math.hypot(b.X - cx, b.Y - cy) < Math.hypot(best.X - cx, best.Y - cy) ? b : best)
   const site: WorkingPlanInsetBeacon = {
-    name: 'SITE',
-    X: figure.reduce((t, b) => t + b.X, 0) / figure.length,
-    Y: figure.reduce((t, b) => t + b.Y, 0) / figure.length,
-    symbol: 'rm',
+    name: chosen.name,
+    X: chosen.X,
+    Y: chosen.Y,
+    symbol: chosen.symbol,
   }
   const beacons = [...control, site]
   return { scale: insetScaleFor(beacons), beacons }
@@ -455,10 +469,24 @@ function pushClearOfFigure(
   return { X: x, Y: y }
 }
 
+/** Is this side also a side of another parcel drawn on the plan? */
+function sharedWithDrawnParcel(
+  from: string, to: string, otherRings: string[][],
+): boolean {
+  return otherRings.some(r => {
+    for (let i = 0; i < r.length; i++) {
+      const a = r[i], b = r[(i + 1) % r.length]
+      if ((a === from && b === to) || (a === to && b === from)) return true
+    }
+    return false
+  })
+}
+
 function sideFeatures(
   ring: Array<{ name: string; X: number; Y: number }>,
   annotations: Array<{ side?: string; role?: string; label?: string; widthM?: number }> | undefined,
   allRings: Array<Array<{ X: number; Y: number }>> = [],
+  otherRings: string[][] = [],
 ): { notes: NoteCandidate[]; roads: RoadCandidate[]; contiguous: WorkingPlanSpec['contiguous'] } {
   const notes: NoteCandidate[] = []
   const roads: RoadCandidate[] = []
@@ -497,12 +525,15 @@ function sideFeatures(
         mx + ux * offset, my + uy * offset, ux, uy, offset, allRings,
       )
       notes.push({ text: label, X: at.X, Y: at.Y, length: sideLength(sides[i]) })
-      // Every abutment is marked, even where several sides share one name.
-      contiguous.push({
-        from: ring[i].name,
-        to: ring[(i + 1) % ring.length].name,
-        end: (a as any).end ?? 'both',
-      })
+      // Every abutment is marked, even where several sides share one name --
+      // EXCEPT where the neighbour is another parcel on this plan. There the
+      // shared boundary is already drawn, and a stub would mark a line the
+      // reader can already see.
+      const from = ring[i].name
+      const to = ring[(i + 1) % ring.length].name
+      if (!sharedWithDrawnParcel(from, to, otherRings)) {
+        contiguous.push({ from, to, end: (a as any).end ?? 'both' })
+      }
     } else if (role === 'road' || role === 'servitude') {
       linear.push({
         i, label, widthM: Number(a.widthM), role,
@@ -583,12 +614,15 @@ export function buildWorkingPlanSpec(
   const used: string[] = []
   const seen = new Set<string>()
 
-  // Every drawn ring, so a label can be kept out of ALL of them.
+  // Every drawn ring, so a label can be kept out of ALL of them, and the same
+  // rings by beacon NAME so a side shared with another parcel can be spotted.
   const allRings: Array<Array<{ X: number; Y: number }>> = []
+  const namedRings: Array<{ id: string; names: string[] }> = []
   for (const p of ctx.parcels ?? []) {
     const rr = ringNames(p)
     if (rr.length && rr.every(n => byName.has(n))) {
       allRings.push(rr.map(n => ({ X: byName.get(n)!.X, Y: byName.get(n)!.Y })))
+      namedRings.push({ id: String(p?.id ?? ''), names: rr })
     }
   }
 
@@ -636,6 +670,7 @@ export function buildWorkingPlanSpec(
       ring.map(n => ({ name: n, ...byName.get(n)! })),
       ctx.sideAnnotations?.[String(p?.id ?? '')],
       allRings,
+      namedRings.filter(r => r.id !== String(p?.id ?? '')).map(r => r.names),
     )
     notes.push(...feats.notes)
     roads.push(...feats.roads)

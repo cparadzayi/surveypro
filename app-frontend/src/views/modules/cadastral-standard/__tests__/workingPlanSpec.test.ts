@@ -400,13 +400,16 @@ describe('buildWorkingPlanSpec — locality inset', () => {
     expect(t.symbol).toBe('trig')
   })
 
-  it('adds the survey itself, or the inset shows control and no job', () => {
+  it('marks the site with a real station from inside it', () => {
+    // Superseded: this was a synthetic 'SITE' point at the figure centroid. The
+    // inset now shows an actual beacon, with its own name and sign, as the
+    // reference sheet does with BASE.
     const { spec } = buildWorkingPlanSpec(ctx({ calibration: brackenhurstControl }))
-    const site = spec.inset!.beacons.find(b => b.name === 'SITE')
-    expect(site).toBeDefined()
-    // The figure centroid: the fixture's four beacons average here.
-    expect(site!.X).toBeCloseTo(2144071.03, 0)
-    expect(site!.Y).toBeCloseTo(-85697.50, 0)
+    const names = spec.inset!.beacons.map(b => b.name)
+    expect(names).not.toContain('SITE')
+    // one entry beyond the four control points, drawn from the figure
+    expect(spec.inset!.beacons).toHaveLength(5)
+    expect(['SD4', 'SD5', 'SD6', 'SD3']).toContain(names[names.length - 1])
   })
 
   it('computes a scale that fits the spread rather than hardcoding one', () => {
@@ -947,5 +950,108 @@ describe('buildWorkingPlanSpec — road destinations', () => {
     // A real arrow here would be written as UTF-8 into an ANSI_1252 file.
     const { spec } = buildWorkingPlanSpec(road({ destinationFrom: 'Gwelo', destinationTo: 'Gweru' }))
     expect([...spec.roads![0].name].every(c => c.charCodeAt(0) <= 255)).toBe(true)
+  })
+})
+
+/**
+ * The inset locates the survey among the national control. It used to mark the
+ * site with a synthetic 'SITE' point at the figure centroid, which is not a
+ * beacon and carries no symbol of its own. The reference sheet instead shows a
+ * real station inside the site -- BASE, a working station -- so the inset now
+ * picks an actual beacon and draws it with its own conventional sign.
+ */
+describe('buildWorkingPlanSpec — the inset marks a real station', () => {
+  const cal = { pairs: [{ pointId: '50/T', controlNorthing: 2151238.71, controlEasting: -88963.45 }] }
+  const beaconsWith = (statuses: Record<string, string>) => beaconFCWithStatus(
+    Object.entries(statuses).map(([name, status], i) => ({
+      name, status, x: 2144000 + i * 40, y: -85700 + i * 30, description: '',
+    })),
+  )
+
+  it('prefers a working station, named and drawn as one', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconsWith({ SD4: 'P', BASE: 'WS', SD5: 'P', SD6: 'P' }),
+      parcels: [sq('404', ['SD4', 'BASE', 'SD5', 'SD6'], squarePts)],
+      calibration: cal,
+    }))
+    const site = spec.inset!.beacons.find(b => b.symbol === 'ws')
+    expect(site!.name).toBe('BASE')
+    expect(spec.inset!.beacons.map(b => b.name)).not.toContain('SITE')
+  })
+
+  it('falls back to an unmarked station, then a reference mark', () => {
+    const rmOnly = buildWorkingPlanSpec(ctx({
+      beacons: beaconsWith({ SD4: 'P', RM16: 'RM', SD5: 'P', SD6: 'P' }),
+      parcels: [sq('404', ['SD4', 'RM16', 'SD5', 'SD6'], squarePts)],
+      calibration: cal,
+    }))
+    expect(rmOnly.spec.inset!.beacons.some(b => b.name === 'RM16')).toBe(true)
+  })
+
+  it('uses a boundary beacon when the site has no station at all', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconsWith({ SD4: 'P', SD5: 'P', SD6: 'P', SD3: 'P' }),
+      parcels: [sq('404', ['SD4', 'SD5', 'SD6', 'SD3'], squarePts)],
+      calibration: cal,
+    }))
+    const names = spec.inset!.beacons.map(b => b.name)
+    expect(names).not.toContain('SITE')
+    expect(names.some(n => ['SD4', 'SD5', 'SD6', 'SD3'].includes(n))).toBe(true)
+  })
+
+  it('carries the station at its own coordinates, not the centroid', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconsWith({ SD4: 'P', BASE: 'WS', SD5: 'P', SD6: 'P' }),
+      parcels: [sq('404', ['SD4', 'BASE', 'SD5', 'SD6'], squarePts)],
+      calibration: cal,
+    }))
+    const site = spec.inset!.beacons.find(b => b.name === 'BASE')!
+    expect(site.X).toBe(2144040)      // BASE's own position
+    expect(site.Y).toBe(-85670)
+  })
+})
+
+/**
+ * Where an abutting neighbour is itself a parcel on this plan, its boundary is
+ * already drawn -- the stub would mark a boundary the reader can already see.
+ * Stubs are for neighbours that are NOT on the sheet.
+ */
+describe('buildWorkingPlanSpec — no stub on a shared subdivision boundary', () => {
+  const twoStands = (annotations: any) => ctx({
+    beacons: beaconFC([
+      { name: 'Q1', x: 2144000, y: -85700 }, { name: 'Q2', x: 2144100, y: -85700 },
+      { name: 'Q3', x: 2144100, y: -85600 }, { name: 'Q4', x: 2144000, y: -85600 },
+      { name: 'R1', x: 2144200, y: -85700 }, { name: 'R2', x: 2144200, y: -85600 },
+    ]),
+    parcels: [
+      sq('404', ['Q1', 'Q2', 'Q3', 'Q4'], squarePts),
+      sq('405', ['Q2', 'R1', 'R2', 'Q3'],
+        [[2144100, -85700], [2144200, -85700], [2144200, -85600], [2144100, -85600]]),
+    ],
+    sideAnnotations: annotations,
+  })
+
+  it('drops the stub where the neighbour is another parcel on the plan', () => {
+    // Side Q2-Q3 of 404 is also side Q2-Q3 of 405.
+    const { spec } = buildWorkingPlanSpec(twoStands({
+      '404': [{ side: 'BC', role: 'contiguous', label: '405' }],
+    }))
+    expect(spec.contiguous).toBeUndefined()
+  })
+
+  it('keeps the stub where the neighbour is off the plan', () => {
+    const { spec } = buildWorkingPlanSpec(twoStands({
+      '404': [{ side: 'AB', role: 'contiguous', label: 'Rem./' }],
+    }))
+    expect(spec.contiguous).toEqual([{ from: 'Q1', to: 'Q2', end: 'both' }])
+  })
+
+  it('still letters the neighbour name on a shared boundary', () => {
+    // The stub goes; the name stays, because the reader still needs to know
+    // which parcel abuts.
+    const { spec } = buildWorkingPlanSpec(twoStands({
+      '404': [{ side: 'BC', role: 'contiguous', label: '405' }],
+    }))
+    expect(spec.notes?.map(n => n.text)).toEqual(['405'])
   })
 })

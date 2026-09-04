@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, test, expect } from '@jest/globals'
-import { generateWorkingPlan } from '../working-plan.js'
+import { generateWorkingPlan, LAYOUT } from '../working-plan.js'
 import { brackenhurstSpec } from './fixtures/brackenhurstSpec.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -156,6 +156,50 @@ describe('generateWorkingPlan — golden', () => {
     // No assertion on a specific character: the sheet currently emits none.
     // The guarantee that matters is that nothing ABOVE U+00FF is emitted,
     // which is what the declared code page cannot carry.
+  })
+
+  test('draws a placed beacon the same size as a found one', () => {
+    // Both signs are the same diameter; only their construction differs -- one
+    // circle against two concentric. A smaller placed beacon read as a lesser
+    // mark rather than a different one.
+    expect(LAYOUT.symbol.placedDia).toBe(LAYOUT.symbol.foundOuterDia)
+  })
+
+  test('stops each boundary at the rim of the beacon it meets', () => {
+    // At 1:1000 one paper millimetre is one ground unit, so the shortfall on a
+    // 100-unit side is readable directly as the two symbol radii.
+    const B = (name, X, Y, symbol) => ({ name, X, Y, symbol, label: 'auto' })
+    const { dxf } = generateWorkingPlan({
+      scale: 1000,
+      beacons: [
+        B('Q1', 2144000, -85700, 'placed'), B('Q2', 2144100, -85700, 'found'),
+        B('Q3', 2144100, -85600, 'rm'),     B('Q4', 2144000, -85600, 'trig'),
+      ],
+      parcels: [{ label: '404', ring: ['Q1', 'Q2', 'Q3', 'Q4'] }],
+      title: ['WORKING PLAN OF', 'Stand 404'],
+    })
+
+    const lines = dxf.split('\n')
+    const lengths = []
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i] === '0' && lines[i + 1] === 'LINE' && lines[i + 3] === 'BOUNDARY-NEW') {
+        let j = i + 2; const d = {}
+        while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+        lengths.push(Math.hypot(+d['11'][0] - +d['10'][0], +d['21'][0] - +d['20'][0]))
+      }
+    }
+    expect(lengths).toHaveLength(4)          // one line per side, not a closed polyline
+
+    const S = LAYOUT.symbol
+    const triReach = Math.max(S.trigH * 0.62, Math.hypot(S.trigW / 2, S.trigH * 0.38))
+    const clear = { placed: S.placedDia / 2, found: S.foundOuterDia / 2, rm: S.refMarkArm / 2, trig: triReach }
+    const expected = [
+      100 - clear.placed - clear.found,
+      100 - clear.found - clear.rm,
+      100 - clear.rm - clear.trig,
+      100 - clear.trig - clear.placed,
+    ]
+    lengths.forEach((len, i) => expect(len).toBeCloseTo(expected[i], 3))
   })
 
   test('picks a scale itself when asked to', () => {

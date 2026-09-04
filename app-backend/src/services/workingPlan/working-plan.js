@@ -83,7 +83,10 @@ export const LAYOUT = {
   // SI 727 Fifth Schedule (Sections 37, 38, 64 and 68), Conventional Signs,
   // pp. 3306-3307. Every one of these is Black in the Working Plan column.
   symbol: {
-    placedDia: 1.482,       // beacon placed: open circle
+    // A placed beacon is drawn at the found beacon's OUTER diameter, so the two
+    // read at the same size and only their construction -- one circle against
+    // two concentric -- tells them apart.
+    placedDia: 2.498,       // beacon placed: open circle
     foundOuterDia: 2.498,   // beacon found and adopted: concentric circles
     foundInnerDia: 1.482,
     notAdoptedSlash: 3.30,  // beacon found and NOT adopted: the same, struck through
@@ -194,6 +197,28 @@ function fmtArea(v) {
   const fixed = Math.abs(Number(v) || 0).toFixed(2);
   const [int, dec] = fixed.split('.');
   return `${int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')},${dec}`;
+}
+
+/**
+ * How far a boundary line must stop short of a beacon, in paper mm: the reach
+ * of the largest part of that sign.
+ *
+ * Measured per sign rather than assuming one radius -- the reference mark's
+ * CROSS extends past its circle, and the trig triangle's vertices further
+ * still, so a single figure would leave those two struck through.
+ */
+function symbolClearance(symbol) {
+  const S = LAYOUT.symbol;
+  const w = S.trigW / 2, h = S.trigH;
+  const triReach = Math.max(h * 0.62, Math.hypot(w, h * 0.38));
+  switch (symbol) {
+    case 'found': case 'foundNotAdopted': return S.foundOuterDia / 2;
+    case 'rm':   return S.refMarkArm / 2;
+    case 'ws':   return S.stationDia / 2;
+    case 'wsu':  return S.stationUnmarkedDia / 2;
+    case 'trig': case 'ocp': return triReach;
+    default:     return S.placedDia / 2;      // placed / peg
+  }
 }
 
 export function generateWorkingPlan(spec) {
@@ -343,11 +368,26 @@ export function generateWorkingPlan(spec) {
     S(L.border.x1, L.border.y1), S(L.border.x0, L.border.y1)],
   { layer: 'SHEET-BORDER', closed: true });
 
-  /* ---- parcel boundaries */
+  /* ---- parcel boundaries, clipped clear of the beacon symbols */
   const areas = {};
   for (const p of spec.parcels) {
     const pts = p.ring.map((n) => [G(n).e, G(n).n]);
-    d.polyline(pts, { layer: 'BOUNDARY-NEW', closed: true });
+    // Drawn edge by edge rather than as one closed polyline: each end is pulled
+    // back to the rim of the symbol it meets, so the boundary stops at the
+    // beacon instead of striking through it. The ring itself is unchanged --
+    // areas, labels and the figure extent all still use the true vertices.
+    for (let k = 0; k < p.ring.length; k++) {
+      const a = pts[k], b = pts[(k + 1) % p.ring.length];
+      const ux = b[0] - a[0], uy = b[1] - a[1];
+      const len = Math.hypot(ux, uy) || 1;
+      const dx = ux / len, dy = uy / len;
+      const ra = mm(symbolClearance(G(p.ring[k]).symbol));
+      const rb = mm(symbolClearance(G(p.ring[(k + 1) % p.ring.length]).symbol));
+      // A side shorter than the two symbols is drawn whole rather than inverted.
+      if (ra + rb >= len) { d.line(a, b, { layer: 'BOUNDARY-NEW' }); continue; }
+      d.line([a[0] + dx * ra, a[1] + dy * ra], [b[0] - dx * rb, b[1] - dy * rb],
+        { layer: 'BOUNDARY-NEW' });
+    }
     areas[p.label] = ringArea(pts);
     const [cx, cy] = p.labelAt ? Object.values(loToGround(p.labelAt)) : centroid(pts);
     d.text(p.label, [cx, cy - mm(L.text.parcel) / 2], mm(L.text.parcel),

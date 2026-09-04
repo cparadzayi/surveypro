@@ -670,16 +670,16 @@ describe('buildWorkingPlanSpec — one label per adjoining feature', () => {
     expect(spec.notes).toHaveLength(1)
   })
 
-  it('keeps a name deliberately lettered across consecutive sides', () => {
-    // 'MAIN' and 'ROAD' are one road lettered around a corner. Merging them, or
-    // dropping either, would rewrite what the surveyor drew.
+  it('reads a name lettered around a corner as one road', () => {
+    // Superseded: these were kept separate until the sheet showed 'M A I N' and
+    // 'R O A D' as two labels, which reads as two roads.
     const { spec } = buildWorkingPlanSpec(twoParcels({
       '404': [
         { side: 'AB', role: 'road', label: 'M A I N' },
         { side: 'BC', role: 'road', label: 'R O A D' },
       ],
     }))
-    expect(spec.roads?.map(r => r.name).sort()).toEqual(['M A I N', 'R O A D'])
+    expect(spec.roads?.map(r => r.name)).toEqual(['M A I N R O A D'])
   })
 
   it('letters a shared road once even when both parcels tag it', () => {
@@ -699,5 +699,98 @@ describe('buildWorkingPlanSpec — one label per adjoining feature', () => {
     }))
     expect(spec.notes?.map(n => n.text)).toEqual(['Kopje'])
     expect(spec.roads?.map(r => r.name)).toEqual(['Kopje'])
+  })
+})
+
+/**
+ * A linear feature lettered across consecutive sides -- 'M A I N' on one and
+ * 'R O A D' on the next, around a corner -- is ONE name and must read as one.
+ *
+ * Blind run-merging is unsafe: two genuinely different roads on consecutive
+ * sides would become "Main Road Klein Road". The rule is that a run merges only
+ * when at most one part names a feature type (Road, Street, Lane, ...). 'MAIN'
+ * names none and 'ROAD' names one, so they are fragments of a single name;
+ * 'Main Road' and 'Klein Road' each name one, so they are two roads.
+ */
+describe('buildWorkingPlanSpec — a name lettered across sides', () => {
+  const oneParcel = (annotations: any) => ctx({
+    beacons: squareBeacons,
+    parcels: [sq('404', ['Q1', 'Q2', 'Q3', 'Q4'], squarePts)],
+    sideAnnotations: annotations,
+  })
+
+  it('merges fragments of one road name into a single label', () => {
+    const { spec } = buildWorkingPlanSpec(oneParcel({
+      '404': [
+        { side: 'AB', role: 'road', label: 'M A I N' },
+        { side: 'BC', role: 'road', label: 'R O A D' },
+      ],
+    }))
+    expect(spec.roads?.map(r => r.name)).toEqual(['M A I N R O A D'])
+  })
+
+  it('keeps two distinct roads on consecutive sides apart', () => {
+    const { spec } = buildWorkingPlanSpec(oneParcel({
+      '404': [
+        { side: 'AB', role: 'road', label: 'Main Road' },
+        { side: 'BC', role: 'road', label: 'Klein Road' },
+      ],
+    }))
+    expect(spec.roads?.map(r => r.name).sort()).toEqual(['Klein Road', 'Main Road'])
+  })
+
+  it('never merges neighbouring properties — they are different owners', () => {
+    const { spec } = buildWorkingPlanSpec(oneParcel({
+      '404': [
+        { side: 'AB', role: 'contiguous', label: '86' },
+        { side: 'BC', role: 'contiguous', label: '88' },
+      ],
+    }))
+    expect(spec.notes?.map(n => n.text).sort()).toEqual(['86', '88'])
+  })
+
+  it('carries the width once when a merged road has one', () => {
+    const { spec } = buildWorkingPlanSpec(oneParcel({
+      '404': [
+        { side: 'AB', role: 'road', label: 'K L E I N' },
+        { side: 'BC', role: 'road', label: 'R O A D', widthM: 25.19 },
+      ],
+    }))
+    expect(spec.roads?.map(r => r.name)).toEqual(['K L E I N R O A D 25,19m'])
+  })
+})
+
+describe('buildWorkingPlanSpec — labels stay out of the figure', () => {
+  it('pushes a neighbour name clear of every parcel, not just its own', () => {
+    // The offset is a fraction of the parcel's own size, so on a plan of several
+    // stands a name could land inside the NEXT stand along.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFC([
+        { name: 'Q1', x: 2144000, y: -85700 }, { name: 'Q2', x: 2144100, y: -85700 },
+        { name: 'Q3', x: 2144100, y: -85600 }, { name: 'Q4', x: 2144000, y: -85600 },
+        { name: 'R1', x: 2143900, y: -85700 }, { name: 'R2', x: 2143900, y: -85600 },
+      ]),
+      parcels: [
+        sq('404', ['Q1', 'Q2', 'Q3', 'Q4'], squarePts),
+        // an adjoining stand on the far side of edge Q4-Q1
+        sq('403', ['R1', 'Q1', 'Q4', 'R2'],
+          [[2143900, -85700], [2144000, -85700], [2144000, -85600], [2143900, -85600]]),
+      ],
+      sideAnnotations: { '404': [{ side: 'DA', role: 'contiguous', label: 'Rem./' }] },
+    }))
+    const note = spec.notes![0]
+    const inside = (X: number, Y: number, ring: Array<[number, number]>) => {
+      let hit = false
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i], [xj, yj] = ring[j]
+        if ((yi > Y) !== (yj > Y) && X < ((xj - xi) * (Y - yi)) / (yj - yi) + xi) hit = !hit
+      }
+      return hit
+    }
+    const stand403: Array<[number, number]> = [
+      [2143900, -85700], [2144000, -85700], [2144000, -85600], [2143900, -85600],
+    ]
+    expect(inside(note.X, note.Y, squarePts)).toBe(false)
+    expect(inside(note.X, note.Y, stand403)).toBe(false)
   })
 })

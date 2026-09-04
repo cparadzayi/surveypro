@@ -62,7 +62,10 @@ export class DxfDocument {
     g(9, '$MEASUREMENT'); g(70, 1);
     g(9, '$LTSCALE'); g(40, f(this.ltscale));
     g(9, '$CELTSCALE'); g(40, f(1));
-    g(9, '$PDMODE'); g(70, 3);          // point style: X
+    // 1 = draw nothing. Each beacon block carries a POINT at its centre so CAD
+    // can snap to it, but the conventional sign IS the marker -- drawing an X
+    // through every symbol as well just clutters the sheet.
+    g(9, '$PDMODE'); g(70, 1);          // point style: nothing displayed
     g(9, '$PDSIZE'); g(40, f(0));
     g(0, 'ENDSEC');
 

@@ -57,6 +57,11 @@ export const LAYOUT = {
     beacon: 2.05, grid: 2.05, parcel: 3.07, road: 3.07,
     title: 3.95, scale: 3.03, approval: 3.06, certificate: 2.99,
     insetTitle: 3.00, insetLabel: 2.05,
+    // Neighbouring properties, roads and servitudes are all adjoining detail and
+    // read as one family, at the same size as a beacon name. They were set at
+    // parcel-label size (3.07), which made them louder than the stand numbers
+    // they sit beside.
+    adjoining: 2.05,
   },
 
   // SI 727 Fifth Schedule (Sections 37, 38, 64 and 68), Conventional Signs,
@@ -429,7 +434,7 @@ export function generateWorkingPlan(spec) {
   /* ---- free notes (neighbouring stand numbers etc.) */
   for (const t of spec.notes ?? []) {
     const g = loToGround(t);
-    const th = mm(t.height ?? L.text.parcel);
+    const th = mm(t.height ?? L.text.adjoining);
     // Step outward from the figure until the name is clear of the grid, the
     // beacons and their labels. Drawn AFTER the grid deliberately: the
     // coordinate framework is the more important of the two, and a neighbour's
@@ -466,7 +471,7 @@ export function generateWorkingPlan(spec) {
     }
     const px = -Math.sin(ang) * off, py = Math.cos(ang) * off;
     const along = mm(rd.along ?? 6);
-    const rh = mm(L.text.road);
+    const rh = mm(L.text.adjoining);
     const rx = sx + px + Math.cos(ang) * along;
     const ry = sy + py + Math.sin(ang) * along;
     d.text(rd.name, [rx, ry], rh,

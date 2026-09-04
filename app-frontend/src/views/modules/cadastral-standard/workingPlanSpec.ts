@@ -305,6 +305,32 @@ function certificateFrom(config: any): { line1: string; line2: string } {
   }
 }
 
+/** Words that name a feature TYPE. A part containing one is a complete name;
+ *  a part containing none is a fragment of the name on the next side. */
+/** Words that name a feature TYPE. A part containing one is a complete name;
+ *  a part with none is a fragment of the name continued on the next side. */
+const FEATURE_WORDS = [
+  'ROAD', 'STREET', 'LANE', 'AVENUE', 'DRIVE', 'WAY',
+  'SERVITUDE', 'RIVER', 'STREAM', 'RAILWAY',
+]
+
+/** Whitespace-insensitive, so 'R  O  A  D' reads the same as 'ROAD' -- surveyors
+ *  letter these spaced out, and the spacing is deliberate. */
+function namesAFeature(label: string): boolean {
+  const squashed = label.replace(/\s+/g, '').toUpperCase()
+  return FEATURE_WORDS.some(w => squashed.includes(w))
+}
+
+/** Is a point inside a ring? Ray casting; the ring is open (no closing vertex). */
+function insideRing(X: number, Y: number, ring: Array<{ X: number; Y: number }>): boolean {
+  let hit = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i].X, yi = ring[i].Y, xj = ring[j].X, yj = ring[j].Y
+    if ((yi > Y) !== (yj > Y) && X < ((xj - xi) * (Y - yi)) / (yj - yi) + xi) hit = !hit
+  }
+  return hit
+}
+
 type NoteCandidate = WorkingPlanNote & { length: number }
 type RoadCandidate = WorkingPlanRoad & { length: number }
 
@@ -368,12 +394,36 @@ function formatWidthSI(value: number, decimals = 2): string {
  * it draws, and the working plan draws no strip, so leaving it off would
  * understate what burdens the land.
  */
+/**
+ * Step a name outward until it is clear of every parcel drawn, not just the one
+ * whose side it was tagged on. The offset is a fraction of the parcel's own
+ * size, so on a plan of several stands a name can otherwise land inside the
+ * next stand along and read as if it belonged there.
+ */
+function pushClearOfFigure(
+  X: number, Y: number, ux: number, uy: number, step: number,
+  rings: Array<Array<{ X: number; Y: number }>>,
+): { X: number; Y: number } {
+  // Enough steps to cross a neighbouring parcel of similar size: a name tagged
+  // on a shared edge starts INSIDE the parcel on the other side of it, and a
+  // short walk only moves it deeper in.
+  let x = X, y = Y
+  for (let k = 0; k < 24; k++) {
+    if (!rings.some(r => insideRing(x, y, r))) return { X: x, Y: y }
+    x += ux * step
+    y += uy * step
+  }
+  return { X: x, Y: y }
+}
+
 function sideFeatures(
   ring: Array<{ name: string; X: number; Y: number }>,
   annotations: Array<{ side?: string; role?: string; label?: string; widthM?: number }> | undefined,
+  allRings: Array<Array<{ X: number; Y: number }>> = [],
 ): { notes: NoteCandidate[]; roads: RoadCandidate[] } {
   const notes: NoteCandidate[] = []
   const roads: RoadCandidate[] = []
+  const linear: Array<{ i: number; label: string; widthM: number; role: string }> = []
   const tagged = (annotations ?? []).filter(a => String(a?.label ?? '').trim() !== '')
   if (tagged.length === 0 || ring.length < MIN_RING) return { notes, roads }
 
@@ -403,13 +453,45 @@ function sideFeatures(
       const len = Math.hypot(dx, dy)
       const ux = len > 0 ? dx / len : 0
       const uy = len > 0 ? dy / len : 0
-      notes.push({ text: label, X: mx + ux * offset, Y: my + uy * offset, length: sideLength(sides[i]) })
+      const at = pushClearOfFigure(
+        mx + ux * offset, my + uy * offset, ux, uy, offset, allRings,
+      )
+      notes.push({ text: label, X: at.X, Y: at.Y, length: sideLength(sides[i]) })
     } else if (role === 'road' || role === 'servitude') {
-      const w = Number(a.widthM)
-      const name = Number.isFinite(w) && w > 0 ? `${label} ${formatWidthSI(w)}m` : label
-      roads.push({ name, from: ring[i].name, to: ring[(i + 1) % ring.length].name, length: sideLength(sides[i]) })
+      linear.push({ i, label, widthM: Number(a.widthM), role })
     }
   }
+  // A linear feature lettered around a corner -- 'M A I N' then 'R O A D' -- is
+  // one name across consecutive sides. Merge such a run, but ONLY when at most
+  // one part names a feature type: 'Main Road' beside 'Klein Road' is two roads
+  // and merging them would invent a third.
+  linear.sort((a, b) => a.i - b.i)
+  let k = 0
+  while (k < linear.length) {
+    let end = k
+    while (
+      end + 1 < linear.length &&
+      linear[end + 1].i === linear[end].i + 1 &&
+      linear[end + 1].role === linear[end].role
+    ) end++
+    let run = linear.slice(k, end + 1)
+    if (run.length > 1 && run.filter(x => namesAFeature(x.label)).length > 1) run = [linear[k]]
+
+    const parts = run.map(x => x.label)
+    const width = run.map(x => x.widthM).find(w => Number.isFinite(w) && w > 0)
+    const base = parts.join(' ')
+    const name = width ? `${base} ${formatWidthSI(width)}m` : base
+    // Letter it on the longest side of the run.
+    const best = run.reduce((a, b) => (sideLength(sides[b.i]) > sideLength(sides[a.i]) ? b : a))
+    roads.push({
+      name,
+      from: ring[best.i].name,
+      to: ring[(best.i + 1) % ring.length].name,
+      length: run.reduce((t, x) => t + sideLength(sides[x.i]), 0),
+    })
+    k += run.length
+  }
+
   return { notes, roads }
 }
 
@@ -440,6 +522,15 @@ export function buildWorkingPlanSpec(
   const roads: RoadCandidate[] = []
   const used: string[] = []
   const seen = new Set<string>()
+
+  // Every drawn ring, so a label can be kept out of ALL of them.
+  const allRings: Array<Array<{ X: number; Y: number }>> = []
+  for (const p of ctx.parcels ?? []) {
+    const rr = ringNames(p)
+    if (rr.length && rr.every(n => byName.has(n))) {
+      allRings.push(rr.map(n => ({ X: byName.get(n)!.X, Y: byName.get(n)!.Y })))
+    }
+  }
 
   for (const p of ctx.parcels ?? []) {
     // The Outside Figure is excluded by design, not by failure -- it must not
@@ -475,6 +566,7 @@ export function buildWorkingPlanSpec(
     const feats = sideFeatures(
       ring.map(n => ({ name: n, ...byName.get(n)! })),
       ctx.sideAnnotations?.[String(p?.id ?? '')],
+      allRings,
     )
     notes.push(...feats.notes)
     roads.push(...feats.roads)

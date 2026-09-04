@@ -4163,6 +4163,9 @@ async function generatePlanDocuments() {
       projectInfo: props.projectInfo,
       config: config.value,
       outsideFigureId: getOutsideFigureParcel()?.id,
+      // The control the survey was tied to, for the locality inset. Accepts
+      // either workflowState shape -- see siteCalibrationFrom.
+      calibration: siteCalibrationFrom(props.workflowState),
     })
     if (built.spec.parcels.length === 0) {
       // Say which of the three things actually went wrong. The fixed message

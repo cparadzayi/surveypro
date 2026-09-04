@@ -5,6 +5,7 @@ import {
   ringNames,
   workingPlanTitle,
   workingPlanEmptyReason,
+  insetSymbolFor,
 } from '../workingPlanSpec'
 
 /** Beacons as exportBeaconsAsGeoJSON emits them: coordinates are [Y, X]. */
@@ -320,5 +321,93 @@ describe('workingPlanEmptyReason', () => {
     expect(result.spec.parcels).toHaveLength(1)
     expect(result.beaconCount).toBe(6)
     expect(result.missingBeacons).toEqual([])
+  })
+})
+
+/**
+ * The locality inset shows the national control the survey was tied to. Its
+ * source is the imported GNSS calibration report, because those pairs ARE the
+ * control the surveyor observed -- not a proximity search of the registry,
+ * which would show trigs the survey never used.
+ */
+const calibration = (ids: Array<[string, number, number]>) => ({
+  pairs: ids.map(([pointId, controlNorthing, controlEasting]) => ({
+    pointId, controlNorthing, controlEasting,
+  })),
+})
+
+/** The four control points from the Brackenhurst calibration report. */
+const brackenhurstControl = calibration([
+  ['170/P', 2136777.89, -81572.33],
+  ['176/P', 2149103.82, -71089.60],
+  ['49/T',  2146857.23, -88454.47],
+  ['50/T',  2151238.71, -88963.45],
+])
+
+describe('insetSymbolFor', () => {
+  it('reads the Zimbabwe control designation suffix', () => {
+    // Primary, Secondary, Tertiary, Quaternary are all trigonometrical stations.
+    expect(insetSymbolFor('170/P')).toBe('trig')
+    expect(insetSymbolFor('314/S')).toBe('trig')
+    expect(insetSymbolFor('49/T')).toBe('trig')
+    expect(insetSymbolFor('88/Q')).toBe('trig')
+    expect(insetSymbolFor('50/t')).toBe('trig')
+  })
+
+  it('treats anything without that suffix as a reference mark', () => {
+    // BASE and RM7 in the reference sheet are local marks, not trig stations.
+    expect(insetSymbolFor('BASE')).toBe('rm')
+    expect(insetSymbolFor('RM7')).toBe('rm')
+    expect(insetSymbolFor('TSM5168')).toBe('rm')
+    expect(insetSymbolFor('')).toBe('rm')
+  })
+})
+
+describe('buildWorkingPlanSpec — locality inset', () => {
+  it('omits the inset entirely when no calibration was imported', () => {
+    // An empty inset box would be worse than none: it asserts there was no
+    // control, rather than that we do not know what it was.
+    expect(buildWorkingPlanSpec(ctx()).spec.inset).toBeUndefined()
+    expect(buildWorkingPlanSpec(ctx({ calibration: { pairs: [] } })).spec.inset).toBeUndefined()
+  })
+
+  it('carries every control point from the calibration report', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({ calibration: brackenhurstControl }))
+    const names = spec.inset!.beacons.map(b => b.name)
+    expect(names).toEqual(expect.arrayContaining(['170/P', '176/P', '49/T', '50/T']))
+  })
+
+  it('keeps the control coordinates the same way round as the main figure', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({ calibration: brackenhurstControl }))
+    const t = spec.inset!.beacons.find(b => b.name === '50/T')!
+    expect(t.X).toBeCloseTo(2151238.71, 2)   // northing
+    expect(t.Y).toBeCloseTo(-88963.45, 2)    // easting
+    expect(t.symbol).toBe('trig')
+  })
+
+  it('adds the survey itself, or the inset shows control and no job', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({ calibration: brackenhurstControl }))
+    const site = spec.inset!.beacons.find(b => b.name === 'SITE')
+    expect(site).toBeDefined()
+    // The figure centroid: the fixture's four beacons average here.
+    expect(site!.X).toBeCloseTo(2144071.03, 0)
+    expect(site!.Y).toBeCloseTo(-85697.50, 0)
+  })
+
+  it('computes a scale that fits the spread rather than hardcoding one', () => {
+    const wide = buildWorkingPlanSpec(ctx({ calibration: brackenhurstControl }))
+    expect(wide.spec.inset!.scale).toBe(200000)   // ~20 km spread, as the reference sheet used
+
+    const tight = buildWorkingPlanSpec(ctx({
+      calibration: calibration([['1/T', 2144200, -85800], ['2/T', 2145000, -86400]]),
+    }))
+    expect(tight.spec.inset!.scale).toBeLessThan(200000)
+  })
+
+  it('does not let the inset disturb the main figure', () => {
+    const without = buildWorkingPlanSpec(ctx())
+    const with_ = buildWorkingPlanSpec(ctx({ calibration: brackenhurstControl }))
+    expect(with_.spec.parcels).toEqual(without.spec.parcels)
+    expect(with_.spec.beacons).toEqual(without.spec.beacons)
   })
 })

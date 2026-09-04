@@ -10,6 +10,7 @@
       v-if="projectId"
       :project-id="projectId"
       :project-info="projectInfoWithDefaults"
+      :workflow-state="workflowState"
       @export-complete="handleExportComplete"
     />
   </div>
@@ -22,6 +23,12 @@ import SurveyPlanMapView from './SurveyPlanMapView.vue'
 interface Props {
   projectId?: number
   projectInfo?: any
+  /**
+   * Forwarded to SurveyPlanMapView so the locality inset can find the imported
+   * site calibration. SurveyPlanViewNew already passes this in; before this it
+   * was dropped here and the Working Plan never saw a calibration.
+   */
+  workflowState?: any
 }
 
 const props = defineProps<Props>()

@@ -819,41 +819,71 @@ const stand = (label: string, area: number, extra: any = {}) => ({
   ...extra,
 })
 
-describe('buildWorkingPlanSpec — area of property', () => {
-  it('states the registered area of the parent when it has been captured', () => {
-    // The title's figure is the authority; ours is arithmetic.
-    const { spec } = buildWorkingPlanSpec(withAreas(
-      [stand('403', 4046.89), stand('404', 4046.58)],
-      { parentArea: 17580.44 },
-    ))
-    expect(spec.areaOfProperty).toBe(17580.44)
+/**
+ * An abutting neighbour is marked on the plan with short outward stubs at the
+ * terminals it touches -- the same mark the diagram draws, produced by the same
+ * shared helpers (contiguousMarks + edgeStrip) so the two documents agree.
+ *
+ * The stubs are NOT de-duplicated the way the neighbour NAMES are. A name
+ * repeated on three sides is clutter; three abutments are three facts about
+ * what adjoins the land, and dropping one would understate it.
+ *
+ * Superseded: this block previously tested an "area of property" figure. The
+ * examination docket's area item is deferred and the line was removed.
+ */
+describe('buildWorkingPlanSpec — contiguous abutment marks', () => {
+  const oneParcel = (annotations: any) => ctx({
+    beacons: squareBeacons,
+    parcels: [sq('404', ['Q1', 'Q2', 'Q3', 'Q4'], squarePts)],
+    sideAnnotations: annotations,
   })
 
-  it('falls back to the computed total when no registered area is to hand', () => {
-    const { spec } = buildWorkingPlanSpec(withAreas([stand('403', 4046.89), stand('404', 4046.58)]))
-    expect(spec.areaOfProperty).toBeCloseTo(4046.89 + 4046.58, 2)
-  })
-
-  it('includes the remaining extent in that fallback total', () => {
-    const of = { ...stand('Outside Figure', 5435.71), id: 99 }
-    const { spec } = buildWorkingPlanSpec(ctx({
-      beacons: squareBeacons,
-      parcels: [stand('403', 4046.89), of],
-      outsideFigureId: 99,
+  it('marks the side a neighbour abuts, by its terminal beacons', () => {
+    const { spec } = buildWorkingPlanSpec(oneParcel({
+      '404': [{ side: 'AB', role: 'contiguous', label: 'Rem./', end: 'both' }],
     }))
-    expect(spec.areaOfProperty).toBeCloseTo(4046.89 + 5435.71, 2)
+    expect(spec.contiguous).toEqual([{ from: 'Q1', to: 'Q2', end: 'both' }])
   })
 
-  it('no longer tabulates the parcel areas', () => {
-    const { spec } = buildWorkingPlanSpec(withAreas(
-      [stand('403', 4046.89), stand('404', 4046.58)], { parentArea: 17580.44 },
-    ))
-    expect((spec as any).areaStatement).toBeUndefined()
+  it('carries which terminal is abutted, so the stub matches the diagram', () => {
+    const { spec } = buildWorkingPlanSpec(oneParcel({
+      '404': [{ side: 'BC', role: 'contiguous', label: '86', end: 'from' }],
+    }))
+    expect(spec.contiguous).toEqual([{ from: 'Q2', to: 'Q3', end: 'from' }])
   })
 
-  it('omits the area entirely when no parcel carries one', () => {
-    const { spec } = buildWorkingPlanSpec(withAreas([sq('403', ['Q1','Q2','Q3','Q4'], squarePts)]))
-    expect(spec.areaOfProperty).toBeUndefined()
+  it('defaults to spanning the side when no terminal was recorded', () => {
+    // Matches contiguousMarks: absent `end` means both, for data saved before
+    // the field existed.
+    const { spec } = buildWorkingPlanSpec(oneParcel({
+      '404': [{ side: 'AB', role: 'contiguous', label: '86' }],
+    }))
+    expect(spec.contiguous![0].end).toBe('both')
+  })
+
+  it('marks every abutting side even when they share one neighbour name', () => {
+    const { spec } = buildWorkingPlanSpec(oneParcel({
+      '404': [
+        { side: 'AB', role: 'contiguous', label: 'Rem./' },
+        { side: 'CD', role: 'contiguous', label: 'Rem./' },
+      ],
+    }))
+    expect(spec.contiguous).toHaveLength(2)      // both abutments marked
+    expect(spec.notes).toHaveLength(1)           // but the name lettered once
+  })
+
+  it('marks nothing for roads and servitudes', () => {
+    const { spec } = buildWorkingPlanSpec(oneParcel({
+      '404': [
+        { side: 'AB', role: 'road', label: 'Main Road' },
+        { side: 'BC', role: 'servitude', label: 'Right of way', widthM: 3 },
+      ],
+    }))
+    expect(spec.contiguous).toBeUndefined()
+  })
+
+  it('no longer states an area of property', () => {
+    expect((buildWorkingPlanSpec(oneParcel({})).spec as any).areaOfProperty).toBeUndefined()
   })
 })
 

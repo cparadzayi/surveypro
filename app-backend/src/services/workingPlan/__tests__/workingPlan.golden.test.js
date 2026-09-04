@@ -100,15 +100,26 @@ describe('generateWorkingPlan — golden', () => {
     expect(tallest / Math.max(...body)).toBeCloseTo(1.25, 2)
   })
 
-  test('states one area of property, not a table of parcel areas', () => {
-    // The examination docket asks the Working Plan for "14. Area of property",
-    // singular. Per-stand areas are a GENERAL PLAN check ("10. Area of stands
-    // checked"). Supersedes a mutations/remainder/total/difference table.
-    const { dxf } = generateWorkingPlan({ ...brackenhurstSpec, areaOfProperty: 17580.44 })
-    expect(dxf).toContain('\nArea of Property\n')
-    expect(dxf).toContain('17 580,44 m²')
-    expect(dxf).not.toContain('\nAREAS\n')
-    expect(dxf).not.toContain('\nDifference\n')
+  test('marks an abutting neighbour the way the diagram does', () => {
+    // Same helpers as diagramDxf: contiguousMarks decides which terminals get a
+    // stub, edgeStrip puts it on the side away from the figure. Parity is
+    // structural -- one implementation, four renderers -- not coincidence.
+    const spec = {
+      ...brackenhurstSpec,
+      contiguous: [
+        { from: 'SD4', to: '86B', end: 'both' },
+        { from: '86B', to: '87B', end: 'from' },
+      ],
+    }
+    const { dxf } = generateWorkingPlan(spec)
+    const stubs = dxf.split('0\nLINE\n8\nADJOINING\n').length - 1
+    expect(stubs).toBe(3)          // 'both' gives two, 'from' gives one
+    expect(dxf).not.toMatch(/NaN/)
+  })
+
+  test('draws no abutment marks when none were tagged', () => {
+    const { dxf } = generateWorkingPlan(brackenhurstSpec)
+    expect(dxf.split('0\nLINE\n8\nADJOINING\n').length - 1).toBe(0)
   })
 
   test('prints the SR number lower on the sheet than anything else', () => {
@@ -142,8 +153,9 @@ describe('generateWorkingPlan — golden', () => {
     expect(dxf).toContain('ANSI_1252')
     const outside = [...dxf].filter(c => c.charCodeAt(0) > 255)
     expect([...new Set(outside)]).toEqual([])
-    // and the one non-ASCII character we do use survives the round trip
-    expect(Buffer.from(dxf, 'latin1').includes(0xB2)).toBe(true)
+    // No assertion on a specific character: the sheet currently emits none.
+    // The guarantee that matters is that nothing ABOVE U+00FF is emitted,
+    // which is what the declared code page cannot carry.
   })
 
   test('picks a scale itself when asked to', () => {

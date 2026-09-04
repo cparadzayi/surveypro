@@ -13,6 +13,12 @@
  */
 
 import { DxfDocument } from './dxf-r12.js';
+// The SAME helpers the diagram, general-plan PDF and DXF renderers use, so an
+// abutting neighbour is marked identically on every document. contiguousMarks'
+// own docblock names that as its purpose; the working plan is the fourth
+// consumer. Both are coordinate-space agnostic, so they work in ground units.
+import { contiguousMarks } from '../diagram/contiguousMarks.js';
+import { edgeStrip } from '../diagram/edgeStrip.js';
 
 /* ------------------------------------------------------------------ layout */
 
@@ -62,11 +68,6 @@ export const LAYOUT = {
   // certificate sits on the left at x 5.5/19.94.
   srNumber: { cx: 148.5, baseline: 205.0 },
 
-  // The examination docket asks the Working Plan for "14. Area of property",
-  // singular. Per-stand areas are a GENERAL PLAN check ("10. Area of stands
-  // checked"), so the working plan states one area, not a table.
-  areaBlock: { x0: 162.9, valueX: 224.0, baseline: 66.5 },
-
   // cap heights, mm on paper
   text: {
     beacon: 2.05, grid: 2.05, parcel: 3.07, road: 3.07,
@@ -98,6 +99,10 @@ export const LAYOUT = {
   // grid-label offsets from the cross centre, mm
   gridLabel: { xDx: 4.45, xBaselineDy: 1.06, yDx: -1.02, yStartDy: 5.38 },
 
+  // Stub length in paper mm. The diagram uses CONTIG_STUB_PT = 6 mm expressed in
+  // points; the same 6 mm here keeps the mark the same size on both documents.
+  contiguousStub: 6,
+
   lineweight: 18,           // 0.18 mm, matching the source plot
 };
 
@@ -111,6 +116,7 @@ export const LINETYPES = {
 export const LAYERS = [
   ['BOUNDARY-NEW', 1, 'CONTINUOUS'],
   ['BOUNDARY-EXIST', 3, 'PLANDASH'],
+  ['ADJOINING', 7, 'CONTINUOUS'],
   ['BEACONS', 2, 'CONTINUOUS'],
   ['BEACON-TEXT', 2, 'CONTINUOUS'],
   ['PARCEL-TEXT', 5, 'CONTINUOUS'],
@@ -173,7 +179,7 @@ function distToSegment([px, py], [x1, y1], [x2, y2]) {
  * @param {Array}  [spec.existing] [{ from, to, extendFrom?, extendTo? }]  dashed parent boundaries, mm extensions
  * @param {Array}  [spec.roads]    [{ name, from, to, offset }]  offset in mm, +ve left of from->to
  * @param {string} [spec.srNumber]  Survey Record number, printed under the scale
- * @param {number} [spec.areaOfProperty]  m², stated on the sheet
+ * @param {Array}  [spec.contiguous] [{ from, to, end:'from'|'to'|'both' }] abutting neighbours
  * @param {Array}  [spec.notes]    [{ text, X, Y, height? }]  e.g. neighbouring stand numbers
  * @param {Array}  spec.title      up to four heading lines
  * @param {number|'auto'} spec.scale
@@ -357,6 +363,24 @@ export function generateWorkingPlan(spec) {
     const p0 = [a.e - dx * mm(ex.extendFrom ?? 0), a.n - dy * mm(ex.extendFrom ?? 0)];
     const p1 = [b.e + dx * mm(ex.extendTo ?? 0), b.n + dy * mm(ex.extendTo ?? 0)];
     d.line(p0, p1, { layer: 'BOUNDARY-EXIST' });
+  }
+
+  /* ---- contiguous neighbours: outward stubs at the terminals they abut,
+         drawn the way the diagram draws them (same shared helpers) */
+  for (const c of spec.contiguous ?? []) {
+    const a = G(c.from), b = G(c.to);
+    const ring = spec.parcels.find((p) => p.ring.includes(c.from) && p.ring.includes(c.to));
+    if (!ring) continue;
+    const pts = ring.ring.map((n) => [G(n).e, G(n).n]);
+    const cen = [
+      pts.reduce((t, q) => t + q[0], 0) / pts.length,
+      pts.reduce((t, q) => t + q[1], 0) / pts.length,
+    ];
+    const A = [a.e, a.n], B = [b.e, b.n];
+    const marks = contiguousMarks(A, B, c.end);
+    const st = edgeStrip(A, B, mm(L.contiguousStub), cen);
+    if (marks.stubFrom) d.line(A, st[3], { layer: 'ADJOINING' });
+    if (marks.stubTo) d.line(B, st[2], { layer: 'ADJOINING' });
   }
 
   /* ---- beacons and their names */
@@ -572,15 +596,6 @@ export function generateWorkingPlan(spec) {
   if (spec.srNumber) {
     d.text(spec.srNumber, S(L.srNumber.cx, L.srNumber.baseline), mm(L.text.scale),
       { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
-  }
-
-  /* ---- area of property (examination docket, Working Plan item 14) */
-  if (spec.areaOfProperty != null) {
-    const A = L.areaBlock;
-    const ah = mm(L.text.certificate);
-    d.text('Area of Property', S(A.x0, A.baseline), ah, { layer: 'TITLE', style: 'ARIAL' });
-    d.text(`${fmtArea(spec.areaOfProperty)} m²`, S(A.valueX, A.baseline), ah,
-      { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'right' });
   }
 
   /* ---- locality inset (its own, much smaller, scale) */

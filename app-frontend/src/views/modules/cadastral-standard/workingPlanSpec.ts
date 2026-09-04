@@ -94,10 +94,15 @@ export interface WorkingPlanSpec {
   inset?: WorkingPlanInset
   /** Surrounding properties. Omitted when no contiguous side was tagged. */
   notes?: WorkingPlanNote[]
+  /**
+   * Abutting neighbours, marked with outward stubs at the terminals they
+   * touch -- the same mark the diagram draws, from the same helpers. Not
+   * de-duplicated the way the NAMES are: each tagged side is a real abutment,
+   * and dropping one would understate what adjoins the land.
+   */
+  contiguous?: Array<{ from: string; to: string; end?: 'from' | 'to' | 'both' }>
   /** Roads and servitudes, lettered along the side they abut. */
   roads?: WorkingPlanRoad[]
-  /** Area of the property, m² (docket item 14). */
-  areaOfProperty?: number
   /** Survey Record number, already prefixed for printing. */
   srNumber?: string
 }
@@ -143,6 +148,7 @@ export interface WorkingPlanSpecContext {
    */
   sideAnnotations?: Record<string, Array<{
     side?: string; role?: string; label?: string; widthM?: number
+    end?: 'from' | 'to' | 'both'
     /** Where the road leads at each end of the side (docket item 10). */
     destinationFrom?: string; destinationTo?: string
   }>>
@@ -453,15 +459,16 @@ function sideFeatures(
   ring: Array<{ name: string; X: number; Y: number }>,
   annotations: Array<{ side?: string; role?: string; label?: string; widthM?: number }> | undefined,
   allRings: Array<Array<{ X: number; Y: number }>> = [],
-): { notes: NoteCandidate[]; roads: RoadCandidate[] } {
+): { notes: NoteCandidate[]; roads: RoadCandidate[]; contiguous: WorkingPlanSpec['contiguous'] } {
   const notes: NoteCandidate[] = []
   const roads: RoadCandidate[] = []
+  const contiguous: NonNullable<WorkingPlanSpec['contiguous']> = []
   const linear: Array<{ i: number; label: string; widthM: number; role: string; destFrom: string; destTo: string }> = []
   const tagged = (annotations ?? []).filter(a => String(a?.label ?? '').trim() !== '')
-  if (tagged.length === 0 || ring.length < MIN_RING) return { notes, roads }
+  if (tagged.length === 0 || ring.length < MIN_RING) return { notes, roads, contiguous }
 
   const sides = subjectSides(ring.map(p => [p.X, p.Y] as [number, number]))
-  if (sides.length === 0) return { notes, roads }
+  if (sides.length === 0) return { notes, roads, contiguous }
 
   const cx = ring.reduce((t, p) => t + p.X, 0) / ring.length
   const cy = ring.reduce((t, p) => t + p.Y, 0) / ring.length
@@ -490,6 +497,12 @@ function sideFeatures(
         mx + ux * offset, my + uy * offset, ux, uy, offset, allRings,
       )
       notes.push({ text: label, X: at.X, Y: at.Y, length: sideLength(sides[i]) })
+      // Every abutment is marked, even where several sides share one name.
+      contiguous.push({
+        from: ring[i].name,
+        to: ring[(i + 1) % ring.length].name,
+        end: (a as any).end ?? 'both',
+      })
     } else if (role === 'road' || role === 'servitude') {
       linear.push({
         i, label, widthM: Number(a.widthM), role,
@@ -536,7 +549,7 @@ function sideFeatures(
     k += run.length
   }
 
-  return { notes, roads }
+  return { notes, roads, contiguous }
 }
 
 export function buildWorkingPlanSpec(
@@ -564,6 +577,7 @@ export function buildWorkingPlanSpec(
   const parcelsWithoutNamedRing: string[] = []
   const notes: NoteCandidate[] = []
   const roads: RoadCandidate[] = []
+  const contiguous: NonNullable<WorkingPlanSpec['contiguous']> = []
   const mutationAreas: Array<{ label: string; area: number }> = []
   let remainderArea: { label: string; area: number } | null = null
   const used: string[] = []
@@ -625,6 +639,7 @@ export function buildWorkingPlanSpec(
     )
     notes.push(...feats.notes)
     roads.push(...feats.roads)
+    contiguous.push(...(feats.contiguous ?? []))
   }
 
   // The working plan shows the WHOLE final coordinate list -- reference marks,
@@ -649,11 +664,6 @@ export function buildWorkingPlanSpec(
   const finalRoads: WorkingPlanRoad[] = longestPerName(roads, r => r.name)
     .map(({ name, from, to }) => ({ name, from, to }))
 
-  const parentArea = Number(ctx.projectInfo?.parentArea)
-  const computedTotal = mutationAreas.reduce((t, m) => t + m.area, 0) + (remainderArea?.area ?? 0)
-  const areaOfProperty = Number.isFinite(parentArea) && parentArea > 0
-    ? parentArea
-    : (computedTotal > 0 ? computedTotal : undefined)
 
   const srNumber = srNumberFrom(ctx.projectInfo)
 
@@ -672,7 +682,7 @@ export function buildWorkingPlanSpec(
       ...(inset ? { inset } : {}),
       ...(finalNotes.length > 0 ? { notes: finalNotes } : {}),
       ...(finalRoads.length > 0 ? { roads: finalRoads } : {}),
-      ...(areaOfProperty != null ? { areaOfProperty } : {}),
+      ...(contiguous.length > 0 ? { contiguous } : {}),
       ...(srNumber ? { srNumber } : {}),
     },
     skippedParcels,

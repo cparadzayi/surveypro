@@ -118,19 +118,16 @@ describe('the delivered file matches the code page it declares', () => {
     areaOfProperty: 4046.89,   // the m² here is what exercises the code page
   }
 
-  test('declares ANSI_1252 and encodes the superscript as one byte', async () => {
+  test('declares the code page it is encoded in', async () => {
+    // The superscript that used to prove this came from the area-of-property
+    // line, which the docket review removed. The guarantee still matters: the
+    // header declares ANSI_1252 and the route encodes latin1 to match, so any
+    // non-ASCII text added later goes out as single bytes rather than UTF-8.
     const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: specWithArea })
     expect(res.statusCode).toBe(200)
-
-    const body = res.rawPayload
-    expect(body.toString('latin1')).toContain('ANSI_1252')
-
-    // 0xB2 alone is cp1252 "²". 0xC2 0xB2 is the UTF-8 form, and is the bug.
-    expect(body.includes(Buffer.from([0xb2]))).toBe(true)
-    expect(body.includes(Buffer.from([0xc2, 0xb2]))).toBe(false)
-
-    // and the area statement really is in there, read back through the code page
-    expect(body.toString('latin1')).toContain('4 046,89 m²')
+    expect(res.rawPayload.toString('latin1')).toContain('ANSI_1252')
+    // Never the UTF-8 form of a superscript two.
+    expect(res.rawPayload.includes(Buffer.from([0xc2, 0xb2]))).toBe(false)
   })
 
   test('every byte is a single-byte character, as R12 requires', async () => {

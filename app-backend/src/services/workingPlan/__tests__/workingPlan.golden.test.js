@@ -202,6 +202,18 @@ describe('generateWorkingPlan — golden', () => {
     lengths.forEach((len, i) => expect(len).toBeCloseTo(expected[i], 3))
   })
 
+  test('keeps the trig circle inscribed, and large enough to read', () => {
+    // The circle is tangent to all three sides, so it must fit inside the
+    // triangle; and at this size it is near the found beacon's own circle, which
+    // is what makes it legible rather than a dot.
+    const S = LAYOUT.symbol
+    const w = S.trigW / 2, h = S.trigH
+    const r = (w * h) / (w + Math.hypot(w, h))
+    expect(2 * r).toBeLessThan(S.trigW)                    // inscribed, not circumscribed
+    expect(2 * r).toBeGreaterThan(S.foundOuterDia * 0.9)   // reads at beacon weight
+    expect(2 * r).toBeLessThan(S.foundOuterDia * 1.1)
+  })
+
   test('picks a scale itself when asked to', () => {
     const out = generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' })
     expect(typeof out.scale).toBe('number')

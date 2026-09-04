@@ -95,7 +95,12 @@ export const LAYOUT = {
     stationDia: 2.498,      // survey station marked: circle with a filled centre
     stationDotDia: 0.95,
     stationUnmarkedDia: 1.05, // survey station unmarked: a filled dot
-    trigW: 2.963, trigH: 2.286, // trig beacon / official control point triangle
+    // Enlarged 1.5x from 2.963/2.286 so the inscribed circle reads clearly: at
+    // this size it is 2.416 mm across, near enough the found beacon's 2.498 mm
+    // circle that it carries the same familiar weight, with the triangle drawn
+    // around it. The clipping clearance follows automatically -- symbolClearance
+    // derives the triangle's reach from these two numbers.
+    trigW: 4.444, trigH: 3.429, // trig beacon / official control point triangle
     gridArm: 8.008,         // full length of a grid cross arm
   },
 
@@ -676,7 +681,10 @@ export function generateWorkingPlan(spec) {
         const w = iSym, hh = iSym * 1.55, sgn = up ? 1 : -1;
         d.solid([[at[0], at[1] + sgn * hh * 0.62], [at[0] - sgn * w, at[1] - sgn * hh * 0.38],
           [at[0] + sgn * w, at[1] - sgn * hh * 0.38]], { layer: 'INSET' });
-        ring(iSym * 0.42);   // inscribed, matching the main figure
+        // The inset triangle is half-width iSym, height 1.55*iSym, so its true
+        // incircle radius is 0.545*iSym -- the same construction as the main
+        // figure rather than an eyeballed fraction.
+        ring(iSym * 0.545);
       };
       switch (b.symbol) {
         case 'trig': triangle(true); break;

@@ -443,20 +443,29 @@ describe('beaconSymbol — status takes precedence over description', () => {
     expect(beaconSymbol('', 'trig')).toBe('trig')
   })
 
-  it('draws a working station as a reference mark for now', () => {
-    // The reference sheet draws BASE -- a working station -- with the
-    // reference-mark symbol. Whether SI 727's Fifth Schedule prescribes a
-    // distinct symbol is not yet settled, so this deliberately does not invent
-    // one.
-    expect(beaconSymbol('', 'WS')).toBe('rm')
-    expect(beaconSymbol('', 'ws')).toBe('rm')
+  it('gives a survey station its own sign, marked and unmarked', () => {
+    // Fifth Schedule: marked is a circle with a filled centre, unmarked a
+    // filled dot. They are different signs, so WS and WSU are different codes.
+    expect(beaconSymbol('', 'WS')).toBe('ws')
+    expect(beaconSymbol('', 'ws')).toBe('ws')
+    expect(beaconSymbol('', 'WSU')).toBe('wsu')
   })
 
-  it('falls back to the description when status says nothing about kind', () => {
-    // F (found) and P (placed) predate these codes and are left alone, so
-    // existing plans render exactly as before.
-    expect(beaconSymbol('Reference mark', 'F')).toBe('rm')
-    expect(beaconSymbol('12mm iron peg in concrete', 'P')).toBe('peg')
+  it('distinguishes a found beacon adopted from one not adopted', () => {
+    // Concentric circles, and the same struck through. Drawing a rejected
+    // beacon as an adopted one would misstate what the survey relied on.
+    expect(beaconSymbol('', 'F')).toBe('found')
+    expect(beaconSymbol('', 'FN')).toBe('foundNotAdopted')
+  })
+
+  it('maps placed beacons, trig stations and official control points', () => {
+    expect(beaconSymbol('', 'P')).toBe('placed')
+    expect(beaconSymbol('', 'TRIG')).toBe('trig')
+    expect(beaconSymbol('', 'OCP')).toBe('ocp')
+  })
+
+  it('falls back to the description only when there is no status', () => {
+    expect(beaconSymbol('Reference mark', '')).toBe('rm')
     expect(beaconSymbol('Trig beacon', '')).toBe('trig')
     expect(beaconSymbol('12mm iron peg', undefined)).toBe('peg')
   })
@@ -476,7 +485,7 @@ describe('buildWorkingPlanSpec — status-driven symbols', () => {
     const symbolOf = (n: string) => spec.beacons.find(b => b.name === n)!.symbol
     expect(symbolOf('RM15')).toBe('rm')
     expect(symbolOf('RM16')).toBe('rm')
-    expect(symbolOf('BASE')).toBe('rm')
-    expect(symbolOf('SD4')).toBe('peg')
+    expect(symbolOf('BASE')).toBe('ws')     // a working station, not a reference mark
+    expect(symbolOf('SD4')).toBe('placed')
   })
 })

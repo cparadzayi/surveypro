@@ -259,19 +259,25 @@
  * have mislabelled every reference mark and working station.
  */
 const STATUS_LABELS: Record<string, string> = {
-  F: 'Found', FIXED: 'Found',
+  F: 'Found & adopted', FIXED: 'Found & adopted',
+  FN: 'Found, not adopted',
   P: 'Placed', PEG: 'Placed',
   TRIG: 'Trig station',
+  OCP: 'Official control point',
   RM: 'Reference mark',
-  WS: 'Working station',
+  WS: 'Survey station (marked)',
+  WSU: 'Survey station (unmarked)',
 }
 
 const STATUS_CLASSES: Record<string, string> = {
   F: 'bg-green-100 text-green-800', FIXED: 'bg-green-100 text-green-800',
   P: 'bg-orange-100 text-orange-800', PEG: 'bg-orange-100 text-orange-800',
   TRIG: 'bg-purple-100 text-purple-800',
+  OCP: 'bg-purple-100 text-purple-800',
   RM: 'bg-blue-100 text-blue-800',
   WS: 'bg-teal-100 text-teal-800',
+  WSU: 'bg-teal-100 text-teal-800',
+  FN: 'bg-red-100 text-red-800',
 }
 
 function statusKey(status: string): string {

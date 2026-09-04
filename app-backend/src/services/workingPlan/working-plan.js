@@ -59,11 +59,19 @@ export const LAYOUT = {
     insetTitle: 3.00, insetLabel: 2.05,
   },
 
+  // SI 727 Fifth Schedule (Sections 37, 38, 64 and 68), Conventional Signs,
+  // pp. 3306-3307. Every one of these is Black in the Working Plan column.
   symbol: {
-    pegDia: 1.482,          // survey peg: single circle
-    rmOuterDia: 2.498,      // reference mark / found beacon: double circle
-    rmInnerDia: 1.482,
-    trigW: 2.963, trigH: 2.286, trigCircleDia: 1.524,
+    placedDia: 1.482,       // beacon placed: open circle
+    foundOuterDia: 2.498,   // beacon found and adopted: concentric circles
+    foundInnerDia: 1.482,
+    notAdoptedSlash: 3.30,  // beacon found and NOT adopted: the same, struck through
+    refMarkDia: 2.498,      // reference mark: circle with a cross
+    refMarkArm: 3.60,
+    stationDia: 2.498,      // survey station marked: circle with a filled centre
+    stationDotDia: 0.95,
+    stationUnmarkedDia: 1.05, // survey station unmarked: a filled dot
+    trigW: 2.963, trigH: 2.286, // trig beacon / official control point triangle
     gridArm: 8.008,         // full length of a grid cross arm
   },
 
@@ -210,21 +218,86 @@ export function generateWorkingPlan(spec) {
     return [r * Math.cos(a), r * Math.sin(a)];
   });
 
-  doc.addBlock('BCN_PEG', (b) => {
+  /** A filled disc, as a fan of SOLIDs -- R12 has no filled circle. */
+  const disc = (b, r, n = 12) => {
+    const p = circlePts(r, n);
+    for (let i = 0; i < n; i++) b.solid([[0, 0], p[i], p[(i + 1) % n]]);
+  };
+
+  /**
+   * Circumscribed circle of the isoceles triangle the schedule draws for a trig
+   * beacon: it passes through all three vertices, so the circle encloses the
+   * triangle rather than sitting inside it. Centre lies on the axis by symmetry.
+   */
+  const triCircum = (w, h) => {
+    const a = h * 0.62, d = h * 0.38;
+    const cy = (a * a - w * w - d * d) / (2 * (a + d));
+    return { cy, r: Math.abs(a - cy) };
+  };
+
+  // --- SI 727 Fifth Schedule conventional signs ---
+
+  // Beacon placed: an open circle.
+  doc.addBlock('BCN_PLACED', (b) => {
     b.point([0, 0]);
-    b.polyline(circlePts(mm(L.symbol.pegDia / 2)), { closed: true });
+    b.polyline(circlePts(mm(L.symbol.placedDia / 2)), { closed: true });
   });
+
+  // Beacon found and adopted: concentric circles.
+  doc.addBlock('BCN_FOUND', (b) => {
+    b.point([0, 0]);
+    b.polyline(circlePts(mm(L.symbol.foundOuterDia / 2)), { closed: true });
+    b.polyline(circlePts(mm(L.symbol.foundInnerDia / 2)), { closed: true });
+  });
+
+  // Beacon found and not adopted: the same, struck through.
+  doc.addBlock('BCN_FOUND_NA', (b) => {
+    b.point([0, 0]);
+    b.polyline(circlePts(mm(L.symbol.foundOuterDia / 2)), { closed: true });
+    b.polyline(circlePts(mm(L.symbol.foundInnerDia / 2)), { closed: true });
+    const a = mm(L.symbol.notAdoptedSlash) / 2 * Math.SQRT1_2;
+    b.line([-a, -a], [a, a]);
+  });
+
+  // Reference mark: a circle with a cross through it.
   doc.addBlock('BCN_RM', (b) => {
     b.point([0, 0]);
-    b.polyline(circlePts(mm(L.symbol.rmOuterDia / 2)), { closed: true });
-    b.polyline(circlePts(mm(L.symbol.rmInnerDia / 2)), { closed: true });
+    b.polyline(circlePts(mm(L.symbol.refMarkDia / 2)), { closed: true });
+    const a = mm(L.symbol.refMarkArm) / 2;
+    b.line([-a, 0], [a, 0]);
+    b.line([0, -a], [0, a]);
   });
+
+  // Traverse point / survey station, marked: circle with a filled centre.
+  doc.addBlock('BCN_WS', (b) => {
+    b.point([0, 0]);
+    b.polyline(circlePts(mm(L.symbol.stationDia / 2)), { closed: true });
+    disc(b, mm(L.symbol.stationDotDia / 2));
+  });
+
+  // Traverse point / survey station, unmarked: a filled dot.
+  doc.addBlock('BCN_WSU', (b) => {
+    b.point([0, 0]);
+    disc(b, mm(L.symbol.stationUnmarkedDia / 2));
+  });
+
+  // Trigonometrical beacon or town survey mark: a black triangle inside a white
+  // circumscribed circle.
   doc.addBlock('BCN_TRIG', (b) => {
     const w = mm(L.symbol.trigW) / 2, h = mm(L.symbol.trigH);
-    const tri = [[0, h * 0.62], [-w, -h * 0.38], [w, -h * 0.38]];
+    const c = triCircum(w, h);
     b.point([0, 0]);
-    b.solid(tri);
-    b.polyline(circlePts(mm(L.symbol.trigCircleDia / 2), 24), { closed: true });
+    b.solid([[0, h * 0.62], [-w, -h * 0.38], [w, -h * 0.38]]);
+    b.polyline(circlePts(c.r, 24).map(([x, y]) => [x, y + c.cy]), { closed: true });
+  });
+
+  // Official control point: the same, inverted.
+  doc.addBlock('BCN_OCP', (b) => {
+    const w = mm(L.symbol.trigW) / 2, h = mm(L.symbol.trigH);
+    const c = triCircum(w, h);
+    b.point([0, 0]);
+    b.solid([[0, -h * 0.62], [w, h * 0.38], [-w, h * 0.38]]);
+    b.polyline(circlePts(c.r, 24).map(([x, y]) => [x, y - c.cy]), { closed: true });
   });
 
   const d = doc.sink;
@@ -259,7 +332,11 @@ export function generateWorkingPlan(spec) {
   /* ---- beacons and their names */
   const figCx = (bb.e0 + bb.e1) / 2, figCy = (bb.n0 + bb.n1) / 2;
   const h = mm(L.text.beacon);
-  const r = mm(L.symbol.rmOuterDia / 2);
+  // Label clearance uses the LARGEST symbol radius, so a label never sits on a
+  // trig triangle or a reference-mark cross. (Was rmOuterDia before the Fifth
+  // Schedule signs were added -- that name no longer exists and silently
+  // produced NaN coordinates on every beacon label.)
+  const r = mm(Math.max(L.symbol.foundOuterDia, L.symbol.refMarkArm, L.symbol.trigW) / 2);
 
   // occupied rectangles, so labels do not sit on top of each other or a symbol
   const occupied = [];
@@ -274,7 +351,12 @@ export function generateWorkingPlan(spec) {
 
   const ORDER = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   for (const b of byName.values()) {
-    const block = { peg: 'BCN_PEG', rm: 'BCN_RM', trig: 'BCN_TRIG' }[b.symbol ?? 'peg'];
+    const block = {
+      placed: 'BCN_PLACED', peg: 'BCN_PLACED',
+      found: 'BCN_FOUND', foundNotAdopted: 'BCN_FOUND_NA',
+      rm: 'BCN_RM', ws: 'BCN_WS', wsu: 'BCN_WSU',
+      trig: 'BCN_TRIG', ocp: 'BCN_OCP',
+    }[b.symbol ?? 'placed'] ?? 'BCN_PLACED';
     d.insert(block, [b.e, b.n], { layer: 'BEACONS' });
 
     let pos = b.label ?? 'auto';
@@ -462,15 +544,34 @@ export function generateWorkingPlan(spec) {
     const iSym = mm(1.0);
     for (const b of ib) {
       const at = I(b.e, b.n);
-      if (b.symbol === 'trig') {
-        const w = iSym, hh = iSym * 1.55;
-        d.solid([[at[0], at[1] + hh * 0.62], [at[0] - w, at[1] - hh * 0.38],
-          [at[0] + w, at[1] - hh * 0.38]], { layer: 'INSET' });
-      } else {
-        d.polyline(circlePts(iSym * 0.85, 24).map(([x, y]) => [at[0] + x, at[1] + y]),
-          { layer: 'INSET', closed: true });
-        d.polyline(circlePts(iSym * 0.5, 24).map(([x, y]) => [at[0] + x, at[1] + y]),
-          { layer: 'INSET', closed: true });
+      // Same Fifth Schedule signs as the main figure, drawn small.
+      const ring = (r) => d.polyline(circlePts(r, 24).map(([x, y]) => [at[0] + x, at[1] + y]),
+        { layer: 'INSET', closed: true });
+      const dot = (r, n = 10) => {
+        const pts = circlePts(r, n);
+        for (let i = 0; i < n; i++) {
+          d.solid([at, [at[0] + pts[i][0], at[1] + pts[i][1]],
+            [at[0] + pts[(i + 1) % n][0], at[1] + pts[(i + 1) % n][1]]], { layer: 'INSET' });
+        }
+      };
+      const triangle = (up) => {
+        const w = iSym, hh = iSym * 1.55, sgn = up ? 1 : -1;
+        d.solid([[at[0], at[1] + sgn * hh * 0.62], [at[0] - sgn * w, at[1] - sgn * hh * 0.38],
+          [at[0] + sgn * w, at[1] - sgn * hh * 0.38]], { layer: 'INSET' });
+        ring(iSym * 1.12);
+      };
+      switch (b.symbol) {
+        case 'trig': triangle(true); break;
+        case 'ocp': triangle(false); break;
+        case 'rm':
+          ring(iSym * 0.85);
+          d.line([at[0] - iSym * 1.2, at[1]], [at[0] + iSym * 1.2, at[1]], { layer: 'INSET' });
+          d.line([at[0], at[1] - iSym * 1.2], [at[0], at[1] + iSym * 1.2], { layer: 'INSET' });
+          break;
+        case 'ws': ring(iSym * 0.85); dot(iSym * 0.32); break;
+        case 'wsu': dot(iSym * 0.38); break;
+        case 'placed': case 'peg': ring(iSym * 0.85); break;
+        default: ring(iSym * 0.85); ring(iSym * 0.5); break;   // found / found-not-adopted
       }
       d.text(b.name, [at[0], at[1] + mm(1.8)], mm(L.text.insetLabel),
         { layer: 'INSET', style: 'ARIAL', align: 'center' });

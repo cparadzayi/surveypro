@@ -10,11 +10,30 @@
  * named ring either resolves or it doesn't.
  */
 
+/**
+ * SI 727 Fifth Schedule conventional signs (pp. 3306-3307).
+ *
+ *   placed          beacon placed                        open circle
+ *   found           beacon found and adopted             concentric circles
+ *   foundNotAdopted beacon found and not adopted         concentric circles, struck
+ *   rm              reference mark                       circle with a cross
+ *   ws              survey station, marked               circle with a filled centre
+ *   wsu             survey station, unmarked             filled dot
+ *   trig            trigonometrical beacon / TSM         black triangle in a circle
+ *   ocp             official control point               inverted black triangle in a circle
+ *
+ * 'peg' is retained as an alias of 'placed' for the description-based fallback,
+ * which predates these codes; the renderer draws both as a beacon placed.
+ */
+export type WorkingPlanSymbol =
+  | 'placed' | 'peg' | 'found' | 'foundNotAdopted'
+  | 'rm' | 'ws' | 'wsu' | 'trig' | 'ocp'
+
 export interface WorkingPlanBeacon {
   name: string
   X: number
   Y: number
-  symbol: 'peg' | 'rm' | 'trig'
+  symbol: WorkingPlanSymbol
   label: 'auto'
 }
 
@@ -178,11 +197,16 @@ function buildInset(
  * distinct symbol for a working station is NOT settled -- this maps to the
  * nearest honest existing symbol rather than inventing one.
  */
-function statusSymbol(status: string | null | undefined): 'peg' | 'rm' | 'trig' | undefined {
+function statusSymbol(status: string | null | undefined): WorkingPlanSymbol | undefined {
   switch (String(status ?? '').trim().toUpperCase()) {
-    case 'TRIG': return 'trig'
+    case 'P':    return 'placed'
+    case 'F':    return 'found'
+    case 'FN':   return 'foundNotAdopted'
     case 'RM':   return 'rm'
-    case 'WS':   return 'rm'
+    case 'WS':   return 'ws'
+    case 'WSU':  return 'wsu'
+    case 'TRIG': return 'trig'
+    case 'OCP':  return 'ocp'
     default:     return undefined
   }
 }
@@ -190,7 +214,7 @@ function statusSymbol(status: string | null | undefined): 'peg' | 'rm' | 'trig' 
 export function beaconSymbol(
   description: string | null | undefined,
   status?: string | null,
-): 'peg' | 'rm' | 'trig' {
+): WorkingPlanSymbol {
   // An explicit status beats the description: RM15 is a reference mark because
   // the surveyor coded it RM, not because of what the notes happen to say.
   const fromStatus = statusSymbol(status)

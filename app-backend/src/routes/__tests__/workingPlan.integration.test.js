@@ -57,3 +57,41 @@ describe('POST /working-plan/dxf — real generator, adapter-shaped spec', () =>
     expect(res.rawPayload.toString()).not.toMatch(/NaN/)
   })
 })
+
+/**
+ * Cross-layer guard. The frontend adapter (workingPlanSpec.ts) emits SI 727
+ * Fifth Schedule sign names; this route is the trust boundary that validates
+ * them. The two lists are in different packages and cannot import each other,
+ * so nothing but a test keeps them in step.
+ *
+ * They were briefly out of step: the route accepted only peg/rm/trig while the
+ * adapter had moved to the full schedule, which would have rejected every plan
+ * with a 400. Every per-layer suite still passed, because each tested its own
+ * side and the fixture only used the old three.
+ */
+describe('the route accepts every sign the adapter can emit', () => {
+  const ADAPTER_SYMBOLS = [
+    'placed', 'peg', 'found', 'foundNotAdopted',
+    'rm', 'ws', 'wsu', 'trig', 'ocp',
+  ]
+
+  test.each(ADAPTER_SYMBOLS)('symbol "%s" renders rather than 400s', async (symbol) => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dxf',
+      payload: {
+        scale: 'auto',
+        beacons: [
+          { name: 'A', X: 2144027.08, Y: -85673.91, symbol, label: 'auto' },
+          { name: 'B', X: 2144063.20, Y: -85710.12, symbol, label: 'auto' },
+          { name: 'C', X: 2144076.45, Y: -85723.41, symbol, label: 'auto' },
+        ],
+        parcels: [{ label: '404', ring: ['A', 'B', 'C'] }],
+        title: ['Survey of', 'Stand 404'],
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.rawPayload.toString()).not.toMatch(/NaN/)
+  })
+})

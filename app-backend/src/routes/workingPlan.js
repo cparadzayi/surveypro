@@ -1,6 +1,13 @@
 import { generateWorkingPlan } from '../services/workingPlan/working-plan.js'
 
-const VALID_SYMBOLS = new Set(['peg', 'rm', 'trig'])
+// SI 727 Fifth Schedule conventional signs the renderer can draw. This MUST
+// track workingPlanSpec.ts's WorkingPlanSymbol: the adapter emits these names
+// and the route is the trust boundary that rejects anything else. When it
+// listed only peg/rm/trig it would have 400'd every plan the adapter built.
+const VALID_SYMBOLS = new Set([
+  'placed', 'peg', 'found', 'foundNotAdopted',
+  'rm', 'ws', 'wsu', 'trig', 'ocp',
+])
 
 /**
  * The route is the trust boundary: the design deliberately lets the caller
@@ -40,7 +47,7 @@ function validateWorkingPlanSpec(spec) {
   for (const b of spec.beacons) {
     if (b && b.symbol !== undefined && !VALID_SYMBOLS.has(b.symbol)) {
       const name = b?.name ? `"${b.name}"` : '(unnamed)'
-      return `beacon ${name}: symbol "${b.symbol}" is invalid -- must be peg, rm or trig`
+      return `beacon ${name}: symbol "${b.symbol}" is invalid -- must be one of ${[...VALID_SYMBOLS].join(', ')}`
     }
   }
 

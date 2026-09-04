@@ -210,7 +210,7 @@ export function validateCSVContent(content: string): ValidationResult {
         value: row.Status || '',
         error: 'Status is recommended',
         severity: 'warning',
-        suggestion: 'Use F (found beacon), P (placed beacon), TRIG (trig station), RM (reference mark), WS (working station)'
+        suggestion: 'Use F (found & adopted), FN (found, not adopted), P (placed), TRIG, OCP (official control point), RM (reference mark), WS / WSU (survey station marked / unmarked)'
       });
       warningRowSet.add(rowNum);
     } else {
@@ -218,14 +218,14 @@ export function validateCSVContent(content: string): ValidationResult {
       // RM (reference mark) and WS (working station) let the surveyor state the
       // beacon KIND, which the working plan draws from directly instead of
       // guessing it out of the free-text description.
-      if (!['F', 'P', 'FIXED', 'PEG', 'TRIG', 'RM', 'WS'].includes(status)) {
+      if (!['F', 'P', 'FIXED', 'PEG', 'TRIG', 'RM', 'WS', 'FN', 'WSU', 'OCP'].includes(status)) {
         warnings.push({
           row: rowNum,
           column: 'Status',
           value: row.Status,
           error: 'Unrecognized status code',
           severity: 'warning',
-          suggestion: 'Use F (Found), P (Placed), TRIG (Trig station), RM (Reference mark) or WS (Working station)'
+          suggestion: 'Use F, FN, P, TRIG, OCP, RM, WS or WSU — see SI 727 Fifth Schedule'
         });
         warningRowSet.add(rowNum);
       }

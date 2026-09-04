@@ -126,14 +126,34 @@ reported in `skippedParcels`: that list warns about parcels that *failed* to
 resolve, and burying a by-design exclusion in it would train surveyors to ignore
 a real warning.
 
-**Symbol mapping, flagged as a judgement call.** The module takes `peg`, `rm` or
-`trig`. We store `status` (`F` found / `P` placed) plus a free-text description.
-Both statuses map to `peg`; `rm` and `trig` are used only when the description
-says so ("reference mark", "RM", "trig"). Status describes whether a beacon was
-found or placed, not what kind of beacon it is, so it cannot drive the symbol on
-its own. This is the one mapping that can misrepresent a beacon on the plan, and
-it is deliberately conservative: an unrecognised description draws a peg rather
-than guessing.
+**Beacon symbols follow SI 727's Fifth Schedule.** The Schedule (Sections 37,
+38, 64 and 68 — Conventional Signs, pp. 3306-3307) has its own Working Plan
+colour column, and prescribes a distinct sign for each kind of beacon. The CSV
+status code states the kind and the renderer draws the corresponding sign:
+
+| Status | Schedule entry | Sign |
+|---|---|---|
+| `P` | Beacon placed | open circle |
+| `F` | Beacon found and adopted | concentric circles |
+| `FN` | Beacon found and not adopted | concentric circles, struck through |
+| `RM` | Reference Mark | circle with a cross |
+| `WS` | Traverse point / Survey Station, marked | circle with a filled centre |
+| `WSU` | Traverse point / Survey Station, unmarked | filled dot |
+| `TRIG` | Trigonometrical beacon or Town Survey Mark | black triangle in a circumscribed circle |
+| `OCP` | Official Control Point | inverted black triangle in a circumscribed circle |
+
+This replaces the earlier guess-from-the-description mapping, which was flagged
+here as the one mapping able to misrepresent a beacon. It could: the vendored
+renderer drew a reference mark as concentric circles, which the Schedule defines
+as "beacon found and adopted" — so every reference mark on a sheet wore the
+found-beacon sign. The description fallback survives only for rows with no
+status code.
+
+The renderer knew three signs and now knows all eight, so this extends the fork
+of the vendored module beyond the R12 fix. The route validates the same
+vocabulary, and a cross-layer test asserts the route accepts every sign the
+adapter can emit — they live in different packages and cannot import each other,
+so nothing else keeps them in step.
 
 ### 3. Backend route — stateless, like the DXF route beside it
 

@@ -500,3 +500,91 @@ describe('buildWorkingPlanSpec — status-driven symbols', () => {
     expect(symbolOf('SD4')).toBe('placed')
   })
 })
+
+/**
+ * Surrounding properties come from the sides the surveyor tagged `contiguous`
+ * on the map. That tag means "the neighbour along this side", and its label is
+ * the neighbour's designation — the only place in the data model that records
+ * one. Roads and servitudes are tagged on the same sides but are not
+ * properties, so they are not labelled as such here.
+ */
+const sq = (stand: string, ids: string[], pts: Array<[number, number]>) => ({
+  id: stand,
+  stand,
+  metadata: { cape_lo_points: ids.map((id, i) => ({ id, x: pts[i][0], y: pts[i][1], status: 'P', description: '' })) },
+})
+
+/** A square parcel, so "outside" is unambiguous. */
+const squarePts: Array<[number, number]> = [
+  [2144000, -85700], [2144100, -85700], [2144100, -85600], [2144000, -85600],
+]
+const squareBeacons = beaconFC([
+  { name: 'Q1', x: 2144000, y: -85700 }, { name: 'Q2', x: 2144100, y: -85700 },
+  { name: 'Q3', x: 2144100, y: -85600 }, { name: 'Q4', x: 2144000, y: -85600 },
+])
+const squareCtx = (annotations: any) => ctx({
+  beacons: squareBeacons,
+  parcels: [sq('404', ['Q1', 'Q2', 'Q3', 'Q4'], squarePts)],
+  sideAnnotations: annotations,
+})
+
+describe('buildWorkingPlanSpec — surrounding properties', () => {
+  it('labels a contiguous side with the neighbouring property', () => {
+    const { spec } = buildWorkingPlanSpec(squareCtx({
+      '404': [{ side: 'AB', role: 'contiguous', label: 'Stand 86' }],
+    }))
+    expect(spec.notes?.map(n => n.text)).toEqual(['Stand 86'])
+  })
+
+  it('places the label outside the parcel, not on top of the boundary', () => {
+    const { spec } = buildWorkingPlanSpec(squareCtx({
+      '404': [{ side: 'AB', role: 'contiguous', label: 'Stand 86' }],
+    }))
+    const note = spec.notes![0]
+    // Side AB runs along Y = -85700; the centroid is at Y = -85650, so the
+    // label must sit on the far side of AB from the centre.
+    expect(note.Y).toBeLessThan(-85700)
+    expect(note.X).toBeCloseTo(2144050, 0)   // centred on the side
+  })
+
+  it('ignores roads and servitudes — they are not properties', () => {
+    const { spec } = buildWorkingPlanSpec(squareCtx({
+      '404': [
+        { side: 'AB', role: 'road', label: 'Main Road' },
+        { side: 'BC', role: 'servitude', label: 'Water servitude', widthM: 3 },
+      ],
+    }))
+    expect(spec.notes).toBeUndefined()
+  })
+
+  it('ignores a contiguous side with no neighbour recorded', () => {
+    const { spec } = buildWorkingPlanSpec(squareCtx({
+      '404': [{ side: 'AB', role: 'contiguous' }, { side: 'BC', role: 'contiguous', label: '  ' }],
+    }))
+    expect(spec.notes).toBeUndefined()
+  })
+
+  it('labels every tagged side, across every parcel drawn', () => {
+    const { spec } = buildWorkingPlanSpec(squareCtx({
+      '404': [
+        { side: 'AB', role: 'contiguous', label: 'Stand 86' },
+        { side: 'CD', role: 'contiguous', label: 'Stand 88' },
+      ],
+    }))
+    expect(spec.notes?.map(n => n.text).sort()).toEqual(['Stand 86', 'Stand 88'])
+  })
+
+  it('emits no notes key at all when nothing was tagged', () => {
+    expect(buildWorkingPlanSpec(squareCtx(undefined)).spec.notes).toBeUndefined()
+    expect(buildWorkingPlanSpec(squareCtx({})).spec.notes).toBeUndefined()
+  })
+
+  it('skips a side id that does not exist on the ring', () => {
+    // Stale annotations survive a re-digitise; they must not place a label at
+    // NaN, which would corrupt the whole sheet.
+    const { spec } = buildWorkingPlanSpec(squareCtx({
+      '404': [{ side: 'ZZ', role: 'contiguous', label: 'Nowhere' }],
+    }))
+    expect(spec.notes).toBeUndefined()
+  })
+})

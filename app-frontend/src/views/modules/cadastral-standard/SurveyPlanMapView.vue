@@ -4169,6 +4169,9 @@ async function generatePlanDocuments() {
       // The control the survey was tied to, for the locality inset. Accepts
       // either workflowState shape -- see siteCalibrationFrom.
       calibration: siteCalibrationFrom(props.workflowState),
+      // Sides tagged `contiguous` name the neighbouring properties, which the
+      // working plan letters just outside the boundary they abut.
+      sideAnnotations: sideAnnotationsBySubject.value,
     })
     if (built.spec.parcels.length === 0) {
       // Say which of the three things actually went wrong. The fixed message

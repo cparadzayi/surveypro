@@ -1,3 +1,4 @@
+import { subjectSides } from './sideAnnotations'
 /**
  * Builds the Working Plan module's `spec` from what SurveyPlanMapView already
  * holds: the final coordinate list (as the beacons FeatureCollection, which has
@@ -42,6 +43,13 @@ export interface WorkingPlanParcel {
   ring: string[]
 }
 
+/** Free text placed at a ground coordinate -- a neighbouring property's name. */
+export interface WorkingPlanNote {
+  text: string
+  X: number
+  Y: number
+}
+
 export interface WorkingPlanInsetBeacon {
   name: string
   X: number
@@ -64,6 +72,8 @@ export interface WorkingPlanSpec {
   approvalBox: boolean
   /** Locality diagram. Omitted entirely when no calibration was imported. */
   inset?: WorkingPlanInset
+  /** Surrounding properties. Omitted when no contiguous side was tagged. */
+  notes?: WorkingPlanNote[]
 }
 
 export interface WorkingPlanSpecResult {
@@ -100,6 +110,12 @@ export interface WorkingPlanSpecContext {
    * registry, which would show trigs this survey never observed.
    */
   calibration?: { pairs?: Array<{ pointId?: string; controlNorthing?: number; controlEasting?: number }> }
+  /**
+   * Side annotations per parcel id, from sideAnnotationsBySubject. Sides tagged
+   * `contiguous` name the neighbouring property along that side -- the only
+   * place the data model records a surrounding property's designation.
+   */
+  sideAnnotations?: Record<string, Array<{ side?: string; role?: string; label?: string }>>
 }
 
 /** A ring shorter than this is not a polygon. */
@@ -278,6 +294,55 @@ function certificateFrom(config: any): { line1: string; line2: string } {
   }
 }
 
+/** How far outside the boundary a neighbour's name sits, as a fraction of the
+ *  parcel's own size -- so it scales with the figure instead of assuming a
+ *  drawing scale the adapter does not know. */
+const NOTE_OFFSET_FRACTION = 0.14
+
+/**
+ * Neighbouring property names, placed just outside the side each was tagged on.
+ *
+ * Only `contiguous` sides: a road or servitude is tagged the same way but is
+ * not a property, and labelling one as a neighbour would be a false statement
+ * about who abuts the land.
+ */
+function contiguousNotes(
+  ring: Array<{ name: string; X: number; Y: number }>,
+  annotations: Array<{ side?: string; role?: string; label?: string }> | undefined,
+): WorkingPlanNote[] {
+  const tagged = (annotations ?? []).filter(
+    a => String(a?.role ?? '') === 'contiguous' && String(a?.label ?? '').trim() !== '',
+  )
+  if (tagged.length === 0 || ring.length < MIN_RING) return []
+
+  const sides = subjectSides(ring.map(p => [p.X, p.Y] as [number, number]))
+  if (sides.length === 0) return []
+
+  const cx = ring.reduce((t, p) => t + p.X, 0) / ring.length
+  const cy = ring.reduce((t, p) => t + p.Y, 0) / ring.length
+  const spanX = Math.max(...ring.map(p => p.X)) - Math.min(...ring.map(p => p.X))
+  const spanY = Math.max(...ring.map(p => p.Y)) - Math.min(...ring.map(p => p.Y))
+  const offset = Math.hypot(spanX, spanY) * NOTE_OFFSET_FRACTION
+
+  const notes: WorkingPlanNote[] = []
+  for (const a of tagged) {
+    const side = sides.find(sd => sd.side === String(a.side ?? '').trim().toUpperCase())
+    // A stale side id survives a re-digitise. Skipping beats placing a label at
+    // NaN, which would corrupt every coordinate in the sheet.
+    if (!side) continue
+
+    const mx = (side.a[0] + side.b[0]) / 2
+    const my = (side.a[1] + side.b[1]) / 2
+    const dx = mx - cx, dy = my - cy
+    const len = Math.hypot(dx, dy)
+    // Outward from the parcel centre, so the name never sits on the figure.
+    const ux = len > 0 ? dx / len : 0
+    const uy = len > 0 ? dy / len : 0
+    notes.push({ text: String(a.label).trim(), X: mx + ux * offset, Y: my + uy * offset })
+  }
+  return notes
+}
+
 export function buildWorkingPlanSpec(
   ctx: WorkingPlanSpecContext,
 ): WorkingPlanSpecResult {
@@ -301,6 +366,7 @@ export function buildWorkingPlanSpec(
   const missingBeacons: string[] = []
   const missingSeen = new Set<string>()
   const parcelsWithoutNamedRing: string[] = []
+  const notes: WorkingPlanNote[] = []
   const used: string[] = []
   const seen = new Set<string>()
 
@@ -335,6 +401,10 @@ export function buildWorkingPlanSpec(
       if (!seen.has(n)) { seen.add(n); used.push(n) }
     }
     parcels.push({ label, ring })
+    notes.push(...contiguousNotes(
+      ring.map(n => ({ name: n, ...byName.get(n)! })),
+      ctx.sideAnnotations?.[String(p?.id ?? '')],
+    ))
   }
 
   // The working plan shows the WHOLE final coordinate list -- reference marks,
@@ -366,6 +436,7 @@ export function buildWorkingPlanSpec(
       // Omitted, not empty: an empty inset box would assert there was no
       // control rather than that none was imported.
       ...(inset ? { inset } : {}),
+      ...(notes.length > 0 ? { notes } : {}),
     },
     skippedParcels,
     beaconCount: byName.size,

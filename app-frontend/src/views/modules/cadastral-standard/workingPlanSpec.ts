@@ -163,7 +163,37 @@ function buildInset(
  * or a trig station. An unrecognised description draws a peg rather than
  * promoting the beacon on a guess.
  */
-export function beaconSymbol(description: string | null | undefined): 'peg' | 'rm' | 'trig' {
+/**
+ * Beacon kind from the CSV status code, where the surveyor gave one that says
+ * what the beacon IS. Returns undefined for codes that do not.
+ *
+ * F (fixed/control) and P (peg) predate these codes and are deliberately not
+ * mapped here: F says the point is control, not which monument type it is, and
+ * changing their rendering would alter every plan already produced.
+ *
+ * WS (working station) currently draws as a reference mark, which is how the
+ * reference sheet treats BASE. Whether SI 727's Fifth Schedule prescribes a
+ * distinct symbol for a working station is NOT settled -- this maps to the
+ * nearest honest existing symbol rather than inventing one.
+ */
+function statusSymbol(status: string | null | undefined): 'peg' | 'rm' | 'trig' | undefined {
+  switch (String(status ?? '').trim().toUpperCase()) {
+    case 'TRIG': return 'trig'
+    case 'RM':   return 'rm'
+    case 'WS':   return 'rm'
+    default:     return undefined
+  }
+}
+
+export function beaconSymbol(
+  description: string | null | undefined,
+  status?: string | null,
+): 'peg' | 'rm' | 'trig' {
+  // An explicit status beats the description: RM15 is a reference mark because
+  // the surveyor coded it RM, not because of what the notes happen to say.
+  const fromStatus = statusSymbol(status)
+  if (fromStatus) return fromStatus
+
   const d = (description ?? '').toLowerCase()
   if (/\btrig\b|\btrigonometrical\b/.test(d)) return 'trig'
   if (/\breference mark\b|\brm\b|\brm\d/.test(d)) return 'rm'
@@ -223,7 +253,7 @@ function certificateFrom(config: any): { line1: string; line2: string } {
 export function buildWorkingPlanSpec(
   ctx: WorkingPlanSpecContext,
 ): WorkingPlanSpecResult {
-  const byName = new Map<string, { X: number; Y: number; description: string }>()
+  const byName = new Map<string, { X: number; Y: number; description: string; status: string }>()
   for (const f of ctx.beacons?.features ?? []) {
     if (f.geometry?.type !== 'Point') continue
     const props = (f.properties ?? {}) as Record<string, unknown>
@@ -231,7 +261,11 @@ export function buildWorkingPlanSpec(
     if (!name || byName.has(name)) continue
     const [Y, X] = (f.geometry as GeoJSON.Point).coordinates as [number, number]
     if (!Number.isFinite(X) || !Number.isFinite(Y)) continue
-    byName.set(name, { X, Y, description: String(props.description ?? '') })
+    byName.set(name, {
+      X, Y,
+      description: String(props.description ?? ''),
+      status: String(props.status ?? ''),
+    })
   }
 
   const parcels: WorkingPlanParcel[] = []
@@ -277,7 +311,7 @@ export function buildWorkingPlanSpec(
 
   const beacons: WorkingPlanBeacon[] = used.map(name => {
     const b = byName.get(name)!
-    return { name, X: b.X, Y: b.Y, symbol: beaconSymbol(b.description), label: 'auto' as const }
+    return { name, X: b.X, Y: b.Y, symbol: beaconSymbol(b.description, b.status), label: 'auto' as const }
   })
 
   const inset = buildInset(ctx.calibration, beacons)

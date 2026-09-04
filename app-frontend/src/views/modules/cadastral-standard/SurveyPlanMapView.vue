@@ -3645,6 +3645,9 @@ function exportBeaconsAsGeoJSON(): GeoJSON.FeatureCollection {
         name: point.name,
         type: point.type || 'beacon',
         description: point.description || '',
+        // CSV status code (F/P/TRIG/RM/WS). The working plan reads this to
+        // pick the beacon symbol instead of guessing from the description.
+        status: point.status || '',
         y: actualY,
         x: actualX
       }

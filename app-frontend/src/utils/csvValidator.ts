@@ -210,19 +210,22 @@ export function validateCSVContent(content: string): ValidationResult {
         value: row.Status || '',
         error: 'Status is recommended',
         severity: 'warning',
-        suggestion: 'Use F for Fixed/Control points, P for Pegs'
+        suggestion: 'Use F (fixed/control), P (peg), TRIG (trig station), RM (reference mark), WS (working station)'
       });
       warningRowSet.add(rowNum);
     } else {
       const status = row.Status.toUpperCase();
-      if (!['F', 'P', 'FIXED', 'PEG'].includes(status)) {
+      // RM (reference mark) and WS (working station) let the surveyor state the
+      // beacon KIND, which the working plan draws from directly instead of
+      // guessing it out of the free-text description.
+      if (!['F', 'P', 'FIXED', 'PEG', 'TRIG', 'RM', 'WS'].includes(status)) {
         warnings.push({
           row: rowNum,
           column: 'Status',
           value: row.Status,
           error: 'Unrecognized status code',
           severity: 'warning',
-          suggestion: 'Use F (Fixed) or P (Peg)'
+          suggestion: 'Use F (Fixed), P (Peg), TRIG (Trig station), RM (Reference mark) or WS (Working station)'
         });
         warningRowSet.add(rowNum);
       }

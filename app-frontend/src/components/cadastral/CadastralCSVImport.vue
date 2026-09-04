@@ -198,13 +198,10 @@
                   <td class="px-4 py-2 text-sm">
                     <span
                       v-if="point.status"
-                      :class="{
-                        'bg-green-100 text-green-800': point.status === 'F',
-                        'bg-orange-100 text-orange-800': point.status === 'P'
-                      }"
+                      :class="statusBadgeClass(point.status)"
                       class="inline-flex items-center px-2 py-1 rounded text-xs font-medium"
                     >
-                      {{ point.status === 'F' ? 'Fixed' : 'Peg' }}
+                      {{ statusLabel(point.status) }}
                     </span>
                     <span v-else class="text-gray-400 text-xs">-</span>
                   </td>
@@ -256,6 +253,40 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * Status codes name what the beacon IS, and the working plan draws its symbol
+ * from them. Previously anything that was not F displayed as "Peg", which would
+ * have mislabelled every reference mark and working station.
+ */
+const STATUS_LABELS: Record<string, string> = {
+  F: 'Fixed', FIXED: 'Fixed',
+  P: 'Peg', PEG: 'Peg',
+  TRIG: 'Trig station',
+  RM: 'Reference mark',
+  WS: 'Working station',
+}
+
+const STATUS_CLASSES: Record<string, string> = {
+  F: 'bg-green-100 text-green-800', FIXED: 'bg-green-100 text-green-800',
+  P: 'bg-orange-100 text-orange-800', PEG: 'bg-orange-100 text-orange-800',
+  TRIG: 'bg-purple-100 text-purple-800',
+  RM: 'bg-blue-100 text-blue-800',
+  WS: 'bg-teal-100 text-teal-800',
+}
+
+function statusKey(status: string): string {
+  return String(status ?? '').trim().toUpperCase()
+}
+
+function statusLabel(status: string): string {
+  // Unknown codes show verbatim rather than being relabelled as something else.
+  return STATUS_LABELS[statusKey(status)] ?? status
+}
+
+function statusBadgeClass(status: string): string {
+  return STATUS_CLASSES[statusKey(status)] ?? 'bg-gray-100 text-gray-800'
+}
+
 import { ref, computed } from 'vue';
 
 import { validateAndParseCSV, generateCSVTemplate } from '../../utils/cadastral-csv';

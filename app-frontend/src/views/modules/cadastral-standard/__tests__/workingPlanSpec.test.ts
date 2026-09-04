@@ -411,3 +411,72 @@ describe('buildWorkingPlanSpec — locality inset', () => {
     expect(with_.spec.beacons).toEqual(without.spec.beacons)
   })
 })
+
+/**
+ * Beacon kind now comes from the CSV status code where the surveyor supplied
+ * one. That is a better source than the free-text description, which was only
+ * ever a guess: RM15 and RM16 are reference marks because the surveyor said
+ * RM, not because someone wrote "reference mark" in the notes.
+ *
+ * Status codes: F fixed/control, P peg, TRIG trigonometrical station,
+ * RM reference mark, WS working station.
+ */
+const beaconFCWithStatus = (
+  points: Array<{ name: string; y: number; x: number; status?: string; description?: string }>,
+): GeoJSON.FeatureCollection => ({
+  type: 'FeatureCollection',
+  features: points.map(p => ({
+    type: 'Feature' as const,
+    geometry: { type: 'Point' as const, coordinates: [p.y, p.x] },
+    properties: { name: p.name, status: p.status ?? '', description: p.description ?? '' },
+  })),
+})
+
+describe('beaconSymbol — status takes precedence over description', () => {
+  it('honours an explicit RM status, whatever the description says', () => {
+    expect(beaconSymbol('12mm iron peg in concrete', 'RM')).toBe('rm')
+    expect(beaconSymbol('', 'rm')).toBe('rm')
+  })
+
+  it('honours an explicit TRIG status', () => {
+    expect(beaconSymbol('', 'TRIG')).toBe('trig')
+    expect(beaconSymbol('', 'trig')).toBe('trig')
+  })
+
+  it('draws a working station as a reference mark for now', () => {
+    // The reference sheet draws BASE -- a working station -- with the
+    // reference-mark symbol. Whether SI 727's Fifth Schedule prescribes a
+    // distinct symbol is not yet settled, so this deliberately does not invent
+    // one.
+    expect(beaconSymbol('', 'WS')).toBe('rm')
+    expect(beaconSymbol('', 'ws')).toBe('rm')
+  })
+
+  it('falls back to the description when status says nothing about kind', () => {
+    // F (fixed/control) and P (peg) predate these codes and are left alone, so
+    // existing plans render exactly as before.
+    expect(beaconSymbol('Reference mark', 'F')).toBe('rm')
+    expect(beaconSymbol('12mm iron peg in concrete', 'P')).toBe('peg')
+    expect(beaconSymbol('Trig beacon', '')).toBe('trig')
+    expect(beaconSymbol('12mm iron peg', undefined)).toBe('peg')
+  })
+})
+
+describe('buildWorkingPlanSpec — status-driven symbols', () => {
+  it('marks RM15 and RM16 as reference marks from their status alone', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFCWithStatus([
+        { name: 'RM15', y: -85643.50, x: 2144120.41, status: 'RM', description: '' },
+        { name: 'RM16', y: -85623.81, x: 2144100.66, status: 'rm', description: '' },
+        { name: 'BASE', y: -85778.60, x: 2144038.34, status: 'WS', description: '' },
+        { name: 'SD4',  y: -85673.91, x: 2144027.08, status: 'P', description: '12mm iron peg' },
+      ]),
+      parcels: [parcel('404', ['RM15', 'RM16', 'BASE', 'SD4'])],
+    }))
+    const symbolOf = (n: string) => spec.beacons.find(b => b.name === n)!.symbol
+    expect(symbolOf('RM15')).toBe('rm')
+    expect(symbolOf('RM16')).toBe('rm')
+    expect(symbolOf('BASE')).toBe('rm')
+    expect(symbolOf('SD4')).toBe('peg')
+  })
+})

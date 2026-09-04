@@ -81,6 +81,25 @@ describe('generateWorkingPlan — golden', () => {
     expect(Object.fromEntries(offenders)).toEqual({})
   })
 
+  test('sets the document heading larger than the lines naming the land', () => {
+    // "WORKING PLAN OF" identifies what the sheet IS and leads the title block
+    // at 1.25x. The lines below it identify the land and are set uniformly.
+    const { dxf } = generateWorkingPlan(brackenhurstSpec)
+    const lines = dxf.split('\n')
+    const heights = []
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i] === '0' && lines[i + 1] === 'TEXT') {
+        let j = i + 2; const d = {}
+        while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+        if ((d['8'] || [])[0] === 'TITLE' && (d['40'] || [])[0]) heights.push(Number(d['40'][0]))
+      }
+    }
+    const tallest = Math.max(...heights)
+    const body = heights.filter(h => h < tallest)
+    expect(body.length).toBeGreaterThan(0)
+    expect(tallest / Math.max(...body)).toBeCloseTo(1.25, 2)
+  })
+
   test('picks a scale itself when asked to', () => {
     const out = generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' })
     expect(typeof out.scale).toBe('number')

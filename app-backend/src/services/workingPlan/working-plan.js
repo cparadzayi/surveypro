@@ -55,7 +55,7 @@ export const LAYOUT = {
   // cap heights, mm on paper
   text: {
     beacon: 2.05, grid: 2.05, parcel: 3.07, road: 3.07,
-    title: 3.95, scale: 3.03, approval: 3.06, certificate: 2.99,
+    title: 3.95, titleLeadFactor: 1.25, scale: 3.03, approval: 3.06, certificate: 2.99,
     insetTitle: 3.00, insetLabel: 2.05,
     // Neighbouring properties, roads and servitudes are all adjoining detail and
     // read as one family, at the same size as a beacon name. They were set at
@@ -489,7 +489,11 @@ export function generateWorkingPlan(spec) {
   /* ---- title block */
   const th = mm(L.text.title);
   spec.title.slice(0, 4).forEach((line, i) => {
-    d.text(line, S(L.title.cx, L.title.baselines[i]), th,
+    // The first line names the document ("WORKING PLAN OF") and is set larger
+    // than the lines that identify the land. Its baseline is 8.2 mm from the
+    // sheet top and the glyphs grow upward, which at 1.25x reaches 3.26 mm --
+    // still clear of the border at 0.5 mm, and of the next line 12.1 mm below.
+    d.text(line, S(L.title.cx, L.title.baselines[i]), i === 0 ? th * L.text.titleLeadFactor : th,
       { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
   });
   d.text(`Scale 1:${scale}`, S(L.title.cx, L.title.scaleBaseline), mm(L.text.scale),

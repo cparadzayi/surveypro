@@ -105,7 +105,7 @@ describe('workingPlanTitle', () => {
       district: 'Gwelo',
     })
     expect(t).toEqual([
-      'Survey of',
+      'WORKING PLAN OF',
       'Stands 403-405 Brackenhurst Township',
       'of Stand 87 Brackenhurst Township',
       'Gwelo District',
@@ -113,7 +113,11 @@ describe('workingPlanTitle', () => {
   })
 
   it('omits the lines it has no data for', () => {
-    expect(workingPlanTitle({ designation: 'Stand 405' })).toEqual(['Survey of', 'Stand 405'])
+    expect(workingPlanTitle({ designation: 'Stand 405' })).toEqual(['WORKING PLAN OF', 'Stand 405'])
+  })
+
+  it('names the document, so the sheet is not mistaken for a survey record', () => {
+    expect(workingPlanTitle({ designation: 'Stand 405' })[0]).toBe('WORKING PLAN OF')
   })
 
   it('never exceeds the four lines the module accepts', () => {

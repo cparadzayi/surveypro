@@ -275,9 +275,10 @@ export function ringNames(parcel: any): string[] {
   return names.length >= MIN_RING ? names : []
 }
 
-/** Up to the four heading lines the module accepts. */
+/** Up to the four heading lines the module accepts. The first names the
+ *  document -- the renderer sets it larger than the rest. */
 export function workingPlanTitle(projectInfo: any): string[] {
-  const lines = ['Survey of']
+  const lines = ['WORKING PLAN OF']
   const designation = String(projectInfo?.designation ?? '').trim()
   const parent = String(projectInfo?.parentProperty ?? '').trim()
   const district = String(projectInfo?.district ?? '').trim()

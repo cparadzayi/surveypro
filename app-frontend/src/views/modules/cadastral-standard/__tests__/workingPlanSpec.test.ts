@@ -547,7 +547,9 @@ describe('buildWorkingPlanSpec — surrounding properties', () => {
     expect(note.X).toBeCloseTo(2144050, 0)   // centred on the side
   })
 
-  it('ignores roads and servitudes — they are not properties', () => {
+  it('letters roads and servitudes along their side, not as property names', () => {
+    // They are adjoining features, not neighbours, so they are lettered along
+    // the side (as the diagram does) rather than placed as a property name.
     const { spec } = buildWorkingPlanSpec(squareCtx({
       '404': [
         { side: 'AB', role: 'road', label: 'Main Road' },
@@ -555,6 +557,43 @@ describe('buildWorkingPlanSpec — surrounding properties', () => {
       ],
     }))
     expect(spec.notes).toBeUndefined()
+    expect(spec.roads?.map(r => r.name)).toEqual(['Main Road', 'Water servitude 3,00m'])
+  })
+
+  it('appends the width the way the diagram does, in SI format', () => {
+    const { spec } = buildWorkingPlanSpec(squareCtx({
+      '404': [{ side: 'AB', role: 'road', label: 'Klein Road', widthM: 25.19 }],
+    }))
+    expect(spec.roads![0].name).toBe('Klein Road 25,19m')
+  })
+
+  it('names the side endpoints so the renderer can place the label', () => {
+    const { spec } = buildWorkingPlanSpec(squareCtx({
+      '404': [{ side: 'BC', role: 'road', label: 'Main Road' }],
+    }))
+    // Side BC is the second edge: Q2 -> Q3.
+    expect(spec.roads![0].from).toBe('Q2')
+    expect(spec.roads![0].to).toBe('Q3')
+  })
+
+  it('letters a servitude with no recorded width rather than dropping it', () => {
+    // The diagram warns and draws the label only. Losing the servitude entirely
+    // would understate what burdens the land.
+    const { spec } = buildWorkingPlanSpec(squareCtx({
+      '404': [{ side: 'AB', role: 'servitude', label: 'Right of way' }],
+    }))
+    expect(spec.roads?.map(r => r.name)).toEqual(['Right of way'])
+  })
+
+  it('emits no roads key when none were tagged', () => {
+    expect(buildWorkingPlanSpec(squareCtx({})).spec.roads).toBeUndefined()
+  })
+
+  it('skips a road on a side id that no longer exists', () => {
+    const { spec } = buildWorkingPlanSpec(squareCtx({
+      '404': [{ side: 'ZZ', role: 'road', label: 'Ghost Road' }],
+    }))
+    expect(spec.roads).toBeUndefined()
   })
 
   it('ignores a contiguous side with no neighbour recorded', () => {

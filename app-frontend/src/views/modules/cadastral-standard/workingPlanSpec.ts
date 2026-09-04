@@ -50,6 +50,15 @@ export interface WorkingPlanNote {
   Y: number
 }
 
+/** A name lettered along a side: the renderer rotates it and places it clear of
+ *  the figure. Used for roads and servitudes alike -- both are adjoining
+ *  features named along the boundary they abut. */
+export interface WorkingPlanRoad {
+  name: string
+  from: string
+  to: string
+}
+
 export interface WorkingPlanInsetBeacon {
   name: string
   X: number
@@ -74,6 +83,8 @@ export interface WorkingPlanSpec {
   inset?: WorkingPlanInset
   /** Surrounding properties. Omitted when no contiguous side was tagged. */
   notes?: WorkingPlanNote[]
+  /** Roads and servitudes, lettered along the side they abut. */
+  roads?: WorkingPlanRoad[]
 }
 
 export interface WorkingPlanSpecResult {
@@ -115,7 +126,7 @@ export interface WorkingPlanSpecContext {
    * `contiguous` name the neighbouring property along that side -- the only
    * place the data model records a surrounding property's designation.
    */
-  sideAnnotations?: Record<string, Array<{ side?: string; role?: string; label?: string }>>
+  sideAnnotations?: Record<string, Array<{ side?: string; role?: string; label?: string; widthM?: number }>>
 }
 
 /** A ring shorter than this is not a polygon. */
@@ -300,23 +311,42 @@ function certificateFrom(config: any): { line1: string; line2: string } {
 const NOTE_OFFSET_FRACTION = 0.14
 
 /**
- * Neighbouring property names, placed just outside the side each was tagged on.
- *
- * Only `contiguous` sides: a road or servitude is tagged the same way but is
- * not a property, and labelling one as a neighbour would be a false statement
- * about who abuts the land.
+ * SI number format: comma decimal, space thousands. Mirrors formatSI() in
+ * app-backend/src/services/diagram/numberFormat.js, which is the original and
+ * is backend-only -- so a road width reads identically on the diagram and on
+ * the working plan.
  */
-function contiguousNotes(
+function formatWidthSI(value: number, decimals = 2): string {
+  const fixed = Math.abs(Number(value) || 0).toFixed(decimals)
+  const [intPart, dec] = fixed.split('.')
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  return dec != null ? `${grouped},${dec}` : grouped
+}
+
+/**
+ * What the surveyor tagged on each side, turned into sheet features.
+ *
+ * The three roles are drawn differently because they are different things:
+ * `contiguous` names the neighbouring PROPERTY and is placed outside that side,
+ * while `road` and `servitude` are adjoining FEATURES and are lettered along
+ * the side, which is how the diagram renderer treats them too.
+ *
+ * A road's width is appended to its name, matching the diagram. A servitude's
+ * width is appended as well -- the diagram carries it in the width of the strip
+ * it draws, and the working plan draws no strip, so leaving it off would
+ * understate what burdens the land.
+ */
+function sideFeatures(
   ring: Array<{ name: string; X: number; Y: number }>,
-  annotations: Array<{ side?: string; role?: string; label?: string }> | undefined,
-): WorkingPlanNote[] {
-  const tagged = (annotations ?? []).filter(
-    a => String(a?.role ?? '') === 'contiguous' && String(a?.label ?? '').trim() !== '',
-  )
-  if (tagged.length === 0 || ring.length < MIN_RING) return []
+  annotations: Array<{ side?: string; role?: string; label?: string; widthM?: number }> | undefined,
+): { notes: WorkingPlanNote[]; roads: WorkingPlanRoad[] } {
+  const notes: WorkingPlanNote[] = []
+  const roads: WorkingPlanRoad[] = []
+  const tagged = (annotations ?? []).filter(a => String(a?.label ?? '').trim() !== '')
+  if (tagged.length === 0 || ring.length < MIN_RING) return { notes, roads }
 
   const sides = subjectSides(ring.map(p => [p.X, p.Y] as [number, number]))
-  if (sides.length === 0) return []
+  if (sides.length === 0) return { notes, roads }
 
   const cx = ring.reduce((t, p) => t + p.X, 0) / ring.length
   const cy = ring.reduce((t, p) => t + p.Y, 0) / ring.length
@@ -324,23 +354,31 @@ function contiguousNotes(
   const spanY = Math.max(...ring.map(p => p.Y)) - Math.min(...ring.map(p => p.Y))
   const offset = Math.hypot(spanX, spanY) * NOTE_OFFSET_FRACTION
 
-  const notes: WorkingPlanNote[] = []
   for (const a of tagged) {
-    const side = sides.find(sd => sd.side === String(a.side ?? '').trim().toUpperCase())
+    const wanted = String(a.side ?? '').trim().toUpperCase()
     // A stale side id survives a re-digitise. Skipping beats placing a label at
     // NaN, which would corrupt every coordinate in the sheet.
-    if (!side) continue
+    const i = sides.findIndex(sd => sd.side === wanted)
+    if (i < 0) continue
+    const label = String(a.label).trim()
+    const role = String(a.role ?? '')
 
-    const mx = (side.a[0] + side.b[0]) / 2
-    const my = (side.a[1] + side.b[1]) / 2
-    const dx = mx - cx, dy = my - cy
-    const len = Math.hypot(dx, dy)
-    // Outward from the parcel centre, so the name never sits on the figure.
-    const ux = len > 0 ? dx / len : 0
-    const uy = len > 0 ? dy / len : 0
-    notes.push({ text: String(a.label).trim(), X: mx + ux * offset, Y: my + uy * offset })
+    if (role === 'contiguous') {
+      const side = sides[i]
+      const mx = (side.a[0] + side.b[0]) / 2
+      const my = (side.a[1] + side.b[1]) / 2
+      const dx = mx - cx, dy = my - cy
+      const len = Math.hypot(dx, dy)
+      const ux = len > 0 ? dx / len : 0
+      const uy = len > 0 ? dy / len : 0
+      notes.push({ text: label, X: mx + ux * offset, Y: my + uy * offset })
+    } else if (role === 'road' || role === 'servitude') {
+      const w = Number(a.widthM)
+      const name = Number.isFinite(w) && w > 0 ? `${label} ${formatWidthSI(w)}m` : label
+      roads.push({ name, from: ring[i].name, to: ring[(i + 1) % ring.length].name })
+    }
   }
-  return notes
+  return { notes, roads }
 }
 
 export function buildWorkingPlanSpec(
@@ -367,6 +405,7 @@ export function buildWorkingPlanSpec(
   const missingSeen = new Set<string>()
   const parcelsWithoutNamedRing: string[] = []
   const notes: WorkingPlanNote[] = []
+  const roads: WorkingPlanRoad[] = []
   const used: string[] = []
   const seen = new Set<string>()
 
@@ -401,10 +440,12 @@ export function buildWorkingPlanSpec(
       if (!seen.has(n)) { seen.add(n); used.push(n) }
     }
     parcels.push({ label, ring })
-    notes.push(...contiguousNotes(
+    const feats = sideFeatures(
       ring.map(n => ({ name: n, ...byName.get(n)! })),
       ctx.sideAnnotations?.[String(p?.id ?? '')],
-    ))
+    )
+    notes.push(...feats.notes)
+    roads.push(...feats.roads)
   }
 
   // The working plan shows the WHOLE final coordinate list -- reference marks,
@@ -437,6 +478,7 @@ export function buildWorkingPlanSpec(
       // control rather than that none was imported.
       ...(inset ? { inset } : {}),
       ...(notes.length > 0 ? { notes } : {}),
+      ...(roads.length > 0 ? { roads } : {}),
     },
     skippedParcels,
     beaconCount: byName.size,

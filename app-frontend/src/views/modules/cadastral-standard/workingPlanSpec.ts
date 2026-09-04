@@ -107,6 +107,8 @@ export interface WorkingPlanSpec {
   roads?: WorkingPlanRoad[]
   /** Areas of the mutations and remaining extent against the parent's area. */
   areaStatement?: WorkingPlanAreaStatement
+  /** Survey Record number, already prefixed for printing. */
+  srNumber?: string
 }
 
 export interface WorkingPlanSpecResult {
@@ -148,7 +150,11 @@ export interface WorkingPlanSpecContext {
    * `contiguous` name the neighbouring property along that side -- the only
    * place the data model records a surrounding property's designation.
    */
-  sideAnnotations?: Record<string, Array<{ side?: string; role?: string; label?: string; widthM?: number }>>
+  sideAnnotations?: Record<string, Array<{
+    side?: string; role?: string; label?: string; widthM?: number
+    /** Where the road leads at each end of the side (docket item 10). */
+    destinationFrom?: string; destinationTo?: string
+  }>>
 }
 
 /** A ring shorter than this is not a polygon. */
@@ -310,6 +316,19 @@ export function workingPlanTitle(projectInfo: any): string[] {
   return lines.slice(0, 4)
 }
 
+/**
+ * The Survey Record number as it should print.
+ *
+ * Captured values vary -- "12345", "SR 12345", "S.R. No. 12345" -- so the
+ * prefix is added only when the surveyor has not already written one.
+ * Prefixing blindly would put "SR SR 12345" on the sheet.
+ */
+function srNumberFrom(projectInfo: any): string | undefined {
+  const raw = String(projectInfo?.srNo ?? '').trim()
+  if (!raw) return undefined
+  return /^s\.?\s*r\.?/i.test(raw) ? raw : `S.R. No. ${raw}`
+}
+
 function certificateFrom(config: any): { line1: string; line2: string } {
   const raw = config?.surveyDate
   const when = raw ? new Date(raw) : null
@@ -446,7 +465,7 @@ function sideFeatures(
 ): { notes: NoteCandidate[]; roads: RoadCandidate[] } {
   const notes: NoteCandidate[] = []
   const roads: RoadCandidate[] = []
-  const linear: Array<{ i: number; label: string; widthM: number; role: string }> = []
+  const linear: Array<{ i: number; label: string; widthM: number; role: string; destFrom: string; destTo: string }> = []
   const tagged = (annotations ?? []).filter(a => String(a?.label ?? '').trim() !== '')
   if (tagged.length === 0 || ring.length < MIN_RING) return { notes, roads }
 
@@ -481,7 +500,11 @@ function sideFeatures(
       )
       notes.push({ text: label, X: at.X, Y: at.Y, length: sideLength(sides[i]) })
     } else if (role === 'road' || role === 'servitude') {
-      linear.push({ i, label, widthM: Number(a.widthM), role })
+      linear.push({
+        i, label, widthM: Number(a.widthM), role,
+        destFrom: String(a.destinationFrom ?? '').trim(),
+        destTo: String(a.destinationTo ?? '').trim(),
+      })
     }
   }
   // A linear feature lettered around a corner -- 'M A I N' then 'R O A D' -- is
@@ -503,7 +526,14 @@ function sideFeatures(
     const parts = run.map(x => x.label)
     const width = run.map(x => x.widthM).find(w => Number.isFinite(w) && w > 0)
     const base = parts.join(' ')
-    const name = width ? `${base} ${formatWidthSI(width)}m` : base
+    const withWidth = width ? `${base} ${formatWidthSI(width)}m` : base
+    // Destinations, lettered ASCII: the Fifth Schedule uses arrowheads, which
+    // an ANSI_1252 R12 file cannot carry as text. Drawing them as geometry is
+    // the faithful form and is still to do.
+    const df = run.map(x => x.destFrom).find(Boolean)
+    const dt = run.map(x => x.destTo).find(Boolean)
+    const dest = [df ? `<- ${df}` : '', dt ? `${dt} ->` : ''].filter(Boolean).join('   ')
+    const name = dest ? `${withWidth} ${dest}` : withWidth
     // Letter it on the longest side of the run.
     const best = run.reduce((a, b) => (sideLength(sides[b.i]) > sideLength(sides[a.i]) ? b : a))
     roads.push({
@@ -642,6 +672,8 @@ export function buildWorkingPlanSpec(
         }
       : undefined
 
+  const srNumber = srNumberFrom(ctx.projectInfo)
+
   const inset = buildInset(ctx.calibration, figureBeacons)
 
   return {
@@ -658,6 +690,7 @@ export function buildWorkingPlanSpec(
       ...(finalNotes.length > 0 ? { notes: finalNotes } : {}),
       ...(finalRoads.length > 0 ? { roads: finalRoads } : {}),
       ...(areaStatement ? { areaStatement } : {}),
+      ...(srNumber ? { srNumber } : {}),
     },
     skippedParcels,
     beaconCount: byName.size,

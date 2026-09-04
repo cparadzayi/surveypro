@@ -879,3 +879,71 @@ describe('buildWorkingPlanSpec — area statement', () => {
     expect(spec.areaStatement).toBeUndefined()
   })
 })
+
+/**
+ * The Surveyor-General's current examination docket adds "21. SR number added"
+ * to the Working Plan list. The number is already captured in Project Setup as
+ * srNo; it simply never reached the sheet.
+ */
+describe('buildWorkingPlanSpec — SR number', () => {
+  it('carries the SR number from project setup onto the sheet', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({ projectInfo: { designation: 'Stand 405', srNo: 'SR 12345' } }))
+    expect(spec.srNumber).toBe('SR 12345')
+  })
+
+  it('omits it when none has been captured', () => {
+    expect(buildWorkingPlanSpec(ctx()).spec.srNumber).toBeUndefined()
+    expect(buildWorkingPlanSpec(ctx({ projectInfo: { srNo: '   ' } })).spec.srNumber).toBeUndefined()
+  })
+
+  it('does not invent the "SR" prefix when the surveyor already typed it', () => {
+    // Captured values vary: "12345", "SR 12345", "S.R. 12345". Prefixing blindly
+    // would produce "SR SR 12345" on a statutory-adjacent sheet.
+    expect(buildWorkingPlanSpec(ctx({ projectInfo: { srNo: '12345' } })).spec.srNumber).toBe('S.R. No. 12345')
+    expect(buildWorkingPlanSpec(ctx({ projectInfo: { srNo: 'SR 12345' } })).spec.srNumber).toBe('SR 12345')
+    expect(buildWorkingPlanSpec(ctx({ projectInfo: { srNo: 'S.R. No. 999' } })).spec.srNumber).toBe('S.R. No. 999')
+  })
+})
+
+/**
+ * Docket item 10 is "Road names, widths OR destinations". The Fifth Schedule's
+ * road sign letters the destinations at each end with arrowheads.
+ *
+ * R12 DXF has no UTF-8 and the file declares ANSI_1252, in which the arrow
+ * characters do not exist -- so destinations are lettered with ASCII arrows
+ * until the arrowheads are drawn as geometry.
+ */
+describe('buildWorkingPlanSpec — road destinations', () => {
+  const road = (extra: any) => ctx({
+    beacons: squareBeacons,
+    parcels: [sq('404', ['Q1', 'Q2', 'Q3', 'Q4'], squarePts)],
+    sideAnnotations: { '404': [{ side: 'AB', role: 'road', label: 'Main Road', ...extra }] },
+  })
+
+  it('letters both destinations along the road', () => {
+    const { spec } = buildWorkingPlanSpec(road({ destinationFrom: 'Gwelo', destinationTo: 'Gweru' }))
+    expect(spec.roads![0].name).toBe('Main Road <- Gwelo   Gweru ->')
+  })
+
+  it('letters a single destination without inventing the other', () => {
+    expect(buildWorkingPlanSpec(road({ destinationTo: 'Gweru' })).spec.roads![0].name)
+      .toBe('Main Road Gweru ->')
+    expect(buildWorkingPlanSpec(road({ destinationFrom: 'Gwelo' })).spec.roads![0].name)
+      .toBe('Main Road <- Gwelo')
+  })
+
+  it('carries width and destinations together when both are recorded', () => {
+    const { spec } = buildWorkingPlanSpec(road({ widthM: 25.19, destinationTo: 'Gweru' }))
+    expect(spec.roads![0].name).toBe('Main Road 25,19m Gweru ->')
+  })
+
+  it('is unchanged when no destination was recorded', () => {
+    expect(buildWorkingPlanSpec(road({ widthM: 25.19 })).spec.roads![0].name).toBe('Main Road 25,19m')
+  })
+
+  it('emits nothing the DXF code page cannot represent', () => {
+    // A real arrow here would be written as UTF-8 into an ANSI_1252 file.
+    const { spec } = buildWorkingPlanSpec(road({ destinationFrom: 'Gwelo', destinationTo: 'Gweru' }))
+    expect([...spec.roads![0].name].every(c => c.charCodeAt(0) <= 255)).toBe(true)
+  })
+})

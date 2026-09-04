@@ -58,6 +58,10 @@ export class DxfDocument {
     // ---------------------------------------------------------------- HEADER
     g(0, 'SECTION'); g(2, 'HEADER');
     g(9, '$ACADVER'); g(1, 'AC1009');
+    // Declare the code page, and the route encodes the file to match. Without
+    // it a non-ASCII character (the m² in the area statement) is written as
+    // multi-byte UTF-8 and AutoCAD renders it as mÂ². R12 has no UTF-8.
+    g(9, '$DWGCODEPAGE'); g(3, 'ANSI_1252');
     g(9, '$INSUNITS'); g(70, this.insunits);
     g(9, '$MEASUREMENT'); g(70, 1);
     g(9, '$LTSCALE'); g(40, f(this.ltscale));

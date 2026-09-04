@@ -79,7 +79,7 @@ export default async function workingPlanRoutes(fastify) {
         .header('X-Plan-Scale', String(out.scale))
         .header('X-Plan-Grid', JSON.stringify(out.gridInterval))
         .header('X-Plan-Areas', JSON.stringify(out.areas))
-        .send(Buffer.from(out.dxf, 'utf8'))
+        .send(Buffer.from(out.dxf, 'latin1'))   // matches $DWGCODEPAGE ANSI_1252
     } catch (error) {
       // error may not be a real Error (a thrown string/object leaves .message
       // undefined), which would silently miss the regex below and send a 500

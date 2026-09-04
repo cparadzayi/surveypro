@@ -144,6 +144,25 @@ ${s}
     expect(dxf).toContain('28 000,00 m²')
   })
 
+  test('emits nothing the declared code page cannot represent', () => {
+    // R12 has no UTF-8. The file declares ANSI_1252 and the route encodes
+    // latin1 to match, so a character above U+00FF would be silently mangled --
+    // and the Fifth Schedule's arrow forms (U+2190/2192) are exactly that.
+    const { dxf } = generateWorkingPlan({
+      ...brackenhurstSpec,
+      areaStatement: {
+        originalArea: 100, mutations: [{ label: '403', area: 60 }],
+        remainder: { label: 'Remaining Extent', area: 40 }, total: 100, difference: 0,
+      },
+      srNumber: 'S.R. No. 12345',
+    })
+    expect(dxf).toContain('ANSI_1252')
+    const outside = [...dxf].filter(c => c.charCodeAt(0) > 255)
+    expect([...new Set(outside)]).toEqual([])
+    // and the one non-ASCII character we do use survives the round trip
+    expect(Buffer.from(dxf, 'latin1').includes(0xB2)).toBe(true)
+  })
+
   test('picks a scale itself when asked to', () => {
     const out = generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' })
     expect(typeof out.scale).toBe('number')

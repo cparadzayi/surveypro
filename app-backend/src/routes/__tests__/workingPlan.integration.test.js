@@ -95,3 +95,51 @@ describe('the route accepts every sign the adapter can emit', () => {
     expect(res.rawPayload.toString()).not.toMatch(/NaN/)
   })
 })
+
+/**
+ * The generator's own guard proves it emits nothing above U+00FF. This proves
+ * the ROUTE hands those characters over as the single bytes the declared code
+ * page expects -- the two are different failures, and only this one is what the
+ * surveyor actually opens.
+ *
+ * Before $DWGCODEPAGE was declared the body went out as UTF-8, so the m² in the
+ * area statement reached AutoCAD as "mÂ²".
+ */
+describe('the delivered file matches the code page it declares', () => {
+  const specWithArea = {
+    scale: 'auto',
+    beacons: [
+      { name: 'A', X: 2144027.08, Y: -85673.91, symbol: 'placed', label: 'auto' },
+      { name: 'B', X: 2144063.20, Y: -85710.12, symbol: 'placed', label: 'auto' },
+      { name: 'C', X: 2144076.45, Y: -85723.41, symbol: 'placed', label: 'auto' },
+    ],
+    parcels: [{ label: '404', ring: ['A', 'B', 'C'] }],
+    title: ['WORKING PLAN OF', 'Stand 404'],
+    areaStatement: {
+      originalArea: 4100, mutations: [{ label: '404', area: 4046.89 }],
+      remainder: null, total: 4046.89, difference: -53.11,
+    },
+  }
+
+  test('declares ANSI_1252 and encodes the superscript as one byte', async () => {
+    const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: specWithArea })
+    expect(res.statusCode).toBe(200)
+
+    const body = res.rawPayload
+    expect(body.toString('latin1')).toContain('ANSI_1252')
+
+    // 0xB2 alone is cp1252 "²". 0xC2 0xB2 is the UTF-8 form, and is the bug.
+    expect(body.includes(Buffer.from([0xb2]))).toBe(true)
+    expect(body.includes(Buffer.from([0xc2, 0xb2]))).toBe(false)
+
+    // and the area statement really is in there, read back through the code page
+    expect(body.toString('latin1')).toContain('4 046,89 m²')
+  })
+
+  test('every byte is a single-byte character, as R12 requires', async () => {
+    const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: specWithArea })
+    const body = res.rawPayload
+    // Round-tripping through latin1 is lossless only if nothing was multi-byte.
+    expect(Buffer.from(body.toString('latin1'), 'latin1').equals(body)).toBe(true)
+  })
+})

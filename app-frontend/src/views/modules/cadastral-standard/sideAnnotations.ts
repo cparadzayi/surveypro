@@ -5,6 +5,12 @@ export interface SideAnnotation {
   role: SideRole
   label?: string
   widthM?: number
+  /** Where a road leads at each end of the side. The SG examination docket
+   *  accepts "road names, widths OR destinations", and the Fifth Schedule's
+   *  road sign letters the destination at each end. `From` is the side's
+   *  first-letter vertex, `To` the second -- same convention as `end`. */
+  destinationFrom?: string
+  destinationTo?: string
   /** Set on role:'servitude' entries that are a derived mirror of a Servitude record. */
   servitudeId?: string
   /** contiguous only: which terminal(s) the abutment offset sits at.

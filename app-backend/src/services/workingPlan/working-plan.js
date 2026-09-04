@@ -54,6 +54,10 @@ export const LAYOUT = {
 
   // Area statement: the free column between the scale line, the approval box
   // (x from 228.13) and the inset (y from 109.69).
+  // Survey Record number: between the scale line (54.1) and the area block
+  // (66.0), centred under the title like the scale above it.
+  srNumber: { cx: 175.93, baseline: 60.4 },
+
   areaBlock: {
     x0: 162.9, valueX: 224.0,
     headingBaseline: 66.0, rowHeight: 5.2,
@@ -165,6 +169,7 @@ function distToSegment([px, py], [x1, y1], [x2, y2]) {
  * @param {Array}  spec.parcels    [{ label, ring:[beaconName], labelAt? }]
  * @param {Array}  [spec.existing] [{ from, to, extendFrom?, extendTo? }]  dashed parent boundaries, mm extensions
  * @param {Array}  [spec.roads]    [{ name, from, to, offset }]  offset in mm, +ve left of from->to
+ * @param {string} [spec.srNumber]  Survey Record number, printed under the scale
  * @param {object} [spec.areaStatement] { originalArea, mutations, remainder, total, difference }
  * @param {Array}  [spec.notes]    [{ text, X, Y, height? }]  e.g. neighbouring stand numbers
  * @param {Array}  spec.title      up to four heading lines
@@ -558,6 +563,12 @@ export function generateWorkingPlan(spec) {
       ch, { layer: 'TITLE', style: 'ARIAL-BOLD' });
     d.text(spec.certificate.line2, S(L.certificate.line2.x, L.certificate.line2.baseline),
       ch, { layer: 'TITLE', style: 'ARIAL-BOLD' });
+  }
+
+  /* ---- Survey Record number (examination docket, Working Plan item 21) */
+  if (spec.srNumber) {
+    d.text(spec.srNumber, S(L.srNumber.cx, L.srNumber.baseline), mm(L.text.scale),
+      { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
   }
 
   /* ---- area statement: mutations + remaining extent against the parent */

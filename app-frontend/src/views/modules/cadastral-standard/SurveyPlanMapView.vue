@@ -25,6 +25,12 @@
           <label v-if="activeSideEditor.role === 'servitude' || activeSideEditor.role === 'road'">Width (m)
             <input v-model.number="activeSideEditor.widthM" type="number" min="0" step="0.1" />
           </label>
+          <label v-if="activeSideEditor.role === 'road'">Leads to (from {{ activeSideEditor.side[0] }})
+            <input v-model="activeSideEditor.destinationFrom" type="text" placeholder="e.g. Gwelo" />
+          </label>
+          <label v-if="activeSideEditor.role === 'road'">Leads to (from {{ activeSideEditor.side[1] }})
+            <input v-model="activeSideEditor.destinationTo" type="text" placeholder="e.g. Gweru" />
+          </label>
           <label v-if="activeSideEditor.role === 'contiguous'">Abutment
             <select v-model="activeSideEditor.end">
               <option value="from">From terminal ({{ activeSideEditor.side[0] }})</option>
@@ -764,7 +770,8 @@ const refinedBeaconLabels = ref<Array<{
 const selectedDiagramParcelId = ref<string | number | null>(null)
 const sideAnnotationsBySubject = ref<Record<string, SideAnnotation[]>>({})
 const currentSideAnnotations = computed(() => annotationsForSubject(sideAnnotationsBySubject.value, selectedDiagramParcelId.value))
-const activeSideEditor = ref<{ side: string; role: SideRole; label: string; widthM: number | null; end: 'from' | 'to' | 'both' } | null>(null)
+const activeSideEditor = ref<{ side: string; role: SideRole; label: string; widthM: number | null;
+  destinationFrom: string; destinationTo: string; end: 'from' | 'to' | 'both' } | null>(null)
 const selectedDiagramStand = computed(() => {
   const p = parcels.value.find((x: any) => String(x.id) === String(selectedDiagramParcelId.value))
   return p?.stand ?? null
@@ -2034,6 +2041,8 @@ function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
           role: cur?.role ?? 'contiguous',
           label: cur?.label ?? '',
           widthM: cur?.widthM ?? null,
+          destinationFrom: cur?.destinationFrom ?? '',
+          destinationTo: cur?.destinationTo ?? '',
           end: cur?.role === 'contiguous' ? (cur.end ?? 'both') : end,
         }
         return
@@ -2066,6 +2075,8 @@ function saveSideEditor() {
     role: ed.role,
     label: ed.label?.trim() || undefined,
     widthM: (ed.role === 'servitude' || ed.role === 'road') && ed.widthM != null ? ed.widthM : undefined,
+    destinationFrom: ed.role === 'road' ? (ed.destinationFrom?.trim() || undefined) : undefined,
+    destinationTo: ed.role === 'road' ? (ed.destinationTo?.trim() || undefined) : undefined,
     end: ed.role === 'contiguous' ? ed.end : undefined,
   }
   const list = upsertAnnotation(currentSideAnnotations.value, ann)

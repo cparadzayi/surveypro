@@ -52,6 +52,14 @@ export const LAYOUT = {
 
   inset: { box: { x0: 162.9, y0: 109.69, x1: 291.97, y1: 196.13 } },
 
+  // Area statement: the free column between the scale line, the approval box
+  // (x from 228.13) and the inset (y from 109.69).
+  areaBlock: {
+    x0: 162.9, valueX: 224.0,
+    headingBaseline: 66.0, rowHeight: 5.2,
+    maxRows: 8,          // beyond this the mutations are summarised, see below
+  },
+
   // cap heights, mm on paper
   text: {
     beacon: 2.05, grid: 2.05, parcel: 3.07, road: 3.07,
@@ -157,6 +165,7 @@ function distToSegment([px, py], [x1, y1], [x2, y2]) {
  * @param {Array}  spec.parcels    [{ label, ring:[beaconName], labelAt? }]
  * @param {Array}  [spec.existing] [{ from, to, extendFrom?, extendTo? }]  dashed parent boundaries, mm extensions
  * @param {Array}  [spec.roads]    [{ name, from, to, offset }]  offset in mm, +ve left of from->to
+ * @param {object} [spec.areaStatement] { originalArea, mutations, remainder, total, difference }
  * @param {Array}  [spec.notes]    [{ text, X, Y, height? }]  e.g. neighbouring stand numbers
  * @param {Array}  spec.title      up to four heading lines
  * @param {number|'auto'} spec.scale
@@ -165,6 +174,14 @@ function distToSegment([px, py], [x1, y1], [x2, y2]) {
  * @param {object} [spec.inset]    { scale, gridInterval, beacons:[{name,X,Y,symbol}] }
  * @returns {{ dxf:string, scale:number, gridInterval:{e:number,n:number}, areas:object }}
  */
+/** SI format: comma decimal, space thousands -- as the diagram renderer writes
+ *  numbers, so an area reads identically on both documents. */
+function fmtArea(v) {
+  const fixed = Math.abs(Number(v) || 0).toFixed(2);
+  const [int, dec] = fixed.split('.');
+  return `${int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')},${dec}`;
+}
+
 export function generateWorkingPlan(spec) {
   const L = LAYOUT;
   const byName = new Map(spec.beacons.map((b) => [b.name, { ...b, ...loToGround(b) }]));
@@ -541,6 +558,43 @@ export function generateWorkingPlan(spec) {
       ch, { layer: 'TITLE', style: 'ARIAL-BOLD' });
     d.text(spec.certificate.line2, S(L.certificate.line2.x, L.certificate.line2.baseline),
       ch, { layer: 'TITLE', style: 'ARIAL-BOLD' });
+  }
+
+  /* ---- area statement: mutations + remaining extent against the parent */
+  if (spec.areaStatement) {
+    const A = L.areaBlock;
+    const a = spec.areaStatement;
+    const ah = mm(L.text.certificate);
+    let row = 0;
+    const line = (label, value, bold) => {
+      const y = A.headingBaseline + row * A.rowHeight;
+      d.text(label, S(A.x0, y), ah, { layer: 'TITLE', style: bold ? 'ARIAL-BOLD' : 'ARIAL' });
+      if (value != null) {
+        d.text(value, S(A.valueX, y), ah,
+          { layer: 'TITLE', style: bold ? 'ARIAL-BOLD' : 'ARIAL', align: 'right' });
+      }
+      row++;
+    };
+
+    line('AREAS', null, true);
+    // A township plan can carry seventy stands; listing them all would run off
+    // the sheet and into the inset. Past the row budget they are summarised,
+    // which keeps the total -- and so the check -- intact.
+    const budget = A.maxRows - 4;   // heading, total, original, difference
+    if (a.mutations.length > budget) {
+      const sum = a.mutations.reduce((t, m) => t + m.area, 0);
+      line(`${a.mutations.length} stands`, `${fmtArea(sum)} m²`);
+    } else {
+      for (const m of a.mutations) line(m.label, `${fmtArea(m.area)} m²`);
+    }
+    if (a.remainder) line(a.remainder.label, `${fmtArea(a.remainder.area)} m²`);
+    line('Total', `${fmtArea(a.total)} m²`, true);
+    if (a.originalArea != null) {
+      line('Original Area', `${fmtArea(a.originalArea)} m²`);
+      // Signed, because the sign says whether land was gained or lost.
+      const diff = a.difference ?? 0;
+      line('Difference', `${diff >= 0 ? '+' : '-'} ${fmtArea(Math.abs(diff))} m²`, true);
+    }
   }
 
   /* ---- locality inset (its own, much smaller, scale) */

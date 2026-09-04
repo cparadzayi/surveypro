@@ -50,6 +50,26 @@ export interface WorkingPlanNote {
   Y: number
 }
 
+/**
+ * The subdivision's area check, as the SG checklist requires it: the parent's
+ * registered area, each new mutation, the remaining extent, and their sum.
+ *
+ * `originalArea` is NOT computed -- it is read off the title diagram and
+ * captured in Project Setup. Computing it would make `difference` an arithmetic
+ * identity and the check meaningless. The remaining extent IS computed from its
+ * own ring, so a non-zero difference is a real finding about the survey.
+ */
+export interface WorkingPlanAreaStatement {
+  /** From the title diagram, m². Null when it has not been captured. */
+  originalArea: number | null
+  mutations: Array<{ label: string; area: number }>
+  remainder: { label: string; area: number } | null
+  /** Mutations plus the remaining extent. */
+  total: number
+  /** total - originalArea. Null when there is nothing to compare against. */
+  difference: number | null
+}
+
 /** A name lettered along a side: the renderer rotates it and places it clear of
  *  the figure. Used for roads and servitudes alike -- both are adjoining
  *  features named along the boundary they abut. */
@@ -85,6 +105,8 @@ export interface WorkingPlanSpec {
   notes?: WorkingPlanNote[]
   /** Roads and servitudes, lettered along the side they abut. */
   roads?: WorkingPlanRoad[]
+  /** Areas of the mutations and remaining extent against the parent's area. */
+  areaStatement?: WorkingPlanAreaStatement
 }
 
 export interface WorkingPlanSpecResult {
@@ -521,6 +543,8 @@ export function buildWorkingPlanSpec(
   const parcelsWithoutNamedRing: string[] = []
   const notes: NoteCandidate[] = []
   const roads: RoadCandidate[] = []
+  const mutationAreas: Array<{ label: string; area: number }> = []
+  let remainderArea: { label: string; area: number } | null = null
   const used: string[] = []
   const seen = new Set<string>()
 
@@ -539,6 +563,12 @@ export function buildWorkingPlanSpec(
     // "Not drawn (no named boundary points)". Reporting it there would train
     // surveyors to ignore a real warning.
     if (ctx.outsideFigureId !== undefined && ctx.outsideFigureId !== null && p?.id === ctx.outsideFigureId) {
+      // Not drawn as a stand, but it IS the remaining extent and its area is
+      // the whole point of the check.
+      const ofArea = Number(p?.area_m2)
+      if (Number.isFinite(ofArea) && ofArea > 0) {
+        remainderArea = { label: 'Remaining Extent', area: ofArea }
+      }
       continue
     }
     const label = String(p?.stand ?? p?.designation ?? p?.id ?? '').trim() || '(unnamed)'
@@ -564,6 +594,9 @@ export function buildWorkingPlanSpec(
       if (!seen.has(n)) { seen.add(n); used.push(n) }
     }
     parcels.push({ label, ring })
+    const area = Number(p?.area_m2)
+    if (Number.isFinite(area) && area > 0) mutationAreas.push({ label, area })
+
     const feats = sideFeatures(
       ring.map(n => ({ name: n, ...byName.get(n)! })),
       ctx.sideAnnotations?.[String(p?.id ?? '')],
@@ -595,6 +628,20 @@ export function buildWorkingPlanSpec(
   const finalRoads: WorkingPlanRoad[] = longestPerName(roads, r => r.name)
     .map(({ name, from, to }) => ({ name, from, to }))
 
+  const parentArea = Number(ctx.projectInfo?.parentArea)
+  const hasParent = Number.isFinite(parentArea) && parentArea > 0
+  const total = mutationAreas.reduce((t, m) => t + m.area, 0) + (remainderArea?.area ?? 0)
+  const areaStatement: WorkingPlanAreaStatement | undefined =
+    mutationAreas.length > 0 || remainderArea
+      ? {
+          originalArea: hasParent ? parentArea : null,
+          mutations: mutationAreas,
+          remainder: remainderArea,
+          total,
+          difference: hasParent ? total - parentArea : null,
+        }
+      : undefined
+
   const inset = buildInset(ctx.calibration, figureBeacons)
 
   return {
@@ -610,6 +657,7 @@ export function buildWorkingPlanSpec(
       ...(inset ? { inset } : {}),
       ...(finalNotes.length > 0 ? { notes: finalNotes } : {}),
       ...(finalRoads.length > 0 ? { roads: finalRoads } : {}),
+      ...(areaStatement ? { areaStatement } : {}),
     },
     skippedParcels,
     beaconCount: byName.size,

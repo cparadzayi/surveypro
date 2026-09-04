@@ -392,6 +392,10 @@ export interface CadastralWorkflowState {
     standReference?: string; // Stand/Reference number (e.g., "STANDS 1-50") - from Project Setup
     township?: string; // Township name (e.g., "Maglas Township") - from Project Setup
     parentProperty?: string; // Immediate parent property (e.g., "Shabani Mine Surface Rights A") - from Project Setup
+    /** Registered area of the parent from its title diagram, m². Captured in
+     *  Project Setup; the working plan checks the mutations and remaining
+     *  extent sum back to it. Never computed. */
+    parentArea?: number | null;
     surveyDescription: string;
     projectId?: number; // Survey project ID for fetching control points
     centralMeridian?: number; // Central meridian (Lo27, Lo29, Lo31, Lo33)

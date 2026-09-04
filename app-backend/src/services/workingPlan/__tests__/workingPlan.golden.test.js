@@ -100,6 +100,50 @@ describe('generateWorkingPlan — golden', () => {
     expect(tallest / Math.max(...body)).toBeCloseTo(1.25, 2)
   })
 
+  test('states the mutations, the remainder and their difference from the parent', () => {
+    // The SG checklist wants the sum of the new areas set against the parent's
+    // registered area, so the sheet shows no land was lost or gained. The
+    // difference is signed: the sign is the whole point.
+    const { dxf } = generateWorkingPlan({
+      ...brackenhurstSpec,
+      areaStatement: {
+        originalArea: 17580.44,
+        mutations: [
+          { label: '403', area: 4046.89 },
+          { label: '404', area: 4046.58 },
+          { label: '405', area: 4047.37 },
+        ],
+        remainder: { label: 'Remaining Extent', area: 5435.71 },
+        total: 17576.55,
+        difference: -3.89,
+      },
+    })
+    for (const s of ['AREAS', 'Remaining Extent', 'Total', 'Original Area', 'Difference']) {
+      expect(dxf).toContain(`
+${s}
+`)
+    }
+    // SI format: comma decimal, space thousands, as the diagram writes numbers.
+    expect(dxf).toContain('17 576,55 m²')
+    expect(dxf).toContain('- 3,89 m²')
+    expect(dxf).not.toMatch(/NaN/)
+  })
+
+  test('summarises the stands when a township would overrun the sheet', () => {
+    // Seventy stands listed one per row would run off the block and into the
+    // locality inset. The total must survive the summary -- it is the check.
+    const many = Array.from({ length: 70 }, (_, i) => ({ label: `${i + 1}`, area: 400 }))
+    const { dxf } = generateWorkingPlan({
+      ...brackenhurstSpec,
+      areaStatement: {
+        originalArea: 28000, mutations: many, remainder: null,
+        total: 28000, difference: 0,
+      },
+    })
+    expect(dxf).toContain('70 stands')
+    expect(dxf).toContain('28 000,00 m²')
+  })
+
   test('picks a scale itself when asked to', () => {
     const out = generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' })
     expect(typeof out.scale).toBe('number')

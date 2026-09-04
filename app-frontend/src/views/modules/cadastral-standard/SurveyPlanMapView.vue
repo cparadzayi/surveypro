@@ -669,6 +669,10 @@ const props = defineProps<{
     centralMeridian?: number
     wholePortion?: string
     parentProperty?: string
+    /** Registered area of the parent from its title diagram (m²), captured in
+     *  Project Setup. The working plan sums the mutations and remaining extent
+     *  against it. */
+    parentArea?: number | null
     workingDirectory?: string
     name?: string
     deedOfTransferNo?: string

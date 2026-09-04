@@ -115,10 +115,7 @@ describe('the delivered file matches the code page it declares', () => {
     ],
     parcels: [{ label: '404', ring: ['A', 'B', 'C'] }],
     title: ['WORKING PLAN OF', 'Stand 404'],
-    areaStatement: {
-      originalArea: 4100, mutations: [{ label: '404', area: 4046.89 }],
-      remainder: null, total: 4046.89, difference: -53.11,
-    },
+    areaOfProperty: 4046.89,   // the m² here is what exercises the code page
   }
 
   test('declares ANSI_1252 and encodes the superscript as one byte', async () => {

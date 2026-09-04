@@ -100,48 +100,34 @@ describe('generateWorkingPlan — golden', () => {
     expect(tallest / Math.max(...body)).toBeCloseTo(1.25, 2)
   })
 
-  test('states the mutations, the remainder and their difference from the parent', () => {
-    // The SG checklist wants the sum of the new areas set against the parent's
-    // registered area, so the sheet shows no land was lost or gained. The
-    // difference is signed: the sign is the whole point.
-    const { dxf } = generateWorkingPlan({
-      ...brackenhurstSpec,
-      areaStatement: {
-        originalArea: 17580.44,
-        mutations: [
-          { label: '403', area: 4046.89 },
-          { label: '404', area: 4046.58 },
-          { label: '405', area: 4047.37 },
-        ],
-        remainder: { label: 'Remaining Extent', area: 5435.71 },
-        total: 17576.55,
-        difference: -3.89,
-      },
-    })
-    for (const s of ['AREAS', 'Remaining Extent', 'Total', 'Original Area', 'Difference']) {
-      expect(dxf).toContain(`
-${s}
-`)
-    }
-    // SI format: comma decimal, space thousands, as the diagram writes numbers.
-    expect(dxf).toContain('17 576,55 m²')
-    expect(dxf).toContain('- 3,89 m²')
-    expect(dxf).not.toMatch(/NaN/)
+  test('states one area of property, not a table of parcel areas', () => {
+    // The examination docket asks the Working Plan for "14. Area of property",
+    // singular. Per-stand areas are a GENERAL PLAN check ("10. Area of stands
+    // checked"). Supersedes a mutations/remainder/total/difference table.
+    const { dxf } = generateWorkingPlan({ ...brackenhurstSpec, areaOfProperty: 17580.44 })
+    expect(dxf).toContain('\nArea of Property\n')
+    expect(dxf).toContain('17 580,44 m²')
+    expect(dxf).not.toContain('\nAREAS\n')
+    expect(dxf).not.toContain('\nDifference\n')
   })
 
-  test('summarises the stands when a township would overrun the sheet', () => {
-    // Seventy stands listed one per row would run off the block and into the
-    // locality inset. The total must survive the summary -- it is the check.
-    const many = Array.from({ length: 70 }, (_, i) => ({ label: `${i + 1}`, area: 400 }))
-    const { dxf } = generateWorkingPlan({
-      ...brackenhurstSpec,
-      areaStatement: {
-        originalArea: 28000, mutations: many, remainder: null,
-        total: 28000, difference: 0,
-      },
-    })
-    expect(dxf).toContain('70 stands')
-    expect(dxf).toContain('28 000,00 m²')
+  test('prints the SR number lower on the sheet than anything else', () => {
+    // Docket item 21, moved to the foot of the page. Ground north = -X, so
+    // further down the sheet is a SMALLER value.
+    const { dxf } = generateWorkingPlan({ ...brackenhurstSpec, srNumber: 'S.R. No. 12345' })
+    const lines = dxf.split('\n')
+    let srY = null; const ys = []
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i] === '0' && lines[i + 1] === 'TEXT') {
+        let j = i + 2; const d = {}
+        while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+        const y = Number((d['20'] || [])[0])
+        if ((d['1'] || [])[0] === 'S.R. No. 12345') srY = y
+        else if (Number.isFinite(y)) ys.push(y)
+      }
+    }
+    expect(srY).not.toBeNull()
+    expect(srY).toBeLessThan(Math.min(...ys))
   })
 
   test('emits nothing the declared code page cannot represent', () => {
@@ -150,10 +136,7 @@ ${s}
     // and the Fifth Schedule's arrow forms (U+2190/2192) are exactly that.
     const { dxf } = generateWorkingPlan({
       ...brackenhurstSpec,
-      areaStatement: {
-        originalArea: 100, mutations: [{ label: '403', area: 60 }],
-        remainder: { label: 'Remaining Extent', area: 40 }, total: 100, difference: 0,
-      },
+      areaOfProperty: 4046.89,   // the m² here is what exercises the code page
       srNumber: 'S.R. No. 12345',
     })
     expect(dxf).toContain('ANSI_1252')

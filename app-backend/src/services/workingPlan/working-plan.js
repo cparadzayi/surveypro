@@ -26,8 +26,11 @@ export const LAYOUT = {
 
   title: {
     cx: 175.93,
-    baselines: [8.2, 20.3, 32.2, 44.2],   // up to four heading lines
-    scaleBaseline: 54.1,
+    // Shifted 6 mm down from the original 8.2/20.3/32.2/44.2. At 1.25x the
+    // heading's glyphs reached 3.26 mm from the sheet edge, inside the margin a
+    // printer can crop. They now start at 9.26 mm.
+    baselines: [14.2, 26.3, 38.2, 50.2],   // up to four heading lines
+    scaleBaseline: 60.1,
   },
 
   northArrow: {
@@ -54,15 +57,15 @@ export const LAYOUT = {
 
   // Area statement: the free column between the scale line, the approval box
   // (x from 228.13) and the inset (y from 109.69).
-  // Survey Record number: between the scale line (54.1) and the area block
-  // (66.0), centred under the title like the scale above it.
-  srNumber: { cx: 175.93, baseline: 60.4 },
+  // Survey Record number: foot of the sheet, centred on the page. The strip
+  // below 200 mm is clear right across -- the inset ends at 196.13 and the
+  // certificate sits on the left at x 5.5/19.94.
+  srNumber: { cx: 148.5, baseline: 205.0 },
 
-  areaBlock: {
-    x0: 162.9, valueX: 224.0,
-    headingBaseline: 66.0, rowHeight: 5.2,
-    maxRows: 8,          // beyond this the mutations are summarised, see below
-  },
+  // The examination docket asks the Working Plan for "14. Area of property",
+  // singular. Per-stand areas are a GENERAL PLAN check ("10. Area of stands
+  // checked"), so the working plan states one area, not a table.
+  areaBlock: { x0: 162.9, valueX: 224.0, baseline: 66.5 },
 
   // cap heights, mm on paper
   text: {
@@ -170,7 +173,7 @@ function distToSegment([px, py], [x1, y1], [x2, y2]) {
  * @param {Array}  [spec.existing] [{ from, to, extendFrom?, extendTo? }]  dashed parent boundaries, mm extensions
  * @param {Array}  [spec.roads]    [{ name, from, to, offset }]  offset in mm, +ve left of from->to
  * @param {string} [spec.srNumber]  Survey Record number, printed under the scale
- * @param {object} [spec.areaStatement] { originalArea, mutations, remainder, total, difference }
+ * @param {number} [spec.areaOfProperty]  m², stated on the sheet
  * @param {Array}  [spec.notes]    [{ text, X, Y, height? }]  e.g. neighbouring stand numbers
  * @param {Array}  spec.title      up to four heading lines
  * @param {number|'auto'} spec.scale
@@ -571,41 +574,13 @@ export function generateWorkingPlan(spec) {
       { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
   }
 
-  /* ---- area statement: mutations + remaining extent against the parent */
-  if (spec.areaStatement) {
+  /* ---- area of property (examination docket, Working Plan item 14) */
+  if (spec.areaOfProperty != null) {
     const A = L.areaBlock;
-    const a = spec.areaStatement;
     const ah = mm(L.text.certificate);
-    let row = 0;
-    const line = (label, value, bold) => {
-      const y = A.headingBaseline + row * A.rowHeight;
-      d.text(label, S(A.x0, y), ah, { layer: 'TITLE', style: bold ? 'ARIAL-BOLD' : 'ARIAL' });
-      if (value != null) {
-        d.text(value, S(A.valueX, y), ah,
-          { layer: 'TITLE', style: bold ? 'ARIAL-BOLD' : 'ARIAL', align: 'right' });
-      }
-      row++;
-    };
-
-    line('AREAS', null, true);
-    // A township plan can carry seventy stands; listing them all would run off
-    // the sheet and into the inset. Past the row budget they are summarised,
-    // which keeps the total -- and so the check -- intact.
-    const budget = A.maxRows - 4;   // heading, total, original, difference
-    if (a.mutations.length > budget) {
-      const sum = a.mutations.reduce((t, m) => t + m.area, 0);
-      line(`${a.mutations.length} stands`, `${fmtArea(sum)} m²`);
-    } else {
-      for (const m of a.mutations) line(m.label, `${fmtArea(m.area)} m²`);
-    }
-    if (a.remainder) line(a.remainder.label, `${fmtArea(a.remainder.area)} m²`);
-    line('Total', `${fmtArea(a.total)} m²`, true);
-    if (a.originalArea != null) {
-      line('Original Area', `${fmtArea(a.originalArea)} m²`);
-      // Signed, because the sign says whether land was gained or lost.
-      const diff = a.difference ?? 0;
-      line('Difference', `${diff >= 0 ? '+' : '-'} ${fmtArea(Math.abs(diff))} m²`, true);
-    }
+    d.text('Area of Property', S(A.x0, A.baseline), ah, { layer: 'TITLE', style: 'ARIAL' });
+    d.text(`${fmtArea(spec.areaOfProperty)} m²`, S(A.valueX, A.baseline), ah,
+      { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'right' });
   }
 
   /* ---- locality inset (its own, much smaller, scale) */

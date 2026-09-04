@@ -51,25 +51,16 @@ export interface WorkingPlanNote {
 }
 
 /**
- * The subdivision's area check, as the SG checklist requires it: the parent's
- * registered area, each new mutation, the remaining extent, and their sum.
+ * The examination docket asks the Working Plan for "14. Area of property",
+ * singular. Per-stand areas are a GENERAL PLAN check ("10. Area of stands
+ * checked"), so the working plan states one figure rather than a table.
  *
- * `originalArea` is NOT computed -- it is read off the title diagram and
- * captured in Project Setup. Computing it would make `difference` an arithmetic
- * identity and the check meaningless. The remaining extent IS computed from its
- * own ring, so a non-zero difference is a real finding about the survey.
+ * That figure is the parent's REGISTERED area when it has been captured -- on a
+ * subdivision the property is the land being subdivided, and its registered
+ * area is the authority. Falling back to the computed total of the surveyed
+ * parcels keeps the item satisfied when no registered area is to hand, but it
+ * is our arithmetic rather than the title's.
  */
-export interface WorkingPlanAreaStatement {
-  /** From the title diagram, m². Null when it has not been captured. */
-  originalArea: number | null
-  mutations: Array<{ label: string; area: number }>
-  remainder: { label: string; area: number } | null
-  /** Mutations plus the remaining extent. */
-  total: number
-  /** total - originalArea. Null when there is nothing to compare against. */
-  difference: number | null
-}
-
 /** A name lettered along a side: the renderer rotates it and places it clear of
  *  the figure. Used for roads and servitudes alike -- both are adjoining
  *  features named along the boundary they abut. */
@@ -105,8 +96,8 @@ export interface WorkingPlanSpec {
   notes?: WorkingPlanNote[]
   /** Roads and servitudes, lettered along the side they abut. */
   roads?: WorkingPlanRoad[]
-  /** Areas of the mutations and remaining extent against the parent's area. */
-  areaStatement?: WorkingPlanAreaStatement
+  /** Area of the property, m² (docket item 14). */
+  areaOfProperty?: number
   /** Survey Record number, already prefixed for printing. */
   srNumber?: string
 }
@@ -659,18 +650,10 @@ export function buildWorkingPlanSpec(
     .map(({ name, from, to }) => ({ name, from, to }))
 
   const parentArea = Number(ctx.projectInfo?.parentArea)
-  const hasParent = Number.isFinite(parentArea) && parentArea > 0
-  const total = mutationAreas.reduce((t, m) => t + m.area, 0) + (remainderArea?.area ?? 0)
-  const areaStatement: WorkingPlanAreaStatement | undefined =
-    mutationAreas.length > 0 || remainderArea
-      ? {
-          originalArea: hasParent ? parentArea : null,
-          mutations: mutationAreas,
-          remainder: remainderArea,
-          total,
-          difference: hasParent ? total - parentArea : null,
-        }
-      : undefined
+  const computedTotal = mutationAreas.reduce((t, m) => t + m.area, 0) + (remainderArea?.area ?? 0)
+  const areaOfProperty = Number.isFinite(parentArea) && parentArea > 0
+    ? parentArea
+    : (computedTotal > 0 ? computedTotal : undefined)
 
   const srNumber = srNumberFrom(ctx.projectInfo)
 
@@ -689,7 +672,7 @@ export function buildWorkingPlanSpec(
       ...(inset ? { inset } : {}),
       ...(finalNotes.length > 0 ? { notes: finalNotes } : {}),
       ...(finalRoads.length > 0 ? { roads: finalRoads } : {}),
-      ...(areaStatement ? { areaStatement } : {}),
+      ...(areaOfProperty != null ? { areaOfProperty } : {}),
       ...(srNumber ? { srNumber } : {}),
     },
     skippedParcels,

@@ -800,15 +800,13 @@ describe('buildWorkingPlanSpec — labels stay out of the figure', () => {
 })
 
 /**
- * The SG checklist wants "Curvilinear and Rectilinear Area given plus Total
- * Area". For a subdivision that means: the registered area of the parent, the
- * area of each new mutation, the remaining extent, and their sum set against
- * the parent — so the sheet shows no land was lost or gained.
+ * The Surveyor-General's examination docket asks the Working Plan for
+ * "14. Area of property" -- singular. Per-stand areas are a GENERAL PLAN check
+ * ("10. Area of stands checked"), so the working plan states one figure.
  *
- * The parent's area is NOT computed. It comes off the title diagram and is
- * captured in Project Setup; computing it would defeat the entire check.
- * The remaining extent IS computed from its own ring, so the difference is a
- * real finding rather than an arithmetic identity.
+ * Superseded: this block previously tested a full table of mutations, remainder,
+ * total and difference against the parent, which the older paper checklist
+ * ("Curvilinear and Rectilinear Area given plus Total Area") asked for.
  */
 const withAreas = (parcels: any[], projectInfo: any = {}) => ctx({
   beacons: squareBeacons,
@@ -821,70 +819,44 @@ const stand = (label: string, area: number, extra: any = {}) => ({
   ...extra,
 })
 
-describe('buildWorkingPlanSpec — area statement', () => {
-  it('lists each mutation with the stored area', () => {
+describe('buildWorkingPlanSpec — area of property', () => {
+  it('states the registered area of the parent when it has been captured', () => {
+    // The title's figure is the authority; ours is arithmetic.
     const { spec } = buildWorkingPlanSpec(withAreas(
-      [stand('403', 4046.89), stand('404', 4046.58), stand('405', 4047.37)],
+      [stand('403', 4046.89), stand('404', 4046.58)],
       { parentArea: 17580.44 },
     ))
-    expect(spec.areaStatement!.mutations).toEqual([
-      { label: '403', area: 4046.89 },
-      { label: '404', area: 4046.58 },
-      { label: '405', area: 4047.37 },
-    ])
+    expect(spec.areaOfProperty).toBe(17580.44)
   })
 
-  it('takes the remaining extent from the Outside Figure, computed from its ring', () => {
+  it('falls back to the computed total when no registered area is to hand', () => {
+    const { spec } = buildWorkingPlanSpec(withAreas([stand('403', 4046.89), stand('404', 4046.58)]))
+    expect(spec.areaOfProperty).toBeCloseTo(4046.89 + 4046.58, 2)
+  })
+
+  it('includes the remaining extent in that fallback total', () => {
     const of = { ...stand('Outside Figure', 5435.71), id: 99 }
     const { spec } = buildWorkingPlanSpec(ctx({
       beacons: squareBeacons,
       parcels: [stand('403', 4046.89), of],
       outsideFigureId: 99,
-      projectInfo: { parentArea: 9482.6 },
     }))
-    expect(spec.areaStatement!.remainder).toEqual({ label: 'Remaining Extent', area: 5435.71 })
-    // and it is still not drawn as a stand
-    expect(spec.parcels.map(p => p.label)).toEqual(['403'])
+    expect(spec.areaOfProperty).toBeCloseTo(4046.89 + 5435.71, 2)
   })
 
-  it('totals the mutations and the remainder, and differences it against the parent', () => {
-    const of = { ...stand('Outside Figure', 5435.71), id: 99 }
-    const { spec } = buildWorkingPlanSpec(ctx({
-      beacons: squareBeacons,
-      parcels: [stand('403', 4046.89), stand('404', 4046.58), of],
-      outsideFigureId: 99,
-      projectInfo: { parentArea: 13530.00 },
-    }))
-    const a = spec.areaStatement!
-    expect(a.originalArea).toBe(13530.00)
-    expect(a.total).toBeCloseTo(4046.89 + 4046.58 + 5435.71, 2)
-    expect(a.difference).toBeCloseTo(a.total - 13530.00, 2)
+  it('no longer tabulates the parcel areas', () => {
+    const { spec } = buildWorkingPlanSpec(withAreas(
+      [stand('403', 4046.89), stand('404', 4046.58)], { parentArea: 17580.44 },
+    ))
+    expect((spec as any).areaStatement).toBeUndefined()
   })
 
-  it('still totals when no parent area has been captured', () => {
-    // The total is useful on its own; the comparison simply cannot be made.
-    const { spec } = buildWorkingPlanSpec(withAreas([stand('403', 4046.89)]))
-    expect(spec.areaStatement!.originalArea).toBeNull()
-    expect(spec.areaStatement!.difference).toBeNull()
-    expect(spec.areaStatement!.total).toBeCloseTo(4046.89, 2)
-  })
-
-  it('reports no remainder when the project has no Outside Figure', () => {
-    const { spec } = buildWorkingPlanSpec(withAreas([stand('403', 4046.89)]))
-    expect(spec.areaStatement!.remainder).toBeNull()
-  })
-
-  it('omits the statement entirely when no parcel carries an area', () => {
+  it('omits the area entirely when no parcel carries one', () => {
     const { spec } = buildWorkingPlanSpec(withAreas([sq('403', ['Q1','Q2','Q3','Q4'], squarePts)]))
-    expect(spec.areaStatement).toBeUndefined()
+    expect(spec.areaOfProperty).toBeUndefined()
   })
 })
 
-/**
- * The Surveyor-General's current examination docket adds "21. SR number added"
- * to the Working Plan list. The number is already captured in Project Setup as
- * srNo; it simply never reached the sheet.
- */
 describe('buildWorkingPlanSpec — SR number', () => {
   it('carries the SR number from project setup onto the sheet', () => {
     const { spec } = buildWorkingPlanSpec(ctx({ projectInfo: { designation: 'Stand 405', srNo: 'SR 12345' } }))

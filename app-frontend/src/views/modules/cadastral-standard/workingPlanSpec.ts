@@ -261,7 +261,6 @@ export function workingPlanTitle(projectInfo: any): string[] {
 }
 
 function certificateFrom(config: any): { line1: string; line2: string } {
-  const name = String(config?.surveyorName ?? '').trim()
   const raw = config?.surveyDate
   const when = raw ? new Date(raw) : null
   // timeZone: 'UTC' -- `new Date('2026-07-01')` parses as UTC midnight, so
@@ -270,9 +269,12 @@ function certificateFrom(config: any): { line1: string; line2: string } {
   const month = when && !Number.isNaN(when.getTime())
     ? when.toLocaleString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
     : ''
+  // No surveyor name: the diagram renderer signs "Land Surveyor" unqualified and
+  // the working plan matches it. The name belongs on the certificate the
+  // surveyor signs, not pre-printed by us.
   return {
     line1: month ? `Surveyed in ${month} by me,` : 'Surveyed by me,',
-    line2: name ? `${name}, Land Surveyor` : 'Land Surveyor',
+    line2: 'Land Surveyor',
   }
 }
 
@@ -335,12 +337,23 @@ export function buildWorkingPlanSpec(
     parcels.push({ label, ring })
   }
 
-  const beacons: WorkingPlanBeacon[] = used.map(name => {
+  // The working plan shows the WHOLE final coordinate list -- reference marks,
+  // working stations and control included -- not just the parcel corners. The
+  // renderer takes the figure extent from ring vertices alone, so these extra
+  // points cannot shrink the figure. Ring vertices come first so the drawing
+  // order stays stable as the coordinate list grows.
+  const emitted = [...used, ...[...byName.keys()].filter(n => !seen.has(n))]
+  const beacons: WorkingPlanBeacon[] = emitted.map(name => {
     const b = byName.get(name)!
     return { name, X: b.X, Y: b.Y, symbol: beaconSymbol(b.description, b.status), label: 'auto' as const }
   })
 
-  const inset = buildInset(ctx.calibration, beacons)
+  // The inset's site marker is the FIGURE centre, so it must come from the ring
+  // vertices -- averaging the whole coordinate list would drag it toward
+  // whatever distant control happens to be listed.
+  const figureBeacons = beacons.filter(b => seen.has(b.name))
+
+  const inset = buildInset(ctx.calibration, figureBeacons)
 
   return {
     spec: {

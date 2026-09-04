@@ -148,12 +148,19 @@ describe('buildWorkingPlanSpec', () => {
     expect(spec.parcels[1].ring).toContain('SD5')
   })
 
-  it('leaves out coordinate-list points that no ring names', () => {
-    // Control and reference points belong in the coordinate list, but putting
-    // them on the sheet would stretch the extent and shrink the figure.
+  it('draws every point in the final coordinate list, not only ring vertices', () => {
+    // The working plan is what the surveyor works from, so it shows the whole
+    // computed coordinate list -- reference marks and control included, not
+    // just the parcel corners. The renderer takes the figure extent from ring
+    // vertices alone, so the extra points cannot shrink the figure.
     const { spec } = buildWorkingPlanSpec(ctx())
-    expect(spec.beacons.map(b => b.name)).not.toContain('49/T')
-    expect(spec.beacons.map(b => b.name)).not.toContain('RM16')
+    const names = spec.beacons.map(b => b.name)
+    expect(names).toEqual(expect.arrayContaining(['SD4', 'SD5', 'SD6', 'SD3', 'RM16', '49/T']))
+  })
+
+  it('still emits each point once when it is both a ring vertex and in the list', () => {
+    const { spec } = buildWorkingPlanSpec(ctx())
+    expect(spec.beacons.filter(b => b.name === 'SD4')).toHaveLength(1)
   })
 
   it('carries the symbol through from each beacon description', () => {
@@ -186,10 +193,14 @@ describe('buildWorkingPlanSpec', () => {
     expect(buildWorkingPlanSpec(ctx()).spec.scale).toBe('auto')
   })
 
-  it('builds the certificate from the surveyor and survey date', () => {
+  it('never puts the surveyor name on the sheet, matching the diagram', () => {
+    // The diagram renderer signs "Land Surveyor" with no name; the working plan
+    // does the same. The name is on the certificate the surveyor signs, not
+    // pre-printed by us.
     const { spec } = buildWorkingPlanSpec(ctx())
     expect(spec.certificate.line1).toBe('Surveyed in July 2026 by me,')
-    expect(spec.certificate.line2).toBe('A. Surveyor, Land Surveyor')
+    expect(spec.certificate.line2).toBe('Land Surveyor')
+    expect(JSON.stringify(spec)).not.toContain('A. Surveyor')
   })
 
   it('still produces a usable certificate with no surveyor or date', () => {

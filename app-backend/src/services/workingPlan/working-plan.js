@@ -225,14 +225,14 @@ export function generateWorkingPlan(spec) {
   };
 
   /**
-   * Circumscribed circle of the isoceles triangle the schedule draws for a trig
-   * beacon: it passes through all three vertices, so the circle encloses the
-   * triangle rather than sitting inside it. Centre lies on the axis by symmetry.
+   * Inscribed circle of the isoceles triangle the schedule draws for a trig
+   * beacon and an official control point: tangent to all three sides, so it
+   * sits INSIDE the triangle. r = area / semi-perimeter; the centre lies on the
+   * axis of symmetry, one radius above the base.
    */
-  const triCircum = (w, h) => {
-    const a = h * 0.62, d = h * 0.38;
-    const cy = (a * a - w * w - d * d) / (2 * (a + d));
-    return { cy, r: Math.abs(a - cy) };
+  const triIncircle = (w, h) => {
+    const r = (w * h) / (w + Math.hypot(w, h));
+    return { cy: -(h * 0.38) + r, r };
   };
 
   // --- SI 727 Fifth Schedule conventional signs ---
@@ -285,7 +285,7 @@ export function generateWorkingPlan(spec) {
   // circumscribed circle.
   doc.addBlock('BCN_TRIG', (b) => {
     const w = mm(L.symbol.trigW) / 2, h = mm(L.symbol.trigH);
-    const c = triCircum(w, h);
+    const c = triIncircle(w, h);
     b.point([0, 0]);
     b.solid([[0, h * 0.62], [-w, -h * 0.38], [w, -h * 0.38]]);
     b.polyline(circlePts(c.r, 24).map(([x, y]) => [x, y + c.cy]), { closed: true });
@@ -294,7 +294,7 @@ export function generateWorkingPlan(spec) {
   // Official control point: the same, inverted.
   doc.addBlock('BCN_OCP', (b) => {
     const w = mm(L.symbol.trigW) / 2, h = mm(L.symbol.trigH);
-    const c = triCircum(w, h);
+    const c = triIncircle(w, h);
     b.point([0, 0]);
     b.solid([[0, -h * 0.62], [w, h * 0.38], [-w, h * 0.38]]);
     b.polyline(circlePts(c.r, 24).map(([x, y]) => [x, y - c.cy]), { closed: true });
@@ -558,7 +558,7 @@ export function generateWorkingPlan(spec) {
         const w = iSym, hh = iSym * 1.55, sgn = up ? 1 : -1;
         d.solid([[at[0], at[1] + sgn * hh * 0.62], [at[0] - sgn * w, at[1] - sgn * hh * 0.38],
           [at[0] + sgn * w, at[1] - sgn * hh * 0.38]], { layer: 'INSET' });
-        ring(iSym * 1.12);
+        ring(iSym * 0.42);   // inscribed, matching the main figure
       };
       switch (b.symbol) {
         case 'trig': triangle(true); break;

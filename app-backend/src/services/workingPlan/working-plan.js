@@ -388,11 +388,64 @@ export function generateWorkingPlan(spec) {
       { layer: 'BEACON-TEXT', style: 'ARIAL', align: P[2] });
   }
 
+  /* ---- coordinate grid */
+  const pick = (span) => GRID_INTERVALS.find((i) => (i / scale) * 1000 >= 40)
+    ?? GRID_INTERVALS.at(-1);
+  const gi = spec.gridInterval ?? pick();
+  const arm = mm(L.symbol.gridArm) / 2;
+  const inset = 10;                                   // keep ticks off the panel edge
+  const segments = spec.parcels.flatMap((p) => p.ring.map((n, i) => [
+    [G(n).e, G(n).n],
+    [G(p.ring[(i + 1) % p.ring.length]).e, G(p.ring[(i + 1) % p.ring.length]).n]]));
+
+  const [pe0] = S(L.panel.x0 + inset, 0), [pe1] = S(L.panel.x1 - inset, 0);
+  const pn1 = S(0, L.panel.y0 + inset)[1], pn0 = S(0, L.panel.y1 - inset)[1];
+  const gridInterval = { e: gi, n: gi };
+  let placed = 0;
+  for (let e = Math.ceil(pe0 / gi) * gi; e <= pe1; e += gi) {
+    for (let n = Math.ceil(pn0 / gi) * gi; n <= pn1; n += gi) {
+      // the cross plus both of its labels must be clear of the figure,
+      // of every beacon symbol, and of every label already placed
+      const gw = mm(L.gridLabel.xDx + 0.63 * L.text.grid * 13);
+      const tickRect = [e - arm - mm(2), n - mm(L.gridLabel.yStartDy + 12),
+        e + gw, n + arm + mm(2)];
+      const clearOfLines = segments.every((s) => distToSegment([e, n], s[0], s[1]) > mm(7));
+      if (!clearOfLines || hits(tickRect)) continue;
+      occupied.push(tickRect);
+      d.line([e - arm, n], [e + arm, n], { layer: 'GRID' });
+      d.line([e, n - arm], [e, n + arm], { layer: 'GRID' });
+      const gh = mm(L.text.grid);
+      const Xlo = -n, Ylo = -e;
+      d.text(`X = ${Xlo >= 0 ? '+' : ''}${Xlo.toFixed(0)}`,
+        [e + mm(L.gridLabel.xDx), n - mm(L.gridLabel.xBaselineDy)], gh,
+        { layer: 'GRID-TEXT', style: 'ARIAL' });
+      d.text(`Y = ${Ylo.toFixed(0)}`,
+        [e + mm(L.gridLabel.yDx), n - mm(L.gridLabel.yStartDy)], gh,
+        { layer: 'GRID-TEXT', style: 'ARIAL', rotation: -90 });
+      placed++;
+    }
+  }
+
   /* ---- free notes (neighbouring stand numbers etc.) */
   for (const t of spec.notes ?? []) {
     const g = loToGround(t);
-    d.text(t.text, [g.e, g.n], mm(t.height ?? L.text.parcel),
-      { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
+    const th = mm(t.height ?? L.text.parcel);
+    // Step outward from the figure until the name is clear of the grid, the
+    // beacons and their labels. Drawn AFTER the grid deliberately: the
+    // coordinate framework is the more important of the two, and a neighbour's
+    // name can move. Falls back to the requested spot after the last step, so a
+    // crowded sheet still letters the neighbour rather than dropping it.
+    const dx = g.e - figCx, dy = g.n - figCy;
+    const len = Math.hypot(dx, dy) || 1;
+    const step = mm(3);
+    let px = g.e, py = g.n;
+    for (let k = 0; k <= 4; k++) {
+      const cx = g.e + (dx / len) * step * k;
+      const cy = g.n + (dy / len) * step * k;
+      const rc = textRect(t.text, cx, cy, th, 'center');
+      if (!hits(rc)) { px = cx; py = cy; occupied.push(rc); break; }
+    }
+    d.text(t.text, [px, py], th, { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
   }
 
   /* ---- road names, set along the road with a perpendicular offset */
@@ -426,48 +479,6 @@ export function generateWorkingPlan(spec) {
       ry + u * Math.sin(ang) + v * Math.cos(ang)]);
     occupied.push([Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1])),
       Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))]);
-  }
-
-  /* ---- coordinate grid */
-  const pick = (span) => GRID_INTERVALS.find((i) => (i / scale) * 1000 >= 40)
-    ?? GRID_INTERVALS.at(-1);
-  const gi = spec.gridInterval ?? pick();
-  const arm = mm(L.symbol.gridArm) / 2;
-  const inset = 10;                                   // keep ticks off the panel edge
-  const segments = spec.parcels.flatMap((p) => p.ring.map((n, i) => [
-    [G(n).e, G(n).n],
-    [G(p.ring[(i + 1) % p.ring.length]).e, G(p.ring[(i + 1) % p.ring.length]).n]]));
-
-  const [pe0] = S(L.panel.x0 + inset, 0), [pe1] = S(L.panel.x1 - inset, 0);
-  const pn1 = S(0, L.panel.y0 + inset)[1], pn0 = S(0, L.panel.y1 - inset)[1];
-  const gridInterval = { e: gi, n: gi };
-  let placed = 0;
-  for (let e = Math.ceil(pe0 / gi) * gi; e <= pe1; e += gi) {
-    for (let n = Math.ceil(pn0 / gi) * gi; n <= pn1; n += gi) {
-      // the cross plus both of its labels must be clear of the figure,
-      // of every beacon symbol, and of every label already placed
-      const gw = mm(L.gridLabel.xDx + 0.63 * L.text.grid * 13);
-      const tickRect = [e - arm - mm(2), n - mm(L.gridLabel.yStartDy + 12),
-        e + gw, n + arm + mm(2)];
-      const clearOfLines = segments.every((s) => distToSegment([e, n], s[0], s[1]) > mm(7));
-      const clearOfNotes = (spec.notes ?? []).every((t) => {
-        const g = loToGround(t);
-        return Math.hypot(g.e - e, g.n - n) > mm(9);
-      });
-      if (!clearOfLines || !clearOfNotes || hits(tickRect)) continue;
-      occupied.push(tickRect);
-      d.line([e - arm, n], [e + arm, n], { layer: 'GRID' });
-      d.line([e, n - arm], [e, n + arm], { layer: 'GRID' });
-      const gh = mm(L.text.grid);
-      const Xlo = -n, Ylo = -e;
-      d.text(`X = ${Xlo >= 0 ? '+' : ''}${Xlo.toFixed(0)}`,
-        [e + mm(L.gridLabel.xDx), n - mm(L.gridLabel.xBaselineDy)], gh,
-        { layer: 'GRID-TEXT', style: 'ARIAL' });
-      d.text(`Y = ${Ylo.toFixed(0)}`,
-        [e + mm(L.gridLabel.yDx), n - mm(L.gridLabel.yStartDy)], gh,
-        { layer: 'GRID-TEXT', style: 'ARIAL', rotation: -90 });
-      placed++;
-    }
   }
 
   /* ---- title block */

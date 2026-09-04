@@ -305,6 +305,38 @@ function certificateFrom(config: any): { line1: string; line2: string } {
   }
 }
 
+type NoteCandidate = WorkingPlanNote & { length: number }
+type RoadCandidate = WorkingPlanRoad & { length: number }
+
+const sideLength = (sd: { a: [number, number]; b: [number, number] }) =>
+  Math.hypot(sd.b[0] - sd.a[0], sd.b[1] - sd.a[1])
+
+/**
+ * One name, one label.
+ *
+ * Adjoining features are tagged per side per parcel, so three stands abutting a
+ * single remainder each tag it and the sheet letters that remainder three
+ * times, millimetres apart. Real output showed exactly that.
+ *
+ * The key collapses whitespace, because the same neighbour gets typed with
+ * different letter-spacing on different sides ('R  E  M.  /' and 'R E M. /' are
+ * one remainder). The winner is the candidate on the LONGEST side: the most
+ * legible place to letter it, and stable as parcels are re-digitised.
+ *
+ * Grouping is by name, never by proximity or role-blind merging. A name
+ * deliberately lettered across consecutive sides -- 'MAIN' then 'ROAD' around a
+ * corner -- is two different names and survives untouched.
+ */
+function longestPerName<T extends { length: number }>(items: T[], nameOf: (x: T) => string): T[] {
+  const best = new Map<string, T>()
+  for (const it of items) {
+    const key = nameOf(it).replace(/\s+/g, ' ').trim().toUpperCase()
+    const held = best.get(key)
+    if (!held || it.length > held.length) best.set(key, it)
+  }
+  return [...best.values()]
+}
+
 /** How far outside the boundary a neighbour's name sits, as a fraction of the
  *  parcel's own size -- so it scales with the figure instead of assuming a
  *  drawing scale the adapter does not know. */
@@ -339,9 +371,9 @@ function formatWidthSI(value: number, decimals = 2): string {
 function sideFeatures(
   ring: Array<{ name: string; X: number; Y: number }>,
   annotations: Array<{ side?: string; role?: string; label?: string; widthM?: number }> | undefined,
-): { notes: WorkingPlanNote[]; roads: WorkingPlanRoad[] } {
-  const notes: WorkingPlanNote[] = []
-  const roads: WorkingPlanRoad[] = []
+): { notes: NoteCandidate[]; roads: RoadCandidate[] } {
+  const notes: NoteCandidate[] = []
+  const roads: RoadCandidate[] = []
   const tagged = (annotations ?? []).filter(a => String(a?.label ?? '').trim() !== '')
   if (tagged.length === 0 || ring.length < MIN_RING) return { notes, roads }
 
@@ -371,11 +403,11 @@ function sideFeatures(
       const len = Math.hypot(dx, dy)
       const ux = len > 0 ? dx / len : 0
       const uy = len > 0 ? dy / len : 0
-      notes.push({ text: label, X: mx + ux * offset, Y: my + uy * offset })
+      notes.push({ text: label, X: mx + ux * offset, Y: my + uy * offset, length: sideLength(sides[i]) })
     } else if (role === 'road' || role === 'servitude') {
       const w = Number(a.widthM)
       const name = Number.isFinite(w) && w > 0 ? `${label} ${formatWidthSI(w)}m` : label
-      roads.push({ name, from: ring[i].name, to: ring[(i + 1) % ring.length].name })
+      roads.push({ name, from: ring[i].name, to: ring[(i + 1) % ring.length].name, length: sideLength(sides[i]) })
     }
   }
   return { notes, roads }
@@ -404,8 +436,8 @@ export function buildWorkingPlanSpec(
   const missingBeacons: string[] = []
   const missingSeen = new Set<string>()
   const parcelsWithoutNamedRing: string[] = []
-  const notes: WorkingPlanNote[] = []
-  const roads: WorkingPlanRoad[] = []
+  const notes: NoteCandidate[] = []
+  const roads: RoadCandidate[] = []
   const used: string[] = []
   const seen = new Set<string>()
 
@@ -464,6 +496,12 @@ export function buildWorkingPlanSpec(
   // whatever distant control happens to be listed.
   const figureBeacons = beacons.filter(b => seen.has(b.name))
 
+  // De-duplicate before emitting: same name, one label, on its longest side.
+  const finalNotes: WorkingPlanNote[] = longestPerName(notes, n => n.text)
+    .map(({ text, X, Y }) => ({ text, X, Y }))
+  const finalRoads: WorkingPlanRoad[] = longestPerName(roads, r => r.name)
+    .map(({ name, from, to }) => ({ name, from, to }))
+
   const inset = buildInset(ctx.calibration, figureBeacons)
 
   return {
@@ -477,8 +515,8 @@ export function buildWorkingPlanSpec(
       // Omitted, not empty: an empty inset box would assert there was no
       // control rather than that none was imported.
       ...(inset ? { inset } : {}),
-      ...(notes.length > 0 ? { notes } : {}),
-      ...(roads.length > 0 ? { roads } : {}),
+      ...(finalNotes.length > 0 ? { notes: finalNotes } : {}),
+      ...(finalRoads.length > 0 ? { roads: finalRoads } : {}),
     },
     skippedParcels,
     beaconCount: byName.size,

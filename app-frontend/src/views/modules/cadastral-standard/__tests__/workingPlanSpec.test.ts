@@ -627,3 +627,77 @@ describe('buildWorkingPlanSpec — surrounding properties', () => {
     expect(spec.notes).toBeUndefined()
   })
 })
+
+/**
+ * Adjoining features are tagged per side per parcel, so three stands abutting
+ * one remainder each tag it, and the sheet ends up lettering the same neighbour
+ * three times a few millimetres apart. Real output showed 'R E M. /' three
+ * times (in two different spellings) and '86' twice.
+ *
+ * De-duplication is by name only. A name deliberately lettered ACROSS sides --
+ * 'MAIN' on one, 'ROAD' on the next -- is two different names and must survive
+ * untouched.
+ */
+describe('buildWorkingPlanSpec — one label per adjoining feature', () => {
+  const twoParcels = (annotations: any) => ctx({
+    beacons: beaconFC([
+      { name: 'Q1', x: 2144000, y: -85700 }, { name: 'Q2', x: 2144100, y: -85700 },
+      { name: 'Q3', x: 2144100, y: -85600 }, { name: 'Q4', x: 2144000, y: -85600 },
+      { name: 'R1', x: 2144200, y: -85700 }, { name: 'R2', x: 2144200, y: -85600 },
+    ]),
+    parcels: [
+      sq('404', ['Q1', 'Q2', 'Q3', 'Q4'], squarePts),
+      sq('405', ['Q2', 'R1', 'R2', 'Q3'],
+        [[2144100, -85700], [2144200, -85700], [2144200, -85600], [2144100, -85600]]),
+    ],
+    sideAnnotations: annotations,
+  })
+
+  it('letters a shared neighbour once, not once per parcel', () => {
+    const { spec } = buildWorkingPlanSpec(twoParcels({
+      '404': [{ side: 'AB', role: 'contiguous', label: 'Rem./' }],
+      '405': [{ side: 'AB', role: 'contiguous', label: 'Rem./' }],
+    }))
+    expect(spec.notes?.map(n => n.text)).toEqual(['Rem./'])
+  })
+
+  it('treats two spellings of one name as the same neighbour', () => {
+    // The real sheet carried 'R  E  M.  /' and 'R E M. /' as separate labels.
+    const { spec } = buildWorkingPlanSpec(twoParcels({
+      '404': [{ side: 'AB', role: 'contiguous', label: 'R  E  M.  /' }],
+      '405': [{ side: 'AB', role: 'contiguous', label: 'R E M. /' }],
+    }))
+    expect(spec.notes).toHaveLength(1)
+  })
+
+  it('keeps a name deliberately lettered across consecutive sides', () => {
+    // 'MAIN' and 'ROAD' are one road lettered around a corner. Merging them, or
+    // dropping either, would rewrite what the surveyor drew.
+    const { spec } = buildWorkingPlanSpec(twoParcels({
+      '404': [
+        { side: 'AB', role: 'road', label: 'M A I N' },
+        { side: 'BC', role: 'road', label: 'R O A D' },
+      ],
+    }))
+    expect(spec.roads?.map(r => r.name).sort()).toEqual(['M A I N', 'R O A D'])
+  })
+
+  it('letters a shared road once even when both parcels tag it', () => {
+    const { spec } = buildWorkingPlanSpec(twoParcels({
+      '404': [{ side: 'AB', role: 'road', label: 'Klein Road', widthM: 25.19 }],
+      '405': [{ side: 'AB', role: 'road', label: 'Klein Road', widthM: 25.19 }],
+    }))
+    expect(spec.roads?.map(r => r.name)).toEqual(['Klein Road 25,19m'])
+  })
+
+  it('does not confuse a road with a neighbour of the same name', () => {
+    const { spec } = buildWorkingPlanSpec(twoParcels({
+      '404': [
+        { side: 'AB', role: 'contiguous', label: 'Kopje' },
+        { side: 'BC', role: 'road', label: 'Kopje' },
+      ],
+    }))
+    expect(spec.notes?.map(n => n.text)).toEqual(['Kopje'])
+    expect(spec.roads?.map(r => r.name)).toEqual(['Kopje'])
+  })
+})

@@ -418,7 +418,7 @@ describe('buildWorkingPlanSpec — locality inset', () => {
  * ever a guess: RM15 and RM16 are reference marks because the surveyor said
  * RM, not because someone wrote "reference mark" in the notes.
  *
- * Status codes: F fixed/control, P peg, TRIG trigonometrical station,
+ * Status codes: F found, P placed, TRIG trigonometrical station,
  * RM reference mark, WS working station.
  */
 const beaconFCWithStatus = (
@@ -453,7 +453,7 @@ describe('beaconSymbol — status takes precedence over description', () => {
   })
 
   it('falls back to the description when status says nothing about kind', () => {
-    // F (fixed/control) and P (peg) predate these codes and are left alone, so
+    // F (found) and P (placed) predate these codes and are left alone, so
     // existing plans render exactly as before.
     expect(beaconSymbol('Reference mark', 'F')).toBe('rm')
     expect(beaconSymbol('12mm iron peg in concrete', 'P')).toBe('peg')

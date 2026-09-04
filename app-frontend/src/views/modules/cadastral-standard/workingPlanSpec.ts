@@ -167,9 +167,11 @@ function buildInset(
  * Beacon kind from the CSV status code, where the surveyor gave one that says
  * what the beacon IS. Returns undefined for codes that do not.
  *
- * F (fixed/control) and P (peg) predate these codes and are deliberately not
- * mapped here: F says the point is control, not which monument type it is, and
- * changing their rendering would alter every plan already produced.
+ * F (found) and P (placed) predate these codes and are deliberately not mapped
+ * here. SI 727's Fifth Schedule does distinguish them -- a placed beacon is an
+ * open circle, a beacon found and adopted is concentric circles -- but the
+ * renderer cannot yet draw that distinction, and re-mapping them now would
+ * alter every plan already produced. Pending the Fifth Schedule symbol work.
  *
  * WS (working station) currently draws as a reference mark, which is how the
  * reference sheet treats BASE. Whether SI 727's Fifth Schedule prescribes a

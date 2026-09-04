@@ -210,7 +210,7 @@ export function validateCSVContent(content: string): ValidationResult {
         value: row.Status || '',
         error: 'Status is recommended',
         severity: 'warning',
-        suggestion: 'Use F (fixed/control), P (peg), TRIG (trig station), RM (reference mark), WS (working station)'
+        suggestion: 'Use F (found beacon), P (placed beacon), TRIG (trig station), RM (reference mark), WS (working station)'
       });
       warningRowSet.add(rowNum);
     } else {
@@ -225,7 +225,7 @@ export function validateCSVContent(content: string): ValidationResult {
           value: row.Status,
           error: 'Unrecognized status code',
           severity: 'warning',
-          suggestion: 'Use F (Fixed), P (Peg), TRIG (Trig station), RM (Reference mark) or WS (Working station)'
+          suggestion: 'Use F (Found), P (Placed), TRIG (Trig station), RM (Reference mark) or WS (Working station)'
         });
         warningRowSet.add(rowNum);
       }

@@ -111,7 +111,7 @@
             </div>
             <div class="text-center">
               <div class="text-2xl font-bold text-green-600">{{ validationResult.summary.fixedPoints }}</div>
-              <div class="text-sm text-gray-600">Fixed Points</div>
+              <div class="text-sm text-gray-600">Found Points</div>
             </div>
             <div class="text-center">
               <div class="text-2xl font-bold text-orange-600">{{ validationResult.summary.pegPoints }}</div>
@@ -259,8 +259,8 @@
  * have mislabelled every reference mark and working station.
  */
 const STATUS_LABELS: Record<string, string> = {
-  F: 'Fixed', FIXED: 'Fixed',
-  P: 'Peg', PEG: 'Peg',
+  F: 'Found', FIXED: 'Found',
+  P: 'Placed', PEG: 'Placed',
   TRIG: 'Trig station',
   RM: 'Reference mark',
   WS: 'Working station',

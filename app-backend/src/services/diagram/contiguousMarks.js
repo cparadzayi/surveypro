@@ -7,6 +7,14 @@
  * @param {[number, number]} b  Second terminal (the 'to' / second-letter vertex).
  * @param {'from'|'to'|'both'|undefined} end  Which terminal(s) the neighbour abuts.
  *        Absent ⇒ 'both' (spans the side) for back-compat with pre-`end` data.
+ * @param {{from?: boolean, to?: boolean}} [suppress]  Terminals that already carry
+ *        a connecting-data ray. A beacon showing both an abutment stub and a
+ *        connection would make two different claims with marks a reader cannot
+ *        tell apart -- one says "this side abuts that property", the other
+ *        "this beacon lies so far from that parent beacon, that way". The
+ *        connection is the one the Surveyor-General requires, so it wins and the
+ *        stub is dropped. The side's LABEL is unaffected: the neighbour is still
+ *        named, it just stops being marked twice.
  * @returns {{stubFrom: boolean, stubTo: boolean, labelAnchor: [number, number]}}
  *
  * The label is ALWAYS anchored at the side midpoint — one centred label per side.
@@ -27,12 +35,12 @@
  */
 export const CONTIG_STUB_MM = 8.4
 
-export function contiguousMarks(a, b, end) {
+export function contiguousMarks(a, b, end, suppress) {
   const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
   const e = end || 'both'
   return {
-    stubFrom: e === 'both' || e === 'from',
-    stubTo: e === 'both' || e === 'to',
+    stubFrom: (e === 'both' || e === 'from') && !suppress?.from,
+    stubTo: (e === 'both' || e === 'to') && !suppress?.to,
     labelAnchor: mid,
   }
 }

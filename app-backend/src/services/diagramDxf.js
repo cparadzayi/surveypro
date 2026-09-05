@@ -10,6 +10,10 @@ import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neig
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
 import { contiguousMarks, CONTIG_STUB_MM } from './diagram/contiguousMarks.js'
+import { resolveConnections } from './diagram/connections.js'
+import {
+  connectionMark, CONNECTION_STUB_MM, CONNECTION_ARROW_MM, CONNECTION_ARROW_HALF_MM,
+} from './diagram/connectionMark.js'
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
 import { formatSI } from './diagram/numberFormat.js'
@@ -57,8 +61,54 @@ function tableBottomY(tableY, rowCount) {
   return tableY + 39 + rowCount * 11
 }
 
+/**
+ * Connecting data, drawn from the SAME connectionMark geometry the PDF uses and
+ * in the same PDF-point space, converted to ground only at emission -- so the
+ * two documents cannot show a connection differently.
+ */
+function drawConnectionsDxf(w, ctx) {
+  const { marks, tf, labelObstacles, boxToSegs, toG, toGLen } = ctx
+  if (!marks?.length) return
+  const PT_PER_MM = 72 / 25.4
+  const len = CONNECTION_STUB_MM * PT_PER_MM
+  const head = CONNECTION_ARROW_MM * PT_PER_MM
+  const half = CONNECTION_ARROW_HALF_MM * PT_PER_MM
+
+  for (const m of marks) {
+    const from = tf(m.fromYX), to = tf(m.toYX)
+    const g = connectionMark([from.px, from.py], [to.px, to.py], len, head, half)
+    if (!g) continue
+
+    const baseMid = [(g.arrow[1][0] + g.arrow[2][0]) / 2, (g.arrow[1][1] + g.arrow[2][1]) / 2]
+    const gt = (q) => toG({ px: q[0], py: q[1] })
+    const t0 = gt(g.tail), t1 = gt(baseMid)
+    w.addLine('ADJOINING', t0.x, t0.y, t1.x, t1.y)
+    const A = gt(g.arrow[0]), B = gt(g.arrow[1]), C = gt(g.arrow[2])
+    w.addSolidTri('ADJOINING', [A.x, A.y], [B.x, B.y], [C.x, C.y])
+
+    // DXF text rotates the opposite way to pdfkit (y up, not down), which is
+    // why every label in this file negates the PDF's angle.
+    let angleDeg = Math.atan2(g.dir[1], g.dir[0]) * 180 / Math.PI
+    if (angleDeg > 90 || angleDeg < -90) angleDeg += 180
+    const labelH = 7
+    const text = `${formatSI(m.distanceM, 2)}m`
+    const lx = g.labelAnchor[0] - 0.5 * 0.6 * labelH * text.length * Math.cos(angleDeg * Math.PI / 180)
+    const ly = g.labelAnchor[1] - 0.5 * 0.6 * labelH * text.length * Math.sin(angleDeg * Math.PI / 180)
+    const gl = toG({ px: lx, py: ly - labelH - 1.5 })
+    w.addText('ADJOINING', gl.x, gl.y, text, toGLen(labelH), -angleDeg)
+
+    const tipOut = 5
+    const tx = g.tip[0] + g.dir[0] * tipOut, ty = g.tip[1] + g.dir[1] * tipOut
+    const gv = toG({ px: tx, py: ty })
+    w.addTextC('ADJOINING', gv.x, gv.y, m.letter, toGLen(8))
+
+    labelObstacles.push([{ px: g.tail[0], py: g.tail[1] }, { px: g.tip[0], py: g.tip[1] }])
+    labelObstacles.push(...boxToSegs({ x: tx - 4, y: ty - 4, w: 8, h: 8 }))
+  }
+}
+
 function drawAdjoiningFeaturesDxf(w, ctx, logger) {
-  const { annotations, geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs, toG, toGLen } = ctx
+  const { annotations, geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs, toG, toGLen, connected } = ctx
   if (!Array.isArray(annotations) || annotations.length === 0) return
   const n = geometry.vertices.length
   const PT_PER_MM = 72 / 25.4
@@ -122,7 +172,12 @@ function drawAdjoiningFeaturesDxf(w, ctx, logger) {
         }
       }
     } else if (ann.role === 'contiguous') {
-      const marks = contiguousMarks(a, b, ann.end)
+      // A terminal carrying a connecting-data ray gets no stub -- see the PDF
+      // renderer, and contiguousMarks itself, for why.
+      const marks = contiguousMarks(a, b, ann.end, {
+        from: connected?.has(geometry.vertices[i].letter),
+        to: connected?.has(geometry.vertices[(i + 1) % n].letter),
+      })
       const st = edgeStrip(a, b, CONTIG_STUB_PT, cen)
       if (marks.stubFrom) {
         const g1 = toG({ px: a[0], py: a[1] }), g2 = toG({ px: st[3][0], py: st[3][1] })
@@ -577,10 +632,19 @@ export async function generateDiagramDXF(options, logger) {
     labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
   }
 
+  // Resolved before the adjoining features are drawn: a beacon carrying a
+  // connection must not also get an abutment stub, and the stub is drawn there.
+  const { marks: connMarks, suppressed: connected } = resolveConnections({
+    geometry, beacons: options.beacons, connections: metadata.connections,
+  })
+
   drawAdjoiningFeaturesDxf(w, {
     annotations: metadata.sideAnnotations,
     geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs, toG, toGLen,
+    connected,
   }, logger)
+
+  drawConnectionsDxf(w, { marks: connMarks, tf, labelObstacles, boxToSegs, toG, toGLen })
 
   const loLabel = resolveLoSystem(null, metadata, options.projection)
   drawTableDxf(w, layout, sidesTable, loLabel, toG, toGLen)

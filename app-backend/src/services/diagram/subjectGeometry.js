@@ -13,7 +13,7 @@ import { bearingSouthBetween } from '../../utils/zim-geo.js'
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
-function letterAt(i) {
+export function letterAt(i) {
   // A..Z then AA, AB… (parcels rarely exceed 26 vertices, but be safe)
   if (i < 26) return LETTERS[i]
   return LETTERS[Math.floor(i / 26) - 1] + LETTERS[i % 26]

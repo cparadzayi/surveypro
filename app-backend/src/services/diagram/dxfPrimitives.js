@@ -100,6 +100,19 @@ export function createDxfWriter(layers) {
     ent += p(13, hi.toFixed(4)) + p(23, to.toFixed(4))
   }
 
+  /** Filled triangle via a DXF SOLID. A SOLID always has four corners, so the
+   *  third is repeated -- the standard way to express a triangle, and what
+   *  AutoCAD writes itself. Corner order is 1, 2, 4, 3 around the shape (the
+   *  "Z order"), not 1-2-3-4, which fills as a bowtie. */
+  function addSolidTri(layer, a, b, c) {
+    ent += p(0, 'SOLID')
+    ent += p(8, layer)
+    ent += p(10, a[0].toFixed(4)) + p(20, a[1].toFixed(4))
+    ent += p(11, b[0].toFixed(4)) + p(21, b[1].toFixed(4))
+    ent += p(12, c[0].toFixed(4)) + p(22, c[1].toFixed(4))
+    ent += p(13, c[0].toFixed(4)) + p(23, c[1].toFixed(4))
+  }
+
   function finish(extMin, extMax) {
     let dxf = ''
     dxf += p(0, 'SECTION')
@@ -173,6 +186,7 @@ export function createDxfWriter(layers) {
   }
 
   return {
-    addLine, addPolylineOutline, addCircle, addText, addTextC, addTextR, addSolidRect, finish,
+    addLine, addPolylineOutline, addCircle, addText, addTextC, addTextR, addSolidRect,
+    addSolidTri, finish,
   }
 }

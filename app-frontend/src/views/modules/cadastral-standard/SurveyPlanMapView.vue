@@ -46,6 +46,40 @@
         </div>
       </div>
 
+      <!-- Connecting data: the tie from this beacon to a parent beacon of the
+           survey being subdivided. Distance and bearing are COMPUTED from the
+           two coordinates, never typed, so they cannot disagree with the
+           coordinate list. -->
+      <div v-if="activeConnectionEditor" class="side-modal-backdrop" @click.self="activeConnectionEditor = null">
+        <div class="side-modal">
+          <div class="side-modal-title">
+            Connection from {{ activeConnectionEditor.letter }} ({{ activeConnectionEditor.fromBeacon }})
+          </div>
+          <label>Parent beacon
+            <select v-model="activeConnectionEditor.toBeacon">
+              <option value="">— none —</option>
+              <option v-for="n in connectionTargets" :key="n" :value="n">{{ n }}</option>
+            </select>
+          </label>
+          <div v-if="activeConnectionMeasure" class="conn-measure">
+            <div><span>Distance</span><strong>{{ activeConnectionMeasure.distanceM.toFixed(2).replace('.', ',') }} m</strong></div>
+            <div><span>Direction</span><strong>{{ formatBearingDMS(activeConnectionMeasure.bearingDeg) }}</strong></div>
+          </div>
+          <p v-else-if="activeConnectionEditor.toBeacon" class="conn-warn">
+            That beacon sits on this one — there is no direction to point.
+          </p>
+          <p v-else class="conn-hint">
+            Pick the parent beacon this corner was connected to. The diagram draws a
+            ray toward it, an arrowhead at the far end, and letters the distance.
+          </p>
+          <div class="side-modal-actions">
+            <button type="button" class="btn-primary" :disabled="!activeConnectionMeasure" @click="saveConnectionEditor">Save</button>
+            <button type="button" @click="clearConnectionEditor">Clear</button>
+            <button type="button" @click="activeConnectionEditor = null">Cancel</button>
+          </div>
+        </div>
+      </div>
+
 
 
 
@@ -649,6 +683,7 @@ import { diagramReferenceMetadata } from './diagramReferenceMetadata'
 import { pickDiagramSubjectId } from './diagramSubjectPick'
 import { paperSizeOptionsFor } from './paperSizeOptions'
 import { subjectSides, upsertAnnotation, removeAnnotation, annotationsForSubject, withSubjectAnnotations, hydrateAnnotationsMap, fractionAlongSide, endFromFraction, type SideAnnotation, type SideRole } from './sideAnnotations'
+import { makeConnection, upsertConnection, removeConnection, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type LoPoint } from './connections'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation } from '@/utils/planDesignation';
@@ -769,6 +804,14 @@ const refinedBeaconLabels = ref<Array<{
 // Diagram subject selection
 const selectedDiagramParcelId = ref<string | number | null>(null)
 const sideAnnotationsBySubject = ref<Record<string, SideAnnotation[]>>({})
+// Connecting data: the tie from a new beacon to a parent beacon of the survey
+// being subdivided. Keyed by subject parcel, like the side annotations.
+const connectionsBySubject = ref<Record<string, Connection[]>>({})
+const currentConnections = computed<Connection[]>(() => {
+  const id = selectedDiagramParcelId.value
+  return id == null ? [] : (connectionsBySubject.value[String(id)] ?? [])
+})
+const activeConnectionEditor = ref<{ fromBeacon: string; letter: string; toBeacon: string } | null>(null)
 const currentSideAnnotations = computed(() => annotationsForSubject(sideAnnotationsBySubject.value, selectedDiagramParcelId.value))
 const activeSideEditor = ref<{ side: string; role: SideRole; label: string; widthM: number | null;
   destinationFrom: string; destinationTo: string; end: 'from' | 'to' | 'both' } | null>(null)
@@ -1808,6 +1851,7 @@ function addParcelsToMap() {
   map.value!.on('click', onMapClickSelectParcel)
   applyDiagramHighlight(selectedDiagramParcelId.value)
   updateSubjectSidesLayer()
+  updateSubjectVerticesLayer()
 
   // ⭐ PHASE 3 (SI 727): Use ALL validated labels (no overlap allowed)
   const edgeAnnotationFeatures = validatedLabels.value.edges.map(edge => ({
@@ -1969,6 +2013,59 @@ function applyDiagramHighlight(selectedId: string | number | null) {
   })
 }
 
+/** Clickable vertices on the subject, for connecting data. Drawn as small
+ *  circles at each corner, filled when that beacon already carries a connection.
+ *  A separate layer from the sides because a connection belongs to a BEACON: its
+ *  direction comes from two coordinates, not from a side's outward normal. */
+function updateSubjectVerticesLayer() {
+  if (!map.value) return
+  const srcId = 'diagram-subject-vertices'
+  const feats: any[] = []
+  const subj = parcels.value.find((p: any) => String(p.id) === String(selectedDiagramParcelId.value))
+  if (isSideAnnotationMode.value && subj?.geom) {
+    const tf = transformParcelGeometry(subj.geom)
+    const ring = tf?.geometry?.coordinates?.[0] as [number, number][] | undefined
+    if (ring) {
+      const closed = ring.length > 1
+        && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
+      const pts = closed ? ring.slice(0, -1) : ring
+      const vs = subjectVertexBeacons()
+      const connected = new Set(currentConnections.value.map(c => c.fromBeacon))
+      pts.forEach(([lng, lat], i) => {
+        const v = vs[i]
+        feats.push({
+          type: 'Feature',
+          properties: {
+            letter: v?.letter ?? '',
+            beacon: v?.beacon ?? '',
+            connected: v && connected.has(v.beacon) ? 1 : 0,
+          },
+          geometry: { type: 'Point', coordinates: [lng, lat] },
+        })
+      })
+    }
+  }
+  const data = { type: 'FeatureCollection', features: feats } as any
+  const existing = map.value.getSource(srcId) as any
+  if (existing) { existing.setData(data); return }
+  map.value.addSource(srcId, { type: 'geojson', data })
+  map.value.addLayer({
+    id: `${srcId}-dot`, type: 'circle', source: srcId,
+    paint: {
+      'circle-radius': 5,
+      'circle-color': ['case', ['==', ['get', 'connected'], 1], '#B7410E', '#FFFFFF'] as any,
+      'circle-stroke-color': '#000000',
+      'circle-stroke-width': 1.5,
+    },
+  })
+  map.value.addLayer({
+    id: `${srcId}-hit`, type: 'circle', source: srcId,
+    paint: { 'circle-radius': 12, 'circle-opacity': 0 },
+  })
+  map.value.on('mouseenter', `${srcId}-hit`, () => { if (map.value) map.value.getCanvas().style.cursor = 'pointer' })
+  map.value.on('mouseleave', `${srcId}-hit`, () => { if (map.value) map.value.getCanvas().style.cursor = '' })
+}
+
 function updateSubjectSidesLayer() {
   if (!map.value) return
   const srcId = 'diagram-subject-sides'
@@ -2017,6 +2114,23 @@ function updateSubjectSidesLayer() {
 
 function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
   if (!map.value || !isSideAnnotationMode.value) return
+  // A vertex sits ON the ends of two sides, so it must be tested FIRST or a
+  // click meant for a beacon would always be caught by a side.
+  const vertexLayer = 'diagram-subject-vertices-hit'
+  if (isDiagramMode.value && map.value.getLayer(vertexLayer)) {
+    const vHits = map.value.queryRenderedFeatures(e.point, { layers: [vertexLayer] })
+    if (vHits.length) {
+      const beacon = String(vHits[0].properties?.beacon ?? '')
+      const letter = String(vHits[0].properties?.letter ?? '')
+      if (!beacon) {
+        alert(`Corner ${letter || '?'} has no coordinated beacon, so it cannot carry connecting data. Import or compute its coordinate first.`)
+        return
+      }
+      const cur = currentConnections.value.find(c => c.fromBeacon === beacon)
+      activeConnectionEditor.value = { fromBeacon: beacon, letter, toBeacon: cur?.toBeacon ?? '' }
+      return
+    }
+  }
   // Side classification takes priority over re-selecting the subject.
   const hitLayer = 'diagram-subject-sides-hit'
   if (map.value.getLayer(hitLayer)) {
@@ -2083,6 +2197,7 @@ function saveSideEditor() {
   sideAnnotationsBySubject.value = withSubjectAnnotations(sideAnnotationsBySubject.value, selectedDiagramParcelId.value, list)
   activeSideEditor.value = null
   updateSubjectSidesLayer()
+  updateSubjectVerticesLayer()
   persistSideAnnotations()
 }
 
@@ -2093,6 +2208,7 @@ function clearSideEditor() {
   sideAnnotationsBySubject.value = withSubjectAnnotations(sideAnnotationsBySubject.value, selectedDiagramParcelId.value, list)
   activeSideEditor.value = null
   updateSubjectSidesLayer()
+  updateSubjectVerticesLayer()
   persistSideAnnotations()
 }
 
@@ -2103,6 +2219,94 @@ function capeLoRingForSubject(subjectId: string | number): [number, number][] | 
   const p = parcels.value.find((x: any) => String(x.id) === String(subjectId))
   const ring = p?.geom?.coordinates?.[0]
   return Array.isArray(ring) && ring.length >= 3 ? (ring as [number, number][]) : null
+}
+
+/** Every coordinated point in the project, by name -- the pool a connection's
+ *  parent beacon is picked from, and the source of the vertex names. */
+function loPointsByName(): Map<string, LoPoint> {
+  const m = new Map<string, LoPoint>()
+  for (const p of coordinatePoints.value as any[]) {
+    const name = String(p?.name ?? '').trim()
+    if (!name) continue
+    // Canonical order, whichever way round this row arrived -- see toLoPoint.
+    const q = toLoPoint(Number(p?.y), Number(p?.x))
+    if (!Number.isFinite(q.Y) || !Number.isFinite(q.X)) continue
+    m.set(name, q)
+  }
+  return m
+}
+
+/** The subject's vertices as {letter, beacon}, matched to the coordinate list the
+ *  same way the backend does -- nearest point within half a metre. A vertex with
+ *  no coordinated beacon cannot carry a connection, and is returned with an empty
+ *  name so the caller can say so rather than silently skipping it. */
+function subjectVertexBeacons(): Array<{ letter: string; beacon: string; at: LoPoint }> {
+  const id = selectedDiagramParcelId.value
+  if (id == null) return []
+  const ring = capeLoRingForSubject(id)
+  if (!ring) return []
+  const closed = ring.length > 1
+    && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
+  const pts = closed ? ring.slice(0, -1) : ring
+  // Matching lives in connections.ts, where it is tested against the real axis
+  // orders: PostGIS hands back [Southing, Westing] while a coordinate point
+  // arrives y=Westing, x=Southing, and comparing them raw matches nothing.
+  const names = vertexBeaconNames(ring as Array<[number, number]>, loPointsByName())
+  const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  return pts.map(([a, b], i) => ({
+    letter: i < 26 ? LETTERS[i] : LETTERS[Math.floor(i / 26) - 1] + LETTERS[i % 26],
+    beacon: names[i] ?? '',
+    at: toLoPoint(a, b),
+  }))
+}
+
+/** Candidate parents: every coordinated point that is NOT a corner of this
+ *  figure. A beacon cannot be connected to itself, and connecting one corner to
+ *  another states a side, which the sides table already gives. */
+const connectionTargets = computed<string[]>(() => {
+  const own = new Set(subjectVertexBeacons().map(v => v.beacon).filter(Boolean))
+  return [...loPointsByName().keys()].filter(n => !own.has(n)).sort()
+})
+
+/** The distance and bearing the editor shows, recomputed as the target changes
+ *  -- never typed, so they cannot disagree with the coordinate list. */
+const activeConnectionMeasure = computed<{ distanceM: number; bearingDeg: number } | null>(() => {
+  const ed = activeConnectionEditor.value
+  if (!ed?.toBeacon) return null
+  const pts = loPointsByName()
+  const a = pts.get(ed.fromBeacon), b = pts.get(ed.toBeacon)
+  if (!a || !b) return null
+  const distanceM = distanceBetween(a, b)
+  if (!(distanceM > 0)) return null
+  return { distanceM, bearingDeg: bearingSouthBetween(a, b) }
+})
+
+function saveConnectionEditor() {
+  const ed = activeConnectionEditor.value
+  if (!ed || selectedDiagramParcelId.value == null) return
+  const conn = makeConnection(ed.fromBeacon, ed.toBeacon, loPointsByName())
+  if (!conn) return
+  const key = String(selectedDiagramParcelId.value)
+  connectionsBySubject.value = {
+    ...connectionsBySubject.value,
+    [key]: upsertConnection(currentConnections.value, conn),
+  }
+  activeConnectionEditor.value = null
+  updateSubjectVerticesLayer()
+  persistSideAnnotations()
+}
+
+function clearConnectionEditor() {
+  const ed = activeConnectionEditor.value
+  if (!ed || selectedDiagramParcelId.value == null) return
+  const key = String(selectedDiagramParcelId.value)
+  connectionsBySubject.value = {
+    ...connectionsBySubject.value,
+    [key]: removeConnection(currentConnections.value, ed.fromBeacon),
+  }
+  activeConnectionEditor.value = null
+  updateSubjectVerticesLayer()
+  persistSideAnnotations()
 }
 
 /** One entry per tagged subject: its Cape Lo ring + its side annotations. Drives
@@ -2123,7 +2327,10 @@ async function persistSideAnnotations() {
     await api.patch(`/survey-projects/${props.projectId}/workflow`, {
       step: 'survey-plan',
       action: 'update',
-      metadata: { sideAnnotations: sideAnnotationsBySubject.value },
+      metadata: {
+        sideAnnotations: sideAnnotationsBySubject.value,
+        connections: connectionsBySubject.value,
+      },
     })
   } catch (e: any) {
     console.warn('[SurveyPlanMap] failed to persist side annotations:', e?.message)
@@ -2136,7 +2343,21 @@ async function loadSideAnnotations() {
     const resp = await api.get(`/survey-projects/${props.projectId}/workflow`)
     const ws = resp.data?.workflow_state
     sideAnnotationsBySubject.value = hydrateAnnotationsMap(ws?.step_data?.['survey-plan']?.sideAnnotations)
+    // Connecting data rides in the same workflow step. Anything that is not a
+    // list of connections is ignored rather than trusted: this is saved data
+    // from an earlier version of the app as often as it is from this one.
+    const saved = ws?.step_data?.['survey-plan']?.connections
+    const conns: Record<string, Connection[]> = {}
+    if (saved && typeof saved === 'object') {
+      for (const [k, v] of Object.entries(saved)) {
+        if (!Array.isArray(v)) continue
+        conns[k] = (v as any[]).filter(c => c && typeof c.fromBeacon === 'string'
+          && typeof c.toBeacon === 'string' && Number.isFinite(Number(c.distanceM)))
+      }
+    }
+    connectionsBySubject.value = conns
     updateSubjectSidesLayer()
+    updateSubjectVerticesLayer()
   } catch (e: any) {
     console.warn('[SurveyPlanMap] failed to load side annotations:', e?.message)
   }
@@ -4095,6 +4316,9 @@ function gatherPlanContext(): PlanPayloadContext {
     priorDiagrams: props.projectInfo.priorDiagrams || [],
     ...diagramReferenceMetadata(props.projectInfo as any),
     sideAnnotations: currentSideAnnotations.value,
+    // Connecting data for the subject on THIS sheet only: a connection belongs
+    // to one figure's beacon, and a sister diagram has its own.
+    connections: currentConnections.value,
     // General plans render road/servitude/contiguous annotations for EVERY tagged
     // subject (the Outside Figure perimeter and/or individual stands), so send the
     // whole per-subject set, each entry carrying its own Cape Lo ring (no backend
@@ -5925,6 +6149,7 @@ watch(() => config.value.planType, () => {
 watch(selectedDiagramParcelId, () => {
   activeSideEditor.value = null
   updateSubjectSidesLayer()
+  updateSubjectVerticesLayer()
 })
 
 // Keep the paper size valid for the plan type: Diagram → A4/A3; others → auto/ISO.
@@ -7648,6 +7873,11 @@ onUnmounted(() => {
   font-size: 13px;
 }
 .side-modal-title { font-weight: 600; font-size: 14px; }
+.conn-measure { display: flex; gap: 18px; font-size: 13px; padding: 6px 0; }
+.conn-measure div { display: flex; flex-direction: column; }
+.conn-measure span { color: #6b7280; font-size: 11px; }
+.conn-hint { font-size: 12px; color: #6b7280; margin: 4px 0 0; }
+.conn-warn { font-size: 12px; color: #b45309; margin: 4px 0 0; }
 .side-modal label { display: flex; flex-direction: column; gap: 3px; }
 .side-modal select, .side-modal input { padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 4px; }
 .side-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }

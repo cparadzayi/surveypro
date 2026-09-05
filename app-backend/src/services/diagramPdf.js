@@ -10,6 +10,10 @@ import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neig
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
 import { contiguousMarks, CONTIG_STUB_MM } from './diagram/contiguousMarks.js'
+import { resolveConnections } from './diagram/connections.js'
+import {
+  connectionMark, CONNECTION_STUB_MM, CONNECTION_ARROW_MM, CONNECTION_ARROW_HALF_MM,
+} from './diagram/connectionMark.js'
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
 import { formatSI } from './diagram/numberFormat.js'
@@ -195,6 +199,65 @@ function drawBeaconDescription(doc, layout, groups) {
 }
 
 /**
+ * Draw the connecting data: for each connection, a ray from the beacon toward
+ * its parent beacon, an arrowhead at the tip, the distance lettered along the
+ * shaft and the far end lettered beyond it.
+ *
+ * Drawn SOLID, unlike the dashed abutment stub, because it is not the same kind
+ * of statement: a stub says a neighbour abuts this side, a connection says this
+ * beacon lies so far from that parent beacon, that way.
+ */
+function drawConnections(doc, ctx) {
+  const { marks, tf, labelObstacles, boxToSegs } = ctx
+  if (!marks?.length) return
+  const ptPerMm = PT_PER_MM
+  const len = CONNECTION_STUB_MM * ptPerMm
+  const head = CONNECTION_ARROW_MM * ptPerMm
+  const half = CONNECTION_ARROW_HALF_MM * ptPerMm
+
+  for (const m of marks) {
+    const from = tf(m.fromYX)
+    const to = tf(m.toYX)
+    const g = connectionMark([from.px, from.py], [to.px, to.py], len, head, half)
+    if (!g) continue
+
+    // The shaft stops at the head's base, so it cannot show through the fill.
+    const baseMid = [(g.arrow[1][0] + g.arrow[2][0]) / 2, (g.arrow[1][1] + g.arrow[2][1]) / 2]
+    doc.save().lineWidth(0.6).strokeColor('#000000').fillColor('#000000')
+    doc.moveTo(g.tail[0], g.tail[1]).lineTo(baseMid[0], baseMid[1]).stroke()
+    doc.moveTo(g.arrow[0][0], g.arrow[0][1])
+      .lineTo(g.arrow[1][0], g.arrow[1][1])
+      .lineTo(g.arrow[2][0], g.arrow[2][1])
+      .closePath().fill()
+    doc.restore()
+
+    // Distance along the shaft, upright -- the same convention the side labels
+    // use, so a connection on a diagonal reads like everything else.
+    let angleDeg = Math.atan2(g.dir[1], g.dir[0]) * 180 / Math.PI
+    if (angleDeg > 90 || angleDeg < -90) angleDeg += 180
+    const text = `${formatSI(m.distanceM, 2)}m`
+    doc.save().font('Helvetica').fontSize(7).fillColor('#000000')
+    const tw = doc.widthOfString(text)
+    const lx = g.labelAnchor[0], ly = g.labelAnchor[1]
+    doc.rotate(angleDeg, { origin: [lx, ly] })
+    doc.text(text, lx - tw / 2, ly - 7 - 1.5, { lineBreak: false })
+    doc.restore()
+
+    // The far end's letter, just beyond the tip.
+    doc.save().font('Helvetica').fontSize(8).fillColor('#000000')
+    const lw = doc.widthOfString(m.letter)
+    const tipOut = 5
+    const tx = g.tip[0] + g.dir[0] * tipOut, ty = g.tip[1] + g.dir[1] * tipOut
+    doc.text(m.letter, tx - lw / 2, ty - 4, { lineBreak: false })
+    doc.restore()
+
+    // Vertex letters keep off the ray and off the letter at its end.
+    labelObstacles.push([{ px: g.tail[0], py: g.tail[1] }, { px: g.tip[0], py: g.tip[1] }])
+    labelObstacles.push(...boxToSegs({ x: tx - lw / 2, y: ty - 4, w: lw, h: 8 }))
+  }
+}
+
+/**
  * Draw adjoining features from metadata.sideAnnotations: burnt-sienna road strips,
  * blue servitude strips (of a defined ground width), and dashed contiguous stubs,
  * each labelled outside the edge. Strips sit OUTSIDE the subject edge (via edgeStrip).
@@ -202,7 +265,7 @@ function drawBeaconDescription(doc, layout, groups) {
 function drawAdjoiningFeatures(doc, ctx, logger) {
   const {
     annotations, geometry, subjPt, subjCentroid, subjSegs, neighbourSegs,
-    denom, labelObstacles, boxToSegs,
+    denom, labelObstacles, boxToSegs, connected,
   } = ctx
   if (!Array.isArray(annotations) || annotations.length === 0) return
   const n = geometry.vertices.length
@@ -292,7 +355,12 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
       // Dashed outward stub at each abutting terminal (both when the neighbour spans the
       // side; one when it abuts near a single terminal). Which ends + the label anchor
       // come from the shared contiguousMarks helper.
-      const marks = contiguousMarks(a, b, ann.end)
+      // A terminal carrying a connecting-data ray gets no stub: two marks on
+      // one beacon make two different claims a reader cannot tell apart.
+      const marks = contiguousMarks(a, b, ann.end, {
+        from: connected?.has(geometry.vertices[i].letter),
+        to: connected?.has(geometry.vertices[(i + 1) % n].letter),
+      })
       const st = edgeStrip(a, b, CONTIG_STUB_PT, cen) // st[3]=a+out, st[2]=b+out
       doc.save().dash(3, { space: 2 }).lineWidth(0.6).strokeColor('#000000')
       if (marks.stubFrom) doc.moveTo(a[0], a[1]).lineTo(st[3][0], st[3][1]).stroke()
@@ -714,10 +782,20 @@ export async function generateDiagramPDF(options, logger) {
 
   // Adjoining features (roads/servitudes/contiguous) from metadata.sideAnnotations —
   // drawn outside the figure, before labels so their designations become obstacles.
+  // Connecting data is resolved BEFORE the adjoining features are drawn: a
+  // beacon that carries a connection must not also get an abutment stub, and
+  // the stub is drawn in there.
+  const { marks: connMarks, suppressed: connected } = resolveConnections({
+    geometry, beacons: options.beacons, connections: metadata.connections,
+  })
+
   drawAdjoiningFeatures(doc, {
     annotations: metadata.sideAnnotations,
     geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs,
+    connected,
   }, logger)
+
+  drawConnections(doc, { marks: connMarks, tf, labelObstacles, boxToSegs })
 
   // Beacon circles drawn ON TOP of the boundary AND the adjoining features: the white
   // fill knocks out the lines inside, so edges (incl. road/servitude strips) appear

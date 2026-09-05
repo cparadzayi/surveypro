@@ -13,6 +13,10 @@ const mockGenerateWorkingPlan = jest.fn(() => ({
 
 jest.unstable_mockModule('../../services/workingPlan/working-plan.js', () => ({
   generateWorkingPlan: mockGenerateWorkingPlan,
+  // The route validates the sheet size against the renderer's own ladder, so
+  // the mock has to carry it -- the real list, not a stand-in, or the route
+  // would be tested against paper sizes the renderer cannot draw.
+  SHEET_LADDER: ['A4', 'A3', 'A2', 'A1'],
 }))
 
 const { default: workingPlanRoutes } = await import('../workingPlan.js')
@@ -111,6 +115,26 @@ describe('POST /working-plan/dxf', () => {
     })
     expect(res.statusCode).toBe(400)
     expect(res.json().message).toMatch(/symbol/)
+  })
+
+  test('rejects a paper size the renderer cannot draw, as a 400', async () => {
+    // Without this the generator throws and the surveyor gets a 500 for what is
+    // a correctable mistake.
+    const res = await buildApp().inject({
+      method: 'POST', url: '/dxf', payload: { ...validSpec, sheetSize: 'A9' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().message).toContain('A9')
+    expect(res.json().message).toContain('A3')
+  })
+
+  test('accepts every ISO size the renderer offers, and auto', async () => {
+    for (const size of ['A4', 'A3', 'A2', 'A1', 'auto']) {
+      const res = await buildApp().inject({
+        method: 'POST', url: '/dxf', payload: { ...validSpec, sheetSize: size },
+      })
+      expect([size, res.statusCode]).toEqual([size, 200])
+    }
   })
 
   test('turns an unknown beacon into a 400 that still names the beacon', async () => {

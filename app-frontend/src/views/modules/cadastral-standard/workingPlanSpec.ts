@@ -686,7 +686,23 @@ export function buildWorkingPlanSpec(
       // Not drawn as a stand, but it IS the remaining extent and its area is
       // the whole point of the check.
       const ofRing = ringNames(p)
-      if (ofRing.length && ofRing.every(n => byName.has(n))) remainderRing = ofRing
+      if (ofRing.length && ofRing.every(n => byName.has(n))) {
+        remainderRing = ofRing
+        // Its SIDES are annotated like any other parcel's, and its boundary is
+        // drawn, so its neighbours must be marked. Skipping this with the rest
+        // of the remainder's handling lost every abutment on a side only the
+        // remainder holds -- 87C on the Brackenhurst sheet, whose offshoot
+        // simply stopped appearing.
+        const rf = sideFeatures(
+          ofRing.map(n => ({ name: n, ...byName.get(n)! })),
+          ctx.sideAnnotations?.[String(p?.id ?? '')],
+          allRings,
+          namedRings.filter(r => r.id !== String(p?.id ?? '')).map(r => r.names),
+        )
+        notes.push(...rf.notes)
+        roads.push(...rf.roads)
+        contiguous.push(...(rf.contiguous ?? []))
+      }
       const ofArea = Number(p?.area_m2)
       if (Number.isFinite(ofArea) && ofArea > 0) {
         remainderArea = { label: 'Remaining Extent', area: ofArea }

@@ -22,7 +22,32 @@ import { edgeStrip } from '../diagram/edgeStrip.js';
 
 /* ------------------------------------------------------------------ layout */
 
-export const SHEET = { width: 297, height: 210 };          // A4 landscape, mm
+/**
+ * ISO A-series, landscape, in millimetres -- the real paper a surveyor prints
+ * on, so a sheet plots at true size with no hand-scaling.
+ *
+ * A4 is the sheet this layout was drawn for and stays the default. The larger
+ * sizes do NOT enlarge the design: every block keeps its physical size and the
+ * extra paper goes to the drawing panel, because SI 727's conventional signs
+ * and lettering are absolute sizes. A bigger sheet buys room for the figure,
+ * not bigger writing.
+ */
+export const SHEET_SIZES = {
+  A4: { width: 297, height: 210 },
+  A3: { width: 420, height: 297 },
+  A2: { width: 594, height: 420 },
+  A1: { width: 841, height: 594 },
+};
+export const SHEET_LADDER = ['A4', 'A3', 'A2', 'A1'];
+export const SHEET = SHEET_SIZES.A4;                      // the layout's own size
+
+/**
+ * The coarsest scale worth printing a working plan at before reaching for more
+ * paper. Cadastral working plans run 1:500 to 1:2000; past that the beacon
+ * names crowd and the figure stops being usable in the field, which is the
+ * whole point of the document.
+ */
+export const AUTO_SHEET_MAX_SCALE = 2000;
 
 export const LAYOUT = {
   border: { x0: 0.5, y0: 0.5, x1: 296.5, y1: 209.5 },
@@ -59,7 +84,14 @@ export const LAYOUT = {
     line2: { x: 19.94, baseline: 199.08 },
   },
 
-  inset: { box: { x0: 162.9, y0: 109.69, x1: 291.97, y1: 196.13 } },
+  inset: {
+    box: { x0: 162.9, y0: 109.69, x1: 291.97, y1: 196.13 },
+    // The inset is a locality map in its own right, and a map without a north
+    // point cannot be read. Top right, clear of the "Inset (not to scale)"
+    // caption at the top left. A slim solid arrow: at this size an outline
+    // closes up, and the proportions keep it from reading as a trig sign.
+    north: { dxFromRight: 11.0, letterBaseline: 5.4, apex: 7.2, len: 8.6, halfWidth: 1.35 },
+  },
 
   // Area statement: the free column between the scale line, the approval box
   // (x from 228.13) and the inset (y from 109.69).
@@ -95,14 +127,16 @@ export const LAYOUT = {
     stationDia: 2.498,      // survey station marked: circle with a filled centre
     stationDotDia: 0.95,
     stationUnmarkedDia: 1.05, // survey station unmarked: a filled dot
-    // The inscribed circle is drawn at EXACTLY the found beacon's diameter, so
-    // the two marks read at the same size and only the triangle around it tells
-    // them apart. These two numbers follow from that rule and the triangle's
-    // shape; a test pins the incircle to foundOuterDia, so neither can be
-    // nudged alone. (Was 4.444/3.429, whose circle came out 3% small.) The
-    // clipping clearance follows automatically -- symbolClearance derives the
-    // triangle's reach from these two numbers.
-    trigW: 4.595, trigH: 3.546, // trig beacon / official control point triangle
+    // An EQUILATERAL triangle whose inscribed circle is exactly the found
+    // beacon's diameter. Two rules, and between them the numbers are forced:
+    // height = base * sqrt(3)/2 makes it equilateral, and a side of 4.327 puts
+    // the incircle at 2.498. Both are tests.
+    //
+    // It was 4.595/3.546: a base wider than its own sides (4.595 against 4.225),
+    // which reads as a triangle bulging sideways rather than the Fifth
+    // Schedule's sign. The clipping clearance follows automatically --
+    // symbolClearance derives the triangle's reach from these two numbers.
+    trigW: 4.327, trigH: 3.747, // trig beacon / official control point triangle
     gridArm: 8.008,         // full length of a grid cross arm
   },
 
@@ -206,6 +240,9 @@ function distToSegment([px, py], [x1, y1], [x2, y2]) {
  * @param {Array}  [spec.notes]    [{ text, X, Y, height? }]  e.g. neighbouring stand numbers
  * @param {Array}  spec.title      up to four heading lines
  * @param {number|'auto'} spec.scale
+ * @param {'A4'|'A3'|'A2'|'A1'|'auto'} [spec.sheetSize]  ISO paper, landscape.
+ *   Defaults to A4, the sheet this layout was drawn for. 'auto' takes the
+ *   smallest that holds the figure at a scale worth printing.
  * @param {object} [spec.certificate] { line1, line2 }
  * @param {boolean}[spec.approvalBox]
  * @param {object} [spec.inset]    { scale, gridInterval, beacons:[{name,X,Y,symbol}] }
@@ -241,8 +278,62 @@ function symbolClearance(symbol) {
   }
 }
 
-export function generateWorkingPlan(spec) {
+/**
+ * The layout re-anchored for a larger ISO sheet.
+ *
+ * Blocks keep their SIZE and their distance from the edge they belong to: the
+ * title, north arrow, approval box and inset are right-hand furniture, so they
+ * move right with the edge; the certificate and SR number sit against the foot,
+ * so they move down. Only the drawing panel grows, absorbing both.
+ *
+ * A4 returns LAYOUT itself, so the sheet this was designed for is byte-for-byte
+ * what it always was.
+ */
+export function layoutFor(sheetName) {
+  const size = SHEET_SIZES[sheetName];
+  if (!size) throw new Error(`generateWorkingPlan: unknown sheet size "${sheetName}"`);
+  const dW = size.width - SHEET_SIZES.A4.width;
+  const dH = size.height - SHEET_SIZES.A4.height;
+  if (!dW && !dH) return LAYOUT;
   const L = LAYOUT;
+  const box = (b, ddx, ddy) => ({ x0: b.x0 + ddx, y0: b.y0 + ddy, x1: b.x1 + ddx, y1: b.y1 + ddy });
+  return {
+    ...L,
+    border: { ...L.border, x1: L.border.x1 + dW, y1: L.border.y1 + dH },
+    // the figure's room: everything the bigger sheet gained
+    panel: { ...L.panel, x1: L.panel.x1 + dW, y1: L.panel.y1 + dH },
+    title: { ...L.title, cx: L.title.cx + dW },
+    northArrow: { ...L.northArrow, cx: L.northArrow.cx + dW },
+    approval: {
+      ...L.approval,
+      box: box(L.approval.box, dW, 0),
+      dateX: L.approval.dateX + dW,
+    },
+    certificate: {
+      line1: { ...L.certificate.line1, baseline: L.certificate.line1.baseline + dH },
+      line2: { ...L.certificate.line2, baseline: L.certificate.line2.baseline + dH },
+    },
+    // bottom-right furniture: follows both edges
+    inset: { ...L.inset, box: box(L.inset.box, dW, dH) },
+    srNumber: { cx: size.width / 2, baseline: L.srNumber.baseline + dH },
+  };
+}
+
+/** The smallest ISO sheet the figure fits on at a scale worth printing. */
+export function pickSheetSize(bb, layouts = SHEET_LADDER) {
+  for (const name of layouts) {
+    const L = layoutFor(name);
+    const need = Math.max((bb.e1 - bb.e0) / (L.panel.x1 - L.panel.x0),
+      (bb.n1 - bb.n0) / (L.panel.y1 - L.panel.y0)) * 1000 * 1.15;
+    const scale = STANDARD_SCALES.find((sc) => sc >= need);
+    if (scale != null && scale <= AUTO_SHEET_MAX_SCALE) return name;
+  }
+  // Nothing in the ladder gives a usable scale: the largest sheet is still the
+  // best of them, and the figure is drawn rather than refused.
+  return layouts[layouts.length - 1];
+}
+
+export function generateWorkingPlan(spec) {
   const byName = new Map(spec.beacons.map((b) => [b.name, { ...b, ...loToGround(b) }]));
   const G = (name) => {
     const b = byName.get(name);
@@ -260,6 +351,13 @@ export function generateWorkingPlan(spec) {
     e0: Math.min(...all.map((p) => p[0])), e1: Math.max(...all.map((p) => p[0])),
     n0: Math.min(...all.map((p) => p[1])), n1: Math.max(...all.map((p) => p[1])),
   };
+
+  /* ---- sheet: the paper this is drawn on, then the layout that fits it */
+  const sheetName = spec.sheetSize === 'auto' || spec.sheetSize == null
+    ? (spec.sheetSize === 'auto' ? pickSheetSize(bb) : 'A4')
+    : spec.sheetSize;
+  const L = layoutFor(sheetName);
+  const sheet = SHEET_SIZES[sheetName];
 
   /* ---- scale */
   const panelW = L.panel.x1 - L.panel.x0;
@@ -680,9 +778,17 @@ export function generateWorkingPlan(spec) {
          drawn the way the diagram draws them (same shared helpers) */
   for (const c of spec.contiguous ?? []) {
     const a = G(c.from), b = G(c.to);
-    const ring = spec.parcels.find((p) => p.ring.includes(c.from) && p.ring.includes(c.to));
-    if (!ring) continue;
-    const pts = ring.ring.map((n) => [G(n).e, G(n).n]);
+    // Which ring owns this side? A drawn stand, or -- for a side only the
+    // remaining extent holds -- the remainder's own ring. Without the second,
+    // every abutment on a remainder-only side was silently dropped: the ring
+    // lookup failed and the mark was skipped, which is what took the offshoot
+    // off beacon 87C.
+    const host = spec.parcels.find((p) => p.ring.includes(c.from) && p.ring.includes(c.to))?.ring
+      ?? ((spec.remainderRing ?? []).includes(c.from)
+        && (spec.remainderRing ?? []).includes(c.to) ? spec.remainderRing : null);
+    if (!host) continue;
+    const pts = host.filter((n) => byName.has(n)).map((n) => [G(n).e, G(n).n]);
+    if (pts.length < 3) continue;
     const cen = [
       pts.reduce((t, q) => t + q[0], 0) / pts.length,
       pts.reduce((t, q) => t + q[1], 0) / pts.length,
@@ -936,6 +1042,19 @@ export function generateWorkingPlan(spec) {
     d.text('Inset (not to scale)', S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
       { layer: 'INSET', style: 'ARIAL-BOLD' });
 
+    // North point. The inset is drawn north-up like the main figure -- the same
+    // capeLoToDxfSouthUp convention -- so the arrow is simply vertical.
+    const nn = L.inset.north;
+    const ncx = B.x1 - nn.dxFromRight;
+    const nApex = B.y0 + nn.apex, nBase = nApex + nn.len;
+    // On NORTH-ARROW, not INSET: it is a north point, and the sheet's own
+    // compass rose lives there. It also keeps INSET meaning the inset's MAP,
+    // so anything measuring that content is not reading an arrow by mistake.
+    d.solid([S(ncx, nApex), S(ncx - nn.halfWidth, nBase), S(ncx + nn.halfWidth, nBase)],
+      { layer: 'NORTH-ARROW' });
+    d.text('N', S(ncx, B.y0 + nn.letterBaseline), mm(L.text.insetLabel),
+      { layer: 'NORTH-ARROW', style: 'ARIAL-BOLD', align: 'center' });
+
     const iScale = spec.inset.scale;
     const ib = spec.inset.beacons.map((b) => ({ ...b, ...loToGround(b) }));
     const ic = {
@@ -1004,5 +1123,10 @@ export function generateWorkingPlan(spec) {
     }
   }
 
-  return { dxf: doc.toString(), scale, gridInterval, gridTicks: placed, areas };
+  // sheetSize is reported so the caller can tell the surveyor -- and the plot
+  // dialog -- which paper this was drawn for.
+  return {
+    dxf: doc.toString(), scale, gridInterval, gridTicks: placed, areas,
+    sheetSize: sheetName, sheetWidthMm: sheet.width, sheetHeightMm: sheet.height,
+  };
 }

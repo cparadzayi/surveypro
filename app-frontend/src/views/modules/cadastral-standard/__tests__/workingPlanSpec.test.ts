@@ -672,6 +672,34 @@ describe('buildWorkingPlanSpec — one label per adjoining feature', () => {
     sideAnnotations: annotations,
   })
 
+  it('marks an abutment on a side only the remaining extent holds', () => {
+    // The remainder is not drawn as a stand, but its boundary IS drawn and its
+    // sides are annotated like any other parcel's. Skipping its annotations
+    // along with the rest of its handling lost every abutment on a side no
+    // stand shares -- the offshoot on Brackenhurst's 87C simply stopped
+    // appearing on the sheet.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFC([
+        { name: 'Q1', x: 2144000, y: -85700 }, { name: 'Q2', x: 2144100, y: -85700 },
+        { name: 'Q3', x: 2144100, y: -85600 }, { name: 'Q4', x: 2144000, y: -85600 },
+        { name: 'R1', x: 2144200, y: -85700 }, { name: 'R2', x: 2144200, y: -85600 },
+      ]),
+      parcels: [
+        sq('404', ['Q1', 'Q2', 'Q3', 'Q4'], squarePts),
+        // the remainder: R1-R2 is a side no stand shares
+        { ...sq('REM', ['Q2', 'R1', 'R2', 'Q3'],
+          [[2144100, -85700], [2144200, -85700], [2144200, -85600], [2144100, -85600]]),
+        designation: 'REM' },
+      ],
+      // side BC of the remainder's ring is R1 -> R2
+      sideAnnotations: { REM: [{ side: 'BC', role: 'contiguous', label: '88', end: 'from' }] },
+    }))
+    expect(spec.contiguous?.map(c => `${c.from}-${c.to}`)).toEqual(['R1-R2'])
+    // and the remainder's ring travels with it, so the renderer can find the
+    // side's owner -- no drawn stand contains both beacons
+    expect(spec.remainderRing).toEqual(['Q2', 'R1', 'R2', 'Q3'])
+  })
+
   it('letters a shared neighbour once, not once per parcel', () => {
     const { spec } = buildWorkingPlanSpec(twoParcels({
       '404': [{ side: 'AB', role: 'contiguous', label: 'Rem./' }],

@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, test, expect } from '@jest/globals'
-import { generateWorkingPlan, LAYOUT, LINETYPES } from '../working-plan.js'
+import {
+  generateWorkingPlan, layoutFor, pickSheetSize, LAYOUT, LINETYPES,
+  SHEET_SIZES, SHEET_LADDER, AUTO_SHEET_MAX_SCALE,
+} from '../working-plan.js'
 import { brackenhurstSpec } from './fixtures/brackenhurstSpec.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -315,6 +318,122 @@ describe('generateWorkingPlan — golden', () => {
     const drawn = segs.reduce((t, sg) => t + Math.hypot(sg[1][0] - sg[0][0], sg[1][1] - sg[0][1]), 0)
     const cut = LAYOUT.symbol.foundOuterDia + LAYOUT.symbol.refMarkArm
     expect(drawn).toBeCloseTo(140 - cut, 3)
+  })
+
+  test('marks an abutment on a side only the remaining extent holds', () => {
+    // The remainder's sides are annotated like any other parcel's, and its
+    // boundary is drawn, so its neighbours must be marked. This mark's two
+    // beacons belong to NO drawn stand -- the ring lookup failed and the mark
+    // was skipped, which is what took the offshoot off beacon 87C.
+    const B = (name, X, Y) => ({ name, X, Y, symbol: 'placed', label: 'auto' })
+    const { dxf } = generateWorkingPlan({
+      scale: 'auto',
+      beacons: [
+        B('Q1', 2144000, -85700), B('Q2', 2144100, -85700),
+        B('Q3', 2144100, -85600), B('Q4', 2144000, -85600),
+        B('R1', 2144200, -85700), B('R2', 2144200, -85600),
+      ],
+      parcels: [{ label: '404', ring: ['Q1', 'Q2', 'Q3', 'Q4'] }],
+      remainderRing: ['Q2', 'R1', 'R2', 'Q3'],
+      remainderBoundary: [{ from: 'Q2', to: 'R1' }, { from: 'R1', to: 'R2' }, { from: 'R2', to: 'Q3' }],
+      remainderLabel: 'REM',
+      // R1-R2 is a side of the remainder alone; no stand contains both
+      contiguous: [{ from: 'R1', to: 'R2', end: 'from' }],
+      title: ['WORKING PLAN OF', 'Stand 404'],
+    })
+    expect(dxf.split('0\nLINE\n8\nADJOINING\n').length - 1).toBeGreaterThan(0)
+  })
+
+  test('gives the inset its own north point', () => {
+    // The inset is a locality map in its own right; a map without a north point
+    // cannot be read, and the sheet's own compass rose is outside its frame.
+    const { dxf } = generateWorkingPlan({
+      ...brackenhurstSpec,
+      inset: { scale: 250000, beacons: [
+        { name: 'T1', X: 2160000, Y: -88000, symbol: 'trig' },
+        { name: 'F1', X: 2144000, Y: -85700, symbol: 'found' },
+      ] },
+    })
+    const lines = dxf.split('\n')
+    const read = (kind, keep, layer = 'NORTH-ARROW') => {
+      const out = []
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i] !== '0' || lines[i + 1] !== kind) continue
+        let j = i + 2; const d = {}
+        while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+        if ((d['8'] || [])[0] !== layer) continue
+        const v = keep(d)
+        if (v) out.push(v)
+      }
+      return out
+    }
+    // The inset frame, read off the sheet rather than by repeating the
+    // sheet-to-drawing transform here. It is the closed run of four vertices on
+    // the INSET layer.
+    const frame = []
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i] !== '0' || lines[i + 1] !== 'POLYLINE') continue
+      let layer = null
+      for (let j = i + 2; j < i + 20 && j < lines.length - 1; j++) {
+        if (lines[j] === '0') break
+        if (lines[j] === '8') { layer = lines[j + 1]; break }
+      }
+      const v = []
+      let inVertex = false
+      for (let j = i + 2; j < lines.length - 1; j++) {
+        if (lines[j] === '0') {
+          if (lines[j + 1] === 'SEQEND') break
+          inVertex = lines[j + 1] === 'VERTEX'
+        }
+        if (inVertex && lines[j] === '10') v.push([+lines[j + 1], +lines[j + 3]])
+      }
+      if (layer === 'INSET' && v.length === 4) frame.push(v)
+    }
+    expect(frame).toHaveLength(1)
+    const fx = frame[0].map((q) => q[0]), fy = frame[0].map((q) => q[1])
+    const midX = (Math.min(...fx) + Math.max(...fx)) / 2
+    const midY = (Math.min(...fy) + Math.max(...fy)) / 2
+    const inFrame = (p) => p.x > Math.min(...fx) && p.x < Math.max(...fx)
+      && p.y > Math.min(...fy) && p.y < Math.max(...fy)
+
+    // The inset's north point sits on NORTH-ARROW with the sheet's own compass,
+    // so INSET keeps meaning the inset's map content -- which means picking the
+    // 'N' INSIDE the inset frame, not the sheet's own.
+    const n = read('TEXT', (d) => ((d['1'] || [''])[0] === 'N'
+      ? { x: +d['10'][0], y: +d['20'][0] } : null)).filter(inFrame)
+    expect(n).toHaveLength(1)
+
+    // Inside the frame, in its top-right quarter -- the caption holds the top
+    // left. North is up on the sheet, so top is the LARGER drawing y.
+    expect(n[0].x).toBeGreaterThan(midX)
+    expect(n[0].x).toBeLessThan(Math.max(...fx))
+    expect(n[0].y).toBeGreaterThan(midY)
+    expect(n[0].y).toBeLessThan(Math.max(...fy))
+
+    // and an arrow under the letter, pointing at it
+    const tris = read('SOLID', (d) => ({
+      pts: [0, 1, 2, 3].map((k) => [+d[10 + k][0], +d[20 + k][0]]),
+    }))
+    const arrow = tris.find((t) => Math.abs(t.pts[0][0] - n[0].x) < 1
+      && t.pts[0][1] < n[0].y && t.pts[1][1] < t.pts[0][1])
+    expect(arrow).toBeDefined()
+    // slim, so it cannot be mistaken for the trig sign's triangle
+    const w = Math.abs(arrow.pts[1][0] - arrow.pts[2][0])
+    const h = Math.abs(arrow.pts[0][1] - arrow.pts[1][1])
+    expect(h).toBeGreaterThan(w * 2)
+  })
+
+  test('draws the trig sign as a true equilateral triangle', () => {
+    // The Fifth Schedule's sign is equilateral. It was drawn with a base of
+    // 4.595 against sides of 4.225 -- wider than it was long -- which reads as
+    // a triangle bulging sideways.
+    const S = LAYOUT.symbol
+    const base = S.trigW
+    const slant = Math.hypot(S.trigW / 2, S.trigH)
+    expect(slant).toBeCloseTo(base, 3)
+    // and the same relation stated the other way, so a future edit to either
+    // number has to satisfy both
+    expect(S.trigH).toBeCloseTo((S.trigW * Math.sqrt(3)) / 2, 3)
   })
 
   test('draws the trig circle at exactly a found beacon, not near it', () => {
@@ -819,6 +938,122 @@ describe('generateWorkingPlan — golden', () => {
     expect(dashes).toBeGreaterThanOrEqual(3)
     // and the minimum that three dashes actually occupy
     expect(stub).toBeGreaterThanOrEqual(3 * on + 2 * off)
+  })
+
+  describe('ISO paper sizes', () => {
+    test('every size in the ladder is a real ISO A-series sheet', () => {
+      // Printing is only seamless if the sheet IS the paper. Each A-size is the
+      // previous one halved across its long side, so the ratios chain.
+      const iso = { A4: [297, 210], A3: [420, 297], A2: [594, 420], A1: [841, 594] }
+      for (const [name, [w, h]] of Object.entries(iso)) {
+        expect(SHEET_SIZES[name]).toEqual({ width: w, height: h })
+      }
+      expect(SHEET_LADDER).toEqual(['A4', 'A3', 'A2', 'A1'])
+    })
+
+    test('A4 is the layout itself, untouched', () => {
+      // The sheet this was drawn for must not shift by a hair, or every
+      // position in it becomes a re-derivation rather than the original.
+      expect(layoutFor('A4')).toBe(LAYOUT)
+    })
+
+    test('gives the extra paper to the figure, not to the furniture', () => {
+      const a4 = layoutFor('A4'), a3 = layoutFor('A3')
+      const area = (p) => (p.panel.x1 - p.panel.x0) * (p.panel.y1 - p.panel.y0)
+      expect(area(a3)).toBeGreaterThan(area(a4) * 1.9)   // A3 is twice A4
+
+      // Furniture keeps its size...
+      const w = (b) => b.x1 - b.x0, h = (b) => b.y1 - b.y0
+      expect(w(a3.inset.box)).toBeCloseTo(w(a4.inset.box), 6)
+      expect(h(a3.inset.box)).toBeCloseTo(h(a4.inset.box), 6)
+      expect(w(a3.approval.box)).toBeCloseTo(w(a4.approval.box), 6)
+
+      // ...and its distance from the edge it belongs to.
+      const fromRight = (x, n) => SHEET_SIZES[n].width - x
+      expect(fromRight(a3.title.cx, 'A3')).toBeCloseTo(fromRight(a4.title.cx, 'A4'), 6)
+      expect(fromRight(a3.northArrow.cx, 'A3')).toBeCloseTo(fromRight(a4.northArrow.cx, 'A4'), 6)
+      expect(fromRight(a3.inset.box.x1, 'A3')).toBeCloseTo(fromRight(a4.inset.box.x1, 'A4'), 6)
+      const fromFoot = (y, n) => SHEET_SIZES[n].height - y
+      expect(fromFoot(a3.srNumber.baseline, 'A3')).toBeCloseTo(fromFoot(a4.srNumber.baseline, 'A4'), 6)
+      expect(fromFoot(a3.certificate.line2.baseline, 'A3'))
+        .toBeCloseTo(fromFoot(a4.certificate.line2.baseline, 'A4'), 6)
+      expect(a3.srNumber.cx).toBeCloseTo(SHEET_SIZES.A3.width / 2, 6)
+    })
+
+    test('the border stays a hair inside the paper at every size', () => {
+      for (const name of SHEET_LADDER) {
+        const L = layoutFor(name), S = SHEET_SIZES[name]
+        expect(S.width - L.border.x1).toBeCloseTo(L.border.x0, 6)
+        expect(S.height - L.border.y1).toBeCloseTo(L.border.y0, 6)
+        // and the panel never runs into the right-hand furniture
+        expect(L.panel.x1).toBeLessThan(L.inset.box.x0)
+      }
+    })
+
+    test('text and symbols are the same size on every sheet', () => {
+      // SI 727's signs and lettering are absolute. A bigger sheet buys room for
+      // the figure, not bigger writing.
+      for (const name of SHEET_LADDER) {
+        expect(layoutFor(name).text).toEqual(LAYOUT.text)
+        expect(layoutFor(name).symbol).toEqual(LAYOUT.symbol)
+      }
+    })
+
+    test('reaches for more paper only when the scale would be unusable', () => {
+      const B = (name, X, Y) => ({ name, X, Y, symbol: 'placed', label: 'auto' })
+      const figure = (m) => ({
+        scale: 'auto', sheetSize: 'auto',
+        beacons: [B('Q1', 2144000, -85700), B('Q2', 2144000 + m, -85700),
+          B('Q3', 2144000 + m, -85700 + m), B('Q4', 2144000, -85700 + m)],
+        parcels: [{ label: '404', ring: ['Q1', 'Q2', 'Q3', 'Q4'] }],
+        title: ['WORKING PLAN OF', 'Stand 404'],
+      })
+      // A stand fits A4 comfortably; nothing is gained by more paper.
+      expect(generateWorkingPlan(figure(100)).sheetSize).toBe('A4')
+
+      // 900 m across needs 1:10000 on A4 -- unreadable in the field -- so it
+      // takes the paper instead and comes back inside the limit.
+      const big = generateWorkingPlan(figure(900))
+      expect(SHEET_LADDER.indexOf(big.sheetSize)).toBeGreaterThan(0)
+      expect(big.scale).toBeLessThanOrEqual(AUTO_SHEET_MAX_SCALE)
+      // and it took the SMALLEST sheet that got there, not simply the largest
+      const smaller = SHEET_LADDER[SHEET_LADDER.indexOf(big.sheetSize) - 1]
+      const onSmaller = generateWorkingPlan({ ...figure(900), sheetSize: smaller })
+      expect(onSmaller.scale).toBeGreaterThan(AUTO_SHEET_MAX_SCALE)
+    })
+
+    test('draws a figure too big for any sheet rather than refusing it', () => {
+      // Nothing in the ladder gives a usable scale. The largest is still the
+      // best of them, and a coarse sheet beats no sheet.
+      const B = (name, X, Y) => ({ name, X, Y, symbol: 'placed', label: 'auto' })
+      const m = 8000
+      const r = generateWorkingPlan({
+        scale: 'auto', sheetSize: 'auto',
+        beacons: [B('Q1', 2144000, -85700), B('Q2', 2144000 + m, -85700),
+          B('Q3', 2144000 + m, -85700 + m), B('Q4', 2144000, -85700 + m)],
+        parcels: [{ label: '404', ring: ['Q1', 'Q2', 'Q3', 'Q4'] }],
+        title: ['WORKING PLAN OF', 'Stand 404'],
+      })
+      expect(r.sheetSize).toBe(SHEET_LADDER[SHEET_LADDER.length - 1])
+      expect(r.dxf).toContain('SHEET-BORDER')
+    })
+
+    test('reports the paper it drew, so a plot dialog can be told', () => {
+      const r = generateWorkingPlan({ ...brackenhurstSpec, sheetSize: 'A3' })
+      expect(r.sheetSize).toBe('A3')
+      expect([r.sheetWidthMm, r.sheetHeightMm]).toEqual([420, 297])
+      // and the border really is drawn at that size
+      expect(r.dxf).toContain('SHEET-BORDER')
+    })
+
+    test('names the sheet it cannot draw rather than failing obscurely', () => {
+      expect(() => generateWorkingPlan({ ...brackenhurstSpec, sheetSize: 'A9' }))
+        .toThrow(/A9/)
+    })
+
+    test('defaults to A4 when nothing asks for a size', () => {
+      expect(generateWorkingPlan(brackenhurstSpec).sheetSize).toBe('A4')
+    })
   })
 
   test('picks a scale itself when asked to', () => {

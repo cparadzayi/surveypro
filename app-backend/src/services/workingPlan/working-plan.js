@@ -107,9 +107,14 @@ export const LAYOUT = {
   // grid-label offsets from the cross centre, mm
   gridLabel: { xDx: 4.45, xBaselineDy: 1.06, yDx: -1.02, yStartDy: 5.38 },
 
-  // Stub length in paper mm. The diagram uses CONTIG_STUB_PT = 6 mm expressed in
-  // points; the same 6 mm here keeps the mark the same size on both documents.
-  contiguousStub: 6,
+  // Stub length in paper mm, and it is set by LEGIBILITY, not by the diagram.
+  // At PLANDASH (1.736 mm dash, 1.058 mm gap) three dashes need
+  // 3*1.736 + 2*1.058 = 7.324 mm, so the diagram's 6 mm showed only two. 8.4 mm
+  // is exactly three periods, which leaves margin rather than landing on the
+  // threshold. This is a deliberate divergence from the diagram's
+  // CONTIG_STUB_PT: the diagram draws its stubs solid, where length does not
+  // affect how the mark reads.
+  contiguousStub: 8.4,
 
   lineweight: 18,           // 0.18 mm, matching the source plot
 };

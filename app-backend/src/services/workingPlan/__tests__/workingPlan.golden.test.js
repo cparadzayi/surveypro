@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, test, expect } from '@jest/globals'
-import { generateWorkingPlan, LAYOUT } from '../working-plan.js'
+import { generateWorkingPlan, LAYOUT, LINETYPES } from '../working-plan.js'
 import { brackenhurstSpec } from './fixtures/brackenhurstSpec.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -455,6 +455,19 @@ describe('generateWorkingPlan — golden', () => {
     expect(linetypeOf('ADJOINING')).toBe(linetypeOf('BOUNDARY-EXIST'))
     expect(linetypeOf('ADJOINING')).toBe('PLANDASH')
     expect(linetypeOf('BOUNDARY-NEW')).toBe('CONTINUOUS')
+  })
+
+  test('gives an abutment stub at least three dashes', () => {
+    // A stub too short for its linetype reads as a solid tick or a single dash,
+    // which is exactly what it must not look like. The check is arithmetic on
+    // the pattern rather than a hardcoded length, so retuning either the stub or
+    // PLANDASH keeps it honest.
+    const { on, off } = LINETYPES.PLANDASH
+    const stub = LAYOUT.contiguousStub
+    const dashes = Math.floor((stub + off) / (on + off))
+    expect(dashes).toBeGreaterThanOrEqual(3)
+    // and the minimum that three dashes actually occupy
+    expect(stub).toBeGreaterThanOrEqual(3 * on + 2 * off)
   })
 
   test('picks a scale itself when asked to', () => {

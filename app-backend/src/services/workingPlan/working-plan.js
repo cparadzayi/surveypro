@@ -128,10 +128,11 @@ export const LAYERS = [
   ['0', 7, 'CONTINUOUS'],
   ['BOUNDARY-NEW', 1, 'CONTINUOUS'],
   ['BOUNDARY-EXIST', 3, 'PLANDASH'],
-  // Dotted: a surrounding property is indicated, not surveyed. This diverges
-  // from the diagram, which draws its abutment stubs solid -- the working
-  // plan was asked for dotted and the request is the authority here.
-  ['ADJOINING', 7, 'PLANDOT'],
+  // Dashed, the same PLANDASH as the remainder's own boundary: both mark land
+  // that adjoins the survey rather than land being surveyed, so they read as
+  // one family. A 6 mm stub carries about two dashes at this pattern.
+  // This diverges from the diagram, which draws its abutment stubs solid.
+  ['ADJOINING', 7, 'PLANDASH'],
   ['BEACONS', 2, 'CONTINUOUS'],
   ['BEACON-TEXT', 2, 'CONTINUOUS'],
   ['PARCEL-TEXT', 5, 'CONTINUOUS'],

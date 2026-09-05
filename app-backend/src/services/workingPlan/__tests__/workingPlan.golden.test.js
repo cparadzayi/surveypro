@@ -440,6 +440,23 @@ describe('generateWorkingPlan — golden', () => {
     expect(lines.slice(at, at + 12)).toContain('PLANDASH')
   })
 
+  test('marks everything adjoining the survey with one linetype', () => {
+    // The abutment stubs and the remainder's own boundary both mark land that
+    // ADJOINS the survey rather than land being surveyed, so they share a
+    // linetype; only the new boundaries are solid. The stubs were briefly
+    // dotted, which read as a third category that does not exist.
+    const { dxf } = generateWorkingPlan(brackenhurstSpec)
+    const lines = dxf.split('\n')
+    const linetypeOf = (layer) => {
+      const at = lines.indexOf(layer)
+      for (let i = at; i < at + 12; i++) if (lines[i] === '6') return lines[i + 1]
+      return null
+    }
+    expect(linetypeOf('ADJOINING')).toBe(linetypeOf('BOUNDARY-EXIST'))
+    expect(linetypeOf('ADJOINING')).toBe('PLANDASH')
+    expect(linetypeOf('BOUNDARY-NEW')).toBe('CONTINUOUS')
+  })
+
   test('picks a scale itself when asked to', () => {
     const out = generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' })
     expect(typeof out.scale).toBe('number')

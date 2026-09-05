@@ -105,6 +105,13 @@ export interface WorkingPlanSpec {
   contiguous?: Array<{ from: string; to: string; end?: 'from' | 'to' | 'both' }>
   /** Roads and servitudes, lettered along the side they abut. */
   roads?: WorkingPlanRoad[]
+  /**
+   * The remaining extent's own boundary -- the sides no new subdivision shares.
+   * Drawn dashed, as pre-existing parent boundary. A shared side is left out:
+   * the stand that shares it already draws it solid, and a dashed line over the
+   * top would contradict it.
+   */
+  remainderBoundary?: Array<{ from: string; to: string }>
   /** Survey Record number, already prefixed for printing. */
   srNumber?: string
 }
@@ -611,6 +618,7 @@ export function buildWorkingPlanSpec(
   const contiguous: NonNullable<WorkingPlanSpec['contiguous']> = []
   const mutationAreas: Array<{ label: string; area: number }> = []
   let remainderArea: { label: string; area: number } | null = null
+  let remainderRing: string[] | null = null
   const used: string[] = []
   const seen = new Set<string>()
 
@@ -634,6 +642,8 @@ export function buildWorkingPlanSpec(
     if (ctx.outsideFigureId !== undefined && ctx.outsideFigureId !== null && p?.id === ctx.outsideFigureId) {
       // Not drawn as a stand, but it IS the remaining extent and its area is
       // the whole point of the check.
+      const ofRing = ringNames(p)
+      if (ofRing.length && ofRing.every(n => byName.has(n))) remainderRing = ofRing
       const ofArea = Number(p?.area_m2)
       if (Number.isFinite(ofArea) && ofArea > 0) {
         remainderArea = { label: 'Remaining Extent', area: ofArea }
@@ -700,6 +710,14 @@ export function buildWorkingPlanSpec(
     .map(({ name, from, to }) => ({ name, from, to }))
 
 
+  // The remainder's own sides: everything the new stands do not already draw.
+  const drawnRings = namedRings.filter(r => r.id !== String(ctx.outsideFigureId ?? '')).map(r => r.names)
+  const remainderBoundary = (remainderRing ?? []).flatMap((name, i) => {
+    const from = name
+    const to = remainderRing![(i + 1) % remainderRing!.length]
+    return sharedWithDrawnParcel(from, to, drawnRings) ? [] : [{ from, to }]
+  })
+
   const srNumber = srNumberFrom(ctx.projectInfo)
 
   const inset = buildInset(ctx.calibration, figureBeacons)
@@ -718,6 +736,7 @@ export function buildWorkingPlanSpec(
       ...(finalNotes.length > 0 ? { notes: finalNotes } : {}),
       ...(finalRoads.length > 0 ? { roads: finalRoads } : {}),
       ...(contiguous.length > 0 ? { contiguous } : {}),
+      ...(remainderBoundary.length > 0 ? { remainderBoundary } : {}),
       ...(srNumber ? { srNumber } : {}),
     },
     skippedParcels,

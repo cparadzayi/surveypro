@@ -1055,3 +1055,71 @@ describe('buildWorkingPlanSpec — no stub on a shared subdivision boundary', ()
     expect(spec.notes?.map(n => n.text)).toEqual(['405'])
   })
 })
+
+/**
+ * The remaining extent is not drawn as a stand -- its "Outside Figure" label
+ * would sit across the sheet -- but its outer boundary still has to appear, or
+ * the plan shows subdivisions floating in nothing.
+ *
+ * Only the sides NOT shared with a new subdivision: a shared side is already
+ * drawn, solid, by the stand that shares it. The remainder's own sides are
+ * pre-existing parent boundary, so they are dashed rather than solid.
+ */
+describe('buildWorkingPlanSpec — remainder boundary', () => {
+  // 404 occupies the left half; the remainder wraps the right half, sharing
+  // exactly one side (Q2-Q3) with it.
+  const withRemainder = (extra: any = {}) => ctx({
+    beacons: beaconFC([
+      { name: 'Q1', x: 2144000, y: -85700 }, { name: 'Q2', x: 2144100, y: -85700 },
+      { name: 'Q3', x: 2144100, y: -85600 }, { name: 'Q4', x: 2144000, y: -85600 },
+      { name: 'R1', x: 2144200, y: -85700 }, { name: 'R2', x: 2144200, y: -85600 },
+    ]),
+    parcels: [
+      sq('404', ['Q1', 'Q2', 'Q3', 'Q4'], squarePts),
+      {
+        id: 99, stand: 'Outside Figure',
+        metadata: {
+          cape_lo_points: [['Q2', 2144100, -85700], ['R1', 2144200, -85700],
+                           ['R2', 2144200, -85600], ['Q3', 2144100, -85600]]
+            .map(([id, x, y]) => ({ id, x, y, status: 'P', description: '' })),
+        },
+      },
+    ],
+    outsideFigureId: 99,
+    ...extra,
+  })
+
+  it('emits the remainder sides that no subdivision shares', () => {
+    const { spec } = buildWorkingPlanSpec(withRemainder())
+    const sides = spec.remainderBoundary!.map(s => `${s.from}-${s.to}`)
+    expect(sides).toEqual(['Q2-R1', 'R1-R2', 'R2-Q3'])
+  })
+
+  it('leaves out the side the subdivision already draws', () => {
+    // Q3-Q2 is 404's side Q2-Q3. Drawing it again, dashed, would contradict the
+    // solid line already there.
+    const { spec } = buildWorkingPlanSpec(withRemainder())
+    const sides = spec.remainderBoundary!.map(s => [s.from, s.to].sort().join('-'))
+    expect(sides).not.toContain('Q2-Q3')
+  })
+
+  it('still keeps the remainder out of the drawn parcels', () => {
+    // Excluded by design, so it must not be reported as a failure either.
+    const { spec, skippedParcels } = buildWorkingPlanSpec(withRemainder())
+    expect(spec.parcels.map(p => p.label)).toEqual(['404'])
+    expect(skippedParcels).toEqual([])
+  })
+
+  it('emits nothing when the project has no remainder', () => {
+    const { spec } = buildWorkingPlanSpec(ctx())
+    expect(spec.remainderBoundary).toBeUndefined()
+  })
+
+  it('emits nothing when the remainder has no resolvable ring', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({
+      parcels: [sq('404', ['SD4', 'SD5', 'SD6'], squarePts), { id: 99, stand: 'Outside Figure', metadata: {} }],
+      outsideFigureId: 99,
+    }))
+    expect(spec.remainderBoundary).toBeUndefined()
+  })
+})

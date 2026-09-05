@@ -415,6 +415,31 @@ describe('generateWorkingPlan — golden', () => {
     })
   })
 
+  test('draws the remainder boundary dashed, and the subdivisions solid', () => {
+    // The remainder's own sides are pre-existing parent boundary, so they take
+    // the dashed line; the new stands are solid. Shared sides never reach here
+    // -- the adapter drops them, because the stand already draws them solid.
+    const B = (name, X, Y) => ({ name, X, Y, symbol: 'placed', label: 'auto' })
+    const { dxf } = generateWorkingPlan({
+      scale: 'auto',
+      beacons: [
+        B('Q1', 2144000, -85700), B('Q2', 2144100, -85700),
+        B('Q3', 2144100, -85600), B('Q4', 2144000, -85600),
+        B('R1', 2144200, -85700), B('R2', 2144200, -85600),
+      ],
+      parcels: [{ label: '404', ring: ['Q1', 'Q2', 'Q3', 'Q4'] }],
+      remainderBoundary: [{ from: 'Q2', to: 'R1' }, { from: 'R1', to: 'R2' }, { from: 'R2', to: 'Q3' }],
+      title: ['WORKING PLAN OF', 'Stand 404'],
+    })
+    const count = (layer) => dxf.split('0\nLINE\n8\n' + layer + '\n').length - 1
+    expect(count('BOUNDARY-EXIST')).toBe(3)
+    expect(count('BOUNDARY-NEW')).toBe(4)
+    // and that layer really is the dashed one
+    const lines = dxf.split('\n')
+    const at = lines.indexOf('BOUNDARY-EXIST')
+    expect(lines.slice(at, at + 12)).toContain('PLANDASH')
+  })
+
   test('picks a scale itself when asked to', () => {
     const out = generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' })
     expect(typeof out.scale).toBe('number')

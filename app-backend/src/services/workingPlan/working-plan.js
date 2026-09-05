@@ -194,6 +194,7 @@ function distToSegment([px, py], [x1, y1], [x2, y2]) {
  * @param {Array}  [spec.existing] [{ from, to, extendFrom?, extendTo? }]  dashed parent boundaries, mm extensions
  * @param {Array}  [spec.roads]    [{ name, from, to, offset }]  offset in mm, +ve left of from->to
  * @param {string} [spec.srNumber]  Survey Record number, printed under the scale
+ * @param {Array}  [spec.remainderBoundary] [{from,to}] remainder sides, drawn dashed
  * @param {Array}  [spec.contiguous] [{ from, to, end:'from'|'to'|'both' }] abutting neighbours
  * @param {Array}  [spec.notes]    [{ text, X, Y, height? }]  e.g. neighbouring stand numbers
  * @param {Array}  spec.title      up to four heading lines
@@ -492,6 +493,17 @@ export function generateWorkingPlan(spec) {
     d.text(p.label, [cx, cy - ph / 2], ph,
       { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
   }
+
+  /* ---- the remaining extent's own boundary, dashed */
+  // These sides are pre-existing parent boundary, not newly surveyed, so they
+  // take the same dashed line the parent boundaries do. Sides the new stands
+  // share are absent by construction -- the stand already draws them solid, and
+  // a dashed line over the top would contradict it.
+  for (const s of spec.remainderBoundary ?? []) {
+    const a = G(s.from), b = G(s.to);
+    d.line([a.e, a.n], [b.e, b.n], { layer: 'BOUNDARY-EXIST' });
+  }
+
 
   /* ---- existing (dashed) parent boundaries, with optional extensions */
   for (const ex of spec.existing ?? []) {

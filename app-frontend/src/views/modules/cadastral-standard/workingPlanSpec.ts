@@ -112,6 +112,8 @@ export interface WorkingPlanSpec {
    * top would contradict it.
    */
   remainderBoundary?: Array<{ from: string; to: string }>
+  /** What to letter the remaining extent. Absent when there is no remainder. */
+  remainderLabel?: string
   /** Survey Record number, already prefixed for printing. */
   srNumber?: string
 }
@@ -161,6 +163,30 @@ export interface WorkingPlanSpecContext {
     /** Where the road leads at each end of the side (docket item 10). */
     destinationFrom?: string; destinationTo?: string
   }>>
+}
+
+/**
+ * Is this parcel the remaining extent?
+ *
+ * Recognised by designation as well as by the Outside Figure flag: real data
+ * designates it "REM", while getOutsideFigureParcel() only matches "outside
+ * figure" -- so REM was drawn as an ordinary stand, solid boundary and all.
+ *
+ * Anchored and bounded, so a stand called REMBRANDT is a stand.
+ */
+const REMAINDER_NAME = /^(rem|rem\.|rem\.?\/|remainder|outside[\s_]*figure)$/i
+
+function isRemainder(p: any, outsideFigureId: unknown): boolean {
+  if (outsideFigureId !== undefined && outsideFigureId !== null && p?.id === outsideFigureId) return true
+  const name = String(p?.designation ?? p?.stand ?? '').trim()
+  return REMAINDER_NAME.test(name)
+}
+
+/** What to letter it. The app's internal "Outside Figure" wording is not a
+ *  cadastral label; REM is the conventional abbreviation a surveyor reads. */
+function remainderLabelFor(p: any): string {
+  const name = String(p?.designation ?? p?.stand ?? '').trim()
+  return /^outside[\s_]*figure$/i.test(name) ? 'REM' : (name || 'REM')
 }
 
 /** A ring shorter than this is not a polygon. */
@@ -619,6 +645,7 @@ export function buildWorkingPlanSpec(
   const mutationAreas: Array<{ label: string; area: number }> = []
   let remainderArea: { label: string; area: number } | null = null
   let remainderRing: string[] | null = null
+  let remainderLabel: string | null = null
   const used: string[] = []
   const seen = new Set<string>()
 
@@ -639,7 +666,8 @@ export function buildWorkingPlanSpec(
     // land in skippedParcels, which is a warning surfaced to the surveyor as
     // "Not drawn (no named boundary points)". Reporting it there would train
     // surveyors to ignore a real warning.
-    if (ctx.outsideFigureId !== undefined && ctx.outsideFigureId !== null && p?.id === ctx.outsideFigureId) {
+    if (isRemainder(p, ctx.outsideFigureId)) {
+      remainderLabel = remainderLabelFor(p)
       // Not drawn as a stand, but it IS the remaining extent and its area is
       // the whole point of the check.
       const ofRing = ringNames(p)
@@ -711,7 +739,8 @@ export function buildWorkingPlanSpec(
 
 
   // The remainder's own sides: everything the new stands do not already draw.
-  const drawnRings = namedRings.filter(r => r.id !== String(ctx.outsideFigureId ?? '')).map(r => r.names)
+  const remainderId = (ctx.parcels ?? []).find(p => isRemainder(p, ctx.outsideFigureId))?.id
+  const drawnRings = namedRings.filter(r => r.id !== String(remainderId ?? ' ')).map(r => r.names)
   const remainderBoundary = (remainderRing ?? []).flatMap((name, i) => {
     const from = name
     const to = remainderRing![(i + 1) % remainderRing!.length]
@@ -737,6 +766,7 @@ export function buildWorkingPlanSpec(
       ...(finalRoads.length > 0 ? { roads: finalRoads } : {}),
       ...(contiguous.length > 0 ? { contiguous } : {}),
       ...(remainderBoundary.length > 0 ? { remainderBoundary } : {}),
+      ...(remainderLabel ? { remainderLabel } : {}),
       ...(srNumber ? { srNumber } : {}),
     },
     skippedParcels,

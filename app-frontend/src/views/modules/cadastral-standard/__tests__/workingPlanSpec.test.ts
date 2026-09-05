@@ -242,11 +242,15 @@ describe('buildWorkingPlanSpec — Outside Figure', () => {
     expect(skippedParcels).toEqual([])
   })
 
-  it('leaves the Outside Figure parcel in place when no outsideFigureId is supplied', () => {
+  it('recognises it by name even without the outsideFigureId', () => {
+    // Superseded: this used to assert the opposite. Real data designates the
+    // remainder "REM" and never sets the flag, so it was drawn as an ordinary
+    // stand with a solid boundary. The name alone now identifies it.
     const { spec, skippedParcels } = buildWorkingPlanSpec(ctx({
       parcels: [parcel('404', ['SD4', 'SD5', 'SD6']), outsideFigure],
     }))
-    expect(spec.parcels.map(p => p.label)).toEqual(['404', 'Outside Figure'])
+    expect(spec.parcels.map(p => p.label)).toEqual(['404'])
+    expect(spec.remainderLabel).toBe('REM')
     expect(skippedParcels).toEqual([])
   })
 })
@@ -1121,5 +1125,64 @@ describe('buildWorkingPlanSpec — remainder boundary', () => {
       outsideFigureId: 99,
     }))
     expect(spec.remainderBoundary).toBeUndefined()
+  })
+})
+
+/**
+ * The remainder is recognised by designation as well as by the Outside Figure
+ * flag. Real data designates it "REM"; getOutsideFigureParcel() only matches
+ * "outside figure", so REM was drawn as an ordinary stand -- solid boundary and
+ * all -- and no remainder boundary was emitted at all.
+ */
+describe('buildWorkingPlanSpec — recognising the remainder', () => {
+  const withRem = (stand: string, extra: any = {}) => ctx({
+    beacons: beaconFC([
+      { name: 'Q1', x: 2144000, y: -85700 }, { name: 'Q2', x: 2144100, y: -85700 },
+      { name: 'Q3', x: 2144100, y: -85600 }, { name: 'Q4', x: 2144000, y: -85600 },
+      { name: 'R1', x: 2144200, y: -85700 }, { name: 'R2', x: 2144200, y: -85600 },
+    ]),
+    parcels: [
+      sq('404', ['Q1', 'Q2', 'Q3', 'Q4'], squarePts),
+      {
+        id: 99, stand, designation: stand,
+        metadata: {
+          cape_lo_points: [['Q2', 2144100, -85700], ['R1', 2144200, -85700],
+                           ['R2', 2144200, -85600], ['Q3', 2144100, -85600]]
+            .map(([id, x, y]) => ({ id, x, y, status: 'P', description: '' })),
+        },
+      },
+    ],
+    ...extra,
+  })
+
+  it.each(['REM', 'Rem', 'REM.', 'Rem./', 'Remainder', 'Outside Figure'])(
+    'treats %s as the remainder without needing the Outside Figure flag', (name) => {
+      const { spec } = buildWorkingPlanSpec(withRem(name))
+      expect(spec.parcels.map(p => p.label)).toEqual(['404'])
+      expect(spec.remainderBoundary?.map(s => `${s.from}-${s.to}`))
+        .toEqual(['Q2-R1', 'R1-R2', 'R2-Q3'])
+    })
+
+  it('still labels the remainder, which is part of the plan', () => {
+    const { spec } = buildWorkingPlanSpec(withRem('REM'))
+    expect(spec.remainderLabel).toBe('REM')
+  })
+
+  it('shortens the system wording to the cadastral abbreviation', () => {
+    // "Outside Figure" is how the app flags it internally, not what belongs on
+    // a plan; REM is the conventional abbreviation and is what a surveyor reads.
+    expect(buildWorkingPlanSpec(withRem('Outside Figure')).spec.remainderLabel).toBe('REM')
+  })
+
+  it('does not mistake a stand whose name merely starts with those letters', () => {
+    const { spec } = buildWorkingPlanSpec(withRem('REMBRANDT'))
+    expect(spec.parcels.map(p => p.label).sort()).toEqual(['404', 'REMBRANDT'])
+    expect(spec.remainderBoundary).toBeUndefined()
+  })
+
+  it('still honours an explicit Outside Figure id whatever the name', () => {
+    const { spec } = buildWorkingPlanSpec(withRem('Portion A', { outsideFigureId: 99 }))
+    expect(spec.parcels.map(p => p.label)).toEqual(['404'])
+    expect(spec.remainderLabel).toBe('Portion A')
   })
 })

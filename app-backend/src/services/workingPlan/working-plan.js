@@ -195,6 +195,7 @@ function distToSegment([px, py], [x1, y1], [x2, y2]) {
  * @param {Array}  [spec.existing] [{ from, to, extendFrom?, extendTo? }]  dashed parent boundaries, mm extensions
  * @param {Array}  [spec.roads]    [{ name, from, to, offset }]  offset in mm, +ve left of from->to
  * @param {string} [spec.srNumber]  Survey Record number, printed under the scale
+ * @param {string} [spec.remainderLabel]  lettered at the remainder's centroid
  * @param {Array}  [spec.remainderBoundary] [{from,to}] remainder sides, drawn dashed
  * @param {Array}  [spec.contiguous] [{ from, to, end:'from'|'to'|'both' }] abutting neighbours
  * @param {Array}  [spec.notes]    [{ text, X, Y, height? }]  e.g. neighbouring stand numbers
@@ -504,6 +505,20 @@ export function generateWorkingPlan(spec) {
     const a = G(s.from), b = G(s.to);
     d.line([a.e, a.n], [b.e, b.n], { layer: 'BOUNDARY-EXIST' });
   }
+
+  // Letter the remainder. It is part of the plan even though it is not a new
+  // stand, so it is named -- just not drawn solid.
+  if (spec.remainderLabel && (spec.remainderBoundary ?? []).length) {
+    const pts = spec.remainderBoundary.flatMap((s) => [[G(s.from).e, G(s.from).n]]);
+    const cx = pts.reduce((t, q) => t + q[0], 0) / pts.length;
+    const cy = pts.reduce((t, q) => t + q[1], 0) / pts.length;
+    const ph = mm(L.text.parcel);
+    const rc = textRect(spec.remainderLabel, cx, cy - ph / 2, ph, 'center');
+    occupied.push(rc);
+    d.text(spec.remainderLabel, [cx, cy - ph / 2], ph,
+      { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
+  }
+
 
 
   /* ---- existing (dashed) parent boundaries, with optional extensions */

@@ -1,9 +1,4 @@
-import { generateWorkingPlan, SHEET_LADDER } from '../services/workingPlan/working-plan.js'
-
-// ISO paper the renderer can draw, plus 'auto'. The generator throws on an
-// unknown size, which without this reaches the surveyor as a 500 rather than
-// as the correctable mistake it is.
-const VALID_SHEET_SIZES = new Set([...SHEET_LADDER, 'auto'])
+import { generateWorkingPlan } from '../services/workingPlan/working-plan.js'
 
 // SI 727 Fifth Schedule conventional signs the renderer can draw. This MUST
 // track workingPlanSpec.ts's WorkingPlanSymbol: the adapter emits these names
@@ -56,8 +51,11 @@ function validateWorkingPlanSpec(spec) {
     }
   }
 
-  if (spec.sheetSize != null && !VALID_SHEET_SIZES.has(spec.sheetSize)) {
-    return `sheetSize "${spec.sheetSize}" is invalid -- must be one of ${[...VALID_SHEET_SIZES].join(', ')}`
+  // A working plan is A4. Asking for other paper is answered, not ignored: a
+  // silently dropped sheetSize would have the caller believe it was honoured,
+  // and the answer -- that SI 727 moves the SCALE instead -- is the useful part.
+  if (spec.sheetSize != null && spec.sheetSize !== 'A4') {
+    return `sheetSize "${spec.sheetSize}" is not available -- a working plan is drawn on A4, and the scale escalates through the SI 727 prescribed scales instead`
   }
   return null
 }

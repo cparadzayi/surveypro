@@ -762,14 +762,26 @@ export function buildWorkingPlanSpec(
   // whatever distant control happens to be listed.
   const figureBeacons = beacons.filter(b => seen.has(b.name))
 
-  // De-duplicate before emitting: same name, one label, on its longest side.
-  const finalNotes: WorkingPlanNote[] = longestPerName(notes, n => n.text)
-    .map(({ text, X, Y }) => ({ text, X, Y }))
-  const finalRoads: WorkingPlanRoad[] = longestPerName(roads, r => r.key)
-    .map(({ name, from, to }) => ({ name, from, to }))
-
-
+  /**
+   * A neighbour note names land that lies OFF the plan. Once the sheet draws
+   * the remaining extent and letters it, the remainder is not a neighbour --
+   * so a side tagged "R  E  M.  /" put that name on the sheet a second time,
+   * and the second copy is positioned by the outward-offset rule rather than
+   * by the parcel it names. On the Brackenhurst plan it landed 36 units from
+   * the "88" label, inside stand 88, while the remainder's own REM sat
+   * correctly 80 units away.
+   *
+   * Narrow on purpose. A neighbouring STAND keeps its note even though it is
+   * drawn and numbered -- the reader still needs to know which parcel abuts
+   * that side -- and a sheet with no remainder of its own keeps a "Rem./" note,
+   * because there it really is land off the plan. Both are tests.
+   *
+   * Surveyors letter these spaced out, so the comparison ignores spacing:
+   * 'R  E  M.  /' and 'REM' are the same name.
+   */
   // The remainder's own sides: everything the new stands do not already draw.
+  // Derived before the notes, because whether the sheet letters its remainder
+  // decides whether a note naming it is a duplicate or a real neighbour.
   const remainderId = (ctx.parcels ?? []).find(p => isRemainder(p, ctx.outsideFigureId))?.id
   const drawnRings = namedRings.filter(r => r.id !== String(remainderId ?? ' ')).map(r => r.names)
   const remainderBoundary = (remainderRing ?? []).flatMap((name, i) => {
@@ -777,6 +789,21 @@ export function buildWorkingPlanSpec(
     const to = remainderRing![(i + 1) % remainderRing!.length]
     return sharedWithDrawnParcel(from, to, drawnRings) ? [] : [{ from, to }]
   })
+
+  const squash = (t: unknown) => String(t ?? '').replace(/\s+/g, '').toUpperCase()
+  // The renderer letters the remainder only when it has a boundary to letter
+  // it inside, so that is the exact condition under which it stops being a
+  // neighbour.
+  const lettersItsOwnRemainder = remainderLabel != null && remainderBoundary.length > 0
+  const namesThisSheet = (t: string) => lettersItsOwnRemainder
+    && (squash(t) === squash(remainderLabel) || REMAINDER_NAME.test(squash(t)))
+
+  // De-duplicate before emitting: same name, one label, on its longest side.
+  const finalNotes: WorkingPlanNote[] = longestPerName(
+    notes.filter(n => !namesThisSheet(n.text)), n => n.text)
+    .map(({ text, X, Y }) => ({ text, X, Y }))
+  const finalRoads: WorkingPlanRoad[] = longestPerName(roads, r => r.key)
+    .map(({ name, from, to }) => ({ name, from, to }))
 
   const srNumber = srNumberFrom(ctx.projectInfo)
 

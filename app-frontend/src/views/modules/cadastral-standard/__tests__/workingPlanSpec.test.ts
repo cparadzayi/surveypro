@@ -672,6 +672,49 @@ describe('buildWorkingPlanSpec — one label per adjoining feature', () => {
     sideAnnotations: annotations,
   })
 
+  it('does not letter the remaining extent a second time, as a neighbour', () => {
+    // A neighbour note names land the sheet does NOT draw. The working plan
+    // draws and letters the remainder itself, so a side tagged "R E M. /" put
+    // that name on the sheet twice -- and the second copy, positioned by the
+    // outward offset, landed 36 units from the '88' label, inside stand 88.
+    //
+    // Surveyors letter these spaced out, so the check ignores spacing:
+    // 'R  E  M.  /' and 'REM' are the same name.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFC([
+        { name: 'Q1', x: 2144000, y: -85700 }, { name: 'Q2', x: 2144100, y: -85700 },
+        { name: 'Q3', x: 2144100, y: -85600 }, { name: 'Q4', x: 2144000, y: -85600 },
+        { name: 'R1', x: 2144200, y: -85700 }, { name: 'R2', x: 2144200, y: -85600 },
+      ]),
+      parcels: [
+        sq('404', ['Q1', 'Q2', 'Q3', 'Q4'], squarePts),
+        { ...sq('REM', ['Q2', 'R1', 'R2', 'Q3'],
+          [[2144100, -85700], [2144200, -85700], [2144200, -85600], [2144100, -85600]]),
+        designation: 'REM' },
+      ],
+      sideAnnotations: {
+        // the stand says the remainder abuts it, and names a real neighbour too
+        404: [{ side: 'BC', role: 'contiguous', label: 'R  E  M.  /' },
+          { side: 'DA', role: 'contiguous', label: '88' }],
+      },
+    }))
+    expect(spec.notes?.map(n => n.text)).toEqual(['88'])
+    // it is still lettered ONCE, by the renderer, inside its own boundary
+    expect(spec.remainderLabel).toBe('REM')
+  })
+
+  it('keeps a Rem./ note on a sheet that draws no remainder of its own', () => {
+    // The rule is narrow on purpose: with no remaining extent on this sheet,
+    // "Rem./" really is land off the plan and the reader needs it named. A
+    // neighbouring STAND keeps its note too -- see "still letters the neighbour
+    // name on a shared boundary".
+    const { spec } = buildWorkingPlanSpec(twoParcels({
+      '404': [{ side: 'AB', role: 'contiguous', label: 'Rem./' }],
+    }))
+    expect(spec.notes?.map(n => n.text)).toEqual(['Rem./'])
+    expect(spec.remainderLabel).toBeUndefined()
+  })
+
   it('marks an abutment on a side only the remaining extent holds', () => {
     // The remainder is not drawn as a stand, but its boundary IS drawn and its
     // sides are annotated like any other parcel's. Skipping its annotations

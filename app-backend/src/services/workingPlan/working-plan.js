@@ -19,35 +19,19 @@ import { DxfDocument } from './dxf-r12.js';
 // consumer. Both are coordinate-space agnostic, so they work in ground units.
 import { contiguousMarks, CONTIG_STUB_MM } from '../diagram/contiguousMarks.js';
 import { edgeStrip } from '../diagram/edgeStrip.js';
+import { SI727_SCALE_LADDER } from '../../../../app-shared/si727Scales.js';
 
 /* ------------------------------------------------------------------ layout */
 
 /**
- * ISO A-series, landscape, in millimetres -- the real paper a surveyor prints
- * on, so a sheet plots at true size with no hand-scaling.
+ * The working plan's paper: ISO A4 landscape, in millimetres.
  *
- * A4 is the sheet this layout was drawn for and stays the default. The larger
- * sizes do NOT enlarge the design: every block keeps its physical size and the
- * extra paper goes to the drawing panel, because SI 727's conventional signs
- * and lettering are absolute sizes. A bigger sheet buys room for the figure,
- * not bigger writing.
+ * One size, deliberately. A working plan is a field document and A4 is what a
+ * surveyor carries and prints; when a figure will not fit, SI 727 Reg 32(2)
+ * says the SCALE moves, not the paper. Reported in the result so a plot dialog
+ * can set true size without the operator scaling by hand.
  */
-export const SHEET_SIZES = {
-  A4: { width: 297, height: 210 },
-  A3: { width: 420, height: 297 },
-  A2: { width: 594, height: 420 },
-  A1: { width: 841, height: 594 },
-};
-export const SHEET_LADDER = ['A4', 'A3', 'A2', 'A1'];
-export const SHEET = SHEET_SIZES.A4;                      // the layout's own size
-
-/**
- * The coarsest scale worth printing a working plan at before reaching for more
- * paper. Cadastral working plans run 1:500 to 1:2000; past that the beacon
- * names crowd and the figure stops being usable in the field, which is the
- * whole point of the document.
- */
-export const AUTO_SHEET_MAX_SCALE = 2000;
+export const SHEET = { width: 297, height: 210 };
 
 export const LAYOUT = {
   border: { x0: 0.5, y0: 0.5, x1: 296.5, y1: 209.5 },
@@ -86,11 +70,12 @@ export const LAYOUT = {
 
   inset: {
     box: { x0: 162.9, y0: 109.69, x1: 291.97, y1: 196.13 },
-    // The inset is a locality map in its own right, and a map without a north
-    // point cannot be read. Top right, clear of the "Inset (not to scale)"
-    // caption at the top left. A slim solid arrow: at this size an outline
-    // closes up, and the proportions keep it from reading as a trig sign.
-    north: { dxFromRight: 11.0, letterBaseline: 5.4, apex: 7.2, len: 8.6, halfWidth: 1.35 },
+    // The inset is a locality map in its own right and cannot be read without a
+    // north point -- and it is the SHEET'S arrow, drawn small, not a second
+    // symbol of its own. Everything comes from LAYOUT.northArrow times `scale`,
+    // so retuning the meridian arrow retunes both. Top right, clear of the
+    // "Inset (not to scale)" caption at the top left.
+    north: { dxFromRight: 12.0, dyFromTop: 12.0, scale: 0.30, letterMm: 1.6 },
   },
 
   // Area statement: the free column between the scale line, the approval box
@@ -182,8 +167,35 @@ export const LAYERS = [
   ['INSET', 9, 'CONTINUOUS'],
 ];
 
-const STANDARD_SCALES = [200, 250, 500, 1000, 1250, 2000, 2500, 5000, 10000, 20000];
+/**
+ * SI 727 Reg 32(2)'s prescribed scales, from the shared table every other plan
+ * type already resolves against.
+ *
+ * This was a hand-written subset -- 200, 250, 500, 1000, 1250, 2000, 2500,
+ * 5000, 10000, 20000 -- missing 1:150, 1:300, 1:400, 1:600, 1:750, 1:1500,
+ * 1:3000 and the rest, so a figure needing 1:1300 was drawn at 1:2000 when the
+ * regulation offers 1:1500. Coarser than the law allows, from a list nobody
+ * meant as law.
+ */
+const STANDARD_SCALES = SI727_SCALE_LADDER;
 const GRID_INTERVALS = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000];
+
+/**
+ * How many coordinate ticks a sheet must carry.
+ *
+ * A grid is a FRAMEWORK, not a reference point. With one tick a reader cannot
+ * even tell which way the grid runs; with four they can interpolate a position
+ * anywhere on the figure and check the plan against the ground. The interval
+ * was being chosen for paper spacing alone and then most candidates were vetoed
+ * for crossing the figure, which left one cross on a 1:1500 sheet -- and
+ * nothing tried again.
+ */
+const MIN_GRID_TICKS = 4;
+
+/** Ticks closer than this stop reading as a framework and start crowding the
+ *  figure, so the hunt for more of them stops here rather than shrinking the
+ *  interval indefinitely. */
+const MIN_TICK_SPACING_MM = 15;
 
 /* --------------------------------------------------------------- utilities */
 
@@ -240,9 +252,6 @@ function distToSegment([px, py], [x1, y1], [x2, y2]) {
  * @param {Array}  [spec.notes]    [{ text, X, Y, height? }]  e.g. neighbouring stand numbers
  * @param {Array}  spec.title      up to four heading lines
  * @param {number|'auto'} spec.scale
- * @param {'A4'|'A3'|'A2'|'A1'|'auto'} [spec.sheetSize]  ISO paper, landscape.
- *   Defaults to A4, the sheet this layout was drawn for. 'auto' takes the
- *   smallest that holds the figure at a scale worth printing.
  * @param {object} [spec.certificate] { line1, line2 }
  * @param {boolean}[spec.approvalBox]
  * @param {object} [spec.inset]    { scale, gridInterval, beacons:[{name,X,Y,symbol}] }
@@ -278,62 +287,8 @@ function symbolClearance(symbol) {
   }
 }
 
-/**
- * The layout re-anchored for a larger ISO sheet.
- *
- * Blocks keep their SIZE and their distance from the edge they belong to: the
- * title, north arrow, approval box and inset are right-hand furniture, so they
- * move right with the edge; the certificate and SR number sit against the foot,
- * so they move down. Only the drawing panel grows, absorbing both.
- *
- * A4 returns LAYOUT itself, so the sheet this was designed for is byte-for-byte
- * what it always was.
- */
-export function layoutFor(sheetName) {
-  const size = SHEET_SIZES[sheetName];
-  if (!size) throw new Error(`generateWorkingPlan: unknown sheet size "${sheetName}"`);
-  const dW = size.width - SHEET_SIZES.A4.width;
-  const dH = size.height - SHEET_SIZES.A4.height;
-  if (!dW && !dH) return LAYOUT;
-  const L = LAYOUT;
-  const box = (b, ddx, ddy) => ({ x0: b.x0 + ddx, y0: b.y0 + ddy, x1: b.x1 + ddx, y1: b.y1 + ddy });
-  return {
-    ...L,
-    border: { ...L.border, x1: L.border.x1 + dW, y1: L.border.y1 + dH },
-    // the figure's room: everything the bigger sheet gained
-    panel: { ...L.panel, x1: L.panel.x1 + dW, y1: L.panel.y1 + dH },
-    title: { ...L.title, cx: L.title.cx + dW },
-    northArrow: { ...L.northArrow, cx: L.northArrow.cx + dW },
-    approval: {
-      ...L.approval,
-      box: box(L.approval.box, dW, 0),
-      dateX: L.approval.dateX + dW,
-    },
-    certificate: {
-      line1: { ...L.certificate.line1, baseline: L.certificate.line1.baseline + dH },
-      line2: { ...L.certificate.line2, baseline: L.certificate.line2.baseline + dH },
-    },
-    // bottom-right furniture: follows both edges
-    inset: { ...L.inset, box: box(L.inset.box, dW, dH) },
-    srNumber: { cx: size.width / 2, baseline: L.srNumber.baseline + dH },
-  };
-}
-
-/** The smallest ISO sheet the figure fits on at a scale worth printing. */
-export function pickSheetSize(bb, layouts = SHEET_LADDER) {
-  for (const name of layouts) {
-    const L = layoutFor(name);
-    const need = Math.max((bb.e1 - bb.e0) / (L.panel.x1 - L.panel.x0),
-      (bb.n1 - bb.n0) / (L.panel.y1 - L.panel.y0)) * 1000 * 1.15;
-    const scale = STANDARD_SCALES.find((sc) => sc >= need);
-    if (scale != null && scale <= AUTO_SHEET_MAX_SCALE) return name;
-  }
-  // Nothing in the ladder gives a usable scale: the largest sheet is still the
-  // best of them, and the figure is drawn rather than refused.
-  return layouts[layouts.length - 1];
-}
-
 export function generateWorkingPlan(spec) {
+  const L = LAYOUT;
   const byName = new Map(spec.beacons.map((b) => [b.name, { ...b, ...loToGround(b) }]));
   const G = (name) => {
     const b = byName.get(name);
@@ -341,23 +296,29 @@ export function generateWorkingPlan(spec) {
     return b;
   };
 
-  /* ---- figure extent (boundary beacons only, so stray RMs don't blow it up) */
-  const ringPts = spec.parcels.flatMap((p) => p.ring.map((n) => [G(n).e, G(n).n]));
+  /* ---- figure extent: everything the sheet DRAWS.
+   *
+   * It was the ring vertices alone, "so stray RMs don't blow it up" -- the fear
+   * being that one distant reference mark would force a coarse scale and shrink
+   * the stands. The trade does not hold up: the sheet still DREW those points,
+   * it just stopped sizing itself to them, so a reference mark outside the ring
+   * extent was placed beyond the panel and, at a fine enough scale, off the
+   * sheet entirely. On the Brackenhurst plan at 1:1500 that was 88X2, past the
+   * border and simply gone.
+   *
+   * A slightly coarser scale costs a little room. A beacon drawn outside the
+   * margin costs the surveyor the point, silently, and there is no reading of
+   * the sheet that reveals it. So the extent covers every beacon, and if that
+   * means the next scale up, that is the honest answer. */
+  const beaconPts = [...byName.values()].map((b) => [b.e, b.n]);
   const extraPts = (spec.notes ?? []).map((t) => {
     const g = loToGround(t); return [g.e, g.n];
   });
-  const all = ringPts.concat(extraPts);
+  const all = beaconPts.concat(extraPts);
   const bb = {
     e0: Math.min(...all.map((p) => p[0])), e1: Math.max(...all.map((p) => p[0])),
     n0: Math.min(...all.map((p) => p[1])), n1: Math.max(...all.map((p) => p[1])),
   };
-
-  /* ---- sheet: the paper this is drawn on, then the layout that fits it */
-  const sheetName = spec.sheetSize === 'auto' || spec.sheetSize == null
-    ? (spec.sheetSize === 'auto' ? pickSheetSize(bb) : 'A4')
-    : spec.sheetSize;
-  const L = layoutFor(sheetName);
-  const sheet = SHEET_SIZES[sheetName];
 
   /* ---- scale */
   const panelW = L.panel.x1 - L.panel.x0;
@@ -519,6 +480,37 @@ export function generateWorkingPlan(spec) {
 
   const d = doc.sink;
 
+  /** The meridian arrow -- eight rays about a centre, flanked by its T and N --
+   *  drawn at whatever size is asked for. One symbol, used twice: the sheet
+   *  carries it full size and the inset carries the same arrow small, rather
+   *  than a second symbol that could drift from it. The letters' offset is
+   *  taken from the arrow's own geometry, so they scale with the rays.
+   *
+   *  `k` = 1 reproduces the sheet's arrow exactly, which is what keeps the
+   *  reference drawing byte-for-byte unchanged. */
+  const drawNorthArrow = (cx, cy, k, letterMm) => {
+    const na = L.northArrow;
+    const hw = na.halfWidth * k;
+    const rays = [
+      [90, na.north], [270, na.south], [0, na.side], [180, na.side],
+      [45, na.diagonal], [135, na.diagonal], [225, na.diagonal], [315, na.diagonal],
+    ];
+    for (const [deg, len] of rays) {
+      const a = (deg * Math.PI) / 180;
+      const tip = S(cx + Math.cos(a) * len * k, cy - Math.sin(a) * len * k);
+      const b1 = S(cx - Math.sin(a) * hw, cy - Math.cos(a) * hw);
+      const b2 = S(cx + Math.sin(a) * hw, cy + Math.cos(a) * hw);
+      d.polyline([b1, tip, b2], { layer: 'NORTH-ARROW' });
+    }
+    // The letters sit at a fixed height on the sheet; expressed as an offset
+    // from the arrow's own centre they travel with it at any size.
+    const dy = (na.letters.baseline - na.cy) * k;
+    d.text(na.letters.left, S(cx + na.letters.dxLeft * k, cy + dy), mm(letterMm),
+      { layer: 'NORTH-ARROW', style: 'ARIAL' });
+    d.text(na.letters.right, S(cx + na.letters.dxRight * k, cy + dy), mm(letterMm),
+      { layer: 'NORTH-ARROW', style: 'ARIAL' });
+  };
+
   /* ---- sheet border */
   d.polyline([S(L.border.x0, L.border.y0), S(L.border.x1, L.border.y0),
     S(L.border.x1, L.border.y1), S(L.border.x0, L.border.y1)],
@@ -577,8 +569,20 @@ export function generateWorkingPlan(spec) {
     return false;
   };
 
-  /** Free of other labels, symbols AND boundary lines. */
-  const free = (rect) => !hits(rect) && !segments.some((s) => segCrossesRect(s[0], s[1], rect));
+  /** The drawing panel, in ground units. Everything the figure owns lives here;
+   *  outside it are the title block, the approval box and the inset, none of
+   *  which the label placer can see. Without this a label that found no room in
+   *  the figure simply walked out of the panel -- the Brackenhurst road name
+   *  ended up written across the title. */
+  const pA = S(L.panel.x0, L.panel.y0), pB = S(L.panel.x1, L.panel.y1);
+  const panelBox = [Math.min(pA[0], pB[0]), Math.min(pA[1], pB[1]),
+    Math.max(pA[0], pB[0]), Math.max(pA[1], pB[1])];
+  const insidePanel = (r) => r[0] >= panelBox[0] && r[2] <= panelBox[2]
+    && r[1] >= panelBox[1] && r[3] <= panelBox[3];
+
+  /** Free of other labels, symbols AND boundary lines -- and on the drawing. */
+  const free = (rect) => insidePanel(rect) && !hits(rect)
+    && !segments.some((s) => segCrossesRect(s[0], s[1], rect));
 
   /** How badly a rectangle sits where it is: the area it steals from whatever is
    *  already placed, plus a label-sized fine for every boundary it crosses.
@@ -602,14 +606,23 @@ export function generateWorkingPlan(spec) {
    *  label that fitted nowhere was put exactly where it did the most damage.
    *  It now goes to the emptiest candidate instead. */
   const bestOf = (candidates, rectOf) => {
-    let best = null, bestScore = Infinity;
+    let onSheet = null, onScore = Infinity;
+    let anywhere = null, anyScore = Infinity;
     for (const c of candidates) {
       const rect = rectOf(c);
       if (free(rect)) return { choice: c, rect, clear: true };
       const score = penalty(rect);
-      if (score < bestScore) { bestScore = score; best = { choice: c, rect, clear: false }; }
+      // Leaving the panel is not a matter of degree. Crowding another label is
+      // untidy; writing across the title block is a broken sheet, so a
+      // congested spot ON the drawing beats a clear one off it, and the
+      // off-panel candidate is kept only for a label with nowhere else at all.
+      if (insidePanel(rect)) {
+        if (score < onScore) { onScore = score; onSheet = { choice: c, rect, clear: false }; }
+      } else if (score < anyScore) {
+        anyScore = score; anywhere = { choice: c, rect, clear: false };
+      }
     }
-    return best;
+    return onSheet ?? anywhere;
   };
 
   /** A line between two beacons, pulled back to the rim of the sign at each
@@ -924,8 +937,11 @@ export function generateWorkingPlan(spec) {
     // before the distance grows at all. Only when all eight are blocked does it
     // step out, and by as little as possible.
     const tries = [pos, ...ORDER.slice(ORDER.indexOf(pos) + 1), ...ORDER.slice(0, ORDER.indexOf(pos))];
+    // The whole compass at one distance, then further out. The last two steps
+    // are for a name boxed in by a road label or a crowded corner: without them
+    // it had nowhere left and fell back onto whatever was there.
     const cands = [];
-    for (const k of [1, 1.5, 2.1]) for (const t of tries) cands.push(place(t, k));
+    for (const k of [1, 1.5, 2.1, 3.0, 4.2]) for (const t of tries) cands.push(place(t, k));
     // Nothing free anywhere still letters the beacon -- a beacon without a name
     // is worse than a crowded one -- but in the emptiest of the 24 positions
     // rather than always on the preferred one.
@@ -937,38 +953,70 @@ export function generateWorkingPlan(spec) {
   }
 
   /* ---- coordinate grid */
-  const pick = (span) => GRID_INTERVALS.find((i) => (i / scale) * 1000 >= 40)
+  const pick = () => GRID_INTERVALS.find((i) => (i / scale) * 1000 >= 40)
     ?? GRID_INTERVALS.at(-1);
-  const gi = spec.gridInterval ?? pick();
   const arm = mm(L.symbol.gridArm) / 2;
   const inset = 10;                                   // keep ticks off the panel edge
 
   const [pe0] = S(L.panel.x0 + inset, 0), [pe1] = S(L.panel.x1 - inset, 0);
   const pn1 = S(0, L.panel.y0 + inset)[1], pn0 = S(0, L.panel.y1 - inset)[1];
-  const gridInterval = { e: gi, n: gi };
-  let placed = 0;
-  for (let e = Math.ceil(pe0 / gi) * gi; e <= pe1; e += gi) {
-    for (let n = Math.ceil(pn0 / gi) * gi; n <= pn1; n += gi) {
-      // the cross plus both of its labels must be clear of the figure,
-      // of every beacon symbol, and of every label already placed
-      const gw = mm(L.gridLabel.xDx + 0.63 * L.text.grid * 13);
-      const tickRect = [e - arm - mm(2), n - mm(L.gridLabel.yStartDy + 12),
-        e + gw, n + arm + mm(2)];
-      const clearOfLines = segments.every((s) => distToSegment([e, n], s[0], s[1]) > mm(7));
-      if (!clearOfLines || hits(tickRect)) continue;
-      occupied.push(tickRect);
-      d.line([e - arm, n], [e + arm, n], { layer: 'GRID' });
-      d.line([e, n - arm], [e, n + arm], { layer: 'GRID' });
-      const gh = mm(L.text.grid);
-      const Xlo = -n, Ylo = -e;
-      d.text(`X = ${Xlo >= 0 ? '+' : ''}${Xlo.toFixed(0)}`,
-        [e + mm(L.gridLabel.xDx), n - mm(L.gridLabel.xBaselineDy)], gh,
-        { layer: 'GRID-TEXT', style: 'ARIAL' });
-      d.text(`Y = ${Ylo.toFixed(0)}`,
-        [e + mm(L.gridLabel.yDx), n - mm(L.gridLabel.yStartDy)], gh,
-        { layer: 'GRID-TEXT', style: 'ARIAL', rotation: -90 });
-      placed++;
+
+  /** Where an interval's ticks would go. Reads `occupied` but never adds to it,
+   *  so an interval can be tried and abandoned; only the chosen one is drawn. */
+  const layGrid = (gi) => {
+    const out = [];
+    const gw = mm(L.gridLabel.xDx + 0.63 * L.text.grid * 13);
+    const clashes = (r) => hits(r) || out.some(({ rect: o }) =>
+      r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]);
+    for (let e = Math.ceil(pe0 / gi) * gi; e <= pe1; e += gi) {
+      for (let n = Math.ceil(pn0 / gi) * gi; n <= pn1; n += gi) {
+        // the cross plus both of its labels must be clear of the figure,
+        // of every beacon symbol, and of every label already placed
+        const rect = [e - arm - mm(2), n - mm(L.gridLabel.yStartDy + 12),
+          e + gw, n + arm + mm(2)];
+        const clearOfLines = segments.every((s) => distToSegment([e, n], s[0], s[1]) > mm(7));
+        if (!clearOfLines || clashes(rect)) continue;
+        out.push({ e, n, rect });
+      }
     }
+    return out;
+  };
+
+  // An explicit interval is honoured as given. Otherwise: start at the spacing
+  // the scale suggests and step FINER until four ticks survive the figure --
+  // more candidates, not a weaker clearance, so no tick is ever drawn over the
+  // drawing it is meant to reference. The best attempt is kept, so a crowded
+  // sheet still gets the most ticks it can hold rather than the fewest.
+  let gi = spec.gridInterval;
+  let ticks;
+  if (gi) {
+    ticks = layGrid(gi);
+  } else {
+    let best = null;
+    for (let k = GRID_INTERVALS.indexOf(pick()); k >= 0; k--) {
+      const cand = GRID_INTERVALS[k];
+      if ((cand / scale) * 1000 < MIN_TICK_SPACING_MM) break;
+      const t = layGrid(cand);
+      if (!best || t.length > best.ticks.length) best = { gi: cand, ticks: t };
+      if (t.length >= MIN_GRID_TICKS) break;
+    }
+    ({ gi, ticks } = best ?? { gi: pick(), ticks: [] });
+  }
+
+  const gridInterval = { e: gi, n: gi };
+  const placed = ticks.length;
+  const gh = mm(L.text.grid);
+  for (const { e, n, rect } of ticks) {
+    occupied.push(rect);
+    d.line([e - arm, n], [e + arm, n], { layer: 'GRID' });
+    d.line([e, n - arm], [e, n + arm], { layer: 'GRID' });
+    const Xlo = -n, Ylo = -e;
+    d.text(`X = ${Xlo >= 0 ? '+' : ''}${Xlo.toFixed(0)}`,
+      [e + mm(L.gridLabel.xDx), n - mm(L.gridLabel.xBaselineDy)], gh,
+      { layer: 'GRID-TEXT', style: 'ARIAL' });
+    d.text(`Y = ${Ylo.toFixed(0)}`,
+      [e + mm(L.gridLabel.yDx), n - mm(L.gridLabel.yStartDy)], gh,
+      { layer: 'GRID-TEXT', style: 'ARIAL', rotation: -90 });
   }
 
   /* ---- title block */
@@ -985,22 +1033,7 @@ export function generateWorkingPlan(spec) {
     { layer: 'TITLE', style: 'ARIAL', align: 'center' });
 
   /* ---- north arrow */
-  const na = L.northArrow;
-  const rays = [
-    [90, na.north], [270, na.south], [0, na.side], [180, na.side],
-    [45, na.diagonal], [135, na.diagonal], [225, na.diagonal], [315, na.diagonal],
-  ];
-  for (const [deg, len] of rays) {
-    const a = (deg * Math.PI) / 180;
-    const tip = S(na.cx + Math.cos(a) * len, na.cy - Math.sin(a) * len);
-    const b1 = S(na.cx - Math.sin(a) * na.halfWidth, na.cy - Math.cos(a) * na.halfWidth);
-    const b2 = S(na.cx + Math.sin(a) * na.halfWidth, na.cy + Math.cos(a) * na.halfWidth);
-    d.polyline([b1, tip, b2], { layer: 'NORTH-ARROW' });
-  }
-  d.text(na.letters.left, S(na.cx + na.letters.dxLeft, na.letters.baseline), mm(2.12),
-    { layer: 'NORTH-ARROW', style: 'ARIAL' });
-  d.text(na.letters.right, S(na.cx + na.letters.dxRight, na.letters.baseline), mm(2.12),
-    { layer: 'NORTH-ARROW', style: 'ARIAL' });
+  drawNorthArrow(L.northArrow.cx, L.northArrow.cy, 1, 2.12);
 
   /* ---- approval box */
   if (spec.approvalBox !== false) {
@@ -1042,18 +1075,15 @@ export function generateWorkingPlan(spec) {
     d.text('Inset (not to scale)', S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
       { layer: 'INSET', style: 'ARIAL-BOLD' });
 
-    // North point. The inset is drawn north-up like the main figure -- the same
-    // capeLoToDxfSouthUp convention -- so the arrow is simply vertical.
+    // North point: the sheet's own meridian arrow at a fraction of its size.
+    // The inset is drawn north-up like the main figure -- the same
+    // capeLoToDxfSouthUp convention -- so it needs no rotation.
+    //
+    // On NORTH-ARROW, not INSET: it is a north point, and the sheet's arrow
+    // lives there. That also keeps INSET meaning the inset's MAP, so anything
+    // measuring that content is not reading an arrow by mistake.
     const nn = L.inset.north;
-    const ncx = B.x1 - nn.dxFromRight;
-    const nApex = B.y0 + nn.apex, nBase = nApex + nn.len;
-    // On NORTH-ARROW, not INSET: it is a north point, and the sheet's own
-    // compass rose lives there. It also keeps INSET meaning the inset's MAP,
-    // so anything measuring that content is not reading an arrow by mistake.
-    d.solid([S(ncx, nApex), S(ncx - nn.halfWidth, nBase), S(ncx + nn.halfWidth, nBase)],
-      { layer: 'NORTH-ARROW' });
-    d.text('N', S(ncx, B.y0 + nn.letterBaseline), mm(L.text.insetLabel),
-      { layer: 'NORTH-ARROW', style: 'ARIAL-BOLD', align: 'center' });
+    drawNorthArrow(B.x1 - nn.dxFromRight, B.y0 + nn.dyFromTop, nn.scale, nn.letterMm);
 
     const iScale = spec.inset.scale;
     const ib = spec.inset.beacons.map((b) => ({ ...b, ...loToGround(b) }));
@@ -1127,6 +1157,6 @@ export function generateWorkingPlan(spec) {
   // dialog -- which paper this was drawn for.
   return {
     dxf: doc.toString(), scale, gridInterval, gridTicks: placed, areas,
-    sheetSize: sheetName, sheetWidthMm: sheet.width, sheetHeightMm: sheet.height,
+    sheetSize: 'A4', sheetWidthMm: SHEET.width, sheetHeightMm: SHEET.height,
   };
 }

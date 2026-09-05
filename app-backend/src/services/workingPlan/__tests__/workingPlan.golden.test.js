@@ -321,6 +321,45 @@ describe('generateWorkingPlan — golden', () => {
       }
       return false
     }
+    /** Every TEXT on the sheet, boxed -- rotated labels included. */
+    const auditAll = (dxf) => {
+      const lines = dxf.split('\n')
+      const T = []
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i] !== '0' || lines[i + 1] !== 'TEXT') continue
+        let j = i + 2; const d = {}
+        while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+        T.push({
+          layer: (d['8'] || ['?'])[0], t: (d['1'] || [''])[0],
+          x: +d['10'][0], y: +d['20'][0], h: +(d['40'] || [1])[0],
+          al: (d['72'] || ['0'])[0], rot: +(d['50'] || [0])[0], wf: +(d['41'] || [1])[0],
+        })
+      }
+      const box = (t) => {
+        const w = 0.63 * t.h * t.wf * t.t.length
+        if (Math.abs(t.rot) > 0.5) {
+          const a = (t.rot * Math.PI) / 180
+          const P = [[0, 0], [w, 0], [w, t.h], [0, t.h]].map(([u, v]) => [
+            t.x + u * Math.cos(a) - v * Math.sin(a),
+            t.y + u * Math.sin(a) + v * Math.cos(a)])
+          return [Math.min(...P.map((q) => q[0])), Math.min(...P.map((q) => q[1])),
+            Math.max(...P.map((q) => q[0])), Math.max(...P.map((q) => q[1]))]
+        }
+        const x0 = t.al === '1' ? t.x - w / 2 : t.al === '2' ? t.x - w : t.x
+        return [x0, t.y - t.h * 0.15, x0 + w, t.y + t.h]
+      }
+      const overlaps = []
+      for (let i = 0; i < T.length; i++) {
+        for (let j = i + 1; j < T.length; j++) {
+          const A = box(T[i]), B = box(T[j])
+          if (A[0] < B[2] && A[2] > B[0] && A[1] < B[3] && A[3] > B[1]) {
+            overlaps.push(`${T[i].layer}:${T[i].t} <-> ${T[j].layer}:${T[j].t}`)
+          }
+        }
+      }
+      return { overlaps }
+    }
+
     const audit = (dxf) => {
       const { labels, segs } = parse(dxf)
       let overlaps = 0
@@ -333,6 +372,15 @@ describe('generateWorkingPlan — golden', () => {
       const onLine = labels.filter((l) => segs.some((s) => crosses(s[0], s[1], rect(l)))).length
       return { count: labels.length, overlaps, onLine }
     }
+
+    test('no text on the sheet overwrites any other, on any layer', () => {
+      // The earlier version of this audited BEACON-TEXT only, and passed while
+      // six pairs overlapped: road names against beacon names, a stand number
+      // and a grid label. Every layer is audited now, which is the guard that
+      // would have caught it.
+      const a = auditAll(generateWorkingPlan(brackenhurstSpec).dxf)
+      expect(a.overlaps).toEqual([])
+    })
 
     test('no beacon name overwrites another, or sits on a boundary', () => {
       const a = audit(generateWorkingPlan(brackenhurstSpec).dxf)

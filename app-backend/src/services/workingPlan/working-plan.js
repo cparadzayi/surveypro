@@ -522,6 +522,86 @@ export function generateWorkingPlan(spec) {
     if (marks.stubTo) d.line(B, st[2], { layer: 'ADJOINING' });
   }
 
+  /* ---- road and servitude names, set along the line they belong to */
+  /** Axis-aligned box of a rotated label, so it can join the shared obstacle set. */
+  const rotatedRect = (text, x, y, hgt, ang, wf) => {
+    const w = 0.63 * hgt * wf * text.length;
+    const c = [[0, 0], [w, 0], [w, hgt], [0, hgt]].map(([u, v]) => [
+      x + u * Math.cos(ang) - v * Math.sin(ang),
+      y + u * Math.sin(ang) + v * Math.cos(ang)]);
+    return [Math.min(...c.map((q) => q[0])), Math.min(...c.map((q) => q[1])),
+      Math.max(...c.map((q) => q[0])), Math.max(...c.map((q) => q[1]))];
+  };
+
+  for (const rd of spec.roads ?? []) {
+    const a = G(rd.from), b = G(rd.to);
+    let ang = Math.atan2(b.n - a.n, b.e - a.e);
+    let flip = false;
+    if (ang > Math.PI / 2 || ang < -Math.PI / 2) { ang += Math.PI; flip = true; }
+    const [sx, sy] = flip ? [b.e, b.n] : [a.e, a.n];
+
+    // Default to the side away from the surveyed figure, unless the caller has
+    // forced a side with a signed offset.
+    let base = mm(Math.abs(rd.offset ?? 3));
+    if (rd.offset != null && rd.offset < 0) base = -base;
+    else {
+      const mx = (a.e + b.e) / 2, my = (a.n + b.n) / 2;
+      const side = -Math.sin(ang) * (figCx - mx) + Math.cos(ang) * (figCy - my);
+      if (side > 0) base = -base;
+    }
+    const rh = mm(L.text.adjoining);
+    const wf = rd.widthFactor ?? 1.2;
+    const along0 = mm(rd.along ?? 6);
+
+    // A road name is pinned to its own line, so its only freedoms are how far
+    // out, how far along, and -- last -- which side. Tried in that order. This
+    // is why roads are drawn BEFORE beacon names: the label with three freedoms
+    // claims its place before the one with twenty-four.
+    const tries = [];
+    for (const sideSign of [1, -1]) {
+      for (const outK of [1, 1.8, 2.6]) {
+        for (const alongD of [0, 1, -1, 2, -2]) {
+          const off = base * sideSign * outK;
+          const al = along0 + alongD * mm(9);
+          tries.push([
+            sx - Math.sin(ang) * off + Math.cos(ang) * al,
+            sy + Math.cos(ang) * off + Math.sin(ang) * al,
+          ]);
+        }
+      }
+    }
+    let at = tries[0];
+    for (const c of tries) {
+      if (free(rotatedRect(rd.name, c[0], c[1], rh, ang, wf))) { at = c; break; }
+    }
+    occupied.push(rotatedRect(rd.name, at[0], at[1], rh, ang, wf));
+    d.text(rd.name, at, rh,
+      { layer: 'ROAD-TEXT', style: 'ARIAL', rotation: ang * 180 / Math.PI, widthFactor: wf });
+  }
+
+
+  /* ---- free notes (neighbouring stand numbers etc.) */
+  for (const t of spec.notes ?? []) {
+    const g = loToGround(t);
+    const th = mm(t.height ?? L.text.adjoining);
+    // Step outward from the figure until the name is clear of the grid, the
+    // beacons and their labels. Drawn AFTER the grid deliberately: the
+    // coordinate framework is the more important of the two, and a neighbour's
+    // name can move. Falls back to the requested spot after the last step, so a
+    // crowded sheet still letters the neighbour rather than dropping it.
+    const dx = g.e - figCx, dy = g.n - figCy;
+    const len = Math.hypot(dx, dy) || 1;
+    const step = mm(3);
+    let px = g.e, py = g.n;
+    for (let k = 0; k <= 4; k++) {
+      const cx = g.e + (dx / len) * step * k;
+      const cy = g.n + (dy / len) * step * k;
+      const rc = textRect(t.text, cx, cy, th, 'center');
+      if (!hits(rc)) { px = cx; py = cy; occupied.push(rc); break; }
+    }
+    d.text(t.text, [px, py], th, { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
+  }
+
   /* ---- beacons and their names */
 
 
@@ -608,61 +688,6 @@ export function generateWorkingPlan(spec) {
         { layer: 'GRID-TEXT', style: 'ARIAL', rotation: -90 });
       placed++;
     }
-  }
-
-  /* ---- free notes (neighbouring stand numbers etc.) */
-  for (const t of spec.notes ?? []) {
-    const g = loToGround(t);
-    const th = mm(t.height ?? L.text.adjoining);
-    // Step outward from the figure until the name is clear of the grid, the
-    // beacons and their labels. Drawn AFTER the grid deliberately: the
-    // coordinate framework is the more important of the two, and a neighbour's
-    // name can move. Falls back to the requested spot after the last step, so a
-    // crowded sheet still letters the neighbour rather than dropping it.
-    const dx = g.e - figCx, dy = g.n - figCy;
-    const len = Math.hypot(dx, dy) || 1;
-    const step = mm(3);
-    let px = g.e, py = g.n;
-    for (let k = 0; k <= 4; k++) {
-      const cx = g.e + (dx / len) * step * k;
-      const cy = g.n + (dy / len) * step * k;
-      const rc = textRect(t.text, cx, cy, th, 'center');
-      if (!hits(rc)) { px = cx; py = cy; occupied.push(rc); break; }
-    }
-    d.text(t.text, [px, py], th, { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
-  }
-
-  /* ---- road names, set along the road with a perpendicular offset */
-  for (const rd of spec.roads ?? []) {
-    const a = G(rd.from), b = G(rd.to);
-    let ang = Math.atan2(b.n - a.n, b.e - a.e);
-    let flip = false;
-    if (ang > Math.PI / 2 || ang < -Math.PI / 2) { ang += Math.PI; flip = true; }
-    const [sx, sy] = flip ? [b.e, b.n] : [a.e, a.n];
-    // put the name on the side of the line away from the surveyed figure,
-    // unless the caller has forced a side with a signed offset
-    let off = mm(Math.abs(rd.offset ?? 3));
-    if (rd.offset != null && rd.offset < 0) off = -off;
-    else {
-      const mx = (a.e + b.e) / 2, my = (a.n + b.n) / 2;
-      const side = -Math.sin(ang) * (figCx - mx) + Math.cos(ang) * (figCy - my);
-      if (side > 0) off = -off;
-    }
-    const px = -Math.sin(ang) * off, py = Math.cos(ang) * off;
-    const along = mm(rd.along ?? 6);
-    const rh = mm(L.text.adjoining);
-    const rx = sx + px + Math.cos(ang) * along;
-    const ry = sy + py + Math.sin(ang) * along;
-    d.text(rd.name, [rx, ry], rh,
-      { layer: 'ROAD-TEXT', style: 'ARIAL', rotation: ang * 180 / Math.PI,
-        widthFactor: rd.widthFactor ?? 1.2 });
-    // reserve the rotated label so grid ticks are not placed on top of it
-    const rw = 0.63 * rh * (rd.widthFactor ?? 1.2) * rd.name.length;
-    const corners = [[0, 0], [rw, 0], [rw, rh], [0, rh]].map(([u, v]) => [
-      rx + u * Math.cos(ang) - v * Math.sin(ang),
-      ry + u * Math.sin(ang) + v * Math.cos(ang)]);
-    occupied.push([Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1])),
-      Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))]);
   }
 
   /* ---- title block */

@@ -16,13 +16,13 @@
  * CRS/extent machinery.
  */
 import { edgeStrip } from './diagram/edgeStrip.js'
-import { contiguousMarks } from './diagram/contiguousMarks.js'
+import { contiguousMarks, CONTIG_STUB_MM } from './diagram/contiguousMarks.js'
 import { formatSI } from './diagram/numberFormat.js'
 
 const PT_PER_MM = 72 / 25.4
 const SERVITUDE_BLUE = '#1F6FB2'
 const STRIP_FILL_OPACITY = 0.6            // colour must not obscure detail
-const CONTIG_STUB_PT = 6 * PT_PER_MM      // dashed outward stub length
+const CONTIG_STUB_PT = CONTIG_STUB_MM * PT_PER_MM  // dashed outward stub length
 const ROAD_LABEL_STANDOFF_PT = 1.3 * PT_PER_MM  // push the road name just off the edge
 const LABEL_BAND_PT = 12                  // clear the boundary's vertex/beacon labels
 const CONTIG_LABEL_OFF_PT = CONTIG_STUB_PT + 6  // horizontal label beyond the stub

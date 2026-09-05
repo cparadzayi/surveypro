@@ -9,7 +9,7 @@ import { offsetPolygonPt } from './diagram/offsetPolygon.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
-import { contiguousMarks } from './diagram/contiguousMarks.js'
+import { contiguousMarks, CONTIG_STUB_MM } from './diagram/contiguousMarks.js'
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
 import { formatSI } from './diagram/numberFormat.js'
@@ -22,7 +22,7 @@ function ptToGround(pt, S) { return pt * S * 0.000352778 }
 // PDF-point units; converted to ground only at the point of emission).
 const INNER_BAND_PT = 1.3 * (72 / 25.4)
 const ROAD_STRIP_PT = 1.3 * (72 / 25.4)
-const CONTIG_STUB_PT = 6 * (72 / 25.4)
+const CONTIG_STUB_PT = CONTIG_STUB_MM * (72 / 25.4)
 const CONTIG_LABEL_MARGIN = 5
 
 const LAYERS = [

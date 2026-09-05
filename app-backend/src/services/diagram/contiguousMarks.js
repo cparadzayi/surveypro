@@ -12,6 +12,21 @@
  * The label is ALWAYS anchored at the side midpoint — one centred label per side.
  * `end` only decides which terminal(s) get an outward stub ('both'/'from'/'to').
  */
+/**
+ * Outward stub length for an abutting neighbour, in paper millimetres.
+ *
+ * One definition for every renderer that draws these marks -- diagram DXF,
+ * diagram PDF, general-plan PDF and the working plan -- because it had been
+ * copied into three files as 6 mm and then changed in a fourth.
+ *
+ * 8.4 mm is set by legibility on the working plan, which draws the stub DASHED:
+ * at PLANDASH (1.736 mm dash, 1.058 mm gap) three dashes need 7.324 mm, so 6 mm
+ * showed two and read as a tick. 8.4 mm is exactly three periods. The diagram
+ * draws the same stub solid, where length does not affect how it reads, so
+ * matching costs it nothing and keeps the documents consistent.
+ */
+export const CONTIG_STUB_MM = 8.4
+
 export function contiguousMarks(a, b, end) {
   const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
   const e = end || 'both'

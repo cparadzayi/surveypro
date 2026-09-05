@@ -9,7 +9,7 @@ import { offsetPolygonPt } from './diagram/offsetPolygon.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
-import { contiguousMarks } from './diagram/contiguousMarks.js'
+import { contiguousMarks, CONTIG_STUB_MM } from './diagram/contiguousMarks.js'
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
 import { formatSI } from './diagram/numberFormat.js'
@@ -26,7 +26,7 @@ const BURNT_SIENNA = '#B7410E'
 const SERVITUDE_BLUE = '#1F6FB2'
 const ROAD_STRIP_PT = 1.3 * PT_PER_MM          // nominal, like the inner band
 const STRIP_FILL_OPACITY = 0.6                 // colour must not obscure detail
-const CONTIG_STUB_PT = 6 * PT_PER_MM
+const CONTIG_STUB_PT = CONTIG_STUB_MM * PT_PER_MM
 // Perpendicular clearance a contiguous-parcel label keeps from the abutting boundary.
 const CONTIG_LABEL_MARGIN = 5
 

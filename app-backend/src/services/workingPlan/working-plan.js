@@ -431,7 +431,15 @@ export function generateWorkingPlan(spec) {
          parcel labels take part too -- they used to be written blind. */
   const figCx = (bb.e0 + bb.e1) / 2, figCy = (bb.n0 + bb.n1) / 2;
   const h = mm(L.text.beacon);
-  const r = mm(Math.max(L.symbol.foundOuterDia, L.symbol.refMarkArm, L.symbol.trigW) / 2);
+  /** How far a beacon's OWN sign reaches. Every label keeps clear of this much
+   *  of it, and no more.
+   *
+   *  It used to be the largest sign on the sheet applied to every beacon, so an
+   *  unmarked station -- a 1.05 mm dot -- was held off by the trig triangle's
+   *  2.66 mm reach, on sheets carrying no trig at all. Reserving ground nothing
+   *  occupies pushes a name away from the mark it belongs to, and on a crowded
+   *  figure it is one more way for a label to find nothing free and fall back. */
+  const signReach = (b) => mm(symbolClearance(b.symbol));
 
   const segments = spec.parcels.flatMap((p) => p.ring.map((n, i) => [
     [G(n).e, G(n).n],
@@ -446,7 +454,10 @@ export function generateWorkingPlan(spec) {
     const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
     return [x0, y - hgt * 0.15, x0 + w, y + hgt];
   };
-  for (const b of byName.values()) occupied.push([b.e - r, b.n - r, b.e + r, b.n + r]);
+  for (const b of byName.values()) {
+    const rb = signReach(b);
+    occupied.push([b.e - rb, b.n - rb, b.e + rb, b.n + rb]);
+  }
 
   /** Does a segment cross this rectangle? Cohen-Sutherland, so a label is
    *  rejected when a boundary passes THROUGH it, not merely near it. */
@@ -791,8 +802,9 @@ export function generateWorkingPlan(spec) {
         [Math.round(((ang + 360) % 360) / 45) % 8];
     }
     if (pos === 'none') continue;
+    const rb = signReach(b);
     const place = (p, k = 1) => {
-      const gap = (r + mm(0.5)) * k;
+      const gap = (rb + mm(0.5)) * k;
       return {
         N: [0, gap + mm(0.4), 'center'], S: [0, -(gap + h + mm(0.2)), 'center'],
         E: [gap, -h / 2, 'left'], W: [-gap, -h / 2, 'right'],

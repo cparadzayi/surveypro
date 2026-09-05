@@ -630,6 +630,42 @@ describe('generateWorkingPlan — golden', () => {
       expect(overlaps.length).toBeLessThan(3)          // measured at 3 before
     })
 
+    test('holds a name off by its own sign, not by the biggest on the sheet', () => {
+      // Clearance used to be the largest sign anywhere on the sheet applied to
+      // every beacon, so all four of these names sat at exactly the same
+      // distance -- an unmarked station's 1.05mm dot held its name as far off as
+      // a trig triangle holds its own. Ground reserved for nothing pushes names
+      // away from the marks they belong to.
+      const B = (name, X, Y, symbol) => ({ name, X, Y, symbol, label: 'E' })
+      const { dxf } = generateWorkingPlan({
+        scale: 1000,
+        beacons: [
+          B('W1', 2144000, -85700, 'wsu'), B('P1', 2144000, -85600, 'placed'),
+          B('M1', 2144000, -85500, 'rm'), B('T1', 2144000, -85400, 'trig'),
+        ],
+        parcels: [{ label: '404', ring: ['W1', 'P1', 'M1', 'T1'] }],
+        title: ['WORKING PLAN OF', 'Stand 404'],
+      })
+      const lines = dxf.split('\n')
+      const at = {}
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i] !== '0' || lines[i + 1] !== 'TEXT') continue
+        let j = i + 2; const d = {}
+        while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+        if ((d['8'] || [])[0] === 'BEACON-TEXT') at[(d['1'] || [''])[0]] = [+d['10'][0], +d['20'][0]]
+      }
+      // easting = -Y, northing = -X; at 1:1000 a paper millimetre is a unit
+      const gapOf = (name, X, Y) => Math.hypot(at[name][0] - -Y, at[name][1] - -X)
+      const g = {
+        W1: gapOf('W1', 2144000, -85700), P1: gapOf('P1', 2144000, -85600),
+        M1: gapOf('M1', 2144000, -85500), T1: gapOf('T1', 2144000, -85400),
+      }
+      // ordered by how far each sign actually reaches
+      expect(g.W1).toBeLessThan(g.P1)
+      expect(g.P1).toBeLessThan(g.M1)
+      expect(g.M1).toBeLessThan(g.T1)
+    })
+
     test('holds on a cramped figure, where the old placer gave up and overwrote', () => {
       // Fourteen beacons on a small ring with long names: every compass slot
       // around a beacon is contested. The placer walks the whole ring at one

@@ -214,6 +214,47 @@ describe('generateWorkingPlan — golden', () => {
     expect(2 * r).toBeLessThan(S.foundOuterDia * 1.1)
   })
 
+  test('leaves the trig circle as a hole in the fill, not a line over it', () => {
+    // A circle drawn ON a filled triangle is invisible: same colour on same
+    // colour. The Fifth Schedule's white inscribed circle has to be an actual
+    // gap in the black, so no fill may reach inside it and no outline may sit
+    // on top of it.
+    const { dxf } = generateWorkingPlan(brackenhurstSpec)
+    const lines = dxf.split('\n')
+    const start = lines.indexOf('BCN_TRIG')
+    const end = lines.indexOf('ENDBLK', start)
+    expect(start).toBeGreaterThan(-1)
+
+    const S = LAYOUT.symbol
+    const w = S.trigW / 2, h = S.trigH
+    const r = (w * h) / (w + Math.hypot(w, h))
+    const cy = -(h * 0.38) + r
+
+    let quads = 0, breaches = 0, outlines = 0
+    for (let i = start; i < end; i++) {
+      if (lines[i] === 'POLYLINE' || lines[i] === 'CIRCLE') outlines++
+      if (lines[i] !== 'SOLID') continue
+      quads++
+      let j = i + 1; const d = {}
+      while (j < end && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+      const corners = [['10', '20'], ['11', '21'], ['12', '22'], ['13', '23']]
+      for (const [gx, gy] of corners) {
+        const x = Number(d[gx][0]), y = Number(d[gy][0])
+        if (Math.hypot(x, y - cy) < r - 0.02) breaches++
+      }
+    }
+    expect(quads).toBeGreaterThan(8)   // a ring of fill, not one solid triangle
+    expect(breaches).toBe(0)           // nothing reaches into the circle
+    expect(outlines).toBe(0)           // and nothing is drawn over it
+  })
+
+  test('declares layer 0, where every block draws', () => {
+    // Block geometry sits on layer 0 so it inherits the INSERT's layer. AutoCAD
+    // expects the layer to exist; ours never declared it.
+    const { dxf } = generateWorkingPlan(brackenhurstSpec)
+    expect(dxf).toContain('0\nLAYER\n2\n0\n')
+  })
+
   test('picks a scale itself when asked to', () => {
     const out = generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' })
     expect(typeof out.scale).toBe('number')

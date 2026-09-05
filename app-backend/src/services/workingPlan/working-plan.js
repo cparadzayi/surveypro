@@ -122,6 +122,10 @@ export const LINETYPES = {
 };
 
 export const LAYERS = [
+  // Every block's geometry is drawn on layer 0 so it takes the colour and
+  // linetype of the layer it is INSERTed on. AutoCAD expects layer 0 to exist;
+  // ours never declared it.
+  ['0', 7, 'CONTINUOUS'],
   ['BOUNDARY-NEW', 1, 'CONTINUOUS'],
   ['BOUNDARY-EXIST', 3, 'PLANDASH'],
   // Dotted: a surrounding property is indicated, not surveyed. This diverges
@@ -350,14 +354,53 @@ export function generateWorkingPlan(spec) {
     disc(b, mm(L.symbol.stationUnmarkedDia / 2));
   });
 
-  // Trigonometrical beacon or town survey mark: a black triangle inside a white
-  // circumscribed circle.
+  /**
+   * A filled triangle with a genuine circular HOLE. The Fifth Schedule's sign is
+   * a black triangle with a WHITE inscribed circle, and drawing the circle ON TOP
+   * of a filled triangle -- which is what this replaces -- shows nothing: same
+   * colour on same colour.
+   *
+   * R12 has no hatch-with-island and no wipeout, so the fill is built as a ring
+   * of SOLID quads between the circle and the triangle's edges, each circle
+   * sample projected outward along its own radius to whichever edge it meets.
+   */
+  const filledTriangleWithHole = (b, tri, centre, r, n = 36) => {
+    const reach = (dx, dy) => {
+      let best = Infinity;
+      for (let k = 0; k < 3; k++) {
+        const [ax, ay] = tri[k];
+        const [bx, by] = tri[(k + 1) % 3];
+        const ex = bx - ax, ey = by - ay;
+        const den = dx * ey - dy * ex;
+        if (Math.abs(den) < 1e-12) continue;
+        const t = ((ax - centre[0]) * ey - (ay - centre[1]) * ex) / den;
+        const s = ((ax - centre[0]) * dy - (ay - centre[1]) * dx) / den;
+        if (t > 0 && s >= -1e-9 && s <= 1 + 1e-9 && t < best) best = t;
+      }
+      return best;
+    };
+    for (let i = 0; i < n; i++) {
+      const a1 = (2 * Math.PI * i) / n;
+      const a2 = (2 * Math.PI * (i + 1)) / n;
+      const d1 = [Math.cos(a1), Math.sin(a1)];
+      const d2 = [Math.cos(a2), Math.sin(a2)];
+      const t1 = reach(d1[0], d1[1]), t2 = reach(d2[0], d2[1]);
+      if (!Number.isFinite(t1) || !Number.isFinite(t2)) continue;
+      b.solid([
+        [centre[0] + d1[0] * r, centre[1] + d1[1] * r],
+        [centre[0] + d2[0] * r, centre[1] + d2[1] * r],
+        [centre[0] + d2[0] * t2, centre[1] + d2[1] * t2],
+        [centre[0] + d1[0] * t1, centre[1] + d1[1] * t1],
+      ]);
+    }
+  };
+
+  // Trigonometrical beacon or town survey mark.
   doc.addBlock('BCN_TRIG', (b) => {
     const w = mm(L.symbol.trigW) / 2, h = mm(L.symbol.trigH);
     const c = triIncircle(w, h);
     b.point([0, 0]);
-    b.solid([[0, h * 0.62], [-w, -h * 0.38], [w, -h * 0.38]]);
-    b.polyline(circlePts(c.r, 24).map(([x, y]) => [x, y + c.cy]), { closed: true });
+    filledTriangleWithHole(b, [[0, h * 0.62], [-w, -h * 0.38], [w, -h * 0.38]], [0, c.cy], c.r);
   });
 
   // Official control point: the same, inverted.
@@ -365,8 +408,7 @@ export function generateWorkingPlan(spec) {
     const w = mm(L.symbol.trigW) / 2, h = mm(L.symbol.trigH);
     const c = triIncircle(w, h);
     b.point([0, 0]);
-    b.solid([[0, -h * 0.62], [w, h * 0.38], [-w, h * 0.38]]);
-    b.polyline(circlePts(c.r, 24).map(([x, y]) => [x, y - c.cy]), { closed: true });
+    filledTriangleWithHole(b, [[0, -h * 0.62], [w, h * 0.38], [-w, h * 0.38]], [0, -c.cy], c.r);
   });
 
   const d = doc.sink;

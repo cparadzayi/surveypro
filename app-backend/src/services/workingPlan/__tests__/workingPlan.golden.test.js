@@ -202,16 +202,212 @@ describe('generateWorkingPlan — golden', () => {
     lengths.forEach((len, i) => expect(len).toBeCloseTo(expected[i], 3))
   })
 
-  test('keeps the trig circle inscribed, and large enough to read', () => {
+  test('keeps the stubs and the remainder sides out of the beacon signs too', () => {
+    // Only the new boundaries were clipped. The remainder's own sides and the
+    // abutment stubs were drawn from the beacon CENTRE, straight through the
+    // mark sitting there. At 1:1000 a paper millimetre is a ground unit, so the
+    // clearances read directly.
+    const B = (name, X, Y, symbol) => ({ name, X, Y, symbol, label: 'auto' })
+    const { dxf } = generateWorkingPlan({
+      scale: 1000,
+      beacons: [
+        B('Q1', 2144000, -85700, 'placed'), B('Q2', 2144100, -85700, 'found'),
+        B('Q3', 2144100, -85600, 'rm'), B('Q4', 2144000, -85600, 'trig'),
+        B('R1', 2144200, -85700, 'found'), B('R2', 2144200, -85600, 'rm'),
+      ],
+      parcels: [{ label: '404', ring: ['Q1', 'Q2', 'Q3', 'Q4'] }],
+      contiguous: [{ from: 'Q1', to: 'Q2', end: 'both' }],
+      remainderBoundary: [{ from: 'Q2', to: 'R1' }, { from: 'R1', to: 'R2' }, { from: 'R2', to: 'Q3' }],
+      remainderRing: ['Q2', 'R1', 'R2', 'Q3'],
+      remainderLabel: 'REM',
+      title: ['WORKING PLAN OF', 'Stand 404'],
+    })
+
+    const lines = dxf.split('\n')
+    const drawn = []
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i] !== '0' || lines[i + 1] !== 'LINE') continue
+      let j = i + 2; const d = {}
+      while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+      const layer = (d['8'] || [])[0]
+      if (layer === 'BOUNDARY-EXIST' || layer === 'ADJOINING') {
+        drawn.push({ layer, a: [+d['10'][0], +d['20'][0]], b: [+d['11'][0], +d['21'][0]] })
+      }
+    }
+    expect(drawn.filter((l) => l.layer === 'BOUNDARY-EXIST')).toHaveLength(3)
+    expect(drawn.filter((l) => l.layer === 'ADJOINING')).toHaveLength(2)
+
+    // Every beacon centre, in the sheet's own coordinates: easting = -Y,
+    // northing = -X. Nothing on these two layers may come within its sign.
+    const centres = [
+      { c: [85700, -2144000], r: LAYOUT.symbol.placedDia / 2 },
+      { c: [85700, -2144100], r: LAYOUT.symbol.foundOuterDia / 2 },
+      { c: [85600, -2144100], r: LAYOUT.symbol.refMarkArm / 2 },
+      { c: [85700, -2144200], r: LAYOUT.symbol.foundOuterDia / 2 },
+      { c: [85600, -2144200], r: LAYOUT.symbol.refMarkArm / 2 },
+    ]
+    const near = []
+    for (const l of drawn) {
+      for (const { c, r } of centres) {
+        for (const end of [l.a, l.b]) {
+          const gap = Math.hypot(end[0] - c[0], end[1] - c[1])
+          // an end either belongs to this beacon (and must stand off) or is
+          // nowhere near it
+          if (gap < r * 0.999) near.push(`${l.layer} end ${gap.toFixed(2)} inside r=${r}`)
+        }
+      }
+    }
+    expect(near).toEqual([])
+
+    // and the stub keeps its full length -- shifted out, not shortened, so it
+    // still carries the three dashes that make it read as an abutment.
+    for (const l of drawn.filter((x) => x.layer === 'ADJOINING')) {
+      expect(Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1])).toBeCloseTo(LAYOUT.contiguousStub, 3)
+    }
+  })
+
+  test('breaks a parent boundary around the beacons it runs through', () => {
+    // A parent boundary does not stop at its corner beacon, it carries on past
+    // it, so the mark sits in the MIDDLE of the line. Pulling the ends back
+    // cannot help; the line has to be drawn in two pieces with a gap at the
+    // beacon. At 1:1000 a paper millimetre is a ground unit.
+    const B = (name, X, Y, symbol) => ({ name, X, Y, symbol, label: 'auto' })
+    const { dxf } = generateWorkingPlan({
+      scale: 1000,
+      beacons: [
+        B('Q1', 2144000, -85700, 'placed'), B('Q2', 2144100, -85700, 'found'),
+        B('Q3', 2144100, -85600, 'rm'), B('Q4', 2144000, -85600, 'placed'),
+      ],
+      parcels: [{ label: '404', ring: ['Q1', 'Q2', 'Q3', 'Q4'] }],
+      // runs from 20 before Q2 to 20 past Q3, so both beacons are interior
+      existing: [{ from: 'Q2', to: 'Q3', extendFrom: 20, extendTo: 20 }],
+      title: ['WORKING PLAN OF', 'Stand 404'],
+    })
+
+    const lines = dxf.split('\n')
+    const segs = []
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i] !== '0' || lines[i + 1] !== 'LINE') continue
+      let j = i + 2; const d = {}
+      while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+      if ((d['8'] || [])[0] === 'BOUNDARY-EXIST') {
+        segs.push([[+d['10'][0], +d['20'][0]], [+d['11'][0], +d['21'][0]]])
+      }
+    }
+    // one span, two beacons in the middle of it: three pieces
+    expect(segs).toHaveLength(3)
+
+    // no piece may come inside either sign
+    const marks = [
+      { c: [85700, -2144100], r: LAYOUT.symbol.foundOuterDia / 2 },
+      { c: [85600, -2144100], r: LAYOUT.symbol.refMarkArm / 2 },
+    ]
+    for (const sg of segs) {
+      for (const { c, r } of marks) {
+        for (const end of sg) {
+          const gap = Math.hypot(end[0] - c[0], end[1] - c[1])
+          expect(gap).toBeGreaterThan(r * 0.999)
+        }
+      }
+    }
+    // and the boundary still spans everything it did before: 20 + 100 + 20,
+    // less the two gaps it now leaves
+    const drawn = segs.reduce((t, sg) => t + Math.hypot(sg[1][0] - sg[0][0], sg[1][1] - sg[0][1]), 0)
+    const cut = LAYOUT.symbol.foundOuterDia + LAYOUT.symbol.refMarkArm
+    expect(drawn).toBeCloseTo(140 - cut, 3)
+  })
+
+  test('draws the trig circle at exactly a found beacon, not near it', () => {
     // The circle is tangent to all three sides, so it must fit inside the
-    // triangle; and at this size it is near the found beacon's own circle, which
-    // is what makes it legible rather than a dot.
+    // triangle -- and it is drawn at the found beacon's own diameter, so the two
+    // marks read at the same size and only the triangle tells them apart. This
+    // used to allow anything within 10%, and sat 3% under; the inset, which had
+    // its own numbers, sat 36% under and that is the one surveyors saw.
     const S = LAYOUT.symbol
     const w = S.trigW / 2, h = S.trigH
     const r = (w * h) / (w + Math.hypot(w, h))
     expect(2 * r).toBeLessThan(S.trigW)                    // inscribed, not circumscribed
-    expect(2 * r).toBeGreaterThan(S.foundOuterDia * 0.9)   // reads at beacon weight
-    expect(2 * r).toBeLessThan(S.foundOuterDia * 1.1)
+    expect(2 * r).toBeCloseTo(S.foundOuterDia, 2)
+  })
+
+  test('draws the inset trig at the same proportions as the figure', () => {
+    // Trig and OCP appear ONLY in the inset on a sheet whose beacons are all
+    // pegs and marks -- the ordinary case -- so the inset is where this shows.
+    // Measured off the drawn geometry, not off the constants, so the two cannot
+    // silently drift apart again.
+    const { dxf } = generateWorkingPlan({
+      ...brackenhurstSpec,
+      inset: {
+        scale: 250000,
+        beacons: [
+          { name: 'T1', X: 2160000, Y: -88000, symbol: 'trig' },
+          { name: 'F1', X: 2144000, Y: -85700, symbol: 'found' },
+        ],
+      },
+    })
+    const lines = dxf.split('\n')
+    const ents = (kind) => {
+      const out = []
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i] !== '0' || lines[i + 1] !== kind) continue
+        let j = i + 2; const d = {}
+        while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+        if ((d['8'] || [])[0] === 'INSET') out.push(d)
+      }
+      return out
+    }
+    // The trig is the only thing in the inset drawn as fill.
+    const pts = ents('SOLID').flatMap((d) => [0, 1, 2, 3]
+      .map((k) => [+(d[10 + k] || [])[0], +(d[20 + k] || [])[0]])
+      .filter((q) => Number.isFinite(q[0]) && Number.isFinite(q[1])))
+    expect(pts.length).toBeGreaterThan(0)
+
+    // Its three corners are the extremes of the fill; the incircle follows.
+    const apex = pts.reduce((a, b) => (b[1] > a[1] ? b : a))
+    const left = pts.reduce((a, b) => (b[0] < a[0] ? b : a))
+    const right = pts.reduce((a, b) => (b[0] > a[0] ? b : a))
+    const side = (p, q) => Math.hypot(q[0] - p[0], q[1] - p[1])
+    const A = side(left, right), Bs = side(left, apex), C = side(right, apex)
+    const sHalf = (A + Bs + C) / 2
+    const area = Math.abs((right[0] - left[0]) * (apex[1] - left[1])
+      - (apex[0] - left[0]) * (right[1] - left[1])) / 2
+    const rIn = area / sHalf
+
+    // The found beacon's rings, on the inset layer only -- the beacon BLOCKS
+    // carry circles of their own, at the figure's size, and picking one of those
+    // up would compare the inset against the wrong thing.
+    const rings = []
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i] !== '0' || lines[i + 1] !== 'POLYLINE') continue
+      let layer = null
+      for (let j = i + 2; j < i + 20 && j < lines.length - 1; j++) {
+        if (lines[j] === '0') break
+        if (lines[j] === '8') { layer = lines[j + 1]; break }
+      }
+      // Only inside a VERTEX: an R12 POLYLINE header carries a dummy 10/20 pair
+      // of its own, and counting it puts a point at the origin.
+      const v = []
+      let inVertex = false
+      for (let j = i + 2; j < lines.length - 1; j++) {
+        if (lines[j] === '0') {
+          if (lines[j + 1] === 'SEQEND') break
+          inVertex = lines[j + 1] === 'VERTEX'
+        }
+        if (inVertex && lines[j] === '10') v.push([+lines[j + 1], +lines[j + 3]])
+      }
+      if (layer !== 'INSET' || v.length < 20) continue      // circles, not the box
+      const xs = v.map((q) => q[0]), ys = v.map((q) => q[1])
+      rings.push(Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)))
+    }
+    expect(rings.length).toBeGreaterThanOrEqual(2)          // the found beacon is concentric
+    const foundDia = Math.max(...rings)
+
+    // Measured off the drawn fill, whose 24 segments clip the triangle's corners
+    // slightly, so this is a proportion check rather than an identity. It is far
+    // tighter than the fault it guards: the inset drew this circle at 64% of the
+    // found beacon it sits beside.
+    expect(2 * rIn / foundDia).toBeGreaterThan(0.95)
+    expect(2 * rIn / foundDia).toBeLessThan(1.05)
   })
 
   test('leaves the trig circle as a hole in the fill, not a line over it', () => {

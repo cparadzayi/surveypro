@@ -95,12 +95,14 @@ export const LAYOUT = {
     stationDia: 2.498,      // survey station marked: circle with a filled centre
     stationDotDia: 0.95,
     stationUnmarkedDia: 1.05, // survey station unmarked: a filled dot
-    // Enlarged 1.5x from 2.963/2.286 so the inscribed circle reads clearly: at
-    // this size it is 2.416 mm across, near enough the found beacon's 2.498 mm
-    // circle that it carries the same familiar weight, with the triangle drawn
-    // around it. The clipping clearance follows automatically -- symbolClearance
-    // derives the triangle's reach from these two numbers.
-    trigW: 4.444, trigH: 3.429, // trig beacon / official control point triangle
+    // The inscribed circle is drawn at EXACTLY the found beacon's diameter, so
+    // the two marks read at the same size and only the triangle around it tells
+    // them apart. These two numbers follow from that rule and the triangle's
+    // shape; a test pins the incircle to foundOuterDia, so neither can be
+    // nudged alone. (Was 4.444/3.429, whose circle came out 3% small.) The
+    // clipping clearance follows automatically -- symbolClearance derives the
+    // triangle's reach from these two numbers.
+    trigW: 4.595, trigH: 3.546, // trig beacon / official control point triangle
     gridArm: 8.008,         // full length of a grid cross arm
   },
 
@@ -501,6 +503,65 @@ export function generateWorkingPlan(spec) {
     return best;
   };
 
+  /** A line between two beacons, pulled back to the rim of the sign at each
+   *  end so it stops at the beacon instead of striking through it. `ends` says
+   *  which ends to clip: a stub's far end is out in open ground and has no
+   *  symbol to clear.
+   *
+   *  Shared, because it was not: only the new boundaries clipped, so the
+   *  remainder's own sides and the abutment stubs were drawn straight through
+   *  the marks they start from. */
+  const clipToSigns = (a, b, from, to) => {
+    const ux = b[0] - a[0], uy = b[1] - a[1];
+    const len = Math.hypot(ux, uy) || 1;
+    const dx = ux / len, dy = uy / len;
+    const ra = from ? mm(symbolClearance(from)) : 0;
+    const rb = to ? mm(symbolClearance(to)) : 0;
+    // A side shorter than the two symbols is drawn whole rather than inverted.
+    if (ra + rb >= len) return [a, b];
+    return [[a[0] + dx * ra, a[1] + dy * ra], [b[0] - dx * rb, b[1] - dy * rb]];
+  };
+
+  /** Draw a line, leaving a gap wherever it passes through a beacon's sign.
+   *  A parent boundary runs THROUGH its corner beacons and on past them, so
+   *  keeping it out of the marks is cutting a hole in the middle, not pulling
+   *  an end back -- clipToSigns cannot express it.
+   *
+   *  The gap is the chord the sign cuts from the line, so a beacon lying a
+   *  little off the line opens a correspondingly narrower one, and a beacon
+   *  clear of it opens none at all. */
+  const drawWithGaps = (p0, p1, gaps, opts) => {
+    const ux = p1[0] - p0[0], uy = p1[1] - p0[1];
+    const len = Math.hypot(ux, uy);
+    if (!len) return;
+    const dx = ux / len, dy = uy / len;
+    const cuts = gaps
+      .map(({ at, r }) => {
+        const along = (at[0] - p0[0]) * dx + (at[1] - p0[1]) * dy;
+        const off = Math.abs(-(at[0] - p0[0]) * dy + (at[1] - p0[1]) * dx);
+        const half = Math.sqrt(Math.max(0, r * r - off * off));
+        return half > 0 ? [along - half, along + half] : null;
+      })
+      .filter(Boolean)
+      .sort((q, w) => q[0] - w[0]);
+
+    const P = (t) => [p0[0] + dx * t, p0[1] + dy * t];
+    const parts = [];
+    let t = 0;
+    for (const [c0, c1] of cuts) {
+      if (c1 <= t) continue;
+      if (c0 > t) parts.push([t, Math.min(c0, len)]);
+      t = Math.max(t, c1);
+      if (t >= len) break;
+    }
+    if (t < len) parts.push([t, len]);
+    // A line swallowed whole by the signs at its ends is drawn entire rather
+    // than dropped: a boundary that vanishes is worse than one drawn through a
+    // mark, and this is the same rule clipToSigns applies to a short side.
+    if (parts.length === 0) { d.line(p0, p1, opts); return; }
+    for (const [q0, q1] of parts) if (q1 - q0 > 1e-9) d.line(P(q0), P(q1), opts);
+  };
+
   /* ---- parcel boundaries, clipped clear of the beacon symbols */
   const areas = {};
   for (const p of spec.parcels) {
@@ -510,16 +571,10 @@ export function generateWorkingPlan(spec) {
     // beacon instead of striking through it. The ring itself is unchanged --
     // areas, labels and the figure extent all still use the true vertices.
     for (let k = 0; k < p.ring.length; k++) {
-      const a = pts[k], b = pts[(k + 1) % p.ring.length];
-      const ux = b[0] - a[0], uy = b[1] - a[1];
-      const len = Math.hypot(ux, uy) || 1;
-      const dx = ux / len, dy = uy / len;
-      const ra = mm(symbolClearance(G(p.ring[k]).symbol));
-      const rb = mm(symbolClearance(G(p.ring[(k + 1) % p.ring.length]).symbol));
-      // A side shorter than the two symbols is drawn whole rather than inverted.
-      if (ra + rb >= len) { d.line(a, b, { layer: 'BOUNDARY-NEW' }); continue; }
-      d.line([a[0] + dx * ra, a[1] + dy * ra], [b[0] - dx * rb, b[1] - dy * rb],
-        { layer: 'BOUNDARY-NEW' });
+      const j = (k + 1) % p.ring.length;
+      const [ca, cb] = clipToSigns(pts[k], pts[j],
+        G(p.ring[k]).symbol, G(p.ring[j]).symbol);
+      d.line(ca, cb, { layer: 'BOUNDARY-NEW' });
     }
     areas[p.label] = ringArea(pts);
     const [cx, cy] = p.labelAt ? Object.values(loToGround(p.labelAt)) : centroid(pts);
@@ -538,7 +593,8 @@ export function generateWorkingPlan(spec) {
   // a dashed line over the top would contradict it.
   for (const s of spec.remainderBoundary ?? []) {
     const a = G(s.from), b = G(s.to);
-    d.line([a.e, a.n], [b.e, b.n], { layer: 'BOUNDARY-EXIST' });
+    const [ca, cb] = clipToSigns([a.e, a.n], [b.e, b.n], a.symbol, b.symbol);
+    d.line(ca, cb, { layer: 'BOUNDARY-EXIST' });
   }
 
   // Letter the remainder. It is part of the plan even though it is not a new
@@ -603,7 +659,10 @@ export function generateWorkingPlan(spec) {
     const [dx, dy] = [ux / len, uy / len];
     const p0 = [a.e - dx * mm(ex.extendFrom ?? 0), a.n - dy * mm(ex.extendFrom ?? 0)];
     const p1 = [b.e + dx * mm(ex.extendTo ?? 0), b.n + dy * mm(ex.extendTo ?? 0)];
-    d.line(p0, p1, { layer: 'BOUNDARY-EXIST' });
+    drawWithGaps(p0, p1, [
+      { at: [a.e, a.n], r: mm(symbolClearance(a.symbol)) },
+      { at: [b.e, b.n], r: mm(symbolClearance(b.symbol)) },
+    ], { layer: 'BOUNDARY-EXIST' });
   }
 
   /* ---- contiguous neighbours: outward stubs at the terminals they abut,
@@ -620,8 +679,18 @@ export function generateWorkingPlan(spec) {
     const A = [a.e, a.n], B = [b.e, b.n];
     const marks = contiguousMarks(A, B, c.end);
     const st = edgeStrip(A, B, mm(L.contiguousStub), cen);
-    if (marks.stubFrom) d.line(A, st[3], { layer: 'ADJOINING' });
-    if (marks.stubTo) d.line(B, st[2], { layer: 'ADJOINING' });
+    // Started at the rim of the sign it springs from, and SHIFTED rather than
+    // shortened: the stub keeps its full length, which is what guarantees it
+    // three dashes and keeps it the same length as the diagram draws it.
+    const stub = (at, end, symbol) => {
+      const ux = end[0] - at[0], uy = end[1] - at[1];
+      const len = Math.hypot(ux, uy) || 1;
+      const r = mm(symbolClearance(symbol));
+      const dx = (ux / len) * r, dy = (uy / len) * r;
+      d.line([at[0] + dx, at[1] + dy], [end[0] + dx, end[1] + dy], { layer: 'ADJOINING' });
+    };
+    if (marks.stubFrom) stub(A, st[3], a.symbol);
+    if (marks.stubTo) stub(B, st[2], b.symbol);
   }
 
   /* ---- road and servitude names, set along the line they belong to */
@@ -866,6 +935,9 @@ export function generateWorkingPlan(spec) {
     const I = (e, n) => S(boxCx + ((e - ic.e) / iScale) * 1000,
       boxCy - ((n - ic.n) / iScale) * 1000);
     const iSym = mm(1.0);
+    // Every round sign in the inset is drawn at this radius, so it is the
+    // inset's own idea of how big a beacon is.
+    const iRing = iSym * 0.85;
     for (const b of ib) {
       const at = I(b.e, b.n);
       // Same Fifth Schedule signs as the main figure, drawn small.
@@ -884,7 +956,16 @@ export function generateWorkingPlan(spec) {
         // inset kept the old form after the blocks were fixed, and since a
         // sheet whose beacons are all pegs and marks shows trig symbols ONLY
         // here, this was the version actually reaching the surveyor.
-        const w = iSym, hh = iSym * 1.55, sgn = up ? 1 : -1;
+        // Sized from the FIGURE's triangle, scaled by the ratio the inset draws
+        // a found beacon at, so the two cannot drift apart again. They had: the
+        // inset carried its own numbers, and its inscribed circle came out at
+        // 64% of its own found-beacon circle where the figure draws the two the
+        // same size. On a sheet whose beacons are all pegs and marks -- the
+        // ordinary case -- trig and OCP appear ONLY here, so the inset was the
+        // version the surveyor actually saw.
+        const k = (iRing * 2) / mm(L.symbol.foundOuterDia);
+        const w = mm(L.symbol.trigW / 2) * k, hh = mm(L.symbol.trigH) * k;
+        const sgn = up ? 1 : -1;
         const tri = [
           [at[0], at[1] + sgn * hh * 0.62],
           [at[0] - sgn * w, at[1] - sgn * hh * 0.38],
@@ -897,14 +978,14 @@ export function generateWorkingPlan(spec) {
         case 'trig': triangle(true); break;
         case 'ocp': triangle(false); break;
         case 'rm':
-          ring(iSym * 0.85);
+          ring(iRing);
           d.line([at[0] - iSym * 1.2, at[1]], [at[0] + iSym * 1.2, at[1]], { layer: 'INSET' });
           d.line([at[0], at[1] - iSym * 1.2], [at[0], at[1] + iSym * 1.2], { layer: 'INSET' });
           break;
-        case 'ws': ring(iSym * 0.85); dot(iSym * 0.32); break;
+        case 'ws': ring(iRing); dot(iSym * 0.32); break;
         case 'wsu': dot(iSym * 0.38); break;
-        case 'placed': case 'peg': ring(iSym * 0.85); break;
-        default: ring(iSym * 0.85); ring(iSym * 0.5); break;   // found / found-not-adopted
+        case 'placed': case 'peg': ring(iRing); break;
+        default: ring(iRing); ring(iSym * 0.5); break;   // found / found-not-adopted
       }
       d.text(b.name, [at[0], at[1] + mm(1.8)], mm(L.text.insetLabel),
         { layer: 'INSET', style: 'ARIAL', align: 'center' });

@@ -99,7 +99,11 @@ describe('drawSubjectAdjoiningFeatures — role behaviour', () => {
       annotations: [{ side: 'CD', role: 'contiguous', label: 'STAND 500' }],
       ptPerGroundM: 1,
     })
-    expect(has(doc, 'dash')).toBe(true)
+    // Dashed by CUTTING the line, not by PDFKit's dash(): the general plan's
+    // DXF has no linetype to match a native dash with, so it drew this stub
+    // solid while the PDF drew it dashed. Both cut the same pattern now, which
+    // is why 'dash' is no longer called.
+    expect(has(doc, 'dash')).toBe(false)
     expect(has(doc, 'fill')).toBe(false)
     expect(texts(doc)[0]).toBe('STAND 500')
   })
@@ -151,14 +155,34 @@ function fakeDocNewStyle() {
 // Square subject ring in PDF points; side 'AB' = edge 0→1, a=(0,0) b=(100,0).
 const ptRing = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]
 
+/** Stubs, not path pieces. A dashed stub is several moveTo calls and only the
+ *  first sits on the terminal it springs from, so counting moveTo counts
+ *  dashes; counting the ones AT a terminal counts stubs. */
+const stubsAt = (calls, terminals) => calls.moveTo.filter(
+  ([x, y]) => terminals.some(([tx, ty]) => Math.hypot(x - tx, y - ty) < 1e-6)).length
+
 describe('drawSubjectAdjoiningFeatures — contiguous terminal offsets', () => {
+  const A = [0, 0], B = [100, 0]
+
+  test('cuts each stub into dashes rather than drawing it solid', () => {
+    // The regression this guards: the DXF drew this mark solid because nothing
+    // cut the line, while the PDF dashed it natively.
+    const { doc, calls } = fakeDocNewStyle()
+    drawSubjectAdjoiningFeatures(doc, {
+      ptRing, ptPerGroundM: 1,
+      annotations: [{ side: 'AB', role: 'contiguous', label: 'N', end: 'from' }],
+    })
+    expect(calls.moveTo.length).toBeGreaterThan(1)      // more than one dash
+    expect(stubsAt(calls, [A])).toBe(1)                 // but only one stub
+  })
+
   test("end:'both' draws two stubs", () => {
     const { doc, calls } = fakeDocNewStyle()
     drawSubjectAdjoiningFeatures(doc, {
       ptRing, ptPerGroundM: 1,
       annotations: [{ side: 'AB', role: 'contiguous', label: 'N', end: 'both' }],
     })
-    expect(calls.moveTo).toHaveLength(2)
+    expect(stubsAt(calls, [A, B])).toBe(2)
   })
 
   test('missing end draws two stubs (back-compat)', () => {
@@ -167,7 +191,7 @@ describe('drawSubjectAdjoiningFeatures — contiguous terminal offsets', () => {
       ptRing, ptPerGroundM: 1,
       annotations: [{ side: 'AB', role: 'contiguous', label: 'N' }],
     })
-    expect(calls.moveTo).toHaveLength(2)
+    expect(stubsAt(calls, [A, B])).toBe(2)
   })
 
   test("end:'from' draws one stub, starting at terminal A", () => {
@@ -176,7 +200,8 @@ describe('drawSubjectAdjoiningFeatures — contiguous terminal offsets', () => {
       ptRing, ptPerGroundM: 1,
       annotations: [{ side: 'AB', role: 'contiguous', label: 'N', end: 'from' }],
     })
-    expect(calls.moveTo).toHaveLength(1)
+    expect(stubsAt(calls, [A])).toBe(1)
+    expect(stubsAt(calls, [B])).toBe(0)
     expect(calls.moveTo[0]).toEqual([0, 0])
   })
 
@@ -186,7 +211,8 @@ describe('drawSubjectAdjoiningFeatures — contiguous terminal offsets', () => {
       ptRing, ptPerGroundM: 1,
       annotations: [{ side: 'AB', role: 'contiguous', label: 'N', end: 'to' }],
     })
-    expect(calls.moveTo).toHaveLength(1)
+    expect(stubsAt(calls, [B])).toBe(1)
+    expect(stubsAt(calls, [A])).toBe(0)
     expect(calls.moveTo[0]).toEqual([100, 0])
   })
 })

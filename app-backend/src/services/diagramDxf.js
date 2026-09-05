@@ -6,13 +6,17 @@ import { resolveStatementDesignation } from './diagram/designation.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
-import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
+import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, isRemainderFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
-import { contiguousMarks, CONTIG_STUB_MM } from './diagram/contiguousMarks.js'
+import {
+  contiguousMarks, CONTIG_STUB_MM, dashSegments,
+  ADJOINING_DASH_ON_MM, ADJOINING_DASH_OFF_MM,
+} from './diagram/contiguousMarks.js'
 import { resolveConnections } from './diagram/connections.js'
 import {
   connectionMark, CONNECTION_STUB_MM, CONNECTION_ARROW_MM, CONNECTION_ARROW_HALF_MM,
+  CONNECTION_LABEL_PAD_MM, CONNECTION_LABEL_STANDOFF_MM,
 } from './diagram/connectionMark.js'
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
@@ -61,13 +65,22 @@ function tableBottomY(tableY, rowCount) {
   return tableY + 39 + rowCount * 11
 }
 
+/** Centre of the remaining extent on the page, or null when the sheet has none.
+ *  Only a direction reference -- which side of a connecting line it lies on. */
+function remainderCentroidPtDxf(neighbours, tf) {
+  const rem = (neighbours ?? []).find(isRemainderFeature)
+  const ring = rem?.geometry?.coordinates?.[0] ?? []
+  if (ring.length < 3) return null
+  return centroidPt(ring.map((p) => tf(p)))
+}
+
 /**
  * Connecting data, drawn from the SAME connectionMark geometry the PDF uses and
  * in the same PDF-point space, converted to ground only at emission -- so the
  * two documents cannot show a connection differently.
  */
 function drawConnectionsDxf(w, ctx) {
-  const { marks, tf, labelObstacles, boxToSegs, toG, toGLen } = ctx
+  const { marks, tf, labelObstacles, boxToSegs, toG, toGLen, remainderPt, denom } = ctx
   if (!marks?.length) return
   const PT_PER_MM = 72 / 25.4
   const len = CONNECTION_STUB_MM * PT_PER_MM
@@ -81,8 +94,15 @@ function drawConnectionsDxf(w, ctx) {
 
     const baseMid = [(g.arrow[1][0] + g.arrow[2][0]) / 2, (g.arrow[1][1] + g.arrow[2][1]) / 2]
     const gt = (q) => toG({ px: q[0], py: q[1] })
-    const t0 = gt(g.tail), t1 = gt(baseMid)
-    w.addLine('ADJOINING', t0.x, t0.y, t1.x, t1.y)
+    // Dashed by drawing the dashes, not by a linetype: this writer's LTYPE table
+    // holds only CONTINUOUS, and a scaled pattern would have to be rebuilt per
+    // sheet. Sharing dashSegments with the PDF also means both break in the same
+    // places instead of drifting apart.
+    for (const [p0, p1] of dashSegments(g.tail, baseMid,
+      ADJOINING_DASH_ON_MM * PT_PER_MM, ADJOINING_DASH_OFF_MM * PT_PER_MM)) {
+      const a0 = gt(p0), a1 = gt(p1)
+      w.addLine('ADJOINING', a0.x, a0.y, a1.x, a1.y)
+    }
     const A = gt(g.arrow[0]), B = gt(g.arrow[1]), C = gt(g.arrow[2])
     w.addSolidTri('ADJOINING', [A.x, A.y], [B.x, B.y], [C.x, C.y])
 
@@ -90,11 +110,32 @@ function drawConnectionsDxf(w, ctx) {
     // why every label in this file negates the PDF's angle.
     let angleDeg = Math.atan2(g.dir[1], g.dir[0]) * 180 / Math.PI
     if (angleDeg > 90 || angleDeg < -90) angleDeg += 180
+    const th = (angleDeg * Math.PI) / 180
+    const along = [Math.cos(th), Math.sin(th)]
+    // The text's own "up" in page space; offsetting along it moves the label to
+    // one side of the shaft. Worked out in PAGE points and converted at the end,
+    // exactly as the PDF does it, so both put the figure on the same side.
+    const perp = [Math.sin(th), -Math.cos(th)]
+    // The remaining extent's side of the line -- the land the connection is
+    // measured across. Absent a remainder, the side it always used.
     const labelH = 7
     const text = `${formatSI(m.distanceM, 2)}m`
-    const lx = g.labelAnchor[0] - 0.5 * 0.6 * labelH * text.length * Math.cos(angleDeg * Math.PI / 180)
-    const ly = g.labelAnchor[1] - 0.5 * 0.6 * labelH * text.length * Math.sin(angleDeg * Math.PI / 180)
-    const gl = toG({ px: lx, py: ly - labelH - 1.5 })
+    const tw = 0.6 * labelH * text.length
+    // Near edge, padded clear of the corner -- see the PDF renderer for why.
+    const pad = beaconRadiusPt(denom) + CONNECTION_LABEL_PAD_MM * PT_PER_MM
+    const mid = g.along(pad + tw / 2)
+    const sgn = remainderPt
+      && ((remainderPt.px - mid[0]) * perp[0]
+        + (remainderPt.py - mid[1]) * perp[1]) < 0 ? -1 : 1
+    const off = sgn * (labelH / 2 + CONNECTION_LABEL_STANDOFF_MM * PT_PER_MM)
+    const cx = mid[0] + perp[0] * off, cy = mid[1] + perp[1] * off
+    // DXF TEXT is placed at its baseline start, so step back half the width
+    // along the reading direction and half the cap height against the up.
+    const bx = cx - along[0] * (tw / 2) - perp[0] * (labelH / 2)
+    const by = cy - along[1] * (tw / 2) - perp[1] * (labelH / 2)
+    const gl = toG({ px: bx, py: by })
+    // DXF text rotates the opposite way to pdfkit (y up, not down), which is
+    // why every label in this file negates the PDF's angle.
     w.addText('ADJOINING', gl.x, gl.y, text, toGLen(labelH), -angleDeg)
 
     const tipOut = 5
@@ -179,16 +220,19 @@ function drawAdjoiningFeaturesDxf(w, ctx, logger) {
         to: connected?.has(geometry.vertices[(i + 1) % n].letter),
       })
       const st = edgeStrip(a, b, CONTIG_STUB_PT, cen)
-      if (marks.stubFrom) {
-        const g1 = toG({ px: a[0], py: a[1] }), g2 = toG({ px: st[3][0], py: st[3][1] })
-        w.addLine('ADJOINING', g1.x, g1.y, g2.x, g2.y)
-        labelObstacles.push([{ px: a[0], py: a[1] }, { px: st[3][0], py: st[3][1] }])
+      // Dashed, matching the PDF. This drew solid: the layer is CONTINUOUS and
+      // nothing cut the line, so the same stub was dashed on one document and
+      // solid on the other.
+      const dOn = ADJOINING_DASH_ON_MM * PT_PER_MM, dOff = ADJOINING_DASH_OFF_MM * PT_PER_MM
+      const emitStub = (from, to) => {
+        for (const [q0, q1] of dashSegments(from, to, dOn, dOff)) {
+          const g1 = toG({ px: q0[0], py: q0[1] }), g2 = toG({ px: q1[0], py: q1[1] })
+          w.addLine('ADJOINING', g1.x, g1.y, g2.x, g2.y)
+        }
+        labelObstacles.push([{ px: from[0], py: from[1] }, { px: to[0], py: to[1] }])
       }
-      if (marks.stubTo) {
-        const g1 = toG({ px: b[0], py: b[1] }), g2 = toG({ px: st[2][0], py: st[2][1] })
-        w.addLine('ADJOINING', g1.x, g1.y, g2.x, g2.y)
-        labelObstacles.push([{ px: b[0], py: b[1] }, { px: st[2][0], py: st[2][1] }])
-      }
+      if (marks.stubFrom) emitStub(a, st[3])
+      if (marks.stubTo) emitStub(b, st[2])
     }
 
     if (ann.label) {
@@ -576,7 +620,11 @@ export async function generateDiagramDXF(options, logger) {
           neighbourSegs.push([pa, pb])
         }
       }
-      const stand = nb.properties?.stand ?? nb.properties?.designation ?? ''
+      // The remaining extent's boundary is context worth drawing, but its NAME
+      // is not the renderer's to add -- the surveyor letters it as a tagged
+      // contiguous side, and both appearing puts REM on the sheet twice.
+      const stand = isRemainderFeature(nb)
+        ? '' : (nb.properties?.stand ?? nb.properties?.designation ?? '')
       if (stand) {
         neighbourLabels.push({ anchor: centroidPt(strips[0].map((pt) => tf(pt))), text: String(stand) })
       }
@@ -644,7 +692,10 @@ export async function generateDiagramDXF(options, logger) {
     connected,
   }, logger)
 
-  drawConnectionsDxf(w, { marks: connMarks, tf, labelObstacles, boxToSegs, toG, toGLen })
+  drawConnectionsDxf(w, {
+    marks: connMarks, tf, labelObstacles, boxToSegs, toG, toGLen, denom,
+    remainderPt: remainderCentroidPtDxf(neighbours, tf),
+  })
 
   const loLabel = resolveLoSystem(null, metadata, options.projection)
   drawTableDxf(w, layout, sidesTable, loLabel, toG, toGLen)

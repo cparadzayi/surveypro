@@ -1,6 +1,14 @@
 import { jest } from '@jest/globals'
 import { emitSubjectAdjoiningFeaturesDxf } from '../adjoiningFeaturesDxf.js'
 
+/** Stubs, not dashes: a dashed stub arrives as several short lines and only the
+ *  first starts at the terminal it springs from. Counting lines counts dashes. */
+const stubsAt = (lines, terminals) => lines.filter(
+  (l) => terminals.some(([tx, ty]) => Math.hypot(l[0] - tx, l[1] - ty) < 1e-6)).length
+
+/** The square subject's terminals for side 'AB'. */
+const A = [0, 0], B = [100, 0]
+
 function recorder() {
   const lines = []
   const texts = []
@@ -53,7 +61,12 @@ describe('emitSubjectAdjoiningFeaturesDxf', () => {
       ...r, ptRing: square, geo, servitudeLayer: 'ADJ_S', defaultLayer: 'ADJ',
       annotations: [{ side: 'CD', role: 'contiguous', label: 'STAND 500' }],
     })
-    expect(r.lines).toHaveLength(2)
+    // A stub is dashed, so it arrives as several short lines; only the first of
+    // each sits on the terminal it springs from.
+    const atTerminal = r.lines.filter((l) =>
+      (l.x1 === 10 && l.y1 === 10) || (l.x1 === 10 && l.y1 === 0))
+    expect(atTerminal).toHaveLength(2)
+    expect(r.lines.length).toBeGreaterThan(2)          // and each one is dashed
     expect(r.lines.every((l) => l.layer === 'ADJ')).toBe(true)
     expect(r.texts[0].text).toBe('STAND 500')
     expect(r.texts[0].rotation).not.toBe(0) // reads along the edge, like road/servitude
@@ -88,19 +101,23 @@ function collect(annotations) {
 
 describe('emitSubjectAdjoiningFeaturesDxf — contiguous terminal offsets', () => {
   test("end:'both' emits two stub lines", () => {
-    expect(collect([{ side: 'AB', role: 'contiguous', label: 'N', end: 'both' }]).lines).toHaveLength(2)
+    expect(stubsAt(collect([{ side: 'AB', role: 'contiguous', label: 'N', end: 'both' }]).lines,
+      [A, B])).toBe(2)
   })
   test('missing end emits two stub lines (back-compat)', () => {
-    expect(collect([{ side: 'AB', role: 'contiguous', label: 'N' }]).lines).toHaveLength(2)
+    expect(stubsAt(collect([{ side: 'AB', role: 'contiguous', label: 'N' }]).lines,
+      [A, B])).toBe(2)
   })
   test("end:'from' emits one stub line from terminal A", () => {
     const { lines } = collect([{ side: 'AB', role: 'contiguous', label: 'N', end: 'from' }])
-    expect(lines).toHaveLength(1)
+    expect(stubsAt(lines, [A])).toBe(1)
+    expect(stubsAt(lines, [B])).toBe(0)
     expect(lines[0].slice(0, 2)).toEqual([0, 0])
   })
   test("end:'to' emits one stub line from terminal B", () => {
     const { lines } = collect([{ side: 'AB', role: 'contiguous', label: 'N', end: 'to' }])
-    expect(lines).toHaveLength(1)
+    expect(stubsAt(lines, [B])).toBe(1)
+    expect(stubsAt(lines, [A])).toBe(0)
     expect(lines[0].slice(0, 2)).toEqual([100, 0])
   })
 })

@@ -18,7 +18,10 @@
 import { edgeStrip } from './diagram/edgeStrip.js'
 import { formatSI } from './diagram/numberFormat.js'
 import { sideToEdgeIndex } from './adjoiningFeatures.js'
-import { contiguousMarks } from './diagram/contiguousMarks.js'
+import {
+  contiguousMarks, CONTIG_STUB_MM, dashSegments,
+  ADJOINING_DASH_ON_MM, ADJOINING_DASH_OFF_MM,
+} from './diagram/contiguousMarks.js'
 
 /** Approximate DXF TEXT width for centring (STYLE/entity width factor is 0.55). */
 function textWidth(text, height) {
@@ -77,8 +80,18 @@ export function emitSubjectAdjoiningFeaturesDxf({
     } else if (ann.role === 'contiguous') {
       const marks = contiguousMarks(a, b, ann.end)
       const st = edgeStrip(a, b, stubLen, cen) // st[3]=a+out, st[2]=b+out
-      if (marks.stubFrom) addLine(defaultLayer, a[0], a[1], st[3][0], st[3][1])
-      if (marks.stubTo) addLine(defaultLayer, b[0], b[1], st[2][0], st[2][1])
+      // Dashed, matching the PDF, which drew this stub dashed while the DXF drew
+      // it solid. `stubLen` is CONTIG_STUB_MM in ground units, so it carries the
+      // sheet's scale and the pattern follows without needing the denominator.
+      const k = stubLen / CONTIG_STUB_MM
+      const on = ADJOINING_DASH_ON_MM * k, off = ADJOINING_DASH_OFF_MM * k
+      const emitStub = (from, to) => {
+        for (const [q0, q1] of dashSegments(from, to, on, off)) {
+          addLine(defaultLayer, q0[0], q0[1], q1[0], q1[1])
+        }
+      }
+      if (marks.stubFrom) emitStub(a, st[3])
+      if (marks.stubTo) emitStub(b, st[2])
     }
 
     // ── Label ──

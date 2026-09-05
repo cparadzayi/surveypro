@@ -135,6 +135,27 @@ export function neighbourBoundaryEdges(stripRing, neighbourRing, tol = 0.05) {
   return edges
 }
 
+/**
+ * Is this parcel the remaining extent of the property being subdivided?
+ *
+ * Broader than isOutsideFigureFeature, which knows only the app's internal
+ * "Outside Figure" wording. Surveyors designate it with the cadastral
+ * abbreviation -- REM, Rem., Rem./, Remainder -- and a project that does so had
+ * its remainder treated as an ordinary neighbour.
+ *
+ * Anchored and bounded, so a stand called REMBRANDT is still a stand. The
+ * working plan's adapter draws the same distinction with the same wording; the
+ * two must agree on what a remainder is.
+ */
+const REMAINDER_NAME = /^\s*(rem|rem\.|rem\.?\/|remainder|remaining\s+extent)\s*$/i
+
+export function isRemainderFeature(feature) {
+  if (isOutsideFigureFeature(feature)) return true
+  const p = feature?.properties ?? {}
+  return [p.designation, p.stand].some(
+    (v) => typeof v === 'string' && REMAINDER_NAME.test(v))
+}
+
 export function isOutsideFigureFeature(feature) {
   const p = feature?.properties ?? {}
   const has = (v) => typeof v === 'string' && (

@@ -6,13 +6,17 @@ import { resolveStatementDesignation } from './diagram/designation.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
-import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
+import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, isRemainderFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
-import { contiguousMarks, CONTIG_STUB_MM } from './diagram/contiguousMarks.js'
+import {
+  contiguousMarks, CONTIG_STUB_MM, dashSegments,
+  ADJOINING_DASH_ON_MM, ADJOINING_DASH_OFF_MM,
+} from './diagram/contiguousMarks.js'
 import { resolveConnections } from './diagram/connections.js'
 import {
   connectionMark, CONNECTION_STUB_MM, CONNECTION_ARROW_MM, CONNECTION_ARROW_HALF_MM,
+  CONNECTION_LABEL_PAD_MM, CONNECTION_LABEL_STANDOFF_MM,
 } from './diagram/connectionMark.js'
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
@@ -198,6 +202,16 @@ function drawBeaconDescription(doc, layout, groups) {
   doc.restore()
 }
 
+/** Centre of the remaining extent on the page, or null when the sheet has none.
+ *  Only a direction reference -- it says which side of a connecting line the
+ *  remainder lies on. */
+function remainderCentroidPt(neighbours, tf) {
+  const rem = (neighbours ?? []).find(isRemainderFeature)
+  const ring = rem?.geometry?.coordinates?.[0] ?? []
+  if (ring.length < 3) return null
+  return centroidPt(ring.map((p) => tf(p)))
+}
+
 /**
  * Draw the connecting data: for each connection, a ray from the beacon toward
  * its parent beacon, an arrowhead at the tip, the distance lettered along the
@@ -208,7 +222,7 @@ function drawBeaconDescription(doc, layout, groups) {
  * beacon lies so far from that parent beacon, that way.
  */
 function drawConnections(doc, ctx) {
-  const { marks, tf, labelObstacles, boxToSegs } = ctx
+  const { marks, tf, labelObstacles, boxToSegs, remainderPt, denom } = ctx
   if (!marks?.length) return
   const ptPerMm = PT_PER_MM
   const len = CONNECTION_STUB_MM * ptPerMm
@@ -221,10 +235,16 @@ function drawConnections(doc, ctx) {
     const g = connectionMark([from.px, from.py], [to.px, to.py], len, head, half)
     if (!g) continue
 
-    // The shaft stops at the head's base, so it cannot show through the fill.
+    // The shaft stops at the head's base, so it cannot show through the fill,
+    // and is dashed: a connection replaces the abutment stub at a beacon that
+    // would carry both, so it takes on the look of the mark it replaces.
     const baseMid = [(g.arrow[1][0] + g.arrow[2][0]) / 2, (g.arrow[1][1] + g.arrow[2][1]) / 2]
     doc.save().lineWidth(0.6).strokeColor('#000000').fillColor('#000000')
-    doc.moveTo(g.tail[0], g.tail[1]).lineTo(baseMid[0], baseMid[1]).stroke()
+    for (const [p0, p1] of dashSegments(g.tail, baseMid,
+      ADJOINING_DASH_ON_MM * ptPerMm, ADJOINING_DASH_OFF_MM * ptPerMm)) {
+      doc.moveTo(p0[0], p0[1]).lineTo(p1[0], p1[1])
+    }
+    doc.stroke()
     doc.moveTo(g.arrow[0][0], g.arrow[0][1])
       .lineTo(g.arrow[1][0], g.arrow[1][1])
       .lineTo(g.arrow[2][0], g.arrow[2][1])
@@ -235,12 +255,33 @@ function drawConnections(doc, ctx) {
     // use, so a connection on a diagonal reads like everything else.
     let angleDeg = Math.atan2(g.dir[1], g.dir[0]) * 180 / Math.PI
     if (angleDeg > 90 || angleDeg < -90) angleDeg += 180
+    const th = (angleDeg * Math.PI) / 180
+    // Which side of the shaft the text sits on. `perp` is the direction the
+    // text's own "up" points once the frame is rotated, so offsetting along it
+    // is offsetting to one side of the line.
+    const perp = [Math.sin(th), -Math.cos(th)]
+    // The distance belongs to the remaining extent's side of the line: that is
+    // the land the connection is measured across, and a figure of the sheet's
+    // own is not what the reader should find there. Absent a remainder, the
+    // side it always used.
+    const fs = 7
     const text = `${formatSI(m.distanceM, 2)}m`
-    doc.save().font('Helvetica').fontSize(7).fillColor('#000000')
+    doc.save().font('Helvetica').fontSize(fs).fillColor('#000000')
     const tw = doc.widthOfString(text)
-    const lx = g.labelAnchor[0], ly = g.labelAnchor[1]
-    doc.rotate(angleDeg, { origin: [lx, ly] })
-    doc.text(text, lx - tw / 2, ly - 7 - 1.5, { lineBreak: false })
+    // Placed by its NEAR EDGE, padded clear of the corner: a connection leaves
+    // a beacon where two boundaries meet under a beacon circle, and text
+    // centred on the shaft ran back across all three. The box is symmetric
+    // about the ray, so this holds whichever way the text had to be flipped to
+    // stay upright.
+    const pad = beaconRadiusPt(denom) + CONNECTION_LABEL_PAD_MM * PT_PER_MM
+    const mid = g.along(pad + tw / 2)
+    const sgn = remainderPt
+      && ((remainderPt.px - mid[0]) * perp[0]
+        + (remainderPt.py - mid[1]) * perp[1]) < 0 ? -1 : 1
+    const off = sgn * (fs / 2 + CONNECTION_LABEL_STANDOFF_MM * PT_PER_MM)
+    const cx = mid[0] + perp[0] * off, cy = mid[1] + perp[1] * off
+    doc.rotate(angleDeg, { origin: [cx, cy] })
+    doc.text(text, cx - tw / 2, cy - fs / 2, { lineBreak: false })
     doc.restore()
 
     // The far end's letter, just beyond the tip.
@@ -362,10 +403,21 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         to: connected?.has(geometry.vertices[(i + 1) % n].letter),
       })
       const st = edgeStrip(a, b, CONTIG_STUB_PT, cen) // st[3]=a+out, st[2]=b+out
-      doc.save().dash(3, { space: 2 }).lineWidth(0.6).strokeColor('#000000')
-      if (marks.stubFrom) doc.moveTo(a[0], a[1]).lineTo(st[3][0], st[3][1]).stroke()
-      if (marks.stubTo) doc.moveTo(b[0], b[1]).lineTo(st[2][0], st[2][1]).stroke()
-      doc.undash().restore()
+      // Dashed through the shared helper rather than PDFKit's own dash: the
+      // DXF writer has no linetype to match it with, so the two documents drew
+      // this mark differently. Now both cut the same pattern.
+      const on = ADJOINING_DASH_ON_MM * PT_PER_MM, off = ADJOINING_DASH_OFF_MM * PT_PER_MM
+      doc.save().lineWidth(0.6).strokeColor('#000000')
+      const stubs = []
+      if (marks.stubFrom) stubs.push([a, st[3]])
+      if (marks.stubTo) stubs.push([b, st[2]])
+      for (const [s0, s1] of stubs) {
+        for (const [q0, q1] of dashSegments(s0, s1, on, off)) {
+          doc.moveTo(q0[0], q0[1]).lineTo(q1[0], q1[1])
+        }
+      }
+      if (stubs.length) doc.stroke()
+      doc.restore()
       // Keep letters off the offshoot stubs too.
       if (marks.stubFrom) labelObstacles.push([{ px: a[0], py: a[1] }, { px: st[3][0], py: st[3][1] }])
       if (marks.stubTo) labelObstacles.push([{ px: b[0], py: b[1] }, { px: st[2][0], py: st[2][1] }])
@@ -737,7 +789,11 @@ export async function generateDiagramPDF(options, logger) {
         }
       }
       doc.stroke().undash().restore()
-      const stand = nb.properties?.stand ?? nb.properties?.designation ?? ''
+      // The remaining extent's boundary is context worth drawing, but its NAME
+      // is not the renderer's to add: the surveyor letters it themselves as a
+      // tagged contiguous side, and both appearing puts REM on the sheet twice.
+      const stand = isRemainderFeature(nb)
+        ? '' : (nb.properties?.stand ?? nb.properties?.designation ?? '')
       if (stand) {
         // Defer drawing: placed outward, line-avoiding, once all segments are known.
         neighbourLabels.push({ anchor: centroidPt(strips[0].map((p) => tf(p))), text: String(stand) })
@@ -795,7 +851,10 @@ export async function generateDiagramPDF(options, logger) {
     connected,
   }, logger)
 
-  drawConnections(doc, { marks: connMarks, tf, labelObstacles, boxToSegs })
+  drawConnections(doc, {
+    marks: connMarks, tf, labelObstacles, boxToSegs, denom,
+    remainderPt: remainderCentroidPt(neighbours, tf),
+  })
 
   // Beacon circles drawn ON TOP of the boundary AND the adjoining features: the white
   // fill knocks out the lines inside, so edges (incl. road/servitude strips) appear

@@ -16,7 +16,10 @@
  * CRS/extent machinery.
  */
 import { edgeStrip } from './diagram/edgeStrip.js'
-import { contiguousMarks, CONTIG_STUB_MM } from './diagram/contiguousMarks.js'
+import {
+  contiguousMarks, CONTIG_STUB_MM, dashSegments,
+  ADJOINING_DASH_ON_MM, ADJOINING_DASH_OFF_MM,
+} from './diagram/contiguousMarks.js'
 import { formatSI } from './diagram/numberFormat.js'
 
 const PT_PER_MM = 72 / 25.4
@@ -98,10 +101,21 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
     } else if (ann.role === 'contiguous') {
       const marks = contiguousMarks(a, b, ann.end)
       const st = edgeStrip(a, b, CONTIG_STUB_PT, cen) // st[3]=a+out, st[2]=b+out
-      doc.save().dash(3, { space: 2 }).lineWidth(0.6).strokeColor('#000000')
-      if (marks.stubFrom) doc.moveTo(a[0], a[1]).lineTo(st[3][0], st[3][1]).stroke()
-      if (marks.stubTo) doc.moveTo(b[0], b[1]).lineTo(st[2][0], st[2][1]).stroke()
-      doc.undash().restore()
+      // Cut with the shared pattern, not PDFKit's own dash, so the general
+      // plan's DXF can draw the identical mark -- it has no linetype to match a
+      // native dash with, and drew this stub solid.
+      const on = ADJOINING_DASH_ON_MM * PT_PER_MM, off = ADJOINING_DASH_OFF_MM * PT_PER_MM
+      doc.save().lineWidth(0.6).strokeColor('#000000')
+      const stubs = []
+      if (marks.stubFrom) stubs.push([a, st[3]])
+      if (marks.stubTo) stubs.push([b, st[2]])
+      for (const [s0, s1] of stubs) {
+        for (const [q0, q1] of dashSegments(s0, s1, on, off)) {
+          doc.moveTo(q0[0], q0[1]).lineTo(q1[0], q1[1])
+        }
+      }
+      if (stubs.length) doc.stroke()
+      doc.restore()
     }
 
     // ── Label ──

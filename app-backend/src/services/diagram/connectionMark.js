@@ -16,6 +16,7 @@
  * cannot come out differently on the PDF and the DXF.
  */
 import { CONTIG_STUB_MM } from './contiguousMarks.js'
+export { dashSegments, ADJOINING_DASH_ON_MM, ADJOINING_DASH_OFF_MM } from './contiguousMarks.js'
 
 /**
  * How far the ray runs, in paper millimetres, measured to the ARROW TIP.
@@ -27,6 +28,30 @@ import { CONTIG_STUB_MM } from './contiguousMarks.js'
  */
 export const CONNECTION_ARROW_MM = 2.2
 export const CONNECTION_STUB_MM = CONTIG_STUB_MM + CONNECTION_ARROW_MM
+
+/**
+ * How far along the ray the distance text starts, beyond whatever the beacon
+ * itself occupies, in paper millimetres.
+ *
+ * A connection leaves a CORNER, where two boundaries meet and the beacon circle
+ * sits on top of them. Centring the text on the shaft ran its leading edge back
+ * over all three. The renderers add this to the beacon's own radius and put the
+ * text box's near edge there, so the reading starts in clear ground.
+ *
+ * Clearance is bought two ways -- along the ray and across it -- and the second
+ * is cheaper: pushing the label sideways costs no room at the arrowhead end,
+ * where a long distance already runs past the tip. So the pad along the ray is
+ * kept short and the standoff below does the rest.
+ */
+export const CONNECTION_LABEL_PAD_MM = 1.75
+
+/**
+ * How far the label sits off the connecting line, beyond its own half-height,
+ * in paper millimetres. Enough to read as a label BESIDE the ray rather than
+ * one sitting on it -- and the further off the line it is, the less of the
+ * corner's converging boundaries it has to clear along the ray.
+ */
+export const CONNECTION_LABEL_STANDOFF_MM = 1.2
 
 /** Half the arrowhead's width, in paper millimetres. Narrow enough to read as
  *  an arrow rather than a triangle symbol -- the Fifth Schedule's signs are
@@ -41,7 +66,7 @@ export const CONNECTION_ARROW_HALF_MM = 0.75
  * @param {number} arrowUnits         Arrowhead length, same units.
  * @param {number} arrowHalfUnits     Arrowhead half-width, same units.
  * @returns {{dir: [number, number], tip: [number, number], tail: [number, number],
- *           arrow: Array<[number, number]>, labelAnchor: [number, number]} | null}
+ *           arrow: Array<[number, number]>, along: (d: number) => [number, number]} | null}
  *          `null` when the two points coincide and there is no direction to draw.
  */
 export function connectionMark(at, toward, lengthUnits, arrowUnits, arrowHalfUnits) {
@@ -66,8 +91,9 @@ export function connectionMark(at, toward, lengthUnits, arrowUnits, arrowHalfUni
       [base[0] + px * arrowHalfUnits, base[1] + py * arrowHalfUnits],
       [base[0] - px * arrowHalfUnits, base[1] - py * arrowHalfUnits],
     ],
-    // Midway along the shaft: the distance reads against the line it measures.
-    labelAnchor: [at[0] + ux * (lengthUnits - arrowUnits) / 2,
-      at[1] + uy * (lengthUnits - arrowUnits) / 2],
+    /** The point `d` along the ray from the beacon. The distance text is placed
+     *  by its NEAR EDGE, not its centre, so it can be held clear of the corner
+     *  the ray leaves -- the caller knows the text width, this does not. */
+    along: (d) => [at[0] + ux * d, at[1] + uy * d],
   }
 }

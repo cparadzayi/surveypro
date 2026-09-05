@@ -195,7 +195,10 @@ function distToSegment([px, py], [x1, y1], [x2, y2]) {
  * @param {Array}  [spec.existing] [{ from, to, extendFrom?, extendTo? }]  dashed parent boundaries, mm extensions
  * @param {Array}  [spec.roads]    [{ name, from, to, offset }]  offset in mm, +ve left of from->to
  * @param {string} [spec.srNumber]  Survey Record number, printed under the scale
- * @param {string} [spec.remainderLabel]  lettered at the remainder's centroid
+ * @param {string} [spec.remainderLabel]  lettered inside the remainder
+ * @param {string[]} [spec.remainderRing]  the remainder's full ring of beacon
+ *   names, so the label can be centred on the parcel rather than on the subset
+ *   of its sides that happen to be unshared
  * @param {Array}  [spec.remainderBoundary] [{from,to}] remainder sides, drawn dashed
  * @param {Array}  [spec.contiguous] [{ from, to, end:'from'|'to'|'both' }] abutting neighbours
  * @param {Array}  [spec.notes]    [{ text, X, Y, height? }]  e.g. neighbouring stand numbers
@@ -466,6 +469,38 @@ export function generateWorkingPlan(spec) {
   /** Free of other labels, symbols AND boundary lines. */
   const free = (rect) => !hits(rect) && !segments.some((s) => segCrossesRect(s[0], s[1], rect));
 
+  /** How badly a rectangle sits where it is: the area it steals from whatever is
+   *  already placed, plus a label-sized fine for every boundary it crosses.
+   *  Zero means clear. */
+  const penalty = (rect) => {
+    const w = Math.max(0, rect[2] - rect[0]), hgt = Math.max(0, rect[3] - rect[1]);
+    const over = (o) => Math.max(0, Math.min(rect[2], o[2]) - Math.max(rect[0], o[0]))
+      * Math.max(0, Math.min(rect[3], o[3]) - Math.max(rect[1], o[1]));
+    return occupied.reduce((t, o) => t + over(o), 0)
+      + segments.filter((sg) => segCrossesRect(sg[0], sg[1], rect)).length * w * hgt;
+  };
+
+  /** Choose a position for a label. The first CLEAR candidate wins outright --
+   *  candidate order encodes the cartographic preference, so a free spot early
+   *  beats a free spot late. Only when nothing is clear does the penalty decide.
+   *
+   *  That last case is not rare: a label can be too big to fit anywhere at any
+   *  scale, and then the fallback alone decides where it lands. Every search
+   *  here used to fall back to its FIRST candidate -- the preferred, closest-in
+   *  spot, which on a crowded sheet is the most congested spot on the sheet. A
+   *  label that fitted nowhere was put exactly where it did the most damage.
+   *  It now goes to the emptiest candidate instead. */
+  const bestOf = (candidates, rectOf) => {
+    let best = null, bestScore = Infinity;
+    for (const c of candidates) {
+      const rect = rectOf(c);
+      if (free(rect)) return { choice: c, rect, clear: true };
+      const score = penalty(rect);
+      if (score < bestScore) { bestScore = score; best = { choice: c, rect, clear: false }; }
+    }
+    return best;
+  };
+
   /* ---- parcel boundaries, clipped clear of the beacon symbols */
   const areas = {};
   for (const p of spec.parcels) {
@@ -509,13 +544,52 @@ export function generateWorkingPlan(spec) {
   // Letter the remainder. It is part of the plan even though it is not a new
   // stand, so it is named -- just not drawn solid.
   if (spec.remainderLabel && (spec.remainderBoundary ?? []).length) {
-    const pts = spec.remainderBoundary.flatMap((s) => [[G(s.from).e, G(s.from).n]]);
-    const cx = pts.reduce((t, q) => t + q[0], 0) / pts.length;
-    const cy = pts.reduce((t, q) => t + q[1], 0) / pts.length;
     const ph = mm(L.text.parcel);
-    const rc = textRect(spec.remainderLabel, cx, cy - ph / 2, ph, 'center');
-    occupied.push(rc);
-    d.text(spec.remainderLabel, [cx, cy - ph / 2], ph,
+    // Centre it on the WHOLE remaining extent. The mean of the unshared sides'
+    // endpoints is not the parcel's centre: on a remainder that wraps around the
+    // new stands those sides are all on one flank, and their mean lands on a
+    // boundary or outside the parcel entirely.
+    const ring = (spec.remainderRing ?? []).filter((n) => byName.has(n));
+    const known = ring.length >= 3;
+    const pts = known ? ring.map((n) => [G(n).e, G(n).n])
+      : spec.remainderBoundary.map((s) => [G(s.from).e, G(s.from).n]);
+    const [c0, c1] = known ? centroid(pts)
+      : [pts.reduce((t, q) => t + q[0], 0) / pts.length,
+        pts.reduce((t, q) => t + q[1], 0) / pts.length];
+
+    // A remainder is the one parcel whose own boundary can run through the
+    // middle of its bounding box, so its name is SEARCHED like every other
+    // label rather than written blind at the centre.
+    const inside = (x, y) => {
+      let hit = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const [xi, yi] = pts[i], [xj, yj] = pts[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+      }
+      return hit;
+    };
+    // Candidates: the centroid, then a grid across the parcel's own bounding
+    // box, nearest first. Sized to the PARCEL, not to the text -- a remainder
+    // can be many times the size of its own name, and a search stepping out in
+    // text-heights would never reach the parts of it that are open.
+    const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+    const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
+    const [y0, y1] = [Math.min(...ys), Math.max(...ys)];
+    const N = 7;
+    const grid = [];
+    for (let i = 1; i < N; i++) {
+      for (let j = 1; j < N; j++) grid.push([x0 + ((x1 - x0) * i) / N, y0 + ((y1 - y0) * j) / N]);
+    }
+    grid.sort((a, b) => Math.hypot(a[0] - c0, a[1] - c1) - Math.hypot(b[0] - c0, b[1] - c1));
+    // Never letter the remainder outside itself: a U-shaped remainder wrapped
+    // around the new stands has its own centroid in the hollow, which is another
+    // parcel's ground, and a name written there belongs to that parcel.
+    const cands = [[c0, c1], ...grid];
+    const within = known ? cands.filter((q) => inside(q[0], q[1])) : cands;
+    const chosen = bestOf(within.length ? within : [[c0, c1]], (q) =>
+      textRect(spec.remainderLabel, q[0], q[1] - ph / 2, ph, 'center'));
+    occupied.push(chosen.rect);
+    d.text(spec.remainderLabel, [chosen.choice[0], chosen.choice[1] - ph / 2], ph,
       { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
   }
 
@@ -598,11 +672,9 @@ export function generateWorkingPlan(spec) {
         }
       }
     }
-    let at = tries[0];
-    for (const c of tries) {
-      if (free(rotatedRect(rd.name, c[0], c[1], rh, ang, wf))) { at = c; break; }
-    }
-    occupied.push(rotatedRect(rd.name, at[0], at[1], rh, ang, wf));
+    const chosen = bestOf(tries, (c) => rotatedRect(rd.name, c[0], c[1], rh, ang, wf));
+    const at = chosen.choice;
+    occupied.push(chosen.rect);
     d.text(rd.name, at, rh,
       { layer: 'ROAD-TEXT', style: 'ARIAL', rotation: ang * 180 / Math.PI, widthFactor: wf });
   }
@@ -613,20 +685,20 @@ export function generateWorkingPlan(spec) {
     const g = loToGround(t);
     const th = mm(t.height ?? L.text.adjoining);
     // Step outward from the figure until the name is clear of the grid, the
-    // beacons and their labels. Drawn AFTER the grid deliberately: the
-    // coordinate framework is the more important of the two, and a neighbour's
-    // name can move. Falls back to the requested spot after the last step, so a
-    // crowded sheet still letters the neighbour rather than dropping it.
+    // beacons, their labels AND the boundaries. Drawn AFTER the grid
+    // deliberately: the coordinate framework is the more important of the two,
+    // and a neighbour's name can move. A crowded sheet still letters the
+    // neighbour rather than dropping it -- at the emptiest of the steps.
     const dx = g.e - figCx, dy = g.n - figCy;
     const len = Math.hypot(dx, dy) || 1;
     const step = mm(3);
-    let px = g.e, py = g.n;
+    const steps = [];
     for (let k = 0; k <= 4; k++) {
-      const cx = g.e + (dx / len) * step * k;
-      const cy = g.n + (dy / len) * step * k;
-      const rc = textRect(t.text, cx, cy, th, 'center');
-      if (!hits(rc)) { px = cx; py = cy; occupied.push(rc); break; }
+      steps.push([g.e + (dx / len) * step * k, g.n + (dy / len) * step * k]);
     }
+    const chosen = bestOf(steps, (c) => textRect(t.text, c[0], c[1], th, 'center'));
+    const [px, py] = chosen.choice;
+    occupied.push(chosen.rect);
     d.text(t.text, [px, py], th, { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
   }
 
@@ -665,20 +737,14 @@ export function generateWorkingPlan(spec) {
     // before the distance grows at all. Only when all eight are blocked does it
     // step out, and by as little as possible.
     const tries = [pos, ...ORDER.slice(ORDER.indexOf(pos) + 1), ...ORDER.slice(0, ORDER.indexOf(pos))];
-    let P = null, rect = null;
-    for (const k of [1, 1.5, 2.1]) {
-      for (const t of tries) {
-        const c = place(t, k);
-        const rc = textRect(b.name, b.e + c[0], b.n + c[1], h, c[2]);
-        if (free(rc)) { P = c; rect = rc; break; }
-      }
-      if (rect) break;
-    }
-    // Nothing free anywhere: place it at the preferred spot rather than drop the
-    // name. A beacon without a name is worse than a crowded one, and this is the
-    // only path that can still overlap.
-    if (!rect) { P = place(pos); rect = textRect(b.name, b.e + P[0], b.n + P[1], h, P[2]); }
-    occupied.push(rect);
+    const cands = [];
+    for (const k of [1, 1.5, 2.1]) for (const t of tries) cands.push(place(t, k));
+    // Nothing free anywhere still letters the beacon -- a beacon without a name
+    // is worse than a crowded one -- but in the emptiest of the 24 positions
+    // rather than always on the preferred one.
+    const chosen = bestOf(cands, (c) => textRect(b.name, b.e + c[0], b.n + c[1], h, c[2]));
+    const P = chosen.choice;
+    occupied.push(chosen.rect);
     d.text(b.name, [b.e + P[0], b.n + P[1]], h,
       { layer: 'BEACON-TEXT', style: 'ARIAL', align: P[2] });
   }

@@ -568,14 +568,22 @@ describe('buildWorkingPlanSpec — surrounding properties', () => {
       ],
     }))
     expect(spec.notes).toBeUndefined()
-    expect(spec.roads?.map(r => r.name)).toEqual(['Main Road', 'Water servitude 3,00m'])
+    expect(spec.roads?.map(r => r.name)).toEqual(['Main Road', 'Water servitude', '3,00m'])
   })
 
-  it('appends the width the way the diagram does, in SI format', () => {
+  it('gives the width its own label rather than gluing it to the name', () => {
+    // One string per road looked tidier and was unplaceable. A surveyor letters
+    // road names spaced out, so name + width + destinations ran to 40-odd
+    // characters -- two thirds of the figure's width -- and no position on the
+    // sheet was clear of everything. The renderer's search failed on every
+    // candidate and dropped it on the stands. Separately, each part fits.
     const { spec } = buildWorkingPlanSpec(squareCtx({
       '404': [{ side: 'AB', role: 'road', label: 'Klein Road', widthM: 25.19 }],
     }))
-    expect(spec.roads![0].name).toBe('Klein Road 25,19m')
+    expect(spec.roads?.map(r => r.name)).toEqual(['Klein Road', '25,19m'])
+    // both lettered along the same side, so they read as one annotation
+    expect(spec.roads![1].from).toBe(spec.roads![0].from)
+    expect(spec.roads![1].to).toBe(spec.roads![0].to)
   })
 
   it('names the side endpoints so the renderer can place the label', () => {
@@ -698,7 +706,17 @@ describe('buildWorkingPlanSpec — one label per adjoining feature', () => {
       '404': [{ side: 'AB', role: 'road', label: 'Klein Road', widthM: 25.19 }],
       '405': [{ side: 'AB', role: 'road', label: 'Klein Road', widthM: 25.19 }],
     }))
-    expect(spec.roads?.map(r => r.name)).toEqual(['Klein Road 25,19m'])
+    expect(spec.roads?.map(r => r.name)).toEqual(['Klein Road', '25,19m'])
+  })
+
+  it('keeps both widths when two roads happen to be the same width', () => {
+    // De-duplication groups by road, not by label text. Grouping by text would
+    // silently drop the second road's width, because '12,00m' is '12,00m'.
+    const { spec } = buildWorkingPlanSpec(twoParcels({
+      '404': [{ side: 'AB', role: 'road', label: 'Klein Road', widthM: 12 }],
+      '405': [{ side: 'CD', role: 'road', label: 'Main Road', widthM: 12 }],
+    }))
+    expect(spec.roads?.map(r => r.name).filter(n => n === '12,00m')).toHaveLength(2)
   })
 
   it('does not confuse a road with a neighbour of the same name', () => {
@@ -767,7 +785,7 @@ describe('buildWorkingPlanSpec — a name lettered across sides', () => {
         { side: 'BC', role: 'road', label: 'R O A D', widthM: 25.19 },
       ],
     }))
-    expect(spec.roads?.map(r => r.name)).toEqual(['K L E I N R O A D 25,19m'])
+    expect(spec.roads?.map(r => r.name)).toEqual(['K L E I N R O A D', '25,19m'])
   })
 })
 
@@ -929,31 +947,33 @@ describe('buildWorkingPlanSpec — road destinations', () => {
     sideAnnotations: { '404': [{ side: 'AB', role: 'road', label: 'Main Road', ...extra }] },
   })
 
+  const names = (extra: any) => buildWorkingPlanSpec(road(extra)).spec.roads!.map(r => r.name)
+
   it('letters both destinations along the road', () => {
-    const { spec } = buildWorkingPlanSpec(road({ destinationFrom: 'Gwelo', destinationTo: 'Gweru' }))
-    expect(spec.roads![0].name).toBe('Main Road <- Gwelo   Gweru ->')
+    // Their own label, not glued to the name -- see the width test above for
+    // why one long string could not be placed.
+    expect(names({ destinationFrom: 'Gwelo', destinationTo: 'Gweru' }))
+      .toEqual(['Main Road', '<- Gwelo   Gweru ->'])
   })
 
   it('letters a single destination without inventing the other', () => {
-    expect(buildWorkingPlanSpec(road({ destinationTo: 'Gweru' })).spec.roads![0].name)
-      .toBe('Main Road Gweru ->')
-    expect(buildWorkingPlanSpec(road({ destinationFrom: 'Gwelo' })).spec.roads![0].name)
-      .toBe('Main Road <- Gwelo')
+    expect(names({ destinationTo: 'Gweru' })).toEqual(['Main Road', 'Gweru ->'])
+    expect(names({ destinationFrom: 'Gwelo' })).toEqual(['Main Road', '<- Gwelo'])
   })
 
   it('carries width and destinations together when both are recorded', () => {
-    const { spec } = buildWorkingPlanSpec(road({ widthM: 25.19, destinationTo: 'Gweru' }))
-    expect(spec.roads![0].name).toBe('Main Road 25,19m Gweru ->')
+    expect(names({ widthM: 25.19, destinationTo: 'Gweru' }))
+      .toEqual(['Main Road', '25,19m', 'Gweru ->'])
   })
 
   it('is unchanged when no destination was recorded', () => {
-    expect(buildWorkingPlanSpec(road({ widthM: 25.19 })).spec.roads![0].name).toBe('Main Road 25,19m')
+    expect(names({ widthM: 25.19 })).toEqual(['Main Road', '25,19m'])
   })
 
   it('emits nothing the DXF code page cannot represent', () => {
     // A real arrow here would be written as UTF-8 into an ANSI_1252 file.
     const { spec } = buildWorkingPlanSpec(road({ destinationFrom: 'Gwelo', destinationTo: 'Gweru' }))
-    expect([...spec.roads![0].name].every(c => c.charCodeAt(0) <= 255)).toBe(true)
+    expect(spec.roads!.every(r => [...r.name].every(c => c.charCodeAt(0) <= 255))).toBe(true)
   })
 })
 

@@ -389,6 +389,51 @@ describe('generateWorkingPlan — golden', () => {
       expect(a.onLine).toBe(0)
     })
 
+    /** How a surveyor actually letters a road: spaced out, per the Fifth
+     *  Schedule. It more than doubles the character count, and that is the
+     *  whole of this bug. */
+    const spaced = (s) => s.split('').join('  ')
+
+    test('a real letter-spaced road annotation overwrites nothing', () => {
+      // The fixture letters its roads 'Main Road' and 'Klein Road 25.19 m'.
+      // Real ones arrive as 'K  L  E  I  N   R  O  A  D' with the width glued
+      // on: 40 characters, which at this scale is 68% of the whole figure's
+      // width. That gap between the fixture and the data is why this suite read
+      // clean while the sheet the surveyor opened had three labels written
+      // through each other. The name and the width are separate labels now, so
+      // each is small enough to be placed on its own merits.
+      const { dxf } = generateWorkingPlan({
+        ...brackenhurstSpec,
+        roads: [
+          { name: spaced('MAIN ROAD'), from: 'SD1', to: '87CR', offset: 9.5, along: -3 },
+          { name: spaced('KLEIN ROAD'), from: '86C', to: '87DR', offset: 9.0, along: 5 },
+          { name: '25,19m', from: '86C', to: '87DR', offset: 9.0, along: 5 },
+        ],
+      })
+      expect(auditAll(dxf).overlaps).toEqual([])
+    })
+
+    test('a label too big for any gap lands where it costs least, not first', () => {
+      // Some labels cannot be placed at all: no candidate is clear at any
+      // distance, at any scale. Where such a label goes is then decided entirely
+      // by the fallback -- and every search here used to fall back to candidate
+      // one, the preferred closest-in spot, which on a crowded sheet is the most
+      // congested spot on it. This exact label landed across stand 403 and two
+      // beacon names: three overwrites, all of them avoidable.
+      const { dxf } = generateWorkingPlan({
+        ...brackenhurstSpec,
+        roads: [
+          { name: spaced('MAIN ROAD'), from: 'SD1', to: '87CR', offset: 9.5, along: -3 },
+          { name: spaced('KLEIN ROAD 25.19m'), from: '86C', to: '87DR', offset: 9.0, along: 5 },
+        ],
+      })
+      const { overlaps } = auditAll(dxf)
+      // A stand number is the one label on the sheet that cannot be moved out of
+      // the way, so it is the one that must never be written over.
+      expect(overlaps.filter((o) => o.includes('PARCEL-TEXT'))).toEqual([])
+      expect(overlaps.length).toBeLessThan(3)          // measured at 3 before
+    })
+
     test('holds on a cramped figure, where the old placer gave up and overwrote', () => {
       // Fourteen beacons on a small ring with long names: every compass slot
       // around a beacon is contested. The placer walks the whole ring at one
@@ -438,6 +483,80 @@ describe('generateWorkingPlan — golden', () => {
     const lines = dxf.split('\n')
     const at = lines.indexOf('BOUNDARY-EXIST')
     expect(lines.slice(at, at + 12)).toContain('PLANDASH')
+  })
+
+  test('letters the remainder inside itself, not in the stand it wraps around', () => {
+    // A remainder left by a subdivision is often a U wrapped around the new
+    // stands, and a U's centroid is in the hollow -- which is the stand's
+    // ground, not the remainder's. The name was written blind at a centre
+    // derived from the remainder's unshared sides alone, so on this shape it
+    // landed inside stand 404 and across the dashed boundary.
+    //
+    // Laid out in sheet terms and converted, since that is how the shape reads:
+    // easting = -Y, northing = -X. A 100 x 100 U with 20-wide walls, hollow
+    // 60 x 80, and stand 404 filling the hollow.
+    const P = {
+      A: [85600, -2144100], B: [85700, -2144100], C: [85700, -2144000],
+      D: [85680, -2144000], E: [85680, -2144080], F: [85620, -2144080],
+      G: [85620, -2144000], H: [85600, -2144000],
+    }
+    const B = (name) => ({ name, X: -P[name][1], Y: -P[name][0], symbol: 'placed', label: 'auto' })
+    const { dxf } = generateWorkingPlan({
+      scale: 'auto',
+      beacons: Object.keys(P).map(B),
+      // the stand fills the hollow, so three of the U's sides are shared
+      parcels: [{ label: '404', ring: ['D', 'E', 'F', 'G'] }],
+      remainderBoundary: [
+        { from: 'A', to: 'B' }, { from: 'B', to: 'C' }, { from: 'C', to: 'D' },
+        { from: 'G', to: 'H' }, { from: 'H', to: 'A' },
+      ],
+      remainderRing: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
+      remainderLabel: 'REM',
+      title: ['WORKING PLAN OF', 'Stand 404'],
+    })
+
+    const lines = dxf.split('\n')
+    const read = (kind, keep) => {
+      const out = []
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i] !== '0' || lines[i + 1] !== kind) continue
+        let j = i + 2; const d = {}
+        while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+        const v = keep(d)
+        if (v) out.push(v)
+      }
+      return out
+    }
+    const rem = read('TEXT', (d) => ((d['1'] || [''])[0] === 'REM'
+      ? { x: +d['10'][0], y: +d['20'][0], h: +d['40'][0] } : null))[0]
+    expect(rem).toBeDefined()
+    const cx = rem.x, cy = rem.y + rem.h / 2
+
+    // Stand 404 is the hollow, and its outline is on the sheet in the drawing's
+    // own units -- so no scale arithmetic is needed to ask the question.
+    const solid = read('LINE', (d) => ((d['8'] || [])[0] === 'BOUNDARY-NEW'
+      ? [[+d['10'][0], +d['20'][0]], [+d['11'][0], +d['21'][0]]] : null))
+    expect(solid).toHaveLength(4)
+    const ex = solid.flatMap((sg) => [sg[0][0], sg[1][0]])
+    const ey = solid.flatMap((sg) => [sg[0][1], sg[1][1]])
+    const inStand = cx > Math.min(...ex) && cx < Math.max(...ex)
+      && cy > Math.min(...ey) && cy < Math.max(...ey)
+    expect(inStand).toBe(false)
+
+    // and clear of its own dashed boundary
+    const dashed = read('LINE', (d) => ((d['8'] || [])[0] === 'BOUNDARY-EXIST'
+      ? [[+d['10'][0], +d['20'][0]], [+d['11'][0], +d['21'][0]]] : null))
+    expect(dashed).toHaveLength(5)
+    const w = 0.63 * rem.h * 'REM'.length
+    const box = [rem.x - w / 2, rem.y - rem.h * 0.15, rem.x + w / 2, rem.y + rem.h]
+    const hitsBox = ([px, py], [qx, qy]) => {
+      for (let t = 0; t <= 1; t += 0.002) {
+        const x = px + (qx - px) * t, y = py + (qy - py) * t
+        if (x >= box[0] && x <= box[2] && y >= box[1] && y <= box[3]) return true
+      }
+      return false
+    }
+    expect(dashed.filter((sg) => hitsBox(sg[0], sg[1]))).toEqual([])
   })
 
   test('marks everything adjoining the survey with one linetype', () => {

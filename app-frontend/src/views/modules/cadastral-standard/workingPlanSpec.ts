@@ -114,6 +114,9 @@ export interface WorkingPlanSpec {
   remainderBoundary?: Array<{ from: string; to: string }>
   /** What to letter the remaining extent. Absent when there is no remainder. */
   remainderLabel?: string
+  /** The remainder's full ring of beacon names, so its label can be centred on
+   *  the parcel. Its unshared sides alone do not give the centre. */
+  remainderRing?: string[]
   /** Survey Record number, already prefixed for printing. */
   srNumber?: string
 }
@@ -418,7 +421,11 @@ function insideRing(X: number, Y: number, ring: Array<{ X: number; Y: number }>)
 }
 
 type NoteCandidate = WorkingPlanNote & { length: number }
-type RoadCandidate = WorkingPlanRoad & { length: number }
+/** `key` is what de-duplication groups on, and it is NOT the label text: a road
+ *  contributes up to three labels and two different roads can share one, e.g.
+ *  both being 12,00m wide. Keying on the text would silently drop the second
+ *  road's width. */
+type RoadCandidate = WorkingPlanRoad & { length: number; key: string }
 
 const sideLength = (sd: { a: [number, number]; b: [number, number] }) =>
   Math.hypot(sd.b[0] - sd.a[0], sd.b[1] - sd.a[1])
@@ -594,22 +601,30 @@ function sideFeatures(
     const parts = run.map(x => x.label)
     const width = run.map(x => x.widthM).find(w => Number.isFinite(w) && w > 0)
     const base = parts.join(' ')
-    const withWidth = width ? `${base} ${formatWidthSI(width)}m` : base
     // Destinations, lettered ASCII: the Fifth Schedule uses arrowheads, which
     // an ANSI_1252 R12 file cannot carry as text. Drawing them as geometry is
     // the faithful form and is still to do.
     const df = run.map(x => x.destFrom).find(Boolean)
     const dt = run.map(x => x.destTo).find(Boolean)
     const dest = [df ? `<- ${df}` : '', dt ? `${dt} ->` : ''].filter(Boolean).join('   ')
-    const name = dest ? `${withWidth} ${dest}` : withWidth
     // Letter it on the longest side of the run.
     const best = run.reduce((a, b) => (sideLength(sides[b.i]) > sideLength(sides[a.i]) ? b : a))
-    roads.push({
-      name,
+    const on = {
       from: ring[best.i].name,
       to: ring[(best.i + 1) % ring.length].name,
       length: run.reduce((t, x) => t + sideLength(sides[x.i]), 0),
-    })
+    }
+    // Name, width and destinations are THREE labels, not one string. Surveyors
+    // letter road names spaced out -- 'K  L  E  I  N   R  O  A  D' -- which more
+    // than doubles the character count, and gluing the width and destinations on
+    // the end took one Brackenhurst label past two thirds of the figure width.
+    // No position on the sheet could hold a label that size, so the renderer's
+    // search failed on every candidate and fell back to the first one, which put
+    // the road name straight across the stands it was meant to sit beside.
+    // Placed separately, each part fits and is positioned on its own merits.
+    roads.push({ name: base, key: `name:${base}`, ...on })
+    if (width) roads.push({ name: `${formatWidthSI(width)}m`, key: `width:${base}`, ...on })
+    if (dest) roads.push({ name: dest, key: `dest:${base}`, ...on })
     k += run.length
   }
 
@@ -734,7 +749,7 @@ export function buildWorkingPlanSpec(
   // De-duplicate before emitting: same name, one label, on its longest side.
   const finalNotes: WorkingPlanNote[] = longestPerName(notes, n => n.text)
     .map(({ text, X, Y }) => ({ text, X, Y }))
-  const finalRoads: WorkingPlanRoad[] = longestPerName(roads, r => r.name)
+  const finalRoads: WorkingPlanRoad[] = longestPerName(roads, r => r.key)
     .map(({ name, from, to }) => ({ name, from, to }))
 
 
@@ -767,6 +782,7 @@ export function buildWorkingPlanSpec(
       ...(contiguous.length > 0 ? { contiguous } : {}),
       ...(remainderBoundary.length > 0 ? { remainderBoundary } : {}),
       ...(remainderLabel ? { remainderLabel } : {}),
+      ...(remainderRing && remainderRing.length >= 3 ? { remainderRing } : {}),
       ...(srNumber ? { srNumber } : {}),
     },
     skippedParcels,

@@ -364,7 +364,7 @@ export function generateWorkingPlan(spec) {
    * of SOLID quads between the circle and the triangle's edges, each circle
    * sample projected outward along its own radius to whichever edge it meets.
    */
-  const filledTriangleWithHole = (b, tri, centre, r, n = 36) => {
+  const filledTriangleWithHole = (b, tri, centre, r, n = 36, layer = '0') => {
     const reach = (dx, dy) => {
       let best = Infinity;
       for (let k = 0; k < 3; k++) {
@@ -391,7 +391,7 @@ export function generateWorkingPlan(spec) {
         [centre[0] + d2[0] * r, centre[1] + d2[1] * r],
         [centre[0] + d2[0] * t2, centre[1] + d2[1] * t2],
         [centre[0] + d1[0] * t1, centre[1] + d1[1] * t1],
-      ]);
+      ], { layer });
     }
   };
 
@@ -720,13 +720,19 @@ export function generateWorkingPlan(spec) {
         }
       };
       const triangle = (up) => {
+        // The same construction as the beacon block: a filled triangle with a
+        // real hole, NOT a filled triangle with a circle drawn over it. The
+        // inset kept the old form after the blocks were fixed, and since a
+        // sheet whose beacons are all pegs and marks shows trig symbols ONLY
+        // here, this was the version actually reaching the surveyor.
         const w = iSym, hh = iSym * 1.55, sgn = up ? 1 : -1;
-        d.solid([[at[0], at[1] + sgn * hh * 0.62], [at[0] - sgn * w, at[1] - sgn * hh * 0.38],
-          [at[0] + sgn * w, at[1] - sgn * hh * 0.38]], { layer: 'INSET' });
-        // The inset triangle is half-width iSym, height 1.55*iSym, so its true
-        // incircle radius is 0.545*iSym -- the same construction as the main
-        // figure rather than an eyeballed fraction.
-        ring(iSym * 0.545);
+        const tri = [
+          [at[0], at[1] + sgn * hh * 0.62],
+          [at[0] - sgn * w, at[1] - sgn * hh * 0.38],
+          [at[0] + sgn * w, at[1] - sgn * hh * 0.38],
+        ];
+        const c = triIncircle(w, hh);
+        filledTriangleWithHole(d, tri, [at[0], at[1] + sgn * c.cy], c.r, 24, 'INSET');
       };
       switch (b.symbol) {
         case 'trig': triangle(true); break;

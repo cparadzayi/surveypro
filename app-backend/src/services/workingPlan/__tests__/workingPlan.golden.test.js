@@ -255,6 +255,30 @@ describe('generateWorkingPlan — golden', () => {
     expect(dxf).toContain('0\nLAYER\n2\n0\n')
   })
 
+  test('holes the inset trig symbols too, not just the beacon blocks', () => {
+    // The blocks were fixed first and the inset was missed. That mattered more
+    // than it sounds: a sheet whose beacons are all pegs and marks inserts no
+    // trig block at all, so the inset was the ONLY place a trig symbol appeared
+    // -- and it was still a plain filled triangle.
+    const { dxf } = generateWorkingPlan(brackenhurstSpec)
+    const lines = dxf.split('\n')
+
+    let inBlock = false
+    const solids = []
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i] === '0' && lines[i + 1] === 'BLOCK') inBlock = true
+      if (lines[i] === '0' && lines[i + 1] === 'ENDBLK') inBlock = false
+      if (inBlock || lines[i] !== '0' || lines[i + 1] !== 'SOLID') continue
+      let j = i + 2; const d = {}
+      while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+      if ((d['8'] || [])[0] === 'INSET') solids.push(d)
+    }
+
+    // Two trig stations in the reference inset. One filled triangle each would
+    // be 2 solids; a ring of quads is many.
+    expect(solids.length).toBeGreaterThan(20)
+  })
+
   test('picks a scale itself when asked to', () => {
     const out = generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' })
     expect(typeof out.scale).toBe('number')

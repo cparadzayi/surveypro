@@ -279,6 +279,94 @@ describe('generateWorkingPlan — golden', () => {
     expect(solids.length).toBeGreaterThan(20)
   })
 
+  describe('label placement', () => {
+    const parse = (dxf) => {
+      const lines = dxf.split('\n')
+      const labels = [], segs = []
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (lines[i] !== '0') continue
+        const kind = lines[i + 1]
+        if (kind !== 'TEXT' && kind !== 'LINE') continue
+        let j = i + 2; const d = {}
+        while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+        const layer = (d['8'] || [])[0]
+        if (kind === 'TEXT' && layer === 'BEACON-TEXT') {
+          labels.push({ t: (d['1'] || [''])[0], x: +d['10'][0], y: +d['20'][0], h: +d['40'][0], al: (d['72'] || ['0'])[0] })
+        }
+        if (kind === 'LINE' && layer === 'BOUNDARY-NEW') {
+          segs.push([[+d['10'][0], +d['20'][0]], [+d['11'][0], +d['21'][0]]])
+        }
+      }
+      return { labels, segs }
+    }
+    const rect = (l) => {
+      const w = 0.63 * l.h * l.t.length
+      const x0 = l.al === '1' ? l.x - w / 2 : l.al === '2' ? l.x - w : l.x
+      return [x0, l.y - l.h * 0.15, x0 + w, l.y + l.h]
+    }
+    const crosses = (p0, q0, [x0, y0, x1, y1]) => {
+      let p = p0.slice(), q = q0.slice()
+      const code = ([x, y]) => (x < x0 ? 1 : 0) | (x > x1 ? 2 : 0) | (y < y0 ? 4 : 0) | (y > y1 ? 8 : 0)
+      let a = code(p), b = code(q)
+      for (let g = 0; g < 8; g++) {
+        if (!(a | b)) return true
+        if (a & b) return false
+        const c = a || b
+        let x, y
+        if (c & 8) { x = p[0] + (q[0] - p[0]) * (y1 - p[1]) / (q[1] - p[1]); y = y1 }
+        else if (c & 4) { x = p[0] + (q[0] - p[0]) * (y0 - p[1]) / (q[1] - p[1]); y = y0 }
+        else if (c & 2) { y = p[1] + (q[1] - p[1]) * (x1 - p[0]) / (q[0] - p[0]); x = x1 }
+        else { y = p[1] + (q[1] - p[1]) * (x0 - p[0]) / (q[0] - p[0]); x = x0 }
+        if (c === a) { p = [x, y]; a = code(p) } else { q = [x, y]; b = code(q) }
+      }
+      return false
+    }
+    const audit = (dxf) => {
+      const { labels, segs } = parse(dxf)
+      let overlaps = 0
+      for (let i = 0; i < labels.length; i++) {
+        for (let j = i + 1; j < labels.length; j++) {
+          const A = rect(labels[i]), B = rect(labels[j])
+          if (A[0] < B[2] && A[2] > B[0] && A[1] < B[3] && A[3] > B[1]) overlaps++
+        }
+      }
+      const onLine = labels.filter((l) => segs.some((s) => crosses(s[0], s[1], rect(l)))).length
+      return { count: labels.length, overlaps, onLine }
+    }
+
+    test('no beacon name overwrites another, or sits on a boundary', () => {
+      const a = audit(generateWorkingPlan(brackenhurstSpec).dxf)
+      expect(a.count).toBe(17)
+      expect(a.overlaps).toBe(0)
+      expect(a.onLine).toBe(0)
+    })
+
+    test('holds on a cramped figure, where the old placer gave up and overwrote', () => {
+      // Fourteen beacons on a small ring with long names: every compass slot
+      // around a beacon is contested. The placer walks the whole ring at one
+      // distance before stepping out, so names stay near their own beacon.
+      const N = 14, R = 18
+      const beacons = Array.from({ length: N }, (_, i) => {
+        const t = (2 * Math.PI * i) / N
+        return {
+          name: 'BCN' + (100 + i),
+          X: 2144000 + R * Math.cos(t),
+          Y: -85700 + R * Math.sin(t),
+          symbol: 'placed', label: 'auto',
+        }
+      })
+      const { dxf } = generateWorkingPlan({
+        scale: 'auto', beacons,
+        parcels: [{ label: '404', ring: beacons.map((b) => b.name) }],
+        title: ['WORKING PLAN OF', 'Cramped'],
+      })
+      const a = audit(dxf)
+      expect(a.count).toBe(N)
+      expect(a.overlaps).toBe(0)
+      expect(a.onLine).toBe(0)
+    })
+  })
+
   test('picks a scale itself when asked to', () => {
     const out = generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' })
     expect(typeof out.scale).toBe('number')

@@ -418,6 +418,51 @@ export function generateWorkingPlan(spec) {
     S(L.border.x1, L.border.y1), S(L.border.x0, L.border.y1)],
   { layer: 'SHEET-BORDER', closed: true });
 
+  /* ---- label obstacles: every label avoids the symbols, the boundaries and
+         every label already placed. Built BEFORE anything is drawn so the
+         parcel labels take part too -- they used to be written blind. */
+  const figCx = (bb.e0 + bb.e1) / 2, figCy = (bb.n0 + bb.n1) / 2;
+  const h = mm(L.text.beacon);
+  const r = mm(Math.max(L.symbol.foundOuterDia, L.symbol.refMarkArm, L.symbol.trigW) / 2);
+
+  const segments = spec.parcels.flatMap((p) => p.ring.map((n, i) => [
+    [G(n).e, G(n).n],
+    [G(p.ring[(i + 1) % p.ring.length]).e, G(p.ring[(i + 1) % p.ring.length]).n]]));
+
+  // occupied rectangles, so labels do not sit on top of each other or a symbol
+  const occupied = [];
+  const hits = (rect) => occupied.some((o) =>
+    rect[0] < o[2] && rect[2] > o[0] && rect[1] < o[3] && rect[3] > o[1]);
+  const textRect = (s, x, y, hgt, align) => {
+    const w = 0.63 * hgt * s.length;
+    const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+    return [x0, y - hgt * 0.15, x0 + w, y + hgt];
+  };
+  for (const b of byName.values()) occupied.push([b.e - r, b.n - r, b.e + r, b.n + r]);
+
+  /** Does a segment cross this rectangle? Cohen-Sutherland, so a label is
+   *  rejected when a boundary passes THROUGH it, not merely near it. */
+  const segCrossesRect = (p0, q0, [x0, y0, x1, y1]) => {
+    let p = p0.slice(), q = q0.slice();
+    const code = ([x, y]) => (x < x0 ? 1 : 0) | (x > x1 ? 2 : 0) | (y < y0 ? 4 : 0) | (y > y1 ? 8 : 0);
+    let a = code(p), b2 = code(q);
+    for (let guard = 0; guard < 8; guard++) {
+      if (!(a | b2)) return true;
+      if (a & b2) return false;
+      const c = a || b2;
+      let x, y;
+      if (c & 8) { x = p[0] + (q[0] - p[0]) * (y1 - p[1]) / (q[1] - p[1]); y = y1; }
+      else if (c & 4) { x = p[0] + (q[0] - p[0]) * (y0 - p[1]) / (q[1] - p[1]); y = y0; }
+      else if (c & 2) { y = p[1] + (q[1] - p[1]) * (x1 - p[0]) / (q[0] - p[0]); x = x1; }
+      else { y = p[1] + (q[1] - p[1]) * (x0 - p[0]) / (q[0] - p[0]); x = x0; }
+      if (c === a) { p = [x, y]; a = code(p); } else { q = [x, y]; b2 = code(q); }
+    }
+    return false;
+  };
+
+  /** Free of other labels, symbols AND boundary lines. */
+  const free = (rect) => !hits(rect) && !segments.some((s) => segCrossesRect(s[0], s[1], rect));
+
   /* ---- parcel boundaries, clipped clear of the beacon symbols */
   const areas = {};
   for (const p of spec.parcels) {
@@ -440,7 +485,11 @@ export function generateWorkingPlan(spec) {
     }
     areas[p.label] = ringArea(pts);
     const [cx, cy] = p.labelAt ? Object.values(loToGround(p.labelAt)) : centroid(pts);
-    d.text(p.label, [cx, cy - mm(L.text.parcel) / 2], mm(L.text.parcel),
+    // The stand number is reserved so beacon names and grid ticks keep off it.
+    // It was written blind before, and anything placed later could sit on it.
+    const ph = mm(L.text.parcel);
+    occupied.push(textRect(p.label, cx, cy - ph / 2, ph, 'center'));
+    d.text(p.label, [cx, cy - ph / 2], ph,
       { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
   }
 
@@ -474,24 +523,7 @@ export function generateWorkingPlan(spec) {
   }
 
   /* ---- beacons and their names */
-  const figCx = (bb.e0 + bb.e1) / 2, figCy = (bb.n0 + bb.n1) / 2;
-  const h = mm(L.text.beacon);
-  // Label clearance uses the LARGEST symbol radius, so a label never sits on a
-  // trig triangle or a reference-mark cross. (Was rmOuterDia before the Fifth
-  // Schedule signs were added -- that name no longer exists and silently
-  // produced NaN coordinates on every beacon label.)
-  const r = mm(Math.max(L.symbol.foundOuterDia, L.symbol.refMarkArm, L.symbol.trigW) / 2);
 
-  // occupied rectangles, so labels do not sit on top of each other or a symbol
-  const occupied = [];
-  const hits = (rect) => occupied.some((o) =>
-    rect[0] < o[2] && rect[2] > o[0] && rect[1] < o[3] && rect[3] > o[1]);
-  const textRect = (s, x, y, hgt, align) => {
-    const w = 0.63 * hgt * s.length;
-    const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
-    return [x0, y - hgt * 0.15, x0 + w, y + hgt];
-  };
-  for (const b of byName.values()) occupied.push([b.e - r, b.n - r, b.e + r, b.n + r]);
 
   const ORDER = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   for (const b of byName.values()) {
@@ -510,23 +542,34 @@ export function generateWorkingPlan(spec) {
         [Math.round(((ang + 360) % 360) / 45) % 8];
     }
     if (pos === 'none') continue;
-    const gap = r + mm(0.5);
-    const place = (p) => ({
-      N: [0, gap + mm(0.4), 'center'], S: [0, -(gap + h + mm(0.2)), 'center'],
-      E: [gap, -h / 2, 'left'], W: [-gap, -h / 2, 'right'],
-      NE: [gap * 0.5, gap * 0.9, 'left'], NW: [-gap * 0.5, gap * 0.9, 'right'],
-      SE: [gap * 0.5, -(gap * 0.9 + h), 'left'], SW: [-gap * 0.5, -(gap * 0.9 + h), 'right'],
-    }[p]);
+    const place = (p, k = 1) => {
+      const gap = (r + mm(0.5)) * k;
+      return {
+        N: [0, gap + mm(0.4), 'center'], S: [0, -(gap + h + mm(0.2)), 'center'],
+        E: [gap, -h / 2, 'left'], W: [-gap, -h / 2, 'right'],
+        NE: [gap * 0.5, gap * 0.9, 'left'], NW: [-gap * 0.5, gap * 0.9, 'right'],
+        SE: [gap * 0.5, -(gap * 0.9 + h), 'left'], SW: [-gap * 0.5, -(gap * 0.9 + h), 'right'],
+      }[p];
+    };
 
-    // preferred position first, then the rest of the compass
+    // Preferred position first, then the rest of the compass at the SAME
+    // distance -- a label must stay near its beacon, so the whole ring is tried
+    // before the distance grows at all. Only when all eight are blocked does it
+    // step out, and by as little as possible.
     const tries = [pos, ...ORDER.slice(ORDER.indexOf(pos) + 1), ...ORDER.slice(0, ORDER.indexOf(pos))];
-    let P = place(pos), rect = null;
-    for (const t of tries) {
-      const c = place(t);
-      const rc = textRect(b.name, b.e + c[0], b.n + c[1], h, c[2]);
-      if (!hits(rc)) { P = c; rect = rc; break; }
+    let P = null, rect = null;
+    for (const k of [1, 1.5, 2.1]) {
+      for (const t of tries) {
+        const c = place(t, k);
+        const rc = textRect(b.name, b.e + c[0], b.n + c[1], h, c[2]);
+        if (free(rc)) { P = c; rect = rc; break; }
+      }
+      if (rect) break;
     }
-    if (!rect) rect = textRect(b.name, b.e + P[0], b.n + P[1], h, P[2]);
+    // Nothing free anywhere: place it at the preferred spot rather than drop the
+    // name. A beacon without a name is worse than a crowded one, and this is the
+    // only path that can still overlap.
+    if (!rect) { P = place(pos); rect = textRect(b.name, b.e + P[0], b.n + P[1], h, P[2]); }
     occupied.push(rect);
     d.text(b.name, [b.e + P[0], b.n + P[1]], h,
       { layer: 'BEACON-TEXT', style: 'ARIAL', align: P[2] });
@@ -538,9 +581,6 @@ export function generateWorkingPlan(spec) {
   const gi = spec.gridInterval ?? pick();
   const arm = mm(L.symbol.gridArm) / 2;
   const inset = 10;                                   // keep ticks off the panel edge
-  const segments = spec.parcels.flatMap((p) => p.ring.map((n, i) => [
-    [G(n).e, G(n).n],
-    [G(p.ring[(i + 1) % p.ring.length]).e, G(p.ring[(i + 1) % p.ring.length]).n]]));
 
   const [pe0] = S(L.panel.x0 + inset, 0), [pe1] = S(L.panel.x1 - inset, 0);
   const pn1 = S(0, L.panel.y0 + inset)[1], pn0 = S(0, L.panel.y1 - inset)[1];

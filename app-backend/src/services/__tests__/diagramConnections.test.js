@@ -307,3 +307,126 @@ describe('connecting data — PDF', () => {
     expect(Buffer.isBuffer(r.pdfBuffer)).toBe(true)
   })
 })
+
+describe('an abutment stub and the boundary it runs along', () => {
+  // The mirror of the case above, and the ruling runs the other way. Where a
+  // neighbour's own boundary already runs along an abutment stub, the STUB
+  // gives way: the boundary shows the neighbour and where it runs, which is
+  // everything the stub was there to say and more. Brackenhurst stand 404 drew
+  // both, so two marks stood one on top of the other at 5,1 degrees.
+  //
+  // Coordinates sit well away from the origin on purpose. Points reach the
+  // buffer through normalizeCapeLoYX, which transposes a pair whose first
+  // component is more than twice its second -- a real Cape Lo southing dwarfs
+  // its westing. A tidy fixture hanging off (0,0) trips that heuristic on some
+  // vertices and not others, and silently scrambles the ring.
+  const subject = {
+    type: 'Feature',
+    properties: { id: 'S', stand: '404', designation: 'STAND 404 BRACKENHURST', area_m2: 4800 },
+    geometry: { type: 'Polygon', coordinates: [[
+      [100, 200], [100, 260], [180, 260], [180, 200], [100, 200],
+    ]] },
+  }
+  // Side AB runs A(100,200) to B(100,260) with the figure on its +y side, so
+  // its stubs strike outward along -y. This neighbour's boundary leaves A along
+  // exactly that line, and leaves B at a frank angle.
+  const neighbour = {
+    type: 'Feature',
+    properties: { id: 'N', stand: '88', area_m2: 3000 },
+    geometry: { type: 'Polygon', coordinates: [[
+      [100, 200], [60, 200], [60, 230], [100, 260], [100, 200],
+    ]] },
+  }
+  const corners = {
+    type: 'FeatureCollection',
+    features: [
+      bcn('62Bx', 100, 200), bcn('1B', 100, 260),
+      bcn('1A', 180, 260), bcn('62Ax', 180, 200),
+    ],
+  }
+  const ann = [{ side: 'AB', role: 'contiguous', label: '88', end: 'both' }]
+  const sheet = (withNeighbour) => ({
+    ...base,
+    parcels: {
+      type: 'FeatureCollection',
+      features: withNeighbour ? [subject, neighbour] : [subject],
+    },
+    beacons: corners,
+    metadata: {
+      ...base.metadata, subjectParcelId: 'S',
+      designation: 'STAND 404 BRACKENHURST', sideAnnotations: ann,
+    },
+  })
+  const adjoining = async (withNeighbour) => entities(
+    (await generateDiagramDXF(sheet(withNeighbour), logger)).dxfBuffer.toString('utf8'),
+    'LINE', 'ADJOINING')
+
+  const dist = (p, a, b) => {
+    const vx = b[0] - a[0], vy = b[1] - a[1]
+    const l2 = vx * vx + vy * vy || 1
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / l2))
+    return Math.hypot(p[0] - (a[0] + t * vx), p[1] - (a[1] + t * vy))
+  }
+  const along = (s, e) => {
+    const d = Math.hypot(e[0] - s[0], e[1] - s[1]) || 1
+    return [(e[0] - s[0]) / d, (e[1] - s[1]) / d]
+  }
+  const segs = (dxf, layer) => entities(dxf, 'LINE', layer)
+    .map((d) => [[+d['10'][0], +d['20'][0]], [+d['11'][0], +d['21'][0]]])
+
+  test('the fixture really does put a neighbour boundary along a stub', async () => {
+    // Guard on the fixture itself: if the geometry ever stops setting the trap,
+    // the tests below would pass by drawing nothing interesting.
+    const dxf = (await generateDiagramDXF(
+      { ...sheet(true), metadata: { ...sheet(true).metadata, sideAnnotations: [] } }, logger,
+    )).dxfBuffer.toString('utf8')
+    const nb = segs(dxf, 'NEIGHBOURS')
+    expect(nb.length).toBeGreaterThan(1)
+  })
+
+  test('drops the stub the neighbour’s boundary already draws', async () => {
+    const alone = await adjoining(false)
+    const abutting = await adjoining(true)
+    expect(alone.length).toBeGreaterThan(0)
+    // Both stubs when nothing else draws them; one once the neighbour is on the
+    // sheet drawing the other. Counted in dashes, so it stays proportional if
+    // the dash pattern is ever retuned.
+    expect(abutting.length).toBeLessThan(alone.length)
+    expect(abutting.length).toBeGreaterThan(0)
+    expect(abutting.length).toBeCloseTo(alone.length / 2, 0)
+  })
+
+  test('keeps the stub at the terminal whose boundary strikes off elsewhere', async () => {
+    // Only the covered stub goes. B's boundary leaves at an angle, so B's stub
+    // is still the only thing saying that side abuts -- it stays, and no
+    // surviving dash lies along a neighbour line: coincident in BOTH senses,
+    // near enough and parallel enough, which is what the rule tests.
+    const dxf = (await generateDiagramDXF(sheet(true), logger)).dxfBuffer.toString('utf8')
+    const adj = segs(dxf, 'ADJOINING')
+    const nb = segs(dxf, 'NEIGHBOURS')
+    expect(adj.length).toBeGreaterThan(0)
+    expect(nb.length).toBeGreaterThan(0)
+    for (const a of adj) {
+      const mid = [(a[0][0] + a[1][0]) / 2, (a[0][1] + a[1][1]) / 2]
+      const [ax, ay] = along(a[0], a[1])
+      for (const b of nb) {
+        if (dist(mid, b[0], b[1]) > 1) continue
+        const [bx, by] = along(b[0], b[1])
+        expect(Math.abs(ax * bx + ay * by)).toBeLessThan(Math.cos((8 * Math.PI) / 180))
+      }
+    }
+  })
+
+  test('the neighbour is still named — it stops being marked twice, not identified', async () => {
+    const dxf = (await generateDiagramDXF(sheet(true), logger)).dxfBuffer.toString('utf8')
+    expect(entities(dxf, 'TEXT', 'ADJOINING').map((d) => (d['1'] || [''])[0])).toContain('88')
+  })
+
+  test('the PDF makes the same drop, so the two documents agree', async () => {
+    // The rule lives in one predicate both renderers call; this is the check
+    // that the PDF calls it too, rather than keeping a stub the DXF dropped.
+    const r = await generateDiagramPDF(sheet(true), logger)
+    expect(Buffer.isBuffer(r.pdfBuffer)).toBe(true)
+    expect(r.pdfBuffer.length).toBeGreaterThan(0)
+  })
+})

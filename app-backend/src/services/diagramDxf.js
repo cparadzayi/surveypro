@@ -15,8 +15,9 @@ import {
 } from './diagram/contiguousMarks.js'
 import { resolveConnections } from './diagram/connections.js'
 import {
-  connectionMark, coveredByRay, CONNECTION_STUB_MM, CONNECTION_ARROW_MM,
+  connectionMark, alreadyDrawnAlong, CONNECTION_STUB_MM, CONNECTION_ARROW_MM,
   CONNECTION_ARROW_HALF_MM, CONNECTION_LABEL_PAD_MM, CONNECTION_LABEL_STANDOFF_MM,
+  COINCIDENT_TOL_MM,
 } from './diagram/connectionMark.js'
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
@@ -220,6 +221,10 @@ function drawAdjoiningFeaturesDxf(w, ctx, logger) {
         to: connected?.has(geometry.vertices[(i + 1) % n].letter),
       })
       const st = edgeStrip(a, b, CONTIG_STUB_PT, cen)
+      // A stub whose line the neighbour's own boundary already draws is not
+      // drawn again -- see the PDF renderer for why the boundary wins.
+      const drawn = neighbourSegs.map(([p, q]) => ({ tail: [p.px, p.py], tip: [q.px, q.py] }))
+      const dupStub = (from, to) => alreadyDrawnAlong(from, to, drawn, COINCIDENT_TOL_MM * PT_PER_MM)
       // Dashed, matching the PDF. This drew solid: the layer is CONTINUOUS and
       // nothing cut the line, so the same stub was dashed on one document and
       // solid on the other.
@@ -231,8 +236,8 @@ function drawAdjoiningFeaturesDxf(w, ctx, logger) {
         }
         labelObstacles.push([{ px: from[0], py: from[1] }, { px: to[0], py: to[1] }])
       }
-      if (marks.stubFrom) emitStub(a, st[3])
-      if (marks.stubTo) emitStub(b, st[2])
+      if (marks.stubFrom && !dupStub(a, st[3])) emitStub(a, st[3])
+      if (marks.stubTo && !dupStub(b, st[2])) emitStub(b, st[2])
     }
 
     if (ann.label) {
@@ -615,15 +620,15 @@ export async function generateDiagramDXF(options, logger) {
   const { marks: connMarks, suppressed: connected } = resolveConnections({
     geometry, beacons: options.beacons, connections: metadata.connections,
   })
-  const PT_MM = 72 / 25.4
+  const PT_PER_MM = 72 / 25.4
   const connRays = connMarks.map((m) => {
     const from = tf(m.fromYX), to = tf(m.toYX)
     const g = connectionMark([from.px, from.py], [to.px, to.py],
-      CONNECTION_STUB_MM * PT_MM, CONNECTION_ARROW_MM * PT_MM,
-      CONNECTION_ARROW_HALF_MM * PT_MM)
+      CONNECTION_STUB_MM * PT_PER_MM, CONNECTION_ARROW_MM * PT_PER_MM,
+      CONNECTION_ARROW_HALF_MM * PT_PER_MM)
     return g && { tail: g.tail, tip: g.tip }
   }).filter(Boolean)
-  const rayTol = 0.8 * PT_MM
+  const rayTol = COINCIDENT_TOL_MM * PT_PER_MM
 
   if (buffer.length) {
     for (const nb of neighbours) {
@@ -635,7 +640,7 @@ export async function generateDiagramDXF(options, logger) {
         for (const [a, b2s] of neighbourBoundaryEdges(strip, nbRing)) {
           const pa = tf(a), pb = tf(b2s)
           // Where a connecting ray already runs along this edge, the ray wins.
-          if (coveredByRay([pa.px, pa.py], [pb.px, pb.py], connRays, rayTol)) continue
+          if (alreadyDrawnAlong([pa.px, pa.py], [pb.px, pb.py], connRays, rayTol)) continue
           w.addLine('NEIGHBOURS', ...Object.values(toG(pa)), ...Object.values(toG(pb)))
           neighbourSegs.push([pa, pb])
         }

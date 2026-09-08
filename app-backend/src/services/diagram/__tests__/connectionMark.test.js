@@ -1,7 +1,7 @@
 import { describe, test, expect } from '@jest/globals'
 import {
   connectionMark, CONNECTION_STUB_MM, CONNECTION_ARROW_MM, CONNECTION_ARROW_HALF_MM,
-  CONNECTION_LABEL_PAD_MM,
+  CONNECTION_LABEL_PAD_MM, alreadyDrawnAlong,
 } from '../connectionMark.js'
 import {
   CONTIG_STUB_MM, dashSegments, ADJOINING_DASH_ON_MM, ADJOINING_DASH_OFF_MM,
@@ -134,5 +134,65 @@ describe('connectionMark', () => {
     // retunes this too.
     expect(CONNECTION_STUB_MM).toBeCloseTo(CONTIG_STUB_MM + CONNECTION_ARROW_MM, 9)
     expect(CONNECTION_ARROW_HALF_MM).toBeLessThan(CONNECTION_ARROW_MM)
+  })
+})
+
+describe('alreadyDrawnAlong — a line is drawn once', () => {
+  // Two marks claiming the same run of paper read as one mark quarrelling with
+  // itself. Whichever mark is asked about, this decides whether some line
+  // already drawn has said it. Who gives way is the CALLER's ruling: a
+  // connecting ray never gives way (it carries the distance and the arrowhead),
+  // an abutment stub gives way to a neighbour's real boundary (the boundary
+  // says everything the stub said, and more).
+  const ray = (tail, tip) => ({ tail, tip })
+  const at = (deg, len = 10) => [
+    len * Math.cos((deg * Math.PI) / 180), len * Math.sin((deg * Math.PI) / 180)]
+
+  test('a mark laid on top of a longer line is already drawn', () => {
+    expect(alreadyDrawnAlong([0, 0], [4, 0], [ray([0, 0], [20, 0])], 0.8)).toBe(true)
+  })
+
+  test('and so is the longer line, asked the other way round', () => {
+    // Neither having to be the longer may decide it: the same pair of lines
+    // gives the same answer whichever is the subject.
+    expect(alreadyDrawnAlong([0, 0], [20, 0], [ray([0, 0], [4, 0])], 0.8)).toBe(true)
+  })
+
+  test('direction along the line does not matter', () => {
+    expect(alreadyDrawnAlong([20, 0], [0, 0], [ray([0, 0], [20, 0])], 0.8)).toBe(true)
+  })
+
+  test('the stand 404 case: 5,1 degrees apart is the same line on paper', () => {
+    // What this test exists for. A stub left a beacon 5,1 degrees off the
+    // neighbour boundary it lay on -- a millimetre apart at the far end of a
+    // 10 mm mark, and printed as one thick line. A 5-degree rule let it
+    // through, so the surveyor got two stubs where the sheet needed one.
+    expect(alreadyDrawnAlong([0, 0], at(5.1), [ray([0, 0], at(0, 20))], 0.8)).toBe(true)
+  })
+
+  test('but a line at a frank angle is its own line', () => {
+    expect(alreadyDrawnAlong([0, 0], at(20), [ray([0, 0], at(0, 20))], 0.8)).toBe(false)
+    expect(alreadyDrawnAlong([0, 0], at(90), [ray([0, 0], at(0, 20))], 0.8)).toBe(false)
+  })
+
+  test('a mark that merely crosses a line has not been drawn by it', () => {
+    // Crossing is not coincidence. This is why the angle is tested at all
+    // rather than distance alone.
+    expect(alreadyDrawnAlong([5, -5], [5, 5], [ray([0, 0], [20, 0])], 0.8)).toBe(false)
+  })
+
+  test('parallel but standing off is a second line, not the same one', () => {
+    expect(alreadyDrawnAlong([0, 3], [4, 3], [ray([0, 0], [20, 0])], 0.8)).toBe(false)
+  })
+
+  test('sharing only an endpoint is not lying along it', () => {
+    // Marks leaving one beacon in different directions all touch there. The
+    // midpoints, not the ends, are what the rule reads.
+    expect(alreadyDrawnAlong([0, 0], at(45), [ray([0, 0], at(0, 20))], 0.8)).toBe(false)
+  })
+
+  test('no lines drawn yet means nothing is already drawn', () => {
+    expect(alreadyDrawnAlong([0, 0], [4, 0], [], 0.8)).toBe(false)
+    expect(alreadyDrawnAlong([0, 0], [4, 0], undefined, 0.8)).toBe(false)
   })
 })

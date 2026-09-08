@@ -15,8 +15,9 @@ import {
 } from './diagram/contiguousMarks.js'
 import { resolveConnections } from './diagram/connections.js'
 import {
-  connectionMark, coveredByRay, CONNECTION_STUB_MM, CONNECTION_ARROW_MM,
+  connectionMark, alreadyDrawnAlong, CONNECTION_STUB_MM, CONNECTION_ARROW_MM,
   CONNECTION_ARROW_HALF_MM, CONNECTION_LABEL_PAD_MM, CONNECTION_LABEL_STANDOFF_MM,
+  COINCIDENT_TOL_MM,
 } from './diagram/connectionMark.js'
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
@@ -403,14 +404,19 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         to: connected?.has(geometry.vertices[(i + 1) % n].letter),
       })
       const st = edgeStrip(a, b, CONTIG_STUB_PT, cen) // st[3]=a+out, st[2]=b+out
+      // A stub whose line the neighbour's own boundary already draws is not
+      // drawn again. The boundary says the neighbour is there AND where it
+      // runs; the stub only said the first of those.
+      const drawn = neighbourSegs.map(([p, q]) => ({ tail: [p.px, p.py], tip: [q.px, q.py] }))
+      const dup = (from, to) => alreadyDrawnAlong(from, to, drawn, COINCIDENT_TOL_MM * PT_PER_MM)
       // Dashed through the shared helper rather than PDFKit's own dash: the
       // DXF writer has no linetype to match it with, so the two documents drew
       // this mark differently. Now both cut the same pattern.
       const on = ADJOINING_DASH_ON_MM * PT_PER_MM, off = ADJOINING_DASH_OFF_MM * PT_PER_MM
       doc.save().lineWidth(0.6).strokeColor('#000000')
       const stubs = []
-      if (marks.stubFrom) stubs.push([a, st[3]])
-      if (marks.stubTo) stubs.push([b, st[2]])
+      if (marks.stubFrom && !dup(a, st[3])) stubs.push([a, st[3]])
+      if (marks.stubTo && !dup(b, st[2])) stubs.push([b, st[2]])
       for (const [s0, s1] of stubs) {
         for (const [q0, q1] of dashSegments(s0, s1, on, off)) {
           doc.moveTo(q0[0], q0[1]).lineTo(q1[0], q1[1])
@@ -418,9 +424,11 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
       }
       if (stubs.length) doc.stroke()
       doc.restore()
-      // Keep letters off the offshoot stubs too.
-      if (marks.stubFrom) labelObstacles.push([{ px: a[0], py: a[1] }, { px: st[3][0], py: st[3][1] }])
-      if (marks.stubTo) labelObstacles.push([{ px: b[0], py: b[1] }, { px: st[2][0], py: st[2][1] }])
+      // Keep letters off the offshoot stubs too -- off the ones actually
+      // drawn, so a suppressed stub does not go on holding ground.
+      for (const [s0, s1] of stubs) {
+        labelObstacles.push([{ px: s0[0], py: s0[1] }, { px: s1[0], py: s1[1] }])
+      }
     }
 
     // Label the feature. Roads read ALONG the edge (rotated), just outside the strip;
@@ -785,7 +793,7 @@ export async function generateDiagramPDF(options, logger) {
       CONNECTION_ARROW_HALF_MM * PT_PER_MM)
     return g && { tail: g.tail, tip: g.tip }
   }).filter(Boolean)
-  const rayTol = 0.8 * PT_PER_MM
+  const rayTol = COINCIDENT_TOL_MM * PT_PER_MM
 
   if (buffer.length) {
     for (const nb of neighbours) {
@@ -800,7 +808,7 @@ export async function generateDiagramPDF(options, logger) {
         for (const [a, b] of neighbourBoundaryEdges(strip, nbRing)) {
           const pa = tf(a), pb = tf(b)
           // Where a connecting ray already runs along this edge, the ray wins.
-          if (coveredByRay([pa.px, pa.py], [pb.px, pb.py], connRays, rayTol)) continue
+          if (alreadyDrawnAlong([pa.px, pa.py], [pb.px, pb.py], connRays, rayTol)) continue
           doc.moveTo(pa.px, pa.py).lineTo(pb.px, pb.py)
           neighbourSegs.push([pa, pb])
         }

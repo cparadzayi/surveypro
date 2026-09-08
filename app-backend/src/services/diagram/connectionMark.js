@@ -58,16 +58,35 @@ export const CONNECTION_LABEL_STANDOFF_MM = 1.2
  *  triangles, and this must not be mistaken for one. */
 export const CONNECTION_ARROW_HALF_MM = 0.75
 
+/** How nearly parallel two lines must be to count as the same line: 8 degrees.
+ *  Over a 10 mm mark that is 1,4 mm of divergence at the far end. */
+const COINCIDENT_COS = Math.cos((8 * Math.PI) / 180)
+
+/** How close two lines must run to count as the same line, in paper
+ *  millimetres. Both renderers judge every pair of marks by this one figure --
+ *  a ray against a boundary, a stub against a boundary -- so a line that reads
+ *  as drawn twice on the PDF reads that way on the DXF as well. */
+export const COINCIDENT_TOL_MM = 0.8
+
 /**
- * Is this line already covered by a connecting ray?
+ * Is this line already drawn by something else on the sheet?
  *
- * A connection often runs ALONG a boundary of the land it ties to -- SD2 to 87C
- * is both the connection and a side of the remaining extent -- so the
- * neighbour's edge and the ray get drawn one on top of the other, in the same
- * dashes, and read as two marks quarrelling over one line.
+ * The rule the sheet keeps is simply that a LINE IS DRAWN ONCE. Two things
+ * break it, both because a mark and a boundary can be the same line:
  *
- * Where they coincide the RAY wins: it is the mark that carries the distance
- * and the arrowhead.
+ *   - a connection often runs ALONG a side of the land it ties to (SD2 to 87C
+ *     is both), so the neighbour's edge and the ray coincide;
+ *   - an abutment stub springs outward from a beacon, and where the neighbour's
+ *     own boundary leaves that beacon the same way, the stub sits on it.
+ *
+ * Either way two marks quarrel over one line, in the same dashes.
+ *
+ * This only ANSWERS the question; which mark gives way is the caller's ruling.
+ * A connecting ray is never given up -- it carries the distance and the
+ * arrowhead, and nothing else draws it, so a neighbour edge beneath it is the
+ * one dropped. An abutment stub IS given up to a neighbour's real boundary:
+ * the boundary shows the neighbour and where it runs, which is everything the
+ * stub was there to say and more.
  *
  * "Coincide" is tested the way it looks on paper -- the two run in the same
  * direction and lie on top of each other -- rather than by asking whether the
@@ -78,9 +97,10 @@ export const CONNECTION_ARROW_HALF_MM = 0.75
  * An edge that merely starts at the same beacon and strikes off at an angle is
  * left alone: it is that neighbour's boundary and nothing else draws it.
  *
- * @param {Array<{tail: [number, number], tip: [number, number]}>} rays
+ * @param {Array<{tail: [number, number], tip: [number, number]}>} rays  lines
+ *   already on the sheet
  */
-export function coveredByRay(a, b, rays, tol) {
+export function alreadyDrawnAlong(a, b, rays, tol) {
   const near = (p, s, e) => {
     const vx = e[0] - s[0], vy = e[1] - s[1]
     const l2 = vx * vx + vy * vy
@@ -97,8 +117,12 @@ export function coveredByRay(a, b, rays, tol) {
   const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
   return (rays ?? []).some((r) => {
     const [rx, ry] = dir(r.tail, r.tip)
-    // same line, either way along it
-    if (Math.abs(ex * rx + ey * ry) < 0.996) return false          // ~5 degrees
+    // The same line, either way along it. The angle is generous because two
+    // lines drawn from one beacon diverge slowly: a stand 404 stub sat on its
+    // neighbour's boundary at 5,1 degrees, which is a millimetre apart at the
+    // far end of a 10 mm mark and indistinguishable on paper. A tighter test
+    // let exactly that through.
+    if (Math.abs(ex * rx + ey * ry) < COINCIDENT_COS) return false
     // and actually on top of one another, judged from both middles so that
     // neither having to be the longer decides it
     const rmid = [(r.tail[0] + r.tip[0]) / 2, (r.tail[1] + r.tip[1]) / 2]

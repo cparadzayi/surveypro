@@ -140,6 +140,73 @@ describe('connecting data — DXF', () => {
   })
 })
 
+describe('a connecting ray and the boundary it runs along', () => {
+  // A connection often runs ALONG a side of the land it ties to: SD2 to 87C is
+  // both the connection and a boundary of the remaining extent. Drawn by both,
+  // in the same dashes, they read as two marks quarrelling over one line --
+  // which is what a surveyor saw on the Brackenhurst stand 403 diagram.
+  //
+  // The RAY wins: it is the mark carrying the distance and the arrowhead.
+  const neighbourAlongTheRay = {
+    type: 'Feature',
+    properties: { id: 'N', stand: '88', area_m2: 4000 },
+    // a parcel whose boundary leaves 1B (0,60) heading for PARENT (400,300),
+    // exactly where the connection goes
+    geometry: { type: 'Polygon', coordinates: [[
+      [0, 60], [400, 300], [420, 280], [20, 40], [0, 60],
+    ]] },
+  }
+  const withNeighbour = (connections) => ({
+    ...base,
+    parcels: { type: 'FeatureCollection', features: [subject, neighbourAlongTheRay] },
+    metadata: { ...base.metadata, connections },
+  })
+  /** Neighbour outline segments, as [[x,y],[x,y]]. */
+  const outline = (dxf) => entities(dxf, 'LINE', 'NEIGHBOURS')
+    .map((d) => [[+d['10'][0], +d['20'][0]], [+d['11'][0], +d['21'][0]]])
+
+  test('drops the neighbour edge the ray already draws', async () => {
+    const without = outline((await generateDiagramDXF(withNeighbour([]), logger))
+      .dxfBuffer.toString('utf8'))
+    const withConn = outline((await generateDiagramDXF(
+      withNeighbour([{ fromBeacon: '1B', toBeacon: 'PARENT', distanceM: 88.76 }]), logger,
+    )).dxfBuffer.toString('utf8'))
+    expect(without.length).toBeGreaterThan(0)
+    expect(withConn.length).toBeLessThan(without.length)
+  })
+
+  test('leaves the neighbour’s other edges alone', async () => {
+    // Only the covered edge goes. An edge that merely starts at the same beacon
+    // and strikes off elsewhere is still that neighbour's boundary.
+    const withConn = outline((await generateDiagramDXF(
+      withNeighbour([{ fromBeacon: '1B', toBeacon: 'PARENT', distanceM: 88.76 }]), logger,
+    )).dxfBuffer.toString('utf8'))
+    expect(withConn.length).toBeGreaterThan(0)
+  })
+
+  test('no dash of the ray is left lying on a neighbour line', async () => {
+    const dxf = (await generateDiagramDXF(
+      withNeighbour([{ fromBeacon: '1B', toBeacon: 'PARENT', distanceM: 88.76 }]), logger,
+    )).dxfBuffer.toString('utf8')
+    const nb = outline(dxf)
+    const adj = entities(dxf, 'LINE', 'ADJOINING')
+      .map((d) => [[+d['10'][0], +d['20'][0]], [+d['11'][0], +d['21'][0]]])
+    const dist = (p, a, b) => {
+      const vx = b[0] - a[0], vy = b[1] - a[1]
+      const l2 = vx * vx + vy * vy || 1
+      const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / l2))
+      return Math.hypot(p[0] - (a[0] + t * vx), p[1] - (a[1] + t * vy))
+    }
+    // measured at the MIDPOINT: a mark that merely touches a boundary at a
+    // beacon is not lying along it
+    for (const a of adj) {
+      const mid = [(a[0][0] + a[1][0]) / 2, (a[0][1] + a[1][1]) / 2]
+      const gap = Math.min(...nb.map((b) => dist(mid, b[0], b[1])), Infinity)
+      expect(gap).toBeGreaterThan(0.5)
+    }
+  })
+})
+
 describe('connecting data — which side the distance sits on', () => {
   /** The remainder placed on one flank or the other of the same connection. */
   const withRemainder = (ring) => ({

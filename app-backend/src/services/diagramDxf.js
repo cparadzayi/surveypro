@@ -15,8 +15,8 @@ import {
 } from './diagram/contiguousMarks.js'
 import { resolveConnections } from './diagram/connections.js'
 import {
-  connectionMark, CONNECTION_STUB_MM, CONNECTION_ARROW_MM, CONNECTION_ARROW_HALF_MM,
-  CONNECTION_LABEL_PAD_MM, CONNECTION_LABEL_STANDOFF_MM,
+  connectionMark, coveredByRay, CONNECTION_STUB_MM, CONNECTION_ARROW_MM,
+  CONNECTION_ARROW_HALF_MM, CONNECTION_LABEL_PAD_MM, CONNECTION_LABEL_STANDOFF_MM,
 } from './diagram/connectionMark.js'
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
@@ -607,6 +607,24 @@ export async function generateDiagramDXF(options, logger) {
   // Abutting neighbours: clip to the 10m buffer, faint outline + label.
   const neighbourSegs = []
   const neighbourLabels = []
+
+  // Resolved before ANY of this is drawn. A connection decides two things
+  // beyond its own mark: which beacons keep an abutment stub, and which
+  // neighbour edges it covers. Worked out in the same PDF-point space the PDF
+  // uses, so both documents drop the same edges.
+  const { marks: connMarks, suppressed: connected } = resolveConnections({
+    geometry, beacons: options.beacons, connections: metadata.connections,
+  })
+  const PT_MM = 72 / 25.4
+  const connRays = connMarks.map((m) => {
+    const from = tf(m.fromYX), to = tf(m.toYX)
+    const g = connectionMark([from.px, from.py], [to.px, to.py],
+      CONNECTION_STUB_MM * PT_MM, CONNECTION_ARROW_MM * PT_MM,
+      CONNECTION_ARROW_HALF_MM * PT_MM)
+    return g && { tail: g.tail, tip: g.tip }
+  }).filter(Boolean)
+  const rayTol = 0.8 * PT_MM
+
   if (buffer.length) {
     for (const nb of neighbours) {
       if (isOutsideFigureFeature(nb)) continue
@@ -616,6 +634,8 @@ export async function generateDiagramDXF(options, logger) {
       for (const strip of strips) {
         for (const [a, b2s] of neighbourBoundaryEdges(strip, nbRing)) {
           const pa = tf(a), pb = tf(b2s)
+          // Where a connecting ray already runs along this edge, the ray wins.
+          if (coveredByRay([pa.px, pa.py], [pb.px, pb.py], connRays, rayTol)) continue
           w.addLine('NEIGHBOURS', ...Object.values(toG(pa)), ...Object.values(toG(pb)))
           neighbourSegs.push([pa, pb])
         }
@@ -680,12 +700,8 @@ export async function generateDiagramDXF(options, logger) {
     labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
   }
 
-  // Resolved before the adjoining features are drawn: a beacon carrying a
-  // connection must not also get an abutment stub, and the stub is drawn there.
-  const { marks: connMarks, suppressed: connected } = resolveConnections({
-    geometry, beacons: options.beacons, connections: metadata.connections,
-  })
-
+  // The connections were resolved further up, because the neighbour outlines
+  // needed them too.
   drawAdjoiningFeaturesDxf(w, {
     annotations: metadata.sideAnnotations,
     geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs, toG, toGLen,

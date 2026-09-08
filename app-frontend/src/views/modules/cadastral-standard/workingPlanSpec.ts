@@ -395,9 +395,55 @@ function certificateFrom(config: any): { line1: string; line2: string } {
 }
 
 /** Words that name a feature TYPE. A part containing one is a complete name;
- *  a part containing none is a fragment of the name on the next side. */
-/** Words that name a feature TYPE. A part containing one is a complete name;
  *  a part with none is a fragment of the name continued on the next side. */
+/**
+ * A road or servitude name as it should be SET, from the way a surveyor tagged
+ * it. They letter these out on the plan -- 'M  A  I  N   R  O  A  D' -- which
+ * is a drawing instruction, not the name. Rendered literally it costs three
+ * times the room, and that extra width is what pushed road names off the sheet.
+ *
+ * The lettering is undone and the name set in title case: 'Main Road'.
+ *
+ * A label that was NOT lettered out is left as its words, case aside, so
+ * 'Klein Road' stays two words instead of collapsing into one. The test is
+ * whether most of its pieces are single characters -- which is what letter
+ * spacing looks like and ordinary words never do.
+ */
+export function roadNameCase(raw: unknown): string {
+  const s = String(raw ?? '').trim()
+  if (!s) return ''
+  const pieces = s.split(/(\s+)/)
+  const words = pieces.filter((_, i) => i % 2 === 0).filter(Boolean)
+  const singles = words.filter(w => w.length === 1).length
+  const lettered = words.length > 2 && singles / words.length >= 0.7
+
+  let out: string[]
+  if (!lettered) {
+    out = words
+  } else {
+    // Rebuilt from the GAPS: a wide gap separated words, a narrow one only
+    // separated letters. Surveyors letter with two spaces between letters and
+    // three or more between words.
+    out = []
+    let cur = ''
+    for (let i = 0; i < pieces.length; i++) {
+      if (i % 2 === 0) { cur += pieces[i]; continue }
+      if (pieces[i].length >= 3) { if (cur) out.push(cur); cur = '' }
+    }
+    if (cur) out.push(cur)
+  }
+  // Title case, not word-by-word capitals: 'Right of Way', never 'Right Of
+  // Way'. The connecting words stay down unless they open the name.
+  const MINOR = new Set(['of', 'the', 'and', 'on', 'at', 'to', 'in', 'for', 'a'])
+  return out
+    .map((w, i) => {
+      const lower = w.toLowerCase()
+      if (i > 0 && MINOR.has(lower)) return lower
+      return lower.charAt(0).toUpperCase() + lower.slice(1)
+    })
+    .join(' ')
+}
+
 const FEATURE_WORDS = [
   'ROAD', 'STREET', 'LANE', 'AVENUE', 'DRIVE', 'WAY',
   'SERVITUDE', 'RIVER', 'STREAM', 'RAILWAY',
@@ -600,7 +646,10 @@ function sideFeatures(
 
     const parts = run.map(x => x.label)
     const width = run.map(x => x.widthM).find(w => Number.isFinite(w) && w > 0)
-    const base = parts.join(' ')
+    // Each part is un-lettered on its own, THEN joined: a name carried around a
+    // corner arrives as 'M A I N' and 'R O A D', two annotations whose word
+    // break lives between them rather than inside either one's spacing.
+    const base = parts.map(roadNameCase).filter(Boolean).join(' ')
     // Destinations, lettered ASCII: the Fifth Schedule uses arrowheads, which
     // an ANSI_1252 R12 file cannot carry as text. Drawing them as geometry is
     // the faithful form and is still to do.

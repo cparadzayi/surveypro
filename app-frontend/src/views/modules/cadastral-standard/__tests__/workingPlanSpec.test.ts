@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  roadNameCase,
   buildWorkingPlanSpec,
   beaconSymbol,
   ringNames,
@@ -568,7 +569,9 @@ describe('buildWorkingPlanSpec — surrounding properties', () => {
       ],
     }))
     expect(spec.notes).toBeUndefined()
-    expect(spec.roads?.map(r => r.name)).toEqual(['Main Road', 'Water servitude', '3,00m'])
+    // Set as names, not as the surveyor's lettering instruction -- see
+    // roadNameCase.
+    expect(spec.roads?.map(r => r.name)).toEqual(['Main Road', 'Water Servitude', '3,00m'])
   })
 
   it('gives the width its own label rather than gluing it to the name', () => {
@@ -601,7 +604,7 @@ describe('buildWorkingPlanSpec — surrounding properties', () => {
     const { spec } = buildWorkingPlanSpec(squareCtx({
       '404': [{ side: 'AB', role: 'servitude', label: 'Right of way' }],
     }))
-    expect(spec.roads?.map(r => r.name)).toEqual(['Right of way'])
+    expect(spec.roads?.map(r => r.name)).toEqual(['Right of Way'])
   })
 
   it('emits no roads key when none were tagged', () => {
@@ -769,7 +772,7 @@ describe('buildWorkingPlanSpec — one label per adjoining feature', () => {
         { side: 'BC', role: 'road', label: 'R O A D' },
       ],
     }))
-    expect(spec.roads?.map(r => r.name)).toEqual(['M A I N R O A D'])
+    expect(spec.roads?.map(r => r.name)).toEqual(['Main Road'])
   })
 
   it('letters a shared road once even when both parcels tag it', () => {
@@ -826,7 +829,7 @@ describe('buildWorkingPlanSpec — a name lettered across sides', () => {
         { side: 'BC', role: 'road', label: 'R O A D' },
       ],
     }))
-    expect(spec.roads?.map(r => r.name)).toEqual(['M A I N R O A D'])
+    expect(spec.roads?.map(r => r.name)).toEqual(['Main Road'])
   })
 
   it('keeps two distinct roads on consecutive sides apart', () => {
@@ -856,7 +859,7 @@ describe('buildWorkingPlanSpec — a name lettered across sides', () => {
         { side: 'BC', role: 'road', label: 'R O A D', widthM: 25.19 },
       ],
     }))
-    expect(spec.roads?.map(r => r.name)).toEqual(['K L E I N R O A D', '25,19m'])
+    expect(spec.roads?.map(r => r.name)).toEqual(['Klein Road', '25,19m'])
   })
 })
 
@@ -1011,6 +1014,39 @@ describe('buildWorkingPlanSpec — SR number', () => {
  * characters do not exist -- so destinations are lettered with ASCII arrows
  * until the arrowheads are drawn as geometry.
  */
+describe('roadNameCase', () => {
+  it('undoes a surveyor’s lettering and sets the name in title case', () => {
+    // Letter spacing is a drawing instruction, not the name. Set literally it
+    // costs three times the room, and that width is what pushed road names off
+    // the sheet.
+    expect(roadNameCase('M  A  I  N   R  O  A  D')).toBe('Main Road')
+    expect(roadNameCase('K  L  E  I  N   R  O  A  D')).toBe('Klein Road')
+  })
+
+  it('handles a name lettered across two sides, one part at a time', () => {
+    // 'M A I N' on one side and 'R O A D' on the next: the word break lives
+    // between the parts, not inside either one's spacing.
+    expect(['M A I N', 'R O A D'].map(roadNameCase).join(' ')).toBe('Main Road')
+  })
+
+  it('leaves an ordinary name as its words, case aside', () => {
+    expect(roadNameCase('Klein Road')).toBe('Klein Road')
+    expect(roadNameCase('KLEIN ROAD')).toBe('Klein Road')
+    expect(roadNameCase('water servitude')).toBe('Water Servitude')
+  })
+
+  it('sets it as a name, not as word-by-word capitals', () => {
+    expect(roadNameCase('Right of way')).toBe('Right of Way')
+    expect(roadNameCase('of the river')).toBe('Of the River')
+  })
+
+  it('is quiet on nothing', () => {
+    expect(roadNameCase('')).toBe('')
+    expect(roadNameCase(undefined)).toBe('')
+    expect(roadNameCase(null)).toBe('')
+  })
+})
+
 describe('buildWorkingPlanSpec — road destinations', () => {
   const road = (extra: any) => ctx({
     beacons: squareBeacons,

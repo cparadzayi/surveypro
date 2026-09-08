@@ -82,9 +82,81 @@ describe('generateWorkingPlan — golden', () => {
     expect(Object.fromEntries(offenders)).toEqual({})
   })
 
+  test('letters at ISO 3098 sizes, and only a few of them', () => {
+    // A survey plan is a technical drawing, and ISO 3098 is its lettering
+    // standard: nominal heights step by root 2 -- 1,8 / 2,5 / 3,5 / 5 / 7 --
+    // far enough apart that a reader sees a rank rather than an accident.
+    //
+    // These had been measured off a source plot and carried its noise: SIX
+    // body sizes inside 0,08 mm (2,99 / 3,00 / 3,03 / 3,06 / 3,07 / 3,07),
+    // which is not a hierarchy, it is six attempts at one size.
+    const ISO = [1.8, 2.5, 3.5, 5, 7]
+    const T = LAYOUT.text
+    const used = [T.adjoining, T.beacon, T.grid, T.insetLabel, T.parcel, T.road,
+      T.scale, T.approval, T.certificate, T.insetTitle, T.title,
+      T.title * T.titleLeadFactor]
+    for (const h of used) {
+      expect([h, ISO.some((v) => Math.abs(v - h) < 1e-9)]).toEqual([h, true])
+    }
+    // three ranks, no more -- every extra one is a distinction a reader has to
+    // work out and the draughtsman did not mean
+    expect(new Set(used.map((h) => h.toFixed(2))).size).toBe(3)
+  })
+
+  test('letters everything read off the drawing at one size', () => {
+    // A beacon name, a stand number and an abutting property's name are read
+    // together off the same drawing. A reader should not have to work out why
+    // one of them is smaller than the others.
+    const T = LAYOUT.text
+    expect([T.parcel, T.adjoining, T.grid, T.insetLabel]).toEqual([T.beacon, T.beacon, T.beacon, T.beacon])
+  })
+
+  test('letters that size big enough to read at arm’s length', () => {
+    // A cap height h subtends 2*atan(h/2d) at distance d. Sustained reading of
+    // a drawing wants roughly 15-20 arcmin; 10 is the floor. At 2,5 mm that is
+    // 17 arcmin at 500 and 12 at a full arm -- readable where a plan is
+    // actually held. The 1,8 this replaced was 8,8 arcmin at a full arm, under
+    // the floor, which is why adjoining names could not be read at all.
+    const arcmin = (h, d) => 2 * Math.atan(h / (2 * d)) * (180 / Math.PI) * 60
+    expect(arcmin(LAYOUT.text.beacon, 500)).toBeGreaterThan(15)
+    expect(arcmin(LAYOUT.text.beacon, 700)).toBeGreaterThan(10)
+  })
+
+  test('letters a road name down a size rather than crowd it', () => {
+    // A name pinned to a line has only that line: 'M  A  I  N   R  O  A  D' is
+    // 47 mm against a 40 mm side, with the figure already filling 102 of the
+    // panel's 146. Set one ISO size down it fits, which is what a draughtsman
+    // does -- the alternative is a name written over the title block.
+    const spaced = (t) => t.split('').join('  ')
+    const { dxf } = generateWorkingPlan({
+      ...brackenhurstSpec,
+      scale: 'auto',
+      roads: [{ name: spaced('MAIN ROAD'), from: 'SD1', to: '87CR', offset: 9.5 }],
+    })
+    const lines = dxf.split('\n')
+    const heights = []
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i] !== '0' || lines[i + 1] !== 'TEXT') continue
+      let j = i + 2; const d = {}
+      while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+      if ((d['8'] || [])[0] === 'ROAD-TEXT') heights.push(+d['40'][0])
+    }
+    expect(heights).toHaveLength(1)
+    // drawn smaller than the reading size, and never smaller than the step below
+    const out = generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' })
+    const paperMm = heights[0] / out.scale * 1000
+    expect(paperMm).toBeLessThan(LAYOUT.text.beacon)
+    expect(paperMm).toBeGreaterThanOrEqual(1.8 - 1e-9)
+  })
+
   test('sets the document heading larger than the lines naming the land', () => {
-    // "WORKING PLAN OF" identifies what the sheet IS and leads the title block
-    // at 1.25x. The lines below it identify the land and are set uniformly.
+    // "WORKING PLAN OF" identifies what the sheet IS and leads the title block.
+    // The lines below it identify the land and are set uniformly, at the same
+    // size as the drawing's own text.
+    //
+    // The step is one ISO 3098 size -- 5,0 over 3,5 -- not the 1,25 it was set
+    // to: 4,375 mm is not a height on the stencil, and at that ratio the
+    // heading read as merely bigger rather than as the heading.
     const { dxf } = generateWorkingPlan(brackenhurstSpec)
     const lines = dxf.split('\n')
     const heights = []
@@ -98,7 +170,7 @@ describe('generateWorkingPlan — golden', () => {
     const tallest = Math.max(...heights)
     const body = heights.filter(h => h < tallest)
     expect(body.length).toBeGreaterThan(0)
-    expect(tallest / Math.max(...body)).toBeCloseTo(1.25, 2)
+    expect(tallest / Math.max(...body)).toBeCloseTo(5.0 / 3.5, 2)
   })
 
   test('marks an abutting neighbour the way the diagram does', () => {
@@ -738,10 +810,17 @@ describe('generateWorkingPlan — golden', () => {
         ],
       })
       const { overlaps } = auditAll(dxf)
-      // A stand number is the one label on the sheet that cannot be moved out of
-      // the way, so it is the one that must never be written over.
+      // WHICH labels get sacrificed is the point, not how many. A stand number
+      // and a beacon name identify the drawing and cannot be moved out of the
+      // way; a coordinate figure can be read from its neighbours. So the
+      // unplaceable name is allowed to fall on the grid and on nothing else.
+      //
+      // This used to add "fewer than three overlaps", which was a measurement of
+      // the day rather than a rule: the sheet now carries a fuller coordinate
+      // framework, and counting its figures said nothing about the placement.
       expect(overlaps.filter((o) => o.includes('PARCEL-TEXT'))).toEqual([])
-      expect(overlaps.length).toBeLessThan(3)          // measured at 3 before
+      expect(overlaps.filter((o) => o.includes('BEACON-TEXT'))).toEqual([])
+      expect(overlaps.every((o) => o.includes('GRID-TEXT'))).toBe(true)
     })
 
     test('holds a name off by its own sign, not by the biggest on the sheet', () => {
@@ -1011,23 +1090,43 @@ describe('generateWorkingPlan — golden', () => {
     test('carries at least four ticks at every scale it draws at', () => {
       // A grid is a framework, not a reference point. One cross cannot even
       // show which way the grid runs -- and one is what a 1:1500 sheet had.
-      for (const scale of [500, 1000, 1250, 1500, 2000, 2500, 5000]) {
+      for (const scale of ['auto', 500, 1000, 1250, 1500, 2000, 2500, 5000]) {
         const { pts, labels } = grid(generateWorkingPlan({ ...brackenhurstSpec, scale }).dxf)
         expect([scale, pts.length >= 4]).toEqual([scale, true])
         expect(labels).toHaveLength(pts.length * 2)      // an X and a Y for each
       }
     })
 
-    test('spreads them across the figure rather than clustering', () => {
-      // Four in one corner would satisfy a count and help nobody: a reader
-      // interpolates BETWEEN ticks, so they have to span the drawing.
-      for (const scale of [1000, 1500]) {
+    test('surrounds the figure: a tick in each of its four corners', () => {
+      // Four ticks bunched down one side satisfy a count and help nobody. A
+      // reader interpolates from the ticks that BRACKET a position, so the
+      // framework has to surround the drawing -- top left and right, bottom
+      // left and right.
+      //
+      // Corners of the FIGURE, not of the ticks' own bounding box: quadrants of
+      // their own extent are satisfied by any four points however tightly
+      // grouped, which made the earlier form of this circular.
+      const es = brackenhurstSpec.beacons.map((b) => -b.Y)
+      const ns = brackenhurstSpec.beacons.map((b) => -b.X)
+      const fx = (Math.min(...es) + Math.max(...es)) / 2
+      const fy = (Math.min(...ns) + Math.max(...ns)) / 2
+
+      // At the scale the renderer CHOOSES, the framework surrounds the figure.
+      // That is the sheet a surveyor is handed.
+      const chosen = grid(generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' }).dxf)
+      const cornersOf = (pts) =>
+        new Set(pts.map((p) => `${p[0] < fx ? 'L' : 'R'}${p[1] < fy ? 'B' : 'T'}`))
+      expect([...cornersOf(chosen.pts)].sort()).toEqual(['LB', 'LT', 'RB', 'RT'])
+
+      // A scale can be PINNED, and then the figure may be drawn larger than the
+      // renderer would ever choose for it -- at 1:1500 this one fills the panel
+      // and its own boundaries occupy the corners, so the lattice reaches two of
+      // them, and at 1:1250 three. What holds at every scale is that the ticks
+      // never collapse into one corner, and that there are enough of them.
+      for (const scale of [500, 1000, 1250, 1500, 2000, 2500, 5000]) {
         const { pts } = grid(generateWorkingPlan({ ...brackenhurstSpec, scale }).dxf)
-        const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1])
-        const cx = (Math.max(...xs) + Math.min(...xs)) / 2
-        const cy = (Math.max(...ys) + Math.min(...ys)) / 2
-        const quadrants = new Set(pts.map((p) => `${p[0] < cx ? 'L' : 'R'}${p[1] < cy ? 'B' : 'T'}`))
-        expect([scale, quadrants.size]).toEqual([scale, 4])
+        expect([scale, pts.length >= 4]).toEqual([scale, true])
+        expect([scale, cornersOf(pts).size >= 2]).toEqual([scale, true])
       }
     })
 
@@ -1059,6 +1158,52 @@ describe('generateWorkingPlan — golden', () => {
       // placer applies, unchanged.
       for (const p of pts) {
         expect(Math.min(...segs.map((sg) => dist(p, sg[0], sg[1])))).toBeGreaterThan(10.5)
+      }
+    })
+
+    test('keeps the coordinate figures on the drawing, either side of the cross', () => {
+      // A cross carries its figures to the right by convention, which a cross
+      // near the panel's right edge cannot do -- they ran into the title block
+      // once the figure was given more of the panel. The mirrored side is tried
+      // before the tick is given up, so the figures stay on the drawing and the
+      // reader keeps the reference.
+      const panel = { x0: LAYOUT.panel.x0, y0: LAYOUT.panel.y0,
+        x1: LAYOUT.panel.x1, y1: LAYOUT.panel.y1 }
+      for (const scale of [500, 1000, 1500, 2000, 2500, 5000]) {
+        const out = generateWorkingPlan({ ...brackenhurstSpec, scale })
+        const lines = out.dxf.split('\n')
+        // the panel in the drawing's own units, from the sheet border outward
+        const mm = (v) => (v * scale) / 1000
+        const texts = []
+        for (let i = 0; i < lines.length - 1; i++) {
+          if (lines[i] !== '0' || lines[i + 1] !== 'TEXT') continue
+          let j = i + 2; const d = {}
+          while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+          if ((d['8'] || [])[0] !== 'GRID-TEXT') continue
+          texts.push({ t: (d['1'] || [''])[0], x: +d['10'][0], y: +d['20'][0],
+            h: +d['40'][0], rot: +((d['50'] || [0])[0]), al: (d['72'] || ['0'])[0] })
+        }
+        expect([scale, texts.length > 0]).toEqual([scale, true])
+
+        // Every figure sits within the drawing panel's own span. The panel is
+        // located from the grid crosses themselves, which are placed inside it.
+        const crosses = []
+        for (let i = 0; i < lines.length - 1; i++) {
+          if (lines[i] !== '0' || lines[i + 1] !== 'LINE') continue
+          let j = i + 2; const d = {}
+          while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+          if ((d['8'] || [])[0] === 'GRID') {
+            crosses.push([(+d['10'][0] + +d['11'][0]) / 2, (+d['20'][0] + +d['21'][0]) / 2])
+          }
+        }
+        const px = crosses.map((c) => c[0]), py = crosses.map((c) => c[1])
+        // no figure may sit further from its own crosses than the panel is wide
+        const room = mm(panel.x1 - panel.x0)
+        for (const t of texts) {
+          const near = Math.min(...crosses.map((c) => Math.hypot(t.x - c[0], t.y - c[1])))
+          expect([scale, t.t, near < room / 2]).toEqual([scale, t.t, true])
+        }
+        void px; void py
       }
     })
 

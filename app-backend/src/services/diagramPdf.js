@@ -15,8 +15,8 @@ import {
 } from './diagram/contiguousMarks.js'
 import { resolveConnections } from './diagram/connections.js'
 import {
-  connectionMark, CONNECTION_STUB_MM, CONNECTION_ARROW_MM, CONNECTION_ARROW_HALF_MM,
-  CONNECTION_LABEL_PAD_MM, CONNECTION_LABEL_STANDOFF_MM,
+  connectionMark, coveredByRay, CONNECTION_STUB_MM, CONNECTION_ARROW_MM,
+  CONNECTION_ARROW_HALF_MM, CONNECTION_LABEL_PAD_MM, CONNECTION_LABEL_STANDOFF_MM,
 } from './diagram/connectionMark.js'
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
@@ -772,6 +772,21 @@ export async function generateDiagramPDF(options, logger) {
   doc.font('Helvetica').fontSize(7).fillColor('#555555')
   const neighbourSegs = [] // drawn neighbour line segments (pt) — labels avoid these
   const neighbourLabels = [] // { anchor, text } drawn after the subject, placed outward
+  // Resolved before ANY of this is drawn. A connection decides two things
+  // beyond its own mark: which beacons keep an abutment stub, and which
+  // neighbour edges it covers.
+  const { marks: connMarks, suppressed: connected } = resolveConnections({
+    geometry, beacons: options.beacons, connections: metadata.connections,
+  })
+  const connRays = connMarks.map((m) => {
+    const from = tf(m.fromYX), to = tf(m.toYX)
+    const g = connectionMark([from.px, from.py], [to.px, to.py],
+      CONNECTION_STUB_MM * PT_PER_MM, CONNECTION_ARROW_MM * PT_PER_MM,
+      CONNECTION_ARROW_HALF_MM * PT_PER_MM)
+    return g && { tail: g.tail, tip: g.tip }
+  }).filter(Boolean)
+  const rayTol = 0.8 * PT_PER_MM
+
   if (buffer.length) {
     for (const nb of neighbours) {
       if (isOutsideFigureFeature(nb)) continue
@@ -784,6 +799,8 @@ export async function generateDiagramPDF(options, logger) {
       for (const strip of strips) {
         for (const [a, b] of neighbourBoundaryEdges(strip, nbRing)) {
           const pa = tf(a), pb = tf(b)
+          // Where a connecting ray already runs along this edge, the ray wins.
+          if (coveredByRay([pa.px, pa.py], [pb.px, pb.py], connRays, rayTol)) continue
           doc.moveTo(pa.px, pa.py).lineTo(pb.px, pb.py)
           neighbourSegs.push([pa, pb])
         }
@@ -837,14 +854,9 @@ export async function generateDiagramPDF(options, logger) {
   }
 
   // Adjoining features (roads/servitudes/contiguous) from metadata.sideAnnotations —
-  // drawn outside the figure, before labels so their designations become obstacles.
-  // Connecting data is resolved BEFORE the adjoining features are drawn: a
-  // beacon that carries a connection must not also get an abutment stub, and
-  // the stub is drawn in there.
-  const { marks: connMarks, suppressed: connected } = resolveConnections({
-    geometry, beacons: options.beacons, connections: metadata.connections,
-  })
-
+  // drawn outside the figure, before labels so their designations become
+  // obstacles. The connections were resolved further up, because the neighbour
+  // outlines needed them too.
   drawAdjoiningFeatures(doc, {
     annotations: metadata.sideAnnotations,
     geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs,

@@ -59,6 +59,54 @@ export const CONNECTION_LABEL_STANDOFF_MM = 1.2
 export const CONNECTION_ARROW_HALF_MM = 0.75
 
 /**
+ * Is this line already covered by a connecting ray?
+ *
+ * A connection often runs ALONG a boundary of the land it ties to -- SD2 to 87C
+ * is both the connection and a side of the remaining extent -- so the
+ * neighbour's edge and the ray get drawn one on top of the other, in the same
+ * dashes, and read as two marks quarrelling over one line.
+ *
+ * Where they coincide the RAY wins: it is the mark that carries the distance
+ * and the arrowhead.
+ *
+ * "Coincide" is tested the way it looks on paper -- the two run in the same
+ * direction and lie on top of each other -- rather than by asking whether the
+ * edge fits inside the ray. The ray is a SYMBOLIC length and the neighbour's
+ * edge is clipped to the buffer, so neither contains the other; requiring the
+ * edge's ends to sit on the ray simply never fired.
+ *
+ * An edge that merely starts at the same beacon and strikes off at an angle is
+ * left alone: it is that neighbour's boundary and nothing else draws it.
+ *
+ * @param {Array<{tail: [number, number], tip: [number, number]}>} rays
+ */
+export function coveredByRay(a, b, rays, tol) {
+  const near = (p, s, e) => {
+    const vx = e[0] - s[0], vy = e[1] - s[1]
+    const l2 = vx * vx + vy * vy
+    if (!l2) return Math.hypot(p[0] - s[0], p[1] - s[1])
+    let t = ((p[0] - s[0]) * vx + (p[1] - s[1]) * vy) / l2
+    t = Math.max(0, Math.min(1, t))
+    return Math.hypot(p[0] - (s[0] + t * vx), p[1] - (s[1] + t * vy))
+  }
+  const dir = (s, e) => {
+    const d = Math.hypot(e[0] - s[0], e[1] - s[1]) || 1
+    return [(e[0] - s[0]) / d, (e[1] - s[1]) / d]
+  }
+  const [ex, ey] = dir(a, b)
+  const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+  return (rays ?? []).some((r) => {
+    const [rx, ry] = dir(r.tail, r.tip)
+    // same line, either way along it
+    if (Math.abs(ex * rx + ey * ry) < 0.996) return false          // ~5 degrees
+    // and actually on top of one another, judged from both middles so that
+    // neither having to be the longer decides it
+    const rmid = [(r.tail[0] + r.tip[0]) / 2, (r.tail[1] + r.tip[1]) / 2]
+    return near(rmid, a, b) <= tol || near(mid, r.tail, r.tip) <= tol
+  })
+}
+
+/**
  * @param {[number, number]} at       The figure beacon, projected.
  * @param {[number, number]} toward   The parent beacon, projected. Only its
  *        direction from `at` is used; it may be far outside the sheet.

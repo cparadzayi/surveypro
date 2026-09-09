@@ -314,11 +314,15 @@ async function loadWorkflowState(surveyProjectId: number) {
     if (response.data.ok) {
       const dbState = response.data.workflow_state
       
-      // Restore current step
-      if (dbState.current_step) {
-        workflowState.currentStep = dbState.current_step as any
-      }
-      
+      // The current step is restored LAST, at the bottom of this function --
+      // NOT here. currentStep drives the v-if that mounts each step's view, so
+      // setting it first published 'area-computation' while adjustedCoordinates
+      // was still empty: MapLibreAreaView mounted, found nothing, threw "No
+      // coordinate points available to display on map", and never retried when
+      // the points landed an await later. The step is the LAST thing the rest
+      // of the app should see change, because it is the thing that mounts
+      // components expecting everything else to already be there.
+
       // DEBUG: Show what step data keys exist
       console.log('🔍 [DEBUG] Available step_data keys:', Object.keys(dbState.step_data || {}));
       console.log('🔍 [DEBUG] Looking for csv-import or import_csv...');
@@ -471,6 +475,11 @@ async function loadWorkflowState(surveyProjectId: number) {
         console.log(`✅ Restored ${Object.keys(dbState.generated_documents).length} document references`)
       }
       
+      // Everything above is now in place, so it is safe to publish the step.
+      if (dbState.current_step) {
+        workflowState.currentStep = dbState.current_step as any
+      }
+
       console.log(`✅ Workflow state loaded: current step = ${dbState.current_step}`)
       console.log(`✅ Completed steps: ${dbState.completed_steps.join(', ')}`)
       

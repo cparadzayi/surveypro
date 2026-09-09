@@ -3003,6 +3003,23 @@ function destroyInsetMap() {
   }
 }
 
+// Second line of defence for a map that mounted before its data arrived.
+//
+// initializeMap throws when there are no points, and nothing used to run it
+// again -- so a component that mounted a moment too early stayed blank for the
+// rest of the session even though the points turned up straight afterwards.
+// The ordering that caused that is fixed at source (loadWorkflowState now
+// publishes currentStep last, once the coordinates are in place), but the map
+// should not depend on winning a race to be useful: any path that delivers
+// points late gets a working map instead of an empty one.
+watch(() => coordinatePoints.value.length, async (count, before) => {
+  if (!count || map || !mapContainer.value) return;
+  console.log(`[MapLibre] 📍 ${count} points arrived after mount (was ${before ?? 0}) — initializing map now`);
+  await initializeMap().catch((error) => {
+    console.warn('[MapLibre] ⚠️ Late initialization failed:', error);
+  });
+});
+
 // Watch for inset visibility changes
 watch(showTrigInset, async (newVal) => {
   if (newVal && trigBeacons.value.length > 0) {

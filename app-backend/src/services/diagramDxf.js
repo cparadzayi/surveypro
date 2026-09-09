@@ -681,6 +681,24 @@ export async function generateDiagramDXF(options, logger) {
     w.addCircle('BEACONS', g.x, g.y, toGLen(beaconR))
   }
 
+  // Adjoining features and connections go down BEFORE any lettering, because
+  // that is what fills labelObstacles: the road and servitude bands, the
+  // abutment stubs, the connecting rays and their own text. Lettering first --
+  // which is what this did -- placed every vertex letter against an EMPTY
+  // obstacle list, so each one took the straight-out position whether or not
+  // the road shading was already there. The PDF has always drawn in this order;
+  // the DXF disagreeing with it is why letters sat on the shading.
+  drawAdjoiningFeaturesDxf(w, {
+    annotations: metadata.sideAnnotations,
+    geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs, toG, toGLen,
+    connected,
+  }, logger)
+
+  drawConnectionsDxf(w, {
+    marks: connMarks, tf, labelObstacles, boxToSegs, toG, toGLen, denom,
+    remainderPt: remainderCentroidPtDxf(neighbours, tf),
+  })
+
   // Vertex letters — reuses placeVertexLabel UNCHANGED (PDF-point collision math);
   // only the final emitted position is converted to ground.
   geometry.vertices.forEach((v, i) => {
@@ -704,19 +722,6 @@ export async function generateDiagramDXF(options, logger) {
     w.addText('NEIGHBOURS', g.x, g.y, nl.text, toGLen(7))
     labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
   }
-
-  // The connections were resolved further up, because the neighbour outlines
-  // needed them too.
-  drawAdjoiningFeaturesDxf(w, {
-    annotations: metadata.sideAnnotations,
-    geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs, toG, toGLen,
-    connected,
-  }, logger)
-
-  drawConnectionsDxf(w, {
-    marks: connMarks, tf, labelObstacles, boxToSegs, toG, toGLen, denom,
-    remainderPt: remainderCentroidPtDxf(neighbours, tf),
-  })
 
   const loLabel = resolveLoSystem(null, metadata, options.projection)
   drawTableDxf(w, layout, sidesTable, loLabel, toG, toGLen)

@@ -1,9 +1,24 @@
 /**
- * Place a vertex letter label OUTSIDE the parcel figure: offset along the outward
- * direction (away from the figure centroid), past the beacon circle, stepping
- * further out until the label box no longer crosses any drawn line segment
- * (the subject edges or adjoining-property lines). All coordinates are PDF points
- * {px, py}. Returns the top-left {x, y} for pdfkit's `doc.text`.
+ * Place a vertex letter label OUTSIDE the parcel figure, as close to its beacon
+ * as a clear spot allows. All coordinates are PDF points {px, py}; returns the
+ * top-left {x, y} for pdfkit's `doc.text`. Both diagram renderers call this, so
+ * a letter cannot land differently on the PDF and the DXF.
+ *
+ * A letter belongs to ONE beacon and has to be read as belonging to it, so the
+ * search is distance-first: every bearing at a given distance is tried before
+ * any bearing further out, and the first clear box wins. It used to have a
+ * single degree of freedom -- straight out from the figure centre, stepping
+ * further out on a collision -- which failed at both ends. A letter that found
+ * its clear spot late ended up a full 4,4 mm off its beacon, further away than
+ * the letter is tall; and one that found none marched through every candidate
+ * and then fell back to the FIRST, which is how ten of twenty letters on the
+ * Brackenhurst diagrams came to sit on the road shading. Trying bearings before
+ * distances fixes both: there is nearly always clear paper beside a beacon, and
+ * it is nearer than the clear paper beyond the obstacle.
+ *
+ * The fan is held to the outward half-plane so a letter never wanders inside
+ * the figure, where it would read as belonging to the parcel rather than the
+ * corner.
  */
 
 function pointInRect(p, r) {
@@ -30,24 +45,57 @@ function segIntersectsRect(a, b, r) {
 
 export function placeVertexLabel(vertex, centroid, {
   beaconR = 2.5, labelW = 6, labelH = 8, gap = 2, step = 3, maxSteps = 8, segments = [],
+  fanDeg = 18, fanCount = 5, clearance = 0.75,
 } = {}) {
-  // Outward unit direction (away from the figure centre).
-  let ux = vertex.px - centroid.px
-  let uy = vertex.py - centroid.py
+  // Outward bearing: away from the figure centre.
+  const ux = vertex.px - centroid.px
+  const uy = vertex.py - centroid.py
   const len = Math.hypot(ux, uy) || 1
-  ux /= len
-  uy /= len
-  const half = Math.max(labelW, labelH) / 2
+  const base = Math.atan2(uy / len, ux / len)
 
-  let fallback = null
-  for (let i = 0; i <= maxSteps; i++) {
-    const off = beaconR + gap + half + i * step
-    const cx = vertex.px + ux * off
-    const cy = vertex.py + uy * off
-    const rect = { x: cx - labelW / 2, y: cy - labelH / 2, w: labelW, h: labelH }
-    if (fallback === null) fallback = rect
-    const hit = segments.some(([p, q]) => segIntersectsRect(p, q, rect))
-    if (!hit) return { x: rect.x, y: rect.y }
+  const rectAt = (angle, ring) => {
+    const dx = Math.cos(angle), dy = Math.sin(angle)
+    // How far the box reaches from its own centre along THIS bearing. Measuring
+    // it per bearing rather than taking the worst case for all of them holds
+    // every letter the same `gap` off the beacon circle instead of setting each
+    // one as far out as the most awkward direction would need.
+    const reach = (Math.abs(dx) * labelW + Math.abs(dy) * labelH) / 2
+    const off = beaconR + gap + reach + ring * step
+    return {
+      x: vertex.px + dx * off - labelW / 2,
+      y: vertex.py + dy * off - labelH / 2,
+      w: labelW,
+      h: labelH,
+    }
   }
-  return { x: fallback.x, y: fallback.y }
+  // Collision is judged on a box grown by `clearance`, so "clear" means there is
+  // daylight around the letter rather than merely that nothing crosses it. A
+  // letter missing the road shading by 0,13 mm -- which is what stand 404's D
+  // did -- is clear by the arithmetic and touching to the eye.
+  const hits = (rect) => {
+    const t = {
+      x: rect.x - clearance,
+      y: rect.y - clearance,
+      w: rect.w + 2 * clearance,
+      h: rect.h + 2 * clearance,
+    }
+    return segments.reduce((n, [p, q]) => n + (segIntersectsRect(p, q, t) ? 1 : 0), 0)
+  }
+
+  // Distance first, bearing second: ring 0 straight out, then fanned either way
+  // by fanDeg, before any of it is tried a step further out.
+  let best = null
+  for (let ring = 0; ring <= maxSteps; ring++) {
+    for (let k = 0; k < fanCount; k++) {
+      for (const sign of (k === 0 ? [1] : [1, -1])) {
+        const rect = rectAt(base + sign * k * fanDeg * (Math.PI / 180), ring)
+        const n = hits(rect)
+        if (n === 0) return { x: rect.x, y: rect.y }
+        // Nothing was clear yet; remember the least-obstructed box seen. Strict
+        // `<` keeps the earliest -- which is the closest, given the loop order.
+        if (best === null || n < best.n) best = { n, x: rect.x, y: rect.y }
+      }
+    }
+  }
+  return { x: best.x, y: best.y }
 }

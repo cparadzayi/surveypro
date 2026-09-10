@@ -55,7 +55,11 @@ export function useRecordComposition() {
 
     let parcelCount = 0
     try {
-      const parcels = await getLandParcels(projectId)
+      // The default page size (limit: 50) would truncate this count -- and Task 8's
+      // confirm banner prints it as the stated reason for the suggestion, so an
+      // undersized count would show the surveyor a false justification. Ask for
+      // everything, matching the full-fetch limit already used elsewhere in this route.
+      const parcels = await getLandParcels(projectId, { limit: 10000 })
       parcelCount = (parcels || []).filter(
         (p: any) => !isOutsideFigureParcelName(p?.stand ?? p?.designation)
       ).length
@@ -95,7 +99,10 @@ export function useRecordComposition() {
     return confirmed
   }
 
-  /** Test seam; also used when switching projects. */
+  /**
+   * Test seam only. Switching projects needs no reset: entries are keyed by
+   * project id, so other open projects' cached compositions are unaffected either way.
+   */
   const resetCache = () => {
     cache.value = {}
     parcelCounts.value = {}

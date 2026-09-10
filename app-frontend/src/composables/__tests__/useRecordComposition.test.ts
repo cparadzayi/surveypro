@@ -41,9 +41,16 @@ describe('useRecordComposition', () => {
     ]);
     const { loadComposition } = useRecordComposition();
     const c = await loadComposition(42, { step_data: {} });
-    expect(getLandParcels).toHaveBeenCalledWith(42);
+    expect(getLandParcels).toHaveBeenCalledWith(42, { limit: 10000 });
     expect(c!.includesGeneralPlans).toBe(true);
     expect(c!.source).toBe('inferred');
+  });
+
+  it('asks for every parcel, because the default page size would truncate the count', async () => {
+    (getLandParcels as any).mockResolvedValue([{ stand: '1' }, { stand: '2' }, { stand: '3' }]);
+    const { loadComposition } = useRecordComposition();
+    await loadComposition(42, { step_data: {} });
+    expect(getLandParcels).toHaveBeenCalledWith(42, { limit: 10000 });
   });
 
   it('excludes the Outside Figure parcel from the count', async () => {

@@ -296,7 +296,7 @@ describe('buildLodgementWarnings', () => {
   });
 
   it('lists unexpected files with their dates so a stale one is visible', () => {
-    const when = new Date('2026-08-20T00:00:00Z').getTime();
+    const when = new Date(2026, 7, 20).getTime(); // local midnight, 20 Aug 2026 (month is 0-indexed)
     const w = buildLodgementWarnings([], {
       expectedMissing: [],
       unexpectedPresent: [
@@ -313,6 +313,16 @@ describe('buildLodgementWarnings', () => {
       expectedMissing: [],
       unexpectedPresent: [
         { family: 'general', files: [{ name: 'gp.pdf', relDir: 'output/general-plans' }] },
+      ],
+    });
+    expect(w[0]).toContain('date unknown');
+  });
+
+  it('treats the backend zero-mtime sentinel as an unknown date', () => {
+    const w = buildLodgementWarnings([], {
+      expectedMissing: [],
+      unexpectedPresent: [
+        { family: 'diagram', files: [{ name: 'unreadable.pdf', relDir: 'output/diagrams', mtimeMs: 0 }] },
       ],
     });
     expect(w[0]).toContain('date unknown');

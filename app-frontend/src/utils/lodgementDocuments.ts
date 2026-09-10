@@ -5,7 +5,7 @@
  * while surveyor-supplied docs are matched by keyword anywhere under input/.
  */
 
-import type { RecordComposition } from './recordComposition';
+import type { RecordComposition, PlanFamily } from './recordComposition';
 
 /** Every enclosed-document label, both plan families included. */
 const ALL_LODGEMENT_DOCUMENTS: string[] = [
@@ -138,4 +138,41 @@ export const RECORD_ENCLOSED_SECTIONS = ['Field book', 'Coordinate List and Calc
 export function markRecordSectionsPresent(documents: LodgementDocumentStatus[]): LodgementDocumentStatus[] {
   const forced = new Set<string>(RECORD_ENCLOSED_SECTIONS);
   return documents.map((d) => (forced.has(d.label) ? { ...d, present: true } : d));
+}
+
+export interface CompositionVerification {
+  /** Families the record declares whose output folder holds nothing. */
+  expectedMissing: PlanFamily[];
+  /** Families the record does NOT declare whose output folder holds files. */
+  unexpectedPresent: Array<{ family: PlanFamily; files: ManifestFile[] }>;
+}
+
+/** Output subfolder each gated family writes into. Mirrors planTypeOutputSubdir. */
+const FAMILY_FOLDERS: Array<{ family: PlanFamily; folder: string }> = [
+  { family: 'diagram', folder: 'diagrams' },
+  { family: 'general', folder: 'general-plans' },
+];
+
+/**
+ * Cross-check a confirmed composition against what is actually on disk, in both
+ * directions. The absent direction catches "the plan was never generated"; the
+ * present direction catches a leftover trial from an abandoned attempt — something
+ * a fixed expected-list check cannot express at all.
+ */
+export function verifyAgainstManifest(
+  composition: RecordComposition | null,
+  files: ManifestFile[]
+): CompositionVerification {
+  const result: CompositionVerification = { expectedMissing: [], unexpectedPresent: [] };
+  if (!composition || composition.source !== 'confirmed') return result;
+  const list = files || [];
+  for (const { family, folder } of FAMILY_FOLDERS) {
+    const declared = family === 'diagram' ? composition.includesDiagrams : composition.includesGeneralPlans;
+    const found = list.filter((file) =>
+      (file.relDir || '').split('/').filter(Boolean).includes(folder)
+    );
+    if (declared && found.length === 0) result.expectedMissing.push(family);
+    if (!declared && found.length > 0) result.unexpectedPresent.push({ family, files: found });
+  }
+  return result;
 }

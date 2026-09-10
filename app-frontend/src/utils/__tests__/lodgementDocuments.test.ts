@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LODGEMENT_DOCUMENTS, lodgementDocumentsFor, resolveLodgementDocuments, markRecordSectionsPresent, type ManifestFile } from '../lodgementDocuments';
+import { LODGEMENT_DOCUMENTS, lodgementDocumentsFor, resolveLodgementDocuments, markRecordSectionsPresent, verifyAgainstManifest, type ManifestFile } from '../lodgementDocuments';
 import type { RecordComposition } from '../recordComposition';
 
 describe('LODGEMENT_DOCUMENTS', () => {
@@ -224,5 +224,54 @@ describe('resolveLodgementDocuments — the Diagram rule', () => {
     const labels = resolveLodgementDocuments(files, confirmedComposition(false, true)).map(r => r.label);
     // Counted rows render as "Diagram (3)", so match on the prefix rather than exact text.
     expect(labels.some(l => l.startsWith('Diagram'))).toBe(false);
+  });
+});
+
+describe('verifyAgainstManifest', () => {
+  it('reports a declared family whose folder is empty', () => {
+    const files = [f('general-undeveloped-MAGLAS.pdf', 'output/general-plans')];
+    const v = verifyAgainstManifest(confirmedComposition(true, true), files);
+    expect(v.expectedMissing).toEqual(['diagram']);
+    expect(v.unexpectedPresent).toEqual([]);
+  });
+
+  it('reports files present for a family the record does not declare', () => {
+    // The stale-trial case: a diagram left over from an abandoned attempt.
+    const files = [
+      f('general-undeveloped-MAGLAS.pdf', 'output/general-plans'),
+      f('diagram-STAND_207.pdf', 'output/diagrams'),
+    ];
+    const v = verifyAgainstManifest(confirmedComposition(false, true), files);
+    expect(v.expectedMissing).toEqual([]);
+    expect(v.unexpectedPresent).toHaveLength(1);
+    expect(v.unexpectedPresent[0].family).toBe('diagram');
+    expect(v.unexpectedPresent[0].files.map(x => x.name)).toEqual(['diagram-STAND_207.pdf']);
+  });
+
+  it('reports nothing when the folders match the composition', () => {
+    const files = [
+      f('general-undeveloped-MAGLAS.pdf', 'output/general-plans'),
+      f('diagram-STAND_207.pdf', 'output/diagrams'),
+    ];
+    const v = verifyAgainstManifest(confirmedComposition(true, true), files);
+    expect(v.expectedMissing).toEqual([]);
+    expect(v.unexpectedPresent).toEqual([]);
+  });
+
+  it('reports both directions at once', () => {
+    const files = [f('diagram-STAND_207.pdf', 'output/diagrams')];
+    const v = verifyAgainstManifest(confirmedComposition(false, true), files);
+    expect(v.expectedMissing).toEqual(['general']);
+    expect(v.unexpectedPresent.map(u => u.family)).toEqual(['diagram']);
+  });
+
+  it('stays silent when nothing is confirmed', () => {
+    const files = [f('diagram-STAND_207.pdf', 'output/diagrams')];
+    expect(verifyAgainstManifest(null, files)).toEqual({ expectedMissing: [], unexpectedPresent: [] });
+  });
+
+  it('tolerates an empty manifest without throwing', () => {
+    const v = verifyAgainstManifest(confirmedComposition(true, false), []);
+    expect(v.expectedMissing).toEqual(['diagram']);
   });
 });

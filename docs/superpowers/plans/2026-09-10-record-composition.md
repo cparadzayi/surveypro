@@ -330,6 +330,15 @@ git commit -m "feat(plans): give each plan type a family and extract the chooser
 
 **Note:** the existing test `'lists the 11 canonical items in order'` asserts an exact 11-item array. Adding the Diagram row makes it 12. That assertion must be updated — it is the point of this task, not a regression.
 
+**CORRECTION APPLIED DURING EXECUTION (commit `f0fe6b6`).** As first written, this task folded
+the count into `label` — which broke `useLodgementCheck.test.ts:19`, because `label` is an
+IDENTITY that four consumers match on (`useLodgementCheck.ts:18` builds `missing[]` from it,
+`lodgementDocuments.ts` exact-matches it in `markRecordSectionsPresent`, and `cover-page.ts`
+renders it in two places). The shipped design separates them: `LodgementDocumentStatus` carries
+BOTH `label` (canonical, never counted) and `displayLabel` (what the letter prints, with the
+count). `cover-page.ts` renders `doc.displayLabel ?? doc.label` — so the claim below that
+cover-page needs no change is wrong; it needed a two-line change.
+
 **Counts, per Decision 1 above:** the two plan rows carry a live count — Diagrams at three lodged copies per file, General Plan at one. This supersedes the spec's §4b "no count".
 
 - [ ] **Step 1: Write the failing test**

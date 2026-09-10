@@ -35,7 +35,7 @@ describe('resolveLodgementDocuments — generated docs (folder + keyword)', () =
     const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
     expect(by['Field book']).toBe(true);
     expect(by['Coordinate List and Calculations']).toBe(true);
-    expect(by['General Plan (1)']).toBe(true);
+    expect(by['General Plan']).toBe(true);
     expect(by['DSG Certificate (1/96)']).toBe(true);
     expect(by['Working Plan']).toBe(false);
   });
@@ -48,8 +48,8 @@ describe('resolveLodgementDocuments — generated docs (folder + keyword)', () =
     const undeveloped = [f('general-undeveloped-LOT_5_BORROWDALE.pdf', 'output/general-plans')];
     const byDev = Object.fromEntries(resolveLodgementDocuments(developed).map(r => [r.label, r.present]));
     const byUndev = Object.fromEntries(resolveLodgementDocuments(undeveloped).map(r => [r.label, r.present]));
-    expect(byDev['General Plan (1)']).toBe(true);
-    expect(byUndev['General Plan (1)']).toBe(true);
+    expect(byDev['General Plan']).toBe(true);
+    expect(byUndev['General Plan']).toBe(true);
   });
 
   it('does NOT tick a generated item when the keyword matches but the folder is wrong', () => {
@@ -168,7 +168,7 @@ describe('lodgementDocumentsFor', () => {
 describe('resolveLodgementDocuments — the Diagram rule', () => {
   it('ticks Diagram from a plan-type-slug filename in output/diagrams', () => {
     const files = [f('diagram-STAND_2283_MAGLAS.pdf', 'output/diagrams')];
-    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
+    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.displayLabel, r.present]));
     expect(by['Diagram (3)']).toBe(true);
   });
 
@@ -188,13 +188,13 @@ describe('resolveLodgementDocuments — the Diagram rule', () => {
       f('diagram-STAND_208.pdf', 'output/diagrams'),
       f('diagram-STAND_209.pdf', 'output/diagrams'),
     ];
-    const labels = resolveLodgementDocuments(files).map(r => r.label);
+    const labels = resolveLodgementDocuments(files).map(r => r.displayLabel);
     expect(labels).toContain('Diagrams (9)');
   });
 
   it('keeps the singular noun for one diagram file, still counting its three copies', () => {
     const files = [f('diagram-STAND_207.pdf', 'output/diagrams')];
-    const labels = resolveLodgementDocuments(files).map(r => r.label);
+    const labels = resolveLodgementDocuments(files).map(r => r.displayLabel);
     expect(labels).toContain('Diagram (3)');
   });
 
@@ -203,7 +203,7 @@ describe('resolveLodgementDocuments — the Diagram rule', () => {
       f('general-undeveloped-MAGLAS.pdf', 'output/general-plans'),
       f('general-developed-MAGLAS.pdf', 'output/general-plans'),
     ];
-    const labels = resolveLodgementDocuments(files).map(r => r.label);
+    const labels = resolveLodgementDocuments(files).map(r => r.displayLabel);
     expect(labels).toContain('General Plan (2)');
   });
 

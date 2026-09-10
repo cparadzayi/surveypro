@@ -44,7 +44,10 @@ export function lodgementDocumentsFor(composition?: RecordComposition | null): s
 export const LODGEMENT_DOCUMENTS: string[] = lodgementDocumentsFor(null);
 
 export interface LodgementDocumentStatus {
+  /** Canonical identity. Never carries a count — consumers match on this. */
   label: string;
+  /** What the letter prints: the label plus a live copy count for the two plan rows. */
+  displayLabel: string;
   present: boolean;
 }
 
@@ -114,7 +117,11 @@ export function resolveLodgementDocuments(
       if (rule.kind === 'external') return segments[0] === 'input';
       return segments.some((seg) => rule.folders.includes(seg));
     });
-    return { label: enclosedLabel(label, matches.length), present: matches.length > 0 };
+    return {
+      label,
+      displayLabel: enclosedLabel(label, matches.length),
+      present: matches.length > 0,
+    };
   });
 }
 

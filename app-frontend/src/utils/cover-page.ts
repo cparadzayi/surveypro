@@ -167,7 +167,7 @@ export class CoverPageGenerator {
     const docItems: LodgementDocumentStatus[] =
       info.documents && info.documents.length
         ? info.documents
-        : LODGEMENT_DOCUMENTS.map((label) => ({ label, present: false }));
+        : LODGEMENT_DOCUMENTS.map((label) => ({ label, displayLabel: label, present: false }));
 
     const boxSize = 3.5;
     docItems.forEach((doc) => {
@@ -182,7 +182,7 @@ export class CoverPageGenerator {
         pdf.line(boxX + 0.7, boxY + boxSize * 0.55, boxX + boxSize * 0.42, boxY + boxSize - 0.6);
         pdf.line(boxX + boxSize * 0.42, boxY + boxSize - 0.6, boxX + boxSize - 0.5, boxY + 0.5);
       }
-      pdf.text(doc.label, this.marginLeft + 12, yPosition);
+      pdf.text(doc.displayLabel ?? doc.label, this.marginLeft + 12, yPosition);
       yPosition += 6.5;
     });
 

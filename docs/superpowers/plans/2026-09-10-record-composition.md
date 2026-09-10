@@ -813,6 +813,116 @@ export interface ManifestFile {
 }
 ```
 
+- [ ] **Step 3b: Add the shared warning builder**
+
+Both record generators (Task 10) must show the same warnings. Rather than duplicating ~30 lines
+of assembly logic into two `.vue` files — which a review would rightly flag — extract it here,
+where `mtimeMs` has just become available.
+
+Append this test to `app-frontend/src/utils/__tests__/lodgementDocuments.test.ts`:
+
+```ts
+describe('buildLodgementWarnings', () => {
+  const noVerification = { expectedMissing: [], unexpectedPresent: [] };
+
+  it('returns no warnings when nothing is missing or unexpected', () => {
+    expect(buildLodgementWarnings([], noVerification)).toEqual([]);
+  });
+
+  it('lists missing documents as one bulleted warning', () => {
+    const [warning] = buildLodgementWarnings(['Working Plan', 'Searches'], noVerification);
+    expect(warning).toContain('2 document(s) not found');
+    expect(warning).toContain('• Working Plan');
+    expect(warning).toContain('• Searches');
+  });
+
+  it('names a declared family whose folder is empty', () => {
+    const w = buildLodgementWarnings([], { expectedMissing: ['diagram'], unexpectedPresent: [] });
+    expect(w[0]).toBe('This record is configured to enclose Diagrams, but none have been generated.');
+  });
+
+  it('lists unexpected files with their dates so a stale one is visible', () => {
+    const when = new Date('2026-08-20T00:00:00Z').getTime();
+    const w = buildLodgementWarnings([], {
+      expectedMissing: [],
+      unexpectedPresent: [
+        { family: 'diagram', files: [{ name: 'diagram-OLD.pdf', relDir: 'output/diagrams', mtimeMs: when }] },
+      ],
+    });
+    expect(w[0]).toContain('1 diagram file(s)');
+    expect(w[0]).toContain('diagram-OLD.pdf');
+    expect(w[0]).toContain('20/08/2026');
+  });
+
+  it('says the date is unknown when the manifest carries no mtime', () => {
+    const w = buildLodgementWarnings([], {
+      expectedMissing: [],
+      unexpectedPresent: [
+        { family: 'general', files: [{ name: 'gp.pdf', relDir: 'output/general-plans' }] },
+      ],
+    });
+    expect(w[0]).toContain('date unknown');
+  });
+});
+```
+
+Add `buildLodgementWarnings` to that file's import list, then append the implementation to
+`app-frontend/src/utils/lodgementDocuments.ts`:
+
+```ts
+/**
+ * Assemble the pre-generation warnings for the lodgement letter.
+ *
+ * Lives here rather than in the two record-generating views so both show identical
+ * wording from one tested source. Views join the result with a blank line and pass it
+ * to a single confirm dialog.
+ */
+export function buildLodgementWarnings(
+  missing: string[],
+  verification: CompositionVerification
+): string[] {
+  const warnings: string[] = [];
+
+  if (missing.length) {
+    warnings.push(
+      `${missing.length} document(s) not found in the output folder:
+` +
+      missing.map((m) => `  • ${m}`).join('
+')
+    );
+  }
+
+  for (const family of verification.expectedMissing) {
+    const what = family === 'diagram' ? 'Diagrams' : 'General Plans';
+    warnings.push(`This record is configured to enclose ${what}, but none have been generated.`);
+  }
+
+  for (const extra of verification.unexpectedPresent) {
+    const what = extra.family === 'diagram' ? 'diagram' : 'general plan';
+    const listed = extra.files
+      .map((file) => {
+        // mtime cannot decide staleness -- showing the date lets the surveyor decide.
+        const when = file.mtimeMs
+          ? new Date(file.mtimeMs).toLocaleDateString('en-GB')
+          : 'date unknown';
+        return `  • ${file.name} (${when})`;
+      })
+      .join('
+');
+    warnings.push(
+      `The output folder holds ${extra.files.length} ${what} file(s) that this record ` +
+      `is not configured to enclose — they will NOT be listed on the letter:
+${listed}`
+    );
+  }
+
+  return warnings;
+}
+```
+
+Run: `cd app-frontend && npx vitest run src/utils/__tests__/lodgementDocuments.test.ts`
+Expected: PASS.
+
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js outputManifest`
@@ -1592,7 +1702,9 @@ git commit -m "refactor(plans): render the plan-type list from PLAN_TYPE_META an
 
 - [ ] **Step 1: Update the SurveyPlanMapView call site**
 
-Replace the existence-check block at `SurveyPlanMapView.vue:4625-4640`:
+Add `buildLodgementWarnings` to this file's existing import from `@/utils/lodgementDocuments`
+(or add the import if there is none), then replace the existence-check block at
+`SurveyPlanMapView.vue:4625-4640`:
 
 ```ts
     // Existence check for enclosed documents (ticks + optional warning), scoped to
@@ -1602,32 +1714,15 @@ Replace the existence-check block at `SurveyPlanMapView.vue:4625-4640`:
       await checkLodgementDocuments(recordWorkingDirectory, recordComposition.value)
 
     if (recordWorkingDirectory) {
-      const warnings: string[] = []
-      if (missingDocs.length) {
-        warnings.push(
-          `${missingDocs.length} document(s) not found in the output folder:\n` +
-          missingDocs.map((m) => `  • ${m}`).join('\n')
-        )
-      }
-      for (const family of verification.expectedMissing) {
-        const what = family === 'diagram' ? 'Diagrams' : 'General Plans'
-        warnings.push(`This record is configured to enclose ${what}, but none have been generated.`)
-      }
-      for (const extra of verification.unexpectedPresent) {
-        const what = extra.family === 'diagram' ? 'diagram' : 'general plan'
-        const listed = extra.files
-          .map((file) => {
-            const when = file.mtimeMs ? new Date(file.mtimeMs).toLocaleDateString('en-GB') : 'date unknown'
-            return `  • ${file.name} (${when})`
-          })
-          .join('\n')
-        warnings.push(
-          `The output folder holds ${extra.files.length} ${what} file(s) that this record ` +
-          `is not configured to enclose — they will NOT be listed on the letter:\n${listed}`
-        )
-      }
+      // Warning wording is assembled by one tested helper so both record generators
+      // say exactly the same thing. See lodgementDocuments.buildLodgementWarnings.
+      const warnings = buildLodgementWarnings(missingDocs, verification)
       if (warnings.length) {
-        const proceed = window.confirm(`⚠ ${warnings.join('\n\n')}\n\nGenerate anyway?`)
+        const proceed = window.confirm(`⚠ ${warnings.join('
+
+')}
+
+Generate anyway?`)
         if (!proceed) {
           console.log('[ComprehensivePDF] Generation cancelled by user (document check)')
           return
@@ -1642,6 +1737,7 @@ Replace the existence-check block at `SurveyPlanMapView.vue:4625-4640`:
 
 ```ts
 import { useRecordComposition } from '@/composables/useRecordComposition';
+import { buildLodgementWarnings } from '@/utils/lodgementDocuments';
 
 const { compositionFor } = useRecordComposition();
 ```
@@ -1654,32 +1750,15 @@ Then replace its `await checkLodgementDocuments(recordWorkingDirectory)` call at
       await checkLodgementDocuments(recordWorkingDirectory, recordComposition)
 
     if (recordWorkingDirectory) {
-      const warnings: string[] = []
-      if (missingDocs.length) {
-        warnings.push(
-          `${missingDocs.length} document(s) not found in the output folder:\n` +
-          missingDocs.map((m) => `  • ${m}`).join('\n')
-        )
-      }
-      for (const family of verification.expectedMissing) {
-        const what = family === 'diagram' ? 'Diagrams' : 'General Plans'
-        warnings.push(`This record is configured to enclose ${what}, but none have been generated.`)
-      }
-      for (const extra of verification.unexpectedPresent) {
-        const what = extra.family === 'diagram' ? 'diagram' : 'general plan'
-        const listed = extra.files
-          .map((file) => {
-            const when = file.mtimeMs ? new Date(file.mtimeMs).toLocaleDateString('en-GB') : 'date unknown'
-            return `  • ${file.name} (${when})`
-          })
-          .join('\n')
-        warnings.push(
-          `The output folder holds ${extra.files.length} ${what} file(s) that this record ` +
-          `is not configured to enclose — they will NOT be listed on the letter:\n${listed}`
-        )
-      }
+      // Warning wording is assembled by one tested helper so both record generators
+      // say exactly the same thing. See lodgementDocuments.buildLodgementWarnings.
+      const warnings = buildLodgementWarnings(missingDocs, verification)
       if (warnings.length) {
-        const proceed = window.confirm(`⚠ ${warnings.join('\n\n')}\n\nGenerate anyway?`)
+        const proceed = window.confirm(`⚠ ${warnings.join('
+
+')}
+
+Generate anyway?`)
         if (!proceed) {
           console.log('[ComprehensivePDF] Generation cancelled by user (document check)')
           return

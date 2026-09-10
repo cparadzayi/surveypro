@@ -20,6 +20,35 @@
 - Gating applies **only** to a composition with `source: 'confirmed'`. An inferred or absent composition never blocks anything.
 - Both servers are already running for manual verification: backend `http://127.0.0.1:3050`, frontend `http://localhost:5173`.
 
+## Decisions that supersede the spec
+
+The spec left two questions open and flagged both as unverified. Both are now answered, and **this plan supersedes those two spec sections**. Everything else in the spec stands.
+
+### 1. The letter DOES show counts (supersedes spec §4b, "no count")
+
+Counts are derived live from the output manifest at letter-generation time — never typed by the surveyor:
+
+| Row | Count |
+|---|---|
+| Diagrams | `filesIn('output/diagrams').length * 3` — **three copies of each diagram are lodged**, so the enclosed count is the file count times three |
+| General Plan | `filesIn('output/general-plans').length` — one copy per plan, no multiplier |
+
+Rendering as *"Diagrams (9)"* for 3 diagram files, *"General Plan (2)"* for 2.
+
+The spec's objection — "a count goes stale the moment a plan is superseded" — does not hold: the count is re-derived from the manifest on every render, exactly as presence already is. There is nothing to go stale that is not already recomputed.
+
+### 2. The inference threshold is THREE, not two (supersedes spec §Decisions 4)
+
+Grounded in **SI 727 §61(1)(a)**: a General Plan is required where a parcel is divided into **three or more** adjoining parcels and the immediate parent property is plotted at too small a scale to show the portions clearly.
+
+| Parcel count (excluding Outside Figure) | Inferred composition |
+|---|---|
+| `0` | neither — not a valid confirmed state |
+| `1` or `2` | Diagrams |
+| `>= 3` | General Plans |
+
+"Both" is still never guessed. This is a pre-fill only, so a record split into 2 parcels that still needs a General Plan (the small-scale-parent clause of §61(1)(a)) is defaulted differently, never blocked. `inferComposition`'s doc comment cites §61(1)(a) so the threshold is not later mistaken for an arbitrary number.
+
 **One deliberate deviation from the spec:** the spec placed `verifyAgainstManifest` in `recordComposition.ts`. It goes in `lodgementDocuments.ts` instead (Task 4), because it needs the `ManifestFile` type that `lodgementDocuments.ts` owns, and `lodgementDocuments.ts` already imports from `recordComposition.ts`. Putting it in `recordComposition.ts` would create a circular import between the two.
 
 ## File Structure
@@ -41,253 +70,55 @@
 
 ---
 
-### Task 1: The record-composition model
+### Task 1: The record-composition model — ✅ ALREADY DONE
 
-**Files:**
-- Create: `app-frontend/src/utils/recordComposition.ts`
-- Test: `app-frontend/src/utils/__tests__/recordComposition.test.ts`
+**Status: complete.** Shipped in commit `6bb3055` on this branch, 27 passing tests.
+Do not re-implement. Read `app-frontend/src/utils/recordComposition.ts` before starting
+Task 2 — later tasks consume the exact signatures below.
 
-**Interfaces:**
-- Consumes: nothing (leaf module).
-- Produces: `type PlanFamily = 'diagram' | 'general' | 'working'`; `interface RecordComposition { includesDiagrams: boolean; includesGeneralPlans: boolean; source: 'inferred' | 'confirmed'; confirmedAt?: string }`; `inferComposition(parcelCount: number): RecordComposition`; `normalizeComposition(raw: unknown): RecordComposition | null`; `describeComposition(c: RecordComposition | null): string`; `allowsFamily(c: RecordComposition | null, family: PlanFamily): boolean`.
+**Files (as shipped):**
+- `app-frontend/src/utils/recordComposition.ts`
+- `app-frontend/src/utils/__tests__/recordComposition.test.ts`
 
-- [ ] **Step 1: Write the failing test**
-
-Create `app-frontend/src/utils/__tests__/recordComposition.test.ts`:
+**Interfaces actually produced** — later tasks MUST match these, not the spec's earlier draft:
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import {
-  inferComposition,
-  normalizeComposition,
-  describeComposition,
-  allowsFamily,
-  type RecordComposition,
-} from '../recordComposition';
-
-const confirmed = (d: boolean, g: boolean): RecordComposition => ({
-  includesDiagrams: d,
-  includesGeneralPlans: g,
-  source: 'confirmed',
-});
-
-describe('inferComposition', () => {
-  it('treats a single parcel as a diagram survey', () => {
-    expect(inferComposition(1)).toEqual({
-      includesDiagrams: true,
-      includesGeneralPlans: false,
-      source: 'inferred',
-    });
-  });
-
-  it('treats two or more parcels as a general plan survey', () => {
-    expect(inferComposition(2).includesGeneralPlans).toBe(true);
-    expect(inferComposition(2).includesDiagrams).toBe(false);
-    expect(inferComposition(47).includesGeneralPlans).toBe(true);
-  });
-
-  it('sets neither flag when there are no parcels yet', () => {
-    const c = inferComposition(0);
-    expect(c.includesDiagrams).toBe(false);
-    expect(c.includesGeneralPlans).toBe(false);
-  });
-
-  it('never returns a confirmed source', () => {
-    expect(inferComposition(1).source).toBe('inferred');
-    expect(inferComposition(9).source).toBe('inferred');
-  });
-
-  it('treats rubbish input as zero rather than throwing', () => {
-    expect(inferComposition(NaN).includesGeneralPlans).toBe(false);
-    expect(inferComposition(-3).includesDiagrams).toBe(false);
-  });
-});
-
-describe('normalizeComposition', () => {
-  it('accepts a well-formed confirmed value', () => {
-    expect(
-      normalizeComposition({
-        includesDiagrams: true,
-        includesGeneralPlans: true,
-        source: 'confirmed',
-        confirmedAt: '2026-09-10T00:00:00.000Z',
-      })
-    ).toEqual({
-      includesDiagrams: true,
-      includesGeneralPlans: true,
-      source: 'confirmed',
-      confirmedAt: '2026-09-10T00:00:00.000Z',
-    });
-  });
-
-  it('rejects non-objects from untyped jsonb', () => {
-    expect(normalizeComposition(null)).toBeNull();
-    expect(normalizeComposition(undefined)).toBeNull();
-    expect(normalizeComposition('diagrams')).toBeNull();
-    expect(normalizeComposition(7)).toBeNull();
-    expect(normalizeComposition([])).toBeNull();
-  });
-
-  it('rejects an inferred value, because only confirmed values are ever persisted', () => {
-    expect(
-      normalizeComposition({ includesDiagrams: true, includesGeneralPlans: false, source: 'inferred' })
-    ).toBeNull();
-  });
-
-  it('rejects a confirmed value with neither family set', () => {
-    expect(
-      normalizeComposition({ includesDiagrams: false, includesGeneralPlans: false, source: 'confirmed' })
-    ).toBeNull();
-  });
-
-  it('omits confirmedAt when it is not a string', () => {
-    const c = normalizeComposition({
-      includesDiagrams: true,
-      includesGeneralPlans: false,
-      source: 'confirmed',
-      confirmedAt: 12345,
-    });
-    expect(c).not.toBeNull();
-    expect(c!.confirmedAt).toBeUndefined();
-  });
-});
-
-describe('describeComposition', () => {
-  it('names each of the three valid configurations', () => {
-    expect(describeComposition(confirmed(true, true))).toBe('General Plans and Diagrams');
-    expect(describeComposition(confirmed(false, true))).toBe('General Plans only');
-    expect(describeComposition(confirmed(true, false))).toBe('Diagrams only');
-  });
-
-  it('describes an absent composition as not yet set', () => {
-    expect(describeComposition(null)).toBe('not yet set');
-  });
-});
-
-describe('allowsFamily', () => {
-  it('never gates the working plan', () => {
-    expect(allowsFamily(confirmed(true, false), 'working')).toBe(true);
-    expect(allowsFamily(confirmed(false, true), 'working')).toBe(true);
-    expect(allowsFamily(null, 'working')).toBe(true);
-  });
-
-  it('gates diagram and general against a confirmed composition', () => {
-    expect(allowsFamily(confirmed(true, false), 'diagram')).toBe(true);
-    expect(allowsFamily(confirmed(true, false), 'general')).toBe(false);
-    expect(allowsFamily(confirmed(false, true), 'diagram')).toBe(false);
-    expect(allowsFamily(confirmed(false, true), 'general')).toBe(true);
-    expect(allowsFamily(confirmed(true, true), 'diagram')).toBe(true);
-    expect(allowsFamily(confirmed(true, true), 'general')).toBe(true);
-  });
-
-  it('allows everything when nothing is confirmed, so a wrong guess can never block', () => {
-    expect(allowsFamily(null, 'diagram')).toBe(true);
-    expect(allowsFamily(null, 'general')).toBe(true);
-    expect(allowsFamily(inferComposition(47), 'diagram')).toBe(true);
-    expect(allowsFamily(inferComposition(1), 'general')).toBe(true);
-    expect(allowsFamily(inferComposition(0), 'diagram')).toBe(true);
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd app-frontend && npx vitest run src/utils/__tests__/recordComposition.test.ts`
-Expected: FAIL — "Failed to resolve import ../recordComposition".
-
-- [ ] **Step 3: Write minimal implementation**
-
-Create `app-frontend/src/utils/recordComposition.ts`:
-
-```ts
-/**
- * Whether a survey record encloses Diagrams, General Plans, or both.
- *
- * Modelled as two booleans rather than a three-way enum: the surveyor's three
- * configurations are exactly the three valid combinations, gating is naturally
- * per-family, and a fourth plan product would not reshape the type.
- */
-
-/** Which product family a plan type belongs to. Owned here so views can depend on utils. */
-export type PlanFamily = 'diagram' | 'general' | 'working';
+export type PlanFamily = 'diagram' | 'general' | 'working'
 
 export interface RecordComposition {
-  includesDiagrams: boolean;
-  includesGeneralPlans: boolean;
-  /** 'inferred' until the surveyor confirms it; 'confirmed' after. Only confirmed values persist. */
-  source: 'inferred' | 'confirmed';
-  confirmedAt?: string;
+  includesDiagrams: boolean
+  includesGeneralPlans: boolean
+  source: 'inferred' | 'confirmed'
+  confirmedAt?: string
 }
 
-/**
- * Pre-fill from the digitized parcel count: one parcel is a diagram survey, a
- * township of several is a general plan. "Both" is deliberately never guessed —
- * whether individual stand diagrams are cut inside a general plan is an
- * instruction decision that is absent from the data.
- */
-export function inferComposition(parcelCount: number): RecordComposition {
-  const n = Number.isFinite(parcelCount) && parcelCount > 0 ? Math.floor(parcelCount) : 0;
-  return {
-    includesDiagrams: n === 1,
-    includesGeneralPlans: n >= 2,
-    source: 'inferred',
-  };
+/** describeComposition returns an OBJECT, not a string. */
+export interface CompositionDescription {
+  /** Short noun phrase for banners, e.g. "General Plans only" / "Not yet confirmed". */
+  label: string
+  /** Why a plan type is blocked, or null when nothing is blocked. */
+  reason: string | null
 }
 
-/** Validate a value read back out of the untyped `workflow_state` jsonb. */
-export function normalizeComposition(raw: unknown): RecordComposition | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const r = raw as Record<string, unknown>;
-  // Only confirmed values are ever written, so anything else is stale or corrupt.
-  if (r.source !== 'confirmed') return null;
-  const includesDiagrams = r.includesDiagrams === true;
-  const includesGeneralPlans = r.includesGeneralPlans === true;
-  // A confirmed composition must enclose at least one family.
-  if (!includesDiagrams && !includesGeneralPlans) return null;
-  return {
-    includesDiagrams,
-    includesGeneralPlans,
-    source: 'confirmed',
-    ...(typeof r.confirmedAt === 'string' ? { confirmedAt: r.confirmedAt } : {}),
-  };
-}
-
-/** Human wording for the banner, the disabled-option reason, and the warnings. */
-export function describeComposition(c: RecordComposition | null): string {
-  if (!c) return 'not yet set';
-  if (c.includesDiagrams && c.includesGeneralPlans) return 'General Plans and Diagrams';
-  if (c.includesGeneralPlans) return 'General Plans only';
-  if (c.includesDiagrams) return 'Diagrams only';
-  return 'not yet set';
-}
-
-/**
- * The single gating predicate.
- *
- * Gating applies only once the surveyor has CONFIRMED the composition. While it
- * is merely inferred — or absent entirely — everything stays enabled, so a wrong
- * guess can only ever propose, never block. This also disposes of the zero-parcel
- * case, where neither flag is set and gating would otherwise disable every plan
- * type at once.
- */
-export function allowsFamily(c: RecordComposition | null, family: PlanFamily): boolean {
-  if (family === 'working') return true;
-  if (!c || c.source !== 'confirmed') return true;
-  return family === 'diagram' ? c.includesDiagrams : c.includesGeneralPlans;
-}
+export function inferComposition(parcelCount: number): RecordComposition
+export function normalizeComposition(raw: unknown): RecordComposition | null
+export function allowsFamily(c: RecordComposition | null | undefined, family: PlanFamily): boolean
+export function describeComposition(c: RecordComposition | null | undefined): CompositionDescription
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+**Three behaviours later tasks depend on:**
 
-Run: `cd app-frontend && npx vitest run src/utils/__tests__/recordComposition.test.ts`
-Expected: PASS — 17 tests.
+1. `inferComposition` uses the **SI 727 §61(1)(a) threshold of three**: `0` ⇒ neither, `1`–`2` ⇒ Diagrams, `>= 3` ⇒ General Plans.
+2. `normalizeComposition` keeps a value whose `source` is unrecognised, **demoting it to `'inferred'`** rather than rejecting it. Because gating only acts on `'confirmed'`, malformed jsonb can never block a plan type — it just fails to gate.
+3. `describeComposition` owns **both** the banner label and the blocked-plan reason. Do not write a second `blockedReason()` helper in the views — read `.reason` from this, so the wording has one source.
 
-- [ ] **Step 5: Commit**
+- [x] **Complete** — verify with:
 
 ```bash
-git add app-frontend/src/utils/recordComposition.ts app-frontend/src/utils/__tests__/recordComposition.test.ts
-git commit -m "feat(record): add the record-composition model and its decision functions"
+cd app-frontend && npx vitest run src/utils/__tests__/recordComposition.test.ts
 ```
+
+Expected: PASS — 27 tests.
 
 ---
 
@@ -499,6 +330,8 @@ git commit -m "feat(plans): give each plan type a family and extract the chooser
 
 **Note:** the existing test `'lists the 11 canonical items in order'` asserts an exact 11-item array. Adding the Diagram row makes it 12. That assertion must be updated — it is the point of this task, not a regression.
 
+**Counts, per Decision 1 above:** the two plan rows carry a live count — Diagrams at three lodged copies per file, General Plan at one. This supersedes the spec's §4b "no count".
+
 - [ ] **Step 1: Write the failing test**
 
 In `app-frontend/src/utils/__tests__/lodgementDocuments.test.ts`, replace the whole opening `describe('LODGEMENT_DOCUMENTS', ...)` block with:
@@ -598,28 +431,50 @@ describe('resolveLodgementDocuments — the Diagram rule', () => {
     expect(by['Diagram']).toBe(false);
   });
 
-  it('pluralises the label when more than one diagram is enclosed', () => {
+  it('counts three lodged copies for each diagram file', () => {
+    // Three copies of every diagram are lodged, so the enclosed count is the file
+    // count times three -- not the file count.
     const files = [
       f('diagram-STAND_207.pdf', 'output/diagrams'),
       f('diagram-STAND_208.pdf', 'output/diagrams'),
+      f('diagram-STAND_209.pdf', 'output/diagrams'),
     ];
     const labels = resolveLodgementDocuments(files).map(r => r.label);
-    expect(labels).toContain('Diagrams');
-    expect(labels).not.toContain('Diagram');
+    expect(labels).toContain('Diagrams (9)');
   });
 
-  it('keeps the singular label for exactly one diagram', () => {
+  it('keeps the singular noun for one diagram file, still counting its three copies', () => {
     const files = [f('diagram-STAND_207.pdf', 'output/diagrams')];
     const labels = resolveLodgementDocuments(files).map(r => r.label);
+    expect(labels).toContain('Diagram (3)');
+  });
+
+  it('counts general plans one copy per file, with no multiplier', () => {
+    const files = [
+      f('general-undeveloped-MAGLAS.pdf', 'output/general-plans'),
+      f('general-developed-MAGLAS.pdf', 'output/general-plans'),
+    ];
+    const labels = resolveLodgementDocuments(files).map(r => r.label);
+    expect(labels).toContain('General Plan (2)');
+  });
+
+  it('leaves an absent row uncounted and unadorned', () => {
+    const labels = resolveLodgementDocuments([]).map(r => r.label);
     expect(labels).toContain('Diagram');
-    expect(labels).not.toContain('Diagrams');
+    expect(labels).toContain('General Plan');
+  });
+
+  it('never counts the nine non-plan rows', () => {
+    const files = [f('MAG1_FieldBook.pdf', 'output/field-book')];
+    const labels = resolveLodgementDocuments(files).map(r => r.label);
+    expect(labels).toContain('Field book');
   });
 
   it('honours the composition when building the list', () => {
     const files = [f('diagram-STAND_207.pdf', 'output/diagrams')];
     const labels = resolveLodgementDocuments(files, confirmedComposition(false, true)).map(r => r.label);
-    expect(labels).not.toContain('Diagram');
-    expect(labels).not.toContain('Diagrams');
+    // Counted rows render as "Diagram (3)", so match on the prefix rather than exact text.
+    expect(labels.some(l => l.startsWith('Diagram'))).toBe(false);
   });
 });
 ```
@@ -679,6 +534,32 @@ export function lodgementDocumentsFor(composition?: RecordComposition | null): s
 export const LODGEMENT_DOCUMENTS: string[] = lodgementDocumentsFor(null);
 ```
 
+Add the copy-count helper above `resolveLodgementDocuments`:
+
+```ts
+/**
+ * Copies of each file that are physically lodged. Three copies of every diagram go to
+ * the SG; general plans go one per plan. Anything not listed is not counted at all.
+ */
+const COPIES_PER_FILE: Record<string, number> = {
+  'Diagram': 3,
+  'General Plan': 1,
+};
+
+/**
+ * Render an enclosed-document label, with a live count for the two plan rows.
+ *
+ * The count is derived from the manifest on every render, exactly as presence is, so
+ * it cannot drift from what is on disk — superseding a plan re-derives both.
+ */
+function enclosedLabel(label: string, fileCount: number): string {
+  const copies = COPIES_PER_FILE[label];
+  if (copies === undefined || fileCount === 0) return label;
+  const noun = label === 'Diagram' && fileCount > 1 ? 'Diagrams' : label;
+  return `${noun} (${fileCount * copies})`;
+}
+```
+
 Add the Diagram rule to `DOCUMENT_RULES`, immediately above the `'General Plan'` entry:
 
 ```ts
@@ -703,10 +584,7 @@ export function resolveLodgementDocuments(
       if (rule.kind === 'external') return segments[0] === 'input';
       return segments.some((seg) => rule.folders.includes(seg));
     });
-    // A record commonly encloses several diagrams; the letter reads better plural.
-    // No count — a count on a letter to the SG goes stale the moment a plan is superseded.
-    const displayLabel = label === 'Diagram' && matches.length > 1 ? 'Diagrams' : label;
-    return { label: displayLabel, present: matches.length > 0 };
+    return { label: enclosedLabel(label, matches.length), present: matches.length > 0 };
   });
 }
 ```
@@ -1389,14 +1267,15 @@ const draftGeneralPlans = ref(false)
 const confirming = ref(false)
 
 const isConfirmed = computed(() => composition.value?.source === 'confirmed')
-const compositionLabel = computed(() => describeComposition(composition.value))
+
+// describeComposition owns BOTH the banner label and the blocked-plan reason, so the
+// wording has exactly one source. Do not re-derive the reason string here.
+const description = computed(() => describeComposition(composition.value))
+const compositionLabel = computed(() => description.value.label)
+const blockedReason = computed(() => description.value.reason ?? '')
 
 function familyAllowed(family: PlanFamily): boolean {
   return allowsFamily(composition.value, family)
-}
-
-function blockedReason(): string {
-  return `This record is configured as ${compositionLabel.value}. Change it in Record Composition above.`
 }
 
 /**
@@ -1504,7 +1383,7 @@ Replace each card's opening `<div>` tag. Survey Diagram (currently line 12):
         <div
           class="plan-type-card"
           :class="{ 'plan-type-card--blocked': !familyAllowed('diagram') }"
-          :title="familyAllowed('diagram') ? '' : blockedReason()"
+          :title="familyAllowed('diagram') ? '' : blockedReason"
           @click="selectPlanType('diagram')"
         >
 ```
@@ -1521,7 +1400,7 @@ Township General Plan (currently line 40):
         <div
           class="plan-type-card"
           :class="{ 'plan-type-card--blocked': !familyAllowed('general') }"
-          :title="familyAllowed('general') ? '' : blockedReason()"
+          :title="familyAllowed('general') ? '' : blockedReason"
           @click="selectPlanType('township-general-plan')"
         >
 ```
@@ -1529,11 +1408,11 @@ Township General Plan (currently line 40):
 Inside the Diagram card and the Township General Plan card, immediately before their closing `</div>`, add the inline reason:
 
 ```html
-          <p v-if="!familyAllowed('diagram')" class="plan-type-blocked-reason">{{ blockedReason() }}</p>
+          <p v-if="!familyAllowed('diagram')" class="plan-type-blocked-reason">{{ blockedReason }}</p>
 ```
 
 ```html
-          <p v-if="!familyAllowed('general')" class="plan-type-blocked-reason">{{ blockedReason() }}</p>
+          <p v-if="!familyAllowed('general')" class="plan-type-blocked-reason">{{ blockedReason }}</p>
 ```
 
 - [ ] **Step 4: Add the styles**
@@ -1632,7 +1511,7 @@ const { compositionFor, loadComposition } = useRecordComposition()
 const recordComposition = ref(props.projectId ? compositionFor(props.projectId) : null)
 
 const planTypeOptions = computed(() => planTypeOptionsFor(recordComposition.value))
-const compositionLabel = computed(() => describeComposition(recordComposition.value))
+const compositionLabel = computed(() => describeComposition(recordComposition.value).label)
 
 onMounted(async () => {
   if (!props.projectId) return
@@ -1819,7 +1698,7 @@ With a project confirmed as **General Plans only** and at least one general plan
 2. Manually drop a file named `diagram-TEST.pdf` into the project's `output/diagrams/` folder and generate again. A warning names the unexpected file **with its date**, and offers to proceed.
 3. Change the composition to **Both** and generate again with `output/diagrams/` emptied. A warning says diagrams are configured but none were generated.
 4. Put a real diagram back and generate. No composition warning; the letter shows a ticked Diagram row.
-5. With two diagrams present, the row reads **Diagrams**, plural, with no count.
+5. With two diagrams present, the row reads **Diagrams (6)** — two files at three lodged copies each. With one diagram it reads **Diagram (3)**. With two general plans, that row reads **General Plan (2)** — one copy per plan, no multiplier.
 
 - [ ] **Step 4: Run the full suite**
 

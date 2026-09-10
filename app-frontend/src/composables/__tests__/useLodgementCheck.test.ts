@@ -6,6 +6,7 @@ vi.mock('@/services/documentStorage', () => ({
 
 import { getOutputManifest } from '@/services/documentStorage';
 import { checkLodgementDocuments } from '../useLodgementCheck';
+import type { RecordComposition } from '@/utils/recordComposition';
 
 describe('checkLodgementDocuments', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -38,5 +39,50 @@ describe('checkLodgementDocuments', () => {
     expect(by['Coordinate List and Calculations']).toBe(true);
     expect(missing).not.toContain('Field book');
     expect(missing).not.toContain('Coordinate List and Calculations');
+  });
+});
+
+const composition = (d: boolean, g: boolean): RecordComposition => ({
+  includesDiagrams: d,
+  includesGeneralPlans: g,
+  source: 'confirmed',
+});
+
+describe('checkLodgementDocuments — composition aware', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('omits General Plan entirely for a diagrams-only record', async () => {
+    (getOutputManifest as any).mockResolvedValue({
+      files: [{ name: 'diagram-STAND_207.pdf', relDir: 'output/diagrams', mtimeMs: 1 }],
+    });
+    const { documents, missing } = await checkLodgementDocuments('some/dir', composition(true, false));
+    expect(documents.map(d => d.label)).not.toContain('General Plan');
+    expect(missing).not.toContain('General Plan');
+    expect(documents.find(d => d.label === 'Diagram')?.present).toBe(true);
+  });
+
+  it('flags a declared family whose folder is empty', async () => {
+    (getOutputManifest as any).mockResolvedValue({
+      files: [{ name: 'general-undeveloped-MAGLAS.pdf', relDir: 'output/general-plans', mtimeMs: 1 }],
+    });
+    const { verification } = await checkLodgementDocuments('some/dir', composition(true, true));
+    expect(verification.expectedMissing).toEqual(['diagram']);
+  });
+
+  it('flags leftover files for a family the record does not declare', async () => {
+    (getOutputManifest as any).mockResolvedValue({
+      files: [
+        { name: 'general-undeveloped-MAGLAS.pdf', relDir: 'output/general-plans', mtimeMs: 1 },
+        { name: 'diagram-STAND_207.pdf', relDir: 'output/diagrams', mtimeMs: 2 },
+      ],
+    });
+    const { verification } = await checkLodgementDocuments('some/dir', composition(false, true));
+    expect(verification.unexpectedPresent.map(u => u.family)).toEqual(['diagram']);
+  });
+
+  it('returns an empty verification when no composition is given', async () => {
+    (getOutputManifest as any).mockResolvedValue({ files: [] });
+    const { verification } = await checkLodgementDocuments('some/dir');
+    expect(verification).toEqual({ expectedMissing: [], unexpectedPresent: [] });
   });
 });

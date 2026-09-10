@@ -5,9 +5,13 @@
  * while surveyor-supplied docs are matched by keyword anywhere under input/.
  */
 
-export const LODGEMENT_DOCUMENTS: string[] = [
+import type { RecordComposition } from './recordComposition';
+
+/** Every enclosed-document label, both plan families included. */
+const ALL_LODGEMENT_DOCUMENTS: string[] = [
   'Field book',
   'Coordinate List and Calculations',
+  'Diagram',
   'General Plan',
   'Working Plan',
   'Report on Survey',
@@ -18,6 +22,26 @@ export const LODGEMENT_DOCUMENTS: string[] = [
   'Beacon receipt',
   'Searches',
 ];
+
+/**
+ * The enclosed-document labels for a given record composition.
+ *
+ * An unconfirmed or absent composition yields the both-inclusive list, so a
+ * project that never set one behaves as it always did (plus the Diagram row).
+ */
+export function lodgementDocumentsFor(composition?: RecordComposition | null): string[] {
+  const gated = composition && composition.source === 'confirmed';
+  const wantDiagrams = !gated || composition!.includesDiagrams;
+  const wantGeneralPlans = !gated || composition!.includesGeneralPlans;
+  return ALL_LODGEMENT_DOCUMENTS.filter((label) => {
+    if (label === 'Diagram') return wantDiagrams;
+    if (label === 'General Plan') return wantGeneralPlans;
+    return true;
+  });
+}
+
+/** Both-inclusive default, used where no composition is available. */
+export const LODGEMENT_DOCUMENTS: string[] = lodgementDocumentsFor(null);
 
 export interface LodgementDocumentStatus {
   label: string;
@@ -34,10 +58,35 @@ type DocRule =
   | { kind: 'generated'; folders: string[]; keyword: RegExp }
   | { kind: 'external'; keyword: RegExp };
 
+/**
+ * Copies of each file that are physically lodged. Three copies of every diagram go to
+ * the SG; general plans go one per plan. Anything not listed is not counted at all.
+ */
+const COPIES_PER_FILE: Record<string, number> = {
+  'Diagram': 3,
+  'General Plan': 1,
+};
+
+/**
+ * Render an enclosed-document label, with a live count for the two plan rows.
+ *
+ * The count is derived from the manifest on every render, exactly as presence is, so
+ * it cannot drift from what is on disk — superseding a plan re-derives both.
+ */
+function enclosedLabel(label: string, fileCount: number): string {
+  const copies = COPIES_PER_FILE[label];
+  if (copies === undefined || fileCount === 0) return label;
+  const noun = label === 'Diagram' && fileCount > 1 ? 'Diagrams' : label;
+  return `${noun} (${fileCount * copies})`;
+}
+
 /** Per-item matching rule. Generated items are folder-scoped; external items live under input/. */
 const DOCUMENT_RULES: Record<string, DocRule> = {
   'Field book': { kind: 'generated', folders: ['field-book'], keyword: /field.?book/i },
   'Coordinate List and Calculations': { kind: 'generated', folders: ['coordinate-list', 'calculations'], keyword: /coordinate|calc|comprehensive/i },
+  // Diagrams are saved as `diagram-<designation>.pdf` into output/diagrams. Folder-gated,
+  // so a general plan that names its parent diagram number cannot tick this row.
+  'Diagram': { kind: 'generated', folders: ['diagrams'], keyword: /diagram/i },
   // Plans are saved as `<planType>-<designation>.pdf`; the general-plans folder holds the
   // general-developed / general-undeveloped / general-plan slugs — all General Plan products,
   // all starting with "general". Folder-gated, so the keyword need only confirm the product.
@@ -52,17 +101,20 @@ const DOCUMENT_RULES: Record<string, DocRule> = {
   'Searches': { kind: 'external', keyword: /search/i },
 };
 
-export function resolveLodgementDocuments(files: ManifestFile[]): LodgementDocumentStatus[] {
+export function resolveLodgementDocuments(
+  files: ManifestFile[],
+  composition?: RecordComposition | null
+): LodgementDocumentStatus[] {
   const list = files || [];
-  return LODGEMENT_DOCUMENTS.map((label) => {
+  return lodgementDocumentsFor(composition).map((label) => {
     const rule = DOCUMENT_RULES[label];
-    const present = list.some((file) => {
+    const matches = list.filter((file) => {
       if (!rule || !rule.keyword.test(file.name)) return false;
       const segments = (file.relDir || '').split('/').filter(Boolean);
       if (rule.kind === 'external') return segments[0] === 'input';
       return segments.some((seg) => rule.folders.includes(seg));
     });
-    return { label, present };
+    return { label: enclosedLabel(label, matches.length), present: matches.length > 0 };
   });
 }
 

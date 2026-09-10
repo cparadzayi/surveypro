@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { LODGEMENT_DOCUMENTS, resolveLodgementDocuments, markRecordSectionsPresent, type ManifestFile } from '../lodgementDocuments';
+import { LODGEMENT_DOCUMENTS, lodgementDocumentsFor, resolveLodgementDocuments, markRecordSectionsPresent, type ManifestFile } from '../lodgementDocuments';
+import type { RecordComposition } from '../recordComposition';
 
 describe('LODGEMENT_DOCUMENTS', () => {
-  it('lists the 11 canonical items in order', () => {
+  it('lists the 12 canonical items in order, with Diagram before General Plan', () => {
     expect(LODGEMENT_DOCUMENTS).toEqual([
       'Field book',
       'Coordinate List and Calculations',
+      'Diagram',
       'General Plan',
       'Working Plan',
       'Report on Survey',
@@ -33,7 +35,7 @@ describe('resolveLodgementDocuments — generated docs (folder + keyword)', () =
     const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
     expect(by['Field book']).toBe(true);
     expect(by['Coordinate List and Calculations']).toBe(true);
-    expect(by['General Plan']).toBe(true);
+    expect(by['General Plan (1)']).toBe(true);
     expect(by['DSG Certificate (1/96)']).toBe(true);
     expect(by['Working Plan']).toBe(false);
   });
@@ -46,8 +48,8 @@ describe('resolveLodgementDocuments — generated docs (folder + keyword)', () =
     const undeveloped = [f('general-undeveloped-LOT_5_BORROWDALE.pdf', 'output/general-plans')];
     const byDev = Object.fromEntries(resolveLodgementDocuments(developed).map(r => [r.label, r.present]));
     const byUndev = Object.fromEntries(resolveLodgementDocuments(undeveloped).map(r => [r.label, r.present]));
-    expect(byDev['General Plan']).toBe(true);
-    expect(byUndev['General Plan']).toBe(true);
+    expect(byDev['General Plan (1)']).toBe(true);
+    expect(byUndev['General Plan (1)']).toBe(true);
   });
 
   it('does NOT tick a generated item when the keyword matches but the folder is wrong', () => {
@@ -111,5 +113,116 @@ describe('markRecordSectionsPresent', () => {
     expect(by['Coordinate List and Calculations']).toBe(true);
     expect(by['General Plan']).toBe(false);
     expect(by['Beacon receipt']).toBe(false);
+  });
+});
+
+const confirmedComposition = (d: boolean, g: boolean): RecordComposition => ({
+  includesDiagrams: d,
+  includesGeneralPlans: g,
+  source: 'confirmed',
+});
+
+describe('lodgementDocumentsFor', () => {
+  it('drops General Plan from a diagrams-only record', () => {
+    const labels = lodgementDocumentsFor(confirmedComposition(true, false));
+    expect(labels).toContain('Diagram');
+    expect(labels).not.toContain('General Plan');
+    expect(labels).toContain('Working Plan');
+  });
+
+  it('drops Diagram from a general-plans-only record', () => {
+    const labels = lodgementDocumentsFor(confirmedComposition(false, true));
+    expect(labels).not.toContain('Diagram');
+    expect(labels).toContain('General Plan');
+  });
+
+  it('keeps both for a both record', () => {
+    const labels = lodgementDocumentsFor(confirmedComposition(true, true));
+    expect(labels).toContain('Diagram');
+    expect(labels).toContain('General Plan');
+  });
+
+  it('keeps both when nothing is confirmed, so an unconfigured project never regresses', () => {
+    expect(lodgementDocumentsFor(null)).toEqual(LODGEMENT_DOCUMENTS);
+    expect(lodgementDocumentsFor(undefined)).toEqual(LODGEMENT_DOCUMENTS);
+  });
+
+  it('never touches the nine non-plan items', () => {
+    const labels = lodgementDocumentsFor(confirmedComposition(true, false));
+    expect(labels).toEqual([
+      'Field book',
+      'Coordinate List and Calculations',
+      'Diagram',
+      'Working Plan',
+      'Report on Survey',
+      'Dispensation Certificate',
+      'Checklist',
+      'DSG Certificate (1/96)',
+      'Permit/Instruction and layout',
+      'Beacon receipt',
+      'Searches',
+    ]);
+  });
+});
+
+describe('resolveLodgementDocuments — the Diagram rule', () => {
+  it('ticks Diagram from a plan-type-slug filename in output/diagrams', () => {
+    const files = [f('diagram-STAND_2283_MAGLAS.pdf', 'output/diagrams')];
+    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
+    expect(by['Diagram (3)']).toBe(true);
+  });
+
+  it('does NOT tick Diagram for a diagram-named file in the wrong folder', () => {
+    // The parent diagram number appears in general plan filenames; folder-gating
+    // is what stops it ticking the Diagram row.
+    const files = [f('general-plan-parent-diagram-4471.pdf', 'output/general-plans')];
+    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
+    expect(by['Diagram']).toBe(false);
+  });
+
+  it('counts three lodged copies for each diagram file', () => {
+    // Three copies of every diagram are lodged, so the enclosed count is the file
+    // count times three -- not the file count.
+    const files = [
+      f('diagram-STAND_207.pdf', 'output/diagrams'),
+      f('diagram-STAND_208.pdf', 'output/diagrams'),
+      f('diagram-STAND_209.pdf', 'output/diagrams'),
+    ];
+    const labels = resolveLodgementDocuments(files).map(r => r.label);
+    expect(labels).toContain('Diagrams (9)');
+  });
+
+  it('keeps the singular noun for one diagram file, still counting its three copies', () => {
+    const files = [f('diagram-STAND_207.pdf', 'output/diagrams')];
+    const labels = resolveLodgementDocuments(files).map(r => r.label);
+    expect(labels).toContain('Diagram (3)');
+  });
+
+  it('counts general plans one copy per file, with no multiplier', () => {
+    const files = [
+      f('general-undeveloped-MAGLAS.pdf', 'output/general-plans'),
+      f('general-developed-MAGLAS.pdf', 'output/general-plans'),
+    ];
+    const labels = resolveLodgementDocuments(files).map(r => r.label);
+    expect(labels).toContain('General Plan (2)');
+  });
+
+  it('leaves an absent row uncounted and unadorned', () => {
+    const labels = resolveLodgementDocuments([]).map(r => r.label);
+    expect(labels).toContain('Diagram');
+    expect(labels).toContain('General Plan');
+  });
+
+  it('never counts the nine non-plan rows', () => {
+    const files = [f('MAG1_FieldBook.pdf', 'output/field-book')];
+    const labels = resolveLodgementDocuments(files).map(r => r.label);
+    expect(labels).toContain('Field book');
+  });
+
+  it('honours the composition when building the list', () => {
+    const files = [f('diagram-STAND_207.pdf', 'output/diagrams')];
+    const labels = resolveLodgementDocuments(files, confirmedComposition(false, true)).map(r => r.label);
+    // Counted rows render as "Diagram (3)", so match on the prefix rather than exact text.
+    expect(labels.some(l => l.startsWith('Diagram'))).toBe(false);
   });
 });

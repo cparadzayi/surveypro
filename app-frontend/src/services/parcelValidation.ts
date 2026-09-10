@@ -37,7 +37,8 @@ export interface ValidationResult {
   };
 }
 
-function isOutsideFigureParcelName(name?: string): boolean {
+/** True for the Outside Figure pseudo-parcel, which is never a lodged stand. */
+export function isOutsideFigureParcelName(name?: string): boolean {
   return (name || '').toLowerCase().includes('outside figure');
 }
 

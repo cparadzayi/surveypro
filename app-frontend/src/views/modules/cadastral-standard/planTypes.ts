@@ -1,3 +1,5 @@
+import type { PlanFamily } from '@/utils/recordComposition'
+
 export type PlanType =
   | 'general-undeveloped'
   | 'general-developed'
@@ -14,6 +16,8 @@ export interface PlanTypeMeta {
   subjectMode: SubjectMode
   /** Whether to also emit the plan-statistics summary PDF in the bundle. */
   includesSummary: boolean
+  /** Product family, for record-composition gating. Working plans are never gated. */
+  family: PlanFamily
 }
 
 export const PLAN_TYPE_META: Record<PlanType, PlanTypeMeta> = {
@@ -22,24 +26,28 @@ export const PLAN_TYPE_META: Record<PlanType, PlanTypeMeta> = {
     label: 'General Plan (Undeveloped Portion)',
     subjectMode: 'whole-set',
     includesSummary: true,
+    family: 'general',
   },
   'general-developed': {
     key: 'general-developed',
     label: 'General Plan (Developed Portion)',
     subjectMode: 'whole-set',
     includesSummary: true,
+    family: 'general',
   },
   diagram: {
     key: 'diagram',
     label: 'Diagram',
     subjectMode: 'single-parcel',
     includesSummary: false,
+    family: 'diagram',
   },
   'working-plan': {
     key: 'working-plan',
     label: 'Working Plan',
     subjectMode: 'whole-set',
     includesSummary: false,
+    family: 'working',
   },
 }
 

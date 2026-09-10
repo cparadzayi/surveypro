@@ -30,3 +30,12 @@ describe('getPlanTypeMeta', () => {
     )
   })
 })
+
+describe('PLAN_TYPE_META families', () => {
+  it('assigns each plan type to its product family', () => {
+    expect(PLAN_TYPE_META['diagram'].family).toBe('diagram')
+    expect(PLAN_TYPE_META['general-developed'].family).toBe('general')
+    expect(PLAN_TYPE_META['general-undeveloped'].family).toBe('general')
+    expect(PLAN_TYPE_META['working-plan'].family).toBe('working')
+  })
+})

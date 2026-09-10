@@ -33,3 +33,11 @@ test('missing output/input folders yield an empty list, no throw', () => {
   expect(collectOutputManifest(empty)).toEqual([]);
   fs.rmSync(empty, { recursive: true, force: true });
 });
+
+test('carries each file mtime so callers can surface stale outputs', () => {
+  const files = collectOutputManifest(root);
+  const gp = files.find(f => f.name === 'GENERAL-PLAN-Maglas.pdf');
+  expect(typeof gp.mtimeMs).toBe('number');
+  expect(gp.mtimeMs).toBeGreaterThan(0);
+  expect(files.every(f => typeof f.mtimeMs === 'number')).toBe(true);
+});

@@ -27,7 +27,15 @@ function walk(dir, base, out) {
       walk(full, base, out);
     } else if (entry.isFile()) {
       const relDir = path.relative(base, dir).split(path.sep).join('/');
-      out.push({ name: entry.name, relDir });
+      // mtime lets callers surface a stale output beside a current one. It cannot
+      // decide staleness on its own -- that judgement stays with the surveyor.
+      let mtimeMs = 0;
+      try {
+        mtimeMs = fs.statSync(full).mtimeMs;
+      } catch {
+        // Unreadable file: keep it in the manifest, just without a usable time.
+      }
+      out.push({ name: entry.name, relDir, mtimeMs });
     }
   }
 }

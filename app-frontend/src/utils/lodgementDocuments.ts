@@ -55,6 +55,8 @@ export interface LodgementDocumentStatus {
 export interface ManifestFile {
   name: string;
   relDir: string;
+  /** Last-modified epoch ms, for surfacing stale outputs. Absent on older callers. */
+  mtimeMs?: number;
 }
 
 type DocRule =
@@ -175,4 +177,49 @@ export function verifyAgainstManifest(
     if (!declared && found.length > 0) result.unexpectedPresent.push({ family, files: found });
   }
   return result;
+}
+
+/**
+ * Assemble the pre-generation warnings for the lodgement letter.
+ *
+ * Lives here rather than in the two record-generating views so both show identical
+ * wording from one tested source. Views join the result with a blank line and pass it
+ * to a single confirm dialog.
+ */
+export function buildLodgementWarnings(
+  missing: string[],
+  verification: CompositionVerification
+): string[] {
+  const warnings: string[] = [];
+
+  if (missing.length) {
+    warnings.push(
+      `${missing.length} document(s) not found in the output folder:\n` +
+      missing.map((m) => `  • ${m}`).join('\n')
+    );
+  }
+
+  for (const family of verification.expectedMissing) {
+    const what = family === 'diagram' ? 'Diagrams' : 'General Plans';
+    warnings.push(`This record is configured to enclose ${what}, but none have been generated.`);
+  }
+
+  for (const extra of verification.unexpectedPresent) {
+    const what = extra.family === 'diagram' ? 'diagram' : 'general plan';
+    const listed = extra.files
+      .map((file) => {
+        // mtime cannot decide staleness -- showing the date lets the surveyor decide.
+        const when = file.mtimeMs
+          ? new Date(file.mtimeMs).toLocaleDateString('en-GB')
+          : 'date unknown';
+        return `  • ${file.name} (${when})`;
+      })
+      .join('\n');
+    warnings.push(
+      `The output folder holds ${extra.files.length} ${what} file(s) that this record ` +
+      `is not configured to enclose — they will NOT be listed on the letter:\n${listed}`
+    );
+  }
+
+  return warnings;
 }

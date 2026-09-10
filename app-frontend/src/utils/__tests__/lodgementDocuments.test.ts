@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LODGEMENT_DOCUMENTS, lodgementDocumentsFor, resolveLodgementDocuments, markRecordSectionsPresent, verifyAgainstManifest, type ManifestFile } from '../lodgementDocuments';
+import { LODGEMENT_DOCUMENTS, lodgementDocumentsFor, resolveLodgementDocuments, markRecordSectionsPresent, verifyAgainstManifest, buildLodgementWarnings, type ManifestFile } from '../lodgementDocuments';
 import type { RecordComposition } from '../recordComposition';
 
 describe('LODGEMENT_DOCUMENTS', () => {
@@ -273,5 +273,48 @@ describe('verifyAgainstManifest', () => {
   it('tolerates an empty manifest without throwing', () => {
     const v = verifyAgainstManifest(confirmedComposition(true, false), []);
     expect(v.expectedMissing).toEqual(['diagram']);
+  });
+});
+
+describe('buildLodgementWarnings', () => {
+  const noVerification = { expectedMissing: [], unexpectedPresent: [] };
+
+  it('returns no warnings when nothing is missing or unexpected', () => {
+    expect(buildLodgementWarnings([], noVerification)).toEqual([]);
+  });
+
+  it('lists missing documents as one bulleted warning', () => {
+    const [warning] = buildLodgementWarnings(['Working Plan', 'Searches'], noVerification);
+    expect(warning).toContain('2 document(s) not found');
+    expect(warning).toContain('• Working Plan');
+    expect(warning).toContain('• Searches');
+  });
+
+  it('names a declared family whose folder is empty', () => {
+    const w = buildLodgementWarnings([], { expectedMissing: ['diagram'], unexpectedPresent: [] });
+    expect(w[0]).toBe('This record is configured to enclose Diagrams, but none have been generated.');
+  });
+
+  it('lists unexpected files with their dates so a stale one is visible', () => {
+    const when = new Date('2026-08-20T00:00:00Z').getTime();
+    const w = buildLodgementWarnings([], {
+      expectedMissing: [],
+      unexpectedPresent: [
+        { family: 'diagram', files: [{ name: 'diagram-OLD.pdf', relDir: 'output/diagrams', mtimeMs: when }] },
+      ],
+    });
+    expect(w[0]).toContain('1 diagram file(s)');
+    expect(w[0]).toContain('diagram-OLD.pdf');
+    expect(w[0]).toContain('20/08/2026');
+  });
+
+  it('says the date is unknown when the manifest carries no mtime', () => {
+    const w = buildLodgementWarnings([], {
+      expectedMissing: [],
+      unexpectedPresent: [
+        { family: 'general', files: [{ name: 'gp.pdf', relDir: 'output/general-plans' }] },
+      ],
+    });
+    expect(w[0]).toContain('date unknown');
   });
 });

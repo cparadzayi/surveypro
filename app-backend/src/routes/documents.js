@@ -5,7 +5,7 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { classifyFsWriteError } from '../utils/fsWriteErrors.js'
 import { writeFileWithRetry } from '../utils/fsWriteRetry.js'
-import { collectOutputManifest } from '../utils/outputManifest.js'
+import { collectOutputManifest, attachPageCounts } from '../utils/outputManifest.js'
 
 const execAsync = promisify(exec)
 
@@ -182,7 +182,7 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(400).send({ ok: false, error: 'Working directory required' })
       }
       const absolutePath = resolveWorkingDirectory(workingDirectory)
-      const files = collectOutputManifest(absolutePath)
+      const files = await attachPageCounts(absolutePath, collectOutputManifest(absolutePath))
       return { ok: true, files }
     } catch (error) {
       fastify.log.error(error)

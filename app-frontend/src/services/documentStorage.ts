@@ -129,7 +129,7 @@ export async function getProjectDocuments(workingDirectory: string) {
  */
 export async function getOutputManifest(
   workingDirectory: string
-): Promise<{ files: { name: string; relDir: string; mtimeMs?: number }[] }> {
+): Promise<{ files: { name: string; relDir: string; mtimeMs?: number; pageCount?: number }[] }> {
   try {
     const response = await fetch(
       `${API_BASE}/documents/output-manifest?workingDirectory=${encodeURIComponent(workingDirectory)}`

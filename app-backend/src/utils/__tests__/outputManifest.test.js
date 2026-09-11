@@ -41,3 +41,76 @@ test('carries each file mtime so callers can surface stale outputs', () => {
   expect(gp.mtimeMs).toBeGreaterThan(0);
   expect(files.every(f => typeof f.mtimeMs === 'number')).toBe(true);
 });
+
+import { attachPageCounts } from '../outputManifest.js';
+import { PDFDocument } from 'pdf-lib';
+
+describe('attachPageCounts', () => {
+  let pcRoot;
+
+  beforeAll(async () => {
+    pcRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pagecount-'));
+    fs.mkdirSync(path.join(pcRoot, 'output', 'general-plans'), { recursive: true });
+    fs.mkdirSync(path.join(pcRoot, 'output', 'diagrams'), { recursive: true });
+
+    // A real 3-page PDF stands in for a 3-sheet general plan.
+    const gp = await PDFDocument.create();
+    gp.addPage(); gp.addPage(); gp.addPage();
+    fs.writeFileSync(
+      path.join(pcRoot, 'output', 'general-plans', 'general-undeveloped-MAGLAS.pdf'),
+      await gp.save(),
+    );
+
+    // Its DXF twin and statistics summary must never be counted.
+    fs.writeFileSync(path.join(pcRoot, 'output', 'general-plans', 'general-undeveloped-MAGLAS.dxf'), 'DXF');
+    const summary = await PDFDocument.create();
+    summary.addPage();
+    fs.writeFileSync(
+      path.join(pcRoot, 'output', 'general-plans', 'general-undeveloped-MAGLAS-summary.pdf'),
+      await summary.save(),
+    );
+
+    // A diagram is always one sheet by rule, so it is never opened.
+    const diagram = await PDFDocument.create();
+    diagram.addPage();
+    fs.writeFileSync(path.join(pcRoot, 'output', 'diagrams', 'diagram-STAND_207.pdf'), await diagram.save());
+
+    // A deliberately corrupt PDF must not break the enrichment.
+    fs.writeFileSync(path.join(pcRoot, 'output', 'general-plans', 'general-broken.pdf'), 'not a pdf at all');
+  });
+
+  afterAll(() => {
+    fs.rmSync(pcRoot, { recursive: true, force: true });
+  });
+
+  const by = (files, name) => files.find(f => f.name === name);
+
+  test('reads the real page count for a general-plan PDF', async () => {
+    const files = await attachPageCounts(pcRoot, collectOutputManifest(pcRoot));
+    expect(by(files, 'general-undeveloped-MAGLAS.pdf').pageCount).toBe(3);
+  });
+
+  test('never opens a diagram PDF — a diagram is one sheet by rule', async () => {
+    const files = await attachPageCounts(pcRoot, collectOutputManifest(pcRoot));
+    expect(by(files, 'diagram-STAND_207.pdf').pageCount).toBeUndefined();
+  });
+
+  test('ignores the DXF twin and the statistics summary', async () => {
+    const files = await attachPageCounts(pcRoot, collectOutputManifest(pcRoot));
+    expect(by(files, 'general-undeveloped-MAGLAS.dxf').pageCount).toBeUndefined();
+    expect(by(files, 'general-undeveloped-MAGLAS-summary.pdf').pageCount).toBeUndefined();
+  });
+
+  test('keeps a corrupt PDF in the manifest, just without a page count', async () => {
+    const files = await attachPageCounts(pcRoot, collectOutputManifest(pcRoot));
+    const broken = by(files, 'general-broken.pdf');
+    expect(broken).toBeDefined();
+    expect(broken.pageCount).toBeUndefined();
+  });
+
+  test('returns the same array instance it was given', async () => {
+    const input = collectOutputManifest(pcRoot);
+    const output = await attachPageCounts(pcRoot, input);
+    expect(output).toBe(input);
+  });
+});

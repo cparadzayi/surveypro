@@ -5,11 +5,49 @@
       <p class="text-gray-600 mt-1">Select the type of survey plan to generate</p>
     </div>
 
+    <!-- Record Composition: what this record encloses. Drives the letter and the cards below. -->
+    <div v-if="projectId" class="composition-banner" :class="{ 'is-confirmed': isConfirmed }">
+      <template v-if="isConfirmed">
+        <span class="composition-summary">
+          📋 Record composition: <strong>{{ compositionLabel }}</strong>
+        </span>
+        <button class="composition-change" @click="reopenComposition">Change</button>
+      </template>
+      <template v-else>
+        <div class="composition-prompt">
+          <strong>What does this survey record enclose?</strong>
+          <span v-if="parcelCountForHint !== null" class="composition-hint">
+            Suggested from {{ parcelCountForHint }} parcel(s).
+          </span>
+        </div>
+        <label class="composition-option">
+          <input type="checkbox" v-model="draftDiagrams" />
+          Diagrams
+        </label>
+        <label class="composition-option">
+          <input type="checkbox" v-model="draftGeneralPlans" />
+          General Plans
+        </label>
+        <button
+          class="composition-confirm"
+          :disabled="(!draftDiagrams && !draftGeneralPlans) || confirming"
+          @click="saveComposition"
+        >
+          {{ confirming ? 'Saving…' : 'Confirm' }}
+        </button>
+      </template>
+    </div>
+
     <!-- Plan Type Selection -->
     <div v-if="!selectedPlanType" class="plan-type-selection">
       <div class="plan-types-grid">
         <!-- Survey Diagram -->
-        <div class="plan-type-card" @click="selectPlanType('diagram')">
+        <div
+          class="plan-type-card"
+          :class="{ 'plan-type-card--blocked': !familyAllowed('diagram') }"
+          :title="familyAllowed('diagram') ? '' : blockedReason"
+          @click="selectPlanType('diagram')"
+        >
           <div class="plan-type-icon">📐</div>
           <h3 class="plan-type-title">Survey Diagram</h3>
           <p class="plan-type-description">
@@ -20,6 +58,7 @@
             <span class="feature-tag">Technical</span>
             <span class="feature-tag">Field Work</span>
           </div>
+          <p v-if="!familyAllowed('diagram')" class="plan-type-blocked-reason">{{ blockedReason }}</p>
         </div>
 
         <!-- Working Plan -->
@@ -37,7 +76,12 @@
         </div>
 
         <!-- Township General Plan -->
-        <div class="plan-type-card" @click="selectPlanType('township-general-plan')">
+        <div
+          class="plan-type-card"
+          :class="{ 'plan-type-card--blocked': !familyAllowed('general') }"
+          :title="familyAllowed('general') ? '' : blockedReason"
+          @click="selectPlanType('township-general-plan')"
+        >
           <div class="plan-type-icon">🏘️</div>
           <h3 class="plan-type-title">Township General Plan</h3>
           <p class="plan-type-description">
@@ -49,6 +93,7 @@
             <span class="feature-tag">Vector PDF</span>
             <span class="feature-tag">QGIS</span>
           </div>
+          <p v-if="!familyAllowed('general')" class="plan-type-blocked-reason">{{ blockedReason }}</p>
         </div>
       </div>
     </div>
@@ -109,6 +154,8 @@ import WorkingPlanView from './WorkingPlanView.vue'
 import SurveyPlanMapView from './SurveyPlanMapView.vue'
 import { useAuthStore } from '../../../stores/auth'
 import { useSurveyors } from '../../../composables/useSurveyors'
+import { useRecordComposition } from '@/composables/useRecordComposition'
+import { describeComposition, allowsFamily, type PlanFamily } from '@/utils/recordComposition'
 
 interface Props {
   projectId?: number
@@ -121,16 +168,78 @@ const emit = defineEmits(['plan-generated', 'continue'])
 // Plan type selection
 const selectedPlanType = ref<string | null>(null)
 
-function selectPlanType(type: string) {
-  selectedPlanType.value = type
-  console.log('📋 Selected plan type:', type)
-}
-
 // Get logged-in surveyor from auth store
 const authStore = useAuthStore()
 
 // Get project data from useSurveyors composable
 const { surveyProjects } = useSurveyors()
+
+const { compositionFor, parcelCountFor, loadComposition, confirmComposition } = useRecordComposition()
+
+const composition = ref(props.projectId ? compositionFor(props.projectId) : null)
+const parcelCountForHint = ref<number | null>(null)
+const draftDiagrams = ref(false)
+const draftGeneralPlans = ref(false)
+const confirming = ref(false)
+
+const isConfirmed = computed(() => composition.value?.source === 'confirmed')
+
+// describeComposition owns BOTH the banner label and the blocked-plan reason, so the
+// wording has exactly one source. Do not re-derive the reason string here.
+const description = computed(() => describeComposition(composition.value))
+const compositionLabel = computed(() => description.value.label)
+const blockedReason = computed(() => description.value.reason ?? '')
+
+function familyAllowed(family: PlanFamily): boolean {
+  return allowsFamily(composition.value, family)
+}
+
+function selectPlanType(type: string) {
+  const family: PlanFamily =
+    type === 'diagram' ? 'diagram' : type === 'working-plan' ? 'working' : 'general'
+  if (!familyAllowed(family)) return
+  selectedPlanType.value = type
+  console.log('📋 Selected plan type:', type)
+}
+
+async function initComposition() {
+  if (!props.projectId) return
+  const loaded = await loadComposition(props.projectId, props.workflowState)
+  composition.value = loaded
+  parcelCountForHint.value = parcelCountFor(props.projectId)
+  draftDiagrams.value = loaded?.includesDiagrams ?? false
+  draftGeneralPlans.value = loaded?.includesGeneralPlans ?? false
+}
+
+async function saveComposition() {
+  if (!props.projectId) return
+  if (!draftDiagrams.value && !draftGeneralPlans.value) return
+  confirming.value = true
+  try {
+    composition.value = await confirmComposition(
+      props.projectId,
+      draftDiagrams.value,
+      draftGeneralPlans.value
+    )
+  } catch (error) {
+    console.error('[RecordComposition] Failed to save:', error)
+    alert('Could not save the record composition. Please try again.')
+  } finally {
+    confirming.value = false
+  }
+}
+
+/**
+ * Reopen the banner for editing. This demotes only the LOCAL copy to 'inferred' —
+ * the cache and the database keep the confirmed value until the surveyor presses
+ * Confirm again. So pressing Change and then navigating away changes nothing, which
+ * is the behaviour you want from a Change link that was never followed through.
+ */
+function reopenComposition() {
+  draftDiagrams.value = composition.value?.includesDiagrams ?? false
+  draftGeneralPlans.value = composition.value?.includesGeneralPlans ?? false
+  composition.value = composition.value ? { ...composition.value, source: 'inferred' } : null
+}
 
 // Find the current project from the projects list
 const currentProject = computed(() => {
@@ -188,11 +297,12 @@ function continueToNextStep() {
   emit('continue')
 }
 
-onMounted(() => {
+onMounted(async () => {
   console.log('📍 Survey Plan View mounted')
   console.log('  Project ID:', props.projectId)
   console.log('  👤 Logged-in Surveyor:', authStore.currentSurveyor)
   console.log('  📋 Project Info:', projectInfo.value)
+  await initComposition()
 })
 </script>
 
@@ -334,5 +444,48 @@ onMounted(() => {
   padding: 1rem 1.5rem;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.composition-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 1rem 0 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #f59e0b;
+  border-radius: 0.5rem;
+  background: #fffbeb;
+}
+.composition-banner.is-confirmed {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
+.composition-prompt { display: flex; flex-direction: column; }
+.composition-hint { font-size: 0.8rem; color: #6b7280; }
+.composition-option { display: inline-flex; align-items: center; gap: 0.35rem; }
+.composition-confirm {
+  padding: 0.35rem 0.9rem;
+  border-radius: 0.375rem;
+  background: #2563eb;
+  color: #fff;
+}
+.composition-confirm:disabled { background: #9ca3af; cursor: not-allowed; }
+.composition-change {
+  margin-left: auto;
+  color: #2563eb;
+  text-decoration: underline;
+  background: none;
+}
+.plan-type-card--blocked {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.plan-type-blocked-reason {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #b45309;
+  pointer-events: auto;
 }
 </style>

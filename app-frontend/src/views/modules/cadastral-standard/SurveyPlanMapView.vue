@@ -330,11 +330,18 @@
         <div class="config-group">
           <label class="config-label">Plan Type</label>
           <select v-model="config.planType" class="config-input">
-            <option value="general-undeveloped">General Plan (Undeveloped Portion)</option>
-            <option value="general-developed">General Plan (Developed Portion)</option>
-            <option value="diagram">Diagram</option>
-            <option value="working-plan">Working Plan</option>
+            <option
+              v-for="opt in planTypeOptions"
+              :key="opt.value"
+              :value="opt.value"
+              :disabled="!opt.enabled"
+            >
+              {{ opt.label }}{{ opt.enabled ? '' : ' (not in this record)' }}
+            </option>
           </select>
+          <p v-if="planTypeOptions.some(o => !o.enabled)" class="plan-type-gated-note">
+            This record is configured as {{ compositionLabel }}.
+          </p>
         </div>
         <div v-if="isSideAnnotationMode" class="config-group diagram-subject-hint">
           <label class="config-label">{{ isDiagramMode ? 'Diagram subject' : 'Annotation subject' }}</label>
@@ -682,6 +689,9 @@ import {
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
 import { pickDiagramSubjectId } from './diagramSubjectPick'
 import { paperSizeOptionsFor } from './paperSizeOptions'
+import { planTypeOptionsFor, normalizePlanTypeSelection } from './planTypeOptions'
+import { useRecordComposition } from '@/composables/useRecordComposition'
+import { describeComposition } from '@/utils/recordComposition'
 import { subjectSides, upsertAnnotation, removeAnnotation, annotationsForSubject, withSubjectAnnotations, hydrateAnnotationsMap, fractionAlongSide, endFromFraction, type SideAnnotation, type SideRole } from './sideAnnotations'
 import { makeConnection, upsertConnection, removeConnection, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type LoPoint } from './connections'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
@@ -845,6 +855,12 @@ function zoomToParcel(id: string | number) {
   for (const c of ring) bounds.extend(c as [number, number])
   map.value.fitBounds(bounds, { padding: 60, maxZoom: 19 })
 }
+
+const { compositionFor, loadComposition } = useRecordComposition()
+const recordComposition = ref(props.projectId ? compositionFor(props.projectId) : null)
+
+const planTypeOptions = computed(() => planTypeOptionsFor(recordComposition.value))
+const compositionLabel = computed(() => describeComposition(recordComposition.value).label)
 
 const isDiagramMode = computed(() => getPlanTypeMeta(config.value.planType).subjectMode === 'single-parcel')
 const isGeneralPlanMode = computed(() =>
@@ -6671,6 +6687,11 @@ onMounted(async () => {
   loadData()
   loadSideAnnotations()
 
+  recordComposition.value = await loadComposition(props.projectId, props.workflowState)
+  // config.planType is state independent of the composition: without this, confirming
+  // a general-plans-only record while 'diagram' is selected leaves the <select>
+  // sitting on a disabled option.
+  config.value.planType = normalizePlanTypeSelection(config.value.planType, recordComposition.value)
 })
 
 onUnmounted(() => {
@@ -6776,6 +6797,12 @@ onUnmounted(() => {
   border: 1px solid #d1d5db;
   border-radius: 4px;
   font-size: 0.875rem;
+}
+
+.plan-type-gated-note {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #6b7280;
 }
 
 .paper-size-display {

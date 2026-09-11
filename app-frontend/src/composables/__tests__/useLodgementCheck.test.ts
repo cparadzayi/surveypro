@@ -86,3 +86,23 @@ describe('checkLodgementDocuments — composition aware', () => {
     expect(verification).toEqual({ expectedMissing: [], unexpectedPresent: [] });
   });
 });
+
+describe('checkLodgementDocuments — unknown sheet counts', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('reports how many general plans have an unreadable sheet count', async () => {
+    (getOutputManifest as any).mockResolvedValue({
+      files: [
+        { name: 'general-a.pdf', relDir: 'output/general-plans', pageCount: 3 },
+        { name: 'general-b.pdf', relDir: 'output/general-plans' },
+      ],
+    });
+    const { unknownSheetPlans } = await checkLodgementDocuments('some/dir');
+    expect(unknownSheetPlans).toBe(1);
+  });
+
+  it('reports zero when there is no working directory to read', async () => {
+    const { unknownSheetPlans } = await checkLodgementDocuments(undefined);
+    expect(unknownSheetPlans).toBe(0);
+  });
+});

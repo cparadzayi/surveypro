@@ -234,7 +234,8 @@ export function countUnknownSheetPlans(files: ManifestFile[]): number {
  */
 export function buildLodgementWarnings(
   missing: string[],
-  verification: CompositionVerification
+  verification: CompositionVerification,
+  unknownSheetPlans: number = 0
 ): string[] {
   const warnings: string[] = [];
 
@@ -264,6 +265,14 @@ export function buildLodgementWarnings(
     warnings.push(
       `The output folder holds ${extra.files.length} ${what} file(s) that this record ` +
       `is not configured to enclose — they will NOT be listed on the letter:\n${listed}`
+    );
+  }
+
+  if (unknownSheetPlans > 0) {
+    const what = unknownSheetPlans === 1 ? 'general plan' : 'general plans';
+    warnings.push(
+      `Sheet count could not be determined for ${unknownSheetPlans} ${what} — ` +
+      `the letter omits the sheet total.`
     );
   }
 

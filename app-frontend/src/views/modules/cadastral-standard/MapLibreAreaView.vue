@@ -6295,13 +6295,13 @@ async function exportAreaConsistencyPDF() {
     const recordComposition = recordProjectId
       ? await loadComposition(Number(recordProjectId), workflowState)
       : null;
-    const { documents: lodgementDocs, missing: missingDocs, verification } =
+    const { documents: lodgementDocs, missing: missingDocs, verification, unknownSheetPlans } =
       await checkLodgementDocuments(recordWorkingDirectory, recordComposition);
 
     if (recordWorkingDirectory) {
       // Warning wording is assembled by one tested helper so both record generators
       // say exactly the same thing. See lodgementDocuments.buildLodgementWarnings.
-      const warnings = buildLodgementWarnings(missingDocs, verification);
+      const warnings = buildLodgementWarnings(missingDocs, verification, unknownSheetPlans);
       if (warnings.length) {
         const proceed = window.confirm(`⚠ ${warnings.join('\n\n')}\n\nGenerate anyway?`);
         if (!proceed) {

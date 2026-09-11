@@ -3,6 +3,7 @@ import {
   resolveLodgementDocuments,
   markRecordSectionsPresent,
   verifyAgainstManifest,
+  countUnknownSheetPlans,
   type LodgementDocumentStatus,
   type ManifestFile,
   type CompositionVerification,
@@ -25,6 +26,8 @@ export async function checkLodgementDocuments(
   documents: LodgementDocumentStatus[]
   missing: string[]
   verification: CompositionVerification
+  /** General plans whose sheet count could not be read. Feeds buildLodgementWarnings. */
+  unknownSheetPlans: number
 }> {
   let files: ManifestFile[] = []
   if (workingDirectory) {
@@ -34,5 +37,6 @@ export async function checkLodgementDocuments(
   const documents = markRecordSectionsPresent(resolveLodgementDocuments(files, composition))
   const missing = documents.filter((d) => !d.present).map((d) => d.label)
   const verification = verifyAgainstManifest(composition ?? null, files)
-  return { documents, missing, verification }
+  const unknownSheetPlans = countUnknownSheetPlans(files)
+  return { documents, missing, verification, unknownSheetPlans }
 }

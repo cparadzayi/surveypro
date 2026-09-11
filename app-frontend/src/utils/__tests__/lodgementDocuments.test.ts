@@ -497,3 +497,26 @@ describe('countUnknownSheetPlans', () => {
     expect(countUnknownSheetPlans([gp('general-a.pdf', 2)])).toBe(0);
   });
 });
+
+describe('buildLodgementWarnings — unknown sheet counts', () => {
+  const noVerification = { expectedMissing: [], unexpectedPresent: [] };
+
+  it('explains an omitted sheet total', () => {
+    const w = buildLodgementWarnings([], noVerification, 1);
+    expect(w.some(line => /sheet count could not be determined for 1 general plan/i.test(line))).toBe(true);
+    expect(w.some(line => /omits the sheet total/i.test(line))).toBe(true);
+  });
+
+  it('pluralises the count', () => {
+    const w = buildLodgementWarnings([], noVerification, 2);
+    expect(w.some(line => /2 general plans/i.test(line))).toBe(true);
+  });
+
+  it('says nothing when every sheet count is known', () => {
+    expect(buildLodgementWarnings([], noVerification, 0)).toEqual([]);
+  });
+
+  it('says nothing when the argument is omitted entirely', () => {
+    expect(buildLodgementWarnings([], noVerification)).toEqual([]);
+  });
+});

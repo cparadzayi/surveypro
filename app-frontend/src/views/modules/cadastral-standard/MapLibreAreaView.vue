@@ -912,6 +912,8 @@ import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation } from '@/utils/planDesignation';
 import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
+import { useRecordComposition } from '@/composables/useRecordComposition';
+import { buildLodgementWarnings } from '@/utils/lodgementDocuments';
 import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
 import { buildReportDataFromWorkflow } from '@/utils/reportDataFromWorkflow';
 import type { ReportOnSurveyData } from '@/types/cadastral';
@@ -920,6 +922,8 @@ const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../compone
 
 // Inject workflow state
 const workflowState = inject<any>('workflowState');
+
+const { compositionFor } = useRecordComposition();
 
 // Map references
 const mapContainer = ref<HTMLDivElement | null>(null);
@@ -6276,19 +6280,28 @@ async function exportAreaConsistencyPDF() {
       centralMeridian: workflowState?.projectInfo?.centralMeridian || 29
     };
     
-    // Existence check for enclosed documents (ticks + optional warning).
+    // Existence check for enclosed documents (ticks + optional warning), scoped to
+    // what this record is configured to enclose. This view has no `projectId` prop --
+    // read from the workflow-state-injected project info instead, deliberately from
+    // the composition cache (not loadComposition): a surveyor who never visited the
+    // Survey Plan step gets `null` here and falls back to the both-inclusive list with
+    // no verification, exactly today's behaviour.
     const recordWorkingDirectory = workflowState?.projectInfo?.workingDirectory;
-    const { documents: lodgementDocs, missing: missingDocs } =
-      await checkLodgementDocuments(recordWorkingDirectory);
-    if (recordWorkingDirectory && missingDocs.length) {
-      const proceed = window.confirm(
-        `⚠ ${missingDocs.length} document(s) not found in the output folder:\n` +
-        missingDocs.map((m) => `  • ${m}`).join('\n') +
-        `\n\nGenerate anyway?`
-      );
-      if (!proceed) {
-        console.log('[MapLibre] Comprehensive record generation cancelled by user (missing documents)');
-        return;
+    const recordProjectId = workflowState?.projectInfo?.projectId;
+    const recordComposition = recordProjectId ? compositionFor(Number(recordProjectId)) : null;
+    const { documents: lodgementDocs, missing: missingDocs, verification } =
+      await checkLodgementDocuments(recordWorkingDirectory, recordComposition);
+
+    if (recordWorkingDirectory) {
+      // Warning wording is assembled by one tested helper so both record generators
+      // say exactly the same thing. See lodgementDocuments.buildLodgementWarnings.
+      const warnings = buildLodgementWarnings(missingDocs, verification);
+      if (warnings.length) {
+        const proceed = window.confirm(`⚠ ${warnings.join('\n\n')}\n\nGenerate anyway?`);
+        if (!proceed) {
+          console.log('[MapLibre] Comprehensive record generation cancelled by user (document check)');
+          return;
+        }
       }
     }
 

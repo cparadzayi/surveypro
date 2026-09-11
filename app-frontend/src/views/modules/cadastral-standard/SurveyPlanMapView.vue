@@ -698,6 +698,7 @@ import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation } from '@/utils/planDesignation';
 import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
+import { buildLodgementWarnings } from '@/utils/lodgementDocuments';
 import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
 import { buildReportDataFromWorkflow } from '@/utils/reportDataFromWorkflow';
 
@@ -4637,19 +4638,22 @@ async function generateComprehensivePDF() {
     const surveyDate = workflowSurveyorInfo?.surveyDate || config.value.surveyDate || new Date().toISOString().split('T')[0]
     const district = props.projectInfo.district || projectSetupData?.district || 'Unknown District'
 
-    // Existence check for enclosed documents (ticks + optional warning).
+    // Existence check for enclosed documents (ticks + optional warning), scoped to
+    // what this record is configured to enclose.
     const recordWorkingDirectory = (props.projectInfo as any).workingDirectory
-    const { documents: lodgementDocs, missing: missingDocs } =
-      await checkLodgementDocuments(recordWorkingDirectory)
-    if (recordWorkingDirectory && missingDocs.length) {
-      const proceed = window.confirm(
-        `⚠ ${missingDocs.length} document(s) not found in the output folder:\n` +
-        missingDocs.map((m) => `  • ${m}`).join('\n') +
-        `\n\nGenerate anyway?`
-      )
-      if (!proceed) {
-        console.log('[ComprehensivePDF] Generation cancelled by user (missing documents)')
-        return
+    const { documents: lodgementDocs, missing: missingDocs, verification } =
+      await checkLodgementDocuments(recordWorkingDirectory, recordComposition.value)
+
+    if (recordWorkingDirectory) {
+      // Warning wording is assembled by one tested helper so both record generators
+      // say exactly the same thing. See lodgementDocuments.buildLodgementWarnings.
+      const warnings = buildLodgementWarnings(missingDocs, verification)
+      if (warnings.length) {
+        const proceed = window.confirm(`⚠ ${warnings.join('\n\n')}\n\nGenerate anyway?`)
+        if (!proceed) {
+          console.log('[ComprehensivePDF] Generation cancelled by user (document check)')
+          return
+        }
       }
     }
 

@@ -1,5 +1,13 @@
 import jsPDF from 'jspdf';
 import { LODGEMENT_DOCUMENTS, type LodgementDocumentStatus } from './lodgementDocuments';
+import {
+  rowBlockHeight,
+  rowNeedsPageBreak,
+  ROW_HEIGHT_MM,
+  DETAIL_LINE_HEIGHT_MM,
+  ROW_FONT_SIZE,
+  DETAIL_FONT_SIZE,
+} from './letterRowLayout';
 
 /**
  * Cover Page Generator for Surveyor General Submission
@@ -170,7 +178,18 @@ export class CoverPageGenerator {
         : LODGEMENT_DOCUMENTS.map((label) => ({ label, displayLabel: label, present: false }));
 
     const boxSize = 3.5;
+    const pageHeight = pdf.internal.pageSize.getHeight();
+
     docItems.forEach((doc) => {
+      const detail = doc.detail ?? [];
+
+      // Keep the closing block on the same page as the end of the list. Without this guard the
+      // detail lines can consume the remaining space and push the signature off the sheet.
+      if (rowNeedsPageBreak(yPosition, rowBlockHeight(detail.length), pageHeight)) {
+        pdf.addPage();
+        yPosition = this.marginTop;
+      }
+
       const boxX = this.marginLeft + 5;
       const boxY = yPosition - boxSize; // align box bottom near the text baseline
       pdf.setDrawColor(0, 0, 0);
@@ -182,8 +201,21 @@ export class CoverPageGenerator {
         pdf.line(boxX + 0.7, boxY + boxSize * 0.55, boxX + boxSize * 0.42, boxY + boxSize - 0.6);
         pdf.line(boxX + boxSize * 0.42, boxY + boxSize - 0.6, boxX + boxSize - 0.5, boxY + 0.5);
       }
+
+      pdf.setFontSize(ROW_FONT_SIZE);
       pdf.text(doc.displayLabel ?? doc.label, this.marginLeft + 12, yPosition);
-      yPosition += 6.5;
+      yPosition += ROW_HEIGHT_MM;
+
+      // Detail lines sit under the row, indented past the tick box and set smaller, so the
+      // row itself still reads as the enclosed document.
+      if (detail.length) {
+        pdf.setFontSize(DETAIL_FONT_SIZE);
+        for (const line of detail) {
+          pdf.text(line, this.marginLeft + 18, yPosition);
+          yPosition += DETAIL_LINE_HEIGHT_MM;
+        }
+        pdf.setFontSize(ROW_FONT_SIZE);
+      }
     });
 
     yPosition += 10;

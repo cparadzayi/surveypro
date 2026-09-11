@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LODGEMENT_DOCUMENTS, lodgementDocumentsFor, resolveLodgementDocuments, markRecordSectionsPresent, verifyAgainstManifest, buildLodgementWarnings, type ManifestFile } from '../lodgementDocuments';
+import { LODGEMENT_DOCUMENTS, lodgementDocumentsFor, resolveLodgementDocuments, markRecordSectionsPresent, verifyAgainstManifest, buildLodgementWarnings, planRowDetail, countUnknownSheetPlans, type ManifestFile } from '../lodgementDocuments';
 import type { RecordComposition } from '../recordComposition';
 
 describe('LODGEMENT_DOCUMENTS', () => {
@@ -168,8 +168,10 @@ describe('lodgementDocumentsFor', () => {
 describe('resolveLodgementDocuments — the Diagram rule', () => {
   it('ticks Diagram from a plan-type-slug filename in output/diagrams', () => {
     const files = [f('diagram-STAND_2283_MAGLAS.pdf', 'output/diagrams')];
-    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.displayLabel, r.present]));
-    expect(by['Diagram (3)']).toBe(true);
+    const row = resolveLodgementDocuments(files).find(r => r.label === 'Diagram')!;
+    expect(row.present).toBe(true);
+    expect(row.displayLabel).toBe('Diagram');
+    expect(row.detail).toEqual(['1 diagram, 3 copies', 'PDF 1']);
   });
 
   it('does NOT tick Diagram for a diagram-named file in the wrong folder', () => {
@@ -188,14 +190,16 @@ describe('resolveLodgementDocuments — the Diagram rule', () => {
       f('diagram-STAND_208.pdf', 'output/diagrams'),
       f('diagram-STAND_209.pdf', 'output/diagrams'),
     ];
-    const labels = resolveLodgementDocuments(files).map(r => r.displayLabel);
-    expect(labels).toContain('Diagrams (9)');
+    const row = resolveLodgementDocuments(files).find(r => r.label === 'Diagram')!;
+    expect(row.displayLabel).toBe('Diagrams');
+    expect(row.detail).toEqual(['3 diagrams, 9 copies', 'PDF 3']);
   });
 
   it('keeps the singular noun for one diagram file, still counting its three copies', () => {
     const files = [f('diagram-STAND_207.pdf', 'output/diagrams')];
-    const labels = resolveLodgementDocuments(files).map(r => r.displayLabel);
-    expect(labels).toContain('Diagram (3)');
+    const row = resolveLodgementDocuments(files).find(r => r.label === 'Diagram')!;
+    expect(row.displayLabel).toBe('Diagram');
+    expect(row.detail).toEqual(['1 diagram, 3 copies', 'PDF 1']);
   });
 
   it('counts general plans one copy per file, with no multiplier', () => {
@@ -203,8 +207,9 @@ describe('resolveLodgementDocuments — the Diagram rule', () => {
       f('general-undeveloped-MAGLAS.pdf', 'output/general-plans'),
       f('general-developed-MAGLAS.pdf', 'output/general-plans'),
     ];
-    const labels = resolveLodgementDocuments(files).map(r => r.displayLabel);
-    expect(labels).toContain('General Plan (2)');
+    const row = resolveLodgementDocuments(files).find(r => r.label === 'General Plan')!;
+    expect(row.displayLabel).toBe('General Plans');
+    expect(row.detail).toEqual(['2 general plans', 'PDF 2']);
   });
 
   it('leaves an absent row uncounted and unadorned', () => {
@@ -222,7 +227,8 @@ describe('resolveLodgementDocuments — the Diagram rule', () => {
   it('honours the composition when building the list', () => {
     const files = [f('diagram-STAND_207.pdf', 'output/diagrams')];
     const labels = resolveLodgementDocuments(files, confirmedComposition(false, true)).map(r => r.label);
-    // Counted rows render as "Diagram (3)", so match on the prefix rather than exact text.
+    // Counted rows can render as the pluralised "Diagrams", so match on the prefix
+    // rather than exact text.
     expect(labels.some(l => l.startsWith('Diagram'))).toBe(false);
   });
 });
@@ -230,16 +236,16 @@ describe('resolveLodgementDocuments — the Diagram rule', () => {
 describe('resolveLodgementDocuments — only the lodgeable PDF sheet counts', () => {
   // One plan generation writes up to three files into the same folder:
   // `<base>.pdf`, `<base>.dxf` and `<base>-summary.pdf` (SurveyPlanMapView.vue).
-  // Counting all three printed "General Plan (3)" on a letter that goes to the SG.
+  // Counting all three would have inflated the detail line to "3 general plans".
   it('counts one general plan once, despite its DXF twin and statistics summary', () => {
     const files = [
       f('general-undeveloped-MAGLAS.pdf', 'output/general-plans'),
       f('general-undeveloped-MAGLAS.dxf', 'output/general-plans'),
       f('general-undeveloped-MAGLAS-summary.pdf', 'output/general-plans'),
     ];
-    const labels = resolveLodgementDocuments(files).map(r => r.displayLabel);
-    expect(labels).toContain('General Plan (1)');
-    expect(labels).not.toContain('General Plan (3)');
+    const row = resolveLodgementDocuments(files).find(r => r.label === 'General Plan')!;
+    expect(row.displayLabel).toBe('General Plan');
+    expect(row.detail).toEqual(['1 general plan', 'PDF 1 · DXF 1']);
   });
 
   it('counts one diagram as three lodged copies, not six, when a DXF sits beside it', () => {
@@ -247,9 +253,9 @@ describe('resolveLodgementDocuments — only the lodgeable PDF sheet counts', ()
       f('diagram-STAND_2283_MAGLAS.pdf', 'output/diagrams'),
       f('diagram-STAND_2283_MAGLAS.dxf', 'output/diagrams'),
     ];
-    const labels = resolveLodgementDocuments(files).map(r => r.displayLabel);
-    expect(labels).toContain('Diagram (3)');
-    expect(labels).not.toContain('Diagrams (6)');
+    const row = resolveLodgementDocuments(files).find(r => r.label === 'Diagram')!;
+    expect(row.displayLabel).toBe('Diagram');
+    expect(row.detail).toEqual(['1 diagram, 3 copies', 'PDF 1 · DXF 1']);
   });
 
   it('does NOT tick a plan row for a folder holding only a DXF', () => {
@@ -395,5 +401,99 @@ describe('buildLodgementWarnings', () => {
       ],
     });
     expect(w[0]).toContain('date unknown');
+  });
+});
+
+const gp = (name: string, pageCount?: number): ManifestFile =>
+  pageCount === undefined
+    ? { name, relDir: 'output/general-plans' }
+    : { name, relDir: 'output/general-plans', pageCount };
+
+const dg = (name: string): ManifestFile => ({ name, relDir: 'output/diagrams' });
+
+describe('planRowDetail', () => {
+  it('states diagrams and their copies, never their sheets', () => {
+    expect(planRowDetail('diagram', { plans: 3, sheets: 3, copies: 9, dxf: 3 })).toEqual([
+      '3 diagrams, 9 copies',
+      'PDF 3 · DXF 3',
+    ]);
+  });
+
+  it('states general plans and their sheet total', () => {
+    expect(planRowDetail('general', { plans: 2, sheets: 4, copies: 2, dxf: 2 })).toEqual([
+      '2 general plans, 4 sheets',
+      'PDF 2 · DXF 2',
+    ]);
+  });
+
+  it('drops the sheets clause entirely when the count is unknown', () => {
+    expect(planRowDetail('general', { plans: 2, sheets: null, copies: 2, dxf: 2 })).toEqual([
+      '2 general plans',
+      'PDF 2 · DXF 2',
+    ]);
+  });
+
+  it('uses singular nouns for one of each', () => {
+    expect(planRowDetail('general', { plans: 1, sheets: 1, copies: 1, dxf: 1 })).toEqual([
+      '1 general plan, 1 sheet',
+      'PDF 1 · DXF 1',
+    ]);
+    expect(planRowDetail('diagram', { plans: 1, sheets: 1, copies: 3, dxf: 0 })).toEqual([
+      '1 diagram, 3 copies',
+      'PDF 1',
+    ]);
+  });
+
+  it('omits the DXF term when there is no DXF', () => {
+    expect(planRowDetail('general', { plans: 1, sheets: 2, copies: 1, dxf: 0 })[1]).toBe('PDF 1');
+  });
+
+  it('returns no detail lines at all when nothing is enclosed', () => {
+    expect(planRowDetail('general', { plans: 0, sheets: 0, copies: 0, dxf: 1 })).toEqual([]);
+  });
+});
+
+describe('resolveLodgementDocuments — detail lines', () => {
+  it('attaches detail to both plan rows and to no other row', () => {
+    const files = [
+      gp('general-undeveloped-MAGLAS.pdf', 3),
+      gp('general-undeveloped-MAGLAS.dxf'),
+      dg('diagram-STAND_207.pdf'),
+      f('MAG1_FieldBook.pdf', 'output/field-book'),
+    ];
+    const rows = resolveLodgementDocuments(files);
+    const byLabel = Object.fromEntries(rows.map(r => [r.label, r]));
+    expect(byLabel['General Plan'].detail).toEqual(['1 general plan, 3 sheets', 'PDF 1 · DXF 1']);
+    expect(byLabel['Diagram'].detail).toEqual(['1 diagram, 3 copies', 'PDF 1']);
+    expect(byLabel['Field book'].detail).toBeUndefined();
+  });
+
+  it('leaves an unticked plan row without detail lines', () => {
+    const rows = resolveLodgementDocuments([gp('general-undeveloped-MAGLAS.dxf')]);
+    const row = rows.find(r => r.label === 'General Plan')!;
+    expect(row.present).toBe(false);
+    expect(row.detail ?? []).toEqual([]);
+  });
+
+  it('keeps the plural display label without a count in it', () => {
+    // The count moved to the detail lines; the label is now just the noun.
+    const rows = resolveLodgementDocuments([dg('diagram-A.pdf'), dg('diagram-B.pdf')]);
+    expect(rows.find(r => r.label === 'Diagram')!.displayLabel).toBe('Diagrams');
+  });
+});
+
+describe('countUnknownSheetPlans', () => {
+  it('counts general plans whose sheet count could not be read', () => {
+    const files = [gp('general-a.pdf', 3), gp('general-b.pdf'), gp('general-c.pdf')];
+    expect(countUnknownSheetPlans(files)).toBe(2);
+  });
+
+  it('ignores DXFs, summaries, and diagrams', () => {
+    const files = [gp('general-a.dxf'), gp('general-a-summary.pdf'), dg('diagram-STAND_207.pdf')];
+    expect(countUnknownSheetPlans(files)).toBe(0);
+  });
+
+  it('is zero when every general plan reports its pages', () => {
+    expect(countUnknownSheetPlans([gp('general-a.pdf', 2)])).toBe(0);
   });
 });

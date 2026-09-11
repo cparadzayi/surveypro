@@ -6,6 +6,17 @@
  */
 
 import type { RecordComposition, PlanFamily } from './recordComposition';
+import {
+  classifyPlanFile,
+  tallyPlanFamily,
+  type ManifestFile,
+  type PlanFileFamily,
+  type PlanFamilyTally,
+} from './planFileClassifier';
+
+// Re-exported so existing importers (useLodgementCheck, tests) need no change. The interface
+// now lives with the classifier, which is what avoids a circular import between the two.
+export type { ManifestFile };
 
 /** Every enclosed-document label, both plan families included. */
 const ALL_LODGEMENT_DOCUMENTS: string[] = [
@@ -46,52 +57,50 @@ export const LODGEMENT_DOCUMENTS: string[] = lodgementDocumentsFor(null);
 export interface LodgementDocumentStatus {
   /** Canonical identity. Never carries a count — consumers match on this. */
   label: string;
-  /** What the letter prints: the label plus a live copy count for the two plan rows. */
+  /** What the letter prints on the row's own line. */
   displayLabel: string;
   present: boolean;
-}
-
-/** A file from the project output/input manifest. relDir is POSIX, e.g. "output/field-book". */
-export interface ManifestFile {
-  name: string;
-  relDir: string;
-  /** Last-modified epoch ms, for surfacing stale outputs. Absent on older callers. */
-  mtimeMs?: number;
+  /** Extra lines drawn under the row without a tick box. Absent for most rows. */
+  detail?: string[];
 }
 
 type DocRule =
   | { kind: 'generated'; folders: string[]; keyword: RegExp }
   | { kind: 'external'; keyword: RegExp };
 
-/**
- * Copies of each file that are physically lodged. Three copies of every diagram go to
- * the SG; general plans go one per plan. Anything not listed is not counted at all.
- */
-const COPIES_PER_FILE: Record<string, number> = {
-  'Diagram': 3,
-  'General Plan': 1,
+/** Which letter rows are counted plan rows, and which family each one owns. */
+const ROW_FAMILY: Record<string, PlanFileFamily> = {
+  'Diagram': 'diagram',
+  'General Plan': 'general',
 };
 
-/**
- * Render an enclosed-document label, with a live count for the two plan rows.
- *
- * The count is derived from the manifest on every render, exactly as presence is, so
- * it cannot drift from what is on disk — superseding a plan re-derives both.
- */
-function enclosedLabel(label: string, fileCount: number): string {
-  const copies = COPIES_PER_FILE[label];
-  if (copies === undefined || fileCount === 0) return label;
-  const noun = label === 'Diagram' && fileCount > 1 ? 'Diagrams' : label;
-  return `${noun} (${fileCount * copies})`;
+/** Plural display label for a counted row. The count itself now lives in the detail lines. */
+function planRowLabel(label: string, plans: number): string {
+  if (plans <= 1) return label;
+  return label === 'Diagram' ? 'Diagrams' : 'General Plans';
 }
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
 /**
- * A plan file that is actually lodged: the PDF sheet itself. One generation also writes a
- * DXF twin and a `-summary.pdf` into the same folder (SurveyPlanMapView.vue), and neither is
- * a lodged plan sheet — counting them inflated the letter's copy counts.
+ * The lines printed under a counted plan row.
+ *
+ * Diagrams state copies and never sheets — a diagram is always a single sheet. General plans
+ * state sheets, and DROP the clause when the count is unknown rather than guessing, because an
+ * under-reported sheet total on a document lodged with the Surveyor-General is worse than none.
  */
-function isLodgeablePlanFile(file: ManifestFile): boolean {
-  return /\.pdf$/i.test(file.name) && !/-summary\.pdf$/i.test(file.name);
+export function planRowDetail(family: PlanFileFamily, tally: PlanFamilyTally): string[] {
+  if (tally.plans === 0) return [];
+
+  const first = family === 'diagram'
+    ? `${plural(tally.plans, 'diagram', 'diagrams')}, ${plural(tally.copies, 'copy', 'copies')}`
+    : `${plural(tally.plans, 'general plan', 'general plans')}` +
+      (tally.sheets === null ? '' : `, ${plural(tally.sheets, 'sheet', 'sheets')}`);
+
+  const types = [`PDF ${tally.plans}`];
+  if (tally.dxf > 0) types.push(`DXF ${tally.dxf}`);
+
+  return [first, types.join(' · ')];
 }
 
 /** Per-item matching rule. Generated items are folder-scoped; external items live under input/. */
@@ -128,16 +137,20 @@ export function resolveLodgementDocuments(
       if (rule.kind === 'external') return segments[0] === 'input';
       return segments.some((seg) => rule.folders.includes(seg));
     });
-    // Counted rows (the two plan families) tick and count only lodgeable PDF sheets, so
-    // the DXF twin and the -summary.pdf written alongside each plan cannot inflate them.
-    // Every other row keeps matching ALL files: external items are legitimately .jpg
-    // scans and the like, and a PDF-only filter would stop them ticking at all.
-    const counted = COPIES_PER_FILE[label] !== undefined;
-    const lodgeable = counted ? matches.filter(isLodgeablePlanFile) : matches;
+
+    const family = ROW_FAMILY[label];
+    if (!family) {
+      // Every other row is unchanged: presence is simply "a matching file exists". External
+      // items are legitimately .jpg scans, so no PDF filter may be applied to them.
+      return { label, displayLabel: label, present: matches.length > 0 };
+    }
+
+    const tally = tallyPlanFamily(matches, family);
     return {
       label,
-      displayLabel: enclosedLabel(label, lodgeable.length),
-      present: lodgeable.length > 0,
+      displayLabel: planRowLabel(label, tally.plans),
+      present: tally.plans > 0,
+      detail: planRowDetail(family, tally),
     };
   });
 }
@@ -165,7 +178,7 @@ export interface CompositionVerification {
 }
 
 /** Output subfolder each gated family writes into. Mirrors planTypeOutputSubdir. */
-const FAMILY_FOLDERS: Array<{ family: PlanFamily; folder: string }> = [
+const FAMILY_FOLDERS: Array<{ family: PlanFileFamily; folder: string }> = [
   { family: 'diagram', folder: 'diagrams' },
   { family: 'general', folder: 'general-plans' },
 ];
@@ -188,15 +201,28 @@ export function verifyAgainstManifest(
     const found = list.filter((file) =>
       (file.relDir || '').split('/').filter(Boolean).includes(folder)
     );
-    // "Declared but never generated" must look only at lodgeable PDF sheets: a folder
-    // holding nothing but a stray .dxf (or a -summary.pdf) encloses no plan at all.
-    // The opposite direction deliberately keeps ALL files — a leftover DXF in a family
-    // this record does not declare is still worth showing the surveyor.
-    const lodgeable = found.filter(isLodgeablePlanFile);
+    // "Declared but never generated" must look only at lodged plan sheets: a folder holding
+    // nothing but a stray .dxf (or a -summary.pdf) encloses no plan at all. The opposite
+    // direction deliberately keeps ALL files — a leftover DXF in a family this record does
+    // not declare is still worth showing the surveyor.
+    const lodgeable = found.filter((file) => classifyPlanFile(file, family)?.role === 'sheet');
     if (declared && lodgeable.length === 0) result.expectedMissing.push(family);
     if (!declared && found.length > 0) result.unexpectedPresent.push({ family, files: found });
   }
   return result;
+}
+
+/**
+ * General plans whose sheet count could not be read, so the letter's omission of a sheet
+ * total can be explained to the surveyor rather than silently noticed.
+ */
+export function countUnknownSheetPlans(files: ManifestFile[]): number {
+  return (files || []).filter((file) => {
+    const segments = (file.relDir || '').split('/').filter(Boolean);
+    if (!segments.includes('general-plans')) return false;
+    const classified = classifyPlanFile(file, 'general');
+    return classified?.role === 'sheet' && classified.sheets === null;
+  }).length;
 }
 
 /**

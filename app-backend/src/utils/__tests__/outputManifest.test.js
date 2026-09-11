@@ -129,26 +129,21 @@ describe('readPdfPageCount cache does not remember a failed read', () => {
     fs.rmSync(retryRoot, { recursive: true, force: true });
   });
 
-  test('a transient unreadable-PDF failure is retried, not pinned as null forever', async () => {
-    // First "read": not a PDF at all (stands in for a locked/truncated file mid-write).
-    fs.writeFileSync(filePath, 'not a pdf at all');
-    let stat = fs.statSync(filePath);
-    const first = await readPdfPageCount(filePath, stat.mtimeMs, stat.size);
-    expect(first).toBeNull();
+  test('a failed read is retried, not remembered — a transient lock must not pin "unknown"', async () => {
+    // Same key for BOTH calls: readPdfPageCount takes mtimeMs and size as arguments, so the
+    // cache key stays identical while the bytes underneath change. That is what makes this a
+    // real regression guard — if the implementation ever caches nulls again, the second call
+    // returns the remembered null and this test fails.
+    const FIXED_MTIME = 1_700_000_000_000;
+    const FIXED_SIZE = 4242;
 
-    // Overwrite in place with a real multi-page PDF, same path. Its byte length differs from
-    // the junk above, so the path:mtime:size cache key differs too -- otherwise this test would
-    // prove nothing, since a stale key would look like a hit either way.
+    fs.writeFileSync(filePath, 'not a pdf at all');
+    expect(await readPdfPageCount(filePath, FIXED_MTIME, FIXED_SIZE)).toBeNull();
+
     const doc = await PDFDocument.create();
     doc.addPage(); doc.addPage();
     fs.writeFileSync(filePath, await doc.save());
-    stat = fs.statSync(filePath);
-    expect(stat.size).not.toBe(Buffer.byteLength('not a pdf at all'));
 
-    // If the earlier null had been cached under a key that still matches (e.g. because caching
-    // ignored size/mtime), this second call would still return null. It must instead find the
-    // real page count -- proving the failure was never pinned.
-    const second = await readPdfPageCount(filePath, stat.mtimeMs, stat.size);
-    expect(second).toBe(2);
+    expect(await readPdfPageCount(filePath, FIXED_MTIME, FIXED_SIZE)).toBe(2);
   });
 });

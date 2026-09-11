@@ -134,22 +134,28 @@ export class ComprehensiveDocumentGenerator {
     console.log('[ComprehensiveDoc] 📄 Generating cover page...');
     const coverPageGenerator = new CoverPageGenerator();
     const coverPageBlob = coverPageGenerator.generateCoverPage(data.projectInfo);
-    
+
+    // The cover is usually two pages (letter + project info), but the page-break guard in the
+    // letter can spill it to three when the enclosed-documents list is long. Read the real page
+    // count from the generated PDF instead of assuming 2, so totalPages stays accurate.
+    const coverDoc = await PDFDocument.load(await coverPageBlob.arrayBuffer());
+    const coverPageCount = coverDoc.getPageCount();
+
     // Merge cover page with main document
     console.log('[ComprehensiveDoc] 🔗 Merging cover page with main document...');
     const finalPdf = await this.mergePDFs([coverPageBlob, result.pdf]);
-    
+
     console.log('[ComprehensiveDoc] ✅ Generation complete!');
-    console.log(`  - Total pages: ${result.totalPages + 2} (2 cover + ${result.totalPages} content)`);
+    console.log(`  - Total pages: ${result.totalPages + coverPageCount} (${coverPageCount} cover + ${result.totalPages} content)`);
     console.log(`  - Field Book: E1-E${result.measurements.fieldBook.pages}`);
     console.log(`  - Coordinate List: ${result.measurements.coordinateList.startPage}-${result.measurements.coordinateList.endPage}`);
     console.log(`  - Calculations: ${result.measurements.calculations.startPage}-${result.measurements.calculations.endPage}`);
     console.log(`  - Areas: ${result.measurements.areas.startPage}-${result.measurements.areas.endPage}`);
-    
+
     return {
       pdf: finalPdf,
       pageAllocation: result.measurements, // Return measurements as page allocation
-      totalPages: result.totalPages + 2, // +2 for cover pages
+      totalPages: result.totalPages + coverPageCount, // cover is normally 2 pages, but 3 when the enclosed list spills
       actualCoordListLastPage: result.measurements.coordinateList.endPage,
       actualCalcStartPage: result.measurements.calculations.startPage,
       actualCalcLastPage: result.measurements.calculations.endPage,

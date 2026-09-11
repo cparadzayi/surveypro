@@ -43,6 +43,7 @@ test('carries each file mtime so callers can surface stale outputs', () => {
 });
 
 import { attachPageCounts } from '../outputManifest.js';
+import { readPdfPageCount } from '../pdfPageCount.js';
 import { PDFDocument } from 'pdf-lib';
 
 describe('attachPageCounts', () => {
@@ -112,5 +113,42 @@ describe('attachPageCounts', () => {
     const input = collectOutputManifest(pcRoot);
     const output = await attachPageCounts(pcRoot, input);
     expect(output).toBe(input);
+  });
+});
+
+describe('readPdfPageCount cache does not remember a failed read', () => {
+  let retryRoot;
+  let filePath;
+
+  beforeAll(() => {
+    retryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pagecount-retry-'));
+    filePath = path.join(retryRoot, 'general-plan.pdf');
+  });
+
+  afterAll(() => {
+    fs.rmSync(retryRoot, { recursive: true, force: true });
+  });
+
+  test('a transient unreadable-PDF failure is retried, not pinned as null forever', async () => {
+    // First "read": not a PDF at all (stands in for a locked/truncated file mid-write).
+    fs.writeFileSync(filePath, 'not a pdf at all');
+    let stat = fs.statSync(filePath);
+    const first = await readPdfPageCount(filePath, stat.mtimeMs, stat.size);
+    expect(first).toBeNull();
+
+    // Overwrite in place with a real multi-page PDF, same path. Its byte length differs from
+    // the junk above, so the path:mtime:size cache key differs too -- otherwise this test would
+    // prove nothing, since a stale key would look like a hit either way.
+    const doc = await PDFDocument.create();
+    doc.addPage(); doc.addPage();
+    fs.writeFileSync(filePath, await doc.save());
+    stat = fs.statSync(filePath);
+    expect(stat.size).not.toBe(Buffer.byteLength('not a pdf at all'));
+
+    // If the earlier null had been cached under a key that still matches (e.g. because caching
+    // ignored size/mtime), this second call would still return null. It must instead find the
+    // real page count -- proving the failure was never pinned.
+    const second = await readPdfPageCount(filePath, stat.mtimeMs, stat.size);
+    expect(second).toBe(2);
   });
 });

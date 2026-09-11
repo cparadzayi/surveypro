@@ -31,6 +31,12 @@ export async function readPdfPageCount(absPath, mtimeMs, size) {
     pageCount = null;
   }
 
-  cache.set(key, pageCount);
+  // Only cache a successful read. A failure here is usually transient (a file lock during or
+  // just after generation, e.g. a Windows AV scanner or indexer holding the plan PDF open) — if
+  // we cached the null, that momentary lock would look permanent for the life of the process,
+  // since the key (path:mtime:size) would not change on retry. A retry costs one read of one
+  // file, and there are only ever one to three general plans, so the safe default is to just
+  // try again next time rather than remember the failure.
+  if (pageCount !== null) cache.set(key, pageCount);
   return pageCount;
 }

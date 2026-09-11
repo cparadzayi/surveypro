@@ -81,6 +81,9 @@ export class PageAllocationService {
     console.log('[PageAllocation] 🎯 Using Expert Page Predictor...');
     
     // Cover Page: Always 2 pages
+    // This assumption now only holds for this deprecated legacy (single-pass) path; the
+    // two-pass generator's cover can spill to 3 pages when the enclosed-documents list is long,
+    // and reads the real page count from the generated PDF instead (see comprehensive-document.ts).
     const coverPageCount = 2;
     
     // Field Book: Calculate based on observations (max 99 pages)

@@ -215,11 +215,20 @@ export function verifyAgainstManifest(
 /**
  * General plans whose sheet count could not be read, so the letter's omission of a sheet
  * total can be explained to the surveyor rather than silently noticed.
+ *
+ * Must describe exactly the set the letter counts: folder alone is not enough, because
+ * classifyPlanFile treats ANY non-summary .pdf sitting in output/general-plans as a plan
+ * "sheet". An unreadable file that is not actually a general plan (a stray note, say) would
+ * otherwise raise a false "sheet count could not be determined" warning even though the
+ * letter's own General Plan row — gated by DOCUMENT_RULES's keyword too — never counted it.
+ * Reusing that same keyword, rather than a second copy of the regex, keeps the two in lockstep.
  */
 export function countUnknownSheetPlans(files: ManifestFile[]): number {
+  const keyword = DOCUMENT_RULES['General Plan'].keyword;
   return (files || []).filter((file) => {
     const segments = (file.relDir || '').split('/').filter(Boolean);
     if (!segments.includes('general-plans')) return false;
+    if (!keyword.test(file.name)) return false;
     const classified = classifyPlanFile(file, 'general');
     return classified?.role === 'sheet' && classified.sheets === null;
   }).length;

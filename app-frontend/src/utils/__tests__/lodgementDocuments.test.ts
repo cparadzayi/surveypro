@@ -496,6 +496,15 @@ describe('countUnknownSheetPlans', () => {
   it('is zero when every general plan reports its pages', () => {
     expect(countUnknownSheetPlans([gp('general-a.pdf', 2)])).toBe(0);
   });
+
+  it('does NOT count an unreadable non-plan PDF that merely sits in output/general-plans', () => {
+    // A stray, unrelated file (e.g. a scanned note someone dropped into the folder) is not a
+    // general plan at all. Without a keyword test it would still be classified as a "sheet"
+    // with an unknown page count, falsely warning that the letter omits a sheet total for a
+    // plan it never actually counts.
+    const files = [f('notes.pdf', 'output/general-plans')];
+    expect(countUnknownSheetPlans(files)).toBe(0);
+  });
 });
 
 describe('buildLodgementWarnings — unknown sheet counts', () => {

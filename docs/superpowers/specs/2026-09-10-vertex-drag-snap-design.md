@@ -308,28 +308,26 @@ Manual browser steps, on a project with at least two parcels sharing a boundary:
 5. Cancel the affected-parcels dialog → nothing written; reload confirms.
 6. Reload the view → the moved corner persists in both parcels.
 
-## Unresolved decisions
+## Resolved decisions
 
-Two things the code cannot settle. Neither is guessed here.
-
-1. **Is the `auto_generate_metadata` trigger live on the schema being written?**
-   `migrations/059.do.sql:147` creates `BEFORE INSERT OR UPDATE OF geom ON
-   land_parcels`, and its function **overwrites** `metadata.cape_lo_points`,
-   `residuals` and `points_count` (`059.do.sql:129-140`) with vertices re-matched
-   spatially within 0.5 m, falling back to `A`/`B`/`C` names (`:79`) and rounded to
-   2 dp (`:123-124`). If it fires, every geom update in this feature silently rewrites
-   the beacon names it just wrote. Evidence it does **not** fire in practice:
-   `create_surveyor_schema` builds the per-surveyor `land_parcels` with no triggers
-   (`migrations/040.do.sql:93-126`) and runtime writes are schema-scoped; and today's
-   `commitVertexEdit` demonstrably preserves beacon names. Evidence it might:
-   `058_enable_auto_metadata_trigger.sql`, `058_fix_metadata_generation_schema.sql`,
-   `060_auto_metadata_generation.sql` and `061_trigger_with_bankers_rounding.sql` all
-   install variants, all are skipped by `scripts/migrate.js:35` (`.do.sql` only) but
-   all are runnable by hand, and `docs/ENABLE_AUTO_METADATA.md` tells the reader to do
-   exactly that. **Resolve by querying `pg_trigger` for the surveyor schema's
-   `land_parcels` before implementing.** If it is live, the plan needs a step to drop
-   or schema-scope it; this is a pre-existing hazard that the feature makes louder,
-   not one it introduces.
+1. **The `auto_generate_metadata` trigger is not live anywhere.** Queried
+   `pg_trigger` directly against `surveypro_db` on 2026-09-11: every schema with a
+   `land_parcels` table — `public` and all eight `surveyor_*` schemas
+   (`surveyor_kuziva_paradzayi`, `surveyor_surveyor_charles`,
+   `surveyor_surveyor_chitsikef`, `surveyor_surveyor_cline`, `surveyor_surveyor_elon`,
+   `surveyor_surveyor_kuda`, `surveyor_surveyor_kuziva`,
+   `surveyor_surveyor_mapamulart`) — carries only
+   `trigger_update_land_parcels_updated_at` (a plain `updated_at` bump). No trigger
+   named or resembling `auto_generate_metadata` exists on any of them.
+   `generate_parcel_metadata` / `generate_parcel_metadata_trigger` (`\df` in `public`)
+   exist as **functions only**, never attached to a trigger in any schema. The
+   `058_enable_auto_metadata_trigger.sql` / `060_auto_metadata_generation.sql` /
+   `061_trigger_with_bankers_rounding.sql` migrations cited in the original open
+   question were never applied by hand, in this database, despite
+   `docs/ENABLE_AUTO_METADATA.md` describing how to. **No mitigation needed** — this
+   feature's `UPDATE ... SET geom = ...` writes will not be intercepted or rewritten.
+   Re-check `pg_trigger` if this is ever deployed against a different database where
+   someone *did* run those migrations by hand.
 2. **Should a partial cascade failure be recoverable, or prevented?** Part 3 reports
    it. Preventing it needs a batch endpoint (`POST /land-parcels/batch-update`) so the
    N parcel writes share one transaction. That is a backend change and is deliberately

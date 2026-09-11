@@ -34,9 +34,31 @@ export function useRecordComposition() {
     parcelCounts.value[projectId] ?? null
 
   /**
+   * Read a confirmed composition out of a workflow_state-shaped object, or null.
+   *
+   * Only a CONFIRMED composition was ever persisted -- normalizeComposition also
+   * accepts a well-formed 'inferred' shape, but such a value cannot have come from
+   * a real confirmation, so it must not short-circuit re-inference.
+   */
+  const confirmedFromStepData = (stepData: any): RecordComposition | null => {
+    const persisted = normalizeComposition(stepData?.[STEP_KEY])
+    return persisted && persisted.source === 'confirmed' ? persisted : null
+  }
+
+  /**
    * Hydrate from workflow state; fall back to inferring from the digitized parcel
    * count. Only confirmed values are ever persisted, so anything valid found in
    * step_data is a human decision and is never overwritten by inference.
+   *
+   * Order: (1) in-memory cache, (2) the passed workflow state's step_data, (3) the
+   * persisted workflow state over the API, (4) inference from the parcel count.
+   *
+   * Step (3) exists because most callers pass the FRONTEND reactive workflow state
+   * (`CadastralWorkflowState`), which has no `step_data` property at all -- so a
+   * confirmed composition was written to the database and then never read back, and
+   * every reload re-inferred, re-prompted, and dropped the gating. When the caller
+   * does hand us a real step_data carrying a confirmation we trust it and skip the
+   * fetch; otherwise we ask the server before guessing.
    */
   const loadComposition = async (
     projectId: number,
@@ -44,13 +66,25 @@ export function useRecordComposition() {
   ): Promise<RecordComposition | null> => {
     if (cache.value[projectId]) return cache.value[projectId]
 
-    // Only a CONFIRMED composition was ever persisted -- normalizeComposition also
-    // accepts a well-formed 'inferred' shape, but such a value cannot have come from
-    // a real confirmation, so it must not short-circuit re-inference here.
-    const persisted = normalizeComposition(workflowState?.step_data?.[STEP_KEY])
-    if (persisted && persisted.source === 'confirmed') {
-      cache.value[projectId] = persisted
-      return persisted
+    const fromState = confirmedFromStepData(workflowState?.step_data)
+    if (fromState) {
+      cache.value[projectId] = fromState
+      return fromState
+    }
+
+    try {
+      const response = await api.get(`/survey-projects/${projectId}/workflow`)
+      const stepData = response?.data?.workflow_state?.step_data
+      const fromApi = confirmedFromStepData(stepData)
+      if (fromApi) {
+        cache.value[projectId] = fromApi
+        return fromApi
+      }
+    } catch (error) {
+      // Never block plan generation on this lookup: an unreachable or failing
+      // workflow endpoint simply means we fall through to inference, which gates
+      // nothing because its result is only ever 'inferred'.
+      console.warn('[RecordComposition] Could not load persisted workflow state:', error)
     }
 
     let parcelCount = 0

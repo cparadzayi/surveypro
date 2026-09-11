@@ -85,6 +85,15 @@ function enclosedLabel(label: string, fileCount: number): string {
   return `${noun} (${fileCount * copies})`;
 }
 
+/**
+ * A plan file that is actually lodged: the PDF sheet itself. One generation also writes a
+ * DXF twin and a `-summary.pdf` into the same folder (SurveyPlanMapView.vue), and neither is
+ * a lodged plan sheet — counting them inflated the letter's copy counts.
+ */
+function isLodgeablePlanFile(file: ManifestFile): boolean {
+  return /\.pdf$/i.test(file.name) && !/-summary\.pdf$/i.test(file.name);
+}
+
 /** Per-item matching rule. Generated items are folder-scoped; external items live under input/. */
 const DOCUMENT_RULES: Record<string, DocRule> = {
   'Field book': { kind: 'generated', folders: ['field-book'], keyword: /field.?book/i },
@@ -119,10 +128,16 @@ export function resolveLodgementDocuments(
       if (rule.kind === 'external') return segments[0] === 'input';
       return segments.some((seg) => rule.folders.includes(seg));
     });
+    // Counted rows (the two plan families) tick and count only lodgeable PDF sheets, so
+    // the DXF twin and the -summary.pdf written alongside each plan cannot inflate them.
+    // Every other row keeps matching ALL files: external items are legitimately .jpg
+    // scans and the like, and a PDF-only filter would stop them ticking at all.
+    const counted = COPIES_PER_FILE[label] !== undefined;
+    const lodgeable = counted ? matches.filter(isLodgeablePlanFile) : matches;
     return {
       label,
-      displayLabel: enclosedLabel(label, matches.length),
-      present: matches.length > 0,
+      displayLabel: enclosedLabel(label, lodgeable.length),
+      present: lodgeable.length > 0,
     };
   });
 }
@@ -173,7 +188,12 @@ export function verifyAgainstManifest(
     const found = list.filter((file) =>
       (file.relDir || '').split('/').filter(Boolean).includes(folder)
     );
-    if (declared && found.length === 0) result.expectedMissing.push(family);
+    // "Declared but never generated" must look only at lodgeable PDF sheets: a folder
+    // holding nothing but a stray .dxf (or a -summary.pdf) encloses no plan at all.
+    // The opposite direction deliberately keeps ALL files — a leftover DXF in a family
+    // this record does not declare is still worth showing the surveyor.
+    const lodgeable = found.filter(isLodgeablePlanFile);
+    if (declared && lodgeable.length === 0) result.expectedMissing.push(family);
     if (!declared && found.length > 0) result.unexpectedPresent.push({ family, files: found });
   }
   return result;

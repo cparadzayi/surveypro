@@ -923,7 +923,7 @@ const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../compone
 // Inject workflow state
 const workflowState = inject<any>('workflowState');
 
-const { compositionFor } = useRecordComposition();
+const { loadComposition } = useRecordComposition();
 
 // Map references
 const mapContainer = ref<HTMLDivElement | null>(null);
@@ -6282,13 +6282,19 @@ async function exportAreaConsistencyPDF() {
     
     // Existence check for enclosed documents (ticks + optional warning), scoped to
     // what this record is configured to enclose. This view has no `projectId` prop --
-    // read from the workflow-state-injected project info instead, deliberately from
-    // the composition cache (not loadComposition): a surveyor who never visited the
-    // Survey Plan step gets `null` here and falls back to the both-inclusive list with
-    // no verification, exactly today's behaviour.
+    // read from the workflow-state-injected project info instead.
+    //
+    // loadComposition, not compositionFor: Area Computation is step 7 and Survey Plan
+    // is step 8, so in a forward walk through the workflow the module-scope cache is
+    // still cold here (and it is empty after any reload). loadComposition falls back
+    // to the persisted workflow state, so a confirmed composition is honoured even
+    // when the surveyor never opened the Survey Plan step in this session. The
+    // truthiness guard stays: a missing id must yield null, not a NaN cache key.
     const recordWorkingDirectory = workflowState?.projectInfo?.workingDirectory;
     const recordProjectId = workflowState?.projectInfo?.projectId;
-    const recordComposition = recordProjectId ? compositionFor(Number(recordProjectId)) : null;
+    const recordComposition = recordProjectId
+      ? await loadComposition(Number(recordProjectId), workflowState)
+      : null;
     const { documents: lodgementDocs, missing: missingDocs, verification } =
       await checkLodgementDocuments(recordWorkingDirectory, recordComposition);
 

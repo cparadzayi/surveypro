@@ -858,10 +858,21 @@ function zoomToParcel(id: string | number) {
 }
 
 const { compositionFor, loadComposition } = useRecordComposition()
-const recordComposition = ref(props.projectId ? compositionFor(props.projectId) : null)
+// Computed, not a snapshot ref: the confirm banner lives in the PARENT
+// (SurveyPlanViewNew.vue) OUTSIDE the v-if that renders this child, so a surveyor can
+// change the composition while this view stays mounted. compositionFor reads a
+// module-scope ref cache that confirmComposition writes through, so a computed tracks
+// the change; a plain ref went stale and kept offering a now-disallowed plan type.
+const recordComposition = computed(() => (props.projectId ? compositionFor(props.projectId) : null))
 
 const planTypeOptions = computed(() => planTypeOptionsFor(recordComposition.value))
 const compositionLabel = computed(() => describeComposition(recordComposition.value).label)
+
+// Follow the composition: a selection that has just become illegal must move off the
+// disabled option immediately, not at the next mount.
+watch(recordComposition, (composition) => {
+  config.value.planType = normalizePlanTypeSelection(config.value.planType, composition)
+})
 
 const isDiagramMode = computed(() => getPlanTypeMeta(config.value.planType).subjectMode === 'single-parcel')
 const isGeneralPlanMode = computed(() =>
@@ -6691,10 +6702,12 @@ onMounted(async () => {
   loadData()
   loadSideAnnotations()
 
-  recordComposition.value = await loadComposition(props.projectId, props.workflowState)
-  // config.planType is state independent of the composition: without this, confirming
+  // Warms the module-scope cache that the `recordComposition` computed reads from.
+  await loadComposition(props.projectId, props.workflowState)
+  // config.planType is state independent of the composition: without this, opening on
   // a general-plans-only record while 'diagram' is selected leaves the <select>
-  // sitting on a disabled option.
+  // sitting on a disabled option. This covers the already-warm-cache case, where the
+  // computed never changes and so the watch above never fires.
   config.value.planType = normalizePlanTypeSelection(config.value.planType, recordComposition.value)
 })
 

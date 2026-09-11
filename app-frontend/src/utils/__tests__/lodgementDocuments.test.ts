@@ -227,6 +227,52 @@ describe('resolveLodgementDocuments — the Diagram rule', () => {
   });
 });
 
+describe('resolveLodgementDocuments — only the lodgeable PDF sheet counts', () => {
+  // One plan generation writes up to three files into the same folder:
+  // `<base>.pdf`, `<base>.dxf` and `<base>-summary.pdf` (SurveyPlanMapView.vue).
+  // Counting all three printed "General Plan (3)" on a letter that goes to the SG.
+  it('counts one general plan once, despite its DXF twin and statistics summary', () => {
+    const files = [
+      f('general-undeveloped-MAGLAS.pdf', 'output/general-plans'),
+      f('general-undeveloped-MAGLAS.dxf', 'output/general-plans'),
+      f('general-undeveloped-MAGLAS-summary.pdf', 'output/general-plans'),
+    ];
+    const labels = resolveLodgementDocuments(files).map(r => r.displayLabel);
+    expect(labels).toContain('General Plan (1)');
+    expect(labels).not.toContain('General Plan (3)');
+  });
+
+  it('counts one diagram as three lodged copies, not six, when a DXF sits beside it', () => {
+    const files = [
+      f('diagram-STAND_2283_MAGLAS.pdf', 'output/diagrams'),
+      f('diagram-STAND_2283_MAGLAS.dxf', 'output/diagrams'),
+    ];
+    const labels = resolveLodgementDocuments(files).map(r => r.displayLabel);
+    expect(labels).toContain('Diagram (3)');
+    expect(labels).not.toContain('Diagrams (6)');
+  });
+
+  it('does NOT tick a plan row for a folder holding only a DXF', () => {
+    const files = [f('general-undeveloped-MAGLAS.dxf', 'output/general-plans')];
+    const row = resolveLodgementDocuments(files).find(r => r.label === 'General Plan');
+    expect(row!.present).toBe(false);
+    expect(row!.displayLabel).toBe('General Plan');
+  });
+
+  it('does NOT tick a plan row for a folder holding only a statistics summary', () => {
+    const files = [f('diagram-STAND_207-summary.pdf', 'output/diagrams')];
+    const row = resolveLodgementDocuments(files).find(r => r.label === 'Diagram');
+    expect(row!.present).toBe(false);
+  });
+
+  it('still ticks an uncounted external row from a non-PDF scan', () => {
+    // The filter must NOT reach the external rows: beacon receipts are photographed.
+    const files = [f('beacon-receipt-scan.jpg', 'input')];
+    const by = Object.fromEntries(resolveLodgementDocuments(files).map(r => [r.label, r.present]));
+    expect(by['Beacon receipt']).toBe(true);
+  });
+});
+
 describe('verifyAgainstManifest', () => {
   it('reports a declared family whose folder is empty', () => {
     const files = [f('general-undeveloped-MAGLAS.pdf', 'output/general-plans')];
@@ -273,6 +319,29 @@ describe('verifyAgainstManifest', () => {
   it('tolerates an empty manifest without throwing', () => {
     const v = verifyAgainstManifest(confirmedComposition(true, false), []);
     expect(v.expectedMissing).toEqual(['diagram']);
+  });
+
+  it('reports a declared family whose folder holds only a DXF as missing', () => {
+    // A lone .dxf is not a lodgeable plan sheet, so "you declared Diagrams but none
+    // exist" must still fire -- otherwise an abandoned half-generation looks complete.
+    const files = [
+      f('general-undeveloped-MAGLAS.pdf', 'output/general-plans'),
+      f('diagram-STAND_207.dxf', 'output/diagrams'),
+    ];
+    const v = verifyAgainstManifest(confirmedComposition(true, true), files);
+    expect(v.expectedMissing).toEqual(['diagram']);
+  });
+
+  it('still surfaces a leftover DXF for a family the record does not declare', () => {
+    // The unexpectedPresent direction deliberately matches ALL files: a stray DXF in
+    // an undeclared family is evidence of an abandoned attempt, worth showing.
+    const files = [
+      f('general-undeveloped-MAGLAS.pdf', 'output/general-plans'),
+      f('diagram-STAND_207.dxf', 'output/diagrams'),
+    ];
+    const v = verifyAgainstManifest(confirmedComposition(false, true), files);
+    expect(v.unexpectedPresent).toHaveLength(1);
+    expect(v.unexpectedPresent[0].files.map(x => x.name)).toEqual(['diagram-STAND_207.dxf']);
   });
 });
 

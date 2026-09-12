@@ -209,11 +209,19 @@ Recorded because each rules out an approach that looked reasonable.
    entry point; nothing runs on load. The load-time re-derivation at `:4032` stays
    exactly as it is — in memory, writing nothing — so the button remains the only
    thing that touches the database.
-2. **Capitalisation scope is numeric-prefix + alpha-suffix ONLY.** Settled. A name
-   matching `^(\d+)([A-Za-z]+)$` has its trailing alpha run uppercased. A
-   letter-only name (`A`, `SD4`, `TSM5025`, `PEGGINGB`) is never touched. This is
-   the rule the reference sites already implement at `SurveyPlanMapView.vue:1229`
-   and `:4268`.
+2. **Capitalisation scope is numeric-prefix + alpha-suffix ONLY — and only when the
+   suffix is currently all-lowercase.** Settled, refined 2026-09-12 after the
+   surveyor confirmed Unresolved #1: a mixed-case suffix such as `An` (as in
+   `1464An`) is a deliberate, distinct naming form, not a capitalisation lapse, and
+   must be preserved byte-for-byte. So `normalizeBeaconName` uppercases the suffix
+   **only when `suffix === suffix.toLowerCase()`** — i.e. every letter in it is
+   currently lowercase (`2474a` → `2474A`, `15b` → `15B`). A suffix that already
+   contains any uppercase letter, mixed-case or not (`An`, `AN`, `Ab`), is left
+   exactly as stored. A letter-only name with no numeric prefix (`A`, `SD4`,
+   `TSM5025`, `PEGGINGB`) is never touched, matched or not — this part of the rule
+   is unchanged from the reference sites at `SurveyPlanMapView.vue:1229` and
+   `:4268`, which is why those two need the guard added in Part 4, not just be left
+   as the reference.
 3. **Fix capitalisation at every display site, NOT at the source.** Source-side
    normalisation — uppercasing `coordinate_points.name` on write — was considered
    and rejected on three grounds, each verified:
@@ -396,23 +404,27 @@ Feature 1 is a bug fix and vertex-drag-snap is unbuilt (decision 7).
 
 ```js
 /** A beacon name's numeric stand prefix and trailing alpha suffix, or null. */
-export function splitBeaconName(name)      // '2474a' → { prefix: '2474', suffix: 'A' }
+export function splitBeaconName(name)      // '2474a' → { prefix: '2474', suffix: 'a' }
                                            // 'SD4', 'A', 'TSM5025' → null
-/** The name with its alpha suffix uppercased; unchanged when there is no suffix. */
+/** The name with an all-lowercase alpha suffix uppercased; unchanged otherwise. */
 export function normalizeBeaconName(name)  // '2474a' → '2474A'; 'SD4' → 'SD4'
+                                           // '1464An' → '1464An' (mixed case, untouched)
 ```
 
-One regex: `/^(\d+)([A-Za-z]+)$/`, suffix `.toUpperCase()`d — the
-`SurveyPlanMapView.vue:1229` rule with `dxfGenerator.js:1532`'s character class.
-Both functions are **total and idempotent**: any string in, a string (or `null`)
-out, never a throw, and `normalizeBeaconName(normalizeBeaconName(n)) === n`.
+One regex: `/^(\d+)([A-Za-z]+)$/`, matching `dxfGenerator.js:1532`'s character
+class. `normalizeBeaconName` uppercases the suffix **only when it is currently
+all-lowercase** (decision 2, refined 2026-09-12) — `suffix === suffix.toLowerCase()`
+is the guard, checked before `.toUpperCase()` is applied. A suffix already holding
+any uppercase letter, `1464An` included, passes through unchanged. Both functions
+are **total and idempotent**: any string in, a string (or `null`) out, never a
+throw, and `normalizeBeaconName(normalizeBeaconName(n)) === n`.
 
 **Call-site changes**, by the inventory in Context:
 
 | Site | Change |
 |---|---|
-| `SurveyPlanMapView.vue:1209`, `:4250` | Replace the inline regex with `splitBeaconName`. Behaviour-preserving; they are the reference. Also pass the `full`-branch names (`:1216`, `:1289`, `:4255`, `:4292`) through `normalizeBeaconName` — today even the correct sites emit the raw name when no suffix match occurs. |
-| `pdfkitGeoPDF.js:2870-2903` (A) | `splitBeaconName`. Fixes both defects at once: `2474a` now matches, so it is placed **inside** its stand rather than rendered full-name outside, and the emitted suffix is uppercase — which also lets the `/^[A-Z]+$/` gate at `:3014` apply the intended bold suffix font. |
+| `SurveyPlanMapView.vue:1209`, `:4250` | Replace the inline regex **and** the unconditional `prefixMatch[2].toUpperCase()` with `splitBeaconName` + `normalizeBeaconName`. **Not behaviour-preserving as of this refinement**: today these two sites uppercase every suffix unconditionally, including a mixed-case one — under the refined decision 2 they must stop doing that, so this is now a real, not cosmetic, change to the reference sites themselves. Also pass the `full`-branch names (`:1216`, `:1289`, `:4255`, `:4292`) through `normalizeBeaconName` — today even these sites emit the raw name when no suffix match occurs. |
+| `pdfkitGeoPDF.js:2870-2903` (A) | `splitBeaconName`. Fixes both defects at once: `2474a` now matches, so it is placed **inside** its stand rather than rendered full-name outside, and the emitted suffix is normalised (uppercased only if all-lowercase) — which also lets the `/^[A-Z]+$/` gate at `:3014` apply the intended bold suffix font to an all-lowercase-turned-uppercase suffix; a mixed-case suffix such as `An` correctly fails that gate and keeps its plain font, since it was never a case lapse. |
 | `MapLibreAreaView.vue:6192-6228` (B) | `splitBeaconName`; `displayLabel` becomes the normalised suffix, and the non-standard branch emits `normalizeBeaconName(beaconName)`. |
 | `surveyPlanPreview.js:792-841` (C) | Same as (B). |
 | `MapLibreAreaView.vue:3160`, `:3191` (D) | The `survey-pegs` / `trig-beacons` GeoJSON is built by `addSurveyPoints`; normalise the `id` **property** there so `'text-field': ['get','id']` needs no change. Display only — the underlying `coordinatePoints` entries and `dbPointIds` keys stay raw (decision 3). |
@@ -423,12 +435,16 @@ out, never a throw, and `normalizeBeaconName(normalizeBeaconName(n)) === n`.
 **Not changed:** `automatedParcelDetector.ts` (classification only),
 `beaconNameMatch.ts` (matching only), and every write path listed in decision 3.
 
-**Consequence worth stating.** `MapLibreAreaView.vue:6191` and
-`surveyPlanPreview.js:791` carry explicit comments treating `1464An` as a
-deliberate form with a lowercase second character. Under decision 2 it renders as
-`AN`. That follows directly from the reference implementation at `:1229`, which has
-always uppercased the whole suffix run — the two `[A-Z][a-z]*` sites are the
-divergence, not the rule. See Unresolved #1.
+**`1464An` — resolved 2026-09-12, no longer open.** The surveyor confirmed the
+lowercase second character in a form like `1464An` is deliberate and carries real
+meaning; it must render exactly as stored. Decision 2's all-lowercase guard is the
+mechanism: `splitBeaconName('1464An')` still returns `{ prefix: '1464', suffix:
+'An' }` — the shape is unchanged — but `normalizeBeaconName('1464An')` now returns
+`'1464An'` unchanged, because `'An' !== 'an'`. This resolves what was Unresolved #1
+in the first cut of this spec; the two `MapLibreAreaView.vue:6191` /
+`surveyPlanPreview.js:791` comments documenting the form were correct, and the
+reference sites' former unconditional `.toUpperCase()` was the actual bug for this
+one case, not the rule to copy verbatim.
 
 ## Part 5 — Testing
 
@@ -438,7 +454,7 @@ TDD, following the extract-logic-and-test-the-`.ts` convention.
 |---|---|
 | `views/modules/cadastral-standard/__tests__/beaconReconcile.test.ts` *(new)* | `matchVertex`: nearest wins, not first; `ambiguous` when a second candidate is inside tolerance; `unmatched` past tolerance with the nearest distance reported; `unchanged` when the name already matches. `planParcel`: reads `cape_lo_points`, falls back to `vertices` then `points` and records `source`; preserves `description` unless it equalled the old id; blocks on duplicate assignment, on any ambiguity, and on <3 points. `planReconciliation`: a blocked parcel contributes zero writes and does not block its neighbours. |
 | `views/modules/cadastral-standard/__tests__/beaconReconcile.test.ts` — invariant | **A rename-only plan leaves every coordinate untouched**: `writes[].points` map 1:1 by index onto the input `y`/`x`, identical to full float precision. This is decision 6 asserted on the output. |
-| `app-shared/__tests__/beaconName.test.js` *(new)* | `2474a`→`2474A`, `15b`→`15B`, `1464An`→`1464AN`, `2474A`→`2474A` (idempotent). `null` from `splitBeaconName` for `A`, `SD4`, `TSM5025`, `PEGGINGB`, `''`, `'1425'` (digits only), `'2474A1'` (trailing digit). Non-string and `undefined` input do not throw. |
+| `app-shared/__tests__/beaconName.test.js` *(new)* | `2474a`→`2474A`, `15b`→`15B`, `1464An`→`1464An` (**unchanged** — mixed-case suffix, decision 2), `2474A`→`2474A` (idempotent, all-uppercase), `1464AN`→`1464AN` (idempotent, all-uppercase). `null` from `splitBeaconName` for `A`, `SD4`, `TSM5025`, `PEGGINGB`, `''`, `'1425'` (digits only), `'2474A1'` (trailing digit) — but `splitBeaconName('1464An')` still returns `{ prefix: '1464', suffix: 'An' }`, since splitting and normalising are separate steps. Non-string and `undefined` input do not throw. |
 | `app-backend/src/services/__tests__/` (existing PDF/DXF suites) | A beacon named with a lowercase suffix is placed **inside** its matching stand, labelled with the uppercase suffix — the `pdfkitGeoPDF.js:2870` regression, which is the one defect that changes *placement* and not merely case. |
 | existing suites | `cd app-frontend && npm test`; `cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js` for the whole backend suite. |
 
@@ -463,25 +479,22 @@ label corresponds to such a beacon before regenerating. Do not regenerate blind.
 5. Generate a diagram: the DIAGRAM S.G. No. column shows uppercase suffixes; the
    DXF diagram matches.
 
+## Resolved (confirmed with the user, 2026-09-12)
+
+1. **`1464An` is a real, deliberate naming form and must not be touched.** See the
+   Part 4 amendment above — `normalizeBeaconName` only uppercases an all-lowercase
+   suffix, so a mixed-case suffix passes through unchanged. No documented exception
+   list is needed; the guard is general.
+2. **Ambiguity blocks, never resolves via a picker.** Confirmed: if two coordinate
+   points legitimately sit within 0,5 m of each other (decision 8 already specified
+   this behaviour as the safer default; the surveyor has now confirmed it as the
+   only behaviour, not one of two candidates). The vertex is left untouched, and is
+   reported by name, parcel, and the competing candidates with their distances, same
+   as decision 8's original text. No pick-one-in-the-dialog affordance is built.
+
 ## Unresolved
 
-1. **Is `1464An` a real naming form, and does `AN` destroy meaning?** Two sites
-   (`MapLibreAreaView.vue:6191`, `surveyPlanPreview.js:791`) document it explicitly
-   in comments, but the code cannot say whether any project actually contains such a
-   beacon or whether the lowercase second character distinguishes something (a
-   re-established beacon, a subdivision generation) from `1464AN`. Not a question
-   about decision 2 — that is settled — but about whether Part 4 needs a documented
-   exception. **Resolvable by query**: `SELECT DISTINCT name FROM coordinate_points
-   WHERE name ~ '^[0-9]+[A-Za-z]{2,}$'` across the surveyor schemas, plus the
-   surveyor's reading of any hits.
-2. **Can two coordinate points legitimately sit within 0,5 m of each other?**
-   Nothing in the schema forbids it — there is no spatial uniqueness constraint, only
-   `(project_id, name)`. If witness or splay pairs are routine field practice, the
-   `ambiguous` outcome (decision 8) will fire often enough to need a resolution
-   affordance (pick-one-in-the-dialog) rather than a plain block. If they are always
-   an import artefact, blocking is right and the surveyor should fix the points. This
-   determines a UI shape, so it is worth answering before the plan is written.
-3. **Should a partial repair failure be preventable rather than reported?**
+1. **Should a partial repair failure be preventable rather than reported?**
    Inherited unchanged from the vertex-drag-snap spec's open question 2, and now
    confirmed: `POST /land-parcels/batch` is create-only
    (`routes/landParcels.js:216`), so preventing it needs a new batch-update endpoint

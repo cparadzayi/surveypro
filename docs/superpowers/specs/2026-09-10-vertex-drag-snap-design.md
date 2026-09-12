@@ -1,8 +1,57 @@
 # Parcel Vertex Drag-to-Snap Editing — Design
 
 **Date:** 2026-09-10
-**Status:** Approved for planning
+**Status:** Approved for planning — amended 2026-09-12, see below
 **Module:** `cadastral-standard` / `MapLibreAreaView`
+
+## Amendment — 2026-09-12: the two flows coexist, the old one is not replaced
+
+**This reverses the "replaced, not supplemented" decision below.** User-directed,
+after the shipped feature was used: not a defect in what was built, a wrong call
+about what it could stand in for.
+
+Drag-to-snap can only **re-reference** a vertex the parcel already has, to another
+point that already exists — decision 1 below makes that exact and is unchanged. It
+can neither **add** a vertex to a parcel nor **remove** one. The click-to-insert flow
+is the only UI that can, so retiring it removed the ability to change a parcel's
+vertex count at all. Part 4 acknowledged this ("the only UI for dropping a vertex
+from a saved parcel") and accepted it; that acceptance was wrong.
+
+The two flows now divide the work:
+
+| Flow | Entry | What it does |
+|---|---|---|
+| Click-to-insert vertex editing | the 🔺 buttons on a parcel card | adds a vertex (append or insert at a position) and removes one |
+| Drag-to-snap | click the parcel on the map, drag a marker | re-references one vertex to another existing point, cascading to every parcel that shared the beacon |
+
+**What this amendment changes in the text below:**
+
+- **Problem**, last paragraph — "The click-to-insert flow is **replaced**, not
+  supplemented" no longer holds. It is kept, and supplemented.
+- **Part 4 — What is retired** — no longer applies. Nothing in it is retired:
+  `startEditingVertices`, `cancelVertexEdit`, `removeVertexByIndex`,
+  `commitVertexEdit`, the five pieces of state, the toolbar panel, the mode banner
+  branches, the 🔺 buttons, and `handlePointClick`'s insert branch all stay. So does
+  the `isInsertingMidSequence` carve-out: its reason — `wouldCreateIntersection`
+  tests an append and false-positives on a mid-sequence insertion — applies again the
+  moment `handlePointClick` can insert again.
+- **Out of scope**, "Adding or removing a vertex from a saved parcel without deleting
+  the beacon" — that is in scope and is what the kept flow does.
+- **Decision 8** (`isDrawing` is not reused) stands for the *new* flow, which has its
+  own state and never sets `isDrawing`. The kept flow still sets it, as it always did.
+
+**Mutual exclusion** (the one new decision, not in the original): `isDrawing` is the
+switch between the two editors. Click-to-insert sets it (to reuse `handlePointClick`
+and Undo), and every drag-to-snap entry point — the `parcels-fill` click, the
+`vertices-circle` `mousedown`/`touchstart`, `beginVertexDrag` — refuses while it is
+true. `exitVertexDragMode()` is the other half: `startDrawing` and
+`startEditingVertices` both call it, cancelling any drag in flight and clearing the
+parcel selection, so no selection, no vertex markers and no half-finished drag survive
+into a mode that does not own them. A drag cancelled that way writes nothing, so the
+all-or-nothing cascade invariant is untouched.
+
+Implemented in `118df52`, on top of the Task 6 deletion `ad8d0a2` rather than by
+rewriting it — the history of the retirement stays readable.
 
 ## Problem
 

@@ -10,6 +10,51 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-10-vertex-drag-snap-design.md`
 
+## Amendment — 2026-09-12: Task 6 is reversed, the two flows coexist
+
+**Task 6 below ("Retire the click-to-insert vertex-edit flow") no longer stands.**
+It was executed as written in `ad8d0a2`, then reversed on user direction in
+`118df52`. The reversal is not a bug fix — Task 6 did exactly what it specified.
+
+The reason is in the spec's amendment of the same date: drag-to-snap (Tasks 3–5) can
+only **re-reference** an existing vertex to an existing point. It can neither add a
+vertex to a parcel nor remove one, so it cannot stand in for the flow Task 6 deleted.
+Both are needed — insert/delete to change a parcel's vertex count, drag-to-snap to
+fix a corner pegged to the wrong beacon.
+
+Reversed by restoring, verbatim, everything Task 6 deleted: the toolbar panel, both
+🔺 entry buttons, the `isEditingVertices`/`insertAfterIndex` branches in the drawing
+status bar, the five pieces of state, `startEditingVertices` / `cancelVertexEdit` /
+`removeVertexByIndex` / `commitVertexEdit`, and `handlePointClick`'s insert branch
+**with** its `isInsertingMidSequence` carve-out — Task 6 Step 3's reasoning for
+dropping the carve-out ("`handlePointClick` now only ever appends") is void the moment
+it can insert again.
+
+Consequently:
+
+- **Architecture**, last sentence — "The click-to-insert vertex-edit flow is deleted,
+  not kept alongside" is reversed: it is kept alongside.
+- **File Structure**, the `MapLibreAreaView.vue` row — "and the deletion of the
+  retired flow" no longer applies.
+- **Task 6 in full**, and the **Verification checklist** row "🔺 buttons, vertex-edit
+  panel, insert mode | gone" — read as: present and working, and mutually exclusive
+  with drag-to-snap.
+- **Tasks 1–5 are unaffected.** Nothing in the new flow's logic, tests or cascade
+  changed; `vertexSnap.ts` never knew about the old flow.
+
+**Mutual exclusion** (new, decided during the reversal): `isDrawing` is the switch.
+Click-to-insert sets it, and every drag-to-snap entry point refuses while it is true;
+new `exitVertexDragMode()` is called by `startDrawing` and `startEditingVertices` to
+cancel any drag in flight and clear the parcel selection on the way in. Full rationale
+in the spec amendment.
+
+**Verification after the reversal:** frontend suite 56 files / 706 tests / 0 failures
+(unchanged — no test referenced either flow) and `npm run build` succeeds. The manual
+checks are the union of Task 6 Step 5's list, with items 1 and 5 inverted (the 🔺
+buttons and the vertex-edit panel are back), and Task 4/5's drag checks, plus one new
+one: entering insert mode with a parcel selected clears the selection and its markers,
+and a parcel cannot be selected while insert mode is active.
+
 ## Global Constraints
 
 - Branch off `main`: `feat/vertex-drag-snap`. **Never push to `origin/main`** — that remote is an unrelated project. Local `main` tracks `origin/nov-alpha`; push only with `git push origin HEAD:nov-alpha`, and only if asked.
@@ -1786,6 +1831,11 @@ git commit -m "feat(vertex-snap): commit a drag as a cascading re-reference acro
 ---
 
 ### Task 6: Retire the click-to-insert vertex-edit flow
+
+> **REVERSED 2026-09-12 — do not execute this task.** It shipped as `ad8d0a2` and was
+> reversed by `118df52` on user direction; the flow it deletes is the only way to add
+> or remove a vertex. See the amendment at the top of this plan. Kept unedited for the
+> record.
 
 **Files:**
 - Modify: `app-frontend/src/views/modules/cadastral-standard/MapLibreAreaView.vue` — template `:117`, `:145-210`, `:324-347`, `:416-423`, `:488-495`; script `:1979-1986`, `:3729-3744`, `:4361-4522`

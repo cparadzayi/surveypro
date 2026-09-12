@@ -346,6 +346,25 @@
         <span v-if="selectedPoints.length < 3" class="text-yellow-300 text-xs">min 3 pts</span>
       </div>
 
+      <!-- Drag hover chip: what releasing here will do. Nothing is written until mouseup. -->
+      <div
+        v-if="draggingVertexIndex !== null && dragChipPx"
+        class="absolute z-40 pointer-events-none px-2 py-1 rounded text-xs shadow-lg whitespace-nowrap"
+        :class="snapCandidate ? 'bg-red-600 text-white font-semibold' : 'bg-gray-900/90 text-gray-100'"
+        :style="{ left: `${dragChipPx.x + 14}px`, top: `${dragChipPx.y - 10}px` }"
+      >
+        <template v-if="snapCandidate">
+          ⤵ snap to <strong>{{ snapCandidate.id }}</strong>
+          <span v-if="snapCandidate.source === 'parcel-vertex'" class="ml-1 font-normal opacity-90">
+            (parcel vertex — no beacon record)
+          </span>
+          <span v-if="snapCandidateDivergence !== null" class="ml-1 font-normal opacity-90">
+            ⚠ differs from the beacon record by {{ snapCandidateDivergence.toFixed(2) }} m
+          </span>
+        </template>
+        <template v-else>release to cancel — no point within snap range</template>
+      </div>
+
       <!-- Parcel Status Legend -->
       <div :class="['absolute right-4 bg-white rounded-lg shadow-lg p-3 z-20 border-2 border-gray-200', isDrawing ? 'bottom-10' : 'bottom-4']">
         <h3 class="font-semibold text-gray-900 text-xs mb-2">🎨 Parcel Status</h3>
@@ -2108,6 +2127,7 @@ const aiDetectionResult = ref<ParcelDetectionResult | null>(null);
 let tempPolygonSource: maplibregl.GeoJSONSource | null = null;
 let parcelsSource: maplibregl.GeoJSONSource | null = null;
 let overlapSource: maplibregl.GeoJSONSource | null = null;
+let verticesSource: maplibregl.GeoJSONSource | null = null;
 
 // Control points fetched from API
 const controlPoints = ref<any[]>([]);
@@ -2630,6 +2650,27 @@ async function initializeMap() {
       }
     });
 
+    // Vertex markers for the selected parcel. Added AFTER parcels-labels so the
+    // markers always sit on top and stay grabbable.
+    map.addSource('vertices', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+
+    map.addLayer({
+      id: 'vertices-circle',
+      type: 'circle',
+      source: 'vertices',
+      paint: {
+        'circle-radius': 7,
+        'circle-color': ['case', ['get', 'dragging'], '#dc2626', '#ffffff'],
+        'circle-stroke-color': '#dc2626',
+        'circle-stroke-width': 3
+      }
+    });
+
+    verticesSource = map.getSource('vertices') as maplibregl.GeoJSONSource;
+
     parcelsSource = map.getSource('parcels') as maplibregl.GeoJSONSource;
 
     // Click a parcel to select it for vertex editing. This is the entry point that
@@ -2660,6 +2701,41 @@ async function initializeMap() {
     map.on('mouseleave', 'parcels-fill', () => {
       if (map && !isDrawing.value && draggingVertexIndex.value === null) map.getCanvas().style.cursor = '';
     });
+
+    // MapLibre has no vertex-drag primitive, so the gesture is assembled from raw
+    // handlers. e.preventDefault() on the layer mousedown is what suppresses the
+    // map pan for the duration of the drag.
+    map.on('mouseenter', 'vertices-circle', () => {
+      if (map && draggingVertexIndex.value === null) map.getCanvas().style.cursor = 'grab';
+    });
+    map.on('mouseleave', 'vertices-circle', () => {
+      if (map && draggingVertexIndex.value === null) map.getCanvas().style.cursor = '';
+    });
+
+    map.on('mousedown', 'vertices-circle', (e) => {
+      if (!e.features || e.features.length === 0) return;
+      e.preventDefault();
+      beginVertexDrag(Number(e.features[0].properties?.index));
+    });
+    map.on('mousemove', (e) => {
+      if (draggingVertexIndex.value !== null) moveVertexDrag(e.point, e.lngLat);
+    });
+    map.on('mouseup', () => endVertexDrag());
+
+    // Field use is on tablets: the same path, single touch only.
+    map.on('touchstart', 'vertices-circle', (e) => {
+      if (!e.features || e.features.length === 0) return;
+      if (e.points.length !== 1) return;
+      e.preventDefault();
+      beginVertexDrag(Number(e.features[0].properties?.index));
+    });
+    map.on('touchmove', (e) => {
+      if (draggingVertexIndex.value === null) return;
+      if (e.points.length !== 1) return;
+      e.preventDefault();
+      moveVertexDrag(e.points[0], e.lngLat);
+    });
+    map.on('touchend', () => endVertexDrag());
 
     map.addSource('parcel-overlap', {
       type: 'geojson',
@@ -5094,6 +5170,167 @@ function updateTempPolygon(points: any[]) {
 }
 
 /**
+ * Draw the selected parcel's vertices. `overrideLngLat` moves the dragged marker to
+ * the cursor -- DISPLAY ONLY. No Cape Lo value is ever derived from it.
+ */
+function renderSelectedVertices(overrideLngLat?: { lng: number; lat: number }) {
+  if (!map || !verticesSource) return;
+
+  const points = selectedParcelPoints.value;
+  if (points.length === 0) {
+    verticesSource.setData({ type: 'FeatureCollection', features: [] });
+    return;
+  }
+
+  const loZone = workflowState?.projectInfo?.centralMeridian || 31;
+  const wgs84 = capeLoArrayToWGS84(points.map(p => ({ id: p.id, x: p.x, y: p.y })), loZone);
+
+  verticesSource.setData({
+    type: 'FeatureCollection',
+    features: wgs84.map((w, index) => {
+      const dragging = index === draggingVertexIndex.value;
+      const coordinates = dragging && overrideLngLat
+        ? [overrideLngLat.lng, overrideLngLat.lat]
+        : [w.lng, w.lat];
+      return {
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates },
+        properties: { index, id: points[index].id, dragging }
+      };
+    })
+  });
+}
+
+watch([selectedParcelId, selectedParcelPoints], () => renderSelectedVertices());
+
+/** Candidates and their screen projections, snapshotted once per drag. */
+let dragCandidates: SnapCandidate[] = [];
+const dragLngLatById = new Map<string, [number, number]>();
+
+/** How far the hovered candidate's two stored copies disagree, or null. */
+const snapCandidateDivergence = computed<number | null>(() =>
+  snapCandidate.value ? (dragDivergent.value.get(snapCandidate.value.id) ?? null) : null
+);
+
+function beginVertexDrag(index: number) {
+  const parcel = selectedParcel.value;
+  const points = selectedParcelPoints.value;
+  if (!parcel || !Number.isFinite(index) || index < 0 || index >= points.length) return;
+
+  // Candidate set = project coordinate points ∪ every saved parcel's vertices,
+  // minus everything this parcel already lists.
+  const snapIndex = buildSnapIndex(
+    coordinatePoints.value as any[],
+    (Array.from(savedParcels.value.values()) as any[]).map(p => ({
+      id: p.id,
+      designation: p.designation || p.stand,
+      points: p.metadata?.cape_lo_points || []
+    }))
+  );
+  const eligible = eligibleCandidates(snapIndex, {
+    id: parcel.id,
+    designation: parcel.designation || parcel.stand,
+    points
+  });
+
+  // Project once per drag, not per mousemove: capeLoArrayToWGS84 is a proj4 call
+  // per point, and mousemove fires at frame rate.
+  const loZone = workflowState?.projectInfo?.centralMeridian || 31;
+  const wgs84 = capeLoArrayToWGS84(eligible.map(c => ({ id: c.id, x: c.x, y: c.y })), loZone);
+  dragLngLatById.clear();
+  eligible.forEach((c, i) => dragLngLatById.set(c.id, [wgs84[i].lng, wgs84[i].lat]));
+  dragCandidates = eligible;
+  dragDivergent.value = new Map(snapIndex.divergent.map(d => [d.id, d.distanceM]));
+
+  draggingVertexIndex.value = index;
+  snapCandidate.value = null;
+  if (map) map.getCanvas().style.cursor = 'grabbing';
+  console.log(`[VertexDrag] ✊ Dragging "${points[index].id}" — ${eligible.length} candidate(s)`);
+}
+
+function moveVertexDrag(point: { x: number; y: number }, lngLat: { lng: number; lat: number }) {
+  const index = draggingVertexIndex.value;
+  if (index === null || !map) return;
+
+  snapCandidate.value = nearestCandidate(
+    dragCandidates,
+    { x: point.x, y: point.y },
+    (candidate) => {
+      const lngLatPair = dragLngLatById.get(candidate.id);
+      return lngLatPair ? map!.project(lngLatPair) : null;
+    },
+    SNAP_RADIUS_PX
+  );
+  dragChipPx.value = { x: point.x, y: point.y };
+
+  renderSelectedVertices(lngLat);
+  if (snapCandidate.value) {
+    // Snapped: preview the REAL substituted ring through the existing helper.
+    updateTempPolygon(applySubstitution(selectedParcelPoints.value, index, snapCandidate.value));
+  } else {
+    previewDragToCursor(lngLat);
+  }
+}
+
+/**
+ * Rubber-band the two incident edges to the cursor while nothing is under it.
+ *
+ * Drawn straight in WGS84 rather than through updateTempPolygon, which needs Cape Lo
+ * points: turning the cursor into Cape Lo is exactly the coordinate-deriving path
+ * decision 1 forbids. This LineString is display only and is never persisted.
+ */
+function previewDragToCursor(lngLat: { lng: number; lat: number }) {
+  const index = draggingVertexIndex.value;
+  const points = selectedParcelPoints.value;
+  if (!map || !tempPolygonSource || index === null || points.length < 3) return;
+
+  const loZone = workflowState?.projectInfo?.centralMeridian || 31;
+  const prev = points[(index - 1 + points.length) % points.length];
+  const next = points[(index + 1) % points.length];
+  const [a, b] = capeLoArrayToWGS84(
+    [{ id: prev.id, x: prev.x, y: prev.y }, { id: next.id, x: next.x, y: next.y }],
+    loZone
+  );
+
+  tempPolygonSource.setData({
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'LineString',
+        coordinates: [[a.lng, a.lat], [lngLat.lng, lngLat.lat], [b.lng, b.lat]]
+      }
+    }]
+  });
+}
+
+function endVertexDrag() {
+  if (draggingVertexIndex.value === null) return;
+  if (snapCandidate.value) {
+    // TASK 5 REPLACES THIS LINE with: void commitVertexDrag();
+    console.log(`[VertexDrag] would commit → "${snapCandidate.value.id}"`);
+    cancelVertexDrag();
+  } else {
+    console.log('[VertexDrag] Released with no candidate — cancelled, nothing written');
+    cancelVertexDrag();
+  }
+}
+
+/** Drop the gesture and every trace of it. Writes nothing. */
+function cancelVertexDrag() {
+  draggingVertexIndex.value = null;
+  snapCandidate.value = null;
+  dragChipPx.value = null;
+  dragCandidates = [];
+  dragLngLatById.clear();
+  dragDivergent.value = new Map();
+  updateTempPolygon([]);
+  if (map) map.getCanvas().style.cursor = '';
+  renderSelectedVertices();
+}
+
+/**
  * Basic geometry helpers for polygon overlap detection (WGS84 coordinates)
  */
 type Coord = [number, number];
@@ -6923,6 +7160,10 @@ async function saveMergedPDFToProject(pdfBytes: Uint8Array, projectName: string)
  * Handle keyboard events
  */
 function handleKeyPress(e: KeyboardEvent) {
+  if (e.key === 'Escape' && draggingVertexIndex.value !== null) {
+    cancelVertexDrag();
+    return;
+  }
   if (e.key === 'Escape' && selectedParcelId.value !== null && !isDrawing.value) {
     selectedParcelId.value = null;
     return;

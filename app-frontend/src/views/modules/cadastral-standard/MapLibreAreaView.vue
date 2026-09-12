@@ -858,6 +858,7 @@ import {
   type VertexPoint,
   type CascadeOutcome,
 } from './vertexSnap';
+import { outsideFigureFirst } from './parcelRenderOrder';
 
 const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../components/ParcelDetectionPanel.vue'));
 
@@ -1175,7 +1176,7 @@ async function confirmParcelRename() {
           properties: { id: dbParcel.id, designation: parcelName, area: areaDisplay, status: dbParcel.status || 'draft' }
         } : null;
       }).filter(Boolean);
-      source.setData({ type: 'FeatureCollection', features: features as any });
+      source.setData({ type: 'FeatureCollection', features: outsideFigureFirst(features as any[]) });
     }
 
     console.log(`[ParcelRename] ✅ Renamed "${oldName}" → "${newName}"`);
@@ -2770,9 +2771,9 @@ async function initializeMap() {
         if (parcelsSource) {
           parcelsSource.setData({
             type: 'FeatureCollection',
-            features: features
+            features: outsideFigureFirst(features)
           });
-          
+
           console.log(`[MapLibre] ✅ Rendered ${features.length} parcels on map`);
           console.log('[MapLibre] Parcels source data set successfully');
         } else {
@@ -4425,7 +4426,7 @@ async function refreshParcelsFromDatabase() {
     if (source) {
       source.setData({
         type: 'FeatureCollection',
-        features: features
+        features: outsideFigureFirst(features)
       });
       console.log(`[MapLibre] ✅ Rendered ${features.length} parcels on map with updated areas`);
     }

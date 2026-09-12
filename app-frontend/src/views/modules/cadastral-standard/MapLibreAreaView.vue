@@ -1283,11 +1283,11 @@ const surveyPegPoints = computed(() =>
 
 async function findAffectedParcels(
   pointName: string
-): Promise<Array<{ id: number; stand: string; designation: string }>> {
+): Promise<Array<{ id: number; stand: string; designation: string; capeLoPoints: any[] }>> {
   const projectId = workflowState?.projectInfo?.projectId;
   if (!projectId) return [];
   const parcels = await listLandParcels(Number(projectId));
-  const out: Array<{ id: number; stand: string; designation: string }> = [];
+  const out: Array<{ id: number; stand: string; designation: string; capeLoPoints: any[] }> = [];
   for (const p of parcels) {
     const capeLoPoints: any[] = (p.metadata as any)?.cape_lo_points ?? [];
     if (capeLoPoints.some(v => v?.id === pointName)) {
@@ -1295,21 +1295,36 @@ async function findAffectedParcels(
         id: p.id,
         stand: p.stand,
         designation: (p as any).designation ?? p.stand,
+        // Carried so planCascade can pre-flight without a second listLandParcels call.
+        capeLoPoints,
       });
     }
   }
   return out;
 }
 
-async function requireAffectedParcelsConfirm(
+/**
+ * Show the affected-parcels gate for an ALREADY-FETCHED list. Resolves on Proceed,
+ * rejects with Error('cancelled') on Cancel. Split out of
+ * requireAffectedParcelsConfirm so a caller holding the list does not refetch it.
+ */
+async function showAffectedParcelsConfirm(
   pointName: string,
+  parcels: Array<{ id: number; stand: string; designation: string }>,
   intent: 'edit' | 'delete'
-): Promise<Array<{ id: number; stand: string; designation: string }>> {
-  const parcels = await findAffectedParcels(pointName);
-  if (parcels.length === 0) return [];
+): Promise<void> {
+  if (parcels.length === 0) return;
   await new Promise<void>((resolve, reject) => {
     affectedParcelsConfirm.value = { pointName, parcels, intent, resolve, reject };
   });
+}
+
+async function requireAffectedParcelsConfirm(
+  pointName: string,
+  intent: 'edit' | 'delete'
+): Promise<Array<{ id: number; stand: string; designation: string; capeLoPoints: any[] }>> {
+  const parcels = await findAffectedParcels(pointName);
+  await showAffectedParcelsConfirm(pointName, parcels, intent);
   return parcels;
 }
 
@@ -5308,9 +5323,7 @@ function previewDragToCursor(lngLat: { lng: number; lat: number }) {
 function endVertexDrag() {
   if (draggingVertexIndex.value === null) return;
   if (snapCandidate.value) {
-    // TASK 5 REPLACES THIS LINE with: void commitVertexDrag();
-    console.log(`[VertexDrag] would commit → "${snapCandidate.value.id}"`);
-    cancelVertexDrag();
+    void commitVertexDrag();
   } else {
     console.log('[VertexDrag] Released with no candidate — cancelled, nothing written');
     cancelVertexDrag();
@@ -5328,6 +5341,131 @@ function cancelVertexDrag() {
   updateTempPolygon([]);
   if (map) map.getCanvas().style.cursor = '';
   renderSelectedVertices();
+}
+
+/**
+ * Would the SUBSTITUTED ring cross itself?
+ *
+ * This is the correct use of the generatePolygon self-intersection test: the ring is
+ * complete and in order. The retired insert mode had to skip it (:3730-3737) only
+ * because wouldCreateIntersection tests an APPEND and false-positives on insertion.
+ */
+function substitutionWouldCross(points: VertexPoint[], index: number, candidate: SnapCandidate): boolean {
+  try {
+    const ring = applySubstitution(points, index, candidate);
+    const { generatePolygon } = useParcelGeometry();
+    const allPoints = ring.map(p => ({
+      pointId: p.id,
+      y: p.y,
+      x: p.x,
+      status: p.status || 'PEG',
+      description: p.description || '',
+      surveyDate: new Date().toISOString().split('T')[0],
+      fieldBookPage: '',
+      calculationsPage: 0,
+      adjustment: { isDuplicate: false, observationCount: 1, method: 'gps' as const }
+    }));
+    const result = generatePolygon(ring.map(p => p.id), allPoints);
+    return result ? result.validation.selfIntersections > 0 : false;
+  } catch (err) {
+    // A check that cannot run must not block a legitimate edit; the cascade's own
+    // blockers and the closure figures still guard the write.
+    console.warn('[VertexDrag] Self-intersection check could not run; allowing the commit:', err);
+    return false;
+  }
+}
+
+/**
+ * Commit a drag: re-reference the beacon in EVERY parcel that shares it.
+ *
+ * findAffectedParcels returns the edited parcel too (it contains the beacon), so the
+ * edited parcel and its sharers go down ONE path -- requirement 4 is satisfied by
+ * construction rather than by a second code path that could drift. The Outside Figure
+ * is an ordinary land_parcels row and cascades like any other parcel.
+ */
+async function commitVertexDrag() {
+  const index = draggingVertexIndex.value;
+  const candidate = snapCandidate.value;
+  const parcel = selectedParcel.value;
+  const points = selectedParcelPoints.value;
+  const draggedName = index !== null ? points[index]?.id : undefined;
+
+  if (index === null || !candidate || !parcel || !draggedName) {
+    cancelVertexDrag();
+    return;
+  }
+
+  // Clear the gesture UI now; every write below is still gated.
+  draggingVertexIndex.value = null;
+  snapCandidate.value = null;
+  dragChipPx.value = null;
+  dragCandidates = [];
+  dragLngLatById.clear();
+  updateTempPolygon([]);
+  if (map) map.getCanvas().style.cursor = '';
+  renderSelectedVertices();
+
+  isComputing.value = true;
+  try {
+    const affected = await findAffectedParcels(draggedName);
+    if (affected.length === 0) {
+      alert(`Beacon "${draggedName}" is not listed by any saved parcel, so there is nothing to update.`);
+      return;
+    }
+
+    const plan = planCascade(
+      draggedName,
+      candidate,
+      affected.map(a => ({ id: a.id, designation: a.designation, points: a.capeLoPoints }))
+    );
+
+    if (plan.blockers.length > 0) {
+      alert(
+        `Cannot move "${draggedName}" to "${candidate.id}".\n\n` +
+        plan.blockers.map(b => `  • ${b.designation} — ${b.reason}`).join('\n') +
+        `\n\nNothing has been written.`
+      );
+      return;
+    }
+    if (plan.writes.length === 0) return;   // dropped on itself: silent no-op
+
+    if (substitutionWouldCross(points, index, candidate)) {
+      alert(
+        `Cannot move "${draggedName}" to "${candidate.id}" — the parcel boundary would cross itself.\n\n` +
+        `Cadastral survey regulation: parcel boundaries must not cross themselves.`
+      );
+      return;
+    }
+
+    try {
+      await showAffectedParcelsConfirm(draggedName, affected, 'edit');
+    } catch (e: any) {
+      if (e?.message === 'cancelled') {
+        console.log('[VertexDrag] Cancelled at the affected-parcels gate — nothing written');
+        return;
+      }
+      throw e;
+    }
+
+    const outcome = await rebuildAffectedParcels(affected, {
+      kind: 'substitute',
+      name: draggedName,
+      replacement: candidate,
+    });
+
+    const problem = describeCascadeOutcome(outcome);
+    if (problem) {
+      alert(problem);
+    } else {
+      console.log(`[VertexDrag] ✅ "${draggedName}" → "${candidate.id}" in ${outcome.written.length} parcel(s): ${outcome.written.join(', ')}`);
+    }
+  } catch (err: any) {
+    console.error('[VertexDrag] ❌ Failed to commit the drag:', err);
+    alert(`Failed to move the vertex: ${err?.response?.data?.error || err?.message || 'Unknown error'}`);
+  } finally {
+    isComputing.value = false;
+    renderSelectedVertices();
+  }
 }
 
 /**

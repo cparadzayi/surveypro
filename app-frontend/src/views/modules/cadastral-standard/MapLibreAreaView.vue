@@ -114,7 +114,7 @@
         </button>
         
         <!-- Normal drawing controls -->
-        <div v-if="isDrawing" class="flex flex-col gap-2 border-t border-gray-200 pt-2">
+        <div v-if="isDrawing && !isEditingVertices" class="flex flex-col gap-2 border-t border-gray-200 pt-2">
           <button
             @click="undoLastPoint"
             :disabled="selectedPoints.length === 0"
@@ -139,6 +139,73 @@
             title="Cancel drawing"
           >
             ❌ Cancel
+          </button>
+        </div>
+
+        <!-- Vertex-editing controls (edit existing parcel geometry) -->
+        <div v-if="isEditingVertices" class="flex flex-col gap-2 border-t border-gray-200 pt-2">
+          <div class="px-2 py-1 bg-orange-100 border border-orange-300 rounded text-xs text-orange-800 font-semibold text-center">
+            ✏️ Editing: {{ editingParcelDesignation }}
+          </div>
+          <p class="text-xs text-gray-500 px-1">
+            <span v-if="insertAfterIndex === null">Click a beacon on the map to <strong>append</strong> it, or press ➕ to <strong>insert after</strong> a specific vertex.</span>
+            <span v-else class="text-orange-700 font-semibold">⬇️ Click a beacon to insert after vertex {{ insertAfterIndex + 1 }} ({{ selectedPoints[insertAfterIndex]?.id }})</span>
+          </p>
+          <div class="max-h-48 overflow-y-auto border border-gray-200 rounded p-1 bg-gray-50">
+            <template v-for="(pt, idx) in selectedPoints" :key="pt.id + '-' + idx">
+              <!-- Vertex row -->
+              <div
+                :class="[
+                  'flex items-center justify-between text-xs rounded px-2 py-0.5',
+                  insertAfterIndex === idx
+                    ? 'bg-orange-100 border border-orange-400'
+                    : 'bg-white border border-gray-200'
+                ]"
+              >
+                <span class="font-mono text-gray-800">{{ idx + 1 }}. {{ pt.id }}</span>
+                <div class="flex items-center gap-1 ml-2">
+                  <!-- Insert-after toggle -->
+                  <button
+                    @click="setInsertAfter(idx)"
+                    :class="[
+                      'font-bold leading-none transition-colors',
+                      insertAfterIndex === idx
+                        ? 'text-orange-600 hover:text-orange-800'
+                        : 'text-green-500 hover:text-green-700'
+                    ]"
+                    :title="insertAfterIndex === idx ? 'Cancel insert mode' : `Insert new vertex after ${pt.id}`"
+                  >{{ insertAfterIndex === idx ? '✕ins' : '➕' }}</button>
+                  <!-- Remove vertex -->
+                  <button
+                    @click="removeVertexByIndex(idx)"
+                    :disabled="selectedPoints.length <= 3"
+                    class="text-red-500 hover:text-red-700 disabled:opacity-30 font-bold leading-none"
+                    title="Remove this vertex"
+                  >✕</button>
+                </div>
+              </div>
+              <!-- Insert-here indicator -->
+              <div
+                v-show="insertAfterIndex === idx"
+                class="text-center text-xs text-orange-600 font-semibold py-0.5 bg-orange-50 border-x border-orange-200"
+              >⬇ next click inserts here ⬇</div>
+            </template>
+          </div>
+          <button
+            @click="commitVertexEdit"
+            :disabled="selectedPoints.length < 3 || isComputing"
+            class="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Save vertex changes"
+          >
+            <span v-if="isComputing" class="inline-block animate-spin mr-1">⏳</span>
+            💾 Save Changes ({{ selectedPoints.length }} pts)
+          </button>
+          <button
+            @click="cancelVertexEdit"
+            class="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-red-700"
+            title="Cancel without saving"
+          >
+            ❌ Cancel Edit
           </button>
         </div>
 
@@ -257,16 +324,23 @@
       <!-- Drawing Status Bar (bottom, non-obstructive) -->
       <div
         v-if="isDrawing"
-        class="absolute bottom-0 left-0 right-0 flex items-center gap-3 px-3 py-1.5 z-30 text-xs bg-gray-900/80"
+        class="absolute bottom-0 left-0 right-0 flex items-center gap-3 px-3 py-1.5 z-30 text-xs"
+        :class="isEditingVertices ? 'bg-orange-600/90' : 'bg-gray-900/80'"
       >
-        <span class="font-semibold text-white whitespace-nowrap">✏️ Drawing</span>
+        <span class="font-semibold text-white whitespace-nowrap">
+          {{ isEditingVertices ? `✏️ Editing: ${editingParcelDesignation}` : '✏️ Drawing' }}
+        </span>
         <span class="text-white/70">·</span>
         <span class="text-white/90">
           {{ selectedPoints.length }} pt{{ selectedPoints.length !== 1 ? 's' : '' }} selected
         </span>
         <span class="text-white/50">·</span>
         <span class="text-white/70">
-          Click pegs to build polygon · click start to close · <kbd class="bg-white/20 px-1 rounded">ESC</kbd> to finish
+          <template v-if="isEditingVertices && insertAfterIndex !== null">
+            Click beacon to insert after <strong class="text-white">{{ selectedPoints[insertAfterIndex]?.id }}</strong>
+          </template>
+          <template v-else-if="isEditingVertices">Click beacon to append · ➕ to insert at position</template>
+          <template v-else>Click pegs to build polygon · click start to close · <kbd class="bg-white/20 px-1 rounded">ESC</kbd> to finish</template>
         </span>
         <span class="flex-1"></span>
         <span v-if="selectedPoints.length < 3" class="text-yellow-300 text-xs">min 3 pts</span>
@@ -359,6 +433,14 @@
                      '📝 DRAFT' }}
                 </span>
                 <button
+                  @click="startEditingVertices(designation)"
+                  :disabled="isDrawing || isEditingVertices"
+                  class="text-orange-600 hover:text-orange-800 hover:bg-orange-100 rounded p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Edit vertices (add/remove beacons)"
+                >
+                  🔺
+                </button>
+                <button
                   @click="openParcelRenameModal({ id: dbParcel.id, oldName: designation, source: 'saved' })"
                   class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded p-1 transition-colors"
                   title="Rename parcel"
@@ -422,6 +504,14 @@
                   ✅ COMPUTED
                 </span>
                 <span v-else class="text-xs text-gray-500">Computing...</span>
+                <button
+                  @click="startEditingVertices(parcel.designation)"
+                  :disabled="isDrawing || isEditingVertices"
+                  class="text-orange-600 hover:text-orange-800 hover:bg-orange-100 rounded p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Edit vertices (add/remove beacons)"
+                >
+                  🔺
+                </button>
                 <button
                   @click="openParcelRenameModal({ id: typeof parcel.id === 'number' ? parcel.id : undefined, oldName: parcel.designation, source: 'memory', parcelRef: parcel })"
                   class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded p-1 transition-colors"
@@ -1933,10 +2023,30 @@ const areaType = ref<AreaType>('urban'); // Default to urban
 const isComputing = ref(false);
 const overlapMessage = ref<string | null>(null);
 
+// ── Click-to-insert vertex editing ────────────────────────────────────────────
+// Vertex-editing state (edit existing saved parcel geometry).
+//
+// This flow ADDS and REMOVES vertices, which is the one thing drag-to-snap below
+// cannot do — a drag only re-references an existing vertex to another existing
+// point. The two coexist and are mutually exclusive while active: `isDrawing` is
+// the switch (this flow sets it so handlePointClick and Undo can be reused, and
+// every drag-to-snap entry point refuses while it is true), and entering this flow
+// calls exitVertexDragMode() first.
+const isEditingVertices = ref(false)
+const editingParcelDesignation = ref<string | null>(null)
+const editingParcelDbId = ref<number | null>(null)
+const insertAfterIndex = ref<number | null>(null)
+const setInsertAfter = (index: number | null) => {
+  insertAfterIndex.value = index
+}
+
 // ── Vertex drag-to-snap ───────────────────────────────────────────────────────
 // A drag is a RE-REFERENCE, never a coordinate change: the dragged vertex is
 // replaced by the snap target's stored values, copied verbatim. See
 // docs/superpowers/specs/2026-09-10-vertex-drag-snap-design.md.
+//
+// It re-references a vertex; it never changes how many a parcel has. Adding or
+// removing one is the click-to-insert flow above, and the two never run at once.
 const selectedParcelId = ref<number | null>(null);   // DB id, never a designation
 const draggingVertexIndex = ref<number | null>(null);
 const snapCandidate = ref<SnapCandidate | null>(null);
@@ -1984,6 +2094,22 @@ function applySelectionPaint() {
 }
 
 watch(selectedParcelId, () => applySelectionPaint());
+
+/**
+ * Leave drag-to-snap mode: drop any drag in flight and clear the parcel selection.
+ *
+ * One half of the mutual exclusion between the two vertex editors. Both flows that
+ * take the map over — startDrawing and startEditingVertices — call this on entry, so
+ * no selection, no vertex markers and no half-finished drag survive into a mode that
+ * does not own them. The other half is `isDrawing`: while it is true, clicking a
+ * parcel selects nothing and a marker cannot be grabbed.
+ *
+ * Writes nothing: a drag cancelled this way is a drag that never happened.
+ */
+function exitVertexDragMode() {
+  if (draggingVertexIndex.value !== null) cancelVertexDrag();
+  selectedParcelId.value = null;
+}
 
 // Parcels
 const parcels = ref<Parcel[]>([]);
@@ -2590,10 +2716,13 @@ async function initializeMap() {
 
     parcelsSource = map.getSource('parcels') as maplibregl.GeoJSONSource;
 
-    // Click a parcel to select it for vertex editing. This is the entry point that
-    // replaces the retired 🔺 buttons -- there was no parcel click handler before.
+    // Click a parcel to select it for drag-to-snap. The 🔺 buttons are the entry
+    // point for the other editor (click-to-insert), which adds and removes vertices.
     map.on('click', 'parcels-fill', (e) => {
-      if (isDrawing.value) return;                 // drawing a new parcel owns the map
+      // isDrawing covers BOTH flows that own the map: drawing a new parcel and
+      // click-to-insert vertex editing, which sets isDrawing to reuse the drawing
+      // click handler. Neither may have a parcel selected underneath it.
+      if (isDrawing.value) return;
       if (!e.features || e.features.length === 0) return;
       const id = Number(e.features[0].properties?.id);
       if (!Number.isFinite(id)) {
@@ -2630,6 +2759,9 @@ async function initializeMap() {
     });
 
     map.on('mousedown', 'vertices-circle', (e) => {
+      // Refuse before preventDefault: while drawing or click-to-insert editing owns
+      // the map, a stale marker must never swallow a beacon click.
+      if (isDrawing.value) return;
       if (!e.features || e.features.length === 0) return;
       e.preventDefault();
       beginVertexDrag(Number(e.features[0].properties?.index));
@@ -2641,6 +2773,7 @@ async function initializeMap() {
 
     // Field use is on tablets: the same path, single touch only.
     map.on('touchstart', 'vertices-circle', (e) => {
+      if (isDrawing.value) return;
       if (!e.features || e.features.length === 0) return;
       if (e.points.length !== 1) return;
       e.preventDefault();
@@ -3715,6 +3848,9 @@ function startDrawing() {
     return;
   }
   
+  // Drawing owns the map: no parcel stays selected and no drag survives into it.
+  exitVertexDragMode();
+
   isDrawing.value = true;
   selectedPoints.value = [];
   overlapMessage.value = null;
@@ -3814,14 +3950,25 @@ function handlePointClick(point: any) {
   }
   
   // REFINEMENT 2: Prevent self-intersecting polygons
-  if (wouldCreateIntersection(point)) {
+  // Skip when in insert mode — wouldCreateIntersection tests an append, giving a
+  // false positive for mid-sequence insertions between two adjacent vertices.
+  const isInsertingMidSequence = isEditingVertices.value && insertAfterIndex.value !== null;
+  if (!isInsertingMidSequence && wouldCreateIntersection(point)) {
     console.warn('[MapLibre] ⚠️ Would create crossing polygon');
     alert(`Cannot add point ${point.id} - it would create a self-intersecting polygon!\n\nCadastral survey regulation: Parcel boundaries must not cross themselves.`);
     return;
   }
-
-  selectedPoints.value.push(point);
-  console.log(`[MapLibre] 📍 Point selected: ${point.id} (${selectedPoints.value.length} total)`);
+  
+  // Insert or append
+  if (isEditingVertices.value && insertAfterIndex.value !== null) {
+    const insertAt = insertAfterIndex.value + 1;
+    selectedPoints.value.splice(insertAt, 0, point);
+    console.log(`[MapLibre] ➕ Point ${point.id} inserted at position ${insertAt} (after vertex ${insertAfterIndex.value + 1})`);
+    insertAfterIndex.value = null; // clear insert mode after one insertion
+  } else {
+    selectedPoints.value.push(point);
+    console.log(`[MapLibre] 📍 Point selected: ${point.id} (${selectedPoints.value.length} total)`);
+  }
 
   // Update temporary polygon preview
   updateTempPolygon(selectedPoints.value);
@@ -4435,6 +4582,179 @@ async function refreshParcelsFromDatabase() {
   console.log('[MapLibre] ✅ Parcels refreshed successfully');
 }
 
+// ============================================================================
+// VERTEX EDITING — add / remove vertices on an existing saved parcel
+// ============================================================================
+
+/**
+ * Enter vertex-editing mode for a saved parcel.
+ * Pre-loads the parcel's existing matched points into selectedPoints so the
+ * user can add or remove vertices before committing the new geometry.
+ *
+ * This is the only flow that can change a parcel's vertex COUNT; drag-to-snap can
+ * only re-reference a vertex it already has. Entering here takes the map over from
+ * drag-to-snap (exitVertexDragMode below), and `isDrawing` keeps it out for the
+ * duration — the two editors never run at the same time.
+ */
+function startEditingVertices(designation: string) {
+  const dbParcel = savedParcels.value.get(designation);
+  if (!dbParcel) {
+    alert(`Cannot edit vertices: parcel "${designation}" not found.`);
+    return;
+  }
+
+  // Resolve DB id
+  const dbId = dbParcel.id ?? existingParcelIds.value.get(designation) ?? null;
+  if (!dbId) {
+    alert(`Cannot edit vertices: parcel "${designation}" has no database ID.`);
+    return;
+  }
+
+  // Get the matched Cape Lo points stored in metadata (or from in-memory parcel)
+  let startPoints: any[] = dbParcel.metadata?.cape_lo_points ?? [];
+  if (startPoints.length === 0) {
+    const memParcel = parcels.value.find(p => p.designation === designation);
+    if (memParcel) startPoints = memParcel.points;
+  }
+  if (startPoints.length === 0) {
+    alert(`Cannot edit vertices: no vertex data found for "${designation}". Try refreshing first.`);
+    return;
+  }
+
+  // Past every guard, so this mode is definitely being entered: hand the map over
+  // from drag-to-snap. Done here rather than at the top so a refused entry (no
+  // parcel, no id, no vertices) leaves an existing selection alone.
+  exitVertexDragMode();
+
+  // Map to the same shape handlePointClick uses
+  selectedPoints.value = startPoints.map((p: any) => ({
+    id: p.id,
+    y: p.y,
+    x: p.x,
+    status: p.status || 'P',
+    description: p.description || p.id
+  }));
+
+  editingParcelDesignation.value = designation;
+  editingParcelDbId.value = dbId as number;
+  insertAfterIndex.value = null; // always start in append mode
+  isEditingVertices.value = true;
+  isDrawing.value = true; // reuse drawing mode so handlePointClick + undo work
+
+  // Show the temporary polygon preview with current vertices
+  updateTempPolygon(selectedPoints.value);
+
+  if (map) map.getCanvas().style.cursor = 'crosshair';
+  console.log(`[VertexEdit] ✏️ Editing vertices of "${designation}" — ${selectedPoints.value.length} existing points pre-loaded`);
+}
+
+/**
+ * Cancel vertex editing without saving.
+ */
+function cancelVertexEdit() {
+  isEditingVertices.value = false;
+  isDrawing.value = false;
+  editingParcelDesignation.value = null;
+  editingParcelDbId.value = null;
+  insertAfterIndex.value = null;
+  selectedPoints.value = [];
+  updateTempPolygon([]);
+  if (map) map.getCanvas().style.cursor = '';
+  console.log('[VertexEdit] ❌ Vertex edit cancelled');
+}
+
+/**
+ * Remove a specific point from the current selectedPoints list (vertex deletion).
+ */
+function removeVertexByIndex(idx: number) {
+  selectedPoints.value.splice(idx, 1);
+  updateTempPolygon(selectedPoints.value);
+}
+
+/**
+ * Commit vertex edits: recompute area + persist new geometry to DB.
+ */
+async function commitVertexEdit() {
+  if (selectedPoints.value.length < 3) {
+    alert('A parcel needs at least 3 vertices.');
+    return;
+  }
+
+  const designation = editingParcelDesignation.value!;
+  const dbId = editingParcelDbId.value!;
+
+  // Exit drawing/editing UI state immediately
+  isEditingVertices.value = false;
+  isDrawing.value = false;
+  editingParcelDesignation.value = null;
+  editingParcelDbId.value = null;
+  updateTempPolygon([]);
+  if (map) map.getCanvas().style.cursor = '';
+
+  const newPoints = [...selectedPoints.value];
+  selectedPoints.value = [];
+
+  isComputing.value = true;
+  try {
+    // 1. Recompute area with new vertices
+    const areaResult = await areaCompute({
+      points: newPoints.map(p => ({ y: p.y, x: p.x, id: p.id, name: p.id })),
+      includeResiduals: true,
+      roundMetersDecimals: 2,
+      roundHectaresDecimals: 4
+    });
+
+    const closureError = Math.sqrt(
+      (areaResult.residuals?.sumDy || 0) ** 2 + (areaResult.residuals?.sumDx || 0) ** 2
+    );
+
+    // 2. Build Cape Lo GeoJSON geometry
+    const coordinates = newPoints.map(p => [p.x, p.y]);
+    coordinates.push(coordinates[0]); // close ring
+    const geometry = {
+      type: 'Polygon',
+      coordinates: [coordinates],
+      crs: { type: 'name', properties: { name: 'EPSG:22291' } }
+    } as any;
+
+    // 3. Build updated metadata
+    const closureRatio = (() => {
+      const perimeter = newPoints.reduce((sum, p, i) => {
+        const next = newPoints[(i + 1) % newPoints.length];
+        return sum + Math.sqrt((next.y - p.y) ** 2 + (next.x - p.x) ** 2);
+      }, 0);
+      const err = closureError || 0.001;
+      return perimeter / err;
+    })();
+
+    const updatedMetadata = {
+      points_count: newPoints.length,
+      closure_ratio: `1:${Math.round(closureRatio).toLocaleString()}`,
+      closure_error_m: closureError,
+      residuals: areaResult.residuals,
+      cape_lo_points: newPoints.map(p => ({ id: p.id, y: p.y, x: p.x, status: p.status, description: p.description })),
+      vertex_edited_at: new Date().toISOString()
+    };
+
+    // 4. Persist to DB
+    await updateLandParcel(dbId, {
+      geom: geometry,
+      metadata: updatedMetadata
+    });
+
+    console.log(`[VertexEdit] ✅ "${designation}" geometry updated in DB (${newPoints.length} vertices, area ${areaResult.area?.abs_m2?.toFixed(2)} m²)`);
+
+    // 5. Refresh everything from DB so map labels + parcel cards are consistent
+    await refreshParcelsFromDatabase();
+
+  } catch (err: any) {
+    console.error('[VertexEdit] ❌ Failed to commit vertex edit:', err);
+    alert(`Failed to save vertex edit: ${err?.response?.data?.error || err?.message || 'Unknown error'}`);
+  } finally {
+    isComputing.value = false;
+  }
+}
+
 /**
  * Auto-save parcel to database
  */
@@ -4956,6 +5276,10 @@ const snapCandidateDivergence = computed<number | null>(() =>
 );
 
 function beginVertexDrag(index: number) {
+  // The handlers already refuse, but a drag started while the click-to-insert editor
+  // (or drawing) holds the map would fight it for selectedPoints and the preview line.
+  if (isDrawing.value) return;
+
   const parcel = selectedParcel.value;
   const points = selectedParcelPoints.value;
   if (!parcel || !Number.isFinite(index) || index < 0 || index >= points.length) return;
@@ -5075,8 +5399,9 @@ function cancelVertexDrag() {
  * Would the SUBSTITUTED ring cross itself?
  *
  * This is the correct use of the generatePolygon self-intersection test: the ring is
- * complete and in order. The retired insert mode had to skip it (:3730-3737) only
- * because wouldCreateIntersection tests an APPEND and false-positives on insertion.
+ * complete and in order. The click-to-insert flow has to skip its equivalent check
+ * (see isInsertingMidSequence in handlePointClick) only because
+ * wouldCreateIntersection tests an APPEND and false-positives on insertion.
  */
 function substitutionWouldCross(points: VertexPoint[], index: number, candidate: SnapCandidate): boolean {
   try {

@@ -1,450 +1,507 @@
 # Beacon Name Reconciliation & Suffix Capitalisation — Design
 
-**Date:** 2026-09-12
-**Status:** Approved for planning
-**Module:** `cadastral-standard` (+ `app-backend/src/services`, `app-shared`)
+**Date:** 2026-09-12 (revision 2)
+**Status:** Draft — awaiting review; see Unresolved
+**Module:** `cadastral-standard` (+ `app-backend` coordinate-point write paths, `app-shared`)
 
-Two related features against one subject — the beacon name. **Feature 1** makes a
-parcel's *saved* area/consistency data agree with the beacons that are actually on
-the ground. **Feature 2** makes the *rendering* of a beacon name agree with itself
-across the map, the PDF, the DXF and the preview.
+Two related but distinct pieces of work on one subject, the beacon name.
+**Piece 1** makes a parcel's *saved* area/consistency data carry the beacon names that
+are current in `coordinate_points`. **Piece 2** makes a numeric-prefix beacon name's
+suffix uppercase throughout the application.
+
+**Citation convention.** A bare `:NNNN` is
+`app-frontend/src/views/modules/cadastral-standard/MapLibreAreaView.vue` **on
+`feat/vertex-drag-snap` @ `8d36203`**, the branch this work builds on (decision 10).
+That file is 664 lines longer there than on `main` (`repairParcelBeaconNames` is
+`:1651` on the branch, `:1604` on `main`). Every other cited file is identical on both
+(`git diff --stat main feat/vertex-drag-snap`).
+
+## Revision note
+
+The first cut of this file (`94ae066`, amended `4a16010`) was re-checked against the
+code and is superseded where it was wrong:
+
+- It said the vertex-drag-snap work was "not built". It is built: 9 commits
+  (`cf585da`…`8d36203`, 2026-09-12 06:55–13:57), unmerged. The first cut only looked at
+  `main`.
+- Its Piece 2 display-site inventory listed 8 sites. There are about 30 print sites
+  plus about 20 template interpolations (Context). That inventory was the basis of its
+  decision to fix at display sites, and **that decision is reversed** (decision 11).
+- It re-ran `areaCompute` and wrote `geom` during a rename repair. **Both reversed**
+  (decisions 3, 4): stored residuals can predate the current computation, and a rename
+  tool must not rewrite geometry.
+- It missed the paths that keep *producing* stale names (Context, "Is something
+  broken?").
+- Route line citations were off (`POST /coordinate-points` is `:36`, not `:60`).
+
+The two decisions the surveyor confirmed on 2026-09-12 are carried over unchanged
+(Resolved).
 
 ## Problem
 
-**Feature 1 — stale names in saved area/consistency data.** A surveyor renames a
-beacon (or re-imports a CSV with corrected names) after parcels have already been
-digitized. The map then shows the new names, but the area/consistency table, the
-Area/Consistency PDF and the plan views still carry the old ones. The repair must
-key on **vertex coincidence with beacon positions** — spatial matching, not name
-matching — because the name is the thing that is wrong.
+**Piece 1.** Beacons get renamed after parcels have been digitized: by hand, or by
+re-importing a CSV with corrected names. Each parcel's saved area/consistency data in
+`land_parcels.metadata` still carries the old names. The repair must key on
+**vertex coincidence with beacon position**. Spatial matching is required because the
+name is the thing that is wrong. If a stored vertex sits within tolerance of a current
+`coordinate_points` row, that vertex takes the row's name.
 
-**Feature 2 — the suffix is capitalised in some places and not others.** A beacon
-named `2474a` renders as `A` on the survey-plan map and in the DXF, but as `2474a`
-on the digitizing map, in the coordinate schedule, in the diagram's S.G. No. column,
-and — worst — as a full-name control beacon *outside* its own parcel in the PDF.
+**Piece 2.** In a name with a numeric prefix and an alphabetic suffix, the suffix
+should be uppercase (`2474a` → `2474A`). Today it is uppercase in some places and not
+others.
 
 ## Context (as-found)
 
-### Where a beacon name lives
+### Where a beacon name is stored
 
-- **Canonical row:** `coordinate_points.name`, unique per project — `ON CONFLICT
-  (project_id, name)` (`app-backend/src/models/coordinatePoint.js:200`) and the
-  rename endpoint's 409 (`routes/coordinatePoints.js:139`). PostgreSQL string
-  equality is case-sensitive, so `2474a` and `2474A` are two legal, distinct rows.
-- **Three name-bearing snapshots inside `land_parcels.metadata`** (plain `jsonb`;
-  `cape_lo_points` and friends are application conventions, not columns):
-  - `metadata.cape_lo_points[].id` (and `.description`) — written at save
-    (`MapLibreAreaView.vue:4658`).
-  - `metadata.residuals.edges[].from.{id,name}` / `.to.{id,name}` — built by
-    `app-backend/src/utils/edge-computation.js:55-56` and returned through
-    `/compute/area` (`routes/compute.js:181`), then stored verbatim
-    (`MapLibreAreaView.vue:4657`).
-  - `metadata.vertices[].id` — the QGIS-import shape, read at
-    `MapLibreAreaView.vue:5668-5679`; and the Outside Figure's own
-    `metadata.points`, written by the on-load auto-update at `:4250`.
-- **Names enter the system unnormalised at every door.** `POST /coordinate-points`
-  (`routes/coordinatePoints.js:60`), `POST /coordinate-points/batch` (`:99`),
-  `PATCH /coordinate-points/rename` (`:143`), `PUT /coordinate-points/:id` (`:163`)
-  and the CSV parser (`app-frontend/src/utils/cadastral-csv.ts:243`, which takes
-  `record['point']` verbatim) all store the string as typed. Lowercase suffixes are
-  real field data — the existing fixture uses `'1620a'`
-  (`utils/__tests__/beaconNameMatch.test.ts:30`).
+1. **`coordinate_points.name`**, unique per project: `ON CONFLICT (project_id, name)`
+   (`app-backend/src/models/coordinatePoint.js:200`) and the rename 409
+   (`routes/coordinatePoints.js:135-141`). The comparison is case-sensitive, so `2474a`
+   and `2474A` are two legal rows.
+2. **`land_parcels.metadata`** (plain `jsonb`) holds four name-bearing snapshots:
+   - `cape_lo_points[].id` / `.description`, e.g. as written by
+     `rebuildAffectedParcels` (`:5055-5057`).
+   - `residuals.edges[].from` / `.to`, as `{ y, x, id, name }`. These are built by
+     `app-backend/src/utils/edge-computation.js:55-56`, returned by `/compute/area`
+     (`routes/compute.js:181`), and stored verbatim (`:5054`).
+   - `vertices[].id` (QGIS parcels). These are labels aligned **by index** with the
+     `geom` exterior ring (`:6232-6242`).
+   - The Outside Figure's `points[]`, written by the on-load auto-update
+     (`:4470-4478`).
+3. **`workflow_state.step_data`**: `calculations-part1.adjusted_coordinates` (persisted
+   by `handlePointRename`, `:1574-1583`) and the imported points born in the CSV parser
+   (`app-frontend/src/utils/cadastral-csv.ts:285`). Documents such as the coordinate
+   list are built from workflow state (`CadastralStandardView.vue:3506-3509`), not
+   from `coordinate_points`.
+4. Generated output files on disk: snapshots, out of scope.
 
-### The load path already reconciles — but only in memory
+### Piece 1: what the screen shows vs what the document prints
 
-This is the crux of Feature 1. `refreshParcelsFromDatabase` rebuilds every parcel's
-vertex list **from `geom`, re-matched spatially against the current coordinate
-points at 0,5 m**, and deliberately ignores the stored names:
+- **The loader re-derives names, but only in memory.** `loadParcelsFromDatabase`
+  (`:4173`; `refreshParcelsFromDatabase` just calls it at `:4516`) rebuilds every
+  parcel's vertex list from `geom` (comment `:4255-4256`). It uses the nearest
+  coordinate point under 0.5 m (`:4273`, `:4307-4315`) and falls back to
+  `${stand}_P${i+1}` (`:4348-4355`). It then attaches the **stored** residuals
+  unchanged: `residuals: dbParcel.metadata?.residuals` (`:4409`). The map therefore
+  looks right while the persisted metadata is not.
+- **The Area/Consistency PDF prints the stale half.** `useAreaConsistencyPDF.ts`
+  reads `residuals.edges` (`:145`, `:158`). Its `getBeaconName` (`:170-188`) prints
+  the edge's stored `id || name` and only falls back to spatial matching when that
+  name is *generic* (`isGenericFallbackName`, `utils/beaconNameMatch.ts:1-7`). A stale
+  but real-looking name such as `1620` is not generic, so it is printed (`:379`).
+  **This is the reported "area and consistency data" symptom.**
+- The plan views read only *numbers* from stored edges, by index
+  (`SurveyPlanMapView.vue:1339-1343`, `:3798-3805`), and resolve the Outside Figure's
+  names spatially (`:5871`). They are not where the stale names surface.
 
-```
-// ALWAYS extract from geometry and re-match to get correct beacon names
-// (ignore old metadata which may have generic A, B, C names)
-```
-— `MapLibreAreaView.vue:4032-4034`, matcher at `:4084-4092`, tolerance at `:4050`.
-There is no fallback to `metadata.cape_lo_points`: a parcel whose `geom` yields no
-ring is **skipped** (`:4144-4148`).
+### Piece 1 (a): does `repairParcelBeaconNames` fix the consistency data? No.
 
-The same loop then attaches the **stored** residuals unchanged —
-`residuals: dbParcel.metadata?.residuals` (`:4186`). So one in-memory parcel holds
-freshly re-matched `points` next to a stale, name-bearing `residuals.edges`. The
-Area/Consistency PDF reads the stale half: `parcel.areaResult.residuals.edges`
-(`composables/useAreaConsistencyPDF.ts:145,158`), with `parcel.points` used only as
-a per-index fallback (`:194-195`). `SurveyPlanMapView.vue:5852` calls
-`metadata.residuals.edges` the *"single source of truth"* for the Outside Figure
-table, and `:3798-3805` prefers it for every parcel's edge export.
+`:1651-1753`, reached only from the 🔧 **Repair Beacon Names** button (`:41-49`). It
+fetches `listLandParcels` + `listCoordinatePoints` fresh (`:1662-1665`). For each
+`cape_lo_points` entry it takes the globally nearest point (`:1703-1708`), accepts it
+at `TOLERANCE = 0.5` (`:1685`, `:1709`), and writes
+`updateLandParcel(id, { metadata: { ...metadata, cape_lo_points } })` (`:1719-1721`).
 
-**That is the reported inconsistency**: the screen is right because it re-derives;
-the persisted metadata is wrong because nothing re-derives it.
+- **It never calls `areaCompute` and never touches `residuals`.** `residuals.edges`
+  keeps the old names, and that is exactly what the PDF prints. Pressing the button
+  leaves the symptom in place.
+- **Would re-running `areaCompute` change any number? No, verified.**
+  `computeAreaConsistency` computes the shoelace area, centroid, perimeter and closure
+  from `y`/`x` only (`utils/area-computation.js:42-73`). `computeEdgesWithResiduals`
+  computes dy, dx, distance and bearing from `y`/`x` (`edge-computation.js:34-40`),
+  and runs the residual traverse from the rounded observations (`:68-89`). Names are
+  **copied, never read**: `from: { y, x, id: a.id, name: a.name }` (`:55-56`, carried
+  into the edge at `:93-94`). Attribution is by ring index, not by name. A rename
+  changes only the label text inside `residuals.edges`.
+- **But re-running is not neutral for old parcels.** `recomputeAllParcels` exists to
+  bring stored results up to date with newer backend code: "updates existing parcels
+  with new fields like directionDMS" (`:5078-5081`), and its confirm says "banker's
+  rounding for directions and other improvements" (`:5100-5102`). Stored residuals can
+  predate the current computation, so a recompute can change a parcel's stored
+  dy/dx/directions.
+- Further defects:
+  - It overwrites `description` with the name unconditionally (`:1712`). The rename
+    path gets this right at `:1615`.
+  - It skips parcels with no `cape_lo_points` (`:1694-1697`), so a QGIS parcel's
+    `vertices` names are never repaired.
+  - It has no ambiguity check (second candidate within tolerance) and no duplicate
+    check (two vertices resolving to one beacon).
+  - It swallows per-parcel failures (`:1734-1736`), and its closing `alert`
+    (`:1739-1745`) is a receipt shown after the writes.
 
-### `repairParcelBeaconNames` as it stands
+### Piece 1 (b): does it need the drag-snap cascade?
 
-`MapLibreAreaView.vue:1604-1706`, triggered only by the 🔧 **Repair Beacon Names**
-button (`:42-49`). It fetches `listLandParcels` + `listCoordinatePoints` fresh
-(`:1615-1618`) — pointedly *not* in-memory state — then per parcel maps each
-`cape_lo_points` entry to the globally nearest coordinate point (`:1658-1661`),
-accepts it at `TOLERANCE = 0.5` m when the name differs (`:1662`), and writes back
-`updateLandParcel(id, { metadata })` (`:1674`). It reports repaired/skipped counts
-in an `alert` (`:1692-1698`).
+`feat/vertex-drag-snap` built `rebuildAffectedParcels` (`:4954-5076`):
 
-What it does **not** do, all verified against the code:
+- Its mutation union is keyed by **one** beacon name (`:4956-4959`).
+- It resolves parcels from fresh DB rows by `id` (`:4977-4988`).
+- It re-runs `areaCompute` (`:5023-5028`), builds `geom` from `cape_lo_points`
+  (`:5034-5040`), and writes both (`:5062`).
+- It returns a `CascadeOutcome` (`:4961`, `:5063-5071`), which `commitVertexDrag`
+  renders through `describeCascadeOutcome` (`:5509`, in `vertexSnap.ts`; its wording
+  is drag-specific).
 
-- It rewrites `cape_lo_points` **only**. `metadata.residuals.edges[].from/.to` keep
-  the old names, and that is the block the area/consistency surfaces read.
-- `:1665` returns `{ ...p, id: bestMatch.id, description: bestMatch.id }` —
-  **unconditionally overwriting `description` with the name**, destroying a real
-  description such as "Iron peg". (The rename path at `:1568` gets this right: it
-  only rewrites `description` when it equalled the old name.)
-- Parcels with an empty `cape_lo_points` are counted as skipped and `continue`d
-  (`:1647-1650`) — so a QGIS parcel whose names live in `metadata.vertices` is
-  never repaired, and neither is the Outside Figure's `metadata.points`.
-- Per-parcel failures are `console.error`ed and swallowed (`:1687-1689`); the final
-  alert's "Repaired: N" does not distinguish a parcel that failed from one that
-  needed nothing.
-- No ambiguity handling. The inner loop takes the global nearest with no
-  second-candidate check and no claimed-set, so two vertices of one parcel can both
-  resolve to the same beacon, producing a duplicate `id` in the ring.
+The cascade exists because a drag or coordinate edit changes what **one name** refers
+to, while every other parcel holds that reference *by name* (`findAffectedParcels`
+matches `id === pointName`, `:1294`). Reconciliation has no such reference to
+propagate. It derives each vertex's name from **its own position**, against one beacon
+table, for every parcel in one pass. Two parcels that share a corner resolve it
+independently to the same row, because they share its position. **Per-parcel repair
+is sufficient.** Routing through `rebuildAffectedParcels` would also inherit a
+recompute (decision 3) and a `geom` write (decision 4) that a rename must not do. That
+`geom` hazard is real: `SurveyPlanMapView.vue:5854-5864` exists because `geom` gets
+edited outside the app (QGIS) without the metadata following.
 
-### Five spatial matchers, four tolerances
+### Piece 1 (c): is something broken or missing? Yes.
 
-Worth recording because Feature 1 adds decision logic that must not become a sixth:
+1. **The button does not repair the consistency data** (above).
+2. **Stale names are produced continuously, not just historically.** Three paths do
+   it:
+   - `CoordinateListView.vue:241-292` (`commitRename`) calls `renameCoordinatePoint`
+     (`:260`) and patches workflow copies (`:262-281`). It **never touches
+     `land_parcels`**.
+   - The map rename modal (`confirmMapRename` `:1103`, `resolveRenameConflict`
+     `:1140`) calls only `handlePointRename` (`:1122`, `:1171`). That function
+     propagates into `cape_lo_points` alone (`:1606-1635`), through `savedParcels`
+     (`:1609`, i.e. only parcels currently loaded), with a metadata-only write
+     (`:1620`). **`residuals` stays stale.**
+   - CSV re-import (`routes/csvImports.js`, execute-merge `:448`) deletes every
+     coordinate point (`:513-519`) and re-inserts under the file's names
+     (`:596-602`). Every parcel can go stale at once; the loader's tolerance comment
+     names exactly this case (`:4271-4272`).
 
-| Where | Tolerance | Picks |
-|---|---|---|
-| `MapLibreAreaView.vue:1658` (the repair) | 0,5 m | nearest |
-| `MapLibreAreaView.vue:4086` (on-load re-derivation) | 0,5 m | nearest |
-| `app-backend/src/services/diagram/beaconName.js:8` `resolveVertexBeaconName` | 0,5 m | nearest |
-| `app-backend/src/utils/areaCalculations.js:246-253` | 0,5 m per-axis box | **first** |
-| `app-frontend/src/utils/beaconNameMatch.ts:10` `findBeaconNameBySpatialMatch` | 2 m (10 m generic) | **first** under tolerance (`:20`) |
+   Only the Edit Points panel path is complete. `editPanelHandler` (`:1332`) renames
+   (`:1363-1365`) and then runs `rebuildAffectedParcels` with `kind: 'edit'`
+   (`:1442-1450`).
+3. Description loss and silent failures (above).
 
-### Relationship to the vertex-drag-snap work
+### Piece 2: suffix-derivation sites (every numeric-prefix regex)
 
-`docs/superpowers/specs/2026-09-10-vertex-drag-snap-design.md` designs a *snap
-index* (`vertexSnap.ts`) and a cascade that substitutes one named beacon across
-every parcel sharing it, via `findAffectedParcels` (`:1253`),
-`requireAffectedParcelsConfirm` (`:1273`) and `rebuildAffectedParcels` (`:4717`).
-**None of it is built.** `git log main..HEAD` is empty on
-`feat/beacon-name-reconciliation`, the last three commits on `main` are the spec
-and its plan, and no `vertexSnap.ts` exists under
-`views/modules/cadastral-standard/`.
+Swept `app-frontend/src`, `app-backend/src` and `app-shared` for `^(\d+)`-style
+patterns, trailing-letter extraction, and `.toUpperCase()` on names.
 
-`rebuildAffectedParcels` (`:4717`) is a `for` loop over parcels doing
-`areaCompute` (`:4756`) → `closureError = √(ΣdY²+ΣdX²)` (`:4763`) → closed Cape Lo
-ring (`:4767`) → `closure_ratio`/`closure_error_m`/`residuals`/`cape_lo_points`
-metadata (`:4781-4791`) → `updateLandParcel` (`:4793`) → one
-`refreshParcelsFromDatabase` (`:4800`). **That recipe already exists three times**:
-here, in `commitVertexEdit` (`:4443-4514`), and in an abbreviated form in
-`recomputeAllParcels` (`:4876-4894`). The three differ: `rebuildAffectedParcels`
-passes `{ y, x, id, name: p.id }` to `areaCompute` (`:4757`) while
-`recomputeAllParcels` passes `{ y, x, id }` (`:4872`), leaving `edge.from.name`
-undefined — harmless today only because consumers read `id || name`
-(`useAreaConsistencyPDF.ts:172`).
+| # | Site | Pattern | Uppercases suffix? | Notes |
+|---|---|---|---|---|
+| 1 | `SurveyPlanMapView.vue:1209` → `:1229` | `/^(\d+)([a-z]+)$/i` | **Yes, unconditionally** | Suffix → `text` (`:1270`) → refined labels → PDF/DXF. Full-name branches `:1216`, `:1289` emit raw. Unconditional uppercasing turns `1464An` into `AN`, which violates Resolved #1. |
+| 2 | `SurveyPlanMapView.vue:4250` → `:4268` | same | **Yes, unconditionally** | PDF-payload twin of #1; full branches `:4255`, `:4292` raw; same `1464An` defect. |
+| 3 | `app-backend/src/services/dxfGenerator.js:1532` → `:1535` | `/^(\d+)([A-Za-z]+)$/` | **Yes, unconditionally** | Fallback only; the UI-label branch passes text verbatim (`:1519-1528`). Full fallback `:1537` raw. Same `1464An` defect. |
+| 4 | `pdfkitGeoPDF.js:2870` → `:2890`, `:2903` | `/^(\d+)([A-Z]+)$/`, no `i` | **No** | `2474a` and `1464An` **fail to match** and fall into the control-beacon branch (`:2873-2887`): full raw name, **outside** the parcel. This is a placement bug, not just casing. `:3014` gates the bold suffix font on `/^[A-Z]+$/`. |
+| 5 | `pdfkitGeoPDF.js:3311` (`findParcelWithBeaconPrefix`) | `/^(\d+)([A-Z]+)$/` | n/a | **Dead:** defined at `:3307`, no call site. |
+| 6 | `:6756` → `:6773` | `/^(\d+)([A-Z][a-z]*)$/` | **No** | `2474a` and `2474AB` fail → full-name branch (`:6785-6792`). Feeds the comprehensive document's beacon labels. |
+| 7 | `app-backend/src/routes/surveyPlanPreview.js:792` → `:811` | same as #6 | **No** | Preview payload twin of #6. |
+| 8 | `app-shared/block-definitions.js:632-640` (`extractBeaconSuffix`) | `/^(\d+)([A-Z]+)$/i` | **No** | **Dead:** exported (`:834`), no importer anywhere. |
+| 9 | `app-backend/src/utils/topologyBuilder.js:260-267` (`extractBeaconSuffix(name, stand)`) | `replace(stand, '')` | **No** | Test-only (`topologyBuilder.test.js:240-253`); stand-relative semantics. |
+| 10 | `app-frontend/src/utils/automatedParcelDetector.ts:694-697`, `:1018-1022` | `/^(\d+)[A-Z]?$/` after `.toUpperCase()` | n/a | Classification only, never emits a label. Correct as is. |
+| 11 | `utils/beaconNameMatch.ts` | none | n/a | Matching only; the generic patterns (`:4`) are letter-only. Not a site. |
 
-### Suffix capitalisation — the call-site inventory
+### Piece 2: full-name display sites (print the stored string, no suffix logic)
 
-The sweep covered `app-frontend/src` and `app-backend/src` for numeric-prefix +
-alpha-suffix regexes, for `[A-Za-z]+$`-style trailing-letter extraction, for
-`.toUpperCase()` on a point name, and for map/PDF/DXF label emission.
+- **Frontend documents:**
+  - `utils/field-book.ts:227`, `:300`
+  - `utils/calculations-part1.ts:319`, `:447`, `:762`, `:874`, `:1005`
+  - `utils/coordinate-list.ts:610`
+  - `utils/area-computation-report.ts:232`
+  - `composables/useAreaConsistencyPDF.ts:379`
+  - `utils/beaconComparisonSection.ts:271`
+  - `utils/beaconAdjustmentReport.js:160`, `:520`
+  - `utils/pdf-generator.ts:194`
+  - `utils/professionalSurveyPlanExporter.ts:1699`
+  - `utils/surveyPlanSummaryReport.ts:279`
+- **Frontend map labels:** `:3380` (`trig-beacons-labels`) and `:3411`
+  (`survey-pegs-labels`), both `'text-field': ['get', 'id']`.
+- **Frontend templates:** 20 `{{ point.id }}`-style interpolations across 15 `.vue`
+  files, e.g. `CoordinateListView.vue`, `CalculationsPart1View.vue`,
+  `MergeAnalysisDialog.vue`.
+- **Backend:**
+  - `pdfkitGeoPDF.js:1520`, `:9164`
+  - `utils/surveyPlanGenerator.js:231`
+  - `services/diagramPdf.js:159`, via `diagram/sidesTable.js:46` →
+    `diagram/beaconName.js:21-22`
+  - `workingPlan/working-plan.js:1289`, `:1422`
+  - The beacon schedule: `classifyBeaconGroups` pushes raw names
+    (`block-definitions.js:496-502`), consumed at `dxfGenerator.js:2257` and
+    `pdfkitGeoPDF.js:9229`.
 
-**Three regex dialects exist for one concept:**
+That is about 30 print sites and about 20 template sites, before counting CSV, GeoJSON
+and DXF-attribute exports. Every future document would add more.
 
-| Pattern | Sites |
-|---|---|
-| `/^(\d+)([a-z]+)$/i` | `SurveyPlanMapView.vue:1209`, `:4250` |
-| `/^(\d+)([A-Za-z]+)$/` | `app-backend/src/services/dxfGenerator.js:1532` |
-| `/^(\d+)([A-Z]+)$/` | `app-backend/src/services/pdfkitGeoPDF.js:2870` |
-| `/^(\d+)([A-Z][a-z]*)$/` | `MapLibreAreaView.vue:6192`, `app-backend/src/routes/surveyPlanPreview.js:792` |
+### Piece 2: every write door for a beacon name
 
-**Correct today (uppercase the suffix):**
-
-1. `SurveyPlanMapView.vue:1209` → `:1229` `prefixMatch[2].toUpperCase()` → `text`
-   at `:1270`, stored as `refinedBeaconLabels` (`:1315`) and shipped to the PDF/DXF.
-2. `SurveyPlanMapView.vue:4250` → `:4268` → `:4280`, the PDF-payload twin of (1).
-3. `dxfGenerator.js:1532` → `:1535` `m[2].toUpperCase()`. Correct, but only on the
-   *fallback* branch; the priority branch passes `uiLabel.text` verbatim (`:1522`),
-   which is safe precisely because that text came from (1)/(2).
-
-The MapLibre `beacon-labels` layer (`SurveyPlanMapView.vue:2475`,
-`'text-field': ['get','name']`) is fed `name: beacon.text` at `:2447` — i.e. from
-(1). **Not a defect.**
-
-**Inconsistent — each verified by reading the line:**
-
-| # | Site | Defect |
-|---|---|---|
-| A | `pdfkitGeoPDF.js:2870`, `:2890`, `:2903` | Regex is `[A-Z]+` with no `i`, so `2474a` **does not match at all** → falls into the control-beacon branch (`:2873-2887`) and renders the **full raw name outside** the parcel. A matched suffix is also emitted with no `.toUpperCase()`. Two defects, one line apart. Note `:3014` gates the suffix font/bold on `/^[A-Z]+$/.test(displayLabel)`, so a lowercase suffix would silently lose its cartographic treatment even if it reached that far. |
-| B | `MapLibreAreaView.vue:6192`, `:6209` | `displayLabel: suffix` verbatim; `2474a` does not match `[A-Z][a-z]*` and falls to the full-name branch (`:6221-6228`). Feeds the comprehensive/area-consistency document (`:6550`). |
-| C | `surveyPlanPreview.js:792`, `:811` | Identical to (B) in the preview payload (`:824-841` is the fall-through). |
-| D | `MapLibreAreaView.vue:3160` (`trig-beacons`) and `:3191` (`survey-pegs`) | `'text-field': ['get','id']` — the raw name on the digitizing map. |
-| E | `app-frontend/src/utils/coordinate-list.ts:610` | `pdf.text(point.pointId, …)` — raw name into the SI 727 coordinate schedule. |
-| F | `diagram/beaconName.js:22` → `diagram/sidesTable.js:46` → `diagramPdf.js:159` and `diagramDxf.js:341` | `resolveVertexBeaconName` returns the stored name verbatim into the diagram's DIAGRAM S.G. No. column, PDF and DXF alike. |
-
-`utils/automatedParcelDetector.ts` (`:415`, `:516`, `:694`, `:1018`, `:1142`) also
-uppercases names, but only to *classify* (road reserve, corner letter, TSM). It
-never emits a label. **Out of scope** — it is already case-insensitive and correct.
+- **Backend.** All SQL writing `coordinate_points.name` lives in three files:
+  - `models/coordinatePoint.js`:
+    - `create` INSERT (`:70-76`; `POST /coordinate-points`, `routes/coordinatePoints.js:36`)
+    - `batchCreate` (`:87`; `POST /coordinate-points/batch`, `:73`). It dedupes by
+      exact name (`:106-153`): duplicates within 0.5 m are averaged (`:115-128`),
+      others are **dropped with only a console warning** (`:129-140`). It then upserts
+      `ON CONFLICT` (`:197-208`).
+    - `update` (`:275-288`; `PUT /coordinate-points/:id`, `:163`)
+  - `routes/coordinatePoints.js`: `PATCH /coordinate-points/rename` (`:117`), with its
+    own SQL (conflict check `:135-141`, UPDATE `:143-149`).
+  - `routes/csvImports.js`: execute-merge UPDATE `name = newId` (`:528-535`) and
+    INSERT (`:596-602`). `newId` is minted in analyze-merge (`:311`).
+- **Frontend API calls.** Every write goes through `services/spatial.ts`
+  (`createCoordinatePoint` `:185`, `renameCoordinatePoint` `:204`,
+  `updateCoordinatePoint` `:213`, `batchCreateCoordinatePoints` `:226`) or
+  `services/csvImports.ts` (execute-merge `:178`).
+- **Frontend typing/parsing points:**
+  - `cadastral-csv.ts:243`, `:285` (`record['point']` verbatim)
+  - `confirmMapRename` `:1106` and `resolveRenameConflict` `:1143` (`.trim()` only)
+  - `CoordinateListView.vue:242`
+  - `editPanelHandler` `patch.name` (`:1363`)
+  - `confirmBeaconSave` (`:1842` → `createCoordinatePoint` `:1869`)
+- **Callers keep their typed string for in-memory updates.** `handlePointRename` uses
+  `payload.newName` throughout `:1545-1635` (including the `dbPointIds` re-key at
+  `:1600-1604`); `CoordinateListView` does the same at `:264-281`. A backend-only
+  normalisation would desynchronise the frontend's own name joins.
+- **Duplicate checks compare raw strings:** `CoordinateListView.vue:249-251`, `:1111`,
+  `coordinatePoints.js:135-141`, `batchCreate` `:107`.
 
 ### Testing & plumbing
 
-- `repairParcelBeaconNames` has **no test coverage of any kind**. It is defined at
-  `MapLibreAreaView.vue:1604` and referenced once, from the button at `:43`. Nothing
-  in any `__tests__` directory mentions it.
-- **No batch-update endpoint exists.** `POST /land-parcels/batch`
-  (`routes/landParcels.js:173`) is batch **create** only: it calls
-  `LandParcel.create` (`:216`), does not accept `metadata` in its schema
-  (`:186-200`), and loops non-transactionally anyway (`:214-239`). Every repair is
-  N × `PUT /land-parcels/:id` (`:259`) from the frontend loop, exactly as today.
-- `app-shared/` is importable from **both** sides: backend by relative path
-  (`dxfGenerator.js:38`), frontend likewise
-  (`views/modules/cadastral-standard/paperSizeOptions.ts:1`), and the frontend one
-  is Vitest-covered (`__tests__/paperSizeOptions.test.ts`).
-- Frontend is Vitest with no `@vue/test-utils`; the convention is to extract logic
-  into a plain `.ts` and test that. Backend is Jest under
-  `--experimental-vm-modules`.
+- `repairParcelBeaconNames` has no test coverage.
+- No batch *update* endpoint exists for parcels. `POST /land-parcels/batch`
+  (`routes/landParcels.js:173`) calls `LandParcel.create` (`:216`). Each parcel write
+  is its own `PUT /land-parcels/:id` (`:259`).
+- `app-shared/` is imported by the backend (`dxfGenerator.js:38`) and the frontend
+  (`paperSizeOptions.ts:1`), and is Jest-tested from the backend
+  (`services/__tests__/block-definitions-schedule.test.js`).
+- Frontend: Vitest, no `@vue/test-utils`; extract logic into plain `.ts`. Backend: Jest
+  under `--experimental-vm-modules`.
+- No backend PDF/DXF fixture contains a lowercase or mixed-case numeric-suffix name
+  (grep of `services/__tests__/fixtures/`).
 
 ## Decisions
 
 Recorded because each rules out an approach that looked reasonable.
 
-1. **Reconciliation stays a MANUAL trigger.** Settled by the surveyor and not
-   revisited here. The 🔧 Repair Beacon Names button (`:42-49`) remains the only
-   entry point; nothing runs on load. The load-time re-derivation at `:4032` stays
-   exactly as it is — in memory, writing nothing — so the button remains the only
-   thing that touches the database.
-2. **Capitalisation scope is numeric-prefix + alpha-suffix ONLY — and only when the
-   suffix is currently all-lowercase.** Settled, refined 2026-09-12 after the
-   surveyor confirmed Unresolved #1: a mixed-case suffix such as `An` (as in
-   `1464An`) is a deliberate, distinct naming form, not a capitalisation lapse, and
-   must be preserved byte-for-byte. So `normalizeBeaconName` uppercases the suffix
-   **only when `suffix === suffix.toLowerCase()`** — i.e. every letter in it is
-   currently lowercase (`2474a` → `2474A`, `15b` → `15B`). A suffix that already
-   contains any uppercase letter, mixed-case or not (`An`, `AN`, `Ab`), is left
-   exactly as stored. A letter-only name with no numeric prefix (`A`, `SD4`,
-   `TSM5025`, `PEGGINGB`) is never touched, matched or not — this part of the rule
-   is unchanged from the reference sites at `SurveyPlanMapView.vue:1229` and
-   `:4268`, which is why those two need the guard added in Part 4, not just be left
-   as the reference.
-3. **Fix capitalisation at every display site, NOT at the source.** Source-side
-   normalisation — uppercasing `coordinate_points.name` on write — was considered
-   and rejected on three grounds, each verified:
-   - **There is no single source.** Names arrive through five endpoints plus the
-     CSV parser, and — decisively — the names that the plan surfaces actually read
-     live in `land_parcels.metadata` jsonb (`cape_lo_points`, `residuals.edges`,
-     `vertices`, the OF's `points`), not in `coordinate_points` at all. Normalising
-     the table would leave every snapshot untouched.
-   - **It would manufacture Feature 1's bug.** Rewriting `2474a` → `2474A` in
-     `coordinate_points` breaks the name-join that `findAffectedParcels:1262` and
-     the rename propagation at `:1564` depend on, leaving every saved parcel stale
-     — the exact condition the repair exists to undo.
-   - **It can collide.** `(project_id, name)` is unique and case-sensitive
-     (`coordinatePoint.js:200`), so uppercasing `2474a` in a project that also holds
-     `2474A` fails the constraint, or silently merges two distinct beacons.
-   A display-time helper is idempotent, needs no migration, cannot collide, and
-   cannot desynchronise anything.
-4. **One shared helper, in `app-shared/`.** `app-shared/beaconName.js` — a single
-   pure module consumed by frontend and backend alike, following
-   `si727SheetSizes.js` / `block-definitions.js`. The four regex dialects collapse
-   into one. Copying a corrected regex to six more places is how four dialects
-   became five.
-5. **Feature 1 must rewrite `residuals.edges`, not just `cape_lo_points`** — and it
-   does so by **re-running `areaCompute`**, not by patching names into the stored
-   edges. Re-running is cheaper to get right (the edge shape is the backend's, at
-   `edge-computation.js:53-63`) and self-consistent.
-6. **A pure rename changes no area.** Confirmed, not assumed: `areaCompute` is
-   `computeAreaConsistency(points, …)` (`routes/compute.js:143`) and every figure it
-   returns — shoelace area, distance, bearing, `sumDy`/`sumDx`, `closureError` — is
-   a function of `y`/`x` only; `id`/`name` are carried through
-   (`edge-computation.js:55-56`) and never read arithmetically. A reconciliation that
-   changes only names therefore **must produce byte-identical numbers**. That is
-   asserted as a test, not trusted: it is the cheapest guard against a repair that
-   quietly perturbs a surveyed area.
-7. **Reconciliation is a separate concern from the vertex-drag-snap cascade — but
-   shares its write step.** They are not the same operation:
-   `rebuildAffectedParcels`'s mutation union is keyed by *one* point name
-   (`:4720-4721`), which a reconciliation does not have; the cascade propagates a
-   deliberate change outward from a beacon, while the repair re-derives names
-   inward from position for every vertex of every parcel. Unifying them would force
-   a `Set`-shaped mutation through an interface built for a scalar. What **is**
-   shared is the per-parcel recompute-and-persist recipe, which already exists three
-   times (`:4443`, `:4717`, `:4876`). Extract it once (Part 3) and let both callers
-   use it. Feature 1 does not depend on `vertexSnap.ts` and must not wait for it.
-8. **Ambiguity blocks the vertex, never the run.** When a second coordinate point
-   sits within tolerance of the same vertex, the correct name is not knowable from
-   position. The vertex is left untouched and reported by name, parcel and the
-   competing candidates with their distances. The alternative — take the nearest and
-   say nothing — is how a 3 mm floating-point difference silently renames a beacon.
-9. **A repair that would duplicate a vertex name aborts that parcel, pre-flight.**
-   If two vertices of one parcel resolve to the same beacon, the ring would list it
-   twice — degenerate. Refuse the parcel, name it, write nothing for it. (Mirrors
-   decision 7 of the vertex-drag-snap spec.)
-10. **`description` is preserved.** The repair rewrites `id`, and rewrites
-    `description` only when it equalled the old `id` — the rule the rename path
-    already applies at `:1568`. Fixes the data loss at `:1665`.
-11. **No backend change, no migration, no new endpoint.** For Feature 1,
-    `updateLandParcel` + `refreshParcelsFromDatabase` carry everything, N writes as
-    today. For Feature 2 the backend changes are label-rendering call sites only.
+### Piece 1
 
-## Part 1 — Feature 1: the reconciliation plan (`beaconReconcile.ts`)
+1. **Manual trigger only.** Settled; not revisited. The 🔧 button (`:41-49`) stays the
+   sole entry point. The loader's in-memory re-derivation (`:4255`) is unchanged.
+2. **The repair corrects every name-bearing snapshot, not just `cape_lo_points`:**
+   `cape_lo_points[].id`, `residuals.edges[].from/.to` `.id` and `.name`,
+   `vertices[].id`, and the Outside Figure's `points[].id`. `residuals` is what "area
+   and consistency data" means in practice; it is what the PDF prints.
+3. **Names are patched in place; `areaCompute` is not re-run** (reverses the first
+   cut). The numbers are provably name-independent (Context (a)). Re-running would
+   silently rewrite old parcels' dy/dx/directions under a button about names
+   (`:5078-5081`). A patch is pure and cannot perturb a number. Guard: the edges must
+   match the ring (`edges.length === points.length`, and `edges[i].from` / `.to`
+   within 1 mm of `points[i]` / `points[(i+1) % N]`). Otherwise the parcel is
+   **blocked**: "consistency data does not match its vertex list — recompute this
+   parcel first". Area, closure and residual numbers are untouched by construction.
+4. **Metadata only; `geom` is never sent** (reverses the first cut). This matches
+   today's repair (`:1721`). Guard: every `cape_lo_points` vertex must coincide within
+   1 mm with a distinct `geom` exterior-ring vertex, with equal counts, converted with
+   `geoJsonToCapeLoPoint` as the loader does (`:4285`). Otherwise block. We do not name
+   a ring that is not the parcel's geometry.
+5. **No cascade.** Per-parcel re-derivation is sufficient (Context (b)).
+   `rebuildAffectedParcels` is not used: its mutation union has the wrong shape, and it
+   recomputes and writes `geom`.
+6. **Nearest wins; ambiguity blocks.** Resolved #2. If a second coordinate point is
+   also within 0.5 m, the vertex is ambiguous and its parcel is not written. The report
+   names the vertex, the parcel, and the candidates with distances. Ambiguity is a
+   function of position, so a neighbour sharing that corner hits the same block.
+7. **Two vertices resolving to one beacon blocks the parcel.** A ring listing a beacon
+   twice is degenerate. This mirrors vertex-drag-snap decision 7.
+8. **`description` is preserved.** It is rewritten only when it equalled the old id,
+   which is the rule at `:1615`.
+9. **Plan, confirm, write, report.** The whole plan is pure and knowable before any
+   write, so the surveyor sees it first. Failures are collected into a
+   `CascadeOutcome`, never swallowed.
+10. **Built on `feat/vertex-drag-snap`.** It reuses `CascadeOutcome`, a generalised
+    `describeCascadeOutcome`, and `readVertex` (module-private in `vertexSnap.ts`;
+    exported by this work). None of these exist on `main`.
 
-New pure module
-`app-frontend/src/views/modules/cadastral-standard/beaconReconcile.ts`. All of the
-decision logic, no Vue, no network, no MapLibre.
+### Piece 2 — the central decision
+
+11. **Normalise at the source, not at display sites** (reverses the first cut).
+
+| | Per-display-site fix | Single source of truth (write doors + backfill) |
+|---|---|---|
+| Sites to change | ~30 print + ~20 template + exports; open-ended | 3 backend files, 2 frontend services, ~6 frontend entry points; closed |
+| Completeness | The first cut, which chose this, found 8 of ~50 | Every reader sees the stored value |
+| Future documents | Each must remember the helper | Nothing to remember |
+| Exports (CSV/GeoJSON/DXF attributes) | Raw; disagree with the printed plan | Consistent |
+| Frontend name joins | Unaffected (data untouched) | Must normalise the typed name at entry (decision 14) |
+| Case-fold collisions (`2474a` + `2474A`) | Invisible | Must be detected and blocked (decisions 13, 15) |
+| Existing data | Fixed on screen instantly | Needs a backfill (decision 13) |
+
+The first cut's three objections, re-checked:
+
+- *"There is no single source."* True of *storage* (four copies), false of *writes*.
+  The jsonb copies are downstream of a small, enumerable set of doors (Context). What
+  is already stored is the backfill's job.
+- *"It would manufacture Piece 1's bug"* by breaking name-joins to saved parcels. Only
+  for existing data, and Piece 1 is precisely the position-keyed repair that heals it.
+  The backfill runs both in one pass (decision 13).
+- *"Names can collide."* Yes. Collisions are blocked and reported, never merged.
+
+The table's last row is the one real cost. It is paid once per project, by the
+surveyor, with the button they already use.
+
+12. **The rule** (settled; refined by Resolved #1). A name matching
+    `^(\d+)([A-Za-z]+)$` whose suffix is **all lowercase** has its suffix uppercased
+    (`2474a` → `2474A`, `15b` → `15B`). Anything else passes through byte for byte:
+    - a mixed-case suffix (`1464An`)
+    - an already-uppercase suffix (`2474A`)
+    - a letter-only name (`A`, `SD4`, `TSM5025`)
+    - a trailing digit (`2474A1`)
+
+    The rule is idempotent.
+13. **Existing data is backfilled per project, by the same manual button, not by a
+    migration.** A migration cannot do Piece 1's spatial parcel repair. It would run
+    blind across every surveyor schema, cannot surface collisions to the person who can
+    resolve them, and cannot reach `workflow_state` copies safely. One run does: beacon
+    renames, then workflow copies, then parcel reconciliation.
+14. **Both sides normalise, one implementation.** `app-shared/beaconName.js` is the
+    only place the rule exists:
+    - The frontend applies it where a name is typed or parsed, so the typed string
+      equals the stored string and in-memory joins agree.
+    - The backend applies it again at every door, defensively (idempotent).
+    - Duplicate checks compare normalised forms.
+15. **Case-fold duplicates are an error, not a merge.** A payload holding two raw names
+    that normalise to one (`2474a` and `2474A`) is rejected with a 400 naming the pair.
+    Otherwise `batchCreate` would average them (`:115-128`) or silently drop one
+    (`:129-140`). Exact duplicates keep today's behaviour.
+16. **Suffix-derivation sites move onto the shared splitter anyway, for matching, not
+    casing.**
+    - Sites #4, #6 and #7 fail to *match* legitimate names (`1464An` permanently;
+      lowercase until backfilled; `2474AB` at #6/#7) and misplace their labels.
+    - Sites #1–#3 uppercase `1464An`, violating decision 12.
+    - Dead sites #5 and #8 are deleted, not left as dialects to copy.
+    - #9, #10 and #11 are untouched.
+17. **Full-name display sites are not touched.** A project that has not been backfilled
+    keeps printing its stored case in tables until the surveyor runs the button. That
+    is the stated cost of decision 11, not an oversight.
+
+Backend change is required (decisions 13–15), including one new endpoint.
+
+## Part 1 — Piece 1: the pure planner (`beaconReconcile.ts`)
+
+New `app-frontend/src/views/modules/cadastral-standard/beaconReconcile.ts`. No Vue, no
+network, no MapLibre.
 
 ```ts
-export interface BeaconCandidate { name: string; y: number; x: number
-                                   description?: string; status?: string }
-
 export type VertexOutcome =
-  | { kind: 'unchanged';  index: number; id: string }
-  | { kind: 'rename';     index: number; from: string; to: string; distanceM: number }
-  | { kind: 'ambiguous';  index: number; id: string
-      candidates: Array<{ name: string; distanceM: number }> }
-  | { kind: 'unmatched';  index: number; id: string; nearestM: number | null }
+  | { kind: 'unchanged'; index: number; id: string }
+  | { kind: 'rename';    index: number; from: string; to: string; distanceM: number }
+  | { kind: 'ambiguous'; index: number; id: string; candidates: Array<{ name: string; distanceM: number }> }
+  | { kind: 'unmatched'; index: number; id: string; nearestM: number | null }
 
 export interface ParcelPlan {
   parcelId: number
   designation: string
-  source: 'cape_lo_points' | 'vertices' | 'points'   // which metadata key holds the ring
+  source: 'cape_lo_points' | 'vertices'
   outcomes: VertexOutcome[]
-  points: Array<{ id: string; y: number; x: number; status?: string; description?: string }>
-  blocked?: { reason: 'duplicate-vertex' | 'ambiguous' | 'too-few-points'; detail: string }
+  blocked?: { reason: 'ambiguous' | 'duplicate-vertex' | 'too-few-points'
+                    | 'ring-not-geom' | 'edges-not-ring'; detail: string }
+  metadata?: object          // the patched metadata, present only when there is a write
 }
 ```
 
 | Function | Responsibility |
 |---|---|
-| `matchVertex(vertex, candidates, tolM)` | Nearest by Euclidean distance in Cape Lo metres. Returns `ambiguous` when a **second** candidate also falls within `tolM`; `unmatched` when none does (carrying the nearest distance, for the report); `unchanged` when the winner's name already equals `vertex.id`. |
-| `planParcel(parcel, candidates, tolM)` | Runs `matchVertex` per vertex, resolves the ring from `cape_lo_points`, else `vertices`, else `points` (recording which in `source`), applies decisions 9 and 10, and sets `blocked` if any outcome is `ambiguous`, if two outcomes name the same beacon, or if fewer than 3 points survive. |
-| `planReconciliation(parcels, coordinatePoints, tolM)` | Maps `planParcel` over every parcel and partitions into `writes` (changed and unblocked), `blocked`, and `unchanged`. **Pure — performs no writes.** |
-| `summarise(plan)` | The human-readable report: per-parcel rename lines (`1425: "2474a" → "2474A" (0,003 m)`), the blocked list with reasons, and the counts. Replaces the ad-hoc string assembly at `:1692-1698`. |
+| `matchVertex(vertex, beacons, tolM)` | Strictly nearest by Euclidean distance. `ambiguous` if a second beacon is also within `tolM`; `unmatched` past it (with the nearest distance); `unchanged` if the name already matches. |
+| `readRing(row)` | `cape_lo_points` if non-empty. Otherwise the `geom` ring zipped **by index** with `vertices[].id`, as `:6232-6242` reads it. Otherwise null. |
+| `ringMatchesGeom(points, geom)` / `edgesMatchRing(edges, points)` | Decision 4 and decision 3 guards, 1 mm. A parcel without `residuals` passes `edgesMatchRing` vacuously. |
+| `patchParcelMetadata(metadata, source, renames)` | **Pure.** Returns new metadata with `cape_lo_points[i].id` (and `description`, per decision 8), `residuals.edges[i].from` and `edges[(i-1+N)%N].to` `.id`/`.name`, `vertices[i].id`, and matching Outside Figure `points[]` entries renamed. Nothing else changes. |
+| `planParcel(row, beacons, tolM)` | Reads the ring, applies the guards and decisions 6–8, and produces `blocked` or `metadata`. |
+| `planReconciliation(rows, beacons, tolM)` | `{ writes, blocked, unchanged }`. A blocked parcel never blocks its neighbours. |
+| `summarise(beaconPlan, parcelPlan)` | Dialog text: beacon renames, collisions, per-parcel renames (`1425: "1620" → "2474A" (0.003 m)`), blocked parcels with reasons, counts. |
 
-`tolM` defaults to **0,5 m**, the figure already used at `:1638`, `:4050` and
+`tolM` defaults to 0.5 m, the figure at `:1685`, `:4273` and
 `diagram/beaconName.js:8`.
 
-**The Outside Figure is not special-cased.** It is an ordinary `land_parcels` row
-whose designation contains "outside figure" (`:3836`, `:4208`), digitized and saved
-through the same path, so it plans and writes like any other parcel — which is what
-`repairParcelBeaconNames` already does today. One asymmetry is worth knowing and is
-deliberately left alone: the on-load auto-update at `:4205-4270` re-derives the OF's
-`metadata.points` and `metadata.residuals` on **every** load from the freshly
-re-matched in-memory parcel, so the OF partially self-heals while ordinary parcels
-do not. After Part 2 that write becomes redundant rather than wrong; removing it is
-out of scope.
+## Part 2 — Piece 1 + backfill: rewiring the button
 
-## Part 2 — Feature 1: rewiring `repairParcelBeaconNames`
-
-The function keeps its name, its signature, its button and its manual-only trigger
-(decision 1). Its body becomes three phases.
+`repairParcelBeaconNames` keeps its name, its button and its manual trigger.
 
 ```
-🔧 Repair Beacon Names
-  └─ fetch  listLandParcels(projectId) + listCoordinatePoints(projectId)   (:1615, unchanged)
-     └─ plan = planReconciliation(dbParcels, dbPoints, 0.5)                (pure)
-        └─ confirm: a modal showing summarise(plan) — renames, blocks, counts
-           ├─ Cancel  → nothing written
-           └─ Proceed → for each plan.writes:
-                          areaCompute(points, includeResiduals)            → residuals + edges
-                          geom = closed Cape Lo ring
-                          metadata = { …, cape_lo_points, residuals,
-                                       closure_ratio, closure_error_m,
-                                       points_count, beacon_names_repaired_at }
-                          updateLandParcel(id, { geom, metadata })
-                        then one refreshParcelsFromDatabase()
+🔧 Repair Beacon Names  (:43)
+ └─ fetch listLandParcels + listCoordinatePoints, fresh               (as :1662-1665)
+    ├─ beaconPlan = planNameNormalization(points)                     (app-shared, pure)
+    ├─ parcelPlan = planReconciliation(parcels, beaconPlan.after, 0.5)  (pure — sees post-rename names)
+    └─ confirm modal: summarise(beaconPlan, parcelPlan)
+       ├─ Cancel  → nothing written
+       └─ Proceed →
+            A1  POST /coordinate-points/normalize-names          one transaction; skipped if no renames
+                  └─ fails → stop; nothing else is written
+            A2  workflow_state copies: exact old→new name map, one PATCH
+            B   for each parcelPlan.write: updateLandParcel(id, { metadata })   — never geom
+            then one refreshParcelsFromDatabase(), then the outcome dialog
 ```
 
-Four substantive changes from today:
+- **Order is load-bearing.** A1 comes before B: parcels must never be renamed to names
+  that do not exist yet. A re-run after any partial failure is safe. A1 has nothing
+  left to do, and B's planner re-derives from positions, so already-written parcels
+  plan as `unchanged`.
+- **A2.** `handlePointRename` shows two copies: in-memory `importedPoints`
+  (`:1564-1568`) and persisted `calculations-part1.adjusted_coordinates`
+  (`:1574-1583`). `CoordinateListView.vue:269-274` adds
+  `documents.coordinateList.points`. Where `importedPoints` is persisted was **not
+  established** by this research; the plan must locate it before implementing A2.
+- **The confirm modal** follows the resolve/reject promise pattern of
+  `showAffectedParcelsConfirm` (`:1312-1321`), but is a new scrollable list. That
+  modal is keyed by one point name and cannot show a multi-rename plan.
+- **Outcomes.** A `CascadeOutcome` per phase. `describeCascadeOutcome` is generalised
+  (it says "The drag could not be applied…") so both callers share it. A partial phase
+  B is reported in the same blocking terms as the drag.
+- **Unchanged:** the `isRecomputing` guard (`:1658`) and the empty-project exits
+  (`:1667-1674`). The in-memory cache sync (`:1722-1731`) is deleted:
+  `refreshParcelsFromDatabase` replaces it, and it keys `savedParcels` by
+  `stand || designation` (`:1691`) against the loader's `designation || stand`
+  (`:4416`).
 
-- **`residuals` is regenerated** (decision 5). This is what actually fixes the
-  reported symptom: the edge names the Area/Consistency PDF
-  (`useAreaConsistencyPDF.ts:158`) and the plan views
-  (`SurveyPlanMapView.vue:3798`, `:5852`) read are rebuilt from the repaired ring.
-  `areaCompute` is called with `{ y, x, id, name: id }` — the
-  `rebuildAffectedParcels:4757` shape, not the `recomputeAllParcels:4872` shape, so
-  `edge.from.name` is populated too.
-- **Confirm before write.** Today the alert is a *receipt* (`:1698`); it arrives
-  after N `PUT`s. A plan is knowable before any write, so the surveyor sees the
-  rename list first. This also makes ambiguities actionable rather than
-  retrospective.
-- **Outcomes replace the swallow.** The per-parcel `catch` at `:1687-1689` becomes
-  an entry in an outcome list, and the closing report distinguishes *written*,
-  *nothing to do*, *blocked* and *failed*. There is no cross-parcel transaction
-  (no batch endpoint exists — see Context), so a partial failure is possible; the
-  report must name which parcels were written and which were not, and instruct a
-  re-run. Not a console warning. Same posture as the vertex-drag-snap spec's Part 3.
-- **`description` preserved** (decision 10), replacing `:1665`.
+## Part 3 — Piece 2: normalisation at the doors
 
-Unchanged and deliberately so: the fresh-from-API fetch (`:1615-1618`), the
-`isRecomputing` guard (`:1611`), the empty-parcel and empty-point early exits
-(`:1620-1627`), and the in-memory cache sync (`:1676-1684`) — which becomes
-redundant once `refreshParcelsFromDatabase` runs, but is not this feature's to
-remove.
-
-## Part 3 — The shared write step
-
-`areaCompute → closureError → closed ring → metadata → updateLandParcel` exists
-verbatim at `MapLibreAreaView.vue:4443-4514` (`commitVertexEdit`) and `:4717-4801`
-(`rebuildAffectedParcels`), and in reduced form at `:4876-4894`
-(`recomputeAllParcels`). Feature 1 needs it a fourth time.
-
-Extract it once as `persistRecomputedParcel(parcelId, points, baseMetadata, stamp)`
-and have the repair call it. The `|| 0.001` closure-error floor (`:4779`), the
-`closure_ratio` string form, the generated-column omission (`area_m2`/`area_ha`/
-`perimeter_m` are `GENERATED ALWAYS`, `migrations/040.do.sql:108-110`, and are
-stripped by `services/spatial.ts:376`) and the inert GeoJSON `crs` member (`:4772`
-— `LandParcel.update` re-derives the SRID from the project meridian) all carry over
-unchanged. `stamp` is the metadata key: `beacon_names_repaired_at` here,
-`point_edit_rebuilt_at` for the existing callers.
-
-**Sequencing note.** The vertex-drag-snap plan
-(`docs/superpowers/plans/2026-09-10-vertex-drag-snap.md`) also rewrites
-`rebuildAffectedParcels` and deletes `commitVertexEdit`. Whichever lands second
-inherits the merge. Doing this extraction here is the smaller change and leaves
-that plan strictly simpler; it must not be deferred *into* that plan, because
-Feature 1 is a bug fix and vertex-drag-snap is unbuilt (decision 7).
-
-## Part 4 — Feature 2: `app-shared/beaconName.js`
+### `app-shared/beaconName.js`
 
 ```js
-/** A beacon name's numeric stand prefix and trailing alpha suffix, or null. */
-export function splitBeaconName(name)      // '2474a' → { prefix: '2474', suffix: 'a' }
-                                           // 'SD4', 'A', 'TSM5025' → null
-/** The name with an all-lowercase alpha suffix uppercased; unchanged otherwise. */
-export function normalizeBeaconName(name)  // '2474a' → '2474A'; 'SD4' → 'SD4'
-                                           // '1464An' → '1464An' (mixed case, untouched)
+export function splitBeaconName(name)      // '2474a' → { prefix: '2474', suffix: 'a' }; 'SD4' → null
+export function normalizeBeaconName(name)  // decision 12; total, idempotent, never throws
+export function findCaseFoldDuplicates(names)   // [['2474a', '2474A'], …] among raw names
+export function planNameNormalization(rows)     // { renames: [{ id, from, to }], collisions: [{ from, existing }], after }
 ```
 
-One regex: `/^(\d+)([A-Za-z]+)$/`, matching `dxfGenerator.js:1532`'s character
-class. `normalizeBeaconName` uppercases the suffix **only when it is currently
-all-lowercase** (decision 2, refined 2026-09-12) — `suffix === suffix.toLowerCase()`
-is the guard, checked before `.toUpperCase()` is applied. A suffix already holding
-any uppercase letter, `1464An` included, passes through unchanged. Both functions
-are **total and idempotent**: any string in, a string (or `null`) out, never a
-throw, and `normalizeBeaconName(normalizeBeaconName(n)) === n`.
+One regex: `/^(\d+)([A-Za-z]+)$/`. `planNameNormalization` puts a rename whose target
+already exists in `collisions` instead of `renames`. `after` is the point list with the
+renames applied, which is what Part 1 matches against.
 
-**Call-site changes**, by the inventory in Context:
+### Backend doors (defensive; decision 14)
+
+| Door | Change |
+|---|---|
+| `models/coordinatePoint.js` `create` (`:70-76`), `update` (`:275-288`) | `normalizeBeaconName(name)` before the SQL. |
+| `models/coordinatePoint.js` `batchCreate` (`:106`) | `findCaseFoldDuplicates` → 400 (decision 15); then normalise **before** the dedupe map at `:107`, so the `ON CONFLICT` key (`:200`) is the normalised name. |
+| `routes/coordinatePoints.js` rename (`:131-149`) | Normalise `new_name` before the conflict check (`:135`) and the UPDATE (`:143`). The response already returns the stored row (`RETURNING *`, `:147`). |
+| `routes/csvImports.js` analyze-merge (`:311`) and execute-merge (`:528-535`, `:596-602`) | Normalise `newId` / `newPt.id`; case-fold duplicates → 400. |
+| **New** `POST /coordinate-points/normalize-names` | Body `{ project_id, renames }`. The server recomputes `planNameNormalization` from its own rows and requires it to equal `renames`; otherwise **409 "plan changed — re-run"**. It applies every rename in **one transaction** and never touches a collision. |
+
+### Frontend entry points
+
+Each normalises the name where it already trims it, and uses the normalised string for
+both the API call and its in-memory updates:
+
+- `cadastral-csv.ts:243`, `:285`
+- `confirmMapRename` (`:1106`) and `resolveRenameConflict` (`:1143`)
+- `CoordinateListView.vue:242`
+- `editPanelHandler` (`:1363`)
+- `handlePointRename` (normalise `payload.newName` on entry, `:1540`)
+- `confirmBeaconSave` (`:1842`)
+
+The duplicate checks at `CoordinateListView.vue:249-251` and `:1111` compare normalised
+forms.
+
+## Part 4 — Piece 2: suffix-derivation sites
 
 | Site | Change |
 |---|---|
-| `SurveyPlanMapView.vue:1209`, `:4250` | Replace the inline regex **and** the unconditional `prefixMatch[2].toUpperCase()` with `splitBeaconName` + `normalizeBeaconName`. **Not behaviour-preserving as of this refinement**: today these two sites uppercase every suffix unconditionally, including a mixed-case one — under the refined decision 2 they must stop doing that, so this is now a real, not cosmetic, change to the reference sites themselves. Also pass the `full`-branch names (`:1216`, `:1289`, `:4255`, `:4292`) through `normalizeBeaconName` — today even these sites emit the raw name when no suffix match occurs. |
-| `pdfkitGeoPDF.js:2870-2903` (A) | `splitBeaconName`. Fixes both defects at once: `2474a` now matches, so it is placed **inside** its stand rather than rendered full-name outside, and the emitted suffix is normalised (uppercased only if all-lowercase) — which also lets the `/^[A-Z]+$/` gate at `:3014` apply the intended bold suffix font to an all-lowercase-turned-uppercase suffix; a mixed-case suffix such as `An` correctly fails that gate and keeps its plain font, since it was never a case lapse. |
-| `MapLibreAreaView.vue:6192-6228` (B) | `splitBeaconName`; `displayLabel` becomes the normalised suffix, and the non-standard branch emits `normalizeBeaconName(beaconName)`. |
-| `surveyPlanPreview.js:792-841` (C) | Same as (B). |
-| `MapLibreAreaView.vue:3160`, `:3191` (D) | The `survey-pegs` / `trig-beacons` GeoJSON is built by `addSurveyPoints`; normalise the `id` **property** there so `'text-field': ['get','id']` needs no change. Display only — the underlying `coordinatePoints` entries and `dbPointIds` keys stay raw (decision 3). |
-| `coordinate-list.ts:610` (E) | `pdf.text(normalizeBeaconName(point.pointId), …)`. |
-| `diagram/beaconName.js:22` (F) | Return `normalizeBeaconName(String(name))`. One line fixes `diagramPdf.js:159` and `diagramDxf.js:341` together, since both read `coordinateRows[].beaconName` from `sidesTable.js:46`. |
-| `dxfGenerator.js:1532` | `splitBeaconName`. The `uiLabel.text` branch (`:1522`) stays verbatim — it is fed by the now-normalised (1)/(2). |
-
-**Not changed:** `automatedParcelDetector.ts` (classification only),
-`beaconNameMatch.ts` (matching only), and every write path listed in decision 3.
-
-**`1464An` — resolved 2026-09-12, no longer open.** The surveyor confirmed the
-lowercase second character in a form like `1464An` is deliberate and carries real
-meaning; it must render exactly as stored. Decision 2's all-lowercase guard is the
-mechanism: `splitBeaconName('1464An')` still returns `{ prefix: '1464', suffix:
-'An' }` — the shape is unchanged — but `normalizeBeaconName('1464An')` now returns
-`'1464An'` unchanged, because `'An' !== 'an'`. This resolves what was Unresolved #1
-in the first cut of this spec; the two `MapLibreAreaView.vue:6191` /
-`surveyPlanPreview.js:791` comments documenting the form were correct, and the
-reference sites' former unconditional `.toUpperCase()` was the actual bug for this
-one case, not the rule to copy verbatim.
+| #1 `SurveyPlanMapView.vue:1209-1229`, #2 `:4250-4268` | `splitBeaconName`; suffix via `normalizeBeaconName` (drops the unconditional `.toUpperCase()` that breaks `1464An`). |
+| #3 `dxfGenerator.js:1532-1535` | Same. The UI-label branch (`:1519-1528`) stays verbatim; it is fed by #1/#2. |
+| #4 `pdfkitGeoPDF.js:2870-2903` | `splitBeaconName`. `2474a`/`1464An` now match and are placed **inside** their stand. The `:3014` bold gate is left as is: an uppercased suffix passes it, and a mixed-case `An` keeps plain type. |
+| #6 `:6756-6773`, #7 `surveyPlanPreview.js:792-811` | `splitBeaconName` (now matches `2474AB` and lowercase); emitted suffix normalised. |
+| #5 `pdfkitGeoPDF.js:3307-3330`, #8 `block-definitions.js:631-640` (+ its entry in the default export `:834`) | Delete (dead). |
 
 ## Part 5 — Testing
 
@@ -452,72 +509,98 @@ TDD, following the extract-logic-and-test-the-`.ts` convention.
 
 | File | Coverage |
 |---|---|
-| `views/modules/cadastral-standard/__tests__/beaconReconcile.test.ts` *(new)* | `matchVertex`: nearest wins, not first; `ambiguous` when a second candidate is inside tolerance; `unmatched` past tolerance with the nearest distance reported; `unchanged` when the name already matches. `planParcel`: reads `cape_lo_points`, falls back to `vertices` then `points` and records `source`; preserves `description` unless it equalled the old id; blocks on duplicate assignment, on any ambiguity, and on <3 points. `planReconciliation`: a blocked parcel contributes zero writes and does not block its neighbours. |
-| `views/modules/cadastral-standard/__tests__/beaconReconcile.test.ts` — invariant | **A rename-only plan leaves every coordinate untouched**: `writes[].points` map 1:1 by index onto the input `y`/`x`, identical to full float precision. This is decision 6 asserted on the output. |
-| `app-shared/__tests__/beaconName.test.js` *(new)* | `2474a`→`2474A`, `15b`→`15B`, `1464An`→`1464An` (**unchanged** — mixed-case suffix, decision 2), `2474A`→`2474A` (idempotent, all-uppercase), `1464AN`→`1464AN` (idempotent, all-uppercase). `null` from `splitBeaconName` for `A`, `SD4`, `TSM5025`, `PEGGINGB`, `''`, `'1425'` (digits only), `'2474A1'` (trailing digit) — but `splitBeaconName('1464An')` still returns `{ prefix: '1464', suffix: 'An' }`, since splitting and normalising are separate steps. Non-string and `undefined` input do not throw. |
-| `app-backend/src/services/__tests__/` (existing PDF/DXF suites) | A beacon named with a lowercase suffix is placed **inside** its matching stand, labelled with the uppercase suffix — the `pdfkitGeoPDF.js:2870` regression, which is the one defect that changes *placement* and not merely case. |
-| existing suites | `cd app-frontend && npm test`; `cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js` for the whole backend suite. |
+| `app-backend/src/services/__tests__/beaconName-shared.test.js` *(new; imports `app-shared/beaconName.js` like `block-definitions-schedule.test.js`)* | `normalizeBeaconName`: `2474a`→`2474A`, `15b`→`15B`, `1464an`→`1464AN`. Byte-for-byte: `1464An`, `2474A`, `A`, `SD4`, `TSM5025`, `2474A1`, `1425`, `''`. Idempotence; non-string input does not throw. `findCaseFoldDuplicates`. `planNameNormalization`: a rename vs a collision, and `after`. |
+| `views/modules/cadastral-standard/__tests__/beaconReconcile.test.ts` *(new)* | `matchVertex`: nearest not first, `ambiguous`, `unmatched` distance, `unchanged`. `readRing`: `cape_lo_points`, else `vertices` by index. Guards: a ring that is not the geom and edges that do not match the ring each block. `patchParcelMetadata`: renames land in `cape_lo_points`, `edges[i].from` **and** `edges[i-1].to` (wrap-around at index 0), `vertices`, OF `points`; description rule. `planReconciliation`: a blocked parcel does not block others; the `after` list from a beacon plan is honoured. |
+| `beaconReconcile.test.ts` — the invariant | **A patched parcel's metadata differs from the input only in name strings.** Deep-compare with every `id`/`name`/`description` stripped: identical, including every residual number and `closure_ratio`. This is decision 3 asserted on the output. |
+| `app-backend` route/model suites | `batchCreate` and execute-merge reject a case-fold pair with 400 and normalise otherwise. Rename normalises before its 409 check. `normalize-names` returns 409 on a stale plan and leaves collisions untouched. |
+| existing `pdfkitGeoPDF`/`dxfGenerator` suites | A beacon `2474a` on stand 2474 is labelled `A` **inside** the stand; `1464An` is labelled `An` inside. |
+| existing suites | `cd app-frontend && npm test`; `cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js`. `vertexSnap`/`vertexCascade` stay green after `describeCascadeOutcome` is generalised. |
 
-**Known regression risk, to check rather than assume.**
-`pdfkitGeoPDF.snapshot.test.js` snapshots exact rendered text x/y for three
-fixtures. Part 4's change to `pdfkitGeoPDF.js:2870` moves any lowercase-suffixed
-beacon's label from outside the parcel to inside it — so if a fixture contains one,
-that snapshot **will** fire, legitimately. Inspect the diff and confirm each moved
-label corresponds to such a beacon before regenerating. Do not regenerate blind.
+**Snapshot risk, to check rather than assume.** `pdfkitGeoPDF.snapshot.test.js`
+snapshots exact text x/y. No fixture holds a lowercase or mixed-case numeric-suffix
+name, so Part 4 should not move anything there. If it fires, inspect every moved label
+before regenerating.
 
-**Manual browser steps** (no component harness exists for `.vue` views):
+**Manual browser steps** (no component harness for `.vue`):
 
-1. On a project with parcels saved before a rename, open the digitizing map:
-   peg labels show uppercase suffixes.
-2. Click 🔧 Repair Beacon Names → the plan dialog lists the renames with distances
-   before anything is written. Cancel → reload → nothing changed.
-3. Re-run, Proceed → generate the Area/Consistency PDF: the From/To beacon columns
-   carry the **new** names, and every area, distance and bearing is unchanged from
-   the pre-repair PDF.
-4. Generate the survey plan PDF and DXF: a lowercase-suffixed beacon is labelled
-   with an uppercase suffix inside its own stand in both.
-5. Generate a diagram: the DIAGRAM S.G. No. column shows uppercase suffixes; the
-   DXF diagram matches.
+1. On a project whose parcels were digitized before a beacon rename, generate the
+   Area/Consistency PDF and note the stale From/To names.
+2. Click 🔧 → the dialog lists beacon case renames, collisions, and parcel renames with
+   distances. Cancel → reload → nothing changed.
+3. Re-run and Proceed → regenerate the PDF. Names are current, and every area,
+   distance, direction and dy/dx is identical to step 1.
+4. Coordinate list, field book, plan PDF/DXF and diagram all show `2474A`.
+5. Rename a beacon to `2474b` in Coordinate List → it is stored and shown as `2474B`.
+   Import a CSV holding both `99a` and `99A` → rejected, naming the pair.
 
-## Resolved (confirmed with the user, 2026-09-12)
+## Resolved (confirmed with the surveyor, 2026-09-12)
 
-1. **`1464An` is a real, deliberate naming form and must not be touched.** See the
-   Part 4 amendment above — `normalizeBeaconName` only uppercases an all-lowercase
-   suffix, so a mixed-case suffix passes through unchanged. No documented exception
-   list is needed; the guard is general.
-2. **Ambiguity blocks, never resolves via a picker.** Confirmed: if two coordinate
-   points legitimately sit within 0,5 m of each other (decision 8 already specified
-   this behaviour as the safer default; the surveyor has now confirmed it as the
-   only behaviour, not one of two candidates). The vertex is left untouched, and is
-   reported by name, parcel, and the competing candidates with their distances, same
-   as decision 8's original text. No pick-one-in-the-dialog affordance is built.
+1. **`1464An` is a deliberate naming form and must not be touched.** Decision 12's
+   all-lowercase guard is the mechanism.
+2. **Ambiguity blocks; there is no pick-one dialog.** If two coordinate points sit
+   within 0.5 m of a vertex, it is left untouched and reported with the candidates and
+   their distances (decision 6).
+3. **A rename finishes its own propagation, going forward.** After
+   `handlePointRename` and `CoordinateListView.commitRename`, apply
+   `patchParcelMetadata` with the exact old→new name to every parcel that lists it —
+   metadata-only, no recompute, reusing Part 1's pure patcher. This resolves former
+   Unresolved #1: reconciliation stops being purely retroactive; only *pre-existing*
+   staleness (parcels renamed before this ships, or renamed via CSV re-import, which
+   replaces every name at once and is not a single old→new pair) still needs the
+   manual 🔧 button.
+4. **A partial phase-B failure is reported loudly, not prevented.** Consistent with
+   vertex-drag-snap's own resolution of the identical question: no transactional
+   batch-update endpoint in this pass. The blocking dialog names which parcels wrote
+   and which did not; a re-run is safe because the planner re-derives from position
+   and already-correct parcels plan as `unchanged` (Part 2's ordering note).
 
-## Unresolved
+## All formerly open questions are now resolved
 
-1. **Should a partial repair failure be preventable rather than reported?**
-   Inherited unchanged from the vertex-drag-snap spec's open question 2, and now
-   confirmed: `POST /land-parcels/batch` is create-only
-   (`routes/landParcels.js:216`), so preventing it needs a new batch-update endpoint
-   sharing one transaction. Deliberately not in this pass. Revisit if a partial
-   failure is seen in practice.
+1. **Whether an in-going rename should finish its own propagation** — resolved above
+   (Resolved #3): yes, going forward.
+2. **Whether a partial phase-B failure should be preventable** — resolved above
+   (Resolved #4): reported, not prevented.
+3. **How much existing data is affected** — measured against every
+   `coordinate_points` table in `surveypro_db`, 2026-09-12:
+
+   | Schema | Lowercase-suffix names | Total | Case-fold collisions |
+   |---|---|---|---|
+   | `public` | 0 | 0 | — |
+   | `surveyor_kuziva_paradzayi` | 0 | 1,272 | none |
+   | `surveyor_surveyor_charles` | 0 | 308 | — |
+   | `surveyor_surveyor_chitsikef` | **1,733** | 6,374 | none |
+   | `surveyor_surveyor_cline` | 0 | 0 | — |
+   | `surveyor_surveyor_elon` | 0 | 0 | — |
+   | `surveyor_surveyor_kuda` | 0 | 3,069 | none |
+   | `surveyor_surveyor_kuziva` | 0 | 0 | — |
+   | `surveyor_surveyor_mapamulart` | **268** | 268 | none |
+
+   Not theoretical: one schema is 27% lowercase-suffix, another is 100%. **No
+   `2474a`/`2474A` case-fold pair exists in any schema today** — decision 15's
+   collision path is a safety net, not something the backfill will trip over in
+   practice, in this data. The `mapamulart` schema — every name lowercase-suffix —
+   is worth a manual spot-check before backfilling: confirm those are genuine
+   `\d+[a-z]+` beacon names and not some other naming convention that happens to
+   match the regex.
+
+Nothing is left open for the implementation plan to re-litigate.
 
 ## Out of scope
 
-- Any backend change beyond label rendering; no new endpoint, no migration, no
-  batch-update transaction.
-- Automatic reconciliation on load, on rename, or on CSV re-import (decision 1).
-- Normalising `coordinate_points.name` or any stored name, in the database or at any
-  write endpoint (decision 3).
-- Capitalising letter-only names, or any name not matching `^(\d+)([A-Za-z]+)$`
-  (decision 2).
-- Building, or depending on, `vertexSnap.ts` and the vertex-drag-snap cascade.
-- Consolidating the five spatial matchers onto one tolerance and one
-  nearest-vs-first rule. Feature 1 adds no sixth; the existing five stay.
-- Removing the Outside Figure's on-load auto-update (`MapLibreAreaView.vue:4205-4270`)
-  once Part 2 makes it redundant.
-- Reconciling a vertex that matches **no** beacon within tolerance. It is reported
-  as `unmatched` and left alone; placing it is the vertex-drag-snap feature's job.
+- Automatic reconciliation on load, rename or import (decision 1).
+- A database migration for the backfill (decision 13).
+- Recomputing `areaCompute` or writing `geom` during the repair (decisions 3, 4).
+  Stale-numbers repair stays `recomputeAllParcels`.
+- Any name outside decision 12's rule, including letter-only names.
+- Already-generated output files on disk; regenerate them.
+- `project_control_points`, `public.zim_control_points`, historical survey points, and
+  the unmerged `feat/gnss-calibration-import` ingestion. Any **new** name-ingestion
+  path must call `normalizeBeaconName`; flagged for that branch.
+- Placing or renaming a vertex that matches no beacon (`unmatched`); that is the
+  vertex-drag-snap feature's job.
+- `topologyBuilder.extractBeaconSuffix` (site #9), `automatedParcelDetector.ts` (#10).
+- Consolidating the five spatial matchers (`:1703`, `:4307`,
+  `diagram/beaconName.js:8`, `areaCalculations.js`, `beaconNameMatch.ts:10`) onto one
+  rule; this work adds no sixth.
+- Removing the Outside Figure on-load auto-update (`:4428-4498`).
 - `AreaComputationView.vue` (deprecated Leaflet viewer).
-- The `savedParcels` key-precedence contradiction (`:4193` vs `:5599`) beyond not
-  depending on it — the repair reads `listLandParcels` rows directly, as it already
-  does.

@@ -917,6 +917,18 @@ import { buildLodgementWarnings } from '@/utils/lodgementDocuments';
 import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
 import { buildReportDataFromWorkflow } from '@/utils/reportDataFromWorkflow';
 import type { ReportOnSurveyData } from '@/types/cadastral';
+import {
+  buildSnapIndex,
+  eligibleCandidates,
+  nearestCandidate,
+  applySubstitution,
+  planCascade,
+  describeCascadeOutcome,
+  SNAP_RADIUS_PX,
+  type SnapCandidate,
+  type VertexPoint,
+  type CascadeOutcome,
+} from './vertexSnap';
 
 const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../components/ParcelDetectionPanel.vue'));
 
@@ -4703,54 +4715,87 @@ async function autoSaveParcel(parcel: Parcel, closureError: number) {
 }
 
 /**
- * Rebuild affected parcels after a point edit or delete.
+ * Rebuild affected parcels after a point edit, delete, or drag-to-snap substitution.
  *
  * Unlike recomputeAllParcels (which only refreshes residuals using stale
- * cape_lo_points), this rewrites each affected parcel's geometry and
- * cape_lo_points to reflect the point mutation, then re-runs the area
- * computation. Mirrors the vertex-edit commit path.
+ * cape_lo_points), this rewrites each affected parcel's geometry and cape_lo_points
+ * to reflect the point mutation, then re-runs the area computation.
  *
- * On edit: replaces the matching point's y/x/description in cape_lo_points.
- * On delete: removes the matching point. Parcels left with <3 vertices
- * are skipped with a warning — surveyor must resolve manually.
+ *  - edit:       replaces the matching point's y/x/description
+ *  - delete:     removes the matching point
+ *  - substitute: replaces the matching point IN PLACE with another beacon, verbatim
+ *
+ * Returns a per-parcel outcome. Callers that care about a partial cascade (the drag
+ * path) render it with describeCascadeOutcome; the point edit/delete paths ignore it
+ * and behave exactly as before.
  */
 async function rebuildAffectedParcels(
   affectedParcels: Array<{ id: number; stand: string; designation: string }>,
   mutation:
     | { kind: 'edit'; name: string; y?: number; x?: number; description?: string }
     | { kind: 'delete'; name: string }
-): Promise<void> {
-  if (affectedParcels.length === 0) return;
+    | { kind: 'substitute'; name: string; replacement: SnapCandidate }
+): Promise<CascadeOutcome> {
+  const outcome: CascadeOutcome = { written: [], failed: [] };
+  if (affectedParcels.length === 0) return outcome;
 
   console.log(`[PointEdit] 🔧 Rebuilding ${affectedParcels.length} affected parcel(s) for ${mutation.kind} of "${mutation.name}"...`);
 
+  // Resolve each parcel from the DATABASE ROWS, keyed by id.
+  //
+  // Not savedParcels: its key is `designation || stand` at :4193 and `stand ||
+  // designation` at :5598, and a miss there used to `continue` silently -- leaving a
+  // sharing parcel behind, which is the exact non-coincident boundary this path
+  // exists to prevent.
+  //
+  // Fresh, not snapshotted at confirm time: editPanelHandler runs handlePointRename
+  // between the confirm and this call, and that rename rewrites cape_lo_points names
+  // in the DB. A snapshot taken before it would no longer contain mutation.name and
+  // every combined rename+coordinate edit would silently no-op.
+  const projectId = workflowState?.projectInfo?.projectId;
+  let rows = new Map<number, any>();
+  try {
+    if (!projectId) throw new Error('no project loaded');
+    const fresh = await listLandParcels(Number(projectId));
+    rows = new Map(fresh.map((p: any) => [p.id, p]));
+  } catch (err: any) {
+    const message = `could not be re-read from the database (${err?.response?.data?.error || err?.message || 'unknown error'})`;
+    for (const af of affectedParcels) outcome.failed.push({ designation: af.designation, message });
+    console.error('[PointEdit] ❌ Could not re-read parcels before rebuilding:', err);
+    return outcome;
+  }
+
   for (const af of affectedParcels) {
     try {
-      const parcel = savedParcels.value.get(af.designation);
-      if (!parcel) {
-        console.warn(`[PointEdit] Cannot rebuild ${af.designation}: not in savedParcels`);
-        continue;
+      const parcel = rows.get(af.id);
+      if (!parcel) throw new Error('no longer exists in the database');
+
+      const existingPoints: VertexPoint[] = parcel.metadata?.cape_lo_points || [];
+
+      let newPoints: VertexPoint[];
+      if (mutation.kind === 'edit') {
+        newPoints = existingPoints.map(p => {
+          if (p.id !== mutation.name) return p;
+          return {
+            ...p,
+            ...(mutation.y !== undefined && { y: mutation.y }),
+            ...(mutation.x !== undefined && { x: mutation.x }),
+            ...(mutation.description !== undefined && { description: mutation.description }),
+          };
+        });
+      } else if (mutation.kind === 'delete') {
+        newPoints = existingPoints.filter(p => p.id !== mutation.name);
+      } else {
+        const idx = existingPoints.findIndex(p => p.id === mutation.name);
+        if (idx === -1) throw new Error(`no longer lists beacon "${mutation.name}"`);
+        // In place, by index. planCascade already pre-flighted this, but the ring is
+        // re-read here, so a parcel that changed under us fails loudly instead of
+        // being written from a stale plan.
+        newPoints = applySubstitution(existingPoints, idx, mutation.replacement);
       }
 
-      const existingPoints: Array<{ id: string; y: number; x: number; status?: string; description?: string }> =
-        parcel.metadata?.cape_lo_points || [];
-
-      const newPoints =
-        mutation.kind === 'edit'
-          ? existingPoints.map(p => {
-              if (p.id !== mutation.name) return p;
-              return {
-                ...p,
-                ...(mutation.y !== undefined && { y: mutation.y }),
-                ...(mutation.x !== undefined && { x: mutation.x }),
-                ...(mutation.description !== undefined && { description: mutation.description }),
-              };
-            })
-          : existingPoints.filter(p => p.id !== mutation.name);
-
       if (newPoints.length < 3) {
-        console.warn(`[PointEdit] Skipping ${af.designation}: only ${newPoints.length} vertices remain after ${mutation.kind}`);
-        continue;
+        throw new Error(`only ${newPoints.length} vertices would remain after ${mutation.kind}`);
       }
 
       const areaResult = await areaCompute({
@@ -4778,6 +4823,7 @@ async function rebuildAffectedParcels(
       }, 0);
       const closureRatio = perimeter / (closureError || 0.001);
 
+      const stampedAt = new Date().toISOString();
       const updatedMetadata = {
         ...parcel.metadata,
         points_count: newPoints.length,
@@ -4787,17 +4833,24 @@ async function rebuildAffectedParcels(
         cape_lo_points: newPoints.map(p => ({
           id: p.id, y: p.y, x: p.x, status: p.status, description: p.description,
         })),
-        point_edit_rebuilt_at: new Date().toISOString(),
+        point_edit_rebuilt_at: stampedAt,
+        ...(mutation.kind === 'substitute' && { vertex_drag_snap_at: stampedAt }),
       };
 
       await updateLandParcel(parcel.id, { geom: geometry, metadata: updatedMetadata });
+      outcome.written.push(af.designation);
       console.log(`[PointEdit] ✅ Rebuilt ${af.designation}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error(`[PointEdit] ❌ Failed to rebuild ${af.designation}:`, err);
+      outcome.failed.push({
+        designation: af.designation,
+        message: err?.response?.data?.error || err?.message || 'unknown error',
+      });
     }
   }
 
   await refreshParcelsFromDatabase();
+  return outcome;
 }
 
 /**

@@ -1243,7 +1243,7 @@ async function confirmParcelRename() {
         return geometry ? {
           type: 'Feature' as const,
           geometry,
-          properties: { designation: parcelName, area: areaDisplay, status: dbParcel.status || 'draft' }
+          properties: { id: dbParcel.id, designation: parcelName, area: areaDisplay, status: dbParcel.status || 'draft' }
         } : null;
       }).filter(Boolean);
       source.setData({ type: 'FeatureCollection', features: features as any });
@@ -1997,6 +1997,58 @@ const setInsertAfter = (index: number | null) => {
   insertAfterIndex.value = index
 }
 
+// ── Vertex drag-to-snap ───────────────────────────────────────────────────────
+// A drag is a RE-REFERENCE, never a coordinate change: the dragged vertex is
+// replaced by the snap target's stored values, copied verbatim. See
+// docs/superpowers/specs/2026-09-10-vertex-drag-snap-design.md.
+const selectedParcelId = ref<number | null>(null);   // DB id, never a designation
+const draggingVertexIndex = ref<number | null>(null);
+const snapCandidate = ref<SnapCandidate | null>(null);
+const dragChipPx = ref<{ x: number; y: number } | null>(null);
+const dragDivergent = ref<Map<string, number>>(new Map());
+
+/** The selected parcel's DB row, resolved BY ID -- never through a savedParcels key. */
+const selectedParcel = computed<any | null>(() => {
+  if (selectedParcelId.value === null) return null;
+  return (Array.from(savedParcels.value.values()) as any[])
+    .find(p => p.id === selectedParcelId.value) ?? null;
+});
+
+/** The selected parcel's stored ring. Empty when nothing is selected. */
+const selectedParcelPoints = computed<VertexPoint[]>(
+  () => (selectedParcel.value?.metadata?.cape_lo_points as VertexPoint[]) || []
+);
+
+/** Layers a click may land on without clearing the selection. */
+function visibleSelectionLayers(): string[] {
+  return ['parcels-fill', 'vertices-circle'].filter(id => !!map?.getLayer(id));
+}
+
+/**
+ * Re-apply the selected-parcel paint.
+ *
+ * A MapLibre paint expression cannot read a Vue ref, so the expression is rebuilt
+ * every time the selection changes. The status `match` branches are copied from the
+ * layer definitions so an unselected parcel keeps exactly its existing colours.
+ */
+function applySelectionPaint() {
+  if (!map || !map.getLayer('parcels-fill') || !map.getLayer('parcels-outline')) return;
+  const id = selectedParcelId.value ?? -1;
+  map.setPaintProperty('parcels-fill', 'fill-opacity', ['case', ['==', ['get', 'id'], id], 0.6, 0.4]);
+  map.setPaintProperty('parcels-outline', 'line-width', ['case', ['==', ['get', 'id'], id], 5, 3]);
+  map.setPaintProperty('parcels-outline', 'line-color', [
+    'case',
+    ['==', ['get', 'id'], id], '#dc2626',
+    ['match', ['get', 'status'],
+      'draft', '#f59e0b',
+      'finalized', '#1d4ed8',
+      'approved', '#059669',
+      '#6b7280'],
+  ]);
+}
+
+watch(selectedParcelId, () => applySelectionPaint());
+
 // Parcels
 const parcels = ref<Parcel[]>([]);
 
@@ -2580,6 +2632,35 @@ async function initializeMap() {
 
     parcelsSource = map.getSource('parcels') as maplibregl.GeoJSONSource;
 
+    // Click a parcel to select it for vertex editing. This is the entry point that
+    // replaces the retired 🔺 buttons -- there was no parcel click handler before.
+    map.on('click', 'parcels-fill', (e) => {
+      if (isDrawing.value) return;                 // drawing a new parcel owns the map
+      if (!e.features || e.features.length === 0) return;
+      const id = Number(e.features[0].properties?.id);
+      if (!Number.isFinite(id)) {
+        console.warn('[VertexDrag] Parcel feature carries no usable id property');
+        return;
+      }
+      selectedParcelId.value = selectedParcelId.value === id ? null : id;
+      console.log(`[VertexDrag] Selected parcel id ${selectedParcelId.value ?? '(none)'}`);
+    });
+
+    // Clicking bare ground clears the selection. MapLibre fires both the layer
+    // handler and this one for the same click, so re-query rather than assume order.
+    map.on('click', (e) => {
+      if (draggingVertexIndex.value !== null) return;
+      const hits = map!.queryRenderedFeatures(e.point, { layers: visibleSelectionLayers() });
+      if (hits.length === 0) selectedParcelId.value = null;
+    });
+
+    map.on('mouseenter', 'parcels-fill', () => {
+      if (map && !isDrawing.value) map.getCanvas().style.cursor = 'pointer';
+    });
+    map.on('mouseleave', 'parcels-fill', () => {
+      if (map && !isDrawing.value && draggingVertexIndex.value === null) map.getCanvas().style.cursor = '';
+    });
+
     map.addSource('parcel-overlap', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] }
@@ -2665,6 +2746,7 @@ async function initializeMap() {
             type: 'Feature' as const,
             geometry: geometry,
             properties: {
+              id: dbParcel.id,
               designation: parcelName,
               area: areaDisplay,
               status: dbParcel.status || 'draft',
@@ -4347,6 +4429,7 @@ async function refreshParcelsFromDatabase() {
         type: 'Feature' as const,
         geometry: geometry,
         properties: {
+          id: dbParcel.id,
           designation: parcelName,
           area: areaDisplay,
           status: dbParcel.status || 'draft',
@@ -4355,7 +4438,7 @@ async function refreshParcelsFromDatabase() {
         }
       };
     }).filter(f => f !== null);
-    
+
     // Update the parcels source
     const source = map.getSource('parcels') as maplibregl.GeoJSONSource;
     if (source) {
@@ -6840,6 +6923,10 @@ async function saveMergedPDFToProject(pdfBytes: Uint8Array, projectName: string)
  * Handle keyboard events
  */
 function handleKeyPress(e: KeyboardEvent) {
+  if (e.key === 'Escape' && selectedParcelId.value !== null && !isDrawing.value) {
+    selectedParcelId.value = null;
+    return;
+  }
   if (e.key === 'Escape' && isDrawing.value) {
     if (selectedPoints.value.length >= 3) {
       completePolygon();

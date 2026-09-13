@@ -1,5 +1,6 @@
 import CoordinatePoint from '../models/coordinatePoint.js'
 import { authenticateWithSchema } from '../utils/schemaAuth.js'
+import { renameByName, applyNameNormalization } from '../utils/beaconNameDoors.js'
 
 export default async function coordinatePointRoutes(app) {
   // List coordinate points by project
@@ -109,6 +110,10 @@ export default async function coordinatePointRoutes(app) {
       console.error('[Batch Insert] ❌ ERROR:', error.message);
       console.error('[Batch Insert] Error type:', error.constructor.name);
       console.error('[Batch Insert] Stack:', error.stack);
+      // A case-fold pair is the caller's 400 (BeaconNameCaseError.statusCode); anything else stays a 500.
+      if (error.statusCode) {
+        return reply.code(error.statusCode).send({ ok: false, error: error.message })
+      }
       return reply.code(500).send({ ok: false, error: error.message, stack: error.stack })
     }
   })
@@ -131,23 +136,12 @@ export default async function coordinatePointRoutes(app) {
     const { project_id, old_name, new_name } = request.body
     const db = request.db || (await import('../config/db.js')).default
 
-    // Check new name is not already taken by a DIFFERENT point in this project
-    const conflictCheck = await db.query(
-      `SELECT id FROM coordinate_points WHERE project_id = $1 AND name = $2 AND name <> $3`,
-      [project_id, new_name, old_name]
-    )
-    if (conflictCheck.rows.length > 0) {
-      return reply.code(409).send({ ok: false, error: `Point name "${new_name}" already exists in this project` })
+    // new_name is normalised inside renameByName BEFORE the conflict check (decision 14).
+    const outcome = await renameByName(db, project_id, old_name, new_name)
+    if (outcome.status === 409) {
+      return reply.code(409).send({ ok: false, error: `Point name "${outcome.name}" already exists in this project` })
     }
-
-    const result = await db.query(
-      `UPDATE coordinate_points
-       SET name = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE project_id = $2 AND name = $3
-       RETURNING *`,
-      [new_name, project_id, old_name]
-    )
-    if (result.rowCount === 0) {
+    if (outcome.status === 404) {
       // Debug: check what project_ids exist for this name
       const debugCheck = await db.query(
         `SELECT id, project_id, name FROM coordinate_points WHERE name = $1 LIMIT 5`,
@@ -156,7 +150,45 @@ export default async function coordinatePointRoutes(app) {
       console.error(`[Rename] ❌ Point "${old_name}" not found in project ${project_id}. Found in projects:`, debugCheck.rows.map(r => r.project_id))
       return reply.code(404).send({ ok: false, error: `Point "${old_name}" not found in project ${project_id}` })
     }
-    return { ok: true, data: result.rows[0] }
+    return { ok: true, data: outcome.row }
+  })
+
+  // Backfill phase A1 (🔧 Repair Beacon Names): capitalise lowercase beacon suffixes in
+  // ONE transaction. The server re-plans from its own rows and refuses a stale plan.
+  app.post('/coordinate-points/normalize-names', {
+    preHandler: [app.authenticate, authenticateWithSchema],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['project_id', 'renames'],
+        properties: {
+          project_id: { type: 'string' },
+          renames: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['id', 'from', 'to'],
+              properties: {
+                id: { type: ['integer', 'string'] },
+                from: { type: 'string' },
+                to: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { project_id, renames } = request.body
+    const db = request.db || (await import('../config/db.js')).default
+    const result = await applyNameNormalization(db, project_id, renames)
+    if (result.stale) {
+      return reply.code(409).send({
+        ok: false,
+        error: 'Beacon names changed since the repair was planned — nothing was renamed. Run 🔧 Repair Beacon Names again.'
+      })
+    }
+    return { ok: true, data: { renamed: result.renamed } }
   })
 
   // Update coordinate point (rename and/or update coordinates)

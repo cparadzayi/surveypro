@@ -1,5 +1,7 @@
 import db from '../config/db.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
+import { normalizeBeaconName } from '../../../app-shared/beaconName.js'
+import { normalizeBatchPoints } from '../utils/beaconNameDoors.js'
 
 // Geometry is stored in each project's native CRS (Lo 25/27/29/31/33).
 // The column SRID constraint has been removed to support multi-zone storage.
@@ -51,6 +53,8 @@ export default {
   },
 
   async create(dbConnection = db, { projectId, name, y, x, elevation, description, status, surveyDate, surveyor, srid }) {
+    // Spec decision 14: every door stores the normalised name (idempotent).
+    name = normalizeBeaconName(name)
     // Get SRID from project's central meridian if not provided
     let finalSrid = srid;
     if (!finalSrid) {
@@ -85,6 +89,8 @@ export default {
   },
 
   async batchCreate(dbConnection = db, projectId, points) {
+    // Decision 15: a case-fold pair (99a + 99A) is a 400, never averaged or dropped.
+    points = normalizeBatchPoints(points)
     // Get SRID from project's central meridian
     const projectResult = await dbConnection.query(
       'SELECT central_meridian FROM survey_projects WHERE id = $1',
@@ -245,6 +251,8 @@ export default {
   },
 
   async update(dbConnection = db, id, { name, y, x, elevation, description, surveyDate, surveyor, srid }) {
+    // Undefined stays undefined, so COALESCE($1, name) still means "keep the name".
+    name = normalizeBeaconName(name)
     // Get SRID from project's central meridian if not provided and coordinates are being updated
     let finalSrid = srid;
     if (!finalSrid && x !== undefined && y !== undefined) {

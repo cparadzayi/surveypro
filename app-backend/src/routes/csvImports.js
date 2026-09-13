@@ -6,6 +6,7 @@
 import crypto from 'crypto';
 import { authenticateWithSchema } from '../utils/schemaAuth.js';
 import { getCapeLoSRID } from '../utils/capeLoSRID.js';
+import { normalizeMergeNames, BeaconNameCaseError } from '../utils/beaconNameDoors.js';
 
 export default async function csvImportRoutes(fastify, options) {
   const db = fastify.pg;
@@ -238,6 +239,17 @@ export default async function csvImportRoutes(fastify, options) {
    * Analyze potential merge between existing and new CSV data
    */
   fastify.post('/csv-imports/analyze-merge', async (request, reply) => {
+    // Beacon names are normalised at this door (spec decision 14): analyze-merge mints
+    // newId from new_points[].id (:311), execute-merge stores newId (:528-535) and
+    // newPt.id (:596-602). A case-fold pair in the file is a 400 (decision 15).
+    try {
+      if (request.body) Object.assign(request.body, normalizeMergeNames(request.body));
+    } catch (error) {
+      if (error instanceof BeaconNameCaseError) {
+        return reply.code(400).send({ error: error.message });
+      }
+      throw error;
+    }
     console.log('[CSV Import] analyze-merge endpoint called');
     console.log('[CSV Import] Request body:', JSON.stringify(request.body, null, 2));
     
@@ -446,6 +458,17 @@ export default async function csvImportRoutes(fastify, options) {
    * Execute a smart merge based on analysis results
    */
   fastify.post('/csv-imports/execute-merge', async (request, reply) => {
+    // Beacon names are normalised at this door (spec decision 14): analyze-merge mints
+    // newId from new_points[].id (:311), execute-merge stores newId (:528-535) and
+    // newPt.id (:596-602). A case-fold pair in the file is a 400 (decision 15).
+    try {
+      if (request.body) Object.assign(request.body, normalizeMergeNames(request.body));
+    } catch (error) {
+      if (error instanceof BeaconNameCaseError) {
+        return reply.code(400).send({ error: error.message });
+      }
+      throw error;
+    }
     console.log('[CSV Import] execute-merge endpoint called');
     console.log('[CSV Import] Request body keys:', Object.keys(request.body));
     

@@ -82,7 +82,7 @@ function coord(value: unknown): number | null {
 }
 
 /** Normalise one raw entry, or null when it has no name or no usable coordinates. */
-function readVertex(raw: any): VertexPoint | null {
+export function readVertex(raw: any): VertexPoint | null {
   const id = typeof raw?.id === 'string' ? raw.id.trim() : ''
   const y = coord(raw?.y)
   const x = coord(raw?.x)

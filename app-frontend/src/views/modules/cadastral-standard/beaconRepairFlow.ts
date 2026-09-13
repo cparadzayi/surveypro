@@ -1,8 +1,13 @@
 import {
   planRenamePropagation,
+  planReconciliation,
+  summarise,
+  RECONCILE_TOLERANCE_M,
   type BeaconNamePlan,
   type ReconciliationPlan,
+  type ReconcileSummary,
 } from './beaconReconcile'
+import { planNameNormalization } from '../../../../../app-shared/beaconName'
 import { describeCascadeOutcome, type CascadeOutcome } from './vertexSnap'
 
 /** tuple shape of A1: one row per renamed coordinate point. */
@@ -73,6 +78,33 @@ export interface RepairOutcome {
   b?: CascadeOutcome
   blocked: Array<{ designation: string; detail: string }>
   error?: string
+}
+
+export interface BeaconRepairPlanData {
+  beaconPlan: BeaconNamePlan
+  parcelPlan: ReconciliationPlan
+  summary: ReconcileSummary
+}
+
+/**
+ * The shared plan both the 🔧 button and the post-re-import self-heal compute:
+ * coordinate points normalised, then parcels reconciled against the names that
+ * WILL exist once A1 has run (spec Part 2). Pure and therefore unit-testable.
+ */
+export function buildBeaconRepairPlan(dbParcels: any[], dbPoints: any[]): BeaconRepairPlanData {
+  // Keep y/x through the plan: planReconciliation matches by POSITION and needs
+  // the coords that planNameNormalization().after carries forward (dropping them
+  // makes every vertex unmatched — the original button's latent no-op).
+  const beaconPlan = planNameNormalization(
+    (dbPoints || []).map(p => ({ id: p.id ?? p.name, name: p.name, y: p.y, x: p.x }))
+  )
+  const parcelPlan = planReconciliation(dbParcels, beaconPlan.after, RECONCILE_TOLERANCE_M)
+  return { beaconPlan, parcelPlan, summary: summarise(beaconPlan, parcelPlan) }
+}
+
+/** Execute a constructed plan through A1 → A2 → B; see executeRepair. */
+export function runBeaconRepair(plan: BeaconRepairPlanData, deps: RepairDeps): Promise<RepairOutcome> {
+  return executeRepair(plan.beaconPlan, plan.parcelPlan, deps)
 }
 
 /**

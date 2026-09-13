@@ -1361,7 +1361,9 @@ import {
   type MergeAnalysis 
 } from '../../../services/csvImports';
 // Spatial data export
-import { batchCreateCoordinatePoints } from '../../../services/spatial';
+import { batchCreateCoordinatePoints, listCoordinatePoints, normalizeCoordinatePointNames, listLandParcels, updateLandParcel } from '../../../services/spatial';
+import { buildBeaconRepairPlan, runBeaconRepair, describeRepairResult, renameWorkflowCopies, renamePointList } from './beaconRepairFlow';
+import { useParcelsStore } from '../../../stores/parcels';
 import { parseCalibrationReport } from '../../../utils/siteCalibration';
 import CSVReimportDialog from '../../../components/cadastral/CSVReimportDialog.vue';
 import MergeAnalysisDialog from '../../../components/cadastral/MergeAnalysisDialog.vue';
@@ -1376,6 +1378,9 @@ import {
 
 // Get auth store for auto-selecting current surveyor
 const authStore = useAuthStore();
+
+// Parcels store for refreshing parcel metadata after a self-heal
+const parcelsStore = useParcelsStore();
 
 // Get project selection store for centralized project state
 const projectSelectionStore = useProjectSelectionStore();
@@ -2398,6 +2403,13 @@ async function handleReimportChoice(choice: 'use-previous' | 'append' | 'smart-m
             pendingCSVData.value.filename,
             [...existingPoints, ...newPoints]
           );
+          // Self-heal: cascade normalised names into existing parcels' metadata
+          // (bnr-part7.md) — the same A1 → A2 → B orchestration as the 🔧 button.
+          const healNote = await selfHealBeaconNamesAfterImport();
+          if (healNote) {
+            console.log('[CSV Re-import] ⭐ Beacon-name self-heal:', healNote);
+            setTimeout(() => alert(`CSV append complete.\n\n${healNote}`), 0);
+          }
         }
         break;
         
@@ -2459,6 +2471,84 @@ async function handleReimportChoice(choice: 'use-previous' | 'append' | 'smart-m
   }
   // ⭐ Don't clear pendingCSVData here for smart-merge
   // It will be cleared after merge execution in handleMergeProceed
+}
+
+// ⭐ CSV Re-import: Self-heal parcel metadata after a successful re-import.
+// A merge/append writes normalised beacon names to coordinate_points but leaves
+// each saved parcel's area/consistency metadata (cape_lo_points, residuals.edges)
+// holding the OLD spelling. This runs the same A1 → A2 → B orchestration as the
+// 🔧 button (bnr-part7.md — a deliberate reversal of the "manual only" decision);
+// the manual button stays. Returns a human summary line, or '' if nothing to do,
+// or a ⚠️ warning on failure — never throws into the merge path.
+async function selfHealBeaconNamesAfterImport(): Promise<string> {
+  const projectId = selectedProjectId.value;
+  if (!projectId) return '';
+
+  try {
+    const [dbParcels, dbPoints] = await Promise.all([
+      listLandParcels(Number(projectId)),
+      listCoordinatePoints(Number(projectId)),
+    ]);
+    if (dbParcels.length === 0 || dbPoints.length === 0) return '';
+
+    const plan = buildBeaconRepairPlan(dbParcels, dbPoints);
+    if (!plan.summary.hasWork) return '';
+
+    const outcome = await runBeaconRepair(plan, {
+      executeA1: async renames => {
+        try {
+          const r = await normalizeCoordinatePointNames(String(projectId), renames);
+          return { ok: true, renamed: r.renamed };
+        } catch (e: any) {
+          return { ok: false, error: e?.response?.data?.error || e?.message || String(e) };
+        }
+      },
+      executeA2: async renames => {
+        // Fresh copy: operate on the persisted shapes, not possibly-stale state.
+        const loaded = (await api.get(`/survey-projects/${projectId}/workflow`)).data?.workflow_state;
+        const copies = renameWorkflowCopies(loaded?.step_data ?? {}, renames);
+        const failed: Array<{ step: string; error: string }> = [];
+        for (const copy of copies) {
+          try {
+            await api.patch(`/survey-projects/${projectId}/workflow`, {
+              step: copy.step, action: 'update', metadata: copy.metadata
+            });
+          } catch (e: any) {
+            failed.push({ step: copy.step, error: e?.response?.data?.error || e?.message || String(e) });
+          }
+        }
+        if (failed.length === 0) {
+          for (const { from, to } of renames) {
+            workflowState.importedPoints = renamePointList(workflowState.importedPoints, from, to);
+            workflowState.adjustedCoordinates = renamePointList(workflowState.adjustedCoordinates, from, to);
+          }
+          workflowState.documents.coordinateList = undefined; // rebuilt on next generate
+        }
+        return { ok: failed.length === 0, failed };
+      },
+      updateParcels: async writes => {
+        const outcome: { written: string[]; failed: Array<{ designation: string; message: string }> } = { written: [], failed: [] };
+        for (const w of writes) {
+          try {
+            await updateLandParcel(w.parcelId, { metadata: w.metadata });
+            outcome.written.push(String(w.parcelId));
+          } catch (e: any) {
+            const designation = plan.parcelPlan.writes.find(pw => pw.parcelId === w.parcelId)?.designation ?? String(w.parcelId);
+            outcome.failed.push({ designation, message: e?.response?.data?.error || e?.message || String(e) });
+          }
+        }
+        return outcome;
+      },
+      refresh: () => { parcelsStore.loadParcels(Number(projectId)); },
+    });
+
+    const text = describeRepairResult(outcome);
+    console.log('[CSV Re-import] Beacon-name self-heal:', text);
+    return text;
+  } catch (e: any) {
+    console.warn('[CSV Re-import] ⚠️ Beacon-name self-heal did not run:', e);
+    return `⚠️ Beacon-name reconciliation did not run: ${e?.message || String(e)}`;
+  }
 }
 
 // ⭐ CSV Re-import: Execute merge after analysis
@@ -2537,6 +2627,10 @@ async function handleMergeProceed(partialParcelActions: Record<number, 'delete' 
     setImportedPoints(pendingCSVData.value.points);
     workflowState.currentStep = 'field-book';
     await reloadWorkflowState();
+
+    // Self-heal: cascade the post-merge beacon names into every saved parcel's
+    // historical area/consistency metadata (bnr-part7.md).
+    const healNote = await selfHealBeaconNamesAfterImport();
     
     // Trigger automated workflow
     automationProgress.value = {
@@ -2549,10 +2643,11 @@ async function handleMergeProceed(partialParcelActions: Record<number, 'delete' 
     await nextTick();
     await generateFieldBook();
     
-    alert(`✅ Merge completed successfully!\n\n` +
-          `• Matched points: ${result.data.matched_count}\n` +
-          `• New points: ${result.data.new_count}\n` +
-          `• Orphaned parcels: ${result.data.orphaned_parcels}`);
+alert(`✅ Merge completed successfully!\n\n` +
+      `• Matched points: ${result.data.matched_count}\n` +
+      `• New points: ${result.data.new_count}\n` +
+      `• Orphaned parcels: ${result.data.orphaned_parcels}` +
+      (healNote ? `\n\n${healNote}` : ''));
     
   } catch (error) {
     console.error('[CSV Merge] Merge execution failed:', error);

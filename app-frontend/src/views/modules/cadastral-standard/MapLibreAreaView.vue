@@ -996,9 +996,9 @@ import {
   type CascadeOutcome,
 } from './vertexSnap';
 import { outsideFigureFirst } from './parcelRenderOrder';
-import { planNameNormalization, normalizeBeaconName, findCaseFoldDuplicates, splitBeaconName, labelParts } from '../../../../../app-shared/beaconName';
-import { planReconciliation, summarise, formatSummary, RECONCILE_TOLERANCE_M } from './beaconReconcile';
-import { executeRepair, propagateRename, describeRepairResult, renameWorkflowCopies, renamePointList } from './beaconRepairFlow';
+import { normalizeBeaconName, findCaseFoldDuplicates, splitBeaconName, labelParts } from '../../../../../app-shared/beaconName';
+import { formatSummary } from './beaconReconcile';
+import { propagateRename, describeRepairResult, renameWorkflowCopies, renamePointList, buildBeaconRepairPlan, runBeaconRepair } from './beaconRepairFlow';
 
 const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../components/ParcelDetectionPanel.vue'));
 
@@ -1733,10 +1733,8 @@ async function repairParcelBeaconNames() {
       return;
     }
 
-    const beaconPlan = planNameNormalization(dbPoints.map(p => ({ id: p.id ?? p.name, name: p.name })));
-    // Parcels match against the names that WILL exist once A1 has run (spec Part 2).
-    const parcelPlan = planReconciliation(dbParcels, beaconPlan.after, RECONCILE_TOLERANCE_M);
-    const summary = summarise(beaconPlan, parcelPlan);
+    const plan = buildBeaconRepairPlan(dbParcels, dbPoints);
+    const summary = plan.summary;
 
     if (!summary.hasWork) {
       alert('No beacon name changes needed — every parcel already matches its nearest coordinate point.');
@@ -1744,7 +1742,7 @@ async function repairParcelBeaconNames() {
     }
     await showRepairConfirm(summary, formatSummary(summary)); // reject → return, nothing written
 
-    const outcome = await executeRepair(beaconPlan, parcelPlan, {
+    const outcome = await runBeaconRepair(plan, {
       executeA1: async renames => {
         try {
           const r = await normalizeCoordinatePointNames(projectId, renames);
@@ -1785,7 +1783,7 @@ async function repairParcelBeaconNames() {
             await updateLandParcel(w.parcelId, { metadata: w.metadata });
             outcome.written.push(String(w.parcelId));
           } catch (e: any) {
-            const designation = parcelPlan.writes.find(pw => pw.parcelId === w.parcelId)?.designation ?? String(w.parcelId);
+            const designation = plan.parcelPlan.writes.find(pw => pw.parcelId === w.parcelId)?.designation ?? String(w.parcelId);
             outcome.failed.push({ designation, message: e?.response?.data?.error || e?.message || String(e) });
           }
         }

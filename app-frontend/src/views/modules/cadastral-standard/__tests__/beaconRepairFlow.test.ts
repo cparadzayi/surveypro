@@ -5,6 +5,8 @@ import {
   executeRepair,
   propagateRename,
   describeRepairResult,
+  buildBeaconRepairPlan,
+  runBeaconRepair,
   type RepairDeps,
 } from '../beaconRepairFlow'
 
@@ -138,6 +140,85 @@ describe('executeRepair', () => {
     expect(text).toMatch(/STAND 1/)
     expect(text).toMatch(/STAND 2 — Request failed with status code 500/)
     expect(text).toMatch(/Re-run/i)
+  })
+})
+
+describe('buildBeaconRepairPlan + runBeaconRepair (shared button/self-heal orchestration)', () => {
+  const v = (id: string, y: number, x: number, extra: Record<string, any> = {}): any => ({ id, y, x, ...extra })
+  const geomOf = (points: Array<{ y: number; x: number }>) => ({
+    type: 'Polygon',
+    coordinates: [[...points.map(p => [p.x, p.y]), [points[0].x, points[0].y]]],
+  })
+  const edgesOf = (points: Array<{ id: string; y: number; x: number }>) =>
+    points.map((p, i) => {
+      const q = points[(i + 1) % points.length]
+      return {
+        index: i + 1,
+        from: { y: p.y, x: p.x, id: p.id, name: p.id },
+        to: { y: q.y, x: q.x, id: q.id, name: q.id },
+        dy: 0.001 * (i + 1), dx: -0.002 * (i + 1),
+        distance: 10.0004, distanceRounded: 10, bearingDeg: 90 * i, directionDMS: `${90 * i}°00'00"`,
+      }
+    })
+  const PARCEL_POINTS = [v('2474a', 0, 0), v('B', 0, 10), v('C', 10, 10), v('D', 10, 0)]
+  const row = (id: number, designation: string, points: any[], metadata: Record<string, any> = {}): any => ({
+    id, stand: designation, designation, geom: geomOf(points),
+    metadata: {
+      cape_lo_points: points,
+      residuals: { edges: edgesOf(points), sumDy: 0.01, sumDx: -0.02 },
+      ...metadata,
+    },
+  })
+  const NORMALISED_DB_POINTS = [
+    { id: 1, name: '2474A', y: 0, x: 0 }, { id: 2, name: 'B', y: 0, x: 10 },
+    { id: 3, name: 'C', y: 10, x: 10 }, { id: 4, name: 'D', y: 10, x: 0 },
+  ]
+
+  test('post-merge: beacon names already normalised, parcel metadata still stale → B-only plan', () => {
+    const staleParcel = row(101, 'STAND 1', PARCEL_POINTS)
+    const plan = buildBeaconRepairPlan([staleParcel], NORMALISED_DB_POINTS)
+    expect(plan.beaconPlan.renames).toEqual([]) // the merge normalised the beacon table
+    expect(plan.summary.hasWork).toBe(true)     // but the parcel still says 2474a
+    expect(plan.parcelPlan.writes[0].designation).toBe('STAND 1')
+    expect(plan.parcelPlan.writes[0].metadata.cape_lo_points[0].id).toBe('2474A')
+  })
+
+  test('button scenario: stale beacon name flows into a parcel rename plan too', () => {
+    const plan = buildBeaconRepairPlan(
+      [row(101, 'STAND 1', PARCEL_POINTS)],
+      NORMALISED_DB_POINTS.map(p => (p.name === '2474A' ? { ...p, name: '2474a' } : p))
+    )
+    expect(plan.beaconPlan.renames).toEqual([{ id: 1, from: '2474a', to: '2474A' }])
+    expect(plan.summary.hasWork).toBe(true)
+  })
+
+  test('clean project → no work', () => {
+    const plan = buildBeaconRepairPlan(
+      [row(101, 'STAND 1', PARCEL_POINTS.map(p => (p.id === '2474a' ? { ...p, id: '2474A' } : p)))],
+      NORMALISED_DB_POINTS
+    )
+    expect(plan.summary.hasWork).toBe(false)
+    expect(plan.parcelPlan.writes).toEqual([])
+  })
+
+  test('runBeaconRepair on a no-beacon-rename plan runs ONLY phase B, then refreshes', async () => {
+    const d = deps()
+    const plan = buildBeaconRepairPlan([row(101, 'STAND 1', PARCEL_POINTS)], NORMALISED_DB_POINTS)
+    const outcome = await runBeaconRepair(plan, d)
+    expect((d as any).calls).toEqual([['b', [101]], ['refresh']])
+    expect(outcome.phase).toBe('complete')
+  })
+
+  test('runBeaconRepair stops on an A1 failure, exactly like the button', async () => {
+    const d = deps({ executeA1: async () => ({ ok: false, error: 'plan changed — re-run' }) })
+    const plan = buildBeaconRepairPlan(
+      [row(101, 'STAND 1', PARCEL_POINTS)],
+      NORMALISED_DB_POINTS.map(p => (p.name === '2474A' ? { ...p, name: '2474a' } : p))
+    )
+    const outcome = await runBeaconRepair(plan, d)
+    expect(outcome.phase).toBe('a1-failed')
+    expect((d as any).calls.filter(c => c[0].startsWith('a'))).toEqual([['a1', [{ id: 1, from: '2474a', to: '2474A' }]]])
+    expect(describeRepairResult(outcome)).toMatch(/nothing else was written/i)
   })
 })
 

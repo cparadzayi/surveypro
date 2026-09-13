@@ -996,7 +996,7 @@ import {
   type CascadeOutcome,
 } from './vertexSnap';
 import { outsideFigureFirst } from './parcelRenderOrder';
-import { planNameNormalization, normalizeBeaconName, findCaseFoldDuplicates } from '../../../../../app-shared/beaconName';
+import { planNameNormalization, normalizeBeaconName, findCaseFoldDuplicates, splitBeaconName, labelParts } from '../../../../../app-shared/beaconName';
 import { planReconciliation, summarise, formatSummary, RECONCILE_TOLERANCE_M } from './beaconReconcile';
 import { executeRepair, propagateRename, describeRepairResult, renameWorkflowCopies, renamePointList } from './beaconRepairFlow';
 
@@ -6802,15 +6802,17 @@ async function exportAreaConsistencyPDF() {
         return; // Topologically-aware: no duplicate labels
       }
       
-      // Parse beacon name to extract stand number and suffix (supports multi-character suffixes)
+      // Parse beacon name via the shared rule (Part 4 site #6)
       // Examples: "1425A" -> stand: "1425", suffix: "A"
       //           "1464An" -> stand: "1464", suffix: "An"
-      const match = beaconName.match(/^(\d+)([A-Z][a-z]*)$/);
+      //           "2474a" -> stand: "2474", suffix: "A"
+      //           "2474AB" -> stand: "2474", suffix: "AB"
+      const beaconParts = splitBeaconName(beaconName);
       
-      if (match) {
-        // STANDARD BEACON NAMING (e.g., "1464A", "1464An")
-        const beaconStand = match[1];
-        const suffix = match[2];
+      if (beaconParts) {
+        // STANDARD BEACON NAMING
+        const beaconStand = beaconParts.prefix;
+        const suffix = labelParts(beaconName).suffix;
         
         // TOPOLOGICAL RULE: Only label beacon in its parent parcel (matching prefix)
         if (beaconStand !== parcel.designation) {

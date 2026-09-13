@@ -15,6 +15,7 @@ import BLOCKS from "../../../app-shared/block-definitions.js";
 import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, tickRungLadder } from "../../../app-shared/tickMarks.js";
 import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, resolveTownshipScaleMandate } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
+import { splitBeaconName, labelParts } from "../../../app-shared/beaconName.js";
 import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION, blockRoomFraction } from '../../../app-shared/planSheeting.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
@@ -2867,10 +2868,10 @@ function renderBeacons(
         `[PDFKit] ⚠️ No UI label for "${beaconName}", using backend logic`
       );
 
-      const prefixMatch = beaconName.match(/^(\d+)([A-Z]+)$/);
+      const parts = splitBeaconName(beaconName);
 
       // Control/reference beacons (no numeric prefix) - always show full name
-      if (!prefixMatch) {
+      if (!parts) {
         config = labelConfig.outsideParcel;
         displayLabel = beaconName;
         isInsideLabel = false;
@@ -2886,15 +2887,14 @@ function renderBeacons(
           `[PDFKit] 🎯 Control beacon "${beaconName}": showing full name`
         );
       } else {
-        const beaconPrefix = prefixMatch[1];
-        const beaconSuffix = prefixMatch[2];
+        const beaconSuffix = labelParts(beaconName).suffix;
 
         // PRIMARY: Find the display parcel directly by stand name.
         // The beacon name encodes the stand (e.g. "2475A" → stand "2475"), so
         // coordinate-proximity matching is unnecessary and fragile (floating-point
         // mismatches cause it to silently fall through to full-name rendering).
         const displayParcel = parcels.features.find(
-          (p) => p.properties.stand?.toString() === beaconPrefix &&
+          (p) => p.properties.stand?.toString() === parts.prefix &&
                  !p.properties.isOutsideFigure
         );
 
@@ -2951,7 +2951,7 @@ function renderBeacons(
           isInsideLabel = false;
 
           logger.info(
-            `[PDFKit] ⚠️ No parcel with stand "${beaconPrefix}" found for beacon "${beaconName}": showing full name outside`
+            `[PDFKit] ⚠️ No parcel with stand "${parts.prefix}" found for beacon "${beaconName}": showing full name outside`
           );
 
           const closeOffset = beaconRadius + 3;
@@ -3296,39 +3296,6 @@ function isBeaconInsideAnyParcel(beaconCoords, parcels) {
   }
 
   return false;
-}
-
-/**
- * Find parcel whose label matches the numeric prefix of the beacon name
- * Example: beacon "2474A" matches parcel "2474", beacon "2475C" matches parcel "2475"
- * Uses regex to extract numeric prefix from beacon name
- * Returns the matching parcel if beacon is inside it, null otherwise
- */
-function findParcelWithBeaconPrefix(beaconName, beaconCoords, parcels) {
-  if (!parcels || !parcels.features || !beaconName) return null;
-
-  // Extract numeric prefix from beacon name (e.g., "2474A" -> "2474")
-  const match = beaconName.match(/^(\d+)([A-Z]+)$/);
-  if (!match) return null;
-
-  const beaconStand = match[1]; // Numeric prefix
-
-  for (const parcel of parcels.features) {
-    const parcelLabel = parcel.properties.stand;
-    if (!parcelLabel) continue;
-
-    // Check if beacon's numeric prefix matches parcel label exactly
-    if (beaconStand === parcelLabel) {
-      // Verify beacon is actually inside this parcel
-      let coords = parcel.geometry.coordinates[0];
-      if (Array.isArray(coords) && coords.length === 1 && Array.isArray(coords[0]) && Array.isArray(coords[0][0])) coords = coords[0];
-      if (isPointInPolygon(beaconCoords, coords)) {
-        return parcel;
-      }
-    }
-  }
-
-  return null;
 }
 
 /**

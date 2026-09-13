@@ -13,6 +13,7 @@ import { authenticateWithSchema } from '../utils/schemaAuth.js'
 import { SI727_PRESCRIBED_SCALES, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 } from '../utils/si727Constants.js'
 import { resolvePlanSheeting } from '../../../app-shared/planSheeting.js'
 import { resolveTownshipScaleMandate } from '../../../app-shared/block-definitions.js'
+import { splitBeaconName, labelParts } from '../../../app-shared/beaconName.js'
 
 /**
  * Survey Plan Preview Routes
@@ -788,13 +789,13 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
           }
           
           // Parse beacon name to extract stand number and suffix (supports multi-character suffixes)
-          // Examples: "1464A" → ["1464", "A"], "1464An" → ["1464", "An"]
-          const match = beaconName.match(/^(\d+)([A-Z][a-z]*)$/)
-          
-          if (match) {
-            // STANDARD BEACON NAMING (e.g., "1464A", "1464An")
-            const beaconStand = match[1]
-            const suffix = match[2]
+          // Examples: "1464A" → ["1464", "A"], "1464An" → ["1464", "An"], "2474a" → ["2474", "A"]
+          const parts = labelParts(beaconName)
+
+          if (parts) {
+            // STANDARD BEACON NAMING
+            const beaconStand = parts.prefix
+            const suffix = parts.suffix
             
             // TOPOLOGICAL RULE: Only label beacon in its parent parcel (matching prefix)
             if (beaconStand !== parcel.stand) {

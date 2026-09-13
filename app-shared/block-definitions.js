@@ -628,17 +628,6 @@ export function getAdaptiveLabelSize(baseSize, scaleValue, sizeRules) {
   return sizeRules['1:10000'] || baseSize
 }
 
-// Helper function to extract suffix from beacon name
-export function extractBeaconSuffix(beaconName) {
-  if (!beaconName) return ''
-  
-  // Extract suffix only if beacon has numeric prefix
-  // Examples: "2474A" -> "A", "2474AB" -> "AB", "2475C" -> "C"
-  // Non-matching: "M5" -> "M5", "ZA" -> "ZA" (no numeric prefix)
-  const match = beaconName.match(/^(\d+)([A-Z]+)$/i)
-  return match ? match[2] : beaconName
-}
-
 /**
  * Compute per-column widths for the Schedule of Areas so headers and
  * data values never overflow their column. Widths are in PDF points.
@@ -830,6 +819,5 @@ export default {
   snapScaleBarSegment,
   formatCoordinate,
   formatBearing,
-  getAdaptiveLabelSize,
-  extractBeaconSuffix
+  getAdaptiveLabelSize
 }

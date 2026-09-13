@@ -613,6 +613,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick, reactive } from 'vue'
 import { SI727_GENERAL_PLAN_SHEET_SIZES } from '../../../../../app-shared/si727SheetSizes.js'
+import { splitBeaconName, labelParts } from '../../../../../app-shared/beaconName.js'
 
 defineOptions({ name: 'SurveyPlanMapView' })
 import maplibregl from 'maplibre-gl'
@@ -1205,11 +1206,11 @@ const validatedLabels = computed(() => {
   }> = []
   
   beaconMap.forEach(beacon => {
-    // Extract numeric prefix from beacon name (e.g., "2474A" -> "2474")
-    const prefixMatch = beacon.name.match(/^(\d+)([a-z]+)$/i)
+    // Extract numeric prefix via the shared rule (Part 4 site #1)
+    const beaconParts = splitBeaconName(beacon.name)
     
     // Control/reference beacons (no numeric prefix) - always show full name
-    if (!prefixMatch) {
+    if (!beaconParts) {
       controlBeaconCount++
       console.log(`[SurveyPlanMap] 🎯 Control beacon "${beacon.name}": showing full name`)
       beaconLabels.push({
@@ -1225,8 +1226,8 @@ const validatedLabels = computed(() => {
       return
     }
     
-    const beaconPrefix = prefixMatch[1]
-    const beaconSuffix = prefixMatch[2].toUpperCase()
+    const beaconPrefix = beaconParts.prefix
+    const beaconSuffix = labelParts(beacon.name).suffix
     
     // Find parcel(s) that match the beacon prefix
     const matchingParcelIds = Array.from(beacon.parcels).filter(parcelId => {
@@ -4246,11 +4247,11 @@ function generateBeaconLabelsForPDF() {
   }> = []
   
   beaconMap.forEach(beacon => {
-    // Extract numeric prefix from beacon name
-    const prefixMatch = beacon.name.match(/^(\d+)([a-z]+)$/i)
+    // Extract numeric prefix via the shared rule (Part 4 site #2)
+    const beaconParts = splitBeaconName(beacon.name)
     
     // Control/reference beacons - always show full name
-    if (!prefixMatch) {
+    if (!beaconParts) {
       beaconLabels.push({
         text: beacon.name,
         coordinates: beacon.coordinates,
@@ -4264,8 +4265,8 @@ function generateBeaconLabelsForPDF() {
       return
     }
     
-    const beaconPrefix = prefixMatch[1]
-    const beaconSuffix = prefixMatch[2].toUpperCase()
+    const beaconPrefix = beaconParts.prefix
+    const beaconSuffix = labelParts(beacon.name).suffix
     
     // Find parcel(s) that match the beacon prefix
     const matchingParcelIds = Array.from(beacon.parcels).filter(parcelId => {

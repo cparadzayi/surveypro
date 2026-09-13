@@ -37,6 +37,7 @@ import {
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { SI727_GENERAL_PLAN_SHEET_SIZES } from '../../../app-shared/si727SheetSizes.js';
+import { splitBeaconName, labelParts } from '../../../app-shared/beaconName.js';
 
 /** Conversion factor: 1 PDF point = 0.352778 mm. block-definitions values
  *  are in PDF pts (matching the PDF generator's native unit); the DXF
@@ -472,6 +473,22 @@ function p(code, value) {
 }
 
 // â”€â”€ Main generator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/**
+ * PRIORITY-2 fallback for a beacon with no UI-supplied label: derive the suffix
+ * from the shared rule (Part 4 site #3). prefix finds the stand, suffix prints —
+ * so 2474a prints A inside stand 2474, 1464An prints An, and a letter-only or
+ * non-matching name prints in full outside. `findPolygon(prefix)` resolves the
+ * parcel polygon (the `parcelByStand` lookup inside the generator).
+ */
+export function fallbackBeaconLabel(beaconName, findPolygon) {
+  const parts = splitBeaconName(beaconName);
+  const polygon = parts ? findPolygon(parts.prefix) : null;
+  if (parts && polygon) {
+    return { text: labelParts(beaconName).suffix, isInsideParcel: true, polygon };
+  }
+  return { text: beaconName, isInsideParcel: false, polygon: null };
+}
 
 export function generateDXF(options, logger) {
   // Warnings accumulator. Mutated by guards inside the emitters; returned
@@ -1529,12 +1546,7 @@ export function generateDXF(options, logger) {
     }
 
     // PRIORITY 2: pattern-matched fallback (matches PDF:4855-4951).
-    const m = beaconName.match(/^(\d+)([A-Za-z]+)$/);
-    if (m) {
-      const polygon = parcelByStand.get(m[1]);
-      if (polygon) return { text: m[2].toUpperCase(), isInsideParcel: true, polygon };
-    }
-    return { text: beaconName, isInsideParcel: false, polygon: null };
+    return fallbackBeaconLabel(beaconName, (prefix) => parcelByStand.get(prefix));
   };
 
   /**

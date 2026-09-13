@@ -274,12 +274,17 @@ export interface CascadeOutcome {
  * The blocking-dialog text for a cascade that did not fully succeed, or null when it
  * did. Lives here rather than in the view so the wording is tested.
  *
- * Each parcel is its own PUT and there is no cross-parcel transaction (a batch
- * endpoint is deliberately out of scope this pass). If a write fails after at least
- * one succeeded, the boundaries are now inconsistent and the surveyor must be told in
- * exactly those terms.
+ * Shared by the vertex-drag flow and the beacon-name repair (spec Part 2: a partial
+ * phase B is reported in the same blocking terms as the drag). `subject` is the
+ * sentence fragment that names the underlying problem, e.g. 'the shared boundary is
+ * now inconsistent' (drag) or 'the beacon name change is only partially applied'
+ * (repair). Each parcel is its own PUT and there is no cross-parcel transaction (a batch
+ * endpoint is deliberately out of scope this pass).
  */
-export function describeCascadeOutcome(outcome: CascadeOutcome): string | null {
+export function describeCascadeOutcome(
+  outcome: CascadeOutcome,
+  subject: string = 'the shared boundary is now inconsistent'
+): string | null {
   const failed = outcome?.failed ?? []
   if (failed.length === 0) return null
 
@@ -289,16 +294,16 @@ export function describeCascadeOutcome(outcome: CascadeOutcome): string | null {
   if (written.length === 0) {
     return (
       `No parcel was updated.\n\n` +
-      `The drag could not be applied to:\n${lines}\n\n` +
+      `The change could not be applied to:\n${lines}\n\n` +
       `Nothing was written, so the boundaries are unchanged.`
     )
   }
 
   return (
-    `PARTIAL UPDATE — the shared boundary is now inconsistent.\n\n` +
+    `PARTIAL UPDATE — ${subject}.\n\n` +
     `Updated (${written.length}): ${written.join(', ')}\n` +
     `NOT updated (${failed.length}):\n${lines}\n\n` +
-    `Those parcels no longer share the same corner. Re-run the same drag to finish it, ` +
+    `Those parcels no longer agree. Re-run the same operation to finish it, ` +
     `or fix the parcels above before generating any plan from this record.`
   )
 }

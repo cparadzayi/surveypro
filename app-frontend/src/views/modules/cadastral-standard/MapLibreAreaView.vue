@@ -895,6 +895,53 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Repair Beacon Names confirm modal (multi-rename plan preview) -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div
+          v-if="repairConfirm"
+          class="fixed inset-0 flex items-center justify-center"
+          style="z-index: 999999;"
+          tabindex="-1"
+          @click.self="rejectRepairConfirm"
+          @keydown.escape="rejectRepairConfirm"
+        >
+          <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+          <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+            <div class="px-5 py-4 bg-teal-600">
+              <h3 class="text-white font-semibold text-base">🔧 Repair Beacon Names</h3>
+              <p class="text-teal-200 text-xs mt-0.5">Preview — nothing is written until you proceed</p>
+            </div>
+            <div class="px-5 py-3 max-h-80 overflow-y-auto bg-gray-50 text-xs text-gray-700 font-mono">
+              <template v-for="(section, si) in repairConfirm.sections" :key="si">
+                <p class="font-bold text-gray-900 mt-2 first:mt-0">{{ section.heading }}</p>
+                <p v-for="(line, li) in section.lines" :key="li" class="whitespace-pre-wrap">{{ line }}</p>
+              </template>
+            </div>
+            <div class="px-5 py-3 text-xs text-gray-600 bg-teal-50 border-t border-teal-100">
+              Proceeding will normalise beacon names, update every workflow copy, and
+              patch each affected parcel's stored names (metadata only — no recompute,
+              no geometry change).
+            </div>
+            <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+              <button
+                @click="rejectRepairConfirm"
+                class="px-4 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                @click="resolveRepairConfirm"
+                class="px-4 py-2 text-sm text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors"
+              >
+                Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -949,6 +996,9 @@ import {
   type CascadeOutcome,
 } from './vertexSnap';
 import { outsideFigureFirst } from './parcelRenderOrder';
+import { planNameNormalization } from '../../../../../app-shared/beaconName';
+import { planReconciliation, summarise, formatSummary, RECONCILE_TOLERANCE_M } from './beaconReconcile';
+import { executeRepair, propagateRename, describeRepairResult, renameWorkflowCopies, renamePointList } from './beaconRepairFlow';
 
 const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../components/ParcelDetectionPanel.vue'));
 
@@ -1081,6 +1131,30 @@ function rejectAffectedParcelsConfirm() {
   if (!m) return;
   affectedParcelsConfirm.value = null;
   m.reject(new Error('cancelled'));
+}
+
+// Repair Beacon Names confirm gate (multi-rename plan preview)
+const repairConfirm = ref<{
+  summary: string;
+  sections: Array<{ heading: string; lines: string[] }>;
+  resolve: () => void;
+  reject: (reason: Error) => void;
+} | null>(null);
+
+async function showRepairConfirm(summary: any, text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    repairConfirm.value = { summary: text, sections: summary.sections, resolve, reject };
+  });
+}
+function resolveRepairConfirm() {
+  const m = repairConfirm.value;
+  repairConfirm.value = null;
+  m?.resolve();
+}
+function rejectRepairConfirm() {
+  const m = repairConfirm.value;
+  repairConfirm.value = null;
+  m?.reject(new Error('cancelled'));
 }
 
 function openMapRenameModal(pointId: string, status: string, lngLat: string) {
@@ -1657,8 +1731,6 @@ async function repairParcelBeaconNames() {
 
   isRecomputing.value = true;
   try {
-    // Fetch fresh data directly from API — don't rely on possibly-empty in-memory state
-    console.log('[RepairBeacons] Fetching parcels and coordinate points from API...');
     const [dbParcels, dbPoints] = await Promise.all([
       listLandParcels(Number(projectId)),
       listCoordinatePoints(Number(projectId))
@@ -1673,77 +1745,69 @@ async function repairParcelBeaconNames() {
       return;
     }
 
-    console.log(`[RepairBeacons] ${dbParcels.length} parcel(s), ${dbPoints.length} coordinate point(s)`);
+    const beaconPlan = planNameNormalization(dbPoints.map(p => ({ id: p.id ?? p.name, name: p.name })));
+    // Parcels match against the names that WILL exist once A1 has run (spec Part 2).
+    const parcelPlan = planReconciliation(dbParcels, beaconPlan.after, RECONCILE_TOLERANCE_M);
+    const summary = summarise(beaconPlan, parcelPlan);
 
-    // Normalise coordinate points: use .name as id (same as listCoordinatePoints returns)
-    const currentPoints = dbPoints.map((p: any) => ({
-      id: p.name,
-      y: typeof p.y === 'number' ? p.y : parseFloat(p.y),
-      x: typeof p.x === 'number' ? p.x : parseFloat(p.x),
-    }));
-
-    const TOLERANCE = 0.5; // metres
-    let repairedCount = 0;
-    let skippedCount = 0;
-    const details: string[] = [];
-
-    for (const dbParcel of dbParcels) {
-      const designation = dbParcel.stand || dbParcel.designation;
-      const oldPoints: any[] = dbParcel.metadata?.cape_lo_points ?? [];
-
-      if (oldPoints.length === 0) {
-        skippedCount++;
-        continue;
-      }
-
-      let changed = false;
-      const repairedPoints = oldPoints.map((p: any) => {
-        const py = typeof p.y === 'number' ? p.y : parseFloat(p.y);
-        const px = typeof p.x === 'number' ? p.x : parseFloat(p.x);
-        let bestMatch: any = null;
-        let minDist = Infinity;
-        for (const cp of currentPoints) {
-          const dist = Math.sqrt(Math.pow(cp.y - py, 2) + Math.pow(cp.x - px, 2));
-          if (dist < minDist) { minDist = dist; bestMatch = cp; }
-        }
-        if (bestMatch && minDist <= TOLERANCE && bestMatch.id !== p.id) {
-          changed = true;
-          details.push(`  ${designation}: "${p.id}" → "${bestMatch.id}" (${minDist.toFixed(3)}m)`);
-          return { ...p, id: bestMatch.id, description: bestMatch.id };
-        }
-        return p;
-      });
-
-      if (!changed) { skippedCount++; continue; }
-
-      const updatedMetadata = { ...dbParcel.metadata, cape_lo_points: repairedPoints };
-      try {
-        await updateLandParcel(dbParcel.id, { metadata: updatedMetadata });
-        // Keep in-memory caches in sync
-        const cached = savedParcels.value.get(designation);
-        if (cached) { cached.metadata = updatedMetadata; savedParcels.value.set(designation, cached); }
-        const mem = parcels.value.find((p: any) => p.designation === designation);
-        if (mem) {
-          mem.points = repairedPoints.map((p: any) => ({
-            id: p.id, y: p.y, x: p.x,
-            status: p.status || 'P', description: p.description || p.id
-          }));
-        }
-        repairedCount++;
-        console.log(`[RepairBeacons] ✅ Repaired "${designation}"`);
-      } catch (e) {
-        console.error(`[RepairBeacons] ❌ Failed to patch "${designation}":`, e);
-      }
+    if (!summary.hasWork) {
+      alert('No beacon name changes needed — every parcel already matches its nearest coordinate point.');
+      return;
     }
+    await showRepairConfirm(summary, formatSummary(summary)); // reject → return, nothing written
 
-    const msg = [
-      `Beacon name repair complete.`,
-      `✅ Repaired: ${repairedCount} parcel(s)`,
-      `⏭️ No changes needed: ${skippedCount} parcel(s)`,
-      details.length > 0 ? `\nChanges made:\n${details.join('\n')}` : ''
-    ].filter(Boolean).join('\n');
-    alert(msg);
-    console.log('[RepairBeacons]', msg);
+    const outcome = await executeRepair(beaconPlan, parcelPlan, {
+      executeA1: async renames => {
+        try {
+          const r = await api.post('/coordinate-points/normalize-names', { project_id: String(projectId), renames });
+          return { ok: true, renamed: r.data?.data?.renamed ?? renames.length };
+        } catch (e: any) {
+          return { ok: false, error: e?.response?.data?.error || e?.message || String(e) };
+        }
+      },
+      executeA2: async renames => {
+        // Fresh copy: operate on the persisted shapes, not the possibly-stale
+        // in-memory workflowState.
+        const loaded = (await api.get(`/survey-projects/${projectId}/workflow`)).data?.workflow_state;
+        const copies = renameWorkflowCopies(loaded?.step_data ?? {}, renames);
+        const failed: Array<{ step: string; error: string }> = [];
+        for (const copy of copies) {
+          try {
+            await api.patch(`/survey-projects/${projectId}/workflow`, {
+              step: copy.step, action: 'update', metadata: copy.metadata
+            });
+          } catch (e: any) {
+            failed.push({ step: copy.step, error: e?.response?.data?.error || e?.message || String(e) });
+          }
+        }
+        if (failed.length === 0) {
+          // In-memory copies (never persisted — rebuilt from importedPoints).
+          for (const { from, to } of renames) {
+            workflowState.importedPoints = renamePointList(workflowState.importedPoints, from, to);
+            workflowState.adjustedCoordinates = renamePointList(workflowState.adjustedCoordinates, from, to);
+          }
+          workflowState.documents.coordinateList = undefined; // rebuilt on next generate
+        }
+        return { ok: failed.length === 0, failed };
+      },
+      updateParcels: async writes => {
+        const outcome: CascadeOutcome = { written: [], failed: [] };
+        for (const w of writes) {
+          try {
+            await updateLandParcel(w.parcelId, { metadata: w.metadata });
+            outcome.written.push(String(w.parcelId));
+          } catch (e: any) {
+            const designation = parcelPlan.writes.find(pw => pw.parcelId === w.parcelId)?.designation ?? String(w.parcelId);
+            outcome.failed.push({ designation, message: e?.response?.data?.error || e?.message || String(e) });
+          }
+        }
+        return outcome;
+      },
+      refresh: () => { refreshParcelsFromDatabase(); },
+    });
+
+    alert(describeRepairResult(outcome));
+    console.log('[RepairBeacons]', describeRepairResult(outcome));
   } catch (e: any) {
     console.error('[RepairBeacons] ❌ Error:', e);
     alert(`Repair failed: ${e?.message || 'Unknown error'}`);

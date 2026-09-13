@@ -965,7 +965,7 @@ import { polygon as turfPolygon, featureCollection } from '@turf/helpers';
 import booleanContains from '@turf/boolean-contains';
 import intersect from '@turf/intersect';
 import area from '@turf/area';
-import { listLandParcels, createLandParcel, finalizeLandParcels, deleteLandParcel, updateLandParcel, listCoordinatePoints, renameCoordinatePoint, createCoordinatePoint, updateCoordinatePoint, deleteCoordinatePoint, deleteCoordinatePointByName, type LandParcel, type CoordinatePoint } from '../../../services/spatial';
+import { listLandParcels, createLandParcel, finalizeLandParcels, deleteLandParcel, updateLandParcel, listCoordinatePoints, renameCoordinatePoint, createCoordinatePoint, updateCoordinatePoint, deleteCoordinatePoint, deleteCoordinatePointByName, normalizeCoordinatePointNames, type LandParcel, type CoordinatePoint } from '../../../services/spatial';
 import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow';
 import api from '../../../services/api';
 import { saveDocument } from '../../../services/documentStorage';
@@ -996,7 +996,7 @@ import {
   type CascadeOutcome,
 } from './vertexSnap';
 import { outsideFigureFirst } from './parcelRenderOrder';
-import { planNameNormalization } from '../../../../../app-shared/beaconName';
+import { planNameNormalization, normalizeBeaconName, findCaseFoldDuplicates } from '../../../../../app-shared/beaconName';
 import { planReconciliation, summarise, formatSummary, RECONCILE_TOLERANCE_M } from './beaconReconcile';
 import { executeRepair, propagateRename, describeRepairResult, renameWorkflowCopies, renamePointList } from './beaconRepairFlow';
 
@@ -1177,14 +1177,16 @@ function _findConflictPoint(name: string): { id: string; x: number; y: number; s
 async function confirmMapRename() {
   const modal = mapRenameModal.value;
   if (!modal || modal.saving) return;
-  const trimmed = modal.newName.trim();
-  if (!trimmed || trimmed === modal.pointId) { closeMapRenameModal(); return; }
-  if (!trimmed) { modal.error = 'Name cannot be empty'; return; }
+  const newName = normalizeBeaconName(modal.newName.trim());
+  if (!newName || newName === modal.pointId) { closeMapRenameModal(); return; }
+  if (!newName) { modal.error = 'Name cannot be empty'; return; }
 
-  // In-memory duplicate check — also covers memory-only points not yet in DB
-  const inMemory = coordinatePoints.value.some((p: any) => p.id !== modal.pointId && p.id === trimmed);
+  // In-memory duplicate check — case-fold aware (decision 15)
+  const inMemory = coordinatePoints.value.some(
+    (p: any) => p.id !== modal.pointId && normalizeBeaconName(p.id) === newName
+  );
   if (inMemory) {
-    modal.conflictPoint = _findConflictPoint(trimmed);
+    modal.conflictPoint = _findConflictPoint(newName);
     modal.error = '';
     return;
   }
@@ -1193,14 +1195,14 @@ async function confirmMapRename() {
   modal.error = '';
   modal.conflictPoint = null;
   try {
-    await handlePointRename({ oldName: modal.pointId, newName: trimmed });
-    handleRenameComplete([{ oldName: modal.pointId, newName: trimmed }]);
+    await handlePointRename({ oldName: modal.pointId, newName });
+    handleRenameComplete([{ oldName: modal.pointId, newName }]);
     closeMapRenameModal();
   } catch (e: any) {
     const backendMsg = e?.response?.data?.error;
     if (e?.response?.status === 409) {
       // Always show conflict UI — _findConflictPoint stubs missing points
-      modal.conflictPoint = _findConflictPoint(trimmed);
+      modal.conflictPoint = _findConflictPoint(newName);
       modal.error = '';
     } else if (e?.response?.status === 404) {
       modal.error = backendMsg || `Point "${modal.pointId}" not found — try reloading`;
@@ -1214,7 +1216,7 @@ async function confirmMapRename() {
 async function resolveRenameConflict(deleteConflicting: boolean) {
   const modal = mapRenameModal.value;
   if (!modal || modal.saving || !modal.conflictPoint) return;
-  const trimmed = modal.newName.trim();
+  const newName = normalizeBeaconName(modal.newName.trim());
   const conflictName = modal.conflictPoint.id;
 
   if (!deleteConflicting) {
@@ -1242,8 +1244,8 @@ async function resolveRenameConflict(deleteConflicting: boolean) {
     dbPointIds.value.delete(conflictName);
 
     // Now perform the rename
-    await handlePointRename({ oldName: modal.pointId, newName: trimmed });
-    handleRenameComplete([{ oldName: modal.pointId, newName: trimmed }]);
+    await handlePointRename({ oldName: modal.pointId, newName });
+    handleRenameComplete([{ oldName: modal.pointId, newName }]);
     closeMapRenameModal();
   } catch (e: any) {
     modal.conflictPoint = null;
@@ -1433,8 +1435,10 @@ async function editPanelHandler(
   }
 
   // Name change goes through the existing rename pipeline (DB + workflow +
-  // land_parcels.metadata.cape_lo_points + map labels).
-  if (patch.name && patch.name !== oldName) {
+  // land_parcels.metadata.cape_lo_points + map labels). Normalise the typed
+  // form so the stored string equals the canonical one (decision 12).
+  if (patch.name && normalizeBeaconName(patch.name) !== oldName) {
+    patch.name = normalizeBeaconName(patch.name);
     await handlePointRename({ oldName, newName: patch.name });
   }
 
@@ -1612,6 +1616,7 @@ async function deletePanelHandler(name: string): Promise<void> {
 }
 
 async function handlePointRename(payload: { oldName: string; newName: string }) {
+  payload.newName = normalizeBeaconName(payload.newName);
   const projectId = workflowState?.projectInfo?.projectId;
   if (!projectId) throw new Error('No project ID available');
 
@@ -1677,39 +1682,22 @@ async function handlePointRename(payload: { oldName: string; newName: string }) 
     dbPointIds.value.set(payload.newName, oldDbId);
   }
 
-  // 5. Propagate rename into land_parcels.metadata.cape_lo_points
-  //    Without this, saved parcels still reference the old beacon name.
-  const affectedParcels: string[] = [];
-  for (const [designation, dbParcel] of savedParcels.value.entries()) {
-    const capeLoPoints: any[] = dbParcel.metadata?.cape_lo_points ?? [];
-    const hasOldName = capeLoPoints.some((p: any) => p.id === payload.oldName);
-    if (!hasOldName) continue;
-
-    const updatedPoints = capeLoPoints.map((p: any) =>
-      p.id === payload.oldName ? { ...p, id: payload.newName, description: p.description === payload.oldName ? payload.newName : p.description } : p
-    );
-    const updatedMetadata = { ...dbParcel.metadata, cape_lo_points: updatedPoints };
-
-    try {
-      await updateLandParcel(dbParcel.id, { metadata: updatedMetadata });
-      // Keep local cache in sync
-      dbParcel.metadata = updatedMetadata;
-      savedParcels.value.set(designation, dbParcel);
-      // Also update in-memory parcels array
-      const memParcel = parcels.value.find((p: any) => p.designation === designation);
-      if (memParcel) {
-        memParcel.points = memParcel.points.map((p: any) =>
-          p.id === payload.oldName ? { ...p, id: payload.newName, description: p.description === payload.oldName ? payload.newName : p.description } : p
-        );
+  // 5. Propagate rename into land_parcels.metadata.cape_lo_points (Resolved #3)
+  try {
+    const rows = await listLandParcels(Number(projectId));
+    const { written, failed } = await propagateRename(rows, payload.oldName, payload.newName, {
+      updateParcel: async (parcelId, { metadata }) => {
+        await updateLandParcel(parcelId, { metadata });
       }
-      affectedParcels.push(designation);
-    } catch (e) {
-      console.warn(`[PointRename] ⚠️ Could not update parcel "${designation}" metadata:`, e);
+    });
+    if (written.length) {
+      console.log(`[PointRename] ✅ Propagated to ${written.length} parcel(s): ${written.join(', ')}`);
     }
-  }
-
-  if (affectedParcels.length > 0) {
-    console.log(`[PointRename] ✅ Updated beacon name in ${affectedParcels.length} parcel(s): ${affectedParcels.join(', ')}`);
+    if (failed.length) {
+      console.warn('[PointRename] ⚠️ Some parcels were not updated:', failed);
+    }
+  } catch (e) {
+    console.warn('[PointRename] ⚠️ Could not propagate rename to parcels:', e);
   }
 
   console.log(`[PointRename] ✅ Renamed "${payload.oldName}" → "${payload.newName}"`);
@@ -1759,8 +1747,8 @@ async function repairParcelBeaconNames() {
     const outcome = await executeRepair(beaconPlan, parcelPlan, {
       executeA1: async renames => {
         try {
-          const r = await api.post('/coordinate-points/normalize-names', { project_id: String(projectId), renames });
-          return { ok: true, renamed: r.data?.data?.renamed ?? renames.length };
+          const r = await normalizeCoordinatePointNames(projectId, renames);
+          return { ok: true, renamed: r.renamed };
         } catch (e: any) {
           return { ok: false, error: e?.response?.data?.error || e?.message || String(e) };
         }
@@ -1907,7 +1895,7 @@ async function confirmBeaconSave() {
   const modal = beaconModal.value;
   if (!modal || modal.saving) return;
 
-  const name = modal.name.trim();
+  const name = normalizeBeaconName(modal.name.trim());
   const yVal = parseFloat(modal.y);
   const xVal = parseFloat(modal.x);
 
@@ -1924,8 +1912,8 @@ async function confirmBeaconSave() {
     let saved: CoordinatePoint;
 
     if (modal.mode === 'add') {
-      // Duplicate name check
-      if (coordinatePoints.value.some((p: any) => p.id === name)) {
+      // Duplicate name check — case-fold aware (decision 15)
+      if (coordinatePoints.value.some((p: any) => normalizeBeaconName(p.id) === name)) {
         modal.error = `"${name}" already exists.`;
         modal.saving = false;
         return;

@@ -16,6 +16,7 @@ import {
 } from './cadastral-precision';
 
 import { capeLoToWGS84, type CapeLoPoint } from './coordinateTransform';
+import { normalizeBeaconName, findCaseFoldDuplicates } from '../../../app-shared/beaconName';
 /**
  * CSV Import and Validation Utilities for Cadastral Standard Module
  * Handles parsing, validation, and processing of cadastral coordinate CSV files
@@ -302,6 +303,9 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
         includeInFieldBook: !isCalculated,  // Exclude calculated points from field book
         includeInCoordinateList: true       // Include all points in coordinate list
       };
+      // Throwaway key consumed by the case-fold duplicate check below — never
+      // reaches the store or the API.
+      (point as any)._rawId = record['point'] || '';
       
       if (i === 1) {
         console.log(' [CSV Parser] === STAGE 3: FINAL POINT OBJECT ===' );
@@ -316,14 +320,15 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
         console.log('  - Full point object:', JSON.stringify(point, null, 2));
       }
       
-      result.preview.push(point);
+result.preview.push(point);
+      point.id = normalizeBeaconName(point.id);
       result.summary.totalPoints++;
-      
+
       // Count by status
       if (point.status === 'F') result.summary.fixedPoints++;
       else if (point.status === 'P') result.summary.pegPoints++;
       else result.summary.otherPoints++;
-      
+
       // Count calculated vs field book points
       if (isCalculated) {
         result.summary.calculatedPoints++;
@@ -331,6 +336,20 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
       if (point.includeInFieldBook) {
         result.summary.fieldBookPoints++;
       }
+    }
+
+    // Case-fold pair rejection (decision 15): two distinct raw ids that normalise
+    // to the same stored name are a hard error — do not import either one.
+    const rawIds = result.preview.map((p: any) => p._rawId ?? p.id)
+    const pairs = findCaseFoldDuplicates(rawIds)
+    for (const pair of pairs) {
+      result.isValid = false;
+      result.errors.push({
+        row: 0,
+        field: 'point',
+        message: `Case-fold collision in CSV: "${pair[0]}" and "${pair[1]}" normalise to the same name`,
+        severity: 'error'
+      });
     }
   } catch (err) {
     result.isValid = false;

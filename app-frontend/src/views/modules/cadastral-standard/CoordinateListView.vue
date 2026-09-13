@@ -140,8 +140,10 @@
 <script lang="ts">
 import { inject, computed, ref, nextTick } from 'vue';
 import { useSurveyLookupStore } from '../../../stores/surveyLookup';
-import { renameCoordinatePoint, deleteCoordinatePointByName } from '../../../services/spatial';
+import { renameCoordinatePoint, deleteCoordinatePointByName, listLandParcels, updateLandParcel } from '../../../services/spatial';
 import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow';
+import { propagateRename } from './beaconRepairFlow';
+import { normalizeBeaconName } from '../../../../../app-shared/beaconName';
 export default {
   name: 'CoordinateListView',
   setup() {
@@ -239,15 +241,15 @@ export default {
     }
 
     async function commitRename(oldName: string) {
-      const newName = renameValue.value.trim();
+      const newName = normalizeBeaconName(renameValue.value.trim());
       // No-op if unchanged or empty
       if (!newName || newName === oldName || renameSaving.value) {
         cancelRename();
         return;
       }
-      // Check for duplicate name in current list
+      // Reject a case-fold collision in-memory (decision 15)
       const duplicate = workflowState.importedPoints.find(
-        (p: any) => p.id === newName
+        (p: any) => p.id !== oldName && normalizeBeaconName(p.id) === newName
       );
       if (duplicate) {
         renameError.value = `Point name "${newName}" already exists in this project.`;
@@ -259,26 +261,24 @@ export default {
         if (projectId.value) {
           await renameCoordinatePoint(projectId.value, oldName, newName);
         }
-        // Update workflowState.importedPoints in-place so all downstream
-        // consumers (AreaComputationView, SurveyPlanMapView, PDFs) see the new name
+        // Update importedPoints in-place
         const point = workflowState.importedPoints.find((p: any) => p.id === oldName);
-        if (point) {
-          point.id = newName;
+        if (point) point.id = newName;
+
+        // Propagate into land_parcels.metadata.cape_lo_points (Resolved #3)
+        const rows = await listLandParcels(Number(projectId.value));
+        const { written, failed } = await propagateRename(rows, oldName, newName, {
+          updateParcel: async (parcelId, { metadata }) => {
+            await updateLandParcel(parcelId, { metadata });
+          }
+        });
+        if (failed.length) {
+          console.warn('[CoordinateList] ⚠️ Some parcels were not updated:', failed);
         }
-        // Also update coordinateList document if already generated
-        if (workflowState.documents?.coordinateList?.points) {
-          const docPoint = workflowState.documents.coordinateList.points.find(
-            (p: any) => p.id === oldName
-          );
-          if (docPoint) docPoint.id = newName;
+        if (written.length) {
+          console.log(`[CoordinateList] ✅ Propagated "${oldName}" → "${newName}" to ${written.length} parcel(s): ${written.join(', ')}`);
         }
-        // Update adjustedCoordinates (used by AreaComputationView) if already generated
-        if (workflowState.adjustedCoordinates) {
-          const adjPoint = workflowState.adjustedCoordinates.find(
-            (p: any) => p.pointId === oldName
-          );
-          if (adjPoint) adjPoint.pointId = newName;
-        }
+
         console.log(`[CoordinateList] ✅ Renamed "${oldName}" → "${newName}"`);
       } catch (err: any) {
         renameError.value = err?.response?.data?.error ||

@@ -210,6 +210,24 @@ export async function renameCoordinatePoint(projectId: number | string, oldName:
   return r.data.data
 }
 
+/**
+ * Call POST /coordinate-points/normalize-names (Task 3) for a repair's
+ * renames list. The server recomputes the plan and returns 409 when it
+ * has changed since planning — the view must surface this and ask the
+ * surveyor to re-run.
+ */
+export async function normalizeCoordinatePointNames(
+  projectId: number | string,
+  renames: Array<{ id: number | string; from: string; to: string }>
+): Promise<{ ok: boolean; renamed: number }> {
+  const r = await api.post<{ ok: boolean; data?: { renamed: number }; error?: string }>(
+    '/coordinate-points/normalize-names',
+    { project_id: projectId.toString(), renames }
+  )
+  if (r.data.ok) return { ok: true, renamed: r.data.data?.renamed ?? renames.length }
+  throw new Error(r.data.error || 'normalize-names returned not ok')
+}
+
 export async function updateCoordinatePoint(id: number, data: {
   name?: string
   y?: number

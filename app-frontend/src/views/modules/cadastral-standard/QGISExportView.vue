@@ -355,6 +355,10 @@ async function exportToPostGIS() {
         : 'Points are now available in QGIS. You can proceed with parcel digitization.'
     }
 
+    if (result.conflicts?.length) {
+      exportStatus.value.message += ` ⚠️ ${result.conflicts.length} conflicting duplicate(s) kept as _dupl.`
+    }
+
     await checkExportedPoints()
   } catch (err: any) {
     console.error('Export failed:', err)

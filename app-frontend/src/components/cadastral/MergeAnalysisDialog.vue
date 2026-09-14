@@ -21,46 +21,37 @@
               </h3>
               
               <div class="mt-4 space-y-4">
-                <!-- Duplicate Point Tolerance Selector -->
+                <!-- SI 727 Survey Class / Duplicate Handling -->
                 <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
                   <h4 class="font-semibold text-gray-900 mb-2">
-                    🎯 Duplicate Point Handling
+                    🎯 Duplicate Point Handling (SI 727 class)
                   </h4>
                   <p class="text-sm text-gray-600 mb-3">
-                    When multiple observations of the same point exist, coordinates will be averaged if within tolerance:
+                    Same-named observations within the class tolerance are averaged (repeats).
+                    Conflicting observations keep the first position and store the rest under a
+                    <code class="font-mono">_dupl</code> suffix so you can see and correct them (bnr-part8):
                   </p>
                   <div class="flex items-center space-x-4">
                     <label class="flex items-center cursor-pointer">
                       <input 
                         type="radio" 
-                        v-model="duplicateTolerance" 
-                        value="0.05"
+                        v-model="surveyClass" 
+                        value="B"
                         class="mr-2 text-purple-600 focus:ring-purple-500"
                       />
                       <span class="text-sm">
-                        <span class="font-medium">High precision</span> (0.05m / 50mm)
+                        <span class="font-medium">Class B</span> (0.01·√(0.075f + 0.00015f²))
                       </span>
                     </label>
                     <label class="flex items-center cursor-pointer">
                       <input 
                         type="radio" 
-                        v-model="duplicateTolerance" 
-                        value="0.1"
+                        v-model="surveyClass" 
+                        value="C"
                         class="mr-2 text-purple-600 focus:ring-purple-500"
                       />
                       <span class="text-sm">
-                        <span class="font-medium">Standard</span> (0.1m / 100mm)
-                      </span>
-                    </label>
-                    <label class="flex items-center cursor-pointer">
-                      <input 
-                        type="radio" 
-                        v-model="duplicateTolerance" 
-                        value="0.2"
-                        class="mr-2 text-purple-600 focus:ring-purple-500"
-                      />
-                      <span class="text-sm">
-                        <span class="font-medium">Lower precision</span> (0.2m / 200mm)
+                        <span class="font-medium">Class C</span> (0.02·√(0.075f + 0.00015f²))
                       </span>
                     </label>
                   </div>
@@ -226,7 +217,7 @@ interface Props {
 
 interface Emits {
   (e: 'close'): void;
-  (e: 'proceed', partialParcelActions: Record<number, 'delete' | 'keep' | 'review'>, duplicateTolerance: number): void;
+  (e: 'proceed', partialParcelActions: Record<number, 'delete' | 'keep' | 'review'>, surveyClass: 'B' | 'C'): void;
   (e: 'view-details'): void;
 }
 
@@ -234,7 +225,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 const partialParcelActions = reactive<Record<number, 'delete' | 'keep' | 'review'>>({});
-const duplicateTolerance = ref<string>('0.1'); // Default to standard precision
+const surveyClass = ref<'B' | 'C'>('B'); // SI 727 survey class — SI 727 defines only B and C
 
 // Initialize default actions for partial parcels
 if (props.analysis?.parcelAnalysis?.partiallyMatched) {
@@ -248,7 +239,7 @@ function handleCancel() {
 }
 
 function handleProceed() {
-  emit('proceed', partialParcelActions, parseFloat(duplicateTolerance.value));
+  emit('proceed', partialParcelActions, surveyClass.value);
 }
 
 function handleViewDetails() {

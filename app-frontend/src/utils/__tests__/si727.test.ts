@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   distanceToleranceM, directionToleranceArcsec, SI727_CLASS,
   edgeCompliance, beaconSeverity, severityVerdict, SI727_SEVERITY_FACTOR,
+  classifyDuplicateGroup, resolveDuplicateGroups,
 } from '../si727'
 import { SAMPLE_DATA } from '../surveyMath'
 
@@ -204,5 +205,41 @@ describe('SI727_CLASS', () => {
   it('holds the Schedule constants verbatim', () => {
     expect(SI727_CLASS.B).toEqual({ distFactor: 0.01, dirK: 15000 })
     expect(SI727_CLASS.C).toEqual({ distFactor: 0.02, dirK: 45000 })
+  })
+})
+
+describe('classifyDuplicateGroup — bnr-part8 duplicate-beacon adjudication (re-exported from app-shared)', () => {
+  it.each(['B', 'C'] as const)('averages only exactly-coincident rows (the f=separation reading for class %s)', (cls) => {
+    // distanceToleranceM returns 0 for f<=0, so a 0 m spread is a repeat; anything
+    // finite, however small, already exceeds the tolerance and is a conflict.
+    const exact = classifyDuplicateGroup([{ y: 100, x: 200 }, { y: 100, x: 200 }], cls)
+    expect(exact.kind).toBe('repeat')
+
+    const apart = classifyDuplicateGroup([{ y: 100, x: 200 }, { y: 100, x: 200.0001 }], cls)
+    expect(apart.kind).toBe('conflict')
+  })
+
+  it('handles a single observation as a no-op', () => {
+    expect(classifyDuplicateGroup([{ y: 100, x: 200 }], 'B').kind).toBe('single')
+  })
+})
+
+describe('resolveDuplicateGroups — shared bnr-part8 escape logic (re-exported from app-shared)', () => {
+  it('keeps the first observation canonical and escapes the rest as _dupl/_dupl2', () => {
+    const { points, conflicts } = resolveDuplicateGroups([
+      ['5000A', [{ name: '5000A', y: 0, x: 0 }, { name: '5000A', y: 5, x: 0 }]],
+    ], { surveyClass: 'B' })
+
+    expect(points.map(p => p.name)).toEqual(['5000A', '5000A_dupl'])
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].extras[0].distance).toBeCloseTo(5, 10)
+  })
+
+  it('escalates past names already claimed by matched imports', () => {
+    const { points } = resolveDuplicateGroups([
+      ['A3', [{ name: 'A3', y: 0, x: 0 }, { name: 'A3', y: 0, x: 3 }]],
+    ], { surveyClass: 'B', takenNames: new Set(['A3', 'A3_dupl']) })
+
+    expect(points[1].name).toBe('A3_dupl2')
   })
 })

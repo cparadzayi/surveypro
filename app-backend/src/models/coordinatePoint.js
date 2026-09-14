@@ -2,6 +2,7 @@ import db from '../config/db.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
 import { normalizeBeaconName } from '../../../app-shared/beaconName.js'
 import { normalizeBatchPoints } from '../utils/beaconNameDoors.js'
+import { resolveDuplicateGroups } from '../../../app-shared/si727Tolerances.js'
 
 // Geometry is stored in each project's native CRS (Lo 25/27/29/31/33).
 // The column SRID constraint has been removed to support multi-zone storage.
@@ -88,9 +89,11 @@ export default {
     return result.rows[0]
   },
 
-  async batchCreate(dbConnection = db, projectId, points) {
+  async batchCreate(dbConnection = db, projectId, points, surveyClass = 'B') {
     // Decision 15: a case-fold pair (99a + 99A) is a 400, never averaged or dropped.
     points = normalizeBatchPoints(points)
+    // bnr-part8: a group of same-named observations beyond the SI 727 class tolerance
+    // is a CONFLICT — the first stays canonical, each extra is stored under a _dupl name.
     // Get SRID from project's central meridian
     const projectResult = await dbConnection.query(
       'SELECT central_meridian FROM survey_projects WHERE id = $1',
@@ -99,82 +102,25 @@ export default {
     const srid = projectResult.rows.length > 0 
       ? getCapeLoSRID(projectResult.rows[0].central_meridian)
       : 22291; // Default to Lo 31
-    
-    console.log(`[CoordinatePoint.batchCreate] 📏 Project central_meridian=${projectResult.rows[0]?.central_meridian}, native SRID=${srid}`);
-    
-    // Smart duplicate handling: detect duplicates and average coordinates if within reasonable limits
-    const COORDINATE_TOLERANCE = 0.5; // 0.5 meters - reasonable survey measurement tolerance
-    const processedPoints = new Map(); // name -> {x, y, elevation, description, count, coordinates[]}
-    const skippedDuplicates = [];
-    
-    console.log(`[CoordinatePoint.batchCreate] 🔍 Pre-processing ${points.length} points for duplicates...`);
-    
+
+    console.log(`[CoordinatePoint.batchCreate] 📏 Project central_meridian=${projectResult.rows[0]?.central_meridian}, native SRID=${srid}, surveyClass=${surveyClass}`);
+
+    // Smart duplicate handling: repeats within the SI 727 class tolerance are averaged;
+    // conflicts are kept as _dupl observations instead of being silently dropped.
+    const byName = new Map(); // name -> points[]
     for (const pt of points) {
-      if (processedPoints.has(pt.name)) {
-        const existing = processedPoints.get(pt.name);
-        
-        // Calculate coordinate difference
-        const deltaY = Math.abs(pt.y - existing.y);
-        const deltaX = Math.abs(pt.x - existing.x);
-        const distance = Math.sqrt(deltaY * deltaY + deltaX * deltaX);
-        
-        if (distance <= COORDINATE_TOLERANCE) {
-          // Within tolerance - average the coordinates
-          existing.coordinates.push({ y: pt.y, x: pt.x });
-          existing.count++;
-          
-          // Recalculate average
-          const avgY = existing.coordinates.reduce((sum, c) => sum + c.y, 0) / existing.coordinates.length;
-          const avgX = existing.coordinates.reduce((sum, c) => sum + c.x, 0) / existing.coordinates.length;
-          
-          existing.y = avgY;
-          existing.x = avgX;
-          
-          console.log(`[CoordinatePoint.batchCreate] 📊 Duplicate "${pt.name}": averaged coordinates (distance: ${distance.toFixed(3)}m, count: ${existing.count})`);
-          console.log(`  - New average: Y=${avgY.toFixed(3)}, X=${avgX.toFixed(3)}`);
-        } else {
-          // Outside tolerance - skip this duplicate
-          skippedDuplicates.push({
-            name: pt.name,
-            distance: distance.toFixed(3),
-            existing: { y: existing.y.toFixed(3), x: existing.x.toFixed(3) },
-            duplicate: { y: pt.y.toFixed(3), x: pt.x.toFixed(3) }
-          });
-          console.warn(`[CoordinatePoint.batchCreate] ⚠️ Duplicate "${pt.name}" SKIPPED: coordinates differ by ${distance.toFixed(3)}m (> ${COORDINATE_TOLERANCE}m tolerance)`);
-          console.warn(`  - Existing: Y=${existing.y.toFixed(3)}, X=${existing.x.toFixed(3)}`);
-          console.warn(`  - Duplicate: Y=${pt.y.toFixed(3)}, X=${pt.x.toFixed(3)}`);
-        }
-      } else {
-        // First occurrence - store it
-        processedPoints.set(pt.name, {
-          name: pt.name,
-          y: pt.y,
-          x: pt.x,
-          elevation: pt.elevation,
-          description: pt.description,
-          status: pt.status,
-          count: 1,
-          coordinates: [{ y: pt.y, x: pt.x }]
-        });
-      }
+      if (!byName.has(pt.name)) byName.set(pt.name, []);
+      byName.get(pt.name).push(pt);
     }
-    
-    // Convert processed points back to array
-    const uniquePoints = Array.from(processedPoints.values()).map(p => ({
-      name: p.name,
-      y: p.y,
-      x: p.x,
-      elevation: p.elevation,
-      description: p.description,
-      status: p.status
-    }));
-    
+
+    console.log(`[CoordinatePoint.batchCreate] 🔍 Pre-processing ${points.length} points in ${byName.size} groups...`);
+    const { points: uniquePoints, conflicts } = resolveDuplicateGroups(Array.from(byName.entries()), { surveyClass });
+
     console.log(`[CoordinatePoint.batchCreate] 📊 Pre-processing complete:`);
     console.log(`  - Original points: ${points.length}`);
-    console.log(`  - Unique points: ${uniquePoints.length}`);
-    console.log(`  - Averaged duplicates: ${points.length - uniquePoints.length - skippedDuplicates.length}`);
-    console.log(`  - Skipped duplicates: ${skippedDuplicates.length}`);
-    
+    console.log(`  - Stored points: ${uniquePoints.length}`);
+    console.log(`  - Conflicts (kept as _dupl): ${conflicts.length}`);
+
     // Process in chunks to avoid PostgreSQL parameter limits
     const CHUNK_SIZE = 100;
     const allResults = [];
@@ -242,12 +188,8 @@ export default {
     }
     
     console.log(`[CoordinatePoint.batchCreate] ✅ Successfully created/updated ${allResults.length} points`);
-    
-    if (skippedDuplicates.length > 0) {
-      console.warn(`[CoordinatePoint.batchCreate] ⚠️ Warning: ${skippedDuplicates.length} duplicate(s) were skipped due to coordinate differences exceeding tolerance`);
-    }
-    
-    return allResults;
+
+    return { created: allResults, conflicts };
   },
 
   async update(dbConnection = db, id, { name, y, x, elevation, description, surveyDate, surveyor, srid }) {

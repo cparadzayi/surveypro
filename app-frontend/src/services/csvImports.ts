@@ -164,7 +164,7 @@ export async function executeMerge(data: {
   new_points: Array<{ id: string; y: number; x: number }>;
   orphaned_parcel_ids?: number[];
   partial_parcel_actions?: Record<number, 'delete' | 'keep' | 'review'>;
-  duplicate_tolerance?: number;
+  surveyClass?: 'B' | 'C'; // SI 727 class for duplicate-conflict adjudication (bnr-part8)
   detectedCentralMeridian?: number; // Cape Lo zone from CSV System column (25/27/29/31/33)
 }): Promise<{
   success: boolean;
@@ -173,10 +173,23 @@ export async function executeMerge(data: {
     matched_count: number;
     new_count: number;
     orphaned_parcels: number;
+    conflicts: DuplicateConflict[];
   };
 }> {
   const response = await api.post('/csv-imports/execute-merge', data);
   return response.data;
+}
+
+/**
+ * A conflicting set of same-named observations: the first is canonical, the rest were
+ * stored under _dupl/_dupl2... suffixes so the surveyor can see and edit them (bnr-part8).
+ */
+export interface DuplicateConflict {
+  id: string;
+  count: number;
+  tolerance: number;
+  canonical: { y: number; x: number };
+  extras: Array<{ name: string; y: number; x: number; distance: number }>;
 }
 
 /**

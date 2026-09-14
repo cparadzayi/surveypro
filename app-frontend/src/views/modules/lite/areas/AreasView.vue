@@ -617,7 +617,10 @@ async function exportToDatabase() {
   exporting.value = true
   try {
     const result = await batchCreateCoordinatePoints(selectedProjectId.value, coordinatePoints.value)
-    alert(`Successfully exported ${result.count} coordinate points to database`)
+    const conflicts = result.conflicts?.length
+      ? `\n\n⚠️ ${result.conflicts.length} conflicting duplicate beacon(s) kept as _dupl (first observation keeps the name) — correct them on the map.`
+      : ''
+    alert(`Successfully exported ${result.count} coordinate points to database${conflicts}`)
   } catch (err: any) {
     console.error('Export failed:', err)
     if (err.response?.status === 409) {

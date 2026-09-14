@@ -2303,6 +2303,11 @@ async function handleDataImported(points: CadastralPoint[]) {
       console.log('[CSV Import] 📥 Received result from batchCreateCoordinatePoints:', result);
       console.log(`[CSV Import] ✅ Successfully exported ${result.count} points to PostGIS database`);
       
+      if (result.conflicts?.length) {
+        console.warn(`[CSV Import] ⚠️ ${result.conflicts.length} conflicting duplicate beacon(s) stored as _dupl:`,
+          result.conflicts.map(c => `${c.id} → ${c.extras.map(e => e.name).join(', ')}`));
+      }
+      
       // Show success notification
       console.log(`[CSV Import] 📍 ${result.count} coordinate points are now persistent in the database`);
       
@@ -2552,9 +2557,9 @@ async function selfHealBeaconNamesAfterImport(): Promise<string> {
 }
 
 // ⭐ CSV Re-import: Execute merge after analysis
-async function handleMergeProceed(partialParcelActions: Record<number, 'delete' | 'keep' | 'review'>, duplicateTolerance: number) {
+async function handleMergeProceed(partialParcelActions: Record<number, 'delete' | 'keep' | 'review'>, surveyClass: 'B' | 'C') {
   console.log('[CSV Merge] Executing merge with actions:', partialParcelActions);
-  console.log('[CSV Merge] Duplicate tolerance:', duplicateTolerance, 'm');
+  console.log('[CSV Merge] SI 727 survey class:', surveyClass);
   
   // ⭐ Store analysis before closing dialog
   const analysis = mergeAnalysisDialog.value.analysis;
@@ -2608,7 +2613,7 @@ async function handleMergeProceed(partialParcelActions: Record<number, 'delete' 
       })),
       orphaned_parcel_ids: analysis.parcelAnalysis.orphaned.map(p => p.id),
       partial_parcel_actions: partialParcelActions,
-      duplicate_tolerance: duplicateTolerance,
+      surveyClass,
       detectedCentralMeridian: pendingCSVData.value?.detectedCentralMeridian
     });
     
@@ -2643,10 +2648,18 @@ async function handleMergeProceed(partialParcelActions: Record<number, 'delete' 
     await nextTick();
     await generateFieldBook();
     
+const conflicts = result.data.conflicts || [];
+    const conflictNote = conflicts.length > 0
+      ? `\n\n⚠️ ${conflicts.length} conflicting duplicate beacon(s) kept — first observation kept as the name, the rest stored as _dupl for you to correct on the map:\n${
+          conflicts.map(c => `  • ${c.id} (${c.count} observations, spread ${c.tolerance.toFixed(4)}m)`).join('\n')
+        }`
+      : '';
+
 alert(`✅ Merge completed successfully!\n\n` +
       `• Matched points: ${result.data.matched_count}\n` +
       `• New points: ${result.data.new_count}\n` +
       `• Orphaned parcels: ${result.data.orphaned_parcels}` +
+      conflictNote +
       (healNote ? `\n\n${healNote}` : ''));
     
   } catch (error) {

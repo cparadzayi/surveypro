@@ -81,7 +81,7 @@ export default async function coordinatePointRoutes(app) {
       console.log(`[Batch Insert] DB connection available: ${!!request.db}`);
       console.log(`[Batch Insert] Surveyor schema: ${request.surveyorSchema || 'NOT SET'}`);
       
-      const { project_id, points } = request.body
+      const { project_id, points, surveyClass = 'B' } = request.body
       
       if (!points || points.length === 0) {
         console.error('[Batch Insert] ❌ No points provided');
@@ -97,15 +97,18 @@ export default async function coordinatePointRoutes(app) {
       const db = request.db || (await import('../config/db.js')).default
       console.log('[Batch Insert] 🗄️ Calling CoordinatePoint.batchCreate...');
       
-      const created = await CoordinatePoint.batchCreate(db, project_id, points)
+      const { created, conflicts } = await CoordinatePoint.batchCreate(db, project_id, points, surveyClass)
       
       console.log(`[Batch Insert] ✅ Successfully created ${created.length} points`);
       console.log('[Batch Insert] 📊 Sample created points (first 3):');
       created.slice(0, 3).forEach((pt, idx) => {
         console.log(`  ${idx + 1}. ID: ${pt.id}, Name: ${pt.name}`);
       });
+      if (conflicts.length > 0) {
+        console.log(`[Batch Insert] ⚠️ ${conflicts.length} conflicting duplicate beacon(s) kept as _dupl observations`);
+      }
       
-      return { ok: true, data: created, count: created.length }
+      return { ok: true, data: created, count: created.length, conflicts }
     } catch (error) {
       console.error('[Batch Insert] ❌ ERROR:', error.message);
       console.error('[Batch Insert] Error type:', error.constructor.name);

@@ -241,6 +241,14 @@ export async function updateCoordinatePoint(id: number, data: {
   return r.data.data
 }
 
+export interface DuplicateConflict {
+  id: string;
+  count: number;
+  tolerance: number;
+  canonical: { y: number; x: number };
+  extras: Array<{ name: string; y: number; x: number; distance: number }>;
+}
+
 export async function batchCreateCoordinatePoints(projectId: number, points: Array<{
   name: string
   y: number
@@ -248,10 +256,11 @@ export async function batchCreateCoordinatePoints(projectId: number, points: Arr
   elevation?: number
   description?: string
   status?: string
-}>) {
-  const r = await api.post<{ ok: boolean; data: CoordinatePoint[]; count: number }>('/coordinate-points/batch', {
+}>, surveyClass: 'B' | 'C' = 'B') {
+  const r = await api.post<{ ok: boolean; data: CoordinatePoint[]; count: number; conflicts: DuplicateConflict[] }>('/coordinate-points/batch', {
     project_id: projectId.toString(),
-    points
+    points,
+    surveyClass
   })
   return r.data
 }

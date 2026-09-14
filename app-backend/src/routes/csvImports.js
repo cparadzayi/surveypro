@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { authenticateWithSchema } from '../utils/schemaAuth.js';
 import { getCapeLoSRID } from '../utils/capeLoSRID.js';
 import { normalizeMergeNames, BeaconNameCaseError } from '../utils/beaconNameDoors.js';
+import { resolveDuplicateGroups } from '../../../app-shared/si727Tolerances.js';
 
 export default async function csvImportRoutes(fastify, options) {
   const db = fastify.pg;
@@ -479,7 +480,7 @@ export default async function csvImportRoutes(fastify, options) {
       new_points, // Array of { id, y, x }
       orphaned_parcel_ids = [], // Parcels to delete
       partial_parcel_actions = {}, // { parcelId: 'delete' | 'keep' | 'review' }
-      duplicate_tolerance = 0.1, // Default to standard precision (100mm)
+      surveyClass = 'B', // SI 727 class; only B and C exist (bnr-part8.md)
       detectedCentralMeridian // Cape Lo zone detected from CSV System column (25/27/29/31/33)
     } = request.body;
 
@@ -566,7 +567,8 @@ export default async function csvImportRoutes(fastify, options) {
         );
       }
 
-      // 2. Add new points (deduplicate by ID, averaging coordinates for duplicates)
+      // 2. Add new points (bnr-part8: repeats average; conflicts keep the first canonical
+      // and escape the rest with a _dupl suffix — never silently averaged or dropped)
       const pointGroups = new Map();
       for (const pt of new_points) {
         if (!pointGroups.has(pt.id)) {
@@ -576,40 +578,13 @@ export default async function csvImportRoutes(fastify, options) {
         }
       }
       
-      const deduplicatedPoints = [];
-      let duplicateCount = 0;
+      const usedNames = new Set((matched_points || []).map(match => match.newId));
+      const { points: deduplicatedPoints, conflicts } = resolveDuplicateGroups(
+        Array.from(pointGroups.entries()),
+        { surveyClass, takenNames: usedNames }
+      );
       
-      for (const [id, points] of pointGroups.entries()) {
-        if (points.length === 1) {
-          deduplicatedPoints.push(points[0]);
-        } else {
-          // Multiple observations - average the coordinates
-          duplicateCount += points.length - 1;
-          
-          // Calculate average
-          const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-          const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-          
-          // Check if observations are within user-specified tolerance
-          const maxDiffY = Math.max(...points.map(p => Math.abs(p.y - avgY)));
-          const maxDiffX = Math.max(...points.map(p => Math.abs(p.x - avgX)));
-          const maxDiff = Math.max(maxDiffY, maxDiffX);
-          
-          if (maxDiff > duplicate_tolerance) {
-            console.warn(`[CSV Import] Warning: Point ${id} has ${points.length} observations with max difference ${maxDiff.toFixed(3)}m (exceeds ${duplicate_tolerance}m tolerance)`);
-          }
-          
-          console.log(`[CSV Import] Averaging ${points.length} observations for point ${id}: Y=${avgY.toFixed(3)}, X=${avgX.toFixed(3)} (max diff: ${maxDiff.toFixed(3)}m)`);
-          
-          deduplicatedPoints.push({
-            id,
-            y: avgY,
-            x: avgX
-          });
-        }
-      }
-      
-      console.log('[CSV Import] Adding', deduplicatedPoints.length, 'new points (', duplicateCount, 'duplicate observations averaged)...');
+      console.log('[CSV Import] Adding', deduplicatedPoints.length, 'new points (', conflicts.length, 'conflicting duplicate beacon(s) escaped as _dupl)...');
       for (const newPt of deduplicatedPoints) {
         // PostGIS ST_MakePoint expects (X, Y) where X=longitude-like, Y=latitude-like
         // EPSG:22291 axis definition: X=Westing (~97k), Y=Southing (~2.2M)
@@ -681,7 +656,8 @@ export default async function csvImportRoutes(fastify, options) {
         data: {
           matched_count: matched_points.length,
           new_count: new_points.length,
-          orphaned_parcels: orphaned_parcel_ids.length
+          orphaned_parcels: orphaned_parcel_ids.length,
+          conflicts
         }
       };
     } catch (error) {

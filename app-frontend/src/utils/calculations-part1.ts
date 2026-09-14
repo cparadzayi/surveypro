@@ -1035,6 +1035,26 @@ export class CalculationsPart1Generator {
       duplicateMap.set(analysis.pointId, analysis);
     });
     
+    // Every survey point name, so a conflict-split escape can never collide with a
+    // genuine point (bnr-part8 — same rule the backend write doors use).
+    const takenNames = new Set(surveyPoints.map(p => p.pointId));
+
+    // Build one adjusted entry from a single observation (its own position).
+    const fromObservation = (
+      point: SurveyPoint,
+      adjustment: AdjustedCoordinate['adjustment']
+    ): AdjustedCoordinate => ({
+      pointId: point.pointId,
+      y: point.y,
+      x: point.x,
+      status: point.status,
+      description: point.description,
+      surveyDate: point.surveyDate,
+      fieldBookPage: fieldBookPageLookup[point.pointId] || '-',
+      calculationsPage: this.currentPage, // Will be updated in lookup
+      adjustment,
+    });
+    
     // Get unique points (deduplicate)
     const uniquePoints = new Map<string, SurveyPoint>();
     surveyPoints.forEach(point => {
@@ -1047,8 +1067,8 @@ export class CalculationsPart1Generator {
     uniquePoints.forEach((point, pointId) => {
       const duplicate = duplicateMap.get(pointId);
       
-      if (duplicate) {
-        // Point has multiple observations - use mean coordinates
+      if (duplicate && duplicate.withinTolerance) {
+        // Same peg re-observed within the survey tolerance — certified mean (as today).
         adjustedCoordinates.push({
           pointId,
           y: duplicate.meanY,
@@ -1063,28 +1083,51 @@ export class CalculationsPart1Generator {
             observationCount: duplicate.observations.length,
             maxResidualY: duplicate.maxResidualY,
             maxResidualX: duplicate.maxResidualX,
-            withinTolerance: duplicate.withinTolerance,
+            withinTolerance: true,
             method: 'mean'
           }
         });
-      } else {
-        // Single observation - use as-is
-        adjustedCoordinates.push({
-          pointId,
-          y: point.y,
-          x: point.x,
-          status: point.status,
-          description: point.description,
-          surveyDate: point.surveyDate,
-          fieldBookPage: fieldBookPageLookup[pointId] || '-',
-          calculationsPage: this.currentPage, // Will be updated in lookup
-          adjustment: {
-            isDuplicate: false,
-            observationCount: 1,
-            method: 'single'
-          }
-        });
+        return;
       }
+
+      if (duplicate && !duplicate.withinTolerance) {
+        // Two DIFFERENT positions claim one name — the Calculations book flags this in
+        // red, so the adjusted output must not erase it (bnr-part8: never average away a
+        // conflict). Keep the first observation canonical and emit every extra as its own
+        // point escaped `_dupl`, `_dupl2`, ... — mirroring the backend write doors so the
+        // map shows both real positions.
+        const [first, ...extras] = duplicate.observations;
+        adjustedCoordinates.push(fromObservation(first, {
+          isDuplicate: true,
+          observationCount: duplicate.observations.length,
+          maxResidualY: duplicate.maxResidualY,
+          maxResidualX: duplicate.maxResidualX,
+          withinTolerance: false,
+          method: 'canonical'
+        }));
+        for (const extra of extras) {
+          let escaped = `${pointId}_dupl`;
+          let n = 1;
+          while (takenNames.has(escaped)) escaped = `${pointId}_dupl${++n}`;
+          takenNames.add(escaped);
+          adjustedCoordinates.push(fromObservation({ ...extra, pointId: escaped }, {
+            isDuplicate: true,
+            observationCount: 1,
+            maxResidualY: extra.y - first.y,
+            maxResidualX: extra.x - first.x,
+            withinTolerance: false,
+            method: 'conflict'
+          }));
+        }
+        return;
+      }
+
+      // Single observation - use as-is
+      adjustedCoordinates.push(fromObservation(point, {
+        isDuplicate: false,
+        observationCount: 1,
+        method: 'single'
+      }));
     });
     
     return adjustedCoordinates.sort((a, b) => a.pointId.localeCompare(b.pointId));

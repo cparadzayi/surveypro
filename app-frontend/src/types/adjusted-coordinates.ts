@@ -52,7 +52,7 @@ export interface AdjustedCoordinate {
     withinTolerance?: boolean
     
     /** Adjustment method used */
-    method: 'mean' | 'gps' | 'single' | 'computed'
+    method: 'mean' | 'gps' | 'single' | 'computed' | 'canonical' | 'conflict'
   }
 }
 

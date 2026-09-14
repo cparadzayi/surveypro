@@ -4226,6 +4226,10 @@ async function loadParcelsFromDatabase() {
     return;
   }
   
+  // Cache is rebuilt from the database every load — never carry stale
+  // (deleted/renamed) designation→id mappings across reloads.
+  existingParcelIds.value.clear();
+  
   try {
     console.log('[MapLibre] 📦 Loading existing parcels from database...');
     console.log('[MapLibre] 📦 Project ID:', workflowState.projectInfo.projectId);
@@ -4561,6 +4565,7 @@ async function refreshParcelsFromDatabase() {
   // Clear existing parcels
   parcels.value = [];
   savedParcels.value.clear();
+  existingParcelIds.value.clear();
   
   // Reload from database
   await loadParcelsFromDatabase();
@@ -4977,9 +4982,15 @@ async function autoSaveParcel(parcel: Parcel, closureError: number) {
     
     // Show user-friendly error
     if (error.response?.status === 409) {
-      alert(`Failed to save: Parcel ${parcel.designation} already exists in database`);
+      const detail = error.response?.data?.details || error.response?.data?.message;
+      alert(`Failed to save: Parcel ${parcel.designation} already exists in database${detail ? `\n\n${detail}` : ''}`);
+    } else if (error.response?.status) {
+      // Non-409 failure: surface the real reason (e.g. 404 → parcel was deleted)
+      const detail = error.response?.data?.details || error.response?.data?.error || error.response?.data?.message;
+      const detailText = detail || `HTTP ${error.response.status}`;
+      alert(`Failed to auto-save parcel. Your work is still in memory but not persisted.\n\n${detailText}`);
     } else {
-      alert(`Failed to auto-save parcel. Your work is still in memory but not persisted.`);
+      alert(`Failed to auto-save parcel. Your work is still in memory but not persisted.\n\n${error.message || 'Network error'}`);
     }
   } finally {
     isSaving.value = false;
@@ -6054,6 +6065,7 @@ async function deleteSavedParcel(dbParcel: any) {
     // Delete from database
     await deleteLandParcel(dbParcel.id);
     savedParcels.value.delete(designation);
+    existingParcelIds.value.delete(designation);
     console.log(`[MapLibre] ✅ Deleted parcel ${designation} from database`);
     
     // Refresh map display
@@ -6095,6 +6107,7 @@ async function deleteParcelConfirm(parcel: Parcel) {
     if (savedParcel) {
       await deleteLandParcel(savedParcel.id);
       savedParcels.value.delete(parcel.designation);
+      existingParcelIds.value.delete(parcel.designation);
       console.log(`[MapLibre] ✅ Deleted parcel ${parcel.designation} from database (ID: ${savedParcel.id})`);
     }
     

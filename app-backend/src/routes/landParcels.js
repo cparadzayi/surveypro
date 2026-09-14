@@ -161,6 +161,17 @@ export default async function landParcelRoutes(app) {
     } catch (error) {
       console.error('[API] ❌ Error creating parcel:', error.message)
       console.error('[API] Stack:', error.stack)
+      // LandParcel.create converts the Postgres 23505 unique_project_stand
+      // violation into a readable "already exists" error; surface it as 409
+      // (Conflict) so the frontend duplicate handler fires instead of the
+      // generic 500 path.
+      if (/already exists/i.test(error.message || '')) {
+        return reply.code(409).send({
+          ok: false,
+          error: 'Parcel already exists',
+          details: error.message
+        })
+      }
       return reply.code(500).send({ 
         ok: false, 
         error: 'Failed to create parcel',
@@ -279,20 +290,36 @@ export default async function landParcelRoutes(app) {
     const { id } = request.params
     const data = request.body
     const dbConnection = request.db || db
-    const parcel = await LandParcel.update(dbConnection, id, {
-      stand: data.stand,
-      designation: data.designation,
-      geom: data.geom,
-      owner: data.owner,
-      titleDeed: data.title_deed,
-      surveyDate: data.survey_date,
-      surveyor: data.surveyor,
-      notes: data.notes,
-      metadata: data.metadata,
-      status: data.status
-    })
-    if (!parcel) return reply.code(404).send({ ok: false, error: 'Parcel not found' })
-    return { ok: true, data: parcel }
+    try {
+      const parcel = await LandParcel.update(dbConnection, id, {
+        stand: data.stand,
+        designation: data.designation,
+        geom: data.geom,
+        owner: data.owner,
+        titleDeed: data.title_deed,
+        surveyDate: data.survey_date,
+        surveyor: data.surveyor,
+        notes: data.notes,
+        metadata: data.metadata,
+        status: data.status
+      })
+      if (!parcel) return reply.code(404).send({ ok: false, error: 'Parcel not found' })
+      return { ok: true, data: parcel }
+    } catch (error) {
+      console.error('[API] ❌ Error updating parcel:', error.message)
+      if (/already exists/i.test(error.message || '')) {
+        return reply.code(409).send({
+          ok: false,
+          error: 'Parcel already exists',
+          details: error.message
+        })
+      }
+      return reply.code(500).send({
+        ok: false,
+        error: 'Failed to update parcel',
+        details: error.message
+      })
+    }
   })
 
   // Delete land parcel

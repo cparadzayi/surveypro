@@ -78,6 +78,8 @@ describe('/api/geopdf/dxf georeferenced ZIP bundle', () => {
     expect(prj).toContain('PROJCS')
     expect(prj).toContain('Cape_Lo_31')
     expect(prj).toContain('central_meridian', 31)
+    expect(prj).toContain('AXIS["Easting",WEST]')
+    expect(prj).toContain('AXIS["Northing",SOUTH]')
   })
 
   test('zip:true with planType diagram bundles the diagram DXF and its .prj', async () => {
@@ -108,5 +110,7 @@ describe('/api/geopdf/dxf georeferenced ZIP bundle', () => {
     const files = unzipSync(new Uint8Array(res.rawPayload))
     const prj = Buffer.from(files[Object.keys(files).find((n) => n.endsWith('.prj'))]).toString()
     expect(prj).toContain('Cape_Lo_31')
+    expect(prj).toContain('AXIS["Easting",WEST]')
+    expect(prj).toContain('AXIS["Northing",SOUTH]')
   })
 })

@@ -82,12 +82,21 @@ export function getCRSByEPSG(epsgCode) {
  * such as 'EPSG:22291'. Falls back to Cape Lo 31 when the identifier is
  * unrecognised, so a georeferenced DXF never ships without a CRS sidecar.
  */
-export function prjForProjection(projection) {
+export function prjForDxf(projection) {
   const key = String(projection || '').startsWith('EPSG:')
     ? String(projection)
     : `EPSG:${projection}`;
   const crs = getCRSByEPSG(key) || ZIMBABWE_CRS['EPSG:22291'];
-  return crs ? `${crs.wkt}\n` : null;
+  if (!crs) return null;
+  // The DXF geometry is stored south-up (DXF y = -southing, x = -westing) so the
+  // plan reads right-side-up in CAD. The sidecar must therefore declare the
+  // same axis convention or QGIS would read y = +2,000,000 m as a northing north
+  // of the equator (northern hemisphere), mirroring the plan off-continent.
+  // West/South axis directions invert our sign flip back onto true ground.
+  return `${crs.wkt.replace(
+    'AXIS["Easting",EAST],AXIS["Northing",NORTH]',
+    'AXIS["Easting",WEST],AXIS["Northing",SOUTH]'
+  )}\n`;
 }
 
 /**

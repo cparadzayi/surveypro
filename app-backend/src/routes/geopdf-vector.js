@@ -9,7 +9,7 @@ import LandParcel from '../models/landParcel.js'
 import { computeAreaConsistency } from '../utils/area-computation.js'
 import { authenticateWithSchema } from '../utils/schemaAuth.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
-import { prjForProjection } from '../utils/crsDefinitions.js'
+import { prjForDxf } from '../utils/crsDefinitions.js'
 import { zipSync } from 'fflate'
 
 const execAsync = promisify(exec)
@@ -24,7 +24,7 @@ let cachedOGR2OGRPath = null
  * absolute Cape Lo ground coordinates become georeferenced on import.
  */
 function zipDxfWithPrj(dxfBuffer, projection, baseName) {
-  const prj = Buffer.from(prjForProjection(projection) || '', 'utf8')
+  const prj = Buffer.from(prjForDxf(projection) || '', 'utf8')
   return Buffer.from(zipSync({
     [`${baseName}.dxf`]: new Uint8Array(dxfBuffer),
     [`${baseName}.prj`]: new Uint8Array(prj),

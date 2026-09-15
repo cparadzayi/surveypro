@@ -71,3 +71,6 @@ app-backend/_*
 
 # SDD scratch: ledgers, briefs, reports, review packages. Not part of the repo.
 /.superpowers/sdd/
+
+# One-off data-repair debug snapshots (beacon-name reconciliation, etc.)
+repair_*.json

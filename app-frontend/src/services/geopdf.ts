@@ -76,6 +76,16 @@ export interface VectorGeoPDFRequest {
   outsideFigure?: GeoJSON.FeatureCollection
   outsideFigureData?: any
   beaconLabels?: any[]
+  /**
+   * True GeoPDF (ISO 32000-2) capabilities. When true the PDFKit renderer embeds
+   * a georeferencing viewport, interactive feature layers, and measurement/layer
+   * tooling in the PDF itself. These travel end-to-end: frontend → /geopdf/vector
+   * → pdfkitGeoPDF.js.
+   */
+  trueGeoPDF?: boolean
+  interactive?: boolean
+  enableLayers?: boolean
+  enableMeasurements?: boolean
 }
 
 export interface GeoPDFInfo {

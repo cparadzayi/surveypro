@@ -18,6 +18,10 @@ export interface PlanPayloadContext {
   beaconGroups: any[]
   annotations?: GeoJSON.FeatureCollection
   renderEngine?: 'gdal' | 'pdfkit'
+  trueGeoPDF?: boolean
+  interactive?: boolean
+  enableLayers?: boolean
+  enableMeasurements?: boolean
 }
 
 /** Vertex match tolerance in Cape Lo metres. */
@@ -81,6 +85,13 @@ export function buildPlanPayload(ctx: PlanPayloadContext): VectorGeoPDFRequest {
     beaconGroups: ctx.beaconGroups,
     beaconLabels,
     planType: ctx.planType,
+    // Survey plans are real ISO 32000-2 GeoPDFs by default: the flags reach the
+    // renderer end-to-end (route → pdfkitGeoPDF.js) and open the georeferenced
+    // viewport + interactive layers in the PDF.
+    trueGeoPDF: ctx.trueGeoPDF ?? true,
+    interactive: ctx.interactive ?? true,
+    enableLayers: ctx.enableLayers ?? true,
+    enableMeasurements: ctx.enableMeasurements ?? true,
   }
 }
 

@@ -259,7 +259,12 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         renderEngine = 'gdal',
         scale,
         sheetSize,
-        planType = null  // SI 727 plan type — 'general-developed' enforces 1:500 ceiling
+        planType = null,  // SI 727 plan type — 'general-developed' enforces 1:500 ceiling
+        // True GeoPDF (ISO 32000-2) options — forwarded to the PDFKit renderer
+        trueGeoPDF = false,
+        interactive = false,
+        enableLayers = false,
+        enableMeasurements = false
       } = request.body
       
       // 🔥 DIAGNOSTIC: Log ALL request body keys to see what's actually being sent
@@ -520,7 +525,11 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
             beaconLabels,
             scale,
             sheetSize,
-            planType
+            planType,
+            trueGeoPDF,
+            interactive,
+            enableLayers,
+            enableMeasurements
           },
           fastify.log
         )
@@ -552,6 +561,10 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
               sheetSize: tileGrid.sheetSize,
               planType,
               tileGridInfo: tileGrid,
+              trueGeoPDF,
+              interactive,
+              enableLayers,
+              enableMeasurements
             },
             fastify.log
           )

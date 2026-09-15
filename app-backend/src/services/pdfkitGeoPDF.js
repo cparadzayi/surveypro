@@ -12472,6 +12472,10 @@ export async function generateTiledGeoPDF(options, logger) {
     parcels, beacons, annotations, outsideFigure, projection,
     metadata, outsideFigureData, beaconLabels,
     sheetSize, planType,
+    trueGeoPDF = false,
+    interactive = false,
+    enableLayers = false,
+    enableMeasurements = false,
     tileGridInfo, // { scaleDenominator, scaleLabel, sheetSize, cols, rows, totalSheets, extentMinY, extentMinX, extentMaxY, extentMaxX, tileWidthM, tileHeightM }
   } = options;
 
@@ -12538,6 +12542,10 @@ export async function generateTiledGeoPDF(options, logger) {
         tileExtent: tileExt,
         tileLabel,
         sheetInfo: { sheetNumber: sheetNum, totalSheets, fullFigureLabel }, // SI 727 Seventh Schedule (b)
+        trueGeoPDF,
+        interactive,
+        enableLayers,
+        enableMeasurements,
       }, logger);
 
       pageBuffers.push(tileResult.pdfBuffer);

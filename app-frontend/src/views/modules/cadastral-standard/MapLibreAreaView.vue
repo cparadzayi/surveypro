@@ -486,10 +486,30 @@
             </button>
           </div>
         </div>
-        <div class="space-y-2 max-h-64 overflow-y-auto">
+        <div class="relative mb-2">
+          <input
+            v-model="parcelSearchQuery"
+            type="text"
+            placeholder="Search parcel… e.g. 1996"
+            class="w-full px-3 py-1.5 pr-7 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <button
+            v-if="parcelSearchQuery"
+            @click="clearParcelSearch"
+            class="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 px-1 text-sm leading-none"
+            title="Clear search"
+          >✕</button>
+        </div>
+        <div ref="parcelsListRef" class="space-y-2 max-h-64 overflow-y-auto">
+          <div
+            v-if="filteredParcels.length === 0"
+            class="text-xs text-gray-500 text-center py-4"
+          >
+            No parcels match "{{ parcelSearchQuery }}"
+          </div>
           <div 
-            v-for="(parcel, idx) in parcels" 
-            :key="idx"
+            v-for="parcel in filteredParcels" 
+            :key="parcel.designation"
             :class="[
               'border-2 rounded-lg p-3',
               parcel.areaResult 
@@ -2163,6 +2183,24 @@ function exitVertexDragMode() {
 
 // Parcels
 const parcels = ref<Parcel[]>([]);
+
+// In-memory parcel list search: filter by designation and reveal the card so
+// its 🔺 / 🗑️ actions are reachable without scrolling the whole list.
+const parcelSearchQuery = ref('');
+const parcelsListRef = ref<HTMLElement | null>(null);
+const filteredParcels = computed(() => {
+  const q = parcelSearchQuery.value.trim().toLowerCase();
+  if (!q) return parcels.value;
+  return parcels.value.filter(p => String(p.designation ?? '').toLowerCase().includes(q));
+});
+function clearParcelSearch() {
+  parcelSearchQuery.value = '';
+}
+watch(parcelSearchQuery, () => {
+  nextTick(() => {
+    if (parcelsListRef.value) parcelsListRef.value.scrollTop = 0;
+  });
+});
 
 // Designation the surveyor last entered THIS session, used to pre-fill the next
 // one (last-entered + 1). Deliberately not derived from parcels[] order — the

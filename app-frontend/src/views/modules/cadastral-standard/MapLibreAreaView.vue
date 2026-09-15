@@ -4665,12 +4665,12 @@ function startEditingVertices(designation: string) {
     return;
   }
 
-  // Get the matched Cape Lo points stored in metadata (or from in-memory parcel)
-  let startPoints: any[] = dbParcel.metadata?.cape_lo_points ?? [];
-  if (startPoints.length === 0) {
-    const memParcel = parcels.value.find(p => p.designation === designation);
-    if (memParcel) startPoints = memParcel.points;
-  }
+  // Prefer the in-memory parcel's points: the loader re-matches every saved
+  // parcel's geometry against the current coordinate_points, so these always
+  // carry the latest beacon names even when land_parcels.metadata is stale.
+  // Fall back to the stored ring only when the parcel is not in memory.
+  const memParcel = parcels.value.find(p => p.designation === designation);
+  let startPoints: any[] = memParcel?.points?.length ? memParcel.points : (dbParcel.metadata?.cape_lo_points ?? []);
   if (startPoints.length === 0) {
     alert(`Cannot edit vertices: no vertex data found for "${designation}". Try refreshing first.`);
     return;

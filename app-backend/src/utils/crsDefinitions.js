@@ -97,6 +97,44 @@ export function prjForDxf(projection) {
 }
 
 /**
+ * North-up (easting/northing) WKT for the DXF's own ground geometry.
+ *
+ * capeLoToDxfSouthUp emits DXF (x, y) = (−westing, −southing) — already plain
+ * north-up easting/northing in the Lo zone. Historically the GeoPackage
+ * reprojected these into official EPSG:22291 *(westing, southing)*, whose
+ * South-Orientated axes point West/South — QGIS then drew the plan rotated
+ * 180°. Assigning THIS authority-free north-up WKT instead (no AUTHORITY tag,
+ * so GDAL never substitutes the south-orientated EPSG canonical form) makes
+ * QGIS render the plan north-up at the correct southern-hemisphere position.
+ */
+export function northUpWktForDxf(projection) {
+  const key = String(projection || '').startsWith('EPSG:')
+    ? String(projection)
+    : `EPSG:${projection}`;
+  const crs = getCRSByEPSG(key) || ZIMBABWE_CRS['EPSG:22291'];
+  if (!crs) return null;
+
+  const zone = String(crs.name).replace(/^Cape Lo\s*/, '');
+  const projName = `Cape Lo ${zone} (North-up)`;
+
+  return (
+    `PROJCS["${projName}",` +
+    `GEOGCS["Cape",` +
+    `DATUM["Cape",SPHEROID["Clarke 1880 (Arc)",6378249.145,293.465],` +
+    `TOWGS84[-134.73,-110.92,-292.66,0,0,0,0]],` +
+    `PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],` +
+    `PROJECTION["Transverse_Mercator"],` +
+    `PARAMETER["latitude_of_origin",0],` +
+    `PARAMETER["central_meridian",${crs.centralMeridian}],` +
+    `PARAMETER["scale_factor",1],` +
+    `PARAMETER["false_easting",0],` +
+    `PARAMETER["false_northing",0],` +
+    `UNIT["metre",1],` +
+    `AXIS["Easting",EAST],AXIS["Northing",NORTH]]`
+  );
+}
+
+/**
  * Get all available CRS for Zimbabwe
  */
 export function getZimbabweCRS() {

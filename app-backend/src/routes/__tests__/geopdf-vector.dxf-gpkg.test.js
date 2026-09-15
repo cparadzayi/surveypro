@@ -45,6 +45,8 @@ function makePayload() {
 }
 
 describe('/api/geopdf/dxf — GeoPackage-in-ZIP (QGIS native georeferencing)', () => {
+  const common = () => ({ ...makePayload(), planType: 'general-undeveloped', projection: 'EPSG:22291' })
+
   test('zip:true ships a self-describing .gpkg alongside the DXF and .prj', async () => {
     const { buffer } = generateDXF({
       ...makePayload(),
@@ -59,7 +61,7 @@ describe('/api/geopdf/dxf — GeoPackage-in-ZIP (QGIS native georeferencing)', (
     const res = await app.inject({
       method: 'POST',
       url: '/dxf',
-      payload: { ...makePayload(), planType: 'general-undeveloped', projection: 'EPSG:22291', zip: true },
+      payload: { ...common(), zip: true },
     })
     expect(res.statusCode).toBe(200)
 
@@ -78,7 +80,48 @@ describe('/api/geopdf/dxf — GeoPackage-in-ZIP (QGIS native georeferencing)', (
     const gpkg = Buffer.from(files[gpkgName])
     // Valid SQLite/GeoPackage header
     expect(gpkg.subarray(0, 15).toString('latin1')).toBe('SQLite format 3')
-    // Embedded CRS: PROJCRS "Cape / Lo31" (GDAL names it "Cape / Lo31")
-    expect(gpkg.toString('latin1')).toContain('Cape / Lo31')
+    const content = gpkg.toString('latin1')
+    // Embedded north-up CRS — the DXF's own easting/northing geometry. Must NOT
+    // be the South-Orientated EPSG:22291 (westing, southing) tuple that QGIS
+    // would draw rotated 180°.
+    expect(content).toContain('Cape Lo 31 (North-up)')
+    expect(content.toLowerCase()).toContain('axis["easting",east')
+    expect(content.toLowerCase()).not.toContain('westing')
+  })
+
+  test('zip:true + includeGpkg:false ships DXF + .prj only (no .gpkg)', async () => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dxf',
+      payload: { ...common(), zip: true, includeGpkg: false, gpkgOnly: false },
+    })
+    expect(res.statusCode).toBe(200)
+
+    const files = unzipSync(new Uint8Array(res.rawPayload))
+    const names = Object.keys(files)
+    expect(names.find((n) => n.endsWith('.dxf'))).toBeTruthy()
+    expect(names.find((n) => n.endsWith('.prj'))).toBeTruthy()
+    expect(names.find((n) => n.endsWith('.gpkg'))).toBeFalsy()
+  })
+
+  test('gpkgOnly:true responds with the standalone .gpkg (GeoPackage content-type)', async () => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dxf',
+      payload: { ...common(), zip: false, includeGpkg: false, gpkgOnly: true },
+    })
+    expect(res.statusCode).toBe(200)
+
+    // Content-type is GeoPackage (not application/zip or application/dxf)
+    expect(String(res.headers['content-type'])).toContain('geopackage')
+    expect(String(res.headers['content-disposition'])).toMatch(/\.gpkg"$/)
+
+    const gpkg = Buffer.from(res.rawPayload)
+    expect(gpkg.subarray(0, 15).toString('latin1')).toBe('SQLite format 3')
+    const content = gpkg.toString('latin1')
+    expect(content).toContain('Cape Lo 31 (North-up)')
+    expect(content.toLowerCase()).not.toContain('westing')
   })
 })

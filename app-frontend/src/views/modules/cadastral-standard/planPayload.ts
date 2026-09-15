@@ -172,6 +172,7 @@ export function resolveScaleAndSheet(
 export interface PlanDocumentSet {
   pdf?: Blob
   dxf?: Blob
+  gpkg?: Blob
   summary?: Blob
 }
 
@@ -179,6 +180,7 @@ export interface PlanDocumentSet {
 export interface GenerateFormats {
   pdf: boolean
   dxf: boolean
+  gpkg?: boolean
 }
 
 export function validateGenerateRequest(
@@ -187,8 +189,12 @@ export function validateGenerateRequest(
   parcelCount: number,
   formats: GenerateFormats,
 ): { ok: boolean; error?: string } {
-  if (!formats.pdf && !formats.dxf) {
-    return { ok: false, error: 'Select at least one format (PDF or DXF).' }
+  if (!formats.pdf && !formats.dxf && !formats.gpkg) {
+    return { ok: false, error: 'Select at least one format (PDF, DXF, or GPKG).' }
+  }
+  if (formats.gpkg && !formats.dxf) {
+    // GPKG is derived from the same ground geometry as the DXF export, so any
+    // plan type that can produce a DXF can also produce a standalone GPKG.
   }
   if (meta.subjectMode === 'single-parcel') {
     if (subjectParcelId == null || subjectParcelId === '') {

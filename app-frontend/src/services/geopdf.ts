@@ -214,14 +214,22 @@ export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promis
  * Generate DXF (AutoCAD) file from the same GeoJSON data used for GeoPDF.
  * Returns { blob, warningCount, warningsSummary } — warningCount > 0 means
  * the backend skipped or truncated some data (see x-dxf-warnings header).
- * The blob is a ZIP containing both `{name}.dxf` and a `.prj` sidecar
- * encoding the CRS, so QGIS can place the plan at the correct coordinates.
+ *
+ * Output modes (mirror the backend /geopdf/dxf flags):
+ * - default / includeGpkg=true  → blob is a ZIP of `{name}.dxf` + `.prj` sidecar
+ *   + georeferenced `.gpkg` that QGIS places at the correct coordinates.
+ * - includeGpkg=false            → ZIP of `{name}.dxf` + `.prj` only (no .gpkg).
+ * - gpkgOnly=true                → blob is the standalone `.gpkg` (no DXF/ZIP).
  */
-export async function generateDXF(request: VectorGeoPDFRequest): Promise<{
+export async function generateDXF(
+  request: VectorGeoPDFRequest,
+  options: { includeGpkg?: boolean; gpkgOnly?: boolean } = {},
+): Promise<{
   blob: Blob
   warningCount: number
   warningsSummary: Record<string, number | boolean> | null
 }> {
+  const { includeGpkg = true, gpkgOnly = false } = options
   const response = await api.post('/geopdf/dxf', {
     parcels: request.parcels,
     beacons: request.beacons,
@@ -240,10 +248,13 @@ export async function generateDXF(request: VectorGeoPDFRequest): Promise<{
     // to display suffix-only labels inside their parcels (e.g. "A" instead of
     // "2475A") — matches the PDF's behavior at pdfkitGeoPDF.js:4654-4733.
     beaconLabels: request.beaconLabels,
-    // Request the backend to wrap the DXF + .prj sidecar into a single ZIP
-    // so QGIS/GIS tools can place the plan at the correct georeferenced
-    // position without requiring manual CRS assignment.
-    zip: true,
+    // Bundle the DXF + .prj sidecar (and, when includeGpkg, the .gpkg) into a
+    // single ZIP so QGIS/GIS tools can place the plan at the correct
+    // georeferenced position without requiring manual CRS assignment. For a
+    // standalone .gpkg export, gpkgOnly=true instead returns the .gpkg alone.
+    zip: !gpkgOnly,
+    includeGpkg: gpkgOnly ? false : includeGpkg,
+    gpkgOnly,
   }, {
     responseType: 'blob',
     // 5-minute timeout matches the PDF vector route. Dense plans (200+ parcels

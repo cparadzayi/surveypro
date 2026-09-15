@@ -569,11 +569,12 @@
             <div class="format-toggles" style="display: flex; gap: 16px; font-size: 14px;">
               <label><input type="checkbox" v-model="exportFormats.pdf" /> PDF</label>
               <label><input type="checkbox" v-model="exportFormats.dxf" /> DXF</label>
+              <label><input type="checkbox" v-model="exportFormats.gpkg" /> GPKG</label>
             </div>
             <button @click="generatePlanDocuments" :disabled="isExporting"
                     class="btn-export btn-geopdf" style="width: 100%; font-size: 16px; padding: 16px;">
               <span v-if="!isExporting">📋 Generate {{ planTypeLabel }}</span>
-              <span v-else>⏳ Generating…</span>
+              <span v-else>⏳ {{ exportStatus || 'Generating…' }}</span>
             </button>
             <button @click="generateComprehensivePDF" :disabled="isExporting"
                     class="btn-export btn-professional" style="width: 100%; font-size: 16px; padding: 16px;">
@@ -753,6 +754,7 @@ const map = ref<maplibregl.Map | null>(null)
 const parcels = ref<any[]>([])
 const coordinatePoints = ref<any[]>([])
 const isExporting = ref(false)
+const exportStatus = ref('')
 const pdfFinalScale = ref<string | null>(null)
 const showPaperSizeOptions = ref(false)
 const isPanelCollapsed = ref(false)
@@ -882,7 +884,7 @@ const isGeneralPlanMode = computed(() =>
 // the Diagram and the General Plans. On general plans the tagged sides drive the
 // same road/servitude/contiguous rendering (roads label-only, no burnt-sienna).
 const isSideAnnotationMode = computed(() => isDiagramMode.value || isGeneralPlanMode.value)
-const exportFormats = reactive({ pdf: true, dxf: true })
+const exportFormats = reactive({ pdf: true, dxf: true, gpkg: true })
 const planTypeLabel = computed(() => getPlanTypeMeta(config.value.planType).label)
 
 // ⭐ MULTI-SHEET: Active tile grid (computed reactively from outside figure + plan config)
@@ -4454,6 +4456,7 @@ async function generatePlanDocuments() {
   }
 
   isExporting.value = true
+  exportStatus.value = 'Loading project data…'
   try {
     await loadData()
     const ctx = gatherPlanContext()
@@ -4465,8 +4468,10 @@ async function generatePlanDocuments() {
     let dxfExt: 'zip' | 'dxf' = 'dxf'
 
     if (exportFormats.pdf) {
+      exportStatus.value = 'Computing areas & rendering PDF…'
       let result = await generateVectorGeoPDF(payload)
       if (result.suggestedScale) {
+        exportStatus.value = `Re-rendering PDF at suggested scale ${result.suggestedScale}…`
         result = await generateVectorGeoPDF({ ...payload, scale: result.suggestedScale })
       }
       docs.pdf = result.blob
@@ -4524,11 +4529,10 @@ async function generatePlanDocuments() {
       if (workingPlanSkipped.length) {
         console.warn('[PlanDocs] Working plan omitted parcels with no named ring:', workingPlanSkipped.join(', '))
       }
-    } else if (exportFormats.dxf) {
-      const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: payload.sheetSize || 'SI727_500x400' }
-      const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload)
-      docs.dxf = blob
-      dxfExt = 'zip'
+    }
+
+    // Warning summary shared by every georeferenced export mode below.
+    const reportDxfWarnings = (warningCount: number, warningsSummary: Record<string, number | boolean> | null) => {
       if (warningCount > 0 && warningsSummary) {
         const parts: string[] = []
         if (warningsSummary.beacons) parts.push(`${warningsSummary.beacons} beacon(s) skipped`)
@@ -4537,6 +4541,39 @@ async function generatePlanDocuments() {
         if (warningsSummary.priorDiagramsTruncated) parts.push(`${warningsSummary.priorDiagramsTruncated} prior diagram(s) truncated`)
         if (warningsSummary.scaleFallback) parts.push('scale fell back to 1:500')
         if (parts.length) console.warn('[PlanDocs] DXF warnings:', parts.join(', '))
+      }
+    }
+
+    if (config.value.planType === 'working-plan') {
+      // The Working Plan itself is an A4 sheet (drawn above from its own A4
+      // renderer); the GPKG toggle still exports the same cadastral geometry as
+      // a standalone georeferenced .gpkg for QGIS use.
+      if (exportFormats.gpkg) {
+        exportStatus.value = 'Building georeferenced GeoPackage (.gpkg)…'
+        const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: payload.sheetSize || 'SI727_500x400' }
+        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { gpkgOnly: true })
+        docs.gpkg = blob
+        reportDxfWarnings(warningCount, warningsSummary)
+      }
+    } else if (exportFormats.dxf || exportFormats.gpkg) {
+      const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: payload.sheetSize || 'SI727_500x400' }
+      if (exportFormats.dxf && exportFormats.gpkg) {
+        exportStatus.value = 'Building georeferenced DXF (DXF + .prj + .gpkg)…'
+        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { includeGpkg: true })
+        docs.dxf = blob
+        dxfExt = 'zip'
+        reportDxfWarnings(warningCount, warningsSummary)
+      } else if (exportFormats.dxf) {
+        exportStatus.value = 'Building georeferenced DXF (DXF + .prj)…'
+        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { includeGpkg: false })
+        docs.dxf = blob
+        dxfExt = 'zip'
+        reportDxfWarnings(warningCount, warningsSummary)
+      } else if (exportFormats.gpkg) {
+        exportStatus.value = 'Building georeferenced GeoPackage (.gpkg)…'
+        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { gpkgOnly: true })
+        docs.gpkg = blob
+        reportDxfWarnings(warningCount, warningsSummary)
       }
     }
 
@@ -4563,10 +4600,11 @@ async function generatePlanDocuments() {
     }
     const saved: string[] = []
     const skipped: string[] = []
-    for (const kind of ['pdf', 'dxf', 'summary'] as const) {
+    for (const kind of ['pdf', 'dxf', 'gpkg', 'summary'] as const) {
       const blob = (docs as PlanDocumentSet)[kind]
       if (!(blob instanceof Blob)) continue
-      const ext = kind === 'dxf' ? dxfExt : 'pdf'
+      exportStatus.value = `Saving ${kind.toUpperCase()}…`
+      const ext = kind === 'dxf' ? dxfExt : kind === 'gpkg' ? 'gpkg' : 'pdf'
       const suffix = kind === 'summary' ? '-summary' : ''
       const fileName = `${baseName}${suffix}.${ext}`
       const res = await saveWithOverwritePrompt({ workingDirectory, subdir, fileName, blob }, confirmOverwrite)
@@ -4586,6 +4624,7 @@ async function generatePlanDocuments() {
     alert(`Generation failed: ${error.message}`)
   } finally {
     isExporting.value = false
+    exportStatus.value = ''
   }
 }
 

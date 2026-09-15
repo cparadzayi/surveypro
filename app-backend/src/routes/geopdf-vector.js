@@ -1,5 +1,5 @@
 // Vector GeoPDF Generation Routes
-import { exec } from 'child_process'
+import { exec, execFile } from 'child_process'
 import { promisify } from 'util'
 import { writeFile, unlink, mkdir, readFile } from 'fs/promises'
 import { existsSync } from 'fs'
@@ -9,33 +9,15 @@ import LandParcel from '../models/landParcel.js'
 import { computeAreaConsistency } from '../utils/area-computation.js'
 import { authenticateWithSchema } from '../utils/schemaAuth.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
-import { prjForDxf, getCRSByEPSG } from '../utils/crsDefinitions.js'
+import { prjForDxf, northUpWktForDxf } from '../utils/crsDefinitions.js'
 import { zipSync } from 'fflate'
 
 const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 let cachedOGR2OGRPath = null
-
-/**
- * Build the source CRS (proj4) that matches the DXF's stored ground geometry.
- *
- * capeLoToDxfSouthUp emits DXF (x, y) = (−westing, −southing) — i.e. raw
- * easting/northing in a plain north-up Transverse Mercator. EPSG:22291 et al.
- * however are South-Orientated TMs whose native tuple is (westing, southing);
- * reading the raw (−50,000, −2,200,000) pair directly as EPSG:22291 lands
- * ~2,200 km NORTH of the equator. Feeding the DXF through THIS custom north-up
- * CRS first makes PROJ negate the axes into (westing, southing), which maps
- * back onto true Zimbabwe ground.
- */
-function buildNorthUpSourceProj4(projection) {
-  const key = String(projection || '').startsWith('EPSG:')
-    ? String(projection)
-    : `EPSG:${projection}`
-  const cm = getCRSByEPSG(key)?.centralMeridian ?? 31
-  return `+proj=tmerc +lat_0=0 +lon_0=${cm} +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs`
-}
 
 /**
  * Convert a DXF's ground geometry into a QGIS-native GeoPackage (.gpkg) whose
@@ -43,6 +25,17 @@ function buildNorthUpSourceProj4(projection) {
  * driver ignores ("DXF files are considered to have no georeferencing
  * information") — a GeoPackage is self-describing, so QGIS auto-places it in
  * the right hemisphere with zero manual steps.
+ *
+ * The DXF coordinates are already plain north-up easting/northing (negative
+ * in the southern hemisphere — easting west of the Lo central meridian,
+ * northing south of the equator). We ASSIGN the matching north-up CRS with
+ * `-a_srs` (no `-t_srs` reprojection): feeding them through official
+ * EPSG:22291 instead stores a South-Orientated *(westing, southing)* tuple
+ * whose axes both point the wrong way, so QGIS renders the plan rotated 180°.
+ *
+ * Any WKT AUTHORITY tag is deliberately omitted so GDAL/QGIS use the WKT's
+ * declared AXIS east/north rather than substituting EPSG:22291's canonical
+ * south-orientated axes.
  *
  * Returns the .gpkg buffer, or null when ogr2ogr is unavailable or the
  * conversion fails (callers fall back to DXF + .prj only).
@@ -74,15 +67,28 @@ async function dxfToGeoreferencedGpkg(dxfBuffer, projection, logger) {
 
   try {
     await writeFile(srcDxf, dxfBuffer)
-    const cmd = `${ogrCmd} -f GPKG "${outGpkg}" "${srcDxf}" -s_srs "${buildNorthUpSourceProj4(projection)}" -t_srs ${projection || 'EPSG:22291'}`
-    const { stderr } = await execAsync(cmd, { shell: true, maxBuffer: 10 * 1024 * 1024, env })
+    const northUpWkt = northUpWktForDxf(projection)
+    if (!northUpWkt) return null
+    // execFile, not exec/shell: the WKT contains double quotes that cmd.exe
+    // would mangle, and the argv array sidesteps all quoting entirely.
+    const { stderr } = await execFileAsync(
+      ogrCmd.replaceAll('"', ''),
+      ['-f', 'GPKG', outGpkg, srcDxf, '-a_srs', northUpWkt],
+      {
+        maxBuffer: 10 * 1024 * 1024,
+        env,
+        // A wedged or pathologically slow ogr2ogr must never hang a surveyplan
+        // export: the route degrades to DXF + .prj on timeout instead.
+        timeout: 60_000,
+      }
+    )
     if (stderr && !stderr.includes('Warning')) logger?.warn?.(`[DXF] ogr2ogr gpkg stderr: ${stderr.substring(0, 1000)}`)
     if (!existsSync(outGpkg)) return null
     const gpkg = await readFile(outGpkg)
     logger?.info?.(`[DXF] ✅ georeferenced GeoPackage created (${gpkg.length} bytes)`)
     return gpkg
   } catch (err) {
-    logger?.warn?.(`[DXF] ⚠️ GeoPackage conversion skipped: ${err?.message}`)
+    logger?.warn?.(`[DXF] ⚠️ GeoPackage conversion skipped: ${(err?.message || err?.code || 'unknown error').substring(0, 300)}${err?.killed ? ' (killed after timeout)' : ''}`)
     return null
   } finally {
     await Promise.all([unlink(srcDxf).catch(() => {}), unlink(outGpkg).catch(() => {})])
@@ -91,16 +97,19 @@ async function dxfToGeoreferencedGpkg(dxfBuffer, projection, logger) {
 
 /**
  * Bundle a DXF with a .prj (ESRI/OGC WKT) CRS sidecar into a single ZIP, and —
- * when ogr2ogr is available — also include a self-georeferencing .gpkg that
- * QGIS places on true Zimbabwe ground without any manual CRS step.
+ * when ogr2ogr is available AND includeGpkg is set — also include a
+ * self-georeferencing .gpkg that QGIS places on true Zimbabwe ground without
+ * any manual CRS step.
  */
-async function zipDxfWithPrj(dxfBuffer, projection, baseName, logger) {
+async function zipDxfWithPrj(dxfBuffer, projection, baseName, logger, includeGpkg = true) {
   const entries = {
     [`${baseName}.dxf`]: new Uint8Array(dxfBuffer),
     [`${baseName}.prj`]: new Uint8Array(Buffer.from(prjForDxf(projection) || '', 'utf8')),
   }
-  const gpkg = await dxfToGeoreferencedGpkg(dxfBuffer, projection, logger)
-  if (gpkg) entries[`${baseName}.gpkg`] = new Uint8Array(gpkg)
+  if (includeGpkg) {
+    const gpkg = await dxfToGeoreferencedGpkg(dxfBuffer, projection, logger)
+    if (gpkg) entries[`${baseName}.gpkg`] = new Uint8Array(gpkg)
+  }
   return Buffer.from(zipSync(entries, { level: 9 }))
 }
 
@@ -262,13 +271,15 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         planType,
         beaconLabels,
         zip = false,
+        includeGpkg = true,
+        gpkgOnly = false,
       } = request.body
 
       if (!parcels || !beacons) {
         return reply.code(400).send({ error: 'Missing required fields: parcels, beacons' })
       }
 
-      fastify.log.info(`[DXF] Request planType=${JSON.stringify(planType)} beaconLabels=${Array.isArray(beaconLabels) ? beaconLabels.length : 'none'}`)
+      fastify.log.info(`[DXF] Request planType=${JSON.stringify(planType)} zip=${zip} includeGpkg=${includeGpkg} gpkgOnly=${gpkgOnly} beaconLabels=${Array.isArray(beaconLabels) ? beaconLabels.length : 'none'}`)
 
       if (planType === 'diagram') {
         fastify.log.info('[DXF] 📐 Diagram plan type → single-stand Diagram DXF renderer')
@@ -278,9 +289,25 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           fastify.log
         )
         const ts = Date.now()
+
+        if (gpkgOnly) {
+          const gpkg = await dxfToGeoreferencedGpkg(diagram.dxfBuffer, projection, fastify.log)
+          if (!gpkg) {
+            return reply.code(500).send({ error: 'GeoPackage generation failed', message: 'ogr2ogr did not produce a .gpkg (see server logs).' })
+          }
+          return reply
+            .type('application/geopackage+sqlite3')
+            .headers({
+              'Content-Disposition': `attachment; filename="diagram-${ts}.gpkg"`,
+              'X-Used-Scale': diagram.scale,
+              'X-Used-Sheet-Size': diagram.sheetSize,
+            })
+            .send(gpkg)
+        }
+
         let dxfPayload = diagram.dxfBuffer
         if (zip) {
-          dxfPayload = await zipDxfWithPrj(diagram.dxfBuffer, projection, `diagram-${ts}`, fastify.log)
+          dxfPayload = await zipDxfWithPrj(diagram.dxfBuffer, projection, `diagram-${ts}`, fastify.log, includeGpkg)
         }
         reply
           .type(zip ? 'application/zip' : 'application/dxf')
@@ -301,8 +328,25 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
       )
 
       const ts = Date.now()
+
+      if (gpkgOnly) {
+        const gpkg = await dxfToGeoreferencedGpkg(buffer, projection, fastify.log)
+        if (!gpkg) {
+          return reply.code(500).send({ error: 'GeoPackage generation failed', message: 'ogr2ogr did not produce a .gpkg (see server logs).' })
+        }
+        reply
+          .type('application/geopackage+sqlite3')
+          .header('Content-Disposition', `attachment; filename="survey-plan-${ts}.gpkg"`)
+          .header('X-DXF-Warning-Count', String(warnings.count))
+        if (warnings.count > 0) {
+          reply.header('X-DXF-Warnings', JSON.stringify(warnings.summary))
+        }
+        reply.send(gpkg)
+        return
+      }
+
       if (zip) {
-        const dxfPayload = await zipDxfWithPrj(buffer, projection, `survey-plan-${ts}`, fastify.log)
+        const dxfPayload = await zipDxfWithPrj(buffer, projection, `survey-plan-${ts}`, fastify.log, includeGpkg)
         reply
           .type('application/zip')
           .header('Content-Disposition', `attachment; filename="survey-plan-${ts}.zip"`)

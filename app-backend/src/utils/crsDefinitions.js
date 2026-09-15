@@ -81,22 +81,19 @@ export function getCRSByEPSG(epsgCode) {
  * Resolve the WRITE-side .prj (ESRI/OGC WKT) content for a projection identifier
  * such as 'EPSG:22291'. Falls back to Cape Lo 31 when the identifier is
  * unrecognised, so a georeferenced DXF never ships without a CRS sidecar.
+ *
+ * capeLoToDxfSouthUp emits DXF (x, y) = (−westing, −southing), which are the
+ * true north-up east-right geodetic coordinates (easting relative to the Lo
+ * central meridian, northing negative in the southern hemisphere). The sidecar
+ * is therefore the plain north-up CRS — AXIS East/North — so QGIS reads the
+ * DXF on genuine Zimbabwe ground.
  */
 export function prjForDxf(projection) {
   const key = String(projection || '').startsWith('EPSG:')
     ? String(projection)
     : `EPSG:${projection}`;
   const crs = getCRSByEPSG(key) || ZIMBABWE_CRS['EPSG:22291'];
-  if (!crs) return null;
-  // The DXF geometry is stored south-up (DXF y = -southing, x = -westing) so the
-  // plan reads right-side-up in CAD. The sidecar must therefore declare the
-  // same axis convention or QGIS would read y = +2,000,000 m as a northing north
-  // of the equator (northern hemisphere), mirroring the plan off-continent.
-  // West/South axis directions invert our sign flip back onto true ground.
-  return `${crs.wkt.replace(
-    'AXIS["Easting",EAST],AXIS["Northing",NORTH]',
-    'AXIS["Easting",WEST],AXIS["Northing",SOUTH]'
-  )}\n`;
+  return crs ? `${crs.wkt}\n` : null;
 }
 
 /**

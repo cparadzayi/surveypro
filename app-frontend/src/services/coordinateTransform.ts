@@ -53,7 +53,7 @@ export const CAPE_LO_ZONES = {
 // Note: coordinates are passed as [Easting, Northing] = [-Westing, -Southing]
 // to match the north-oriented TM convention (axis adjustment done by callers).
 export const CAPE_LO_PROJ4_DEF = (centralMeridian: number) =>
-  `+proj=tmerc +lat_0=0 +lon_0=${centralMeridian} +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs`
+  `+proj=tmerc +lat_0=0 +lon_0=${centralMeridian} +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs`
 
 // Coordinate validation utilities
 export const validateCoordinate = (coord: number): boolean => {

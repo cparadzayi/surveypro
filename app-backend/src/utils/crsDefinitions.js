@@ -5,8 +5,8 @@ export const ZIMBABWE_CRS = {
   'EPSG:22291': {
     name: 'Cape Lo 31',
     description: 'Zimbabwe National Grid - Zone 31',
-    proj4: '+proj=tmerc +lat_0=0 +lon_0=31 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs',
-    wkt: 'PROJCS["Cape_Lo_31",GEOGCS["Cape",DATUM["Cape",SPHEROID["Clarke 1880 (Arc)",6378249.145,293.465],TOWGS84[-136,-108,-292,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0,AUTHORITY["EPSG","8801"]],PARAMETER["central_meridian",31,AUTHORITY["EPSG","8802"]],PARAMETER["scale_factor",1,AUTHORITY["EPSG","8805"]],PARAMETER["false_easting",0,AUTHORITY["EPSG","8806"]],PARAMETER["false_northing",0,AUTHORITY["EPSG","8807"]],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","22291"]]',
+    proj4: '+proj=tmerc +lat_0=0 +lon_0=31 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs',
+    wkt: 'PROJCS["Cape_Lo_31",GEOGCS["Cape",DATUM["Cape",SPHEROID["Clarke 1880 (Arc)",6378249.145,293.465],TOWGS84[-134.73,-110.92,-292.66,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0,AUTHORITY["EPSG","8801"]],PARAMETER["central_meridian",31,AUTHORITY["EPSG","8802"]],PARAMETER["scale_factor",1,AUTHORITY["EPSG","8805"]],PARAMETER["false_easting",0,AUTHORITY["EPSG","8806"]],PARAMETER["false_northing",0,AUTHORITY["EPSG","8807"]],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","22291"]]',
     datum: 'Cape',
     ellipsoid: 'Clarke 1880 (Arc)',
     units: 'metre',
@@ -19,8 +19,8 @@ export const ZIMBABWE_CRS = {
   'EPSG:22293': {
     name: 'Cape Lo 29',
     description: 'Zimbabwe National Grid - Zone 29',
-    proj4: '+proj=tmerc +lat_0=0 +lon_0=29 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs',
-    wkt: 'PROJCS["Cape_Lo_29",GEOGCS["Cape",DATUM["Cape",SPHEROID["Clarke 1880 (Arc)",6378249.145,293.465],TOWGS84[-136,-108,-292,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0,AUTHORITY["EPSG","8801"]],PARAMETER["central_meridian",29,AUTHORITY["EPSG","8802"]],PARAMETER["scale_factor",1,AUTHORITY["EPSG","8805"]],PARAMETER["false_easting",0,AUTHORITY["EPSG","8806"]],PARAMETER["false_northing",0,AUTHORITY["EPSG","8807"]],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","22293"]]',
+    proj4: '+proj=tmerc +lat_0=0 +lon_0=29 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs',
+    wkt: 'PROJCS["Cape_Lo_29",GEOGCS["Cape",DATUM["Cape",SPHEROID["Clarke 1880 (Arc)",6378249.145,293.465],TOWGS84[-134.73,-110.92,-292.66,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0,AUTHORITY["EPSG","8801"]],PARAMETER["central_meridian",29,AUTHORITY["EPSG","8802"]],PARAMETER["scale_factor",1,AUTHORITY["EPSG","8805"]],PARAMETER["false_easting",0,AUTHORITY["EPSG","8806"]],PARAMETER["false_northing",0,AUTHORITY["EPSG","8807"]],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","22293"]]',
     datum: 'Cape',
     ellipsoid: 'Clarke 1880 (Arc)',
     units: 'metre',
@@ -33,8 +33,8 @@ export const ZIMBABWE_CRS = {
   'EPSG:22292': {
     name: 'Cape Lo 27',
     description: 'Zimbabwe National Grid - Zone 27',
-    proj4: '+proj=tmerc +lat_0=0 +lon_0=27 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs',
-    wkt: 'PROJCS["Cape_Lo_27",GEOGCS["Cape",DATUM["Cape",SPHEROID["Clarke 1880 (Arc)",6378249.145,293.465],TOWGS84[-136,-108,-292,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0,AUTHORITY["EPSG","8801"]],PARAMETER["central_meridian",27,AUTHORITY["EPSG","8802"]],PARAMETER["scale_factor",1,AUTHORITY["EPSG","8805"]],PARAMETER["false_easting",0,AUTHORITY["EPSG","8806"]],PARAMETER["false_northing",0,AUTHORITY["EPSG","8807"]],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","22292"]]',
+    proj4: '+proj=tmerc +lat_0=0 +lon_0=27 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs',
+    wkt: 'PROJCS["Cape_Lo_27",GEOGCS["Cape",DATUM["Cape",SPHEROID["Clarke 1880 (Arc)",6378249.145,293.465],TOWGS84[-134.73,-110.92,-292.66,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0,AUTHORITY["EPSG","8801"]],PARAMETER["central_meridian",27,AUTHORITY["EPSG","8802"]],PARAMETER["scale_factor",1,AUTHORITY["EPSG","8805"]],PARAMETER["false_easting",0,AUTHORITY["EPSG","8806"]],PARAMETER["false_northing",0,AUTHORITY["EPSG","8807"]],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","22292"]]',
     datum: 'Cape',
     ellipsoid: 'Clarke 1880 (Arc)',
     units: 'metre',
@@ -47,8 +47,8 @@ export const ZIMBABWE_CRS = {
   'EPSG:22294': {
     name: 'Cape Lo 25',
     description: 'Zimbabwe National Grid - Zone 25',
-    proj4: '+proj=tmerc +lat_0=0 +lon_0=25 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs',
-    wkt: 'PROJCS["Cape_Lo_25",GEOGCS["Cape",DATUM["Cape",SPHEROID["Clarke 1880 (Arc)",6378249.145,293.465],TOWGS84[-136,-108,-292,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0,AUTHORITY["EPSG","8801"]],PARAMETER["central_meridian",25,AUTHORITY["EPSG","8802"]],PARAMETER["scale_factor",1,AUTHORITY["EPSG","8805"]],PARAMETER["false_easting",0,AUTHORITY["EPSG"]["8806"]],PARAMETER["false_northing",0,AUTHORITY["EPSG","8807"]],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","22294"]]',
+    proj4: '+proj=tmerc +lat_0=0 +lon_0=25 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs',
+    wkt: 'PROJCS["Cape_Lo_25",GEOGCS["Cape",DATUM["Cape",SPHEROID["Clarke 1880 (Arc)",6378249.145,293.465],TOWGS84[-134.73,-110.92,-292.66,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0,AUTHORITY["EPSG","8801"]],PARAMETER["central_meridian",25,AUTHORITY["EPSG","8802"]],PARAMETER["scale_factor",1,AUTHORITY["EPSG","8805"]],PARAMETER["false_easting",0,AUTHORITY["EPSG"]["8806"]],PARAMETER["false_northing",0,AUTHORITY["EPSG","8807"]],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","22294"]]',
     datum: 'Cape',
     ellipsoid: 'Clarke 1880 (Arc)',
     units: 'metre',

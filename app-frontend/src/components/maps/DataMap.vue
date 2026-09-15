@@ -149,7 +149,7 @@ function createCapeLoCRS(srid: number): any {
   // CRITICAL FIX: Proj4 definition for Cape / Lo family (Transverse Mercator on Clarke 1880)
   // Standard axis order (Easting, Northing) - Leaflet expects [lat, lng] = [Northing, Easting]
   // Zimbabwe cadastral data is stored as P(Y, X) = P(Northing, Easting) which maps to [lat, lng]
-  const proj4def = `+proj=tmerc +lat_0=0 +lon_0=${centralMeridian} +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs`
+  const proj4def = `+proj=tmerc +lat_0=0 +lon_0=${centralMeridian} +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs`
   
   return new (L as any).Proj.CRS(`EPSG:${srid}`, proj4def, {
     resolutions: [

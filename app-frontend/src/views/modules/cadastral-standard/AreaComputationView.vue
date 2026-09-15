@@ -597,7 +597,7 @@ function createCapeLoCRS(srid: number): any {
   
   // CRITICAL: Use +axis=wsu for Cape Lo South-Orientated system
   // wsu = Westing, Southing, Up (Y=Westing, X=Southing)
-  const proj4def = `+proj=tmerc +axis=wsu +lat_0=0 +lon_0=${cm} +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs`;
+  const proj4def = `+proj=tmerc +axis=wsu +lat_0=0 +lon_0=${cm} +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs`;
   
   console.log(`[AreaComputation] 🌍 Creating CRS for EPSG:${srid} with +axis=wsu`);
   console.log(`[AreaComputation] 📐 Proj4 def: ${proj4def}`);

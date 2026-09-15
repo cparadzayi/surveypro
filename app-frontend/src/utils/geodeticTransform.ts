@@ -17,7 +17,10 @@ export const CAPE_FOOT_METERS = 0.314855575;
 export const INTERNATIONAL_FOOT_METERS = 0.304799472;
 
 // Define all Cape Lo projections using CORRECT EPSG codes.
-// All use Clarke 1880 (Arc) ellipsoid and Cape Datum (towgs84=-136,-108,-292).
+// All use Clarke 1880 (Arc) ellipsoid and Cape Datum.
+// Datum shift: EPSG:1504 / EPSG:1129 "Cape to Hartebeesthoek94/WGS 84"
+// (DSLI-Zaf, derived at Cape to Hartebeesthoek94 (1)) - refined geocentric
+// translations (-134.73, -110.92, -292.66) m, residuals <= 15 m.
 //
 // NOTE: +axis=wsu is intentionally OMITTED.  proj4js 2.x only applies axis
 // adjustment when enforceAxis=true is explicitly passed to transform().
@@ -27,23 +30,23 @@ export const INTERNATIONAL_FOOT_METERS = 0.304799472;
 // capeToWGS84() and wgs84ToCape() by negating coordinates before/after proj4
 // calls (converting between south-oriented Cape Lo and north-oriented TM).
 proj4.defs('EPSG:22285', // Cape / Lo25
-  '+proj=tmerc +lat_0=0 +lon_0=25 +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs'
+  '+proj=tmerc +lat_0=0 +lon_0=25 +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs'
 );
 
 proj4.defs('EPSG:22287', // Cape / Lo27
-  '+proj=tmerc +lat_0=0 +lon_0=27 +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs'
+  '+proj=tmerc +lat_0=0 +lon_0=27 +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs'
 );
 
 proj4.defs('EPSG:22289', // Cape / Lo29
-  '+proj=tmerc +lat_0=0 +lon_0=29 +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs'
+  '+proj=tmerc +lat_0=0 +lon_0=29 +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs'
 );
 
 proj4.defs('EPSG:22291', // Cape / Lo31
-  '+proj=tmerc +lat_0=0 +lon_0=31 +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs'
+  '+proj=tmerc +lat_0=0 +lon_0=31 +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs'
 );
 
 proj4.defs('EPSG:22293', // Cape / Lo33
-  '+proj=tmerc +lat_0=0 +lon_0=33 +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs'
+  '+proj=tmerc +lat_0=0 +lon_0=33 +k=1 +x_0=0 +y_0=0 +a=6378249.14533 +b=6356514.96672 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs'
 );
 
 // WGS84 (standard GPS coordinates)

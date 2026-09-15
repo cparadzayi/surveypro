@@ -12,7 +12,7 @@ import proj4 from 'proj4';
 // Define the projection (EPSG:22291 - Cape / Lo31).
 // +axis=wsu intentionally omitted: axis convention is handled by explicit
 // coordinate negation in callers, not by proj4's enforceAxis mechanism.
-proj4.defs('EPSG:22291', '+proj=tmerc +lat_0=0 +lon_0=31 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs');
+proj4.defs('EPSG:22291', '+proj=tmerc +lat_0=0 +lon_0=31 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs');
 
 /**
  * Calculate distance between two points

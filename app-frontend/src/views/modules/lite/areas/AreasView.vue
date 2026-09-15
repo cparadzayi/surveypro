@@ -805,8 +805,8 @@ function fmtNumber(n: any): string {
 // Zimbabwe Lo system (Cape datum, Gauss-Conform/TMSO) projection definitions
 // +axis=wsu = Westing, Southing, Up — matches surveyor Y/X convention directly
 const LO_PROJECTIONS: Record<number, string> = {
-  29: '+proj=tmerc +axis=wsu +lat_0=0 +lon_0=29 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs',
-  31: '+proj=tmerc +axis=wsu +lat_0=0 +lon_0=31 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-136,-108,-292,0,0,0,0 +units=m +no_defs',
+  29: '+proj=tmerc +axis=wsu +lat_0=0 +lon_0=29 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs',
+  31: '+proj=tmerc +axis=wsu +lat_0=0 +lon_0=31 +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs',
 }
 const WGS84 = '+proj=longlat +datum=WGS84 +no_defs'
 

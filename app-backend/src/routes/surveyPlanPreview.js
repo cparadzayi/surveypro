@@ -10,9 +10,8 @@ import { placeLabels } from '../utils/labelPlacer.js'
 import { formatArea } from '../utils/formatters.js'
 import { calculateBeaconSymbolSize, calculateBeaconLabelSize } from '../utils/beaconSymbolStandards.js'
 import { authenticateWithSchema } from '../utils/schemaAuth.js'
-import { SI727_PRESCRIBED_SCALES, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 } from '../utils/si727Constants.js'
+import { SI727_PRESCRIBED_SCALES } from '../utils/si727Constants.js'
 import { resolvePlanSheeting } from '../../../app-shared/planSheeting.js'
-import { resolveTownshipScaleMandate } from '../../../app-shared/block-definitions.js'
 import { splitBeaconName, labelParts } from '../../../app-shared/beaconName.js'
 
 /**
@@ -120,18 +119,10 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
         })
       }
 
-      // Surveyor-General relaxation: the SI 727 Reg 32(3) mandatory 1:500
-      // ceiling applies only when the majority of stands are <=200m2
-      // (resolveTownshipScaleMandate, app-shared/block-definitions.js) --
-      // shared with the PDF/DXF generators so this preview's suggested scale
-      // and "too narrow" warning suppression match what will actually be
-      // produced. `parcels` here already carries real PostGIS ST_Area values.
-      const applyScaleMandate = planType === 'general-developed' || planType === 'general-undeveloped'
-      const { mandatory500 } = resolveTownshipScaleMandate(
-        { features: parcels.map(p => ({ properties: { area_m2: p.area_m2, stand: p.stand }, geometry: p.geometry })) },
-        TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2
-      )
-      const maxDenominator = (applyScaleMandate && mandatory500) ? 500 : Infinity
+      // The old SI 727 Reg 32(3) mandatory 1:500 ceiling (area-majority rule in
+      // resolveTownshipScaleMandate) was removed. The shared resolver picks the
+      // scale from legibility + sheet fit alone, and this preview's suggested
+      // scale and "too narrow" warnings match what will actually be produced.
 
       // 5. Analyze survey
       const analysis = analyzeSurvey(coordinatePoints, parcels)
@@ -280,7 +271,6 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
         reason: best.reason,
         legibilityMaxDenominator: Number.isFinite(sheeting.legibilityMaxDenominator)
           ? `1:${Math.floor(sheeting.legibilityMaxDenominator)}` : 'none',
-        mandatory500: sheeting.mandate.mandatory500,
         selectedSheet: selectedSheetSize,
         selectedScale: selectedScale.label,
         multiSheet: needsTilingFlag ? 'yes (tile grid computed client-side)' : 'no',
@@ -368,17 +358,14 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
       if (narrowestParcel && Number.isFinite(narrowestParcel.geometry?.minWidth) && selectedScale?.value) {
         const minWidthMeters = narrowestParcel.geometry.minWidth
 
-        // When SI 727 Reg 32(3) forces a ceiling denominator (e.g. 500), validate at that
-        // ceiling — not at the legibility-recommended scale which may be much larger.
-        // At 1:500, a 13 m parcel = 26 mm on paper: well above the 3 mm minimum.
-        const validationDenominator = maxDenominator !== Infinity
-          ? Math.min(selectedScale.value, maxDenominator)
-          : selectedScale.value
+        // No SI 727 ceiling clamp any more (the Reg 32(3) 1:500 mandate was
+        // removed) — validate at the resolver-selected scale itself.
+        const validationDenominator = selectedScale.value
 
         const widthOnPaperMM = (minWidthMeters / validationDenominator) * 1000
 
         if (widthOnPaperMM < minLabelSizeOnPaperMM) {
-          // Genuinely too narrow even at the enforced scale — report it
+          // Genuinely too narrow at the selected scale — report it
           const maxAllowedScale = Math.floor((minWidthMeters * 1000) / minLabelSizeOnPaperMM)
           const cadastralScales = SI727_PRESCRIBED_SCALES.map(s => s.value).sort((a, b) => a - b)
           const recommendedScale = cadastralScales.filter(v => v <= maxAllowedScale).pop() ?? cadastralScales[0]
@@ -394,10 +381,9 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
             }
             console.log(`[SurveyPlanPreview] ⚠️ Scale validation failed:`, scaleValidation)
           }
-        } else if (validationDenominator !== selectedScale.value) {
-          // Ceiling is active and everything is fine at the enforced scale
+        } else {
           console.log(
-            `[SurveyPlanPreview] ✅ Scale validation at SI 727 ceiling 1:${validationDenominator}: ` +
+            `[SurveyPlanPreview] ✅ Scale validation at 1:${validationDenominator}: ` +
             `narrowest parcel "${narrowestParcel.stand}" = ${(widthOnPaperMM).toFixed(1)}mm on paper (≥ ${minLabelSizeOnPaperMM}mm required)`
           )
         }

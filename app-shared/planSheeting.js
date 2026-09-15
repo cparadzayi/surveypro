@@ -16,16 +16,6 @@
 
 import { SI727_GENERAL_PLAN_SHEET_SIZES } from './si727SheetSizes.js';
 import { SI727_SCALE_LADDER } from './si727Scales.js';
-import { resolveTownshipScaleMandate } from './block-definitions.js';
-
-/** SI 727 Reg 32(3) mandate threshold: stands at or below this are "small". */
-export const TOWNSHIP_MANDATE_THRESHOLD_M2 = 200;
-
-/** The denominator Reg 32(3) mandates for a small-stand township. */
-export const MANDATED_DENOMINATOR = 500;
-
-/** Plan types the Reg 32(3) area-majority mandate applies to. */
-const MANDATE_PLAN_TYPES = new Set(['general-developed', 'general-undeveloped']);
 
 /**
  * Paper millimetres a stand needs across its narrowest dimension to carry a
@@ -205,7 +195,7 @@ function fitsOn(sheetName, extentM, denominator, titleBandMm, figureMaxFraction)
  *   FAILED block placement on a smaller sheet passes a tighter value on the
  *   retry (see BLOCK_ROOM_BUDGETS), so escalating the sheet actually buys the
  *   blocks room instead of handing it straight back to a finer figure.
- * @returns {{ candidates: Array, mandate: object, legibilityMaxDenominator: number }}
+ * @returns {{ candidates: Array, legibilityMaxDenominator: number }}
  */
 export function resolvePlanSheeting({
   extentM,
@@ -216,29 +206,24 @@ export function resolvePlanSheeting({
   titleBandMm = TITLE_BAND_ESTIMATE_MM,
   figureMaxFraction = FIGURE_MAX_FRACTION,
 }) {
-  const applyMandate = MANDATE_PLAN_TYPES.has(planType);
-  const { mandatory500 } = applyMandate
-    ? resolveTownshipScaleMandate(parcels, TOWNSHIP_MANDATE_THRESHOLD_M2)
-    : { mandatory500: false };
-
   const legibilityMax = legibilityMaxDenominator(parcels);
   const sheets = sheetLadder(declaredSheet);
 
   // --- Which denominators are permitted, and why ---
   let denominators;
   let basis;
-  if (mandatory500) {
-    // Regulation, not preference: an explicit scale cannot override it.
-    denominators = [MANDATED_DENOMINATOR];
-    basis = declaredScale && declaredScale !== MANDATED_DENOMINATOR
-      ? `Reg 32(3) mandate (overrides the declared 1:${declaredScale})`
-      : 'Reg 32(3) mandate';
-  } else if (declaredScale) {
+  if (declaredScale) {
     // An explicit scale is a professional decision: honour it and let the
-    // SHEET escalate, rather than silently correcting the scale to fit.
+    // SHEET escalate rather than silently correcting the scale to fit.
     denominators = [declaredScale];
     basis = 'surveyor-declared scale';
   } else {
+    // Auto-fit. There is deliberately NO plan-type ceiling: the old Reg 32(3)
+    // developed-township mandate that forced 1:500 on small-stand townships
+    // was removed. Legibility is what bounds the COARSE end (a coarser figure
+    // would leave the narrowest stand unlabelled); the finest end is bounded
+    // by the figure fitting the sheet. planType is accepted for API stability
+    // but no longer constrains anything.
     denominators = SI727_SCALE_LADDER.filter((d) => d <= legibilityMax);
     basis = 'auto-fitted';
     if (denominators.length === 0) {
@@ -259,7 +244,7 @@ export function resolvePlanSheeting({
     reason: `${label(d)} on ${sheetSize} — ${basis}${note ? `; ${note}` : ''}`,
   });
 
-  // Non-tiling candidates: smaller sheet first, then larger figure (finer
+  // Single-sheet candidates: smaller sheet first, then larger figure (finer
   // denominator) within a sheet. Ordering decided with the surveyor:
   // avoid tiling > smaller sheet > larger figure.
   const fitting = [];
@@ -269,18 +254,17 @@ export function resolvePlanSheeting({
     }
   }
 
-  // Tiling fallbacks, appended last: the coarsest permitted denominator on each
-  // sheet, which is the least-bad multi-sheet cut.
-  const coarsest = denominators[denominators.length - 1];
-  const tiling = sheets
-    .filter((sheetSize) => !fitsOn(sheetSize, extentM, coarsest, titleBandMm, figureMaxFraction))
-    .map((sheetSize) => make(coarsest, sheetSize, true, 'figure exceeds the sheet — multi-sheet required'));
-
-  const candidates = [...fitting, ...tiling];
+  // Multi-sheet is retired for General Plans. If nothing fits even at the
+  // coarsest legible scale on the largest sheet, still return ONE best-effort
+  // single-sheet candidate (coarsest permitted denominator, largest sheet)
+  // instead of emitting a needsTiling fallback — renderers always get at
+  // least one answer and stay on a single sheet.
+  const candidates = fitting.length > 0
+    ? fitting
+    : [make(denominators[denominators.length - 1], sheets[sheets.length - 1], false, 'figure exceeds the largest sheet — best-effort single sheet')];
 
   return {
     candidates,
-    mandate: { mandatory500, thresholdM2: TOWNSHIP_MANDATE_THRESHOLD_M2 },
     legibilityMaxDenominator: legibilityMax,
   };
 }

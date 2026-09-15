@@ -67,9 +67,10 @@ export interface VectorGeoPDFRequest {
   // orientation and the DXF export forwards the PDF's chosen values verbatim.
   orientation?: 'landscape' | 'portrait'
   /**
-   * SI 727 plan type. 'general-developed' enforces the 1:500 maximum scale
-   * denominator per Reg 32(3). When multi-sheet tiling is required the backend
-   * returns X-Tile-Grid in the response headers.
+   * SI 727 plan type. The former 'general-developed' 1:500 ceiling (Reg 32(3))
+   * was removed, so planType no longer enforces a maximum scale denominator.
+   * Multi-sheet tiling is deferred: the backend only ever returns single-sheet
+   * plans and never sets a tile grid.
    */
   planType?: 'general-developed' | 'general-undeveloped' | 'diagram' | 'working-plan' | null
   // Legacy fields (still accepted for backward compatibility)

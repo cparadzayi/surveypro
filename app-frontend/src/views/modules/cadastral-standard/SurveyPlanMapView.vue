@@ -1581,7 +1581,7 @@ async function loadIntelligentPreview() {
       scale: parseScale(config.value.scale),
       sheetSize: config.value.sheetSize !== 'auto' ? config.value.sheetSize : undefined,
       areaType: config.value.areaType,
-      planType: config.value.planType as any  // SI 727 Reg 32(3): 'general-developed' → 1:500 ceiling
+      planType: config.value.planType as any  // no SI 727 scale ceiling — Reg 32(3) mandate removed
     })
     
     intelligentPreview.value = preview
@@ -1606,36 +1606,20 @@ async function loadIntelligentPreview() {
       console.warn('[SurveyPlanMap] ⚠️ No beacon labels in preview response!')
     }
     
-    // SI 727 Reg 32(3): Developed-township plans are capped at 1:500.
-    // Scale validation from the backend may have been computed at a different (larger) scale.
-    // When the plan type enforces the 1:500 ceiling, any "too narrow" warning at a larger
-    // scale is a false alarm — at 1:500, 13 m on paper = 26 mm, ample room for labels.
-    const si727CeilingApplies = ['general-developed', 'developed-township'].includes(config.value.planType)
-    const SI727_CEIL_DENOM = 500
-
+    // The old SI 727 Reg 32(3) developed-township 1:500 ceiling was removed
+    // server-side, so scale validation now happens at the actually-selected
+    // scale (auto-fitted or user-declared) and any warning is real — no
+    // ceiling-based suppression applies.
     if (preview.scaleValidation) {
       if (!preview.scaleValidation.isValid) {
-        const checkedAt = preview.scaleValidation.currentScale ?? preview.scale?.denominator
-        if (si727CeilingApplies && checkedAt > SI727_CEIL_DENOM) {
-          // Warning is for a scale larger than what will actually be used — suppress it
-          console.log(
-            `[SurveyPlanMap] ℹ️ Scale validation flagged 1:${checkedAt} ` +
-            `(narrowest parcel: ${preview.scaleValidation.narrowestParcel}, ` +
-            `${preview.scaleValidation.narrowestWidth}m wide) — ` +
-            `suppressed: SI 727 Reg 32(3) forces 1:${SI727_CEIL_DENOM}, ` +
-            `where ${preview.scaleValidation.narrowestWidth}m = ` +
-            `${((preview.scaleValidation.narrowestWidth / SI727_CEIL_DENOM) * 1000).toFixed(0)}mm on paper (sufficient).`
-          )
-        } else {
-          console.error('[SurveyPlanMap] ❌ Scale validation failed:', {
-            currentScale: preview.scaleValidation.currentScale,
-            recommendedScale: preview.scaleValidation.recommendedScale,
-            narrowestParcel: preview.scaleValidation.narrowestParcel,
-            narrowestWidth: preview.scaleValidation.narrowestWidth,
-            reason: preview.scaleValidation.reason
-          })
-          console.warn(`⚠️ SCALE WARNING: ${preview.scaleValidation.reason} Consider using 1:${preview.scaleValidation.recommendedScale} instead.`)
-        }
+        console.error('[SurveyPlanMap] ❌ Scale validation failed:', {
+          currentScale: preview.scaleValidation.currentScale,
+          recommendedScale: preview.scaleValidation.recommendedScale,
+          narrowestParcel: preview.scaleValidation.narrowestParcel,
+          narrowestWidth: preview.scaleValidation.narrowestWidth,
+          reason: preview.scaleValidation.reason
+        })
+        console.warn(`⚠️ SCALE WARNING: ${preview.scaleValidation.reason} Consider using 1:${preview.scaleValidation.recommendedScale} instead.`)
       } else {
         console.log('[SurveyPlanMap] ✅ Scale validation passed:', {
           narrowestParcel: preview.scaleValidation.narrowestParcel,
@@ -6161,8 +6145,19 @@ const outsideFigureData = computed(() => {
 /**
  * Recomputes the active tile grid whenever the outside figure data or
  * plan configuration changes — so the user sees sheet count BEFORE export.
+ *
+ * MULTI-SHEET IS DEFERRED: the Reg 32(3) area-majority mandate was removed
+ * server-side, so General Plans are single-sheet by construction and the tile
+ * grid stays DISABLED (activeTileGrid is never populated). The machinery below
+ * is kept dormant for a future re-introduction.
  */
 function recomputeTileGrid() {
+  // Deferred: never populate the tile grid until multi-sheet plans return.
+  if (true) {
+    activeTileGrid.value = null
+    return
+  }
+
   const ofd = outsideFigureData.value
   if (!ofd || !ofd.edges || ofd.edges.length === 0) {
     activeTileGrid.value = null

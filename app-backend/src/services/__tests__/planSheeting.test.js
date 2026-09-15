@@ -17,19 +17,28 @@ function stands(count, areaM2) {
   };
 }
 
-describe('resolvePlanSheeting — Reg 32(3) mandate', () => {
-  test('pins every candidate to 1:500 when the majority of stands are ≤200 m²', () => {
+describe('resolvePlanSheeting — Reg 32(3) mandate removed', () => {
+  test('the mandate no longer exists: small-stand townships are not pinned to 1:500', () => {
     const result = resolvePlanSheeting({
       extentM: { widthM: 300, heightM: 200 },
       parcels: stands(40, 150),
       planType: 'general-developed',
     });
 
-    expect(result.mandate.mandatory500).toBe(true);
+    expect(result).not.toHaveProperty('mandate');
     expect(result.candidates.length).toBeGreaterThan(0);
-    for (const c of result.candidates) {
-      expect(c.scaleDenominator).toBe(500);
-    }
+    // Auto-fit respects legibility; it is not forced onto any single denominator.
+    expect(result.candidates.every((c) => c.scaleDenominator === 500)).toBe(false);
+  });
+
+  test('never emits a multi-sheet (needsTiling) candidate — single-sheet only', () => {
+    const result = resolvePlanSheeting({
+      extentM: { widthM: 50000, heightM: 40000 },
+      parcels: stands(10, 875),
+      planType: 'general-undeveloped',
+    });
+    expect(result.candidates.length).toBeGreaterThan(0);
+    expect(result.candidates.every((c) => c.needsTiling === false)).toBe(true);
   });
 });
 
@@ -41,10 +50,6 @@ describe('resolvePlanSheeting — automatic selection', () => {
     parcels: stands(240, 875),
     planType: 'general-undeveloped',
   };
-
-  test('the mandate does not apply to a township of large stands', () => {
-    expect(resolvePlanSheeting(MAGLAS).mandate.mandatory500).toBe(false);
-  });
 
   test('the best candidate fills at least half its drawing area (Maglas regression)', () => {
     const best = resolvePlanSheeting(MAGLAS).candidates[0];
@@ -64,9 +69,9 @@ describe('resolvePlanSheeting — automatic selection', () => {
     }
   });
 
-  test('orders every non-tiling candidate ahead of every tiling one', () => {
+  test('never emits any tiling candidate for general plans', () => {
     const tilingFlags = resolvePlanSheeting(MAGLAS).candidates.map(c => c.needsTiling);
-    expect(tilingFlags).toEqual([...tilingFlags].sort((a, b) => Number(a) - Number(b)));
+    expect(tilingFlags.every((f) => f === false)).toBe(true);
   });
 
   test('prefers the smaller sheet, then the larger figure within that sheet', () => {
@@ -136,16 +141,15 @@ describe('resolvePlanSheeting — surveyor overrides', () => {
     expect(best.sheetSize).toBe('SI727_1000x800');
   });
 
-  test('the Reg 32(3) mandate overrides a conflicting declared scale', () => {
+  test('a declared scale on a small-stand township is honoured (no mandate override)', () => {
     const r = resolvePlanSheeting({
       extentM: { widthM: 200, heightM: 150 },
       parcels: stands(40, 150),
       planType: 'general-developed',
       declaredScale: 2000,
     });
-    expect(r.mandate.mandatory500).toBe(true);
-    for (const c of r.candidates) expect(c.scaleDenominator).toBe(500);
-    expect(r.candidates[0].reason).toMatch(/mandate/i);
+    expect(r).not.toHaveProperty('mandate');
+    for (const c of r.candidates) expect(c.scaleDenominator).toBe(2000);
   });
 
   test('a declared sheet starts the ladder there but may still climb', () => {
@@ -209,23 +213,15 @@ describe('resolvePlanSheeting — block-room ceiling', () => {
 });
 
 describe('resolvePlanSheeting — edge cases', () => {
-  test('the mandate never applies to a working plan', () => {
-    const r = resolvePlanSheeting({
-      extentM: { widthM: 200, heightM: 150 },
-      parcels: stands(40, 150),
-      planType: 'working-plan',
-    });
-    expect(r.mandate.mandatory500).toBe(false);
-  });
-
-  test('an extent too large for any sheet still yields tiling candidates', () => {
+  test('an extent too large for any sheet yields a best-effort single-sheet candidate (no tiling)', () => {
     const r = resolvePlanSheeting({
       extentM: { widthM: 50000, heightM: 40000 },
       parcels: stands(10, 875),
       planType: 'general-undeveloped',
     });
     expect(r.candidates.length).toBeGreaterThan(0);
-    expect(r.candidates.every(c => c.needsTiling)).toBe(true);
+    expect(r.candidates.every(c => c.needsTiling === false)).toBe(true);
+    expect(r.candidates[0].reason).toMatch(/best-effort single sheet/i);
   });
 
   test('parcels without usable geometry impose no legibility ceiling', () => {

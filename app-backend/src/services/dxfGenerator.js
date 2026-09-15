@@ -33,7 +33,6 @@ import {
   classifyBeaconGroups,
   snapScaleBarSegment,
   resolveLoSystem,
-  resolveTownshipScaleMandate,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { SI727_GENERAL_PLAN_SHEET_SIZES } from '../../../app-shared/si727SheetSizes.js';
@@ -76,7 +75,7 @@ import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon, lineSegmentsIntersect } from './dxfGeometry.js'
 import { selectTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-shared/tickMarks.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
-import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2 } from '../utils/si727Constants.js'
+import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER } from '../utils/si727Constants.js'
 import { resolvePlanSheeting, blockRoomFraction } from '../../../app-shared/planSheeting.js'
 import { SI727_SCALE_LADDER } from '../../../app-shared/si727Scales.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
@@ -668,29 +667,19 @@ export function generateDXF(options, logger) {
   const _pick = _sheeting.candidates.find((c) => c.sheetSize === normalizedSheetSize)
              ?? _sheeting.candidates[0]
              ?? null;
-  // SI 727 Reg 32(3) scale precedence (fallback when no PDF scale is handed off):
+  // SI 727 scale precedence (fallback when no PDF scale is handed off):
   //   1. declaredS — a supplied scale (PDF handoff) honored verbatim → parity.
-  //   2. Township general plan mandated at EXACTLY 1:500 when the majority of
-  //      its stands are <=200m2 (Surveyor-General relaxation — mandatory500,
-  //      resolveTownshipScaleMandate, app-shared/block-definitions.js). This
-  //      no longer depends on planType alone: a 'general-undeveloped' plan
-  //      with mostly small stands is now also mandated, and a
-  //      'general-developed' plan with mostly large stands is no longer
-  //      forced to 1:500 (tiles if the figure is too big to fit at 1:500).
-  //   3. Otherwise — auto-maximize to the largest SI 727 scale that fits.
-  const _applyScaleMandate = planType === 'general-developed' || planType === 'general-undeveloped';
-  const { mandatory500 } = resolveTownshipScaleMandate(parcels, TOWNSHIP_SCALE_MANDATE_THRESHOLD_M2);
-  // The resolver already encodes all three rules (declared → mandate → auto-fit)
-  // and is shared with the PDF, so it is the authority. It also guarantees at
-  // least one candidate — including tiling fallbacks for degenerate, zero-extent
-  // input, which its own unit tests pin — so `_pick` is always set in practice.
+  //   2. Otherwise — the shared resolver's pick (auto-fit to the largest SI 727
+  //      scale that fits the sheet, bounded by legibility). The old Reg 32(3)
+  //      area-majority mandate that forced 1:500 on small-stand townships was
+  //      removed; the resolver is the single authority here.
   //
-  // The declared → mandate → _figFit chain that used to stand here was therefore
-  // unreachable. One defensive branch is kept in case that guarantee ever
-  // changes; _figFit itself survives only for the diagnostic log line below.
+  // The declared → mandate → _figFit chain that used to stand here was
+  // therefore unreachable. One defensive branch is kept in case that guarantee
+  // ever changes; _figFit itself survives only for the diagnostic log line below.
   const S = _pick
     ? _pick.scaleDenominator
-    : (declaredS || ((_applyScaleMandate && mandatory500) ? 500 : _figFit.S));
+    : (declaredS || _figFit.S);
   const { minScaleToFit, fitScale } = _figFit;
 
   logger.info(`[DXF] Drawing extent: ${drawW.toFixed(1)}m x ${drawH.toFixed(1)}m`);

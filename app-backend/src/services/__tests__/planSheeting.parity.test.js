@@ -122,7 +122,7 @@ describe('DXF consumes the shared resolver', () => {
       //   2. the resulting fill stays inside the guard band — the substantive
       //      half. Pinning the scale satisfied (1) while stranding Maglas at
       //      0.26 fill on the largest sheet, which is the bug being fixed.
-      const { candidates, mandate } = resolvePlanSheeting({
+      const { candidates } = resolvePlanSheeting({
         extentM: dxfExtentM(fixture),
         parcels: fixture.parcels,
         planType: 'general-undeveloped',
@@ -140,9 +140,7 @@ describe('DXF consumes the shared resolver', () => {
 
       const fill = await fillOf(fixture, dxf);
       expect(fill).toBeLessThanOrEqual(0.75);
-      // Reg 32(3) fixes a mandated township at exactly 1:500 whatever that does
-      // to the fill, so the floor is only meaningful on the auto-fitted path.
-      if (!mandate.mandatory500) expect(fill).toBeGreaterThan(0.4);
+      expect(fill).toBeGreaterThan(0.4);
     }, 120000);
   }
 

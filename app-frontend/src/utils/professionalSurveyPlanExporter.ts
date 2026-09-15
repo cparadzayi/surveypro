@@ -526,11 +526,16 @@ function nextStandardScaleDenominator(minDenominator: number, maxDenominator?: n
 }
 
 /**
- * SI 727 Reg 32(3): maximum (largest) denominator allowed per plan type.
- * "shall not be SMALLER than 1:500" → denominator must be ≤ 500.
+ * Maximum (largest) denominator allowed per plan type.
+ *
+ * The old SI 727 Reg 32(3) rule that capped general-developed plans at 1:500
+ * (an area-majority mandate that was removed server-side) now applies to NO
+ * plan type: the app auto-selects the scale that fits the sheet and keeps the
+ * narrowest stand legible, and multi-sheet tiling is deferred. Keeping the
+ * table with Infinity means no automatic ceiling is ever applied.
  */
 export const SI727_MAX_DENOMINATOR: Record<string, number> = {
-  'general-developed': 500,
+  'general-developed': Infinity,
   'general-undeveloped': Infinity,
   'diagram': Infinity,
   'working-plan': Infinity,
@@ -555,13 +560,14 @@ export interface OptimalScaleOptions {
   labelMode?: 'standard' | 'compact' | 'minimal';
   allowInsets?: boolean;
   /**
-   * SI 727 plan type — drives the maximum permitted scale denominator.
-   * 'general-developed' → max 1:500 (Reg 32(3)).
+   * SI 727 plan type — was the driver of the maximum permitted scale
+   * denominator. The Reg 32(3) developed-township 1:500 ceiling was removed,
+   * so no plan type imposes a ceiling (see SI727_MAX_DENOMINATOR).
    */
   planType?: 'general-developed' | 'general-undeveloped' | 'diagram' | 'working-plan';
   /**
    * Hard ceiling on the scale denominator (overrides planType if provided).
-   * Use 500 for developed townships per SI 727 Reg 32(3).
+   * Optional — only supplied when the user explicitly pins a maximum scale.
    */
   maxScaleDenominator?: number;
   /**

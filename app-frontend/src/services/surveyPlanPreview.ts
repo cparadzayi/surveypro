@@ -135,7 +135,7 @@ export async function getSurveyPlanPreview(
     scale?: number
     sheetSize?: string
     areaType?: 'urban' | 'peri-urban' | 'rural'
-    /** SI 727 Reg 32(3): 'general-developed' enforces 1:500 maximum scale denominator */
+    /** SI 727 plan type (no longer imposes a scale ceiling — the Reg 32(3) mandate was removed) */
     planType?: 'general-developed' | 'general-undeveloped' | 'diagram' | 'working-plan'
   }
 ): Promise<PreviewData> {

@@ -85,13 +85,15 @@ export function buildPlanPayload(ctx: PlanPayloadContext): VectorGeoPDFRequest {
     beaconGroups: ctx.beaconGroups,
     beaconLabels,
     planType: ctx.planType,
-    // Survey plans are real ISO 32000-2 GeoPDFs by default: the flags reach the
-    // renderer end-to-end (route → pdfkitGeoPDF.js) and open the georeferenced
-    // viewport + interactive layers in the PDF.
-    trueGeoPDF: ctx.trueGeoPDF ?? true,
-    interactive: ctx.interactive ?? true,
-    enableLayers: ctx.enableLayers ?? true,
-    enableMeasurements: ctx.enableMeasurements ?? true,
+    // True GeoPDF flags travel end-to-end (route → pdfkitGeoPDF.js), but they
+    // default to OFF: the current ISO 32000-2 implementation (trueGeoPDF.js) is
+    // built on a pdfkit API that doesn't exist in pdfkit 0.17.2 and hangs the
+    // renderer when enabled. Flip ctx.trueGeoPDF to true only once the viewport
+    // embedding is reimplemented against pdfkit's real API.
+    trueGeoPDF: ctx.trueGeoPDF ?? false,
+    interactive: ctx.interactive ?? false,
+    enableLayers: ctx.enableLayers ?? false,
+    enableMeasurements: ctx.enableMeasurements ?? false,
   }
 }
 

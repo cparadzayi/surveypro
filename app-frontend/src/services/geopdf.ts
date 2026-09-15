@@ -77,10 +77,11 @@ export interface VectorGeoPDFRequest {
   outsideFigureData?: any
   beaconLabels?: any[]
   /**
-   * True GeoPDF (ISO 32000-2) capabilities. When true the PDFKit renderer embeds
-   * a georeferencing viewport, interactive feature layers, and measurement/layer
-   * tooling in the PDF itself. These travel end-to-end: frontend → /geopdf/vector
-   * → pdfkitGeoPDF.js.
+   * True GeoPDF (ISO 32000-2) capabilities. The flags travel end-to-end
+   * (frontend → /geopdf/vector → pdfkitGeoPDF.js), but they are currently
+   * inert: the ISO 32000-2 implementation in trueGeoPDF.js is built on a
+   * pdfkit API that doesn't exist in pdfkit 0.17.2 and hangs the renderer
+   * when enabled. Do not enable until the viewport embedding is reimplemented.
    */
   trueGeoPDF?: boolean
   interactive?: boolean

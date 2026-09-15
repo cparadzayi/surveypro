@@ -9,7 +9,7 @@ import LandParcel from '../models/landParcel.js'
 import { computeAreaConsistency } from '../utils/area-computation.js'
 import { authenticateWithSchema } from '../utils/schemaAuth.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
-import { prjForDxf } from '../utils/crsDefinitions.js'
+import { prjForDxf, getCRSByEPSG } from '../utils/crsDefinitions.js'
 import { zipSync } from 'fflate'
 
 const execAsync = promisify(exec)
@@ -19,16 +19,89 @@ const __dirname = path.dirname(__filename)
 let cachedOGR2OGRPath = null
 
 /**
- * Bundle a DXF with a .prj (ESRI/OGC WKT) CRS sidecar into a single ZIP.
- * The .prj is derived from the projection that generated the DXF, so the
- * absolute Cape Lo ground coordinates become georeferenced on import.
+ * Build the source CRS (proj4) that matches the DXF's stored ground geometry.
+ *
+ * capeLoToDxfSouthUp emits DXF (x, y) = (−westing, −southing) — i.e. raw
+ * easting/northing in a plain north-up Transverse Mercator. EPSG:22291 et al.
+ * however are South-Orientated TMs whose native tuple is (westing, southing);
+ * reading the raw (−50,000, −2,200,000) pair directly as EPSG:22291 lands
+ * ~2,200 km NORTH of the equator. Feeding the DXF through THIS custom north-up
+ * CRS first makes PROJ negate the axes into (westing, southing), which maps
+ * back onto true Zimbabwe ground.
  */
-function zipDxfWithPrj(dxfBuffer, projection, baseName) {
-  const prj = Buffer.from(prjForDxf(projection) || '', 'utf8')
-  return Buffer.from(zipSync({
+function buildNorthUpSourceProj4(projection) {
+  const key = String(projection || '').startsWith('EPSG:')
+    ? String(projection)
+    : `EPSG:${projection}`
+  const cm = getCRSByEPSG(key)?.centralMeridian ?? 31
+  return `+proj=tmerc +lat_0=0 +lon_0=${cm} +k=1 +x_0=0 +y_0=0 +ellps=clrk80 +towgs84=-134.73,-110.92,-292.66,0,0,0,0 +units=m +no_defs`
+}
+
+/**
+ * Convert a DXF's ground geometry into a QGIS-native GeoPackage (.gpkg) whose
+ * CRS is declared inside the file. Unlike .prj sidecars — which the GDAL DXF
+ * driver ignores ("DXF files are considered to have no georeferencing
+ * information") — a GeoPackage is self-describing, so QGIS auto-places it in
+ * the right hemisphere with zero manual steps.
+ *
+ * Returns the .gpkg buffer, or null when ogr2ogr is unavailable or the
+ * conversion fails (callers fall back to DXF + .prj only).
+ */
+async function dxfToGeoreferencedGpkg(dxfBuffer, projection, logger) {
+  const ogrCmd = await getOGR2OGRCommand()
+  if (!ogrCmd || !dxfBuffer || dxfBuffer.length === 0) return null
+
+  const tempDir = path.join(__dirname, '../../temp/dxf')
+  if (!existsSync(tempDir)) await mkdir(tempDir, { recursive: true })
+
+  const ts = Date.now()
+  const srcDxf = path.join(tempDir, `gpkg-src-${ts}.dxf`)
+  const outGpkg = path.join(tempDir, `gpkg-out-${ts}.gpkg`)
+
+  // Use QGIS's own PROJ database — the system PATH may resolve a PostGIS
+  // proj.db with an incompatible DATABASE.LAYOUT.VERSION (breaks SRS parsing).
+  const env = { ...process.env }
+  const qgisOgrPath = ogrCmd.includes('QGIS')
+    ? (ogrCmd.match(/"([^"]+)"/)?.[1] || ogrCmd.replaceAll('"', ''))
+    : null
+  const projLib = qgisOgrPath
+    ? path.join(path.dirname(qgisOgrPath), '..', 'share', 'proj')
+    : null
+  if (projLib && existsSync(projLib)) {
+    env.PROJ_LIB = projLib
+    env.PROJ_DATA = projLib
+  }
+
+  try {
+    await writeFile(srcDxf, dxfBuffer)
+    const cmd = `${ogrCmd} -f GPKG "${outGpkg}" "${srcDxf}" -s_srs "${buildNorthUpSourceProj4(projection)}" -t_srs ${projection || 'EPSG:22291'}`
+    const { stderr } = await execAsync(cmd, { shell: true, maxBuffer: 10 * 1024 * 1024, env })
+    if (stderr && !stderr.includes('Warning')) logger?.warn?.(`[DXF] ogr2ogr gpkg stderr: ${stderr.substring(0, 1000)}`)
+    if (!existsSync(outGpkg)) return null
+    const gpkg = await readFile(outGpkg)
+    logger?.info?.(`[DXF] ✅ georeferenced GeoPackage created (${gpkg.length} bytes)`)
+    return gpkg
+  } catch (err) {
+    logger?.warn?.(`[DXF] ⚠️ GeoPackage conversion skipped: ${err?.message}`)
+    return null
+  } finally {
+    await Promise.all([unlink(srcDxf).catch(() => {}), unlink(outGpkg).catch(() => {})])
+  }
+}
+
+/**
+ * Bundle a DXF with a .prj (ESRI/OGC WKT) CRS sidecar into a single ZIP, and —
+ * when ogr2ogr is available — also include a self-georeferencing .gpkg that
+ * QGIS places on true Zimbabwe ground without any manual CRS step.
+ */
+async function zipDxfWithPrj(dxfBuffer, projection, baseName, logger) {
+  const entries = {
     [`${baseName}.dxf`]: new Uint8Array(dxfBuffer),
-    [`${baseName}.prj`]: new Uint8Array(prj),
-  }, { level: 9 }))
+    [`${baseName}.prj`]: new Uint8Array(Buffer.from(prjForDxf(projection) || '', 'utf8')),
+  }
+  const gpkg = await dxfToGeoreferencedGpkg(dxfBuffer, projection, logger)
+  if (gpkg) entries[`${baseName}.gpkg`] = new Uint8Array(gpkg)
+  return Buffer.from(zipSync(entries, { level: 9 }))
 }
 
 async function findOGR2OGR() {
@@ -207,7 +280,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         const ts = Date.now()
         let dxfPayload = diagram.dxfBuffer
         if (zip) {
-          dxfPayload = zipDxfWithPrj(diagram.dxfBuffer, projection, `diagram-${ts}`)
+          dxfPayload = await zipDxfWithPrj(diagram.dxfBuffer, projection, `diagram-${ts}`, fastify.log)
         }
         reply
           .type(zip ? 'application/zip' : 'application/dxf')
@@ -229,7 +302,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
 
       const ts = Date.now()
       if (zip) {
-        const dxfPayload = zipDxfWithPrj(buffer, projection, `survey-plan-${ts}`)
+        const dxfPayload = await zipDxfWithPrj(buffer, projection, `survey-plan-${ts}`, fastify.log)
         reply
           .type('application/zip')
           .header('Content-Disposition', `attachment; filename="survey-plan-${ts}.zip"`)

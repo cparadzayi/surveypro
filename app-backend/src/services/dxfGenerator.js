@@ -2625,6 +2625,10 @@ export function generateDXF(options, logger) {
   dxf += p(2, 'HEADER');
   dxf += p(9, '$ACADVER');
   dxf += p(1, 'AC1009');
+  dxf += p(9, '$INSUNITS');
+  dxf += p(70, '6');
+  dxf += p(9, '$MEASUREMENT');
+  dxf += p(70, '1');
   dxf += p(9, '$EXTMIN');
   dxf += p(10, eMin.x.toFixed(4));
   dxf += p(20, eMin.y.toFixed(4));

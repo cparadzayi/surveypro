@@ -4460,6 +4460,9 @@ async function generatePlanDocuments() {
     const payload = buildPlanPayload(ctx)
     const docs: PlanDocumentSet = {}
     let usedScale: string | undefined
+    // Survey-plan DXF exports are now georeferenced ZIPs (DXF + .prj sidecar);
+    // the Working Plan's DXF stays a single .dxf from its own A4 renderer.
+    let dxfExt: 'zip' | 'dxf' = 'dxf'
 
     if (exportFormats.pdf) {
       let result = await generateVectorGeoPDF(payload)
@@ -4516,6 +4519,7 @@ async function generatePlanDocuments() {
       // is involved.
       const { blob, scale } = await generateWorkingPlanDXF(workingPlanSpec)
       docs.dxf = blob
+      dxfExt = 'dxf'
       if (scale) console.log(`[PlanDocs] Working plan drawn at 1:${scale}`)
       if (workingPlanSkipped.length) {
         console.warn('[PlanDocs] Working plan omitted parcels with no named ring:', workingPlanSkipped.join(', '))
@@ -4524,6 +4528,7 @@ async function generatePlanDocuments() {
       const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: payload.sheetSize || 'SI727_500x400' }
       const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload)
       docs.dxf = blob
+      dxfExt = 'zip'
       if (warningCount > 0 && warningsSummary) {
         const parts: string[] = []
         if (warningsSummary.beacons) parts.push(`${warningsSummary.beacons} beacon(s) skipped`)
@@ -4561,7 +4566,7 @@ async function generatePlanDocuments() {
     for (const kind of ['pdf', 'dxf', 'summary'] as const) {
       const blob = (docs as PlanDocumentSet)[kind]
       if (!(blob instanceof Blob)) continue
-      const ext = kind === 'dxf' ? 'dxf' : 'pdf'
+      const ext = kind === 'dxf' ? dxfExt : 'pdf'
       const suffix = kind === 'summary' ? '-summary' : ''
       const fileName = `${baseName}${suffix}.${ext}`
       const res = await saveWithOverwritePrompt({ workingDirectory, subdir, fileName, blob }, confirmOverwrite)

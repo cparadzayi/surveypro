@@ -113,6 +113,17 @@ describe('generateDXF return shape', () => {
     expect(dxf).toMatch(/\bSECTION\b[\s\S]*?\bHEADER\b/)
     expect(dxf).toMatch(/\bEOF\b\s*$/)
   })
+
+  test('header declares ground units in metres ($INSUNITS 6, $MEASUREMENT 1)', () => {
+    const { buffer } = generateDXF(minimalOptions, fakeLogger)
+    const dxf = buffer.toString()
+    // AutoCAD units code 6 = metres, measurement 1 = metric (SI 727 plans are
+    // drawn in absolute Cape Lo ground metres, so the DXF must open in metres).
+    expect(dxf).toContain('$INSUNITS')
+    expect(dxf).toContain('\n 70\n6\n')
+    expect(dxf).toContain('$MEASUREMENT')
+    expect(dxf).toContain('\n 70\n1\n')
+  })
 })
 
 describe('generateDXF — layers + UCS table additions', () => {

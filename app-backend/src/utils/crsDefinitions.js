@@ -78,6 +78,19 @@ export function getCRSByEPSG(epsgCode) {
 }
 
 /**
+ * Resolve the WRITE-side .prj (ESRI/OGC WKT) content for a projection identifier
+ * such as 'EPSG:22291'. Falls back to Cape Lo 31 when the identifier is
+ * unrecognised, so a georeferenced DXF never ships without a CRS sidecar.
+ */
+export function prjForProjection(projection) {
+  const key = String(projection || '').startsWith('EPSG:')
+    ? String(projection)
+    : `EPSG:${projection}`;
+  const crs = getCRSByEPSG(key) || ZIMBABWE_CRS['EPSG:22291'];
+  return crs ? `${crs.wkt}\n` : null;
+}
+
+/**
  * Get all available CRS for Zimbabwe
  */
 export function getZimbabweCRS() {

@@ -214,6 +214,8 @@ export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promis
  * Generate DXF (AutoCAD) file from the same GeoJSON data used for GeoPDF.
  * Returns { blob, warningCount, warningsSummary } — warningCount > 0 means
  * the backend skipped or truncated some data (see x-dxf-warnings header).
+ * The blob is a ZIP containing both `{name}.dxf` and a `.prj` sidecar
+ * encoding the CRS, so QGIS can place the plan at the correct coordinates.
  */
 export async function generateDXF(request: VectorGeoPDFRequest): Promise<{
   blob: Blob
@@ -238,6 +240,10 @@ export async function generateDXF(request: VectorGeoPDFRequest): Promise<{
     // to display suffix-only labels inside their parcels (e.g. "A" instead of
     // "2475A") — matches the PDF's behavior at pdfkitGeoPDF.js:4654-4733.
     beaconLabels: request.beaconLabels,
+    // Request the backend to wrap the DXF + .prj sidecar into a single ZIP
+    // so QGIS/GIS tools can place the plan at the correct georeferenced
+    // position without requiring manual CRS assignment.
+    zip: true,
   }, {
     responseType: 'blob',
     // 5-minute timeout matches the PDF vector route. Dense plans (200+ parcels

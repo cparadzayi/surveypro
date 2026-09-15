@@ -1,5 +1,6 @@
 import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 import Fastify from 'fastify'
+import { unzipSync } from 'fflate'
 
 // Mock BOTH generators so the route test never touches real geometry/DB logic —
 // it only proves the planType branch calls the right one and returns its buffer.
@@ -47,5 +48,65 @@ describe('/api/geopdf/dxf planType branch', () => {
     expect(mockGenerateDiagramDXF).not.toHaveBeenCalled()
     expect(res.statusCode).toBe(200)
     expect(res.rawPayload.toString()).toBe('GENERAL-PLAN-DXF')
+  })
+})
+
+describe('/api/geopdf/dxf georeferenced ZIP bundle', () => {
+  beforeEach(() => {
+    mockGenerateDiagramDXF.mockClear()
+    mockGenerateDXF.mockClear()
+  })
+
+  test('zip:true wraps the survey-plan DXF with a .prj sidecar for the projection CRS', async () => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dxf',
+      payload: { ...basePayload, planType: 'general-undeveloped', projection: 'EPSG:22291', zip: true },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('application/zip')
+    const files = unzipSync(new Uint8Array(res.rawPayload))
+    const names = Object.keys(files)
+    expect(names).toHaveLength(2)
+    const dxfName = names.find((n) => n.endsWith('.dxf'))
+    const prjName = names.find((n) => n.endsWith('.prj'))
+    expect(dxfName).toMatch(/^survey-plan-.*\.dxf$/)
+    expect(prjName).toBe(dxfName.replace(/\.dxf$/, '.prj'))
+    expect(Buffer.from(files[dxfName]).toString()).toBe('GENERAL-PLAN-DXF')
+    const prj = Buffer.from(files[prjName]).toString()
+    expect(prj).toContain('PROJCS')
+    expect(prj).toContain('Cape_Lo_31')
+    expect(prj).toContain('central_meridian', 31)
+  })
+
+  test('zip:true with planType diagram bundles the diagram DXF and its .prj', async () => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dxf',
+      payload: { ...basePayload, planType: 'diagram', projection: 'EPSG:22293', zip: true },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('application/zip')
+    const files = unzipSync(new Uint8Array(res.rawPayload))
+    const names = Object.keys(files)
+    const dxfName = names.find((n) => n.endsWith('.dxf'))
+    const prjName = names.find((n) => n.endsWith('.prj'))
+    expect(dxfName).toMatch(/^diagram-.*\.dxf$/)
+    expect(Buffer.from(files[dxfName]).toString()).toBe('DIAGRAM-DXF')
+    expect(Buffer.from(files[prjName]).toString()).toContain('Cape_Lo_29')
+  })
+
+  test('unrecognised projection falls back to Cape Lo 31 in the .prj sidecar', async () => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dxf',
+      payload: { ...basePayload, planType: 'general-undeveloped', projection: 'EPSG:99999', zip: true },
+    })
+    const files = unzipSync(new Uint8Array(res.rawPayload))
+    const prj = Buffer.from(files[Object.keys(files).find((n) => n.endsWith('.prj'))]).toString()
+    expect(prj).toContain('Cape_Lo_31')
   })
 })

@@ -9,12 +9,27 @@ import LandParcel from '../models/landParcel.js'
 import { computeAreaConsistency } from '../utils/area-computation.js'
 import { authenticateWithSchema } from '../utils/schemaAuth.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
+import { prjForProjection } from '../utils/crsDefinitions.js'
+import { zipSync } from 'fflate'
 
 const execAsync = promisify(exec)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 let cachedOGR2OGRPath = null
+
+/**
+ * Bundle a DXF with a .prj (ESRI/OGC WKT) CRS sidecar into a single ZIP.
+ * The .prj is derived from the projection that generated the DXF, so the
+ * absolute Cape Lo ground coordinates become georeferenced on import.
+ */
+function zipDxfWithPrj(dxfBuffer, projection, baseName) {
+  const prj = Buffer.from(prjForProjection(projection) || '', 'utf8')
+  return Buffer.from(zipSync({
+    [`${baseName}.dxf`]: new Uint8Array(dxfBuffer),
+    [`${baseName}.prj`]: new Uint8Array(prj),
+  }, { level: 9 }))
+}
 
 async function findOGR2OGR() {
   const commonPaths = [
@@ -173,6 +188,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         orientation,
         planType,
         beaconLabels,
+        zip = false,
       } = request.body
 
       if (!parcels || !beacons) {
@@ -189,14 +205,18 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           fastify.log
         )
         const ts = Date.now()
+        let dxfPayload = diagram.dxfBuffer
+        if (zip) {
+          dxfPayload = zipDxfWithPrj(diagram.dxfBuffer, projection, `diagram-${ts}`)
+        }
         reply
-          .type('application/dxf')
+          .type(zip ? 'application/zip' : 'application/dxf')
           .headers({
-            'Content-Disposition': `attachment; filename="diagram-${ts}.dxf"`,
+            'Content-Disposition': `attachment; filename="${zip ? `diagram-${ts}.zip` : `diagram-${ts}.dxf`}"`,
             'X-Used-Scale': diagram.scale,
             'X-Used-Sheet-Size': diagram.sheetSize,
           })
-          .send(diagram.dxfBuffer)
+          .send(dxfPayload)
         return
       }
 
@@ -207,7 +227,21 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         fastify.log
       )
 
-      const filename = `survey-plan-${Date.now()}.dxf`
+      const ts = Date.now()
+      if (zip) {
+        const dxfPayload = zipDxfWithPrj(buffer, projection, `survey-plan-${ts}`)
+        reply
+          .type('application/zip')
+          .header('Content-Disposition', `attachment; filename="survey-plan-${ts}.zip"`)
+          .header('X-DXF-Warning-Count', String(warnings.count))
+        if (warnings.count > 0) {
+          reply.header('X-DXF-Warnings', JSON.stringify(warnings.summary))
+        }
+        reply.send(dxfPayload)
+        return
+      }
+
+      const filename = `survey-plan-${ts}.dxf`
       reply
         .type('application/dxf')
         .header('Content-Disposition', `attachment; filename="${filename}"`)

@@ -68,6 +68,23 @@ describe('PDF ↔ DXF sheeting parity — end to end', () => {
     expect(pdf.scale).toBe('1:750');
   }, 180000);
 
+  test('a declared scale is honoured even when its blocks do not fit (never stepped up)', async () => {
+    // Regression: a declared 1:750 whose Schedule of Areas cannot fit even on
+    // the largest sheet was silently stepped up to 1:1000 by the PDF's block
+    // scale-retry (pdfkitGeoPDF.js SCALE STEP-UP), while the DXF honoured it —
+    // the exact PDF↔DXF divergence this suite exists to catch. Maglas's 240-row
+    // schedule makes the latent branch fire; the resolver lands on the largest
+    // sheet at attempt 0, which is when the step-up used to trigger.
+    const { scale: _s, sheetSize: _ss, ...rest } = sampleMaglasPlan;
+    const pdf = await generateGeoPDF(
+      { ...rest, planType: 'general-undeveloped', scale: '1:750' },
+      quiet,
+    );
+
+    expect(pdf.scale).toBe('1:750');
+    expect(pdf.warnings.scheduleEscalationExhausted).toBeDefined();
+  }, 600000);
+
   test('PDF and DXF draw the same figure at the same size', async () => {
     const options = autoOptions(sampleRealisticPlan, 'general-undeveloped');
 

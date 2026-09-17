@@ -9926,6 +9926,17 @@ async function _generateGeoPDFInner(options, logger) {
   // 3-v7: structured warnings collection, mirroring DXF's warnings.summary shape.
   const warnings = {};
 
+  // Whether the scale was DECLARED by the surveyor (a real '1:NNN' string),
+  // rather than auto-resolved. Detected exactly as the shared resolver does
+  // (resolvePlanSheeting's declaredScale via `String(scale).match(...)`), so a
+  // legacy { value, label } fixture object and an absent scale both keep the
+  // auto path. A declared scale is NEVER stepped: the sheet escalates instead,
+  // and at the largest sheet the renderer accepts residual overlaps rather than
+  // silently redrawing at a different scale. Mirrors the DXF, whose block path
+  // has no scale step-up at all (dxfGenerator.js:2287) and whose label path
+  // deliberately skips the step-down for a declared scale (dxfGenerator.js:2234).
+  const _scaleDeclared = /1\s*:\s*\d+/.test(String(scale ?? ''));
+
   logger.info("[PDFKit] 🎨 Starting GeoPDF generation...");
   logger.info("[PDFKit] 🔍 LabelingSystem import check:", {
     hasLabelingSystem: typeof LabelingSystem !== "undefined",
@@ -11372,6 +11383,15 @@ async function _generateGeoPDFInner(options, logger) {
       } catch (retryErr) {
         logger.warn(`[PDFKit] ⚠️ Label paper escalation failed — continuing with ${labelCollisions} label collisions`);
       }
+    } else if (_scaleDeclared) {
+      // A surveyor-declared scale is honoured even under label crowding: the
+      // sheet has nowhere left to climb, so accept the overlaps rather than
+      // silently redraw at a different scale. The DXF does the same
+      // (dxfGenerator.js:2234).
+      logger.warn(
+        `[PDFKit] 🏷️ Label crowding (${labelCollisions} collisions) at the surveyor-declared ` +
+        `${optimalScale.label} on the largest sheet — honouring the declared scale and accepting label overlaps`
+      );
     } else {
       // ── SCALE STEP-DOWN for labels (smaller denominator = longer edges on paper) ──
       const curIdx = SI727_PRESCRIBED_SCALES.findIndex(s => s.value === optimalScale.value);
@@ -11575,6 +11595,19 @@ async function _generateGeoPDFInner(options, logger) {
         console.error(errMsg);
         logger.warn(`[PDFKit] ⚠️ Paper-size escalation failed — continuing at ${currentSheetName} with stacker fallback`);
       }
+    } else if (_scaleDeclared) {
+      // A surveyor-declared scale is never stepped. The spec rule is that an
+      // explicit scale is honoured and the SHEET escalates instead; at the
+      // largest sheet there is nowhere left to climb, so accept the residual
+      // overlap (stacker fallback) rather than silently redrawing at a coarser
+      // scale. Regression this guards: a declared 1:750 returned '1:1000'
+      // because this branch stepped up. Mirrors the DXF, whose block path has
+      // no scale step-up at all (dxfGenerator.js:2264-2293).
+      logger.warn(
+        `[PDFKit] 📏 Blocks unplaceable at the surveyor-declared ${optimalScale.label} on ` +
+        `${currentSheetName} (largest sheet) — honouring the declared scale and accepting ` +
+        `residual block overlaps`
+      );
     } else if (_scaleUpAttempt < MAX_SCALE_UP_ATTEMPTS && _blockRoomAttempt === 0) {
       // ── SCALE STEP-UP (only when at largest sheet or sheet escalation exhausted) ──
       //

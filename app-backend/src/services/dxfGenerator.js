@@ -2377,8 +2377,16 @@ export function generateDXF(options, logger) {
     // _crossBounds are ground min-corner rects (y = bottom); these obstacles use
     // y = TOP, so lift each by its own height before inflating.
     .concat((_crossBounds || []).map((o) => _inflate({ x: o.x, y: o.y + o.height, width: o.width, height: o.height })));
+  // When the planner seated the schedule in the figure's side strips it has
+  // ALREADY put one column on each side. Re-balancing then mirrors the small
+  // remainder table back across the centre line onto its own parent column —
+  // balanceScheduleTables avoids the other bottom-zone blocks but not sibling
+  // sub-tables, so it cannot see that collision.
+  const _plannerAlreadyBalanced = blockPositions.scheduleOfAreas?.scheduleBalanced === true;
   const _placedTablesBalanced = _placedTablesGround
-    ? balanceScheduleTables(_placedTablesGround, dCX, cntL, cntR, _scheduleObstacles)
+    ? (_plannerAlreadyBalanced
+        ? _placedTablesGround
+        : balanceScheduleTables(_placedTablesGround, dCX, cntL, cntR, _scheduleObstacles))
     : null;
 
   // Sibling bottom-zone blocks the re-split search must NOT land on (the planner

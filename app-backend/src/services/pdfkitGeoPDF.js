@@ -12,7 +12,7 @@ import {
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
 import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, tickRungLadder } from "../../../app-shared/tickMarks.js";
-import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment } from "../../../app-shared/block-definitions.js";
+import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, planScheduleSplit } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { splitBeaconName, labelParts } from "../../../app-shared/beaconName.js";
 import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js';
@@ -33,6 +33,16 @@ import { planSheetLayout } from './sheetLayoutPlanner.js';
 import { findBlockPosition } from './dxfBlockPlacer.js';
 import { drawSubjectAdjoiningFeatures } from './adjoiningFeatures.js';
 import { buildPolygonForPlanner, buildPlannerObstacles, chooseFigureAlignX } from './polygonForPlanner.js';
+import { measureFigureWhitespace, subdivideStripsForCap } from './scheduleStrategy.js';
+
+/**
+ * SI 727 practice: a Schedule of Areas table never fills the drawing band edge
+ * to edge — it is capped at a fraction of it so the sheet still reads as a plan
+ * with a schedule beside it, not two columns of table. Applied per TABLE, so a
+ * schedule too tall for one capped column continues into a second slot rather
+ * than growing past the cap.
+ */
+const SCHEDULE_MAX_HEIGHT_FRACTION = 0.95;
 import {
   PT_TO_MM, MM_TO_PT,
   calculateCentroid, isPointInPolygon, pointDistance, pointToLineDistance,
@@ -5797,6 +5807,10 @@ export function calculateBlockPositions(
   const _SCHED_HEADER  = 25;
   const _SCHED_ROW     = 15;
   const _SCHED_PAD     = 10;
+  // Everything in a table that is not a data row: title, its spacing, the
+  // column header band and the bottom pad. planScheduleSplit calls this the
+  // "headerHeight" when turning a slot's height into a row capacity.
+  const _SCHED_CHROME  = _SCHED_TITLE + _SCHED_SPACING + _SCHED_HEADER + _SCHED_PAD;
   const _schedSingleColHeight = _SCHED_TITLE + _SCHED_SPACING + _SCHED_HEADER + schedRows * _SCHED_ROW + _SCHED_PAD;
 
   // Detect overflow: if a single column is taller than the available map height,
@@ -5806,12 +5820,15 @@ export function calculateBlockPositions(
   const _schedNeedsSplit      = _schedSingleColHeight > _schedAvailableHeight && schedRows > 0;
   let schedWidth, schedHeight, _schedNumCols, _schedRowsPerCol;
   if (_schedNeedsSplit) {
-    // 3-v8 follow-up: side-by-side anchor lives at the right edge, so we no
-    // longer need to keep the schedule under 60% of available height to fit in
-    // a corner quadrant. Bump to 95% so each sub-table extends down the full
-    // drawing space — minimises the number of columns (fewer wide blocks) at
-    // the cost of using more vertical space (where there's no other claimant).
-    const _schedTargetHeight  = _schedAvailableHeight * 0.95;
+    // Link each sub-table's height to the DRAWING height, not an arbitrary
+    // fraction of it. The sub-table is allowed to fill the full usable height,
+    // which maximises rows-per-table and so MINIMISES the number of side-by-side
+    // tables — and therefore the composite width. The old 0.95 factor left each
+    // sub-table 5% short; for 240 rows that was the difference between 126 rows
+    // (two tables, composite 860pt) and 119 rows flattened to 80 (three tables,
+    // composite 1296pt), which is what drove the schedule over the figure.
+    // 100% is safe: _schedAvailableHeight already keeps 14pt clear top and bottom.
+    const _schedTargetHeight  = _schedAvailableHeight;
     const _schedRowsAtTarget  = Math.max(1, Math.floor(
       (_schedTargetHeight - _SCHED_TITLE - _SCHED_SPACING - _SCHED_HEADER - _SCHED_PAD) / _SCHED_ROW
     ));
@@ -5831,6 +5848,104 @@ export function calculateBlockPositions(
     _schedRowsPerCol = schedRows;
     schedWidth       = _schedSingleColWidth;
     schedHeight      = _schedSingleColHeight;
+  }
+
+  // --- Schedule of Areas: seat it in the whitespace strips beside the figure --
+  // A split schedule used to be sized as ONE contiguous composite (numCols ×
+  // colWidth) and handed to the placement search. On a centred figure that
+  // composite is wider than either side gutter, so the search returned no
+  // candidate and the schedule was dropped at top-left, over the figure.
+  //
+  // Seat it the way a General Plan is drawn instead: one full column down each
+  // side strip — as tall as the SI 727 height cap allows — and subdivision only
+  // for stands those ideal columns cannot hold. Doing this HERE, before the
+  // placement engine runs, is what makes the schedule a primary: its tables go
+  // into preOccupied so every other block is placed around them, rather than
+  // the schedule having to dodge seven already-placed blocks and failing.
+  let _schedStripTables = null;
+  let _schedStripComposite = null;
+  if (_schedNeedsSplit && schedRows > 0) {
+    const _figBox = mapFeatureBounds?.width > 0
+      ? { x: mapFeatureBounds.x, y: mapFeatureBounds.y, w: mapFeatureBounds.width, h: mapFeatureBounds.height }
+      : figureBounds?.width > 0
+        ? { x: figureBounds.x, y: figureBounds.y, w: figureBounds.width, h: figureBounds.height }
+        : null;
+    if (_figBox) {
+      const _contentArea = {
+        x: mapBounds.x + 14, y: mapBounds.y + 14,
+        w: mapBounds.width - 28, h: mapBounds.height - 28,
+      };
+      // Only the side strips: a schedule column is a tall, narrow thing, and the
+      // top/bottom strips are where the title band and statement blocks live.
+      //
+      // Cut the strips against the figure INFLATED by the same 14pt the
+      // placement engine keeps as edge padding. Two reasons: a schedule butted
+      // flush against the figure reads badly, and the collision polygon runs a
+      // hair wider than the bbox (fractions of a point), so a flush strip hands
+      // back a table that technically bites into the figure.
+      const _figClear = 14;
+      const _strips = measureFigureWhitespace({
+        figureBBox: {
+          x: _figBox.x - _figClear, y: _figBox.y - _figClear,
+          w: _figBox.w + 2 * _figClear, h: _figBox.h + 2 * _figClear,
+        },
+        contentArea: _contentArea,
+      });
+      const _slots = subdivideStripsForCap({
+        strips: [_strips.left, _strips.right],
+        maxTableHeight: _contentArea.h * SCHEDULE_MAX_HEIGHT_FRACTION,
+        tableWidth: _schedSingleColWidth,
+        spacing: _schedTableSpacing,
+        headerHeight: _SCHED_CHROME,
+        rowHeight: _SCHED_ROW,
+      });
+      const { plan: _slotPlan, residualRows: _slotResidual } = planScheduleSplit({
+        totalRows: schedRows,
+        availableGaps: _slots,
+        tableWidth: _schedSingleColWidth,
+        headerHeight: _SCHED_CHROME,
+        rowHeight: _SCHED_ROW,
+        // A remainder table is a continuation by construction, so it may be
+        // shorter than the 3-row minimum a standalone table has to meet.
+        minRowsPerTable: 1,
+      });
+      // All-or-nothing: a partial seating would silently drop stands, so fall
+      // back to the legacy composite path and let escalation handle it.
+      if (_slotResidual === 0 && _slotPlan.length > 0) {
+        _schedStripTables = _slotPlan.map((entry) => {
+          const gap = _slots[entry.gapIndex];
+          return {
+            x: gap.x,
+            y: gap.y,
+            width: _schedSingleColWidth,
+            height: _SCHED_CHROME + entry.rowCount * _SCHED_ROW,
+            rowCount: entry.rowCount,
+            parcelsStartIndex: entry.startRow,
+            isContinuation: entry.isContinuation,
+          };
+        });
+        const _cl = Math.min(..._schedStripTables.map((t) => t.x));
+        const _cr = Math.max(..._schedStripTables.map((t) => t.x + t.width));
+        const _ct = Math.min(..._schedStripTables.map((t) => t.y));
+        const _cb = Math.max(..._schedStripTables.map((t) => t.y + t.height));
+        schedWidth  = _cr - _cl;
+        schedHeight = _cb - _ct;
+        _schedStripComposite = { x: _cl, y: _ct, width: schedWidth, height: schedHeight };
+        _schedNumCols    = _schedStripTables.length;
+        _schedRowsPerCol = Math.max(..._schedStripTables.map((t) => t.rowCount));
+        logger.info(
+          `[PDFKit] 📊 Schedule seated in ${_schedStripTables.length} strip slot(s): ` +
+          _schedStripTables.map((t) => `${t.rowCount}r@(${t.x.toFixed(0)},${t.y.toFixed(0)})`).join(' ') +
+          ` — cap ${(_contentArea.h * SCHEDULE_MAX_HEIGHT_FRACTION).toFixed(0)}pt, ` +
+          `tallest ${Math.max(..._schedStripTables.map((t) => t.height)).toFixed(0)}pt`
+        );
+      } else {
+        logger.warn(
+          `[PDFKit] 📊 Strip slotting seated ${schedRows - _slotResidual}/${schedRows} stands ` +
+          `(${_slots.length} slot(s)) — keeping the composite path`
+        );
+      }
+    }
   }
 
   // --- Beacon Description ---
@@ -6031,7 +6146,10 @@ export function calculateBlockPositions(
       mandatory: true,
       preferredZone: _nextZone(),
     }] : []),
-    ...(schedRows > 0 ? [{
+    // Schedule-first: when the strip slotting has already seated the schedule
+    // it is NOT a descriptor for the engine to place — it goes into preOccupied
+    // below so the other blocks are placed around it instead.
+    ...(schedRows > 0 && !_schedStripTables ? [{
       name: "scheduleOfAreas",
       width: schedWidth,
       height: schedHeight,
@@ -6107,7 +6225,12 @@ export function calculateBlockPositions(
     tickMarkBounds,
     logger,
     rectangleOverlapsPolygon,
-    preOccupied: [prePlacedTitleBlock, prePlacedNorthArrow, prePlacedScaleBar].filter(Boolean),
+    preOccupied: [
+      prePlacedTitleBlock, prePlacedNorthArrow, prePlacedScaleBar,
+      // Schedule-first ordering: each seated schedule table is an obstacle the
+      // engine must place the other blocks around.
+      ...(_schedStripTables ?? []).map((t, i) => ({ name: `scheduleOfAreas#${i}`, ...t })),
+    ].filter(Boolean),
     parcelSegments: mapFeatureBounds?.parcelSegments ?? [],
   });
 
@@ -6440,9 +6563,11 @@ export function calculateBlockPositions(
     ? _pos("outsideFigureData", ofdWidth, ofdHeight)
     : { x: mapBounds.x + 14, y: mapBounds.y + 14, width: ofdWidth, height: 0 };
 
-  const schedulePos = schedRows > 0
-    ? _pos("scheduleOfAreas", schedWidth, schedHeight)
-    : { x: mapBounds.x + 14, y: mapBounds.y + mapBounds.height - 14, width: schedWidth, height: 0 };
+  const schedulePos = _schedStripComposite
+    ? { ..._schedStripComposite }
+    : schedRows > 0
+      ? _pos("scheduleOfAreas", schedWidth, schedHeight)
+      : { x: mapBounds.x + 14, y: mapBounds.y + mapBounds.height - 14, width: schedWidth, height: 0 };
 
   const beaconPos = beaconHeight > 0
     ? _pos("beaconDescription", beaconWidth, beaconHeight)
@@ -6489,7 +6614,13 @@ export function calculateBlockPositions(
     _expandBlock("northArrow",        northArrowPos),
     _expandBlock("scaleBar",          scaleBarPos),
     _expandBlock("outsideFigureData", outsideFigurePos),
-    _expandBlock("scheduleOfAreas",   schedulePos),
+    // A schedule seated in both side strips is NOT one rectangle: its composite
+    // spans the figure between the columns, so every block placed in between
+    // would read as colliding with it. Enter the tables that are actually
+    // drawn — which also makes them exact obstacles for the tick-mark pass.
+    ...(_schedStripTables
+      ? _schedStripTables.map((t) => _expandBlock("scheduleOfAreas", t))
+      : [_expandBlock("scheduleOfAreas", schedulePos)]),
     _expandBlock("beaconDescription", beaconPos),
     _expandBlock("surveyStatement",   surveyStatementPos),
     _expandBlock("sgSignature",       sgSignaturePos),
@@ -6588,7 +6719,19 @@ export function calculateBlockPositions(
   // - DXF emitter: reads placedTables and emits each sub-table at its
   //   (planner-pt → ground-metre converted) position.
   let scheduleOfAreasFinal = schedulePos;
-  if (_schedNeedsSplit && parcels?.features?.length > 0 && schedulePos) {
+  if (_schedStripTables) {
+    // Already seated in the side strips, every stand accounted for — the
+    // composite search would only re-derive a worse answer.
+    scheduleOfAreasFinal = {
+      ..._schedStripComposite,
+      placedTables:  _schedStripTables,
+      standsPlaced:  schedRows,
+      missingStands: 0,
+      // Already one column per side strip — a second balancing pass would
+      // mirror the remainder onto the column it was split off from.
+      scheduleBalanced: true,
+    };
+  } else if (_schedNeedsSplit && parcels?.features?.length > 0 && schedulePos) {
     const _allForSched = {
       titleBlock:        titleBlockPos,
       outsideFigureData: outsideFigurePos,
@@ -6638,13 +6781,19 @@ export function calculateBlockPositions(
   // check above. Pre-existing property of the whole escalation system, not
   // specific to this gate.
   if (_schedNeedsSplit && _collisionPolyPts?.length > 0 && scheduleOfAreasFinal) {
-    const _schedRect = {
-      x: scheduleOfAreasFinal.x,
-      y: scheduleOfAreasFinal.y,
-      width: scheduleOfAreasFinal.width,
-      height: scheduleOfAreasFinal.height,
-    };
-    if (rectangleOverlapsPolygon(_schedRect, _collisionPolyPts, 2) && !needsScaleUp) {
+    // Tables seated in BOTH side strips give a composite that spans the figure
+    // between them, so the composite always "overlaps" — escalating on it would
+    // step the paper up forever on a layout that is in fact clear. Gate on the
+    // tables that are actually drawn whenever we have them.
+    const _schedRects = Array.isArray(scheduleOfAreasFinal.placedTables) && scheduleOfAreasFinal.placedTables.length > 0
+      ? scheduleOfAreasFinal.placedTables.map((t) => ({ x: t.x, y: t.y, width: t.width, height: t.height }))
+      : [{
+          x: scheduleOfAreasFinal.x,
+          y: scheduleOfAreasFinal.y,
+          width: scheduleOfAreasFinal.width,
+          height: scheduleOfAreasFinal.height,
+        }];
+    if (_schedRects.some((r) => rectangleOverlapsPolygon(r, _collisionPolyPts, 2)) && !needsScaleUp) {
       needsScaleUp = true;
       logger.warn(
         "[PDFKit] ⚠️  Split schedule composite overlaps polygon after fluid search — promoting needsScaleUp for paper-size escalation"
@@ -6917,10 +7066,10 @@ function drawScheduleOfAreas(
     const singleH = _SCHED_TITLE + _SCHED_SPACING + _SCHED_HEADER + standCount * _SCHED_ROW + _SCHED_PAD;
     needsSplit = singleH > availH && standCount > 0;
     if (needsSplit) {
-      // 3-v8 follow-up: match calculateBlockPositions — 95% target so the
-      // schedule fills more vertical space (fewer, taller sub-tables) once
-      // it lives at the right-edge anchor instead of a corner quadrant.
-      const targetH      = availH * 0.95;
+      // Match calculateBlockPositions: link sub-table height to the full
+      // drawing height (not 0.95 of it) so rows-per-table is maximised and the
+      // number of side-by-side tables — hence composite width — is minimised.
+      const targetH      = availH;
       const rowsAtTarget = Math.max(1, Math.floor(
         (targetH - _SCHED_TITLE - _SCHED_SPACING - _SCHED_HEADER - _SCHED_PAD) / _SCHED_ROW
       ));
@@ -8209,6 +8358,10 @@ export function drawScheduleOfAreasMultiTable(
     y: compositeY,
     width:  compositeRight  - compositeX,
     height: compositeBottom - compositeY,
+    // The composite alone is not a usable overlap rect once tables sit in BOTH
+    // side strips — it spans the figure between them. Carry the drawn tables so
+    // the figure-overlap warning and the tick-mark collision checks test those.
+    placedTables,
   };
 }
 
@@ -11850,10 +12003,16 @@ async function _generateGeoPDFInner(options, logger) {
   function _pdfWarnIfOverlap(name, pos) {
     if (!_pdfPoly || _pdfPoly.length < 3) return;
     if (!pos) return;
-    const rect = { x: pos.x, y: pos.y, width: pos.width, height: pos.height };
-    if (rectangleOverlapsPolygon(rect, _pdfPoly, 0)) {
+    // A schedule seated in BOTH side strips has a composite bbox that spans the
+    // figure between its columns, so the bbox is useless as an overlap test —
+    // it always "overlaps". Test the tables that are actually drawn.
+    const rects = Array.isArray(pos.placedTables) && pos.placedTables.length > 0
+      ? pos.placedTables.map((t) => ({ x: t.x, y: t.y, width: t.width, height: t.height }))
+      : [{ x: pos.x, y: pos.y, width: pos.width, height: pos.height }];
+    const hit = rects.find((r) => rectangleOverlapsPolygon(r, _pdfPoly, 0));
+    if (hit) {
       warnings[`${name}OverlapsPolygon`] = {
-        position: rect,
+        position: hit,
         hint: `${name} block rendered over the parcel figure.`,
       };
     }

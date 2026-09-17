@@ -1645,6 +1645,18 @@ function tickAvoidRects(blockPositions) {
   for (const name of TICK_AVOID_BLOCKS) {
     const b = blockPositions[name];
     if (!b) continue;
+    // A schedule seated in BOTH side strips reports a composite bbox that spans
+    // the figure between its columns. Treating that as one obstacle blocks the
+    // entire drawing band, so every coordinate-grid node looks covered and the
+    // sheet loses its Y=/X= labels outright. The columns themselves are narrow
+    // and leave the grid plenty of clear nodes — avoid those instead.
+    if (Array.isArray(b.placedTables) && b.placedTables.length > 0) {
+      for (const t of b.placedTables) {
+        if (![t.x, t.y, t.width, t.height].every(Number.isFinite)) continue;
+        out.push({ name, x: t.x, y: t.y, width: t.width, height: t.height });
+      }
+      continue;
+    }
     if (![b.x, b.y, b.width, b.height].every(Number.isFinite)) continue;
     out.push({ name, x: b.x, y: b.y, width: b.width, height: b.height });
   }

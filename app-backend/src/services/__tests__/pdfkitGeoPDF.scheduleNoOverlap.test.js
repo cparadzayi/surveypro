@@ -54,28 +54,23 @@ describe('Schedule of Areas placement no longer collides when outsideFigure is a
   )
 
   test(
-    'split schedule (Maglas, 240 stands) exhausts every escalation level and still overlaps — ' +
-      'documented limitation: the fix correctly re-checks and escalates at each step ' +
-      '(SI727_500x400→SI727_800x500→SI727_1000x800→scale step-up 1:1000→1:1250), but the composite ' +
-      '(860×1850pt, ~30×65cm) is genuinely too large to fit anywhere even at the largest ' +
-      'sheet; see docs/superpowers/specs/2026-08-10-split-schedule-escalation-gate-design.md',
+    'split schedule (Maglas, 240 stands) seats cleanly in the figure’s side strips — ' +
+      'previously a documented limitation (the schedule was sized as ONE contiguous ' +
+      '860×1850pt composite, too wide for either 567pt gutter a centred figure leaves, ' +
+      'so every escalation level was exhausted and it was dropped over the figure; see ' +
+      'docs/superpowers/specs/2026-08-10-split-schedule-escalation-gate-design.md). The ' +
+      'schedule is now seated BEFORE the other blocks as one capped column per gutter ' +
+      'plus a remainder, so nothing overlaps and no escalation is needed.',
     async () => {
-      // Intentionally brittle: the exact sheetSize/attempts/composite dimensions are
-      // this fixture's actual geometry, not incidental values. If block-definitions.js
-      // or the fixture's stand count changes, this test breaking is expected — verify
-      // the new numbers reflect genuine exhaustion (not a regression in the escalation
-      // logic itself) before updating the expectation.
       const logger = { info: () => {}, warn: () => {}, error: () => {} }
       const result = await generateGeoPDF(sampleMaglasPlan, logger)
 
+      // Still the largest sheet: 240 stands at 1:1250 genuinely need it. What
+      // changed is that the layout now RESOLVES there instead of exhausting.
       expect(result.sheetSize).toBe('SI727_1000x800')
-      expect(result.warnings.scheduleEscalationExhausted).toEqual({
-        atSheetSize: 'SI727_1000x800',
-        attempts: 2,
-        hint: 'Plan too dense for largest available paper size; some blocks may overlap the figure.',
-      })
-      expect(result.warnings.scheduleOfAreasOverlapsPolygon).toBeDefined()
+      expect(result.warnings.scheduleEscalationExhausted).toBeUndefined()
+      expect(result.warnings.scheduleOfAreasOverlapsPolygon).toBeUndefined()
     },
-    120000
+    300000
   )
 })

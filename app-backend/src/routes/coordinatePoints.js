@@ -172,7 +172,10 @@ export default async function coordinatePointRoutes(app) {
               type: 'object',
               required: ['id', 'from', 'to'],
               properties: {
-                id: { type: ['integer', 'string'] },
+                // Union, not `integer`: beaconRepairFlow sends `p.id ?? p.name`, so a
+                // point with no database id rides under its beacon name ("2474A").
+                // anyOf rather than type: [...] keeps Ajv strict mode quiet.
+                id: { anyOf: [{ type: 'integer' }, { type: 'string' }] },
                 from: { type: 'string' },
                 to: { type: 'string' }
               }

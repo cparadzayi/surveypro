@@ -195,3 +195,74 @@ describe('balanceScheduleTables', () => {
     expect(out[1].y).toBe(800);
   });
 });
+
+import { subdivideStripsForCap } from '../scheduleStrategy.js';
+import { planScheduleSplit } from '../../../../app-shared/block-definitions.js';
+
+describe('subdivideStripsForCap — ideal full columns first, subdivision only for the remainder', () => {
+  // The Maglas general plan on SI727_1000x800, in planner points. Drawing band
+  // is 700mm (1984pt) less the 14pt top/bottom inset = 1956pt. The figure is
+  // centred, leaving two ~567pt side strips; ONE schedule column is 425.2pt, so
+  // each strip takes exactly one column across.
+  const BAND_H = 1956.25;
+  const COL_W  = 425.2;
+  const strips = [
+    { x: 141.7,  y: 141.7, w: 567, h: BAND_H },   // left gutter
+    { x: 1842.5, y: 141.7, w: 567, h: BAND_H },   // right gutter
+  ];
+  // SI 727 practice: a table may not exceed 95% of the band.
+  const CAP = BAND_H * 0.95;
+  const HEADER = 65;   // title 15 + spacing 15 + header 25 + pad 10
+  const ROW    = 15;
+
+  test('the first slot in a strip is the tallest whole-row table the cap allows', () => {
+    const slots = subdivideStripsForCap({ strips, maxTableHeight: CAP, tableWidth: COL_W });
+
+    // cap 1858.4 → floor((1858.4 - 65) / 15) = 119 rows → 65 + 1785 = 1850pt.
+    // Quantising DOWN to whole rows matters: reserving the full 1858.4 would
+    // waste 8pt and cost the leftover slot its second row.
+    expect(slots[0].height).toBeCloseTo(1850, 0);
+    expect(slots[0].height).toBeLessThanOrEqual(CAP);
+    expect(slots[0].width).toBeCloseTo(567, 0);
+  });
+
+  test('the space left below the ideal column becomes a smaller remainder slot', () => {
+    const slots = subdivideStripsForCap({ strips, maxTableHeight: CAP, tableWidth: COL_W });
+
+    // 1956.25 - 1850 - 10 spacing = 96.25pt → floor((96.25 - 65) / 15) = 2 rows.
+    const leftStripSlots = slots.filter((s) => s.x === 141.7);
+    expect(leftStripSlots).toHaveLength(2);
+    expect(leftStripSlots[1].height).toBeCloseTo(95, 0);
+    expect(leftStripSlots[1].y).toBeCloseTo(141.7 + 1850 + 10, 0);
+  });
+
+  test('a strip already within the cap stays one slot — no gratuitous subdivision', () => {
+    const short = [{ x: 0, y: 0, w: 600, h: 900 }];
+    const slots = subdivideStripsForCap({ strips: short, maxTableHeight: 1858, tableWidth: COL_W });
+
+    expect(slots).toHaveLength(1);
+    // Quantised to whole rows: floor((900 - 65) / 15) = 55 → 65 + 825 = 890.
+    expect(slots[0].height).toBeCloseTo(890, 0);
+  });
+
+  test('a strip narrower than one column yields no slots', () => {
+    const narrow = [{ x: 0, y: 0, w: 200, h: 1956 }];
+    expect(subdivideStripsForCap({ strips: narrow, maxTableHeight: CAP, tableWidth: COL_W })).toEqual([]);
+  });
+
+  test('Maglas seats all 240 stands as two ideal columns plus one small remainder', () => {
+    const slots = subdivideStripsForCap({ strips, maxTableHeight: CAP, tableWidth: COL_W });
+    const { plan, residualRows } = planScheduleSplit({
+      totalRows: 240, availableGaps: slots, tableWidth: COL_W,
+      headerHeight: HEADER, rowHeight: ROW,
+      // A remainder table is a continuation by construction, so it is allowed
+      // to be shorter than the 3-row minimum a standalone table must meet.
+      minRowsPerTable: 1,
+    });
+
+    expect(residualRows).toBe(0);
+    // Two full-height columns carry the bulk; only the 2 that do not fit spill
+    // into the subdivided leftover. NOT four equal 60-row tables.
+    expect(plan.map((p) => p.rowCount)).toEqual([119, 119, 2]);
+  });
+});

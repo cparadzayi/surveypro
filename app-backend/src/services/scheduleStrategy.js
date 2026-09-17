@@ -172,3 +172,65 @@ export function balanceScheduleTables(tables, figureCX, contentL, contentR, obst
   }
   return movedAny ? out : tables;
 }
+
+/**
+ * Cut whitespace strips into the slots a Schedule of Areas should fill, ideal
+ * columns first.
+ *
+ * The ideal General Plan layout is ONE full column of schedule down each side
+ * strip. SI 727 practice caps a table at a fraction of the drawing band (95%)
+ * so it never reads as a full-height wall beside the figure, so the "full"
+ * column is the tallest whole-row table that fits under the cap. Only what does
+ * NOT fit in those ideal columns spills into the space left below them — a
+ * strip is never subdivided for its own sake.
+ *
+ * For the 240-stand Maglas plan on SI727_1000x800 that yields two 119-row
+ * columns (1850pt, one per 567pt gutter) plus a 2-row remainder in the 96pt
+ * left over below one of them — rather than four equal 60-row tables, which
+ * would split the schedule more than the paper requires.
+ *
+ * Each slot's height is quantised DOWN to a whole number of rows. That matters:
+ * reserving the cap's full 1858.4pt instead of the 1850pt actually used would
+ * waste 8pt and cost the leftover slot one of its two rows.
+ *
+ * Strips use the `measureFigureWhitespace` frame ({x, y, w, h}, y up from the
+ * lower-left); the returned slots use `planScheduleSplit`'s gap shape
+ * ({x, y, width, height}) so they can be passed straight through. Pass
+ * `minRowsPerTable: 1` to that splitter so a small remainder — a continuation
+ * by construction — is not rejected by the 3-row standalone minimum.
+ *
+ * @param {object}   opts
+ * @param {Array<{x,y,w,h}>} opts.strips      whitespace strips to fill
+ * @param {number}   opts.maxTableHeight      cap on any one table's height
+ * @param {number}   opts.tableWidth          width of ONE schedule column
+ * @param {number}  [opts.spacing=10]         gap between stacked slots
+ * @param {number}  [opts.headerHeight=65]    non-row chrome (title+header+pad)
+ * @param {number}  [opts.rowHeight=15]       height of one schedule row
+ * @returns {Array<{x:number,y:number,width:number,height:number}>}
+ */
+export function subdivideStripsForCap({
+  strips, maxTableHeight, tableWidth, spacing = 10,
+  headerHeight = 65, rowHeight = 15,
+}) {
+  if (!Array.isArray(strips) || !(maxTableHeight > 0) || !(tableWidth > 0)) return [];
+
+  const slots = [];
+  for (const strip of strips) {
+    if (!strip) continue;
+    const width  = strip.w ?? strip.width;
+    const height = strip.h ?? strip.height;
+    // A strip narrower than a single column can hold no table at all.
+    if (!(width >= tableWidth) || !(height > 0)) continue;
+
+    let offset = 0;
+    for (;;) {
+      const usable = Math.min(height - offset, maxTableHeight);
+      const rows = Math.floor((usable - headerHeight) / rowHeight);
+      if (rows < 1) break;                      // no room for even a one-row table
+      const slotHeight = headerHeight + rows * rowHeight;
+      slots.push({ x: strip.x, y: strip.y + offset, width, height: slotHeight });
+      offset += slotHeight + spacing;
+    }
+  }
+  return slots;
+}

@@ -71,7 +71,7 @@ import {
   emitSGBox,
 } from './dxfBottomZoneEmitter.js'
 import { planSheetLayout } from './sheetLayoutPlanner.js'
-import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlanner.js'
+import { buildPolygonForPlanner, buildPlannerObstacles, chooseFigureAlignX } from './polygonForPlanner.js'
 import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon, lineSegmentsIntersect } from './dxfGeometry.js'
 import { selectTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-shared/tickMarks.js'
@@ -1858,12 +1858,51 @@ export function generateDXF(options, logger) {
   // title-band-drift guard.
   logger.info(`[DXF] 📐 Reserved ${(titleBandH * 1000 / S).toFixed(1)}mm title band`);
 
+  // ── Hoisted before the page frame is positioned ──
+  // The measured Schedule of Areas width plus the 1:S pt conversions. Both feed
+  // the figure-alignment decision below; scheduleColumnWidthsPt also threads to
+  // the shared planner later (buildPlannerObstacles / planSheetLayout), so it is
+  // computed ONCE here and reused — same values PDF sees (its block is hoisted
+  // the same way), keeping the two formats' alignment choices identical.
+  //   1 PDF pt = (25.4/72) mm paper = (25.4/72) * (S/1000) ground metres
+  //   So: groundMetres → PDF pt = groundMetres * 1000 / S / (25.4/72)
+  const M_TO_PT = 1000 / S / (25.4 / 72);
+  const PT_TO_M = 1 / M_TO_PT;
+
+  const dxfScheduleMeasure = buildScheduleMeasurer(6, 7);
+  const rawScheduleColumnWidthsPt = computeScheduleColumnWidths({
+    dataRows:       surveyedFeatures.map(extractScheduleRow),
+    headerFontSize: 6,
+    bodyFontSize:   7,
+    measureText:    dxfScheduleMeasure,
+  });
+  // STAND No. / AREAS SQUARE METRES pinned to fixed widths; the remaining
+  // 4 columns split what's left of the 15cm target equally.
+  const scheduleColumnWidthsPt = layoutScheduleColumnsFixedStandArea(rawScheduleColumnWidthsPt, SCHEDULE_TARGET_WIDTH_PT);
+  const scheduleColumnWidthsG = scheduleColumnWidthsPt.map(w => mm(w * PT_TO_MM_GEN));
+
+  // Figure alignment: centred unless the centred side column ((contentW−figW)/2)
+  // is too narrow for one contiguous Schedule of Areas table — then the figure
+  // is pushed LEFT so the schedule gets the whole right-hand column. Mirrors
+  // pdfkitGeoPDF's chooseFigureAlignX call with the SAME inputs (figure extent
+  // width at 1:S, drawing-area width, measured schedule width), so PDF and DXF
+  // always agree. The drawn figure and the shared planner polygon (below) both
+  // use this value, keeping the engine's search polygon coincident with the
+  // real figure.
+  const dxfAlignX = chooseFigureAlignX({
+    figureWidthPt:    Math.max(0, dW) * M_TO_PT,
+    mapBoundsWidthPt: contentW * M_TO_PT,
+    scheduleWidthPt:  scheduleColumnWidthsPt.reduce((acc, w) => acc + w, 0),
+  });
+
   // Page positioned so the drawing is centred horizontally, and vertically so a
   // top band is reserved for the title block with the figure fitted strictly
   // below it (matches the PDF's reserve-band-fit-figure-below strategy). The
   // figure is only shifted DOWN when its natural top margin is smaller than the
   // band, and never so far that it overruns the content bottom.
-  const contentCX = dCX;                              // drawing centered horizontally
+  // alignX 'left' pins the content area to the figure's LEFT edge (cntL = dL),
+  // leaving the entire right-hand column free for the Schedule of Areas.
+  const contentCX = dxfAlignX === 'left' ? dL + contentW / 2 : dCX;   // drawing centered horizontally
   const _naturalCY = (dT + dB) / 2;                   // figure centred in content
   const _desiredCY = dT - contentH / 2 + titleBandH;  // figure top at cntT − band
   const _maxCY     = dB + contentH / 2;               // figure bottom at cntB (don't overrun)
@@ -2048,26 +2087,9 @@ export function generateDXF(options, logger) {
   // PDF, the planner saw different schedule dimensions, and chose
   // different anchor sides. See scheduleMeasurer.js for the documented
   // trade-off around CAD-viewer width-factor compliance.
-  const dxfScheduleMeasure = buildScheduleMeasurer(6, 7);
-  const rawScheduleColumnWidthsPt = computeScheduleColumnWidths({
-    dataRows:       surveyedFeatures.map(extractScheduleRow),
-    headerFontSize: 6,
-    bodyFontSize:   7,
-    measureText:    dxfScheduleMeasure,
-  });
-  // STAND No. / AREAS SQUARE METRES pinned to fixed widths; the remaining
-  // 4 columns split what's left of the 15cm target equally.
-  const scheduleColumnWidthsPt = layoutScheduleColumnsFixedStandArea(rawScheduleColumnWidthsPt, SCHEDULE_TARGET_WIDTH_PT);
-  const scheduleColumnWidthsG = scheduleColumnWidthsPt.map(w => mm(w * PT_TO_MM_GEN));
+  // (Hoisted above the page frame; contentWidthPt below reuses the same M_TO_PT.)
 
   // ── 3-v5: Bottom-zone positions come from the shared sheet-layout planner ──
-  // The planner expects PDF-point coordinates with y-down origin. DXF works
-  // in ground metres with south-up y. Convert at both boundaries.
-  //
-  //   1 PDF pt = (25.4/72) mm paper = (25.4/72) * (S/1000) ground metres
-  //   So: groundMetres → PDF pt = groundMetres * 1000 / S / (25.4/72)
-  const M_TO_PT = 1000 / S / (25.4 / 72);
-  const PT_TO_M = 1 / M_TO_PT;
   const contentWidthPt  = (cntR - cntL) * M_TO_PT;
   const contentHeightPt = (cntT - cntB) * M_TO_PT;
 
@@ -2087,6 +2109,7 @@ export function generateDXF(options, logger) {
     scaleDenom: S,
     mapBounds:  { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt },
     closeRing:  false,
+    alignX:     dxfAlignX,   // must match the drawn figure's alignment (contentCX above)
   });
 
   // Pre-seeded obstacles: same shift/flip.

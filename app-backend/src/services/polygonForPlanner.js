@@ -8,7 +8,9 @@
  *
  * Inputs are CapLo coordinates from the Outside Figure GeoJSON ring. Output
  * is a vertex list in planner pt-space at 1:scale, positioned so its bbox
- * is centered within the caller's mapBounds. The same vertices arrive in the
+ * is centered within the caller's mapBounds (or left-flush when the caller
+ * opts for alignX:'left' — the dense-general-plan layout where the Schedule
+ * of Areas needs the full right-hand column). The same vertices arrive in the
  * same order on both sides, so the planner makes the same decisions.
  *
  * Caller responsibilities:
@@ -19,6 +21,56 @@
  */
 
 const PT_PER_MM = 72 / 25.4;
+
+/**
+ * Minimum clear column (pt) the schedule of areas (plus clearance) needs beside
+ * a figure before the layout is allowed to stay centred. Below that the figure
+ * is pushed left so the schedule gets the ENTIRE remaining column instead of
+ * two half-width strips neither can hold a contiguous table.
+ *
+ * Must mirror the planner's blockSpacing/fit conventions: the schedule sits in
+ * a whitespace zone with ~10-15pt of clearance around it, and block placement
+ * uses a 2pt buffer against the figure polygon.
+ */
+export const ALIGN_COLUMN_PAD_PT = 40;
+
+/**
+ * Decide the figure's horizontal alignment for one render.
+ *
+ * 'center' keeps the figure centred in the drawing area; 'left' pushes it flush
+ * to the drawing-area left edge so the full remaining column is available for
+ * the Schedule of Areas / coordinate / endorsement blocks.
+ *
+ * Rules:
+ *   - With no usable figure, schedule or bounds → 'center' (default, harmless).
+ *   - If the centered layout's side column ((boundsW − figW) / 2) already fits
+ *     the schedule (+ pad) → 'center' — preserves every existing centred layout.
+ *   - Otherwise → 'left' (dense general plans). A single contiguous schedule
+ *     cannot occupy two ~equal half-strips, so centring would force a scale
+ *     step-up that left-alignment legitimately avoids.
+ *
+ * Both renderers call this with the SAME values (figure/extent width at 1:S,
+ * drawing-area width, measured schedule width), so PDF and DXF always choose
+ * the same alignment for the same input — parity is by construction, mirroring
+ * how buildPlannerObstacles itself stays format-agnostic.
+ *
+ * @param {object}  opts
+ * @param {number}  opts.figureWidthPt    Drawn figure width at 1:scale (pt).
+ * @param {number}  opts.mapBoundsWidthPt Drawing-area width used by the planner (pt).
+ * @param {number} [opts.scheduleWidthPt] Width of ONE contiguous schedule row (pt).
+ * @returns {'center'|'left'}
+ */
+export function chooseFigureAlignX({ figureWidthPt, mapBoundsWidthPt, scheduleWidthPt }) {
+  if (!Number.isFinite(figureWidthPt) || figureWidthPt <= 0) return 'center';
+  if (!Number.isFinite(mapBoundsWidthPt) || mapBoundsWidthPt <= 0) return 'center';
+  const scheduleW = Number.isFinite(scheduleWidthPt) ? scheduleWidthPt : 0;
+  if (scheduleW <= 0) return 'center';
+
+  const slack = mapBoundsWidthPt - figureWidthPt;
+  if (slack <= 0) return 'center';   // no room either way — alignment is irrelevant
+  const centeredSideColumn = slack / 2;
+  return centeredSideColumn >= scheduleW + ALIGN_COLUMN_PAD_PT ? 'center' : 'left';
+}
 
 /**
  * Read a vertex from a GeoJSON ring. The ring can be in either ordering:
@@ -41,15 +93,20 @@ function readRingVertex(v) {
  * @param {object}   opts.outsideFigure  GeoJSON FeatureCollection or Feature.
  * @param {number}   opts.scaleDenom     The scale denominator S (e.g. 500 for 1:500).
  * @param {object}   opts.mapBounds      { x, y, width, height } in planner pt.
- *                                       The polygon is centered within this box.
+ *                                       The polygon is centered within this box
+ *                                       unless alignX:'left' (flush to x).
  * @param {boolean} [opts.closeRing]     If true, append the first vertex at end
  *                                       to close the ring (PDF historical
  *                                       behavior). DXF passes false.
+ * @param {string}  [opts.alignX]        'center' (default) or 'left'. The drawn
+ *                                       figure MUST use the same value or the
+ *                                       planner's search polygon and the real
+ *                                       figure drift apart (phantom whitespace).
  * @returns {Array<{x:number,y:number}>}  Vertex list in planner pt-space, or
  *                                        [] if no usable ring was found.
  */
-export function buildPolygonForPlanner({ outsideFigure, scaleDenom, mapBounds, closeRing = false }) {
-  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds });
+export function buildPolygonForPlanner({ outsideFigure, scaleDenom, mapBounds, closeRing = false, alignX = 'center' }) {
+  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX });
   if (!t) return [];
 
   const out = t.capeVerts.map(([cy, cx]) => t.project(cy, cx));
@@ -77,10 +134,13 @@ export function buildPolygonForPlanner({ outsideFigure, scaleDenom, mapBounds, c
  * @param {number}   opts.scaleDenom     Scale denominator S.
  * @param {object}   opts.mapBounds      { x, y, width, height } in planner pt.
  * @param {boolean} [opts.closeRing]     Whether to append the first OF vertex at the end.
+ * @param {string}  [opts.alignX]        'center' (default) or 'left' — see
+ *                                       buildPolygonForPlanner. Must match how
+ *                                       the format actually draws its figure.
  * @returns {{ polyPts: Array<{x:number,y:number}>, parcelSegments: Array<{x1:number,y1:number,x2:number,y2:number}> }}
  */
-export function buildPlannerObstacles({ outsideFigure, parcels, scaleDenom, mapBounds, closeRing = false }) {
-  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds });
+export function buildPlannerObstacles({ outsideFigure, parcels, scaleDenom, mapBounds, closeRing = false, alignX = 'center' }) {
+  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX });
   if (!t) return { polyPts: [], parcelSegments: [] };
 
   const polyPts = t.capeVerts.map(([cy, cx]) => t.project(cy, cx));
@@ -114,7 +174,7 @@ export function buildPlannerObstacles({ outsideFigure, parcels, scaleDenom, mapB
  * Internal: build the shared transform anchored on the OF polygon bbox.
  * Returns { project, capeVerts } or null if inputs are unusable.
  */
-function _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds }) {
+function _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX = 'center' }) {
   if (!outsideFigure || !Number.isFinite(scaleDenom) || scaleDenom <= 0) return null;
   if (!mapBounds || !Number.isFinite(mapBounds.width) || !Number.isFinite(mapBounds.height)) return null;
 
@@ -166,8 +226,10 @@ function _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds }) {
   const polyWidthPt  = (maxCapY - minCapY) * M_TO_PT;
   const polyHeightPt = (maxCapX - minCapX) * M_TO_PT;
 
-  // Center polygon within mapBounds — same on both formats.
-  const offsetX = mapBounds.x + (mapBounds.width  - polyWidthPt)  / 2;
+  // Center polygon within mapBounds — same on both formats. alignX:'left'
+  // flushes it to mapBounds.x so the drawn figure (left-aligned with the same
+  // value by its generator) and this search polygon stay coincident.
+  const offsetX = mapBounds.x + (alignX === 'left' ? 0 : (mapBounds.width  - polyWidthPt)  / 2);
   const offsetY = mapBounds.y + (mapBounds.height - polyHeightPt) / 2;
 
   // (capeY, capeX) → planner pt with northing flipped to y-down.

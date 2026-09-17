@@ -32,7 +32,7 @@ import { findPoleOfInaccessibility } from '../utils/labelPlacer.js';
 import { planSheetLayout } from './sheetLayoutPlanner.js';
 import { findBlockPosition } from './dxfBlockPlacer.js';
 import { drawSubjectAdjoiningFeatures } from './adjoiningFeatures.js';
-import { buildPolygonForPlanner, buildPlannerObstacles } from './polygonForPlanner.js';
+import { buildPolygonForPlanner, buildPlannerObstacles, chooseFigureAlignX } from './polygonForPlanner.js';
 import {
   PT_TO_MM, MM_TO_PT,
   calculateCentroid, isPointInPolygon, pointDistance, pointToLineDistance,
@@ -41,7 +41,7 @@ import {
   isRectOutsidePolygons, tryTightFullBeaconLabelPosition,
   nudgeOutsideFullBeaconLabelTowardCircle, isLabelBoxInsideParcelPDF,
   isPointInPolygonSimple, calculatePolygonArea, findLargestInscribedCircle,
-  normalizeCapeLoYX, transformCoords, calculateMapBounds,
+  normalizeCapeLoYX, transformCoords, calculateMapBounds, sizeFigureBox,
   calculatePolygonPDFBounds, calculateDynamicMapOffset,
   isPointInsidePolygonPDF, isRectOverlappingPolygon, isRectClearOfPolygonBoundary,
   isPointInPolygonPDF, rectangleOverlapsPolygon, lineSegmentsIntersect,
@@ -10390,6 +10390,40 @@ async function _generateGeoPDFInner(options, logger) {
   const mapBounds = boundaries.main; // For blocks and tables
   let figureBounds = boundaries.figure; // For parcels, beacons, outside figure (will be adjusted)
 
+  // Measurer signature matches block-definitions.js' computeScheduleColumnWidths
+  // contract: (text, fontSize) => widthInPt. Headers render in Helvetica-Bold,
+  // body in Helvetica, matching drawScheduleOfAreasSingleColumn. Hoisted BEFORE
+  // the figure-box sizing so the alignment decision (chooseFigureAlignX) can see
+  // the measured schedule width — 'left' alignment is only chosen when the
+  // centered side columns are too narrow for this exact table.
+  const _pdfScheduleMeasurer = buildPdfScheduleMeasurer(doc, 6, 7);
+  const _scheduleColumnWidthsPt = (() => {
+    try {
+      // 3-v8 follow-up: exclude the Outside Figure parcel from the measurer
+      // input. DXF already filters it (dxfGenerator.surveyedFeatures), and the
+      // PDF schedule itself only ever renders stand rows — so the OF row was
+      // inflating column 1 to ~91 pt ("OUTSIDE FIGURE M1686") without ever
+      // being drawn, which caused the planner to see a wider schedule on PDF
+      // than DXF and place it differently.
+      const _scheduleRows = filteredParcels.features.filter(f => {
+        const st = String(f.properties?.stand || '').toLowerCase();
+        return !f.properties?.isOutsideFigure && !st.includes('outside figure');
+      });
+      const _rawWidths = computeScheduleColumnWidths({
+        dataRows: _scheduleRows.map(extractScheduleRow),
+        headerFontSize: 6,   // matches drawScheduleOfAreasSingleColumn header font
+        bodyFontSize:   7,   // matches drawScheduleOfAreasSingleColumn body font
+        measureText:    _pdfScheduleMeasurer,
+      });
+      // STAND No. / AREAS SQUARE METRES pinned to fixed widths; the remaining
+      // 4 columns split what's left of the 15cm target equally.
+      return layoutScheduleColumnsFixedStandArea(_rawWidths, SCHEDULE_TARGET_WIDTH_PT);
+    } catch (e) {
+      logger.warn?.(`[PDFKit] computeScheduleColumnWidths fell back to static: ${e.message}`);
+      return null;   // planner falls back to static via the Task 4 guard
+    }
+  })();
+
   // ── Reserve a top band for the title block; fit the outside figure below it ──
   // The title block (GENERAL PLAN / of / SHEET / designation / figure description
   // / Vide) is a single cohesive block at top-center. Inset the figure's drawing
@@ -10443,38 +10477,44 @@ async function _generateGeoPDFInner(options, logger) {
   );
 
   // ── Size the figure box from the resolved scale ──
-  // The box IS the scale: transformCoords fits the extent into whatever box it
-  // is given, so making the box exactly extent/S wide lands the drawing on S by
-  // construction. insetFactor: 0 because the box carries no slack of its own.
-  //
-  // Horizontal alignment is unchanged in spirit: when the figure leaves a wide
-  // strip, push it left so the slack forms one contiguous right-hand column,
-  // which is where the Schedule of Areas prefers to sit.
+  // sizeFigureBox (geometry.js) holds the alignment rule that keeps the drawn
+  // figure coincident with the shared planner search polygon. The alignment is
+  // chosen HERE from the measured schedule width (hoisted above): centred when
+  // the centred side column can hold the Schedule of Areas, left for dense
+  // general plans where the schedule needs the whole right-hand column —
+  // otherwise block placement fails at the surveyor's scale and the renderer
+  // silently steps up (regression: 1:750 → 1:1000).
+  const _scheduleWidthPt = _scheduleColumnWidthsPt?.length
+    ? _scheduleColumnWidthsPt.reduce((s, w) => s + w, 0)
+    : null;
+  const figAlignX = chooseFigureAlignX({
+    figureWidthPt:    (calculatedExtent.maxY - calculatedExtent.minY) / optimalScale.value * 1000 * MM_TO_PT,
+    mapBoundsWidthPt: mapBounds.width,
+    scheduleWidthPt:  _scheduleWidthPt,
+  });
   {
-    const extWm = calculatedExtent.maxY - calculatedExtent.minY;
-    const extHm = calculatedExtent.maxX - calculatedExtent.minX;
-    const figW = (extWm / optimalScale.value) * 1000 * MM_TO_PT;
-    const figH = (extHm / optimalScale.value) * 1000 * MM_TO_PT;
-
-    const hSlack = figureBounds.width - figW;
-    const vSlack = figureBounds.height - figH;
-    const alignX = hSlack > 40 ? 'left' : 'center';
-
+    const fig = sizeFigureBox({
+      figureBounds,
+      optimalScaleValue: optimalScale.value,
+      calculatedExtent,
+      alignX: figAlignX,
+    });
     figureBounds = {
-      x: alignX === 'left' ? figureBounds.x : figureBounds.x + Math.max(0, hSlack) / 2,
-      y: figureBounds.y + Math.max(0, vSlack) / 2,
-      width: figW,
-      height: figH,
+      x: fig.x,
+      y: fig.y,
+      width: fig.width,
+      height: fig.height,
       insetFactor: 0,
-      alignX,
+      alignX: fig.alignX,
     };
 
     logger.info({
       msg: '[PDFKit] 📐 Figure box sized from the scale',
       scale: optimalScale.label,
-      figure: `${(figW / MM_TO_PT).toFixed(1)}mm × ${(figH / MM_TO_PT).toFixed(1)}mm`,
-      slack: `${(hSlack / MM_TO_PT).toFixed(1)}mm × ${(vSlack / MM_TO_PT).toFixed(1)}mm`,
-      alignX,
+      figure: `${(fig.width / MM_TO_PT).toFixed(1)}mm × ${(fig.height / MM_TO_PT).toFixed(1)}mm`,
+      slack: `${(fig.hSlack / MM_TO_PT).toFixed(1)}mm × ${(fig.vSlack / MM_TO_PT).toFixed(1)}mm`,
+      alignX: fig.alignX,
+      scheduleWidthPt: _scheduleWidthPt,
     });
   }
 
@@ -11366,37 +11406,6 @@ async function _generateGeoPDFInner(options, logger) {
 
   // 3-v7: Compute dynamic schedule column widths once and pass to the planner.
   // The schedule renderers will consume the same widths in Task 6.
-  // Measurer signature matches block-definitions.js' computeScheduleColumnWidths
-  // contract: (text, fontSize) => widthInPt. Headers render in Helvetica-Bold,
-  // body in Helvetica, matching drawScheduleOfAreasSingleColumn.
-  const _pdfScheduleMeasurer = buildPdfScheduleMeasurer(doc, 6, 7);
-  const _scheduleColumnWidthsPt = (() => {
-    try {
-      // 3-v8 follow-up: exclude the Outside Figure parcel from the measurer
-      // input. DXF already filters it (dxfGenerator.surveyedFeatures), and the
-      // PDF schedule itself only ever renders stand rows — so the OF row was
-      // inflating column 1 to ~91 pt ("OUTSIDE FIGURE M1686") without ever
-      // being drawn, which caused the planner to see a wider schedule on PDF
-      // than DXF and place it differently.
-      const _scheduleRows = filteredParcels.features.filter(f => {
-        const st = String(f.properties?.stand || '').toLowerCase();
-        return !f.properties?.isOutsideFigure && !st.includes('outside figure');
-      });
-      const _rawWidths = computeScheduleColumnWidths({
-        dataRows: _scheduleRows.map(extractScheduleRow),
-        headerFontSize: 6,   // matches drawScheduleOfAreasSingleColumn header font
-        bodyFontSize:   7,   // matches drawScheduleOfAreasSingleColumn body font
-        measureText:    _pdfScheduleMeasurer,
-      });
-      // STAND No. / AREAS SQUARE METRES pinned to fixed widths; the remaining
-      // 4 columns split what's left of the 15cm target equally.
-      return layoutScheduleColumnsFixedStandArea(_rawWidths, SCHEDULE_TARGET_WIDTH_PT);
-    } catch (e) {
-      logger.warn?.(`[PDFKit] computeScheduleColumnWidths fell back to static: ${e.message}`);
-      return null;   // planner falls back to static via the Task 4 guard
-    }
-  })();
-
   // 3-v8: polygon-for-planner from the shared helper. DXF builds the same
   // polygon via the same helper, so planSheetLayout receives identical
   // polygon shape + mapBounds-relative position on both sides. Block
@@ -11414,6 +11423,7 @@ async function _generateGeoPDFInner(options, logger) {
     scaleDenom: optimalScale?.value,
     mapBounds,
     closeRing:  false,
+    alignX:     figAlignX,   // must match the drawn figure's alignment (see sizeFigureBox)
   });
   // mapFeatureBounds.pdfPoints feeds the planner's polygon obstacle list, so
   // it must use the planner polygon (not _topoPolyPts). parcelSegments

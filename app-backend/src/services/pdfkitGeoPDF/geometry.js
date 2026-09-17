@@ -552,6 +552,53 @@ export function transformCoords(y, x, extent, pdfBounds) {
   return { x: pdfX, y: pdfY };
 }
 
+/**
+ * Size the figure box from the resolved scale (extent/S in pt).
+ *
+ * THE BOX IS THE SCALE: transformCoords fits the extent into whatever box it
+ * is given, so making the box exactly extent/S wide lands the drawing on S by
+ * construction. insetFactor: 0 because the box carries no slack of its own.
+ *
+ * Horizontal alignment MATCHES the shared planner search polygon
+ * (buildPlannerObstacles), which is the invariant that keeps the drawn figure
+ * coincident with the engine's candidate-search polygon:
+ *
+ *   - 'center' (default): box centred in figureBounds — matches the centred
+ *     search polygon. Left-aligning the DRAWING alone (historical hSlack>40
+ *     rule) dragged the figure ~hSlack/2 away from the centred search polygon,
+ *     so the engine parked surveyStatement/other blocks in phantom whitespace
+ *     between them. The escalation gate then flagged a false MANDATORY
+ *     collision and stepped the scale up (regression: 1:750 declared on Maglas
+ *     emitted at 1:1000).
+ *   - 'left': box flush to figureBounds.x — matches the left-flushed search
+ *     polygon when the caller also passes alignX:'left' to buildPlannerObstacles.
+ *     Dense general plans use this so the Schedule of Areas gets the whole
+ *     right-hand column (centring would split it into two strips too narrow for
+ *     a contiguous table and force a scale step-up).
+ *   DXF commits to the same value on its side (contentCX = dL + contentW/2 for
+ *   'left'), so the two formats never diverge.
+ */
+export function sizeFigureBox({ figureBounds, optimalScaleValue, calculatedExtent, alignX = 'center' }) {
+  const extWm = calculatedExtent.maxY - calculatedExtent.minY;
+  const extHm = calculatedExtent.maxX - calculatedExtent.minX;
+  const figW = (extWm / optimalScaleValue) * 1000 * MM_TO_PT;
+  const figH = (extHm / optimalScaleValue) * 1000 * MM_TO_PT;
+
+  const hSlack = figureBounds.width - figW;
+  const vSlack = figureBounds.height - figH;
+
+  return {
+    x: figureBounds.x + (alignX === 'left' ? 0 : Math.max(0, hSlack) / 2),
+    y: figureBounds.y + Math.max(0, vSlack) / 2,
+    width: figW,
+    height: figH,
+    insetFactor: 0,
+    alignX,
+    hSlack,
+    vSlack,
+  };
+}
+
 export function calculateMapBounds(pageWidth, pageHeight) {
   const leftMargin = 50 * MM_TO_PT;
   const rightMargin = 150 * MM_TO_PT;

@@ -49,6 +49,29 @@ export const TITLE_BAND_ESTIMATE_MM = 55;
 export const FIGURE_MAX_FRACTION = 0.75;
 
 /**
+ * Elevation a renderer may hand the shared resolver ONLY when its topology
+ * engine has certified that whitespace pockets inside the figure can hold the
+ * Schedule of Areas / coordinate / endorsement blocks at the candidate rung.
+ *
+ * 0.75 leaves a flat 25% budget for those blocks by construction (see
+ * FIGURE_MAX_FRACTION). The certified gate proves the whitespace exists as a
+ * measured fact rather than a reserved guess, so the figure may claim nearly
+ * all of the drawing area — which on SI727_1000x800 landscape admits the
+ * 1:750 rung that a flat quarter-budget forbids.
+ *
+ * It is NOT a second swing at block-room tuning (BLOCK_ROOM_BUDGETS / the
+ * attempt-escalation ladder already own that; a renderer hands figureMaxFraction
+ * as-is and the resolver's retry ladder still tightens it on placement
+ * failure). It is a scale WINDOW: topology-verified renderings may use an
+ * extra scale-in step that unverified ones may not.
+ *
+ * Default callers that do not verify whitespace never see this value — they
+ * keep FIGURE_MAX_FRACTION, so existing plans are byte-identical until a
+ * renderer turns the gate on for itself.
+ */
+export const TOPOLOGY_GATED_FRACTION = 0.98;
+
+/**
  * Block-room budget per sheet-escalation attempt, indexed by attempt number.
  *
  * A renderer escalates the sheet BECAUSE the Schedule of Areas / coordinate
@@ -205,7 +228,18 @@ export function resolvePlanSheeting({
   declaredSheet = null,
   titleBandMm = TITLE_BAND_ESTIMATE_MM,
   figureMaxFraction = FIGURE_MAX_FRACTION,
+  topologyGatedFraction = null,
 }) {
+  // Topology gate: a renderer that has CERTIFIED (via its whitespace-zones /
+  // block-placement engine, not by assumption) that the schedule/coordinate/
+  // endorsement blocks actually sit inside polygon whitespace pockets may hand
+  // over a HIGHER figure fraction than the default reserve. That is the lever
+  // that admits the finer prescribed scale (e.g. 1:750 on SI727_1000x800
+  // landscape) that a flat 25% reserve would otherwise strand at today's
+  // coarser auto answer. Both PDF and DXF thread the SAME value, so parity is
+  // by construction; .gpkg derives from the DXF buffer and inherits it.
+  const effectiveFigureFraction =
+    topologyGatedFraction != null ? topologyGatedFraction : figureMaxFraction;
   const legibilityMax = legibilityMaxDenominator(parcels);
   const sheets = sheetLadder(declaredSheet);
 
@@ -250,7 +284,7 @@ export function resolvePlanSheeting({
   const fitting = [];
   for (const sheetSize of sheets) {
     for (const d of denominators) {
-      if (fitsOn(sheetSize, extentM, d, titleBandMm, figureMaxFraction)) fitting.push(make(d, sheetSize, false));
+      if (fitsOn(sheetSize, extentM, d, titleBandMm, effectiveFigureFraction)) fitting.push(make(d, sheetSize, false));
     }
   }
 

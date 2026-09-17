@@ -30,7 +30,9 @@
 import { describe, test, expect } from '@jest/globals';
 import { generateGeoPDF } from '../pdfkitGeoPDF.js';
 import { generateDXF } from '../dxfGenerator.js';
-import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION } from '../../../../app-shared/planSheeting.js';
+import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION, TOPOLOGY_GATED_FRACTION } from '../../../../app-shared/planSheeting.js';
+import { certifyTopologyGate } from '../dxfTopology.js';
+import { sheetContentMm } from '../../../../app-shared/si727SheetSizes.js';
 import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js';
 import { sampleRealisticPlan } from './fixtures/sampleRealisticPlan.js';
 import { sampleDevelopedLargeStandsPlan } from './fixtures/sampleDevelopedLargeStandsPlan.js';
@@ -122,24 +124,29 @@ describe('DXF consumes the shared resolver', () => {
       //   2. the resulting fill stays inside the guard band — the substantive
       //      half. Pinning the scale satisfied (1) while stranding Maglas at
       //      0.26 fill on the largest sheet, which is the bug being fixed.
-      const { candidates } = resolvePlanSheeting({
-        extentM: dxfExtentM(fixture),
-        parcels: fixture.parcels,
-        planType: 'general-undeveloped',
-        declaredSheet: dxf.sheetSize,
-        figureMaxFraction: FIGURE_MAX_FRACTION,
-      });
-      const match = candidates.find(
-        (c) => c.sheetSize === dxf.sheetSize && !c.needsTiling && c.scaleLabel === dxf.scale,
-      );
+      //
+      // TOPOLOGY GATE: when at attempt 0 the shared certifier proves that actual
+      // whitespace zones around the outside figure hold the schedule at this
+      // sheet's drawing-area fraction, BOTH renderers re-resolve with
+      // TOPOLOGY_GATED_FRACTION, so a finer scale than the default 0.75 admits
+      // becomes a legitimate candidate. Membership is therefore checked against
+      // the gated pass when the gate would open, or the default pass otherwise
+      // (an escalated run only ever tightens, so it stays inside the default
+      // pass's candidate set). The fill ceiling rises to the gated fraction in
+      // the certified case and stays at FIGURE_MAX_FRACTION otherwise.
+      const defaultPass = nonTilingScalesFor(fixture, dxf.sheetSize, null);
+      const gateOpen = gateCertifiedFor(fixture, dxf.sheetSize);
+      const gatedPass = gateOpen ? nonTilingScalesFor(fixture, dxf.sheetSize, TOPOLOGY_GATED_FRACTION) : [];
+      const allowed = new Set([...defaultPass, ...gatedPass]);
       expect(
-        match ? match.scaleLabel : `${dxf.scale} on ${dxf.sheetSize} (candidates: ${
-          candidates.filter(c => c.sheetSize === dxf.sheetSize && !c.needsTiling)
-                    .map(c => c.scaleLabel).join(', ') || 'none'})`,
+        allowed.has(dxf.scale)
+          ? dxf.scale
+          : `${dxf.scale} on ${dxf.sheetSize} (default: ${defaultPass.join(', ') || 'none'}${
+              gateOpen ? `; gated: ${gatedPass.join(', ') || 'none'}` : '; gate closed'})`,
       ).toBe(dxf.scale);
 
       const fill = await fillOf(fixture, dxf);
-      expect(fill).toBeLessThanOrEqual(0.75);
+      expect(fill).toBeLessThanOrEqual(gateOpen ? TOPOLOGY_GATED_FRACTION : FIGURE_MAX_FRACTION);
       expect(fill).toBeGreaterThan(0.4);
     }, 120000);
   }
@@ -150,10 +157,53 @@ describe('DXF consumes the shared resolver', () => {
 
     const fill = await fillOf(sampleMaglasPlan, dxf);
 
-    expect(fill).toBeLessThanOrEqual(0.75);
+    // As above: with the topology gate certified the figure may legitimately use
+    // the gated fraction of the drawing area, not just the default 0.75.
+    const gateOpen = gateCertifiedFor(sampleMaglasPlan, dxf.sheetSize);
+    expect(fill).toBeLessThanOrEqual(gateOpen ? TOPOLOGY_GATED_FRACTION : FIGURE_MAX_FRACTION);
     expect(fill).toBeGreaterThan(0.4); // and not absurdly small either
   }, 120000);
 });
+
+/**
+ * Non-tiling scale labels the shared resolver offers for a given sheet at a
+ * given block-room budget (topologyGatedFraction=null means the default 0.75).
+ */
+function nonTilingScalesFor(fixture, sheetName, topologyGatedFraction) {
+  const { candidates } = resolvePlanSheeting({
+    extentM: dxfExtentM(fixture),
+    parcels: fixture.parcels,
+    planType: 'general-undeveloped',
+    declaredSheet: sheetName,
+    figureMaxFraction: FIGURE_MAX_FRACTION,
+    topologyGatedFraction,
+  });
+  return candidates
+    .filter((c) => c.sheetSize === sheetName && !c.needsTiling)
+    .map((c) => c.scaleLabel);
+}
+
+/**
+ * Whether the shared topology gate would open for this fixture on this sheet:
+ * the same certification both renderer seams perform at attempt 0 (edges ≥ 3,
+ * no declared scale, whitespace zones hold the schedule with the 1.1 slack).
+ * The certification is rotation-invariant, so the raw cape-coord polygon gives
+ * the same verdict as either renderer's frame.
+ */
+function gateCertifiedFor(fixture, sheetName) {
+  const edges = fixture.outsideFigureData?.edges;
+  if (!edges || edges.length < 3) return false;
+  const cm = sheetContentMm(sheetName);
+  if (!cm) return false;
+  return certifyTopologyGate({
+    polygon: edges.map((e) => ({ x: e.x, y: e.y })),
+    contentMeters: { width: cm.width, height: cm.height },
+    scheduleMeters: { width: 260 * 0.352778, height: 100 * 0.352778 },
+    bufferMeters: 40 * 0.352778,
+    tableMinWidthMeters: 260 * 0.352778,
+    scanStepMeters: 20 * 0.352778,
+  }).certified;
+}
 
 /**
  * Share of the canonical drawing area the rendered figure occupies. The single

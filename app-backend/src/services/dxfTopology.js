@@ -248,3 +248,98 @@ export function computeWhitespaceZones({
       return d !== 0 ? d : b.area - a.area
     })
 }
+
+/**
+ * Topology gate certification — the single authority BOTH renderers (PDF and
+ * DXF/.gpkg) consult before passing `topologyGatedFraction` into the shared
+ * sheeting resolver.
+ *
+ * Mirror of pdfkitGeoPDF.js's topology pre-check (:6112-6137), expressed in
+ * physical metres. The comparison is scale-invariant PROVIDED every input is
+ * expressed at the SAME scale denominator S: mapBounds metres, schedule metres,
+ * buffer metres, tableMinWidth metres and scanStep metres all grow by a common
+ * factor under reprojection, so zone area / needed area is unchanged. Callers
+ * MUST derive every argument from one consistent S (see the seam wiring).
+ *
+ * When the whitespace around a figure is sculpted by actual polygon edges, the
+ * default 25% reserve (FIGURE_MAX_FRACTION) is over-conservative — the schedule
+ * can be placed in a topology zone even when the figure fills a larger fraction
+ * of the drawing area. This certifier confirms that room objectively exists
+ * (same proportions the topological placer trusts) so the gate may be raised.
+ *
+ * @param {Object} args
+ * @param {Array<{x:number,y:number}>} args.polygon - Figure polygon in plan space (metres; closed or open)
+ * @param {{width:number,height:number}} args.contentMeters - Drawing-area content box in metres, computed at scale S
+ * @param {{width:number,height:number}} args.scheduleMeters - Schedule-of-areas physical size in metres, computed at the SAME scale S
+ * @param {number} args.bufferMeters - Clearance between zone edge and polygon (metres at S; PDF's 40pt = 0.014111 m.x at 1:1000)
+ * @param {number} args.tableMinWidthMeters - Minimum usable zone width (metres at S; PDF's 260pt = 0.091722 m.x at 1:1000)
+ * @param {number} args.scanStepMeters - Profile sampling resolution (metres at S; PDF's 20pt = 0.007056 m.x at 1:1000)
+ * @param {number} [args.slackFactor=1.1] - Multiplier on needed area (the PDF pre-check's 1.1)
+ * @returns {{certified:boolean, zoneCount:number, zoneAreaM2:number,
+ *            neededAreaM2:number, ratio:number}}
+ */
+export function certifyTopologyGate({
+  polygon,
+  contentMeters: { width: contentW, height: contentH },
+  scheduleMeters: { width: schedW, height: schedH },
+  bufferMeters,
+  tableMinWidthMeters,
+  scanStepMeters,
+  slackFactor = 1.1,
+}) {
+  const neededAreaM2 = schedW * schedH;
+
+  // mapBounds centred on the content box — the certifier only cares about the
+  // RELATIVE shape (polygon vs box), and all four strip scans align to the box
+  // origin, so translation is irrelevant.
+  const mapBounds = { x: -contentW / 2, y: -contentH / 2, width: contentW, height: contentH };
+
+  // RECENTRE THE POLYGON: the seams feed raw coordinate frames — cape/Lo YX
+  // (y≈50300, x≈2200000) for PDF, DXF space (-y, -x) for DXF/.gpkg — whose
+  // origin sits millions of units from the drawing. Profile keys are built by
+  // snapping the raw coords, so an untranslated polygon never meets the scan
+  // grid (0 zones). Like the PDF pre-check's pdfPoints, shift the polygon so
+  // its BOUNDING-BOX centre (not vertex mean, which the repeated closing vertex
+  // skews) lands on the origin: whitespace zones are relative geometry, so this
+  // changes nothing about the verdict while making the two grids coincide.
+  const xMin = Math.min(...polygon.map((p) => p.x));
+  const xMax = Math.max(...polygon.map((p) => p.x));
+  const yMin = Math.min(...polygon.map((p) => p.y));
+  const yMax = Math.max(...polygon.map((p) => p.y));
+  const polyC = { x: (xMin + xMax) / 2, y: (yMin + yMax) / 2 };
+  const centred = polygon.map((p) => ({ x: p.x - polyC.x, y: p.y - polyC.y }));
+
+  // INTEGER-GRID NORMALIZATION: computeWhitespaceZones indexes
+  // computePolygonProfile's dicts by raw float keys and walks mapBounds with
+  // accumulated `+= scanStep`. At float edges (e.g. scanStep = 7.055…m derived
+  // from pt), a profile key of `-197.55568` is never hit by the scan value
+  // `-197.55568000000002`, so ZERO zones are found. Scaling every coordinate
+  // into integer multiples of scanStep and scanning at step 1 turns all the
+  // arithmetic into exact integer accumulation — profile keys and scan landings
+  // then always coincide. The verdict is identical for grid-aligned inputs and
+  // correct for float callers.
+  const u = (v) => Math.round(v / scanStepMeters);
+  const polygonU = centred.map((p) => ({ x: u(p.x), y: u(p.y) }));
+  const bounds = {
+    x: u(mapBounds.x), y: u(mapBounds.y),
+    width: u(mapBounds.x + mapBounds.width) - u(mapBounds.x),
+    height: u(mapBounds.y + mapBounds.height) - u(mapBounds.y),
+  };
+  const shifted = (p) => ({ x: p.x - bounds.x, y: p.y - bounds.y });
+  const polygonFinal = polygonU.map(shifted);
+
+  const zones = computeWhitespaceZones({
+    polygon: polygonFinal,
+    mapBounds: { x: 0, y: 0, width: bounds.width, height: bounds.height },
+    buffer: Math.round(bufferMeters / scanStepMeters),
+    tableMinWidth: Math.round(tableMinWidthMeters / scanStepMeters),
+    scanStep: 1,
+  });
+  // Integer-grid zones are in scanStep² units — rescale to real m² so the
+  // returned metrics and ratio are honest (unit-agnostic for the verdict).
+  const unitAreaM2 = scanStepMeters * scanStepMeters;
+  const zoneAreaM2 = zones.reduce((s, z) => s + z.area, 0) * unitAreaM2;
+  const certified = zones.length > 0 && zoneAreaM2 >= neededAreaM2 * slackFactor;
+
+  return { certified, zoneCount: zones.length, zoneAreaM2, neededAreaM2, ratio: zoneAreaM2 / neededAreaM2 };
+}

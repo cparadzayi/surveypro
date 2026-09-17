@@ -3,7 +3,7 @@
  * Run with:  cd app-backend && npm run test -- dxfTopology
  */
 import { describe, test, expect } from '@jest/globals'
-import { computePolygonProfile, computeWhitespaceZones } from '../dxfTopology.js'
+import { computePolygonProfile, computeWhitespaceZones, certifyTopologyGate } from '../dxfTopology.js'
 
 describe('computePolygonProfile', () => {
   test('empty polygon → all 4 dictionaries empty', () => {
@@ -303,4 +303,57 @@ describe('computeWhitespaceZones', () => {
     })
     expect(result.filter(z => z.side === 'bottom')).toHaveLength(0)
   })
+})
+
+// ── Topology gate certification (the shared 0.98 lever) ──
+describe('certifyTopologyGate', () => {
+  // Same inputs both renderer seams pass (see dxfGenerator.js / pdfkitGeopol).
+  const base = {
+    contentMeters:  { width: 800, height: 700 },
+    scheduleMeters: { width: 260 * 0.352778, height: 100 * 0.352778 },
+    bufferMeters:   40 * 0.352778,
+    tableMinWidthMeters: 260 * 0.352778,
+    scanStepMeters:     20 * 0.352778,
+  };
+
+  test('figure with room to spare certifies (opens the 0.98 gate)', () => {
+    // 350×400 m figure centred in an 800×700 m box — copious right/bottom room.
+    const polygon = [
+      { x: -175, y: -200 }, { x: 175, y: -200 },
+      { x: 175, y: 200 }, { x: -175, y: 200 },
+      { x: -175, y: -200 },
+    ];
+    const r = certifyTopologyGate({ ...base, polygon });
+    expect(r.certified).toBe(true);
+    expect(r.zoneCount).toBeGreaterThan(0);
+    expect(r.ratio).toBeGreaterThanOrEqual(1.1);
+  });
+
+  test('figure filling the box fails (gate stays closed)', () => {
+    const polygon = [
+      { x: -399, y: -349 }, { x: 399, y: -349 },
+      { x: 399, y: 349 }, { x: -399, y: 349 },
+      { x: -399, y: -349 },
+    ];
+    const r = certifyTopologyGate({ ...base, polygon });
+    expect(r.certified).toBe(false);
+    expect(r.zoneCount).toBe(0);
+  });
+
+  test('float scan steps (pt-derived) still find zones — no FP grid drift', () => {
+    // Regression: scanStep from pt floats left profile keys and scan landings
+    // off-by-ε apart, so computeWhitespaceZones reported ZERO zones. Integer
+    // grid normalization inside the gate must fix that.
+    const polygon = [
+      { x: 0, y: 0 }, { x: 350, y: 0 }, { x: 350, y: 400 }, { x: 0, y: 400 },
+      { x: 0, y: 0 },
+    ];
+    const r = certifyTopologyGate({
+      ...base,
+      contentMeters: { width: 800, height: 700 },
+      polygon,
+    });
+    expect(r.certified).toBe(true);
+    expect(r.zoneCount).toBeGreaterThan(0);
+  });
 })

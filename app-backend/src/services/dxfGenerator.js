@@ -35,7 +35,7 @@ import {
   resolveLoSystem,
 } from '../../../app-shared/block-definitions.js'
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
-import { SI727_GENERAL_PLAN_SHEET_SIZES } from '../../../app-shared/si727SheetSizes.js';
+import { SI727_GENERAL_PLAN_SHEET_SIZES, sheetContentMm } from '../../../app-shared/si727SheetSizes.js';
 import { splitBeaconName, labelParts } from '../../../app-shared/beaconName.js';
 
 /** Conversion factor: 1 PDF point = 0.352778 mm. block-definitions values
@@ -62,6 +62,7 @@ import {
   SCHEDULE_HEADER_HEIGHT_MM,
 } from './dxfScheduleHelpers.js'
 import { emitScheduleOfAreasTopological } from './dxfScheduleEmitter.js'
+import { computeWhitespaceZones, certifyTopologyGate } from './dxfTopology.js'
 import { getOutsideFigureVertices } from './outsideFigureBeacons.js'
 import {
   emitOFDTable,
@@ -76,7 +77,7 @@ import { rectangleOverlapsPolygon, lineSegmentsIntersect } from './dxfGeometry.j
 import { selectTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-shared/tickMarks.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
 import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER } from '../utils/si727Constants.js'
-import { resolvePlanSheeting, blockRoomFraction } from '../../../app-shared/planSheeting.js'
+import { resolvePlanSheeting, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js'
 import { SI727_SCALE_LADDER } from '../../../app-shared/si727Scales.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 import { roundBearingSouth } from '../utils/zim-geo.js'
@@ -651,14 +652,47 @@ export function generateDXF(options, logger) {
   // See BLOCK_ROOM_BUDGETS in app-shared/planSheeting.js.
   const _blockRoomAttempt = options._blockRoomAttempt ?? 0;
   const _blockRoomFraction = blockRoomFraction(_blockRoomAttempt);
-  const _sheeting = resolvePlanSheeting({
+  const resolvePass = (topologyGatedFraction) => resolvePlanSheeting({
     extentM: sheetingExtentM,
     parcels,
     planType,
     declaredScale: declaredS || null,
     declaredSheet: normalizedSheetSize || null,
     figureMaxFraction: _blockRoomFraction,
+    topologyGatedFraction,
   });
+  let _sheeting = resolvePass(undefined);
+  // TOPOLOGY GATE — the single shared certifier both renderers consult. When the
+  // whitespace zones carved by the actual outside-figure edges hold the schedule
+  // at this sheet's drawing-area fraction, the default 25% reserve is
+  // unnecessary: re-resolve with TOPOLOGY_GATED_FRACTION so the finer scale is
+  // admitted. The gate is scheme-identical to the PDF's (dxfTopology's
+  // certifyTopologyGate is the shared authority), so PDF and DXF/.gpkg cannot
+  // disagree on whether the gate opens.
+  let _topologyCert = null;
+  if (_blockRoomAttempt === 0 && outsideFigureData?.edges?.length >= 3 && !declaredS) {
+    const _gatePolygon = outsideFigureData.edges.map(e => capeLoToDxfSouthUp(e.y, e.x));
+    const _contentMm = sheetContentMm(normalizedSheetSize) || null;
+    const _contentWM = _contentMm ? mmToGround(_contentMm.width, 1000) : null;
+    const _contentHM = _contentMm ? mmToGround(_contentMm.height, 1000) : null;
+    if (_contentWM && _contentHM) {
+      _topologyCert = certifyTopologyGate({
+        polygon: _gatePolygon,
+        contentMeters: { width: _contentWM, height: _contentHM },
+        scheduleMeters:    { width: mmToGround(260 * 0.352778, 1000), height: mmToGround(100 * 0.352778, 1000) },
+        bufferMeters:      mmToGround(40 * 0.352778, 1000),
+        tableMinWidthMeters: mmToGround(260 * 0.352778, 1000),
+        scanStepMeters:    mmToGround(20 * 0.352778, 1000),
+      });
+      if (_topologyCert.certified) {
+        logger.info(
+          `[DXF] Topology gate: ${_topologyCert.zoneCount} zone(s), ` +
+          `${_topologyCert.ratio.toFixed(1)}× schedule area — opening 0.98 gate`
+        );
+        _sheeting = resolvePass(TOPOLOGY_GATED_FRACTION);
+      }
+    }
+  }
   if (_blockRoomAttempt > 0) {
     logger.info(
       `[DXF] Block-room retry ${_blockRoomAttempt}: figure budget tightened to ${_blockRoomFraction} of the drawing area`,

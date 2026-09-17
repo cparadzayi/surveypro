@@ -22,3 +22,19 @@ export const SI727_GENERAL_PLAN_SHEET_SIZES = [
 export function findSheetSize(name) {
   return SI727_GENERAL_PLAN_SHEET_SIZES.find((s) => s.name === name);
 }
+
+/**
+ * SI 727 drawing-area CONTENT box (paper size minus margins) shared by the
+ * topology gate so PDF and DXF/.gpkg compute an identical metre-basis box.
+ * Margins mirror the renderers' layout constants: 50mm left/top/bottom,
+ * 150mm right (the endorsement-strip margin).
+ *
+ * Expressed as widths/heights in paper millimetres. The gate converts them to
+ * ground metres via the SAME scale constant both renderers use (1:1000 basis,
+ * scale-invariant per certifyTopologyGate's docstring).
+ */
+export function sheetContentMm(name) {
+  const size = findSheetSize(name);
+  if (!size) return null;
+  return { width: size.width - 200, height: size.height - 100 };
+}

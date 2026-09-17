@@ -15,7 +15,9 @@ import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, t
 import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { splitBeaconName, labelParts } from "../../../app-shared/beaconName.js";
-import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION, blockRoomFraction } from '../../../app-shared/planSheeting.js';
+import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js';
+import { sheetContentMm } from '../../../app-shared/si727SheetSizes.js';
+import { certifyTopologyGate } from './dxfTopology.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
 import { analyzeSafeAreas } from "./analyzeSafeAreas.js";
 import { getOutsideFigureVertices } from "./outsideFigureBeacons.js";
@@ -10229,7 +10231,7 @@ async function _generateGeoPDFInner(options, logger) {
   // differently and can need different escalation counts.
   // See BLOCK_ROOM_BUDGETS in app-shared/planSheeting.js.
   const _blockRoomFraction = blockRoomFraction(_blockRoomAttempt);
-  const _sheeting = resolvePlanSheeting({
+  const _resolvePass = (topologyGatedFraction) => resolvePlanSheeting({
     extentM: {
       widthM: calculatedExtent.maxY - calculatedExtent.minY,
       heightM: calculatedExtent.maxX - calculatedExtent.minX,
@@ -10239,7 +10241,38 @@ async function _generateGeoPDFInner(options, logger) {
     declaredScale: parseInt(String(scale ?? '').match(/1\s*:\s*(\d+)/)?.[1] || '0', 10) || null,
     declaredSheet: sheetSize || null,
     figureMaxFraction: _blockRoomFraction,
+    topologyGatedFraction,
   });
+  // TOPOLOGY GATE — the single shared certifier both renderers consult (see the
+  // DXF side). When the whitespace zones carved by the actual outside-figure
+  // edges hold the schedule at this sheet's drawing-area fraction, re-resolve
+  // with TOPOLOGY_GATED_FRACTION so the finer scale is admitted. Certified with
+  // the same gate inputs as DXF, so PDF and DXF/.gpkg cannot disagree on whether
+  // the gate opens.
+  let _sheeting = _resolvePass(undefined);
+  if (_blockRoomAttempt === 0 && outsideFigureData?.edges?.length >= 3 && !String(scale ?? '').match(/1\s*:\s*(\d+)/)) {
+    const _contentMm = sheetContentMm(sheetSize || 'SI727_1000x800');
+    if (_contentMm) {
+      const _gatePolygon = outsideFigureData.edges.map((e) => ({ x: e.x, y: e.y }));
+      const _contentWM = _contentMm.width;   // mmToGround(mm, 1000) === mm — but keep explicit for parity reads
+      const _contentHM = _contentMm.height;
+      const _topologyCert = certifyTopologyGate({
+        polygon: _gatePolygon,
+        contentMeters: { width: _contentWM, height: _contentHM },
+        scheduleMeters:    { width: 260 * 0.352778, height: 100 * 0.352778 },
+        bufferMeters:      40 * 0.352778,
+        tableMinWidthMeters: 260 * 0.352778,
+        scanStepMeters:    20 * 0.352778,
+      });
+      if (_topologyCert.certified) {
+        logger.info(
+          `[PDFKit] Topology gate: ${_topologyCert.zoneCount} zone(s), ` +
+          `${_topologyCert.ratio.toFixed(1)}× schedule area — opening 0.98 gate`
+        );
+        _sheeting = _resolvePass(TOPOLOGY_GATED_FRACTION);
+      }
+    }
+  }
   if (_blockRoomAttempt > 0) {
     logger.info(
       `[PDFKit] 📐 Block-room retry ${_blockRoomAttempt}: figure budget tightened to ${_blockRoomFraction} of the drawing area`,

@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals';
-import { resolvePlanSheeting, drawingAreaMm, narrowestStandWidthM } from '../../../../app-shared/planSheeting.js';
+import { resolvePlanSheeting, drawingAreaMm, narrowestStandWidthM, TOPOLOGY_GATED_FRACTION } from '../../../../app-shared/planSheeting.js';
 
 /** Build a FeatureCollection of `count` square stands of the given area. */
 function stands(count, areaM2) {
@@ -232,5 +232,49 @@ describe('resolvePlanSheeting — edge cases', () => {
     });
     expect(r.legibilityMaxDenominator).toBe(Infinity);
     expect(r.candidates.length).toBeGreaterThan(0);
+  });
+});
+
+// ── Topology-gated fraction: the 0.98 lever that admits 1:750 on landscape ──
+describe('resolvePlanSheeting — topology-gated fraction', () => {
+  const parcels = stands(12, 100);
+  const extentM = { widthM: 350, heightM: 400 };
+
+  function onSheet1000(result) {
+    return result.candidates.filter((c) => c.sheetSize === 'SI727_1000x800');
+  }
+
+  test('without topologyGatedFraction the default answer is unchanged (1:1000 on 1000x800)', () => {
+    const r = resolvePlanSheeting({ extentM, parcels, planType: 'general-developed' });
+    const onSheet = onSheet1000(r);
+    expect(onSheet.length).toBeGreaterThan(0);
+    expect(onSheet[0].scaleDenominator).toBe(1000);
+  });
+
+  test('with TOPOLOGY_GATED_FRACTION the first 1000x800 candidate is 1:750', () => {
+    const r = resolvePlanSheeting({
+      extentM,
+      parcels,
+      planType: 'general-developed',
+      topologyGatedFraction: TOPOLOGY_GATED_FRACTION,
+    });
+    const onSheet = onSheet1000(r);
+    expect(onSheet.length).toBeGreaterThan(0);
+    expect(onSheet[0].scaleDenominator).toBe(750);
+  });
+
+  test('TOPOLOGY_GATED_FRACTION is 0.98 (the documented constant)', () => {
+    expect(TOPOLOGY_GATED_FRACTION).toBe(0.98);
+  });
+
+  test('topologyGatedFraction: null keeps default (gate is opt-in only)', () => {
+    const r = resolvePlanSheeting({
+      extentM,
+      parcels,
+      planType: 'general-developed',
+      topologyGatedFraction: null,
+    });
+    const onSheet = onSheet1000(r);
+    expect(onSheet[0].scaleDenominator).toBe(1000);
   });
 });

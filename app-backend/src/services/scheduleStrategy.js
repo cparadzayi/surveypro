@@ -210,12 +210,47 @@ export function balanceScheduleTables(tables, figureCX, contentL, contentR, obst
  */
 export function subdivideStripsForCap({
   strips, maxTableHeight, tableWidth, spacing = 10,
-  headerHeight = 65, rowHeight = 15,
+  headerHeight = 65, rowHeight = 15, obstacles = [],
 }) {
   if (!Array.isArray(strips) || !(maxTableHeight > 0) || !(tableWidth > 0)) return [];
 
-  // Work out each strip's column count and the vertical tiling of ONE column.
-  // Every column of a strip tiles identically, so this is computed once.
+  // Tile one clear vertical run into cap-limited, whole-row tables.
+  const tileRun = (top, bottom) => {
+    const out = [];
+    let y = top;
+    for (;;) {
+      const usable = Math.min(bottom - y, maxTableHeight);
+      const rows = Math.floor((usable - headerHeight) / rowHeight);
+      if (rows < 1) break;                      // no room for even a one-row table
+      const height = headerHeight + rows * rowHeight;
+      out.push({ y, height });
+      y += height + spacing;
+    }
+    return out;
+  };
+
+  // The vertical runs of one column that no obstacle covers. An obstacle only
+  // matters where it overlaps this column horizontally — a block clipping the
+  // top corner should push the column down, never delete it.
+  const clearRuns = (x, top, bottom) => {
+    const blocked = obstacles
+      .filter((o) => o && o.x < x + tableWidth && o.x + o.width > x)
+      .map((o) => [o.y, o.y + o.height])
+      .sort((a, b) => a[0] - b[0]);
+
+    const runs = [];
+    let cursor = top;
+    for (const [bTop, bBottom] of blocked) {
+      if (bBottom <= cursor) continue;          // already behind us
+      if (bTop > cursor) runs.push([cursor, Math.min(bTop, bottom)]);
+      cursor = Math.max(cursor, bBottom);
+      if (cursor >= bottom) break;
+    }
+    if (cursor < bottom) runs.push([cursor, bottom]);
+    return runs.filter(([a, b]) => b > a);
+  };
+
+  // Per strip: how many columns fit, and each column's tiling around obstacles.
   const prepared = [];
   for (const strip of strips) {
     if (!strip) continue;
@@ -227,16 +262,14 @@ export function subdivideStripsForCap({
     const columns = Math.floor((width + spacing) / (tableWidth + spacing));
     if (columns < 1) continue;
 
-    const tiles = [];
-    let offset = 0;
-    for (;;) {
-      const usable = Math.min(height - offset, maxTableHeight);
-      const rows = Math.floor((usable - headerHeight) / rowHeight);
-      if (rows < 1) break;                      // no room for even a one-row table
-      tiles.push({ dy: offset, height: headerHeight + rows * rowHeight });
-      offset += headerHeight + rows * rowHeight + spacing;
+    const perColumn = [];
+    for (let c = 0; c < columns; c++) {
+      const x = strip.x + c * (tableWidth + spacing);
+      const tiles = clearRuns(x, strip.y, strip.y + height)
+        .flatMap(([top, bottom]) => tileRun(top, bottom));
+      perColumn.push({ x, tiles });
     }
-    if (tiles.length > 0) prepared.push({ strip, columns, tiles });
+    if (perColumn.some((col) => col.tiles.length > 0)) prepared.push({ columns, perColumn });
   }
 
   // Emit column-major ACROSS strips: the first column of every strip before the
@@ -247,10 +280,10 @@ export function subdivideStripsForCap({
   const slots = [];
   for (let c = 0; c < maxColumns; c++) {
     for (const p of prepared) {
-      if (c >= p.columns) continue;
-      const x = p.strip.x + c * (tableWidth + spacing);
-      for (const tile of p.tiles) {
-        slots.push({ x, y: p.strip.y + tile.dy, width: tableWidth, height: tile.height });
+      const col = p.perColumn[c];
+      if (!col) continue;
+      for (const tile of col.tiles) {
+        slots.push({ x: col.x, y: tile.y, width: tableWidth, height: tile.height });
       }
     }
   }

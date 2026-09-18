@@ -243,6 +243,37 @@ describe('subdivideStripsForCap — ideal full columns first, subdivision only f
     expect(slots).toHaveLength(4);
   });
 
+  test('a column tiles around a pre-placed block instead of being discarded', () => {
+    // The North arrow sits in the top-right corner, 70x85pt. It clips the top of
+    // the gutter's second column — but discarding a 1850pt column because an
+    // 85pt block touches its corner threw away 4 of 10 slots on the real sheet
+    // and dropped the seating to 39 of 266 stands.
+    const gutter = [{ x: 1530, y: 141.7, w: 893, h: BAND_H }];
+    const northArrow = { x: 2325, y: 141.7, width: 70, height: 85 };
+    const slots = subdivideStripsForCap({
+      strips: gutter, maxTableHeight: CAP, tableWidth: COL_W, obstacles: [northArrow],
+    });
+
+    const xs = [...new Set(slots.map((s) => Math.round(s.x)))].sort((a, b) => a - b);
+    expect(xs).toHaveLength(2);                 // both columns survive
+
+    const second = slots
+      .filter((s) => Math.round(s.x) === xs[1])
+      .sort((a, b) => a.y - b.y)[0];
+    expect(second.y).toBeGreaterThanOrEqual(141.7 + 85);   // starts below the arrow
+    expect(second.height).toBeGreaterThan(1000);           // still a full column
+  });
+
+  test('a column entirely covered by an obstacle yields nothing for that column', () => {
+    const gutter = [{ x: 0, y: 0, w: 893, h: 400 }];
+    const wall = { x: 435, y: -10, width: 460, height: 420 };   // buries column 2
+    const slots = subdivideStripsForCap({
+      strips: gutter, maxTableHeight: 1858, tableWidth: COL_W, obstacles: [wall],
+    });
+
+    expect([...new Set(slots.map((s) => Math.round(s.x)))]).toEqual([0]);
+  });
+
   test('one column is taken from every strip before a second from any', () => {
     // Keeps the balanced look: fill each whitespace region once, then come back
     // for second columns, rather than stacking both columns in the first strip.

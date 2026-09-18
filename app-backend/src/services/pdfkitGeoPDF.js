@@ -5909,27 +5909,20 @@ export function calculateBlockPositions(
       // left-aligned wide figure leaves as the only remaining room. (The helper
       // names those two for a y-up frame; the rects are correct either way, only
       // the labels swap in PDF's y-down space, and both are candidates here.)
-      const _allSlots = subdivideStripsForCap({
+      // Pre-placed blocks (title, North arrow, scale bar) are fixed before the
+      // engine runs, so unlike the engine-placed blocks nothing will move them
+      // aside for the schedule. They are passed in as obstacles so each column
+      // tiles AROUND them: an 85pt North arrow clipping the top corner of an
+      // 1850pt column should push that column down, not delete it.
+      const _slots = subdivideStripsForCap({
         strips: [_strips.left, _strips.right, _strips.bottom, _strips.top],
         maxTableHeight: _contentArea.h * SCHEDULE_MAX_HEIGHT_FRACTION,
         tableWidth: _schedSingleColWidth,
         spacing: _schedTableSpacing,
         headerHeight: _SCHED_CHROME,
         rowHeight: _SCHED_ROW,
+        obstacles,
       });
-      // Drop any slot sitting on a pre-placed block. These are fixed before the
-      // engine runs, so unlike the engine-placed blocks they will not be moved
-      // aside for the schedule.
-      const _hits = (a, b) =>
-        a.x < b.x + b.width && a.x + a.width > b.x &&
-        a.y < b.y + b.height && a.y + a.height > b.y;
-      const _slots = _allSlots.filter((s) => !obstacles.some((o) => _hits(s, o)));
-      if (_slots.length < _allSlots.length) {
-        logger.info(
-          `[PDFKit] 📊 Strip slotting: ${_allSlots.length - _slots.length} of ${_allSlots.length} ` +
-          `slot(s) dropped — occupied by a pre-placed block`
-        );
-      }
       const { plan: _slotPlan, residualRows: _slotResidual } = planScheduleSplit({
         totalRows: schedRows,
         availableGaps: _slots,

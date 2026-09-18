@@ -6207,15 +6207,19 @@ export function calculateBlockPositions(
   // STEP 3 — Run the dynamic placement engine.
   // =========================================================================
 
-  // Pre-place North Arrow at top-right so engine avoids it
-  const prePlacedNorthArrow = {
+  // North Arrow prefers the top-right corner, but it is a small ornament and
+  // the corner is inside the right-hand whitespace strip — pinning it there
+  // costs the schedule the top of a whole column (85pt ≈ 5 rows). It is only
+  // kept there if the seated schedule leaves the corner free; otherwise it is
+  // engine-placed into whatever whitespace remains. Decided below, after the
+  // schedule is seated.
+  const _northArrowPreferred = {
     name: "northArrow",
     x: mapBounds.x + mapBounds.width - northArrowWidth - 14,
     y: mapBounds.y + 14,
     width: northArrowWidth,
     height: northArrowHeight,
   };
-  logger.info(`[PDFKit] 📌 North Arrow pre-placed at top-right (${prePlacedNorthArrow.x.toFixed(0)}, ${prePlacedNorthArrow.y.toFixed(0)})`);
 
   // Scale Bar: prefer below title block, but only pre-place if it doesn't overlap the polygon.
   // If it overlaps, let the engine find a collision-free position dynamically.
@@ -6244,10 +6248,31 @@ export function calculateBlockPositions(
 
   // Seat the schedule in the figure's whitespace now that the pre-placed blocks
   // are known, so its slots can steer clear of them. Everything the engine
-  // places afterwards is placed AROUND the result.
+  // places afterwards is placed AROUND the result. The North arrow is NOT an
+  // obstacle here — it yields to the schedule rather than the other way round.
   _seatScheduleInStrips(
-    [prePlacedTitleBlock, prePlacedNorthArrow, prePlacedScaleBar].filter(Boolean)
+    [prePlacedTitleBlock, prePlacedScaleBar].filter(Boolean)
   );
+
+  // Now settle the North arrow against the seated schedule.
+  const _northArrowClashes = (_schedStripTables ?? []).some((t) =>
+    _northArrowPreferred.x < t.x + t.width &&
+    _northArrowPreferred.x + _northArrowPreferred.width > t.x &&
+    _northArrowPreferred.y < t.y + t.height &&
+    _northArrowPreferred.y + _northArrowPreferred.height > t.y);
+  const prePlacedNorthArrow = _northArrowClashes ? null : _northArrowPreferred;
+  if (prePlacedNorthArrow) {
+    logger.info(`[PDFKit] 📌 North Arrow pre-placed at top-right (${prePlacedNorthArrow.x.toFixed(0)}, ${prePlacedNorthArrow.y.toFixed(0)})`);
+  } else {
+    logger.info('[PDFKit] 🔄 North Arrow corner taken by the schedule — will be engine-placed into free whitespace');
+    blockDescriptors.push({
+      name: "northArrow",
+      width: northArrowWidth,
+      height: northArrowHeight,
+      mandatory: false,
+      preferredZone: _nextZone(),
+    });
+  }
 
   let { placements: _enginePlacements, unplaceable, needsScaleUp } = placeBlocks({
     mapBounds,
@@ -6608,12 +6633,11 @@ export function calculateBlockPositions(
     : { x: mapBounds.x + 14, y: mapBounds.y + mapBounds.height - 14, width: beaconWidth, height: 0 };
 
   // Place North Arrow at top-right of map area (preferred position)
-  const northArrowPos = {
-    x: mapBounds.x + mapBounds.width - northArrowWidth - 14,
-    y: mapBounds.y + 14,
-    width: northArrowWidth,
-    height: northArrowHeight
-  };
+  // Top-right when the schedule left that corner free, otherwise wherever the
+  // engine found room for it.
+  const northArrowPos = prePlacedNorthArrow
+    ? { ...prePlacedNorthArrow }
+    : _pos("northArrow", northArrowWidth, northArrowHeight);
 
   // Scale Bar — use engine placement if pre-placed was null (polygon overlap), else use pre-placed
   const scaleBarPos = _pos("scaleBar", scaleBarWidth, scaleBarHeight);

@@ -21,16 +21,25 @@ Three things are wrong or missing in the electronic field book.
    > first would renumber every page they point at.
 
    That reasoning is sound, which is exactly why moving the calibration is not a one-line
-   change. It renumbers every point page, and a point's E-number is derived **independently in
-   three places**, each hardcoding `pointsPerPage = 27` and each assuming points start at E1:
+   change. It renumbers every point page, and field-book pagination is derived **independently
+   in five places**, each assuming points start at E1:
 
-   | Location | Role |
-   |---|---|
-   | `app-frontend/src/utils/field-book.ts` (`pointPageMap`) | the actual render |
-   | `app-frontend/src/utils/TwoPassDocumentGenerator.ts` (`measureFieldBook`) | the measurement pass |
-   | `app-frontend/src/utils/calculations-part1.ts` (`generateFieldBookPageLookup`) | the F/B column in Calculations |
+   | Location | Role | points/page |
+   |---|---|---|
+   | `utils/field-book.ts` (`pointPageMap`) | the actual render | 27 |
+   | `utils/TwoPassDocumentGenerator.ts` (`measureFieldBook`) | the measurement pass | 27 |
+   | `utils/calculations-part1.ts` (`generateFieldBookPageLookup`) | the F/B column in Calculations | 27 |
+   | `services/pageAllocation.ts` (`calculateFieldBookPages`) | section page-range allocation | 27 |
+   | `services/pageAllocation.ts` (`createFieldBookLookup`) | F/B lookup, deprecated path only | **20** |
 
-   Any one of them drifting produces a survey record whose cross-references silently lie.
+   Any one drifting produces a survey record whose cross-references silently lie — and one
+   already has. `createFieldBookLookup` paginates at **20 points per page** while every other
+   derivation uses 27, so it returns wrong E-numbers for any survey past the 20th point. It is
+   reachable only from the deprecated `generateComprehensiveDocument`
+   (`comprehensive-document.ts:263`), so it is latent rather than live, but it is a worked
+   example of exactly the failure this refactor removes. Note that `calculateFieldBookPages`
+   carries the comment "FIXED VALUE - matches field-book.ts", which is the duplication
+   apologising for itself.
 
 ## Decisions taken
 
@@ -40,8 +49,8 @@ Settled in conversation on 2026-09-18:
   assistant changes between surveys and a firm may hire or swap GNSS kit.
 - **With no site calibration, point pages start at E1.** The calibration takes E1 only when one
   exists, so the point offset is 0 or 1 and must be an *input* to pagination, never assumed.
-- **One source of truth for pagination.** Extract a single module the renderer and both lookups
-  consume, rather than applying the same offset in three places.
+- **One source of truth for pagination.** Extract a single module every consumer calls, rather
+  than applying the same offset in five places.
 - **Existing records are not preserved under the old numbering.** Moving the calibration to E1
   shifts every point's E-number by one wherever a calibration exists, so a record regenerated
   after this ships will not match a copy generated before it. That is accepted: survey records
@@ -111,7 +120,7 @@ does not filter; it paginates what it is given.
 
 ### Call sites to convert
 
-All three delete their own arithmetic and call `paginateFieldBook`:
+All five delete their own arithmetic and call `paginateFieldBook`:
 
 1. `field-book.ts` — renders the calibration page first, then point pages, from the returned map.
 2. `TwoPassDocumentGenerator.measureFieldBook` — returns `ePageCount`/`pointPageMap` from it.
@@ -119,6 +128,15 @@ All three delete their own arithmetic and call `paginateFieldBook`:
    replaced by the new rule.
 3. `calculations-part1.ts` `generateFieldBookPageLookup` — keeps its calculated-point filter and
    its `lookup[id] = '-'` for excluded points, and paginates the remainder through the module.
+4. `pageAllocation.calculateFieldBookPages` — returns `ePageCount`, keeping its existing cap of
+   99 pages applied after the module's count.
+5. `pageAllocation.createFieldBookLookup` — returns the module's `pointPageMap`. This corrects
+   its 20-points-per-page bug as a side effect of the consolidation. Being on the deprecated
+   path makes it low-risk to change, not a reason to leave it wrong.
+
+After this, the page size is stated once, as `FIELD_BOOK_POINTS_PER_PAGE`. The guard is the
+parity test below, which drives every consumer from the same input and asserts they agree —
+not a grep for the literal `27`, which would false-positive on unrelated constants.
 
 Part C also adds a **measured-vs-rendered guard for the field book** in
 `TwoPassDocumentGenerator`, mirroring the one that already exists for the beacon-comparison
@@ -248,10 +266,11 @@ field book point list ──> paginateFieldBook ──┬─> field-book.ts rend
 
 - **`paginateFieldBook` unit tests** (pure function, no PDF): exact boundaries at 27 and 28
   points; with and without calibration; cover on and off; empty point list.
-- **Three-way parity test** — the renderer's `pointPageMap`, the measurement pass's map, and
-  Calculations' lookup are identical for the same input. This is the regression guard against
-  the drift that motivated Part C, and it must fail if any one of them reverts to local
-  arithmetic.
+- **Parity test across all five consumers** — the renderer's `pointPageMap`, the measurement
+  pass's map, Calculations' lookup, `calculateFieldBookPages` and `createFieldBookLookup` all
+  agree for the same input. This is the regression guard against the drift that motivated
+  Part C, and it must fail if any one of them reverts to local arithmetic. It would have caught
+  the existing 20-vs-27 bug.
 - **Calibration placement test** — with a calibration, it is E1 and the first point is E2;
   without, the first point is E1.
 - **Cover render test** — generate the field book and assert against the PDF content stream that

@@ -296,15 +296,18 @@ describe('planSheetLayout — dense schedule fills both gutters, ideal columns f
   });
 
   test('two ideal full columns carry the bulk, one per gutter', () => {
-    const left  = tables.filter((t) => t.x + t.width <= FIGURE.x + 1);
-    const right = tables.filter((t) => t.x >= FIGURE.x + FIGURE.width - 1);
-
-    expect(left.length).toBeGreaterThan(0);
-    expect(right.length).toBeGreaterThan(0);
-    expect(left.length + right.length).toBe(tables.length);
-    // The two tallest tables are the ideal columns — one on each side.
+    // The two tallest tables are the ideal columns, equal height, one in each
+    // side gutter. Smaller remainder tables may sit in the bands above or below
+    // the figure — that extra whitespace is what lets a dense schedule seat at
+    // all when a left-aligned figure leaves only one usable gutter.
     const byHeight = [...tables].sort((a, b) => b.height - a.height);
-    expect(byHeight[0].height).toBeCloseTo(byHeight[1].height, 0);
+    const [tallA, tallB] = byHeight;
+
+    expect(tallA.height).toBeCloseTo(tallB.height, 0);
+    const isLeft  = (t) => t.x + t.width <= FIGURE.x + 1;
+    const isRight = (t) => t.x >= FIGURE.x + FIGURE.width - 1;
+    expect([isLeft(tallA), isLeft(tallB)].filter(Boolean)).toHaveLength(1);
+    expect([isRight(tallA), isRight(tallB)].filter(Boolean)).toHaveLength(1);
   });
 
   test('every one of the 240 stands is still seated', () => {

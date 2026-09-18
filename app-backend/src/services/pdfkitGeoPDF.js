@@ -5876,7 +5876,11 @@ export function calculateBlockPositions(
   // the schedule having to dodge seven already-placed blocks and failing.
   let _schedStripTables = null;
   let _schedStripComposite = null;
-  if (_schedNeedsSplit && schedRows > 0) {
+  // Called once the fixed blocks (title, North arrow, scale bar) are known, so
+  // their rects can be excluded from the whitespace: those are pre-placed, not
+  // engine-placed, so nothing will move them out of the schedule's way later.
+  const _seatScheduleInStrips = (obstacles = []) => {
+    if (!(_schedNeedsSplit && schedRows > 0)) return;
     const _figBox = mapFeatureBounds?.width > 0
       ? { x: mapFeatureBounds.x, y: mapFeatureBounds.y, w: mapFeatureBounds.width, h: mapFeatureBounds.height }
       : figureBounds?.width > 0
@@ -5887,9 +5891,6 @@ export function calculateBlockPositions(
         x: mapBounds.x + 14, y: mapBounds.y + 14,
         w: mapBounds.width - 28, h: mapBounds.height - 28,
       };
-      // Only the side strips: a schedule column is a tall, narrow thing, and the
-      // top/bottom strips are where the title band and statement blocks live.
-      //
       // Cut the strips against the figure INFLATED by the same 14pt the
       // placement engine keeps as edge padding. Two reasons: a schedule butted
       // flush against the figure reads badly, and the collision polygon runs a
@@ -5903,14 +5904,32 @@ export function calculateBlockPositions(
         },
         contentArea: _contentArea,
       });
-      const _slots = subdivideStripsForCap({
-        strips: [_strips.left, _strips.right],
+      // Side strips first — one tall column down each side is the General Plan
+      // look — then the horizontal bands above and below the figure, which a
+      // left-aligned wide figure leaves as the only remaining room. (The helper
+      // names those two for a y-up frame; the rects are correct either way, only
+      // the labels swap in PDF's y-down space, and both are candidates here.)
+      const _allSlots = subdivideStripsForCap({
+        strips: [_strips.left, _strips.right, _strips.bottom, _strips.top],
         maxTableHeight: _contentArea.h * SCHEDULE_MAX_HEIGHT_FRACTION,
         tableWidth: _schedSingleColWidth,
         spacing: _schedTableSpacing,
         headerHeight: _SCHED_CHROME,
         rowHeight: _SCHED_ROW,
       });
+      // Drop any slot sitting on a pre-placed block. These are fixed before the
+      // engine runs, so unlike the engine-placed blocks they will not be moved
+      // aside for the schedule.
+      const _hits = (a, b) =>
+        a.x < b.x + b.width && a.x + a.width > b.x &&
+        a.y < b.y + b.height && a.y + a.height > b.y;
+      const _slots = _allSlots.filter((s) => !obstacles.some((o) => _hits(s, o)));
+      if (_slots.length < _allSlots.length) {
+        logger.info(
+          `[PDFKit] 📊 Strip slotting: ${_allSlots.length - _slots.length} of ${_allSlots.length} ` +
+          `slot(s) dropped — occupied by a pre-placed block`
+        );
+      }
       const { plan: _slotPlan, residualRows: _slotResidual } = planScheduleSplit({
         totalRows: schedRows,
         availableGaps: _slots,
@@ -5958,7 +5977,7 @@ export function calculateBlockPositions(
         );
       }
     }
-  }
+  };
 
   // --- Beacon Description ---
   // Exact values from drawBeaconDescription:
@@ -6158,10 +6177,10 @@ export function calculateBlockPositions(
       mandatory: true,
       preferredZone: _nextZone(),
     }] : []),
-    // Schedule-first: when the strip slotting has already seated the schedule
-    // it is NOT a descriptor for the engine to place — it goes into preOccupied
-    // below so the other blocks are placed around it instead.
-    ...(schedRows > 0 && !_schedStripTables ? [{
+    // Schedule-first: if the strip slotting seats this (decided below, once the
+    // pre-placed blocks are known) the descriptor is filtered out at the
+    // placeBlocks call and the seated tables go into preOccupied instead.
+    ...(schedRows > 0 ? [{
       name: "scheduleOfAreas",
       width: schedWidth,
       height: schedHeight,
@@ -6230,10 +6249,20 @@ export function calculateBlockPositions(
     });
   }
 
+  // Seat the schedule in the figure's whitespace now that the pre-placed blocks
+  // are known, so its slots can steer clear of them. Everything the engine
+  // places afterwards is placed AROUND the result.
+  _seatScheduleInStrips(
+    [prePlacedTitleBlock, prePlacedNorthArrow, prePlacedScaleBar].filter(Boolean)
+  );
+
   let { placements: _enginePlacements, unplaceable, needsScaleUp } = placeBlocks({
     mapBounds,
     mapFeatureBounds,
-    blocks: blockDescriptors,
+    // A seated schedule is not the engine's to place — it is an obstacle below.
+    blocks: _schedStripTables
+      ? blockDescriptors.filter((b) => b.name !== "scheduleOfAreas")
+      : blockDescriptors,
     tickMarkBounds,
     logger,
     rectangleOverlapsPolygon,

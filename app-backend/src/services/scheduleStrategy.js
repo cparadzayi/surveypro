@@ -214,7 +214,9 @@ export function subdivideStripsForCap({
 }) {
   if (!Array.isArray(strips) || !(maxTableHeight > 0) || !(tableWidth > 0)) return [];
 
-  const slots = [];
+  // Work out each strip's column count and the vertical tiling of ONE column.
+  // Every column of a strip tiles identically, so this is computed once.
+  const prepared = [];
   for (const strip of strips) {
     if (!strip) continue;
     const width  = strip.w ?? strip.width;
@@ -222,14 +224,34 @@ export function subdivideStripsForCap({
     // A strip narrower than a single column can hold no table at all.
     if (!(width >= tableWidth) || !(height > 0)) continue;
 
+    const columns = Math.floor((width + spacing) / (tableWidth + spacing));
+    if (columns < 1) continue;
+
+    const tiles = [];
     let offset = 0;
     for (;;) {
       const usable = Math.min(height - offset, maxTableHeight);
       const rows = Math.floor((usable - headerHeight) / rowHeight);
       if (rows < 1) break;                      // no room for even a one-row table
-      const slotHeight = headerHeight + rows * rowHeight;
-      slots.push({ x: strip.x, y: strip.y + offset, width, height: slotHeight });
-      offset += slotHeight + spacing;
+      tiles.push({ dy: offset, height: headerHeight + rows * rowHeight });
+      offset += headerHeight + rows * rowHeight + spacing;
+    }
+    if (tiles.length > 0) prepared.push({ strip, columns, tiles });
+  }
+
+  // Emit column-major ACROSS strips: the first column of every strip before the
+  // second column of any. planScheduleSplit fills the biggest slots first and
+  // ties resolve in emission order, so this is what keeps the schedule balanced
+  // across the available whitespace instead of stacking up in one region.
+  const maxColumns = prepared.reduce((m, p) => Math.max(m, p.columns), 0);
+  const slots = [];
+  for (let c = 0; c < maxColumns; c++) {
+    for (const p of prepared) {
+      if (c >= p.columns) continue;
+      const x = p.strip.x + c * (tableWidth + spacing);
+      for (const tile of p.tiles) {
+        slots.push({ x, y: p.strip.y + tile.dy, width: tableWidth, height: tile.height });
+      }
     }
   }
   return slots;

@@ -223,7 +223,38 @@ describe('subdivideStripsForCap — ideal full columns first, subdivision only f
     // waste 8pt and cost the leftover slot its second row.
     expect(slots[0].height).toBeCloseTo(1850, 0);
     expect(slots[0].height).toBeLessThanOrEqual(CAP);
-    expect(slots[0].width).toBeCloseTo(567, 0);
+    // A slot is exactly one column wide, not the whole strip — the leftover
+    // width is what lets a wide strip carry a second column.
+    expect(slots[0].width).toBeCloseTo(COL_W, 0);
+  });
+
+  test('a strip wide enough for two columns yields two, side by side', () => {
+    // The real Maglas sheet: a LEFT-aligned figure pools all the slack into one
+    // 893pt right-hand strip, which takes two 425.2pt columns (870pt with the
+    // 10pt gutter). Treating that strip as a single column wasted half of it —
+    // 121 of 266 stands seated instead of 242.
+    const wide = [{ x: 1516, y: 141.7, w: 893, h: BAND_H }];
+    const slots = subdivideStripsForCap({ strips: wide, maxTableHeight: CAP, tableWidth: COL_W });
+
+    const xs = [...new Set(slots.map((s) => Math.round(s.x)))].sort((a, b) => a - b);
+    expect(xs).toHaveLength(2);
+    expect(xs[1] - xs[0]).toBeCloseTo(COL_W + 10, 0);
+    // Two columns, each tiled into its ideal table plus a remainder.
+    expect(slots).toHaveLength(4);
+  });
+
+  test('one column is taken from every strip before a second from any', () => {
+    // Keeps the balanced look: fill each whitespace region once, then come back
+    // for second columns, rather than stacking both columns in the first strip.
+    const twoWide = [
+      { x: 0,    y: 0, w: 893, h: BAND_H },
+      { x: 2000, y: 0, w: 893, h: BAND_H },
+    ];
+    const slots = subdivideStripsForCap({ strips: twoWide, maxTableHeight: CAP, tableWidth: COL_W });
+    const ideal = slots.filter((s) => s.height > 1000).map((s) => Math.round(s.x));
+
+    // First column of strip A, first of strip B, then the second columns.
+    expect(ideal).toEqual([0, 2000, 435, 2435]);
   });
 
   test('the space left below the ideal column becomes a smaller remainder slot', () => {

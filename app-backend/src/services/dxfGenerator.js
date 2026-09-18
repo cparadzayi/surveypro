@@ -2064,15 +2064,17 @@ export function generateDXF(options, logger) {
     { name: 'titleZone',  x: cntL,           y: titleDivY,         width: cntR - cntL, height: cntT - titleDivY },
   ];
 
-  // Schedule-specific fonts matching the PDF generator (9 pt title,
-  // 7 pt body/headers, 15 pt row height per drawScheduleOfAreasSingleColumn).
-  // OFD + SG sizes pulled from block-definitions.js (single source of truth
-  // shared with pdfkitGeoPDF.js).
+  // Schedule-specific fonts matching the PDF generator. rH used to be a
+  // hardcoded pt(15) mirroring a literal the PDF also carried; when the PDF
+  // moved to 13pt rows the DXF kept drawing 15pt ones, so the same export run
+  // produced two different schedules — and the taller DXF tables overflowed the
+  // drawing band. It now reads the same field the PDF does, like the OFD and SG
+  // sizes below already did.
   const bottomZoneFonts = {
-    hHead:    pt(9),
-    hBody:    pt(7),
+    hHead:    pt(SCHEDULE_OF_AREAS.singleColumn.titleFontSize),
+    hBody:    pt(SCHEDULE_OF_AREAS.singleColumn.fontSize),
     hSub,
-    rH:       pt(15),
+    rH:       pt(SCHEDULE_OF_AREAS.singleColumn.rowHeight),
     ofTitleH: pt(OUTSIDE_FIGURE_DATA.titleFontSize),
     ofBodyH:  pt(OUTSIDE_FIGURE_DATA.fontSize),
     ofRowH:   pt(OUTSIDE_FIGURE_DATA.rowHeight),

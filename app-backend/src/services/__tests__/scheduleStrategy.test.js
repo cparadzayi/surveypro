@@ -385,3 +385,42 @@ describe('levelScheduleTables — spread rows evenly instead of orphaning a tail
     expect(levelScheduleTables({ plan, slots, headerHeight: HEADER, rowHeight: ROW })).toEqual(plan);
   });
 });
+
+describe('subdivideStripsForCap — slots stay inside the drawing area', () => {
+  // measureFigureWhitespace is called with the figure INFLATED by a clearance so
+  // the schedule never butts against it. The top/bottom bands inherit that
+  // inflated x, so on a figure flush to the content edge they start OUTSIDE the
+  // drawing area — real output had band slots at x=-14 against a content edge of
+  // x=14, i.e. 28pt into the sheet margin. The strips must be clamped.
+  const CONTENT = { x: 14, y: 14, w: 2239.7, h: 1956.3 };
+  const COL_W = 425.2;
+
+  test('a strip overhanging the content edge is clipped, not emitted as-is', () => {
+    const band = [{ x: -14, y: 14, w: 1402.7, h: 241.8 }];
+    const slots = subdivideStripsForCap({
+      strips: band, maxTableHeight: CONTENT.h, tableWidth: COL_W,
+      spacing: 10, headerHeight: 65, rowHeight: 13, bounds: CONTENT,
+    });
+
+    expect(slots.length).toBeGreaterThan(0);
+    for (const s of slots) {
+      expect(s.x).toBeGreaterThanOrEqual(CONTENT.x);
+      expect(s.x + s.width).toBeLessThanOrEqual(CONTENT.x + CONTENT.w);
+      expect(s.y).toBeGreaterThanOrEqual(CONTENT.y);
+      expect(s.y + s.height).toBeLessThanOrEqual(CONTENT.y + CONTENT.h);
+    }
+  });
+
+  test('a strip already inside the bounds is untouched', () => {
+    const inside = [{ x: 1388.7, y: 14, w: 865, h: 1956.3 }];
+    const withBounds = subdivideStripsForCap({
+      strips: inside, maxTableHeight: CONTENT.h, tableWidth: COL_W,
+      spacing: 10, headerHeight: 65, rowHeight: 13, bounds: CONTENT,
+    });
+    const without = subdivideStripsForCap({
+      strips: inside, maxTableHeight: CONTENT.h, tableWidth: COL_W,
+      spacing: 10, headerHeight: 65, rowHeight: 13,
+    });
+    expect(withBounds).toEqual(without);
+  });
+});

@@ -330,3 +330,98 @@ describe('planSheetLayout — dense schedule fills both gutters, ideal columns f
     expect(hits).toEqual([]);
   });
 });
+
+describe('planSheetLayout — figure extent comes from the polygon, not the mapFeatureBounds rect', () => {
+  // The DXF generator calls this planner with mapFeatureBounds set to the WHOLE
+  // content area (dxfGenerator.js:2167) and carries the real figure only in
+  // pdfPoints. Taking the rect at face value makes the "figure" fill the sheet,
+  // every whitespace strip collapses to nothing, and the schedule falls back to
+  // the top-left corner — which is exactly how the DXF ended up drawing its
+  // schedule over the figure while the PDF put it in the right-hand strip.
+  //
+  // Geometry below is the real Maglas export's DXF frame, from its own
+  // [PLANNER-INPUT] log line: origin-based mapBounds, figure 0..1374.7 wide.
+  const MAP = { x: 0, y: 0, width: 2267.7, height: 1984.3 };
+  const FIG = { minX: 0, maxX: 1374.7, minY: 269.8, maxY: 1714.4 };
+  const RING = [
+    { x: FIG.minX, y: FIG.minY }, { x: FIG.maxX, y: FIG.minY },
+    { x: FIG.maxX, y: FIG.maxY }, { x: FIG.minX, y: FIG.maxY },
+  ];
+
+  function planLikeDxf() {
+    return planSheetLayout({
+      metadata: sampleMaglasPlan.metadata,
+      parcels: sampleMaglasPlan.parcels,
+      outsideFigureData: sampleMaglasPlan.outsideFigureData,
+      beacons: sampleMaglasPlan.beacons,
+      mapBounds: MAP,
+      // The DXF's shape: rect = whole content area, real figure only in pdfPoints.
+      mapFeatureBounds: { ...MAP, pdfPoints: [...RING, RING[0]] },
+      scale: { value: 750, label: '1:750' },
+      extent: { minX: 2247788, maxX: 2248170, minY: 97093, maxY: 97457 },
+      tickMarkBounds: [],
+      polyPts: RING,
+      scheduleColumnWidthsPt: [40, 45, 85.05, 85.05, 85.05, 85.05],
+      measureText: fakeMeasure,
+      logger: fakeLogger,
+    });
+  }
+
+  test('the schedule seats in the strip beside the figure, not the top-left corner', () => {
+    const tables = planLikeDxf().scheduleOfAreas.placedTables;
+
+    expect(Array.isArray(tables)).toBe(true);
+    expect(tables.length).toBeGreaterThan(0);
+    // Every table must clear the figure horizontally — the right strip starts
+    // past FIG.maxX. x:14 (the stacker fallback) fails this.
+    for (const t of tables) expect(t.x).toBeGreaterThan(FIG.maxX);
+  });
+
+  test('every stand is still seated', () => {
+    const tables = planLikeDxf().scheduleOfAreas.placedTables;
+    expect(tables.reduce((s, t) => s + (t.rowCount ?? 0), 0)).toBe(240);
+  });
+});
+
+describe('planSheetLayout — seated schedule stays inside the drawing area', () => {
+  // The strips are cut against the figure INFLATED by a clearance, so the
+  // top/bottom bands inherit the inflated x and can start outside the content
+  // area — slots were emitted at x=-14 on an origin-based frame, i.e. in the
+  // sheet margin. Clamping the strips to the content area is what keeps every
+  // table on the drawing.
+  const MAP = { x: 0, y: 0, width: 2267.7, height: 1984.3 };
+  // Wide enough that the right strip holds only ONE column, so the remainder
+  // has to spill into the top/bottom bands — the slots that inherit the
+  // inflated figure's x and land in the margin.
+  const FIG = { minX: 0, maxX: 1800, minY: 269.8, maxY: 1714.4 };
+  const RING = [
+    { x: FIG.minX, y: FIG.minY }, { x: FIG.maxX, y: FIG.minY },
+    { x: FIG.maxX, y: FIG.maxY }, { x: FIG.minX, y: FIG.maxY },
+  ];
+
+  test('no seated table starts left of, or extends past, the drawing area', () => {
+    const r = planSheetLayout({
+      metadata: sampleMaglasPlan.metadata,
+      parcels: sampleMaglasPlan.parcels,
+      outsideFigureData: sampleMaglasPlan.outsideFigureData,
+      beacons: sampleMaglasPlan.beacons,
+      mapBounds: MAP,
+      mapFeatureBounds: { ...MAP, pdfPoints: [...RING, RING[0]] },
+      scale: { value: 1000, label: '1:1000' },
+      extent: { minX: 2247788, maxX: 2248170, minY: 97093, maxY: 97457 },
+      tickMarkBounds: [],
+      polyPts: RING,
+      scheduleColumnWidthsPt: [40, 45, 85.05, 85.05, 85.05, 85.05],
+      measureText: fakeMeasure,
+      logger: fakeLogger,
+    });
+    const tables = r.scheduleOfAreas.placedTables ?? [];
+    expect(tables.length).toBeGreaterThan(0);
+    for (const t of tables) {
+      expect(t.x).toBeGreaterThanOrEqual(MAP.x);
+      expect(t.x + t.width).toBeLessThanOrEqual(MAP.x + MAP.width);
+      expect(t.y).toBeGreaterThanOrEqual(MAP.y);
+      expect(t.y + t.height).toBeLessThanOrEqual(MAP.y + MAP.height);
+    }
+  });
+});

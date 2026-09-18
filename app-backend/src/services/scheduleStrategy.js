@@ -210,9 +210,22 @@ export function balanceScheduleTables(tables, figureCX, contentL, contentR, obst
  */
 export function subdivideStripsForCap({
   strips, maxTableHeight, tableWidth, spacing = 10,
-  headerHeight = 65, rowHeight = 15, obstacles = [],
+  headerHeight = 65, rowHeight = 15, obstacles = [], bounds = null,
 }) {
   if (!Array.isArray(strips) || !(maxTableHeight > 0) || !(tableWidth > 0)) return [];
+
+  // Callers cut the strips against the figure inflated by a clearance, so a
+  // figure flush to the drawing edge pushes the top/bottom bands outside it —
+  // real output had band slots 28pt into the sheet margin. Clip every strip to
+  // the drawing area before slotting.
+  const clip = (s) => {
+    if (!bounds) return s;
+    const x0 = Math.max(s.x, bounds.x);
+    const y0 = Math.max(s.y, bounds.y);
+    const x1 = Math.min(s.x + (s.w ?? s.width), bounds.x + (bounds.w ?? bounds.width));
+    const y1 = Math.min(s.y + (s.h ?? s.height), bounds.y + (bounds.h ?? bounds.height));
+    return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+  };
 
   // Tile one clear vertical run into cap-limited, whole-row tables.
   const tileRun = (top, bottom) => {
@@ -252,8 +265,9 @@ export function subdivideStripsForCap({
 
   // Per strip: how many columns fit, and each column's tiling around obstacles.
   const prepared = [];
-  for (const strip of strips) {
-    if (!strip) continue;
+  for (const raw of strips) {
+    if (!raw) continue;
+    const strip = clip(raw);
     const width  = strip.w ?? strip.width;
     const height = strip.h ?? strip.height;
     // A strip narrower than a single column can hold no table at all.

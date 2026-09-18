@@ -5887,11 +5887,28 @@ export function calculateBlockPositions(
   // engine-placed, so nothing will move them out of the schedule's way later.
   const _seatScheduleInStrips = (obstacles = []) => {
     if (!(_schedNeedsSplit && schedRows > 0)) return;
-    const _figBox = mapFeatureBounds?.width > 0
-      ? { x: mapFeatureBounds.x, y: mapFeatureBounds.y, w: mapFeatureBounds.width, h: mapFeatureBounds.height }
-      : figureBounds?.width > 0
-        ? { x: figureBounds.x, y: figureBounds.y, w: figureBounds.width, h: figureBounds.height }
-        : null;
+    // Take the figure's extent from the POLYGON, not from mapFeatureBounds'
+    // x/y/width/height. Those fields do not mean the same thing in both callers:
+    // the PDF fills them with the drawn figure box, but the DXF passes the whole
+    // content area there (dxfGenerator.js:2167) and carries the real figure only
+    // in pdfPoints. Trusting the rect made the "figure" fill the DXF's sheet, so
+    // every strip collapsed, no slot was found, and its schedule fell back to the
+    // top-left — over the figure — while the PDF seated correctly. The polygon is
+    // the same shape in both frames, so deriving from it keeps them congruent.
+    const _figRing = (mapFeatureBounds?.pdfPoints?.length >= 3 && mapFeatureBounds.pdfPoints)
+      || (polyPts?.length >= 3 && polyPts)
+      || null;
+    const _figBox = _figRing
+      ? (() => {
+          const xs = _figRing.map((p) => p.x), ys = _figRing.map((p) => p.y);
+          const x = Math.min(...xs), y = Math.min(...ys);
+          return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+        })()
+      : mapFeatureBounds?.width > 0
+        ? { x: mapFeatureBounds.x, y: mapFeatureBounds.y, w: mapFeatureBounds.width, h: mapFeatureBounds.height }
+        : figureBounds?.width > 0
+          ? { x: figureBounds.x, y: figureBounds.y, w: figureBounds.width, h: figureBounds.height }
+          : null;
     if (_figBox) {
       const _contentArea = {
         x: mapBounds.x + 14, y: mapBounds.y + 14,
@@ -5928,6 +5945,8 @@ export function calculateBlockPositions(
         headerHeight: _SCHED_CHROME,
         rowHeight: _SCHED_ROW,
         obstacles,
+        // Never let a band slot spill into the sheet margin.
+        bounds: _contentArea,
       });
       const { plan: _slotPlan, residualRows: _slotResidual } = planScheduleSplit({
         totalRows: schedRows,

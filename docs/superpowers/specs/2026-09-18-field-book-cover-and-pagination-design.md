@@ -133,7 +133,7 @@ New migration `089_add_assistant_and_instruments_to_projects.do.sql` must do **b
    `088_add_compilation_to_projects.do.sql`: iterate `information_schema.schemata WHERE
    schema_name LIKE 'surveyor_%'`, and also patch `public.survey_projects` if it exists.
 2. **Redefine the template** — `CREATE OR REPLACE FUNCTION create_surveyor_schema(...)` carrying
-   the two new columns, following the precedent of `079.do.sql`, so surveyors registered after
+   the four new columns, following the precedent of `079.do.sql`, so surveyors registered after
    this deploy get them.
 
 Step 2 matters and is easy to skip: it is what `079` did and what `083`–`088` did not.
@@ -155,25 +155,29 @@ New columns:
 | Column | Type | Meaning |
 |---|---|---|
 | `assisted_by` | `VARCHAR(255)` | field assistant's name, as printed on the cover |
-| `instruments_detail` | `JSONB` | `[{ description, baseSerial, roverSerial }]` |
+| `instrument_description` | `VARCHAR(255)` | make and model, e.g. `Trimble R6GNSS Set` |
+| `instrument_base_serial` | `VARCHAR(100)` | Base receiver serial number |
+| `instrument_rover_serial` | `VARCHAR(100)` | Rover receiver serial number |
 
-`instruments_detail` is JSONB rather than three flat columns because the sample numbers its
-entries (`1. Trimble R6GNSS Set`), so more than one instrument set is anticipated. The existing
-free-text `instruments` column is left in place and untouched — nothing migrates out of it.
+Flat columns, not JSONB: a survey uses exactly one GNSS pair (confirmed 2026-09-18), so the
+array the reference sample's `1.` numbering hints at is not needed. Should a second instrument
+set ever be required, that is a migration, not a reason to carry a collection now.
 
-Both columns are nullable. A project with neither renders a cover with those rows omitted
-(see Part A).
+The existing free-text `instruments` column is left in place and untouched — nothing migrates
+out of it.
+
+All four columns are nullable. A project missing any of them renders a cover with the
+corresponding row omitted (see Part A).
 
 ### API and state
 
-- `app-backend/src/routes/survey-projects.js` accepts and returns both fields; the Fastify body
-  schema gains `assistedBy` (string) and `instrumentsDetail` (array of objects with
-  `description`, `baseSerial`, `roverSerial`, all strings).
-- `useCadastralWorkflow.ts` `workflowState.surveyorInfo` gains `assistedBy` and
-  `instrumentsDetail`, persisted through the existing `surveyor_info` step-data mechanism that
-  already round-trips this object.
-- The project-setup form in `CadastralStandardView.vue` gains the inputs: one text field for the
-  assistant, and a small repeatable group for instruments.
+- `app-backend/src/routes/survey-projects.js` accepts and returns all four fields; the Fastify
+  body schema gains `assistedBy`, `instrumentDescription`, `instrumentBaseSerial` and
+  `instrumentRoverSerial`, all optional strings.
+- `useCadastralWorkflow.ts` `workflowState.surveyorInfo` gains the same four, persisted through
+  the existing `surveyor_info` step-data mechanism that already round-trips this object.
+- The project-setup form in `CadastralStandardView.vue` gains four plain text inputs:
+  assistant, instrument description, Base serial, Rover serial.
 
 ## Part A — the cover
 
@@ -196,7 +200,7 @@ Measured from the reference, in mm from the page edges:
 | Assisted by | — | 29 | |
 | Survey of | — | 37 | wraps to further lines; bold in the reference |
 | Surveyed in | — | 46 | month and year, e.g. `June 2020.` |
-| Instruments | — | 54 | numbered list; each entry followed by indented Base and Rover serial lines |
+| Instruments | — | 54 | `1. <description>`, then indented Base and Rover serial lines |
 | Address | — | 66 | multi-line, one line per address line |
 
 Rows below a multi-line value shift down by the extra lines consumed. `Survey of`, `Instruments`
@@ -211,7 +215,9 @@ the cover honest for projects predating Part B.
 
 ```ts
 assistedBy?: string;
-instrumentsDetail?: { description: string; baseSerial?: string; roverSerial?: string }[];
+instrumentDescription?: string;
+instrumentBaseSerial?: string;
+instrumentRoverSerial?: string;
 ```
 
 ### Contract changes
@@ -226,7 +232,7 @@ instrumentsDetail?: { description: string; baseSerial?: string; roverSerial?: st
 ```
 surveyor_profiles ──┐
                     ├─> workflowState.surveyorInfo ──> FieldBookMetadata ──> cover page
-survey_projects  ───┘   (assistedBy, instrumentsDetail)
+survey_projects  ───┘   (assistedBy, instrument description + serials)
 
 field book point list ──> paginateFieldBook ──┬─> field-book.ts render
    (calculated excluded)                      ├─> measureFieldBook

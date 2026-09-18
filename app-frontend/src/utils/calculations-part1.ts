@@ -348,6 +348,15 @@ export class CalculationsPart1Generator {
     const pointsPerPage = 35;
     const sortedPoints = [...surveyPoints];
     const totalPages = Math.ceil(sortedPoints.length / pointsPerPage);
+    // Column offsets from the left margin, in mm. Beacon status and description
+    // belong to the CO-ORDINATE LIST — this table carries coordinates only, so
+    // F/B moves up into the space they used to occupy.
+    const COL_Y = 25;
+    const COL_X = 60;
+    const COL_FB = 95;
+    // The red rule certifies the coordinates, so it runs ID..X and stops short
+    // of F/B — the field-book page is a cross-reference, not a coordinate.
+    const RULE_WIDTH = 90;
     for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
       pdf.addPage();
       pdf.setFont('helvetica', 'bold');
@@ -360,11 +369,9 @@ export class CalculationsPart1Generator {
       let yPosition = 40;
       pdf.setFontSize(10);
       pdf.text('ID', this.options.marginLeft, yPosition);
-      pdf.text('Y (m)', this.options.marginLeft + 25, yPosition);
-      pdf.text('X (m)', this.options.marginLeft + 60, yPosition);
-      pdf.text('Status', this.options.marginLeft + 95, yPosition);
-      pdf.text('F/B', this.options.marginLeft + 120, yPosition);
-      pdf.text('Description', this.options.marginLeft + 145, yPosition);
+      pdf.text('Y (m)', this.options.marginLeft + COL_Y, yPosition);
+      pdf.text('X (m)', this.options.marginLeft + COL_X, yPosition);
+      pdf.text('F/B', this.options.marginLeft + COL_FB, yPosition);
       yPosition += 6;
       pdf.setFont('helvetica', 'normal');
       const startIdx = pageIndex * pointsPerPage;
@@ -379,36 +386,24 @@ export class CalculationsPart1Generator {
           console.log(`[CalculationsPart1] 📍 Point ${pt.pointId} → Page ${this.currentPage} (Combined Table)`);
         }
         
-        // All rows: render ID, Y, X in red with a solid red underline
-        const idText = pt.pointId;
-        const yText  = pt.y.toFixed(3);
-        const xText  = pt.x.toFixed(3);
+        // All rows: ID, Y and X in black above one continuous red rule
         const idX   = this.options.marginLeft;
-        const yColX = this.options.marginLeft + 25;
-        const xColX = this.options.marginLeft + 60;
         const lineY = yPosition + 0.8; // 0.8mm below text baseline
 
         pdf.setLineWidth(0.2); // solid thin line
         pdf.setTextColor(0, 0, 0); // text always black
-        pdf.setDrawColor(220, 0, 0); // underline lines in red
 
-        pdf.text(idText, idX, yPosition);
-        pdf.line(idX, lineY, idX + pdf.getTextWidth(idText), lineY);
+        pdf.text(pt.pointId, idX, yPosition);
+        pdf.text(pt.y.toFixed(3), this.options.marginLeft + COL_Y, yPosition);
+        pdf.text(pt.x.toFixed(3), this.options.marginLeft + COL_X, yPosition);
 
-        pdf.text(yText, yColX, yPosition);
-        pdf.line(yColX, lineY, yColX + pdf.getTextWidth(yText), lineY);
+        pdf.setDrawColor(220, 0, 0); // rule in red
+        pdf.line(idX, lineY, idX + RULE_WIDTH, lineY);
+        pdf.setDrawColor(0, 0, 0); // reset for the remaining column
 
-        pdf.text(xText, xColX, yPosition);
-        pdf.line(xColX, lineY, xColX + pdf.getTextWidth(xText), lineY);
-
-        // Reset draw color to black for remaining columns
-        pdf.setDrawColor(0, 0, 0);
-
-        pdf.text(pt.status, this.options.marginLeft + 95, yPosition);
         // Use lookup table for F/B column
         const fieldBookPage = lookup[pt.pointId] || '-';
-        pdf.text(fieldBookPage, this.options.marginLeft + 120, yPosition);
-        pdf.text(pt.description, this.options.marginLeft + 145, yPosition);
+        pdf.text(fieldBookPage, this.options.marginLeft + COL_FB, yPosition);
         yPosition += 6;
       }
       this.currentPage++; // Increment page number after each page

@@ -42,6 +42,11 @@ Settled in conversation on 2026-09-18:
   exists, so the point offset is 0 or 1 and must be an *input* to pagination, never assumed.
 - **One source of truth for pagination.** Extract a single module the renderer and both lookups
   consume, rather than applying the same offset in three places.
+- **Existing records are not preserved under the old numbering.** Moving the calibration to E1
+  shifts every point's E-number by one wherever a calibration exists, so a record regenerated
+  after this ships will not match a copy generated before it. That is accepted: survey records
+  are regenerated wholesale, never patched page by page. No compatibility shim, no versioned
+  pagination, no migration of stored F/B strings.
 
 ## Out of scope: the registration portal
 

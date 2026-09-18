@@ -187,7 +187,30 @@ array the reference sample's `1.` numbering hints at is not needed. Should a sec
 set ever be required, that is a migration, not a reason to carry a collection now.
 
 The existing free-text `instruments` column is left in place and untouched — nothing migrates
-out of it.
+out of it, and no backfill is attempted.
+
+**It is, however, already carrying this exact content.** The project-setup form's "Instruments
+Used" textarea placeholder reads:
+
+```
+e.g., 1. Trimble R6GNSS Set
+Base Serial Number S/N 5016424521
+Rover Serial Number S/N 5146476624
+```
+
+— character-for-character the cover's instrument block. Surveyors have been entering the right
+data in the right shape into an unstructured field. Structured columns were chosen over keeping
+that free text (confirmed 2026-09-18) so the cover's layout is guaranteed rather than dependent
+on typing, and so the serials are queryable later.
+
+Two consequences follow:
+
+1. The textarea is **replaced** by the three structured inputs, not kept alongside them. Two
+   editable homes for one fact is how they drift apart.
+2. Because existing projects have their instruments only in the free-text column, the cover
+   **falls back to `instruments` verbatim** when all three structured fields are empty. An
+   existing project therefore still renders a correct cover, and re-entering the data in the
+   new inputs takes over from the fallback. This fallback is the only reader of the old column.
 
 All four columns are nullable. A project missing any of them renders a cover with the
 corresponding row omitted (see Part A).

@@ -33,16 +33,22 @@ import { planSheetLayout } from './sheetLayoutPlanner.js';
 import { findBlockPosition } from './dxfBlockPlacer.js';
 import { drawSubjectAdjoiningFeatures } from './adjoiningFeatures.js';
 import { buildPolygonForPlanner, buildPlannerObstacles, chooseFigureAlignX } from './polygonForPlanner.js';
-import { measureFigureWhitespace, subdivideStripsForCap } from './scheduleStrategy.js';
+import { measureFigureWhitespace, subdivideStripsForCap, levelScheduleTables } from './scheduleStrategy.js';
 
 /**
- * SI 727 practice: a Schedule of Areas table never fills the drawing band edge
- * to edge — it is capped at a fraction of it so the sheet still reads as a plan
- * with a schedule beside it, not two columns of table. Applied per TABLE, so a
- * schedule too tall for one capped column continues into a second slot rather
- * than growing past the cap.
+ * How much of the drawing band one Schedule of Areas table may occupy.
+ *
+ * The band this multiplies is ALREADY inset by 14pt top and bottom, so 1.0 is
+ * "the content height less its margin padding", not "edge to edge" — a table
+ * still stops short of the sheet's drawing edges.
+ *
+ * It was 0.95 for a while, which backfired: the leftover 5% was a ~96pt sliver,
+ * exactly big enough for the slotting to seat a 2-row table in, so dense sheets
+ * grew a stub table holding one or two parcels. Taking the padded band whole
+ * leaves nothing to stub, and lets a dense schedule finish in two full-height
+ * columns instead of spilling into the short top/bottom bands.
  */
-const SCHEDULE_MAX_HEIGHT_FRACTION = 0.95;
+const SCHEDULE_MAX_HEIGHT_FRACTION = 1.0;
 import {
   PT_TO_MM, MM_TO_PT,
   calculateCentroid, isPointInPolygon, pointDistance, pointToLineDistance,
@@ -5817,7 +5823,7 @@ export function calculateBlockPositions(
   const _SCHED_TITLE   = 15;
   const _SCHED_SPACING = 15;
   const _SCHED_HEADER  = 25;
-  const _SCHED_ROW     = 15;
+  const _SCHED_ROW     = BLOCKS.SCHEDULE_OF_AREAS.singleColumn.rowHeight;
   const _SCHED_PAD     = 10;
   // Everything in a table that is not a data row: title, its spacing, the
   // column header band and the bottom pad. planScheduleSplit calls this the
@@ -5933,10 +5939,21 @@ export function calculateBlockPositions(
         // shorter than the 3-row minimum a standalone table has to meet.
         minRowsPerTable: 1,
       });
+      // planScheduleSplit decides HOW MANY tables are needed by filling each to
+      // capacity, which leaves the last one holding whatever remains — often a
+      // handful of parcels next to two full columns. Same slots, same total,
+      // spread evenly.
+      const _levelledPlan = levelScheduleTables({
+        plan: _slotPlan,
+        slots: _slots,
+        headerHeight: _SCHED_CHROME,
+        rowHeight: _SCHED_ROW,
+      });
+
       // All-or-nothing: a partial seating would silently drop stands, so fall
       // back to the legacy composite path and let escalation handle it.
-      if (_slotResidual === 0 && _slotPlan.length > 0) {
-        _schedStripTables = _slotPlan.map((entry) => {
+      if (_slotResidual === 0 && _levelledPlan.length > 0) {
+        _schedStripTables = _levelledPlan.map((entry) => {
           const gap = _slots[entry.gapIndex];
           return {
             x: gap.x,
@@ -7106,7 +7123,7 @@ function drawScheduleOfAreas(
   const _SCHED_TITLE   = 15;
   const _SCHED_SPACING = 15;
   const _SCHED_HEADER  = 25;
-  const _SCHED_ROW     = 15;
+  const _SCHED_ROW     = BLOCKS.SCHEDULE_OF_AREAS.singleColumn.rowHeight;
   const _SCHED_PAD     = 10;
   const _SCHED_SPACING_BETWEEN = 10; // gap between side-by-side tables
   // Column widths must match drawScheduleOfAreasSingleColumn exactly: 35+60+40+40+35+50=260
@@ -7483,7 +7500,7 @@ export function drawScheduleOfAreasMultiTable(
   const colDeedDate   = dynColWidths[4];
   const colSurveyor   = dynColWidths[5];
   const tableWidth    = dynColWidths.reduce((s, w) => s + w, 0);
-  const rowHeight = 15;
+  const rowHeight = BLOCKS.SCHEDULE_OF_AREAS.singleColumn.rowHeight;
   const headerHeight = 25;
   const titleSpacing = 15;
   const tableSpacing = tableSpacingParam; // Space between tables horizontally
@@ -8494,7 +8511,7 @@ function drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY, scheduleC
   const tableWidth =
     colStand + colArea + colDiagram + colDeedNumber + colDeedDate + colSurveyor;
 
-  const rowHeight = 15;
+  const rowHeight = BLOCKS.SCHEDULE_OF_AREAS.singleColumn.rowHeight;
   const headerHeight = 25;
 
   doc.save();

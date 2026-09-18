@@ -130,8 +130,16 @@ describe('planSheetLayout — dense schedule fills the drawing height', () => {
     const tables = r.scheduleOfAreas.placedTables;
     expect(tables).toHaveLength(2);
     expect(tables.map((t) => t.rowCount)).toEqual([120, 120]);
-    // Render formula: title(15) + header(25) + pad(10) + 120 rows × 15pt = 1850.
-    expect(r.scheduleOfAreas.height).toBeCloseTo(1850, 0);
+    // This is the composite of the RENDERED tables, so it uses the renderer's
+    // chrome: titleSpacing(15) + headerHeight(25) + pad(10) = 50. Note the
+    // planner sizes its own estimate with an extra 15pt title line (65) — a
+    // long-standing 15pt-per-table over-reserve between planner and renderer.
+    // Conservative, so it can't cause an overlap, but they are not the same
+    // number and this assertion must track the one actually drawn.
+    // Row height comes from config so a density change moves both together.
+    const RENDER_CHROME = 15 + BLOCKS.SCHEDULE_OF_AREAS.singleColumn.headerHeight + 10;
+    expect(r.scheduleOfAreas.height).toBeCloseTo(
+      RENDER_CHROME + 120 * BLOCKS.SCHEDULE_OF_AREAS.singleColumn.rowHeight, 0);
   });
 });
 

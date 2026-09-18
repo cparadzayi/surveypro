@@ -289,3 +289,57 @@ export function subdivideStripsForCap({
   }
   return slots;
 }
+
+/**
+ * Even out the row counts of an already-chosen set of schedule tables.
+ *
+ * planScheduleSplit fills greedily — each table takes its full capacity and the
+ * last one gets whatever is left. That is the right way to decide HOW MANY
+ * tables are needed, but it reads badly: a sheet ends up with two full columns
+ * and a table holding a single parcel. Levelling keeps the same slots and the
+ * same total, and just spreads the rows across them as evenly as each slot's
+ * own capacity allows, so 145 + 121 becomes 133 + 133.
+ *
+ * Water-fills: every table still short of its capacity takes an equal share of
+ * what is left, repeatedly, so a small slot fills up and drops out while the
+ * tall ones keep absorbing. No table ever exceeds its slot.
+ *
+ * @param {object} opts
+ * @param {Array<{gapIndex:number,startRow:number,rowCount:number,isContinuation:boolean}>} opts.plan
+ * @param {Array<{height:number}>} opts.slots        indexed by the plan's gapIndex
+ * @param {number} opts.headerHeight                 non-row chrome per table
+ * @param {number} opts.rowHeight
+ * @returns {Array} a new plan; the input is returned as-is when levelling is moot
+ */
+export function levelScheduleTables({ plan, slots, headerHeight, rowHeight }) {
+  if (!Array.isArray(plan) || plan.length < 2) return plan;
+
+  const caps = plan.map((entry) => {
+    const slot = slots?.[entry.gapIndex];
+    if (!slot) return entry.rowCount;
+    return Math.max(0, Math.floor((slot.height - headerHeight) / rowHeight));
+  });
+
+  const total = plan.reduce((sum, e) => sum + e.rowCount, 0);
+  const rows = caps.map(() => 0);
+  let remaining = total;
+
+  while (remaining > 0) {
+    const open = rows.map((r, i) => i).filter((i) => rows[i] < caps[i]);
+    if (open.length === 0) break;                     // capacity exhausted
+    const share = Math.max(1, Math.floor(remaining / open.length));
+    for (const i of open) {
+      if (remaining <= 0) break;
+      const add = Math.min(share, caps[i] - rows[i], remaining);
+      rows[i] += add;
+      remaining -= add;
+    }
+  }
+
+  let startRow = 0;
+  return plan.map((entry, i) => {
+    const out = { ...entry, startRow, rowCount: rows[i], isContinuation: i > 0 };
+    startRow += rows[i];
+    return out;
+  });
+}

@@ -33,7 +33,7 @@ export const SCHEDULE_OF_AREAS = {
       { key: 'deedDate', label: 'DATE', width: 35, align: 'center', parentHeader: 'DEED' },
       { key: 'surveyor', label: 'SURVEYOR-GENERAL', width: 50, align: 'center' }
     ],
-    rowHeight: 15,
+    rowHeight: 13,   // 7pt body text; 13pt is the density that lets a dense schedule sit in two full-height columns
     headerHeight: 25,
     fontSize: 7,           // body row font (drawScheduleOfAreasSingleColumn:10434)
     headerFontSize: 6,     // column header font (drawScheduleOfAreasSingleColumn:10307)
@@ -52,7 +52,7 @@ export const SCHEDULE_OF_AREAS = {
       { key: 'deedDate', label: 'DATE', width: 35, align: 'center', parentHeader: 'DEED' },
       { key: 'surveyor', label: 'SURVEYOR-GENERAL', width: 50, align: 'center' }
     ],
-    rowHeight: 15,
+    rowHeight: 13,   // must match singleColumn — both are the same table
     headerHeight: 25,
     fontSize: 7,
     headerFontSize: 6,

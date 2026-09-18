@@ -328,3 +328,60 @@ describe('subdivideStripsForCap — ideal full columns first, subdivision only f
     expect(plan.map((p) => p.rowCount)).toEqual([119, 119, 2]);
   });
 });
+
+import { levelScheduleTables } from '../scheduleStrategy.js';
+
+describe('levelScheduleTables — spread rows evenly instead of orphaning a tail', () => {
+  const HEADER = 65, ROW = 13;
+  const slot = (rows) => ({ x: 0, y: 0, width: 425, height: HEADER + rows * ROW });
+
+  test('two columns are levelled to equal row counts', () => {
+    // planScheduleSplit fills greedily: the first column takes its full 145 and
+    // the second gets the 121 left over. Two tables of 133 read better and are
+    // the same height budget.
+    const slots = [slot(145), slot(134)];
+    const plan = [
+      { gapIndex: 0, startRow: 0,   rowCount: 145, isContinuation: false },
+      { gapIndex: 1, startRow: 145, rowCount: 121, isContinuation: true },
+    ];
+    const out = levelScheduleTables({ plan, slots, headerHeight: HEADER, rowHeight: ROW });
+
+    expect(out.map((e) => e.rowCount)).toEqual([133, 133]);
+    expect(out.reduce((s, e) => s + e.rowCount, 0)).toBe(266);
+  });
+
+  test('no table is levelled past its own slot capacity', () => {
+    const slots = [slot(126), slot(116), slot(11)];
+    const plan = [
+      { gapIndex: 0, startRow: 0,   rowCount: 126, isContinuation: false },
+      { gapIndex: 1, startRow: 126, rowCount: 116, isContinuation: true },
+      { gapIndex: 2, startRow: 242, rowCount: 11,  isContinuation: true },
+    ];
+    const out = levelScheduleTables({ plan, slots, headerHeight: HEADER, rowHeight: ROW });
+
+    const caps = [126, 116, 11];
+    out.forEach((e, i) => expect(e.rowCount).toBeLessThanOrEqual(caps[i]));
+    expect(out.reduce((s, e) => s + e.rowCount, 0)).toBe(253);
+  });
+
+  test('startRow and isContinuation are recomputed to stay contiguous', () => {
+    const slots = [slot(145), slot(134)];
+    const plan = [
+      { gapIndex: 0, startRow: 0,   rowCount: 145, isContinuation: false },
+      { gapIndex: 1, startRow: 145, rowCount: 121, isContinuation: true },
+    ];
+    const out = levelScheduleTables({ plan, slots, headerHeight: HEADER, rowHeight: ROW });
+
+    expect(out[0].startRow).toBe(0);
+    expect(out[0].isContinuation).toBe(false);
+    expect(out[1].startRow).toBe(out[0].rowCount);
+    expect(out[1].isContinuation).toBe(true);
+    expect(out.map((e) => e.gapIndex)).toEqual([0, 1]);
+  });
+
+  test('a single table is returned unchanged', () => {
+    const slots = [slot(145)];
+    const plan = [{ gapIndex: 0, startRow: 0, rowCount: 90, isContinuation: false }];
+    expect(levelScheduleTables({ plan, slots, headerHeight: HEADER, rowHeight: ROW })).toEqual(plan);
+  });
+});

@@ -63,11 +63,20 @@ describe('dxfGenerator integration — block-definitions consumption', () => {
     expect(SURVEYOR_GENERAL_BOX.dateYOffset).toBe(96)
   })
 
-  test('SCHEDULE_OF_AREAS columns match what the PDF drawer hardcodes (260 pt total)', () => {
+  test('SCHEDULE_OF_AREAS carries the column + row geometry both generators consume (260 pt total)', () => {
     const totalPt = SCHEDULE_OF_AREAS.singleColumn.columns.reduce((s, c) => s + c.width, 0)
     expect(totalPt).toBe(35 + 60 + 40 + 40 + 35 + 50)
-    expect(SCHEDULE_OF_AREAS.singleColumn.rowHeight).toBe(15)
     expect(SCHEDULE_OF_AREAS.singleColumn.titleFontSize).toBe(9)
+
+    // rowHeight used to be pinned to 15 here because the PDF hardcoded 15 in four
+    // places and this was the only thing keeping the two in step. The PDF now reads
+    // this field, so pinning the number would just be restating the config. What
+    // matters is that it stays a sane row for 7pt body text and that multiColumn
+    // agrees with singleColumn — they are the same table drawn twice.
+    const { rowHeight, fontSize } = SCHEDULE_OF_AREAS.singleColumn
+    expect(rowHeight).toBe(SCHEDULE_OF_AREAS.multiColumn.rowHeight)
+    expect(rowHeight).toBeGreaterThan(fontSize)     // never tighter than the glyphs
+    expect(rowHeight).toBeLessThanOrEqual(15)       // never looser than the original
   })
 
   test("renders the expected 'For Surveyor General' string sourced from block-definitions", () => {

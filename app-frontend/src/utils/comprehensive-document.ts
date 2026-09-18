@@ -26,6 +26,46 @@ import type { DocumentMeasurements } from '@/types/document-measurements';
 import type { ReportOnSurveyData } from '@/types/cadastral';
 import type { BeaconComparisonReportOptions } from '@/utils/beaconComparisonReportGenerator';
 
+/**
+ * TRIG beacons come from the national control network — the survey did not
+ * establish them, so they appear in the Coordinate List only.
+ */
+const isTrigSurveyPoint = (pt: { description?: string; status?: string }): boolean => {
+  const desc = (pt.description || '').toUpperCase();
+  const status = (pt.status || '').toUpperCase();
+  return desc.includes('TRIG') || status.includes('TRIG');
+};
+
+/** A point computed rather than observed — no beacon was visited. */
+const isCalculatedSurveyPoint = (pt: { description?: string; status?: string }): boolean => {
+  const desc = (pt.description || '').toUpperCase();
+  const status = (pt.status || '').toUpperCase();
+  return desc.includes('CALCULATED') || status === 'C' || status === 'CALC';
+};
+
+/**
+ * Field Book and Calculations do NOT take the same points.
+ *
+ * The Field Book records observations, so a calculated point has no place in it.
+ * Calculations is where a calculated point is derived, so it must be there — that
+ * run is what assigns it the page number the Coordinate List later cites. Feeding
+ * one shared list to both sections leaves calculated points with no Calculations
+ * page at all, and the reference silently disappears from the Coordinate List.
+ */
+export function splitSurveyPointsForSections<T extends { pointId?: string; description?: string; status?: string }>(
+  points: T[],
+): { forCalculations: T[]; forFieldBook: T[] } {
+  const forCalculations = points.filter(pt => !isTrigSurveyPoint(pt));
+  const forFieldBook = forCalculations.filter(pt => {
+    if (isCalculatedSurveyPoint(pt)) {
+      console.log(`[ComprehensiveDoc] 🧮 Excluding calculated point from Field Book: ${pt.pointId}`);
+      return false;
+    }
+    return true;
+  });
+  return { forCalculations, forFieldBook };
+}
+
 export interface ComprehensiveDocumentData {
   // Project Information
   projectInfo: CoverPageInfo;
@@ -105,13 +145,10 @@ export class ComprehensiveDocumentGenerator {
   }> {
     console.log('[ComprehensiveDoc] 🎯 Using TWO-PASS generation for 100% accurate cross-references');
     
-    // Filter out TRIG beacons (they only appear in Coordinate List)
-    const surveyPointsOnly = data.surveyPoints.filter(pt => {
-      const desc = (pt.description || '').toUpperCase();
-      const status = (pt.status || '').toUpperCase();
-      const isTrig = desc.includes('TRIG') || status.includes('TRIG');
-      return !isTrig;
-    });
+    // Filter out TRIG beacons (they only appear in Coordinate List). Calculated
+    // points stay: TwoPassDocumentGenerator drops them inside renderFieldBook,
+    // so they still reach Calculations and get their page.
+    const { forCalculations: surveyPointsOnly } = splitSurveyPointsForSections(data.surveyPoints);
     
     console.log('[ComprehensiveDoc] 📋 Survey points filtering:');
     console.log(`  - Total: ${data.surveyPoints.length}`);
@@ -247,21 +284,11 @@ export class ComprehensiveDocumentGenerator {
     console.log('[ComprehensiveDoc] 2/5 Generating Field Book...');
     let fieldBookBlob: Blob | null = null;
     
-    // ⭐ CRITICAL: Filter out TRIG beacons and CALCULATED points for Field Book & Calculations
-    // - TRIG beacons are from the national control network and only appear in Coordinate List
-    // - CALCULATED points are computed (not observed) and only appear in Calculations & Coordinate List
-    const surveyPointsOnly = data.surveyPoints.filter(pt => {
-      const desc = (pt.description || '').toUpperCase();
-      const status = (pt.status || '').toUpperCase();
-      const isTrig = desc.includes('TRIG') || status.includes('TRIG');
-      const isCalculated = desc.includes('CALCULATED') || status === 'C' || status === 'CALC';
-      
-      if (isCalculated) {
-        console.log(`[ComprehensiveDoc] 🧮 Excluding calculated point from Field Book: ${pt.pointId}`);
-      }
-      
-      return !isTrig && !isCalculated;
-    });
+    // ⭐ CRITICAL: the two sections need two different lists (see
+    // splitSurveyPointsForSections). Sharing one list silently denies calculated
+    // points a Calculations page, which the Coordinate List then cannot cite.
+    const { forCalculations, forFieldBook: surveyPointsOnly } =
+      splitSurveyPointsForSections(data.surveyPoints);
     
     console.log('[ComprehensiveDoc] 📋 Survey points filtering:');
     console.log('[ComprehensiveDoc] - Total survey points:', data.surveyPoints.length);
@@ -321,7 +348,7 @@ export class ComprehensiveDocumentGenerator {
     
     const calcGenerator = new CalculationsPart1Generator();
     const calcResult = await calcGenerator.generateCalculationsPart1PDF(
-      surveyPointsOnly, // ⭐ Use SAME filtered list as Field Book (no TRIG beacons)
+      forCalculations, // ⭐ Includes calculated points — this is where they get their page
       data.surveyorInfo,
       estimatedCalcStartPage
     );

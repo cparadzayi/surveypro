@@ -629,14 +629,18 @@ export class CoordinateListGenerator {
       // F/P status (skip for TRIG beacons from national system)
       // RIGHT-JUSTIFIED
       if (point.calculationsPage !== 0) {
-        const status = point.status.toUpperCase().substring(0, 1);
+        // ⭐ CRITICAL: A calculated point was derived, not visited. It is neither
+        // Found nor Placed — the only two values this column's legend defines —
+        // and no field book page records an observation of it. Both cells carry
+        // the "-" not-applicable marker; only the Calcs page reference is real.
+        const isCalculated = this.isCalculatedPoint(point);
+
+        const status = isCalculated ? '-' : point.status.toUpperCase().substring(0, 1);
         const statusWidth = pdf.getTextWidth(status);
         pdf.text(status, this.options.marginLeft + 175 - statusWidth, yPos, { align: 'right' });
-        
+
         // F.B column - Field Book page reference (cross-reference to Field Book)
-        // ⭐ CRITICAL: Calculated points should show "-" (not beaconed)
         // RIGHT-JUSTIFIED
-        const isCalculated = this.isCalculatedPoint(point);
         const fbPage = isCalculated ? '-' : (point.fieldBookPage || '-');
         const fbWidth = pdf.getTextWidth(fbPage);
         pdf.text(fbPage, this.options.marginLeft + 195 - fbWidth, yPos, { align: 'right' });

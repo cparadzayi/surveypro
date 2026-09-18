@@ -84,7 +84,7 @@ describe('3-v7 Maglas parity', () => {
     expect(dxfResult.buffer.length).toBeGreaterThan(0);
   }, 120000);
 
-  test('dense Maglas: DXF resolves the schedule-over-figure overlap; PDF correctly escalates through every level but the fixture is still too dense to fit', async () => {
+  test('dense Maglas: BOTH formats resolve the schedule-over-figure overlap', async () => {
     // PDF↔DXF parity follows the real app flow: the PDF generates FIRST and
     // decides scale + sheet size + orientation (enlarging the figure to the
     // largest SI 727 scale that fits). The DXF then consumes those verbatim, so
@@ -110,32 +110,22 @@ describe('3-v7 Maglas parity', () => {
     console.log('PDF warn keys:', pdfWarnKeys);
     console.log('DXF warn keys:', dxfWarnKeys);
 
-    // Previously this test tracked a known, not-yet-fixed PDF-side defect
-    // ("sub-project B"): dense Maglas's schedule splits into multiple
-    // sub-tables (isScheduleWithFluidFallback), and that fluid multi-table
-    // placement path didn't participate in paper-size escalation AT ALL —
-    // the gate was blanket-suppressed for split schedules, so PDF never
-    // even tried a larger sheet. Fixed in pdfkitGeoPDF.js's
-    // calculateBlockPositions: the fluid search's own composite result is
-    // now checked against the figure polygon, and needsScaleUp is promoted
-    // if it still overlaps (see
-    // docs/superpowers/specs/2026-08-10-split-schedule-escalation-gate-design.md).
+    // This test used to record a PDF-side limitation: DXF resolved the dense
+    // Maglas fixture via its own post-emission escalation, while the PDF sized
+    // its schedule as ONE contiguous composite (860×1850pt) that fit nowhere,
+    // so it escalated through every sheet and scale and still ended up over the
+    // figure. scheduleOfAreasOverlapsPolygon and scheduleEscalationExhausted
+    // were the honest signals of that, and were asserted here.
     //
-    // pdfWarnKeys still legitimately contains scheduleOfAreasOverlapsPolygon
-    // for THIS fixture — that has NOT changed, and is not a residual bug.
-    // Verified directly (full escalation trace, captured during
-    // implementation): the fix now correctly escalates through every level —
-    // SI727_500x400 → SI727_800x500 → SI727_1000x800 → scale step-up 1:1000→1:1250 — but Maglas's
-    // 240-stand schedule composite (860×1850pt, ~30×65cm) is genuinely too
-    // large to fit anywhere even at the largest sheet plus a scale step-up.
-    // scheduleEscalationExhausted appears in pdfWarnKeys as the honest
-    // signal of this — a real, quantified density limit, the same category
-    // as sgSignature's documented residual gap from the prior fix
-    // (2026-08-09-relocation-pass-figure-accuracy). DXF resolves this
-    // fixture independently via its own post-emission escalation
-    // (dxfGenerator.js) — unaffected either way by this PDF-side fix.
+    // The PDF no longer builds that composite. It seats the schedule in the
+    // whitespace strips around the figure before the other blocks are placed —
+    // one capped column per strip, subdivided only for the remainder — so the
+    // fixture resolves on its own sheet with no escalation and no overlap.
+    // Both formats now come back clean, which is the parity this file exists
+    // to check. See the sibling assertions in
+    // pdfkitGeoPDF.scheduleNoOverlap.test.js for the PDF-side detail.
     expect(dxfWarnKeys).not.toContain('scheduleOfAreasOverlapsPolygon');
-    expect(pdfWarnKeys).toContain('scheduleOfAreasOverlapsPolygon');
-    expect(pdfWarnKeys).toContain('scheduleEscalationExhausted');
-  }, 120000);
+    expect(pdfWarnKeys).not.toContain('scheduleOfAreasOverlapsPolygon');
+    expect(pdfWarnKeys).not.toContain('scheduleEscalationExhausted');
+  }, 300000);
 });

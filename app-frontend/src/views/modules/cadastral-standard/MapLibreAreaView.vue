@@ -2419,8 +2419,38 @@ const adjustedCoordinatesForDetection = computed(() => {
   }));
 });
 
+// Two paths reach map initialisation and they can overlap.
+//
+// onMounted awaits control points and parcels before calling it, while a
+// watcher calls it the moment coordinate points arrive -- and points usually
+// arrive DURING that awaiting, because the control-point fetch is what grows
+// the set. The watcher's `if (map)` guard does not help: initialisation is
+// async and spends most of its time waiting on the map's `load` event, so the
+// second caller arrives while the first is still in flight.
+//
+// MapLibre then throws on the repeated setup, e.g. `An image named
+// "trig-triangle" already exists` followed by `Source "temp-polygon" already
+// exists`, which aborts the second pass partway. The map survived only because
+// the first pass had already finished everything the second one died before
+// reaching.
+//
+// Single-flight: the second caller awaits the first rather than racing it. The
+// promise is released on failure so a genuine retry is still possible.
+let mapInitPromise: Promise<void> | null = null;
+
+function initializeMap(): Promise<void> {
+  if (mapInitPromise) return mapInitPromise;
+
+  mapInitPromise = initializeMapOnce().catch((error) => {
+    mapInitPromise = null;
+    throw error;
+  });
+
+  return mapInitPromise;
+}
+
 // Initialize MapLibre map
-async function initializeMap() {
+async function initializeMapOnce() {
   if (!mapContainer.value) return;
 
   console.log('[MapLibre] 🗺️ Initializing main map (survey pegs only)...');

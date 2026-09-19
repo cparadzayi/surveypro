@@ -427,11 +427,12 @@
             <!-- Instrument -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">
-                Instrument
+                Instrument *
               </label>
               <input
                 v-model="setupData.instrumentDescription"
                 type="text"
+                required
                 class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="e.g., Trimble R6GNSS Set"
               />
@@ -581,6 +582,7 @@
             <li v-if="!setupData.district">• District is required</li>
             <li v-if="!setupData.surveyDate">• Survey date is required</li>
             <li v-if="!setupData.surveyOf">• Survey Of description is required</li>
+            <li v-if="!setupData.instrumentDescription">• Instrument is required</li>
             <li v-if="!setupData.loZone">• Lo zone must be selected</li>
             <li v-if="!setupData.workingDirectory">• Working directory must be set</li>
           </ul>
@@ -708,6 +710,7 @@ const isFormValid = computed(() => {
     setupData.value.surveyType.trim() !== '' &&
     setupData.value.surveyDate.trim() !== '' &&
     setupData.value.surveyOf.trim() !== '' &&
+    setupData.value.instrumentDescription.trim() !== '' &&
     setupData.value.loZone !== null &&
     setupData.value.workingDirectory.trim() !== ''
   )

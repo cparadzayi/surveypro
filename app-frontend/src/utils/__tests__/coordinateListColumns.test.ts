@@ -72,20 +72,41 @@ describe('CO-ORDINATE LIST column geometry', () => {
     expect(cells.some((c) => c.t === '12mm iron peg in concrete')).toBe(true);
   });
 
-  it('right-justifies CONSTANTS to the beacons column, reaching left over Calcs', async () => {
+  it('reaches left over the empty Calcs cell rather than right into Y', async () => {
     const cells = await tableCells([coord({})]);
 
-    const constants = cells.find((c) => c.t === 'CONSTANTS');
-    const beacon = cells.find((c) => c.t === '87DNew');
-    expect(constants).toBeDefined();
-    expect(beacon).toBeDefined();
+    const constants = cells.find((c) => c.t === 'CONSTANTS')!;
+    const calcs = cells.find((c) => c.t === 'Calcs')!;
+    const firstConstant = cells.find((c) => c.t.startsWith('±'))!;
 
-    // Its right edge lines up with the beacon names' column, and it starts to
-    // their left -- that overhang is the point, and it lands on an empty cell.
-    const constantsRight = constants!.x + widthPt('CONSTANTS');
-    const beaconRight = beacon!.x + widthPt('87DNew');
-    expect(constantsRight).toBeGreaterThan(beaconRight);
-    expect(constants!.x).toBeLessThan(beacon!.x);
+    // CONSTANTS is wider than the column that holds it, so it has to overhang
+    // somewhere. Left is correct: that cell is empty on this row. Right would
+    // collide with the coordinates.
+    expect(constants.x).toBeLessThan(calcs.x + widthPt('Calcs') + 30);
+    expect(constants.x + widthPt('CONSTANTS')).toBeLessThan(firstConstant.x);
+  });
+
+  it('leaves a gap between the beacons column and the coordinates beside it', async () => {
+    const cells = await tableCells([coord({})]);
+
+    const beacon = cells.find((c) => c.t === '87DNew')!;
+    const constants = cells.find((c) => c.t === 'CONSTANTS')!;
+    const y = cells.find((c) => c.t.startsWith('-85 729'))!;
+
+    // Neither the centred name nor the right-justified label may touch Y --
+    // the separation is what makes them read as distinct columns.
+    expect(beacon.x + widthPt('87DNew')).toBeLessThan(y.x);
+    expect(constants.x + widthPt('CONSTANTS')).toBeLessThan(y.x);
+  });
+
+  it('centres beacon names under their own heading', async () => {
+    const cells = await tableCells([coord({})]);
+
+    const beacon = cells.find((c) => c.t === '87DNew')!;
+    const heading = cells.find((c) => c.t === 'Stations')!;
+
+    const centreOf = (c: { x: number; t: string }) => c.x + widthPt(c.t) / 2;
+    expect(Math.abs(centreOf(beacon) - centreOf(heading))).toBeLessThan(3);
   });
 
   it('keeps every cell inside the right margin', async () => {

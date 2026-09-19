@@ -85,7 +85,12 @@ const COL = {
   fieldBook: 0,
   calcs: 15,
   beacons: 35,
-  beaconsRight: 51,
+  /** Right edge of the beacons column. 3mm short of `y` so its contents never
+   *  butt against the coordinates beside them. */
+  beaconsRight: 48,
+  /** Centre of the beacons column: names and their header sit here, which reads
+   *  as a column rather than as text pushed up against the Y values. */
+  beaconsCentre: 41.5,
   y: 51,
   metres: 56,
   x: 81,
@@ -608,15 +613,15 @@ export class CoordinateListGenerator {
     pdf.setFontSize(10);
     pdf.text('F/B', this.options.marginLeft, yPos);
     pdf.text('Calcs', this.options.marginLeft + COL.calcs, yPos);
-    pdf.text('Beacons/', this.options.marginLeft + COL.beacons, yPos);
+    pdf.text('Beacons/', this.options.marginLeft + COL.beaconsCentre, yPos, { align: 'center' });
     pdf.text('CO-ORDINATES', this.options.marginLeft + COL.y, yPos);
     yPos += 4;
     
-    pdf.text('Stations', this.options.marginLeft + COL.beacons, yPos);
+    pdf.text('Stations', this.options.marginLeft + COL.beaconsCentre, yPos, { align: 'center' });
     pdf.text('Metres', this.options.marginLeft + COL.metres, yPos);
     pdf.text('F = Found', this.options.marginLeft + COL.description, yPos);
     pdf.text('F/P', this.options.marginLeft + COL.fpRight - pdf.getTextWidth('F/P'), yPos);
-    pdf.text('F. B', this.options.marginLeft + COL.fbRefRight - pdf.getTextWidth('F. B'), yPos);
+    pdf.text('F/B', this.options.marginLeft + COL.fbRefRight - pdf.getTextWidth('F/B'), yPos);
     yPos += 4;
     
     pdf.text('Y', this.options.marginLeft + COL.y, yPos);
@@ -670,7 +675,7 @@ export class CoordinateListGenerator {
       }
       
       // Point - Point ID
-      pdf.text(point.pointId, this.options.marginLeft + COL.beacons, yPos);
+      pdf.text(point.pointId, this.options.marginLeft + COL.beaconsCentre, yPos, { align: 'center' });
       
       // Y coordinate (Westing) - use banker's rounding to 2 decimals
       const coords = toCoordinateListPrecision(point);

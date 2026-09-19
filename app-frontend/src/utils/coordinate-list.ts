@@ -66,6 +66,38 @@ const fitToWidth = (pdf: jsPDF, text: string, maxWidthMm: number): string => {
   return trimmed;
 };
 
+/**
+ * Column geometry of the CO-ORDINATE LIST table, in mm from the left margin.
+ *
+ * Defined once because it was not: the same offsets were repeated at nineteen
+ * call sites, so the header row and the value row for F/P had drifted 10mm
+ * apart and the F. B values had drifted past the right margin entirely.
+ *
+ * The beacons column is sized for beacon names -- "87DNew" and the like, about
+ * 11mm -- not for the word CONSTANTS that shares it. CONSTANTS right-justifies
+ * to BEACONS_RIGHT instead and reaches left across the Calcs cell, which is
+ * empty on that row. The 19mm this frees goes to the description, which had
+ * been truncating "12mm iron peg in concrete" mid-word.
+ *
+ * USABLE is the page less both margins; nothing may be drawn beyond it.
+ */
+const COL = {
+  fieldBook: 0,
+  calcs: 15,
+  beacons: 35,
+  beaconsRight: 51,
+  y: 51,
+  metres: 56,
+  x: 81,
+  description: 111,
+  /** F/P and F. B are right-justified: these are their right edges. */
+  fpRight: 166,
+  fbRefRight: 180,
+} as const;
+
+/** Page width less both margins, in mm. Nothing is drawn past this. */
+const USABLE = 180;
+
 export class CoordinateListGenerator {
   private currentPage = 100; // Starting page for Coordinate List
   private surveyorInfo!: SurveyorInfo; // Store surveyor info for use in page headers
@@ -569,34 +601,34 @@ export class CoordinateListGenerator {
     // Use central meridian from project settings, fallback to 31 if not specified
     const loValue = this.surveyorInfo.centralMeridian ?? 31;
     console.log('[CoordinateList] Table header - centralMeridian:', this.surveyorInfo.centralMeridian, 'using:', loValue);
-    pdf.text(`Lo ${loValue}°`, this.options.marginLeft + 70, yPos);
-    pdf.text('DESCRIPTION', this.options.marginLeft + 130, yPos);
+    pdf.text(`Lo ${loValue}°`, this.options.marginLeft + COL.y, yPos);
+    pdf.text('DESCRIPTION', this.options.marginLeft + COL.description, yPos);
     yPos += 5;
     
     pdf.setFontSize(10);
     pdf.text('F/B', this.options.marginLeft, yPos);
-    pdf.text('Calcs', this.options.marginLeft + 15, yPos);
-    pdf.text('Beacons/', this.options.marginLeft + 35, yPos);
-    pdf.text('CO-ORDINATES', this.options.marginLeft + 70, yPos);
+    pdf.text('Calcs', this.options.marginLeft + COL.calcs, yPos);
+    pdf.text('Beacons/', this.options.marginLeft + COL.beacons, yPos);
+    pdf.text('CO-ORDINATES', this.options.marginLeft + COL.y, yPos);
     yPos += 4;
     
-    pdf.text('Stations', this.options.marginLeft + 35, yPos);
-    pdf.text('Metres', this.options.marginLeft + 75, yPos);
-    pdf.text('F = Found', this.options.marginLeft + 130, yPos);
-    pdf.text('F/P', this.options.marginLeft + 165, yPos);
-    pdf.text('F. B', this.options.marginLeft + 180, yPos);
+    pdf.text('Stations', this.options.marginLeft + COL.beacons, yPos);
+    pdf.text('Metres', this.options.marginLeft + COL.metres, yPos);
+    pdf.text('F = Found', this.options.marginLeft + COL.description, yPos);
+    pdf.text('F/P', this.options.marginLeft + COL.fpRight - pdf.getTextWidth('F/P'), yPos);
+    pdf.text('F. B', this.options.marginLeft + COL.fbRefRight - pdf.getTextWidth('F. B'), yPos);
     yPos += 4;
     
-    pdf.text('Y', this.options.marginLeft + 70, yPos);
-    pdf.text('X', this.options.marginLeft + 100, yPos);
-    pdf.text('P = Placed', this.options.marginLeft + 130, yPos);
+    pdf.text('Y', this.options.marginLeft + COL.y, yPos);
+    pdf.text('X', this.options.marginLeft + COL.x, yPos);
+    pdf.text('P = Placed', this.options.marginLeft + COL.description, yPos);
     yPos += 6;
     
     // CONSTANTS row (on every page)
     pdf.setFont('helvetica', 'normal');
-    pdf.text('CONSTANTS', this.options.marginLeft + 35, yPos);
-    pdf.text('± 0.00', this.options.marginLeft + 70, yPos);
-    pdf.text('± 0.00', this.options.marginLeft + 100, yPos);
+    pdf.text('CONSTANTS', this.options.marginLeft + COL.beaconsRight, yPos, { align: 'right' });
+    pdf.text('± 0.00', this.options.marginLeft + COL.y, yPos);
+    pdf.text('± 0.00', this.options.marginLeft + COL.x, yPos);
     yPos += 8;
     
     return yPos; // Return starting Y position for data rows
@@ -634,11 +666,11 @@ export class CoordinateListGenerator {
       // Skip for TRIG beacons from national system (calculationsPage === 0)
       const calcsPage = point.calculationsPage === 0 ? '' : (point.calculationsPage?.toString() || '-');
       if (calcsPage) {
-        pdf.text(calcsPage, this.options.marginLeft + 15, yPos);
+        pdf.text(calcsPage, this.options.marginLeft + COL.calcs, yPos);
       }
       
       // Point - Point ID
-      pdf.text(point.pointId, this.options.marginLeft + 35, yPos);
+      pdf.text(point.pointId, this.options.marginLeft + COL.beacons, yPos);
       
       // Y coordinate (Westing) - use banker's rounding to 2 decimals
       const coords = toCoordinateListPrecision(point);
@@ -648,21 +680,26 @@ export class CoordinateListGenerator {
         console.log(`[CoordinateList] Rendering point ${point.pointId}: y=${point.y} -> ${coords.y}, x=${point.x} -> ${coords.x}`);
       }
       
-      pdf.text(coords.y, this.options.marginLeft + 70, yPos);
+      pdf.text(coords.y, this.options.marginLeft + COL.y, yPos);
       
       // X coordinate (Southing) - use banker's rounding to 2 decimals
-      pdf.text(coords.x, this.options.marginLeft + 100, yPos);
+      pdf.text(coords.x, this.options.marginLeft + COL.x, yPos);
       
       // Description, trimmed to the width actually available before the F/P
       // column rather than to a character count. A count cannot know how wide
       // the glyphs are: "50mm iron pipe in concrete" and "IIIIIIIIIIIIIIIIIIIIIIIIII"
       // are both 26 characters and differ by half a column, so a cap tuned for
       // one font size silently overruns at the next.
-      // 37mm, not the full 45mm to the F/P column: the gap is what makes the
-      // two columns read as separate, and F/P is right-justified so its glyph
-      // starts a few mm before its nominal position.
-      const descLimit = 37;
-      pdf.text(fitToWidth(pdf, point.description, descLimit), this.options.marginLeft + 130, yPos);
+      // Derived from the columns either side rather than tuned by hand, so it
+      // follows them if they move. The gap keeps the description visibly
+      // separate from F/P, whose right-justified glyph starts a little before
+      // its nominal edge.
+      const descLimit = COL.fpRight - COL.description - 5;
+      pdf.text(
+        fitToWidth(pdf, point.description, descLimit),
+        this.options.marginLeft + COL.description,
+        yPos,
+      );
       
       // F/P status (skip for TRIG beacons from national system)
       // RIGHT-JUSTIFIED
@@ -674,14 +711,12 @@ export class CoordinateListGenerator {
         const isCalculated = this.isCalculatedPoint(point);
 
         const status = isCalculated ? '-' : point.status.toUpperCase().substring(0, 1);
-        const statusWidth = pdf.getTextWidth(status);
-        pdf.text(status, this.options.marginLeft + 175 - statusWidth, yPos, { align: 'right' });
+        pdf.text(status, this.options.marginLeft + COL.fpRight, yPos, { align: 'right' });
 
         // F.B column - Field Book page reference (cross-reference to Field Book)
         // RIGHT-JUSTIFIED
         const fbPage = isCalculated ? '-' : (point.fieldBookPage || '-');
-        const fbWidth = pdf.getTextWidth(fbPage);
-        pdf.text(fbPage, this.options.marginLeft + 195 - fbWidth, yPos, { align: 'right' });
+        pdf.text(fbPage, this.options.marginLeft + COL.fbRefRight, yPos, { align: 'right' });
       }
       
       yPos += rowHeight;

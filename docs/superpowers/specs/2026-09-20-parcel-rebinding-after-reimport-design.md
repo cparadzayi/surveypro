@@ -131,6 +131,26 @@ re-binding, is a separate question about project setup and is not decided here.
    a separation test, so a match cannot silently pick the wrong peg in a dense network.
 3. **Otherwise the vertex is unmatched**, and is reported. It is never guessed at.
 
+## Implementation note: the two coordinate conventions do not agree
+
+`metadata.cape_lo_points` names its axes the way a surveyor does — `y` is the westing
+(≈ -85 723) and `x` the southing (≈ 2 144 076). PostGIS names them the other way round, so for
+the same beacon:
+
+```
+ST_X(geom)  ==  cape_lo_points.y      (westing)
+ST_Y(geom)  ==  cape_lo_points.x      (southing)
+```
+
+Comparing `y` to `ST_Y` therefore does not produce a small error. Verified on project 20: it
+reports every beacon as having moved about **3 153 km**, because the discrepancy is the gap
+between the two magnitudes, taken twice. A displacement that large is obvious; one derived from a
+subtler mistake in the same family would not be.
+
+Every comparison and every geometry rewrite in this feature crosses that boundary, so the mapping
+belongs in one helper with the pairing asserted in a test, rather than being re-derived at each
+call site.
+
 ## Behaviour
 
 Re-binding is **invoked explicitly from the parcel screen** (decided 2026-09-20). It does not run

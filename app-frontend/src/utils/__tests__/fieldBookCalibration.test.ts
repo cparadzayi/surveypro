@@ -19,7 +19,7 @@ const points: FieldBookPoint[] = Array.from({ length: 30 }, (_, i) => ({
 }))
 
 describe('field book with a site calibration', () => {
-  it('appends the calibration after the point pages, adding exactly one page', async () => {
+  it('opens the book with the calibration, adding exactly one page', async () => {
     const gen = new FieldBookGenerator()
     const withoutCal = await gen.generateFieldBookPDF(points, metadata)
 
@@ -30,19 +30,20 @@ describe('field book with a site calibration', () => {
     expect(withCal.pageCount).toBe(3)             // + the calibration page
   })
 
-  it('leaves every point page label untouched', async () => {
-    // The whole reason the calibration is appended rather than placed first:
-    // pointPageMap is cross-referenced by the other documents, so a calibration
-    // must not renumber a single point page.
+  it('moves every point page label down one', async () => {
+    // The calibration opens the book, so every point page — and every
+    // cross-reference to it in the other documents — moves one E-number later.
     const gen = new FieldBookGenerator()
     const withoutCal = await gen.generateFieldBookPDF(points, metadata)
 
     const gen2 = new FieldBookGenerator()
     const withCal = await gen2.generateFieldBookPDF(points, metadata, parseSiteCalibration(sampleXml))
 
-    expect(withCal.pointPageMap).toEqual(withoutCal.pointPageMap)
-    expect(withCal.pointPageMap['P1']).toBe('E1')
-    expect(withCal.pointPageMap['P30']).toBe('E2')
+    expect(withoutCal.pointPageMap['P1']).toBe('E1')
+    expect(withCal.pointPageMap['P1']).toBe('E2')
+
+    expect(withoutCal.pointPageMap['P30']).toBe('E2')
+    expect(withCal.pointPageMap['P30']).toBe('E3')
   })
 
   it('is byte-for-byte unchanged when no calibration is supplied', async () => {
@@ -59,8 +60,9 @@ describe('field book with a site calibration', () => {
     const cal = parseSiteCalibration(sampleXml)
     const { pdf } = await new FieldBookGenerator().generateFieldBookPDF(points, metadata, cal)
 
-    // jsPDF keeps the emitted text per page; the calibration is the last one.
-    const text = (pdf as any).internal.pages.at(-1).join(' ')
+    // jsPDF keeps the emitted text per page, 1-indexed (pages[0] is unused);
+    // the calibration opens the book, so it is page 1.
+    const text = (pdf as any).internal.pages.at(1).join(' ')
 
     expect(text).toContain('GNSS SITE CALIBRATION')
     expect(text).toContain('Scale Factor')
@@ -76,7 +78,8 @@ describe('field book with a site calibration', () => {
   it('states residuals in metres to three decimals, as the source report does', async () => {
     const cal = parseSiteCalibration(sampleXml)
     const { pdf } = await new FieldBookGenerator().generateFieldBookPDF(points, metadata, cal)
-    const text = (pdf as any).internal.pages.at(-1).join(' ')
+    // The calibration opens the book, so it is page 1 (pages[0] is unused).
+    const text = (pdf as any).internal.pages.at(1).join(' ')
 
     // 0.0077985… m -> "0.008 m". Metres so the field book and the Trimble
     // report can be compared line by line without converting units in your head.
@@ -89,10 +92,40 @@ describe('field book with a site calibration', () => {
     expect(cal.hasVertical).toBe(false)
 
     const { pdf } = await new FieldBookGenerator().generateFieldBookPDF(points, metadata, cal)
-    const text = (pdf as any).internal.pages.at(-1).join(' ')
+    // The calibration opens the book, so it is page 1 (pages[0] is unused).
+    const text = (pdf as any).internal.pages.at(1).join(' ')
 
     // Silence would read as "vertical residuals were all zero", which is a
     // different and much stronger claim than "no vertical adjustment was done".
     expect(text).toMatch(/Horizontal[- ]only/i)
   })
 })
+
+describe('where the calibration sits in the book', () => {
+  it('opens the book, pushing the points to E2', async () => {
+    const points = Array.from({ length: 3 }, (_, i) => ({
+      id: `P${i + 1}`, y: i, x: i, status: 'P', description: 'peg', surveyDate: '2026-01-01',
+    }));
+
+    const result = await new FieldBookGenerator().generateFieldBookPDF(
+      points,
+      { surveyorName: 'C. Paradzayi' },
+      parseSiteCalibration(sampleXml),
+    );
+
+    expect(result.pointPageMap.P1).toBe('E2');
+    expect(result.pageCount).toBe(2);
+  });
+
+  it('leaves the points on E1 when there is no calibration', async () => {
+    const points = [{ id: 'P1', y: 0, x: 0, status: 'P', description: 'peg', surveyDate: '2026-01-01' }];
+
+    const result = await new FieldBookGenerator().generateFieldBookPDF(
+      points,
+      { surveyorName: 'C. Paradzayi' },
+    );
+
+    expect(result.pointPageMap.P1).toBe('E1');
+    expect(result.pageCount).toBe(1);
+  });
+});

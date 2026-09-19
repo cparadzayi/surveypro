@@ -7,6 +7,7 @@
 import jsPDF from 'jspdf';
 import { bankersRound } from './cadastral-precision';
 import type { SiteCalibration } from './siteCalibration';
+import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination';
 
 export interface FieldBookPoint {
   id: string;
@@ -39,9 +40,9 @@ export class FieldBookGenerator {
   private pointPageMap: Record<string, string> = {};
 
   /**
-   * Generate Field Book PDF (E1-E99 pages only, no cover)
+   * Generate Field Book PDF (calibration page then point pages)
    * For use in comprehensive document generation
-   * 
+   *
    * @param points - Survey points to include in field book
    * @param metadata - Surveyor and project information
    * @returns PDF blob, page count, and point-to-page mapping
@@ -50,61 +51,59 @@ export class FieldBookGenerator {
     points: FieldBookPoint[],
     metadata: FieldBookMetadata,
     /**
-     * Optional GNSS site calibration. Rendered on its own page AFTER the point
-     * pages, so no point's E-number moves: pointPageMap is cross-referenced by
-     * the other documents, and placing the calibration first would renumber
-     * every page they point at.
+     * Optional GNSS site calibration. Rendered FIRST, as E1, with the point pages
+     * following from E2. Every E-number therefore depends on whether a survey has
+     * a calibration, which is why pagination is decided once in
+     * fieldBookPagination.ts and read from there by every consumer.
      */
     calibration?: SiteCalibration
   ): Promise<{ pdf: jsPDF; pageCount: number; pointPageMap: Record<string, string> }> {
     const pdf = new jsPDF(this.options);
-    
-    // Reset point page map for this generation
-    this.pointPageMap = {};
-    
-    console.log('[FieldBook] Generating field book with', points.length, 'points');
-    
-    // Calculate pages needed
-    const pointsPerPage = 27; // FIXED VALUE - must match all other components
-    const totalPages = Math.ceil(points.length / pointsPerPage);
-    
-    console.log('[FieldBook] Will generate', totalPages, 'pages (E1-E' + totalPages + ')');
-    
-    // Generate each page
-    for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-      if (pageIndex > 0) {
-        pdf.addPage();
-      }
-      
-      const pageNumber = pageIndex + 1;
-      const startIndex = pageIndex * pointsPerPage;
-      const endIndex = Math.min(startIndex + pointsPerPage, points.length);
-      const pagePoints = points.slice(startIndex, endIndex);
-      
-      // ⭐ Record which page each point appears on
-      pagePoints.forEach(pt => {
-        this.pointPageMap[pt.id] = `E${pageNumber}`;
-      });
-      
-      this.generateFieldBookPage(pdf, pagePoints, pageNumber, metadata);
-      
-      console.log(`[FieldBook] Generated page E${pageNumber}: ${pagePoints.length}/${pointsPerPage} points`);
-    }
-    
-    console.log('[FieldBook] ✅ Point page map created:', Object.keys(this.pointPageMap).length, 'points tracked');
 
-    let pageCount = totalPages;
+    const pagination = paginateFieldBook(points, {
+      hasCalibration: Boolean(calibration),
+      hasCover: false, // Task 10 turns this on
+    });
+    this.pointPageMap = pagination.pointPageMap;
+
+    console.log('[FieldBook] Generating field book with', points.length, 'points');
+
+    let isFirstPage = true;
+    const startPage = () => {
+      if (!isFirstPage) pdf.addPage();
+      isFirstPage = false;
+    };
+
+    // The calibration opens the book: it is the evidence the GNSS observations
+    // were tied to the local grid, so it precedes the observations themselves.
     if (calibration) {
-      if (totalPages > 0) pdf.addPage();
-      pageCount = totalPages + 1;
-      this.generateCalibrationPage(pdf, calibration, pageCount, metadata);
-      console.log(`[FieldBook] Generated calibration page E${pageCount}`);
+      startPage();
+      this.generateCalibrationPage(pdf, calibration, 1, metadata);
+      console.log('[FieldBook] Generated calibration page E1');
     }
+
+    const totalPointPages = Math.ceil(points.length / FIELD_BOOK_POINTS_PER_PAGE);
+    for (let pageIndex = 0; pageIndex < totalPointPages; pageIndex++) {
+      startPage();
+
+      const startIndex = pageIndex * FIELD_BOOK_POINTS_PER_PAGE;
+      const pagePoints = points.slice(startIndex, startIndex + FIELD_BOOK_POINTS_PER_PAGE);
+
+      // Every point on this page carries the same E-number, so read it off the
+      // map rather than recomputing it here.
+      const pageLabel = pagination.pointPageMap[pagePoints[0].id];
+      const pageNumber = Number(pageLabel.slice(1));
+
+      this.generateFieldBookPage(pdf, pagePoints, pageNumber, metadata);
+      console.log(`[FieldBook] Generated page ${pageLabel}: ${pagePoints.length} points`);
+    }
+
+    console.log('[FieldBook] ✅ Point page map created:', Object.keys(this.pointPageMap).length, 'points tracked');
 
     return {
       pdf,
-      pageCount,
-      pointPageMap: this.pointPageMap
+      pageCount: pagination.physicalPageCount,
+      pointPageMap: this.pointPageMap,
     };
   }
 

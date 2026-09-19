@@ -8,6 +8,7 @@
 
 import type { SurveyPoint } from '@/utils/coordinate-list';
 import { expertPagePredictor, type PagePrediction } from './pageNumberingExpert';
+import { paginateFieldBook } from '@/utils/fieldBookPagination';
 
 export interface PageAllocation {
   coverPage: {
@@ -87,7 +88,7 @@ export class PageAllocationService {
     const coverPageCount = 2;
     
     // Field Book: Calculate based on observations (max 99 pages)
-    const fieldBookPageCount = this.calculateFieldBookPages(data.observations || []);
+    const { ePages, physicalPages } = this.calculateFieldBookPages(data.observations || []);
     
     // Use Expert Page Predictor for accurate page counts
     const prediction = expertPagePredictor.predictPageCounts({
@@ -122,15 +123,16 @@ export class PageAllocationService {
     };
     currentPhysicalPage += coverPageCount;
     
-    // Field Book (Physical 3-101, Display E1-E99)
+    // Field Book: the cover is physical but unnumbered, so the physical span is
+    // one longer than the E span.
     const fieldBook = {
       physicalStart: currentPhysicalPage,
-      physicalEnd: currentPhysicalPage + fieldBookPageCount - 1,
+      physicalEnd: currentPhysicalPage + physicalPages - 1,
       displayStart: 'E1',
-      displayEnd: `E${fieldBookPageCount}`,
-      pageCount: fieldBookPageCount
+      displayEnd: `E${ePages}`,
+      pageCount: physicalPages
     };
-    currentPhysicalPage += fieldBookPageCount;
+    currentPhysicalPage += physicalPages;
     
     // Coordinate List (Physical 102-118, Display 100-116)
     const coordinateList = {
@@ -174,17 +176,17 @@ export class PageAllocationService {
    * Calculate Field Book page count (max 99 pages)
    * Uses survey points count since Field Book contains all survey points
    */
-  private calculateFieldBookPages(observations: any[]): number {
-    if (!observations || observations.length === 0) {
-      return 1; // At least 1 page even if empty
-    }
-    
-    // Field Book: 27 points per page (FIXED VALUE - matches field-book.ts)
-    const pointsPerPage = 27;
-    const estimatedPages = Math.ceil(observations.length / pointsPerPage);
-    
-    // Cap at 99 pages (SGO standard)
-    return Math.min(estimatedPages, 99);
+  private calculateFieldBookPages(observations: any[]): { ePages: number; physicalPages: number } {
+    const { ePageCount, physicalPageCount } = paginateFieldBook(
+      (observations || []).map(obs => ({ id: obs.pointId })),
+      // The cover adds one physical page that carries no E-number, so the
+      // physical count is one ahead of the E count from here on.
+      { hasCalibration: false, hasCover: true },
+    );
+
+    // At least one page even for an empty survey, and the SGO caps the book at 99.
+    const ePages = Math.min(Math.max(ePageCount, 1), 99);
+    return { ePages, physicalPages: Math.max(physicalPageCount, ePages) };
   }
   
   /**
@@ -234,25 +236,12 @@ export class PageAllocationService {
    * Create Field Book page lookup (Point ID → Field Book Page)
    */
   createFieldBookLookup(observations: any[]): Record<string, string> {
-    const lookup: Record<string, string> = {};
-    
-    if (!observations || observations.length === 0) {
-      return lookup;
-    }
-    
-    // Estimate which page each point appears on
-    const pointsPerPage = 20;
-    
-    observations.forEach((obs, index) => {
-      const pageNumber = Math.floor(index / pointsPerPage) + 1;
-      const fieldBookPage = `E${pageNumber}`;
-      
-      if (obs.pointId) {
-        lookup[obs.pointId] = fieldBookPage;
-      }
-    });
-    
-    return lookup;
+    // Was 20 points per page here and 27 everywhere else, so every point past the
+    // 20th got the wrong E-number.
+    return paginateFieldBook(
+      (observations || []).filter(obs => obs.pointId).map(obs => ({ id: obs.pointId })),
+      { hasCalibration: false, hasCover: false },
+    ).pointPageMap;
   }
   
   /**
@@ -315,10 +304,16 @@ export class PageAllocationService {
       return null;
     }
     
-    // Field Book: E1, E2, etc.
-    if (physicalPage >= allocation.fieldBook.physicalStart && 
+    // Field Book: E1, E2, etc. The first physical page in this range is the
+    // field book's own unnumbered cover (calculateFieldBookPages reserves one
+    // extra physical page for it), so it carries no display number and E1
+    // starts one page later than physicalStart.
+    if (physicalPage >= allocation.fieldBook.physicalStart &&
         physicalPage <= allocation.fieldBook.physicalEnd) {
-      const offset = physicalPage - allocation.fieldBook.physicalStart;
+      if (physicalPage === allocation.fieldBook.physicalStart) {
+        return null;
+      }
+      const offset = physicalPage - allocation.fieldBook.physicalStart - 1;
       return `E${offset + 1}`;
     }
     

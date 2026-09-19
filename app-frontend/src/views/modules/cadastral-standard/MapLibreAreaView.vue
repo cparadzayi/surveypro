@@ -5984,7 +5984,12 @@ async function regenerateCalculationsPart1WithAreas() {
       firm: workflowState.surveyorInfo?.firm || '',
       address: workflowState.surveyorInfo?.address || '',
       surveyDate: workflowState.surveyorInfo?.surveyDate || '',
-      projectTitle: workflowState.surveyorInfo?.surveyOf || workflowState.projectInfo?.projectName || ''
+      projectTitle: workflowState.surveyorInfo?.surveyOf || workflowState.projectInfo?.projectName || '',
+      assistedBy: workflowState.surveyorInfo?.assistedBy || '',
+      instruments: workflowState.surveyorInfo?.instruments || '',
+      instrumentDescription: workflowState.surveyorInfo?.instrumentDescription || '',
+      instrumentBaseSerial: workflowState.surveyorInfo?.instrumentBaseSerial || '',
+      instrumentRoverSerial: workflowState.surveyorInfo?.instrumentRoverSerial || '',
     };
     
     // Generate Calculations Part 1 PDF
@@ -6944,7 +6949,12 @@ async function exportAreaConsistencyPDF() {
       surveyDate: workflowState?.surveyorInfo?.surveyDate || '',
       projectTitle: workflowState?.surveyorInfo?.surveyOf || workflowState?.projectInfo?.projectName || '',
       district: workflowState?.projectInfo?.district || 'Unknown District',
-      centralMeridian: workflowState?.projectInfo?.centralMeridian || 29
+      centralMeridian: workflowState?.projectInfo?.centralMeridian || 29,
+      assistedBy: workflowState?.surveyorInfo?.assistedBy || '',
+      instruments: workflowState?.surveyorInfo?.instruments || '',
+      instrumentDescription: workflowState?.surveyorInfo?.instrumentDescription || '',
+      instrumentBaseSerial: workflowState?.surveyorInfo?.instrumentBaseSerial || '',
+      instrumentRoverSerial: workflowState?.surveyorInfo?.instrumentRoverSerial || '',
     };
     
     // Existence check for enclosed documents (ticks + optional warning), scoped to
@@ -7137,7 +7147,9 @@ async function exportAreaConsistencyPDF() {
     // ⭐ NEW: Display ACTUAL measurements (100% accurate)
     if (result.measurements) {
       console.log('[MapLibre] 📊 ACTUAL page numbers (from measurements):');
-      console.log('[MapLibre] - Field Book: E1-E' + result.measurements.fieldBook.pages);
+      // fieldBook.pages is the PHYSICAL count, which includes the unnumbered
+      // cover page -- the E range itself is one shorter.
+      console.log('[MapLibre] - Field Book: E1-E' + (result.measurements.fieldBook.pages - 1));
       console.log('[MapLibre] - Coordinate List:', result.measurements.coordinateList.startPage, '-', result.measurements.coordinateList.endPage);
       console.log('[MapLibre] - Calculations Part 1:', result.measurements.calculations.startPage, '-', result.measurements.calculations.endPage);
       console.log('[MapLibre] - Areas:', result.measurements.areas.startPage, '-', result.measurements.areas.endPage);

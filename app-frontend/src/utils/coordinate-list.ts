@@ -24,6 +24,14 @@ export interface SurveyorInfo {
   projectTitle: string
   district: string
   centralMeridian?: number // Lo value from project settings
+  /** Legacy free-text instruments column; the field book cover falls back to
+   *  this when the structured instrument fields below are all empty. */
+  instruments?: string
+  /** Field assistant, shown on the field book cover. */
+  assistedBy?: string
+  instrumentDescription?: string
+  instrumentBaseSerial?: string
+  instrumentRoverSerial?: string
 }
 
 // Grouped points interface

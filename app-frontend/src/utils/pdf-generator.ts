@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import type { ElectronicFieldBook } from '../types/cadastral'
 import { bankersRound } from './cadastral-precision'
+import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination'
 
 export interface EnhancedElectronicFieldBook extends ElectronicFieldBook {
   metadata: ElectronicFieldBook['metadata'] & {
@@ -8,6 +9,10 @@ export interface EnhancedElectronicFieldBook extends ElectronicFieldBook {
     surveyDate?: string
     instruments?: string
     address?: string
+    assistedBy?: string
+    instrumentDescription?: string
+    instrumentBaseSerial?: string
+    instrumentRoverSerial?: string
   }
 }
 
@@ -61,6 +66,10 @@ export class FieldBookPDFGenerator {
         pdf.text(`Land Surveyor: ${fieldBook.metadata.surveyorName}`, this.options.marginLeft, yPosition)
         yPosition += 15
       }
+      if (fieldBook.metadata.assistedBy) {
+        pdf.text(`Assisted by: ${fieldBook.metadata.assistedBy}`, this.options.marginLeft, yPosition)
+        yPosition += 15
+      }
       if (fieldBook.metadata.surveyDescription) {
         const maxWidth = pdf.internal.pageSize.getWidth() - (this.options.marginLeft + this.options.marginRight)
         const lines = pdf.splitTextToSize(`Survey Description: ${fieldBook.metadata.surveyDescription}`, maxWidth)
@@ -71,11 +80,25 @@ export class FieldBookPDFGenerator {
         pdf.text(`Date of Survey: ${fieldBook.metadata.surveyDate}`, this.options.marginLeft, yPosition)
         yPosition += 15
       }
-      if (fieldBook.metadata.instruments) {
+      // Instruments read from the structured fields first; an older project
+      // has them only in the free-text column, so that is the fallback --
+      // the same semantics field-book.ts's cover uses (its only other reader).
+      const instrumentLines: string[] = []
+      if (fieldBook.metadata.instrumentDescription) {
+        instrumentLines.push(`1. ${fieldBook.metadata.instrumentDescription}`)
+        if (fieldBook.metadata.instrumentBaseSerial) {
+          instrumentLines.push(`Base  Serial Number S/N ${fieldBook.metadata.instrumentBaseSerial}`)
+        }
+        if (fieldBook.metadata.instrumentRoverSerial) {
+          instrumentLines.push(`Rover Serial Number S/N ${fieldBook.metadata.instrumentRoverSerial}`)
+        }
+      } else if (fieldBook.metadata.instruments) {
+        instrumentLines.push(...fieldBook.metadata.instruments.split('\n'))
+      }
+      if (instrumentLines.length > 0) {
         const maxWidth = pdf.internal.pageSize.getWidth() - (this.options.marginLeft + this.options.marginRight)
         pdf.text('Instruments:', this.options.marginLeft, yPosition)
         yPosition += 12
-        const instrumentLines = fieldBook.metadata.instruments.split('\n')
         instrumentLines.forEach(line => {
           if (line.trim()) {
             const wrappedLines = pdf.splitTextToSize(line.trim(), maxWidth - 20)
@@ -145,13 +168,25 @@ export class FieldBookPDFGenerator {
     const tableHeaderHeight = 20
     const rowHeight = 7
     const availableHeight = pageHeight - this.options.marginTop - this.options.marginBottom - headerHeight - footerHeight - tableHeaderHeight
-    const pointsPerPage = 27; // FIXED VALUE - must match all other components
+    const pointsPerPage = FIELD_BOOK_POINTS_PER_PAGE
     console.log(`Field Book PDF: Using ${pointsPerPage} points per page (standardized across all components)`)
-    const totalPages = Math.ceil(fieldBook.points.length / pointsPerPage)
+    // This renderer emits no calibration page of its own, so hasCalibration is
+    // always false — its E1-start is internally consistent. It DOES render a
+    // cover (generateCoverPage, called from generatePDFBlob before this
+    // method), so hasCover must be true: physicalPageCount is documented as
+    // including the cover only when one is actually rendered, and this class
+    // renders one. Only ePageCount and pointPageMap are read from `pagination`
+    // in this file today, so this was harmless until something reads
+    // physicalPageCount.
+    const hasCalibration = false
+    const pagination = paginateFieldBook(
+      fieldBook.points.map(p => ({ id: p.id })),
+      { hasCalibration, hasCover: true },
+    )
+    const totalPages = pagination.ePageCount
 
     for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
       if (pageIndex > 0) pdf.addPage()
-      const pageNumber = pageIndex + 1
       const startIndex = pageIndex * pointsPerPage
       const endIndex = Math.min(startIndex + pointsPerPage, fieldBook.points.length)
       const pagePoints = fieldBook.points.slice(startIndex, endIndex)
@@ -160,7 +195,13 @@ export class FieldBookPDFGenerator {
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(16)
       pdf.text('ELECTRONIC FIELD BOOK', this.options.marginLeft, 25)
-      const pageLabel = `E${pageNumber}`
+      // Derived from this page's own position, not looked up by id: a
+      // re-observed beacon can carry the same id on an earlier AND a later
+      // page, and pointPageMap keeps only the last write for that id -- a
+      // by-id lookup here printed that page's number on every page the id
+      // appears on (header AND footer), leaving another page unlabelled.
+      const offset = hasCalibration ? 1 : 0
+      const pageLabel = `E${pageIndex + 1 + offset}`
       const pageLabelWidth = pdf.getTextWidth(pageLabel)
       pdf.text(pageLabel, pdf.internal.pageSize.getWidth() - this.options.marginRight - pageLabelWidth, 25)
 

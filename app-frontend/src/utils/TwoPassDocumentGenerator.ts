@@ -22,6 +22,7 @@ import type { CalculationsPart1Result } from '../types/adjusted-coordinates'
 import { CalculationsPart1Generator, type SurveyPoint } from './calculations-part1'
 import { CoordinateListGenerator, type SurveyorInfo } from './coordinate-list'
 import { FieldBookGenerator } from './field-book'
+import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination'
 import type { AdjustedCoordinate } from '../types/adjusted-coordinates'
 import type { ReportOnSurveyData } from '../types/cadastral'
 import {
@@ -176,7 +177,18 @@ export class TwoPassDocumentGenerator {
     console.log('  📘 Rendering Field Book...')
     const fieldBookResult = await this.renderFieldBook(data)
     pdfs.push(fieldBookResult.pdf)
-    console.log(`     ✓ ${measurements.fieldBook.pages} pages generated`)
+
+    // The beacon-comparison section has always been guarded this way; the field
+    // book was only logged. A field book whose rendered length disagrees with the
+    // measured one renumbers every section after it, silently, so it throws too.
+    if (fieldBookResult.pageCount !== measurements.fieldBook.pages) {
+      throw new Error(
+        `Field Book page count mismatch. ` +
+        `Pass 1 measured ${measurements.fieldBook.pages} pages, ` +
+        `Pass 2 rendered ${fieldBookResult.pageCount}.`
+      )
+    }
+    console.log(`     ✓ ${fieldBookResult.pageCount} pages generated`)
     console.log(`     ✓ ${Object.keys(fieldBookResult.pointPageMap).length} points tracked`)
     
     // 2. Generate Coordinate List (with accurate calc AND field book page refs!)
@@ -245,29 +257,50 @@ export class TwoPassDocumentGenerator {
   // ========================================
   // MEASUREMENT METHODS
   // ========================================
-  
+
+  /**
+   * Points the field book actually renders: calculated points are excluded
+   * (they don't appear in the field book -- they still reach Calculations,
+   * via a separate lookup, but never the field book). `paginateFieldBook`'s
+   * contract requires "EXACTLY the points the field book will render, in
+   * render order", so `measureFieldBook` and `renderFieldBook` must agree on
+   * this list -- both read it from here instead of filtering independently,
+   * so they cannot drift apart.
+   */
+  private fieldBookPoints(data: TwoPassDocumentData): SurveyPoint[] {
+    return data.surveyPoints.filter(pt => {
+      const desc = (pt.description || '').toLowerCase();
+      const isCalculated = desc.includes('calculated');
+      if (isCalculated) {
+        console.log(`[FieldBook] 🧮 Excluding calculated point: ${pt.pointId}`);
+      }
+      return !isCalculated;
+    });
+  }
+
   private measureFieldBook(data: TwoPassDocumentData): FieldBookMeasurement {
-    const pointsPerPage = 27
-    // The calibration adds one page AFTER the points, so it changes the page
-    // total but never a point's E-number -- pointPageMap below is built from the
-    // point index alone and is deliberately left untouched by it.
-    const calibrationPages = data.siteCalibration ? 1 : 0
-    const pages = Math.ceil(data.surveyPoints.length / pointsPerPage) + calibrationPages
-    
-    // Calculate point page map during measurement
-    const pointPageMap: Record<string, string> = {}
-    data.surveyPoints.forEach((pt, index) => {
-      const pageNumber = Math.floor(index / pointsPerPage) + 1
-      pointPageMap[pt.pointId] = `E${pageNumber}`
-    })
-    
+    // The calibration opens the book at E1, so it DOES move every point -- the
+    // opposite of the rule this method used to encode. fieldBookPagination is the
+    // single place that decision lives.
+    const points = this.fieldBookPoints(data)
+    const pagination = paginateFieldBook(
+      points.map(pt => ({ id: pt.pointId })),
+      { hasCalibration: Boolean(data.siteCalibration), hasCover: true },
+    )
+
     return {
-      pages,
+      pages: pagination.physicalPageCount,
       startPage: 1,
-      endPage: pages,
-      pointsPerPage,
-      totalPoints: data.surveyPoints.length,
-      pointPageMap
+      endPage: pagination.physicalPageCount,
+      pointsPerPage: FIELD_BOOK_POINTS_PER_PAGE,
+      // "Total points in field book" (see FieldBookMeasurement's own doc
+      // comment) means points the field book renders -- calculated points are
+      // excluded from it, so this is the filtered count, not
+      // data.surveyPoints.length. Nothing downstream reads this field today
+      // (grepped: only .pages and .pointPageMap have consumers), so this is a
+      // correction, not a behavior change for any known caller.
+      totalPoints: points.length,
+      pointPageMap: pagination.pointPageMap
     }
   }
   
@@ -408,18 +441,12 @@ export class TwoPassDocumentGenerator {
   private async renderFieldBook(data: TwoPassDocumentData): Promise<{
     pdf: Blob;
     pointPageMap: Record<string, string>;
+    pageCount: number;
   }> {
-    // Filter out calculated points (they don't appear in field book)
-    // Calculated points are identified by description containing "calculated" (case-insensitive)
-    const filteredPoints = data.surveyPoints.filter(pt => {
-      const desc = (pt.description || '').toLowerCase();
-      const isCalculated = desc.includes('calculated');
-      if (isCalculated) {
-        console.log(`[FieldBook] 🧮 Excluding calculated point: ${pt.pointId}`);
-      }
-      return !isCalculated;
-    });
-    
+    // Calculated points don't appear in the field book -- see fieldBookPoints,
+    // the one place this filter lives (measureFieldBook uses the same helper).
+    const filteredPoints = this.fieldBookPoints(data);
+
     console.log(`[FieldBook] 📊 Points: ${data.surveyPoints.length} total, ${filteredPoints.length} in field book, ${data.surveyPoints.length - filteredPoints.length} calculated (excluded)`);
     
     // Convert survey points to field book format
@@ -436,9 +463,14 @@ export class TwoPassDocumentGenerator {
     // Map SurveyorInfo to FieldBookMetadata
     const metadata = {
       surveyorName: data.surveyorInfo.name,
-      licenseNumber: data.surveyorInfo.licenseNumber,
-      projectTitle: data.surveyorInfo.projectTitle,
-      surveyDate: data.surveyorInfo.surveyDate
+      address: data.surveyorInfo.address,
+      surveyDate: data.surveyorInfo.surveyDate,
+      surveyOf: data.surveyorInfo.projectTitle,
+      assistedBy: data.surveyorInfo.assistedBy,
+      instruments: data.surveyorInfo.instruments,
+      instrumentDescription: data.surveyorInfo.instrumentDescription,
+      instrumentBaseSerial: data.surveyorInfo.instrumentBaseSerial,
+      instrumentRoverSerial: data.surveyorInfo.instrumentRoverSerial
     }
     
     const result = await this.fieldBookGenerator.generateFieldBookPDF(
@@ -450,7 +482,8 @@ export class TwoPassDocumentGenerator {
     // Convert jsPDF to Blob and return with pointPageMap
     return {
       pdf: new Blob([result.pdf.output('blob')], { type: 'application/pdf' }),
-      pointPageMap: result.pointPageMap
+      pointPageMap: result.pointPageMap,
+      pageCount: result.pageCount
     }
   }
   

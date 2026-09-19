@@ -9,6 +9,7 @@
 
 import * as XLSX from 'xlsx'
 import type { CadastralWorkflowState } from '../types/cadastral'
+import { paginateFieldBook } from './fieldBookPagination'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public API
@@ -81,13 +82,15 @@ function buildFieldBookSheet(ws: CadastralWorkflowState): XLSX.WorkSheet {
   } else {
     // Fall back to importedPoints filtered to field-book-eligible points
     const fbPoints = (ws.importedPoints || []).filter(p => p.includeInFieldBook !== false)
-    const pointsPerPage = 27
-    let pageNum = 1
-    let count = 0
+    // This sheet emits no calibration page of its own, so hasCalibration is
+    // always false — its E1-start is internally consistent.
+    const { pointPageMap } = paginateFieldBook(
+      fbPoints.map(p => ({ id: p.id })),
+      { hasCalibration: false, hasCover: false },
+    )
     for (const pt of fbPoints) {
-      if (count === pointsPerPage) { pageNum++; count = 0 }
       rows.push([
-        `E${pageNum}`,
+        pointPageMap[pt.id],
         pt.id,
         pt.fieldBook?.y ?? pt.original?.y ?? '',
         pt.fieldBook?.x ?? pt.original?.x ?? '',
@@ -97,7 +100,6 @@ function buildFieldBookSheet(ws: CadastralWorkflowState): XLSX.WorkSheet {
           ? pt.surveyDate.toISOString().split('T')[0]
           : (pt.surveyDate ?? '')
       ])
-      count++
     }
   }
 

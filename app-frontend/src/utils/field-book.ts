@@ -7,6 +7,7 @@
 import jsPDF from 'jspdf';
 import { bankersRound } from './cadastral-precision';
 import type { SiteCalibration } from './siteCalibration';
+import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination';
 
 export interface FieldBookPoint {
   id: string;
@@ -23,6 +24,13 @@ export interface FieldBookMetadata {
   surveyDate?: string;
   instruments?: string;
   address?: string;
+  /** What was surveyed, as printed on the cover. */
+  surveyOf?: string;
+  /** Field assistant. */
+  assistedBy?: string;
+  instrumentDescription?: string;
+  instrumentBaseSerial?: string;
+  instrumentRoverSerial?: string;
 }
 
 export class FieldBookGenerator {
@@ -39,9 +47,9 @@ export class FieldBookGenerator {
   private pointPageMap: Record<string, string> = {};
 
   /**
-   * Generate Field Book PDF (E1-E99 pages only, no cover)
+   * Generate Field Book PDF (cover, then the calibration at E1, then the point pages)
    * For use in comprehensive document generation
-   * 
+   *
    * @param points - Survey points to include in field book
    * @param metadata - Surveyor and project information
    * @returns PDF blob, page count, and point-to-page mapping
@@ -50,62 +58,183 @@ export class FieldBookGenerator {
     points: FieldBookPoint[],
     metadata: FieldBookMetadata,
     /**
-     * Optional GNSS site calibration. Rendered on its own page AFTER the point
-     * pages, so no point's E-number moves: pointPageMap is cross-referenced by
-     * the other documents, and placing the calibration first would renumber
-     * every page they point at.
+     * Optional GNSS site calibration. Rendered FIRST, as E1, with the point pages
+     * following from E2. Every E-number therefore depends on whether a survey has
+     * a calibration, which is why pagination is decided once in
+     * fieldBookPagination.ts and read from there by every consumer.
      */
     calibration?: SiteCalibration
   ): Promise<{ pdf: jsPDF; pageCount: number; pointPageMap: Record<string, string> }> {
     const pdf = new jsPDF(this.options);
-    
-    // Reset point page map for this generation
-    this.pointPageMap = {};
-    
-    console.log('[FieldBook] Generating field book with', points.length, 'points');
-    
-    // Calculate pages needed
-    const pointsPerPage = 27; // FIXED VALUE - must match all other components
-    const totalPages = Math.ceil(points.length / pointsPerPage);
-    
-    console.log('[FieldBook] Will generate', totalPages, 'pages (E1-E' + totalPages + ')');
-    
-    // Generate each page
-    for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-      if (pageIndex > 0) {
-        pdf.addPage();
-      }
-      
-      const pageNumber = pageIndex + 1;
-      const startIndex = pageIndex * pointsPerPage;
-      const endIndex = Math.min(startIndex + pointsPerPage, points.length);
-      const pagePoints = points.slice(startIndex, endIndex);
-      
-      // ⭐ Record which page each point appears on
-      pagePoints.forEach(pt => {
-        this.pointPageMap[pt.id] = `E${pageNumber}`;
-      });
-      
-      this.generateFieldBookPage(pdf, pagePoints, pageNumber, metadata);
-      
-      console.log(`[FieldBook] Generated page E${pageNumber}: ${pagePoints.length}/${pointsPerPage} points`);
-    }
-    
-    console.log('[FieldBook] ✅ Point page map created:', Object.keys(this.pointPageMap).length, 'points tracked');
 
-    let pageCount = totalPages;
+    const pagination = paginateFieldBook(points, {
+      hasCalibration: Boolean(calibration),
+      hasCover: true,
+    });
+    this.pointPageMap = pagination.pointPageMap;
+
+    console.log('[FieldBook] Generating field book with', points.length, 'points');
+
+    let isFirstPage = true;
+    const startPage = () => {
+      if (!isFirstPage) pdf.addPage();
+      isFirstPage = false;
+    };
+
+    // The cover comes first and carries no number.
+    startPage();
+    this.generateCoverPage(pdf, metadata);
+
+    // The calibration opens the numbered book: it is the evidence the GNSS
+    // observations were tied to the local grid, so it precedes the observations
+    // themselves.
     if (calibration) {
-      if (totalPages > 0) pdf.addPage();
-      pageCount = totalPages + 1;
-      this.generateCalibrationPage(pdf, calibration, pageCount, metadata);
-      console.log(`[FieldBook] Generated calibration page E${pageCount}`);
+      startPage();
+      this.generateCalibrationPage(pdf, calibration, 1, metadata);
+      console.log('[FieldBook] Generated calibration page E1');
     }
+
+    const totalPointPages = Math.ceil(points.length / FIELD_BOOK_POINTS_PER_PAGE);
+    for (let pageIndex = 0; pageIndex < totalPointPages; pageIndex++) {
+      startPage();
+
+      const startIndex = pageIndex * FIELD_BOOK_POINTS_PER_PAGE;
+      const pagePoints = points.slice(startIndex, startIndex + FIELD_BOOK_POINTS_PER_PAGE);
+
+      // Derived from this page's own position, not looked up by id: a
+      // re-observed beacon can carry the same id on an earlier AND a later
+      // page (Calculations Part 1's duplicate analysis exists for exactly
+      // this), and pointPageMap keeps only the last write for that id -- a
+      // by-id lookup here would print that page's number on every page the
+      // id appears on, leaving another page with no number at all.
+      const offset = calibration ? 1 : 0;
+      const pageNumber = pageIndex + 1 + offset;
+
+      this.generateFieldBookPage(pdf, pagePoints, pageNumber, metadata);
+      console.log(`[FieldBook] Generated page E${pageNumber}: ${pagePoints.length} points`);
+    }
+
+    console.log('[FieldBook] ✅ Point page map created:', Object.keys(this.pointPageMap).length, 'points tracked');
 
     return {
       pdf,
-      pageCount,
-      pointPageMap: this.pointPageMap
+      pageCount: pagination.physicalPageCount,
+      pointPageMap: this.pointPageMap,
     };
+  }
+
+  /**
+   * Render the cover, modelled on cadastral-standard/1 fieldbook cover.pdf.
+   *
+   * A title page: no E-number, because the calibration owns E1. Rows whose value
+   * is absent are dropped rather than printed empty, so a project that predates
+   * the structured instrument fields still produces an honest cover.
+   */
+  private generateCoverPage(pdf: jsPDF, metadata: FieldBookMetadata): void {
+    const left = this.options.marginLeft;
+    const pageWidth = pdf.internal.pageSize.getWidth();
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(16);
+    pdf.text('ELECTRONIC FIELD BOOK', left + 9, 12 + 10);
+
+    // Instruments read from the structured fields; an older project has them only
+    // in the free-text column, so that is the fallback and its only reader.
+    const instrumentLines: string[] = [];
+    if (metadata.instrumentDescription) {
+      instrumentLines.push(`1. ${metadata.instrumentDescription}`);
+      if (metadata.instrumentBaseSerial) {
+        instrumentLines.push(`Base  Serial Number S/N ${metadata.instrumentBaseSerial}`);
+      }
+      if (metadata.instrumentRoverSerial) {
+        instrumentLines.push(`Rover Serial Number S/N ${metadata.instrumentRoverSerial}`);
+      }
+    } else if (metadata.instruments) {
+      instrumentLines.push(...metadata.instruments.split('\n'));
+    }
+
+    const rows: { label: string; lines: string[] }[] = [
+      { label: 'Land Surveyor', lines: [metadata.surveyorName || ''] },
+      { label: 'Assisted by', lines: [metadata.assistedBy || ''] },
+      { label: 'Survey of', lines: (metadata.surveyOf || '').split('\n') },
+      { label: 'Surveyed in', lines: [metadata.surveyDate || ''] },
+      { label: 'Instruments', lines: instrumentLines },
+      { label: 'Address', lines: (metadata.address || '').split('\n') },
+    ];
+
+    // The value column is derived from the widest label, not a constant: a
+    // fixed guess (18mm) let "Land Surveyor" -- the widest label -- run past
+    // it and overprint its own colon and value. Measured in the same bold
+    // 9pt the labels are actually drawn in, since getTextWidth depends on
+    // the font that is current when it is called.
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    const labelGap = 3; // mm of clear space between the widest label and the colon
+    const widestLabel = Math.max(...rows.map(row => pdf.getTextWidth(row.label)));
+    const valueX = left + widestLabel + labelGap;
+
+    let y = 21 + 10;
+    const lineHeight = 4.5;
+    const rowGap = 4;
+
+    for (const row of rows) {
+      const lines = row.lines.filter(line => line.trim().length > 0);
+      if (lines.length === 0) continue; // absent value: no label, no colon
+
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(row.label, left, y);
+      const labelWidth = pdf.getTextWidth(row.label);
+      pdf.line(left, y + 0.8, left + labelWidth, y + 0.8); // underlined, as the sample
+
+      pdf.setFont('helvetica', 'normal');
+      // The colon is its own text run, not glued to the value: a searchable
+      // record (and a test) should find "O Saunyama", not ": O Saunyama".
+      const colonGap = pdf.getTextWidth(': ');
+      const textX = valueX + colonGap;
+      // As in the reference, the Base/Rover serial lines are indented under
+      // the "1. <description>" line, list-style.
+      const instrumentIndent = pdf.getTextWidth('1. ');
+      const isInstruments = row.label === 'Instruments';
+
+      // A Zimbabwe designation (Survey of) or a multi-line Address can run
+      // well past 100 characters on one line, which would otherwise run off
+      // the page. Each explicit '\n' break (already split into `lines`) is
+      // wrapped independently, so a hard break never gets glued to the next
+      // one -- splitTextToSize is a no-op for a line that already fits.
+      const maxValueWidth = pageWidth - this.options.marginRight - textX;
+      const wrappedLines = isInstruments
+        ? lines
+        : lines.flatMap(line => pdf.splitTextToSize(line, maxValueWidth) as string[]);
+
+      wrappedLines.forEach((line, index) => {
+        const lineY = y + index * lineHeight;
+        if (index === 0) {
+          pdf.text(':', valueX, lineY);
+        }
+        // Instrument lines mix a fixed label ("...S/N") with a serial number
+        // that a reader -- or a cross-reference -- needs to find on its own,
+        // structured field or free-text fallback alike, so those lines are
+        // drawn word by word instead of as one run.
+        if (isInstruments) {
+          const lineX = index === 0 ? textX : textX + instrumentIndent;
+          this.renderWords(pdf, line.trim(), lineX, lineY);
+        } else {
+          pdf.text(line, textX, lineY);
+        }
+      });
+
+      y += wrappedLines.length * lineHeight + rowGap;
+    }
+  }
+
+  /** Draw space-separated words as independent text runs, left to right. */
+  private renderWords(pdf: jsPDF, line: string, x: number, y: number): void {
+    let cursor = x;
+    for (const word of line.split(/\s+/).filter(Boolean)) {
+      pdf.text(word, cursor, y);
+      cursor += pdf.getTextWidth(`${word} `);
+    }
   }
 
   /**
@@ -341,7 +470,7 @@ export class FieldBookGenerator {
     });
     
     // Empty row grid lines (for remaining rows on page)
-    const pointsPerPage = 27;
+    const pointsPerPage = FIELD_BOOK_POINTS_PER_PAGE;
     const currentRowCount = points.length;
     const targetRowCount = Math.min(
       pointsPerPage, 
@@ -383,13 +512,5 @@ export class FieldBookGenerator {
     const dateText = new Date().toLocaleDateString();
     const dateWidth = pdf.getTextWidth(dateText);
     pdf.text(dateText, pageWidth - this.options.marginRight - dateWidth, footerY);
-  }
-
-  /**
-   * Calculate expected page count for field book
-   */
-  calculatePageCount(pointCount: number): number {
-    const pointsPerPage = 27;
-    return Math.ceil(pointCount / pointsPerPage);
   }
 }

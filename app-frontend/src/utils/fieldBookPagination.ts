@@ -1,0 +1,62 @@
+/**
+ * Every field-book page number is decided here, and nowhere else.
+ *
+ * This used to be derived independently in five places — the renderer, the
+ * measurement pass, the Calculations F/B lookup, and twice in pageAllocation —
+ * which is how one of them came to paginate at 20 points per page while the rest
+ * used 27, quietly mis-citing every point past the 20th. Cross-references in a
+ * survey record are only as trustworthy as the arithmetic behind them, so there
+ * is now one function and one constant.
+ */
+
+/** Rows that fit on one field book page: A4 portrait less margins and header. */
+export const FIELD_BOOK_POINTS_PER_PAGE = 27;
+
+export interface FieldBookPaginationPoint {
+  id: string;
+}
+
+export interface FieldBookPagination {
+  /** point id -> E-number, e.g. "E2" */
+  pointPageMap: Record<string, string>;
+  /** E-number of the calibration page, or null when the survey has none */
+  calibrationPage: string | null;
+  /** numbered (E) pages */
+  ePageCount: number;
+  /** physical pages, including the unnumbered cover */
+  physicalPageCount: number;
+}
+
+/**
+ * Number the pages of a field book.
+ *
+ * `points` must be EXACTLY the points the field book will render, in render
+ * order. Calculated points never appear in the field book, so a caller that
+ * passes an unfiltered list shifts every E-number after the first calculated
+ * point. This function does not filter; it paginates what it is given.
+ */
+export function paginateFieldBook(
+  points: FieldBookPaginationPoint[],
+  opts: { hasCalibration: boolean; hasCover: boolean },
+): FieldBookPagination {
+  const { hasCalibration, hasCover } = opts;
+
+  // The calibration opens the book, so every point page sits one later.
+  const offset = hasCalibration ? 1 : 0;
+
+  const pointPageMap: Record<string, string> = {};
+  points.forEach((point, index) => {
+    const page = Math.floor(index / FIELD_BOOK_POINTS_PER_PAGE) + 1 + offset;
+    pointPageMap[point.id] = `E${page}`;
+  });
+
+  const pointPages = Math.ceil(points.length / FIELD_BOOK_POINTS_PER_PAGE);
+  const ePageCount = pointPages + offset;
+
+  return {
+    pointPageMap,
+    calibrationPage: hasCalibration ? 'E1' : null,
+    ePageCount,
+    physicalPageCount: ePageCount + (hasCover ? 1 : 0),
+  };
+}

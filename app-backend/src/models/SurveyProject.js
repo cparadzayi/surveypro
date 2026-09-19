@@ -151,7 +151,9 @@ class SurveyProject {
         'whole_portion', 'parent_property',
         'deed_of_transfer_no', 'parent_diagram_no', 'parent_diagram_annexed_to',
         'original_title_diagram_no', 'original_title_annexed_to', 'original_title_deed_no',
-        'sr_no', 'file_no', 'gp_no', 'compilation'
+        'sr_no', 'file_no', 'gp_no', 'compilation',
+        // Field book cover (migration 089)
+        'assisted_by', 'instrument_description', 'instrument_base_serial', 'instrument_rover_serial'
       ]
       
       const fields = []

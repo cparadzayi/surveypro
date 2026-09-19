@@ -4731,7 +4731,12 @@ async function generateComprehensivePDF() {
       surveyDate: surveyDate,
       projectTitle: projectName,
       district: district,
-      centralMeridian: (props.projectInfo as any).centralMeridian ?? projectSetupData?.central_meridian ?? 31
+      centralMeridian: (props.projectInfo as any).centralMeridian ?? projectSetupData?.central_meridian ?? 31,
+      assistedBy: workflowSurveyorInfo?.assistedBy || '',
+      instruments: workflowSurveyorInfo?.instruments || '',
+      instrumentDescription: workflowSurveyorInfo?.instrumentDescription || '',
+      instrumentBaseSerial: workflowSurveyorInfo?.instrumentBaseSerial || '',
+      instrumentRoverSerial: workflowSurveyorInfo?.instrumentRoverSerial || '',
     }
     
     // Process ALL parcels with on-the-fly metadata computation

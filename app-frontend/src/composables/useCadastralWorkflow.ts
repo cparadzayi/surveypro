@@ -2,6 +2,7 @@ import { reactive, ref } from 'vue'
 import type { CadastralWorkflowState, CadastralPoint } from '../types/cadastral'
 import type { SiteCalibration } from '../utils/siteCalibration'
 import { useSurveyLookupStore } from '../stores/surveyLookup'
+import { paginateFieldBook } from '../utils/fieldBookPagination'
 import api from '../services/api'
 
 // Project linkage for database persistence
@@ -19,7 +20,11 @@ const workflowState = reactive<CadastralWorkflowState>({
     address: '',
     surveyDate: '',
     surveyOf: '',
-    instruments: ''
+    instruments: '',
+    assistedBy: '',
+    instrumentDescription: '',
+    instrumentBaseSerial: '',
+    instrumentRoverSerial: ''
   },
   projectInfo: {
     name: '',
@@ -120,21 +125,26 @@ function buildCoordinateList() {
 }
 
 function buildFieldBook() {
-  // Points per page MUST match the PDF generator exactly
-  // Dynamic calculation: A4 page (297mm) - margins/headers (80mm) = 217mm available
-  // Row height: ~8mm → 217mm / 8mm ≈ 27 points per page
-  const pointsPerPage = 27; // MUST match CadastralStandardView.vue and calculations-part1.ts
   const lookupStore = useSurveyLookupStore();
-  const lookup: Record<string, string> = {};
-  
+
+  // This composable has no access to a SiteCalibration object at this point
+  // in the workflow, so hasCalibration is always false here — this map is an
+  // ESTIMATE, not the final word. The two-pass PDF generator overwrites this
+  // store entry with the renderer's real pointPageMap once a calibration (if
+  // any) is known, the same justification calculations-part1.ts carries.
+  const pagination = paginateFieldBook(
+    workflowState.importedPoints.map(point => ({ id: point.id })),
+    { hasCalibration: false, hasCover: false },
+  );
+
+  // Store lookup table in Pinia for cross-referencing
+  lookupStore.setFieldBookPageLookup(pagination.pointPageMap);
+
   // Build field book with page numbers
-  const points = workflowState.importedPoints.map((point, index) => {
-    const pageNumber = Math.floor(index / pointsPerPage) + 1;
-    const pageLabel = `E${pageNumber}`;
-    
-    // Populate lookup table
-    lookup[point.id] = pageLabel;
-    
+  const points = workflowState.importedPoints.map((point) => {
+    const pageLabel = pagination.pointPageMap[point.id];
+    const pageNumber = Number(pageLabel.slice(1));
+
     return {
       id: point.id,
       coordinates: {
@@ -147,16 +157,13 @@ function buildFieldBook() {
       pageNumber
     };
   });
-  
-  // Store lookup table in Pinia for cross-referencing
-  lookupStore.setFieldBookPageLookup(lookup);
-  
+
   workflowState.documents.fieldBook = {
     metadata: {
       title: 'Electronic Field Book',
       surveyorName: workflowState.surveyorInfo.landSurveyor || 'Licensed Surveyor',
       dateGenerated: new Date(),
-      pageCount: Math.ceil(workflowState.importedPoints.length / pointsPerPage) + 2
+      pageCount: pagination.ePageCount
     },
     points,
     calculationRefs: {}
@@ -412,7 +419,11 @@ async function loadWorkflowState(surveyProjectId: number) {
           address: latestStepWithSurveyorInfo.surveyor_info.address || '',
           surveyDate: latestStepWithSurveyorInfo.surveyor_info.surveyDate || '',
           surveyOf: latestStepWithSurveyorInfo.surveyor_info.surveyOf || '',
-          instruments: latestStepWithSurveyorInfo.surveyor_info.instruments || ''
+          instruments: latestStepWithSurveyorInfo.surveyor_info.instruments || '',
+          assistedBy: latestStepWithSurveyorInfo.surveyor_info.assistedBy || '',
+          instrumentDescription: latestStepWithSurveyorInfo.surveyor_info.instrumentDescription || '',
+          instrumentBaseSerial: latestStepWithSurveyorInfo.surveyor_info.instrumentBaseSerial || '',
+          instrumentRoverSerial: latestStepWithSurveyorInfo.surveyor_info.instrumentRoverSerial || ''
         }
         console.log(`✅ Restored surveyor info: ${workflowState.surveyorInfo.landSurveyor}`)
       }

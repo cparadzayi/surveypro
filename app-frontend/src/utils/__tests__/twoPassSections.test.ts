@@ -4,7 +4,21 @@ import { PDFDocument } from 'pdf-lib';
 import { ComprehensiveDocumentGenerator } from '../comprehensive-document';
 import { TwoPassDocumentGenerator } from '../TwoPassDocumentGenerator';
 import { CoordinateListGenerator } from '../coordinate-list';
+import { Window } from 'happy-dom';
+import { parseSiteCalibration } from '../siteCalibration';
+// @ts-expect-error — ?raw has no ambient type declaration in this project
+import sampleCalibrationXml from './fixtures/siteCalibrationReport.xml?raw';
 import type { ReportOnSurveyData } from '@/types/cadastral';
+
+// parseSiteCalibration needs DOMParser. This file runs under vitest's default
+// 'node' environment (same as the rest of TwoPassDocumentGenerator's tests,
+// which construct real jsPDF documents without one), so borrow happy-dom's
+// DOMParser for this one call rather than switching the whole file to a DOM
+// environment (fieldBookCalibration.test.ts does that, but it is the only
+// thing that file renders).
+if (typeof DOMParser === 'undefined') {
+  (globalThis as any).DOMParser = new Window().DOMParser;
+}
 
 // Minimal-but-real inputs: two observed points + one parcel are enough to render
 // every section (field book, coordinate list, calculations, areas) without error.
@@ -222,5 +236,59 @@ describe('generateWithTwoPass — section blobs', () => {
     }
 
     genSpy.mockRestore();
+  }, 30000);
+});
+
+describe('field book page-count guard', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('measures the same number of pages it renders, calibration included', async () => {
+    const gen = new ComprehensiveDocumentGenerator();
+    const result = await gen.generateWithTwoPass({
+      ...baseData,
+      siteCalibration: parseSiteCalibration(sampleCalibrationXml),
+    } as any);
+
+    // A mismatch throws inside generateWithTwoPass, so reaching here is the
+    // assertion; the explicit check documents what is being guarded.
+    expect(result.sections.fieldBook).toBeInstanceOf(Blob);
+  }, 30000);
+
+  it('agrees with the renderer when calculated points cross a page boundary', async () => {
+    // 28 points, one of them calculated: the renderer excludes calculated
+    // points before pagination (27 rendered -> 1 page), but a measurement that
+    // paginates the unfiltered list sees 28 (2 pages). Without measureFieldBook
+    // and renderFieldBook sourcing the same filtered list, this mismatch trips
+    // the guard and generation throws -- on real survey data, which routinely
+    // contains calculated points, not just in a contrived test.
+    const points = Array.from({ length: 28 }, (_, i) => ({
+      pointId: `B${i + 1}`,
+      y: 50000 + i,
+      x: 2200000 + i,
+      status: i === 27 ? 'C' : 'P',
+      description: i === 27 ? 'CALCULATED' : '',
+      surveyDate: '2026-01-01',
+    }));
+    const adjustedPoints = points.map((pt) => ({
+      ...pt,
+      fieldBookPage: '',
+      calculationsPage: 0,
+      adjustment: { isDuplicate: false, observationCount: 1, method: 'gps' as const },
+    }));
+
+    const gen = new ComprehensiveDocumentGenerator();
+    const result = await gen.generateWithTwoPass({
+      ...baseData,
+      surveyPoints: points,
+      adjustedCoordinates: adjustedPoints,
+    } as any);
+
+    expect(result.sections?.fieldBook).toBeInstanceOf(Blob);
+    // 27 rendered points at 27/page = exactly 1 E-page, plus the unnumbered
+    // cover = 2 physical pages -- not the 3 an unfiltered 28-point count
+    // would measure (2 E-pages + cover).
+    expect(result.measurements!.fieldBook.pages).toBe(2);
   }, 30000);
 });

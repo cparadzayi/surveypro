@@ -396,7 +396,7 @@ export class FieldBookGenerator {
     }
 
     // Footer, matching the point pages.
-    pdf.setFontSize(8);
+    pdf.setFontSize(10);
     pdf.setFont('helvetica', 'normal');
     pdf.text(metadata.surveyorName || '', left, pageHeight - 15);
   }

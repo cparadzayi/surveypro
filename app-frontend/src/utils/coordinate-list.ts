@@ -43,6 +43,29 @@ interface GroupedPoints {
   placed: AdjustedCoordinate[]
 }
 
+/**
+ * Trim `text` so it fits within `maxWidthMm` in the document's current font.
+ *
+ * Column overruns in this document are a function of glyph width, not character
+ * count, so the trim is measured rather than guessed: a cap tuned by counting
+ * characters at one font size overruns silently at the next, which is exactly
+ * how a 30-character description came to run into the F/P column when the table
+ * moved from 8pt to 10pt.
+ *
+ * Returns the whole string untouched when it already fits, so the common case
+ * costs one measurement and nothing else.
+ */
+const fitToWidth = (pdf: jsPDF, text: string, maxWidthMm: number): string => {
+  const value = text ?? '';
+  if (!value || pdf.getTextWidth(value) <= maxWidthMm) return value;
+
+  let trimmed = value;
+  while (trimmed.length > 1 && pdf.getTextWidth(trimmed) > maxWidthMm) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return trimmed;
+};
+
 export class CoordinateListGenerator {
   private currentPage = 100; // Starting page for Coordinate List
   private surveyorInfo!: SurveyorInfo; // Store surveyor info for use in page headers
@@ -550,7 +573,7 @@ export class CoordinateListGenerator {
     pdf.text('DESCRIPTION', this.options.marginLeft + 130, yPos);
     yPos += 5;
     
-    pdf.setFontSize(8);
+    pdf.setFontSize(10);
     pdf.text('F/B', this.options.marginLeft, yPos);
     pdf.text('Calcs', this.options.marginLeft + 15, yPos);
     pdf.text('Beacons/', this.options.marginLeft + 35, yPos);
@@ -596,7 +619,7 @@ export class CoordinateListGenerator {
     
     // Table rows
     pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(8);
+    pdf.setFontSize(10);
     
     for (const point of points) {
       // Check if we have space for this row
@@ -630,9 +653,16 @@ export class CoordinateListGenerator {
       // X coordinate (Southing) - use banker's rounding to 2 decimals
       pdf.text(coords.x, this.options.marginLeft + 100, yPos);
       
-      // Description
-      const desc = point.description.substring(0, 30); // Truncate if too long
-      pdf.text(desc, this.options.marginLeft + 130, yPos);
+      // Description, trimmed to the width actually available before the F/P
+      // column rather than to a character count. A count cannot know how wide
+      // the glyphs are: "50mm iron pipe in concrete" and "IIIIIIIIIIIIIIIIIIIIIIIIII"
+      // are both 26 characters and differ by half a column, so a cap tuned for
+      // one font size silently overruns at the next.
+      // 37mm, not the full 45mm to the F/P column: the gap is what makes the
+      // two columns read as separate, and F/P is right-justified so its glyph
+      // starts a few mm before its nominal position.
+      const descLimit = 37;
+      pdf.text(fitToWidth(pdf, point.description, descLimit), this.options.marginLeft + 130, yPos);
       
       // F/P status (skip for TRIG beacons from national system)
       // RIGHT-JUSTIFIED

@@ -281,7 +281,7 @@ function drawTableHeader(doc: jsPDF, startY: number): number {
   doc.rect(startX, startY, Object.values(colWidths).reduce((a, b) => a + b, 0), 7, 'F');  // Reduced from 8
   
   // Header text (compact)
-  doc.setFontSize(8);  // Reduced from 9
+  doc.setFontSize(10);
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   
@@ -330,11 +330,13 @@ function drawTableRows(doc: jsPDF, rows: TraverseRow[], startY: number): number 
   };
   
   const startX = (pageWidth - Object.values(colWidths).reduce((a, b) => a + b, 0)) / 2;
-  const rowHeight = 5;  // Reduced from 6 for compact layout
+  // 6mm, not 5: cell borders are drawn at this pitch, and 10pt text in a 5mm
+  // row touches them.
+  const rowHeight = 6;
   const headerHeight = 7;
   let currentY = startY;
   
-  doc.setFontSize(7);  // Reduced from 8 for compact layout
+  doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'normal');
   
@@ -351,7 +353,7 @@ function drawTableRows(doc: jsPDF, rows: TraverseRow[], startY: number): number 
       currentY = drawTableHeader(doc, currentY);
       
       // Reset text formatting after header (header changes font/color)
-      doc.setFontSize(7);
+      doc.setFontSize(10);
       doc.setTextColor(0, 0, 0);
       doc.setFont('helvetica', 'normal');
     }

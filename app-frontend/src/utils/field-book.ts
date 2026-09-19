@@ -473,15 +473,24 @@ export class FieldBookGenerator {
       // Survey date
       let surveyDate = '';
       if (point.surveyDate) {
+        // `new Date('30/07/2026')` does not throw -- it yields an Invalid Date,
+        // and toLocaleDateString on that returns the literal "Invalid Date". The
+        // catch below therefore never fires, and the phrase printed once per row
+        // in a field book lodged with the Surveyor-General. Test the date itself
+        // rather than relying on an exception that never comes.
         try {
           const date = new Date(point.surveyDate);
-          surveyDate = date.toLocaleDateString('en-GB', { 
-            day: '2-digit', 
-            month: '2-digit', 
-            year: 'numeric' 
-          });
+          surveyDate = Number.isNaN(date.getTime())
+            // Unparseable: print what the surveyor actually recorded. A date the
+            // reader can interpret beats a sentence saying the software could not.
+            ? point.surveyDate
+            : date.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+              });
         } catch {
-          surveyDate = '';
+          surveyDate = point.surveyDate;
         }
       }
       pdf.text(surveyDate, col5, yPosition);

@@ -4733,6 +4733,7 @@ async function generateComprehensivePDF() {
       district: district,
       centralMeridian: (props.projectInfo as any).centralMeridian ?? projectSetupData?.central_meridian ?? 31,
       assistedBy: workflowSurveyorInfo?.assistedBy || '',
+      instruments: workflowSurveyorInfo?.instruments || '',
       instrumentDescription: workflowSurveyorInfo?.instrumentDescription || '',
       instrumentBaseSerial: workflowSurveyorInfo?.instrumentBaseSerial || '',
       instrumentRoverSerial: workflowSurveyorInfo?.instrumentRoverSerial || '',

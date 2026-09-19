@@ -1559,10 +1559,23 @@ async function loadData() {
     // Load intelligent preview data (Phase 1-3 integration)
     await loadIntelligentPreview()
     
-    // Initialize map after data is loaded
-    initializeMap()
   } catch (error) {
     console.error('[SurveyPlanMap] ❌ Error loading data:', error)
+  } finally {
+    // The map is built regardless of whether the data arrived.
+    //
+    // This used to be the last statement inside the try above, so ANY failure
+    // while loading -- a parcel request, a coordinate request, the intelligent
+    // preview, or a property read on a projectInfo that turned out undefined --
+    // left the user staring at an empty panel with no map at all, and therefore
+    // no way to select a parcel and generate its diagram. One transient data
+    // error took out the whole screen.
+    //
+    // Nothing about map construction needs the data: the centre and zoom are
+    // fixed, and the layers are drawn from reactive refs once it loads. So the
+    // map comes up either way, and a data failure stays a data failure -- still
+    // logged above -- instead of presenting as a missing map.
+    initializeMap()
   }
 }
 

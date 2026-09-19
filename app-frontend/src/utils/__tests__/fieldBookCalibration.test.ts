@@ -102,6 +102,19 @@ describe('field book with a site calibration', () => {
     // different and much stronger claim than "no vertical adjustment was done".
     expect(text).toMatch(/Horizontal[- ]only/i)
   })
+
+  it('renders that sentence whole, with no dropped characters', async () => {
+    // It printed as "calibration  no vertical adjustment" in a real field book:
+    // the em-dash between the clauses is not in jsPDF's standard font encoding,
+    // so it silently vanished and left a gap mid-sentence. Matching only
+    // /Horizontal[- ]only/ above could never have caught that, because the half
+    // it checks is the half that survived.
+    const cal = parseSiteCalibration(sampleXml)
+    const { pdf } = await new FieldBookGenerator().generateFieldBookPDF(points, metadata, cal)
+    const text = (pdf as any).internal.pages.at(2).join(' ')
+
+    expect(text).toContain('Horizontal-only calibration - no vertical adjustment was performed.')
+  })
 })
 
 describe('where the calibration sits in the book', () => {

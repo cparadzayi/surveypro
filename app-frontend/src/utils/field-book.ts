@@ -337,7 +337,7 @@ export class FieldBookGenerator {
     // stronger claim than "no vertical adjustment was performed".
     if (!cal.hasVertical) {
       pdf.setFont('helvetica', 'italic');
-      pdf.text('Horizontal-only calibration — no vertical adjustment was performed.', left, y);
+      pdf.text('Horizontal-only calibration - no vertical adjustment was performed.', left, y);
       pdf.setFont('helvetica', 'normal');
       y += 8;
     }
@@ -381,7 +381,7 @@ export class FieldBookGenerator {
         // Never silently truncate: a table that drops control points reads as a
         // complete record and is worse than no table at all.
         pdf.setFont('helvetica', 'italic');
-        pdf.text('… continued — remaining control points omitted for space.', left, y);
+        pdf.text('... continued - remaining control points omitted for space.', left, y);
         break;
       }
       pdf.text(pair.pointId, cPoint, y);

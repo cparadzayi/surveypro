@@ -1,7 +1,7 @@
 # Re-binding parcels to re-imported coordinates
 
 **Date:** 2026-09-20
-**Status:** design for review — no code written
+**Status:** reviewed; decisions recorded 2026-09-20 — no code written
 
 ## Problem
 
@@ -92,9 +92,34 @@ magnitudes, for sanity-checking the implementation:
 So for typical township geometry (20–60 m lines) the threshold lands around **12–22 mm class B**
 and **25–45 mm class C** — between 20 and 40 times tighter than the 0.5 m currently in use.
 
-Class comes from the project. Where it is unknown, `si727Tolerances.js` already defaults to
-class B, the tighter of the two; this design keeps that default and records the assumption on the
-report rather than silently widening to C.
+### The survey class is carried by the project, explicitly
+
+Decided 2026-09-20: the project records its own survey class, and re-binding will not run without
+one.
+
+`si727Tolerances.js` currently defaults to class B when asked for an unknown class. That default
+is right for a library — B is the tighter of the two, so it errs toward reporting — but it is
+wrong as the basis for a decision that refuses a surveyor's parcels. A class C survey judged
+against class B limits would be refused for discrepancies that are perfectly acceptable, and the
+surveyor would have no way to see why. Guessing the class and disclosing the guess is worse than
+requiring it: the guess is silently load-bearing either way.
+
+So this brings a small piece of work of its own, in the shape of the assistant/instruments change
+that preceded it:
+
+- **Migration**: `survey_class` on `survey_projects`, a nullable `VARCHAR(1)` constrained to
+  `'B'` or `'C'`. Nullable because existing projects have none, and this feature must say so
+  rather than assume. Per the established pattern, the migration alters every surveyor schema AND
+  redefines `create_surveyor_schema()` so projects created afterwards carry the column.
+- **API and model**: `surveyClass` accepted and returned; the column added to `SurveyProject`'s
+  `allowedColumns`, without which `update()` drops it silently.
+- **Project setup**: a Class B / Class C selector. Paras 7 and 8 define only those two — class A
+  genuinely does not exist for this test — so it is a two-way choice, not a free field.
+- **Re-binding**: refuses to run at all on a project with no class, with a message pointing at
+  project setup. It does not fall back to B.
+
+Whether the class should become **required** for all new projects, rather than just for
+re-binding, is a separate question about project setup and is not decided here.
 
 ### Identity: name first, coordinates only as fallback
 
@@ -108,23 +133,36 @@ report rather than silently widening to C.
 
 ## Behaviour
 
-Re-binding runs after a CSV import, when the project has parcels whose vertices can be
-reconciled. It is a **proposal**, not an automatic mutation: it computes the whole change set,
-presents it, and writes nothing until the surveyor accepts.
+Re-binding is **invoked explicitly from the parcel screen** (decided 2026-09-20). It does not run
+automatically after an import: silently reshaping a lodged record's geometry is not something a
+surveyor should discover after the fact. It computes the whole change set, presents it, and
+writes nothing until accepted.
 
 For each parcel, for each stored vertex:
 
 | Case | Outcome |
 |---|---|
-| Name found, moved ≤ para 7(1) | **Snap silently.** Within the limit the two co-ordinates are the same position in law. |
-| Name found, moved > para 7(1) | **Snap, but report it.** Listed with old position, new position, distance moved, and the limit it exceeded. |
-| Name absent, unambiguous nearest | **Adopt that beacon's name and position, and report it** as a rename. |
-| Name absent, ambiguous or nothing near | **Unmatched.** Vertex left untouched, parcel flagged, reported. |
+| Name found, moved ≤ para 7(1) | **Snap.** Within the limit the two co-ordinates are the same position in law. |
+| Name found, moved > para 7(1) | **Refuse the parcel.** It is reported and left untouched; the surveyor re-digitises it. |
+| Name absent, unambiguous nearest | **Adopt that beacon's name and position**, and report it as a rename. |
+| Name absent, ambiguous or nothing near | **Refuse the parcel.** Reported, left untouched. |
 
-**Snapping is the point.** A vertex that adopts a new beacon name while keeping its old
-co-ordinates would leave the area computed from superseded positions while the document cites
-current beacons — a quieter and worse failure than an obvious break. A re-import exists precisely
-because co-ordinates changed; the geometry must follow or it is stale by construction.
+**Refusal rather than snapping, for any beacon that moved beyond the statutory limit** (decided
+2026-09-20). The earlier draft proposed snapping such a vertex and reporting it for approval. The
+stricter rule is better, for a reason that only becomes clear once it is adopted:
+
+> If a parcel is refused whenever ANY of its vertices exceeded para 7(1), then every parcel that
+> does re-bind has all of its vertices within the limit — and a set of sub-tolerance shifts
+> cannot materially change an area. The whole class of "this re-bind quietly moved a boundary"
+> failures disappears by construction rather than by review.
+
+Snapping survives only for within-tolerance vertices, where it is a refinement rather than a
+change: it keeps the parcel consistent with the current coordinate set for future comparisons,
+and cannot move the boundary in any sense the Schedule recognises.
+
+A beacon that genuinely moved further than para 7(1) allows has been re-surveyed, not re-measured.
+The parcel built on it is a statement about the old position. Re-digitising is the honest response,
+and it is what a surveyor would do on paper.
 
 After the vertices settle, per parcel:
 
@@ -141,57 +179,76 @@ worse than untouched geometry: it mixes two surveys in one ring. It is reported 
 
 ## What the surveyor sees
 
-A report before anything is written, and it is the gate — nothing is applied until it is
-accepted:
+A report before anything is written, and it is the gate — nothing is applied until it is accepted.
+Refusal makes this lighter than the earlier draft: no accepted parcel can have moved materially,
+so the report is about what was NOT done at least as much as what was.
 
-- Per parcel: area before, area after, the difference in m² and as a percentage.
-- Every vertex that moved beyond its para 7(1) limit: beacon, old position, new position,
-  distance, limit, and the shortest line the limit was derived from.
-- Every rename adopted by position.
-- Every unmatched vertex, and the parcels held back because of them.
-- The survey class used, stated explicitly, including when it was defaulted.
+- **Parcels refused, and why**: the beacon, how far it moved, the para 7(1) limit it exceeded, and
+  the shortest line that limit was derived from. These need re-digitising.
+- **Parcels re-bound**: area before and after. Expected to be identical or to differ only in the
+  last decimal; anything larger is a defect in this feature, not a finding about the survey, and
+  the report should make that reading obvious.
+- **Renames adopted by position**, with the old and new names.
+- **The survey class used**, and the project it was read from.
 
-Area changes flow into the Schedule of Areas, the plan and the diagram. A surveyor signs those,
-so the change belongs in front of them, not in a log line.
+Area changes flow into the Schedule of Areas, the plan and the diagram, which a surveyor signs.
 
 ## Scope
 
 **In:** the re-binding proposal, the report, the accept path, geometry rewrite, closure
-recomputation, the per-beacon para 7(1) tolerance.
+recomputation, the per-beacon para 7(1) tolerance, and the `survey_class` project field that
+tolerance depends on (migration, API, project-setup selector).
 
 **Out, and deliberately:**
 
 - **Changing what reset deletes.** Reset keeps its current behaviour. This design makes the state
   it produces recoverable, which is the better answer than making reset more destructive.
-- **Automatic re-binding on import.** Silent geometry changes to a lodged record are not
-  acceptable, however good the matcher is.
+- **Automatic re-binding on import.** Decided 2026-09-20: invocation is explicit, from the parcel
+  screen. Silent geometry changes to a lodged record are not acceptable, however good the matcher.
+- **Making `survey_class` mandatory for every project.** Re-binding requires it; whether project
+  setup should refuse without it is a separate decision.
 - **The 0.5 m matcher in `MapLibreAreaView.vue`** (and the separate 2.0 m one at line 6388 in the
   same file). Two different tolerances for the same job is a real smell and worth a follow-up,
   but changing live digitising behaviour is not in this change's blast radius.
 
 ## Risks
 
-1. **Snapping moves a boundary.** That is the intended effect, but it is a boundary in a legal
-   record, and a neighbour may care. Mitigated by the report being a gate rather than a summary,
-   and by reporting every move that exceeds the statutory limit individually.
+1. **Refusal is the common case on a corrected re-import.** If the re-import exists because
+   co-ordinates were adjusted, many beacons may exceed para 7(1) and most parcels will be refused
+   — which is correct, but it means the feature can legitimately do almost nothing and still have
+   worked. The report has to make that outcome legible rather than reading as a failure, or a
+   surveyor will reasonably conclude the tool is broken.
 2. **A beacon renamed *and* moved** matches neither by name nor unambiguously by position, so its
    parcel is held back. Correct — that is genuinely ambiguous and belongs with the surveyor — but
    it means a badly renamed import can hold back many parcels at once. The report must make the
    pattern obvious rather than listing fifty vertices.
-3. **Class defaults to B.** Tighter, so it over-reports rather than under-reports. The failure
-   direction is right, but a class C survey would show many "exceeds limit" entries that are in
-   fact acceptable. Stating the class on the report is what makes that legible.
+3. **A wrong survey class silently changes every verdict.** Class B limits are half class C's, so
+   a class C survey recorded as B would have parcels refused for acceptable discrepancies, and a
+   B recorded as C would have parcels accepted that should not be. Requiring the class rather than
+   defaulting it removes the silent case; what remains is ordinary data entry, and the report
+   states the class it used so a mistake is visible in the output rather than only in its effects.
 4. **`cape_lo_points` is metadata, not a column**, so nothing at the database level guarantees it
    matches `geom`. This design reads and rewrites both together; anything else that edits one
    without the other would break the pairing. Worth a follow-up to reconcile them, out of scope
    here.
 
-## Open questions for review
+## Decisions
 
-1. **Is snapping right, or should a move beyond para 7(1) block rather than report?** This design
-   reports and lets the surveyor accept. The stricter alternative refuses to re-bind that parcel
-   at all and requires re-digitising.
-2. **Should re-binding be offered automatically after an import that finds standing parcels, or
-   invoked explicitly from the parcel screen?**
-3. **Class B default** — acceptable, or should the project carry an explicit survey class before
-   this feature can run at all?
+All three questions this design opened were answered on 2026-09-20, and the body above reflects
+the answers rather than the original proposals.
+
+1. **A move beyond para 7(1) refuses the parcel; it does not snap and report.** The surveyor
+   re-digitises. This is stricter than the first draft and turned out to simplify the design:
+   because no accepted parcel can contain a beyond-tolerance vertex, no accepted parcel can have
+   moved materially, so a whole class of failure is excluded by construction rather than caught by
+   review.
+2. **Re-binding is invoked explicitly from the parcel screen**, not offered automatically after an
+   import.
+3. **The project carries an explicit survey class.** Re-binding refuses to run without one rather
+   than defaulting to B, which adds a migration, an API field and a project-setup selector to this
+   change's scope.
+
+## Open questions
+
+None outstanding. One deliberate non-decision is recorded above: whether `survey_class` should be
+mandatory for all new projects, or only required by the features that depend on it.

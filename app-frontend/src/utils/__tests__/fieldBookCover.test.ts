@@ -105,4 +105,80 @@ describe('the cover through the two-pass generator', () => {
     expect(raw).toContain('(R. T. Mapamula)');
     expect(raw).toContain('(5016424521)');
   });
+
+  // This is the bug renderFieldBook actually had: it passed projectTitle where
+  // FieldBookMetadata expects surveyOf, so "Survey of" rendered empty even
+  // once every other row was wired. Because `metadata` there is a pre-declared
+  // const, a future `surveyOf: data.surveyorInfo.someWrongField` would compile
+  // silently -- this pins the mapping so that regresses loudly instead.
+  it('carries the survey title through the surveyOf mapping', async () => {
+    const result = await new TwoPassDocumentGenerator().generate({
+      surveyPoints: [{ pointId: 'P1', y: 1, x: 2, status: 'P', description: 'peg', surveyDate: '2026-01-01' }],
+      adjustedCoordinates: [],
+      surveyorInfo: {
+        name: 'O Saunyama',
+        licenseNumber: 'PLS 1',
+        firm: '',
+        address: 'BOX A1262',
+        surveyDate: 'June 2020',
+        projectTitle: 'ADVALOREM TOWNSHIP OF SHABANI MINE STAND 9182',
+      },
+    } as any);
+
+    const raw = Buffer.from(await result.sections.fieldBook.arrayBuffer()).toString('latin1');
+
+    expect(raw).toContain('(ADVALOREM TOWNSHIP OF SHABANI MINE STAND 9182)');
+  });
+
+  // The cover falls back to the free-text `instruments` column when the three
+  // structured instrument fields are all empty -- how a project predating this
+  // branch still renders an Instruments row. Drives that through the real
+  // generate() pipeline, not FieldBookGenerator directly, so the
+  // surveyorInfo.instruments -> metadata.instruments mapping is covered too.
+  it('falls back to the legacy instruments text when the structured fields are empty', async () => {
+    const result = await new TwoPassDocumentGenerator().generate({
+      surveyPoints: [{ pointId: 'P1', y: 1, x: 2, status: 'P', description: 'peg', surveyDate: '2026-01-01' }],
+      adjustedCoordinates: [],
+      surveyorInfo: {
+        name: 'O Saunyama',
+        licenseNumber: 'PLS 1',
+        firm: '',
+        address: 'BOX A1262',
+        surveyDate: 'June 2020',
+        projectTitle: 'SHABANI',
+        instruments: '1. Wild T2 Theodolite\nSerial Number S/N 998877',
+        instrumentDescription: '',
+        instrumentBaseSerial: '',
+        instrumentRoverSerial: '',
+      },
+    } as any);
+
+    const raw = Buffer.from(await result.sections.fieldBook.arrayBuffer()).toString('latin1');
+
+    expect(raw).toContain('(998877)');
+  });
+
+  it('prefers the structured instrument fields over the legacy text when both are present', async () => {
+    const result = await new TwoPassDocumentGenerator().generate({
+      surveyPoints: [{ pointId: 'P1', y: 1, x: 2, status: 'P', description: 'peg', surveyDate: '2026-01-01' }],
+      adjustedCoordinates: [],
+      surveyorInfo: {
+        name: 'O Saunyama',
+        licenseNumber: 'PLS 1',
+        firm: '',
+        address: 'BOX A1262',
+        surveyDate: 'June 2020',
+        projectTitle: 'SHABANI',
+        instruments: '1. Wild T2 Theodolite\nSerial Number S/N 998877',
+        instrumentDescription: 'Trimble R6GNSS Set',
+        instrumentBaseSerial: '5016424521',
+        instrumentRoverSerial: '5146476624',
+      },
+    } as any);
+
+    const raw = Buffer.from(await result.sections.fieldBook.arrayBuffer()).toString('latin1');
+
+    expect(raw).toContain('(5016424521)');
+    expect(raw).not.toContain('(998877)');
+  });
 });

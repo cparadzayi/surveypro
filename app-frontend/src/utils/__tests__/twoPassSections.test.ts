@@ -286,8 +286,9 @@ describe('field book page-count guard', () => {
     } as any);
 
     expect(result.sections?.fieldBook).toBeInstanceOf(Blob);
-    // 27 rendered points at 27/page = exactly 1 page, not the 2 an unfiltered
-    // 28-point count would measure.
-    expect(result.measurements!.fieldBook.pages).toBe(1);
+    // 27 rendered points at 27/page = exactly 1 E-page, plus the unnumbered
+    // cover = 2 physical pages -- not the 3 an unfiltered 28-point count
+    // would measure (2 E-pages + cover).
+    expect(result.measurements!.fieldBook.pages).toBe(2);
   }, 30000);
 });

@@ -179,10 +179,9 @@ export class PageAllocationService {
   private calculateFieldBookPages(observations: any[]): { ePages: number; physicalPages: number } {
     const { ePageCount, physicalPageCount } = paginateFieldBook(
       (observations || []).map(obs => ({ id: obs.pointId })),
-      // The cover page does not exist yet (Task 10 adds it and flips this to
-      // true everywhere at once); until then the E count and physical count
-      // are the same.
-      { hasCalibration: false, hasCover: false },
+      // The cover adds one physical page that carries no E-number, so the
+      // physical count is one ahead of the E count from here on.
+      { hasCalibration: false, hasCover: true },
     );
 
     // At least one page even for an empty survey, and the SGO caps the book at 99.

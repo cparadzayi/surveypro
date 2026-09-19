@@ -24,6 +24,13 @@ export interface FieldBookMetadata {
   surveyDate?: string;
   instruments?: string;
   address?: string;
+  /** What was surveyed, as printed on the cover. */
+  surveyOf?: string;
+  /** Field assistant. */
+  assistedBy?: string;
+  instrumentDescription?: string;
+  instrumentBaseSerial?: string;
+  instrumentRoverSerial?: string;
 }
 
 export class FieldBookGenerator {
@@ -40,7 +47,7 @@ export class FieldBookGenerator {
   private pointPageMap: Record<string, string> = {};
 
   /**
-   * Generate Field Book PDF (calibration page then point pages)
+   * Generate Field Book PDF (cover, then the calibration at E1, then the point pages)
    * For use in comprehensive document generation
    *
    * @param points - Survey points to include in field book
@@ -62,7 +69,7 @@ export class FieldBookGenerator {
 
     const pagination = paginateFieldBook(points, {
       hasCalibration: Boolean(calibration),
-      hasCover: false, // Task 10 turns this on
+      hasCover: true,
     });
     this.pointPageMap = pagination.pointPageMap;
 
@@ -74,8 +81,13 @@ export class FieldBookGenerator {
       isFirstPage = false;
     };
 
-    // The calibration opens the book: it is the evidence the GNSS observations
-    // were tied to the local grid, so it precedes the observations themselves.
+    // The cover comes first and carries no number.
+    startPage();
+    this.generateCoverPage(pdf, metadata);
+
+    // The calibration opens the numbered book: it is the evidence the GNSS
+    // observations were tied to the local grid, so it precedes the observations
+    // themselves.
     if (calibration) {
       startPage();
       this.generateCalibrationPage(pdf, calibration, 1, metadata);
@@ -105,6 +117,98 @@ export class FieldBookGenerator {
       pageCount: pagination.physicalPageCount,
       pointPageMap: this.pointPageMap,
     };
+  }
+
+  /**
+   * Render the cover, modelled on cadastral-standard/1 fieldbook cover.pdf.
+   *
+   * A title page: no E-number, because the calibration owns E1. Rows whose value
+   * is absent are dropped rather than printed empty, so a project that predates
+   * the structured instrument fields still produces an honest cover.
+   */
+  private generateCoverPage(pdf: jsPDF, metadata: FieldBookMetadata): void {
+    const left = this.options.marginLeft;
+    const valueX = left + 18;
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(16);
+    pdf.text('ELECTRONIC FIELD BOOK', left + 9, 12 + 10);
+
+    // Instruments read from the structured fields; an older project has them only
+    // in the free-text column, so that is the fallback and its only reader.
+    const instrumentLines: string[] = [];
+    if (metadata.instrumentDescription) {
+      instrumentLines.push(`1. ${metadata.instrumentDescription}`);
+      if (metadata.instrumentBaseSerial) {
+        instrumentLines.push(`Base  Serial Number S/N ${metadata.instrumentBaseSerial}`);
+      }
+      if (metadata.instrumentRoverSerial) {
+        instrumentLines.push(`Rover Serial Number S/N ${metadata.instrumentRoverSerial}`);
+      }
+    } else if (metadata.instruments) {
+      instrumentLines.push(...metadata.instruments.split('\n'));
+    }
+
+    const rows: { label: string; lines: string[] }[] = [
+      { label: 'Land Surveyor', lines: [metadata.surveyorName || ''] },
+      { label: 'Assisted by', lines: [metadata.assistedBy || ''] },
+      { label: 'Survey of', lines: (metadata.surveyOf || '').split('\n') },
+      { label: 'Surveyed in', lines: [metadata.surveyDate || ''] },
+      { label: 'Instruments', lines: instrumentLines },
+      { label: 'Address', lines: (metadata.address || '').split('\n') },
+    ];
+
+    let y = 21 + 10;
+    const lineHeight = 4.5;
+    const rowGap = 4;
+
+    for (const row of rows) {
+      const lines = row.lines.filter(line => line.trim().length > 0);
+      if (lines.length === 0) continue; // absent value: no label, no colon
+
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(row.label, left, y);
+      const labelWidth = pdf.getTextWidth(row.label);
+      pdf.line(left, y + 0.8, left + labelWidth, y + 0.8); // underlined, as the sample
+
+      pdf.setFont('helvetica', 'normal');
+      // The colon is its own text run, not glued to the value: a searchable
+      // record (and a test) should find "O Saunyama", not ": O Saunyama".
+      const colonGap = pdf.getTextWidth(': ');
+      const textX = valueX + colonGap;
+      // As in the reference, the Base/Rover serial lines are indented under
+      // the "1. <description>" line, list-style.
+      const instrumentIndent = pdf.getTextWidth('1. ');
+      const isInstruments = row.label === 'Instruments';
+      lines.forEach((line, index) => {
+        const lineY = y + index * lineHeight;
+        if (index === 0) {
+          pdf.text(':', valueX, lineY);
+        }
+        // Instrument lines mix a fixed label ("...S/N") with a serial number
+        // that a reader -- or a cross-reference -- needs to find on its own,
+        // structured field or free-text fallback alike, so those lines are
+        // drawn word by word instead of as one run.
+        if (isInstruments) {
+          const lineX = index === 0 ? textX : textX + instrumentIndent;
+          this.renderWords(pdf, line.trim(), lineX, lineY);
+        } else {
+          pdf.text(line, textX, lineY);
+        }
+      });
+
+      y += lines.length * lineHeight + rowGap;
+    }
+  }
+
+  /** Draw space-separated words as independent text runs, left to right. */
+  private renderWords(pdf: jsPDF, line: string, x: number, y: number): void {
+    let cursor = x;
+    for (const word of line.split(/\s+/).filter(Boolean)) {
+      pdf.text(word, cursor, y);
+      cursor += pdf.getTextWidth(`${word} `);
+    }
   }
 
   /**

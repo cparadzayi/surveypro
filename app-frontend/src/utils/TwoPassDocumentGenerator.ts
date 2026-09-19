@@ -285,7 +285,7 @@ export class TwoPassDocumentGenerator {
     const points = this.fieldBookPoints(data)
     const pagination = paginateFieldBook(
       points.map(pt => ({ id: pt.pointId })),
-      { hasCalibration: Boolean(data.siteCalibration), hasCover: false },
+      { hasCalibration: Boolean(data.siteCalibration), hasCover: true },
     )
 
     return {

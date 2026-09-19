@@ -26,8 +26,8 @@ describe('field book with a site calibration', () => {
     const gen2 = new FieldBookGenerator()
     const withCal = await gen2.generateFieldBookPDF(points, metadata, parseSiteCalibration(sampleXml))
 
-    expect(withoutCal.pageCount).toBe(2)          // ceil(30 / 27)
-    expect(withCal.pageCount).toBe(3)             // + the calibration page
+    expect(withoutCal.pageCount).toBe(3)          // cover + ceil(30 / 27)
+    expect(withCal.pageCount).toBe(4)             // + the calibration page
   })
 
   it('moves every point page label down one', async () => {
@@ -61,8 +61,9 @@ describe('field book with a site calibration', () => {
     const { pdf } = await new FieldBookGenerator().generateFieldBookPDF(points, metadata, cal)
 
     // jsPDF keeps the emitted text per page, 1-indexed (pages[0] is unused);
-    // the calibration opens the book, so it is page 1.
-    const text = (pdf as any).internal.pages.at(1).join(' ')
+    // the cover is physical page 1, so the calibration that opens the numbered
+    // book is physical page 2.
+    const text = (pdf as any).internal.pages.at(2).join(' ')
 
     expect(text).toContain('GNSS SITE CALIBRATION')
     expect(text).toContain('Scale Factor')
@@ -78,8 +79,9 @@ describe('field book with a site calibration', () => {
   it('states residuals in metres to three decimals, as the source report does', async () => {
     const cal = parseSiteCalibration(sampleXml)
     const { pdf } = await new FieldBookGenerator().generateFieldBookPDF(points, metadata, cal)
-    // The calibration opens the book, so it is page 1 (pages[0] is unused).
-    const text = (pdf as any).internal.pages.at(1).join(' ')
+    // The cover is physical page 1, so the calibration that opens the
+    // numbered book is physical page 2 (pages[0] is unused).
+    const text = (pdf as any).internal.pages.at(2).join(' ')
 
     // 0.0077985… m -> "0.008 m". Metres so the field book and the Trimble
     // report can be compared line by line without converting units in your head.
@@ -92,8 +94,9 @@ describe('field book with a site calibration', () => {
     expect(cal.hasVertical).toBe(false)
 
     const { pdf } = await new FieldBookGenerator().generateFieldBookPDF(points, metadata, cal)
-    // The calibration opens the book, so it is page 1 (pages[0] is unused).
-    const text = (pdf as any).internal.pages.at(1).join(' ')
+    // The cover is physical page 1, so the calibration that opens the
+    // numbered book is physical page 2 (pages[0] is unused).
+    const text = (pdf as any).internal.pages.at(2).join(' ')
 
     // Silence would read as "vertical residuals were all zero", which is a
     // different and much stronger claim than "no vertical adjustment was done".
@@ -114,7 +117,7 @@ describe('where the calibration sits in the book', () => {
     );
 
     expect(result.pointPageMap.P1).toBe('E2');
-    expect(result.pageCount).toBe(2);
+    expect(result.pageCount).toBe(3); // cover + calibration + the point page
   });
 
   it('leaves the points on E1 when there is no calibration', async () => {
@@ -126,6 +129,6 @@ describe('where the calibration sits in the book', () => {
     );
 
     expect(result.pointPageMap.P1).toBe('E1');
-    expect(result.pageCount).toBe(1);
+    expect(result.pageCount).toBe(2); // cover + the point page
   });
 });

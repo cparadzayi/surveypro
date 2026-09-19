@@ -84,7 +84,16 @@ describe('every consumer agrees on a point E-number', () => {
 
     // Both are PHYSICAL counts: the cover is a page that carries no E-number.
     expect(allocation.fieldBook.pageCount).toBe(rendered.pageCount);
-    expect(allocation.fieldBook.displayEnd).toBe(`E${Math.ceil(ids.length / 27)}`);
+
+    // Derived from the shared module (not a literal `/ 27`) -- a hardcoded page
+    // size here would be blind to any page size that still rounds a 30-point
+    // fixture up to 2 pages (e.g. 16 through 30), including the exact 26-per-page
+    // probe this file's own guard is meant to survive.
+    const { ePageCount } = paginateFieldBook(
+      ids.map(id => ({ id })),
+      { hasCalibration: false, hasCover: false },
+    );
+    expect(allocation.fieldBook.displayEnd).toBe(`E${ePageCount}`);
   });
 });
 

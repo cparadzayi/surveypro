@@ -184,7 +184,9 @@ export class ComprehensiveDocumentGenerator {
 
     console.log('[ComprehensiveDoc] ✅ Generation complete!');
     console.log(`  - Total pages: ${result.totalPages + coverPageCount} (${coverPageCount} cover + ${result.totalPages} content)`);
-    console.log(`  - Field Book: E1-E${result.measurements.fieldBook.pages}`);
+    // fieldBook.pages is the PHYSICAL count, which includes the unnumbered
+    // cover page -- the E range itself is one shorter.
+    console.log(`  - Field Book: E1-E${result.measurements.fieldBook.pages - 1}`);
     console.log(`  - Coordinate List: ${result.measurements.coordinateList.startPage}-${result.measurements.coordinateList.endPage}`);
     console.log(`  - Calculations: ${result.measurements.calculations.startPage}-${result.measurements.calculations.endPage}`);
     console.log(`  - Areas: ${result.measurements.areas.startPage}-${result.measurements.areas.endPage}`);

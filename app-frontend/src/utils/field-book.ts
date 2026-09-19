@@ -101,13 +101,17 @@ export class FieldBookGenerator {
       const startIndex = pageIndex * FIELD_BOOK_POINTS_PER_PAGE;
       const pagePoints = points.slice(startIndex, startIndex + FIELD_BOOK_POINTS_PER_PAGE);
 
-      // Every point on this page carries the same E-number, so read it off the
-      // map rather than recomputing it here.
-      const pageLabel = pagination.pointPageMap[pagePoints[0].id];
-      const pageNumber = Number(pageLabel.slice(1));
+      // Derived from this page's own position, not looked up by id: a
+      // re-observed beacon can carry the same id on an earlier AND a later
+      // page (Calculations Part 1's duplicate analysis exists for exactly
+      // this), and pointPageMap keeps only the last write for that id -- a
+      // by-id lookup here would print that page's number on every page the
+      // id appears on, leaving another page with no number at all.
+      const offset = calibration ? 1 : 0;
+      const pageNumber = pageIndex + 1 + offset;
 
       this.generateFieldBookPage(pdf, pagePoints, pageNumber, metadata);
-      console.log(`[FieldBook] Generated page ${pageLabel}: ${pagePoints.length} points`);
+      console.log(`[FieldBook] Generated page E${pageNumber}: ${pagePoints.length} points`);
     }
 
     console.log('[FieldBook] ✅ Point page map created:', Object.keys(this.pointPageMap).length, 'points tracked');
@@ -128,6 +132,7 @@ export class FieldBookGenerator {
    */
   private generateCoverPage(pdf: jsPDF, metadata: FieldBookMetadata): void {
     const left = this.options.marginLeft;
+    const pageWidth = pdf.internal.pageSize.getWidth();
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(16);
@@ -191,7 +196,18 @@ export class FieldBookGenerator {
       // the "1. <description>" line, list-style.
       const instrumentIndent = pdf.getTextWidth('1. ');
       const isInstruments = row.label === 'Instruments';
-      lines.forEach((line, index) => {
+
+      // A Zimbabwe designation (Survey of) or a multi-line Address can run
+      // well past 100 characters on one line, which would otherwise run off
+      // the page. Each explicit '\n' break (already split into `lines`) is
+      // wrapped independently, so a hard break never gets glued to the next
+      // one -- splitTextToSize is a no-op for a line that already fits.
+      const maxValueWidth = pageWidth - this.options.marginRight - textX;
+      const wrappedLines = isInstruments
+        ? lines
+        : lines.flatMap(line => pdf.splitTextToSize(line, maxValueWidth) as string[]);
+
+      wrappedLines.forEach((line, index) => {
         const lineY = y + index * lineHeight;
         if (index === 0) {
           pdf.text(':', valueX, lineY);
@@ -208,7 +224,7 @@ export class FieldBookGenerator {
         }
       });
 
-      y += lines.length * lineHeight + rowGap;
+      y += wrappedLines.length * lineHeight + rowGap;
     }
   }
 

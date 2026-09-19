@@ -169,6 +169,14 @@ export default async function surveyProjectRoutes(fastify, options) {
       const controlPointIds = controlPoints?.points || []
 
       const db = request.db || (await import('../config/db.js')).default
+      // assistedBy/instrumentDescription/instrumentBaseSerial/instrumentRoverSerial
+      // are deliberately NOT forwarded here: SurveyProject.create()'s INSERT
+      // does not name those columns (migration 089 is unapplied on this
+      // machine, so widening the INSERT would break project creation until
+      // it is applied), exactly like `instruments` and `designation` already
+      // behave. All four are persisted moments later by the project-setup
+      // flow's SurveyProject.update() call, whose allowedColumns already
+      // includes them.
       const project = await SurveyProject.create(db, {
         name,
         surveyorId: profileId,
@@ -178,10 +186,6 @@ export default async function surveyProjectRoutes(fastify, options) {
         surveyType,
         surveyDate,
         instruments,
-        assistedBy,
-        instrumentDescription,
-        instrumentBaseSerial,
-        instrumentRoverSerial,
         designation,
         workingDirectory,
         centralMeridian,

@@ -304,10 +304,16 @@ export class PageAllocationService {
       return null;
     }
     
-    // Field Book: E1, E2, etc.
-    if (physicalPage >= allocation.fieldBook.physicalStart && 
+    // Field Book: E1, E2, etc. The first physical page in this range is the
+    // field book's own unnumbered cover (calculateFieldBookPages reserves one
+    // extra physical page for it), so it carries no display number and E1
+    // starts one page later than physicalStart.
+    if (physicalPage >= allocation.fieldBook.physicalStart &&
         physicalPage <= allocation.fieldBook.physicalEnd) {
-      const offset = physicalPage - allocation.fieldBook.physicalStart;
+      if (physicalPage === allocation.fieldBook.physicalStart) {
+        return null;
+      }
+      const offset = physicalPage - allocation.fieldBook.physicalStart - 1;
       return `E${offset + 1}`;
     }
     

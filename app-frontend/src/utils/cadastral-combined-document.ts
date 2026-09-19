@@ -5,6 +5,7 @@ import { toCoordinateListPrecision } from '../types/adjusted-coordinates'
 import type { SurveyPoint, DuplicateAnalysis } from './calculations-part1'
 import { CalculationsPart1Generator } from './calculations-part1'
 import { CoordinateListGenerator, type SurveyorInfo } from './coordinate-list'
+import { paginateFieldBook } from './fieldBookPagination'
 
 /**
  * Result from combined document generation
@@ -165,23 +166,14 @@ export class CadastralCombinedDocumentGenerator {
    * Must match the actual Field Book PDF generation
    */
   private generateFieldBookPageLookup(surveyPoints: SurveyPoint[]): Record<string, string> {
-    const lookup: Record<string, string> = {}
-    const pointsPerPage = 27 // Must match Field Book PDF generation
-    const sortedPoints = [...surveyPoints]
-    
-    let pageNum = 1
-    let pointCount = 0
-    
-    sortedPoints.forEach((pt) => {
-      if (pointCount === pointsPerPage) {
-        pageNum++
-        pointCount = 0
-      }
-      lookup[pt.pointId] = `E${pageNum}`
-      pointCount++
-    })
-    
-    return lookup
+    // Delegates to the single source of every E-number (fieldBookPagination.ts)
+    // instead of hardcoding its own page size and re-deriving labels locally.
+    // This module has no calibration concept, so hasCalibration is always
+    // false here.
+    return paginateFieldBook(
+      surveyPoints.map(pt => ({ id: pt.pointId })),
+      { hasCalibration: false, hasCover: false },
+    ).pointPageMap
   }
   
   /**

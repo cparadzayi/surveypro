@@ -7147,7 +7147,9 @@ async function exportAreaConsistencyPDF() {
     // ⭐ NEW: Display ACTUAL measurements (100% accurate)
     if (result.measurements) {
       console.log('[MapLibre] 📊 ACTUAL page numbers (from measurements):');
-      console.log('[MapLibre] - Field Book: E1-E' + result.measurements.fieldBook.pages);
+      // fieldBook.pages is the PHYSICAL count, which includes the unnumbered
+      // cover page -- the E range itself is one shorter.
+      console.log('[MapLibre] - Field Book: E1-E' + (result.measurements.fieldBook.pages - 1));
       console.log('[MapLibre] - Coordinate List:', result.measurements.coordinateList.startPage, '-', result.measurements.coordinateList.endPage);
       console.log('[MapLibre] - Calculations Part 1:', result.measurements.calculations.startPage, '-', result.measurements.calculations.endPage);
       console.log('[MapLibre] - Areas:', result.measurements.areas.startPage, '-', result.measurements.areas.endPage);

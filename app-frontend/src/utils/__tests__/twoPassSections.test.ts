@@ -255,4 +255,39 @@ describe('field book page-count guard', () => {
     // assertion; the explicit check documents what is being guarded.
     expect(result.sections.fieldBook).toBeInstanceOf(Blob);
   }, 30000);
+
+  it('agrees with the renderer when calculated points cross a page boundary', async () => {
+    // 28 points, one of them calculated: the renderer excludes calculated
+    // points before pagination (27 rendered -> 1 page), but a measurement that
+    // paginates the unfiltered list sees 28 (2 pages). Without measureFieldBook
+    // and renderFieldBook sourcing the same filtered list, this mismatch trips
+    // the guard and generation throws -- on real survey data, which routinely
+    // contains calculated points, not just in a contrived test.
+    const points = Array.from({ length: 28 }, (_, i) => ({
+      pointId: `B${i + 1}`,
+      y: 50000 + i,
+      x: 2200000 + i,
+      status: i === 27 ? 'C' : 'P',
+      description: i === 27 ? 'CALCULATED' : '',
+      surveyDate: '2026-01-01',
+    }));
+    const adjustedPoints = points.map((pt) => ({
+      ...pt,
+      fieldBookPage: '',
+      calculationsPage: 0,
+      adjustment: { isDuplicate: false, observationCount: 1, method: 'gps' as const },
+    }));
+
+    const gen = new ComprehensiveDocumentGenerator();
+    const result = await gen.generateWithTwoPass({
+      ...baseData,
+      surveyPoints: points,
+      adjustedCoordinates: adjustedPoints,
+    } as any);
+
+    expect(result.sections?.fieldBook).toBeInstanceOf(Blob);
+    // 27 rendered points at 27/page = exactly 1 page, not the 2 an unfiltered
+    // 28-point count would measure.
+    expect(result.measurements!.fieldBook.pages).toBe(1);
+  }, 30000);
 });

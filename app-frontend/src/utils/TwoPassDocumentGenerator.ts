@@ -257,13 +257,34 @@ export class TwoPassDocumentGenerator {
   // ========================================
   // MEASUREMENT METHODS
   // ========================================
-  
+
+  /**
+   * Points the field book actually renders: calculated points are excluded
+   * (they don't appear in the field book -- they still reach Calculations,
+   * via a separate lookup, but never the field book). `paginateFieldBook`'s
+   * contract requires "EXACTLY the points the field book will render, in
+   * render order", so `measureFieldBook` and `renderFieldBook` must agree on
+   * this list -- both read it from here instead of filtering independently,
+   * so they cannot drift apart.
+   */
+  private fieldBookPoints(data: TwoPassDocumentData): SurveyPoint[] {
+    return data.surveyPoints.filter(pt => {
+      const desc = (pt.description || '').toLowerCase();
+      const isCalculated = desc.includes('calculated');
+      if (isCalculated) {
+        console.log(`[FieldBook] 🧮 Excluding calculated point: ${pt.pointId}`);
+      }
+      return !isCalculated;
+    });
+  }
+
   private measureFieldBook(data: TwoPassDocumentData): FieldBookMeasurement {
     // The calibration opens the book at E1, so it DOES move every point -- the
     // opposite of the rule this method used to encode. fieldBookPagination is the
     // single place that decision lives.
+    const points = this.fieldBookPoints(data)
     const pagination = paginateFieldBook(
-      data.surveyPoints.map(pt => ({ id: pt.pointId })),
+      points.map(pt => ({ id: pt.pointId })),
       { hasCalibration: Boolean(data.siteCalibration), hasCover: false },
     )
 
@@ -272,7 +293,13 @@ export class TwoPassDocumentGenerator {
       startPage: 1,
       endPage: pagination.physicalPageCount,
       pointsPerPage: FIELD_BOOK_POINTS_PER_PAGE,
-      totalPoints: data.surveyPoints.length,
+      // "Total points in field book" (see FieldBookMeasurement's own doc
+      // comment) means points the field book renders -- calculated points are
+      // excluded from it, so this is the filtered count, not
+      // data.surveyPoints.length. Nothing downstream reads this field today
+      // (grepped: only .pages and .pointPageMap have consumers), so this is a
+      // correction, not a behavior change for any known caller.
+      totalPoints: points.length,
       pointPageMap: pagination.pointPageMap
     }
   }
@@ -416,17 +443,10 @@ export class TwoPassDocumentGenerator {
     pointPageMap: Record<string, string>;
     pageCount: number;
   }> {
-    // Filter out calculated points (they don't appear in field book)
-    // Calculated points are identified by description containing "calculated" (case-insensitive)
-    const filteredPoints = data.surveyPoints.filter(pt => {
-      const desc = (pt.description || '').toLowerCase();
-      const isCalculated = desc.includes('calculated');
-      if (isCalculated) {
-        console.log(`[FieldBook] 🧮 Excluding calculated point: ${pt.pointId}`);
-      }
-      return !isCalculated;
-    });
-    
+    // Calculated points don't appear in the field book -- see fieldBookPoints,
+    // the one place this filter lives (measureFieldBook uses the same helper).
+    const filteredPoints = this.fieldBookPoints(data);
+
     console.log(`[FieldBook] 📊 Points: ${data.surveyPoints.length} total, ${filteredPoints.length} in field book, ${data.surveyPoints.length - filteredPoints.length} calculated (excluded)`);
     
     // Convert survey points to field book format

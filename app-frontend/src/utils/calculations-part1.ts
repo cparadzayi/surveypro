@@ -3,6 +3,7 @@ import { useSurveyLookupStore } from '../stores/surveyLookup'
 import type { AdjustedCoordinate, CalculationsPart1Result } from '../types/adjusted-coordinates'
 import { VirtualPDFMeasurer } from './VirtualPDFMeasurer'
 import type { CalculationsMeasurement } from '../types/document-measurements'
+import { paginateFieldBook } from './fieldBookPagination'
 
 // Survey point interface for calculations
 export interface SurveyPoint {
@@ -50,8 +51,7 @@ export class CalculationsPart1Generator {
   // Row height: ~8mm → 217mm / 8mm ≈ 27 points per page
   private generateFieldBookPageLookup(surveyPoints: SurveyPoint[]): Record<string, string> {
     const lookup: Record<string, string> = {};
-    const pointsPerPage = 27; // Must match Field Book PDF generation (dynamic calculation)
-    
+
     // ⭐ CRITICAL: Filter out calculated points - they don't appear in field book
     const fieldBookPoints = surveyPoints.filter(pt => {
       const desc = (pt.description || '').toLowerCase();
@@ -68,17 +68,16 @@ export class CalculationsPart1Generator {
     
     console.log(`[CalculationsPart1] 📊 Field Book lookup: ${surveyPoints.length} total, ${fieldBookPoints.length} in field book, ${surveyPoints.length - fieldBookPoints.length} calculated`);
     
-    const sortedPoints = [...fieldBookPoints];
-    let pageNum = 1;
-    let pointCount = 0;
-    sortedPoints.forEach((pt, idx) => {
-      if (pointCount === pointsPerPage) {
-        pageNum++;
-        pointCount = 0;
-      }
-      lookup[pt.pointId] = `E${pageNum}`;
-      pointCount++;
-    });
+    // The field book renders only observed points, so pagination sees only those.
+    // Whether the book opens with a calibration page is not knowable here, so this
+    // lookup is the ESTIMATE used when the real map is unavailable; the two-pass
+    // path overwrites it with FieldBookGenerator's actual pointPageMap.
+    const { pointPageMap } = paginateFieldBook(
+      fieldBookPoints.map(pt => ({ id: pt.pointId })),
+      { hasCalibration: false, hasCover: false },
+    )
+    Object.assign(lookup, pointPageMap)
+
     // Persist lookup in Pinia for canonical reference
     const lookupStore = useSurveyLookupStore();
     lookupStore.setFieldBookPageLookup(lookup);

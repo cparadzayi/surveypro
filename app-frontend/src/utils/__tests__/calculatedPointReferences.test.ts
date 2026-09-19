@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { CoordinateListGenerator } from '../coordinate-list';
+import { CalculationsPart1Generator } from '../calculations-part1';
 import { splitSurveyPointsForSections } from '../comprehensive-document';
 import type { AdjustedCoordinate } from '../../types/adjusted-coordinates';
 import type { SurveyorInfo } from '../coordinate-list';
@@ -114,5 +115,32 @@ describe('splitSurveyPointsForSections', () => {
     const { forFieldBook } = splitSurveyPointsForSections(points);
 
     expect(forFieldBook.map((p) => p.pointId)).toEqual(['P1']);
+  });
+});
+
+describe('the F/B page a calculation cites', () => {
+  it('counts only the points the field book actually renders', async () => {
+    // A calculated point is not in the field book, so it must not consume an
+    // E-page slot -- the observed point after it stays on the same page.
+    const observed = Array.from({ length: 27 }, (_, i) => ({
+      pointId: `P${i + 1}`, y: i, x: i, status: 'P',
+      description: 'iron peg', surveyDate: '2026-01-01',
+    }));
+    const calculated = {
+      pointId: 'C1', y: 0, x: 0, status: 'C',
+      description: 'CALCULATED', surveyDate: '2026-01-01',
+    };
+
+    const gen = new CalculationsPart1Generator();
+    const result: any = await gen.generateCalculationsPart1PDF(
+      [...observed.slice(0, 5), calculated, ...observed.slice(5)],
+      surveyorInfo,
+    );
+    const byId = Object.fromEntries(
+      result.adjustedCoordinates.map((c: any) => [c.pointId, c.fieldBookPage]),
+    );
+
+    expect(byId.C1).toBe('-');
+    expect(byId.P27).toBe('E1'); // still the 27th RENDERED point
   });
 });

@@ -196,10 +196,10 @@ export class FieldBookGenerator {
     // The value column is derived from the widest label, not a constant: a
     // fixed guess (18mm) let "Land Surveyor" -- the widest label -- run past
     // it and overprint its own colon and value. Measured in the same bold
-    // 9pt the labels are actually drawn in, since getTextWidth depends on
+    // 10pt the labels are actually drawn in, since getTextWidth depends on
     // the font that is current when it is called.
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(9);
+    pdf.setFontSize(10);
     const labelGap = 3; // mm of clear space between the widest label and the colon
     const widestLabel = Math.max(...rows.map(row => pdf.getTextWidth(row.label)));
     const valueX = left + widestLabel + labelGap;
@@ -212,7 +212,7 @@ export class FieldBookGenerator {
       const lines = row.lines.filter(line => line.trim().length > 0);
       if (lines.length === 0) continue; // absent value: no label, no colon
 
-      pdf.setFontSize(9);
+      pdf.setFontSize(10);
       pdf.setFont('helvetica', 'bold');
       pdf.text(row.label, left, y);
       const labelWidth = pdf.getTextWidth(row.label);
@@ -306,7 +306,7 @@ export class FieldBookGenerator {
     pdf.text('Adjusted parameters', left, y);
     y += 7;
     pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9);
+    pdf.setFontSize(10);
 
     const h = cal.horizontal;
     if (h) {
@@ -357,7 +357,7 @@ export class FieldBookGenerator {
     pdf.text('Control points', left, y);
     y += 7;
 
-    pdf.setFontSize(9);
+    pdf.setFontSize(10);
     const cPoint = left;
     const cCtrlY = left + 24;
     const cCtrlX = cCtrlY + 32;
@@ -451,7 +451,7 @@ export class FieldBookGenerator {
     
     // Table content
     pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9);
+    pdf.setFontSize(10);
     
     points.forEach((point) => {
       if (yPosition > maxYPosition) return;
@@ -510,7 +510,7 @@ export class FieldBookGenerator {
     
     if (currentRowCount < targetRowCount) {
       pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(9);
+      pdf.setFontSize(10);
       pdf.setTextColor(200, 200, 200);
       
       for (let i = currentRowCount; i < targetRowCount; i++) {

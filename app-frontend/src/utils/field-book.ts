@@ -33,6 +33,37 @@ export interface FieldBookMetadata {
   instrumentRoverSerial?: string;
 }
 
+/**
+ * The month a survey was carried out, as the cover states it: "July 2026".
+ *
+ * A field book records when the work was done, not the day a form was filled
+ * in, and the SG sample reads "June 2020." accordingly. Project setup stores an
+ * ISO date because that is what a date input yields, so the conversion happens
+ * here at render time rather than the workflow keeping a second display-shaped
+ * copy that could drift from the real one.
+ *
+ * Anything that is not an ISO date is printed exactly as entered: projects
+ * predating the date input hold free text such as "June 2020", and mangling it
+ * into "Invalid Date" would be worse than leaving it alone.
+ */
+const surveyedIn = (surveyDate?: string): string => {
+  if (!surveyDate) return '';
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(surveyDate);
+  if (!iso) return surveyDate;
+
+  const [, year, month] = iso;
+  // Built from the parts rather than `new Date(...)`: parsing an ISO date as
+  // local time in a timezone behind UTC rolls 1 January back into December of
+  // the previous year, which would print the wrong month AND the wrong year.
+  const monthName = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ][Number(month) - 1];
+
+  return monthName ? `${monthName} ${year}` : surveyDate;
+};
+
 export class FieldBookGenerator {
   private options = {
     format: 'a4' as const,
@@ -157,7 +188,7 @@ export class FieldBookGenerator {
       { label: 'Land Surveyor', lines: [metadata.surveyorName || ''] },
       { label: 'Assisted by', lines: [metadata.assistedBy || ''] },
       { label: 'Survey of', lines: (metadata.surveyOf || '').split('\n') },
-      { label: 'Surveyed in', lines: [metadata.surveyDate || ''] },
+      { label: 'Surveyed in', lines: [surveyedIn(metadata.surveyDate)] },
       { label: 'Instruments', lines: instrumentLines },
       { label: 'Address', lines: (metadata.address || '').split('\n') },
     ];

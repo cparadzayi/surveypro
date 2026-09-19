@@ -178,9 +178,10 @@ export class FieldBookPDFGenerator {
     // renders one. Only ePageCount and pointPageMap are read from `pagination`
     // in this file today, so this was harmless until something reads
     // physicalPageCount.
+    const hasCalibration = false
     const pagination = paginateFieldBook(
       fieldBook.points.map(p => ({ id: p.id })),
-      { hasCalibration: false, hasCover: true },
+      { hasCalibration, hasCover: true },
     )
     const totalPages = pagination.ePageCount
 
@@ -194,7 +195,13 @@ export class FieldBookPDFGenerator {
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(16)
       pdf.text('ELECTRONIC FIELD BOOK', this.options.marginLeft, 25)
-      const pageLabel = pagination.pointPageMap[pagePoints[0].id]
+      // Derived from this page's own position, not looked up by id: a
+      // re-observed beacon can carry the same id on an earlier AND a later
+      // page, and pointPageMap keeps only the last write for that id -- a
+      // by-id lookup here printed that page's number on every page the id
+      // appears on (header AND footer), leaving another page unlabelled.
+      const offset = hasCalibration ? 1 : 0
+      const pageLabel = `E${pageIndex + 1 + offset}`
       const pageLabelWidth = pdf.getTextWidth(pageLabel)
       pdf.text(pageLabel, pdf.internal.pageSize.getWidth() - this.options.marginRight - pageLabelWidth, 25)
 

@@ -1366,7 +1366,7 @@ import { batchDownloadDocuments } from '../../../utils/batchExport';
 import { SimplifiedCadastralCombinedGenerator } from '../../../utils/cadastral-combined-simple';
 import type { SurveyPoint } from '../../../utils/calculations-part1';
 import { bankersRound } from '../../../utils/cadastral-precision';
-import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from '../../../utils/fieldBookPagination';
+import { FIELD_BOOK_POINTS_PER_PAGE } from '../../../utils/fieldBookPagination';
 
 import CoordinateListView from './CoordinateListView.vue';
 import QGISExportView from './QGISExportView.vue';
@@ -4036,16 +4036,21 @@ function generateFieldBookHTML(fieldBook: any): string {
   // Points per page: 217mm / 8mm ≈ 27 points (conservative estimate)
   // This preview emits no calibration page of its own, so hasCalibration is
   // always false — its E1-start is internally consistent.
-  const pagination = paginateFieldBook(
-    points.map((p: any) => ({ id: p.id })),
-    { hasCalibration: false, hasCover: false },
-  );
+  const hasCalibration = false;
   const pointsPerPage = FIELD_BOOK_POINTS_PER_PAGE;
   const pages: string[] = [];
 
   for (let i = 0; i < points.length; i += pointsPerPage) {
     const pagePoints = points.slice(i, i + pointsPerPage);
-    const pageLabel = pagination.pointPageMap[pagePoints[0].id];
+    // Derived from this page's own position, not looked up by id: a
+    // re-observed beacon can carry the same id on an earlier AND a later
+    // page, and pointPageMap keeps only the last write for that id -- a
+    // by-id lookup here would print that page's number on every page the id
+    // appears on, leaving another page unlabelled. (generateFieldBookHTML has
+    // zero callers today, but the pattern is fixed anyway.)
+    const pageIndex = i / pointsPerPage;
+    const offset = hasCalibration ? 1 : 0;
+    const pageLabel = `E${pageIndex + 1 + offset}`;
 
     const tableRows = pagePoints.map((point: any, index: number) => `
       <tr class="${point.status === 'F' ? 'status-f' : point.status === 'P' ? 'status-p' : ''}">

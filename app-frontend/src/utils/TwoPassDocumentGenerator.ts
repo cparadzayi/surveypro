@@ -22,6 +22,7 @@ import type { CalculationsPart1Result } from '../types/adjusted-coordinates'
 import { CalculationsPart1Generator, type SurveyPoint } from './calculations-part1'
 import { CoordinateListGenerator, type SurveyorInfo } from './coordinate-list'
 import { FieldBookGenerator } from './field-book'
+import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination'
 import type { AdjustedCoordinate } from '../types/adjusted-coordinates'
 import type { ReportOnSurveyData } from '../types/cadastral'
 import {
@@ -176,7 +177,18 @@ export class TwoPassDocumentGenerator {
     console.log('  📘 Rendering Field Book...')
     const fieldBookResult = await this.renderFieldBook(data)
     pdfs.push(fieldBookResult.pdf)
-    console.log(`     ✓ ${measurements.fieldBook.pages} pages generated`)
+
+    // The beacon-comparison section has always been guarded this way; the field
+    // book was only logged. A field book whose rendered length disagrees with the
+    // measured one renumbers every section after it, silently, so it throws too.
+    if (fieldBookResult.pageCount !== measurements.fieldBook.pages) {
+      throw new Error(
+        `Field Book page count mismatch. ` +
+        `Pass 1 measured ${measurements.fieldBook.pages} pages, ` +
+        `Pass 2 rendered ${fieldBookResult.pageCount}.`
+      )
+    }
+    console.log(`     ✓ ${fieldBookResult.pageCount} pages generated`)
     console.log(`     ✓ ${Object.keys(fieldBookResult.pointPageMap).length} points tracked`)
     
     // 2. Generate Coordinate List (with accurate calc AND field book page refs!)
@@ -247,27 +259,21 @@ export class TwoPassDocumentGenerator {
   // ========================================
   
   private measureFieldBook(data: TwoPassDocumentData): FieldBookMeasurement {
-    const pointsPerPage = 27
-    // The calibration adds one page AFTER the points, so it changes the page
-    // total but never a point's E-number -- pointPageMap below is built from the
-    // point index alone and is deliberately left untouched by it.
-    const calibrationPages = data.siteCalibration ? 1 : 0
-    const pages = Math.ceil(data.surveyPoints.length / pointsPerPage) + calibrationPages
-    
-    // Calculate point page map during measurement
-    const pointPageMap: Record<string, string> = {}
-    data.surveyPoints.forEach((pt, index) => {
-      const pageNumber = Math.floor(index / pointsPerPage) + 1
-      pointPageMap[pt.pointId] = `E${pageNumber}`
-    })
-    
+    // The calibration opens the book at E1, so it DOES move every point -- the
+    // opposite of the rule this method used to encode. fieldBookPagination is the
+    // single place that decision lives.
+    const pagination = paginateFieldBook(
+      data.surveyPoints.map(pt => ({ id: pt.pointId })),
+      { hasCalibration: Boolean(data.siteCalibration), hasCover: false },
+    )
+
     return {
-      pages,
+      pages: pagination.physicalPageCount,
       startPage: 1,
-      endPage: pages,
-      pointsPerPage,
+      endPage: pagination.physicalPageCount,
+      pointsPerPage: FIELD_BOOK_POINTS_PER_PAGE,
       totalPoints: data.surveyPoints.length,
-      pointPageMap
+      pointPageMap: pagination.pointPageMap
     }
   }
   
@@ -408,6 +414,7 @@ export class TwoPassDocumentGenerator {
   private async renderFieldBook(data: TwoPassDocumentData): Promise<{
     pdf: Blob;
     pointPageMap: Record<string, string>;
+    pageCount: number;
   }> {
     // Filter out calculated points (they don't appear in field book)
     // Calculated points are identified by description containing "calculated" (case-insensitive)
@@ -450,7 +457,8 @@ export class TwoPassDocumentGenerator {
     // Convert jsPDF to Blob and return with pointPageMap
     return {
       pdf: new Blob([result.pdf.output('blob')], { type: 'application/pdf' }),
-      pointPageMap: result.pointPageMap
+      pointPageMap: result.pointPageMap,
+      pageCount: result.pageCount
     }
   }
   

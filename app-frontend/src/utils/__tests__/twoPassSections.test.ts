@@ -4,7 +4,21 @@ import { PDFDocument } from 'pdf-lib';
 import { ComprehensiveDocumentGenerator } from '../comprehensive-document';
 import { TwoPassDocumentGenerator } from '../TwoPassDocumentGenerator';
 import { CoordinateListGenerator } from '../coordinate-list';
+import { Window } from 'happy-dom';
+import { parseSiteCalibration } from '../siteCalibration';
+// @ts-expect-error — ?raw has no ambient type declaration in this project
+import sampleCalibrationXml from './fixtures/siteCalibrationReport.xml?raw';
 import type { ReportOnSurveyData } from '@/types/cadastral';
+
+// parseSiteCalibration needs DOMParser. This file runs under vitest's default
+// 'node' environment (same as the rest of TwoPassDocumentGenerator's tests,
+// which construct real jsPDF documents without one), so borrow happy-dom's
+// DOMParser for this one call rather than switching the whole file to a DOM
+// environment (fieldBookCalibration.test.ts does that, but it is the only
+// thing that file renders).
+if (typeof DOMParser === 'undefined') {
+  (globalThis as any).DOMParser = new Window().DOMParser;
+}
 
 // Minimal-but-real inputs: two observed points + one parcel are enough to render
 // every section (field book, coordinate list, calculations, areas) without error.
@@ -222,5 +236,23 @@ describe('generateWithTwoPass — section blobs', () => {
     }
 
     genSpy.mockRestore();
+  }, 30000);
+});
+
+describe('field book page-count guard', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('measures the same number of pages it renders, calibration included', async () => {
+    const gen = new ComprehensiveDocumentGenerator();
+    const result = await gen.generateWithTwoPass({
+      ...baseData,
+      siteCalibration: parseSiteCalibration(sampleCalibrationXml),
+    } as any);
+
+    // A mismatch throws inside generateWithTwoPass, so reaching here is the
+    // assertion; the explicit check documents what is being guarded.
+    expect(result.sections.fieldBook).toBeInstanceOf(Blob);
   }, 30000);
 });

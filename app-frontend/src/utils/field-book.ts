@@ -128,7 +128,6 @@ export class FieldBookGenerator {
    */
   private generateCoverPage(pdf: jsPDF, metadata: FieldBookMetadata): void {
     const left = this.options.marginLeft;
-    const valueX = left + 18;
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(16);
@@ -157,6 +156,17 @@ export class FieldBookGenerator {
       { label: 'Instruments', lines: instrumentLines },
       { label: 'Address', lines: (metadata.address || '').split('\n') },
     ];
+
+    // The value column is derived from the widest label, not a constant: a
+    // fixed guess (18mm) let "Land Surveyor" -- the widest label -- run past
+    // it and overprint its own colon and value. Measured in the same bold
+    // 9pt the labels are actually drawn in, since getTextWidth depends on
+    // the font that is current when it is called.
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    const labelGap = 3; // mm of clear space between the widest label and the colon
+    const widestLabel = Math.max(...rows.map(row => pdf.getTextWidth(row.label)));
+    const valueX = left + widestLabel + labelGap;
 
     let y = 21 + 10;
     const lineHeight = 4.5;

@@ -1327,6 +1327,7 @@ import { batchDownloadDocuments } from '../../../utils/batchExport';
 import { SimplifiedCadastralCombinedGenerator } from '../../../utils/cadastral-combined-simple';
 import type { SurveyPoint } from '../../../utils/calculations-part1';
 import { bankersRound } from '../../../utils/cadastral-precision';
+import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from '../../../utils/fieldBookPagination';
 
 import CoordinateListView from './CoordinateListView.vue';
 import QGISExportView from './QGISExportView.vue';
@@ -3958,13 +3959,19 @@ function generateFieldBookHTML(fieldBook: any): string {
   // Header height: ~30mm, Footer: ~20mm, Table header: ~10mm
   // Available for rows: 297 - 30 - 20 - 10 - 20 (margins) = 217mm
   // Points per page: 217mm / 8mm ≈ 27 points (conservative estimate)
-  const pointsPerPage = 27; // Dynamic calculation - fits page without overflow
+  // This preview emits no calibration page of its own, so hasCalibration is
+  // always false — its E1-start is internally consistent.
+  const pagination = paginateFieldBook(
+    points.map((p: any) => ({ id: p.id })),
+    { hasCalibration: false, hasCover: false },
+  );
+  const pointsPerPage = FIELD_BOOK_POINTS_PER_PAGE;
   const pages: string[] = [];
-  
+
   for (let i = 0; i < points.length; i += pointsPerPage) {
     const pagePoints = points.slice(i, i + pointsPerPage);
-    const pageNumber = Math.floor(i / pointsPerPage) + 1;
-    
+    const pageLabel = pagination.pointPageMap[pagePoints[0].id];
+
     const tableRows = pagePoints.map((point: any, index: number) => `
       <tr class="${point.status === 'F' ? 'status-f' : point.status === 'P' ? 'status-p' : ''}">
         <td class="point-id">${point.id}</td>
@@ -3980,7 +3987,7 @@ function generateFieldBookHTML(fieldBook: any): string {
       <div class="${i > 0 ? 'page-break' : ''}">
         <div class="page-header">
           <span>ELECTRONIC FIELD BOOK</span>
-          <span class="page-number">E${pageNumber}</span>
+          <span class="page-number">${pageLabel}</span>
         </div>
         
         <table>

@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import type { ElectronicFieldBook } from '../types/cadastral'
 import { bankersRound } from './cadastral-precision'
+import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination'
 
 export interface EnhancedElectronicFieldBook extends ElectronicFieldBook {
   metadata: ElectronicFieldBook['metadata'] & {
@@ -145,13 +146,18 @@ export class FieldBookPDFGenerator {
     const tableHeaderHeight = 20
     const rowHeight = 7
     const availableHeight = pageHeight - this.options.marginTop - this.options.marginBottom - headerHeight - footerHeight - tableHeaderHeight
-    const pointsPerPage = 27; // FIXED VALUE - must match all other components
+    const pointsPerPage = FIELD_BOOK_POINTS_PER_PAGE
     console.log(`Field Book PDF: Using ${pointsPerPage} points per page (standardized across all components)`)
-    const totalPages = Math.ceil(fieldBook.points.length / pointsPerPage)
+    // This renderer emits no calibration page of its own, so hasCalibration is
+    // always false — its E1-start is internally consistent.
+    const pagination = paginateFieldBook(
+      fieldBook.points.map(p => ({ id: p.id })),
+      { hasCalibration: false, hasCover: false },
+    )
+    const totalPages = pagination.ePageCount
 
     for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
       if (pageIndex > 0) pdf.addPage()
-      const pageNumber = pageIndex + 1
       const startIndex = pageIndex * pointsPerPage
       const endIndex = Math.min(startIndex + pointsPerPage, fieldBook.points.length)
       const pagePoints = fieldBook.points.slice(startIndex, endIndex)
@@ -160,7 +166,7 @@ export class FieldBookPDFGenerator {
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(16)
       pdf.text('ELECTRONIC FIELD BOOK', this.options.marginLeft, 25)
-      const pageLabel = `E${pageNumber}`
+      const pageLabel = pagination.pointPageMap[pagePoints[0].id]
       const pageLabelWidth = pdf.getTextWidth(pageLabel)
       pdf.text(pageLabel, pdf.internal.pageSize.getWidth() - this.options.marginRight - pageLabelWidth, 25)
 

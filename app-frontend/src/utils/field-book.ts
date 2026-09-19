@@ -340,7 +340,7 @@ export class FieldBookGenerator {
     });
     
     // Empty row grid lines (for remaining rows on page)
-    const pointsPerPage = 27;
+    const pointsPerPage = FIELD_BOOK_POINTS_PER_PAGE;
     const currentRowCount = points.length;
     const targetRowCount = Math.min(
       pointsPerPage, 
@@ -382,13 +382,5 @@ export class FieldBookGenerator {
     const dateText = new Date().toLocaleDateString();
     const dateWidth = pdf.getTextWidth(dateText);
     pdf.text(dateText, pageWidth - this.options.marginRight - dateWidth, footerY);
-  }
-
-  /**
-   * Calculate expected page count for field book
-   */
-  calculatePageCount(pointCount: number): number {
-    const pointsPerPage = 27;
-    return Math.ceil(pointCount / pointsPerPage);
   }
 }

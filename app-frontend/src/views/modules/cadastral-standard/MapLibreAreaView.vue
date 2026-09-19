@@ -5984,7 +5984,11 @@ async function regenerateCalculationsPart1WithAreas() {
       firm: workflowState.surveyorInfo?.firm || '',
       address: workflowState.surveyorInfo?.address || '',
       surveyDate: workflowState.surveyorInfo?.surveyDate || '',
-      projectTitle: workflowState.surveyorInfo?.surveyOf || workflowState.projectInfo?.projectName || ''
+      projectTitle: workflowState.surveyorInfo?.surveyOf || workflowState.projectInfo?.projectName || '',
+      assistedBy: workflowState.surveyorInfo?.assistedBy || '',
+      instrumentDescription: workflowState.surveyorInfo?.instrumentDescription || '',
+      instrumentBaseSerial: workflowState.surveyorInfo?.instrumentBaseSerial || '',
+      instrumentRoverSerial: workflowState.surveyorInfo?.instrumentRoverSerial || '',
     };
     
     // Generate Calculations Part 1 PDF
@@ -6944,7 +6948,11 @@ async function exportAreaConsistencyPDF() {
       surveyDate: workflowState?.surveyorInfo?.surveyDate || '',
       projectTitle: workflowState?.surveyorInfo?.surveyOf || workflowState?.projectInfo?.projectName || '',
       district: workflowState?.projectInfo?.district || 'Unknown District',
-      centralMeridian: workflowState?.projectInfo?.centralMeridian || 29
+      centralMeridian: workflowState?.projectInfo?.centralMeridian || 29,
+      assistedBy: workflowState?.surveyorInfo?.assistedBy || '',
+      instrumentDescription: workflowState?.surveyorInfo?.instrumentDescription || '',
+      instrumentBaseSerial: workflowState?.surveyorInfo?.instrumentBaseSerial || '',
+      instrumentRoverSerial: workflowState?.surveyorInfo?.instrumentRoverSerial || '',
     };
     
     // Existence check for enclosed documents (ticks + optional warning), scoped to

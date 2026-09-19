@@ -323,7 +323,14 @@ export class ComprehensiveDocumentGenerator {
           {
             surveyorName: data.surveyorInfo.name,
             surveyDescription: data.projectInfo.projectTitle,
-            surveyDate: data.surveyorInfo.surveyDate
+            address: data.surveyorInfo.address,
+            surveyDate: data.surveyorInfo.surveyDate,
+            surveyOf: data.surveyorInfo.projectTitle,
+            assistedBy: data.surveyorInfo.assistedBy,
+            instruments: data.surveyorInfo.instruments,
+            instrumentDescription: data.surveyorInfo.instrumentDescription,
+            instrumentBaseSerial: data.surveyorInfo.instrumentBaseSerial,
+            instrumentRoverSerial: data.surveyorInfo.instrumentRoverSerial
           },
           data.siteCalibration
         );

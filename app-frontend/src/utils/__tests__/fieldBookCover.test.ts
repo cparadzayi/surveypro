@@ -7,8 +7,10 @@
  * does not exist is worse than one that stays quiet.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
 import { FieldBookGenerator } from '../field-book';
+import { TwoPassDocumentGenerator } from '../TwoPassDocumentGenerator';
 
 const points = [{ id: 'P1', y: 1, x: 2, status: 'P', description: 'peg', surveyDate: '2026-01-01' }];
 
@@ -71,5 +73,36 @@ describe('the field book cover', () => {
 
     expect(pointPageMap.P1).toBe('E1'); // the cover is before it, unnumbered
     expect(pageCount).toBe(2);          // but it is a physical page
+  });
+});
+
+describe('the cover through the two-pass generator', () => {
+  beforeEach(() => {
+    // CoordinateListGenerator reads useSurveyLookupStore(); mirror main.ts's app.use(createPinia()).
+    setActivePinia(createPinia());
+  });
+
+  it('carries the assistant and instruments from the workflow', async () => {
+    const result = await new TwoPassDocumentGenerator().generate({
+      surveyPoints: [{ pointId: 'P1', y: 1, x: 2, status: 'P', description: 'peg', surveyDate: '2026-01-01' }],
+      adjustedCoordinates: [],
+      surveyorInfo: {
+        name: 'O Saunyama',
+        licenseNumber: 'PLS 1',
+        firm: '',
+        address: 'BOX A1262',
+        surveyDate: 'June 2020',
+        projectTitle: 'SHABANI',
+        assistedBy: 'R. T. Mapamula',
+        instrumentDescription: 'Trimble R6GNSS Set',
+        instrumentBaseSerial: '5016424521',
+        instrumentRoverSerial: '5146476624',
+      },
+    } as any);
+
+    const raw = Buffer.from(await result.sections.fieldBook.arrayBuffer()).toString('latin1');
+
+    expect(raw).toContain('(R. T. Mapamula)');
+    expect(raw).toContain('(5016424521)');
   });
 });

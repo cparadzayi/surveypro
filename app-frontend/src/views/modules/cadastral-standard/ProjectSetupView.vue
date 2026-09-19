@@ -411,21 +411,56 @@
               </p>
             </div>
             
-            <!-- Instruments Used -->
+            <!-- Assisted by -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">
-                Instruments Used *
+                Assisted by
               </label>
-              <textarea
-                v-model="setupData.instruments"
-                rows="4"
-                required
+              <input
+                v-model="setupData.assistedBy"
+                type="text"
                 class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., 1. Trimble R6GNSS Set&#10;Base Serial Number S/N 5016424521&#10;Rover Serial Number S/N 5146476624"
-              ></textarea>
-              <p class="mt-1 text-sm text-gray-500">
-                List all survey equipment used
-              </p>
+                placeholder="e.g., R. T. Mapamula"
+              />
+            </div>
+
+            <!-- Instrument -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Instrument
+              </label>
+              <input
+                v-model="setupData.instrumentDescription"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., Trimble R6GNSS Set"
+              />
+            </div>
+
+            <!-- Base serial number -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Base serial number
+              </label>
+              <input
+                v-model="setupData.instrumentBaseSerial"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., 5016424521"
+              />
+            </div>
+
+            <!-- Rover serial number -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Rover serial number
+              </label>
+              <input
+                v-model="setupData.instrumentRoverSerial"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., 5146476624"
+              />
             </div>
           </div>
         </div>
@@ -546,7 +581,6 @@
             <li v-if="!setupData.district">• District is required</li>
             <li v-if="!setupData.surveyDate">• Survey date is required</li>
             <li v-if="!setupData.surveyOf">• Survey Of description is required</li>
-            <li v-if="!setupData.instruments">• Instruments used is required</li>
             <li v-if="!setupData.loZone">• Lo zone must be selected</li>
             <li v-if="!setupData.workingDirectory">• Working directory must be set</li>
           </ul>
@@ -586,6 +620,10 @@ const emit = defineEmits<{
     surveyDate: string
     surveyOf: string
     instruments: string
+    assistedBy: string
+    instrumentDescription: string
+    instrumentBaseSerial: string
+    instrumentRoverSerial: string
     loZone: number
     datum: string
     workingDirectory: string
@@ -619,6 +657,10 @@ const setupData = ref({
   surveyDate: '',
   surveyOf: '',
   instruments: '',
+  assistedBy: '',
+  instrumentDescription: '',
+  instrumentBaseSerial: '',
+  instrumentRoverSerial: '',
   loZone: null as number | null,
   datum: 'cape',
   workingDirectory: '',
@@ -666,7 +708,6 @@ const isFormValid = computed(() => {
     setupData.value.surveyType.trim() !== '' &&
     setupData.value.surveyDate.trim() !== '' &&
     setupData.value.surveyOf.trim() !== '' &&
-    setupData.value.instruments.trim() !== '' &&
     setupData.value.loZone !== null &&
     setupData.value.workingDirectory.trim() !== ''
   )
@@ -748,7 +789,11 @@ function onProjectChange() {
     setupData.value.surveyDate = formatDateForInput(project.survey_date)
     setupData.value.surveyOf = project.designation || ''
     setupData.value.instruments = project.instruments || ''
-    
+    setupData.value.assistedBy = project.assisted_by || ''
+    setupData.value.instrumentDescription = project.instrument_description || ''
+    setupData.value.instrumentBaseSerial = project.instrument_base_serial || ''
+    setupData.value.instrumentRoverSerial = project.instrument_rover_serial || ''
+
     // Coordinate System
     setupData.value.loZone = project.central_meridian || null
     setupData.value.datum = project.datum || 'cape'
@@ -966,6 +1011,10 @@ async function completeSetup() {
       surveyDate: setupData.value.surveyDate,
       surveyOf: setupData.value.surveyOf,
       instruments: setupData.value.instruments,
+      assistedBy: setupData.value.assistedBy,
+      instrumentDescription: setupData.value.instrumentDescription,
+      instrumentBaseSerial: setupData.value.instrumentBaseSerial,
+      instrumentRoverSerial: setupData.value.instrumentRoverSerial,
       loZone: setupData.value.loZone!,
       datum: setupData.value.datum,
       workingDirectory: setupData.value.workingDirectory,

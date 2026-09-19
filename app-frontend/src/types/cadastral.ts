@@ -382,6 +382,10 @@ export interface CadastralWorkflowState {
     surveyDate: string;
     surveyOf: string;
     instruments: string;
+    assistedBy: string;
+    instrumentDescription: string;
+    instrumentBaseSerial: string;
+    instrumentRoverSerial: string;
   };
   
   /** Project information (from settings/projects) */

@@ -20,7 +20,11 @@ const workflowState = reactive<CadastralWorkflowState>({
     address: '',
     surveyDate: '',
     surveyOf: '',
-    instruments: ''
+    instruments: '',
+    assistedBy: '',
+    instrumentDescription: '',
+    instrumentBaseSerial: '',
+    instrumentRoverSerial: ''
   },
   projectInfo: {
     name: '',
@@ -415,7 +419,11 @@ async function loadWorkflowState(surveyProjectId: number) {
           address: latestStepWithSurveyorInfo.surveyor_info.address || '',
           surveyDate: latestStepWithSurveyorInfo.surveyor_info.surveyDate || '',
           surveyOf: latestStepWithSurveyorInfo.surveyor_info.surveyOf || '',
-          instruments: latestStepWithSurveyorInfo.surveyor_info.instruments || ''
+          instruments: latestStepWithSurveyorInfo.surveyor_info.instruments || '',
+          assistedBy: latestStepWithSurveyorInfo.surveyor_info.assistedBy || '',
+          instrumentDescription: latestStepWithSurveyorInfo.surveyor_info.instrumentDescription || '',
+          instrumentBaseSerial: latestStepWithSurveyorInfo.surveyor_info.instrumentBaseSerial || '',
+          instrumentRoverSerial: latestStepWithSurveyorInfo.surveyor_info.instrumentRoverSerial || ''
         }
         console.log(`✅ Restored surveyor info: ${workflowState.surveyorInfo.landSurveyor}`)
       }

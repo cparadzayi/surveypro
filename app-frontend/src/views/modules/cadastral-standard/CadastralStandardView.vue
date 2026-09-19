@@ -521,19 +521,58 @@
               </p>
             </div>
 
-            <div class="lg:col-span-2">
-              <label for="instruments" class="block text-sm font-medium text-gray-700 mb-2">
-                Instruments Used
+            <div>
+              <label for="assistedBy" class="block text-sm font-medium text-gray-700 mb-2">
+                Assisted by
               </label>
-              <textarea
-                id="instruments"
-                v-model="workflowState.surveyorInfo.instruments"
-                rows="4"
+              <input
+                id="assistedBy"
+                v-model="workflowState.surveyorInfo.assistedBy"
+                type="text"
                 class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., 1. Trimble R6GNSS Set&#10;Base Serial Number S/N 5016424521&#10;Rover Serial Number S/N 5146476624"
-              ></textarea>
+                placeholder="e.g., R. T. Mapamula"
+              />
             </div>
-            
+
+            <div>
+              <label for="instrumentDescription" class="block text-sm font-medium text-gray-700 mb-2">
+                Instrument
+              </label>
+              <input
+                id="instrumentDescription"
+                v-model="workflowState.surveyorInfo.instrumentDescription"
+                type="text"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., Trimble R6GNSS Set"
+              />
+            </div>
+
+            <div>
+              <label for="instrumentBaseSerial" class="block text-sm font-medium text-gray-700 mb-2">
+                Base serial number
+              </label>
+              <input
+                id="instrumentBaseSerial"
+                v-model="workflowState.surveyorInfo.instrumentBaseSerial"
+                type="text"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., 5016424521"
+              />
+            </div>
+
+            <div>
+              <label for="instrumentRoverSerial" class="block text-sm font-medium text-gray-700 mb-2">
+                Rover serial number
+              </label>
+              <input
+                id="instrumentRoverSerial"
+                v-model="workflowState.surveyorInfo.instrumentRoverSerial"
+                type="text"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., 5146476624"
+              />
+            </div>
+
             <!-- Working Directory Selector -->
             <div class="lg:col-span-2">
               <WorkingDirectorySelector
@@ -2009,6 +2048,10 @@ async function handleProjectSetupComplete(setupData: {
   surveyDate: string;
   surveyOf: string;
   instruments: string;
+  assistedBy: string;
+  instrumentDescription: string;
+  instrumentBaseSerial: string;
+  instrumentRoverSerial: string;
   loZone: number;
   datum: string;
   workingDirectory: string;
@@ -2151,6 +2194,10 @@ async function handleProjectSetupComplete(setupData: {
   workflowState.surveyorInfo.surveyDate = setupData.surveyDate;
   workflowState.surveyorInfo.surveyOf = setupData.surveyOf;
   workflowState.surveyorInfo.instruments = setupData.instruments;
+  workflowState.surveyorInfo.assistedBy = setupData.assistedBy;
+  workflowState.surveyorInfo.instrumentDescription = setupData.instrumentDescription;
+  workflowState.surveyorInfo.instrumentBaseSerial = setupData.instrumentBaseSerial;
+  workflowState.surveyorInfo.instrumentRoverSerial = setupData.instrumentRoverSerial;
   
   // Store selected Lo zone for CSV import
   selectedLoZone.value = setupData.loZone;
@@ -2183,6 +2230,10 @@ async function handleProjectSetupComplete(setupData: {
         surveyDate: setupData.surveyDate,
         designation: setupData.surveyOf,
         instruments: setupData.instruments,
+        assistedBy: setupData.assistedBy,
+        instrumentDescription: setupData.instrumentDescription,
+        instrumentBaseSerial: setupData.instrumentBaseSerial,
+        instrumentRoverSerial: setupData.instrumentRoverSerial,
         workingDirectory: setupData.workingDirectory,
         centralMeridian: setupData.loZone,
         datum: setupData.datum,
@@ -2205,6 +2256,10 @@ async function handleProjectSetupComplete(setupData: {
         survey_date: setupData.surveyDate,
         survey_of: setupData.surveyOf,
         instruments: setupData.instruments,
+        assistedBy: setupData.assistedBy,
+        instrumentDescription: setupData.instrumentDescription,
+        instrumentBaseSerial: setupData.instrumentBaseSerial,
+        instrumentRoverSerial: setupData.instrumentRoverSerial,
         lo_zone: setupData.loZone,
         datum: setupData.datum
       });
@@ -3232,6 +3287,18 @@ function handleStepAction(step: WorkflowStep, action: any) {
               if (selectedProject.value.instruments) {
                 workflowState.surveyorInfo.instruments = selectedProject.value.instruments;
               }
+              if (selectedProject.value.assisted_by) {
+                workflowState.surveyorInfo.assistedBy = selectedProject.value.assisted_by;
+              }
+              if (selectedProject.value.instrument_description) {
+                workflowState.surveyorInfo.instrumentDescription = selectedProject.value.instrument_description;
+              }
+              if (selectedProject.value.instrument_base_serial) {
+                workflowState.surveyorInfo.instrumentBaseSerial = selectedProject.value.instrument_base_serial;
+              }
+              if (selectedProject.value.instrument_rover_serial) {
+                workflowState.surveyorInfo.instrumentRoverSerial = selectedProject.value.instrument_rover_serial;
+              }
               console.log(`✅ Repopulated project info: ${selectedProject.value.name}`);
             } else {
               console.warn('⚠️ No project selected');
@@ -3355,6 +3422,10 @@ async function viewFieldBook() {
         surveyDescription: workflowState.surveyorInfo.surveyOf,
         surveyDate: workflowState.surveyorInfo.surveyDate,
         instruments: workflowState.surveyorInfo.instruments,
+        assistedBy: workflowState.surveyorInfo.assistedBy,
+        instrumentDescription: workflowState.surveyorInfo.instrumentDescription,
+        instrumentBaseSerial: workflowState.surveyorInfo.instrumentBaseSerial,
+        instrumentRoverSerial: workflowState.surveyorInfo.instrumentRoverSerial,
         address: workflowState.surveyorInfo.address
       },
       points: fieldBook.points
@@ -3409,6 +3480,10 @@ async function downloadFieldBook() {
         surveyDescription: workflowState.surveyorInfo.surveyOf,
         surveyDate: workflowState.surveyorInfo.surveyDate,
         instruments: workflowState.surveyorInfo.instruments,
+        assistedBy: workflowState.surveyorInfo.assistedBy,
+        instrumentDescription: workflowState.surveyorInfo.instrumentDescription,
+        instrumentBaseSerial: workflowState.surveyorInfo.instrumentBaseSerial,
+        instrumentRoverSerial: workflowState.surveyorInfo.instrumentRoverSerial,
         address: workflowState.surveyorInfo.address
       },
       points: fieldBook.points // ensure points are present
@@ -4133,7 +4208,19 @@ function onProjectChange() {
     if (project.instruments) {
       workflowState.surveyorInfo.instruments = project.instruments;
     }
-    
+    if (project.assisted_by) {
+      workflowState.surveyorInfo.assistedBy = project.assisted_by;
+    }
+    if (project.instrument_description) {
+      workflowState.surveyorInfo.instrumentDescription = project.instrument_description;
+    }
+    if (project.instrument_base_serial) {
+      workflowState.surveyorInfo.instrumentBaseSerial = project.instrument_base_serial;
+    }
+    if (project.instrument_rover_serial) {
+      workflowState.surveyorInfo.instrumentRoverSerial = project.instrument_rover_serial;
+    }
+
     // ⭐ Auto-populate project name for Calculations Part 1
     // This ensures the "Project Title" field is always filled
     if (project.name) {

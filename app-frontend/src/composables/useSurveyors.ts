@@ -1,6 +1,21 @@
 import { ref, computed } from 'vue'
 import api from '../services/api'
 
+/**
+ * Build a message that says what actually went wrong.
+ *
+ * The backend returns a short summary in `error` and the real cause in
+ * `details` — a Postgres message, a constraint violation, whatever the
+ * database or validator said. Keeping only the summary is how a missing
+ * column once surfaced as a bare "Failed to update survey project", with
+ * the sentence that identified it discarded on arrival.
+ */
+const describeApiError = (err: any, fallback: string): string => {
+  const body = err?.response?.data
+  const summary = body?.error || fallback
+  return body?.details ? `${summary}: ${body.details}` : summary
+}
+
 export interface Surveyor {
   id: number
   name: string
@@ -56,8 +71,8 @@ export function useSurveyors() {
         surveyors.value = response.data.surveyors
       }
     } catch (err: any) {
-      error.value = err.response?.data?.error || 'Failed to fetch surveyors'
-      console.error('Error fetching surveyors:', err)
+      error.value = describeApiError(err, 'Failed to fetch surveyors')
+      console.error('Error fetching surveyors:', err?.response?.data ?? err)
     } finally {
       loading.value = false
     }
@@ -70,8 +85,8 @@ export function useSurveyors() {
         return response.data.surveyor
       }
     } catch (err: any) {
-      error.value = err.response?.data?.error || 'Failed to fetch surveyor'
-      console.error('Error fetching surveyor:', err)
+      error.value = describeApiError(err, 'Failed to fetch surveyor')
+      console.error('Error fetching surveyor:', err?.response?.data ?? err)
     }
     return null
   }
@@ -93,8 +108,8 @@ export function useSurveyors() {
         return response.data.surveyor
       }
     } catch (err: any) {
-      error.value = err.response?.data?.error || 'Failed to create surveyor'
-      console.error('Error creating surveyor:', err)
+      error.value = describeApiError(err, 'Failed to create surveyor')
+      console.error('Error creating surveyor:', err?.response?.data ?? err)
     } finally {
       loading.value = false
     }
@@ -121,8 +136,8 @@ export function useSurveyors() {
         return response.data.surveyor
       }
     } catch (err: any) {
-      error.value = err.response?.data?.error || 'Failed to update surveyor'
-      console.error('Error updating surveyor:', err)
+      error.value = describeApiError(err, 'Failed to update surveyor')
+      console.error('Error updating surveyor:', err?.response?.data ?? err)
     } finally {
       loading.value = false
     }
@@ -139,8 +154,8 @@ export function useSurveyors() {
         return true
       }
     } catch (err: any) {
-      error.value = err.response?.data?.error || 'Failed to delete surveyor'
-      console.error('Error deleting surveyor:', err)
+      error.value = describeApiError(err, 'Failed to delete surveyor')
+      console.error('Error deleting surveyor:', err?.response?.data ?? err)
     } finally {
       loading.value = false
     }
@@ -183,8 +198,8 @@ export function useSurveyors() {
         })
       }
     } catch (err: any) {
-      error.value = err.response?.data?.error || 'Failed to fetch survey projects'
-      console.error('[useSurveyors] ❌ Error fetching survey projects:', err)
+      error.value = describeApiError(err, 'Failed to fetch survey projects')
+      console.error('[useSurveyors] ❌ Error fetching survey projects:', err?.response?.data ?? err)
       console.error('[useSurveyors] - Response status:', err.response?.status)
       console.error('[useSurveyors] - Response data:', err.response?.data)
       console.error('[useSurveyors] - Request URL:', err.config?.url)
@@ -207,8 +222,8 @@ export function useSurveyors() {
         return true
       }
     } catch (err: any) {
-      error.value = err.response?.data?.error || 'Failed to create survey project'
-      console.error('Error creating survey project:', err)
+      error.value = describeApiError(err, 'Failed to create survey project')
+      console.error('Error creating survey project:', err?.response?.data ?? err)
     } finally {
       loading.value = false
     }
@@ -229,8 +244,8 @@ export function useSurveyors() {
         return true
       }
     } catch (err: any) {
-      error.value = err.response?.data?.error || 'Failed to update survey project'
-      console.error('Error updating survey project:', err)
+      error.value = describeApiError(err, 'Failed to update survey project')
+      console.error('Error updating survey project:', err?.response?.data ?? err)
     } finally {
       loading.value = false
     }
@@ -251,8 +266,8 @@ export function useSurveyors() {
         return true
       }
     } catch (err: any) {
-      error.value = err.response?.data?.error || 'Failed to archive survey project'
-      console.error('Error archiving survey project:', err)
+      error.value = describeApiError(err, 'Failed to archive survey project')
+      console.error('Error archiving survey project:', err?.response?.data ?? err)
     } finally {
       loading.value = false
     }
@@ -273,8 +288,8 @@ export function useSurveyors() {
         return true
       }
     } catch (err: any) {
-      error.value = err.response?.data?.error || 'Failed to delete survey project'
-      console.error('Error deleting survey project:', err)
+      error.value = describeApiError(err, 'Failed to delete survey project')
+      console.error('Error deleting survey project:', err?.response?.data ?? err)
     } finally {
       loading.value = false
     }

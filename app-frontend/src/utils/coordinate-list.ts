@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf'
+import { parseBeaconStatus } from './beaconStatus';
 import { useSurveyLookupStore } from '../stores/surveyLookup'
 import type { AdjustedCoordinate } from '../types/adjusted-coordinates'
 import { toCoordinateListPrecision } from '../types/adjusted-coordinates'
@@ -38,8 +39,9 @@ export interface SurveyorInfo {
 interface GroupedPoints {
   trig: AdjustedCoordinate[]
   working: AdjustedCoordinate[]
-  found: AdjustedCoordinate[]
-  calculated: AdjustedCoordinate[]  // ⭐ NEW: Calculated points section
+  adopted: AdjustedCoordinate[]
+  foundNotAdopted: AdjustedCoordinate[]
+  calculated: AdjustedCoordinate[]
   placed: AdjustedCoordinate[]
 }
 
@@ -229,8 +231,9 @@ export class CoordinateListGenerator {
     const allSections = [
       { name: 'TRIG BEACONS / TSMs', points: groupedPoints.trig },
       { name: 'WORKING STATIONS', points: groupedPoints.working },
-      { name: 'FOUND BEACONS', points: groupedPoints.found },
-      { name: 'CALCULATED POINTS', points: groupedPoints.calculated },  // ⭐ NEW section
+      { name: 'ADOPTED BEACONS', points: groupedPoints.adopted },
+      { name: 'FOUND, NOT ADOPTED', points: groupedPoints.foundNotAdopted },
+      { name: 'CALCULATED POINTS', points: groupedPoints.calculated },
       { name: 'PLACED BEACONS', points: groupedPoints.placed }
     ].filter(section => section.points.length > 0);
     
@@ -332,32 +335,44 @@ export class CoordinateListGenerator {
     const grouped: GroupedPoints = {
       trig: [],
       working: [],
-      found: [],
-      calculated: [],  // ⭐ NEW: Calculated points array
+      adopted: [],
+      foundNotAdopted: [],
+      calculated: [],
       placed: []
     };
-    
-    // Assign each point to exactly ONE category based on priority
-    // ⭐ CALCULATED POINTS have priority after FOUND but before PLACED
+
     points.forEach(point => {
-      if (this.isTrigBeacon(point)) {
+      // The Status column is what the surveyor states deliberately, so it
+      // decides the section; the description is only consulted when the status
+      // is silent. It used to be the other way round, and a station coded WS
+      // was filed by whatever its description happened to mention.
+      const { kind, provenance } = parseBeaconStatus(point.status);
+
+      if (kind === 'TRIG' || kind === 'OCP' || this.isTrigBeacon(point)) {
         grouped.trig.push(point);
-      } else if (this.isWorkingStation(point)) {
+      } else if (kind === 'WS' || kind === 'WSU' || this.isWorkingStation(point)) {
         grouped.working.push(point);
-      } else if (this.isFoundBeacon(point)) {
-        grouped.found.push(point);
-      } else if (this.isCalculatedPoint(point)) {  // ⭐ NEW: Check for calculated points
+      } else if (this.isCalculatedPoint(point)) {
         grouped.calculated.push(point);
-      } else if (this.isPlacedBeacon(point)) {
+      } else if (provenance === 'F') {
+        grouped.adopted.push(point);
+      } else if (provenance === 'FN') {
+        grouped.foundNotAdopted.push(point);
+      } else if (this.isFoundBeacon(point)) {
+        grouped.adopted.push(point);
+      } else {
+        // Everything else is a placed beacon. Nothing falls through: a point
+        // that matched no rule used to be dropped, and a beacon missing from a
+        // lodged co-ordinate list is the worst outcome on offer.
         grouped.placed.push(point);
       }
-      // Points that don't match any category are excluded
     });
     
     console.log('[CoordinateList] 📊 Point grouping:');
     console.log(`  - TRIG: ${grouped.trig.length}`);
     console.log(`  - WORKING: ${grouped.working.length}`);
-    console.log(`  - FOUND: ${grouped.found.length}`);
+    console.log(`  - ADOPTED: ${grouped.adopted.length}`);
+    console.log(`  - FOUND, NOT ADOPTED: ${grouped.foundNotAdopted.length}`);
     console.log(`  - CALCULATED: ${grouped.calculated.length}`);
     console.log(`  - PLACED: ${grouped.placed.length}`);
     
@@ -389,9 +404,11 @@ export class CoordinateListGenerator {
   private isWorkingStation(point: AdjustedCoordinate): boolean {
     const desc = (point.description || '').toLowerCase();
     const status = (point.status || '').toLowerCase();
-    return desc.includes('working station') || 
-           status.includes('working') ||
-           desc.includes('ws');
+    // No bare `desc.includes('ws')`: that is true of "brass screws in concrete"
+    // and of anything else with those two letters adjacent. An explicit WS/WSU
+    // status is handled by the caller; this is only the description fallback.
+    return desc.includes('working station') ||
+           status.includes('working');
   }
   
   /**
@@ -751,17 +768,13 @@ export class CoordinateListGenerator {
     
     let totalPages = 1; // Cover page
     
-    if (groupedPoints.trig.length > 0) {
-      totalPages += Math.ceil(groupedPoints.trig.length / pointsPerPage);
-    }
-    if (groupedPoints.working.length > 0) {
-      totalPages += Math.ceil(groupedPoints.working.length / pointsPerPage);
-    }
-    if (groupedPoints.found.length > 0) {
-      totalPages += Math.ceil(groupedPoints.found.length / pointsPerPage);
-    }
-    if (groupedPoints.placed.length > 0) {
-      totalPages += Math.ceil(groupedPoints.placed.length / pointsPerPage);
+    // Every section, counted from the grouping itself rather than named one by
+    // one. The hand-written list had already fallen behind: it never counted
+    // CALCULATED POINTS, so the page total ran short whenever a survey had any.
+    for (const section of Object.values(groupedPoints)) {
+      if (section.length > 0) {
+        totalPages += Math.ceil(section.length / pointsPerPage);
+      }
     }
     
     return totalPages;

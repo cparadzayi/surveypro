@@ -25,6 +25,7 @@ import { TwoPassDocumentGenerator } from '@/utils/TwoPassDocumentGenerator';
 import type { DocumentMeasurements } from '@/types/document-measurements';
 import type { ReportOnSurveyData } from '@/types/cadastral';
 import type { BeaconComparisonReportOptions } from '@/utils/beaconComparisonReportGenerator';
+import { isCalculatedPoint } from '@/utils/calculatedPoint';
 
 /**
  * TRIG beacons come from the national control network — the survey did not
@@ -37,11 +38,8 @@ const isTrigSurveyPoint = (pt: { description?: string; status?: string }): boole
 };
 
 /** A point computed rather than observed — no beacon was visited. */
-const isCalculatedSurveyPoint = (pt: { description?: string; status?: string }): boolean => {
-  const desc = (pt.description || '').toUpperCase();
-  const status = (pt.status || '').toUpperCase();
-  return desc.includes('CALCULATED') || status === 'C' || status === 'CALC';
-};
+/** @see utils/calculatedPoint.ts — this was one of three spellings; now it delegates. */
+const isCalculatedSurveyPoint = isCalculatedPoint;
 
 /**
  * Field Book and Calculations do NOT take the same points.

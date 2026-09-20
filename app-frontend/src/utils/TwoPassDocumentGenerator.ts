@@ -23,6 +23,7 @@ import { CalculationsPart1Generator, type SurveyPoint } from './calculations-par
 import { CoordinateListGenerator, type SurveyorInfo } from './coordinate-list'
 import { FieldBookGenerator } from './field-book'
 import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination'
+import { isCalculatedPoint } from './calculatedPoint'
 import type { AdjustedCoordinate } from '../types/adjusted-coordinates'
 import type { ReportOnSurveyData } from '../types/cadastral'
 import {
@@ -269,12 +270,15 @@ export class TwoPassDocumentGenerator {
    */
   private fieldBookPoints(data: TwoPassDocumentData): SurveyPoint[] {
     return data.surveyPoints.filter(pt => {
-      const desc = (pt.description || '').toLowerCase();
-      const isCalculated = desc.includes('calculated');
-      if (isCalculated) {
+      // One definition, shared -- see utils/calculatedPoint.ts. This filter used
+      // to ask only whether the description said "calculated", so a point marked
+      // status "C" with description "Not Beaconed" was treated as observed and
+      // printed in a field book of observations.
+      if (isCalculatedPoint(pt)) {
         console.log(`[FieldBook] 🧮 Excluding calculated point: ${pt.pointId}`);
+        return false;
       }
-      return !isCalculated;
+      return true;
     });
   }
 

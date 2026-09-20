@@ -1,5 +1,6 @@
 import { subjectSides } from './sideAnnotations'
 import { parseBeaconStatus } from '@/utils/beaconStatus'
+import { insetScaleToFit } from '../../../../../app-shared/insetScales'
 /**
  * Builds the Working Plan module's `spec` from what SurveyPlanMapView already
  * holds: the final coordinate list (as the beacons FeatureCollection, which has
@@ -212,15 +213,9 @@ const MIN_RING = 3
  */
 const INSET_BOX_MM = { w: 291.97 - 162.9, h: 196.13 - 109.69 }
 
-/**
- * 1.15 is the renderer's own figure padding, reused so the inset is framed like
- * the main figure. It also reproduces the 1:200000 the reference sheet used for
- * this survey's control.
- */
-const INSET_PADDING = 1.15
-
-/** Round scales a surveyor expects to read on a locality diagram. */
-const INSET_SCALES = [5000, 10000, 20000, 25000, 50000, 100000, 200000, 250000, 500000, 1000000, 2000000]
+// The ladder and the padding live in app-shared: the renderer has to choose a
+// scale again whenever the inset box is split between several insets, and two
+// copies would drift.
 
 /**
  * Trigonometrical station or reference mark, from the Zimbabwe control
@@ -293,8 +288,7 @@ function insetScaleFor(points: Array<{ X: number; Y: number }>): number {
   const n = points.map(p => -p.X)
   const spanE = Math.max(...e) - Math.min(...e)
   const spanN = Math.max(...n) - Math.min(...n)
-  const need = Math.max(spanE / INSET_BOX_MM.w, spanN / INSET_BOX_MM.h) * 1000 * INSET_PADDING
-  return INSET_SCALES.find(sc => sc >= need) ?? INSET_SCALES[INSET_SCALES.length - 1]
+  return insetScaleToFit(spanE, spanN, INSET_BOX_MM.w, INSET_BOX_MM.h)
 }
 
 /**

@@ -20,6 +20,9 @@ import { DxfDocument } from './dxf-r12.js';
 import { contiguousMarks, CONTIG_STUB_MM } from '../diagram/contiguousMarks.js';
 import { edgeStrip } from '../diagram/edgeStrip.js';
 import { SI727_SCALE_LADDER } from '../../../../app-shared/si727Scales.js';
+import { crowdedClusters, INSET_CROWD_MM } from './crowdedBeacons.js';
+import { insetCells } from './insetCells.js';
+import { insetScaleToFit } from '../../../../app-shared/insetScales.js';
 
 /* ------------------------------------------------------------------ layout */
 
@@ -1338,63 +1341,68 @@ export function generateWorkingPlan(spec) {
       { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
   }
 
-  /* ---- locality inset (its own, much smaller, scale) */
+  /* ---- insets ------------------------------------------------------------
+   *
+   * The sheet has one uncommitted region, the inset box at the lower right, and
+   * it may have to hold more than the locality diagram. Beacons that plot on
+   * top of each other at this scale -- 87D and 87DNew of Brackenhurst are
+   * 0.061 m apart, which is 0.03 mm at 1:2000 -- get a detail of their own,
+   * because the figure has room to draw one mark where the ground carries two.
+   *
+   * They are numbered in one sequence. The locality diagram is INSET 1 when
+   * there is one and the details follow; with no locality diagram the details
+   * start at 1. A sheet with no crowding draws exactly what it always drew.
+   */
+  const crowded = crowdedClusters([...byName.values()], mm(INSET_CROWD_MM));
+  const insets = [];
   if (spec.inset) {
-    const B = L.inset.box;
+    insets.push({
+      kind: 'locality',
+      scale: spec.inset.scale,
+      beacons: spec.inset.beacons.map((b) => ({ ...b, ...loToGround(b) })),
+    });
+  }
+  for (const cluster of crowded) {
+    insets.push({ kind: 'detail', beacons: cluster });
+  }
+
+  const cells = insetCells(L.inset.box, insets.length);
+
+  insets.forEach((ins, idx) => {
+    const B = cells[idx];
+    const number = idx + 1;
     d.polyline([S(B.x0, B.y0), S(B.x1, B.y0), S(B.x1, B.y1), S(B.x0, B.y1)],
       { layer: 'INSET', closed: true });
-    d.text('Inset (not to scale)', S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
+
+    // A detail is schematic: its marks are spread far enough apart to read, so
+    // no distance in it means anything. Saying so is not optional.
+    const caption = ins.kind === 'locality'
+      ? 'INSET ' + number
+      : 'INSET ' + number + ' (NOT TO SCALE)';
+    d.text(caption, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
       { layer: 'INSET', style: 'ARIAL-BOLD' });
 
-    // North point: the sheet's own meridian arrow at a fraction of its size.
-    // The inset is drawn north-up like the main figure -- the same
-    // capeLoToDxfSouthUp convention -- so it needs no rotation.
-    //
-    // On NORTH-ARROW, not INSET: it is a north point, and the sheet's arrow
-    // lives there. That also keeps INSET meaning the inset's MAP, so anything
-    // measuring that content is not reading an arrow by mistake.
-    const nn = L.inset.north;
-    drawNorthArrow(B.x1 - nn.dxFromRight, B.y0 + nn.dyFromTop, nn.scale, nn.letterMm);
-
-    const iScale = spec.inset.scale;
-    const ib = spec.inset.beacons.map((b) => ({ ...b, ...loToGround(b) }));
-    const ic = {
-      e: (Math.min(...ib.map((b) => b.e)) + Math.max(...ib.map((b) => b.e))) / 2,
-      n: (Math.min(...ib.map((b) => b.n)) + Math.max(...ib.map((b) => b.n))) / 2,
-    };
-    const boxCx = (B.x0 + B.x1) / 2, boxCy = (B.y0 + B.y1) / 2;
-    // ground position on the SHEET for an inset ground coordinate
-    const I = (e, n) => S(boxCx + ((e - ic.e) / iScale) * 1000,
-      boxCy - ((n - ic.n) / iScale) * 1000);
     const iSym = mm(1.0);
-    // Every round sign in the inset is drawn at this radius, so it is the
+    // Every round sign in an inset is drawn at this radius, so it is the
     // inset's own idea of how big a beacon is.
     const iRing = iSym * 0.85;
-    for (const b of ib) {
-      const at = I(b.e, b.n);
-      // Same Fifth Schedule signs as the main figure, drawn small.
+
+    /** One Fifth Schedule sign, drawn small, centred on a sheet point. */
+    const drawSign = (at, symbol) => {
       const ring = (r) => d.polyline(circlePts(r, 24).map(([x, y]) => [at[0] + x, at[1] + y]),
         { layer: 'INSET', closed: true });
       const dot = (r, n = 10) => {
         const pts = circlePts(r, n);
-        for (let i = 0; i < n; i++) {
-          d.solid([at, [at[0] + pts[i][0], at[1] + pts[i][1]],
-            [at[0] + pts[(i + 1) % n][0], at[1] + pts[(i + 1) % n][1]]], { layer: 'INSET' });
+        for (let k2 = 0; k2 < n; k2++) {
+          d.solid([at, [at[0] + pts[k2][0], at[1] + pts[k2][1]],
+            [at[0] + pts[(k2 + 1) % n][0], at[1] + pts[(k2 + 1) % n][1]]], { layer: 'INSET' });
         }
       };
       const triangle = (up) => {
         // The same construction as the beacon block: a filled triangle with a
-        // real hole, NOT a filled triangle with a circle drawn over it. The
-        // inset kept the old form after the blocks were fixed, and since a
-        // sheet whose beacons are all pegs and marks shows trig symbols ONLY
-        // here, this was the version actually reaching the surveyor.
-        // Sized from the FIGURE's triangle, scaled by the ratio the inset draws
-        // a found beacon at, so the two cannot drift apart again. They had: the
-        // inset carried its own numbers, and its inscribed circle came out at
-        // 64% of its own found-beacon circle where the figure draws the two the
-        // same size. On a sheet whose beacons are all pegs and marks -- the
-        // ordinary case -- trig and OCP appear ONLY here, so the inset was the
-        // version the surveyor actually saw.
+        // real hole, NOT a filled triangle with a circle drawn over it. Sized
+        // from the FIGURE's triangle, scaled by the ratio the inset draws a
+        // found beacon at, so the two cannot drift apart.
         const k = (iRing * 2) / mm(L.symbol.foundOuterDia);
         const w = mm(L.symbol.trigW / 2) * k, hh = mm(L.symbol.trigH) * k;
         const sgn = up ? 1 : -1;
@@ -1406,7 +1414,7 @@ export function generateWorkingPlan(spec) {
         const c = triIncircle(w, hh);
         filledTriangleWithHole(d, tri, [at[0], at[1] + sgn * c.cy], c.r, 24, 'INSET');
       };
-      switch (b.symbol) {
+      switch (symbol) {
         case 'trig': triangle(true); break;
         case 'ocp': triangle(false); break;
         case 'rm':
@@ -1419,10 +1427,86 @@ export function generateWorkingPlan(spec) {
         case 'placed': case 'peg': ring(iRing); break;
         default: ring(iRing); ring(iSym * 0.5); break;   // found / found-not-adopted
       }
-      d.text(b.name, [at[0], at[1] + mm(1.8)], mm(L.text.insetLabel),
+    };
+
+    const label = (at, name) =>
+      d.text(name, [at[0], at[1] + mm(1.8)], mm(L.text.insetLabel),
         { layer: 'INSET', style: 'ARIAL', align: 'center' });
+
+    if (ins.kind === 'locality') {
+      // North point: the sheet's own meridian arrow at a fraction of its size.
+      // Drawn north-up like the main figure, so it needs no rotation. On
+      // NORTH-ARROW, not INSET: it is a north point, and that keeps INSET
+      // meaning the inset's MAP.
+      const nn = L.inset.north;
+      drawNorthArrow(B.x1 - nn.dxFromRight, B.y0 + nn.dyFromTop, nn.scale, nn.letterMm);
+
+      const ib = ins.beacons;
+      const eMin = Math.min(...ib.map((b) => b.e)), eMax = Math.max(...ib.map((b) => b.e));
+      const nMin = Math.min(...ib.map((b) => b.n)), nMax = Math.max(...ib.map((b) => b.n));
+      const ic = { e: (eMin + eMax) / 2, n: (nMin + nMax) / 2 };
+
+      // The spec's scale was chosen against the sheet's WHOLE inset box. Once
+      // that box is shared, this cell is smaller, and drawing the same content
+      // unchanged pushed the outer stations clean out of the frame and over the
+      // figure -- RM7 ended up 24 mm to the left of its own cell. Refit to the
+      // cell actually given, and keep whichever scale is coarser so a full-width
+      // cell still draws exactly what it always drew.
+      const iScale = Math.max(
+        Number(ins.scale) || 0,
+        insetScaleToFit(eMax - eMin, nMax - nMin, B.x1 - B.x0, B.y1 - B.y0),
+      );
+      const lcx = (B.x0 + B.x1) / 2, lcy = (B.y0 + B.y1) / 2;
+      const I = (e, n) => S(lcx + ((e - ic.e) / iScale) * 1000,
+        lcy - ((n - ic.n) / iScale) * 1000);
+      for (const b of ib) {
+        const at = I(b.e, b.n);
+        drawSign(at, b.symbol);
+        label(at, b.name);
+      }
+      return;
     }
-  }
+
+    // A detail. The members are within millimetres of each other on the ground,
+    // and for an exactly coincident pair no enlargement separates them at all,
+    // so they are spread around their true position at a fixed spacing rather
+    // than drawn to any scale. A leader ties each back to the one spot they all
+    // occupy, which is the fact the reader needs.
+    const dcx = (B.x0 + B.x1) / 2, dcy = (B.y0 + B.y1) / 2;
+    const spread = Math.min(B.x1 - B.x0, B.y1 - B.y0) * 0.26;
+    const centre = S(dcx, dcy);
+    const tick = mm(1.2);
+    d.line([centre[0] - tick, centre[1]], [centre[0] + tick, centre[1]], { layer: 'INSET' });
+    d.line([centre[0], centre[1] - tick], [centre[0], centre[1] + tick], { layer: 'INSET' });
+
+    ins.beacons.forEach((b, k) => {
+      // First member straight up, the rest evenly round, so a pair reads as one
+      // above the other rather than at some arbitrary tilt.
+      const ang = -Math.PI / 2 + (k * 2 * Math.PI) / ins.beacons.length;
+      const at = S(dcx + spread * Math.cos(ang), dcy + spread * Math.sin(ang));
+      d.line(centre, at, { layer: 'INSET' });
+      drawSign(at, b.symbol ?? 'peg');
+      label(at, b.name);
+    });
+
+    // And on the figure itself: a ring round the spot, lettered with the inset
+    // that enlarges it. Without it the detail names two beacons and never says
+    // where on the sheet they are.
+    const gc = {
+      e: ins.beacons.reduce((t, b) => t + b.e, 0) / ins.beacons.length,
+      n: ins.beacons.reduce((t, b) => t + b.n, 0) / ins.beacons.length,
+    };
+    const fs = toSheet(gc.e, gc.n);
+    const fx = fs[0], fy = fs[1];
+    if (fx >= L.panel.x0 && fx <= L.panel.x1 && fy >= L.panel.y0 && fy <= L.panel.y1) {
+      const rMm = 3.5;
+      const c0 = S(fx, fy);
+      d.polyline(circlePts(mm(rMm), 24).map(([x, y]) => [c0[0] + x, c0[1] + y]),
+        { layer: 'INSET', closed: true });
+      d.text('INSET ' + number, S(fx + rMm + 1.0, fy - rMm - 1.0),
+        mm(L.text.insetLabel), { layer: 'INSET', style: 'ARIAL' });
+    }
+  });
 
   // sheetSize is reported so the caller can tell the surveyor -- and the plot
   // dialog -- which paper this was drawn for.

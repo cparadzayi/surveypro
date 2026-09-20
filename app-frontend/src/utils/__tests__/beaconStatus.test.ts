@@ -59,6 +59,15 @@ describe('parseBeaconStatus', () => {
     expect(parseBeaconStatus('WS/QQ')).toMatchObject({ kind: 'WS', provenance: null });
   });
 
+  it('lets the more specific provenance win when both are written', () => {
+    // 87D of Brackenhurst is recorded "F/FN". Read as two provenances the pair
+    // contradicts itself -- F is found AND adopted, FN is found and NOT adopted
+    // -- and taking whichever came first made a rejected beacon draw as an
+    // accepted one. FN is the narrower claim, so FN is the one that stands.
+    expect(parseBeaconStatus('F/FN')).toMatchObject({ provenance: 'FN' });
+    expect(parseBeaconStatus('FN/F')).toMatchObject({ provenance: 'FN' });
+  });
+
   it('keeps the raw text, for a column that prints what was recorded', () => {
     expect(parseBeaconStatus('ws/p').raw).toBe('ws/p');
   });

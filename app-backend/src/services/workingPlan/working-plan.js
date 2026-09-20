@@ -119,7 +119,11 @@ export const LAYOUT = {
   text: {
     beacon: 2.5, parcel: 2.5, adjoining: 2.5, grid: 2.5, insetLabel: 2.5,
     road: 2.5,
-    scale: 3.5, approval: 3.5, certificate: 3.5, insetTitle: 3.5, title: 3.5,
+    scale: 3.5, approval: 3.5, certificate: 3.5, title: 3.5,
+    // One ISO rank below the other 3.5 mm captions. "INSET 2 (NOT TO
+    // SCALE)" is 22 characters, and at 3.5 mm it ran about 69 mm -- past
+    // the 58.5 mm a half-width inset cell leaves beside its frame.
+    insetTitle: 2.5,
     // 5,0 / 3,5 -- one step of the ISO series, and the reason this is no longer
     // the 1,25 it was set to: 4,375 mm is not a height on the stencil, and the
     // title read as merely bigger rather than as the heading.
@@ -388,6 +392,28 @@ export function generateWorkingPlan(spec) {
   }
   const mm = (v) => (v * scale) / 1000;              // paper mm -> ground metres
 
+  /* ---- what the figure draws, and what it leaves to an inset
+   *
+   * Beacons that plot on top of each other get an inset of their own (see the
+   * inset block below). Where one of them was found and NOT adopted, the figure
+   * stops drawing it: the mark is superseded, the inset now carries it with its
+   * own conventional sign, and two signs inside one dot told the reader nothing
+   * anyway.
+   *
+   * A beacon a parcel ring is built from is never dropped, whatever its status.
+   * Its position is a corner of the figure, and removing the corner would leave
+   * a boundary that does not close.
+   */
+  const crowded = crowdedClusters([...byName.values()], mm(INSET_CROWD_MM));
+  const ringBeacons = new Set((spec.parcels ?? []).flatMap((p) => p.ring ?? []));
+  const insetOnly = new Set(
+    crowded.flat()
+      .filter((b) => b.symbol === 'foundNotAdopted' && !ringBeacons.has(b.name))
+      .map((b) => b.name),
+  );
+  /** Beacons the figure itself draws. */
+  const figureBeacons = () => [...byName.values()].filter((b) => !insetOnly.has(b.name));
+
   /* ---- sheet placement: centre the figure in the plan panel */
   const panelCx = (L.panel.x0 + L.panel.x1) / 2;
   const panelCy = (L.panel.y0 + L.panel.y1) / 2;
@@ -624,7 +650,7 @@ export function generateWorkingPlan(spec) {
       [Math.round(((ang + 360) % 360) / 45) % 8];
   };
 
-  for (const b of byName.values()) {
+  for (const b of figureBeacons()) {
     const rb = signReach(b);
     occupied.push([b.e - rb, b.n - rb, b.e + rb, b.n + rb]);
   }
@@ -662,7 +688,7 @@ export function generateWorkingPlan(spec) {
   }
 
   const reservedName = new Map();
-  for (const b of byName.values()) {
+  for (const b of figureBeacons()) {
     const p = namePreferred(b);
     if (p === 'none') continue;
     const c = namePlace(b, p);
@@ -1252,7 +1278,7 @@ export function generateWorkingPlan(spec) {
   /* ---- beacons and their names */
 
 
-  for (const b of byName.values()) {
+  for (const b of figureBeacons()) {
     const block = {
       placed: 'BCN_PLACED', peg: 'BCN_PLACED',
       found: 'BCN_FOUND', foundNotAdopted: 'BCN_FOUND_NA',
@@ -1353,7 +1379,6 @@ export function generateWorkingPlan(spec) {
    * there is one and the details follow; with no locality diagram the details
    * start at 1. A sheet with no crowding draws exactly what it always drew.
    */
-  const crowded = crowdedClusters([...byName.values()], mm(INSET_CROWD_MM));
   const insets = [];
   if (spec.inset) {
     insets.push({
@@ -1425,7 +1450,18 @@ export function generateWorkingPlan(spec) {
         case 'ws': ring(iRing); dot(iSym * 0.32); break;
         case 'wsu': dot(iSym * 0.38); break;
         case 'placed': case 'peg': ring(iRing); break;
-        default: ring(iRing); ring(iSym * 0.5); break;   // found / found-not-adopted
+        case 'foundNotAdopted': {
+          // The found sign struck through, as BCN_FOUND_NA draws it. Without
+          // the slash a rejected beacon is indistinguishable from an adopted
+          // one, and the whole point of giving 87D an inset is to say which
+          // of the two marks the survey stands on.
+          ring(iRing); ring(iSym * 0.5);
+          const k = (iRing * 2) / mm(L.symbol.foundOuterDia);
+          const a = (mm(L.symbol.notAdoptedSlash) / 2) * Math.SQRT1_2 * k;
+          d.line([at[0] - a, at[1] - a], [at[0] + a, at[1] + a], { layer: 'INSET' });
+          break;
+        }
+        default: ring(iRing); ring(iSym * 0.5); break;   // found
       }
     };
 
@@ -1433,14 +1469,16 @@ export function generateWorkingPlan(spec) {
       d.text(name, [at[0], at[1] + mm(1.8)], mm(L.text.insetLabel),
         { layer: 'INSET', style: 'ARIAL', align: 'center' });
 
-    if (ins.kind === 'locality') {
-      // North point: the sheet's own meridian arrow at a fraction of its size.
-      // Drawn north-up like the main figure, so it needs no rotation. On
-      // NORTH-ARROW, not INSET: it is a north point, and that keeps INSET
-      // meaning the inset's MAP.
-      const nn = L.inset.north;
-      drawNorthArrow(B.x1 - nn.dxFromRight, B.y0 + nn.dyFromTop, nn.scale, nn.letterMm);
+    // North point: the sheet's own meridian arrow at a fraction of its size.
+    // Every inset carries one, the locality diagram and the details alike --
+    // both are drawn north-up, so neither needs rotation, and a detail without
+    // one leaves the reader guessing which way its marks lie. On NORTH-ARROW,
+    // not INSET: it is a north point, and that keeps INSET meaning the inset's
+    // MAP.
+    const nn = L.inset.north;
+    drawNorthArrow(B.x1 - nn.dxFromRight, B.y0 + nn.dyFromTop, nn.scale, nn.letterMm);
 
+    if (ins.kind === 'locality') {
       const ib = ins.beacons;
       const eMin = Math.min(...ib.map((b) => b.e)), eMax = Math.max(...ib.map((b) => b.e));
       const nMin = Math.min(...ib.map((b) => b.n)), nMax = Math.max(...ib.map((b) => b.n));
@@ -1475,15 +1513,28 @@ export function generateWorkingPlan(spec) {
     const dcx = (B.x0 + B.x1) / 2, dcy = (B.y0 + B.y1) / 2;
     const spread = Math.min(B.x1 - B.x0, B.y1 - B.y0) * 0.26;
     const centre = S(dcx, dcy);
-    const tick = mm(1.2);
-    d.line([centre[0] - tick, centre[1]], [centre[0] + tick, centre[1]], { layer: 'INSET' });
-    d.line([centre[0], centre[1] - tick], [centre[0], centre[1] + tick], { layer: 'INSET' });
+    const gcE = ins.beacons.reduce((t, b) => t + b.e, 0) / ins.beacons.length;
+    const gcN = ins.beacons.reduce((t, b) => t + b.n, 0) / ins.beacons.length;
+
+    // Each member is pushed out along the TRUE bearing it bears from the group's
+    // centre, all at one radius. Only the distances are invented, which is what
+    // the caption says, and it is what lets the inset carry a north point at
+    // all: spread by an arbitrary angle, the arrow would be a lie.
+    //
+    // Beacons recorded at the identical position have no bearing to preserve,
+    // so those fall back to an even fan -- there is nothing else to honour.
+    const bearings = ins.beacons.map((b) => Math.atan2(b.n - gcN, b.e - gcE));
+    const degenerate = ins.beacons.every(
+      (b) => Math.hypot(b.e - gcE, b.n - gcN) < 1e-9,
+    );
 
     ins.beacons.forEach((b, k) => {
-      // First member straight up, the rest evenly round, so a pair reads as one
-      // above the other rather than at some arbitrary tilt.
-      const ang = -Math.PI / 2 + (k * 2 * Math.PI) / ins.beacons.length;
-      const at = S(dcx + spread * Math.cos(ang), dcy + spread * Math.sin(ang));
+      const ang = degenerate
+        ? -Math.PI / 2 + (k * 2 * Math.PI) / ins.beacons.length
+        : bearings[k];
+      // The sheet is drawn south-up, so a ground bearing's northing component
+      // moves UP the page: subtract it, exactly as toSheet does.
+      const at = S(dcx + spread * Math.cos(ang), dcy - spread * Math.sin(ang));
       d.line(centre, at, { layer: 'INSET' });
       drawSign(at, b.symbol ?? 'peg');
       label(at, b.name);

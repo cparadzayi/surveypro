@@ -55,8 +55,15 @@ export function parseBeaconStatus(status: string | null | undefined): BeaconStat
     if (!token) continue;
     if (result.kind === null && KINDS.has(token)) {
       result.kind = token as BeaconKind;
-    } else if (result.provenance === null && PROVENANCES.has(token)) {
-      result.provenance = token as BeaconProvenance;
+    } else if (PROVENANCES.has(token)) {
+      // "F/FN" contradicts itself -- F is found AND adopted, FN is found and
+      // NOT adopted -- and 87D of Brackenhurst is recorded exactly that way.
+      // Taking whichever came first drew a rejected beacon as an accepted one.
+      // FN is the narrower claim, so it stands whichever side of the slash it
+      // was written on.
+      if (result.provenance === null || token === 'FN') {
+        result.provenance = token as BeaconProvenance;
+      }
     }
   }
 

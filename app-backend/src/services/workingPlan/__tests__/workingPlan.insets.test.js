@@ -134,6 +134,105 @@ describe('an inset stays inside the cell it was given', () => {
   })
 })
 
+/** Every entity, as {type, group codes}. */
+function entities(dxf) {
+  const lines = dxf.split(/\r?\n/)
+  const pairs = []
+  for (let i = 0; i + 1 < lines.length; i += 2) pairs.push([lines[i].trim(), lines[i + 1]])
+
+  const out = []
+  let cur = null
+  for (const [code, val] of pairs) {
+    if (code === '0') { if (cur) out.push(cur); cur = { type: val.trim(), g: {} }; continue }
+    if (cur) cur.g[code] = val.trim()
+  }
+  if (cur) out.push(cur)
+  return out
+}
+
+/** The fixture plus a superseded mark 6 cm from the beacon that replaced it. */
+function withSupersededMark() {
+  const spec = structuredClone(brackenhurstSpec)
+  const twin = spec.beacons.find((b) => b.name === '87DR')
+  spec.beacons.push({
+    ...twin, name: '87Dold', X: twin.X + 0.04, Y: twin.Y + 0.04,
+    symbol: 'foundNotAdopted',
+  })
+  return spec
+}
+
+describe('an inset caption fits the cell it titles', () => {
+  test('is lettered one ISO rank below the sheet captions', () => {
+    const out = generateWorkingPlan(withCrowdedPair())
+    const caption = entities(out.dxf)
+      .find((e) => e.type === 'TEXT' && (e.g['1'] ?? '').startsWith('INSET 2 ('))
+
+    // "INSET 2 (NOT TO SCALE)" is 22 characters. At 3.5 mm it ran about 69 mm,
+    // past the 58.5 mm a half-width cell leaves beside its frame.
+    expect(parseFloat(caption.g['40']) / out.scale * 1000).toBeCloseTo(2.5, 6)
+  })
+})
+
+describe('every inset carries a north point', () => {
+  test('one for the sheet and one for each inset', () => {
+    const out = generateWorkingPlan(withCrowdedPair())
+    // Each arrow letters T and N, one pair apiece.
+    const letters = entities(out.dxf).filter(
+      (e) => e.type === 'TEXT' && e.g['8'] === 'NORTH-ARROW' && ['T', 'N'].includes(e.g['1']),
+    )
+
+    expect(letters.length / 2).toBe(3)   // sheet + locality + detail
+  })
+})
+
+describe('a superseded mark', () => {
+  test('is left off the figure, which the inset now carries', () => {
+    const names = entities(generateWorkingPlan(withSupersededMark()).dxf)
+      .filter((e) => e.type === 'TEXT' && e.g['8'] === 'BEACON-TEXT')
+      .map((e) => e.g['1'])
+
+    expect(names).not.toContain('87Dold')
+    // The beacon that replaced it stays: the ring marker must point at something.
+    expect(names).toContain('87DR')
+  })
+
+  test('is drawn in the inset struck through, as BCN_FOUND_NA draws it', () => {
+    const ents = entities(generateWorkingPlan(withSupersededMark()).dxf)
+
+    expect(ents.filter((e) => e.type === 'TEXT' && e.g['8'] === 'INSET')
+      .map((e) => e.g['1'])).toContain('87Dold')
+    // The figure no longer places the block at all.
+    expect(ents.filter((e) => e.type === 'INSERT' && e.g['2'] === 'BCN_FOUND_NA')).toHaveLength(0)
+  })
+
+  test('is kept on the figure when a parcel ring is built from it', () => {
+    // Dropping a corner would leave a boundary that does not close, whatever
+    // the beacon's status says.
+    const spec = withSupersededMark()
+    spec.parcels[0].ring = [...spec.parcels[0].ring, '87Dold']
+
+    const names = entities(generateWorkingPlan(spec).dxf)
+      .filter((e) => e.type === 'TEXT' && e.g['8'] === 'BEACON-TEXT')
+      .map((e) => e.g['1'])
+
+    expect(names).toContain('87Dold')
+  })
+})
+
+describe('the detail inset', () => {
+  test('marks no centre, only leaders from the members', () => {
+    // A cross at the middle read as a third mark. The leaders already say the
+    // members share one position.
+    const plain = entities(generateWorkingPlan(brackenhurstSpec).dxf)
+      .filter((e) => e.type === 'LINE' && e.g['8'] === 'INSET').length
+    const withDetail = entities(generateWorkingPlan(withCrowdedPair()).dxf)
+      .filter((e) => e.type === 'LINE' && e.g['8'] === 'INSET').length
+
+    // Two members, two leaders. A centre cross would add two more.
+    expect(withDetail - plain).toBe(2)
+  })
+})
+
 describe('a sheet with no locality diagram', () => {
   test('starts its details at INSET 1', () => {
     const spec = withCrowdedPair()

@@ -38,14 +38,17 @@ describe('the sheet without crowding', () => {
   test('numbers the locality diagram INSET 1', () => {
     const t = texts(generateWorkingPlan(brackenhurstSpec).dxf)
 
-    expect(t).toContain('INSET 1')
-    expect(t.filter((s) => s.startsWith('INSET '))).toEqual(['INSET 1'])
+    expect(t).toContain('INSET 1 (NOT TO SCALE)')
+    expect(t.filter((s) => s.startsWith('INSET '))).toEqual(['INSET 1 (NOT TO SCALE)'])
   })
 
-  test('says nothing about scale, because the locality diagram has one', () => {
+  test('says what kind of inset it is, not to scale like every other', () => {
+    // The locality diagram's content is squeezed to whatever cell the sheet
+    // gives it, so no distance in it is exact. The regulation's own caption
+    // for the inset box is "Inset (not to scale)"; the sheet says so too.
     const t = texts(generateWorkingPlan(brackenhurstSpec).dxf)
 
-    expect(t.some((s) => s.includes('NOT TO SCALE'))).toBe(false)
+    expect(t).toContain('INSET 1 (NOT TO SCALE)')
   })
 })
 
@@ -53,7 +56,7 @@ describe('the sheet with two beacons in one spot', () => {
   test('adds a second inset for the pair', () => {
     const t = texts(generateWorkingPlan(withCrowdedPair()).dxf)
 
-    expect(t).toContain('INSET 1')
+    expect(t).toContain('INSET 1 (NOT TO SCALE)')
     expect(t.some((s) => s.startsWith('INSET 2'))).toBe(true)
   })
 
@@ -84,7 +87,7 @@ describe('the sheet with two beacons in one spot', () => {
     const again = generateWorkingPlan(brackenhurstSpec).dxf
 
     expect(plain).toBe(again)
-    expect(texts(plain).some((s) => s.includes('NOT TO SCALE'))).toBe(false)
+    expect(texts(plain)).toContain('INSET 1 (NOT TO SCALE)')
   })
 })
 
@@ -103,7 +106,7 @@ function insetTexts(dxf, scale) {
   if (cur) ents.push(cur)
 
   const texts = ents.filter((e) => e.type === 'TEXT' && e.g['8'] === 'INSET')
-  const cap = texts.find((t) => t.g['1'] === 'INSET 1')
+  const cap = texts.find((t) => t.g['1'].startsWith('INSET 1'))
   // Sheet millimetres, measured from the INSET 1 caption, which sits 5 mm in
   // from its cell's left edge and 6 mm down from its top.
   return texts.map((t) => ({
@@ -147,6 +150,37 @@ function entities(dxf) {
     if (cur) cur.g[code] = val.trim()
   }
   if (cur) out.push(cur)
+  return out
+}
+
+/**
+ * Closed runs of vertices on a layer, as {layer, closed, verts}. A POLYLINE's
+ * vertices are separate VERTEX records followed by SEQEND, and an R12 polyline
+ * header carries a dummy 10/20 of its own -- so the real points are only read
+ * while inside a VERTEX body.
+ */
+function polylineVertices(dxf) {
+  const lines = dxf.split(/\r?\n/)
+  const out = []
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (lines[i] !== '0' || lines[i + 1] !== 'POLYLINE') continue
+    let layer = null
+    for (let j = i + 2; j < i + 20; j++) {
+      if (lines[j] === '0') break
+      if (lines[j] === '8') { layer = lines[j + 1]; break }
+    }
+    let closed = false, inVertex = false, verts = []
+    for (let j = i + 2; j < lines.length - 1; j++) {
+      if (lines[j] === '0') {
+        if (lines[j + 1] === 'SEQEND') break
+        inVertex = lines[j + 1] === 'VERTEX'
+        continue
+      }
+      if (lines[j] === '70' && !inVertex) closed = lines[j + 1] === '1'
+      if (inVertex && lines[j] === '10') verts.push([+lines[j + 1], +lines[j + 3]])
+    }
+    out.push({ layer, closed, verts })
+  }
   return out
 }
 
@@ -222,14 +256,89 @@ describe('a superseded mark', () => {
 describe('the detail inset', () => {
   test('marks no centre, only leaders from the members', () => {
     // A cross at the middle read as a third mark. The leaders already say the
-    // members share one position.
-    const plain = entities(generateWorkingPlan(brackenhurstSpec).dxf)
-      .filter((e) => e.type === 'LINE' && e.g['8'] === 'INSET').length
-    const withDetail = entities(generateWorkingPlan(withCrowdedPair()).dxf)
-      .filter((e) => e.type === 'LINE' && e.g['8'] === 'INSET').length
+    // members share one position, and nothing but those leaders leaves it.
+    const lines = entities(generateWorkingPlan(withCrowdedPair()).dxf)
+      .filter((e) => e.type === 'LINE' && e.g['8'] === 'INSET')
+    const perStart = lines.reduce((m, l) => {
+      const s = `${+l.g['10']},${+l.g['20']}`
+      m[s] = (m[s] ?? 0) + 1
+      return m
+    }, {})
 
-    // Two members, two leaders. A centre cross would add two more.
-    expect(withDetail - plain).toBe(2)
+    // One start shared by exactly the two member leaders; every other INSET
+    // line -- the mark crosses and the figure's shaft -- leaves its own point.
+    const shared = Object.entries(perStart).filter(([, n]) => n > 1)
+    expect(shared).toHaveLength(1)
+    expect(shared[0][1]).toBe(2)
+  })
+
+  test('keeps each member on the bearing it truly bears from the crowd', () => {
+    // The inset spreads its members to be read, but only the DISTANCES are
+    // invented: each mark sits along the TRUE bearing of its beacon from the
+    // group's centre, so the reader sees the same pattern of north/south and
+    // east/west that the ground carries. Spread by an arbitrary angle, the
+    // detail's north point would be a lie.
+    const lines = entities(generateWorkingPlan(withCrowdedPair()).dxf)
+      .filter((e) => e.type === 'LINE' && e.g['8'] === 'INSET')
+    const perStart = lines.reduce((m, l) => {
+      const s = `${+l.g['10']},${+l.g['20']}`
+      m[s] = (m[s] ?? 0) + 1
+      return m
+    }, {})
+    const centre = Object.entries(perStart).find(([, n]) => n > 1)[0]
+    const ours = lines.filter((l) => `${+l.g['10']},${+l.g['20']}` === centre)
+    const deg = (v) => (Math.atan2(v[1], v[0]) * 180 / Math.PI + 360) % 360
+    const drawn = ours.map((l) => deg([
+      +l.g['11'] - +l.g['10'], +l.g['21'] - +l.g['20'],
+    ])).sort((a, b) => a - b)
+
+    // The fixture's twin lies 0.04 in X and 0.04 in Y from 87DR: easting = -Y
+    // and northing = -X put the new mark WEST and SOUTH, so the pair's true
+    // bearings from the group centre are NE (45) and SW (225).
+    expect(drawn).toHaveLength(2)
+    expect(drawn[0]).toBeCloseTo(45, 3)
+    expect(drawn[1]).toBeCloseTo(225, 3)
+  })
+})
+
+describe('the figure marker', () => {
+  test('is a leader arrow to the crowd, not a ring around it', () => {
+    const out = generateWorkingPlan(withCrowdedPair())
+    const ents = entities(out.dxf)
+
+    // The crowd's figure position, read off the sheet: the two members are
+    // inserted there, a sign's width apart. The marker must point at the
+    // middle of them.
+    const inserts = ents.filter((e) => e.type === 'INSERT' && e.g['8'] === 'BEACONS')
+      .map((e) => [+e.g['10'], +e.g['20']])
+    let pair = null, best = Infinity
+    for (let i = 0; i < inserts.length; i++) {
+      for (let j = i + 1; j < inserts.length; j++) {
+        const d = Math.hypot(inserts[i][0] - inserts[j][0], inserts[i][1] - inserts[j][1])
+        if (d < best) { best = d; pair = [inserts[i], inserts[j]] }
+      }
+    }
+    expect(best).toBeLessThan(8)           // a genuinely crowded pair exists
+    const spot = [(pair[0][0] + pair[1][0]) / 2, (pair[0][1] + pair[1][1]) / 2]
+
+    // The arrowhead: a filled INSET triangle whose tip sits ON the spot.
+    const tips = ents.filter((e) => e.type === 'SOLID' && e.g['8'] === 'INSET')
+      .map((e) => [+e.g['10'], +e.g['20']])
+    expect(tips.some((t) => Math.hypot(t[0] - spot[0], t[1] - spot[1]) < 2)).toBe(true)
+
+    // A shaft runs up to it, ending where the arrowhead begins.
+    const shafts = ents.filter((e) => e.type === 'LINE' && e.g['8'] === 'INSET'
+      && Math.hypot(+e.g['11'] - spot[0], +e.g['21'] - spot[1]) < 8)
+    expect(shafts.length).toBeGreaterThanOrEqual(1)
+
+    // And nothing rings the spot. The two inset FRAMES are the only closed
+    // four-sided INSET polylines; the round signs' 24-sided rings must not
+    // come anywhere near the crowd's figure position.
+    const polys = polylineVertices(out.dxf).filter((p) => p.layer === 'INSET')
+    expect(polys.filter((p) => p.closed && p.verts.length === 4)).toHaveLength(2)
+    const rings = polys.filter((p) => p.closed && p.verts.length > 10)
+      .filter((p) => p.verts.some((v) => Math.hypot(v[0] - spot[0], v[1] - spot[1]) < 15))
+    expect(rings).toEqual([])
   })
 })
 

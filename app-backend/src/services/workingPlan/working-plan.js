@@ -1399,11 +1399,12 @@ export function generateWorkingPlan(spec) {
     d.polyline([S(B.x0, B.y0), S(B.x1, B.y0), S(B.x1, B.y1), S(B.x0, B.y1)],
       { layer: 'INSET', closed: true });
 
-    // A detail is schematic: its marks are spread far enough apart to read, so
-    // no distance in it means anything. Saying so is not optional.
-    const caption = ins.kind === 'locality'
-      ? 'INSET ' + number
-      : 'INSET ' + number + ' (NOT TO SCALE)';
+    // Every inset is schematic enough to say so: a locality drawn on the sheet
+    // has its content squeezed to whatever cell the sheet gives it, and the
+    // marks of a crowded pair are spread to be read. No distance in either one
+    // is exact, and the regulation's own caption is "Inset (not to scale)"
+    // whatever the kind. Saying so is not optional.
+    const caption = 'INSET ' + number + ' (NOT TO SCALE)';
     d.text(caption, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
       { layer: 'INSET', style: 'ARIAL-BOLD' });
 
@@ -1540,9 +1541,11 @@ export function generateWorkingPlan(spec) {
       label(at, b.name);
     });
 
-    // And on the figure itself: a ring round the spot, lettered with the inset
-    // that enlarges it. Without it the detail names two beacons and never says
-    // where on the sheet they are.
+    // And on the figure itself: a leader arrow drives straight at the spot the
+    // detail enlarges, lettered with the inset's number at its tail. Without it
+    // the detail names two beacons and never says where on the sheet they are.
+    // A ring could only say "something round is here"; an arrow speaks more
+    // precisely, because its point is ON the mark.
     const gc = {
       e: ins.beacons.reduce((t, b) => t + b.e, 0) / ins.beacons.length,
       n: ins.beacons.reduce((t, b) => t + b.n, 0) / ins.beacons.length,
@@ -1550,12 +1553,25 @@ export function generateWorkingPlan(spec) {
     const fs = toSheet(gc.e, gc.n);
     const fx = fs[0], fy = fs[1];
     if (fx >= L.panel.x0 && fx <= L.panel.x1 && fy >= L.panel.y0 && fy <= L.panel.y1) {
-      const rMm = 3.5;
-      const c0 = S(fx, fy);
-      d.polyline(circlePts(mm(rMm), 24).map(([x, y]) => [c0[0] + x, c0[1] + y]),
-        { layer: 'INSET', closed: true });
-      d.text('INSET ' + number, S(fx + rMm + 1.0, fy - rMm - 1.0),
-        mm(L.text.insetLabel), { layer: 'INSET', style: 'ARIAL' });
+      // The label stands up and right of the spot and the arrow dives from its
+      // tail to the point itself; only this layout is invented, the point is
+      // exactly where the members are.
+      const spot = S(fx, fy);
+      const tail = S(fx + 11, fy - 11);
+      const dx = spot[0] - tail[0], dy = spot[1] - tail[1];
+      const len = Math.hypot(dx, dy);
+      const ux = dx / len, uy = dy / len;
+      // The shaft stops short of the point and a filled arrowhead, the same
+      // construction a connection mark uses, carries the line the rest of the
+      // way so the tip lands on the mark itself.
+      const aLen = mm(3.0), aHalf = mm(1.0);
+      const base = [spot[0] - ux * aLen, spot[1] - uy * aLen];
+      d.line(tail, base, { layer: 'INSET' });
+      const px = -uy, py = ux;
+      d.solid([spot, [base[0] + px * aHalf, base[1] + py * aHalf],
+        [base[0] - px * aHalf, base[1] - py * aHalf]], { layer: 'INSET' });
+      d.text('INSET ' + number, tail, mm(L.text.insetLabel),
+        { layer: 'INSET', style: 'ARIAL' });
     }
   });
 

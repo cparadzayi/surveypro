@@ -157,6 +157,14 @@ export interface WorkingPlanSpecContext {
    */
   calibration?: { pairs?: Array<{ pointId?: string; controlNorthing?: number; controlEasting?: number }> }
   /**
+   * The national control chosen in Control Point Selection. The other way a
+   * survey states what it is tied to: a traverse connection, or a job whose
+   * calibration report was never imported, has these and no calibration at all,
+   * and the inset then had nothing to show and vanished. Still not a proximity
+   * search of the registry -- the surveyor picked these.
+   */
+  controlPoints?: Array<{ name?: string; X?: number; Y?: number }>
+  /**
    * Side annotations per parcel id, from sideAnnotationsBySubject. Sides tagged
    * `contiguous` name the neighbouring property along that side -- the only
    * place the data model records a surrounding property's designation.
@@ -220,6 +228,54 @@ const INSET_SCALES = [5000, 10000, 20000, 25000, 50000, 100000, 200000, 250000, 
  * trig stations and carry the triangle. Anything else -- BASE, RM7, a TSM --
  * is a reference mark and carries the double circle.
  */
+/**
+ * The control point ids the surveyor chose, read out of the workflow state.
+ *
+ * Control Point Selection is the step that records them; older projects carry
+ * the same list under project setup, so both are accepted. Anything that is not
+ * a usable id is dropped rather than fetched and 404'd.
+ */
+export function selectedControlPointIds(workflowState: any): number[] {
+  const steps = workflowState?.step_data ?? {}
+  const ids =
+    steps['control-point-selection']?.control_point_ids ??
+    steps['project-setup']?.control_point_ids ??
+    []
+
+  return (Array.isArray(ids) ? ids : [])
+    .map((id: unknown) => Number(id))
+    .filter((id: number) => Number.isInteger(id) && id > 0)
+}
+
+/**
+ * Control registry rows, shaped for the locality inset.
+ *
+ * zim_control_points stores y_gauss = Westing and x_gauss = Southing, which is
+ * the opposite of how the two names read. The inset wants X = Southing and
+ * Y = Westing, so the pairing has to cross: getting it backwards puts the
+ * control some 2 000 km from the survey and silently rescales the whole
+ * locality diagram to swallow it.
+ *
+ * A row missing a name or either ordinate is dropped. An inset beacon built
+ * from NaN draws at an undefined position and drags the scale with it, so
+ * losing the row is much the lesser harm.
+ */
+export function controlPointsForInset(
+  rows: Array<Record<string, any>> | null | undefined,
+): Array<{ name: string; X: number; Y: number }> {
+  const out: Array<{ name: string; X: number; Y: number }> = []
+
+  for (const row of rows ?? []) {
+    const name = String(row?.monu_num ?? row?.name ?? row?.monuNum ?? '').trim()
+    const Y = Number(row?.y_gauss ?? row?.yGauss ?? row?.y)   // Westing
+    const X = Number(row?.x_gauss ?? row?.xGauss ?? row?.x)   // Southing
+    if (!name || !Number.isFinite(X) || !Number.isFinite(Y)) continue
+    out.push({ name, X, Y })
+  }
+
+  return out
+}
+
 export function insetSymbolFor(pointId: string | null | undefined): 'trig' | 'rm' {
   return /\/[PSTQ]$/i.test(String(pointId ?? '').trim()) ? 'trig' : 'rm'
 }
@@ -242,16 +298,24 @@ function insetScaleFor(points: Array<{ X: number; Y: number }>): number {
  */
 function buildInset(
   calibration: WorkingPlanSpecContext['calibration'],
+  controlPoints: WorkingPlanSpecContext['controlPoints'],
   figure: WorkingPlanBeacon[],
 ): WorkingPlanInset | undefined {
   const control: WorkingPlanInsetBeacon[] = []
-  for (const pair of calibration?.pairs ?? []) {
-    const name = String(pair?.pointId ?? '').trim()
-    const X = Number(pair?.controlNorthing)
-    const Y = Number(pair?.controlEasting)
-    if (!name || !Number.isFinite(X) || !Number.isFinite(Y)) continue
-    if (control.some(c => c.name === name)) continue
+  const add = (name: string, X: number, Y: number) => {
+    if (!name || !Number.isFinite(X) || !Number.isFinite(Y)) return
+    if (control.some(c => c.name === name)) return
     control.push({ name, X, Y, symbol: insetSymbolFor(name) })
+  }
+
+  // The calibration first: those pairs are control the surveyor actually
+  // observed, so where a station appears in both they are the coordinates to
+  // show, and the selected list must not add it a second time.
+  for (const pair of calibration?.pairs ?? []) {
+    add(String(pair?.pointId ?? '').trim(), Number(pair?.controlNorthing), Number(pair?.controlEasting))
+  }
+  for (const cp of controlPoints ?? []) {
+    add(String(cp?.name ?? '').trim(), Number(cp?.X), Number(cp?.Y))
   }
   if (control.length === 0 || figure.length === 0) return undefined
 
@@ -862,7 +926,7 @@ export function buildWorkingPlanSpec(
 
   const srNumber = srNumberFrom(ctx.projectInfo)
 
-  const inset = buildInset(ctx.calibration, figureBeacons)
+  const inset = buildInset(ctx.calibration, ctx.controlPoints, figureBeacons)
 
   return {
     spec: {

@@ -675,7 +675,7 @@ import type { CoverPageInfo } from '@/utils/cover-page'
 import { listCoordinatePoints, listLandParcels, updateLandParcel } from '@/services/spatial'
 import { saveDocument } from '@/services/documentStorage'
 import { generateWorkingPlanDXF } from '@/services/workingPlan'
-import { buildWorkingPlanSpec, workingPlanEmptyReason } from './workingPlanSpec'
+import { buildWorkingPlanSpec, workingPlanEmptyReason, controlPointsForInset, selectedControlPointIds } from './workingPlanSpec'
 import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
 import api from '@/services/api'
 import { buildWorkflowExcel } from '@/utils/workflowExcelExporter'
@@ -753,6 +753,8 @@ const mapCanvasContainer = ref<HTMLDivElement | null>(null)
 const map = ref<maplibregl.Map | null>(null)
 const parcels = ref<any[]>([])
 const coordinatePoints = ref<any[]>([])
+/** The national control this project was tied to, for the working plan's locality inset. */
+const projectControlPoints = ref<Array<{ name: string; X: number; Y: number }>>([])
 const isExporting = ref(false)
 const exportStatus = ref('')
 const pdfFinalScale = ref<string | null>(null)
@@ -1532,6 +1534,24 @@ async function loadData() {
     coordinatePoints.value = allPoints
     console.log(`[SurveyPlanMap] 📍 Loaded ${allPoints.length} coordinate points (no frontend spatial filter)`)
     
+    // The national control this survey was tied to. Fetched here rather than at
+    // generate time so the working plan's spec can be built synchronously, the
+    // way the fail-fast check below needs it.
+    const controlIds = selectedControlPointIds(props.workflowState)
+    if (controlIds.length > 0) {
+      try {
+        const rows = await Promise.all(
+          controlIds.map(id => api.get(`/control-points/${id}`).then(r => r.data))
+        )
+        projectControlPoints.value = controlPointsForInset(rows)
+        console.log(`[SurveyPlanMap] 📐 Loaded ${projectControlPoints.value.length} of ${controlIds.length} control point(s)`)
+      } catch (err: any) {
+        // A locality inset is worth having and not worth failing the sheet for.
+        console.warn('[SurveyPlanMap] ⚠️ Could not load control points:', err?.message ?? err)
+        projectControlPoints.value = []
+      }
+    }
+
     console.log(`[SurveyPlanMap] 📊 Loaded ${parcels.value.length} parcels and ${coordinatePoints.value.length} points`)
     console.log(`[SurveyPlanMap] 👤 Surveyor: ${config.value.surveyorName}`)
     console.log(`[SurveyPlanMap] 📍 Location: ${props.projectInfo.designation}, ${props.projectInfo.township}, ${props.projectInfo.district}`)
@@ -4436,6 +4456,11 @@ async function generatePlanDocuments() {
       // The control the survey was tied to, for the locality inset. Accepts
       // either workflowState shape -- see siteCalibrationFrom.
       calibration: siteCalibrationFrom(props.workflowState),
+      // The control chosen in Control Point Selection. A project tied by
+      // traverse, or one whose calibration report was never imported, states
+      // its control only here -- without it the inset had nothing to draw and
+      // the locality diagram disappeared from the sheet.
+      controlPoints: projectControlPoints.value,
       // Sides tagged `contiguous` name the neighbouring properties, which the
       // working plan letters just outside the boundary they abut.
       sideAnnotations: sideAnnotationsBySubject.value,

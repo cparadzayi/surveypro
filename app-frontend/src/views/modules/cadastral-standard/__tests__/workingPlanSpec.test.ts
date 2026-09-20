@@ -7,6 +7,8 @@ import {
   workingPlanTitle,
   workingPlanEmptyReason,
   insetSymbolFor,
+  controlPointsForInset,
+  selectedControlPointIds,
 } from '../workingPlanSpec'
 
 /** Beacons as exportBeaconsAsGeoJSON emits them: coordinates are [Y, X]. */
@@ -380,6 +382,132 @@ const brackenhurstControl = calibration([
   ['49/T',  2146857.23, -88454.47],
   ['50/T',  2151238.71, -88963.45],
 ])
+
+/**
+ * The control points the surveyor picked in Control Point Selection are the
+ * other way a survey states what it is tied to. A project can have them with
+ * no GNSS calibration at all -- a traverse connection, or a job where the
+ * calibration report was never imported -- and the inset then had no control to
+ * show and disappeared entirely, taking the locality diagram with it.
+ *
+ * These are still not a proximity search: the surveyor chose them.
+ */
+const selectedControl = (ids: Array<[string, number, number]>) =>
+  ids.map(([name, X, Y]) => ({ name, X, Y }))
+
+describe('selectedControlPointIds', () => {
+  it('reads the ids the surveyor picked in Control Point Selection', () => {
+    expect(selectedControlPointIds({
+      step_data: { 'control-point-selection': { control_point_ids: [1703, 1677, 770, 787] } },
+    })).toEqual([1703, 1677, 770, 787])
+  })
+
+  it('falls back to the ids recorded at project setup', () => {
+    expect(selectedControlPointIds({
+      step_data: { 'project-setup': { control_point_ids: [42] } },
+    })).toEqual([42])
+  })
+
+  it('prefers the selection step over project setup', () => {
+    expect(selectedControlPointIds({
+      step_data: {
+        'project-setup': { control_point_ids: [42] },
+        'control-point-selection': { control_point_ids: [1703] },
+      },
+    })).toEqual([1703])
+  })
+
+  it('is empty when no control was chosen', () => {
+    expect(selectedControlPointIds(undefined)).toEqual([])
+    expect(selectedControlPointIds({})).toEqual([])
+    expect(selectedControlPointIds({ step_data: { 'control-point-selection': {} } })).toEqual([])
+  })
+
+  it('keeps only ids it can use', () => {
+    expect(selectedControlPointIds({
+      step_data: { 'control-point-selection': { control_point_ids: [1703, null, 'x', 0, 787] } },
+    })).toEqual([1703, 787])
+  })
+})
+
+describe('controlPointsForInset', () => {
+  // zim_control_points holds y_gauss = Westing and x_gauss = Southing, which is
+  // the opposite of how the names read. Getting it backwards puts the control
+  // 2 000 km away and silently rescales the whole locality diagram, so the
+  // mapping is pinned to real rows: 50/T is y_gauss -88963.45, x_gauss
+  // 2151238.71, and it must come out X 2151238.71, Y -88963.45.
+  it('maps a registry row onto the inset axes', () => {
+    const [cp] = controlPointsForInset([
+      { monu_num: '50/T', y_gauss: -88963.45, x_gauss: 2151238.71 },
+    ])
+
+    expect(cp).toEqual({ name: '50/T', X: 2151238.71, Y: -88963.45 })
+  })
+
+  it('accepts the shapes the API has been seen to return', () => {
+    const out = controlPointsForInset([
+      { monu_num: '49/T', yGauss: -88454.47, xGauss: 2146857.23 },
+      { name: '170/P', y: -81572.33, x: 2136777.89 },
+    ])
+
+    expect(out).toEqual([
+      { name: '49/T', X: 2146857.23, Y: -88454.47 },
+      { name: '170/P', X: 2136777.89, Y: -81572.33 },
+    ])
+  })
+
+  it('drops a row it cannot place rather than emitting a NaN', () => {
+    expect(controlPointsForInset([
+      { monu_num: '', y_gauss: -1, x_gauss: 2 },
+      { monu_num: '88/Q' },
+      { monu_num: '90/Q', y_gauss: 'nonsense', x_gauss: 2136777.89 },
+    ])).toEqual([])
+  })
+
+  it('is empty for nothing at all', () => {
+    expect(controlPointsForInset(undefined)).toEqual([])
+    expect(controlPointsForInset([])).toEqual([])
+  })
+})
+
+describe('the locality inset from selected control points', () => {
+  it('shows the control the surveyor selected when there is no calibration', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({
+      controlPoints: selectedControl([
+        ['50/T', 2151238.71, -88963.45],
+        ['49/T', 2146857.23, -88454.47],
+        ['170/P', 2136777.89, -81572.33],
+        ['176/P', 2149103.82, -71089.60],
+      ]),
+    }))
+
+    const names = spec.inset!.beacons.map(b => b.name)
+    expect(names).toContain('50/T')
+    expect(names).toContain('176/P')
+  })
+
+  it('gives them the trig sign their designation earns', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({
+      controlPoints: selectedControl([['50/T', 2151238.71, -88963.45], ['49/T', 2146857.23, -88454.47]]),
+    }))
+
+    expect(spec.inset!.beacons.find(b => b.name === '50/T')!.symbol).toBe('trig')
+  })
+
+  it('prefers the calibration and does not list a station twice', () => {
+    // A point can be both observed in the calibration and selected as control.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      calibration: brackenhurstControl,
+      controlPoints: selectedControl([['50/T', 2151238.71, -88963.45]]),
+    }))
+
+    expect(spec.inset!.beacons.filter(b => b.name === '50/T')).toHaveLength(1)
+  })
+
+  it('still has no inset when the survey states no control at all', () => {
+    expect(buildWorkingPlanSpec(ctx({ controlPoints: [] })).spec.inset).toBeUndefined()
+  })
+})
 
 describe('insetSymbolFor', () => {
   it('reads the Zimbabwe control designation suffix', () => {

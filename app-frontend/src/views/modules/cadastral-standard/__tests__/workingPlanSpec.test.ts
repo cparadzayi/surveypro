@@ -88,6 +88,23 @@ describe('beaconSymbol', () => {
     expect(beaconSymbol('trigonometrical station')).toBe('trig')
   })
 
+  it('draws the kind half of a compound status', () => {
+    // WS/P is a working station that was placed. The symbol is the station;
+    // the P belongs to the Co-ordinate List's F/P column, not to the drawing.
+    expect(beaconSymbol('10mm iron peg (Station)', 'WS/P')).toBe('ws')
+    expect(beaconSymbol('12mm iron peg in concrete', 'WS/F')).toBe('ws')
+    expect(beaconSymbol('GNSS base', 'P/WS')).toBe('ws')
+    expect(beaconSymbol('Reference mark', 'RM/F')).toBe('rm')
+  })
+
+  it('still reads the bare codes exactly as before', () => {
+    expect(beaconSymbol('anything', 'P')).toBe('placed')
+    expect(beaconSymbol('anything', 'F')).toBe('found')
+    expect(beaconSymbol('anything', 'FN')).toBe('foundNotAdopted')
+    expect(beaconSymbol('anything', 'WS')).toBe('ws')
+    expect(beaconSymbol('anything', 'TRIG')).toBe('trig')
+  })
+
   it('falls back to peg for anything it does not recognise', () => {
     // Drawing a peg for an unknown description is a smaller lie than promoting
     // it to a trig station on a guess.

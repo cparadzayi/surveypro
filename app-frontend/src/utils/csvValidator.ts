@@ -3,6 +3,8 @@
  * Provides real-time validation feedback for CSV imports
  */
 
+import { parseBeaconStatus } from './beaconStatus';
+
 export interface ValidationError {
   row: number;
   column: string;
@@ -218,14 +220,21 @@ export function validateCSVContent(content: string): ValidationResult {
       // RM (reference mark) and WS (working station) let the surveyor state the
       // beacon KIND, which the working plan draws from directly instead of
       // guessing it out of the free-text description.
-      if (!['F', 'P', 'FIXED', 'PEG', 'TRIG', 'RM', 'WS', 'FN', 'WSU', 'OCP'].includes(status)) {
+      //
+      // A status may state a kind and a provenance together -- "WS/P" is a
+      // working station that was placed -- so it is recognised when either half
+      // is. Rejecting the compound form warned surveyors off the only spelling
+      // that records both facts.
+      const { kind, provenance } = parseBeaconStatus(status)
+      const legacy = ['FIXED', 'PEG'].includes(status)
+      if (!kind && !provenance && !legacy) {
         warnings.push({
           row: rowNum,
           column: 'Status',
           value: row.Status,
           error: 'Unrecognized status code',
           severity: 'warning',
-          suggestion: 'Use F, FN, P, TRIG, OCP, RM, WS or WSU — see SI 727 Fifth Schedule'
+          suggestion: 'Use F, FN, P, TRIG, OCP, RM, WS or WSU, optionally as a pair such as WS/P - see SI 727 Fifth Schedule'
         });
         warningRowSet.add(rowNum);
       }

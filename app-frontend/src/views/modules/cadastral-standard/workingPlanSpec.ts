@@ -1,4 +1,5 @@
 import { subjectSides } from './sideAnnotations'
+import { parseBeaconStatus } from '@/utils/beaconStatus'
 /**
  * Builds the Working Plan module's `spec` from what SurveyPlanMapView already
  * holds: the final coordinate list (as the beacons FeatureCollection, which has
@@ -300,17 +301,22 @@ function buildInset(
  * nearest honest existing symbol rather than inventing one.
  */
 function statusSymbol(status: string | null | undefined): WorkingPlanSymbol | undefined {
-  switch (String(status ?? '').trim().toUpperCase()) {
-    case 'P':    return 'placed'
-    case 'F':    return 'found'
-    case 'FN':   return 'foundNotAdopted'
-    case 'RM':   return 'rm'
-    case 'WS':   return 'ws'
-    case 'WSU':  return 'wsu'
-    case 'TRIG': return 'trig'
-    case 'OCP':  return 'ocp'
-    default:     return undefined
+  // A status can name a kind and a provenance at once -- "WS/P" is a working
+  // station that was placed. The drawing wants the kind: the F/P half belongs
+  // to the Co-ordinate List's own column, not to a conventional sign.
+  const { kind, provenance } = parseBeaconStatus(status)
+
+  if (kind) {
+    return ({ RM: 'rm', WS: 'ws', WSU: 'wsu', TRIG: 'trig', OCP: 'ocp' } as const)[kind]
   }
+
+  // No kind stated, so the provenance is all there is to draw from -- which is
+  // exactly what a bare "P" or "F" has always meant.
+  if (provenance) {
+    return ({ P: 'placed', F: 'found', FN: 'foundNotAdopted' } as const)[provenance]
+  }
+
+  return undefined
 }
 
 export function beaconSymbol(

@@ -382,14 +382,18 @@ function drawTableRows(doc: jsPDF, rows: TraverseRow[], startY: number): number 
     currentX += colWidths.beacon;
     
     // Y coordinate with +/- prefix - ensure valid number
+    // Banker's rounding, matching toCoordinateListPrecision. toFixed rounds
+    // halves away from zero, so the two documents disagreed on any co-ordinate
+    // ending in a half-cent: SD3's -85682.515 printed as -85682.51 here and
+    // -85682.52 on the Co-ordinate List. One beacon, two numbers, both lodged.
     const yNum = typeof row.y === 'number' && !isNaN(row.y) ? row.y : 0;
-    const yValue = yNum >= 0 ? `+${yNum.toFixed(2)}` : yNum.toFixed(2);
+    const yValue = yNum >= 0 ? `+${bankersRound(yNum, 2).toFixed(2)}` : bankersRound(yNum, 2).toFixed(2);
     doc.text(yValue, currentX, textY);
     currentX += colWidths.y;
     
     // X coordinate with +/- prefix - ensure valid number
     const xNum = typeof row.x === 'number' && !isNaN(row.x) ? row.x : 0;
-    const xValue = xNum >= 0 ? `+${xNum.toFixed(2)}` : xNum.toFixed(2);
+    const xValue = xNum >= 0 ? `+${bankersRound(xNum, 2).toFixed(2)}` : bankersRound(xNum, 2).toFixed(2);
     doc.text(xValue, currentX, textY);
     currentX += colWidths.x;
     
@@ -436,6 +440,19 @@ function drawTableRows(doc: jsPDF, rows: TraverseRow[], startY: number): number 
  * @param beaconLabels - Optional intelligent beacon labels (suffix letters inside parcels)
  * @param coordinatePoints - Optional coordinate points for spatial matching of beacon names
  */
+/**
+ * True for the remainder parcel — the balance of the parent property after the
+ * surveyed stands are excised.
+ *
+ * Matched by designation because that is what the digitiser records: "REM", or
+ * spelled out as "REMAINDER". Not matched on draft status, which a genuine stand
+ * also carries before it is finalised.
+ */
+function isRemainderParcel(parcel: { designation?: string; stand?: string }): boolean {
+  const name = (parcel?.designation ?? parcel?.stand ?? '').trim().toUpperCase();
+  return name === 'REM' || name === 'REMAINDER';
+}
+
 export async function generateAreaConsistencyPDF(
   parcels: Parcel[], 
   projectName: string = 'Survey Project',
@@ -455,6 +472,12 @@ export async function generateAreaConsistencyPDF(
   }>,
   coordinatePoints?: any[]
 ): Promise<{ merged: Uint8Array; areasOnly: Blob } | void> {
+  // The remainder is what is left of the parent property once the stands are
+  // taken out. It is not itself a surveyed stand, so it has no place in a
+  // consistency computation over the stands -- its "closure" is an artefact of
+  // the others rather than a measurement of anything.
+  parcels = (parcels || []).filter(p => !isRemainderParcel(p));
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',

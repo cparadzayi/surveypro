@@ -2323,7 +2323,10 @@ const coordinatePoints = computed(() => {
     x: parseFloat(c.x),
     y: parseFloat(c.y),
     status: c.status || 'P',
-    description: c.description || c.desc || ''
+    description: c.description || c.desc || '',
+    // Carried through to the field book's Date column. Dropping it here left the
+    // documents with no date of their own and falling back to the project's.
+    surveyDate: c.surveyDate || c.survey_date || ''
   }));
   
   // Map control points (same format as coordinate list generator)
@@ -2352,7 +2355,8 @@ const coordinatePoints = computed(() => {
       x: x,
       y: y,
       status: 'TRIG',
-      description: trigName
+      description: trigName,
+      surveyDate: ''
     };
   });
   
@@ -2413,7 +2417,7 @@ const adjustedCoordinatesForDetection = computed(() => {
     x: pt.x,
     description: pt.description || '',
     status: pt.status || 'F',
-    surveyDate: pt.surveyDate || new Date().toISOString().split('T')[0],
+    surveyDate: pt.surveyDate || '',
     calculationsPage: 0,
     fieldBookPage: 'E1'
   }));
@@ -4030,7 +4034,7 @@ function wouldCreateIntersection(newPoint: any): boolean {
     x: p.x,
     status: 'PEG',
     description: '',
-    surveyDate: new Date().toISOString().split('T')[0],
+    surveyDate: '',
     fieldBookPage: '',
     calculationsPage: 0,
     adjustment: {
@@ -5542,7 +5546,7 @@ function substitutionWouldCross(points: VertexPoint[], index: number, candidate:
       x: p.x,
       status: p.status || 'PEG',
       description: p.description || '',
-      surveyDate: new Date().toISOString().split('T')[0],
+      surveyDate: '',
       fieldBookPage: '',
       calculationsPage: 0,
       adjustment: { isDuplicate: false, observationCount: 1, method: 'gps' as const }

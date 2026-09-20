@@ -11,6 +11,7 @@
  * - Any re-generated documents
  */
 
+import { toISODate } from '../utils/surveyDate'
 import { saveDocument } from './documentStorage'
 import { makeAbsolutePath, getProjectDirectoryStructure } from '../utils/project-directory'
 
@@ -208,11 +209,9 @@ export function pointsToCSV(points: any[]): string {
     const status = point.status || ''
     const calcsPage = point.calcsPage || ''
     const description = point.description || ''
-    const surveyDate = point.surveyDate 
-      ? (point.surveyDate instanceof Date 
-          ? point.surveyDate.toISOString().split('T')[0]
-          : point.surveyDate)
-      : ''
+    // toISOString() converts to UTC first, so in UTC+2 every date came back a
+    // day earlier than it was entered. toISODate reads the local calendar.
+    const surveyDate = toISODate(point.surveyDate)
     
     return `${point.id},"${y}","${x}","${status}","${calcsPage}","${description}","${surveyDate}"`
   })

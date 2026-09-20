@@ -4,6 +4,8 @@
  * step_data['csv-import'].points JSON copy is absent. Mirrors the mapping at
  * useCadastralWorkflow.ts (restore of csvStepData.points).
  */
+import { parseSurveyDate } from '../utils/surveyDate'
+
 export interface CoordRow {
   name: string
   y: number
@@ -23,7 +25,7 @@ export function coordinateToImportedPoint(cp: CoordRow) {
     coordinateList: { y: y.toFixed(2), x: x.toFixed(2) },
     status: cp.status ?? undefined,
     description: cp.description ?? undefined,
-    surveyDate: new Date(cp.survey_date || Date.now()),
+    surveyDate: parseSurveyDate(cp.survey_date),
     includeInFieldBook: true,
     includeInCoordinateList: true,
   }

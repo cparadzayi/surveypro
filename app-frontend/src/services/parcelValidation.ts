@@ -98,7 +98,7 @@ export async function validateParcel(
       x: p.x,
       status: p.status || 'PEG',
       description: p.description || '',
-      surveyDate: p.surveyDate || new Date().toISOString().split('T')[0],
+      surveyDate: p.surveyDate || '',
       fieldBookPage: p.fieldBookPage || '',
       calculationsPage: p.calculationsPage || 0,
       adjustment: p.adjustment || {

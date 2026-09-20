@@ -1402,6 +1402,7 @@ import {
 } from '../../../services/csvImports';
 // Spatial data export
 import { batchCreateCoordinatePoints, listCoordinatePoints, normalizeCoordinatePointNames, listLandParcels, updateLandParcel } from '../../../services/spatial';
+import { toISODate } from '../../../utils/surveyDate';
 import { buildBeaconRepairPlan, runBeaconRepair, describeRepairResult, renameWorkflowCopies, renamePointList } from './beaconRepairFlow';
 import { useParcelsStore } from '../../../stores/parcels';
 import { parseCalibrationReport } from '../../../utils/siteCalibration';
@@ -2344,7 +2345,10 @@ async function handleDataImported(points: CadastralPoint[]) {
         x: point.original.x,
         elevation: undefined,
         description: point.description || '',
-        status: point.status || undefined
+        status: point.status || undefined,
+        // The date the beacon was actually visited. Without it the column is
+        // written null and every document downstream has to invent a date.
+        surveyDate: toISODate(point.surveyDate) || null
       }));
       
       console.log(`[CSV Import] 📊 Prepared ${dbPoints.length} points for batch export`);

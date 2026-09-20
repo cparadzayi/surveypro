@@ -7,7 +7,9 @@
 import jsPDF from 'jspdf';
 import { bankersRound } from './cadastral-precision';
 import type { SiteCalibration } from './siteCalibration';
+import { formatSurveyDate, parseSurveyDate } from './surveyDate';
 import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination';
+import { isCalculatedPoint } from './calculatedPoint';
 
 export interface FieldBookPoint {
   id: string;
@@ -49,19 +51,18 @@ export interface FieldBookMetadata {
 const surveyedIn = (surveyDate?: string): string => {
   if (!surveyDate) return '';
 
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(surveyDate);
-  if (!iso) return surveyDate;
+  // parseSurveyDate reads both the ISO dates the date input produces and the
+  // dd/mm/yyyy a CSV carries, and builds a local date, so there is no timezone
+  // rollover to print the wrong month and year for 1 January.
+  const date = parseSurveyDate(surveyDate);
+  if (!date) return surveyDate;
 
-  const [, year, month] = iso;
-  // Built from the parts rather than `new Date(...)`: parsing an ISO date as
-  // local time in a timezone behind UTC rolls 1 January back into December of
-  // the previous year, which would print the wrong month AND the wrong year.
   const monthName = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December',
-  ][Number(month) - 1];
+  ][date.getMonth()];
 
-  return monthName ? `${monthName} ${year}` : surveyDate;
+  return monthName ? `${monthName} ${date.getFullYear()}` : surveyDate;
 };
 
 export class FieldBookGenerator {
@@ -97,6 +98,20 @@ export class FieldBookGenerator {
     calibration?: SiteCalibration
   ): Promise<{ pdf: jsPDF; pageCount: number; pointPageMap: Record<string, string> }> {
     const pdf = new jsPDF(this.options);
+
+    // A field book records what was visited and measured, so a computed point
+    // cannot appear in one. Enforced here rather than left to each caller: the
+    // rule belongs to the document, and a caller that forgets it produces a
+    // field book that misrepresents what was observed on the ground.
+    //
+    // Filtering BEFORE pagination keeps paginateFieldBook's contract intact --
+    // it still receives exactly the points that will be rendered, in order.
+    const excluded = points.filter(pt => isCalculatedPoint(pt));
+    if (excluded.length) {
+      console.log(`[FieldBook] 🧮 Excluding ${excluded.length} calculated point(s):`,
+        excluded.map(pt => pt.id).join(', '));
+    }
+    points = points.filter(pt => !isCalculatedPoint(pt));
 
     const pagination = paginateFieldBook(points, {
       hasCalibration: Boolean(calibration),
@@ -471,29 +486,10 @@ export class FieldBookGenerator {
       pdf.text(point.status || '', col4, yPosition);
       
       // Survey date
-      let surveyDate = '';
-      if (point.surveyDate) {
-        // `new Date('30/07/2026')` does not throw -- it yields an Invalid Date,
-        // and toLocaleDateString on that returns the literal "Invalid Date". The
-        // catch below therefore never fires, and the phrase printed once per row
-        // in a field book lodged with the Surveyor-General. Test the date itself
-        // rather than relying on an exception that never comes.
-        try {
-          const date = new Date(point.surveyDate);
-          surveyDate = Number.isNaN(date.getTime())
-            // Unparseable: print what the surveyor actually recorded. A date the
-            // reader can interpret beats a sentence saying the software could not.
-            ? point.surveyDate
-            : date.toLocaleDateString('en-GB', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-              });
-        } catch {
-          surveyDate = point.surveyDate;
-        }
-      }
-      pdf.text(surveyDate, col5, yPosition);
+      // dd/mm/yyyy, read day-first: `new Date('2/07/2026')` is month-first and
+      // would print 7 February for a survey done on 2 July. An unreadable date
+      // prints exactly as recorded, never as the literal words "Invalid Date".
+      pdf.text(formatSurveyDate(point.surveyDate), col5, yPosition);
       
       // Description (truncate if too long)
       const description = point.description || '-';
@@ -548,9 +544,13 @@ export class FieldBookGenerator {
     const pageFooterX = (pageWidth - pageFooterWidth) / 2;
     pdf.text(pageFooter, pageFooterX, footerY);
     
-    // Date (right)
-    const dateText = new Date().toLocaleDateString();
-    const dateWidth = pdf.getTextWidth(dateText);
-    pdf.text(dateText, pageWidth - this.options.marginRight - dateWidth, footerY);
+    // Date of survey (right). Not today's date: the footer dates the survey, and
+    // a record regenerated months later must not restamp itself with the day it
+    // was printed.
+    const dateText = formatSurveyDate(metadata.surveyDate);
+    if (dateText) {
+      const dateWidth = pdf.getTextWidth(dateText);
+      pdf.text(dateText, pageWidth - this.options.marginRight - dateWidth, footerY);
+    }
   }
 }

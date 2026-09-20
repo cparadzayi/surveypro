@@ -76,7 +76,8 @@ export interface CadastralPoint {
   /** Point metadata */
   status: PointStatus;
   description: string;
-  surveyDate: Date;
+  /** The recorded survey date, or null when the CSV carried none. Never today. */
+  surveyDate: Date | null;
   
   /** Document generation flags */
   includeInFieldBook: boolean;
@@ -177,7 +178,7 @@ export interface ElectronicFieldBook {
     };
     status: PointStatus;
     description: string;
-    surveyDate: Date;
+    surveyDate: Date | null;
     calculationsRef?: string;
     pageNumber: number;
   }>;

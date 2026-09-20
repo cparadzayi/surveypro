@@ -8,12 +8,13 @@ import type {
 } from '../types/cadastral';
 
 import {
-  parseSurveyDate,
   validatePointId,
   validateCoordinate,
   coordinatePrecision,
   qualityControl
 } from './cadastral-precision';
+
+import { parseSurveyDate, SURVEY_DATE_COLUMNS } from './surveyDate';
 
 import { capeLoToWGS84, type CapeLoPoint } from './coordinateTransform';
 import { normalizeBeaconName, findCaseFoldDuplicates } from '../../../app-shared/beaconName';
@@ -226,7 +227,9 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
         console.log('  - rawY:', rawY, 'isNaN:', isNaN(rawY));
         console.log('  - rawX:', rawX, 'isNaN:', isNaN(rawX));
       }
-      const parsedDate = record['date of survey'] ? new Date(record['date of survey']) : new Date();
+      // The column is headed "Date" in almost every file we receive; looking only
+      // for "date of survey" found nothing and silently dated the survey today.
+      const parsedDate = parseSurveyDate(getColumnValue(record, SURVEY_DATE_COLUMNS));
       const originalY = isNaN(rawY) ? 0 : rawY;
       const originalX = isNaN(rawX) ? 0 : rawX;
       

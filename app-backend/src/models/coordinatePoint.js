@@ -141,13 +141,13 @@ export default {
         for (const pt of chunk) {
           // ST_MakePoint(Westing, Southing) in project's native CRS
           // Store directly in project's SRID (NOT transformed to Lo 31)
-          values.push(`($${paramIndex}, $${paramIndex+1}, ST_SetSRID(ST_MakePoint($${paramIndex+2}, $${paramIndex+3}), ${srid}), $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6})`)
-          params.push(projectId, pt.name, pt.y, pt.x, pt.elevation || null, pt.description || null, pt.status || null)
-          paramIndex += 7
+          values.push(`($${paramIndex}, $${paramIndex+1}, ST_SetSRID(ST_MakePoint($${paramIndex+2}, $${paramIndex+3}), ${srid}), $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7})`)
+          params.push(projectId, pt.name, pt.y, pt.x, pt.elevation || null, pt.description || null, pt.status || null, pt.surveyDate || null)
+          paramIndex += 8
         }
 
         const sql = `
-          INSERT INTO coordinate_points (project_id, name, geom, elevation, description, status)
+          INSERT INTO coordinate_points (project_id, name, geom, elevation, description, status, survey_date)
           VALUES ${values.join(', ')}
           ON CONFLICT (project_id, name)
           DO UPDATE SET
@@ -155,6 +155,7 @@ export default {
             elevation = EXCLUDED.elevation,
             description = EXCLUDED.description,
             status = EXCLUDED.status,
+            survey_date = EXCLUDED.survey_date,
             updated_at = CURRENT_TIMESTAMP
           RETURNING *
         `

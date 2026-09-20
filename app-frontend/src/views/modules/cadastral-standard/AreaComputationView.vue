@@ -1041,7 +1041,7 @@ async function exportReport() {
       projectTitle: workflowState.surveyorInfo?.surveyOf || workflowState.projectInfo.name || 'Unnamed Project',
       surveyorName: workflowState.surveyorInfo?.landSurveyor || 'Unknown Surveyor',
       surveyorLicense: workflowState.surveyorInfo?.licenseNumber,
-      surveyDate: workflowState.surveyorInfo?.surveyDate || new Date().toISOString().split('T')[0],
+      surveyDate: workflowState.surveyorInfo?.surveyDate || '',
       centralMeridian: centralMeridian.value,
       district: workflowState.projectInfo.district
     };

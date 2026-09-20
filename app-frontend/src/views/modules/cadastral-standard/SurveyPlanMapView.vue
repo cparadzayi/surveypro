@@ -4671,7 +4671,7 @@ async function generateComprehensivePDF() {
       x: parseFloat(coord.x),
       status: coord.status || 'P',
       description: coord.description || coord.desc || '',
-      surveyDate: coord.surveyDate || workflowState?.surveyorInfo?.surveyDate || config.value.surveyDate || new Date().toISOString().split('T')[0]
+      surveyDate: coord.surveyDate || workflowState?.surveyorInfo?.surveyDate || config.value.surveyDate || ''
     }))
     
     console.log(`[ComprehensivePDF] 📊 Converted ${surveyPoints.length} survey points for PDF generation`)
@@ -4688,7 +4688,7 @@ async function generateComprehensivePDF() {
     const projectName = props.projectInfo.designation || workflowSurveyorInfo?.surveyOf || projectSetupData?.project_name || 'Survey Project'
     const surveyorName = workflowSurveyorInfo?.landSurveyor || config.value.surveyorName || props.projectInfo.surveyorName || 'Licensed Surveyor'
     const licenseNumber = workflowSurveyorInfo?.licenseNumber || config.value.licenseNumber || props.projectInfo.licenseNumber || ''
-    const surveyDate = workflowSurveyorInfo?.surveyDate || config.value.surveyDate || new Date().toISOString().split('T')[0]
+    const surveyDate = workflowSurveyorInfo?.surveyDate || config.value.surveyDate || ''
     const district = props.projectInfo.district || projectSetupData?.district || 'Unknown District'
 
     // Existence check for enclosed documents (ticks + optional warning), scoped to

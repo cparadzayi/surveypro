@@ -256,6 +256,8 @@ export async function batchCreateCoordinatePoints(projectId: number, points: Arr
   elevation?: number
   description?: string
   status?: string
+  /** yyyy-mm-dd as recorded in the field. Persisted to coordinate_points.survey_date. */
+  surveyDate?: string | null
 }>, surveyClass: 'B' | 'C' = 'B') {
   const r = await api.post<{ ok: boolean; data: CoordinatePoint[]; count: number; conflicts: DuplicateConflict[] }>('/coordinate-points/batch', {
     project_id: projectId.toString(),

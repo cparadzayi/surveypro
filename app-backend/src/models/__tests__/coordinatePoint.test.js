@@ -38,11 +38,22 @@ function fakeDb({ insertRows = [] } = {}) {
   return { calls, state, query }
 }
 
+// How many params one row consumes, derived rather than hardcoded: the stride
+// changes whenever a column is added (survey_date took it from 7 to 8), and a
+// stale constant silently reads the wrong slot instead of failing loudly.
+//
+// Counted from the rows rather than the column list, because the two differ:
+// geom is one column but two params (ST_MakePoint takes westing and southing).
+// One ST_SetSRID appears per row, so that is the row count.
+const paramsPerRow = (call) =>
+  call.params.length / (call.sql.match(/ST_SetSRID/g) || []).length
+
 const insertedNames = (db) => db.calls
   .filter(c => /INSERT INTO coordinate_points/.test(c.sql))
   .flatMap(c => {
+    const stride = paramsPerRow(c)
     const names = []
-    for (let i = 1; i < c.params.length; i += 7) names.push(c.params[i])
+    for (let i = 1; i < c.params.length; i += stride) names.push(c.params[i])
     return names
   })
 const singleInsert = (db) => db.calls

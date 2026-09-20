@@ -3,6 +3,7 @@ import type { CadastralWorkflowState, CadastralPoint } from '../types/cadastral'
 import type { SiteCalibration } from '../utils/siteCalibration'
 import { useSurveyLookupStore } from '../stores/surveyLookup'
 import { paginateFieldBook } from '../utils/fieldBookPagination'
+import { parseSurveyDate, toISODate } from '../utils/surveyDate'
 import api from '../services/api'
 
 // Project linkage for database persistence
@@ -190,7 +191,7 @@ function setImportedPoints(points: CadastralPoint[]) {
         x: p.original.x,
         status: p.status,
         description: p.description,
-        survey_date: p.surveyDate.toISOString()
+        survey_date: toISODate(p.surveyDate) || null
       }));
       
       console.log('===== STAGE 7: SAVE TO DATABASE (Mapping) ===== ');
@@ -377,7 +378,7 @@ async function loadWorkflowState(surveyProjectId: number) {
           },
           status: p.status,
           description: p.description,
-          surveyDate: new Date(p.survey_date || Date.now()),
+          surveyDate: parseSurveyDate(p.survey_date),
           includeInFieldBook: true,
           includeInCoordinateList: true
         }))

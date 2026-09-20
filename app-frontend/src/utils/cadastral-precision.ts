@@ -97,52 +97,6 @@ export function validateCoordinate(value: number, context: 'fieldbook' | 'coordi
 }
 
 /**
- * Parse date from various formats commonly used in survey data
- * 
- * @param dateString - Date string in various formats
- * @returns Parsed Date object or null if invalid
- */
-export function parseSurveyDate(dateString: string): Date | null {
-  if (!dateString || typeof dateString !== 'string') {
-    return null;
-  }
-  
-  // Try various date formats commonly used
-  const formats = [
-    // M/D/YYYY (e.g., "9/12/2025")
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
-    // DD/MM/YYYY (e.g., "12/09/2025")
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
-    // YYYY-MM-DD (ISO format)
-    /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
-    // DD-MM-YYYY
-    /^(\d{1,2})-(\d{1,2})-(\d{4})$/,
-  ];
-  
-  const cleanDateString = dateString.trim();
-  
-  // Try M/D/YYYY format first (most common in samples)
-  const mdyMatch = cleanDateString.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (mdyMatch) {
-    const month = parseInt(mdyMatch[1], 10);
-    const day = parseInt(mdyMatch[2], 10);
-    const year = parseInt(mdyMatch[3], 10);
-    
-    // Create date and validate
-    const date = new Date(year, month - 1, day);
-    if (date.getFullYear() === year && 
-        date.getMonth() === month - 1 && 
-        date.getDate() === day) {
-      return date;
-    }
-  }
-  
-  // Fallback to standard Date parsing
-  const parsed = new Date(cleanDateString);
-  return isNaN(parsed.getTime()) ? null : parsed;
-}
-
-/**
  * Validate point identifier format
  * 
  * @param pointId - Point identifier string

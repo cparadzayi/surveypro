@@ -231,13 +231,20 @@ const INSET_SCALES = [5000, 10000, 20000, 25000, 50000, 100000, 200000, 250000, 
 /**
  * The control point ids the surveyor chose, read out of the workflow state.
  *
- * Control Point Selection is the step that records them; older projects carry
- * the same list under project setup, so both are accepted. Anything that is not
- * a usable id is dropped rather than fetched and 404'd.
+ * Two shapes reach these views, which is why this reads three places. The
+ * database column carries step_data, and Control Point Selection is the step
+ * that records the ids there (older projects carry the same list under project
+ * setup). The composable's reactive state has no step_data at all -- it puts
+ * them on projectInfo -- and that is the shape the Survey Plan view is handed,
+ * so reading step_data alone found nothing and the locality inset stayed empty.
+ * The in-memory copy is preferred because it is the live one.
+ *
+ * Anything that is not a usable id is dropped rather than fetched and 404'd.
  */
 export function selectedControlPointIds(workflowState: any): number[] {
   const steps = workflowState?.step_data ?? {}
   const ids =
+    workflowState?.projectInfo?.controlPointIds ??
     steps['control-point-selection']?.control_point_ids ??
     steps['project-setup']?.control_point_ids ??
     []

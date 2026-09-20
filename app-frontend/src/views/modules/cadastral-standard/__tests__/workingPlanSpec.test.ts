@@ -417,6 +417,23 @@ describe('selectedControlPointIds', () => {
     })).toEqual([1703])
   })
 
+  it('reads the in-memory workflow shape the views actually hold', () => {
+    // Two shapes reach these views. The database column carries step_data; the
+    // composable's reactive state does not -- it puts the ids on projectInfo.
+    // Reading only step_data found nothing on the Survey Plan view, so the
+    // locality inset was still empty after the control points were loaded.
+    expect(selectedControlPointIds({
+      projectInfo: { controlPointIds: [1703, 1677, 770, 787] },
+    })).toEqual([1703, 1677, 770, 787])
+  })
+
+  it('prefers the in-memory ids, which are the live ones', () => {
+    expect(selectedControlPointIds({
+      projectInfo: { controlPointIds: [1703] },
+      step_data: { 'control-point-selection': { control_point_ids: [42] } },
+    })).toEqual([1703])
+  })
+
   it('is empty when no control was chosen', () => {
     expect(selectedControlPointIds(undefined)).toEqual([])
     expect(selectedControlPointIds({})).toEqual([])

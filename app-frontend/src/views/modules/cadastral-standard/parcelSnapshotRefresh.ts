@@ -74,7 +74,9 @@ export function planCoordinateRefresh(dbParcels: any[], dbPoints: any[]): Snapsh
     if (parcel.parcel_status === 'orphaned' || parcel.status === 'orphaned') continue
 
     const existing = parcel.metadata?.cape_lo_points
-    const ring = parcel.geometry?.coordinates?.[0]
+    // listLandParcels returns the polygon JSON under `geom` (ST_AsGeoJSON);
+    // accept `geometry` too for client-built parcels that predate that contract.
+    const ring = parcel.geom?.coordinates?.[0] ?? parcel.geometry?.coordinates?.[0]
     if (!Array.isArray(existing) || !Array.isArray(ring)) {
       skipped.push(designation)
       continue

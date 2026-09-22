@@ -13,6 +13,14 @@ function parcel(id: number, designation: string, ring: Array<[number, number]>, 
   }
 }
 
+/** Real listLandParcels row: `geom` holds ST_AsGeoJSON (GeometryCollection aliased too). */
+function apiParcel(id: number, designation: string, ring: Array<[number, number]>, capes: any[]) {
+  const p = parcel(id, designation, ring, capes) as any
+  delete p.geometry
+  p.geom = { type: 'Polygon', coordinates: (parcel(id, designation, ring, capes) as any).geometry.coordinates }
+  return p
+}
+
 /** Registry row shape as returned by listCoordinatePoints. */
 const reg = (name: string, y: number, x: number) => ({ id: name, name, y, x })
 
@@ -33,6 +41,19 @@ describe('planCoordinateRefresh', () => {
     ])
     expect(plan.blocked).toEqual([])
     expect(plan.skipped).toEqual([])
+  })
+
+  test('rebuilds a real API-shaped parcel (geom field, not geometry)', () => {
+    const plan = planCoordinateRefresh(
+      [apiParcel(1, 'STAND 1', [[10, 20], [30, 40], [50, 60]], [
+        { id: 'A', y: 10, x: 20 }, { id: 'B', y: 30, x: 40 }, { id: 'C', y: 50, x: 60 },
+      ])],
+      [reg('A', 11, 21), reg('B', 31, 41), reg('C', 50, 60)]
+    )
+    expect(plan.writes).toHaveLength(1)
+    expect(plan.writes[0]).toMatchObject({ parcelId: 1, designation: 'STAND 1' })
+    expect(plan.skipped).toEqual([])
+    expect(plan.blocked).toEqual([])
   })
 
   test('skips a parcel whose vertices are already current', () => {

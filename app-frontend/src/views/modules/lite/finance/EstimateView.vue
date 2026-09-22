@@ -36,7 +36,7 @@
             <div><span class="text-gray-500">Location:</span> {{ headerLocation || '—' }}</div>
             <div><span class="text-gray-500">Quote #:</span> {{ headerQuoteNo || '—' }}</div>
             <div><span class="text-gray-500">Prepared by:</span> {{ headerPreparedBy || '—' }}</div>
-            <div><span class="text-gray-500">Date:</span> {{ headerDate || new Date().toLocaleDateString() }}</div>
+            <div><span class="text-gray-500">Date:</span> {{ headerDate || formatDateDDMMYYYY(new Date()) }}</div>
           </div>
         </div>
 
@@ -118,7 +118,7 @@
           </label>
           <label class="block text-sm">
             <span class="text-xs text-gray-600">Date</span>
-            <input v-model="headerDate" type="date" class="border rounded w-full px-2 py-1" />
+            <DateInputDDMMYYYY v-model="headerDate" class="border rounded w-full px-2 py-1" />
           </label>
         </div>
       </section>
@@ -248,7 +248,7 @@
             <div><span class="text-gray-500">Location:</span> {{ headerLocation || '—' }}</div>
             <div><span class="text-gray-500">Quote #:</span> {{ headerQuoteNo || '—' }}</div>
             <div><span class="text-gray-500">Prepared by:</span> {{ headerPreparedBy || '—' }}</div>
-            <div><span class="text-gray-500">Date:</span> {{ headerDate || new Date().toLocaleDateString() }}</div>
+            <div><span class="text-gray-500">Date:</span> {{ headerDate || formatDateDDMMYYYY(new Date()) }}</div>
           </div>
         </div>
         <!-- Detailed table -->
@@ -307,6 +307,8 @@
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { loadTariff } from '../../../../services/tariff'
 import { computeEstimate, computeEffectivePegs, type EstimateResult } from '../../../../services/estimate'
+import { formatDateDDMMYYYY } from '../../../../utils/dateFormat'
+import DateInputDDMMYYYY from '../../../../components/DateInputDDMMYYYY.vue'
 
 // Mode
 const mode = ref<'CSV'|'CALC'>('CSV')

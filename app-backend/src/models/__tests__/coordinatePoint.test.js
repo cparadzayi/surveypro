@@ -63,10 +63,12 @@ const singleInsert = (db) => db.calls
 describe('CoordinatePoint.batchCreate — repeat vs conflict (bnr-part8)', () => {
 
   test('exactly-coincident duplicates average to a single stored row (repeat)', async () => {
-    // With f = the observations' own separation, only a 0 m spread stays within
-    // the para 7(1) tolerance (distanceToleranceM returns 0 for f <= 0). Two rows
-    // carrying identical coords are the same peg re-listed — averaged, not conflicted.
-    // (A case-fold pair like 2474a + 2474A is a 400 per Decision 15, so no fold here.)
+    // With f = the observations' own separation, only separations within the
+    // para 7(5) Limits-of-Error window — tolerance >= separation, i.e. ~0.13 mm (B) /
+    // ~0.28 mm (C) or less — classify as repeats; distanceToleranceM returns 0 for
+    // f <= 0, so a 0 m spread always repeats. Two rows carrying identical coords are
+    // the same peg re-listed — averaged, not conflicted. (A case-fold pair like
+    // 2474a + 2474A is a 400 per Decision 15, so no fold here.)
     expect(classifyDuplicateGroup([{ y: 100, x: 200 }, { y: 100, x: 200 }], 'B').kind).toBe('repeat')
 
     const db = fakeDb({ insertRows: [{ id: 1, name: '2474A', project_id: 7 }] })
@@ -81,10 +83,11 @@ describe('CoordinatePoint.batchCreate — repeat vs conflict (bnr-part8)', () =>
     expect(insertedNames(db)).toEqual(['2474A'])
   })
 
-  test('any nonzero separation is a conflict — first observation canonical, rest escape as _dupl', async () => {
-    // Even ~0.1 mm apart exceeds the tolerance (0.01·√(0.075f + 0.00015f²) < f for f > 0),
-    // so every distinct position claiming one name is surfaced, never silently averaged.
-    expect(classifyDuplicateGroup([{ y: 100, x: 200 }, { y: 100, x: 200.0001 }], 'B').kind).toBe('conflict')
+  test('any nonzero separation beyond the ~0.13 mm repeat window is a conflict — first observation canonical, rest escape as _dupl', async () => {
+    // A 1 mm spread already exceeds the para 7(5) tolerance (0.04·√(0.075f + 0.00015f²)
+    // < f for f > ~0.13 mm), so every genuinely distinct position claiming one name is
+    // surfaced, never silently averaged.
+    expect(classifyDuplicateGroup([{ y: 100, x: 200 }, { y: 100, x: 200.001 }], 'B').kind).toBe('conflict')
 
     const db = fakeDb({ insertRows: [
       { id: 1, name: '5000A', project_id: 7 },

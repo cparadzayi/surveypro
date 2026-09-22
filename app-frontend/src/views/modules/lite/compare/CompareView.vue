@@ -11,6 +11,27 @@
         <div class="px-4 py-2.5 border-b border-gray-200 text-xs font-medium text-[#1a3a5c]">
           Configuration
         </div>
+
+        <!-- Comparison check selector: three independent SI 727 comparison methods -->
+        <div class="px-4 py-3 border-b border-gray-100">
+          <label class="block text-[11px] text-gray-500 mb-1.5">Comparison check — select one</label>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="m in CHECK_METHODS"
+              :key="m.id"
+              type="button"
+              @click="setCheckMethod(m.id)"
+              :class="[
+                'px-3 py-1.5 text-xs rounded border transition-colors',
+                checkMethod === m.id
+                  ? 'bg-[#1a3a5c] text-white border-[#1a3a5c] font-medium'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50',
+              ]"
+            >{{ m.label }}</button>
+          </div>
+          <p class="text-[10px] text-gray-400 mt-1.5">{{ checkMethodHint }}</p>
+        </div>
+
         <div class="flex flex-wrap gap-4 items-end px-4 py-3">
 
           <div>
@@ -24,9 +45,13 @@
               <option value="B">Class B</option>
               <option value="C">Class C</option>
             </select>
+            <p class="text-[10px] text-gray-400 mt-0.5">
+              <template v-if="checkMethod === 'coords'">→ co-ordinate limit ±{{ posLimit.toFixed(4) }} m (95% 2-D)</template>
+              <template v-else-if="checkMethod === 'edges'">→ Second Schedule paras 7(1) &amp; 8</template>
+            </p>
           </div>
 
-          <div>
+          <div v-if="checkMethod === 'wtest'">
             <label class="block text-[11px] text-gray-500 mb-1">A priori σ₀ (metres)</label>
             <input
               type="number" step="0.001" min="0.001"
@@ -38,7 +63,7 @@
             <p class="text-[10px] text-gray-400 mt-0.5">{{ sigma0Note }}</p>
           </div>
 
-          <div>
+          <div v-if="checkMethod === 'wtest'">
             <label class="block text-[11px] text-gray-500 mb-1">Confidence level</label>
             <select
               :value="critW"
@@ -266,7 +291,9 @@
         <div v-show="activeTab === 'schedule'" class="p-4">
           <div class="flex flex-wrap justify-between items-center mb-3 gap-2 text-xs text-gray-500">
             <span>
-              σ₀ = {{ sigma0.toFixed(3) }} m · Critical W = {{ critW }} ·
+              <template v-if="checkMethod === 'wtest'">σ₀ = {{ sigma0.toFixed(3) }} m · Critical W = {{ critW }} ·</template>
+              <template v-else-if="checkMethod === 'coords'">SI 727 class {{ surveyClass }} · co-ordinate limit ±{{ posLimit.toFixed(4) }} m (95% 2-D) ·<template v-if="result.verdict">network median Δ/limit {{ result.verdict.median.toFixed(3) }} · reject cut {{ result.verdict.cut.toFixed(3) }} ·</template></template>
+              <template v-else>SI 727 class {{ surveyClass }} · Second Schedule limits (paras 7(1), 8) ·</template>
               <b class="text-blue-600">{{ acceptedCount }} Accepted</b>
               <template v-if="rejectedCount > 0">
                 · <b class="text-red-600">{{ rejectedCount }} Rejected</b>
@@ -287,13 +314,18 @@
                                          bg-red-50 border-b border-gray-300">Survey data</th>
                   <th colspan="2" class="text-center px-2 py-1 font-medium text-blue-700
                                          bg-blue-50 border-b border-gray-300">Raw diff.</th>
-                  <th colspan="2" class="text-center px-2 py-1 font-medium text-blue-700
-                                         bg-blue-50 border-b border-gray-300">Residuals</th>
-                  <th colspan="2" class="text-center px-2 py-1 font-medium text-blue-700
-                                         bg-blue-50 border-b border-gray-300">Pos. residual</th>
-                  <th rowspan="2" class="text-right px-2 py-1 font-medium text-blue-700
+                  <template v-if="checkMethod === 'wtest'">
+                    <th colspan="2" class="text-center px-2 py-1 font-medium text-blue-700
+                                           bg-blue-50 border-b border-gray-300">Residuals</th>
+                    <th colspan="2" class="text-center px-2 py-1 font-medium text-blue-700
+                                           bg-blue-50 border-b border-gray-300">Pos. residual</th>
+                    <th rowspan="2" class="text-right px-2 py-1 font-medium text-blue-700
+                                           bg-blue-50 border-b-2 border-gray-300 align-bottom
+                                           whitespace-nowrap">W-max</th>
+                  </template>
+                  <th v-if="checkMethod === 'coords'" rowspan="2" class="text-center px-2 py-1 font-medium text-blue-700
                                          bg-blue-50 border-b-2 border-gray-300 align-bottom
-                                         whitespace-nowrap">W-max</th>
+                                         whitespace-nowrap">Δ/limit</th>
                   <th rowspan="2" class="text-center px-2 py-1 font-medium text-gray-600
                                          bg-white border-b-2 border-gray-300 align-bottom">Status</th>
                 </tr>
@@ -304,10 +336,12 @@
                   <th class="text-right px-2 py-1 font-medium text-red-600 bg-red-50 border-b border-gray-200 whitespace-nowrap">X (m)</th>
                   <th class="text-right px-2 py-1 font-medium text-blue-700 bg-blue-50 border-b border-gray-200 whitespace-nowrap">ΔY (m)</th>
                   <th class="text-right px-2 py-1 font-medium text-blue-700 bg-blue-50 border-b border-gray-200 whitespace-nowrap">ΔX (m)</th>
-                  <th class="text-right px-2 py-1 font-medium text-blue-700 bg-blue-50 border-b border-gray-200 whitespace-nowrap">vY (m)</th>
-                  <th class="text-right px-2 py-1 font-medium text-blue-700 bg-blue-50 border-b border-gray-200 whitespace-nowrap">vX (m)</th>
-                  <th class="text-right px-2 py-1 font-medium text-blue-700 bg-blue-50 border-b border-gray-200 whitespace-nowrap">Dist (m)</th>
-                  <th class="text-right px-2 py-1 font-medium text-blue-700 bg-blue-50 border-b border-gray-200 whitespace-nowrap">Brg (S)</th>
+                  <template v-if="checkMethod === 'wtest'">
+                    <th class="text-right px-2 py-1 font-medium text-blue-700 bg-blue-50 border-b border-gray-200 whitespace-nowrap">vY (m)</th>
+                    <th class="text-right px-2 py-1 font-medium text-blue-700 bg-blue-50 border-b border-gray-200 whitespace-nowrap">vX (m)</th>
+                    <th class="text-right px-2 py-1 font-medium text-blue-700 bg-blue-50 border-b border-gray-200 whitespace-nowrap">Dist (m)</th>
+                    <th class="text-right px-2 py-1 font-medium text-blue-700 bg-blue-50 border-b border-gray-200 whitespace-nowrap">Brg (S)</th>
+                  </template>
                 </tr>
               </thead>
               <tbody>
@@ -330,23 +364,31 @@
                   <td class="px-2 py-1.5 text-right text-red-600 font-medium whitespace-nowrap">{{ f3(p.xS) }}</td>
                   <td class="px-2 py-1.5 text-right text-blue-700 whitespace-nowrap">{{ f4s(p.dY) }}</td>
                   <td class="px-2 py-1.5 text-right text-blue-700 whitespace-nowrap">{{ f4s(p.dX) }}</td>
-                  <td class="px-2 py-1.5 text-right whitespace-nowrap"
-                      :class="p.finalStatus === 'REJECT' ? 'text-red-600' : 'text-blue-700'">
-                    {{ f4s(p.vY) }}
-                  </td>
-                  <td class="px-2 py-1.5 text-right whitespace-nowrap"
-                      :class="p.finalStatus === 'REJECT' ? 'text-red-600' : 'text-blue-700'">
-                    {{ f4s(p.vX) }}
-                  </td>
-                  <td class="px-2 py-1.5 text-right whitespace-nowrap font-medium"
-                      :class="p.finalStatus === 'REJECT' ? 'text-red-600' : 'text-blue-700'">
-                    {{ f4(p.resDist) }}
-                  </td>
-                  <td class="px-2 py-1.5 text-right text-blue-700 whitespace-nowrap">{{ formatDMS(p.resBrg) }}</td>
-                  <td class="px-2 py-1.5 text-right whitespace-nowrap font-medium"
-                      :class="wColour(p)">
-                    {{ p.wMax != null ? p.wMax.toFixed(2) : '—' }}
-                  </td>
+                  <template v-if="checkMethod === 'coords'">
+                    <td class="px-2 py-1.5 text-right whitespace-nowrap"
+                        :class="(p.severity ?? 0) > 1 ? 'text-red-600 font-medium' : 'text-gray-500'">
+                      {{ (p.severity ?? 0).toFixed(3) }}
+                    </td>
+                  </template>
+                  <template v-if="checkMethod === 'wtest'">
+                    <td class="px-2 py-1.5 text-right whitespace-nowrap"
+                        :class="p.finalStatus === 'REJECT' ? 'text-red-600' : 'text-blue-700'">
+                      {{ f4s(p.vY) }}
+                    </td>
+                    <td class="px-2 py-1.5 text-right whitespace-nowrap"
+                        :class="p.finalStatus === 'REJECT' ? 'text-red-600' : 'text-blue-700'">
+                      {{ f4s(p.vX) }}
+                    </td>
+                    <td class="px-2 py-1.5 text-right whitespace-nowrap font-medium"
+                        :class="p.finalStatus === 'REJECT' ? 'text-red-600' : 'text-blue-700'">
+                      {{ f4(p.resDist) }}
+                    </td>
+                    <td class="px-2 py-1.5 text-right text-blue-700 whitespace-nowrap">{{ formatDMS(p.resBrg) }}</td>
+                    <td class="px-2 py-1.5 text-right whitespace-nowrap font-medium"
+                        :class="wColour(p)">
+                      {{ p.wMax != null ? p.wMax.toFixed(2) : '—' }}
+                    </td>
+                  </template>
                   <td class="px-2 py-1.5 text-center whitespace-nowrap">
                     <span
                       :class="[
@@ -368,12 +410,20 @@
             <span><b class="text-gray-900">BLACK</b>: Original (historical) data</span>
             <span><b class="text-red-600">RED</b>: Survey data</span>
             <span><b class="text-blue-700">BLUE</b>: Computed data (not green — Sec. 67(5))</span>
-            <span>W-test critical value: {{ critW }} · Residuals after Helmert transformation · Bearings South-oriented (0°=S, 90°=W)</span>
+            <template v-if="checkMethod === 'wtest'">
+              <span>W-test critical value: {{ critW }} · Residuals after Helmert transformation · Bearings South-oriented (0°=S, 90°=W)</span>
+            </template>
+            <template v-else-if="checkMethod === 'coords'">
+              <span>Acceptance: two-gate consistency verdict — reject a beacon only when it stands apart from the network (Δ/limit &gt; 1.25×median) AND exceeds the class limit (Δ/limit &gt; 1) — no adjustment run</span>
+            </template>
+            <template v-else>
+              <span>Acceptance: SI 727 Second Schedule severity verdict on line checks — no adjustment run</span>
+            </template>
           </div>
         </div>
 
         <!-- ── TRANSFORMATION TAB ─────────────────────────────────────────── -->
-        <div v-show="activeTab === 'trans'" class="p-4">
+        <div v-if="activeTab === 'trans' && checkMethod === 'wtest'" class="p-4">
           <h2 class="text-xs font-medium text-[#1a3a5c] mb-3">
             Helmert 4-parameter similarity transformation
           </h2>
@@ -395,13 +445,13 @@
             X<sub>survey</sub> = T<sub>X</sub> + b·Y<sub>hist</sub> + a·X<sub>hist</sub>
             <br><span class="mt-1 block">{{ transformInterpretation }}</span>
             <span class="mt-1 block text-[11px] text-blue-600">
-              Translation is reported at the network centroid (Y<sub>c</sub> = {{ f3(result.adj.params.yc) }}, X<sub>c</sub> = {{ f3(result.adj.params.xc) }}).
+              Translation is reported at the network centroid (Y<sub>c</sub> = {{ result?.adj?.params ? f3(result.adj.params.yc) : '—' }}, X<sub>c</sub> = {{ result?.adj?.params ? f3(result.adj.params.xc) : '—' }}).
             </span>
           </div>
         </div>
 
         <!-- ── STATISTICS TAB ─────────────────────────────────────────────── -->
-        <div v-show="activeTab === 'stats'" class="p-4">
+        <div v-if="activeTab === 'stats' && checkMethod === 'wtest'" class="p-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             <!-- Summary cards -->
@@ -428,10 +478,10 @@
                 ]"
               >
                 <b>Chi-square test (95 % CI):</b><br>
-                χ² = {{ result.adj.stats.chi2?.toFixed(4) }} must fall in
-                [{{ result.adj.stats.chi2L?.toFixed(2) }},
-                {{ result.adj.stats.chi2U?.toFixed(2) }}]
-                for DOF = {{ result.adj.stats.DOF }}<br>
+                χ² = {{ result?.adj?.stats?.chi2?.toFixed(4) }} must fall in
+                [{{ result?.adj?.stats?.chi2L?.toFixed(2) }},
+                {{ result?.adj?.stats?.chi2U?.toFixed(2) }}]
+                for DOF = {{ result?.adj?.stats?.DOF }}<br>
                 <b>{{
                   chi2Passes
                     ? '✓ Test PASSES — variance consistent with a priori accuracy'
@@ -473,11 +523,11 @@
               </table>
 
               <div
-                v-if="result.converged"
+                v-if="result?.converged"
                 class="mt-3 bg-green-50 border border-green-200 rounded px-3 py-2
                        text-xs text-green-700"
               >
-                ✓ Converged in {{ result.log.length }} iteration(s).
+                ✓ Converged in {{ result?.log?.length }} iteration(s).
                 {{ rejectedCount }} beacon(s) rejected.
               </div>
             </div>
@@ -577,7 +627,14 @@
               <b class="text-blue-700">{{ result.edges.summary.bothPass }}</b> of
               {{ result.edges.summary.totalLines }} lines pass both checks ·
               SI 727 mean scale {{ result.edges.summary.meanScale != null ? result.edges.summary.meanScale.toFixed(8) : '—' }},
-              swing {{ result.edges.summary.meanSwingDeg != null ? formatDMS(result.edges.summary.meanSwingDeg) : '—' }}
+              network swing ω̂ =
+              {{ result.edges.summary.networkSwingSec != null ? (result.edges.summary.networkSwingSec >= 0 ? '+' : '') + result.edges.summary.networkSwingSec.toFixed(1) + '″' : '—' }}
+              (weighted to the longest rays)
+            </div>
+            <div v-if="result.edges.summary.networkSwingWarn" class="mb-2 text-[11px] text-amber-700">
+              ⚠ Network swung by ω̂ relative to the historical datum — orientation offset beyond the
+              class positional budget at the median ray ({{ result.edges.summary.networkSwingSec.toFixed(1) }}″ vs
+              allow {{ (result.edges.summary.posLimit * 206265 / result.edges.summary.lmed).toFixed(1) }}″). Not a per-beacon finding.
             </div>
             <div class="overflow-x-auto">
               <table class="min-w-full text-xs border-collapse">
@@ -592,6 +649,7 @@
                     <th class="text-right px-2 py-1.5">Hist dir (S)</th>
                     <th class="text-right px-2 py-1.5">Survey dir (S)</th>
                     <th class="text-right px-2 py-1.5">Δdir (″)</th>
+                    <th class="text-right px-2 py-1.5">Δdir−ω̂ (″)</th>
                     <th class="text-right px-2 py-1.5">dir tol (″)</th>
                     <th class="text-center px-2 py-1.5">dir</th>
                   </tr>
@@ -611,6 +669,7 @@
                     <td class="px-2 py-1.5 text-right whitespace-nowrap text-gray-900">{{ formatDMS(e.brgH) }}</td>
                     <td class="px-2 py-1.5 text-right whitespace-nowrap text-red-600">{{ formatDMS(e.brgS) }}</td>
                     <td class="px-2 py-1.5 text-right">{{ e.dirDiffSec.toFixed(1) }}</td>
+                    <td class="px-2 py-1.5 text-right">{{ e.swingResidSec.toFixed(1) }}</td>
                     <td class="px-2 py-1.5 text-right text-gray-500">{{ e.dirAllowSec.toFixed(1) }}</td>
                     <td class="px-2 py-1.5 text-center" :class="e.dirOk ? 'text-blue-600' : 'text-red-600 font-medium'">{{ e.dirOk ? '✓' : '✗' }}</td>
                   </tr>
@@ -618,17 +677,19 @@
               </table>
             </div>
             <p class="text-[10px] text-gray-400 mt-2">
-              Distance tolerance = factor·√(0.075f + 0.00015f²), f = shorter line. Direction tolerance = K/(S+300)″,
-              S = historical ray length. Δdir = raw (Survey − Hist) direction difference in seconds, South-oriented —
-              an independent SI 727 check (does not use the Helmert swing).
+              Distance tolerance = factor·√(0.075f + 0.00015f²), f = shorter line (Second Schedule para 7(5) Limits of Error).
+              Directions are judged on the swing principle: Δdir = raw (Survey − Hist) swing in seconds; the check removes the
+              network swing ω̂ (length-weighted median — the longest rays set it) and compares each line's residual Δdir − ω̂ to the
+              class positional limit as an angle, tol = 2.45·σ₀·206265/S (S = historical ray length). A point whose edges do not
+              show consistent distances and directions is suspect. Independent of the Helmert fit.
             </p>
           </template>
         </div>
 
         <!-- ── RELIABILITY & VALIDATION TAB ───────────────────────────────── -->
-        <div v-show="activeTab === 'reliability'" class="p-4">
+        <div v-if="activeTab === 'reliability' && checkMethod === 'wtest'" class="p-4">
           <div class="text-xs text-gray-500 mb-2">
-            Redundancy numbers (Σ = DOF {{ result.adj.stats.DOF }}): r→1 well controlled, r→0 poorly controlled ·
+            Redundancy numbers (Σ = DOF {{ result?.adj?.stats?.DOF }}): r→1 well controlled, r→0 poorly controlled ·
             Leave-one-out validation —
             <b class="text-blue-700">RMS {{ result.loo && result.loo.rmsLoo != null ? result.loo.rmsLoo.toFixed(4) + ' m' : '—' }}</b>,
             max {{ result.loo && result.loo.maxLoo != null ? result.loo.maxLoo.toFixed(4) + ' m' : '—' }}
@@ -681,8 +742,9 @@ import ModuleScaffold from '@/components/scaffold/ModuleScaffold.vue'
 import { useSurveyAdjustmentStore } from '@/stores/surveyAdjustmentStore'
 import { f3, f4, f4s, formatDMS, SAMPLE_DATA } from '@/utils/surveyMath'
 import { generateBeaconAdjustmentReport } from '@/utils/beaconAdjustmentReport'
-import { medianPairwiseDistance } from '@/utils/si727'
+import { medianPairwiseDistance, suggestedSigma0 } from '@/utils/si727'
 import { parseBeaconCsv, CSV_HEADER } from '@/utils/beaconComparisonCsv'
+import { formatDateDDMMYYYY } from '@/utils/dateFormat'
 
 const props = defineProps({ embedded: { type: Boolean, default: false } })
 
@@ -703,10 +765,31 @@ const scaffoldProps = computed(() =>
 
 // ── STORE ─────────────────────────────────────────────────────────────────────
 const store = useSurveyAdjustmentStore()
-const { points, sigma0, critW, surveyClass, sigma0Auto, result, error } = storeToRefs(store)
+const { points, sigma0, critW, surveyClass, sigma0Auto, method: checkMethod, result, error } = storeToRefs(store)
 
 // ── LOCAL UI STATE ────────────────────────────────────────────────────────────
 const activeTab = ref('schedule')
+const CHECK_METHODS = [
+  { id: 'coords', label: 'Co-ordinates — §67(5)' },
+  { id: 'edges',  label: 'Edge compliance — SI 727 classes' },
+  { id: 'wtest',  label: 'Iterative Baarda W-test' },
+]
+const checkMethodHint = computed(() => {
+  const hints = {
+    coords: 'Compares each beacon’s survey co-ordinates against the historical record per §67(5); a beacon is adopted when its displacement is within the class co-ordinate limit (no Helmert, no W-test).',
+    edges: 'Checks every inter-beacon line: distances against the SI 727 Second Schedule para 7(5) Limits of Error, directions on the swing principle (each line\'s swing residual after the length-weighted network swing ω̂, versus the class positional limit as an angle); the severity verdict flags the beacons presumed bad (no adjustment).',
+    wtest: '4-parameter Helmert least-squares with iterative Baarda W-test data snooping and χ² consistency checking.',
+  }
+  return hints[checkMethod.value]
+})
+const posLimit = computed(() => {
+  const s = suggestedSigma0(points.value, surveyClass.value)
+  return 2.45 * (s > 0 ? s : 0.01)
+})
+function setCheckMethod(id) {
+  store.setCheckMethod(id)
+  activeTab.value = TABS.value?.[0]?.id ?? 'schedule'
+}
 const sigma0Note = computed(() => {
   if (!sigma0Auto.value) return 'manual override'
   const L = medianPairwiseDistance(points.value, false)
@@ -731,7 +814,7 @@ function downloadReport() {
     priorSurvey: priorSurvey.value,
     sigma0: sigma0.value,
     critW: critW.value,
-    date: new Date().toLocaleDateString('en-CA'),
+    date: formatDateDDMMYYYY(new Date()),
   })
 }
 
@@ -772,14 +855,28 @@ async function handleUpload(event) {
   }
 }
 
-const TABS = [
-  { id: 'schedule',    label: 'Computation schedule' },
-  { id: 'trans',       label: 'Transformation'        },
-  { id: 'stats',       label: 'Statistics'             },
-  { id: 'plot',        label: 'Displacement plot'      },
-  { id: 'edges',       label: 'Edge compliance'        },
-  { id: 'reliability', label: 'Reliability'            },
-]
+const TABS = computed(() => {
+  if (checkMethod.value === 'coords') {
+    return [
+      { id: 'schedule', label: 'Computation schedule' },
+      { id: 'plot',     label: 'Displacement plot' },
+    ]
+  }
+  if (checkMethod.value === 'edges') {
+    return [
+      { id: 'schedule', label: 'Computation schedule' },
+      { id: 'edges',    label: 'Edge compliance' },
+      { id: 'plot',     label: 'Displacement plot' },
+    ]
+  }
+  return [
+    { id: 'schedule',    label: 'Computation schedule' },
+    { id: 'trans',       label: 'Transformation'        },
+    { id: 'stats',       label: 'Statistics'             },
+    { id: 'plot',        label: 'Displacement plot'      },
+    { id: 'reliability', label: 'Reliability'            },
+  ]
+})
 
 // ── COMPUTED — SCHEDULE ───────────────────────────────────────────────────────
 const acceptedCount = computed(

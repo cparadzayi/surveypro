@@ -108,6 +108,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { formatDateTimeSecDDMMYYYY } from '../../utils/dateFormat';
 
 interface ActionRecord {
   timestamp: Date;
@@ -150,7 +151,7 @@ function formatTimestamp(timestamp: Date): string {
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   
-  return new Date(timestamp).toLocaleString();
+  return formatDateTimeSecDDMMYYYY(new Date(timestamp));
 }
 </script>
 

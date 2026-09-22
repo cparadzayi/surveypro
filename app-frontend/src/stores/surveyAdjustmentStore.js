@@ -4,8 +4,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { iterativeAdjust, mergeExcludedBeacons, SAMPLE_DATA } from '@/utils/surveyMath'
-import { suggestedSigma0, edgeCompliance, severityVerdict } from '@/utils/si727'
+import { iterativeAdjust, SAMPLE_DATA } from '@/utils/surveyMath'
+import { suggestedSigma0, edgeCompliance, severityVerdict, coordinateComparison, edgeVerdictPoints } from '@/utils/si727'
 
 let nextId = SAMPLE_DATA.length + 1
 
@@ -16,7 +16,12 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
   const critW  = ref(2.576)   // W-test critical value (99 % confidence)
   const surveyClass = ref('B')   // SI 727 survey class (B or C)
   const sigma0Auto  = ref(true)  // true while σ₀ is auto-derived from the class
-  const result = ref(null)    // { adj, pts, log, converged }
+  // Which comparison the user selected. Three independent checks:
+  //   'coords' → SI 727 §67(5) co-ordinate comparison (schedule only)
+  //   'edges'  → Second Schedule edge compliance + severity verdict (no adjustment)
+  //   'wtest'  → Helmert + iterative Baarda W-test data snooping (no edge verdict)
+  const method  = ref('coords')
+  const result = ref(null)    // { method, pts, ... } per-mode shape
   const error  = ref(null)    // string | null
 
   // ── ACTIONS ────────────────────────────────────────────────────────────────
@@ -78,37 +83,43 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
     }
   }
 
+  function setCheckMethod(m) {
+    if (!['coords', 'edges', 'wtest'].includes(m)) return
+    method.value = m
+    result.value = null
+    error.value  = null
+  }
+
   function compute() {
     error.value  = null
     result.value = null
     if (sigma0Auto.value) sigma0.value = suggestedSigma0(points.value, surveyClass.value)
     try {
-      // 1. SI 727 Second Schedule check, over the WHOLE network. It is purely geometric —
-      //    it never uses the least-squares solution — so it runs first and decides which
-      //    beacons the statute condemns before the adjustment is fitted at all. Edges are
-      //    computed over every beacon, rejected ones included: their failing rays are the
-      //    evidence for rejecting them and must stay on the sketch and in the table.
-      const edges = edgeCompliance(points.value, surveyClass.value)
-      const verdict = severityVerdict(edges.rows)
-      const condemned = new Set(verdict.rejected)
-      const held = points.value.filter(p => condemned.has(p.name))
-      const fitted = points.value.filter(p => !condemned.has(p.name))
-
-      // 2. Statistical adjustment on whatever the statute left standing, so the reported
-      //    transformation, residuals and LOO describe only the beacons actually accepted.
-      //    Fall back to the full set if the verdict would leave too few to adjust.
-      const usingVerdict = held.length > 0 && fitted.length >= 3
-      const res = iterativeAdjust(usingVerdict ? fitted : points.value, critW.value, sigma0.value)
-      if (res.error) {
-        error.value = res.error
-        return
+      let res
+      if (method.value === 'coords') {
+        // 1. Comparison of co-ordinates vide §67(5): raw survey-vs-historical schedule,
+        //    decided against the class co-ordinate limit. No Helmert, no W-test.
+        res = coordinateComparison(points.value, surveyClass.value)
+      } else if (method.value === 'edges') {
+        // 2. Edge compliance with the SI 727 classes: Second Schedule line checks
+        //    (paras 7(1), 8) over the WHOLE network + severity verdict. Edges are
+        //    computed over every beacon, rejected ones included: their failing rays
+        //    are the evidence for rejecting them and must stay on the sketch/table.
+        const edges = edgeCompliance(points.value, surveyClass.value)
+        const verdict = severityVerdict(edges.rows)
+        res = { pts: edgeVerdictPoints(points.value, edges, verdict), edges, si727Verdict: verdict }
+      } else {
+        // 3. Iterative Baarda W-test: statistical data snooping on ALL points (no
+        //    Second Schedule pre-filter) — the W-test alone decides rejections.
+        res = iterativeAdjust(points.value, critW.value, sigma0.value)
+        if (res.error) {
+          error.value = res.error
+          return
+        }
       }
-      // 3. Put the condemned beacons back, marked REJECT / rejSource 'si727'.
-      const merged = usingVerdict ? mergeExcludedBeacons(res, held, 'si727') : res
-      merged.edges = edges
-      merged.surveyClass = surveyClass.value
-      merged.si727Verdict = { ...verdict, applied: usingVerdict }
-      result.value = merged
+      res.method = method.value
+      res.surveyClass = surveyClass.value
+      result.value = res
     } catch (e) {
       error.value = e.message
     }
@@ -117,9 +128,9 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
   // ── EXPOSE ─────────────────────────────────────────────────────────────────
   return {
     // state
-    points, sigma0, critW, surveyClass, sigma0Auto, result, error,
+    points, sigma0, critW, surveyClass, sigma0Auto, method, result, error,
     // actions
     addPoint, removePoint, updatePoint, loadSample, setPoints,
-    setSurveyClass, setSigma0, compute,
+    setSurveyClass, setSigma0, setCheckMethod, compute,
   }
 })

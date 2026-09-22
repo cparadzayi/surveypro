@@ -287,6 +287,11 @@ export interface BeaconComparisonConfig {
   /** Comparison method selection */
   method: 'tabulation' | 'sketch' | 'both';
   
+  /** Which comparison check the engine ran ('coords' §67(5) co-ordinates, 'edges' Second
+   *  Schedule line checks, 'wtest' Helmert + iterative Baarda W-test). Distinct from
+   *  `method` (report layout), which is about how the comparison is presented. */
+  checkMethod?: 'coords' | 'edges' | 'wtest';
+  
   /** Current survey S.R. Number */
   currentSRNumber: string;
   
@@ -301,18 +306,25 @@ export interface BeaconComparisonConfig {
   
   /** SI 727 s.67(5) inter-beacon (edge) compliance — distance AND direction/swing checks for
    *  every pair of accepted beacons. Source of truth for the comparison sketch. Populated
-   *  from si727.js's edgeCompliance(), already computed by every comparison run. */
+   *  from si727.js's edgeCompliance(), already computed by every comparison run.
+   *  Directions are judged on the swing principle: dirDiffSec is the raw (Survey − Hist)
+   *  swing, swingResidSec its residual after the network swing (length-weighted median),
+   *  dirAllowSec the class positional limit expressed as an angle on that ray. */
   edgeCompliance?: {
     surveyClass: 'B' | 'C';
     rows: Array<{
       from: string; to: string;
       dH: number; dS: number; dDiff: number; dAllow: number; distOk: boolean;
-      brgH: number; brgS: number; dirDiffSec: number; dirAllowSec: number; dirOk: boolean;
+      brgH: number; brgS: number; dirDiffSec: number; swingResidSec: number;
+      dirAllowSec: number; dirOk: boolean;
       pass: boolean;
     }>;
     summary: {
       totalLines: number; distPass: number; dirPass: number; bothPass: number;
-      meanScale: number | null; meanSwingDeg: number | null;
+      meanScale: number | null;
+      sigma0: number; posLimit: number; lmed: number;
+      networkSwingDeg: number | null; networkSwingSec: number | null;
+      networkSwingWarn: boolean;
     };
   };
   

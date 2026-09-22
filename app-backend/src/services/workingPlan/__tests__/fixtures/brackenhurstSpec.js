@@ -58,9 +58,9 @@ export const brackenhurstSpec = {
 
   title: [
     'Survey of',
-    'Stands 403-405 Brackenhurst Township',
-    'of Stand 87 Brackenhurst Township',
-    'Gwelo District',
+    'STANDS 403-405 BRACKENHURST TOWNSHIP',
+    'OF STAND 87 BRACKENHURST TOWNSHIP',
+    'GWELO DISTRICT',
   ],
 
   certificate: {

@@ -67,10 +67,10 @@ function makeReportDataWithEdges(): ReportOnSurveyData {
     rows: [
       {
         from: '85c', to: '86B', dH: 67.19, dS: 67.21, dDiff: 0.02, dAllow: 0.05, distOk: true,
-        brgH: 130.5, brgS: 130.502, dirDiffSec: 7.2, dirAllowSec: 45.0, dirOk: true, pass: true,
+        brgH: 130.5, brgS: 130.502, dirDiffSec: 7.2, swingResidSec: 7.2, dirAllowSec: 45.0, dirOk: true, pass: true,
       },
     ],
-    summary: { totalLines: 1, distPass: 1, dirPass: 1, bothPass: 1, meanScale: 1.0003, meanSwingDeg: 0.002 },
+    summary: { totalLines: 1, distPass: 1, dirPass: 1, bothPass: 1, meanScale: 1.0003, sigma0: 0.02, posLimit: 0.049, lmed: 100, networkSwingDeg: 0.002, networkSwingSec: 7.2, networkSwingWarn: false },
   };
   return base;
 }

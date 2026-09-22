@@ -6,6 +6,7 @@
 import testProjectData from '../data/testProjects/elonParadzayi_testProject'
 import { coordinateTransform } from './coordinateTransform'
 import type { CadastralWorkflowState } from '../types/cadastral'
+import { formatDateTimeSecDDMMYYYY } from '../utils/dateFormat'
 
 export interface TestProjectResult {
   success: boolean
@@ -261,7 +262,7 @@ ${parcels.map(p => `  - ${p.designation}: ${p.points.length} points`).join('\n')
 
 Project: ${testProjectData.metadata.projectName}
 Surveyor: ${testProjectData.metadata.surveyor}
-Date: ${new Date().toLocaleString()}
+Date: ${formatDateTimeSecDDMMYYYY(new Date())}
 Status: ${result.success ? '✅ PASSED' : '❌ FAILED'}
 
 ═══════════════════════════════════════════════════════

@@ -340,6 +340,61 @@ describe('the figure marker', () => {
       .filter((p) => p.verts.some((v) => Math.hypot(v[0] - spot[0], v[1] - spot[1]) < 15))
     expect(rings).toEqual([])
   })
+
+  test('keeps its shaft off the figure lines and away from other signs', () => {
+    const spec = withCrowdedPair()
+    const out = generateWorkingPlan(spec)
+    const ents = entities(out.dxf)
+    const units = out.scale / 1000                        // ground units per mm
+
+    // Locate the arrow exactly as the crowd test does.
+    const inserts = ents.filter((e) => e.type === 'INSERT' && e.g['8'] === 'BEACONS')
+      .map((e) => [+e.g['10'], +e.g['20']])
+    let pair = null, best = Infinity
+    for (let i = 0; i < inserts.length; i++) {
+      for (let j = i + 1; j < inserts.length; j++) {
+        const d = Math.hypot(inserts[i][0] - inserts[j][0], inserts[i][1] - inserts[j][1])
+        if (d < best) { best = d; pair = [inserts[i], inserts[j]] }
+      }
+    }
+    const spot = [(pair[0][0] + pair[1][0]) / 2, (pair[0][1] + pair[1][1]) / 2]
+    // The arrow's target members: the two beacons standing at the spot.
+    const members = new Set(spec.beacons
+      .filter((b) => Math.hypot(-b.Y - spot[0], -b.X - spot[1]) < best / 2 + 1)
+      .map((b) => b.name))
+    const shaft = ents.filter((e) => e.type === 'LINE' && e.g['8'] === 'INSET'
+      && Math.hypot(+e.g['11'] - spot[0], +e.g['21'] - spot[1]) < 8)[0]
+    expect(shaft).toBeDefined()
+    const a = [+shaft.g['10'], +shaft.g['20']]
+    const b = [+shaft.g['11'], +shaft.g['21']]
+
+    const distToSeg = (p) => {
+      const ux = b[0] - a[0], uy = b[1] - a[1]
+      const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ux + (p[1] - a[1]) * uy) / (ux * ux + uy * uy || 1)))
+      return Math.hypot(p[0] - (a[0] + ux * t), p[1] - (a[1] + uy * t))
+    }
+    // Full segment-to-segment distance: shaft endpoints to the line and the
+    // line's endpoints to the shaft cover every closest-point arrangement.
+    const distSegSeg = ([x0, y0], [x1, y1]) => {
+      const o = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+      if (o(a, b, [x0, y0]) * o(a, b, [x1, y1]) < 0 && o([x0, y0], [x1, y1], a) * o([x0, y0], [x1, y1], b) < 0) return 0
+      return Math.min(distToSeg([x0, y0]), distToSeg([x1, y1]))
+    }
+
+    // 0.8 mm of clear space must stand between the shaft and every drawn line:
+    // a leader that lies along the very boundary it labels is an error.
+    const lines = ents.filter((e) => e.type === 'LINE' && ['BOUNDARY-NEW', 'BOUNDARY-EXIST', 'ADJOINING'].includes(e.g['8']))
+    for (const line of lines) {
+      const d = distSegSeg([+line.g['10'], +line.g['20']], [+line.g['11'], +line.g['21']])
+      expect(d).toBeGreaterThan(0.8 * units)
+    }
+
+    // And it must keep out of every OTHER beacon's sign: the search pads each
+    // sign by 0.4 mm beyond its symbol reach.
+    for (const beacon of spec.beacons.filter((bl) => !members.has(bl.name))) {
+      expect(distToSeg([-beacon.Y, -beacon.X])).toBeGreaterThan(0.4 * units)
+    }
+  })
 })
 
 describe('a sheet with no locality diagram', () => {

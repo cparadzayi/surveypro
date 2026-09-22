@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals'
-import { resolveStatementDesignation } from '../designation.js'
+import { resolveStatementDesignation, statementDesignation } from '../designation.js'
 
 describe('resolveStatementDesignation', () => {
   test('uses the subject designation when it is already a full name', () => {
@@ -26,5 +26,24 @@ describe('resolveStatementDesignation', () => {
   test('falls back to the project designation when there is no stand', () => {
     expect(resolveStatementDesignation(null, null, 'STANDS 403-405 BRACKENHURST TOWNSHIP'))
       .toBe('STANDS 403-405 BRACKENHURST TOWNSHIP')
+  })
+})
+
+describe('statementDesignation', () => {
+  test('appends the parent without duplicating a parent clause already in the designation', () => {
+    expect(statementDesignation(
+      'STAND 271 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A',
+      'Shabani Mine Surface Rights A',
+    )).toBe('STAND 271 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A')
+  })
+
+  test('appends the parent when the designation has no parent clause', () => {
+    expect(statementDesignation('STAND 405 BRACKENHURST TOWNSHIP', 'Shabani Mine Surface Rights A'))
+      .toBe('STAND 405 BRACKENHURST TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A')
+  })
+
+  test('returns the designation untouched when there is no parent property', () => {
+    expect(statementDesignation('STAND 405 BRACKENHURST TOWNSHIP', '')).toBe('STAND 405 BRACKENHURST TOWNSHIP')
+    expect(statementDesignation('STAND 405 BRACKENHURST TOWNSHIP', undefined)).toBe('STAND 405 BRACKENHURST TOWNSHIP')
   })
 })

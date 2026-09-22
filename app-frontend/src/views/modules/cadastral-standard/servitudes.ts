@@ -143,3 +143,53 @@ export function backfillServitudesFromAnnotations(
   }
   return out
 }
+
+/**
+ * A row of the General Plan party-wall servitude statement:
+ * the stands bound by the wall and the wall's beacon-pair boundary.
+ */
+export interface PartyWallStatementRow {
+  stands: string
+  boundary: string
+}
+
+/**
+ * Build the General Plan "party-wall servitude" statement table from the
+ * servitude records (the single source of truth captured in the Servitudes
+ * view). Only `party-wall` records contribute. Each row pairs the stands
+ * involved (the burdened stand resolved via `standForParcel`, plus the
+ * reciprocal `adjoiningStand`) with the wall boundary, using the record's
+ * `fromBeacon`–`toBeacon` pair when the beacons are named, else the letter
+ * side. Rows that resolve to the same stands + boundary are merged (a wall is
+ * often recorded once per stand, so a single wall can otherwise appear twice).
+ */
+export function buildPartyWallStatementRows(
+  servitudes: Servitude[],
+  standForParcel: (parcelId: string) => string | null | undefined,
+): PartyWallStatementRow[] {
+  const rows: PartyWallStatementRow[] = []
+  const seen = new Set<string>()
+  const canonical = (stands: string[]) => [...stands].sort().join('|')
+
+  for (const s of servitudes) {
+    if (s.type !== 'party-wall') continue
+    const subjectStand = standForParcel(String(s.subjectId))
+    const stands: string[] = []
+    if (subjectStand) stands.push(subjectStand)
+    if (s.adjoiningStand && !stands.includes(s.adjoiningStand)) stands.push(s.adjoiningStand)
+    if (stands.length === 0) continue
+
+    const boundary = s.fromBeacon && s.toBeacon ? `${s.fromBeacon} - ${s.toBeacon}` : (s.side || '')
+    // The same wall recorded from the reciprocal stand reverses the beacon
+    // order ("2833A - 2833B" vs "2833B - 2833A"); sort the pair so both
+    // collapse onto one row, while the DISPLAY keeps the recorded direction.
+    const boundaryKey = s.fromBeacon && s.toBeacon
+      ? [String(s.fromBeacon), String(s.toBeacon)].sort().join('|')
+      : (s.side || '')
+    const key = `${canonical(stands)}|${boundaryKey}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    rows.push({ stands: stands.join(', '), boundary })
+  }
+  return rows
+}

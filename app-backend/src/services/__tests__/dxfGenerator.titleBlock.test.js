@@ -121,8 +121,8 @@ describe('formatFigureDescription', () => {
     const sentence = lines.join(' ')
     expect(sentence).toContain('The figure A.B.C.D.A represents')
     expect(sentence).toContain('2 stands and public places being a portion')
-    expect(sentence).toContain('of Borrowdale of Lot 9 Of Borrowdale')
-    expect(sentence).toContain('situate in the district of Harare')
+    expect(sentence).toContain('of BORROWDALE OF LOT 9 OF BORROWDALE')
+    expect(sentence).toContain('situate in the district of HARARE')
     // Stand numbers/range now live in the title designation line, not this sentence.
     expect(sentence).not.toContain('comprising')
     expect(sentence).not.toContain('numbered')
@@ -156,23 +156,23 @@ describe('formatFigureDescription', () => {
     expect(formatFigureDescription(fullMetadata, ofData, [], 500)).toEqual([])
   })
 
-  test('missing township → fallback "the township" inside ofTarget', () => {
+  test('missing township → fallback "THE TOWNSHIP" inside ofTarget', () => {
     const m = { ...fullMetadata, township: '' }
     const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
-    expect(sentence).toContain('of the township of Lot 9 Of Borrowdale')
+    expect(sentence).toContain('of THE TOWNSHIP OF LOT 9 OF BORROWDALE')
   })
 
-  test('missing district → fallback "the district"', () => {
+  test('missing district → fallback "THE DISTRICT"', () => {
     const m = { ...fullMetadata, district: '' }
     const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
-    expect(sentence).toContain('situate in the district of the district')
+    expect(sentence).toContain('situate in the district of THE DISTRICT')
   })
 
   test('missing parentProperty → ofTarget collapses to township only', () => {
     const m = { ...fullMetadata, parentProperty: '' }
     const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
-    expect(sentence).toContain('a portion of Borrowdale')
-    expect(sentence).not.toContain('of Borrowdale of')
+    expect(sentence).toContain('a portion of BORROWDALE')
+    expect(sentence).not.toContain('of BORROWDALE of')
   })
 
   test('missing wholePortion → fallback "the whole"', () => {
@@ -229,23 +229,23 @@ describe('formatPlanDesignation', () => {
     { stand: '1597', area_m2: 100 },
   ]
 
-  test('composes "Stands <range> <township>" — PDF-style: mixed case, no parent suffix', () => {
+  test('composes "STANDS <range> <township>" — PDF-style: capitalized, no parent suffix', () => {
     const m = { township: 'Maglas Township', parentProperty: 'Shabani Mine Surface Rights A' }
     expect(formatPlanDesignation(m, parcels))
-      .toBe('Stands 1438 - 1439, 1597 Maglas Township')
+      .toBe('STANDS 1438 - 1439, 1597 MAGLAS TOWNSHIP')
   })
 
   test('strips leading "Stands X - Y" prefix and trailing " of <parent>" from surveyOf', () => {
     const m = { surveyOf: 'STANDS 1 - 5 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A' }
     expect(formatPlanDesignation(m, parcels))
-      .toBe('Stands 1438 - 1439, 1597 MAGLAS TOWNSHIP')
+      .toBe('STANDS 1438 - 1439, 1597 MAGLAS TOWNSHIP')
   })
 
   test('no stands → designation/surveyOf fallback with " of <parent>" suffix stripped', () => {
     expect(formatPlanDesignation({ designation: 'Stands 1686 - 1925 Maglas Township' }, []))
-      .toBe('Stands 1686 - 1925 Maglas Township')
+      .toBe('STANDS 1686 - 1925 MAGLAS TOWNSHIP')
     expect(formatPlanDesignation({ surveyOf: 'Stands 1 - 5 Greendale Township of Lot 9' }, []))
-      .toBe('Stands 1 - 5 Greendale Township')
+      .toBe('STANDS 1 - 5 GREENDALE TOWNSHIP')
   })
 
   test('nothing to render → empty string', () => {

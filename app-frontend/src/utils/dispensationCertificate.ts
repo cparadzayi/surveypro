@@ -1,4 +1,5 @@
 import { servitudeTypeLabel, type Servitude } from '../views/modules/cadastral-standard/servitudes'
+import { isOutsideFigureParcelName } from '@/services/parcelValidation'
 
 export interface CertificateRow {
   stand: string
@@ -11,6 +12,17 @@ export interface CertificateParcel {
   id: string | number
   stand: string
   area_m2?: number
+  /** Parcel designation — lets the certificate drop the Outside Figure pseudo-parcel. */
+  designation?: string
+}
+
+/**
+ * The stands the schedule lists: every parcel EXCEPT the SI 727 Outside Figure
+ * pseudo-parcel (the encapsulating polygon, never a lodged stand). Detected on
+ * the designation or stand name so an empty-stand Outside Figure is caught too.
+ */
+export function certificateStands(parcels: CertificateParcel[]): CertificateParcel[] {
+  return parcels.filter((p) => !isOutsideFigureParcelName(String(p.designation || p.stand || '')))
 }
 
 export function buildCertificateRows(
@@ -18,8 +30,9 @@ export function buildCertificateRows(
   servitudes: Servitude[],
   portion: 'developed' | 'undeveloped',
 ): CertificateRow[] {
+  const parcelsInSchedule = certificateStands(parcels)
   if (portion === 'undeveloped') {
-    return parcels.map((p) => ({
+    return parcelsInSchedule.map((p) => ({
       stand: p.stand,
       areaM2: p.area_m2 ?? 0,
       boundary: '',
@@ -28,7 +41,7 @@ export function buildCertificateRows(
   }
 
   const rows: CertificateRow[] = []
-  for (const p of parcels) {
+  for (const p of parcelsInSchedule) {
     const pid = String(p.id)
     const affecting = servitudes.filter(
       (s) => s.subjectId === pid || (s.type === 'party-wall' && s.adjoiningStand === p.stand),

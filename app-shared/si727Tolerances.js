@@ -5,15 +5,21 @@
 // See docs/superpowers/plans/bnr-part8.md (moved here from app-frontend/src/utils/si727.js).
 
 // Second Schedule of the Land Survey (General) Regulations, 1979 (S.I. 727 of 1979):
-// distFactor from para 7(1) (acceptance of co-ordinates i.t.o. s.15(1)) and dirK from
-// para 8 (i.t.o. s.15(2)) — the paragraphs that govern accepting a PREVIOUS survey's
-// co-ordinates, which is what a found-beacon comparison does. Not para 5 ("Distances",
-// 0,01/0,04/0,06), which limits a ground distance against the same survey's own
-// co-ordinates, and not para 7(2) (0,01/0,015), which limits the angle subtended at a
-// beacon. Paras 7 and 8 define class B and class C only — class A does not exist here.
+// distFactor from para 7(5) (Limits of Error — distances) and dirK from para 8
+// (i.t.o. s.15(2)) — the paragraphs that govern accepting a PREVIOUS survey's
+// co-ordinates, which is what a found-beacon comparison does. Paras 7 and 8 define
+// class B and class C only — class A does not exist here.
+//
+// Corrected 2026-09-21 (surveying reference): the distance limit of error is
+// K·√(0.075f + 0.00015f²) with K = 0,04 (class B) / 0,06 (class C) — the 0.075
+// coefficient is what the Second Schedule para 7(5) prescribes. Earlier builds
+// of this kernel carried K = 0,01/0,02 with the same 0.075 coefficient (a misreading of
+// para 7(1) co-ordinate acceptance); the whole §67(5) comparison now uses the
+// Limits of Error. Not para 7(2) (0,01/0,015), which limits the angle subtended at
+// a beacon — a different test we do not implement.
 export const SI727_CLASS = {
-  B: { distFactor: 0.01, dirK: 15000 },
-  C: { distFactor: 0.02, dirK: 45000 },
+  B: { distFactor: 0.04, dirK: 15000 },
+  C: { distFactor: 0.06, dirK: 45000 },
 }
 
 /** Allowable distance difference (m): factor·√(0.075f + 0.00015f²). f = shorter line length (m). */

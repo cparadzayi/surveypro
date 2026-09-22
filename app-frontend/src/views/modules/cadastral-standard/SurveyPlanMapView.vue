@@ -452,7 +452,7 @@
 
         <div class="config-group">
           <label class="config-label">Survey Date</label>
-          <input v-model="config.surveyDate" type="date" class="config-input" />
+          <DateInputDDMMYYYY v-model="config.surveyDate" class="config-input" />
         </div>
 
         <!-- Map Layers -->
@@ -619,11 +619,13 @@ import { splitBeaconName, labelParts } from '../../../../../app-shared/beaconNam
 defineOptions({ name: 'SurveyPlanMapView' })
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { toDateInputFormat } from '@/utils/dateFormat'
+import { toDateInputFormat, formatDateDDMMYYYY } from '@/utils/dateFormat'
+import DateInputDDMMYYYY from '@/components/DateInputDDMMYYYY.vue'
 import { jsPDF } from 'jspdf'
 import html2canvas from 'html2canvas'
 import { capeLoToWGS84, capeLoArrayToWGS84, calculateWGS84Bounds, geoJsonToCapeLoPoint, type CapeLoPoint } from '@/utils/coordinateTransform'
-import { computeCapeLoPointsFromGeometry, getCoordinatePointsForProject } from '@/utils/parcelMetadataComputer'
+import { getCoordinatePointsForProject } from '@/utils/parcelMetadataComputer'
+import { asBaseMapParcel, loadBaseMapParcels, parcelFromBaseRecord, digitizedPoints, type SurveyParcel } from '@/utils/surveyParcels'
 import { getSurveyPlanPreview, type PreviewData } from '@/services/surveyPlanPreview'
 import { 
   optimizeLayout, 
@@ -672,11 +674,12 @@ import { CalculationsPart1Generator, type SurveyPoint } from '@/utils/calculatio
 import { ComprehensiveDocumentGenerator, type ComprehensiveDocumentData } from '@/utils/comprehensive-document'
 import { siteCalibrationFrom } from '@/utils/siteCalibration'
 import type { CoverPageInfo } from '@/utils/cover-page'
-import { listCoordinatePoints, listLandParcels, updateLandParcel } from '@/services/spatial'
+import { listCoordinatePoints, updateLandParcel } from '@/services/spatial'
 import { saveDocument } from '@/services/documentStorage'
 import { generateWorkingPlanDXF } from '@/services/workingPlan'
 import { buildWorkingPlanSpec, workingPlanEmptyReason, controlPointsForInset, selectedControlPointIds } from './workingPlanSpec'
 import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
+import { dispensationFromWorkflow } from '@/composables/useDispensationCertificate'
 import api from '@/services/api'
 import { buildWorkflowExcel } from '@/utils/workflowExcelExporter'
 import { autoSaveStepProducts } from '@/services/workflowProductStorage'
@@ -695,6 +698,7 @@ import { planTypeOptionsFor, normalizePlanTypeSelection } from './planTypeOption
 import { useRecordComposition } from '@/composables/useRecordComposition'
 import { describeComposition } from '@/utils/recordComposition'
 import { subjectSides, upsertAnnotation, removeAnnotation, annotationsForSubject, withSubjectAnnotations, hydrateAnnotationsMap, fractionAlongSide, endFromFraction, type SideAnnotation, type SideRole } from './sideAnnotations'
+import { hydrateServitudes, buildPartyWallStatementRows, type PartyWallStatementRow } from './servitudes'
 import { makeConnection, upsertConnection, removeConnection, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type LoPoint } from './connections'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
@@ -820,6 +824,10 @@ const refinedBeaconLabels = ref<Array<{
 // Diagram subject selection
 const selectedDiagramParcelId = ref<string | number | null>(null)
 const sideAnnotationsBySubject = ref<Record<string, SideAnnotation[]>>({})
+// Party-wall servitude statement rows for the General Plan. Loaded from the
+// workflow's 'servitudes' step on each generation, so edits made in the
+// Servitudes view are picked up even when this view was mounted earlier.
+const servitudeStatementRows = ref<PartyWallStatementRow[]>([])
 // Connecting data: the tie from a new beacon to a parent beacon of the survey
 // being subdivided. Keyed by subject parcel, like the side annotations.
 const connectionsBySubject = ref<Record<string, Connection[]>>({})
@@ -1149,7 +1157,37 @@ const validatedLabels = computed(() => {
   parcels.value.forEach(parcel => {
     if (parcel.id === outsideFigureId) return // Skip Outside Figure
     if (!parcel.geom) return
-    
+
+    // Digitized map = single source of truth: label the beacon names from
+    // metadata.cape_lo_points verbatim (the names the digital map captured),
+    // falling back to registry spatial matching for non-digitized records.
+    const digitized = digitizedPoints(parcel)
+    if (digitized.length) {
+      digitized.forEach(pt => {
+        const beaconName = pt.id
+        if (!beaconName) return
+
+        const [normY, normX] = normalizeCapeLoYX(pt.y, pt.x)
+
+        const wgs84 = capeLoToWGS84({ id: beaconName, y: normY, x: normX } as CapeLoPoint, config.value.centralMeridian)
+        const lng = wgs84.lng
+        const lat = wgs84.lat
+
+        // Validate: beacon must be inside Outside Figure
+        if (!isInOutsideFigure(lng, lat, { x: normX, y: normY })) return
+
+        if (!beaconMap.has(beaconName)) {
+          beaconMap.set(beaconName, {
+            name: beaconName,
+            coordinates: [lng, lat],
+            parcels: new Set()
+          })
+        }
+        beaconMap.get(beaconName)!.parcels.add(parcel.id)
+      })
+      return
+    }
+
     const coords = parcel.geom.coordinates[0]
     if (!coords || coords.length < 3) return
     
@@ -1494,7 +1532,7 @@ async function loadData() {
     console.log('[SurveyPlanMap] 📋 Project Info:', props.projectInfo)
 
     // Load parcels via authenticated axios service (avoids localStorage token drift)
-    const parcelData = await listLandParcels(props.projectId)
+    const parcelData = await loadBaseMapParcels(props.projectId)
 
     console.log('[SurveyPlanMap] 📦 Parsed parcel data:', parcelData)
     console.log('[SurveyPlanMap] 📦 Is array?', Array.isArray(parcelData))
@@ -2382,6 +2420,32 @@ async function persistSideAnnotations() {
     })
   } catch (e: any) {
     console.warn('[SurveyPlanMap] failed to persist side annotations:', e?.message)
+  }
+}
+
+/** Load the Servitudes-view records so the General Plan can print the party-wall
+ *  servitude statement. Reads the workflow's 'servitudes' step (the single source
+ *  of truth) fresh on each generation — the mirror/annotations are not enough: a
+ *  party-wall row needs the burdened stand's number and the beacon-pair boundary,
+ *  which only the records carry. */
+async function loadServitudeStatementData() {
+  servitudeStatementRows.value = []
+  try {
+    const resp = await api.get(`/survey-projects/${props.projectId}/workflow`)
+    const ws = resp.data?.workflow_state
+    const raw = ws?.step_data?.servitudes?.servitudes
+    const servitudes = hydrateServitudes(raw)
+    if (servitudes.length === 0) return
+    const standForParcel = new Map<string, string>()
+    for (const p of parcels.value) {
+      if (p?.id != null && p?.stand) standForParcel.set(String(p.id), String(p.stand))
+    }
+    servitudeStatementRows.value = buildPartyWallStatementRows(
+      servitudes,
+      (parcelId) => standForParcel.get(parcelId) ?? null,
+    )
+  } catch (e: any) {
+    console.warn('[SurveyPlanMap] failed to load servitudes for the GP statement:', e?.message)
   }
 }
 
@@ -4373,6 +4437,12 @@ function gatherPlanContext(): PlanPayloadContext {
     // id-matching needed). Empty for the diagram, which renders its single subject
     // from `sideAnnotations` via its own renderer.
     adjoiningSubjects: isDiagramMode.value ? [] : buildAdjoiningSubjects(),
+    // General plans only: the party-wall servitude statement table, built from the
+    // Servitudes-view records (loaded fresh in generatePlanDocuments). Diagrams /
+    // working plans omit it entirely.
+    ...(isGeneralPlanMode.value && servitudeStatementRows.value.length > 0
+      ? { servitudeStatement: { rows: servitudeStatementRows.value } }
+      : {}),
   }
 
   let beaconLabels = generateBeaconLabelsForPDF()
@@ -4481,6 +4551,9 @@ async function generatePlanDocuments() {
   exportStatus.value = 'Loading project data…'
   try {
     await loadData()
+    // Party-wall servitude statement data rides the workflow's 'servitudes'
+    // step, so fetch it fresh (the Servitudes view is a sibling step).
+    await loadServitudeStatementData()
     const ctx = gatherPlanContext()
     const payload = buildPlanPayload(ctx)
     const docs: PlanDocumentSet = {}
@@ -4681,7 +4754,7 @@ async function generateComprehensivePDF() {
     
     // Load ALL parcels from database
     console.log('[ComprehensivePDF] 📥 Loading all parcels from database...')
-    const dbParcels = await listLandParcels(props.projectId)
+    const dbParcels = await loadBaseMapParcels(props.projectId)
     console.log(`[ComprehensivePDF] 📊 Loaded ${dbParcels.length} parcels from database`)
     
     // Load coordinate points for spatial matching
@@ -4768,6 +4841,8 @@ async function generateComprehensivePDF() {
       address: workflowSurveyorInfo?.address || coverPageInfo.address || '',
       surveyDate: surveyDate,
       projectTitle: projectName,
+      surveyOf: (props.projectInfo as any).surveyOf || workflowSurveyorInfo?.surveyOf || projectSetupData?.project_name || projectName,
+      standNames: recordStandNames,
       district: district,
       centralMeridian: (props.projectInfo as any).centralMeridian ?? projectSetupData?.central_meridian ?? 31,
       assistedBy: workflowSurveyorInfo?.assistedBy || '',
@@ -4780,42 +4855,15 @@ async function generateComprehensivePDF() {
     // Process ALL parcels with on-the-fly metadata computation
     console.log('[ComprehensivePDF] 🔄 Processing parcels with on-the-fly metadata computation...')
     
-    const computedParcels = await Promise.all(dbParcels.map(async (dbParcel: any) => {
-      const capeLoPoints = await computeCapeLoPointsFromGeometry(dbParcel, coordinatePointsForMatching)
-      
-      let updatedAreaResult = null
-      if (capeLoPoints.length > 0) {
-        try {
-          const { areaCompute } = await import('../../../services/compute')
-          const response = await areaCompute({
-            points: capeLoPoints.map(pt => ({ y: pt.y, x: pt.x, id: pt.id, name: pt.id })),
-            includeResiduals: true,
-            roundMetersDecimals: 2,
-            roundHectaresDecimals: 4
-          })
-          updatedAreaResult = response
-        } catch (error) {
-          console.error(`[ComprehensivePDF] ❌ Failed to recompute ${dbParcel.stand}:`, error)
-        }
-      }
-      
-      const finalAreaResult = updatedAreaResult || {
-        area: {
-          abs_m2: Number(dbParcel.area_m2) || 0,
-          display: (Number(dbParcel.area_m2) || 0) >= 10000 
-            ? { hectares: (Number(dbParcel.area_m2) || 0) / 10000, unit: 'ha' as const }
-            : { square_meters: Number(dbParcel.area_m2) || 0, unit: 'm2' as const }
-        },
-        residuals: dbParcel.metadata?.residuals || { edges: [] },
-        closure: dbParcel.metadata?.closure
-      }
-      
-      return {
-        designation: dbParcel.stand,
-        areaResult: finalAreaResult,
-        points: capeLoPoints.map(pt => ({ id: pt.id, name: pt.id, y: pt.y, x: pt.x }))
-      }
-    }))
+    const computedParcels = (await Promise.all(
+      dbParcels.map((dbParcel: any) => parcelFromBaseRecord(asBaseMapParcel(dbParcel), coordinatePointsForMatching))
+    ))
+      .filter((p): p is SurveyParcel => p !== null)
+      .map(p => ({
+        designation: p.designation,
+        areaResult: p.areaResult,
+        points: p.points.map(pt => ({ id: pt.id, name: pt.id, y: pt.y, x: pt.x }))
+      }))
     
     console.log(`[ComprehensivePDF] ✅ Processed ${computedParcels.length} parcels`)
     
@@ -4910,6 +4958,19 @@ async function generateComprehensivePDF() {
     
     const workingDirectory = (props.projectInfo as any).workingDirectory
     
+    // Dispatch the Dispensation Certificate section from the persisted Servitudes
+    // stage (servitudes + header + portion saved when the certificate was generated).
+    const certParcels = (dbParcels as any[]).map((p: any) => ({
+      id: p.id,
+      stand: p.stand,
+      designation: p.designation ?? p.stand,
+      area_m2: p.area_m2 != null ? Number(p.area_m2) : undefined,
+    }))
+    const dispensation = dispensationFromWorkflow(workflowState?.step_data, certParcels)
+    if (dispensation) {
+      console.log(`[ComprehensivePDF] 📑 Dispensation Certificate included (${dispensation.portion}, ${dispensation.servitudes.length} servitudes)`)
+    }
+
     const finalResult = await generateComprehensivePDFComposable({
       computedParcels: computedParcels as any,
       calcPart1Blob: result.pdf,
@@ -4934,7 +4995,8 @@ async function generateComprehensivePDF() {
         }
       },
       reportData,
-      narrativeOptions
+      narrativeOptions,
+      dispensation
     })
 
     if (!finalResult.success) {
@@ -4959,6 +5021,9 @@ async function generateComprehensivePDF() {
       )
       if (finalResult.narrativeBlob) {
         contentsLines.push(`• Report of Survey`)
+      }
+      if (finalResult.dispensationBlob) {
+        contentsLines.push(`• Dispensation Certificate`)
       }
       alert(
         `✅ Complete Survey Record Generated!\n\n` +
@@ -5418,7 +5483,7 @@ function formatAreaSquareMetres(areaM2: number): string {
 // This ensures consistent banker's rounding across the entire application
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-GB')
+  return formatDateDDMMYYYY(new Date(dateStr))
 }
 
 function calculateStandCount(designation: string): number {

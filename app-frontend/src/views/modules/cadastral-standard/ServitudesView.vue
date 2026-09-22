@@ -251,7 +251,7 @@
           </div>
           <div>
             <label class="block text-xs font-medium text-gray-700 mb-1">Date</label>
-            <input v-model="header.date" type="date" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
+            <DateInputDDMMYYYY v-model="header.date" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
           </div>
         </div>
       </div>
@@ -307,9 +307,11 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { capeLoArrayToWGS84, calculateWGS84Bounds, type CapeLoPoint } from '@/utils/coordinateTransform'
+import { capeLoArrayToWGS84, capeLoToWGS84, calculateWGS84Bounds, type CapeLoPoint } from '@/utils/coordinateTransform'
 import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
-import { listLandParcels, listCoordinatePoints } from '@/services/spatial'
+import DateInputDDMMYYYY from '@/components/DateInputDDMMYYYY.vue'
+import { listCoordinatePoints } from '@/services/spatial'
+import { loadBaseMapParcels, computeBaseMapStandLabels, computeBaseMapBeaconLabels } from '@/utils/surveyParcels'
 import api from '@/services/api'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
@@ -331,6 +333,7 @@ import {
 } from './servitudes'
 import { generateAndSaveDispensation, type DispensationHeader } from '@/composables/useDispensationCertificate'
 import type { CertificateParcel } from '@/utils/dispensationCertificate'
+import { townshipPhrase } from '@/utils/planDesignation'
 
 const { workflowState, projectId } = useCadastralWorkflow()
 
@@ -371,6 +374,7 @@ const genFailed = ref(false)
 
 const header = ref<DispensationHeader>({
   township: '',
+  surveyOf: '',
   parentProperty: '',
   district: '',
   generalPlanNumber: '',
@@ -484,6 +488,93 @@ function addParcelLayersToMap() {
     })
   }
   highlightSelectedParcelOnMap()
+}
+
+/** Base-map labels on the servitude map: a stand designation at each parcel
+ *  centroid (like MapLibreAreaView's `parcels-labels`) plus the GE beacon names
+ *  at the parcels' vertices — both sourced from the digitized records via the
+ *  shared surveyParcels helpers (single source of truth). */
+async function addBaseMapLabelsToMap() {
+  if (!map.value) return
+  try {
+    await buildBaseMapLabels()
+  } catch (e: any) {
+    console.warn('[Servitudes] base-map labels failed:', e?.message)
+  }
+}
+
+function buildBaseMapLabels() {
+  const m = map.value
+  if (!m) return
+  const meridian = currentMeridian()
+
+  const stands = computeBaseMapStandLabels(parcels.value)
+  const standFeatures = stands
+    .map((s) => {
+      const wgs = capeLoToWGS84({ id: s.stand, x: s.centroid.x, y: s.centroid.y } as CapeLoPoint, meridian)
+      return {
+        type: 'Feature' as const,
+        properties: { stand: s.stand, parcelId: s.parcelId },
+        geometry: { type: 'Point' as const, coordinates: [wgs.lng, wgs.lat] },
+      }
+    })
+  m.addSource('base-stand-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: standFeatures } as any })
+  m.addLayer({
+    id: 'base-stand-labels-layer',
+    type: 'symbol',
+    source: 'base-stand-labels',
+    layout: {
+      'text-field': ['get', 'stand'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 12, 5, 14, 6, 16, 7, 18, 8, 20, 9],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+      'text-variable-anchor': ['center', 'top', 'bottom', 'left', 'right'],
+      'text-radial-offset': 0.2,
+      'text-allow-overlap': false,
+      'text-ignore-placement': false,
+      'text-optional': false,
+      'text-padding': 3,
+    },
+    paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 2 },
+  } as any)
+
+  m.addSource('base-beacon-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } as any })
+  m.addLayer({
+    id: 'base-beacon-labels-layer',
+    type: 'symbol',
+    source: 'base-beacon-labels',
+    layout: {
+      'text-field': ['get', 'name'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 12, 4.5, 14, 5.5, 16, 6.5, 18, 7.5, 20, 8.5],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+      'text-variable-anchor': ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top', 'bottom', 'left', 'right'],
+      'text-radial-offset': -0.5,
+      'text-justify': 'center',
+      'text-allow-overlap': false,
+      'text-ignore-placement': false,
+      'text-optional': false,
+      'text-padding': 2,
+    },
+    paint: { 'text-color': '#1e293b', 'text-halo-color': '#ffffff', 'text-halo-width': 2 },
+  } as any)
+
+  void computeBaseMapBeaconLabels(parcels.value, coordinatePoints.value).then((beacons) => {
+    const src = m.getSource('base-beacon-labels') as any
+    if (!src) return
+    src.setData({
+      type: 'FeatureCollection',
+      features: beacons
+        .map((b) => {
+          const wgs = capeLoToWGS84({ id: b.name, x: b.x, y: b.y } as CapeLoPoint, meridian)
+          return {
+            type: 'Feature' as const,
+            properties: { name: b.name, parcelIds: b.parcelIds },
+            geometry: { type: 'Point' as const, coordinates: [wgs.lng, wgs.lat] },
+          }
+        }),
+    } as any)
+  }).catch((e: any) => {
+    console.warn('[Servitudes] beacon labels failed:', e?.message)
+  })
 }
 
 /** Stronger fill/outline for the selected stand — mirrors applyDiagramHighlight. */
@@ -650,6 +741,7 @@ function initServitudeMap() {
       try {
         addParcelLayersToMap()
         fitMapToParcels()
+        void addBaseMapLabelsToMap()
         updateSidesMapLayer()
         map.value!.on('click', onMapClick)
       } catch (e: any) {
@@ -734,7 +826,11 @@ async function persistServitudes() {
     await api.patch(`/survey-projects/${projectId.value}/workflow`, {
       step: 'servitudes',
       action: 'update',
-      metadata: { servitudes: servitudes.value },
+      metadata: {
+        servitudes: servitudes.value,
+        header: header.value,
+        portion: portion.value,
+      },
     })
   } catch (e: any) {
     console.warn('[Servitudes] failed to persist servitudes:', e?.message)
@@ -800,7 +896,20 @@ async function deleteServitude(id: string) {
 
 function applyHeaderDefaults() {
   const info = workflowState.projectInfo
-  header.value.township = info.township || info.name || header.value.township
+  // The certificate's "SURVEY OF ..." designation comes from the workflow's
+  // single source of truth, not from the editable township field. A manually
+  // saved header is overridden so the certificate always tracks the project.
+  const surveyOf = workflowState.surveyorInfo?.surveyOf
+    || workflowState.projectInfo?.designation
+    || header.value.surveyOf
+  header.value.surveyOf = surveyOf
+  // The Township box holds the designation's township phrase — "MAGLAS TOWNSHIP
+  // OF SHABANI MINE SURFACE RIGHTS A", never the project's short name ("MAG1
+  // SH2") and never the workflow's unpopulated projectInfo.township.
+  header.value.township = townshipPhrase(surveyOf)
+    || info.township
+    || info.name
+    || header.value.township
   header.value.parentProperty = info.parentProperty || header.value.parentProperty
   header.value.district = info.district || header.value.district
   header.value.loZone = info.centralMeridian != null ? `Lo ${info.centralMeridian}` : header.value.loZone
@@ -814,8 +923,17 @@ async function loadServitudesAndAnnotations() {
   try {
     const resp = await api.get(`/survey-projects/${projectId.value}/workflow`)
     const ws = resp.data?.workflow_state
-    servitudes.value = hydrateServitudes(ws?.step_data?.['servitudes']?.servitudes)
+    const savedStep = ws?.step_data?.['servitudes']
+    servitudes.value = hydrateServitudes(savedStep?.servitudes)
     annotations.value = hydrateAnnotationsMap(ws?.step_data?.['survey-plan']?.sideAnnotations)
+    // Restore the certificate header + portion the last generation was made
+    // with, so the Servitudes stage and the comprehensive record stay in step.
+    if (savedStep?.header && typeof savedStep.header === 'object') {
+      header.value = { ...header.value, ...savedStep.header }
+    }
+    if (savedStep?.portion === 'developed' || savedStep?.portion === 'undeveloped') {
+      portion.value = savedStep.portion
+    }
   } catch (e: any) {
     console.warn('[Servitudes] failed to load workflow state:', e?.message)
   }
@@ -832,7 +950,7 @@ async function loadServitudesAndAnnotations() {
 async function loadParcels() {
   if (!projectId.value) return
   try {
-    parcels.value = await listLandParcels(projectId.value)
+    parcels.value = await loadBaseMapParcels(projectId.value)
   } catch (e: any) {
     console.warn('[Servitudes] failed to load parcels:', e?.message)
   }
@@ -872,9 +990,13 @@ async function generate() {
   genMessage.value = null
   genFailed.value = false
   try {
+    // Snapshot the header + portion this run uses, so the comprehensive record's
+    // certificate collation matches the standalone one exactly.
+    await persistServitudes()
     const certParcels: CertificateParcel[] = parcels.value.map((p: any) => ({
       id: p.id,
       stand: p.stand,
+      designation: p.designation ?? p.stand,
       area_m2: p.area_m2 != null ? Number(p.area_m2) : undefined,
     }))
     const result = await generateAndSaveDispensation({

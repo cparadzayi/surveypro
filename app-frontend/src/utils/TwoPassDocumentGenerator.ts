@@ -20,7 +20,7 @@ import type {
 } from '../types/document-measurements'
 import type { CalculationsPart1Result } from '../types/adjusted-coordinates'
 import { CalculationsPart1Generator, type SurveyPoint } from './calculations-part1'
-import { CoordinateListGenerator, type SurveyorInfo } from './coordinate-list'
+import { CoordinateListGenerator, type SurveyorInfo, surveyOfForSurveyor } from './coordinate-list'
 import { FieldBookGenerator } from './field-book'
 import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination'
 import { isCalculatedPoint } from './calculatedPoint'
@@ -464,12 +464,14 @@ export class TwoPassDocumentGenerator {
       surveyDate: pt.surveyDate
     }))
     
-    // Map SurveyorInfo to FieldBookMetadata
+    // Map SurveyorInfo to FieldBookMetadata. The "Survey of" line comes from
+    // the shared surveyOfForSurveyor mapping so the field book covers states
+    // the same designation as the coordinate list and the general plan.
     const metadata = {
       surveyorName: data.surveyorInfo.name,
       address: data.surveyorInfo.address,
       surveyDate: data.surveyorInfo.surveyDate,
-      surveyOf: data.surveyorInfo.projectTitle,
+      surveyOf: surveyOfForSurveyor(data.surveyorInfo),
       assistedBy: data.surveyorInfo.assistedBy,
       instruments: data.surveyorInfo.instruments,
       instrumentDescription: data.surveyorInfo.instrumentDescription,

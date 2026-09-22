@@ -7,6 +7,19 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+function formatDateDDMMYYYY(date) {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}/${date.getFullYear()}`;
+}
+
+function formatDateTimeSecDDMMYYYY(date) {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return `${formatDateDDMMYYYY(date)} ${hours}:${minutes}:${seconds}`;
+}
+
 /**
  * Generate a PDF report for land parcels
  * @param {Array} parcels - Array of land parcel objects
@@ -42,7 +55,7 @@ export async function generateLandParcelReport(parcels, project = {}) {
       if (project.location) {
         doc.text(`Location: ${project.location}`);
       }
-      doc.text(`Report Date: ${new Date().toLocaleDateString()}`);
+      doc.text(`Report Date: ${formatDateDDMMYYYY(new Date())}`);
       doc.moveDown();
 
       // Add summary
@@ -116,7 +129,7 @@ export async function generateLandParcelReport(parcels, project = {}) {
         doc.switchToPage(i);
         doc.fontSize(8)
            .text(
-             `Page ${i + 1} of ${pageCount} | Generated on ${new Date().toLocaleString()}`,
+             `Page ${i + 1} of ${pageCount} | Generated on ${formatDateTimeSecDDMMYYYY(new Date())}`,
              50,
              800,
              { align: 'center' }

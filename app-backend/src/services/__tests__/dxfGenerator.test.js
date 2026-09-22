@@ -509,10 +509,10 @@ describe('generateDXF — title block (PDF-matched, SI 727)', () => {
     scale: '1:500', sheetSize: 'SI727_500x400',
   }
 
-  test('heading mirrors the PDF: "GENERAL PLAN" / "of" / "Stands … Township"', () => {
+  test('heading mirrors the PDF: "GENERAL PLAN" / "of" / "STANDS … TOWNSHIP"', () => {
     const dxf = generateDXF(opts, fakeLogger).buffer.toString()
     expect(dxf).toMatch(/\bGENERAL PLAN\b/)
-    expect(dxf).toMatch(/Stands 123 - 124 Borrowdale/)
+    expect(dxf).toMatch(/STANDS 123 - 124 BORROWDALE/)
   })
 
   test('omits surveyor firm & licence — SI 727 does not require them on General Plans', () => {
@@ -523,8 +523,8 @@ describe('generateDXF — title block (PDF-matched, SI 727)', () => {
 
   test('whole-portion / parent property / district appear via the figure-description sentence', () => {
     const dxf = generateDXF(opts, fakeLogger).buffer.toString()
-    expect(dxf).toMatch(/being a portion of Borrowdale of Shabani Mine Surface Rights A/)
-    expect(dxf).toMatch(/situate in the district of Harare/)
+    expect(dxf).toMatch(/being a portion of BORROWDALE OF SHABANI MINE SURFACE RIGHTS A/)
+    expect(dxf).toMatch(/situate in the district of HARARE/)
   })
 })
 

@@ -5,6 +5,7 @@
 
 import jsPDF from 'jspdf';
 import type { Parcel } from '../composables/useParcelManagement';
+import { formatDateDDMMYYYY } from './dateFormat';
 
 export interface AreaReportOptions {
   projectTitle: string;
@@ -251,7 +252,7 @@ export function generateAreaComputationReport(
     pdf.setFont('helvetica', 'italic');
     pdf.setFontSize(8);
     pdf.text(
-      `Generated: ${new Date().toLocaleDateString()} | Page ${i} of ${pageCount}`,
+      `Generated: ${formatDateDDMMYYYY(new Date())} | Page ${i} of ${pageCount}`,
       105,
       285,
       { align: 'center' }

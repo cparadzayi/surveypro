@@ -15,6 +15,7 @@ import { PDFDocument } from 'pdf-lib'
 import { generateNarrativeReportOnSurveyPDF } from '@/utils/reportOnSurveyNarrativeGenerator'
 import { isReportDataEmpty } from '@/utils/reportDataFromWorkflow'
 import type { ReportOnSurveyData } from '@/types/cadastral'
+import { buildDispensationCertificateBlob, type DispensationInput } from './useDispensationCertificate'
 
 export interface NarrativeReportOptions {
   surveyorName: string
@@ -40,6 +41,8 @@ export interface ComprehensivePDFOptions {
   /** Narrative Report of Survey, appended at the very end; omit to skip it */
   reportData?: ReportOnSurveyData | null
   narrativeOptions?: NarrativeReportOptions
+  /** Dispensation Certificate, appended after the narrative; omit to skip it */
+  dispensation?: DispensationInput
 }
 
 export interface ComprehensivePDFResult {
@@ -50,6 +53,8 @@ export interface ComprehensivePDFResult {
   areasOnlyBlob?: Blob
   /** The narrative section on its own, for the Reports folder copy */
   narrativeBlob?: Blob
+  /** The dispensation certificate section on its own */
+  dispensationBlob?: Blob
 }
 
 /**
@@ -93,6 +98,32 @@ export async function appendNarrativeReport(
 }
 
 /**
+ * Append the Dispensation Certificate to the collated body.
+ *
+ * The certificate is a self-contained formal document (own "Page i of N"
+ * numbering, SG approval block), so it rides as a pure tail append like the
+ * narrative — nothing else in the record cross-references it.
+ *
+ * Returns the body unchanged (and no blob) when no dispensation inputs are given.
+ */
+export async function appendDispensationCertificate(
+  mergedPdfBytes: Uint8Array,
+  dispensation: DispensationInput | undefined
+): Promise<{ merged: Uint8Array; dispensationBlob?: Blob }> {
+  if (!dispensation) {
+    console.log('[ComprehensivePDF] ℹ️ No dispensation data — skipping Dispensation Certificate')
+    return { merged: mergedPdfBytes }
+  }
+  console.log('[ComprehensivePDF] 📑 Appending Dispensation Certificate...')
+  const { blob } = await buildDispensationCertificateBlob(dispensation)
+  const bodyDoc = await PDFDocument.load(mergedPdfBytes)
+  const certDoc = await PDFDocument.load(await blob.arrayBuffer())
+  const copied = await bodyDoc.copyPages(certDoc, certDoc.getPageIndices())
+  copied.forEach((page) => bodyDoc.addPage(page))
+  return { merged: await bodyDoc.save(), dispensationBlob: blob }
+}
+
+/**
  * Generate Comprehensive_Latest PDF with Calculations Part 1 + Area & Consistency
  * 
  * @param options - Configuration options for PDF generation
@@ -112,7 +143,8 @@ export async function generateComprehensiveLatestPDF(
     onNewParcels,
     skipParcelTracking = false,
     reportData,
-    narrativeOptions
+    narrativeOptions,
+    dispensation
   } = options
 
   try {
@@ -166,10 +198,15 @@ export async function generateComprehensiveLatestPDF(
     const mergedPdfBytes = withNarrative.merged
     const narrativeBlob = withNarrative.narrativeBlob
 
+    // Fold the Dispensation Certificate in at the very bottom of the record.
+    const withDispensation = await appendDispensationCertificate(withNarrative.merged, dispensation)
+    const finalMergedBytes = withDispensation.merged
+    const dispensationBlob = withDispensation.dispensationBlob
+
     console.log('[ComprehensivePDF] ✅ PDF generated successfully')
 
     // Create blob
-    const blob = new Blob([mergedPdfBytes as any], { type: 'application/pdf' })
+    const blob = new Blob([finalMergedBytes as any], { type: 'application/pdf' })
     const filename = 'Comprehensive_Latest.pdf'
 
     // Save to project folder if working directory provided
@@ -199,7 +236,8 @@ export async function generateComprehensiveLatestPDF(
           filePath: saveResult.filePath,
           pdfBlob: blob,
           areasOnlyBlob,
-          narrativeBlob
+          narrativeBlob,
+          dispensationBlob
         }
       } else {
         console.error('[ComprehensivePDF] ❌ Failed to save PDF:', saveResult.error)
@@ -211,7 +249,8 @@ export async function generateComprehensiveLatestPDF(
           success: false,
           error: saveResult.error,
           pdfBlob: blob,
-          narrativeBlob
+          narrativeBlob,
+          dispensationBlob
         }
       }
     } else {
@@ -222,7 +261,8 @@ export async function generateComprehensiveLatestPDF(
         success: true,
         pdfBlob: blob,
         areasOnlyBlob,
-        narrativeBlob
+        narrativeBlob,
+        dispensationBlob
       }
     }
   } catch (error: any) {

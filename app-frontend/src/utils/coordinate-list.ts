@@ -3,6 +3,7 @@ import { parseBeaconStatus } from './beaconStatus';
 import { useSurveyLookupStore } from '../stores/surveyLookup'
 import type { AdjustedCoordinate } from '../types/adjusted-coordinates'
 import { toCoordinateListPrecision } from '../types/adjusted-coordinates'
+import { fullDesignationPhrase } from './planDesignation'
 
 // Survey point interface (legacy - for backward compatibility)
 export interface SurveyPoint {
@@ -25,6 +26,13 @@ export interface SurveyorInfo {
   projectTitle: string
   district: string
   centralMeridian?: number // Lo value from project settings
+  /** The workflow "SURVEY OF ..." designation. When present (with `standNames`),
+   *  the running title and cover render the same designation the general plan
+   *  states, instead of `projectTitle`. `projectTitle` stays as the fallback. */
+  surveyOf?: string
+  /** The actual stand names drawn on this sheet, for the shared range builder.
+   *  See fullDesignationPhrase in planDesignation. */
+  standNames?: string[]
   /** Legacy free-text instruments column; the field book cover falls back to
    *  this when the structured instrument fields below are all empty. */
   instruments?: string
@@ -33,6 +41,18 @@ export interface SurveyorInfo {
   instrumentDescription?: string
   instrumentBaseSerial?: string
   instrumentRoverSerial?: string
+}
+
+/**
+ * The survey designation taken from a SurveyorInfo for any document that
+ * states "SURVEY OF ...". The single mapping: the shared full-clause phrase
+ * when the workflow surveyOf (and the sheet's stands) are known, else the
+ * caller's projectTitle. Every consumer — Coordinate List cover, Field Book
+ * cover, narrative report — reads this so they all state the same designation.
+ */
+export function surveyOfForSurveyor(surveyorInfo: SurveyorInfo): string {
+  const full = fullDesignationPhrase(surveyorInfo.surveyOf ?? '', surveyorInfo.standNames ?? [])
+  return full || (surveyorInfo.projectTitle || '').toUpperCase()
 }
 
 // Grouped points interface
@@ -255,6 +275,16 @@ export class CoordinateListGenerator {
   }
   
   /**
+   * The parcel designation for the cover and page headers: the shared
+   * general-plan phrase when the workflow surveyOf (and the sheet's stands) are
+   * known, else the caller's projectTitle — so documents without a surveyOf
+   * render exactly as before.
+   */
+  private designationFor(surveyorInfo: SurveyorInfo): string {
+    return surveyOfForSurveyor(surveyorInfo)
+  }
+  
+  /**
    * Generate cover page for Coordinate List
    */
   private generateCoverPage(
@@ -273,7 +303,7 @@ export class CoordinateListGenerator {
     
     pdf.text('SURVEY OF:', this.options.marginLeft, yPosition);
     pdf.setFont('helvetica', 'normal');
-    pdf.text(surveyorInfo.projectTitle || '', this.options.marginLeft + 30, yPosition);
+    pdf.text(this.designationFor(surveyorInfo), this.options.marginLeft + 30, yPosition);
     yPosition += 15;
     
     pdf.setFont('helvetica', 'bold');
@@ -585,7 +615,7 @@ export class CoordinateListGenerator {
     
     // Project title - split into multiple lines if needed
     pdf.setFontSize(10);
-    const surveyOfText = `SURVEY OF: ${surveyorInfo.projectTitle}`;
+    const surveyOfText = `SURVEY OF: ${this.designationFor(surveyorInfo)}`;
     const maxWidth = pdf.internal.pageSize.getWidth() - 2 * this.options.marginLeft;
     const lines = pdf.splitTextToSize(surveyOfText, maxWidth);
     let yPos = 35;

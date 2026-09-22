@@ -21,6 +21,7 @@ import { CalculationsPart1Generator } from '@/utils/calculations-part1';
 import { FieldBookGenerator, type FieldBookPoint } from '@/utils/field-book';
 import type { AdjustedCoordinate } from '@/types/adjusted-coordinates';
 import type { SurveyorInfo } from '@/utils/coordinate-list';
+import { surveyOfForSurveyor } from '@/utils/coordinate-list';
 import { TwoPassDocumentGenerator } from '@/utils/TwoPassDocumentGenerator';
 import type { DocumentMeasurements } from '@/types/document-measurements';
 import type { ReportOnSurveyData } from '@/types/cadastral';
@@ -325,7 +326,7 @@ export class ComprehensiveDocumentGenerator {
             surveyDescription: data.projectInfo.projectTitle,
             address: data.surveyorInfo.address,
             surveyDate: data.surveyorInfo.surveyDate,
-            surveyOf: data.surveyorInfo.projectTitle,
+            surveyOf: surveyOfForSurveyor(data.surveyorInfo),
             assistedBy: data.surveyorInfo.assistedBy,
             instruments: data.surveyorInfo.instruments,
             instrumentDescription: data.surveyorInfo.instrumentDescription,

@@ -1,6 +1,8 @@
 import { subjectSides } from './sideAnnotations'
 import { parseBeaconStatus } from '@/utils/beaconStatus'
 import { insetScaleToFit } from '../../../../../app-shared/insetScales'
+import { isReferenceMarkName } from '../../../../../app-shared/beaconName'
+import { designationPhrase } from '@/utils/planDesignation'
 /**
  * Builds the Working Plan module's `spec` from what SurveyPlanMapView already
  * holds: the final coordinate list (as the beacons FeatureCollection, which has
@@ -387,7 +389,12 @@ function statusSymbol(status: string | null | undefined): WorkingPlanSymbol | un
 export function beaconSymbol(
   description: string | null | undefined,
   status?: string | null,
+  name?: string | null,
 ): WorkingPlanSymbol {
+  // The NAME is the authority for a reference mark: a point the surveyor
+  // numbered RM16 is a reference mark even when its row carries no description
+  // or status to say so -- which is exactly how CSV-imported points arrive.
+  if (isReferenceMarkName(name)) return 'rm'
   // An explicit status beats the description: RM15 is a reference mark because
   // the surveyor coded it RM, not because of what the notes happen to say.
   const fromStatus = statusSymbol(status)
@@ -422,15 +429,22 @@ export function ringNames(parcel: any): string[] {
 }
 
 /** Up to the four heading lines the module accepts. The first names the
- *  document -- the renderer sets it larger than the rest. */
-export function workingPlanTitle(projectInfo: any): string[] {
+ *  document -- the renderer sets it larger than the rest.
+ *
+ *  The designation line is the shared general-plan phrase: built from the
+ *  workflow surveyOf (with the actual stands drawn on this sheet) so the
+ *  Working Plan states the same parcel designation as the General Plan,
+ *  Coordinate List and Dispensation Certificate. */
+export function workingPlanTitle(projectInfo: any, standNames: string[] = []): string[] {
   const lines = ['WORKING PLAN OF']
   const designation = String(projectInfo?.designation ?? '').trim()
+  const surveyOf = String(projectInfo?.surveyOf ?? '').trim()
+  const phrase = designationPhrase(surveyOf || designation, standNames)
   const parent = String(projectInfo?.parentProperty ?? '').trim()
   const district = String(projectInfo?.district ?? '').trim()
-  if (designation) lines.push(designation)
-  if (parent) lines.push(`of ${parent}`)
-  if (district) lines.push(`${district} District`)
+  if (surveyOf || designation) lines.push(phrase || designation.toUpperCase())
+  if (parent) lines.push(`OF ${parent.toUpperCase()}`)
+  if (district) lines.push(`${district.toUpperCase()} DISTRICT`)
   return lines.slice(0, 4)
 }
 
@@ -874,7 +888,7 @@ export function buildWorkingPlanSpec(
   const emitted = [...used, ...[...byName.keys()].filter(n => !seen.has(n))]
   const beacons: WorkingPlanBeacon[] = emitted.map(name => {
     const b = byName.get(name)!
-    return { name, X: b.X, Y: b.Y, symbol: beaconSymbol(b.description, b.status), label: 'auto' as const }
+    return { name, X: b.X, Y: b.Y, symbol: beaconSymbol(b.description, b.status, name), label: 'auto' as const }
   })
 
   // The inset's site marker is the FIGURE centre, so it must come from the ring
@@ -934,7 +948,7 @@ export function buildWorkingPlanSpec(
       scale: 'auto',
       beacons,
       parcels,
-      title: workingPlanTitle(ctx.projectInfo),
+      title: workingPlanTitle(ctx.projectInfo, parcels.map(p => p.label)),
       certificate: certificateFrom(ctx.config),
       approvalBox: true,
       // Omitted, not empty: an empty inset box would assert there was no

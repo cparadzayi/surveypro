@@ -13,6 +13,33 @@
 > table shows both bearings (DMS) so the difference is legible. Sections below are
 > updated to match; "swing-residual" wording in the original draft is superseded.
 
+> **Correction (2026-09-21):** the tolerance constants below were re-based on the Second
+> Schedule para 7(5) **Limits of Error** per the surveying reference —
+> `Δd_allow = K·√(0.075·f + 0.00015·f²)`, `K = 0,04` (B) / `0,06` (C) — replacing the
+> 0,01/0,02 × 0.075 reading (para 7(1)) formerly pinned throughout `si727Tolerances.js`,
+> `CompareView.vue`, `beaconAdjustmentReport.js` and `MergeAnalysisDialog.vue`. Directional
+> limits (para 8: 15000·K/(S+300)″) unchanged. The kernel formula shown in the body of this
+> doc is historical and superseded. (The max-error coefficient is the 0.075 the Second
+> Schedule prescribes — an earlier transcription of "0,0785" was corrected back.)
+
+> **Correction (2026-09-21, swing principle):** the direction check below was rewritten
+> from the raw para 8 test to the old-days **swing principle**, deliberately superseding
+> the 2026-05-26 "raw difference" note. Para 8 (`K/(S+300)`) is a *setting-out* acceptance
+> test (office-computed direction vs field-set direction, per §15(2)) and is NOT a
+> re-observation swing-consistency test, so it is no longer the edge-comparison's
+> direction gate (the `directionToleranceArcsec` kernel survives only as the setting-out
+> reading). Each line's **swing** = raw `(brgS − brgH)` wrapped ±180° (kept as
+> `dirDiffSec` for display); the network consensus **ω̂** = length-weighted **median** of
+> the swings (weight ∝ S² — the well-determined rays dominate without letting one displaced
+> beacon pull it, which a weighted mean would); a line's direction test is its **residual
+> `ω − ω̂`** against the class positional limit expressed as an angle —
+> `tol_ang = 2.45·σ₀·206265/S`, `σ₀ = distanceToleranceM(L_med)/5`, `L_med` = median
+> pairwise historical distance — the SAME 95% 2-D budget as the §67(5) co-ordinate
+> comparison (`dirAllowSec` per row, `posLimit` shared). The mean-swing summary field
+> (`meanSwingDeg`) is replaced by `networkSwingDeg/Sec` + `networkSwingWarn`; a large
+> uniform ω̂ is always reported and warns when `|ω̂| > tol_ang(L_med)` (an orientation
+> offset worth noting), never a per-beacon rejection.
+
 ## Purpose
 
 Strengthen the beacon comparison / least-squares adjustment with the Zimbabwe SI 727

@@ -1297,4 +1297,42 @@ describe('generateWorkingPlan — golden', () => {
     expect(typeof out.scale).toBe('number')
     expect(out.scale).toBeGreaterThan(0)
   })
+
+  describe('a beacon named RM', () => {
+    const B = (name, X, Y, symbol = 'placed') => ({ name, X, Y, symbol, label: 'auto' })
+    const spec = (beacons, extras = {}) => ({
+      scale: 1000,
+      beacons,
+      parcels: [{ label: '404', ring: beacons.map((b) => b.name) }],
+      title: ['WORKING PLAN OF', 'Stand 404'],
+      ...extras,
+    })
+    const kit = (s) => {
+      const home = spec(s)
+      const out = generateWorkingPlan(home)
+      const inserts = [...out.dxf.matchAll(/0\nINSERT\n8\nBEACONS\n2\n(\w+)\n/g)].map((m) => m[1])
+      return { out, inserts }
+    }
+    // The two last fields of an INSERT are the e and n of its anchor.
+    const anchor = (out, want) => {
+      const tokens = out.dxf.split('0\nINSERT\n')
+      for (const block of tokens) {
+        if (block.startsWith(`2\n${want}\n`)) {
+          const m = [...block.matchAll(/\n(?:10|20)\n([^,]+[,][^\n]+|[^ \n][^\n]*)/g)]
+          const numbers = [...block.matchAll(/\n(?:10|20)\n([-0-9.]+)\n/g)].map((x) => +x[1])
+          return numbers
+        }
+      }
+      return null
+    }
+
+    test('draws a peg whose name is RM + number as a reference mark', () => {
+      const { inserts } = kit([
+        B('P1', 2144000, -85700), B('P2', 2144100, -85700),
+        B('RM16', 2144100, -85600, 'peg'), B('P4', 2144000, -85600),
+      ])
+      expect(inserts.filter((i) => i === 'BCN_RM')).toHaveLength(1)
+      expect(inserts.filter((i) => i === 'BCN_PLACED')).toHaveLength(3)
+    })
+  })
 })

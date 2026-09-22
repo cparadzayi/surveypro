@@ -44,30 +44,32 @@ export async function generateDispensationCertificatePDF(
     y += opts.gap ?? 6
   }
 
-  // Wrapped left-aligned paragraph (advances y by the number of wrapped lines).
-  const para = (txt: string, opts: { size?: number; style?: 'normal' | 'bold'; lh?: number; gap?: number } = {}) => {
+  // Wrapped paragraph (advances y by the number of wrapped lines).
+  const para = (txt: string, opts: { size?: number; style?: 'normal' | 'bold'; lh?: number; gap?: number; align?: 'left' | 'center' } = {}) => {
     doc.setFont('helvetica', opts.style ?? 'normal')
     doc.setFontSize(opts.size ?? 10)
     const wrapped = doc.splitTextToSize(txt, contentW)
-    doc.text(wrapped, M.left, y)
+    const x = opts.align === 'center' ? pageW / 2 : M.left
+    doc.text(wrapped, x, y, { align: opts.align ?? 'left' })
     y += wrapped.length * (opts.lh ?? 5) + (opts.gap ?? 3)
   }
 
-  // Header — formal certificate block (Page i of N is stamped per-page in the post-pass below).
-  const year = data.date && /^\d{4}/.test(data.date) ? data.date.slice(0, 4) : String(new Date().getFullYear())
-  const certNo = data.certificateNumber && data.certificateNumber.trim() ? data.certificateNumber.trim() : '______________'
-  line('CERTIFICATE', { size: 13, style: 'bold', align: 'center', gap: 9 })
-  line(`NO. ${certNo}          OF ${year}`, { size: 10, gap: 6 })
-  para('(Issued in terms of Section 49 of the Land Survey Act Chapter 20:12)', { size: 9, gap: 5 })
-  para(data.surveyTitle || `SURVEY OF ${(data.township || '').toUpperCase()}`, { size: 11, style: 'bold', lh: 6, gap: 5 })
-  line(`DISTRICT: ${(data.district || '').toUpperCase()}`, { size: 10, style: 'bold', gap: 8 })
+  // Formal certificate block — repeated as the header on every page (SI 727 / Section 49).
   const showServ = data.portion === 'developed'
-  // Core certification statement. The GP number is blank (hand-filled on lodgement) unless provided.
-  const gpNo = data.generalPlanNumber && data.generalPlanNumber.trim() ? data.generalPlanNumber.trim() : '______________'
-  para(
-    `This is to certify that diagrams have been dispensed with in respect of stands represented on General Plan ${gpNo} which are listed in the following schedule.`,
-    { size: 10, gap: 4 },
-  )
+  const drawHeader = () => {
+    const year = data.date && /^\d{4}/.test(data.date) ? data.date.slice(0, 4) : String(new Date().getFullYear())
+    const certNo = data.certificateNumber && data.certificateNumber.trim() ? data.certificateNumber.trim() : '______________'
+    line('CERTIFICATE', { size: 13, style: 'bold', align: 'center', gap: 9 })
+    line(`NO. ${certNo}          OF ${year}`, { size: 10, align: 'center', gap: 6 })
+    para('(Issued in terms of Section 49 of the Land Survey Act Chapter 20:12)', { size: 9, align: 'center', gap: 5 })
+    para(data.surveyTitle || `SURVEY OF ${(data.township || '').toUpperCase()}`, { size: 11, style: 'bold', align: 'center', lh: 6, gap: 5 })
+    line(`DISTRICT: ${(data.district || '').toUpperCase()}`, { size: 10, style: 'bold', align: 'center', gap: 8 })
+    // Core certification statement. The GP number is blank (hand-filled on lodgement) unless provided.
+    const gpNo = data.generalPlanNumber && data.generalPlanNumber.trim() ? data.generalPlanNumber.trim() : '______________'
+    para('This is to certify that diagrams have been dispensed with in respect of stands represented on General Plan', { size: 10, align: 'center', gap: 0 })
+    para(`${gpNo} which are listed in the following schedule.`, { size: 10, align: 'center', gap: 6 })
+  }
+  drawHeader()
 
   // Table columns (widths shared by header + data rows).
   const remaining = showServ ? contentW - 24 - 28 : contentW - 40 - 46
@@ -119,7 +121,7 @@ export async function generateDispensationCertificatePDF(
     const boundaryLines = showServ && r.boundary ? doc.splitTextToSize(r.boundary, boundaryCol!.w - 3) : ['']
     const servLines = r.servitudeType ? doc.splitTextToSize(r.servitudeType, servCol.w - 3) : ['']
     const rowH = Math.max(6, Math.max(boundaryLines.length, servLines.length) * 4 + 2)
-    if (y + rowH > pageH - M.bottom) { doc.addPage(); y = M.top; drawHeaderRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9) }
+    if (y + rowH > pageH - M.bottom) { doc.addPage(); y = M.top; drawHeader(); drawHeaderRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9) }
     let x = M.left
     const cells = showServ
       ? [r.stand, r.areaM2 ? String(Math.round(r.areaM2)) : '', boundaryLines, servLines]
@@ -133,32 +135,13 @@ export async function generateDispensationCertificatePDF(
     y += rowH
   }
 
-  // Totals
-  y += 2
-  line(`Total stands: ${data.standCount}    Total area: ${Math.round(data.totalArea)} m²`, { style: 'bold' })
-  y += 2
-
-  // Footer blocks
-  const footer = (txt: string, style: 'normal' | 'bold' = 'normal') => {
-    const wrapped = doc.splitTextToSize(txt, contentW)
-    if (y + wrapped.length * 5 > pageH - M.bottom) { doc.addPage(); y = M.top }
-    doc.setFont('helvetica', style); doc.setFontSize(9)
-    doc.text(wrapped, M.left, y); y += wrapped.length * 5 + 3
-  }
-  footer(`Dispensation is granted under ${data.dispensationClause}.`)
-  footer(`I, ${data.surveyorName}${data.licenseNumber ? ` (${data.licenseNumber})` : ''}, Registered Land Surveyor, certify the above.`)
-  footer(`Signed: ____________________     Place: ${data.place || '____________'}     Date: ${data.date}`)
-  y += 6
-  footer('For office use — Surveyor-General:', 'bold')
-  footer('Approved: ____________________     Date: ____________________')
-
   // Stamp "Page i of N" at the top of every page (N is only known after layout).
   const pageCount = doc.getNumberOfPages()
   for (let p = 1; p <= pageCount; p++) {
     doc.setPage(p)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
-    doc.text(`Page ${p} of ${pageCount}`, M.left, 12)
+    doc.text(`Page ${p} of ${pageCount}`, pageW / 2, 12, { align: 'center' })
   }
 
   const blob = doc.output('blob')

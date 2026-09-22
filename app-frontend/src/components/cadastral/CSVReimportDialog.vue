@@ -132,6 +132,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import type { CSVImport } from '@/services/csvImports';
+import { formatDateTimeDDMMYYYY } from '@/utils/dateFormat';
 
 interface Props {
   isOpen: boolean;
@@ -150,13 +151,7 @@ const selectedOption = ref<'use-previous' | 'append' | 'smart-merge' | 'complete
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
-  return date.toLocaleString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  return formatDateTimeDDMMYYYY(date);
 }
 
 function handleCancel() {

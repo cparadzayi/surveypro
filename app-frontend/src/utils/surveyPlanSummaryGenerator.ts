@@ -5,6 +5,7 @@
  */
 
 import { jsPDF } from 'jspdf';
+import { formatDateTimeSecDDMMYYYY } from './dateFormat';
 
 export interface SurveyPlanSummaryData {
   // Survey details
@@ -378,7 +379,7 @@ export class SurveyPlanSummaryGenerator {
     this.doc.setFont('helvetica', 'normal');
     this.doc.setTextColor(100);
     
-    const generatedDate = new Date().toLocaleString();
+    const generatedDate = formatDateTimeSecDDMMYYYY(new Date());
     this.doc.text(`Generated: ${generatedDate}`, this.margin, this.currentY);
     this.doc.text('SurveyPro Cadastral System', this.pageWidth - this.margin, this.currentY, { align: 'right' });
     

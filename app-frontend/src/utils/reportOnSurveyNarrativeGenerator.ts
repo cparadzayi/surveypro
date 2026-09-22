@@ -7,6 +7,7 @@
 import { jsPDF } from 'jspdf';
 import type { ReportOnSurveyData, FoundBeacon } from '../types/cadastral';
 import { stampSequentialPageNumbers } from './pdfPageNumber';
+import { formatDateDDMMYYYY } from './dateFormat';
 
 interface ReportGenerationOptions {
   surveyorName: string;
@@ -433,7 +434,7 @@ export class NarrativeReportOnSurveyGenerator {
     this.currentY += this.lineHeight + 5;
     
     // Date
-    this.doc.text(`Date: ${new Date().toLocaleDateString()}`, this.margin, this.currentY);
+    this.doc.text(`Date: ${formatDateDDMMYYYY(new Date())}`, this.margin, this.currentY);
   }
 
   /**

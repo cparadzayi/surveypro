@@ -149,14 +149,6 @@ export function formatVideLine(maxLineChars) {
 }
 
 /**
- * Title-case helper: "lot 9 of borrowdale" â†’ "Lot 9 Of Borrowdale".
- * Matches the PDF's `toTitleCase` style for figure-description substitutions.
- */
-function titleCase(str) {
-  return String(str || '').replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-}
-
-/**
  * Builds the SI 727 Seventh Schedule (b) figure-description sentence
  * from the figureDescription template in `app-shared/block-definitions.js`,
  * wrapped to `maxLineChars`. Returns [] when there is no outside-figure
@@ -183,11 +175,11 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
   const beaconSequence = getOutsideFigureVertices(outsideFigureData, null).sequence
   if (!beaconSequence) return []
 
-  const township = titleCase(metadata?.township) || 'the township'
-  const district = titleCase(metadata?.district) || 'the district'
-  const parentProperty = titleCase(metadata?.parentProperty)
+  const township = (metadata?.township || 'the township').toUpperCase()
+  const district = (metadata?.district || 'the district').toUpperCase()
+  const parentProperty = (metadata?.parentProperty || '').trim().toUpperCase()
   const wholePortion = (metadata?.wholePortion || '').trim() || 'the whole'
-  const ofTarget = parentProperty ? `${township} of ${parentProperty}` : township
+  const ofTarget = parentProperty ? `${township} OF ${parentProperty}` : township
 
   const standNames = surveyedParcels.map(sp => String(sp?.stand ?? '')).filter(Boolean)
   if (standNames.length === 0) return []
@@ -226,9 +218,9 @@ export function formatPlanDesignation(metadata, surveyedParcels) {
     .replace(/^Stands?\s+[\d,\s\-–]+/i, '')
     .replace(/\s+of\s+.+$/i, '')
     .trim()
-  if (standRange && townshipDesc) return `Stands ${standRange} ${townshipDesc}`
+  if (standRange && townshipDesc) return `Stands ${standRange} ${townshipDesc}`.toUpperCase()
   const fallback = (metadata?.surveyOf || metadata?.designation || '').trim()
-  return fallback.replace(/\s+of\s+.+$/i, '').trim()
+  return fallback.replace(/\s+of\s+.+$/i, '').trim().toUpperCase()
 }
 
 function normalizeCapeLoYX(y, x) {

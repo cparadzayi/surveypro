@@ -12,6 +12,26 @@ const parcels = [
 ]
 
 describe('buildCertificateRows', () => {
+  it('drops the Outside Figure pseudo-parcel from undeveloped rows', () => {
+    const withOF = [
+      ...parcels,
+      { id: 99, stand: '', designation: 'Outside Figure', area_m2: 100000 },
+    ]
+    const rows = buildCertificateRows(withOF, [], 'undeveloped')
+    expect(rows).toHaveLength(3)
+    expect(rows.map((r) => r.stand)).toEqual(['1620', '1621', '1650'])
+  })
+
+  it('drops the Outside Figure pseudo-parcel from developed rows (caught by stand name too)', () => {
+    const withOF = [
+      ...parcels,
+      { id: 99, stand: 'Outside Figure', designation: 'Outside Figure', area_m2: 100000 },
+    ]
+    const rows = buildCertificateRows(withOF, [sv()], 'developed')
+    expect(rows.some((r) => r.stand.includes('Outside Figure'))).toBe(false)
+    expect(rows.map((r) => r.stand)).toEqual(['1620', '1621', '1650'])
+  })
+
   it('undeveloped: one row per parcel, blank boundary/servitudeType, all parcels in order', () => {
     const rows = buildCertificateRows(parcels, [sv()], 'undeveloped')
     expect(rows).toHaveLength(3)

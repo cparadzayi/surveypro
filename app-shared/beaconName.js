@@ -30,6 +30,15 @@ export function normalizeBeaconName(name) {
 }
 
 /**
+ * Is this beacon a reference mark by NAME? RM prefixed with a numeric suffix —
+ * RM16, RM 16, RM7A. The name is the authority: a point the surveyor numbered
+ * RM is a reference mark whatever else its row may or may not say.
+ */
+export function isReferenceMarkName(name) {
+  return typeof name === 'string' && /^RM\s*\d/i.test(name.trim())
+}
+
+/**
  * The split every label-derivation site needs: prefix to find the stand, suffix to
  * print. Splitting the NORMALISED name means 2474a prints A while 1464An prints An.
  */

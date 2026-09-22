@@ -40,7 +40,7 @@
                         class="mr-2 text-purple-600 focus:ring-purple-500"
                       />
                       <span class="text-sm">
-                        <span class="font-medium">Class B</span> (0.01·√(0.075f + 0.00015f²))
+                        <span class="font-medium">Class B</span> (0.04·√(0.075f + 0.00015f²))
                       </span>
                     </label>
                     <label class="flex items-center cursor-pointer">
@@ -51,7 +51,7 @@
                         class="mr-2 text-purple-600 focus:ring-purple-500"
                       />
                       <span class="text-sm">
-                        <span class="font-medium">Class C</span> (0.02·√(0.075f + 0.00015f²))
+                        <span class="font-medium">Class C</span> (0.06·√(0.075f + 0.00015f²))
                       </span>
                     </label>
                   </div>

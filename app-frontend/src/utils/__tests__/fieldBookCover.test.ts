@@ -130,6 +130,56 @@ describe('the cover through the two-pass generator', () => {
     expect(raw).toContain('(ADVALOREM TOWNSHIP OF SHABANI MINE STAND 9182)');
   });
 
+  // The cover must state the same designation as the cover letter: the shared
+  // surveyOfForSurveyor mapping (fullDesignationPhrase) rebuilds the phrase from
+  // the workflow surveyOf + the sheet's stands, and it wins over projectTitle.
+  it('states the general-plan designation from the workflow surveyOf', async () => {
+    const result = await new TwoPassDocumentGenerator().generate({
+      surveyPoints: [{ pointId: 'P1', y: 1, x: 2, status: 'P', description: 'peg', surveyDate: '2026-01-01' }],
+      adjustedCoordinates: [],
+      surveyorInfo: {
+        name: 'O Saunyama',
+        licenseNumber: 'PLS 1',
+        firm: '',
+        address: 'BOX A1262',
+        surveyDate: 'June 2020',
+        projectTitle: 'SOMETHING ELSE',
+        surveyOf: 'Stands 108, 167-256 Advalorem Township',
+        standNames: ['108', '167', '168', '169', '256'],
+      },
+    } as any);
+
+    const raw = Buffer.from(await result.sections.fieldBook.arrayBuffer()).toString('latin1');
+
+    expect(raw).toContain('(STANDS 108, 167 - 169, 256 ADVALOREM TOWNSHIP)');
+    expect(raw).not.toContain('(SOMETHING ELSE)');
+  });
+
+  // The full designation — inclusive of the " ... of ..." parent-property
+  // clause — must survive on the cover, not just the clipped general-plan
+  // township phrase.
+  it('keeps the parent-property clause on the field book cover', async () => {
+    const result = await new TwoPassDocumentGenerator().generate({
+      surveyPoints: [{ pointId: 'P1', y: 1, x: 2, status: 'P', description: 'peg', surveyDate: '2026-01-01' }],
+      adjustedCoordinates: [],
+      surveyorInfo: {
+        name: 'O Saunyama',
+        licenseNumber: 'PLS 1',
+        firm: '',
+        address: 'BOX A1262',
+        surveyDate: 'June 2020',
+        projectTitle: 'SOMETHING ELSE',
+        surveyOf: 'STANDS 271-339, 346-349 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A',
+        standNames: ['271', '272', '288', '289', '290'],
+      },
+    } as any);
+
+    const raw = Buffer.from(await result.sections.fieldBook.arrayBuffer()).toString('latin1');
+
+    expect(raw).toContain('(STANDS 271 - 272, 288 - 290 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A)');
+    expect(raw).not.toContain('(SOMETHING ELSE)');
+  });
+
   // The cover falls back to the free-text `instruments` column when the three
   // structured instrument fields are all empty -- how a project predating this
   // branch still renders an Instruments row. Drives that through the real

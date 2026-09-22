@@ -2,7 +2,7 @@ import PDFDocument from 'pdfkit'
 import { deriveSubjectGeometry } from './diagram/subjectGeometry.js'
 import { parcelExtent, pickDiagramScale, makeTransform, beaconRadiusPt } from './diagram/diagramScale.js'
 import { buildSidesTable, buildFigureRepresents, formatDiagramArea } from './diagram/sidesTable.js'
-import { resolveStatementDesignation } from './diagram/designation.js'
+import { resolveStatementDesignation, statementDesignation } from './diagram/designation.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
@@ -557,7 +557,9 @@ function drawStatement(doc, layout, geometry, metadata) {
   // Name the SELECTED parcel (subject). A bare stand number is expanded to
   // "STAND <n> <locality>" using the project designation's locality suffix.
   const designation = resolveStatementDesignation(geometry.designation, geometry.stand, metadata.designation)
-  const parent = metadata.parentProperty ? ` OF ${metadata.parentProperty}` : ''
+  // The parent clause is appended by statementDesignation, which drops any
+  // duplicate "… of <parent>" already present in the designation.
+  const desigText = statementDesignation(designation, metadata.parentProperty)
   // Survey date arrives as metadata.date from the frontend; accept either key.
   const surveyDate = metadata.surveyDate ?? metadata.date
   doc.save().font('Helvetica').fontSize(9).fillColor('#000')
@@ -571,7 +573,6 @@ function drawStatement(doc, layout, geometry, metadata) {
   doc.text('of land called', R.x, R.y + 12, { width: R.width, align: 'right' })
   // Designation dominates at 11pt, but must stay on ONE row: shrink to fit R.width
   // (down to a 7.5pt floor) so a long name never wraps into the "situate" line below.
-  const desigText = `${designation}${parent}`
   doc.font('Helvetica-Bold')
   let desigSize = 11
   doc.fontSize(desigSize)
@@ -582,7 +583,7 @@ function drawStatement(doc, layout, geometry, metadata) {
   doc.text(desigText, R.x, R.y + 30, { width: R.width, lineBreak: false })
   // Same 9pt as the "The figure … of land called" block above.
   doc.font('Helvetica').fontSize(9).text(
-    `situate in the district of ${metadata.district ?? ''}.`, R.x, R.y + 44)
+    `situate in the district of ${(metadata.district ?? '').toUpperCase()}.`, R.x, R.y + 44)
   // Extra row above "Surveyed … by me" (below "situate in the district of …") for
   // visual separation.
   doc.text(`Surveyed in ${surveyDate ? new Date(surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`, R.x, R.y + 61)

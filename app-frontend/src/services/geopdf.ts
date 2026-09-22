@@ -57,6 +57,13 @@ export interface VectorGeoPDFRequest {
       ring: [number, number][]
       annotations: Array<{ side: string; role: string; label?: string; widthM?: number }>
     }>
+    // General plans: the party-wall servitude statement table. `stands` lists
+    // the stands bound by a party wall (comma-separated), `boundary` the wall's
+    // beacon-pair boundary. Built from the Servitudes-view records; absent on
+    // diagrams / working plans.
+    servitudeStatement?: {
+      rows: Array<{ stands: string; boundary: string }>
+    }
   }
   // New top-level field for the beacon-description block
   beaconGroups?: Array<{ points: string; description: string }>

@@ -9,6 +9,7 @@ import {
   labelParts,
   findCaseFoldDuplicates,
   planNameNormalization,
+  isReferenceMarkName,
 } from '../../../../app-shared/beaconName.js'
 
 describe('splitBeaconName', () => {
@@ -136,5 +137,24 @@ describe('planNameNormalization', () => {
       renames: [], collisions: [], after: [{ id: 9, name: '2474A' }],
     })
     expect(planNameNormalization(null)).toEqual({ renames: [], collisions: [], after: [] })
+  })
+})
+describe('isReferenceMarkName', () => {
+  test('reads RM prefixed with a numeric suffix', () => {
+    for (const name of ['RM16', 'RM 16', 'RM7', 'RM15A', 'rm16', 'RM 7', ' RM16 ', 'RM16 ']) {
+      expect(isReferenceMarkName(name)).toBe(true)
+    }
+  })
+
+  test('refuses anything without the numeric suffix', () => {
+    for (const name of ['RM', 'SD4', '87DR', 'BASE', '170/T', 'RMX']) {
+      expect(isReferenceMarkName(name)).toBe(false)
+    }
+  })
+
+  test('returns false rather than throwing for non-strings', () => {
+    for (const name of [null, undefined, 42, {}, []]) {
+      expect(isReferenceMarkName(name)).toBe(false)
+    }
   })
 })

@@ -58,18 +58,20 @@ one number for both questions is the mistake to avoid here.
 
 This design answers identity by **name** and materiality by **statute**.
 
-### Materiality: SI 727 Second Schedule, para 7(1)
+### Materiality: SI 727 Second Schedule, para 7(5) — Limits of Error (distances)
 
-Para 7(1) governs the acceptance of a previous survey's co-ordinates under s.15(1) — precisely
-the question being asked when a stored vertex meets a re-imported coordinate for the same beacon.
-It is already the paragraph this codebase uses for found-beacon comparison, and deliberately not
-para 5 (looser, and about a ground distance against the same survey's own co-ordinates) nor
-para 7(2) (the angle subtended at a beacon).
+Para 7(5) (Limits of Error) sets the class-by-class distance tolerance used when comparing a
+re-determination against stored co-ordinates — precisely the question being asked when a stored
+vertex meets a re-imported coordinate for the same beacon, and the same paragraph the found-beacon
+comparison and the bnr-part8 duplicate adjudication use. Corrected 2026-09-21: earlier drafts cited
+para 7(1) acceptance with factors 0.01/0.02 (a misreading); the Limits of Error are 0.04/0.06 with
+the 0.075 coefficient the Second Schedule prescribes. Para 7(2) (the angle
+subtended at a beacon) is a different test we do not use here.
 
 ```
 allowable difference (m) = factor · √(0.075·f + 0.00015·f²)      f = shorter line length, metres
-  class B  factor 0.01
-  class C  factor 0.02
+  class B  factor 0.04
+  class C  factor 0.06
 ```
 
 Para 7(1) bounds a **line**, not a point. A beacon that moves by δ changes every line at that

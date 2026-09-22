@@ -9,6 +9,7 @@ import {
   renderBeaconComparison,
   type BeaconComparisonCursor,
 } from './beaconComparisonSection';
+import { formatDateDDMMYYYY } from './dateFormat';
 
 interface ReportGenerationOptions {
   surveyorName: string;
@@ -452,7 +453,7 @@ export class ReportOnSurveyGenerator {
     this.currentY += this.lineHeight + 5;
     
     // Date line
-    this.doc.text(`Date: ${new Date().toLocaleDateString()}`, this.margin, this.currentY);
+    this.doc.text(`Date: ${formatDateDDMMYYYY(new Date())}`, this.margin, this.currentY);
   }
 
   /**

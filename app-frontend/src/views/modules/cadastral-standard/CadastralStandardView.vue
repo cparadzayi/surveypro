@@ -1367,6 +1367,7 @@ import { SimplifiedCadastralCombinedGenerator } from '../../../utils/cadastral-c
 import type { SurveyPoint } from '../../../utils/calculations-part1';
 import { bankersRound } from '../../../utils/cadastral-precision';
 import { FIELD_BOOK_POINTS_PER_PAGE } from '../../../utils/fieldBookPagination';
+import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY, formatDateTimeSecDDMMYYYY } from '../../../utils/dateFormat';
 
 import CoordinateListView from './CoordinateListView.vue';
 import QGISExportView from './QGISExportView.vue';
@@ -1862,7 +1863,7 @@ async function generateCalculationsPart1() {
         x: x,
         status: point.status || '',
         description: point.description,
-        surveyDate: point.surveyDate ? point.surveyDate.toLocaleDateString('en-GB') : ''
+        surveyDate: point.surveyDate ? formatDateDDMMYYYY(point.surveyDate) : ''
       };
     });
     
@@ -3187,7 +3188,7 @@ async function generateFieldBook() {
 }
 
 function formatDate(date: Date): string {
-  return date.toLocaleDateString() + ' at ' + date.toLocaleTimeString();
+  return formatDateTimeSecDDMMYYYY(date);
 }
 
 // Phase 2: Workflow Dashboard Handlers
@@ -3628,7 +3629,7 @@ function downloadCoordinateListCSV() {
     const header = ['Point', 'Y', 'X', 'Status', 'Description', 'Date of survey'];
     
     // Prepare CSV rows with banker's rounding to 2 decimal places
-    const today = new Date().toLocaleDateString()
+    const today = formatDateDDMMYYYY(new Date())
     const rows = workflowState.adjustedCoordinates.map(coord => [
       coord.pointId,
       bankersRound(coord.y, 2).toFixed(2),
@@ -3716,6 +3717,10 @@ async function generateCoordinateList() {
       firm: workflowState.surveyorInfo.firm || '',
       address: workflowState.surveyorInfo.address || '',
       surveyDate: workflowState.surveyorInfo.surveyDate,
+      // surveyOf is the single source of the "SURVEY OF ..." designation, so the
+      // coordinate list states the same designation the general plan does. The
+      // designation-based projectTitle stays as the fallback below it.
+      surveyOf: workflowState.surveyorInfo.surveyOf || '',
       // Use fresh data from database project instead of stale workflowState
       projectTitle: selectedProject.value?.designation || workflowState.surveyorInfo.surveyOf,
       district: selectedProject.value?.district || workflowState.projectInfo.district || '',
@@ -4063,7 +4068,7 @@ function generateFieldBookHTML(fieldBook: any): string {
         <td class="coordinate">${typeof point.coordinates.x === 'string' ? point.coordinates.x : formatCoordinate(point.coordinates.x)}</td>
         <td>${point.status === 'F' ? 'Fixed' : point.status === 'P' ? 'Peg' : point.status || ''}</td>
         <td>${point.description}</td>
-        <td>${point.surveyDate.toLocaleDateString()}</td>
+        <td>${formatDateDDMMYYYY(point.surveyDate)}</td>
       </tr>
     `).join('');
 
@@ -4148,7 +4153,7 @@ function generateFieldBookHTML(fieldBook: any): string {
         <div class="document-header">DOCUMENT INFORMATION</div>
         
         <div class="metadata-section">
-          <div class="metadata-item"><strong>Document Generated:</strong> ${metadata.dateGenerated.toLocaleString()}</div>
+          <div class="metadata-item"><strong>Document Generated:</strong> ${formatDateTimeSecDDMMYYYY(metadata.dateGenerated)}</div>
           <div class="metadata-item"><strong>Total Pages:</strong> ${metadata.pageCount} (including cover)</div>
           <div class="metadata-item"><strong>Coordinate Precision:</strong> 3 decimal places (millimeter accuracy)</div>
           <div class="metadata-item"><strong>Datum:</strong> WGS84</div>

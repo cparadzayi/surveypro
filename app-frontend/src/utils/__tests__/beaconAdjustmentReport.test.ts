@@ -37,7 +37,7 @@ function makeResult(overrides: Partial<any> = {}) {
   ];
   const edgeRow = (from: string, to: string, distOk: boolean, dirOk: boolean) => ({
     from, to, dH: 140.0, dS: 140.05, dDiff: 0.05, dAllow: 0.04,
-    distOk, brgH: 130.5, brgS: 130.502, dirDiffSec: -7200, dirAllowSec: 45.0, dirOk,
+    distOk, brgH: 130.5, brgS: 130.502, dirDiffSec: -7200, swingResidSec: -7200, dirAllowSec: 45.0, dirOk,
     pass: distOk && dirOk,
   });
   return {
@@ -51,7 +51,7 @@ function makeResult(overrides: Partial<any> = {}) {
     loo: { rows: [], rmsLoo: 0.01, maxLoo: 0.02, note: null },
     edges: {
       rows: [edgeRow('86B', '87A', true, true), edgeRow('86B', '87B', false, false), edgeRow('87A', '87B', true, true)],
-      summary: { totalLines: 3, distPass: 2, dirPass: 2, bothPass: 2, meanScale: 1.0001, meanSwingDeg: -0.001 },
+      summary: { totalLines: 3, distPass: 2, dirPass: 2, bothPass: 2, meanScale: 1.0001, sigma0: 0.02, posLimit: 0.049, lmed: 100, networkSwingDeg: -0.000278, networkSwingSec: -1.0, networkSwingWarn: false },
     },
     surveyClass: 'B',
     ...overrides,
@@ -250,7 +250,7 @@ describe('addEdgeComplianceSketch (via generateBeaconAdjustmentReport)', () => {
   });
 
   it('does nothing (no sketch heading) when there are no edges', () => {
-    const { written } = renderCapturing(makeResult({ edges: { rows: [], summary: { totalLines: 0, distPass: 0, dirPass: 0, bothPass: 0, meanScale: null, meanSwingDeg: null } } }));
+    const { written } = renderCapturing(makeResult({ edges: { rows: [], summary: { totalLines: 0, distPass: 0, dirPass: 0, bothPass: 0, meanScale: null, sigma0: 0.02, posLimit: 0.049, lmed: 100, networkSwingDeg: null, networkSwingSec: null, networkSwingWarn: false } } }));
     expect(written).not.toContain('Comparison Sketch — SI 727 §67(5)');
   });
 });
@@ -276,7 +276,7 @@ describe('addEdgeComplianceSketch annotation placement', () => {
     ];
     const edgeRow = (from: string, to: string) => ({
       from, to, dH: 50.0, dS: 50.02, dDiff: 0.02, dAllow: 0.05,
-      distOk: true, brgH: 90.0, brgS: 90.001, dirDiffSec: 3.6, dirAllowSec: 20.0, dirOk: true,
+      distOk: true, brgH: 90.0, brgS: 90.001, dirDiffSec: 3.6, swingResidSec: 3.6, dirAllowSec: 20.0, dirOk: true,
       pass: true,
     });
     const result = {
@@ -293,7 +293,7 @@ describe('addEdgeComplianceSketch annotation placement', () => {
           edgeRow('A', 'B'), edgeRow('A', 'C'), edgeRow('A', 'D'),
           edgeRow('B', 'C'), edgeRow('B', 'D'), edgeRow('C', 'D'),
         ],
-        summary: { totalLines: 6, distPass: 6, dirPass: 6, bothPass: 6, meanScale: 1.0001, meanSwingDeg: -0.001 },
+        summary: { totalLines: 6, distPass: 6, dirPass: 6, bothPass: 6, meanScale: 1.0001, sigma0: 0.02, posLimit: 0.049, lmed: 100, networkSwingDeg: -0.000278, networkSwingSec: -1.0, networkSwingWarn: false },
       },
       surveyClass: 'B',
     };
@@ -342,7 +342,7 @@ describe('addEdgeComplianceSketch paper size selection', () => {
         rows.push({
           from: a.name, to: b.name, dH, dS, dDiff: dS - dH, dAllow: 0.05,
           distOk: Math.abs(dS - dH) <= 0.05,
-          brgH, brgS, dirDiffSec, dirAllowSec: 30,
+          brgH, brgS, dirDiffSec, swingResidSec: dirDiffSec, dirAllowSec: 30,
           dirOk: Math.abs(dirDiffSec) <= 30,
           pass: false,
         });
@@ -364,7 +364,8 @@ describe('addEdgeComplianceSketch paper size selection', () => {
           distPass: rows.filter((r) => r.distOk).length,
           dirPass: rows.filter((r) => r.dirOk).length,
           bothPass: rows.filter((r) => r.distOk && r.dirOk).length,
-          meanScale: 1.0, meanSwingDeg: 0,
+          meanScale: 1.0, sigma0: 0.02, posLimit: 0.049, lmed: 100,
+          networkSwingDeg: 0, networkSwingSec: 0, networkSwingWarn: false,
         },
       },
       surveyClass: 'B',
@@ -447,9 +448,59 @@ describe('rejected beacons stay in the comparison', () => {
     expect(label('86B')!.color).toEqual([20, 20, 20]);
   });
 
-  it('records which test rejected each beacon in the comparison schedule', () => {
+it('records which test rejected each beacon in the comparison schedule', () => {
     const { written } = renderCapturing(withScheduleReject());
     expect(written).toContain('Rejected by');
     expect(written).toContain('SI 727');
+  });
+});
+
+describe('each comparison check produces its own report', () => {
+  // Three distinct pipelines share generateBeaconAdjustmentReport. What must hold for
+  // all three: no section crashes when an earlier mode's data is absent, and only the
+  // sections that belong to the chosen check actually appear.
+  const withRawDiffs = (pts: any[]) =>
+    pts.map((p) => ({ ...p, rawDist: Math.hypot(p.dY, p.dX), rawBrg: 90 }));
+
+  it('co-ordinates (§67(5)) mode: schedule + certification, adjustment-free', () => {
+    const { written } = renderCapturing(makeResult({
+      method: 'coords',
+      adj: undefined, log: undefined, loo: undefined, edges: undefined,
+      posLimit: 0.0623,
+      pts: withRawDiffs(makeResult().pts),
+    }));
+    expect(written).toContain('BEACON COMPARISON — SI 727 §67(5) CO-ORDINATES');
+    expect(written).toContain('Comparison Schedule — SI 727 §67(5)');
+    expect(written.some((w) => /no Helmert or W-test is applied in this mode/i.test(w))).toBe(true);
+    expect(written.some((w) => /co-ordinate limit/.test(w))).toBe(true);
+    expect(written).not.toContain('Data-Snooping Log (iterative Baarda W-test)');
+    expect(written).not.toContain('Transformation Residuals');
+    expect(written).not.toContain('Reliability & Validation');
+    expect(written).not.toContain('SI 727 Edge Compliance — Class');
+  });
+
+  it('edge-compliance mode: schedule + edge table + sketch, no adjustment', () => {
+    const { written } = renderCapturing(makeResult({
+      method: 'edges',
+      adj: undefined, log: undefined, loo: undefined,
+      pts: withRawDiffs(makeResult().pts),
+    }));
+    expect(written).toContain('BEACON COMPARISON — SI 727 SECOND SCHEDULE EDGE COMPLIANCE');
+    expect(written).toContain('SI 727 Edge Compliance — Class B');
+    expect(written).toContain('Comparison Sketch — SI 727 §67(5)');
+    expect(written.some((w) => /no Helmert fitted/.test(w))).toBe(true);
+    expect(written).not.toContain('Data-Snooping Log (iterative Baarda W-test)');
+    expect(written).not.toContain('Transformation Residuals');
+    expect(written).not.toContain('Reliability & Validation');
+  });
+
+  it('W-test mode: full adjustment report (stats, snooping, residuals, reliability)', () => {
+    // The W-test pipeline runs no SI 727 edge pre-filter anymore, so edges are absent.
+    const { written } = renderCapturing(makeResult({ method: 'wtest', edges: undefined }));
+    expect(written).toContain('BEACON COMPARISON & ADJUSTMENT');
+    expect(written).toContain('Data-Snooping Log (iterative Baarda W-test)');
+    expect(written.some((w) => w.includes('Transformation Residuals'))).toBe(true);
+    expect(written).toContain('Reliability & Validation');
+    expect(written).not.toContain('SI 727 Edge Compliance — Class');
   });
 });

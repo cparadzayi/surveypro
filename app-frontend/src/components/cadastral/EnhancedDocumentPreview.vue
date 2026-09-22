@@ -188,6 +188,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { formatDateDDMMYYYY } from '../../utils/dateFormat';
 
 interface DocumentMetadata {
   pages: number;
@@ -304,7 +305,7 @@ function formatFileSize(bytes: number): string {
 }
 
 function formatDate(date: Date): string {
-  return new Date(date).toLocaleDateString();
+  return formatDateDDMMYYYY(new Date(date));
 }
 
 function onIframeLoad() {

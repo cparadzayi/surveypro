@@ -52,6 +52,16 @@ line length" the schedule already encodes: two claims of the same name separated
 > differs by millimetres, which this reading deliberately flags as a conflict for the
 > surveyor to inspect.)
 
+> **Follow-up (2026-09-21):** the tolerance is now the para 7(5) Limits of Error —
+> `0,04·√(0,075f + 0,00015f²)` (B) / `0,06·√(...)` (C), replacing the 0,01/0,02 × 0.075
+> reading (the 0.075 coefficient itself is what the Second Schedule prescribes; a brief
+> transcription of "0,0785" was corrected back). The correction rescales the repeat window:
+> `distanceToleranceM(sep, cls) >= sep`
+> now only up to `sep <= ~0.13 mm` (B) / `~0.28 mm` (C). The consequence above still stands
+> for every practically measurable separation — a millimetre apart is a conflict — but the
+> claim "`< sep` for **every** nonzero separation" no longer holds in the sub-millimetre
+> repeat neighbourhood.
+
 Conflict classification per `(name, cls)`:
 
 - separation `== 0` (or `<= distanceToleranceM(sep, cls)`) → a **repeat**: keep today's

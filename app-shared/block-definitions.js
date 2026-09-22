@@ -259,6 +259,46 @@ export const ENDORSEMENT_BLOCK = {
   height: 150 // mm
 }
 
+// Servitude Statement (General Plans) — the bordered statement + two-column
+// mini-table listing the stands subject to party-wall servitudes:
+//
+//   ┌──────────────────────────────────────────────────┐
+//   │  The following Stands are subject to             │
+//   │        party-wall servitudes                     │
+//   ├────────────────────────┬─────────────────────────┤
+//   │  STAND NUMBER          │  BOUNDARY               │
+//   ├────────────────────────┼─────────────────────────┤
+//   │  2833, 2469            │  2833A - 2833B          │
+//   └────────────────────────┴─────────────────────────┘
+//
+// Consumed by pdfkitGeoPDF.js (planner reserves + drawer renders). Column
+// widths are content-fit (measured per render), so only the fixed chrome
+// (padding, header height, row height, fonts) is defined here.
+export const SERVITUDE_STATEMENT = {
+  heading: 'The following Stands are subject to party-wall servitudes',
+  headingFont: { family: 'Helvetica-Bold', size: 8.5 },
+
+  columns: [
+    { key: 'stands',   label: 'STAND NUMBER', align: 'left' },
+    { key: 'boundary', label: 'BOUNDARY',     align: 'left' },
+  ],
+
+  font:       { family: 'Helvetica',      size: 8    },
+  headerFont: { family: 'Helvetica-Bold', size: 7.5  },
+
+  padTop:          6,   // box padding above the heading
+  padBottom:       6,   // box padding below the last data row
+  headingGap:      4,   // gap between the heading line and the header row
+  headingLineHeight: 11,
+  headerHeight:    15,  // header-row band height
+  rowHeight:       14,  // each data-row band height
+  cellPad:         6,   // per-side horizontal cell padding
+  tableInset:      4,   // box edge → table edge
+
+  minWidth:        250, // box width floor (pt); grows to fit heading/content
+  maxWidth:        340, // box width cap (keeps a small statement on a large sheet)
+}
+
 // North Arrow
 export const NORTH_ARROW = {
   size: 40, // points/pixels
@@ -766,6 +806,7 @@ export default {
   ENDORSEMENT_BLOCK,
   NORTH_ARROW,
   SCALE_BAR,
+  SERVITUDE_STATEMENT,
   LABEL_CONFIG,
   formatAreaValue,
   edgeDistanceMetres,

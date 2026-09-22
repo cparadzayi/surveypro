@@ -127,6 +127,7 @@ import {
   getSeverityColorClass,
   copyErrorToClipboard
 } from '../../utils/errorFormatter';
+import { formatDateTimeSecDDMMYYYY } from '../../utils/dateFormat';
 
 const props = defineProps<{
   error: FormattedError | null;
@@ -161,7 +162,7 @@ function formatTimestamp(timestamp: Date): string {
   if (seconds < 60) return 'Just now';
   if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
   
-  return new Date(timestamp).toLocaleString();
+  return formatDateTimeSecDDMMYYYY(new Date(timestamp));
 }
 
 async function copyError() {

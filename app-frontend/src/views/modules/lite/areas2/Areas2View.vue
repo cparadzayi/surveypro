@@ -298,6 +298,7 @@ import LayerSelect from '../../../../components/inputs/LayerSelect.vue'
 import { areaCompute } from '../../../../services/compute'
 import { parseFlexibleNumberOrDMS, decimalToDMS, formatDMS, bankersRound } from '../../../../utils/dms'
 import { getDMSPolicy, getAreaPolicy } from '../../../../utils/displayConfig'
+import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '../../../../utils/dateFormat'
 import { searchFeatures, getLayer, listLayerFeatures, listLayers, createLayer, batchCreateFeatures, listLandParcels, createLandParcel, checkParcelDuplicates } from '@/services/spatial'
 import { useProjectContext } from '../../../../stores/projectContext'
 const DataMap = defineAsyncComponent(() => import('../../../../components/maps/DataMap.vue'))
@@ -863,7 +864,7 @@ function exportCsvPoints() {
   const header = ['Point', 'Y', 'X', 'Status', 'Description', 'Date of survey']
   const lines = [header.join(',')]
   
-  const today = new Date().toLocaleDateString()
+  const today = formatDateDDMMYYYY(new Date())
   for (const r of rows) {
     const row = [
       r.name,
@@ -1128,7 +1129,7 @@ async function saveParcelToDatabase(parcelData: any) {
       project_id: currentProjectId.value,
       stand: designation.value.trim(),
       geom: geom,
-      notes: `Created from Areas2View - ${new Date().toLocaleString()}`
+      notes: `Created from Areas2View - ${formatDateTimeDDMMYYYY(new Date())}`
     })
     
     console.log(`✅ [Areas2View] Parcel saved to land_parcels table (ID: ${parcel.id})`)

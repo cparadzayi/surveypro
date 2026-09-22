@@ -2,6 +2,7 @@ import jsPDF from 'jspdf'
 import type { ElectronicFieldBook } from '../types/cadastral'
 import { bankersRound } from './cadastral-precision'
 import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination'
+import { formatDateDDMMYYYY } from './dateFormat'
 
 export interface EnhancedElectronicFieldBook extends ElectronicFieldBook {
   metadata: ElectronicFieldBook['metadata'] & {
@@ -126,7 +127,7 @@ export class FieldBookPDFGenerator {
       pdf.setFontSize(14)
       pdf.text(`Total Points: ${fieldBook.points.length}`, this.options.marginLeft, yPosition)
       yPosition += 10
-      pdf.text(`Date Generated: ${new Date(fieldBook.metadata.dateGenerated).toLocaleDateString()}`, this.options.marginLeft, yPosition)
+      pdf.text(`Date Generated: ${formatDateDDMMYYYY(new Date(fieldBook.metadata.dateGenerated))}`, this.options.marginLeft, yPosition)
       yPosition += 10
       pdf.text(`Page Count: ${fieldBook.metadata.pageCount}`, this.options.marginLeft, yPosition)
 
@@ -240,7 +241,7 @@ export class FieldBookPDFGenerator {
         if (point.surveyDate) {
           try {
             const date = new Date(point.surveyDate)
-            surveyDate = date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            surveyDate = formatDateDDMMYYYY(date)
           } catch {
             surveyDate = ''
           }
@@ -285,7 +286,7 @@ export class FieldBookPDFGenerator {
       if (fieldBook.metadata.surveyorName) {
         pdf.text(fieldBook.metadata.surveyorName, this.options.marginLeft, footerY)
       }
-      const dateText = new Date().toLocaleDateString()
+      const dateText = formatDateDDMMYYYY(new Date())
       const dateWidth = pdf.getTextWidth(dateText)
       pdf.text(dateText, pdf.internal.pageSize.getWidth() - this.options.marginRight - dateWidth, footerY)
       const pageUtilization = Math.round((pagePoints.length / pointsPerPage) * 100)

@@ -10,7 +10,7 @@
         <p class="text-sm text-gray-500" v-else>Loading profile…</p>
       </div>
       <div v-if="auth.profile" class="text-xs text-gray-500">
-        Joined: {{ new Date(auth.profile.created_at).toLocaleDateString() }}
+        Joined: {{ formatDateDDMMYYYY(new Date(auth.profile.created_at)) }}
       </div>
     </header>
 
@@ -56,13 +56,13 @@
             </div>
             <div v-if="project.survey_date" class="flex items-center gap-2 text-gray-600">
               <span>📅</span>
-              <span>{{ new Date(project.survey_date).toLocaleDateString() }}</span>
+              <span>{{ formatDateDDMMYYYY(new Date(project.survey_date)) }}</span>
             </div>
           </div>
 
           <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
             <span class="text-xs text-gray-500">
-              Created {{ new Date(project.created_at).toLocaleDateString() }}
+              Created {{ formatDateDDMMYYYY(new Date(project.created_at)) }}
             </span>
             <span class="text-indigo-600 group-hover:text-indigo-700 text-sm font-medium">
               Open →
@@ -107,6 +107,7 @@ import { useAuthStore } from '../stores/auth'
 import { useModulesStore } from '../stores/modules'
 import { useProjectSelectionStore } from '../stores/projectSelection'
 import { useSurveyors } from '../composables/useSurveyors'
+import { formatDateDDMMYYYY } from '../utils/dateFormat'
 // @ts-ignore - SFC default export provided via shim
 import ModuleCard from '../components/ModuleCard.vue'
 

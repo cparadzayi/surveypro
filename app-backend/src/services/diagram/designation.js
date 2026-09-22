@@ -20,3 +20,18 @@ export function resolveStatementDesignation(subjectName, subjectStand, projectDe
   if (m && m[1].trim()) return `STAND ${stand} ${m[1].trim()}`
   return `STAND ${stand}`
 }
+
+/**
+ * The figure statement names the parcel as "{designation} OF {parent}" — but
+ * the designation often already carries the same parent clause ("STAND 271
+ * MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A"). That clause must be
+ * dropped before the parent is appended, or the figure would name the parent
+ * twice ("…SURFACE RIGHTS A OF SHABANI MINE SURFACE RIGHTS A"). Without a
+ * parentProperty the designation is returned untouched.
+ */
+export function statementDesignation(resolvedDesignation, parentProperty) {
+  const parent = parentProperty == null ? '' : String(parentProperty).trim()
+  if (!parent) return resolvedDesignation
+  const base = String(resolvedDesignation ?? '').replace(/\s+of\s+.+$/i, '').trim()
+  return base ? `${base} OF ${parent.toUpperCase()}` : resolvedDesignation
+}

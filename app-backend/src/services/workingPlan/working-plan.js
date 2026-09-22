@@ -23,6 +23,7 @@ import { SI727_SCALE_LADDER } from '../../../../app-shared/si727Scales.js';
 import { crowdedClusters, INSET_CROWD_MM } from './crowdedBeacons.js';
 import { insetCells } from './insetCells.js';
 import { insetScaleToFit } from '../../../../app-shared/insetScales.js';
+import { isReferenceMarkName } from '../../../../app-shared/beaconName.js';
 
 /* ------------------------------------------------------------------ layout */
 
@@ -350,7 +351,12 @@ function symbolClearance(symbol) {
 
 export function generateWorkingPlan(spec) {
   const L = LAYOUT;
-  const byName = new Map(spec.beacons.map((b) => [b.name, { ...b, ...loToGround(b) }]));
+  const byName = new Map(spec.beacons.map((b) => {
+    // The name is authoritative for a reference mark: RM16 with no description
+    // or status still plots as the circle-with-a-cross, not as a peg.
+    const symbol = isReferenceMarkName(b.name) ? 'rm' : (b.symbol ?? 'placed');
+    return [b.name, { ...b, symbol, ...loToGround(b) }];
+  }));
   const G = (name) => {
     const b = byName.get(name);
     if (!b) throw new Error(`generateWorkingPlan: unknown beacon "${name}"`);
@@ -841,6 +847,21 @@ export function generateWorkingPlan(spec) {
     for (const [q0, q1] of parts) if (q1 - q0 > 1e-9) d.line(P(q0), P(q1), opts);
   };
 
+  /** Every sign the figure draws that a line must keep clear of, other than
+   *  the two beacons it ends at. */
+  const midSigns = (fromName, toName) => figureBeacons()
+    .filter((b) => b.name !== fromName && b.name !== toName)
+    .map((b) => ({ at: [b.e, b.n], r: mm(symbolClearance(b.symbol)) }));
+
+  /** A boundary side, pulled clear of the sign at EACH end and gapped wherever
+   *  a beacon drawn on the line requires it -- the same mid-line trim the
+   *  diagram leaves around a beacon's open circle. */
+  const drawBoundary = (p0, p1, fromName, toName, layer) => {
+    const [ca, cb] = clipToSigns(p0, p1,
+      G(fromName).symbol, G(toName).symbol);
+    drawWithGaps(ca, cb, midSigns(fromName, toName), { layer });
+  };
+
   /* ---- parcel boundaries, clipped clear of the beacon symbols */
   const areas = {};
   for (const p of spec.parcels) {
@@ -851,9 +872,7 @@ export function generateWorkingPlan(spec) {
     // areas, labels and the figure extent all still use the true vertices.
     for (let k = 0; k < p.ring.length; k++) {
       const j = (k + 1) % p.ring.length;
-      const [ca, cb] = clipToSigns(pts[k], pts[j],
-        G(p.ring[k]).symbol, G(p.ring[j]).symbol);
-      d.line(ca, cb, { layer: 'BOUNDARY-NEW' });
+      drawBoundary(pts[k], pts[j], p.ring[k], p.ring[j], 'BOUNDARY-NEW');
     }
     areas[p.label] = ringArea(pts);
     const [cx, cy] = p.labelAt ? Object.values(loToGround(p.labelAt)) : centroid(pts);
@@ -872,8 +891,7 @@ export function generateWorkingPlan(spec) {
   // a dashed line over the top would contradict it.
   for (const s of spec.remainderBoundary ?? []) {
     const a = G(s.from), b = G(s.to);
-    const [ca, cb] = clipToSigns([a.e, a.n], [b.e, b.n], a.symbol, b.symbol);
-    d.line(ca, cb, { layer: 'BOUNDARY-EXIST' });
+    drawBoundary([a.e, a.n], [b.e, b.n], s.from, s.to, 'BOUNDARY-EXIST');
   }
 
   // Letter the remainder. It is part of the plan even though it is not a new
@@ -941,6 +959,7 @@ export function generateWorkingPlan(spec) {
     drawWithGaps(p0, p1, [
       { at: [a.e, a.n], r: mm(symbolClearance(a.symbol)) },
       { at: [b.e, b.n], r: mm(symbolClearance(b.symbol)) },
+      ...midSigns(ex.from, ex.to),
     ], { layer: 'BOUNDARY-EXIST' });
   }
 
@@ -1553,25 +1572,104 @@ export function generateWorkingPlan(spec) {
     const fs = toSheet(gc.e, gc.n);
     const fx = fs[0], fy = fs[1];
     if (fx >= L.panel.x0 && fx <= L.panel.x1 && fy >= L.panel.y0 && fy <= L.panel.y1) {
-      // The label stands up and right of the spot and the arrow dives from its
-      // tail to the point itself; only this layout is invented, the point is
-      // exactly where the members are.
+      const members = new Set(ins.beacons.map((b) => b.name));
+      // The shaft may not strike a boundary or run through another beacon's
+      // sign: an arrow drawn across the figure it is meant to point AT reads
+      // as part of the figure, and the two marks that share the spot are the
+      // only things it is allowed to touch. Everything the sheet has drawn by
+      // now, in its own ground coordinates.
+      const avoidLines = [
+        ...segments,
+        ...(spec.remainderBoundary ?? []).map((s) => {
+          const a = G(s.from), b = G(s.to);
+          return [[a.e, a.n], [b.e, b.n]];
+        }),
+        ...(spec.existing ?? []).map((ex) => {
+          const a = G(ex.from), b = G(ex.to);
+          return [[a.e, a.n], [b.e, b.n]];
+        }),
+      ];
+      const signs = figureBeacons()
+        .filter((b) => !members.has(b.name))
+        .map((b) => ({ e: b.e, n: b.n, r: mm(symbolClearance(b.symbol)) }));
+
+      const distToSeg = (p, a, b) => {
+        const ux = b[0] - a[0], uy = b[1] - a[1];
+        const L2 = ux * ux + uy * uy || 1;
+        let t = ((p[0] - a[0]) * ux + (p[1] - a[1]) * uy) / L2;
+        t = Math.max(0, Math.min(1, t));
+        return Math.hypot(p[0] - (a[0] + ux * t), p[1] - (a[1] + uy * t));
+      };
+      const distSegSeg = (a, b, c, d) => {
+        const o = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+        if (o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0) return 0;
+        return Math.min(distToSeg(a, c, d), distToSeg(b, c, d),
+          distToSeg(c, a, b), distToSeg(d, a, b));
+      };
+
       const spot = S(fx, fy);
-      const tail = S(fx + 11, fy - 11);
-      const dx = spot[0] - tail[0], dy = spot[1] - tail[1];
-      const len = Math.hypot(dx, dy);
-      const ux = dx / len, uy = dy / len;
+      const labelH = mm(L.text.insetLabel);
+      const aLen = mm(3.0), aHalf = mm(1.0);
+      // How close is too close. Deliberately small: an arrow that is already
+      // clear of the figure stays where it always was, and only a shaft that
+      // actually cuts a line or a sign walks away from the scripted lead.
+      const lineClear = mm(0.8), signPad = mm(0.4);
+
+      const shaftPenalty = (tail, base) => {
+        let cost = 0;
+        for (const [p0, p1] of avoidLines) {
+          if (distSegSeg(tail, base, p0, p1) < lineClear) cost += 1;
+        }
+        for (const s of signs) {
+          if (distToSeg([s.e, s.n], tail, base) < s.r + signPad) cost += 1;
+        }
+        return cost;
+      };
+      // The number letters at the tail must stay on the drawing and clear of
+      // the lines too (they are drawn INSET, so same layer rule as the shaft).
+      const tailPenalty = (tail) => {
+        const rect = textRect('INSET ' + number, tail[0], tail[1], labelH, 'left');
+        let cost = insidePanel(rect) ? 0 : 10;
+        for (const [p0, p1] of avoidLines) {
+          if (segCrossesRect(p0, p1, rect)) cost += 1;
+        }
+        return cost;
+      };
+
+      const dirs = [];
+      const start = Math.PI / 4;             // the scripted up-right lead
+      // Reach in ground units: the scripted lead first (11 mm out and 11 mm
+      // up), then shorter shafts for a spot boxed in by its own corners. A
+      // leader must reach its mark, but a readable clear shaft beats a long one
+      // thrown across the very lines that meet there.
+      const reaches = [Math.SQRT2 * mm(11), mm(11), mm(8)];
+      for (const L of reaches) {
+        for (let k = 0; k < 32; k++) {
+          const ang = start - (k * 2 * Math.PI) / 32;
+          const ux = Math.cos(ang), uy = Math.sin(ang);
+          const tail = [spot[0] + ux * L, spot[1] + uy * L];
+          const base = [spot[0] - ux * aLen, spot[1] - uy * aLen];
+          dirs.push({ ang, tail, base, cost: shaftPenalty(tail, base) + tailPenalty(tail) });
+        }
+      }
+      // First a clear shaft at the longest reach, then the cheapest, then the
+      // turn closest to the scripted up-right lead -- so a spot with clear
+      // water all round is lettered exactly where it always was.
+      dirs.sort((x, y) => (x.cost === 0) - (y.cost === 0) || x.cost - y.cost
+        || Math.hypot(x.tail[0] - spot[0], x.tail[1] - spot[1])
+           - Math.hypot(y.tail[0] - spot[0], y.tail[1] - spot[1])
+        || Math.abs(x.ang - start) - Math.abs(y.ang - start));
+      const pick = dirs[0];
+      const tail = pick.tail, base = pick.base;
       // The shaft stops short of the point and a filled arrowhead, the same
       // construction a connection mark uses, carries the line the rest of the
       // way so the tip lands on the mark itself.
-      const aLen = mm(3.0), aHalf = mm(1.0);
-      const base = [spot[0] - ux * aLen, spot[1] - uy * aLen];
       d.line(tail, base, { layer: 'INSET' });
+      const ux = (spot[0] - base[0]) / aLen, uy = (spot[1] - base[1]) / aLen;
       const px = -uy, py = ux;
       d.solid([spot, [base[0] + px * aHalf, base[1] + py * aHalf],
         [base[0] - px * aHalf, base[1] - py * aHalf]], { layer: 'INSET' });
-      d.text('INSET ' + number, tail, mm(L.text.insetLabel),
-        { layer: 'INSET', style: 'ARIAL' });
+      d.text('INSET ' + number, tail, labelH, { layer: 'INSET', style: 'ARIAL' });
     }
   });
 

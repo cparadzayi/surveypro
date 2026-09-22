@@ -19871,7 +19871,7 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 2.5,
     "layer": "TITLE_BLOCK",
-    "text": "The figure AB.BC.CD.DA.AB represents 240 stands and public places being A portion of Maglas Township situate in the district of Bulawayo.",
+    "text": "The figure AB.BC.CD.DA.AB represents 240 stands and public places being A portion of MAGLAS TOWNSHIP situate in the district of BULAWAYO.",
     "x": -50100,
     "y": -2199899.8,
   },
@@ -20046,7 +20046,7 @@ exports[`DXF entity-list snapshot Maglas fixture 1`] = `
   {
     "h": 5,
     "layer": "TITLE_BLOCK",
-    "text": "Stands 1686 - 1925 Maglas Township",
+    "text": "STANDS 1686 - 1925 MAGLAS TOWNSHIP",
     "x": -50100,
     "y": -2199884.8,
   },
@@ -20786,7 +20786,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 1.2,
     "layer": "TITLE_BLOCK",
-    "text": "The figure AB.BC.CD.DA.AB represents 2 stands and public places being A portion of Test Township situate in the district of Test District.",
+    "text": "The figure AB.BC.CD.DA.AB represents 2 stands and public places being A portion of TEST TOWNSHIP situate in the district of TEST DISTRICT.",
     "x": -50050,
     "y": -2199949.9,
   },
@@ -20982,7 +20982,7 @@ exports[`DXF entity-list snapshot minimal fixture 1`] = `
   {
     "h": 2.5,
     "layer": "TITLE_BLOCK",
-    "text": "Stands 1 - 2 Test Township",
+    "text": "STANDS 1 - 2 TEST TOWNSHIP",
     "x": -50050,
     "y": -2199942.4,
   },
@@ -22947,14 +22947,14 @@ exports[`DXF entity-list snapshot realistic fixture 1`] = `
   {
     "h": 2.5,
     "layer": "TITLE_BLOCK",
-    "text": "The figure AB.BC.CD.DA.AB represents 12 stands and public places being A portion of Maglas Township situate in the district of Bulawayo.",
+    "text": "The figure AB.BC.CD.DA.AB represents 12 stands and public places being A portion of MAGLAS TOWNSHIP situate in the district of BULAWAYO.",
     "x": -50000,
     "y": -2199937.3,
   },
   {
     "h": 5,
     "layer": "TITLE_BLOCK",
-    "text": "Stands 100 - 111 Maglas Township",
+    "text": "STANDS 100 - 111 MAGLAS TOWNSHIP",
     "x": -50000,
     "y": -2199922.3,
   },

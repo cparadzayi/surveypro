@@ -89,6 +89,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { formatDateDDMMYYYY } from '../utils/dateFormat';
 
 interface Props {
   isOpen: boolean;
@@ -122,7 +123,7 @@ const generatedDate = computed(() => {
   if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
   if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
   
-  return date.toLocaleDateString();
+  return formatDateDDMMYYYY(date);
 });
 
 function handleUseExisting() {

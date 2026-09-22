@@ -107,7 +107,7 @@ describe('beaconSymbol', () => {
     expect(beaconSymbol('anything', 'TRIG')).toBe('trig')
   })
 
-  it('falls back to peg for anything it does not recognise', () => {
+it('falls back to peg for anything it does not recognise', () => {
     // Drawing a peg for an unknown description is a smaller lie than promoting
     // it to a trig station on a guess.
     expect(beaconSymbol('')).toBe('peg')
@@ -115,10 +115,23 @@ describe('beaconSymbol', () => {
     expect(beaconSymbol(undefined)).toBe('peg')
     expect(beaconSymbol('something nobody wrote a rule for')).toBe('peg')
   })
+
+  it('reads a reference mark from the NAME, where the row says nothing else', () => {
+    // CSV imports arrive with empty description and status: RM16 drew as a peg
+    // until the name was consulted. RM + a numeric suffix is a reference mark.
+    expect(beaconSymbol('', undefined, 'RM16')).toBe('rm')
+    expect(beaconSymbol('', undefined, 'RM 16')).toBe('rm')
+    expect(beaconSymbol('12mm iron peg', 'P', 'RM16')).toBe('rm')
+  })
+
+  it('does not promote an ordinary point on its name alone', () => {
+    expect(beaconSymbol('', undefined, 'SD4')).toBe('peg')
+    expect(beaconSymbol('', undefined, 'RM')).toBe('peg')   // no number suffix
+  })
 })
 
 describe('workingPlanTitle', () => {
-  it('builds up to four heading lines', () => {
+it('builds up to four heading lines', () => {
     const t = workingPlanTitle({
       designation: 'Stands 403-405 Brackenhurst Township',
       parentProperty: 'Stand 87 Brackenhurst Township',
@@ -126,14 +139,14 @@ describe('workingPlanTitle', () => {
     })
     expect(t).toEqual([
       'WORKING PLAN OF',
-      'Stands 403-405 Brackenhurst Township',
-      'of Stand 87 Brackenhurst Township',
-      'Gwelo District',
+      'STANDS 403-405 BRACKENHURST TOWNSHIP',
+      'OF STAND 87 BRACKENHURST TOWNSHIP',
+      'GWELO DISTRICT',
     ])
   })
 
   it('omits the lines it has no data for', () => {
-    expect(workingPlanTitle({ designation: 'Stand 405' })).toEqual(['WORKING PLAN OF', 'Stand 405'])
+    expect(workingPlanTitle({ designation: 'Stand 405' })).toEqual(['WORKING PLAN OF', 'STAND 405'])
   })
 
   it('names the document, so the sheet is not mistaken for a survey record', () => {

@@ -17,6 +17,7 @@ import type { AreaComputeResponse } from '../services/compute';
 import type { Parcel } from './useAreaCompliance';
 import { listCoordinatePoints } from '@/services/spatial';
 import { isGenericFallbackName, findBeaconNameBySpatialMatch } from '@/utils/beaconNameMatch';
+import { formatDateDDMMYYYY } from '@/utils/dateFormat';
 
 // Cache for coordinate points to avoid repeated API calls
 let cachedCoordinatePoints: any[] | null = null;
@@ -499,7 +500,7 @@ export async function generateAreaConsistencyPDF(
   currentY += 10;
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, currentY, { align: 'center' });
+  doc.text(`Generated: ${formatDateDDMMYYYY(new Date())}`, pageWidth / 2, currentY, { align: 'center' });
   
   currentY += 12;
   

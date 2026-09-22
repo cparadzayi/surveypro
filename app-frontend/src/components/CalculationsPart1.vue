@@ -65,12 +65,11 @@
             <label class="block text-sm font-medium text-gray-700 mb-1">
               Survey Date *
             </label>
-            <input
-              v-model="surveyorInfo.surveyDate"
-              type="date"
-              required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+<DateInputDDMMYYYY
+                v-model="surveyorInfo.surveyDate"
+                required
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
           </div>
         </div>
 
@@ -174,6 +173,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { CalculationsPart1Generator, type SurveyPoint } from '../utils/calculations-part1'
+import DateInputDDMMYYYY from './DateInputDDMMYYYY.vue'
 
 // Reactive data
 const surveyPoints = ref<SurveyPoint[]>([])

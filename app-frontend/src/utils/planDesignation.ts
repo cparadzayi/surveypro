@@ -1,7 +1,8 @@
 /**
- * Reproduces the backend general-plan title wording (pdfkitGeoPDF.js:
- * formatStandRanges + the township extraction in _buildTitleBlockTexts) so the
- * lodgement-letter subject reads identically to the general plan.
+ * Builds the lodgement cover-letter subject. Unlike the general-plan title
+ * wording (which clips the " of ..." clause) this keeps the full township
+ * phrase — inclusive of the parent-property clause — so the letter states the
+ * same designation as the accompanying documents.
  */
 
 /** Compress stand names into "a - b, c" ranges. Port of the backend formatStandRanges. */
@@ -37,13 +38,80 @@ export function extractTownship(surveyOf: string): string {
   return withoutStandsPrefix.replace(/\s+of\s+.+$/i, '').trim();
 }
 
-/** Build the plan-title subject, e.g. "STANDS 207 - 270, 340 - 345 MAGLAS TOWNSHIP". */
+/**
+ * The township phrase a certificate header shows: the designation with its
+ * leading stand ranges stripped but the " of ..." clause kept, e.g.
+ * "STANDS 271-339, 346-349 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A"
+ * → "MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A".
+ *
+ * Narrower than extractTownship (which clips the " of ..." clause for the
+ * general-plan title block) and deliberately not the project's short name.
+ */
+export function townshipPhrase(surveyOf: string): string {
+  const raw = (surveyOf || '').trim();
+  return raw.replace(/^Stands?\s+[\d,\s\-–]+/i, '').trim();
+}
+
+/** Build the plan-title subject, e.g. "STANDS 207 - 270, 340 - 345 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A". */
 export function buildPlanDesignation(standNames: string[], surveyOf: string): string {
   const ranges = formatStandRanges(standNames);
-  const township = extractTownship(surveyOf);
+  const township = townshipPhrase(surveyOf);
   let out: string;
   if (ranges) out = township ? `Stands ${ranges} ${township}` : `Stands ${ranges}`;
   else if (township) out = township;
   else return '';
   return out.toUpperCase();
+}
+
+/** Collapse stray whitespace so a pasted surveyOf string prints cleanly. */
+export function normalizeDesignation(surveyOf: string): string {
+  return (surveyOf || '').trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * The one parcel-designation phrase shared by the Coordinate List, General
+ * Plans, Working Plan and Dispensation Certificate. Mirrors the backend
+ * general-plan title block (pdfkitGeoPDF.js _buildTitleBlockTexts): when the
+ * actual stand names of the sheet are known the phrase is rebuilt from the
+ * stand ranges + township, so every document states the designation the same
+ * way the general plan does. Without stands the authored surveyOf is the
+ * designation, used as written.
+ */
+export function designationPhrase(surveyOf: string, standNames: string[] = []): string {
+  const ranges = formatStandRanges(standNames);
+  const township = extractTownship(surveyOf);
+  let out: string;
+  if (ranges) out = township ? `Stands ${ranges} ${township}` : `Stands ${ranges}`;
+  else out = normalizeDesignation(surveyOf);
+  return out ? out.toUpperCase() : '';
+}
+
+/**
+ * The lodgement-designation phrase with the parent-property clause kept, in
+ * caps, e.g. "STANDS 271 - 288, 290 - 339, 346 - 349 MAGLAS TOWNSHIP OF SHABANI
+ * MINE SURFACE RIGHTS A". Used by the Coordinate List and Field Book cover so
+ * the lodged documents state the same full designation as the cover letter.
+ * When the actual stand names of the sheet are known the phrase is rebuilt from
+ * the stand ranges + full township phrase; without stands the authored surveyOf
+ * is used as written.
+ */
+export function fullDesignationPhrase(surveyOf: string, standNames: string[] = []): string {
+  const ranges = formatStandRanges(standNames);
+  const township = townshipPhrase(surveyOf);
+  let out: string;
+  if (ranges) out = township ? `Stands ${ranges} ${township}` : `Stands ${ranges}`;
+  else out = normalizeDesignation(surveyOf);
+  return out ? out.toUpperCase() : '';
+}
+
+/**
+ * "SURVEY OF <designation>" — the dispensation certificate title. Unlike the
+ * general-plan phrase (designationPhrase) it keeps the full township name, e.g.
+ * "SURVEY OF STANDS 271 - 339, 346 - 349 MAGLAS TOWNSHIP OF SHABANI MINE
+ * SURFACE RIGHTS A": the certificate is a legal document, names the parent land
+ * in full, and has no separate parent-property line to carry it.
+ */
+export function surveyOfTitle(surveyOf: string, standNames: string[] = []): string {
+  const phrase = fullDesignationPhrase(surveyOf, standNames);
+  return phrase ? `SURVEY OF ${phrase.toUpperCase()}` : '';
 }

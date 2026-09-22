@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   upsertServitude, removeServitude, servitudesForSubject, hydrateServitudes,
-  servitudeTypeLabel, resolveBeaconPair, type Servitude,
+  servitudeTypeLabel, resolveBeaconPair, buildPartyWallStatementRows, type Servitude,
 } from '../servitudes'
 import { subjectSides } from '../sideAnnotations'
 
@@ -71,5 +71,47 @@ describe('resolveBeaconPair', () => {
     ]
     expect(resolveBeaconPair(sides, spatialEdges, 'BC', coordinatePoints))
       .toEqual({ fromBeacon: '10b', toBeacon: '10c' })
+  })
+})
+
+describe('buildPartyWallStatementRows', () => {
+  const standForParcel = (id: string) =>
+    ({ '10': '2833', '20': '2469' } as Record<string, string>)[id] ?? undefined
+
+  const pw = (over: Partial<Servitude> = {}): Servitude =>
+    s({
+      id: Math.random().toString(36).slice(2),
+      subjectId: '10',
+      adjoiningStand: '2469',
+      type: 'party-wall',
+      ...over,
+    })
+
+  it('renders only party-wall servitudes, subject-first stands and beacon boundary', () => {
+    const rows = buildPartyWallStatementRows([
+      pw({ adjoiningStand: '2469', fromBeacon: '2833A', toBeacon: '2833B' }),
+      s({ type: 'storm-water', subjectId: '10' }),
+    ], standForParcel)
+    expect(rows).toEqual([{ stands: '2833, 2469', boundary: '2833A - 2833B' }])
+  })
+
+  it('falls back to the side letter when no beacon pair exists', () => {
+    expect(buildPartyWallStatementRows([pw({ side: 'BC' })], standForParcel))
+      .toEqual([{ stands: '2833, 2469', boundary: 'BC' }])
+  })
+
+  it('dedupes mirrored records (subject/adjoining swapped), keeping first order', () => {
+    const rows = buildPartyWallStatementRows([
+      pw({ subjectId: '10', adjoiningStand: '2469', fromBeacon: '2833A', toBeacon: '2833B' }),
+      pw({ subjectId: '20', adjoiningStand: '2833', fromBeacon: '2833B', toBeacon: '2833A' }),
+    ], standForParcel)
+    // Canonical key sorts stands, so the mirror maps onto the first row.
+    expect(rows).toEqual([{ stands: '2833, 2469', boundary: '2833A - 2833B' }])
+  })
+
+  it('skips records with no resolvable stand', () => {
+    expect(buildPartyWallStatementRows([
+      pw({ subjectId: '999', adjoiningStand: '' }),
+    ], standForParcel)).toEqual([])
   })
 })

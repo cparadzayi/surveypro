@@ -972,9 +972,11 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import axios from 'axios';
 import { capeLoToWGS84, capeLoArrayToWGS84, calculateWGS84Bounds, geoJsonToCapeLoPoint, type CapeLoPoint } from '../../../utils/coordinateTransform';
 import { areaCompute, type AreaComputeResponse } from '../../../services/compute';
+import { asBaseMapParcel, parcelFromBaseRecord } from '../../../utils/surveyParcels';
 import { useAreaCompliance, type AreaType, type Parcel } from '../../../composables/useAreaCompliance';
 import { useParcelGeometry } from '../../../composables/useParcelGeometry';
 import { useComprehensivePDF, type NarrativeReportOptions } from '../../../composables/useComprehensivePDF';
+import { dispensationFromWorkflow } from '../../../composables/useDispensationCertificate';
 import { useAreaConsistencyPDF } from '../../../composables/useAreaConsistencyPDF';
 import { CalculationsPart1Generator, type SurveyPoint } from '../../../utils/calculations-part1';
 import { ComprehensiveDocumentGenerator } from '../../../utils/comprehensive-document';
@@ -2296,7 +2298,9 @@ const fetchControlPoints = async () => {
       console.log('\n========== SELECTED CONTROL POINTS ==========');
       console.log(`Total: ${controlPoints.value.length} control points`);
       controlPoints.value.forEach((cp: any, index: number) => {
-        console.log(`${index + 1}. ${cp.monu_num || cp.name || 'Unnamed'} - [Y: ${cp.y?.toFixed(6)}, X: ${cp.x?.toFixed(6)}]`);
+        const y = Number(cp.y_gauss ?? cp.yGauss ?? cp.y_coordinate ?? cp.y ?? cp.Y ?? cp.northing);
+        const x = Number(cp.x_gauss ?? cp.xGauss ?? cp.x_coordinate ?? cp.x ?? cp.X ?? cp.easting);
+        console.log(`${index + 1}. ${cp.monu_num || cp.name || 'Unnamed'} - [Y: ${y.toFixed(6)}, X: ${x.toFixed(6)}]`);
       });
       console.log('=============================================\n');
     } else {
@@ -6313,6 +6317,12 @@ async function exportAreaConsistencyPDF() {
   // This ensures the PDF includes all parcels, not just the ones digitized in this session
   const allParcels: Parcel[] = [];
   
+  // Coordinate points for the shared geometry-matching fallback (beacon names)
+  let coordinatePointsForPDF: any[] = coordinatePoints.value || [];
+  if (!coordinatePointsForPDF.length) {
+    coordinatePointsForPDF = await listCoordinatePoints(Number(projectId)).catch(() => []);
+  }
+  
   // Add in-memory parcels (currently digitized)
   parcels.value.forEach(p => {
     if (p.areaResult) {
@@ -6344,208 +6354,25 @@ async function exportAreaConsistencyPDF() {
           allParcels.splice(index, 1);
         }
       }
-      // Reconstruct parcel object from database data
-      // Use the auto-calculated area from database (area_m2, area_ha)
-      // Convert to numbers in case they come as strings from the database
-      const areaM2 = Number(dbParcel.area_m2) || 0;
-      const areaHa = Number(dbParcel.area_ha) || 0;
-      
-      console.log(`[MapLibre] 🔍 Parcel ${dbParcel.stand} - area_m2: ${areaM2}, area_ha: ${areaHa}`);
-      
-      // Get Cape Lo points from metadata OR extract from geometry (for QGIS parcels)
-      let points = dbParcel.metadata?.cape_lo_points || [];
-      
-      // Check both 'geom' (from backend) and 'geometry' (alternative field name)
-      const geometry = dbParcel.geom || dbParcel.geometry;
-      
-      console.log(`[MapLibre] 🔍 Parcel ${dbParcel.stand} - points from metadata:`, points.length);
-      console.log(`[MapLibre] 🔍 Parcel ${dbParcel.stand} - geometry object:`, geometry ? 'EXISTS' : 'NULL');
-      
-      if (points.length === 0 && geometry?.coordinates?.[0]) {
-        // QGIS-digitized parcel: Extract points from geometry
-        console.log(`[MapLibre] 🔧 Extracting Cape Lo points from geometry for PDF: ${dbParcel.stand}`);
-        console.log(`[MapLibre] 🔧 Geometry type:`, geometry.type);
-        console.log(`[MapLibre] 🔧 Coordinates array length:`, geometry.coordinates?.[0]?.length);
-        const coords = geometry.coordinates[0];
-        
-        // Check if metadata contains vertex labels (shared beacons)
-        const vertices = Array.isArray((dbParcel.metadata as any)?.vertices)
-          ? (dbParcel.metadata as any).vertices
-          : [];
-        const hasVertexLabels = vertices.length > 0;
-        
-        if (hasVertexLabels) {
-          // Use actual beacon IDs from metadata (e.g., 1463A, 1462A, 1463C, 1464C)
-          console.log(`[MapLibre] 📍 Using vertex labels from metadata for parcel ${dbParcel.stand}`);
-          vertices.forEach((vertex: any, i: number) => {
-            // PERMANENT FIX: Use geoJsonToCapeLoPoint utility
-            const capeLoPoint = geoJsonToCapeLoPoint(coords[i], vertex.id);
-            points.push({
-              id: capeLoPoint.id!,
-              y: capeLoPoint.y, // Correctly mapped: Westing
-              x: capeLoPoint.x, // Correctly mapped: Southing
-              status: 'P',
-              description: `Beacon ${vertex.id}`
-            });
-          });
-        } else {
-          const tolerance = 2.0; // Increased to 2.0 meter tolerance for matching
-          // Match vertices to actual coordinate points (beacon names)
-          // Use very tight tolerance since we're matching exact Gauss Lo 31 coordinates
-          console.log(`[MapLibre] 📍 Parcel has ${coords.length - 1} vertices to match`);
-          
-          // Load coordinate points for this project
-          try {
-            const coordPoints = await listCoordinatePoints(Number(dbParcel.project_id));
-            console.log(`[MapLibre] 📊 Found ${coordPoints.length} coordinate points in project`);
-            
-            // Log first few coordinate points to understand their format
-            if (coordPoints.length > 0) {
-              console.log(`[MapLibre] 🔍 First coordinate point: ${coordPoints[0].name}, y=${coordPoints[0].y?.toFixed(2)}, x=${coordPoints[0].x?.toFixed(2)}`);
-            }
-            
-            // Log first few vertices for debugging
-            console.log(`[MapLibre] 🔍 First vertex: X=${coords[0][0].toFixed(2)}, Y=${coords[0][1].toFixed(2)}`);
-            
-            // Match each vertex to nearest coordinate point
-            const tolerance = 2.0; // Increased to 2.0 meter tolerance for matching
-            const usedPoints = new Set(); // Track already matched points to avoid duplicates
-            
-            // Log all vertices for debugging
-            console.log(`[MapLibre] 🔍 Vertex coordinates:`);
-            for (let i = 0; i < Math.min(coords.length - 1, 10); i++) {
-              console.log(`  Vertex ${i}: X=${coords[i][0].toFixed(2)}, Y=${coords[i][1].toFixed(2)}`);
-            }
-            
-            for (let i = 0; i < coords.length - 1; i++) {
-              // PERMANENT FIX: Use geoJsonToCapeLoPoint utility
-              const capeLoPoint = geoJsonToCapeLoPoint(coords[i]);
-              const vertexY = capeLoPoint.y; // Westing (~97k)
-              const vertexX = capeLoPoint.x; // Southing (~2247k)
-              
-              // Find nearest coordinate point that hasn't been used yet
-              let nearestPoint = null;
-              let minDistance = Infinity;
-              
-              for (const cp of coordPoints) {
-                // Skip if this point was already matched to another vertex
-                if (usedPoints.has(cp.name)) {
-                  continue;
-                }
-                
-                // Calculate Euclidean distance in Cape Lo coordinates (meters)
-                const dy = vertexY - cp.y;
-                const dx = vertexX - cp.x;
-                const distance = Math.sqrt(dy * dy + dx * dx);
-                
-                if (distance < minDistance) {
-                  minDistance = distance;
-                  nearestPoint = cp;
-                }
-              }
-              
-              if (nearestPoint && minDistance <= tolerance) {
-                // Use actual coordinate point name and ACTUAL COORDINATES from coordinate point
-                console.log(`[MapLibre] ✅ Vertex ${i} (Y=${vertexY.toFixed(2)}, X=${vertexX.toFixed(2)}) matched to ${nearestPoint.name} (distance: ${minDistance.toFixed(3)}m)`);
-                usedPoints.add(nearestPoint.name); // Mark as used
-                points.push({
-                  id: nearestPoint.name,
-                  y: nearestPoint.y, // Use coordinate point's Y, not vertex Y
-                  x: nearestPoint.x, // Use coordinate point's X, not vertex X
-                  status: 'P',
-                  description: nearestPoint.description || `Beacon ${nearestPoint.name}`
-                });
-              } else {
-                // No match found - use fallback naming
-                const beaconLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-                const fallbackName = `${dbParcel.stand}${beaconLetters[i]}`;
-                console.warn(`[MapLibre] ⚠️ Vertex ${i} (Y=${vertexY.toFixed(2)}, X=${vertexX.toFixed(2)}) not matched (nearest: ${minDistance.toFixed(3)}m > ${tolerance}m) - using fallback: ${fallbackName}`);
-                points.push({
-                  id: fallbackName,
-                  y: vertexY,
-                  x: vertexX,
-                  status: 'P',
-                  description: `Beacon ${fallbackName}`
-                });
-              }
-            }
-            
-            // Log final matched sequence
-            console.log(`[MapLibre] 📋 Final beacon sequence: ${points.map((p: { id: string }) => p.id).join(' → ')} → ${points[0].id}`);
-          } catch (error) {
-            console.error(`[MapLibre] ❌ Failed to load coordinate points:`, error);
-            // Fallback: Auto-generate sequential beacon names
-            console.log(`[MapLibre] 🔤 Fallback: Auto-generating beacon names for parcel ${dbParcel.stand}`);
-            const beaconLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-            for (let i = 0; i < coords.length - 1; i++) {
-              // PERMANENT FIX: Use geoJsonToCapeLoPoint utility even in fallback
-              const capeLoPoint = geoJsonToCapeLoPoint(coords[i]);
-              points.push({
-                id: `${dbParcel.stand}${beaconLetters[i]}`,
-                y: capeLoPoint.y,  // Correctly mapped: Westing
-                x: capeLoPoint.x,  // Correctly mapped: Southing
-                status: 'P',
-                description: `Beacon ${beaconLetters[i]}`
-              });
-            }
-          }
-        }
-        
-        console.log(`[MapLibre] ✅ Extracted ${points.length} points from geometry for PDF`);
-      } else if (points.length > 0) {
-        // Map metadata points to ensure proper format
-        points = points.map((pt: any) => ({
-          id: pt.id,
-          y: pt.y,
-          x: pt.x,
-          status: pt.status || 'P',
-          description: pt.description || ''
-        }));
+      // Reconstruct the parcel from its base-map record. The digitized map is the
+      // single source of truth: metadata.cape_lo_points verbatim when fresh, QGIS
+      // vertex labels next, geometry matching last — identical to Survey Plan and
+      // Servitudes, so the PDF can never diverge from the digital parcels.
+      const surveyParcel = await parcelFromBaseRecord(asBaseMapParcel(dbParcel), coordinatePointsForPDF);
+
+      if (!surveyParcel) {
+        console.warn(`[MapLibre] ⚠️ Skipping parcel ${dbParcel.stand} - no points derivable for PDF`);
+        continue;
       }
-      
-      if (points.length === 0) {
-        console.warn(`[MapLibre] ⚠️ Skipping parcel ${dbParcel.stand} - no points available for PDF`);
-        return;
-      }
-      
-      let areaResult;
-      console.log(`[MapLibre] 🔧 Computing area & residuals using standard API for parcel ${dbParcel.stand} (QGIS: ${isQGISParcel})...`);
-      try {
-        areaResult = await areaCompute({
-          points: points.map((p: { y: number; x: number; id: string }) => ({ y: p.y, x: p.x, id: p.id, name: p.id })), // CRITICAL FIX: No swap needed - both use Cape Lo (Y=Westing, X=Southing)
-          includeResiduals: true,
-          roundMetersDecimals: 2,
-          roundHectaresDecimals: 4
-        });
-        console.log(`[MapLibre] ✅ Area computed via API: ${areaResult.area.abs_m2.toFixed(2)} m² (edges: ${areaResult?.residuals?.edges?.length || 0})`)
-      } catch (error) {
-        console.error(`[MapLibre] ❌ Failed to compute area for ${dbParcel.stand}:`, error);
-        areaResult = {
-          ok: true,
-          area: {
-            signed_m2: areaM2,
-            abs_m2: areaM2,
-            meters_rounded: Number(areaM2.toFixed(2)),
-            hectares_rounded: Number(areaHa.toFixed(4)),
-            display: areaHa >= 1 
-              ? { hectares: areaHa, unit: 'ha' as const }
-              : { square_meters: areaM2, unit: 'm2' as const }
-          },
-          centroid: { y: 0, x: 0 },
-          residuals: dbParcel.metadata?.residuals
-        };
-      }
-      
+
       const reconstructedParcel: Parcel = {
         id: dbParcel.id?.toString() || '',
-        designation: dbParcel.stand || designation,
-        points: points,
-        areaResult: areaResult
+        designation: surveyParcel.designation,
+        points: surveyParcel.points,
+        areaResult: surveyParcel.areaResult,
       };
-      
-      console.log(`[MapLibre] 📦 Loaded parcel ${dbParcel.stand} from DB: ${areaM2.toFixed(2)} m² (${areaHa.toFixed(4)} ha)`);
-      console.log(`[MapLibre] 📦 Parcel ${dbParcel.stand} - points count:`, points.length);
-      console.log(`[MapLibre] 📦 Parcel ${dbParcel.stand} - residuals edges:`, areaResult?.residuals?.edges?.length || 0);
+
+      console.log(`[MapLibre] 📦 Loaded parcel ${dbParcel.stand} from DB (digitized map = source of truth)`);
       allParcels.push(reconstructedParcel);
       console.log(`[MapLibre] ✅ Added parcel ${dbParcel.stand} to allParcels array`);
     } else {
@@ -6975,6 +6802,15 @@ async function exportAreaConsistencyPDF() {
       surveyDate: coord.surveyDate || workflowState?.surveyorInfo?.surveyDate || ''
     }));
     
+    // Stand names for the subject line (exclude the Outside Figure parcel).
+    const recordStandNames = computedParcels
+      .map((p: any) => String(p.stand ?? p.designation ?? '').trim())
+      .filter((s: string) => s && !s.toLowerCase().includes('outside figure'));
+
+    // Surveyor / designation information, shared with the cover page and the
+    // coordinate list inside the comprehensive record. surveyOf is the single
+    // source of the "SURVEY OF ..." designation; standNames rebuild its ranges
+    // exactly as the general plan does.
     const surveyorInfo = {
       name: workflowState?.surveyorInfo?.landSurveyor || '',
       licenseNumber: workflowState?.surveyorInfo?.licenseNumber || '',
@@ -6982,6 +6818,8 @@ async function exportAreaConsistencyPDF() {
       address: workflowState?.surveyorInfo?.address || '',
       surveyDate: workflowState?.surveyorInfo?.surveyDate || '',
       projectTitle: workflowState?.surveyorInfo?.surveyOf || workflowState?.projectInfo?.projectName || '',
+      surveyOf: workflowState?.surveyorInfo?.surveyOf || '',
+      standNames: recordStandNames,
       district: workflowState?.projectInfo?.district || 'Unknown District',
       centralMeridian: workflowState?.projectInfo?.centralMeridian || 29,
       assistedBy: workflowState?.surveyorInfo?.assistedBy || '',
@@ -7021,11 +6859,6 @@ async function exportAreaConsistencyPDF() {
         }
       }
     }
-
-    // Stand names for the subject line (exclude the Outside Figure parcel).
-    const recordStandNames = computedParcels
-      .map((p: any) => String(p.stand ?? p.designation ?? '').trim())
-      .filter((s: string) => s && !s.toLowerCase().includes('outside figure'));
 
     // Cover page information
     const coverPageInfo = {
@@ -7252,6 +7085,19 @@ async function generateComprehensivePDF(
     
     const workingDirectory = workflowState?.projectInfo?.workingDirectory;
     
+    // Dispatch the Dispensation Certificate section from the persisted Servitudes
+    // stage (servitudes + header + portion saved when the certificate was generated).
+    const certParcels = [...savedParcels.value.values()].map((p) => ({
+      id: p.id,
+      stand: p.stand,
+      designation: p.designation ?? p.stand,
+      area_m2: p.area_m2 != null ? Number(p.area_m2) : undefined,
+    }))
+    const dispensation = dispensationFromWorkflow(workflowState?.step_data, certParcels)
+    if (dispensation) {
+      console.log('[MapLibre] 📑 Dispensation Certificate included:', dispensation.portion, dispensation.servitudes.length, 'servitudes');
+    }
+
     const result = await generateComprehensiveLatestPDF({
       computedParcels,
       calcPart1Blob,
@@ -7268,7 +7114,8 @@ async function generateComprehensivePDF(
         await markParcelsAsIncludedInPdf(newParcels);
       },
       reportData: reportInputs?.reportData,
-      narrativeOptions: reportInputs?.narrativeOptions
+      narrativeOptions: reportInputs?.narrativeOptions,
+      dispensation
     });
     
     if (!result.success) {
@@ -7287,7 +7134,8 @@ async function generateComprehensivePDF(
         `✅ Comprehensive PDF Generated!\n\n` +
         `Total parcels in PDF: ${computedParcels.length}\n` +
         `  • New parcels: ${newParcels.length}\n` +
-        `  • Existing parcels: ${existingParcels}\n\n` +
+        `  • Existing parcels: ${existingParcels}\n` +
+        (result.dispensationBlob ? `  • Dispensation Certificate included\n` : '') + `\n` +
         `File: Comprehensive_Latest.pdf\n` +
         `Location: ${result.filePath}\n\n` +
         `Note: This PDF contains ALL parcels and overwrites the previous version.`

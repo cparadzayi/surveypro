@@ -2,7 +2,7 @@ import { createDxfWriter, textWidth } from './diagram/dxfPrimitives.js'
 import { deriveSubjectGeometry } from './diagram/subjectGeometry.js'
 import { parcelExtent, pickDiagramScale, makeTransform, beaconRadiusPt } from './diagram/diagramScale.js'
 import { buildSidesTable, buildFigureRepresents, formatDiagramArea } from './diagram/sidesTable.js'
-import { resolveStatementDesignation } from './diagram/designation.js'
+import { resolveStatementDesignation, statementDesignation } from './diagram/designation.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
@@ -432,7 +432,7 @@ function drawStatementDxf(w, layout, geometry, metadata, toG, toGLen) {
   const seq = buildFigureRepresents(geometry)
   const area = formatDiagramArea(geometry.area)
   const designation = resolveStatementDesignation(geometry.designation, geometry.stand, metadata.designation)
-  const parent = metadata.parentProperty ? ` OF ${metadata.parentProperty}` : ''
+  const desigText = statementDesignation(designation, metadata.parentProperty)
   const surveyDate = metadata.surveyDate ?? metadata.date
 
   { const g = toG({ px: R.x, py: R.y + 9 }); w.addText('STATEMENT', g.x, g.y, 'The figure', toGLen(9)) }
@@ -441,12 +441,11 @@ function drawStatementDxf(w, layout, geometry, metadata, toG, toGLen) {
   { const g = toG({ px: R.x + R.width / 2, py: R.y + 21 }); w.addTextC('STATEMENT', g.x, g.y, area, toGLen(9)) }
   { const g = toG({ px: R.x + R.width, py: R.y + 21 }); w.addTextR('STATEMENT', g.x, g.y, 'of land called', toGLen(9)) }
 
-  const desigText = `${designation}${parent}`
   let desigSize = 11
   while (desigSize > 7.5 && textWidth(desigText, desigSize) > R.width) desigSize -= 0.5
   { const g = toG({ px: R.x, py: R.y + 30 + desigSize }); w.addText('STATEMENT', g.x, g.y, desigText, toGLen(desigSize)) }
 
-  { const g = toG({ px: R.x, py: R.y + 53 }); w.addText('STATEMENT', g.x, g.y, `situate in the district of ${metadata.district ?? ''}.`, toGLen(9)) }
+  { const g = toG({ px: R.x, py: R.y + 53 }); w.addText('STATEMENT', g.x, g.y, `situate in the district of ${(metadata.district ?? '').toUpperCase()}.`, toGLen(9)) }
   const surveyedLine = `Surveyed in ${surveyDate ? new Date(surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`
   { const g = toG({ px: R.x, py: R.y + 70 }); w.addText('STATEMENT', g.x, g.y, surveyedLine, toGLen(9)) }
   { const g = toG({ px: R.x + R.width, py: R.y + 90 }); w.addTextR('STATEMENT', g.x, g.y, 'Land Surveyor', toGLen(9)) }

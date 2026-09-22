@@ -160,6 +160,20 @@ class SurveyProject {
       const values = []
       let paramCount = 1
 
+      // Which of the allowed columns actually exist on THIS table right now? A surveyor
+      // schema lags the migration list on machines where e.g. 089 is unapplied, and
+      // emitting a SET for a missing column is a Postgres 42703 -> 500. Mirroring the
+      // create route's defensive split: migration 089's four fields (assisted_by,
+      // instrument_description, instrument_base_serial, instrument_rover_serial) are
+      // simply not persisted until that migration is applied -- the workflow_state copy
+      // of the same data carries them meanwhile, and this query re-adds them as soon as
+      // the column appears on any deploy.
+      const colsResult = await client.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema = current_schema() AND table_name = 'survey_projects'`
+      )
+      const existingColumns = new Set(colsResult.rows.map(r => r.column_name))
+
       Object.keys(data).forEach(key => {
         if (data[key] !== undefined) {
           let snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase()
@@ -168,6 +182,12 @@ class SurveyProject {
           // (surveyor_profile_id, project_id, instruments, designation)
           if (!allowedColumns.includes(snakeKey)) {
             console.log(`[SurveyProject.update] ⚠️ Skipping non-existent column: ${snakeKey}`)
+            return
+          }
+          // Skip columns that exist in the migration list but not on the live table
+          // (their migration is unapplied on this machine)
+          if (!existingColumns.has(snakeKey)) {
+            console.log(`[SurveyProject.update] ⚠️ Skipping column absent from schema (migration unapplied?): ${snakeKey}`)
             return
           }
           

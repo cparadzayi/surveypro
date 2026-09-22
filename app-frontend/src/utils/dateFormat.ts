@@ -59,3 +59,43 @@ export function toISOString(dateInput: string): string {
     return ''
   }
 }
+
+/**
+ * Format a Date as dd/mm/yyyy for display (Zimbabwean standard)
+ */
+export function formatDateDDMMYYYY(date: Date): string {
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${day}/${month}/${date.getFullYear()}`
+}
+
+/**
+ * Format a Date's time as hh:mm (24-hour clock)
+ */
+export function formatTimeHHMM(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+/**
+ * Format a Date's time as hh:mm:ss (24-hour clock)
+ */
+export function formatTimeHHMMSS(date: Date): string {
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  return `${formatTimeHHMM(date)}:${seconds}`
+}
+
+/**
+ * Format a Date as dd/mm/yyyy hh:mm for display
+ */
+export function formatDateTimeDDMMYYYY(date: Date): string {
+  return `${formatDateDDMMYYYY(date)} ${formatTimeHHMM(date)}`
+}
+
+/**
+ * Format a Date as dd/mm/yyyy hh:mm:ss for display
+ */
+export function formatDateTimeSecDDMMYYYY(date: Date): string {
+  return `${formatDateDDMMYYYY(date)} ${formatTimeHHMMSS(date)}`
+}

@@ -103,6 +103,7 @@ import {
   type StepAction
 } from '../../config/cadastralWorkflow'
 import { makeAbsolutePath, isAbsolutePath, getSystemHomeDirectory } from '../../utils/project-directory'
+import { formatDateTimeDDMMYYYY } from '../../utils/dateFormat'
 
 interface Props {
   completedSteps: string[]
@@ -178,7 +179,7 @@ function getAccessReason(step: WorkflowStep): string {
 function formatDate(dateString?: string): string {
   if (!dateString) return ''
   const date = new Date(dateString)
-  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return formatDateTimeDDMMYYYY(date)
 }
 
 function formatDocumentType(docType?: string): string {

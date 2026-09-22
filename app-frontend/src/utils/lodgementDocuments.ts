@@ -13,6 +13,7 @@ import {
   type PlanFileFamily,
   type PlanFamilyTally,
 } from './planFileClassifier';
+import { formatDateDDMMYYYY } from './dateFormat';
 
 // Re-exported so existing importers (useLodgementCheck, tests) need no change. The interface
 // now lives with the classifier, which is what avoids a circular import between the two.
@@ -266,7 +267,7 @@ export function buildLodgementWarnings(
       .map((file) => {
         // mtime cannot decide staleness -- showing the date lets the surveyor decide.
         const when = file.mtimeMs
-          ? new Date(file.mtimeMs).toLocaleDateString('en-GB')
+          ? formatDateDDMMYYYY(new Date(file.mtimeMs))
           : 'date unknown';
         return `  • ${file.name} (${when})`;
       })

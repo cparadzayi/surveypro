@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf'
+import { formatDateTimeSecDDMMYYYY } from './dateFormat'
 
 export interface SurveyPlanSummaryData {
   projectInfo: {
@@ -136,7 +137,7 @@ export function generatePlanStatisticsPDF(data: SurveyPlanSummaryData): Blob {
   pdf.text('SURVEY PLAN — SUMMARY REPORT', ML, 9.5)
 
   setFont(7, 'normal', [180, 210, 240])
-  const genAt = (data.generatedAt || new Date()).toLocaleString('en-ZW')
+  const genAt = formatDateTimeSecDDMMYYYY(data.generatedAt ? new Date(data.generatedAt) : new Date())
   pdf.text(`Generated: ${genAt}`, PW - MR, 9.5, { align: 'right' })
 
   y = 20

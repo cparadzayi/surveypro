@@ -4,6 +4,7 @@ import type { AdjustedCoordinate, CalculationsPart1Result } from '../types/adjus
 import { VirtualPDFMeasurer } from './VirtualPDFMeasurer'
 import type { CalculationsMeasurement } from '../types/document-measurements'
 import { paginateFieldBook } from './fieldBookPagination'
+import { formatDateDDMMYYYY } from './dateFormat'
 
 // Survey point interface for calculations
 export interface SurveyPoint {
@@ -895,7 +896,7 @@ export class CalculationsPart1Generator {
     yPosition += 10
     
     pdf.text('Date:', this.options.marginLeft, yPosition)
-    pdf.text(new Date().toLocaleDateString(), this.options.marginLeft + 40, yPosition)
+    pdf.text(formatDateDDMMYYYY(new Date()), this.options.marginLeft + 40, yPosition)
   }
   
   /**

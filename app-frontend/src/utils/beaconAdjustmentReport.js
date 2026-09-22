@@ -9,9 +9,19 @@ import { formatSignedDMS } from '@/utils/beaconComparisonSection'
 
 const NAVY = [30, 58, 92]
 
+// Signed network-swing renderer for the edge-compliance note lines: "+12.3″" style.
+const fmtNetSwing = (s) => {
+  if (s.networkSwingSec == null) return '-'
+  const v = s.networkSwingSec.toFixed(1)
+  return `${s.networkSwingSec >= 0 ? '+' : ''}${v}\u2033`
+}
+// Angular tolerance at the median ray: 2.45·σ₀·206265/L_median.
+const fmtMedAllow = (s) => (s.lmed > 0 ? (s.posLimit * 206265 / s.lmed).toFixed(1) : '0')
+
 // Which test condemned a beacon. 'si727' is the Second Schedule severity verdict
-// (si727.js's severityVerdict); the other two come from iterativeAdjust's own statistics.
-const REJ_SOURCE_LABEL = { si727: 'SI 727', wtest: 'W-test', danish: 'Danish' }
+// (si727.js's severityVerdict); 'coords' is the §67(5) co-ordinate-compare limit; the
+// other two come from iterativeAdjust's own statistics.
+const REJ_SOURCE_LABEL = { si727: 'SI 727', coords: 'SI 727 §67(5)', wtest: 'W-test', danish: 'Danish' }
 
 // Standard ISO A-series page dimensions in mm, matching jsPDF's own built-in page-format
 // table exactly (confirmed against jspdf/dist/jspdf.node.js's pageFormats constant) --
@@ -43,10 +53,16 @@ class BeaconAdjustmentReport {
     if (this.y + h > this.ph - 16) { this.doc.addPage('a4', 'portrait'); this.y = this.margin }
   }
 
-  addHeader(meta) {
+  addHeader(meta, method = 'wtest') {
+    const isWtest = method === 'wtest'
     this.doc.setFontSize(15); this.doc.setFont('helvetica', 'bold')
     this.doc.setTextColor(NAVY[0], NAVY[1], NAVY[2])
-    this.doc.text('BEACON COMPARISON & ADJUSTMENT', this.pw / 2, this.y, { align: 'center' }); this.y += 7
+    const title = isWtest
+      ? 'BEACON COMPARISON & ADJUSTMENT'
+      : method === 'coords'
+        ? 'BEACON COMPARISON — SI 727 §67(5) CO-ORDINATES'
+        : 'BEACON COMPARISON — SI 727 SECOND SCHEDULE EDGE COMPLIANCE'
+    this.doc.text(title, this.pw / 2, this.y, { align: 'center' }); this.y += 7
     this.doc.setFontSize(10); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
     this.doc.text('SI 727 of 1979 — Section 67(5)  ·  Cape Lo P(Y,X), South-oriented', this.pw / 2, this.y, { align: 'center' }); this.y += 6
     this.doc.setDrawColor(200, 170, 75); this.doc.setLineWidth(0.8)
@@ -66,6 +82,7 @@ class BeaconAdjustmentReport {
   }
 
   addTransformStats(result) {
+    if (!result.adj) return   // co-ordinates / edge-compliance modes run no adjustment
     const p = result.adj.params, s = result.adj.stats
     const pass = s.chi2 >= s.chi2L && s.chi2 <= s.chi2U
     this.ensureSpace(20)
@@ -91,6 +108,7 @@ class BeaconAdjustmentReport {
   }
 
   addSnoopingLog(result) {
+    if (!result.log || !result.log.length) return   // only the W-test mode logs iterations
     this.ensureSpace(40)
     this.sectionTitle('Data-Snooping Log (iterative Baarda W-test)')
     autoTable(this.doc, {
@@ -192,46 +210,85 @@ class BeaconAdjustmentReport {
     this.sectionTitle('Certification')
     const acc = result.pts.filter(p => p.finalStatus === 'ACCEPT').length
     const rej = result.pts.filter(p => p.finalStatus === 'REJECT')
-    // Which authority condemned each beacon: the Second Schedule severity verdict, or
-    // the adjustment's own statistics. Naming them separately is what stops this page --
-    // the one an examiner reads first -- from contradicting the edge-compliance table.
-    const schedRej = rej.filter(p => p.rejSource === 'si727')
-    const statRej = rej.filter(p => p.rejSource !== 'si727')
+    const hasAdj = !!result.adj
+    const cls = result.surveyClass || 'B'
+    // Which authority condemned each beacon: the §67(5) co-ordinate limit, the Second
+    // Schedule severity verdict, or the adjustment's own statistics. Naming them
+    // separately is what stops this page -- the one an examiner reads first -- from
+    // contradicting the schedule or the edge-compliance table.
     const names = ps => ps.map(p => p.name).join(', ')
-    const s = result.adj.stats
-    const chiOk = s.chi2 >= s.chi2L && s.chi2 <= s.chi2U
-    const es = result.edges ? result.edges.summary : null
-    const linesFailing = es ? es.totalLines - es.bothPass : 0
-    let line
-    if (!result.converged) {
-      line = 'Did not converge within 25 iterations — REFER for manual review.'
-    } else if (rej.length > 0) {
+    const method = result.method || (hasAdj ? 'wtest' : 'coords')
+    let rejPhrase = ''
+    if (method === 'coords') {
+      const c = rej.filter(p => p.rejSource === 'coords')
+      if (c.length) rejPhrase = `${c.length} beacon(s) stand apart from the network of compared beacons and exceed the SI 727 class ${cls} co-ordinate limit: ${names(c)}`
+    } else if (method === 'edges') {
+      const c = rej.filter(p => p.rejSource === 'si727')
+      if (c.length) rejPhrase = `${c.length} beacon(s) fail the Second Schedule limits of error (paras 7(1), 8): ${names(c)}`
+    } else {
+      const schedRej = rej.filter(p => p.rejSource === 'si727')
+      const statRej = rej.filter(p => p.rejSource !== 'si727')
       const parts = []
       if (schedRej.length)
         parts.push(`${schedRej.length} beacon(s) fail the Second Schedule limits of error (paras 7(1), 8): ${names(schedRej)}`)
       if (statRej.length)
         parts.push(`${statRej.length} beacon(s) rejected by the W-test: ${names(statRej)}`)
-      line = `Referred — ${parts.join('; ')}.`
+      rejPhrase = parts.join('; ')
+    }
+    const s = hasAdj ? result.adj.stats : null
+    const chiOk = !s || (s.chi2 >= s.chi2L && s.chi2 <= s.chi2U)
+    const es = result.edges ? result.edges.summary : null
+    const linesFailing = es ? es.totalLines - es.bothPass : 0
+    let line
+    if (hasAdj && !result.converged) {
+      line = 'Did not converge within 25 iterations — REFER for manual review.'
+    } else if (rej.length > 0) {
+      line = `Referred — ${rejPhrase}.`
     } else if (linesFailing > 0) {
       // No beacon is an outlier RELATIVE to its own network -- but a uniformly poor
       // network raises its own median, so severityVerdict can never flag one. That blind
       // spot is reported here rather than left for the reader to notice two pages later.
-      line = `Recommended with note — no single beacon stands out as an outlier, but ${linesFailing} of ${es.totalLines} `
+      line = 'Recommended with note — no single beacon stands out as an outlier, but '
+        + `${linesFailing} of ${es.totalLines} `
         + 'compared lines exceed the Second Schedule limits of error; examine the network as a whole.'
-    } else if (!chiOk) {
+    } else if (method === 'coords' && result.verdict && result.verdict.networkWide) {
+      // A uniform shift (or a uniformly degraded network) raises every §67(5) residual
+      // together, so no beacon stands apart and the two-gate verdict flags none. That
+      // blind spot is reported here rather than silently approving all beacons.
+      line = 'Recommended with note — no single beacon stands out as an outlier, but the '
+        + `network as a whole lies at or beyond the SI 727 class ${cls} co-ordinate limit; `
+        + 'examine the datum shift and re-adjust before adoption.'
+    } else if (hasAdj && !chiOk) {
       line = 'Recommended with note — chi-square test outside bounds; review a priori Sigma-0.'
+    } else if (method === 'coords') {
+      line = `Recommended for approval — all found beacons within the SI 727 class ${cls} co-ordinate limit.`
+    } else if (method === 'edges') {
+      line = 'Recommended for approval — all compared lines within the Second Schedule limits of error.'
     } else {
       line = 'Recommended for approval — all compared beacons and lines within the Second Schedule limits of error.'
     }
 
     this.doc.setFontSize(9); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(20)
+    const critNote = method === 'wtest' ? `  W-test critical value: ${meta.critW}.` : ''
     this.doc.text(
-      `Beacons compared: ${result.pts.length}.  Accepted: ${acc}.  Rejected: ${rej.length}.  W-test critical value: ${meta.critW}.`,
+      `Beacons compared: ${result.pts.length}.  Accepted: ${acc}.  Rejected: ${rej.length}.${critNote}`,
       this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 5
+    if (method === 'coords' && result.posLimit != null) {
+      this.doc.text(
+        `SI 727 §67(5) co-ordinate limit (class ${cls}, 95% 2-D): Δ ≤ ${result.posLimit.toFixed(4)} m.`,
+        this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 5
+    }
+    if (method === 'coords' && result.verdict) {
+      const v = result.verdict
+      const w = `Network consistency: median Δ/limit = ${v.median.toFixed(3)}, rejection cut = ${v.cut.toFixed(3)} `
+        + '(reject only when Δ/limit > cut and Δ/limit > 1).'
+        + (v.networkWide ? '  The network as a whole lies at or beyond the class limit.' : '')
+      this.doc.text(w, this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 5
+    }
     if (es) {
       this.doc.text(
-        `Second Schedule (class ${result.surveyClass || 'B'}): ${es.bothPass} of ${es.totalLines} compared lines within the limits of error; `
-        + `${es.distPass} pass the distance limit (para 7(1)), ${es.dirPass} the direction limit (para 8).`,
+        `Second Schedule (class ${cls}): ${es.bothPass} of ${es.totalLines} compared lines within the limits of error; `
+        + `${es.distPass} pass the distance limit (para 7(5) Limits of Error), ${es.dirPass} the direction limit (swing residual against the class positional limit as an angle).`,
         this.margin, this.y, { maxWidth: this.pw - 2 * this.margin })
     }
     this.y += 6
@@ -253,43 +310,65 @@ class BeaconAdjustmentReport {
     this.doc.setFontSize(11); this.doc.setFont('helvetica', 'bold')
     this.doc.setTextColor(NAVY[0], NAVY[1], NAVY[2])
     this.doc.text('Comparison Schedule — SI 727 §67(5)', 14, 14)
-    const body = result.pts.map(p => [
+    const method = result.method || (result.adj ? 'wtest' : 'coords')
+    const isWtest = method === 'wtest'
+    const body = result.pts.map(p => isWtest ? [
       p.name, f3(p.yH), f3(p.xH), f3(p.yS), f3(p.xS),
       f4s(p.dY), f4s(p.dX), f4s(p.vY), f4s(p.vX),
       f4(p.resDist), formatDMS(p.resBrg),
       (p.wMax != null ? p.wMax.toFixed(2) : '—'), p.finalStatus || '—',
       p.finalStatus === 'REJECT' ? (REJ_SOURCE_LABEL[p.rejSource] || '—') : '—',
+    ] : [
+      p.name, f3(p.yH), f3(p.xH), f3(p.yS), f3(p.xS),
+      f4s(p.dY), f4s(p.dX), f4(p.rawDist), formatDMS(p.rawBrg),
+      p.finalStatus || '—',
+      p.finalStatus === 'REJECT' ? (REJ_SOURCE_LABEL[p.rejSource] || '—') : '—',
     ])
     autoTable(this.doc, {
       startY: 18, margin: { left: 14, right: 14 },
-      head: [['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'dY', 'dX', 'vY', 'vX', 'Dist', 'Brg (S)', 'W-max', 'Status', 'Rejected by']],
+      head: [isWtest
+        ? ['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'dY', 'dX', 'vY', 'vX', 'Dist', 'Brg (S)', 'W-max', 'Status', 'Rejected by']
+        : ['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'dY', 'dX', 'Dist', 'Brg (S)', 'Status', 'Rejected by']],
       body,
       styles: { fontSize: 7.5, cellPadding: 1, halign: 'right' },
       // SI 727 §67(5): historical = black (default), survey (Y/X) = red.
       columnStyles: {
         0: { halign: 'left' },
         3: { textColor: [220, 38, 38] }, 4: { textColor: [220, 38, 38] },
-        12: { halign: 'center' }, 13: { halign: 'center' },
+        [isWtest ? 12 : 9]: { halign: 'center' },
+        [isWtest ? 13 : 10]: { halign: 'center' },
       },
       headStyles: { fillColor: NAVY, halign: 'center', fontSize: 7.5 },
-      // Status stays at index 12: the new 'Rejected by' column is appended AFTER it.
-      didParseCell: d => { if (d.section === 'body' && body[d.row.index][12] === 'REJECT') d.cell.styles.fillColor = [252, 226, 226] },
+      // Status sits at index 12 (wtest) or 9 (coords/edges); 'Rejected by' follows it.
+      didParseCell: d => { if (d.section === 'body' && body[d.row.index][isWtest ? 12 : 9] === 'REJECT') d.cell.styles.fillColor = [252, 226, 226] },
     })
     const fy = this.doc.lastAutoTable.finalY + 5
     const fw = this.doc.internal.pageSize.getWidth() - 28
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
-    this.doc.text('BLACK = original (historical) · RED = survey · Bearings South-oriented (0°=S, 90°=W) · Residuals & W-max are undefined ( — ) for rejected beacons.', 14, fy, { maxWidth: fw })
+    this.doc.text('BLACK = original (historical) · RED = survey · Bearings South-oriented (0°=S, 90°=W)', 14, fy, { maxWidth: fw })
     // Drawn as discrete single lines (not maxWidth auto-wrap, which jsPDF's
     // browser build fails to emit when called after an autoTable).
-    const note = [
-      'dY, dX = raw difference (survey minus historical): still includes the systematic datum shift, scale and rotation common to every beacon.',
-      'vY, vX = residuals left after the best-fit Helmert transformation is removed - the beacon-specific misfit. Dist and Brg (S) are its size and direction.',
-      'Acceptance / rejection is decided by the standardised residual W-max (Baarda data snooping), not by the raw difference dY/dX.',
-    ]
+    const note = isWtest
+      ? [
+          'dY, dX = raw difference (survey minus historical): still includes the systematic datum shift, scale and rotation common to every beacon.',
+          'vY, vX = residuals left after the best-fit Helmert transformation is removed - the beacon-specific misfit. Dist and Brg (S) are its size and direction.',
+          'Acceptance / rejection is decided by the standardised residual W-max (Baarda data snooping), not by the raw difference dY/dX.',
+        ]
+      : method === 'coords'
+        ? [
+            'dY, dX = raw difference (survey minus historical); Dist and Brg (S) are its size and South-oriented direction. Δ/limit = co-ordinate-limit severity (1.0 = exactly at the limit).',
+            'Acceptance / rejection is a two-gate consistency verdict: a beacon is rejected only when it stands apart from its own network (Δ/limit > 1.25 × network median) '
+              + `AND itself exceeds the SI 727 class ${result.surveyClass || 'B'} co-ordinate limit (Δ/limit > 1; Δ > ${result.posLimit != null ? result.posLimit.toFixed(4) : 'class limit'} m ≈95% 2-D) — no Helmert or W-test is applied in this mode.`,
+          ]
+        : [
+            'dY, dX = raw difference (survey minus historical); Dist and Brg (S) are its size and South-oriented direction.',
+            'Acceptance is decided by the SI 727 Second Schedule severity verdict on the inter-beacon line checks (paras 7(1), 8) — no Helmert or W-test is applied in this mode.',
+          ]
     note.forEach((ln, i) => this.doc.text(ln, 14, fy + 6 + i * 4))
   }
 
   addTransformationResiduals(result) {
+    if (!result.adj) return   // needs the fitted Helmert transformation
     const pts = result.pts
     if (!pts || !pts.length) return
     this.doc.addPage('a4', 'landscape')
@@ -328,6 +407,7 @@ class BeaconAdjustmentReport {
   }
 
   addReliabilityValidation(result) {
+    if (!result.adj || !result.loo) return   // redundancy + LOO only exist for the adjustment
     const acc = result.pts.filter(p => p.finalStatus === 'ACCEPT')
     if (!acc.length) return
     const loo = result.loo || { rows: [], rmsLoo: null, maxLoo: null, note: 'LOO not available' }
@@ -380,35 +460,38 @@ class BeaconAdjustmentReport {
       `${e.from} - ${e.to}`, f3(e.dH), f3(e.dS), f4s(e.dDiff), f4(e.dAllow),
       e.distOk ? 'PASS' : 'FAIL',
       formatDMS(e.brgH), formatDMS(e.brgS),
-      e.dirDiffSec.toFixed(1), e.dirAllowSec.toFixed(1),
+      e.dirDiffSec.toFixed(1), e.swingResidSec.toFixed(1), e.dirAllowSec.toFixed(1),
       e.dirOk ? 'PASS' : 'FAIL',
     ])
     autoTable(this.doc, {
       startY: 18, margin: { left: 14, right: 14 },
       head: [['Line', 'd Hist (m)', 'd Surv (m)', 'dd (m)', 'dist tol (m)', 'dist',
-              'Hist dir (S)', 'Survey dir (S)', 'dir diff (sec)', 'dir tol (sec)', 'dir']],
+              'Hist dir (S)', 'Survey dir (S)', 'dir diff (sec)', 'swing resid (sec)', 'dir tol (sec)', 'dir']],
       body,
       styles: { fontSize: 7.5, cellPadding: 1, halign: 'right' },
-      columnStyles: { 0: { halign: 'left' }, 5: { halign: 'center' }, 10: { halign: 'center' } },
+      columnStyles: { 0: { halign: 'left' }, 5: { halign: 'center' }, 11: { halign: 'center' } },
       headStyles: { fillColor: NAVY, halign: 'center', fontSize: 7.5 },
       didParseCell: d => { if (d.section === 'body' && !edges.rows[d.row.index].pass) d.cell.styles.fillColor = [252, 226, 226] },
     })
-    const s = edges.summary, p = result.adj.params
+    const s = edges.summary, p = result.adj ? result.adj.params : null
     let y = this.doc.lastAutoTable.finalY + 6
-    // For large (O(n²)) networks the table can fill the page; keep the 4 note
+    // For large (O(n²)) networks the table can fill the page; keep the note
     // lines from clipping off the bottom by starting them on a fresh page.
-    if (y + 4 * 4 > this.doc.internal.pageSize.getHeight() - 12) {
-      this.doc.addPage('a4', 'landscape'); y = 16
-    }
-    this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
-    const meanScale = s.meanScale != null ? s.meanScale.toFixed(8) : '-'
-    const meanSwing = s.meanSwingDeg != null ? formatDMS(s.meanSwingDeg) : '-'
     const note = [
       `Lines: ${s.totalLines}.  Distance pass: ${s.distPass}.  Direction pass: ${s.dirPass}.  Both: ${s.bothPass}.`,
-      `SI 727 mean scale ${meanScale}, mean swing ${meanSwing}  (Helmert scale ${p.scale.toFixed(8)}, rotation ${formatDMS(p.rotDeg)}).`,
-      `Distance tolerance = factor x sqrt(0.075f + 0.00015 f^2), f = shorter line. Direction tolerance = K/(S+300) sec, S = historical ray length.`,
-      `dir diff = raw (Survey - Hist) South-oriented direction difference in seconds. Independent SI 727 check (does not use the Helmert swing or the W-test).`,
+      p
+        ? `SI 727 mean scale ${s.meanScale != null ? s.meanScale.toFixed(8) : '-'}, network swing \u03c9\u0302 ${fmtNetSwing(s)}  (Helmert scale ${p.scale.toFixed(8)}, rotation ${formatDMS(p.rotDeg)}).`
+        : `SI 727 mean scale ${s.meanScale != null ? s.meanScale.toFixed(8) : '-'}, network swing \u03c9\u0302 ${fmtNetSwing(s)}  (independent edge-compliance mode — no Helmert fitted).`,
+      `Distance tolerance = factor x sqrt(0.075f + 0.00015 f^2), f = shorter line (Second Schedule para 7(5) Limits of Error). Direction: swing residual vs the class positional limit as an angle — tolerance = 2.45 x sigma0 x 206265/S, S = historical ray length, sigma0 = distance tolerance/5 at the median pairwise distance.`,
+      `dir diff (sec) = raw (Survey - Hist) swing; swing resid (sec) = dir diff minus the network swing \u03c9\u0302 (length-weighted median on the longest rays). Independent SI 727 check (does not use the Helmert swing or the W-test).`,
+      ...(s.networkSwingWarn
+        ? [`\u26a0 Network swung by \u03c9\u0302 = ${fmtNetSwing(s)} relative to the historical datum (allow ${fmtMedAllow(s)} at the median ray) — a uniform orientation offset to note, not a per-beacon finding.`]
+        : []),
     ]
+    this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
+    if (y + note.length * 4 > this.doc.internal.pageSize.getHeight() - 12) {
+      this.doc.addPage('a4', 'landscape'); y = 16
+    }
     // Discrete single lines (not maxWidth auto-wrap, which jsPDF's browser build
     // fails to emit when called after an autoTable).
     note.forEach((ln, i) => this.doc.text(ln, 14, y + i * 4))
@@ -589,7 +672,8 @@ class BeaconAdjustmentReport {
   }
 
   generate(result, meta) {
-    this.addHeader(meta)
+    const method = result.method || (result.adj ? 'wtest' : 'coords')
+    this.addHeader(meta, method)
     this.addTransformStats(result)
     this.addSnoopingLog(result)
     this.addDisplacementPlot(result)

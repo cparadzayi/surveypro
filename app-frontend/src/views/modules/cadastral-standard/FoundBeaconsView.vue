@@ -6,7 +6,8 @@
           <h2 class="text-xl font-semibold text-gray-900">Found Beacons Assessment</h2>
           <p class="text-sm text-gray-600 mt-1">
             SI 727 Section 67(5) — upload a comparison CSV
-            (<code>Beacon, Hist_Y, Hist_X, Survey_Y, Survey_X</code>) and run the Helmert / W-test comparison.
+            (<code>Beacon, Hist_Y, Hist_X, Survey_Y, Survey_X</code>) and choose the comparison check:
+            co-ordinates vide §67(5), edge compliance with the SI 727 classes, or the iterative Baarda W-test.
           </p>
         </div>
       </div>

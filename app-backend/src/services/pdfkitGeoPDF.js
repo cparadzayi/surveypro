@@ -1641,7 +1641,7 @@ export function _hitsSegments(r, segments) {
  */
 const TICK_AVOID_BLOCKS = [
   'titleBlock', 'scheduleOfAreas', 'outsideFigureData', 'beaconDescription',
-  'surveyStatement', 'sgSignature', 'endorsement', 'northArrow', 'scaleBar',
+  'surveyStatement', 'servitudeStatement', 'sgSignature', 'endorsement', 'northArrow', 'scaleBar',
 ];
 
 /** The rects from blockPositions that ticks must avoid, skipping absent/!finite ones. */
@@ -4313,7 +4313,7 @@ function getStandsInsideOutsideFigure(parcels, outsideFigureData) {
 function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, logger = null) {
   const config = BLOCKS.TITLE_BLOCK;
   const isMultiSheet = !!(sheetInfo && sheetInfo.totalSheets > 1);
-  const district = metadata.district || "";
+  const district = (metadata.district || "").toUpperCase();
 
   // ── Designation: "Stands 16 - 18 Maglas Township" ──
   const standsInside = getStandsInsideOutsideFigure(parcels, outsideFigureData);
@@ -4324,11 +4324,11 @@ function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, 
   let designation;
   if (dynamicStandList) {
     designation = townshipDescription
-      ? `Stands ${dynamicStandList} ${townshipDescription}`
-      : `Stands ${dynamicStandList}`;
+      ? `Stands ${dynamicStandList} ${townshipDescription}`.toUpperCase()
+      : `Stands ${dynamicStandList}`.toUpperCase();
   } else {
     const rawDesig = (metadata.designation || "").trim();
-    designation = rawDesig.replace(/\s+of\s+.+$/i, "").trim();
+    designation = rawDesig.replace(/\s+of\s+.+$/i, "").trim().toUpperCase();
   }
 
   const sheetText = isMultiSheet ? `SHEET ${sheetInfo.sheetNumber}` : "";
@@ -4354,10 +4354,9 @@ function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, 
     }
 
     const wholePortion = (metadata.wholePortion || 'the whole').trim();
-    const toTitleCase = s => s.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-    const township = toTitleCase(townshipDescription || (metadata.township || '').trim());
-    const parentProp = toTitleCase((metadata.parentProperty || '').trim());
-    const ofTarget = parentProp ? `${township} of ${parentProp}` : township;
+    const township = (townshipDescription || (metadata.township || '').trim()).toUpperCase();
+    const parentProp = (metadata.parentProperty || '').trim().toUpperCase();
+    const ofTarget = parentProp ? `${township} OF ${parentProp}` : township;
 
     if (isMultiSheet) {
       const { sheetNumber, totalSheets } = sheetInfo;
@@ -4402,7 +4401,7 @@ function calculateTitleBlockWidth(
   parcels = null
 ) {
   const config = BLOCKS.TITLE_BLOCK;
-  const district = metadata.district || "";
+  const district = (metadata.district || "").toUpperCase();
 
   // Dynamic designation from parcels inside Outside Figure (mirrors drawTitleBlock logic)
   const standsInsideW = getStandsInsideOutsideFigure(parcels, outsideFigureData);
@@ -4410,8 +4409,8 @@ function calculateTitleBlockWidth(
   const rawSurveyOfW = (metadata.surveyOf || metadata.township || "").trim();
   const townshipDescW = rawSurveyOfW.replace(/^Stands?\s+[\d,\s\-–]+/i, "").trim();
   const designation = dynamicStandListW
-    ? (townshipDescW ? `Stands ${dynamicStandListW} ${townshipDescW}` : `Stands ${dynamicStandListW}`)
-    : (metadata.designation || "");
+    ? (townshipDescW ? `Stands ${dynamicStandListW} ${townshipDescW}` : `Stands ${dynamicStandListW}`).toUpperCase()
+    : (metadata.designation || "").toUpperCase();
 
   doc.save();
 
@@ -4607,7 +4606,7 @@ function drawTitleBlock(
     });
 
   // Survey of (designation), (District) District
-  const district = metadata.district || "";
+  const district = (metadata.district || "").toUpperCase();
 
   // Build dynamic designation from stands inside the Outside Figure polygon.
   // Combines dynamic stand numbers with the immediate township name only (no "of ..." suffix).
@@ -4630,12 +4629,12 @@ function drawTitleBlock(
   let designation;
   if (dynamicStandList) {
     designation = townshipDescription
-      ? `Stands ${dynamicStandList} ${townshipDescription}`
-      : `Stands ${dynamicStandList}`;
+      ? `Stands ${dynamicStandList} ${townshipDescription}`.toUpperCase()
+      : `Stands ${dynamicStandList}`.toUpperCase();
   } else {
     // Fallback: use the full user-supplied designation as-is (also strip " of ..." suffix)
     const rawDesig = (metadata.designation || "").trim();
-    designation = rawDesig.replace(/\s+of\s+.+$/i, "").trim();
+    designation = rawDesig.replace(/\s+of\s+.+$/i, "").trim().toUpperCase();
   }
 
   if (logger) {
@@ -4726,16 +4725,13 @@ function drawTitleBlock(
       // wholePortion: from metadata (set in Project Setup), default "the whole"
       const wholePortion = (metadata.wholePortion || 'the whole').trim();
 
-      // Convert ALL-CAPS stored values to title case (e.g. "MAGLAS TOWNSHIP" → "Maglas Township")
-      const toTitleCase = s => s.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+      // Immediate township name (already stripped of " of ..." suffix), in caps
+      const township = (townshipDescription || (metadata.township || '').trim()).toUpperCase();
 
-      // Immediate township name (already stripped of " of ..." suffix)
-      const township = toTitleCase(townshipDescription || (metadata.township || '').trim());
-
-      // parentProperty: e.g. "Shabani Mine Surface Rights A"
-      // ofTarget: "Maglas Township of Shabani Mine Surface Rights A" (or just township if no parent)
-      const parentProp = toTitleCase((metadata.parentProperty || '').trim());
-      const ofTarget = parentProp ? `${township} of ${parentProp}` : township;
+      // parentProperty: e.g. "Shabani Mine Surface Rights A", in caps
+      // ofTarget: "MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A" (or just township if no parent)
+      const parentProp = (metadata.parentProperty || '').trim().toUpperCase();
+      const ofTarget = parentProp ? `${township} OF ${parentProp}` : township;
 
       if (isMultiSheet) {
         // SI 727 Seventh Schedule (b): inter-sheet description
@@ -6053,6 +6049,58 @@ export function calculateBlockPositions(
   const sgWidth  = BLOCKS.SURVEYOR_GENERAL_BOX.width;
   const sgHeight = BLOCKS.SURVEYOR_GENERAL_BOX.height;
 
+  // --- Servitude Statement (General Plans only) ---
+  // The bordered party-wall statement + two-column mini-table. Dimensions are
+  // measured from real content (widthOfString) so a row's text never overflows;
+  // the drawer reads them back from `position.columns`. Absent on diagrams /
+  // working plans / plans with no party-wall servitudes.
+  const SV = BLOCKS.SERVITUDE_STATEMENT ?? ({
+    heading: 'The following Stands are subject to party-wall servitudes',
+    headingFont: { family: 'Helvetica-Bold', size: 8.5 },
+    columns: [
+      { key: 'stands', label: 'STAND NUMBER', align: 'left' },
+      { key: 'boundary', label: 'BOUNDARY', align: 'left' },
+    ],
+    font: { family: 'Helvetica', size: 8 },
+    headerFont: { family: 'Helvetica-Bold', size: 7.5 },
+    padTop: 6, padBottom: 6, headingGap: 4, headingLineHeight: 11,
+    headerHeight: 15, rowHeight: 14, cellPad: 6, tableInset: 4,
+    minWidth: 250, maxWidth: 340,
+  });
+  const _svPlanType = metadata?.planType;
+  const _svRows = (_svPlanType === 'general-developed' || _svPlanType === 'general-undeveloped')
+    && Array.isArray(metadata?.servitudeStatement?.rows)
+    ? metadata.servitudeStatement.rows.filter((r) => r && (r.stands || r.boundary))
+    : [];
+  const svHasRows = _svRows.length > 0;
+  let svWidth = 0, svHeight = 0, svColumns = null;
+  if (svHasRows) {
+    doc.font(SV.headingFont.family).fontSize(SV.headingFont.size);
+    const svHeadingW = doc.widthOfString(String(SV.heading));
+    doc.font(SV.headerFont.family).fontSize(SV.headerFont.size);
+    const svHStandW = doc.widthOfString(SV.columns[0].label);
+    const svHBoundW = doc.widthOfString(SV.columns[1].label);
+    doc.font(SV.font.family).fontSize(SV.font.size);
+    let svStandW = 0, svBoundW = 0;
+    for (const r of _svRows) {
+      const sw = doc.widthOfString(String(r.stands ?? ''));
+      const bw = doc.widthOfString(String(r.boundary ?? ''));
+      if (sw > svStandW) svStandW = sw;
+      if (bw > svBoundW) svBoundW = bw;
+    }
+    const svColStand = Math.max(svStandW, svHStandW) + 2 * SV.cellPad;
+    const svColBound = Math.max(svBoundW, svHBoundW) + 2 * SV.cellPad;
+    const svTableW = svColStand + svColBound;
+    svWidth = Math.max(SV.minWidth, Math.ceil(svHeadingW) + 2 * SV.tableInset, svTableW + 2 * SV.tableInset);
+    if (svWidth > SV.maxWidth) svWidth = Math.min(Math.max(SV.minWidth, svTableW + 2 * SV.tableInset), SV.maxWidth);
+    // Grow both columns proportionally so they keep the heading-width box.
+    const svScale = (svWidth - 2 * SV.tableInset) / svTableW;
+    svColumns = [Math.round(svColStand * svScale), Math.round(svColBound * svScale)];
+    svHeight = SV.padTop + SV.headingLineHeight + SV.headingGap + SV.headerHeight
+      + _svRows.length * SV.rowHeight + SV.padBottom;
+    logger.info(`[PDFKit] 🛠️  Servitude statement: ${_svRows.length} party-wall row(s) → ${svWidth}×${svHeight}pt`);
+  }
+
   logger.info({
     msg: "[PDFKit] 📐 Dynamic block dimensions",
     title:        `${titleWidth.toFixed(0)}×${titleHeight.toFixed(0)}`,
@@ -6237,6 +6285,17 @@ export function calculateBlockPositions(
       mandatory: false,
       preferredZone: _nextZone(),
     },
+    // Party-wall servitude statement — last in priority, and only present on a
+    // General Plan that actually has rows. Absent blocks are simply not placed,
+    // so diagrams / working plans / servitude-free plans leave every other block
+    // exactly where it would sit today.
+    ...(svHasRows ? [{
+      name: "servitudeStatement",
+      width: svWidth,
+      height: svHeight,
+      mandatory: false,
+      preferredZone: _nextZone(),
+    }] : []),
   ];
 
   // =========================================================================
@@ -6682,11 +6741,16 @@ export function calculateBlockPositions(
 
   const sgSignaturePos = _pos("sgSignature", sgWidth, sgHeight);
 
+  const servitudeStatementPos = svHasRows
+    ? { ..._pos("servitudeStatement", svWidth, svHeight), columns: svColumns }
+    : null;
+
   // =========================================================================
   // Build authoritative allPlacedBlocks — includes EVERY block:
   //   • pre-placed fixed blocks (title, northArrow, scaleBar)
   //   • engine-placed blocks (outsideFigureData, scheduleOfAreas, etc.)
   //   • post-engine fixed blocks (surveyStatement, sgSignature)
+  //   • conditional blocks (servitudeStatement — party-wall tables only)
   // This is the single source of truth for collision detection and registry.
   // For blocks with offsets (outsideFigureData, beaconDescription), expand
   // the rect to the full rendered bounds so downstream checks are accurate.
@@ -6718,6 +6782,7 @@ export function calculateBlockPositions(
     _expandBlock("beaconDescription", beaconPos),
     _expandBlock("surveyStatement",   surveyStatementPos),
     _expandBlock("sgSignature",       sgSignaturePos),
+    _expandBlock("servitudeStatement", servitudeStatementPos),
   ].filter(b => b && b.height > 0);
 
   // Legacy alias used by downstream callers
@@ -6802,6 +6867,9 @@ export function calculateBlockPositions(
     surveyStatement:  `(${surveyStatementPos.x.toFixed(0)},${surveyStatementPos.y.toFixed(0)})`,
     northArrow:       `(${northArrowPos.x.toFixed(0)},${northArrowPos.y.toFixed(0)})`,
     sgSignature:      `(${sgSignaturePos.x.toFixed(0)},${sgSignaturePos.y.toFixed(0)})`,
+    servitudeStatement: servitudeStatementPos
+      ? `(${servitudeStatementPos.x.toFixed(0)},${servitudeStatementPos.y.toFixed(0)})`
+      : null,
   });
 
   // 3-v8 follow-up: when the schedule splits into multiple sub-tables, the PDF
@@ -6835,6 +6903,7 @@ export function calculateBlockPositions(
       surveyStatement:   surveyStatementPos,
       northArrow:        northArrowPos,
       sgSignature:       sgSignaturePos,
+      servitudeStatement: servitudeStatementPos,
     };
     try {
       const _schedSearch = drawScheduleOfAreasMultiTable(
@@ -6912,6 +6981,7 @@ export function calculateBlockPositions(
     surveyStatement:   surveyStatementPos,
     northArrow:        northArrowPos,
     sgSignature:       sgSignaturePos,
+    servitudeStatement: servitudeStatementPos,
     placedBlocks,
     mapFeatureBounds,
     needsScaleUp,
@@ -9545,6 +9615,123 @@ function drawSurveyStatement(doc, metadata, mapBounds, position) {
 }
 
 /**
+ * Draw the General Plan party-wall servitude statement block.
+ *
+ * A bordered statement whose heading spans full width, followed by a two-column
+ * mini-table:
+ *
+ *   ┌──────────────────────────────────────────────────┐
+ *   │  The following Stands are subject to             │
+ *   │        party-wall servitudes                     │
+ *   ├────────────────────────┬─────────────────────────┤
+ *   │  STAND NUMBER          │  BOUNDARY               │
+ *   ├────────────────────────┼─────────────────────────┤
+ *   │  2833, 2469            │  2833A - 2833B          │
+ *   └────────────────────────┴─────────────────────────┘
+ *
+ * Position comes from the sheet planner (calculateBlockPositions); its `columns`
+ * array (carried on the reserved rect) holds the two content-fit column widths so
+ * the drawer can never drift from the planner's reserved footprint. Reads the
+ * table rows from `metadata.servitudeStatement.rows` — General Plans only.
+ */
+export function drawServitudeStatement(doc, metadata, mapBounds, position) {
+  const rows = Array.isArray(metadata?.servitudeStatement?.rows)
+    ? metadata.servitudeStatement.rows
+    : [];
+  if (!rows.length || !position || !position.width || !position.height) return;
+
+  const SV = BLOCKS.SERVITUDE_STATEMENT ?? ({
+    heading: 'The following Stands are subject to party-wall servitudes',
+    headingFont: { family: 'Helvetica-Bold', size: 8.5 },
+    columns: [
+      { key: 'stands', label: 'STAND NUMBER', align: 'left' },
+      { key: 'boundary', label: 'BOUNDARY', align: 'left' },
+    ],
+    font: { family: 'Helvetica', size: 8 },
+    headerFont: { family: 'Helvetica-Bold', size: 7.5 },
+    padTop: 6, padBottom: 6, headingGap: 4, headingLineHeight: 11,
+    headerHeight: 15, rowHeight: 14, cellPad: 6, tableInset: 4,
+    minWidth: 250, maxWidth: 340,
+  });
+
+  const blockX = position.x;
+  const blockY = position.y;
+  const blockW = position.width;
+  // Content-fit column widths computed by the planner (fall back to an even
+  // split only if an old snapshot ever lacks them — cannot happen on a current
+  // render, but keeps the drawer defensive).
+  const colStand = Number.isFinite(position.columns?.[0]) ? position.columns[0]
+    : Math.round((blockW - 2 * SV.tableInset) / 2);
+  const colBound = Number.isFinite(position.columns?.[1])
+    ? position.columns[1]
+    : blockW - 2 * SV.tableInset - colStand;
+
+  const tableX = blockX + SV.tableInset;
+  const tableW = colStand + colBound;
+
+  doc.save();
+  doc.lineWidth(0.5).strokeColor("#000000");
+
+  // Outer border.
+  doc.rect(blockX, blockY, blockW, position.height).stroke();
+
+  // Heading — the statement's first row, spanning the full box width. The
+  // planner sized the box to fit this on one line, so render without wrapping.
+  doc
+    .font(SV.headingFont.family)
+    .fontSize(SV.headingFont.size)
+    .fillColor("#000000")
+    .text(String(SV.heading), tableX, blockY + SV.padTop, {
+      width: tableW,
+      align: "center",
+      lineBreak: false,
+    });
+
+  let y = blockY + SV.padTop + SV.headingLineHeight + SV.headingGap;
+
+  // Column headers ("STAND NUMBER" | "BOUNDARY").
+  doc.font(SV.headerFont.family).fontSize(SV.headerFont.size);
+  doc.text(SV.columns[0].label, tableX + SV.cellPad, y + 4, {
+    width: colStand - 2 * SV.cellPad,
+    align: "left",
+    lineBreak: false,
+  });
+  doc.text(SV.columns[1].label, tableX + colStand + SV.cellPad, y + 4, {
+    width: colBound - 2 * SV.cellPad,
+    align: "left",
+    lineBreak: false,
+  });
+
+  // Header divider + the vertical column divider (top of header → bottom of box).
+  const headerTop = y;
+  const tableBottom = blockY + position.height - SV.padBottom;
+  doc.moveTo(tableX, y + SV.headerHeight).lineTo(tableX + tableW, y + SV.headerHeight).stroke();
+  doc.moveTo(tableX + colStand, headerTop).lineTo(tableX + colStand, tableBottom).stroke();
+  y += SV.headerHeight;
+
+  // Data rows.
+  doc.font(SV.font.family).fontSize(SV.font.size);
+  for (let i = 0; i < rows.length; i++) {
+    doc.text(String(rows[i].stands ?? ""), tableX + SV.cellPad, y + 3, {
+      width: colStand - 2 * SV.cellPad,
+      align: "left",
+      lineBreak: false,
+    });
+    doc.text(String(rows[i].boundary ?? ""), tableX + colStand + SV.cellPad, y + 3, {
+      width: colBound - 2 * SV.cellPad,
+      align: "left",
+      lineBreak: false,
+    });
+    if (i < rows.length - 1) {
+      doc.moveTo(tableX, y + SV.rowHeight).lineTo(tableX + tableW, y + SV.rowHeight).stroke();
+    }
+    y += SV.rowHeight;
+  }
+
+  doc.restore();
+}
+
+/**
  * Draw Surveyor-General's Signature block
  * Format: "Approved" title, signature line, "For Surveyor General", date field
  * @param {Object} position - Centrally calculated collision-free position
@@ -11968,7 +12155,7 @@ async function _generateGeoPDFInner(options, logger) {
     const _needsRelocation = (r) => _overlapsAnyTick(r) || _overlapsFigure(r);
     // Widest-first (matches DXF task ordering) so the hardest-to-fit blocks claim
     // whitespace before the smaller ones do.
-    const _relocatable = ['outsideFigureData', 'beaconDescription', 'surveyStatement', 'sgSignature', 'scaleBar', 'northArrow']
+    const _relocatable = ['outsideFigureData', 'beaconDescription', 'surveyStatement', 'servitudeStatement', 'sgSignature', 'scaleBar', 'northArrow']
       .map((name) => ({ name, rect: _asRect(blockPositions[name]) }))
       .filter((t) => t.rect)
       .sort((a, b) => b.rect.width - a.rect.width);
@@ -12062,6 +12249,11 @@ async function _generateGeoPDFInner(options, logger) {
     figureBounds
   );
   drawSurveyStatement(doc, metadata, mapBounds, blockPositions.surveyStatement);
+  // General Plans with party-wall servitudes: the servitude statement table,
+  // placed by the same collision-free planner as every other block.
+  if (Array.isArray(metadata?.servitudeStatement?.rows) && blockPositions.servitudeStatement) {
+    drawServitudeStatement(doc, metadata, mapBounds, blockPositions.servitudeStatement);
+  }
   drawNorthArrow(doc, mapBounds, blockPositions.northArrow);
   drawSurveyorGeneralSignature(doc, mapBounds, blockPositions.sgSignature);
 
@@ -12116,6 +12308,7 @@ async function _generateGeoPDFInner(options, logger) {
   _pdfWarnIfOverlap('scheduleOfAreas',   blockPositions.scheduleOfAreas);
   _pdfWarnIfOverlap('beaconDescription', blockPositions.beaconDescription);
   _pdfWarnIfOverlap('surveyStatement',   blockPositions.surveyStatement);
+  _pdfWarnIfOverlap('servitudeStatement', blockPositions.servitudeStatement);
   _pdfWarnIfOverlap('sgSignature',       blockPositions.sgSignature);
 
   // Step 5c: Render tick marks AFTER all blocks are drawn.

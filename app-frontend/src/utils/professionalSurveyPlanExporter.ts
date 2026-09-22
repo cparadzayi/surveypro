@@ -1003,9 +1003,9 @@ function drawTitleBlock(pdf: jsPDF, data: SurveyPlanData, area: any) {
   const dynamicStandList = formatStandRanges(surveyedStands)
   const rawSurveyOf = (data.projectInfo.surveyOf || '').trim()
   const surveyOf = rawSurveyOf.replace(/^Stands?\s+[\d,\s\-–]+/i, '').trim()
-  const designation = dynamicStandList
+  const designation = (dynamicStandList
     ? (surveyOf ? `Stands ${dynamicStandList} ${surveyOf}` : `Stands ${dynamicStandList}`)
-    : (data.projectInfo.designation || '').trim()
+    : (data.projectInfo.designation || '').trim()).toUpperCase()
   const maxWidth = Math.max(10, area.width * 0.92)
   const designationLines = pdf.splitTextToSize(designation, maxWidth)
   for (const line of designationLines) {

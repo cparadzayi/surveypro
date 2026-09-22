@@ -94,9 +94,12 @@ describe('pointsFromExistingBeacons', () => {
 describe('buildComparisonConfig — edgeCompliance carry-through', () => {
   const edgeRow = {
     from: '86B', to: '87A', dH: 67.19, dS: 67.21, dDiff: 0.02, dAllow: 0.05, distOk: true,
-    brgH: 130.5, brgS: 130.502, dirDiffSec: 7.2, dirAllowSec: 45.0, dirOk: true, pass: true,
+    brgH: 130.5, brgS: 130.502, dirDiffSec: 7.2, swingResidSec: 7.2, dirAllowSec: 45.0, dirOk: true, pass: true,
   }
-  const edgeSummary = { totalLines: 1, distPass: 1, dirPass: 1, bothPass: 1, meanScale: 1.0003, meanSwingDeg: 0.002 }
+  const edgeSummary = {
+    totalLines: 1, distPass: 1, dirPass: 1, bothPass: 1, meanScale: 1.0003,
+    sigma0: 0.02, posLimit: 0.049, lmed: 100, networkSwingDeg: 0.002, networkSwingSec: 7.2, networkSwingWarn: false,
+  }
 
   it('populates edgeCompliance from result.edges + result.surveyClass when present', () => {
     const cfg = buildComparisonConfig(points, {
@@ -117,5 +120,43 @@ describe('buildComparisonConfig — edgeCompliance carry-through', () => {
   it('omits edgeCompliance when result is null', () => {
     const cfg = buildComparisonConfig(points, null)
     expect(cfg.edgeCompliance).toBeUndefined()
+  })
+})
+
+describe('buildComparisonConfig — per-check-method wording', () => {
+  const rej = { id: 2, name: '87A', finalStatus: 'REJECT' as const }
+  const acc = { id: 1, name: '86B', finalStatus: 'ACCEPT' as const }
+
+  it('describes a coords-mode result as a §67(5) co-ordinate comparison and carries checkMethod', () => {
+    const cfg = buildComparisonConfig(points, {
+      pts: [acc, rej],
+      method: 'coords', surveyClass: 'C', posLimit: 0.0623,
+    })
+    expect(cfg.checkMethod).toBe('coords')
+    expect(cfg.adjustmentSummary).toMatch(/co-ordinate comparison/i)
+    expect(cfg.adjustmentSummary).toMatch(/class C/)
+    expect(cfg.adjustmentSummary).toMatch(/0\.0623 m/)
+    expect(cfg.adjustmentSummary).not.toMatch(/W-test/i)
+    expect(cfg.conclusion).toMatch(/class C co-ordinate limit/)
+    expect(cfg.conclusion).toMatch(/87A/)
+  })
+
+  it('describes an edges-mode result as a Second Schedule severity verdict (no W-test)', () => {
+    const cfg = buildComparisonConfig(points, {
+      pts: [acc, rej],
+      method: 'edges', surveyClass: 'B',
+      edges: { rows: [], summary: { totalLines: 0, distPass: 0, dirPass: 0, bothPass: 0, meanScale: null, sigma0: 0.02, posLimit: 0.049, lmed: 100, networkSwingDeg: null, networkSwingSec: null, networkSwingWarn: false } },
+    })
+    expect(cfg.checkMethod).toBe('edges')
+    expect(cfg.adjustmentSummary).toMatch(/Second Schedule edge compliance/i)
+    expect(cfg.adjustmentSummary).not.toMatch(/W-test/i)
+    expect(cfg.conclusion).toMatch(/severity verdict/i)
+    expect(cfg.conclusion).toMatch(/87A/)
+  })
+
+  it('omits checkMethod entirely for legacy results without a method', () => {
+    const cfg = buildComparisonConfig(points, { pts: [acc] })
+    expect(cfg.checkMethod).toBeUndefined()
+    expect(cfg.adjustmentSummary).toMatch(/Helmert least-squares.*W-test/i)
   })
 })

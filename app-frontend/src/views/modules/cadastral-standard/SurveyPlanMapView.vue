@@ -681,6 +681,7 @@ import { buildWorkingPlanSpec, workingPlanEmptyReason, controlPointsForInset, se
 import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
 import { dispensationFromWorkflow } from '@/composables/useDispensationCertificate'
 import api from '@/services/api'
+import { clearCoordinatePointsCache } from '@/services/coordinatePointCache'
 import { buildWorkflowExcel } from '@/utils/workflowExcelExporter'
 import { autoSaveStepProducts } from '@/services/workflowProductStorage'
 import { planTypeOutputSubdir } from '@/utils/project-directory'
@@ -1558,6 +1559,7 @@ async function loadData() {
     // Repair null geom on coordinate points (happens when batch-inserted without geometry)
     try {
       const repairResp = await api.post('/coordinate-points/repair-geom', { project_id: props.projectId })
+      clearCoordinatePointsCache()
       if (repairResp.data?.repaired > 0) {
         console.log(`[SurveyPlanMap] 🔧 Repaired ${repairResp.data.repaired} coordinate point geometries`)
       }

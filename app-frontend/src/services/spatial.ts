@@ -1,4 +1,5 @@
 import api from './api'
+import { clearCoordinatePointsCache } from './coordinatePointCache'
 
 export interface Project { id: number; name: string; code?: string; description?: string }
 export interface Layer { id: number; name: string; layer_type?: string; geom_type?: string; project_id: number; srid?: number; params?: Record<string, any> }
@@ -198,6 +199,7 @@ export async function createCoordinatePoint(data: {
     project_id: data.project_id.toString()
   }
   const r = await api.post<{ ok: boolean; data: CoordinatePoint }>('/coordinate-points', payload)
+  clearCoordinatePointsCache()
   return r.data.data
 }
 
@@ -207,6 +209,7 @@ export async function renameCoordinatePoint(projectId: number | string, oldName:
     old_name: oldName,
     new_name: newName
   })
+  clearCoordinatePointsCache()
   return r.data.data
 }
 
@@ -224,7 +227,10 @@ export async function normalizeCoordinatePointNames(
     '/coordinate-points/normalize-names',
     { project_id: projectId.toString(), renames }
   )
-  if (r.data.ok) return { ok: true, renamed: r.data.data?.renamed ?? renames.length }
+  if (r.data.ok) {
+    clearCoordinatePointsCache()
+    return { ok: true, renamed: r.data.data?.renamed ?? renames.length }
+  }
   throw new Error(r.data.error || 'normalize-names returned not ok')
 }
 
@@ -238,6 +244,7 @@ export async function updateCoordinatePoint(id: number, data: {
   surveyor?: string
 }) {
   const r = await api.put<{ ok: boolean; data: CoordinatePoint }>(`/coordinate-points/${id}`, data)
+  clearCoordinatePointsCache()
   return r.data.data
 }
 
@@ -264,11 +271,13 @@ export async function batchCreateCoordinatePoints(projectId: number, points: Arr
     points,
     surveyClass
   })
+  clearCoordinatePointsCache()
   return r.data
 }
 
 export async function deleteCoordinatePoint(id: number) {
   const r = await api.delete<{ ok: boolean }>(`/coordinate-points/${id}`)
+  clearCoordinatePointsCache()
   return r.data
 }
 
@@ -276,6 +285,7 @@ export async function deleteCoordinatePointByName(projectId: number, name: strin
   const r = await api.delete<{ ok: boolean; deleted?: number }>('/coordinate-points/by-name', {
     data: { project_id: String(projectId), name }
   })
+  clearCoordinatePointsCache()
   return r.data
 }
 

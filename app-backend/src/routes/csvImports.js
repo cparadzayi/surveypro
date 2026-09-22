@@ -191,7 +191,9 @@ export default async function csvImportRoutes(fastify, options) {
    * PUT /csv-imports/:id
    * Update CSV import metadata (e.g., mark documents as generated)
    */
-  fastify.put('/csv-imports/:id', async (request, reply) => {
+  fastify.put('/csv-imports/:id', {
+    preHandler: [fastify.authenticate, authenticateWithSchema]
+  }, async (request, reply) => {
     const { id } = request.params;
     const { has_generated_documents, metadata } = request.body;
 
@@ -216,7 +218,8 @@ export default async function csvImportRoutes(fastify, options) {
 
       values.push(id);
 
-      const result = await db.query(
+      const schemaDb = request.db || db;
+      const result = await schemaDb.query(
         `UPDATE project_csv_imports 
          SET ${updates.join(', ')}
          WHERE id = $${paramIndex}
@@ -239,7 +242,9 @@ export default async function csvImportRoutes(fastify, options) {
    * POST /csv-imports/analyze-merge
    * Analyze potential merge between existing and new CSV data
    */
-  fastify.post('/csv-imports/analyze-merge', async (request, reply) => {
+  fastify.post('/csv-imports/analyze-merge', {
+    preHandler: [fastify.authenticate, authenticateWithSchema]
+  }, async (request, reply) => {
     // Beacon names are normalised at this door (spec decision 14): analyze-merge mints
     // newId from new_points[].id (:311), execute-merge stores newId (:528-535) and
     // newPt.id (:596-602). A case-fold pair in the file is a 400 (decision 15).
@@ -271,9 +276,10 @@ export default async function csvImportRoutes(fastify, options) {
 
     try {
       console.log('[CSV Import] Starting merge analysis for project:', project_id);
+      const schemaDb = request.db || db;
       // Get existing points for the project
       console.log('[CSV Import] Querying existing points...');
-      const existingPointsResult = await db.query(
+      const existingPointsResult = await schemaDb.query(
         `SELECT id, name, ST_X(geom) as y, ST_Y(geom) as x, import_id
          FROM coordinate_points
          WHERE project_id = $1`,
@@ -285,7 +291,7 @@ export default async function csvImportRoutes(fastify, options) {
 
       // Get existing parcels
       console.log('[CSV Import] Querying existing parcels...');
-      const parcelsResult = await db.query(
+      const parcelsResult = await schemaDb.query(
         `SELECT id, stand as designation, ST_AsGeoJSON(geom) as geometry, import_id, parcel_status
          FROM land_parcels
          WHERE project_id = $1 AND parcel_status = 'active'`,
@@ -458,7 +464,9 @@ export default async function csvImportRoutes(fastify, options) {
    * POST /csv-imports/execute-merge
    * Execute a smart merge based on analysis results
    */
-  fastify.post('/csv-imports/execute-merge', async (request, reply) => {
+  fastify.post('/csv-imports/execute-merge', {
+    preHandler: [fastify.authenticate, authenticateWithSchema]
+  }, async (request, reply) => {
     // Beacon names are normalised at this door (spec decision 14): analyze-merge mints
     // newId from new_points[].id (:311), execute-merge stores newId (:528-535) and
     // newPt.id (:596-602). A case-fold pair in the file is a 400 (decision 15).
@@ -500,7 +508,8 @@ export default async function csvImportRoutes(fastify, options) {
       });
     }
 
-    const client = await db.connect();
+    const schemaDb = request.db || db;
+    const client = await schemaDb.connect();
 
     try {
       console.log('[CSV Import] Starting transaction...');
@@ -678,11 +687,14 @@ export default async function csvImportRoutes(fastify, options) {
    * GET /csv-imports/:id/history
    * Get point history for a specific import
    */
-  fastify.get('/csv-imports/:id/history', async (request, reply) => {
+  fastify.get('/csv-imports/:id/history', {
+    preHandler: [fastify.authenticate, authenticateWithSchema]
+  }, async (request, reply) => {
     const { id } = request.params;
 
     try {
-      const result = await db.query(
+      const schemaDb = request.db || db;
+      const result = await schemaDb.query(
         `SELECT h.*, cp.name as current_point_name
          FROM coordinate_point_history h
          LEFT JOIN coordinate_points cp ON cp.id = h.point_id

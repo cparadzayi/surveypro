@@ -5,6 +5,7 @@
 
 import { geoJsonToCapeLoPoint } from './coordinateTransform';
 import { listCoordinatePoints } from '../services/spatial';
+import { readCoordinatePointsCache, writeCoordinatePointsCache } from '../services/coordinatePointCache';
 
 export interface CapeLoPoint {
   id: string;
@@ -138,25 +139,25 @@ export async function computeCapeLoPointsFromGeometry(
 }
 
 /**
- * Load coordinate points for a project (with caching)
+ * Load coordinate points for a project (with caching).
+ * The cache lives in services/coordinatePointCache so the mutation services
+ * (spatial.ts, csvImports.ts) can invalidate it without an import cycle.
  */
-let cachedCoordinatePoints: Map<number, any[]> = new Map();
-
 export async function getCoordinatePointsForProject(projectId: number): Promise<any[]> {
-  if (cachedCoordinatePoints.has(projectId)) {
+  const cached = readCoordinatePointsCache(projectId);
+  if (cached) {
     console.log(`[ParcelMetadata] Using cached coordinate points for project ${projectId}`);
-    return cachedCoordinatePoints.get(projectId)!;
+    return cached;
   }
   
   console.log(`[ParcelMetadata] Loading coordinate points for project ${projectId}`);
   const points = await listCoordinatePoints(projectId);
-  cachedCoordinatePoints.set(projectId, points);
+  writeCoordinatePointsCache(projectId, points);
   return points;
 }
 
 /**
- * Clear coordinate points cache (call when coordinate points are updated)
+ * Clear coordinate points cache (call when coordinate points are updated).
+ * Re-exported from the shared store so existing callers keep working.
  */
-export function clearCoordinatePointsCache() {
-  cachedCoordinatePoints.clear();
-}
+export { clearCoordinatePointsCache } from '../services/coordinatePointCache';

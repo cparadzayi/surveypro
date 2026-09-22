@@ -4,6 +4,7 @@
  */
 
 import api from './api';
+import { clearCoordinatePointsCache } from './coordinatePointCache';
 
 export interface CSVImport {
   id: number;
@@ -177,6 +178,7 @@ export async function executeMerge(data: {
   };
 }> {
   const response = await api.post('/csv-imports/execute-merge', data);
+  clearCoordinatePointsCache();
   return response.data;
 }
 

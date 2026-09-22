@@ -56,11 +56,11 @@ describe('drawServitudeStatement', () => {
     expect(has(doc, 'rect')).toBe(true)
     expect(count(doc, 'stroke')).toBeGreaterThan(1)
     // Heading + "STAND NUMBER" + "BOUNDARY" + the data row = 4 texts.
-    expect(texts(doc)[0]).toMatch(/party-wall servitudes/)
+    expect(texts(doc)[0]).toBe('Party-wall servitudes data')
     expect(texts(doc).slice(1, 3)).toEqual(['STAND NUMBER', 'BOUNDARY'])
     expect(texts(doc).slice(3)).toEqual(['2833, 2469', '2833A - 2833B'])
-    // Header divider + vertical column divider; no row divider for one row.
-    expect(count(doc, 'lineTo')).toBe(2)
+    // Heading divider + header divider + vertical column divider; no row divider for one row.
+    expect(count(doc, 'lineTo')).toBe(3)
   })
 
   it('adds a row divider between each pair of data rows', () => {
@@ -74,8 +74,8 @@ describe('drawServitudeStatement', () => {
         ],
       },
     }, { x: 0, y: 0 }, position)
-    // 1 header divider + 1 vertical divider + 1 row divider = 3.
-    expect(count(doc, 'lineTo')).toBe(3)
+    // 1 heading divider + 1 header divider + 1 vertical divider + 1 row divider = 4.
+    expect(count(doc, 'lineTo')).toBe(4)
   })
 
   it('renders a row whose stands/boundary are missing rather than crashing', () => {

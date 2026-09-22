@@ -27,6 +27,19 @@ describe('syncServitudeMirror', () => {
     const out = syncServitudeMirror({}, [sv({ subjectId: '99', side: 'EF' })])
     expect(out['99']).toEqual([{ side: 'EF', role: 'servitude', servitudeId: 's1', widthM: undefined, label: undefined }])
   })
+  it('mirrors a shared party wall onto the reciprocal parcel when a resolver is given', () => {
+    const out = syncServitudeMirror(
+      {},
+      [sv({ id: 'w1', subjectId: '10', side: 'CD', type: 'party-wall', adjoiningSubjectId: '20', fromBeacon: '313A', toBeacon: '312A' })],
+      (s) => s.adjoiningSubjectId ? { subjectId: s.adjoiningSubjectId, side: 'AB' } : null,
+    )
+    expect(out['10'][0]).toMatchObject({ side: 'CD', role: 'servitude', servitudeId: 'w1' })
+    expect(out['20'][0]).toMatchObject({ side: 'AB', role: 'servitude', servitudeId: 'w1' })
+  })
+  it('skips the reciprocal mirror when the resolver returns nothing (non-party-wall)', () => {
+    const out = syncServitudeMirror({}, [sv({ subjectId: '10', side: 'AB', type: 'sewer' })], () => ({ subjectId: '20', side: 'BC' }))
+    expect(Object.keys(out)).toEqual(['10'])
+  })
 })
 
 describe('backfillServitudesFromAnnotations', () => {

@@ -59,6 +59,7 @@ export async function saveWorkflowProduct(
       const formData = new FormData()
       formData.append('file', product.data as Blob, product.fileName)
       formData.append('filePath', filePath)
+      formData.append('overwrite', 'true')
       const response = await fetch(`${API_BASE}/documents/save`, { method: 'POST', body: formData })
       if (!response.ok) {
         const err = await response.json()
@@ -85,7 +86,8 @@ export async function saveWorkflowProduct(
         workingDirectory,
         documentType,
         fileName: product.fileName,
-        pdfBlob: product.data as Blob
+        pdfBlob: product.data as Blob,
+        overwrite: true
       })
 
       if (result.success) {
@@ -126,6 +128,7 @@ async function saveCsvFile(
     const formData = new FormData()
     formData.append('file', blob, fileName)
     formData.append('filePath', filePath)
+    formData.append('overwrite', 'true')
 
     const response = await fetch(`${API_BASE}/documents/save`, {
       method: 'POST',

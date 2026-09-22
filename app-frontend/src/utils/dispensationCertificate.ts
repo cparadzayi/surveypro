@@ -1,4 +1,4 @@
-import { servitudeTypeLabel, type Servitude } from '../views/modules/cadastral-standard/servitudes'
+import { servitudeTypeLabel, beaconBoundary, type Servitude } from '../views/modules/cadastral-standard/servitudes'
 import { isOutsideFigureParcelName } from '@/services/parcelValidation'
 
 export interface CertificateRow {
@@ -41,21 +41,35 @@ export function buildCertificateRows(
   }
 
   const rows: CertificateRow[] = []
+  const seen = new Set<string>()
   for (const p of parcelsInSchedule) {
     const pid = String(p.id)
+    // A party wall is shared between two parcels: it burdens the subject parcel
+    // AND the reciprocal one, captured via adjoiningSubjectId (with a back-compat
+    // fallback to the adjoiningStand designation for records saved before the id
+    // existed).
     const affecting = servitudes.filter(
-      (s) => s.subjectId === pid || (s.type === 'party-wall' && s.adjoiningStand === p.stand),
+      (s) => s.subjectId === pid ||
+        (s.type === 'party-wall' && (s.adjoiningSubjectId === pid || s.adjoiningStand === p.stand)),
     )
     if (!affecting.length) {
       rows.push({ stand: p.stand, areaM2: p.area_m2 ?? 0, boundary: '', servitudeType: '' })
       continue
     }
     for (const s of affecting) {
-      const boundary = s.fromBeacon && s.toBeacon ? `${s.fromBeacon} – ${s.toBeacon}` : s.side
+      const boundary = beaconBoundary(s)
       let servitudeType = servitudeTypeLabel(s)
       if (s.type !== 'party-wall') {
         servitudeType += (s.widthM ? `, ${s.widthM} m` : '') + (s.beneficiary ? `, in favour of ${s.beneficiary}` : '')
       }
+      // The same wall recorded from both parcels (legacy mirrors) must not
+      // double-list a stand; collapse on stands+boundary+type.
+      const boundaryKey = s.fromBeacon && s.toBeacon
+        ? [String(s.fromBeacon), String(s.toBeacon)].sort().join('|')
+        : (s.side || '')
+      const key = `${p.stand}|${boundaryKey}|${servitudeType}`
+      if (seen.has(key)) continue
+      seen.add(key)
       rows.push({ stand: p.stand, areaM2: p.area_m2 ?? 0, boundary, servitudeType })
     }
   }

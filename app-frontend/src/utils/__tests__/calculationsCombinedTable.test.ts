@@ -114,4 +114,16 @@ describe('CALCULATIONS combined points table', () => {
     expect(rule.x2 - marginLeft).toBeCloseTo(90 * MM, 3);
     expect(rule.x2).toBeLessThan(textX(stream, 'F/B'));
   });
+
+  it('stamps every coordinate with its sign, matching the CO-ORDINATE LIST', async () => {
+    const stream = await calculationsPageStream([
+      point('A1', 100.1, -200.2),
+      point('A2', -0.005, 0),
+    ]);
+
+    expect(stream).toContain('(+100.100) Tj');
+    expect(stream).toContain('(-200.200) Tj');
+    expect(stream).toContain('(-0.005) Tj');
+    expect(stream).toContain('(+0.000) Tj');
+  });
 });

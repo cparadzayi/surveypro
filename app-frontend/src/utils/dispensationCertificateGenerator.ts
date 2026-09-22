@@ -121,7 +121,7 @@ export async function generateDispensationCertificatePDF(
     const boundaryLines = showServ && r.boundary ? doc.splitTextToSize(r.boundary, boundaryCol!.w - 3) : ['']
     const servLines = r.servitudeType ? doc.splitTextToSize(r.servitudeType, servCol.w - 3) : ['']
     const rowH = Math.max(6, Math.max(boundaryLines.length, servLines.length) * 4 + 2)
-    if (y + rowH > pageH - M.bottom) { doc.addPage(); y = M.top; drawHeader(); drawHeaderRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9) }
+    if (y + rowH > pageH - M.bottom - FOOTER_H) { doc.addPage(); y = M.top; drawHeader(); drawHeaderRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9) }
     let x = M.left
     const cells = showServ
       ? [r.stand, r.areaM2 ? String(Math.round(r.areaM2)) : '', boundaryLines, servLines]
@@ -135,10 +135,12 @@ export async function generateDispensationCertificatePDF(
     y += rowH
   }
 
-  // Stamp "Page i of N" at the top of every page (N is only known after layout).
+  // Stamp "Page i of N" at the top of every page (N is only known after layout),
+  // and draw the Surveyor-General signature line in the footer of every page.
   const pageCount = doc.getNumberOfPages()
   for (let p = 1; p <= pageCount; p++) {
     doc.setPage(p)
+    drawFooter(doc)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
     doc.text(`Page ${p} of ${pageCount}`, pageW / 2, 12, { align: 'center' })
@@ -146,4 +148,29 @@ export async function generateDispensationCertificatePDF(
 
   const blob = doc.output('blob')
   return { blob, pageCount }
+}
+
+/** Vertical space reserved at the bottom of each page for the Surveyor-General
+ *  signature footer line, in mm. */
+const FOOTER_H = 14
+
+/** Draw the Surveyor-General signing footer on the current page:
+ *  "For Surveyor General ‥‥‥…   Date ‥‥‥…", the dotted leaders marking the
+ *  signing / dating space. */
+function drawFooter(doc: jsPDF) {
+  const pageW = doc.internal.pageSize.getWidth()
+  const pageH = doc.internal.pageSize.getHeight()
+  const yy = pageH - M.bottom - 4
+  doc.setDrawColor(0, 0, 0)
+  doc.setLineWidth(0.3)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  const leftLabel = 'For Surveyor General'
+  doc.text(leftLabel, M.left, yy)
+  const rightX = pageW * 0.7
+  doc.text('Date', rightX, yy)
+  doc.setLineDashPattern([1.4, 1.4], 0)
+  doc.line(M.left + doc.getTextWidth(leftLabel) + 4, yy, pageW * 0.52, yy)
+  doc.line(rightX + doc.getTextWidth('Date') + 4, yy, pageW - M.right, yy)
+  doc.setLineDashPattern([], 0)
 }

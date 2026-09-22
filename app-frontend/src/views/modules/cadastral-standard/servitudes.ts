@@ -26,7 +26,8 @@ export interface Servitude {
   widthM?: number
   beneficiary?: string
   burdenedStand?: string
-  adjoiningStand?: string       // party walls: the reciprocal stand
+  adjoiningStand?: string         // party walls: the reciprocal stand's designation
+  adjoiningSubjectId?: string     // party walls: the reciprocal parcel's id (shared-pattern capture)
   purpose?: string
   statuteRef?: string
   fromBeacon?: string
@@ -54,6 +55,23 @@ export function removeServitude(list: Servitude[], id: string): Servitude[] {
 
 export function servitudesForSubject(list: Servitude[], subjectId: string): Servitude[] {
   return list.filter((x) => x.subjectId === subjectId)
+}
+
+/**
+ * Every servitude touching `subjectId`: records that burden it (`subjectId`)
+ * plus party walls it bears jointly with another parcel (`adjoiningSubjectId`).
+ * A party-wall is by definition shared between the two parcels a building
+ * straddles, so it must surface from either side of the boundary.
+ */
+export function servitudesInvolving(list: Servitude[], subjectId: string | number): Servitude[] {
+  const pid = String(subjectId)
+  return list.filter((x) => x.subjectId === pid || (x.type === 'party-wall' && x.adjoiningSubjectId === pid))
+}
+
+/** Display boundary for a servitude: the beacon pair when named, else the raw letter side. */
+export function beaconBoundary(s: Servitude): string {
+  if (s.fromBeacon && s.toBeacon) return `${s.fromBeacon} – ${s.toBeacon}`
+  return s.side || ''
 }
 
 export function hydrateServitudes(raw: unknown): Servitude[] {
@@ -88,6 +106,27 @@ export function resolveBeaconPair(
   return { fromBeacon, toBeacon }
 }
 
+/**
+ * The ring side that walks a given beacon-pair boundary, in either direction
+ * (an adjoining ring sees the shared edge reversed, so both orders match).
+ * Returns null when no side carries the pair. Used to find the reciprocal parcel
+ * of a party wall and to auto-populate its adjoining stand.
+ */
+export function sideMatchingBeaconPair(
+  sides: SubjectSide[], edges: any[], coordinatePoints: any[],
+  pair: { fromBeacon: string; toBeacon: string },
+): string | null {
+  for (const sd of sides) {
+    const cand = resolveBeaconPair(sides, edges, sd.side, coordinatePoints)
+    if (!cand) continue
+    if (
+      (cand.fromBeacon === pair.fromBeacon && cand.toBeacon === pair.toBeacon) ||
+      (cand.fromBeacon === pair.toBeacon && cand.toBeacon === pair.fromBeacon)
+    ) return sd.side
+  }
+  return null
+}
+
 // Re-export for consumers that build the mirror (Task 2 adds functions here too).
 export type { SideAnnotation }
 
@@ -95,10 +134,17 @@ export type { SideAnnotation }
  * Rebuild the role:'servitude' mirror in a per-subject annotation map from the
  * servitude records (the single source of truth). road/contiguous entries are
  * left untouched. Each servitude entry carries servitudeId back to its record.
+ *
+ * A party wall is shared between two parcels, so when `adjoiningSideFor` is
+ * given it also mirrors the wall onto the reciprocal parcel's own ring side —
+ * both parcels then render/tag the shared boundary (the map needs the wall on
+ * each side it is reachable from, while the record stays anchored to the
+ * parcel it was first recorded on).
  */
 export function syncServitudeMirror(
   annotationsBySubject: Record<string, SideAnnotation[]>,
   servitudes: Servitude[],
+  adjoiningSideFor?: (s: Servitude) => { subjectId: string; side: string } | null,
 ): Record<string, SideAnnotation[]> {
   const out: Record<string, SideAnnotation[]> = {}
   for (const [subjectId, list] of Object.entries(annotationsBySubject)) {
@@ -114,6 +160,13 @@ export function syncServitudeMirror(
     }
     if (!out[s.subjectId]) out[s.subjectId] = []
     out[s.subjectId].push(entry)
+    if (s.type === 'party-wall') {
+      const reciprocal = adjoiningSideFor?.(s)
+      if (reciprocal) {
+        if (!out[reciprocal.subjectId]) out[reciprocal.subjectId] = []
+        out[reciprocal.subjectId].push({ ...entry, side: reciprocal.side })
+      }
+    }
   }
   return out
 }
@@ -176,10 +229,15 @@ export function buildPartyWallStatementRows(
     const subjectStand = standForParcel(String(s.subjectId))
     const stands: string[] = []
     if (subjectStand) stands.push(subjectStand)
-    if (s.adjoiningStand && !stands.includes(s.adjoiningStand)) stands.push(s.adjoiningStand)
+    // Prefer the adjoining parcel id (the shared-pattern capture — both parcels
+    // are known by id), then fall back to the stored designation for records
+    // saved before adjoiningSubjectId shipped.
+    let adjoiningStand = s.adjoiningSubjectId ? standForParcel(String(s.adjoiningSubjectId)) : undefined
+    if (!adjoiningStand) adjoiningStand = s.adjoiningStand
+    if (adjoiningStand && !stands.includes(adjoiningStand)) stands.push(adjoiningStand)
     if (stands.length === 0) continue
 
-    const boundary = s.fromBeacon && s.toBeacon ? `${s.fromBeacon} - ${s.toBeacon}` : (s.side || '')
+    const boundary = beaconBoundary(s)
     // The same wall recorded from the reciprocal stand reverses the beacon
     // order ("2833A - 2833B" vs "2833B - 2833A"); sort the pair so both
     // collapse onto one row, while the DISPLAY keeps the recorded direction.

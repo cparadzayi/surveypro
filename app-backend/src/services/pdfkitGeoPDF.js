@@ -6055,7 +6055,7 @@ export function calculateBlockPositions(
   // the drawer reads them back from `position.columns`. Absent on diagrams /
   // working plans / plans with no party-wall servitudes.
   const SV = BLOCKS.SERVITUDE_STATEMENT ?? ({
-    heading: 'The following Stands are subject to party-wall servitudes',
+    heading: 'Party-wall servitudes data',
     headingFont: { family: 'Helvetica-Bold', size: 8.5 },
     columns: [
       { key: 'stands', label: 'STAND NUMBER', align: 'left' },
@@ -9621,14 +9621,15 @@ function drawSurveyStatement(doc, metadata, mapBounds, position) {
  * mini-table:
  *
  *   ┌──────────────────────────────────────────────────┐
- *   │  The following Stands are subject to             │
- *   │        party-wall servitudes                     │
+ *   │             Party-wall servitudes data           │
  *   ├────────────────────────┬─────────────────────────┤
  *   │  STAND NUMBER          │  BOUNDARY               │
  *   ├────────────────────────┼─────────────────────────┤
  *   │  2833, 2469            │  2833A - 2833B          │
  *   └────────────────────────┴─────────────────────────┘
  *
+ * A rule separates the heading row from the "STAND NUMBER"/"BOUNDARY" header
+ * row (the middle ├────────┬─────────┤ line in the sketch above).
  * Position comes from the sheet planner (calculateBlockPositions); its `columns`
  * array (carried on the reserved rect) holds the two content-fit column widths so
  * the drawer can never drift from the planner's reserved footprint. Reads the
@@ -9641,7 +9642,7 @@ export function drawServitudeStatement(doc, metadata, mapBounds, position) {
   if (!rows.length || !position || !position.width || !position.height) return;
 
   const SV = BLOCKS.SERVITUDE_STATEMENT ?? ({
-    heading: 'The following Stands are subject to party-wall servitudes',
+    heading: 'Party-wall servitudes data',
     headingFont: { family: 'Helvetica-Bold', size: 8.5 },
     columns: [
       { key: 'stands', label: 'STAND NUMBER', align: 'left' },
@@ -9705,6 +9706,7 @@ export function drawServitudeStatement(doc, metadata, mapBounds, position) {
   // Header divider + the vertical column divider (top of header → bottom of box).
   const headerTop = y;
   const tableBottom = blockY + position.height - SV.padBottom;
+  doc.moveTo(tableX, headerTop).lineTo(tableX + tableW, headerTop).stroke();
   doc.moveTo(tableX, y + SV.headerHeight).lineTo(tableX + tableW, y + SV.headerHeight).stroke();
   doc.moveTo(tableX + colStand, headerTop).lineTo(tableX + colStand, tableBottom).stroke();
   y += SV.headerHeight;

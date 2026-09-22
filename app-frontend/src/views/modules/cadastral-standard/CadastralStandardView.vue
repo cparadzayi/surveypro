@@ -1405,6 +1405,8 @@ import {
 import { batchCreateCoordinatePoints, listCoordinatePoints, normalizeCoordinatePointNames, listLandParcels, updateLandParcel } from '../../../services/spatial';
 import { toISODate } from '../../../utils/surveyDate';
 import { buildBeaconRepairPlan, runBeaconRepair, describeRepairResult, renameWorkflowCopies, renamePointList } from './beaconRepairFlow';
+import { planCoordinateRefresh, refreshWorkflowCoordinateCopies } from './parcelSnapshotRefresh';
+import { areaCompute } from '../../../services/compute';
 import { useParcelsStore } from '../../../stores/parcels';
 import { parseCalibrationReport } from '../../../utils/siteCalibration';
 import CSVReimportDialog from '../../../components/cadastral/CSVReimportDialog.vue';
@@ -2617,6 +2619,112 @@ async function selfHealBeaconNamesAfterImport(): Promise<string> {
   }
 }
 
+// ⭐ CSV Re-import: Refresh every beacon-linked parcel's persisted snapshot
+// (geometry ring, metadata.cape_lo_points, metadata.residuals.edges) and the
+// workflow step copies that carry vertex coordinates, so generated plans serve
+// the POST-merge coordinate registry instead of the pre-merge snapshot. Unlike
+// the name self-heal above this REBUILDS coordinates (areaCompute + geometry),
+// because corrections move y/x — mirrors MapLibreAreaView.commitVertexEdit /
+// rebuildAffectedParcels. Returns a human summary line, or '' if nothing to do,
+// or a ⚠️ warning on failure — never throws into the merge path.
+async function refreshParcelSnapshotsAfterImport(): Promise<string> {
+  const projectId = selectedProjectId.value;
+  if (!projectId) return '';
+
+  try {
+    const [dbParcels, dbPoints] = await Promise.all([
+      listLandParcels(Number(projectId)),
+      listCoordinatePoints(Number(projectId)),
+    ]);
+    if (dbParcels.length === 0 || dbPoints.length === 0) return '';
+
+    const plan = planCoordinateRefresh(dbParcels, dbPoints);
+    const lines: string[] = [];
+    if (plan.blocked.length > 0) {
+      lines.push(`Left untouched (vertex not in fresh registry): ${plan.blocked.map(b => `${b.designation} — ${b.detail}`).join('; ')}.`);
+    }
+
+    const written: string[] = [];
+    const failed: Array<{ designation: string; message: string }> = [];
+    for (const w of plan.writes) {
+      try {
+        const areaResult = await areaCompute({
+          points: w.points.map(p => ({ y: p.y, x: p.x, id: p.id, name: p.id })),
+          includeResiduals: true,
+          roundMetersDecimals: 2,
+          roundHectaresDecimals: 4,
+        });
+
+        const closureError = Math.sqrt(
+          (areaResult.residuals?.sumDy || 0) ** 2 + (areaResult.residuals?.sumDx || 0) ** 2
+        );
+
+        const coordinates = w.points.map(p => [p.x, p.y]);
+        coordinates.push(coordinates[0]);
+        const geometry = {
+          type: 'Polygon',
+          coordinates: [coordinates],
+          crs: { type: 'name', properties: { name: 'EPSG:22291' } },
+        } as any;
+
+        const perimeter = w.points.reduce((sum, p, i) => {
+          const next = w.points[(i + 1) % w.points.length];
+          return sum + Math.sqrt((next.y - p.y) ** 2 + (next.x - p.x) ** 2);
+        }, 0);
+        const closureRatio = perimeter / (closureError || 0.001);
+
+        const existing = dbParcels.find((p: any) => p.id === w.parcelId);
+        const updatedMetadata = {
+          ...(existing?.metadata ?? {}),
+          points_count: w.points.length,
+          closure_ratio: `1:${Math.round(closureRatio).toLocaleString()}`,
+          closure_error_m: closureError,
+          residuals: areaResult.residuals,
+          cape_lo_points: w.points.map(p => ({ id: p.id, y: p.y, x: p.x, status: p.status, description: p.description })),
+          reimport_rebuilt_at: new Date().toISOString(),
+        };
+
+        await updateLandParcel(w.parcelId, { geom: geometry, metadata: updatedMetadata });
+        written.push(w.designation);
+        console.log(`[CSV Re-import] ✅ Refreshed snapshot for "${w.designation}"`);
+      } catch (e: any) {
+        failed.push({ designation: w.designation, message: e?.response?.data?.error || e?.message || String(e) });
+      }
+    }
+
+    if (written.length > 0) lines.push(`Rebuilt ${written.length} parcel snapshot(s): ${written.join(', ')}.`);
+    if (failed.length > 0) {
+      lines.push(`⚠️ Failed to reimport-coordinate ${failed.length} parcel(s): ${failed.map(f => `${f.designation} — ${f.message}`).join('; ')}.`);
+    }
+
+    // Refresh the workflow step copies that carry vertex coordinates (the
+    // comprehensive coordinate list & survey points read these persisted copies).
+    const loaded = (await api.get(`/survey-projects/${projectId}/workflow`)).data?.workflow_state;
+    const copies = refreshWorkflowCoordinateCopies(loaded?.step_data ?? {}, dbPoints);
+    for (const copy of copies) {
+      try {
+        await api.patch(`/survey-projects/${projectId}/workflow`, {
+          step: copy.step, action: 'update', metadata: copy.metadata
+        });
+        workflowState.documents.coordinateList = undefined; // rebuilt on next generate
+      } catch (e: any) {
+        lines.push(`⚠️ Workflow copy '${copy.step}' not refreshed: ${e?.response?.data?.error || e?.message || String(e)}.`);
+      }
+    }
+
+    if (plan.skipped.length > 0) lines.push(`Skipped (no beacon-linked ring to refresh): ${plan.skipped.join(', ')}.`);
+    if (lines.length === 0) return '';
+
+    parcelsStore.loadParcels(Number(projectId));
+    const text = lines.join('\n');
+    console.log('[CSV Re-import] Snapshot coordinate refresh:', text);
+    return text;
+  } catch (e: any) {
+    console.warn('[CSV Re-import] ⚠️ Snapshot coordinate refresh did not run:', e);
+    return `⚠️ Snapshot coordinate refresh did not run: ${e?.message || String(e)}`;
+  }
+}
+
 // ⭐ CSV Re-import: Execute merge after analysis
 async function handleMergeProceed(partialParcelActions: Record<number, 'delete' | 'keep' | 'review'>, surveyClass: 'B' | 'C') {
   console.log('[CSV Merge] Executing merge with actions:', partialParcelActions);
@@ -2698,6 +2806,11 @@ async function handleMergeProceed(partialParcelActions: Record<number, 'delete' 
     // historical area/consistency metadata (bnr-part7.md).
     const healNote = await selfHealBeaconNamesAfterImport();
     
+    // Self-heal: cascade the post-merge COORDINATES into every beacon-linked
+    // parcel's persisted geometry/metadata snapshot and the workflow step copies,
+    // so regenerated plans serve the new registry (bnr-part7.md).
+    const snapNote = await refreshParcelSnapshotsAfterImport();
+    
     // Trigger automated workflow
     automationProgress.value = {
       isAutomating: true,
@@ -2721,7 +2834,8 @@ alert(`✅ Merge completed successfully!\n\n` +
       `• New points: ${result.data.new_count}\n` +
       `• Orphaned parcels: ${result.data.orphaned_parcels}` +
       conflictNote +
-      (healNote ? `\n\n${healNote}` : ''));
+      (healNote ? `\n\n${healNote}` : '') +
+      (snapNote ? `\n\n${snapNote}` : ''));
     
   } catch (error) {
     console.error('[CSV Merge] Merge execution failed:', error);

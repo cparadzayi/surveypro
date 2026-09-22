@@ -84,7 +84,8 @@
                 ? 'border-amber-300 bg-amber-50 text-amber-900 hover:border-amber-400'
                 : 'border-gray-200 hover:border-blue-300'"
           >
-            <span class="font-medium">{{ s.side }}</span>
+            <span class="font-medium">{{ sideLabel(s) }}</span>
+            <span v-if="sideBeaconPair(s)" class="ml-1 text-[10px] text-gray-400">{{ s.side }}</span>
             <span v-if="servitudeSideSet.has(s.side)" class="ml-1 text-xs">●</span>
           </button>
         </div>
@@ -92,7 +93,7 @@
         <!-- Editor -->
         <div v-if="selectedSide" class="border-t border-gray-200 pt-4 space-y-4">
           <h4 class="text-sm font-semibold text-gray-900">
-            {{ editingId ? 'Edit' : 'New' }} servitude — side {{ selectedSide }}
+            {{ editingId ? 'Edit' : 'New' }} servitude — {{ selectedSideBeaconLabel || selectedSide }}
           </h4>
 
           <div class="grid grid-cols-2 gap-4">
@@ -131,12 +132,11 @@
               />
             </div>
             <div v-if="form.type === 'party-wall'">
-              <label class="block text-xs font-medium text-gray-700 mb-1">Adjoining stand</label>
-              <input
-                v-model="form.adjoiningStand"
-                type="text"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                placeholder="e.g. 45"
+              <label class="block text-xs font-medium text-gray-700 mb-1">Adjoining stand (shared wall)</label>
+              <ParcelSelect
+                :options="adjoiningParcelOptions"
+                v-model="form.adjoiningSubjectId"
+                placeholder="Search the stand this wall is shared with…"
               />
             </div>
             <div>
@@ -187,8 +187,9 @@
           <ul class="divide-y divide-gray-100">
             <li v-for="s in subjectServitudes" :key="s.id" class="flex items-center justify-between py-2 text-sm">
               <div>
-                <span class="font-medium">{{ s.side }}</span>
+                <span class="font-medium">{{ beaconBoundary(s) || s.side }}</span>
                 — {{ servitudeTypeLabel(s) }}
+                <span v-if="s.type === 'party-wall' && s.adjoiningStand"> · shared with Stand {{ s.adjoiningStand }}</span>
                 <span v-if="s.widthM"> · {{ s.widthM }} m</span>
                 <span v-if="s.beneficiary"> · {{ s.beneficiary }}</span>
               </div>
@@ -315,17 +316,19 @@ import { loadBaseMapParcels, computeBaseMapStandLabels, computeBaseMapBeaconLabe
 import api from '@/services/api'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
-import { subjectSides, hydrateAnnotationsMap, annotationsForSubject, type SideAnnotation } from './sideAnnotations'
+import { subjectSides, hydrateAnnotationsMap, annotationsForSubject, type SideAnnotation, type SubjectSide } from './sideAnnotations'
 import { pickDiagramSubjectId } from './diagramSubjectPick'
 import {
   SERVITUDE_TYPE_LABELS,
   newServitudeId,
   upsertServitude,
   removeServitude,
-  servitudesForSubject,
+  servitudesInvolving,
   hydrateServitudes,
   servitudeTypeLabel,
+  beaconBoundary,
   resolveBeaconPair,
+  sideMatchingBeaconPair,
   syncServitudeMirror,
   backfillServitudesFromAnnotations,
   type Servitude,
@@ -356,6 +359,7 @@ const form = ref<{
   widthM: number | undefined
   beneficiary: string
   adjoiningStand: string
+  adjoiningSubjectId: string | number | null
   purpose: string
   statuteRef: string
 }>({
@@ -364,6 +368,7 @@ const form = ref<{
   widthM: undefined,
   beneficiary: '',
   adjoiningStand: '',
+  adjoiningSubjectId: null,
   purpose: '',
   statuteRef: '',
 })
@@ -397,6 +402,12 @@ const selectedParcel = computed(() =>
 function ringForParcel(p: any): [number, number][] | null {
   const ring = p?.geom?.coordinates?.[0]
   return Array.isArray(ring) && ring.length >= 3 ? (ring as [number, number][]) : null
+}
+
+/** Ring-ordered edge table for a parcel — stored under `metadata.edges` by the
+ *  base-map save, `metadata.residuals.edges` by the area/consistency pipeline. */
+function parcelEdges(p: any): any[] {
+  return p?.metadata?.edges || p?.metadata?.residuals?.edges || []
 }
 
 const sides = computed(() => {
@@ -766,16 +777,68 @@ watch([selectedParcelId, servitudes, annotations], () => {
 })
 
 const subjectServitudes = computed(() =>
-  selectedParcelId.value == null ? [] : servitudesForSubject(servitudes.value, String(selectedParcelId.value)))
+  selectedParcelId.value == null ? [] : servitudesInvolving(servitudes.value, selectedParcelId.value))
 
 const servitudeSideSet = computed(() => new Set(subjectServitudes.value.map((s) => s.side)))
 
+/** Beacon names resolved for every lettered side of the selected parcel. */
+const sideBeaconPairs = computed<Record<string, { fromBeacon: string; toBeacon: string } | null>>(() => {
+  const out: Record<string, { fromBeacon: string; toBeacon: string } | null> = {}
+  const parcel = selectedParcel.value
+  if (!parcel) return out
+  const edges = parcelEdges(parcel)
+  for (const s of sides.value) {
+    out[s.side] = resolveBeaconPair(sides.value, edges, s.side, coordinatePoints.value)
+  }
+  return out
+})
+
+function beaconLabelForSide(side: string | null): string | null {
+  if (!side) return null
+  const b = sideBeaconPairs.value[side]
+  return b ? `${b.fromBeacon} – ${b.toBeacon}` : null
+}
+
+function sideBeaconPair(s: SubjectSide): { fromBeacon: string; toBeacon: string } | null {
+  return sideBeaconPairs.value[s.side] ?? null
+}
+
+/** Display label for a boundary-side button: the beacon pair when named, else the letter side. */
+function sideLabel(s: SubjectSide): string {
+  return beaconLabelForSide(s.side) ?? s.side
+}
+
+const selectedSideBeaconLabel = computed(() => beaconLabelForSide(selectedSide.value))
+
 const resolvedBeacons = computed(() => {
   if (!selectedSide.value) return null
-  return resolveBeaconPair(
-    sides.value, selectedParcel.value?.metadata?.edges || [], selectedSide.value, coordinatePoints.value,
-  )
+  return sideBeaconPairs.value[selectedSide.value] ?? null
 })
+
+/** Parcels a party-wall on the selected stand may be shared with (any other parcel). */
+const adjoiningParcelOptions = computed(() =>
+  selectedParcelId.value == null ? [] : buildParcelOptions(parcels.value, { excludeId: selectedParcelId.value }))
+
+function parcelIdForStand(stand: string | undefined | null): string | null {
+  if (!stand) return null
+  const p = parcels.value.find((x: any) => String(x.stand ?? '').trim() === String(stand).trim())
+  return p ? String(p.id) : null
+}
+
+/** The governing servitude for a clicked side: a record keyed by that side, else
+ *  a shared party wall recorded from the OTHER parcel (its ring side letter differs;
+ *  matched back by the beacon pair instead). */
+function existingServitudeForSide(list: Servitude[], side: string): Servitude | null {
+  const direct = list.find((s) => s.side === side)
+  if (direct) return direct
+  const pair = sideBeaconPairs.value[side]
+  if (!pair) return null
+  return list.find(
+    (s) => s.type === 'party-wall' && s.fromBeacon && s.toBeacon &&
+      ((s.fromBeacon === pair.fromBeacon && s.toBeacon === pair.toBeacon) ||
+        (s.fromBeacon === pair.toBeacon && s.toBeacon === pair.fromBeacon)),
+  ) ?? null
+}
 
 function resetForm() {
   form.value = {
@@ -784,6 +847,7 @@ function resetForm() {
     widthM: undefined,
     beneficiary: '',
     adjoiningStand: '',
+    adjoiningSubjectId: null,
     purpose: '',
     statuteRef: '',
   }
@@ -792,11 +856,19 @@ function resetForm() {
 function selectSide(side: string) {
   selectedSide.value = side
   editingId.value = null
-  const existing = subjectServitudes.value.find((s) => s.side === side)
+  const existing = existingServitudeForSide(subjectServitudes.value, side)
   if (existing) {
     editServitude(existing)
-  } else {
-    resetForm()
+    return
+  }
+  resetForm()
+  // A party wall's adjoining stand can be derived from the boundary's beacon
+  // pair — auto-choose the parcel on the other side so the surveyor can't pick
+  // the wrong one. Falls back to manual selection when no geometry matches.
+  const partner = adjoiningParcelForSide(sideBeaconPairs.value[side])
+  if (form.value.type === 'party-wall' && partner) {
+    form.value.adjoiningSubjectId = String(partner.id)
+    form.value.adjoiningStand = partner.stand?.trim() ?? ''
   }
 }
 
@@ -809,6 +881,7 @@ function editServitude(s: Servitude) {
     widthM: s.widthM,
     beneficiary: s.beneficiary || '',
     adjoiningStand: s.adjoiningStand || '',
+    adjoiningSubjectId: s.adjoiningSubjectId ?? parcelIdForStand(s.adjoiningStand),
     purpose: s.purpose || '',
     statuteRef: s.statuteRef || '',
   }
@@ -850,10 +923,59 @@ async function persistMirror() {
   }
 }
 
+/** The ring side of a parcel that walks a given beacon-pair boundary (either
+ *  direction — an adjoining ring sees the same edge reversed). */
+function sideForBeaconPairOnParcel(p: any, pair: { fromBeacon: string; toBeacon: string }): string | null {
+  const ring = ringForParcel(p)
+  const pSides = ring ? subjectSides(ring) : []
+  if (!pSides.length) return null
+  return sideMatchingBeaconPair(pSides, parcelEdges(p), coordinatePoints.value, pair)
+}
+
+/** The parcel sharing the given beacon-pair boundary with the selected stand, if
+ *  any. This auto-populates the party wall's adjoining stand so the surveyor
+ *  doesn't have to hunt for the correct parcel themselves. */
+function adjoiningParcelForSide(pair: { fromBeacon: string; toBeacon: string } | null): any | null {
+  if (!pair) return null
+  const reverse = { fromBeacon: pair.toBeacon, toBeacon: pair.fromBeacon }
+  for (const p of parcels.value) {
+    if (selectedParcelId.value != null && String(p.id) === String(selectedParcelId.value)) continue
+    if (sideForBeaconPairOnParcel(p, reverse)) return p
+  }
+  return null
+}
+
+// Switching a freshly-added servitude to a party wall must name its other parcel —
+// auto-populate it from the boundary geometry (never overriding a user choice).
+watch(() => form.value.type, (type) => {
+  if (type !== 'party-wall') return
+  if (form.value.adjoiningSubjectId || !selectedSide.value) return
+  const partner = adjoiningParcelForSide(sideBeaconPairs.value[selectedSide.value])
+  if (partner) {
+    form.value.adjoiningSubjectId = String(partner.id)
+    form.value.adjoiningStand = partner.stand?.trim() ?? ''
+  }
+})
+
+/** The reciprocal parcel's ring side carrying a shared party wall, so the map
+ *  mirror also tags the adjoining stand. Prefers the recorded reciprocal parcel;
+ *  falls back to a beacon-pair match against the adjoining geometry. */
+function adjoiningSideForPartyWall(s: Servitude): { subjectId: string; side: string } | null {
+  if (s.type !== 'party-wall' || !s.fromBeacon || !s.toBeacon) return null
+  const pair = { fromBeacon: s.fromBeacon, toBeacon: s.toBeacon }
+  const parcel = s.adjoiningSubjectId
+    ? (parcels.value.find((p: any) => String(p.id) === String(s.adjoiningSubjectId)) ?? null)
+    : null
+  const target = parcel ?? adjoiningParcelForSide(pair)
+  if (!target) return null
+  const side = sideForBeaconPairOnParcel(target, pair)
+  return side ? { subjectId: String(target.id), side } : null
+}
+
 /** Rebuild the role:'servitude' mirror from the servitude records and persist BOTH steps.
  *  This view is the sole writer of role:'servitude' annotation entries. */
 async function syncAndPersist() {
-  annotations.value = syncServitudeMirror(annotations.value, servitudes.value)
+  annotations.value = syncServitudeMirror(annotations.value, servitudes.value, adjoiningSideForPartyWall)
   await persistServitudes()
   await persistMirror()
 }
@@ -863,22 +985,47 @@ async function saveServitude() {
   savingRecord.value = true
   try {
     const subjectId = String(selectedParcelId.value)
-    const beacons = resolveBeaconPair(
-      sides.value, selectedParcel.value?.metadata?.edges || [], selectedSide.value, coordinatePoints.value,
-    )
+    const existing = existingServitudeForSide(subjectServitudes.value, selectedSide.value)
+    // A party wall is shared between two parcels. Editing one from the OTHER
+    // stand keeps the record anchored to the parcel it was first recorded on
+    // (and that parcel's ring side + beacon direction), so the wall stays a
+    // single record surfaced from both sides of the boundary.
+    const anchoredElsewhere = !!existing && existing.subjectId !== subjectId
+    const anchorSubjectId = anchoredElsewhere ? existing.subjectId : subjectId
+    const anchorSide = anchoredElsewhere ? existing.side : selectedSide.value
+    const beacons = sideBeaconPairs.value[selectedSide.value]
+
+    const isPartyWall = form.value.type === 'party-wall'
+    let adjoiningParcel = isPartyWall
+      ? parcels.value.find((p: any) => String(p.id) === String(form.value.adjoiningSubjectId)) ?? null
+      : null
+    // Safety net: a party wall must name its other parcel. If the surveyor cleared the
+    // (auto-populated) adjoining stand, fall back to the geometric partner of the boundary.
+    if (!adjoiningParcel && beacons && !anchoredElsewhere) {
+      adjoiningParcel = adjoiningParcelForSide(beacons)
+      if (adjoiningParcel) {
+        form.value.adjoiningSubjectId = String(adjoiningParcel.id)
+        form.value.adjoiningStand = adjoiningParcel.stand?.trim() ?? ''
+      }
+    }
     const record: Servitude = {
-      id: editingId.value ?? newServitudeId(),
-      subjectId,
-      side: selectedSide.value,
+      id: editingId.value ?? existing?.id ?? newServitudeId(),
+      subjectId: anchorSubjectId,
+      side: anchorSide,
       type: form.value.type,
       typeLabelOther: form.value.type === 'other' ? (form.value.typeLabelOther.trim() || undefined) : undefined,
       widthM: form.value.widthM != null && !Number.isNaN(form.value.widthM) ? Number(form.value.widthM) : undefined,
       beneficiary: form.value.beneficiary.trim() || undefined,
-      adjoiningStand: form.value.type === 'party-wall' ? (form.value.adjoiningStand.trim() || undefined) : undefined,
+      adjoiningStand: isPartyWall
+        ? (adjoiningParcel?.stand?.trim() || form.value.adjoiningStand.trim() || undefined)
+        : undefined,
+      adjoiningSubjectId: isPartyWall
+        ? (adjoiningParcel?.id != null ? String(adjoiningParcel.id) : undefined)
+        : undefined,
       purpose: form.value.purpose.trim() || undefined,
       statuteRef: form.value.statuteRef.trim() || undefined,
-      fromBeacon: beacons?.fromBeacon,
-      toBeacon: beacons?.toBeacon,
+      fromBeacon: anchoredElsewhere && existing.fromBeacon ? existing.fromBeacon : beacons?.fromBeacon,
+      toBeacon: anchoredElsewhere && existing.toBeacon ? existing.toBeacon : beacons?.toBeacon,
     }
     servitudes.value = upsertServitude(servitudes.value, record)
     await syncAndPersist()
@@ -978,7 +1125,7 @@ function resolveServitudesForCertificate(list: Servitude[]): Servitude[] {
     const ring = parcel ? ringForParcel(parcel) : null
     const sidesForParcel = ring ? subjectSides(ring) : []
     const beacons = resolveBeaconPair(
-      sidesForParcel, parcel?.metadata?.edges || [], s.side, coordinatePoints.value,
+      sidesForParcel, parcelEdges(parcel), s.side, coordinatePoints.value,
     )
     return { ...s, fromBeacon: beacons?.fromBeacon, toBeacon: beacons?.toBeacon }
   })

@@ -263,19 +263,20 @@ export const ENDORSEMENT_BLOCK = {
 // mini-table listing the stands subject to party-wall servitudes:
 //
 //   ┌──────────────────────────────────────────────────┐
-//   │  The following Stands are subject to             │
-//   │        party-wall servitudes                     │
+//   │             Party-wall servitudes data           │
 //   ├────────────────────────┬─────────────────────────┤
 //   │  STAND NUMBER          │  BOUNDARY               │
 //   ├────────────────────────┼─────────────────────────┤
 //   │  2833, 2469            │  2833A - 2833B          │
 //   └────────────────────────┴─────────────────────────┘
 //
-// Consumed by pdfkitGeoPDF.js (planner reserves + drawer renders). Column
-// widths are content-fit (measured per render), so only the fixed chrome
-// (padding, header height, row height, fonts) is defined here.
+// The heading and the header row are separated by a rule (the middle
+// ├────────┬─────────┤ line above). Consumed by pdfkitGeoPDF.js (planner
+// reserves + drawer renders). Column widths are content-fit (measured per
+// render), so only the fixed chrome (padding, header height, row height,
+// fonts) is defined here.
 export const SERVITUDE_STATEMENT = {
-  heading: 'The following Stands are subject to party-wall servitudes',
+  heading: 'Party-wall servitudes data',
   headingFont: { family: 'Helvetica-Bold', size: 8.5 },
 
   columns: [

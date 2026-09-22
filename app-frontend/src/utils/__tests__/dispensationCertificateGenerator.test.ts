@@ -38,5 +38,16 @@ describe('generateDispensationCertificatePDF', () => {
     const { blob, pageCount } = await generateDispensationCertificatePDF({ ...base, portion: 'undeveloped', rows, standCount: 80 })
     expect(blob.size).toBeGreaterThan(0)
     expect(pageCount).toBeGreaterThanOrEqual(2)
+    const content = await blob.text()
+    const footers = content.split('(For Surveyor General)').length - 1
+    expect(footers).toBeGreaterThanOrEqual(pageCount)
+  })
+  it('draws the Surveyor-General signature footer with dotted signing lines on every page', async () => {
+    const { blob, pageCount } = await generateDispensationCertificatePDF(base)
+    const content = await blob.text()
+    expect(content).toContain('For Surveyor General')
+    expect(content).toContain('Date')
+    expect(content).toContain('3.9685039370078741 3.9685039370078741] 0.')
+    expect(content.split('(For Surveyor General)').length - 1).toBe(pageCount)
   })
 })

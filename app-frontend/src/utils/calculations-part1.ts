@@ -37,7 +37,18 @@ export const SURVEY_TOLERANCES = {
   CADASTRAL_PRIMARY: 0.050,     // 50mm for primary control points
   CADASTRAL_SECONDARY: 0.100,   // 100mm for secondary points
   CADASTRAL_BOUNDARY: 0.150,    // 150mm for boundary points
-  TRAVERSE_CLOSURE: 0.200       // 200mm for traverse closure
+  TRAVERSE_CLOSURE: 0.200       // 200ms for traverse closure
+}
+
+/**
+ * Format a coordinate with an explicit sign, matching the CO-ORDINATE LIST
+ * (which stamps + on non-negative values and - on negatives via
+ * toCoordinateListPrecision). The calculations tables keep their own three
+ * decimals; only the sign convention is aligned.
+ */
+export function signedCoordinate(value: number, fractionDigits = 3): string {
+  const text = value.toFixed(fractionDigits)
+  return value >= 0 ? `+${text}` : text
 }
 
 export class CalculationsPart1Generator {
@@ -394,8 +405,8 @@ export class CalculationsPart1Generator {
         pdf.setTextColor(0, 0, 0); // text always black
 
         pdf.text(pt.pointId, idX, yPosition);
-        pdf.text(pt.y.toFixed(3), this.options.marginLeft + COL_Y, yPosition);
-        pdf.text(pt.x.toFixed(3), this.options.marginLeft + COL_X, yPosition);
+        pdf.text(signedCoordinate(pt.y), this.options.marginLeft + COL_Y, yPosition);
+        pdf.text(signedCoordinate(pt.x), this.options.marginLeft + COL_X, yPosition);
 
         pdf.setDrawColor(220, 0, 0); // rule in red
         pdf.line(idX, lineY, idX + RULE_WIDTH, lineY);
@@ -779,8 +790,8 @@ export class CalculationsPart1Generator {
       analysis.observations.forEach(obs => {
         pdf.text(obs.observationIndex ? obs.observationIndex.toString() : '-', 
                  this.options.marginLeft, yPosition);
-        pdf.text(obs.y.toFixed(3), this.options.marginLeft + 15, yPosition);
-        pdf.text(obs.x.toFixed(3), this.options.marginLeft + 45, yPosition);
+        pdf.text(signedCoordinate(obs.y), this.options.marginLeft + 15, yPosition);
+        pdf.text(signedCoordinate(obs.x), this.options.marginLeft + 45, yPosition);
         const resY = (obs.y - analysis.meanY).toFixed(3);
         const resX = (obs.x - analysis.meanX).toFixed(3);
         pdf.text(resY, this.options.marginLeft + 75, yPosition);
@@ -999,11 +1010,11 @@ export class CalculationsPart1Generator {
       // Point ID
       pdf.text(point.pointId, this.options.marginLeft, yPos);
       
-      // Y coordinate (3 decimal places)
-      pdf.text(point.y.toFixed(3), this.options.marginLeft + 40, yPos);
+      // Y coordinate (3 decimal places) with explicit sign, like the CO-ORDINATE LIST
+      pdf.text(signedCoordinate(point.y), this.options.marginLeft + 40, yPos);
       
-      // X coordinate (3 decimal places)
-      pdf.text(point.x.toFixed(3), this.options.marginLeft + 80, yPos);
+      // X coordinate (3 decimal places) with explicit sign
+      pdf.text(signedCoordinate(point.x), this.options.marginLeft + 80, yPos);
       
       // F.B (Field Book page)
       const fbPage = fieldBookLookup[point.pointId] || '-';

@@ -59,6 +59,30 @@ describe('buildCertificateRows', () => {
     expect(row1650).toMatchObject({ boundary: '', servitudeType: '' })
   })
 
+  it('developed: party-wall shared via adjoiningSubjectId emits on both stands', () => {
+    const servitudes = [
+      sv({
+        id: 's1', subjectId: '10', side: 'AB', type: 'party-wall',
+        fromBeacon: '1620a', toBeacon: '1620b', adjoiningSubjectId: '11', adjoiningStand: '1621',
+      }),
+    ]
+    const rows = buildCertificateRows(parcels, servitudes, 'developed')
+    const row1620 = rows.find((r) => r.stand === '1620')!
+    const row1621 = rows.find((r) => r.stand === '1621')!
+    expect(row1620.boundary).toBe('1620a – 1620b')
+    expect(row1621.boundary).toBe('1620a – 1620b')
+  })
+
+  it('developed: a wall mirrored from both parcels (legacy) lists a stand only once', () => {
+    const servitudes = [
+      sv({ id: 's1', subjectId: '10', side: 'AB', type: 'party-wall', fromBeacon: '1620a', toBeacon: '1620b', adjoiningStand: '1621' }),
+      sv({ id: 's2', subjectId: '11', side: 'CD', type: 'party-wall', fromBeacon: '1620b', toBeacon: '1620a', adjoiningStand: '1620' }),
+    ]
+    const rows = buildCertificateRows(parcels, servitudes, 'developed')
+    expect(rows.filter((r) => r.stand === '1620')).toHaveLength(1)
+    expect(rows.filter((r) => r.stand === '1621')).toHaveLength(1)
+  })
+
   it('developed: boundary falls back to the raw side when beacons are missing', () => {
     const servitudes = [sv({ id: 's1', subjectId: '10', side: 'BC', type: 'sewer' })]
     const row = buildCertificateRows(parcels, servitudes, 'developed').find((r) => r.stand === '1620')!

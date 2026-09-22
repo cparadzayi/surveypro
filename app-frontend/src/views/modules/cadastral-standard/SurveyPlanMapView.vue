@@ -625,7 +625,7 @@ import { jsPDF } from 'jspdf'
 import html2canvas from 'html2canvas'
 import { capeLoToWGS84, capeLoArrayToWGS84, calculateWGS84Bounds, geoJsonToCapeLoPoint, type CapeLoPoint } from '@/utils/coordinateTransform'
 import { getCoordinatePointsForProject } from '@/utils/parcelMetadataComputer'
-import { asBaseMapParcel, loadBaseMapParcels, parcelFromBaseRecord, digitizedPoints, type SurveyParcel } from '@/utils/surveyParcels'
+import { asBaseMapParcel, loadBaseMapParcels, parcelFromBaseRecord, digitizedPoints, snapshotEdgesStale, type SurveyParcel } from '@/utils/surveyParcels'
 import { getSurveyPlanPreview, type PreviewData } from '@/services/surveyPlanPreview'
 import { 
   optimizeLayout, 
@@ -1160,9 +1160,10 @@ const validatedLabels = computed(() => {
     if (!parcel.geom) return
 
     // Digitized map = single source of truth: label the beacon names from
-    // metadata.cape_lo_points verbatim (the names the digital map captured),
-    // falling back to registry spatial matching for non-digitized records.
-    const digitized = digitizedPoints(parcel)
+    // metadata.cape_lo_points (validated against the live coordinate registry,
+    // which rejects snapshots left stale by a re-import), falling back to
+    // registry spatial matching for non-digitized / stale records.
+    const digitized = digitizedPoints(parcel, coordinatePoints.value)
     if (digitized.length) {
       digitized.forEach(pt => {
         const beaconName = pt.id
@@ -3881,7 +3882,8 @@ function exportParcelsAsGeoJSON(): GeoJSON.FeatureCollection {
       // USE PRE-CALCULATED EDGE DATA: Prefer area consistency data (single source of truth)
       let edges = []
       
-      if (parcel.metadata?.residuals?.edges && Array.isArray(parcel.metadata.residuals.edges)) {
+      if (parcel.metadata?.residuals?.edges && Array.isArray(parcel.metadata.residuals.edges)
+        && !snapshotEdgesStale(parcel.metadata.residuals.edges, coordinatePoints.value)) {
         // Use pre-calculated edges from area consistency data
         edges = parcel.metadata.residuals.edges.map(edge => ({
           distance: edge.distance,

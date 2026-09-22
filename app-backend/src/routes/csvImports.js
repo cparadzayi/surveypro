@@ -164,8 +164,12 @@ export default async function csvImportRoutes(fastify, options) {
 
       if (existingResult.rows.length > 0) {
         // Allow re-import for the same project (user will get re-import dialog in frontend)
-        // This is intentional - same CSV can be imported multiple times for corrections
-        console.log('[CSV Import] Existing import found for project', project_id, '- allowing re-import');
+        // This is intentional - same CSV can be imported multiple times for corrections.
+        // Migration 092 made (project_id, csv_hash) UNIQUE per schema, so re-uploading the
+        // same file must NOT re-insert — reuse the existing tracking row instead, or the
+        // INSERT below violates that index and turns into a 500.
+        console.log('[CSV Import] Existing import found for project', project_id, '- reusing tracking row');
+        return { data: existingResult.rows[0], reused: true };
       }
 
       // Get user ID from request (set by authenticate middleware)

@@ -61,7 +61,7 @@ export async function loadBaseMapParcels(projectId: string | number): Promise<Ba
 }
 
 /** The digitized beacon sequence the map saved, when it still matches the ring. */
-export function digitizedPoints(record: BaseMapParcel): CapeLoPoint[] {
+export function digitizedPoints(record: BaseMapParcel, coordinatePoints?: any[]): CapeLoPoint[] {
   const stored = Array.isArray(record?.metadata?.cape_lo_points) ? record.metadata.cape_lo_points : []
   if (!stored.length) return []
   const ring = record.geom?.coordinates?.[0]
@@ -73,6 +73,55 @@ export function digitizedPoints(record: BaseMapParcel): CapeLoPoint[] {
     )
     return []
   }
+
+  // The digitized map saved a beacon-name snapshot when the parcel was first
+  // drawn; a later CSV re-import can move or rename a beacon. When the live
+  // coordinate registry is available, distrust a snapshot that has drifted from
+  // it — a registered beacon whose saved spot moved >0.5m, or a saved name that
+  // no longer exists while its vertex position does resolve to a registry point.
+  // Callers then fall through to geometry+registry matching (the single source
+  // of truth), which is exactly the rematch MapLibre performs on load.
+  if (Array.isArray(coordinatePoints) && coordinatePoints.length > 0 && Array.isArray(stored)) {
+    const registry = new Map<string, { y: number; x: number }>()
+    for (const cp of coordinatePoints) {
+      const name = cp?.name ?? cp?.id
+      if (name != null && typeof cp?.y === 'number' && typeof cp?.x === 'number') {
+        registry.set(String(name), { y: cp.y, x: cp.x })
+      }
+    }
+
+    const stale = stored.some((pt: any, i: number) => {
+      const id = String(pt?.id)
+      const row = registry.get(id)
+      if (row) {
+        const dy = Math.abs(row.y - Number(pt?.y))
+        const dx = Math.abs(row.x - Number(pt?.x))
+        return dy > 0.5 || dx > 0.5
+      }
+      // Unknown saved name: only treat it as stale if some registry point is
+      // actually sitting on this vertex (otherwise it is a legitimately
+      // unregistered beacon and we keep the surveyor's name).
+      if (!Array.isArray(ring) || !ring[i]) return false
+      const vertexY = ring[i][1]
+      const vertexX = ring[i][0]
+      for (const cp of coordinatePoints) {
+        if (typeof cp?.y !== 'number' || typeof cp?.x !== 'number') continue
+        const dy = Math.abs(vertexY - cp.y)
+        const dx = Math.abs(vertexX - cp.x)
+        if (Math.sqrt(dy * dy + dx * dx) <= 2) return true
+      }
+      return false
+    })
+
+    if (stale) {
+      console.warn(
+        `[SurveyParcels] ⚠️ Stale cape_lo_points for ${record.stand ?? record.id} ` +
+          `(beacon renamed/moved vs coordinate registry) - falling back to geometry matching`
+      )
+      return []
+    }
+  }
+
   return stored.map((pt: any) => ({
     id: pt.id,
     y: pt.y,
@@ -101,6 +150,35 @@ export function vertexLabelPoints(record: BaseMapParcel): CapeLoPoint[] {
     })
   })
   return points
+}
+
+/**
+ * True when saved residual edges reference beacons that have moved or been
+ * renamed in the live coordinate registry (a re-import correction). Consumers
+ * (vector plan export) then fall back to recomputing from the fresh ring
+ * instead of drawing pre-import names/coordinates.
+ */
+export function snapshotEdgesStale(edges: any[], coordinatePoints?: any[]): boolean {
+  if (!Array.isArray(coordinatePoints) || coordinatePoints.length === 0) return false
+  const registry = new Map<string, { y: number; x: number }>()
+  for (const cp of coordinatePoints) {
+    const name = cp?.name ?? cp?.id
+    if (name != null && typeof cp?.y === 'number' && typeof cp?.x === 'number') {
+      registry.set(String(name), { y: cp.y, x: cp.x })
+    }
+  }
+  return (edges || []).some((edge: any) => {
+    for (const side of [edge?.from, edge?.to]) {
+      const id = String(side?.id ?? side?.name ?? '')
+      if (!id) continue
+      const row = registry.get(id)
+      if (!row) return true
+      const dy = Math.abs(row.y - Number(side?.y))
+      const dx = Math.abs(row.x - Number(side?.x))
+      if (dy > 0.5 || dx > 0.5) return true
+    }
+    return false
+  })
 }
 
 /** DB-stored area fallback (area_m2 / area_ha + residuals from the save). */
@@ -166,7 +244,7 @@ export async function computeBaseMapBeaconLabels(
   const byKey = new Map<string, BaseMapBeaconLabel>()
   for (const p of parcels) {
     if (!p.geom) continue
-    let pts = digitizedPoints(p)
+    let pts = digitizedPoints(p, coordinatePoints)
     if (!pts.length) pts = vertexLabelPoints(p)
     if (!pts.length) pts = await computeCapeLoPointsFromGeometry(asBaseMapParcel(p), coordinatePoints)
     for (const pt of pts) {
@@ -194,7 +272,7 @@ export async function parcelFromBaseRecord(
   coordinatePoints?: any[]
 ): Promise<SurveyParcel | null> {
   const designation = record.stand ?? record.designation ?? String(record.id)
-  const digitized = digitizedPoints(record)
+  const digitized = digitizedPoints(record, coordinatePoints)
   const labelled = digitized.length ? [] : vertexLabelPoints(record)
   const points = digitized.length
     ? digitized

@@ -8,6 +8,7 @@ import {
   loadBaseMapParcels,
   computeBaseMapStandLabels,
   computeBaseMapBeaconLabels,
+  snapshotEdgesStale,
 } from '../surveyParcels'
 
 vi.mock('../../services/spatial', () => ({
@@ -86,6 +87,61 @@ describe('digitizedPoints', () => {
   it('returns [] when there are no stored points', () => {
     expect(digitizedPoints(record)).toEqual([])
   })
+
+  it('returns stored points verbatim when the registry still agrees with them', () => {
+    const registry = [
+      { name: '1', y: 100, x: 100 },
+      { name: '2', y: 100, x: 110 },
+      { name: '3', y: 110, x: 110 },
+      { name: '4', y: 110, x: 100 },
+    ]
+    const pts = digitizedPoints({ ...record, metadata: { ...record.metadata, cape_lo_points: digitized } }, registry)
+    expect(pts.map((pt) => pt.id)).toEqual(['1', '2', '3', '4'])
+  })
+
+  it('returns [] when a stored beacon moved (>0.5m) in the registry (re-import correction)', () => {
+    const registry = [
+      { name: '1', y: 101, x: 100 },
+      { name: '2', y: 100, x: 110 },
+      { name: '3', y: 110, x: 110 },
+      { name: '4', y: 110, x: 100 },
+    ]
+    const pts = digitizedPoints({ ...record, metadata: { ...record.metadata, cape_lo_points: digitized } }, registry)
+    expect(pts).toEqual([])
+  })
+
+  it('returns [] when a stored beacon was renamed and its vertex now resolves to a registry point (87DNew case)', () => {
+    const staleNames = [
+      { id: 'SD6', y: 100, x: 100, status: 'P' },
+      { id: 'SD2', y: 100, x: 110, status: 'P' },
+      { id: '87DNew', y: 110, x: 110, status: 'P' },
+      { id: 'SD3', y: 110, x: 100, status: 'P' },
+    ]
+    const registry = [
+      { name: 'SD6', y: 100, x: 100 },
+      { name: 'SD2', y: 100, x: 110 },
+      { name: '87D', y: 110, x: 110 },
+      { name: 'SD3', y: 110, x: 100 },
+    ]
+    const pts = digitizedPoints({ ...record, metadata: { ...record.metadata, cape_lo_points: staleNames } }, registry)
+    expect(pts).toEqual([])
+  })
+
+  it('keeps a stored beacon whose name is unregistered and has no registry point on its vertex', () => {
+    const legitUnregistered = [
+      { id: '1', y: 100, x: 100, status: 'P' },
+      { id: 'NEW', y: 100, x: 110, status: 'P' },
+      { id: '3', y: 110, x: 110, status: 'P' },
+      { id: '4', y: 110, x: 100, status: 'P' },
+    ]
+    const registry = [
+      { name: '1', y: 100, x: 100 },
+      { name: '3', y: 110, x: 110 },
+      { name: '4', y: 110, x: 100 },
+    ]
+    const pts = digitizedPoints({ ...record, metadata: { ...record.metadata, cape_lo_points: legitUnregistered } }, registry)
+    expect(pts.map((pt) => pt.id)).toEqual(['1', 'NEW', '3', '4'])
+  })
 })
 
 describe('vertexLabelPoints', () => {
@@ -152,6 +208,36 @@ describe('parcelFromBaseRecord', () => {
     } as any
     const p = await parcelFromBaseRecord(rec, [])
     expect(p!.points.map((pt) => pt.id)).toEqual(['1463A', '1462A', '1463C', '1464C'])
+  })
+})
+
+describe('snapshotEdgesStale', () => {
+  it('is false without a registry or when edges match the registry', () => {
+    expect(snapshotEdgesStale([{ from: { id: 'A', y: 1, x: 2 }, to: { id: 'B', y: 3, x: 4 } }], [])).toBe(false)
+    const edges = [{ from: { id: 'A', y: 1, x: 2 }, to: { id: 'B', y: 3, x: 4 } }]
+    const registry = [
+      { name: 'A', y: 1, x: 2 },
+      { name: 'B', y: 3, x: 4 },
+    ]
+    expect(snapshotEdgesStale(edges, registry)).toBe(false)
+  })
+
+  it('is true when an edge end names a beacon missing from the registry', () => {
+    const edges = [{ from: { id: '87DNew', y: 1, x: 2 }, to: { id: 'B', y: 3, x: 4 } }]
+    const registry = [
+      { name: '87D', y: 1, x: 2 },
+      { name: 'B', y: 3, x: 4 },
+    ]
+    expect(snapshotEdgesStale(edges, registry)).toBe(true)
+  })
+
+  it('is true when an edge end moved >0.5m in the registry', () => {
+    const edges = [{ from: { id: 'A', y: 1, x: 2 }, to: { id: 'B', y: 3, x: 4 } }]
+    const registry = [
+      { name: 'A', y: 1.9, x: 2 },
+      { name: 'B', y: 3, x: 4 },
+    ]
+    expect(snapshotEdgesStale(edges, registry)).toBe(true)
   })
 })
 

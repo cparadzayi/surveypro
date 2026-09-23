@@ -51,8 +51,8 @@ describe('field book pages with a re-observed beacon', () => {
 
   // pdf-generator.ts's FieldBookPDFGenerator is a SEPARATE renderer (backs the
   // View/Download Field Book path via CadastralStandardView.vue) that carried
-  // the identical by-id-lookup defect at both the page header AND the page
-  // footer. generatePDFBlob only exposes an opaque blob: URL, not the jsPDF
+  // the identical by-id-lookup defect at the page header.
+  // generatePDFBlob only exposes an opaque blob: URL, not the jsPDF
   // instance, so this drives it through that public API and inspects the raw
   // PDF bytes instead of pdf.internal.pages -- same technique
   // fieldBookCover.test.ts uses for the sibling renderer's cover.
@@ -82,13 +82,11 @@ describe('field book pages with a re-observed beacon', () => {
 
     const [page1Text, page2Text] = dataPages
 
-    // Header AND footer both read from the same (now correctly-derived) label.
+    // Header reads from the (now correctly-derived) label.
     expect(page1Text).toContain('(E1)')
-    expect(page1Text).toContain('(Page E1)')
     expect(page1Text).not.toContain('(E2)')
 
     expect(page2Text).toContain('(E2)')
-    expect(page2Text).toContain('(Page E2)')
     expect(page2Text).not.toContain('(E1)')
   })
 })

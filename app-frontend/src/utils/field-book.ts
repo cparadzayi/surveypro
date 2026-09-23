@@ -409,11 +409,6 @@ export class FieldBookGenerator {
       pdf.text(`${pair.horizontalResidual.toFixed(3)} m`, cRes, y);
       y += 6;
     }
-
-    // Footer, matching the point pages.
-    pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text(metadata.surveyorName || '', left, pageHeight - 15);
   }
 
   /**
@@ -526,31 +521,6 @@ export class FieldBookGenerator {
       
       pdf.setTextColor(0, 0, 0);
       pdf.setLineWidth(0.2);
-    }
-    
-    // Footer
-    pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'normal');
-    const footerY = pageHeight - 15;
-    
-    // Surveyor name (left)
-    if (metadata.surveyorName) {
-      pdf.text(metadata.surveyorName, this.options.marginLeft, footerY);
-    }
-    
-    // Page label (center)
-    const pageFooter = `Page ${pageLabel}`;
-    const pageFooterWidth = pdf.getTextWidth(pageFooter);
-    const pageFooterX = (pageWidth - pageFooterWidth) / 2;
-    pdf.text(pageFooter, pageFooterX, footerY);
-    
-    // Date of survey (right). Not today's date: the footer dates the survey, and
-    // a record regenerated months later must not restamp itself with the day it
-    // was printed.
-    const dateText = formatSurveyDate(metadata.surveyDate);
-    if (dateText) {
-      const dateWidth = pdf.getTextWidth(dateText);
-      pdf.text(dateText, pageWidth - this.options.marginRight - dateWidth, footerY);
     }
   }
 }

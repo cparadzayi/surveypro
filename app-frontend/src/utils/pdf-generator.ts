@@ -275,20 +275,6 @@ export class FieldBookPDFGenerator {
         pdf.setLineWidth(0.2)
       }
 
-      // Footer
-      pdf.setFontSize(10)
-      pdf.setFont('helvetica', 'normal')
-      const footerY = pdf.internal.pageSize.getHeight() - 15
-      const pageFooter = `Page ${pageLabel}`
-      const pageFooterWidth = pdf.getTextWidth(pageFooter)
-      const pageFooterX = (pdf.internal.pageSize.getWidth() - pageFooterWidth) / 2
-      pdf.text(pageFooter, pageFooterX, footerY)
-      if (fieldBook.metadata.surveyorName) {
-        pdf.text(fieldBook.metadata.surveyorName, this.options.marginLeft, footerY)
-      }
-      const dateText = formatDateDDMMYYYY(new Date())
-      const dateWidth = pdf.getTextWidth(dateText)
-      pdf.text(dateText, pdf.internal.pageSize.getWidth() - this.options.marginRight - dateWidth, footerY)
       const pageUtilization = Math.round((pagePoints.length / pointsPerPage) * 100)
       console.log(`Page ${pageLabel}: ${pagePoints.length}/${pointsPerPage} points (${pageUtilization}% utilization)`)
     }

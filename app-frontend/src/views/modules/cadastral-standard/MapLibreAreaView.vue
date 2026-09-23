@@ -2458,6 +2458,39 @@ function initializeMap(): Promise<void> {
   return mapInitPromise;
 }
 
+// Resolve once the map's style has been PARSED (isStyleLoaded()), which is all
+// that addSource/addLayer actually require. Deliberately does NOT wait for the
+// network-gated "load"/loaded() state so a slow OSM/Esri tile fetch can never
+// stall (or time out and half-abort) survey-data layer creation. Polls via
+// setTimeout so it also keeps running while the tab is backgrounded and rAF is
+// throttled. Throws after a generous window rather than silently proceeding:
+// calling addSource before the style is ready throws "Style is not done
+// loading" and leaves the map without its survey layers.
+async function waitForMapStyle(theMap: maplibregl.Map | null = map, timeoutMs = 90000): Promise<void> {
+  if (!theMap) return;
+  if (theMap.isStyleLoaded()) return;
+
+  console.log('[MapLibre] ⏳ Waiting for map style to load...');
+  await new Promise<void>((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs;
+
+    const check = () => {
+      if (theMap.isStyleLoaded()) {
+        console.log('[MapLibre] ✅ Map style loaded');
+        resolve();
+        return;
+      }
+      if (Date.now() > deadline) {
+        reject(new Error(`Map style load timeout after ${timeoutMs / 1000} seconds`));
+        return;
+      }
+      setTimeout(check, 150);
+    };
+
+    check();
+  });
+}
+
 // Initialize MapLibre map
 async function initializeMapOnce() {
   if (!mapContainer.value) return;
@@ -2625,49 +2658,16 @@ async function initializeMapOnce() {
       }
     });
     
-    // Track style load
-    map.once('styledata', () => {
-      console.log('[MapLibre] 🎨 Style loaded');
-    });
-
-    // Wait for map to load with timeout - must wait for BOTH load AND style to be ready
-    console.log('[MapLibre] ⏳ Waiting for map to load...');
-    
-    try {
-      // Check if already loaded (shouldn't happen, but defensive)
-      if (map!.loaded() && map!.isStyleLoaded()) {
-        console.log('[MapLibre] ⚡ Map and style already loaded');
-      } else {
-        // Wait for BOTH 'load' event AND style to be ready
-        await Promise.race([
-          new Promise<void>(resolve => {
-            const checkReady = () => {
-              if (map!.loaded() && map!.isStyleLoaded()) {
-                console.log('[MapLibre] ✅ Map loaded and style ready');
-                resolve();
-              } else {
-                // Check again on next frame
-                requestAnimationFrame(checkReady);
-              }
-            };
-            
-            // Start checking after load event
-            map!.once('load', () => {
-              console.log('[MapLibre] 🎯 Map "load" event fired, waiting for style...');
-              checkReady();
-            });
-          }),
-          new Promise<void>((_, reject) => 
-            setTimeout(() => reject(new Error('Map load timeout after 30 seconds')), 30000)
-          )
-        ]);
-      }
-      console.log('[MapLibre] ✅ Map and style loaded successfully');
-    } catch (error) {
-      console.error('[MapLibre] ❌ Map load failed:', error);
-      console.log('[MapLibre] 🔄 Attempting to continue anyway...');
-      // Don't throw - try to continue
-    }
+    // ⚠️ IMPORTANT: wait only for the STYLE to be parsed, never for the full
+    // map "load" event. map.loaded()/the "load" event wait for the initial
+    // raster tiles to finish rendering over the network (OSM/Esri), which can
+    // exceed 30s on a slow connection. addSource/addLayer only require
+    // isStyleLoaded() — a purely local style parse that never depends on the
+    // tile network. The old gate timed out on slow tiles, "continued anyway",
+    // then addSource at addSurveyPoints() threw "Style is not done loading"
+    // and aborted initialization with no survey points or parcels drawn.
+    await waitForMapStyle();
+    console.log('[MapLibre] ✅ Map and style loaded successfully');
     console.log('[MapLibre] Current center:', map!.getCenter());
     console.log('[MapLibre] Current zoom:', map!.getZoom());
     
@@ -3165,8 +3165,9 @@ async function initializeInsetMap() {
       attributionControl: false
     });
 
-    // Wait for inset map to load
-    await new Promise(resolve => insetMap!.on('load', resolve));
+    // Wait for inset map style (style parse only — the 'load' event waits on
+    // slow OSM tiles and can hang the inset render for minutes)
+    await waitForMapStyle(insetMap, 60000);
 
     console.log('[MapLibre Inset] ✅ Inset map loaded');
 

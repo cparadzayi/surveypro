@@ -999,6 +999,7 @@ import PointRenamePanel from '../../../components/cadastral/PointRenamePanel.vue
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation } from '@/utils/planDesignation';
+import { designationStandNames } from '@/utils/designationParcels';
 import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
 import { useRecordComposition } from '@/composables/useRecordComposition';
 import { buildLodgementWarnings } from '@/utils/lodgementDocuments';
@@ -6802,10 +6803,15 @@ async function exportAreaConsistencyPDF() {
       surveyDate: coord.surveyDate || workflowState?.surveyorInfo?.surveyDate || ''
     }));
     
-    // Stand names for the subject line (exclude the Outside Figure parcel).
-    const recordStandNames = computedParcels
-      .map((p: any) => String(p.stand ?? p.designation ?? '').trim())
-      .filter((s: string) => s && !s.toLowerCase().includes('outside figure'));
+    // Stand names for the subject line. Only parcels in the Area & Consistency
+    // data appear — the remainder (REM/REMAINDER) and the Outside Figure
+    // pseudo-parcel never do, so every designation document says the same thing.
+    const recordStandNames = designationStandNames(computedParcels);
+
+    // surveyOf is the authored "SURVEY OF ..." designation when known; without
+    // it the project designation supplies the township phrase, so the letter,
+    // coordinate list and the general-plan title block name the same township.
+    const surveySource = workflowState?.surveyorInfo?.surveyOf || workflowState?.projectInfo?.designation || '';
 
     // Surveyor / designation information, shared with the cover page and the
     // coordinate list inside the comprehensive record. surveyOf is the single
@@ -6818,7 +6824,7 @@ async function exportAreaConsistencyPDF() {
       address: workflowState?.surveyorInfo?.address || '',
       surveyDate: workflowState?.surveyorInfo?.surveyDate || '',
       projectTitle: workflowState?.surveyorInfo?.surveyOf || workflowState?.projectInfo?.projectName || '',
-      surveyOf: workflowState?.surveyorInfo?.surveyOf || '',
+      surveyOf: surveySource,
       standNames: recordStandNames,
       district: workflowState?.projectInfo?.district || 'Unknown District',
       centralMeridian: workflowState?.projectInfo?.centralMeridian || 29,
@@ -6876,7 +6882,7 @@ async function exportAreaConsistencyPDF() {
       surveyDate: surveyorInfo.surveyDate,
       district: surveyorInfo.district,
       surveyType:
-        buildPlanDesignation(recordStandNames, workflowState?.surveyorInfo?.surveyOf || '')
+        buildPlanDesignation(recordStandNames, surveySource)
         || `SURVEY OF ${surveyorInfo.projectTitle.toUpperCase()}`,
       documents: lodgementDocs,
       pointsAnalyzed: surveyPoints.length

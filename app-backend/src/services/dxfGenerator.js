@@ -196,6 +196,18 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
 }
 
 /**
+ * Stands that may appear in a running designation: any non-blank name that is
+ * not the remainder of a subdivision (REM, REM./, REMAINDER) and not the
+ * computing Outside Figure pseudo-parcel. The remainder is drawn as the
+ * remaining extent and stated by the figure description, never the title.
+ */
+const REMAINDER_NAME = /^(rem|rem\.|rem\.?\/|remainder|outside[\s_]*figure)$/i
+function isSurveyStandName(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return Boolean(n) && !REMAINDER_NAME.test(n) && !n.includes('outside figure');
+}
+
+/**
  * Build the SI 727 designation headline that sits beneath the "GENERAL PLAN / of"
  * heading — e.g. "Stands 1213, 1686 - 1737 MAGLAS TOWNSHIP".
  *
@@ -210,7 +222,7 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
  */
 export function formatPlanDesignation(metadata, surveyedParcels) {
   const standNames = Array.isArray(surveyedParcels)
-    ? surveyedParcels.map(sp => String(sp?.stand ?? '')).filter(Boolean)
+    ? surveyedParcels.map(sp => String(sp?.stand ?? '')).filter(isSurveyStandName)
     : []
   const standRange = formatStandRanges(standNames)
   const rawSurveyOf = (metadata?.surveyOf || metadata?.township || '').trim()

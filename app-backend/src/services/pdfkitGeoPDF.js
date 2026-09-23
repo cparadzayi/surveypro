@@ -4236,14 +4236,26 @@ function formatStandRanges(standNames) {
   return parts.join(', ');
 }
 
+const REMAINDER_NAME = /^(rem|rem\.|rem\.?\/|remainder|outside[\s_]*figure)$/i;
+/** Stands that may appear in a running designation: any non-blank name that is
+ *  not the remainder of a subdivision (REM, REM./, REMAINDER) and not the
+ *  computing Outside Figure pseudo-parcel. The remainder is drawn as the
+ *  remaining extent and stated by the figure description, never the title. */
+function isSurveyStandName(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return Boolean(n) && !REMAINDER_NAME.test(n) && !n.includes('outside figure');
+}
+
 /**
  * Return the stand names of parcels whose centroids fall inside the Outside Figure polygon.
  * Falls back to all non-Outside-Figure parcel stand names when the geometric test yields nothing.
+ * The remainder of a subdivision (REM/REMAINDER) and the Outside Figure pseudo-parcel are
+ * excluded from both paths — they are never stands in a running designation.
  * @param {Object} parcels - GeoJSON FeatureCollection or raw array
  * @param {Object} outsideFigureData - Outside figure data with edges
  * @returns {string[]} Array of stand name strings
  */
-function getStandsInsideOutsideFigure(parcels, outsideFigureData) {
+export function getStandsInsideOutsideFigure(parcels, outsideFigureData) {
   const polygon =
     outsideFigureData?.edges?.length > 0
       ? outsideFigureData.edges.map((e) => ({ x: e.x, y: e.y }))
@@ -4282,7 +4294,7 @@ function getStandsInsideOutsideFigure(parcels, outsideFigureData) {
     if (inside.length > 0) {
       return inside
         .map((e) => e.stand)
-        .filter((s) => s && !s.toLowerCase().includes('outside figure'));
+        .filter(isSurveyStandName);
     }
   }
 
@@ -4290,7 +4302,7 @@ function getStandsInsideOutsideFigure(parcels, outsideFigureData) {
   if (parcels?.features?.length > 0) {
     return parcels.features
       .map((f) => f.properties?.stand || f.properties?.designation || '')
-      .filter((s) => s && !s.toLowerCase().includes('outside figure'));
+      .filter(isSurveyStandName);
   }
 
   return [];

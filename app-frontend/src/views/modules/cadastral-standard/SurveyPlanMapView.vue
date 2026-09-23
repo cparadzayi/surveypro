@@ -625,6 +625,7 @@ import { jsPDF } from 'jspdf'
 import html2canvas from 'html2canvas'
 import { capeLoToWGS84, capeLoArrayToWGS84, calculateWGS84Bounds, geoJsonToCapeLoPoint, type CapeLoPoint } from '@/utils/coordinateTransform'
 import { getCoordinatePointsForProject } from '@/utils/parcelMetadataComputer'
+import { snapOuterRingToRegistry, computeRegistryAreaM2, computeParcelRegistryArea } from '@/utils/registryGeometry'
 import { asBaseMapParcel, loadBaseMapParcels, parcelFromBaseRecord, digitizedPoints, snapshotEdgesStale, type SurveyParcel } from '@/utils/surveyParcels'
 import { getSurveyPlanPreview, type PreviewData } from '@/services/surveyPlanPreview'
 import { 
@@ -704,6 +705,7 @@ import { makeConnection, upsertConnection, removeConnection, distanceBetween, be
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation } from '@/utils/planDesignation';
+import { designationStandNames } from '@/utils/designationParcels';
 import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
 import { buildLodgementWarnings } from '@/utils/lodgementDocuments';
 import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
@@ -929,9 +931,23 @@ const surveyedParcels = computed(() => {
   })
 })
 
+// Registry-derived area per parcel (post-import coordinates), keyed by parcel
+// id. Populated in loadData once parcels and coordinate points are loaded so
+// the map total, summaries and satellite documents can all show the same
+// figures the Area & Consistency sheets show.
+const registryAreas = ref<Record<string | number, number>>({})
+
+async function refreshRegistryAreas() {
+  const map: Record<string | number, number> = {}
+  for (const p of parcels.value) {
+    map[p.id] = await computeParcelRegistryArea(p, coordinatePoints.value)
+  }
+  registryAreas.value = map
+}
+
 const totalArea = computed(() => {
   return surveyedParcels.value.reduce((sum, p) => {
-    const area = Number(p?.area_m2)
+    const area = Number(registryAreas.value[p.id] ?? p?.area_m2)
     return sum + (Number.isFinite(area) ? area : 0)
   }, 0)
 })
@@ -1574,6 +1590,10 @@ async function loadData() {
     // Use all project coordinate points — backend handles spatial filtering
     coordinatePoints.value = allPoints
     console.log(`[SurveyPlanMap] 📍 Loaded ${allPoints.length} coordinate points (no frontend spatial filter)`)
+
+    // Derive per-parcel areas from the live registry (post-import co-ordinates)
+    // so every map total and document matches the Area & Consistency sheets.
+    await refreshRegistryAreas()
     
     // The national control this survey was tied to. Fetched here rather than at
     // generate time so the working plan's spec can be built synchronously, the
@@ -1610,10 +1630,10 @@ async function loadData() {
     }
     
     // Log schedule of areas data
-    console.log('[SurveyPlanMap] 📋 Schedule of Areas:')
+    console.log('[SurveyPlanMap] 📋 Schedule of Areas (registry co-ordinates):')
     parcels.value.forEach((p, i) => {
-      const areaM2 = Number.isFinite(Number(p?.area_m2)) ? Number(p.area_m2) : 0
-      console.log(`  ${i + 1}. ${p.stand || `Parcel ${p.id}`}: ${areaM2.toFixed(2)} m² (${(areaM2 / 10000).toFixed(4)} ha)`)
+      const areaM2 = Number.isFinite(Number(registryAreas.value[p.id] ?? p?.area_m2)) ? (registryAreas.value[p.id] ?? p?.area_m2) : 0
+      console.log(`  ${i + 1}. ${p.stand || `Parcel ${p.id}`}: ${Number(areaM2).toFixed(2)} m² (${(Number(areaM2) / 10000).toFixed(4)} ha)`)
     })
     console.log(`  Total: ${totalArea.value.toFixed(2)} m² (${(totalArea.value / 10000).toFixed(4)} ha)`)
     
@@ -3863,7 +3883,7 @@ function toggleLayoutGuidesVisibility() {
 
 
 // GeoJSON Export Functions for Vector GeoPDF
-function exportParcelsAsGeoJSON(): GeoJSON.FeatureCollection {
+async function exportParcelsAsGeoJSON(): Promise<GeoJSON.FeatureCollection> {
   console.log('[SurveyPlanMap] 📦 Exporting parcels as GeoJSON...')
   
   const features: GeoJSON.Feature[] = []
@@ -3874,10 +3894,25 @@ function exportParcelsAsGeoJSON(): GeoJSON.FeatureCollection {
   
   console.log(`[SurveyPlanMap] 📦 Total parcels: ${parcels.value.length}, Exporting: ${parcelsToExport.length} (including Outside Figure)`)
   
-  parcelsToExport.forEach(parcel => {
+  for (const parcel of parcelsToExport) {
     // Use the original Cape Lo geometry from database
     if (parcel.geom && parcel.geom.coordinates && parcel.geom.coordinates.length > 0) {
-      const coords = parcel.geom.coordinates[0] // First ring (outer boundary)
+      const originalOuterRing = parcel.geom.coordinates[0] // First ring (outer boundary)
+
+      // A CSV re-import can leave the digitized geometry (and its metadata snapshots)
+      // at pre-import positions while the areas & consistency sheets draw from the
+      // live coordinate registry. Snap every outer-ring vertex to its registry beacon
+      // (post-import coordinates) BEFORE building edges and geometry — otherwise the
+      // diagram/plan figure disagrees with the Area & Consistency sheets. Vertices
+      // with no registry beacon within tolerance keep their geometry position, and an
+      // empty registry leaves the ring untouched. This is the same rematch the map and
+      // the Consistency PDFs already perform (single source of truth).
+      let coords = originalOuterRing
+      const snap = await snapOuterRingToRegistry(parcel, coordinatePoints.value)
+      if (snap) {
+        coords = snap.ring
+        console.log(`[SurveyPlanMap] 🔄 Registry ring for parcel ${parcel.stand} (post-import coordinates)`)
+      }
       
       // USE PRE-CALCULATED EDGE DATA: Prefer area consistency data (single source of truth)
       let edges = []
@@ -3924,11 +3959,16 @@ function exportParcelsAsGeoJSON(): GeoJSON.FeatureCollection {
       // Mark Outside Figure parcel for label suppression in backend
       const isOutsideFigure = parcel.id === outsideFigureParcelId
       
+      // Sub in the registry-snapped outer ring (preserving any inner rings).
+      const geometryCoords = parcel.geom.coordinates.map((ring, ringIndex) =>
+        ringIndex === 0 ? coords : ring
+      )
+
       features.push({
         type: 'Feature',
         geometry: {
           type: 'Polygon',
-          coordinates: parcel.geom.coordinates // Cape Lo coordinates
+          coordinates: geometryCoords // Cape Lo coordinates
         },
         properties: {
           stand: parcel.stand,
@@ -3943,7 +3983,7 @@ function exportParcelsAsGeoJSON(): GeoJSON.FeatureCollection {
     } else {
       console.warn(`[SurveyPlanMap] ⚠️ Parcel ${parcel.stand} has no geometry`)
     }
-  })
+  }
   
   console.log(`[SurveyPlanMap] ✅ Exported ${features.length} parcel features`)
   
@@ -3951,6 +3991,35 @@ function exportParcelsAsGeoJSON(): GeoJSON.FeatureCollection {
     type: 'FeatureCollection',
     features
   }
+}
+
+/**
+ * Parcels for the Working Plan (PDF + DXF), re-sourced from the live registry.
+ * A re-import can leave the stored geometry, its cape_lo_points names and its
+ * area_m2 at pre-import positions; the working plan must draw the same
+ * boundary, same beacon names and same areas as every other sheet. Each parcel
+ * becomes a clone whose outer ring, named points and area are registry-derived,
+ * with the stored versions kept as the fallback for anything unmatchable.
+ */
+async function workingPlanParcels(): Promise<SurveyParcel[]> {
+  if (!Array.isArray(parcels.value)) return []
+  if (coordinatePoints.value.length === 0) return parcels.value
+  const out: SurveyParcel[] = []
+  for (const p of parcels.value) {
+    const snap = await snapOuterRingToRegistry(p, coordinatePoints.value)
+    if (!snap) { out.push(p); continue }
+    const geomCoords: any = Array.isArray(p?.geom?.coordinates)
+      ? p.geom.coordinates.map((r: any) => (Array.isArray(r) ? r.map((c: any) => [...c]) : r))
+      : [snap.ring]
+    geomCoords[0] = snap.ring
+    out.push({
+      ...p,
+      area_m2: computeRegistryAreaM2(snap.ring),
+      geom: { ...(p.geom || {}), coordinates: geomCoords },
+      metadata: { ...(p.metadata || {}), cape_lo_points: snap.points },
+    })
+  }
+  return out
 }
 
 function exportBeaconsAsGeoJSON(): GeoJSON.FeatureCollection {
@@ -4395,8 +4464,8 @@ function generateBeaconLabelsForPDF() {
 
 // ---- Plan-type-driven generation orchestrator (Task 7) ----
 
-function gatherPlanContext(): PlanPayloadContext {
-  const parcelsGeoJSON = exportParcelsAsGeoJSON()
+async function gatherPlanContext(): Promise<PlanPayloadContext> {
+  const parcelsGeoJSON = await exportParcelsAsGeoJSON()
   const beaconsGeoJSON = exportBeaconsAsGeoJSON()
 
   let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity
@@ -4523,7 +4592,7 @@ async function generatePlanDocuments() {
   if (exportFormats.dxf && config.value.planType === 'working-plan') {
     const built = buildWorkingPlanSpec({
       beacons: exportBeaconsAsGeoJSON(),
-      parcels: parcels.value,
+      parcels: await workingPlanParcels(),
       projectInfo: props.projectInfo,
       config: config.value,
       outsideFigureId: getOutsideFigureParcel()?.id,
@@ -4558,7 +4627,7 @@ async function generatePlanDocuments() {
     // Party-wall servitude statement data rides the workflow's 'servitudes'
     // step, so fetch it fresh (the Servitudes view is a sibling step).
     await loadServitudeStatementData()
-    const ctx = gatherPlanContext()
+    const ctx = await gatherPlanContext()
     const payload = buildPlanPayload(ctx)
     const docs: PlanDocumentSet = {}
     let usedScale: string | undefined
@@ -4600,7 +4669,7 @@ async function generatePlanDocuments() {
               firm: props.projectInfo.firm,
             },
             parcels: parcels.value.map((p: any) => ({
-              id: p.id, stand: p.stand, area_m2: p.area_m2 || 0, description: p.description,
+              id: p.id, stand: p.stand, area_m2: registryAreas.value[p.id] ?? (p.area_m2 || 0), description: p.description,
             })),
             outsideFigureData: outsideFigureData.value || undefined,
             beaconGroups: formatBeaconDescriptionGroups(coordinatePoints.value),
@@ -4812,10 +4881,15 @@ async function generateComprehensivePDF() {
       }
     }
 
-    // Stand names for the subject line (exclude the Outside Figure parcel).
-    const recordStandNames = (dbParcels as any[])
-      .map((p) => String(p.stand ?? p.designation ?? '').trim())
-      .filter((s) => s && !s.toLowerCase().includes('outside figure'))
+    // Stand names for the subject line. Only parcels in the Area & Consistency
+    // data appear — the remainder (REM/REMAINDER) and the Outside Figure
+    // pseudo-parcel never do, so every designation document says the same thing.
+    const recordStandNames = designationStandNames(dbParcels as any[])
+
+    // surveyOf is the authored "SURVEY OF ..." designation when known; without
+    // it the project designation supplies the township phrase, so the letter and
+    // the general-plan title block name the same township.
+    const surveySource = (props.projectInfo as any).surveyOf || workflowSurveyorInfo?.surveyOf || (props.projectInfo as any).designation || projectName || ''
 
     const coverPageInfo: CoverPageInfo = {
       firmName: 'C PARADZAYI LAND SURVEYORS',
@@ -4831,7 +4905,7 @@ async function generateComprehensivePDF() {
       surveyDate: surveyDate,
       district: district,
       surveyType:
-        buildPlanDesignation(recordStandNames, (props.projectInfo as any).surveyOf || workflowSurveyorInfo?.surveyOf || '')
+        buildPlanDesignation(recordStandNames, surveySource)
         || props.projectInfo.surveyType
         || `SURVEY OF ${projectName.toUpperCase()}`,
       documents: lodgementDocs,
@@ -4845,7 +4919,7 @@ async function generateComprehensivePDF() {
       address: workflowSurveyorInfo?.address || coverPageInfo.address || '',
       surveyDate: surveyDate,
       projectTitle: projectName,
-      surveyOf: (props.projectInfo as any).surveyOf || workflowSurveyorInfo?.surveyOf || projectSetupData?.project_name || projectName,
+      surveyOf: surveySource,
       standNames: recordStandNames,
       district: district,
       centralMeridian: (props.projectInfo as any).centralMeridian ?? projectSetupData?.central_meridian ?? 31,
@@ -4968,7 +5042,7 @@ async function generateComprehensivePDF() {
       id: p.id,
       stand: p.stand,
       designation: p.designation ?? p.stand,
-      area_m2: p.area_m2 != null ? Number(p.area_m2) : undefined,
+      area_m2: registryAreas.value[p.id] ?? (p.area_m2 != null ? Number(p.area_m2) : undefined),
     }))
     const dispensation = dispensationFromWorkflow(workflowState?.step_data, certParcels)
     if (dispensation) {

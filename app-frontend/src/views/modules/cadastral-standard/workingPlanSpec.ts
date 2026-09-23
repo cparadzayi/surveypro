@@ -3,6 +3,7 @@ import { parseBeaconStatus } from '@/utils/beaconStatus'
 import { insetScaleToFit } from '../../../../../app-shared/insetScales'
 import { isReferenceMarkName } from '../../../../../app-shared/beaconName'
 import { designationPhrase } from '@/utils/planDesignation'
+import { isRemainderParcel } from '@/utils/designationParcels'
 /**
  * Builds the Working Plan module's `spec` from what SurveyPlanMapView already
  * holds: the final coordinate list (as the beacons FeatureCollection, which has
@@ -193,8 +194,10 @@ const REMAINDER_NAME = /^(rem|rem\.|rem\.?\/|remainder|outside[\s_]*figure)$/i
 
 function isRemainder(p: any, outsideFigureId: unknown): boolean {
   if (outsideFigureId !== undefined && outsideFigureId !== null && p?.id === outsideFigureId) return true
-  const name = String(p?.designation ?? p?.stand ?? '').trim()
-  return REMAINDER_NAME.test(name)
+  // Shared with the designation-parcel rule set (designationParcels) so the
+  // work plan's remaining-extent handling and every document's denominator can
+  // never disagree about which parcel is the remainder.
+  return isRemainderParcel(p)
 }
 
 /** What to letter it. The app's internal "Outside Figure" wording is not a

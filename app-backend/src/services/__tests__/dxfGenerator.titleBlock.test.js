@@ -252,4 +252,33 @@ describe('formatPlanDesignation', () => {
     expect(formatPlanDesignation({}, [])).toBe('')
     expect(formatPlanDesignation({}, null)).toBe('')
   })
+
+  test('the remainder and the Outside Figure never enter the designation', () => {
+    const m = { township: 'Brackenhurst Township' }
+    const brackenhurst = [
+      { stand: '403', area_m2: 4048 },
+      { stand: '404', area_m2: 4048 },
+      { stand: '405', area_m2: 4048 },
+      { stand: 'REM', area_m2: 5437 },
+      { stand: 'OUTSIDE FIGURE', area_m2: 17600 },
+      { stand: 'REMBRANDT', area_m2: 100 },
+    ]
+    expect(formatPlanDesignation(m, brackenhurst))
+      .toBe('STANDS 403 - 405, REMBRANDT BRACKENHURST TOWNSHIP')
+  })
+
+  test('a blank stand name is dropped, so an unlabelled remainder cannot leak in', () => {
+    const m = { township: 'Brackenhurst Township' }
+    expect(formatPlanDesignation(m, [
+      { stand: '403', area_m2: 100 },
+      { stand: '', designation: 'Remainder', area_m2: 100 },
+    ])).toBe('STANDS 403 BRACKENHURST TOWNSHIP')
+  })
+
+  test('every stand a remainder → falls back to the project designation', () => {
+    expect(formatPlanDesignation(
+      { designation: 'Stands 1686 - 1925 Maglas Township' },
+      [{ stand: 'REM', area_m2: 100 }],
+    )).toBe('STANDS 1686 - 1925 MAGLAS TOWNSHIP')
+  })
 })

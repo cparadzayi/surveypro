@@ -2,6 +2,7 @@ import { saveDocument } from '@/services/documentStorage'
 import { generateDispensationCertificatePDF } from '@/utils/dispensationCertificateGenerator'
 import { buildCertificateRows, certificateStands, type CertificateParcel } from '@/utils/dispensationCertificate'
 import { surveyOfTitle } from '@/utils/planDesignation'
+import { designationStandNames } from '@/utils/designationParcels'
 import { hydrateServitudes, type Servitude } from '@/views/modules/cadastral-standard/servitudes'
 
 export interface DispensationHeader {
@@ -55,7 +56,10 @@ export async function buildDispensationCertificateBlob(
   // "SURVEY OF <designation>" — the workflow surveyOf when the stage knows one
   // (the shared general-plan phrase, ranges rebuilt from the schedule), else the
   // header township as before.
-  const standNames = [...new Set(parcelsInSchedule.map((p) => String(p.stand)).filter(Boolean))]
+  // The title states the surveyed stands only — the remainder (REM/REMAINDER)
+  // is not a lodged stand and never enters the certificate designation, even
+  // though the schedule rows keep it.
+  const standNames = designationStandNames(parcelsInSchedule)
   const surveySource = (header.surveyOf ?? '').trim() || (header.township ?? '').trim()
   const surveyTitle = surveyOfTitle(surveySource, standNames)
   const { blob } = await generateDispensationCertificatePDF({

@@ -28,6 +28,7 @@
             </div>
             
             <button
+              v-if="!isNewProject"
               @click="resetImportStep"
               class="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
               title="Clear all imported data and restart workflow"
@@ -312,7 +313,7 @@
                 </button>
                 
                 <button
-                  v-if="workflowState.importedPoints.length > 0"
+                  v-if="workflowState.importedPoints.length > 0 && !isNewProject"
                   @click="resetImportStep"
                   class="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
                   title="Clear imported data and reset this step"
@@ -1458,6 +1459,10 @@ const { surveyors, surveyProjects, surveyorOptions, loading: surveyorsLoading, e
 const selectedSurveyorId = ref<number | null>(null);
 const selectedProjectId = ref<number | null>(null);
 
+// True while the active project was created just now by Project Setup (no prior
+// workflow to reset), false once an existing project is loaded or selected.
+const isNewProject = ref(false);
+
 // Lo Zone Selection (CRITICAL for coordinate transformation)
 const selectedLoZone = ref<number | null>(null);
 
@@ -1661,7 +1666,7 @@ const workflowSteps = [
   { id: 'coordinate-list', name: 'Coordinate List' },
   { id: 'qgis-export', name: 'QGIS Export & Digitization' },
   { id: 'area-computation', name: 'Area Computation' },
-  { id: 'servitudes', name: 'Servitudes' },
+  { id: 'servitudes', name: 'Servitudes & Dispensation' },
   { id: 'report-on-survey', name: 'Report on Survey' },
   { id: 'dsg-certificate', name: 'DSG Certificate' }
 ];
@@ -2034,6 +2039,7 @@ function startWorkflow() {
 }
 
 async function handleProjectSetupComplete(setupData: { 
+  isNewProject: boolean;
   surveyorId: number;
   projectId: number;
   surveyType: string;
@@ -2068,6 +2074,11 @@ async function handleProjectSetupComplete(setupData: {
   console.log('🌐 Lo Zone:', setupData.loZone);
   console.log('👤 Surveyor ID:', setupData.surveyorId);
   console.log('📁 Project ID:', setupData.projectId);
+  
+  // A brand-new project has no earlier data to reset, so the Reset Import
+  // controls stay hidden until an existing project is opened or selected.
+  isNewProject.value = setupData.isNewProject;
+  console.log(`[Workflow] 🆕 ${isNewProject.value ? 'New' : 'Existing'} project`);
   
   // ⭐ CRITICAL: Set selected surveyor and project from setup
   console.log('[Workflow] 🎯 Setting selectedSurveyorId:', setupData.surveyorId);

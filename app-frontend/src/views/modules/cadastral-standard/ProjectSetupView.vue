@@ -618,6 +618,8 @@ import { composeSurveySource } from '../../../utils/planDesignation'
 
 const emit = defineEmits<{
   complete: [setupData: {
+    /** True when the project was created by this form ("+" path), not an existing one. */
+    isNewProject: boolean
     surveyorId: number
     projectId: number
     surveyType: string
@@ -1011,9 +1013,11 @@ async function completeSetup() {
   try {
     // If there's a pending new project, create it first
     let finalProjectId = setupData.value.projectId
+    let createdNewProject = false
     
     if (pendingNewProject.value) {
       console.log('[ProjectSetup] 🔄 Creating pending project before completing setup...')
+      createdNewProject = true
       finalProjectId = await createPendingProject()
       
       if (!finalProjectId) {
@@ -1028,6 +1032,7 @@ async function completeSetup() {
     
     // Emit completion event with all data
     emit('complete', {
+      isNewProject: createdNewProject,
       surveyorId: setupData.value.surveyorId!,
       projectId: finalProjectId!,
       surveyType: setupData.value.surveyType,

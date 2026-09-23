@@ -8,7 +8,7 @@ import jsPDF from 'jspdf';
 import { bankersRound } from './cadastral-precision';
 import type { SiteCalibration } from './siteCalibration';
 import { formatSurveyDate, parseSurveyDate } from './surveyDate';
-import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination';
+import { paginateFieldBook, computePartyWallPaginate, FIELD_BOOK_POINTS_PER_PAGE, type PartyWallRow } from './fieldBookPagination';
 import { isCalculatedPoint } from './calculatedPoint';
 
 export interface FieldBookPoint {
@@ -95,8 +95,16 @@ export class FieldBookGenerator {
      * a calibration, which is why pagination is decided once in
      * fieldBookPagination.ts and read from there by every consumer.
      */
-    calibration?: SiteCalibration
-  ): Promise<{ pdf: jsPDF; pageCount: number; pointPageMap: Record<string, string> }> {
+    calibration?: SiteCalibration,
+    /**
+     * Party-wall servitude rows (stands + boundary). Rendered on their own page(s)
+     * IMMEDIATELY after the last point page, still in the E-series, so the
+     * Calculations document can cite the exact field-book page of each wall. The
+     * first row of the section is the "Party-wall servitudes" heading; skipped
+     * entirely when no rows are given.
+     */
+    partyWalls: PartyWallRow[] = [],
+  ): Promise<{ pdf: jsPDF; pageCount: number; pointPageMap: Record<string, string>; partyWallPageMap: Record<number, string> }> {
     const pdf = new jsPDF(this.options);
 
     // A field book records what was visited and measured, so a computed point
@@ -116,6 +124,7 @@ export class FieldBookGenerator {
     const pagination = paginateFieldBook(points, {
       hasCalibration: Boolean(calibration),
       hasCover: true,
+      partyWalls,
     });
     this.pointPageMap = pagination.pointPageMap;
 
@@ -160,12 +169,33 @@ export class FieldBookGenerator {
       console.log(`[FieldBook] Generated page E${pageNumber}: ${pagePoints.length} points`);
     }
 
+    // Party-wall servitude section: begins on its own page after the last point
+    // page and stays in the E-series (a Calculations table cites those pages).
+    // The page layout is the same one paginateFieldBook used to number the
+    // rows, via computePartyWallPaginate -- no drift between numbering and
+    // rendering.
+    if (partyWalls.length > 0) {
+      const partyWallPageRows = computePartyWallPaginate(partyWalls.length);
+      const partyWallBasePage = pagination.partyWallBasePage;
+      partyWallPageRows.forEach((rowIndices, pageIndex) => {
+        startPage();
+        this.generatePartyWallPage(
+          pdf,
+          rowIndices.map(i => partyWalls[i]),
+          partyWallBasePage + pageIndex,
+          pageIndex === 0,
+        );
+      });
+      console.log(`[FieldBook] 🧱 Generated ${partyWallPageRows.length} party-wall servitude page(s)`);
+    }
+
     console.log('[FieldBook] ✅ Point page map created:', Object.keys(this.pointPageMap).length, 'points tracked');
 
     return {
       pdf,
       pageCount: pagination.physicalPageCount,
       pointPageMap: this.pointPageMap,
+      partyWallPageMap: pagination.partyWallPageMap,
     };
   }
 
@@ -521,6 +551,63 @@ export class FieldBookGenerator {
       
       pdf.setTextColor(0, 0, 0);
       pdf.setLineWidth(0.2);
+    }
+  }
+
+  /**
+   * Render one page of the party-wall servitude section.
+   *
+   * The FIRST page opens with the "Party-wall servitudes" heading as its first
+   * row and then a STANDS/BOUNDARY header; continuation pages carry the
+   * STANDS/BOUNDARY header straight away. Each page keeps the field book's
+   * masthead and E-number so the Calculations table can cite it.
+   */
+  private generatePartyWallPage(
+    pdf: jsPDF,
+    rows: PartyWallRow[],
+    pageNumber: number,
+    isFirstPage: boolean,
+  ): void {
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const maxYPosition = pageHeight - 30;
+    const rowHeight = 7;
+
+    const col1 = this.options.marginLeft;
+    const col2 = col1 + 60;
+
+    // Masthead + E-number, matching the point pages.
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(16);
+    pdf.text('ELECTRONIC FIELD BOOK', this.options.marginLeft, 25);
+    const pageLabel = `E${pageNumber}`;
+    const pageLabelWidth = pdf.getTextWidth(pageLabel);
+    pdf.text(pageLabel, pageWidth - this.options.marginRight - pageLabelWidth, 25);
+
+    // "The first row should be 'Party-wall servitudes'".
+    let yPosition = isFirstPage ? 45 : 35;
+    if (isFirstPage) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(11);
+      pdf.text('Party-wall servitudes', col1, yPosition);
+      yPosition += 7;
+    }
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(10);
+    pdf.text('STANDS', col1, yPosition);
+    pdf.text('BOUNDARY', col2, yPosition);
+    yPosition += 3;
+    pdf.line(col1, yPosition, pageWidth - this.options.marginRight, yPosition);
+    yPosition += 7;
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    for (const row of rows) {
+      if (yPosition > maxYPosition) break;
+      pdf.text(row.stands || '-', col1, yPosition);
+      pdf.text(row.boundary || '-', col2, yPosition);
+      yPosition += rowHeight;
     }
   }
 }

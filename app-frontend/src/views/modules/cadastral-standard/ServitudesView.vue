@@ -2,7 +2,7 @@
   <div class="servitudes-view">
     <!-- Header -->
     <div class="bg-white border-b border-gray-200 px-6 py-4">
-      <h2 class="text-2xl font-bold text-gray-900">Servitudes</h2>
+      <h2 class="text-2xl font-bold text-gray-900">Servitudes & Dispensation Certificate</h2>
       <p class="mt-1 text-sm text-gray-600">
         Record servitudes and party-wall burdens on stand boundaries, then generate the Dispensation Certificate.
       </p>

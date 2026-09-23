@@ -27,6 +27,7 @@ import type { DocumentMeasurements } from '@/types/document-measurements';
 import type { ReportOnSurveyData } from '@/types/cadastral';
 import type { BeaconComparisonReportOptions } from '@/utils/beaconComparisonReportGenerator';
 import { isCalculatedPoint } from '@/utils/calculatedPoint';
+import type { PartyWallRow } from '@/utils/fieldBookPagination';
 
 /**
  * TRIG beacons come from the national control network — the survey did not
@@ -75,6 +76,9 @@ export interface ComprehensiveDocumentData {
   
   /** GNSS site calibration; omit to skip the field book's calibration page */
   siteCalibration?: SiteCalibration;
+
+  /** Party-wall servitude rows; appended to the field book & Calculations final pages */
+  partyWalls?: PartyWallRow[];
 
   // Survey Points
   surveyPoints: SurveyPoint[];
@@ -163,7 +167,8 @@ export class ComprehensiveDocumentGenerator {
       parcels: data.parcels,
       reportData: data.reportData,
       reportOptions: data.reportOptions,
-      siteCalibration: data.siteCalibration
+      siteCalibration: data.siteCalibration,
+      partyWalls: data.partyWalls
     });
     
     // Generate cover page separately

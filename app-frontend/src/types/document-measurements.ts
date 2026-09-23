@@ -49,6 +49,9 @@ export interface FieldBookMeasurement extends SectionMeasurement {
   
   /** Map of Point ID → Field Book Page (e.g., "E3") - REQUIRED for accurate cross-references */
   pointPageMap: Record<string, string>
+
+  /** indexed party-wall row → field-book E-page (e.g., "E31"); empty when no walls */
+  partyWallPageMap?: Record<number, string>
 }
 
 /**

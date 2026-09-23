@@ -22,7 +22,7 @@ import type { CalculationsPart1Result } from '../types/adjusted-coordinates'
 import { CalculationsPart1Generator, type SurveyPoint } from './calculations-part1'
 import { CoordinateListGenerator, type SurveyorInfo, surveyOfForSurveyor } from './coordinate-list'
 import { FieldBookGenerator } from './field-book'
-import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE } from './fieldBookPagination'
+import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE, type PartyWallRow } from './fieldBookPagination'
 import { isCalculatedPoint } from './calculatedPoint'
 import type { AdjustedCoordinate } from '../types/adjusted-coordinates'
 import type { ReportOnSurveyData } from '../types/cadastral'
@@ -42,6 +42,8 @@ export interface TwoPassDocumentData {
   reportOptions?: BeaconComparisonReportOptions
   /** GNSS site calibration; omit to skip the field book's calibration page */
   siteCalibration?: SiteCalibration
+  /** Party-wall servitude rows; appended to the field book & Calculations final pages */
+  partyWalls?: PartyWallRow[]
 }
 
 export interface TwoPassDocumentResult {
@@ -131,7 +133,11 @@ export class TwoPassDocumentGenerator {
     // 4. Measure Calculations Part 1 (starts AFTER the Beacon Comparison Report)
     console.log('  🧮 Measuring Calculations Part 1...')
     const calcStartPage = coordListMeasure.endPage + beaconMeasure.pages + 1
-    const calcsMeasure = await this.measureCalculations(data, calcStartPage)
+    const calcsMeasure = await this.measureCalculations(
+      data,
+      calcStartPage,
+      fieldBookMeasure.partyWallPageMap || {},
+    )
     console.log(`     ✓ ${calcsMeasure.pages} pages (${calcsMeasure.startPage}-${calcsMeasure.endPage})`)
     console.log(`     ✓ ${Object.keys(calcsMeasure.pointPageMap).length} points tracked`)
 
@@ -227,7 +233,8 @@ export class TwoPassDocumentGenerator {
     console.log('  🧮 Rendering Calculations Part 1...')
     const calcsPDF = await this.renderCalculations(
       data,
-      measurements.calculations.startPage
+      measurements.calculations.startPage,
+      fieldBookResult.partyWallPageMap
     )
     pdfs.push(calcsPDF)
     console.log(`     ✓ ${measurements.calculations.pages} pages generated`)
@@ -289,7 +296,7 @@ export class TwoPassDocumentGenerator {
     const points = this.fieldBookPoints(data)
     const pagination = paginateFieldBook(
       points.map(pt => ({ id: pt.pointId })),
-      { hasCalibration: Boolean(data.siteCalibration), hasCover: true },
+      { hasCalibration: Boolean(data.siteCalibration), hasCover: true, partyWalls: data.partyWalls },
     )
 
     return {
@@ -304,13 +311,15 @@ export class TwoPassDocumentGenerator {
       // (grepped: only .pages and .pointPageMap have consumers), so this is a
       // correction, not a behavior change for any known caller.
       totalPoints: points.length,
-      pointPageMap: pagination.pointPageMap
+      pointPageMap: pagination.pointPageMap,
+      partyWallPageMap: pagination.partyWallPageMap,
     }
   }
   
   private async measureCalculations(
     data: TwoPassDocumentData,
-    calcStartPage: number
+    calcStartPage: number,
+    partyWallPageMap: Record<number, string> = {},
   ): Promise<CalculationsMeasurement> {
     console.log(`     → Calculations will start at page: ${calcStartPage}`)
     console.log(`     → Generating Calculations Part 1 to measure actual pages...`)
@@ -321,7 +330,9 @@ export class TwoPassDocumentGenerator {
       data.surveyPoints,
       data.surveyorInfo,
       calcStartPage, // ✅ Start page AFTER coordinate list
-      false // measureOnly = false → Actually generate the PDF!
+      false, // measureOnly = false → Actually generate the PDF!
+      data.partyWalls || [],
+      partyWallPageMap,
     ) as CalculationsPart1Result
     
     // Extract page count and point page map from the generated PDF
@@ -445,6 +456,7 @@ export class TwoPassDocumentGenerator {
   private async renderFieldBook(data: TwoPassDocumentData): Promise<{
     pdf: Blob;
     pointPageMap: Record<string, string>;
+    partyWallPageMap: Record<number, string>;
     pageCount: number;
   }> {
     // Calculated points don't appear in the field book -- see fieldBookPoints,
@@ -482,13 +494,15 @@ export class TwoPassDocumentGenerator {
     const result = await this.fieldBookGenerator.generateFieldBookPDF(
       fieldBookPoints,
       metadata,
-      data.siteCalibration
+      data.siteCalibration,
+      data.partyWalls || []
     )
     
     // Convert jsPDF to Blob and return with pointPageMap
     return {
       pdf: new Blob([result.pdf.output('blob')], { type: 'application/pdf' }),
       pointPageMap: result.pointPageMap,
+      partyWallPageMap: result.partyWallPageMap,
       pageCount: result.pageCount
     }
   }
@@ -512,13 +526,16 @@ export class TwoPassDocumentGenerator {
   
   private async renderCalculations(
     data: TwoPassDocumentData,
-    startingPage: number
+    startingPage: number,
+    partyWallPageMap: Record<number, string> = {}
   ): Promise<Blob> {
     const result = await this.calcGenerator.generateCalculationsPart1PDF(
       data.surveyPoints,
       data.surveyorInfo,
       startingPage,
-      false // measureOnly = false (normal rendering)
+      false, // measureOnly = false (normal rendering)
+      data.partyWalls || [],
+      partyWallPageMap
     ) as any // Result is CalculationsPart1Result when measureOnly = false
     
     return result.pdf

@@ -3,7 +3,7 @@ import { useSurveyLookupStore } from '../stores/surveyLookup'
 import type { AdjustedCoordinate, CalculationsPart1Result } from '../types/adjusted-coordinates'
 import { VirtualPDFMeasurer } from './VirtualPDFMeasurer'
 import type { CalculationsMeasurement } from '../types/document-measurements'
-import { paginateFieldBook } from './fieldBookPagination'
+import { paginateFieldBook, computePartyWallPaginate, type PartyWallRow } from './fieldBookPagination'
 import { formatDateDDMMYYYY } from './dateFormat'
 
 // Survey point interface for calculations
@@ -125,6 +125,8 @@ export class CalculationsPart1Generator {
    * @param surveyorInfo - Surveyor information
    * @param startingPage - Starting page number (default 116)
    * @param measureOnly - If true, only measure without rendering (for two-pass generation)
+   * @param partyWalls - Party-wall servitude rows; appended as a table on the final page(s)
+   * @param partyWallPageMap - index -> field-book E-page of each row (the far-right column)
    */
   async generateCalculationsPart1PDF(
     surveyPoints: SurveyPoint[],
@@ -137,7 +139,9 @@ export class CalculationsPart1Generator {
       projectTitle: string
     },
     startingPage: number = 116,
-    measureOnly: boolean = false
+    measureOnly: boolean = false,
+    partyWalls: PartyWallRow[] = [],
+    partyWallPageMap: Record<number, string> = {},
   ): Promise<CalculationsPart1Result | CalculationsMeasurement> {
     // Set the starting page for this generation
     this.currentPage = startingPage;
@@ -175,6 +179,11 @@ export class CalculationsPart1Generator {
       }
       // ✅ If no duplicates, don't add any pages - Calculations Part 1 will be empty
       // This is correct because Calculations Part 1 is specifically for duplicate analysis
+
+      // Append the party-wall servitude table (the same rows the field book's
+      // last-page section carries) on the final Calculations page(s). The
+      // far-right column cites the field-book E-page that records each wall.
+      this.generatePartyWallPages(pdf, partyWalls, partyWallPageMap);
 
       // Note: Coordinate List is generated separately by CoordinateListGenerator;
 
@@ -908,6 +917,66 @@ export class CalculationsPart1Generator {
     
     pdf.text('Date:', this.options.marginLeft, yPosition)
     pdf.text(formatDateDDMMYYYY(new Date()), this.options.marginLeft + 40, yPosition)
+  }
+  
+  /**
+   * Append the party-wall servitude table on the final Calculations page(s).
+   *
+   * A mirror of the field book's last-page section (same "Party-wall servitudes"
+   * first row, same rows) with one extra far-right column — F/B — that cites the
+   * field-book E-page recording each wall. Continuation pages repeat the column
+   * header but not the heading. Uses computePartyWallPaginate, so the row layout
+   * agrees with the field book renderer page for page.
+   */
+  private generatePartyWallPages(
+    pdf: jsPDF,
+    partyWalls: PartyWallRow[],
+    partyWallPageMap: Record<number, string>,
+  ): void {
+    if (partyWalls.length === 0) return;
+
+    const col1 = this.options.marginLeft;
+    const col2 = col1 + 55;
+    const col3 = col2 + 62;
+
+    const pages = computePartyWallPaginate(partyWalls.length);
+    pages.forEach((rowIndices, pageIndex) => {
+      const pageNum = this.currentPage;
+
+      pdf.addPage();
+      this.addPageNumber(pdf, pageNum);
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.text('CALCULATIONS', this.options.marginLeft, 25);
+
+      let yPosition = pageIndex === 0 ? 40 : 34;
+      if (pageIndex === 0) {
+        // The first row of the table is the section heading.
+        pdf.setFontSize(11);
+        pdf.text('Party-wall servitudes', this.options.marginLeft, yPosition);
+        yPosition += 8;
+      }
+
+      pdf.setFontSize(9);
+      pdf.text('STANDS', col1, yPosition);
+      pdf.text('BOUNDARY', col2, yPosition);
+      pdf.text('F/B', col3, yPosition);
+      yPosition += 4;
+      pdf.line(col1, yPosition, col1 + 160, yPosition);
+      yPosition += 8;
+
+      pdf.setFont('helvetica', 'normal');
+      for (const dataRow of rowIndices) {
+        const row = partyWalls[dataRow];
+        pdf.text(row.stands || '-', col1, yPosition);
+        pdf.text(row.boundary || '-', col2, yPosition);
+        pdf.text(partyWallPageMap[dataRow] || '-', col3, yPosition);
+        yPosition += 7;
+      }
+
+      this.currentPage++;
+    });
   }
   
   /**

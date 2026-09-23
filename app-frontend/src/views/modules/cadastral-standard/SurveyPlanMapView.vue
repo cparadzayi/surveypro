@@ -701,6 +701,7 @@ import { useRecordComposition } from '@/composables/useRecordComposition'
 import { describeComposition } from '@/utils/recordComposition'
 import { subjectSides, upsertAnnotation, removeAnnotation, annotationsForSubject, withSubjectAnnotations, hydrateAnnotationsMap, fractionAlongSide, endFromFraction, type SideAnnotation, type SideRole } from './sideAnnotations'
 import { hydrateServitudes, buildPartyWallStatementRows, type PartyWallStatementRow } from './servitudes'
+import type { PartyWallRow } from '@/utils/fieldBookPagination'
 import { makeConnection, upsertConnection, removeConnection, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type LoPoint } from './connections'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
@@ -5012,6 +5013,27 @@ async function generateComprehensivePDF() {
       assistant: 'N/A',
     }
 
+    // Party-wall servitude rows for the Field Book and Calculations tables: the
+    // same records that drive the General Plan party-wall statement, read fresh
+    // from the servitudes step (not the mirror/annotations, which lack stands +
+    // boundary beacon pairs).
+    let partyWalls: PartyWallRow[] = []
+    try {
+      const rawServitudes = workflowState?.step_data?.servitudes?.servitudes
+      const servitudes = hydrateServitudes(rawServitudes)
+      const standForParcel = new Map<string, string>()
+      for (const p of dbParcels) {
+        if (p?.id != null && p?.stand) standForParcel.set(String(p.id), String(p.stand))
+      }
+      partyWalls = buildPartyWallStatementRows(
+        servitudes,
+        (parcelId) => standForParcel.get(parcelId) ?? null,
+      )
+    } catch (e: any) {
+      console.warn('[ComprehensivePDF] failed to build party-wall rows:', e?.message)
+    }
+    console.log(`[ComprehensivePDF] 🧱 ${partyWalls.length} party-wall servitude rows`)
+
     const result = await generator.generateWithTwoPass({
       projectInfo: coverPageInfo,
       surveyorInfo: surveyorInfo,
@@ -5019,6 +5041,7 @@ async function generateComprehensivePDF() {
       // Optional: adds the calibration page to the field book when one was
       // imported at the CSV step; undefined leaves the document as before.
       siteCalibration: siteCalibrationFrom(workflowState),
+      partyWalls,
       surveyPoints: surveyPoints,
       adjustedCoordinates: adjustedCoordinates,
       projectControlPoints: controlPoints,

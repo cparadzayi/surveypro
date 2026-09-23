@@ -6300,8 +6300,12 @@ const outsideFigureData = computed(() => {
   const formattedEdges = vertices.map((coord: number[], index: number) => {
     const nextIndex = (index + 1) % vertices.length
     const nextCoord = vertices[nextIndex]
-    const fromY = coord[0], fromX = coord[1]
-    const toY = nextCoord[0], toX = nextCoord[1]
+    // Round to the lodged precision (2dp, banker's) BEFORE deriving distance and
+    // bearing — the same starting point the Area & Consistency computation uses.
+    // The published co-ordinates are the record, so a preview fallback must read
+    // the same sides and directions as the consistency sheet does from them.
+    const fromY = bankersRound(coord[0], 2), fromX = bankersRound(coord[1], 2)
+    const toY = bankersRound(nextCoord[0], 2), toX = bankersRound(nextCoord[1], 2)
     
     const fromName = findPointName(fromY, fromX) || getLetterLabel(index)
     const toName = findPointName(toY, toX) || getLetterLabel(nextIndex)

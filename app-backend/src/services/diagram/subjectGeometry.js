@@ -7,9 +7,20 @@
  * Coordinates are normalized to canonical [Y=Westing, X=Southing]; the DB may
  * deliver the ring in [Southing, Westing] order (Southing ≈ 2.14M, Westing ≈
  * tens of thousands), so we run each point through normalizeCapeLoYX first.
+ *
+ * They are then rounded to the lodged precision (two decimals, banker's) BEFORE
+ * any side distance or direction is derived — the same step the Area &
+ * Consistency computation performs in area-computation.js. The published
+ * co-ordinates are the record: an examiner recomputes sides and directions from
+ * them, so both documents must read the same figures. Deriving the diagram from
+ * the surveyor's working precision instead put a second set of numbers under
+ * the one record (STAND 404, Brackenhurst Township was lodged 4046 m² /
+ * 4047 m² with three of five directions 10" apart). Rounding here, once, keeps
+ * the diagram in lock-step with the consistency data.
  */
 import { normalizeCapeLoYX } from '../pdfkitGeoPDF/geometry.js'
-import { bearingSouthBetween } from '../../utils/zim-geo.js'
+import { bearingSouthBetween, bankersRound } from '../../utils/zim-geo.js'
+import { LODGED_COORDINATE_DECIMALS } from '../../utils/area-computation.js'
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -21,8 +32,17 @@ export function letterAt(i) {
 
 export function deriveSubjectGeometry(subjectFeature) {
   const ring = subjectFeature?.geometry?.coordinates?.[0] ?? []
-  // Normalize each point to canonical [Y=Westing, X=Southing].
-  const norm = ring.map((p) => normalizeCapeLoYX(p[0], p[1]))
+  // Normalize each point to canonical [Y=Westing, X=Southing] and round to the
+  // lodged precision (two decimals, banker's) before deriving anything. Mirror
+  // of area-computation.js: the printed co-ordinates are the record, so the
+  // sides and directions must start from them.
+  const norm = ring.map((p) => {
+    const [y, x] = normalizeCapeLoYX(p[0], p[1])
+    return [
+      bankersRound(Number(y) || 0, LODGED_COORDINATE_DECIMALS),
+      bankersRound(Number(x) || 0, LODGED_COORDINATE_DECIMALS),
+    ]
+  })
   // Drop the closing duplicate if present.
   const pts = norm.length > 1 &&
     norm[0][0] === norm[norm.length - 1][0] &&

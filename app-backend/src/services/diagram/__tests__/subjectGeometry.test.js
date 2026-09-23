@@ -1,5 +1,6 @@
 import { describe, test, expect } from '@jest/globals'
 import { deriveSubjectGeometry } from '../subjectGeometry.js'
+import { roundBearingSouth } from '../../../utils/zim-geo.js'
 
 // Realistic Cape Lo square. The DB delivers the ring as [Southing, Westing]
 // (Southing ≈ 2.14M, Westing ≈ tens of thousands); the helper must normalize to
@@ -60,5 +61,58 @@ describe('deriveSubjectGeometry', () => {
     }
     const g = deriveSubjectGeometry(normalized)
     expect(g.vertices[0]).toMatchObject({ y: 85000, x: 2144000 })
+  })
+})
+
+describe('deriveSubjectGeometry — agrees with the Area & Consistency computation', () => {
+  // STAND 404, Brackenhurst Township, as OBSERVED (three decimals), the fixture
+  // from area-computation.lodgedCoordinates.test.js. The DB may hold the ring at
+  // the surveyor's working precision, but the record publishes co-ordinates at
+  // two decimals — and both the diagram and the consistency data must derive
+  // the same sides and directions from them. Stand diagrams were sourced from
+  // the raw ring here, producing directions 10" away from the consistency sheet
+  // (SD5->SD6 was 314°57'20" there and 314°57'10" here, SD3->86C 69.93 vs 69.92).
+  const STAND_404 = {
+    properties: { area_m2: 4047 },
+    geometry: { type: 'Polygon', coordinates: [[
+      [2144027.044, -85673.907], // SD4
+      [2144063.183, -85710.106], // SD5
+      [2144076.451, -85723.396], // SD6
+      [2144117.414, -85682.515], // SD3
+      [2144068.004, -85633.040], // 86C
+      [2144027.044, -85673.907], // close
+    ]] },
+  }
+
+  const dms = (deg) => {
+    const total = Math.round(deg * 3600)
+    return `${Math.floor(total / 3600)}°${String(Math.floor((total % 3600) / 60)).padStart(2, '0')}'${String(total % 60).padStart(2, '0')}"`
+  }
+
+  test('rounds the observed co-ordinates to the lodged precision before deriving sides', () => {
+    const g = deriveSubjectGeometry(STAND_404)
+    // SD3's westing -85682.515 is exactly on the half-cent → banker's gives -85682.52.
+    expect(g.vertices[3]).toMatchObject({ y: -85682.52, x: 2144117.41 })
+  })
+
+  test('states the directions the Area & Consistency sheet states', () => {
+    const g = deriveSubjectGeometry(STAND_404)
+    const directions = g.sides.map((s) => {
+      const res = s.distance < 6000 ? 10 : 1
+      return dms(roundBearingSouth(s.bearingDeg, res))
+    })
+    expect(directions).toEqual([
+      "314°57'10\"",
+      "314°57'20\"",
+      "44°56'40\"",
+      "134°57'30\"",
+      "224°56'10\"",
+    ])
+  })
+
+  test('states the distances the Area & Consistency sheet states', () => {
+    const g = deriveSubjectGeometry(STAND_404)
+    const metres = g.sides.map((s) => Number(s.distance.toFixed(2)))
+    expect(metres).toEqual([51.15, 18.78, 57.87, 69.93, 57.86])
   })
 })

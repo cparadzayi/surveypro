@@ -147,7 +147,7 @@ describe('lodgementDocumentsFor', () => {
     expect(lodgementDocumentsFor(undefined)).toEqual(LODGEMENT_DOCUMENTS);
   });
 
-  it('never touches the nine non-plan items', () => {
+  it('never touches the eight non-plan, non-dispensation items', () => {
     const labels = lodgementDocumentsFor(confirmedComposition(true, false));
     expect(labels).toEqual([
       'Field book',
@@ -155,13 +155,26 @@ describe('lodgementDocumentsFor', () => {
       'Diagram',
       'Working Plan',
       'Report on Survey',
-      'Dispensation Certificate',
       'Checklist',
       'DSG Certificate (1/96)',
       'Permit/Instruction and layout',
       'Beacon receipt',
       'Searches',
     ]);
+  });
+
+  it('drops Dispensation Certificate from a record that still encloses diagrams', () => {
+    expect(lodgementDocumentsFor(confirmedComposition(true, false))).not.toContain('Dispensation Certificate');
+    expect(lodgementDocumentsFor(confirmedComposition(true, true))).not.toContain('Dispensation Certificate');
+  });
+
+  it('keeps Dispensation Certificate only for a General Plan record with diagrams dispensed with', () => {
+    expect(lodgementDocumentsFor(confirmedComposition(false, true))).toContain('Dispensation Certificate');
+  });
+
+  it('keeps Dispensation Certificate when nothing is confirmed', () => {
+    expect(lodgementDocumentsFor(null)).toContain('Dispensation Certificate');
+    expect(lodgementDocumentsFor(undefined)).toContain('Dispensation Certificate');
   });
 });
 

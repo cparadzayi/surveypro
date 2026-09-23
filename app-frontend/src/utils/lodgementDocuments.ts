@@ -45,9 +45,15 @@ export function lodgementDocumentsFor(composition?: RecordComposition | null): s
   const gated = composition && composition.source === 'confirmed';
   const wantDiagrams = !gated || composition!.includesDiagrams;
   const wantGeneralPlans = !gated || composition!.includesGeneralPlans;
+  // A Dispensation Certificate accompanies a record only when a General Plan
+  // covers the whole record and the individual diagrams were dispensed with.
+  // A record that still encloses diagrams — or encloses no General Plan at all —
+  // has no dispensation to certify, so the row must not appear on the letter.
+  const wantDispensation = !gated || (composition!.includesGeneralPlans && !composition!.includesDiagrams);
   return ALL_LODGEMENT_DOCUMENTS.filter((label) => {
     if (label === 'Diagram') return wantDiagrams;
     if (label === 'General Plan') return wantGeneralPlans;
+    if (label === 'Dispensation Certificate') return wantDispensation;
     return true;
   });
 }

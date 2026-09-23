@@ -108,15 +108,18 @@
 
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">
-              Project Title *
+              Project Title
             </label>
             <input
               v-model="workflowState.surveyorInfo.surveyOf"
               type="text"
-              required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter project title"
+              readonly
+              class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 text-gray-600"
+              placeholder="Auto-composed from Project Setup"
             />
+            <p class="mt-1 text-sm text-gray-500">
+              Derived from Project Setup (township + parent property)
+            </p>
           </div>
 
           <div>

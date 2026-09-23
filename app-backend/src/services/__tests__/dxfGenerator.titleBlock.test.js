@@ -229,23 +229,23 @@ describe('formatPlanDesignation', () => {
     { stand: '1597', area_m2: 100 },
   ]
 
-  test('composes "STANDS <range> <township>" — PDF-style: capitalized, no parent suffix', () => {
+  test('composes "STANDS <range> <township> OF <parent>" — parent clause kept in the headline', () => {
     const m = { township: 'Maglas Township', parentProperty: 'Shabani Mine Surface Rights A' }
     expect(formatPlanDesignation(m, parcels))
-      .toBe('STANDS 1438 - 1439, 1597 MAGLAS TOWNSHIP')
+      .toBe('STANDS 1438 - 1439, 1597 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A')
   })
 
-  test('strips leading "Stands X - Y" prefix and trailing " of <parent>" from surveyOf', () => {
+  test('strips leading "Stands X - Y" prefix but keeps the " of <parent>" clause from surveyOf', () => {
     const m = { surveyOf: 'STANDS 1 - 5 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A' }
     expect(formatPlanDesignation(m, parcels))
-      .toBe('STANDS 1438 - 1439, 1597 MAGLAS TOWNSHIP')
+      .toBe('STANDS 1438 - 1439, 1597 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A')
   })
 
-  test('no stands → designation/surveyOf fallback with " of <parent>" suffix stripped', () => {
+  test('no stands → designation/surveyOf fallback with " of <parent>" clause retained', () => {
     expect(formatPlanDesignation({ designation: 'Stands 1686 - 1925 Maglas Township' }, []))
       .toBe('STANDS 1686 - 1925 MAGLAS TOWNSHIP')
     expect(formatPlanDesignation({ surveyOf: 'Stands 1 - 5 Greendale Township of Lot 9' }, []))
-      .toBe('STANDS 1 - 5 GREENDALE TOWNSHIP')
+      .toBe('STANDS 1 - 5 GREENDALE TOWNSHIP OF LOT 9')
   })
 
   test('nothing to render → empty string', () => {

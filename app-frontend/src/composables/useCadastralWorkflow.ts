@@ -454,6 +454,15 @@ async function loadWorkflowState(surveyProjectId: number) {
         if (setupData.district) {
           workflowState.projectInfo.district = setupData.district
         }
+        if (setupData.township) {
+          workflowState.projectInfo.township = setupData.township
+        }
+        if (setupData.parent_property) {
+          workflowState.projectInfo.parentProperty = setupData.parent_property
+        }
+        if (setupData.whole_portion) {
+          workflowState.projectInfo.wholePortion = setupData.whole_portion
+        }
         if (setupData.working_directory) {
           workflowState.projectInfo.workingDirectory = setupData.working_directory
         }

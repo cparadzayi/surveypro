@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   formatStandRanges, extractTownship, buildPlanDesignation,
   normalizeDesignation, designationPhrase, surveyOfTitle, townshipPhrase, fullDesignationPhrase,
+  composeSurveySource, composeDesignation,
 } from '../planDesignation';
 
 describe('formatStandRanges', () => {
@@ -135,5 +136,37 @@ describe('surveyOfTitle', () => {
   });
   it('returns empty string when there is nothing to describe', () => {
     expect(surveyOfTitle('', [])).toBe('');
+  });
+});
+
+describe('composeSurveySource', () => {
+  it('composes "TOWNSHIP OF PARENT" from the structured fields', () => {
+    expect(composeSurveySource('Brackenhurst Township', 'Stand 87 Brackenhurst Township'))
+      .toBe('Brackenhurst Township OF Stand 87 Brackenhurst Township');
+  });
+  it('yields just the township when there is no parent (whole-township survey)', () => {
+    expect(composeSurveySource('Brackenhurst Township', '')).toBe('Brackenhurst Township');
+    expect(composeSurveySource('Brackenhurst Township')).toBe('Brackenhurst Township');
+  });
+  it('collapses stray whitespace from both fields', () => {
+    expect(composeSurveySource('  Brackenhurst   Township ', '  Stand  87  Brackenhurst  Township '))
+      .toBe('Brackenhurst Township OF Stand 87 Brackenhurst Township');
+  });
+  it('returns empty string when no township is provided', () => {
+    expect(composeSurveySource('', 'Stand 87 Brackenhurst Township')).toBe('');
+  });
+});
+
+describe('composeDesignation', () => {
+  it('builds the full designation with the parent clause', () => {
+    expect(composeDesignation(['403','404','405'], 'Brackenhurst Township', 'Stand 87 Brackenhurst Township'))
+      .toBe('STANDS 403 - 405 BRACKENHURST TOWNSHIP OF STAND 87 BRACKENHURST TOWNSHIP');
+  });
+  it('omits the parent clause for whole-township surveys', () => {
+    expect(composeDesignation(['403','404'], 'Maglas Township', ''))
+      .toBe('STANDS 403 - 404 MAGLAS TOWNSHIP');
+  });
+  it('returns empty string when nothing is provided', () => {
+    expect(composeDesignation([], '', '')).toBe('');
   });
 });

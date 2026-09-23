@@ -209,15 +209,14 @@ function isSurveyStandName(name) {
 
 /**
  * Build the SI 727 designation headline that sits beneath the "GENERAL PLAN / of"
- * heading — e.g. "Stands 1213, 1686 - 1737 MAGLAS TOWNSHIP".
+ * heading — e.g. "Stands 1213, 1686 - 1737 MAGLAS TOWNSHIP OF SHABANI MINE".
  *
  * Derived exactly like the PDF title block (drawTitleBlock) so the two stay in
  * lockstep: the stand range comes from the surveyed parcels, and the township
- * description is `surveyOf`/`township` with any leading "Stands X - Y" prefix and
- * any trailing " of <parent property>" suffix stripped. The parent-property suffix
- * deliberately appears only in the figure-description sentence, not this headline.
- * Case is preserved as stored (the PDF doesn't force-case this line). Falls back to
- * `surveyOf`/`designation` (suffix-stripped) when the parts are unavailable, and
+ * description is `surveyOf`/`township` with any leading "Stands X - Y" prefix
+ * stripped but the trailing " of <parent property>" clause kept — the full
+ * designation belongs in the headline. Falls back to `surveyOf`/`designation`
+ * (with the parent clause retained) when the parts are unavailable, and
  * returns '' when there is nothing to render.
  */
 export function formatPlanDesignation(metadata, surveyedParcels) {
@@ -228,11 +227,15 @@ export function formatPlanDesignation(metadata, surveyedParcels) {
   const rawSurveyOf = (metadata?.surveyOf || metadata?.township || '').trim()
   const townshipDesc = rawSurveyOf
     .replace(/^Stands?\s+[\d,\s\-–]+/i, '')
-    .replace(/\s+of\s+.+$/i, '')
     .trim()
-  if (standRange && townshipDesc) return `Stands ${standRange} ${townshipDesc}`.toUpperCase()
+  const parentProp = (metadata?.parentProperty || '').trim()
+  const hasInlineParent = /\s+of\s+/i.test(townshipDesc)
+  const fullTownshipDesc = hasInlineParent
+    ? townshipDesc
+    : (parentProp ? `${townshipDesc} OF ${parentProp}`.trim() : townshipDesc)
+  if (standRange && fullTownshipDesc) return `Stands ${standRange} ${fullTownshipDesc}`.toUpperCase()
   const fallback = (metadata?.surveyOf || metadata?.designation || '').trim()
-  return fallback.replace(/\s+of\s+.+$/i, '').trim().toUpperCase()
+  return (fallback && parentProp && !/\s+of\s+/i.test(fallback) ? `${fallback} OF ${parentProp}` : fallback).trim().toUpperCase()
 }
 
 function normalizeCapeLoYX(y, x) {

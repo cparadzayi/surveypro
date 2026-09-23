@@ -157,14 +157,15 @@
               </p>
             </div>
             
-            <!-- Township (Optional) -->
+            <!-- Township -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">
-                Township Name (Optional)
+                Township Name *
               </label>
               <input
                 v-model="setupData.township"
                 type="text"
+                required
                 class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="e.g., Maglas Township, Widdicombe Township"
               />
@@ -173,20 +174,37 @@
               </p>
             </div>
 
-            <!-- Parent Property -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">
-                Immediate Parent Property (Optional)
+            <!-- Parent Property (only when the survey has an immediate parent) -->
+            <div class="rounded-md border border-gray-200 p-4">
+              <label class="flex items-center space-x-3 cursor-pointer">
+                <input
+                  id="hasParentProperty"
+                  v-model="setupData.hasParentProperty"
+                  type="checkbox"
+                  class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span class="text-sm font-medium text-gray-700">
+                  Does this survey have an immediate parent property?
+                </span>
               </label>
-              <input
-                v-model="setupData.parentProperty"
-                type="text"
-                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., Shabani Mine Surface Rights A, Subdivision A of Widdicombe"
-              />
               <p class="mt-1 text-sm text-gray-500">
-                Appears in title block: "being the whole/remainder/portion of [Parent Property]"
+                A whole-township survey has no parent — the designation then omits the "OF &lt;parent property&gt;" clause.
               </p>
+              <div v-if="setupData.hasParentProperty" class="mt-3">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  Immediate Parent Property *
+                </label>
+                <input
+                  v-model="setupData.parentProperty"
+                  type="text"
+                  required
+                  class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., Shabani Mine Surface Rights A, Subdivision A of Widdicombe"
+                />
+                <p class="mt-1 text-sm text-gray-500">
+                  Appears as "OF [Parent Property]" — e.g. "STANDS 403 - 405 BRACKENHURST TOWNSHIP OF STAND 87 BRACKENHURST TOWNSHIP"
+                </p>
+              </div>
             </div>
 
             <!-- Registered area of the land being subdivided. The working plan
@@ -393,20 +411,17 @@
               />
             </div>
             
-            <!-- Survey Of (Full Description) -->
+            <!-- Survey Of — derived from Township + Parent Property; not editable -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">
-                Survey Of (Full Description) *
+                Survey Of (auto-composed)
               </label>
-              <textarea
-                v-model="setupData.surveyOf"
-                rows="3"
-                required
-                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., LOTS 1 - 12 OF LOT 84 OF SUBDIVISION B OF SUBDIVISION E OF GWELO SMALL HOLDING 34"
-              ></textarea>
+              <div class="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-600">
+                {{ composedSurveyOf || '— fill in the township name above —' }}
+              </div>
               <p class="mt-1 text-sm text-gray-500">
-                This will appear on all reports and certificates
+                Derived from Township + Immediate Parent Property. Stand ranges are added
+                automatically from the surveyed parcels on every plan, diagram and certificate.
               </p>
             </div>
             
@@ -578,9 +593,10 @@
             <li v-if="!setupData.surveyorId">• Surveyor must be selected</li>
             <li v-if="!setupData.projectId">• Project must be selected</li>
             <li v-if="!setupData.surveyType">• Survey type is required</li>
+            <li v-if="!setupData.township.trim()">• Township name is required</li>
+            <li v-if="setupData.hasParentProperty && !setupData.parentProperty.trim()">• Immediate parent property is required</li>
             <li v-if="!setupData.district">• District is required</li>
             <li v-if="!setupData.surveyDate">• Survey date is required</li>
-            <li v-if="!setupData.surveyOf">• Survey Of description is required</li>
             <li v-if="!setupData.instrumentDescription">• Instrument is required</li>
             <li v-if="!setupData.loZone">• Lo zone must be selected</li>
             <li v-if="!setupData.workingDirectory">• Working directory must be set</li>
@@ -598,6 +614,7 @@ import DateInputDDMMYYYY from '@/components/DateInputDDMMYYYY.vue'
 import WorkingDirectorySelector from '../../../components/cadastral/WorkingDirectorySelector.vue'
 import { useAuthStore } from '../../../stores/auth'
 import { useProjectSelectionStore } from '../../../stores/projectSelection'
+import { composeSurveySource } from '../../../utils/planDesignation'
 
 const emit = defineEmits<{
   complete: [setupData: {
@@ -620,6 +637,8 @@ const emit = defineEmits<{
     compilation?: string
     district: string
     surveyDate: string
+    /** Composed from Township + Parent Property ("BRACKENHURST TOWNSHIP OF STAND 87 …").
+     *  Stand ranges are added per-sheet from the surveyed parcels. */
     surveyOf: string
     instruments: string
     assistedBy: string
@@ -644,6 +663,7 @@ const setupData = ref({
   district: '',
   surveyType: '',
   township: '',
+  hasParentProperty: false,
   parentProperty: '',
   parentArea: null as number | null,
   deedOfTransferNo: '',
@@ -708,13 +728,24 @@ const isFormValid = computed(() => {
     setupData.value.projectId !== null &&
     setupData.value.district.trim() !== '' &&
     setupData.value.surveyType.trim() !== '' &&
+    setupData.value.township.trim() !== '' &&
+    (!setupData.value.hasParentProperty || setupData.value.parentProperty.trim() !== '') &&
     setupData.value.surveyDate.trim() !== '' &&
-    setupData.value.surveyOf.trim() !== '' &&
     setupData.value.instrumentDescription.trim() !== '' &&
     setupData.value.loZone !== null &&
     setupData.value.workingDirectory.trim() !== ''
   )
 })
+
+// The designation phrase derived from the structured township + parent fields.
+// Stand ranges are added per-sheet on every plan; this is the standing "SURVEY OF"
+// description persisted to the project.
+const composedSurveyOf = computed(() =>
+  composeSurveySource(
+    setupData.value.township,
+    setupData.value.hasParentProperty ? setupData.value.parentProperty : '',
+  )
+)
 
 // Event handlers
 function onSurveyorChange() {
@@ -774,7 +805,9 @@ function onProjectChange() {
     // Survey Information
     setupData.value.surveyType = project.survey_type || ''
     setupData.value.township = project.township || ''
-    setupData.value.parentProperty = project.parent_property || ''
+    const parentProp = project.parent_property || ''
+    setupData.value.parentProperty = parentProp
+    setupData.value.hasParentProperty = parentProp.trim() !== ''
     setupData.value.deedOfTransferNo = project.deed_of_transfer_no || ''
     setupData.value.parentDiagramNo = project.parent_diagram_no || ''
     setupData.value.parentDiagramAnnexedTo = project.parent_diagram_annexed_to || ''
@@ -1012,7 +1045,7 @@ async function completeSetup() {
       compilation: setupData.value.compilation || undefined,
       district: setupData.value.district,
       surveyDate: setupData.value.surveyDate,
-      surveyOf: setupData.value.surveyOf,
+      surveyOf: composedSurveyOf.value || setupData.value.surveyOf,
       instruments: setupData.value.instruments,
       assistedBy: setupData.value.assistedBy,
       instrumentDescription: setupData.value.instrumentDescription,

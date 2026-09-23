@@ -4327,20 +4327,28 @@ function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, 
   const isMultiSheet = !!(sheetInfo && sheetInfo.totalSheets > 1);
   const district = (metadata.district || "").toUpperCase();
 
-  // ── Designation: "Stands 16 - 18 Maglas Township" ──
+  // ── Designation: "Stands 16 - 18 Maglas Township of Shabani Mine" ──
+  // The full township phrase (including the "of <parent>" clause) is kept in
+  // this headline; only `townshipDescription` below is clipped for the figure
+  // sentence where the parent is re-attached via the structured parentProperty.
   const standsInside = getStandsInsideOutsideFigure(parcels, outsideFigureData);
   const dynamicStandList = formatStandRanges(standsInside);
   const rawSurveyOf = (metadata.surveyOf || metadata.township || "").trim();
   const withoutStandsPrefix = rawSurveyOf.replace(/^Stands?\s+[\d,\s\-–]+/i, "").trim();
   const townshipDescription = withoutStandsPrefix.replace(/\s+of\s+.+$/i, "").trim();
+  const hasInlineParent = /\s+of\s+/i.test(withoutStandsPrefix);
+  const parentProperty = (metadata.parentProperty || "").trim();
+  const designationTownship = hasInlineParent
+    ? withoutStandsPrefix
+    : (parentProperty && townshipDescription ? `${townshipDescription} OF ${parentProperty}` : (withoutStandsPrefix || townshipDescription));
   let designation;
   if (dynamicStandList) {
-    designation = townshipDescription
-      ? `Stands ${dynamicStandList} ${townshipDescription}`.toUpperCase()
+    designation = designationTownship
+      ? `Stands ${dynamicStandList} ${designationTownship}`.toUpperCase()
       : `Stands ${dynamicStandList}`.toUpperCase();
   } else {
     const rawDesig = (metadata.designation || "").trim();
-    designation = rawDesig.replace(/\s+of\s+.+$/i, "").trim().toUpperCase();
+    designation = (rawDesig || designationTownship).trim().toUpperCase();
   }
 
   const sheetText = isMultiSheet ? `SHEET ${sheetInfo.sheetNumber}` : "";

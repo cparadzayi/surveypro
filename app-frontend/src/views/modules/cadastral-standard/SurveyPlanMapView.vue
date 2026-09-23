@@ -704,7 +704,7 @@ import { hydrateServitudes, buildPartyWallStatementRows, type PartyWallStatement
 import { makeConnection, upsertConnection, removeConnection, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type LoPoint } from './connections'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
-import { buildPlanDesignation } from '@/utils/planDesignation';
+import { buildPlanDesignation, composeSurveySource } from '@/utils/planDesignation';
 import { designationStandNames } from '@/utils/designationParcels';
 import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
 import { buildLodgementWarnings } from '@/utils/lodgementDocuments';
@@ -4491,7 +4491,10 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
     surveyor: config.value.surveyorName,
     date: config.value.surveyDate,
     designation: props.projectInfo.designation,
-    surveyOf: props.projectInfo.surveyOf || '',
+    surveyOf:
+      composeSurveySource(props.projectInfo.township, props.projectInfo.parentProperty)
+      || props.projectInfo.surveyOf
+      || '',
     district: props.projectInfo.district,
     township: props.projectInfo.township,
     firm: config.value.firm,
@@ -4886,10 +4889,17 @@ async function generateComprehensivePDF() {
     // pseudo-parcel never do, so every designation document says the same thing.
     const recordStandNames = designationStandNames(dbParcels as any[])
 
-    // surveyOf is the authored "SURVEY OF ..." designation when known; without
-    // it the project designation supplies the township phrase, so the letter and
+    // surveyOf is the composed "SURVEY OF ..." designation from the structured
+    // township + parent property fields when the workflow knows them; without it
+    // the project designation supplies the township phrase, so the letter and
     // the general-plan title block name the same township.
-    const surveySource = (props.projectInfo as any).surveyOf || workflowSurveyorInfo?.surveyOf || (props.projectInfo as any).designation || projectName || ''
+    const surveySource =
+      composeSurveySource((props.projectInfo as any)?.township, (props.projectInfo as any)?.parentProperty)
+      || (props.projectInfo as any).surveyOf
+      || workflowSurveyorInfo?.surveyOf
+      || (props.projectInfo as any).designation
+      || projectName
+      || ''
 
     const coverPageInfo: CoverPageInfo = {
       firmName: 'C PARADZAYI LAND SURVEYORS',
@@ -5305,7 +5315,10 @@ async function exportGeoPDF() {
       surveyor: config.value.surveyorName,
       date: config.value.surveyDate,
       designation: props.projectInfo.designation,
-      surveyOf: props.projectInfo.surveyOf || '',
+      surveyOf:
+        composeSurveySource(props.projectInfo.township, props.projectInfo.parentProperty)
+        || props.projectInfo.surveyOf
+        || '',
       district: props.projectInfo.district,
       township: props.projectInfo.township
     }

@@ -56,7 +56,8 @@
             @focus="onSurveyOfFocus"
             @blur="onSurveyOfBlur"
             rows="3"
-            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+            readonly
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm bg-gray-50 text-gray-600"
             placeholder="e.g., STANDS 109-166, 257-267, 274, 278-281, 297-318 AD VALOREM TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A, SHABANI DISTRICT"
           ></textarea>
           
@@ -300,6 +301,7 @@ import {
   type DSGSuggestion
 } from '@/composables/useDSGCertificateSuggestions'
 import { generateDSGCertificatePDF, previewDSGCertificate as previewPDF } from '@/utils/dsgCertificateGenerator'
+import { composeSurveySource } from '@/utils/planDesignation'
 
 const { workflowState } = useCadastralWorkflow()
 
@@ -364,7 +366,10 @@ onMounted(() => {
     certificateData.value.licenseNumber = workflowState.surveyorInfo.licenseNumber
   }
   
-  // Auto-populate Survey Of from persistent project information
+  // Auto-populate Survey Of from persistent project information. The workflow's
+  // composed designation (township + parent property from Project Setup) is the
+  // single source of truth; the suggestion fallbacks below only cover legacy
+  // projects / reports that never recorded a township.
   // Priority: Project Setup (persistent) > Report on Survey (contextual)
   const projectData = {
     // PERSISTENT: From Project Setup (Step 0)
@@ -373,15 +378,22 @@ onMounted(() => {
     surveyType: workflowState.projectInfo?.surveyType || surveyType.value,
     standReference: workflowState.projectInfo?.standReference || '',
     township: workflowState.projectInfo?.township || '',
+    parentProperty: workflowState.projectInfo?.parentProperty || '',
     
     // CONTEXTUAL: From Report on Survey (Step 8) - fallback only
     description: workflowState.reportOnSurvey?.purpose?.description || workflowState.projectInfo?.surveyDescription || '',
     standNumbers: workflowState.projectInfo?.standReference || workflowState.reportOnSurvey?.purpose?.reference || ''
   }
-  
-  // Generate Survey Of text from persistent project data
+
+  // Prefer the made-up location + township/parent phrase and the composed
+  // designation; stand numbers are added per-diagram on the certificate title.
+  const composedDesignation = composeSurveySource(projectData.township, projectData.parentProperty)
   const suggestions = getSurveyOfSuggestions(projectData.surveyType || surveyType.value, projectData)
-  if (suggestions.length > 0) {
+  if (composedDesignation) {
+    certificateData.value.surveyOf = projectData.standReference
+      ? `${projectData.standReference.toUpperCase()}, ${composedDesignation.toUpperCase()}`
+      : composedDesignation.toUpperCase()
+  } else if (suggestions.length > 0) {
     certificateData.value.surveyOf = suggestions[0].text
   } else if (projectData.standReference && projectData.name && projectData.district) {
     // Fallback: Use stand reference, project name and district directly

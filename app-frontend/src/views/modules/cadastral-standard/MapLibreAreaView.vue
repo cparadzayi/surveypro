@@ -998,7 +998,7 @@ import type { ParcelDetectionResult } from '../../../services/parcelDetection';
 import PointRenamePanel from '../../../components/cadastral/PointRenamePanel.vue';
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
-import { buildPlanDesignation } from '@/utils/planDesignation';
+import { buildPlanDesignation, composeSurveySource } from '@/utils/planDesignation';
 import { designationStandNames } from '@/utils/designationParcels';
 import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
 import { useRecordComposition } from '@/composables/useRecordComposition';
@@ -6808,10 +6808,15 @@ async function exportAreaConsistencyPDF() {
     // pseudo-parcel never do, so every designation document says the same thing.
     const recordStandNames = designationStandNames(computedParcels);
 
-    // surveyOf is the authored "SURVEY OF ..." designation when known; without
+    // surveyOf is the composed "SURVEY OF ..." designation from the structured
+    // township + parent property fields when the workflow knows them; without
     // it the project designation supplies the township phrase, so the letter,
     // coordinate list and the general-plan title block name the same township.
-    const surveySource = workflowState?.surveyorInfo?.surveyOf || workflowState?.projectInfo?.designation || '';
+    const surveySource =
+      composeSurveySource(workflowState?.projectInfo?.township, workflowState?.projectInfo?.parentProperty)
+      || workflowState?.surveyorInfo?.surveyOf
+      || workflowState?.projectInfo?.designation
+      || '';
 
     // Surveyor / designation information, shared with the cover page and the
     // coordinate list inside the comprehensive record. surveyOf is the single

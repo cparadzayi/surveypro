@@ -63,6 +63,26 @@ export function buildPlanDesignation(standNames: string[], surveyOf: string): st
   return out.toUpperCase();
 }
 
+/**
+ * Compose the township phrase from the structured project fields — e.g.
+ * "BRACKENHURST TOWNSHIP OF STAND 87 BRACKENHURST TOWNSHIP". Stand ranges are
+ * deliberately absent: the sheet builders rebuild them from the surveyed
+ * parcels. An empty township yields '' so callers can fall back to the stored
+ * designation/surveyOf for legacy projects; an empty parent yields just the
+ * township (the checkbox-off "whole township" case).
+ */
+export function composeSurveySource(township: string, parentProperty?: string): string {
+  const t = String(township || '').trim().replace(/\s+/g, ' ');
+  const p = String(parentProperty || '').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  return p ? `${t} OF ${p}` : t;
+}
+
+/** Build the designation subject from the structured fields: "STANDS <range> <TOWNSHIP> OF <PARENT>". */
+export function composeDesignation(standNames: string[], township: string, parentProperty?: string): string {
+  return buildPlanDesignation(standNames, composeSurveySource(township, parentProperty));
+}
+
 /** Collapse stray whitespace so a pasted surveyOf string prints cleanly. */
 export function normalizeDesignation(surveyOf: string): string {
   return (surveyOf || '').trim().replace(/\s+/g, ' ');

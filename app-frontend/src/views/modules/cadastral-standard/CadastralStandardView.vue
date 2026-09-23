@@ -497,11 +497,12 @@
                 id="surveyOf"
                 v-model="workflowState.surveyorInfo.surveyOf"
                 rows="3"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., LOTS 1 - 12 OF LOT 84 OF SUBDIVISION B OF SUBDIVISION E OF GWELO SMALL HOLDING 34"
+                readonly
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-600"
+                placeholder="Auto-composed from township + parent property"
               ></textarea>
-              <p v-if="selectedProjectId" class="mt-1 text-sm text-gray-500">
-                ℹ️ Auto-filled from selected project description
+              <p class="mt-1 text-sm text-gray-500">
+                ℹ️ Derived from Project Setup (township + parent property); stand ranges added automatically
               </p>
             </div>
 
@@ -2256,6 +2257,8 @@ async function handleProjectSetupComplete(setupData: {
         district: setupData.district,
         survey_type: setupData.surveyType,
         township: setupData.township,
+        parent_property: setupData.parentProperty,
+        whole_portion: setupData.wholePortion,
         working_directory: setupData.workingDirectory,
         survey_date: setupData.surveyDate,
         survey_of: setupData.surveyOf,

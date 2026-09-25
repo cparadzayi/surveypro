@@ -482,7 +482,7 @@ describe('controlPointsForInset', () => {
       { monu_num: '50/T', y_gauss: -88963.45, x_gauss: 2151238.71 },
     ])
 
-    expect(cp).toEqual({ name: '50/T', X: 2151238.71, Y: -88963.45, monuName: '' })
+    expect(cp).toEqual({ name: '50/T', X: 2151238.71, Y: -88963.45, monuName: '', description: '' })
   })
 
   it('accepts the shapes the API has been seen to return', () => {
@@ -492,8 +492,8 @@ describe('controlPointsForInset', () => {
     ])
 
     expect(out).toEqual([
-      { name: '49/T', X: 2146857.23, Y: -88454.47, monuName: '' },
-      { name: '170/P', X: 2136777.89, Y: -81572.33, monuName: '' },
+      { name: '49/T', X: 2146857.23, Y: -88454.47, monuName: '', description: '' },
+      { name: '170/P', X: 2136777.89, Y: -81572.33, monuName: '', description: '' },
     ])
   })
 
@@ -543,6 +543,31 @@ describe('the locality inset from selected control points', () => {
     }))
 
     expect(spec.inset!.beacons.filter(b => b.name === '50/T')).toHaveLength(1)
+  })
+
+  it('keeps the registry monument name under a station the calibration also names', () => {
+    // The calibration pair is added first and de-duplicates the control point,
+    // so without a name carried onto the pair the trig it draws stands bare.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      calibration: calibration([['170/P', 2136777.89, -81572.33]]),
+      controlPoints: [{ name: '170/P', X: 2136777.89, Y: -81572.33, monuName: 'MNYAMI' }],
+    }))
+
+    const b = spec.inset!.beacons.find(b => b.name === '170/P')!
+    expect(b.symbol).toBe('trig')
+    expect(b.cpName).toBe('MNYAMI')
+  })
+
+  it('recovers the monument name from a description when the registry holds none', () => {
+    // A TSM row has no monu_name; the coordinate list carries the name in the
+    // description, as the figure already recovers it.
+
+    const { spec } = buildWorkingPlanSpec(ctx({
+      calibration: calibration([['49/T', 2146857.23, -88454.47]]),
+      controlPoints: [{ name: '49/T', X: 2146857.23, Y: -88454.47, description: 'TRIG BEACON MNYAMI FOUND' }],
+    }))
+
+    expect(spec.inset!.beacons.find(b => b.name === '49/T')!.cpName).toBe('MNYAMI')
   })
 
   it('still has no inset when the survey states no control at all', () => {
@@ -1504,12 +1529,22 @@ describe('controlPointsForInset', () => {
   it('carries the monument name through with the designation', () => {
     expect(controlPointsForInset([
       { monu_num: '170/P', monu_name: 'MNYAMI', x_gauss: 2136777.89, y_gauss: -81572.33 },
-    ])).toEqual([{ name: '170/P', X: 2136777.89, Y: -81572.33, monuName: 'MNYAMI' }])
+    ])).toEqual([{ name: '170/P', X: 2136777.89, Y: -81572.33, monuName: 'MNYAMI', description: 'MNYAMI' }])
   })
 
   it('leaves the monument name empty when the registry has none', () => {
     const out = controlPointsForInset([{ monu_num: '49/T', x_gauss: 2146857.23, y_gauss: -88454.47 }])
     expect(out[0].monuName).toBe('')
+  })
+
+  it('keeps the area name so the name can be recovered when monu_name is empty', () => {
+    // Trig station TSM rows carry no monument name -- migration 010 made
+    // monu_name nullable for them. The area the mark stands in is next best.
+    const out = controlPointsForInset([
+      { monu_num: '49/T', area_nm: 'MNYAMI', x_gauss: 2146857.23, y_gauss: -88454.47 },
+    ])
+    expect(out[0].monuName).toBe('')
+    expect(out[0].description).toBe('MNYAMI')
   })
 })
 
@@ -1659,5 +1694,25 @@ describe('buildWorkingPlanSpec — control point names', () => {
     }))
 
     expect(spec.beacons.find(b => b.name === '170/P')?.cpName).toBeUndefined()
+  })
+
+  it('recovers the name beside the state and the numbers real data carries', () => {
+    // A registry row arrives as "TRIG BEACON MNYAMI FOUND" (kind, name, state)
+    // or "TSM MNYAMI 1950" (kind, name, station year) -- words and numbers that
+    // describe the mark around its name. Both used to fail the single-word
+    // residue test, so the sign lost its monument name and the triangle stood
+    // bare on the sheet.
+    for (const description of ['TRIG BEACON MNYAMI FOUND', 'TSM MNYAMI 1950']) {
+      const { spec } = buildWorkingPlanSpec(ctx({
+        beacons: beaconFCWithStatus([
+          { name: '170/P', y: -81572.33, x: 2136777.89, status: 'TRIG', description },
+        ]),
+        controlPoints: [],
+      }))
+
+      const trig = spec.beacons.find(b => b.name === '170/P')
+      expect(trig?.symbol).toBe('trig')
+      expect(trig?.cpName).toBe('MNYAMI')
+    }
   })
 })

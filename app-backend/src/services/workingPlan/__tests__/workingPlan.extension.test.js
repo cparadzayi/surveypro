@@ -5,10 +5,11 @@ import { generateWorkingPlan } from '../working-plan.js'
  * The divided figure: a far mark must not shrink the survey it merely stands
  * near. On AUTO a sheet whose outlying reference marks would force the figure
  * one prescribed scale coarser than the survey alone needs instead draws the
- * survey at the finer scale and carries those marks in the MERGED LOCALITY
- * MAP -- the survey's own footprint with them, drawn to scale together in the
- * inset box -- instead of a separate EXTENSION frame. Control the map cannot
- * hold at that scale is stated as a reduced-coordinate note beside the figure.
+ * survey at the finer scale and carries those marks in the MERGED MAP -- the
+ * survey's own footprint with them, drawn to scale together, framed close
+ * around them in the inset box -- instead of a separate EXTENSION frame.
+ * Control the map cannot hold at that scale is carried on the conventional
+ * locality sketch, whose schematic positions never pretend to a scale.
  *
  * The rule that governs it, deliberately narrow:
  *   - Ring vertices never move. A beacon a parcel ring (or the remainder ring)
@@ -58,6 +59,30 @@ const inserts = (dxf) => {
     }
   }
   return out
+}
+
+/** Counts of POLYLINE rings on a layer, by vertex count: { 24: n, 4: m, ... }. */
+const rings = (dxf, layer) => {
+  const lines = dxf.split('\n')
+  const counts = {}
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (lines[i] !== '0' || lines[i + 1] !== 'POLYLINE') continue
+    let j = i + 2; let on = false
+    while (j < lines.length - 1 && lines[j] !== '0') {
+      if (lines[j] === '8') { on = lines[j + 1] === layer; break }
+      j += 2
+    }
+    if (!on) continue
+    let n = 0
+    for (let k = i + 2; k < lines.length - 1; k++) {
+      if (lines[k] === '0') {
+        if (lines[k + 1] !== 'VERTEX') break
+        n++
+      }
+    }
+    counts[n] = (counts[n] || 0) + 1
+  }
+  return counts
 }
 
 /** The sheet border, as a closed polygon of sheet points. */
@@ -127,6 +152,12 @@ describe('generateWorkingPlan — the divided figure', () => {
     const p1 = at(out.dxf, 'R1')[0], p2 = at(out.dxf, 'R2')[0]
     const sep = Math.hypot(p2[0] - p1[0], p2[1] - p1[1])
     expect(sep).toBeCloseTo(25.0, 0)
+
+    // The map is not just the footprint's blank box: the survey's own corners
+    // are drawn inside it at the same true positions, one ring sign each, with
+    // the two far marks -- six inset signs in all.
+    const r = rings(out.dxf, 'INSET')
+    expect(r[24]).toBe(6)
 
     // Both sit inside the inset box, which sits inside the sheet.
     const box = sheetBorder(out.dxf)
@@ -221,11 +252,13 @@ describe('generateWorkingPlan — the divided figure', () => {
     expect(texts(out.dxf, 'BEACON-TEXT')).toContain('R2')
   })
 
-  test('lists control beyond the map as a coordinate note, not a second frame', () => {
+  test('carries control the map cannot hold on the trig sketch, not a note', () => {
     // A trig ten kilometres out cannot map beside a survey a few hundred
     // metres wide without flattening the survey to a dot, so the merged map
-    // draws the control it can hold and states the rest with its reduced
-    // coordinates in the note column beside the figure.
+    // holds the marks that measure with it and the control that far out is
+    // carried on the conventional locality sketch -- DRAWN as a trig, at the
+    // schematic positions one from another, never promised at any scale and
+    // never reduced to a footnote of coordinates the reader must convert.
     const spec = {
       ...survey(farMarks()),
       inset: { scale: 250000, beacons: [
@@ -234,13 +267,14 @@ describe('generateWorkingPlan — the divided figure', () => {
       ] },
     }
     const out = generateWorkingPlan(spec)
-    // T1 (kilometres out) is not drawn -- it is stated, with its N/E readout.
-    expect(out.dxf).toContain('T1  N 2 160 000  E 88 000')
-    expect(out.dxf).toContain('NATIONAL CONTROL OBSERVED')
-    // F1 lies within the map's envelope, so it draws beside the survey.
+    // T1 (kilometres out) is DRAWN on the locality sketch, with F1 beside it.
+    expect(texts(out.dxf, 'INSET')).toContain('T1')
     expect(texts(out.dxf, 'INSET')).toContain('F1')
-    // One map, numbered for the one inset; the note does not take a number.
-    expect(out.dxf).toContain('INSET 1 (1:4000)')
+    expect(out.dxf).toContain('INSET 1 (NOT TO SCALE)')
+    expect(out.dxf).not.toContain('NATIONAL CONTROL OBSERVED')
+    expect(out.dxf).not.toMatch(/T1\s+N/)
+    // The far marks keep their measured map, numbered after the sketch.
+    expect(out.dxf).toContain('INSET 2 (1:7500)')
     expect(out.dxf).not.toContain('EXTENSION')
   })
 

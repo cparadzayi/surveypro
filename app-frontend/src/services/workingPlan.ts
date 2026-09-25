@@ -5,7 +5,7 @@ export interface WorkingPlanDXFResult {
   blob: Blob
   /** Scale denominator the module chose, e.g. 2000 for 1:2000. */
   scale: number | null
-  gridInterval: { e: number; n: number } | null
+  gridInterval: { e: number; n: number; ticks: number } | null
   /** Areas from the PLOTTED coordinates — a cross-check, never the SI 727 area. */
   areas: Record<string, number> | null
 }
@@ -66,7 +66,7 @@ export async function generateWorkingPlanDXF(spec: WorkingPlanSpec): Promise<Wor
   return {
     blob: response.data as Blob,
     scale: Number.isFinite(scaleRaw) && headers['x-plan-scale'] ? scaleRaw : null,
-    gridInterval: parseJsonHeader<{ e: number; n: number }>(headers['x-plan-grid']),
+    gridInterval: parseJsonHeader<{ e: number; n: number; ticks: number }>(headers['x-plan-grid']),
     areas: parseJsonHeader<Record<string, number>>(headers['x-plan-areas']),
   }
 }

@@ -175,7 +175,7 @@ export interface WorkingPlanSpecContext {
    * and the inset then had nothing to show and vanished. Still not a proximity
    * search of the registry -- the surveyor picked these.
    */
-  controlPoints?: Array<{ name?: string; X?: number; Y?: number; monuName?: string }>
+  controlPoints?: Array<{ name?: string; X?: number; Y?: number; monuName?: string; description?: string }>
   /**
    * Side annotations per parcel id, from sideAnnotationsBySubject. Sides tagged
    * `contiguous` name the neighbouring property along that side -- the only
@@ -283,6 +283,10 @@ export interface ControlPointForInset {
    *  Empty when the registry holds none; the working plan needs it to letter
    *  the name under the control point's sign. */
   monuName: string
+  /** What the row names about the monument, for recovering a bare name when
+   *  monu_name itself is empty: monu_name if present, else area_nm -- the same
+   *  fallback Control Point Selection shows. */
+  description: string
 }
 
 export function controlPointsForInset(
@@ -295,9 +299,11 @@ export function controlPointsForInset(
     const Y = Number(row?.y_gauss ?? row?.yGauss ?? row?.y)   // Westing
     const X = Number(row?.x_gauss ?? row?.xGauss ?? row?.x)   // Southing
     if (!name || !Number.isFinite(X) || !Number.isFinite(Y)) continue
+    const monuName = String(row?.monu_name ?? row?.monuName ?? '').trim()
     out.push({
       name, X, Y,
-      monuName: String(row?.monu_name ?? row?.monuName ?? '').trim(),
+      monuName,
+      description: monuName || String(row?.area_nm ?? row?.areaNm ?? row?.areaName ?? '').trim(),
     })
   }
 
@@ -337,14 +343,39 @@ function buildInset(
     control.push(beacon)
   }
 
+  // Resolve each selected control point's monument name BEFORE anything is
+  // added, because the collection is de-duplicated by designation and the
+  // station's first entry is the one that survives. Registry monu_name is
+  // authoritative -- "MNYAMI" under 170/P. When it is empty the same
+  // description recovery the main figure uses stands in: a TSM row carries no
+  // monument name, but its area or the coordinate list's description names it.
+  // Without this the calibration pair -- added first, claiming the
+  // designation -- drew the trig bare, beside a registry row that names it.
+  const monumentByKey = new Map<string, string>()
+  for (const cp of controlPoints ?? []) {
+    const key = controlKey(cp?.name)
+    const monu = String(cp?.monuName ?? '').trim()
+    if (key && monu) monumentByKey.set(key, monu)
+  }
+  const nameByKey = new Map<string, string>()
+  for (const cp of controlPoints ?? []) {
+    const key = controlKey(cp?.name)
+    if (!key) continue
+    const name = controlPointNameFor(
+      String(cp?.name ?? '').trim(), String(cp?.description ?? ''), monumentByKey,
+    )
+    if (name) nameByKey.set(key, name)
+  }
+
   // The calibration first: those pairs are control the surveyor actually
   // observed, so where a station appears in both they are the coordinates to
   // show, and the selected list must not add it a second time.
   for (const pair of calibration?.pairs ?? []) {
-    add(String(pair?.pointId ?? '').trim(), Number(pair?.controlNorthing), Number(pair?.controlEasting))
+    add(String(pair?.pointId ?? '').trim(), Number(pair?.controlNorthing), Number(pair?.controlEasting),
+      nameByKey.get(controlKey(pair?.pointId)))
   }
   for (const cp of controlPoints ?? []) {
-    add(String(cp?.name ?? '').trim(), Number(cp?.X), Number(cp?.Y), String(cp?.monuName ?? '').trim() || undefined)
+    add(String(cp?.name ?? '').trim(), Number(cp?.X), Number(cp?.Y), nameByKey.get(controlKey(cp?.name)))
   }
   if (control.length === 0 || figure.length === 0) return undefined
 
@@ -817,11 +848,14 @@ const STATE_WORD = /^(found|placed|new|existing|established|observed|reestablish
  * name there too -- the coordinate list is what actually reaches the sheet --
  * but a surveyor may also have typed "TRIG BEACON", which is a description of
  * the mark's KIND, not a name, and must not be promoted into one. Only a
- * description that reads as a name is accepted: the kind words are struck, and
- * what must be left is exactly one plain alphabetic word -- "MNYAMI" from
- * "MNYAMI", "TRIG BEACON MNYAMI" or "MNYAMI TRIG STATION". "TRIG BEACON"
- * names nothing, "TRIG BEACON FOUND" names a state, and "170/P" is the
- * designation already lettered beneath the sign, not a name to repeat.
+ * description that reads as a name is accepted: the kind words and the state
+ * words are struck, and what must be left is exactly one plain alphabetic
+ * word -- "MNYAMI" from "MNYAMI", "TRIG BEACON MNYAMI" or "MNYAMI TRIG
+ * STATION". Digits and other tokens are context, not the name: "TSM MNYAMI
+ * 1950" still letters "MNYAMI", and "TRIG BEACON MNYAMI FOUND" leaves over
+ * nothing but its kind and its state. "TRIG BEACON" names nothing, "TRIG
+ * BEACON FOUND" names a state, and "170/P" is the designation already
+ * lettered beneath the sign, not a name to repeat.
  */
 function controlPointNameFor(
   name: string,
@@ -836,12 +870,13 @@ function controlPointNameFor(
   if (!d) return undefined
 
   const token = (t: string) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
-  const residue = d.split(/\s+/).map(token).filter((t) => t && !KIND_WORD.test(t))
+  const words = d.split(/\s+/).map(token)
+    .filter((t) => t && /^[A-Za-z]{2,}$/.test(t))
+  const residue = words.filter((t) => !KIND_WORD.test(t) && !STATE_WORD.test(t))
+
   if (residue.length !== 1) return undefined
 
   const candidate = residue[0]
-  if (!/^[A-Za-z]{2,}$/.test(candidate)) return undefined
-  if (STATE_WORD.test(candidate)) return undefined
   if (controlKey(candidate) === key) return undefined
   return candidate
 }

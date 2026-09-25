@@ -46,7 +46,7 @@ describe('POST /working-plan/dxf', () => {
     // cannot be read back out of the DXF body without parsing it.
     const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: validSpec })
     expect(res.headers['x-plan-scale']).toBe('2000')
-    expect(JSON.parse(res.headers['x-plan-grid'])).toEqual({ e: 50, n: 50 })
+    expect(JSON.parse(res.headers['x-plan-grid'])).toEqual({ e: 50, n: 50, ticks: 12 })
     expect(JSON.parse(res.headers['x-plan-areas'])).toEqual({ 405: 4321.5 })
   })
 

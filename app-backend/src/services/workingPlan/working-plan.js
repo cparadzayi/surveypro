@@ -45,17 +45,23 @@ export const LAYOUT = {
 
   title: {
     cx: 175.93,
-    // Shifted 6 mm down from the original 8.2/20.3/32.2/44.2. At 1.25x the
-    // heading's glyphs reached 3.26 mm from the sheet edge, inside the margin a
-    // printer can crop. They now start at 9.26 mm.
-    baselines: [14.2, 26.3, 38.2, 50.2],   // up to four heading lines
-    scaleBaseline: 60.1,
+    // The block was dropped a size and its rows closed up so the top of the
+    // sheet breathes: the heading (5,0) sits at 12.5 mm and the three naming
+    // lines step down through 22.5 / 32.5 / 42.5, with the scale at 51.5.
+    // The glyphs grow upward from their baselines, so the heading still starts
+    // clear of the printer margin and every row has room below it.
+    baselines: [12.5, 22.5, 32.5, 42.5],   // up to four heading lines
+    scaleBaseline: 51.5,
   },
 
   northArrow: {
     cx: 275.89, cy: 25.66,
     north: 18.6, south: 39.7, side: 8.0, diagonal: 5.0, halfWidth: 1.31,
     letters: { left: 'T', right: 'N', dxLeft: -4.0, dxRight: 1.2, baseline: 8.55 },
+    // Drawn half-size: the sheet's meridian arrow, not a compass rose. The
+    // inset's arrow is this same symbol at a further fraction of it, so two
+    // numbers, one construction.
+    mainScale: 0.5,
   },
 
   approval: {
@@ -89,13 +95,6 @@ export const LAYOUT = {
   // certificate sits on the left at x 5.5/19.94.
   srNumber: { cx: 148.5, baseline: 205.0 },
 
-  // Control the merged locality map cannot hold: the column between the figure
-  // (panel ends at x 152), the approval box (x from 228.13) and the inset
-  // (y from 109.69). A trig ten kilometres out would shrink the survey to a
-  // dot, so instead of drawing it there it is stated here with its reduced
-  // coordinates -- which is how far control is carried on a drawn plan.
-  control: { x0: 156.0, x1: 226.0, baseline: 67.0, step: 4.0, heading: 73.0 },
-
   // cap heights, mm on paper
   /**
    * Lettering heights, ISO 3098 -- the standard for technical drawings, which a
@@ -108,9 +107,10 @@ export const LAYOUT = {
    * size. A draughtsman letters at the sizes on the stencil.
    *
    *   2,5  what the surveyor reads off the drawing -- beacon names, stand
-   *        numbers, adjoining names, grid figures, inset marks
+   *        numbers, adjoining names, grid figures, inset marks, and the
+   *        title's identification lines
    *   3,5  the sheet's own apparatus -- the scale, the certificate, the
-   *        approval box, the title's naming lines
+   *        approval box
    *   5,0  the document heading alone
    *
    * The first rank is ONE size on purpose. A beacon name, a stand number and an
@@ -127,15 +127,15 @@ export const LAYOUT = {
   text: {
     beacon: 2.5, parcel: 2.5, adjoining: 2.5, grid: 2.5, insetLabel: 2.5,
     road: 2.5,
-    scale: 3.5, approval: 3.5, certificate: 3.5, title: 3.5,
+    // title dropped one ISO rung (3,5 -> 2,5) so the identification lines make
+    // room for the sheet it names; the heading alone stays the document size.
+    scale: 3.5, approval: 3.5, certificate: 3.5, title: 2.5,
     // One ISO rank below the other 3.5 mm captions. "INSET 2 (NOT TO
     // SCALE)" is 22 characters, and at 3.5 mm it ran about 69 mm -- past
     // the 58.5 mm a half-width inset cell leaves beside its frame.
     insetTitle: 2.5,
-    // 5,0 / 3,5 -- one step of the ISO series, and the reason this is no longer
-    // the 1,25 it was set to: 4,375 mm is not a height on the stencil, and the
-    // title read as merely bigger rather than as the heading.
-    titleLeadFactor: 5.0 / 3.5,
+    // 5,0 / 2,5 -- two ISO steps, heading to the line that names the land.
+    titleLeadFactor: 2.0,
   },
 
   // SI 727 Fifth Schedule (Sections 37, 38, 64 and 68), Conventional Signs,
@@ -332,12 +332,6 @@ function fmtArea(v) {
   const fixed = Math.abs(Number(v) || 0).toFixed(2);
   const [int, dec] = fixed.split('.');
   return `${int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')},${dec}`;
-}
-
-/** A control station's reduced coordinate, whole metres, space thousands -- the
- *  same style as the areas, so the note and the computations read alike. */
-function fmtCoord(v) {
-  return Math.round(Number(v) || 0).toLocaleString('en-US').replace(/,/g, ' ');
 }
 
 /**
@@ -1100,11 +1094,32 @@ const crowded = crowdedClusters(
   /** Which corner of the figure a tick falls in. */
   const quadrantOf = (e, n) => `${e < figCx ? 'L' : 'R'}${n < figCy ? 'B' : 'T'}`;
 
+  /** A cross's figure geometry: where its X and Y labels sit, and the rectangle
+   *  the pair actually occupy. Shared by the lattice walk below and by the
+   *  fallback that guarantees a cross when the figure leaves the walk nothing,
+   *  so the two can never disagree about what a readable cross needs. */
+  const gw = mm(L.gridLabel.xDx + 0.63 * L.text.grid * 13);
+  const drop = mm(L.gridLabel.yStartDy + 12);
+  const near = arm + mm(2);
+  const labH = mm(L.text.grid);
+  const yLabelReach = (e) => 0.63 * labH * `Y = ${(-e).toFixed(0)}`.length;
+  const guard = (e, n, side) => {
+    const flipX = side.startsWith('left') ? -1 : 1;
+    const gx = flipX > 0 ? e + gw : e - gw;
+    const yLx = e + flipX * mm(L.gridLabel.yDx);
+    const yLy = n - mm(L.gridLabel.yStartDy);
+    return [
+      Math.min(e - near, gx, yLx),
+      Math.min(n - drop, yLy - yLabelReach(e)),
+      Math.max(e + near, gx, yLx + labH),
+      n + near,
+    ];
+  };
+
   /** Where an interval's ticks would go. Reads `occupied` but never adds to it,
    *  so an interval can be tried and abandoned; only the chosen one is drawn. */
   const layGrid = (gi) => {
     const out = [];
-    const gw = mm(L.gridLabel.xDx + 0.63 * L.text.grid * 13);
     const clashes = (r) => hits(r) || out.some(({ rect: o }) =>
       r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]);
     // Corner-most candidates are tried FIRST. The lattice used to be walked in
@@ -1142,43 +1157,75 @@ const crowded = crowdedClusters(
       }
     }
 
-    {
-      for (const [e, n] of lattice) {
-        // A cross carries its figures on one side. Reading them to the right is
-        // the convention, but a cross near the panel's right edge cannot -- and
-        // its figures would run into the title block -- so the mirrored side is
-        // tried before the cross is given up. Flipping a label costs nothing;
-        // losing a tick costs the reader a reference.
-        // Clear of the BOUNDARIES by enough that the cross reads as a cross
-        // and not as part of the figure -- but no more. A coordinate grid is
-        // drawn ACROSS a plan, not squeezed into the gaps around it; at 7 mm
-        // the crosses could not enter the figure at all, so on a sheet whose
-        // upper half is full of boundaries they all fell to the open ground
-        // along the bottom.
-        const clearOfLines = segments.every(
-          (s) => distToSegment([e, n], s[0], s[1]) > mm(GRID_LINE_CLEARANCE_MM));
-        if (!clearOfLines) continue;
-        // A cross carries its figures into one QUADRANT of itself. Reading
-        // them down and to the right is the convention; the other three are
-        // tried before the cross is given up. Each needs about 25 mm of clear
-        // width, and a figure that fills its panel leaves barely that at the
-        // edges -- with only one quadrant to try, the corners of the drawing
-        // went bare while the middle filled up.
-        const drop = mm(L.gridLabel.yStartDy + 12);
-        const near = arm + mm(2);
-        const rects = {
-          rightDown: [e - near, n - drop, e + gw, n + near],
-          leftDown: [e - gw, n - drop, e + near, n + near],
-        };
-        let side = null;
-        for (const s of ['rightDown', 'leftDown']) {
-          if (insidePanel(rects[s]) && !clashes(rects[s])) { side = s; break; }
-        }
-        if (!side) continue;
-        out.push({ e, n, rect: rects[side], side });
+    /** The cross a node earns: clear of the BOUNDARIES by the full reading
+     *  margin, and able to letter its figures. Null when it is not.
+     *
+     *  A cross carries its figures on one side -- reading them down and to the
+     *  right is the convention, and the mirrored side is tried before the cross
+     *  is given up; flipping a label costs nothing, losing a tick costs the
+     *  reader a reference. */
+    const crossAt = (e, n) => {
+      // Clear of the BOUNDARIES by enough that the cross reads as a cross and
+      // not as part of the figure -- but no more. A coordinate grid is drawn
+      // ACROSS a plan, not squeezed into the gaps around it; at 7 mm the
+      // crosses could not enter the figure at all, so on a sheet whose upper
+      // half is full of boundaries they all fell to the open ground along the
+      // bottom.
+      if (!segments.every((s) => distToSegment([e, n], s[0], s[1]) > mm(GRID_LINE_CLEARANCE_MM))) return null;
+      for (const s of ['rightDown', 'leftDown']) {
+        const r = guard(e, n, s);
+        if (insidePanel(r) && !clashes(r)) return { rect: r, side: s };
       }
+      return null;
+    };
+
+    for (const [e, n] of lattice) {
+      const c = crossAt(e, n);
+      if (c) out.push({ e, n, rect: c.rect, side: c.side });
     }
     return out;
+  };
+
+  /** A single cross as the last resort a dense survey leaves. The walk above
+   *  holds every tick a full 7 mm clear of the boundaries it references; on a
+   *  figure that reaches the edge of its panel there may be NO node with that
+   *  room -- each candidate sits inside the drawing it is meant to reference,
+   *  and the sheet drew no coordinate framework at all, silently.
+   *
+   *  A cross read close to the drawing beats a sheet a reader cannot place on
+   *  the ground, so the most open node whose figures still fit the panel is
+   *  drawn instead of none. The first pass keeps the figures clear of every
+   *  sign, label and title already placed; where no node clears them all, the
+   *  second takes the least damage instead. */
+  const fallbackGridTick = (gi) => {
+    const nodes = [];
+    for (let e = Math.ceil(pe0 / gi) * gi; e <= pe1; e += gi) {
+      for (let n = Math.ceil(pn0 / gi) * gi; n <= pn1; n += gi) nodes.push([e, n]);
+    }
+    const clear = (e, n) => Math.min(...segments.map((s) => distToSegment([e, n], s[0], s[1])));
+    const cornerD = (e, n) => Math.min(
+      Math.hypot(e - bb.e0, n - bb.n0), Math.hypot(e - bb.e0, n - bb.n1),
+      Math.hypot(e - bb.e1, n - bb.n0), Math.hypot(e - bb.e1, n - bb.n1));
+    for (const allowOverlap of [false, true]) {
+      let best = null;
+      let bestScore = null;
+      for (const [e, n] of nodes) {
+        for (const side of ['rightDown', 'leftDown']) {
+          const rect = guard(e, n, side);
+          if (!insidePanel(rect)) continue;
+          if (!allowOverlap && hits(rect)) continue;
+          const c = clear(e, n);
+          const score = allowOverlap
+            ? [-penalty(rect), c]                      // least damage, most room
+            : [c, -cornerD(e, n)];                     // most room, nearest a corner
+          const beats = !bestScore || score[0] > bestScore[0]
+            || (score[0] === bestScore[0] && score[1] > bestScore[1]);
+          if (beats) { best = { e, n, rect, side }; bestScore = score; }
+        }
+      }
+      if (best) return best;
+    }
+    return null;
   };
 
   // An explicit interval is honoured as given. Otherwise: start at the spacing
@@ -1224,6 +1271,15 @@ const crowded = crowdedClusters(
       if (satisfies(t) && t.length >= MIN_GRID_TICKS) break;
     }
     ({ gi, ticks } = best ?? { gi: pick(), ticks: [] });
+  }
+
+  // A figure that leaves the lattice NO cross at all must keep its framework:
+  // the walk refuses every node that cannot hold its figures clear of the
+  // lines and ground it references, and when the drawing covers the panel no
+  // node qualifies -- so the most open node is drawn instead of none.
+  if (ticks.length === 0) {
+    const rescue = fallbackGridTick(gi);
+    if (rescue) ticks = [rescue];
   }
 
   const gridInterval = { e: gi, n: gi };
@@ -1473,9 +1529,27 @@ const crowded = crowdedClusters(
     for (const k of [1, 1.5, 2.1, 3.0, 4.2]) for (const t of tries) cands.push(place(t, k));
     // Nothing free anywhere still letters the beacon -- a beacon without a name
     // is worse than a crowded one -- but in the emptiest of the 24 positions
-    // rather than always on the preferred one.
-    const chosen = bestOf(cands, (c) => textRect(b.name, b.e + c[0], b.n + c[1], h, c[2]));
-    const P = chosen.choice;
+    // rather than always on the preferred one. 24 spoke-and-step positions make
+    // a coarse ring, though, and a name boxed in by other names' ground stays
+    // boxed whatever the step: every position can be blocked while open ground
+    // lies just outside the ring. A beacon name is small and must never
+    // overwrite a fellow name, so -- when LABELS are what block it, not the
+    // panel it stands beside -- it steps FARTHER out rather than accept the
+    // collision; a name whose candidates are all merely off the panel's edge
+    // stays where it is. Only a label so long that no offsets clear anything is
+    // allowed to fall back onto the figure it belongs to.
+    let chosen = bestOf(cands, (c) => textRect(b.name, b.e + c[0], b.n + c[1], h, c[2]));
+    let P = chosen.choice;
+    const boxedByLabels = cands.some((c) => {
+      const r = textRect(b.name, b.e + c[0], b.n + c[1], h, c[2]);
+      return insidePanel(r) && hits(r);
+    });
+    if (!chosen.clear && boxedByLabels) {
+      const far = [];
+      for (const k of [6, 8.6, 12, 17, 24]) for (const t of tries) far.push(place(t, k));
+      chosen = bestOf(far, (c) => textRect(b.name, b.e + c[0], b.n + c[1], h, c[2]));
+      P = chosen.choice;
+    }
     occupied.push(chosen.rect);
     d.text(b.name, [b.e + P[0], b.n + P[1]], h,
       { layer: 'BEACON-TEXT', style: 'ARIAL', align: P[2] });
@@ -1494,9 +1568,9 @@ const crowded = crowdedClusters(
   const th = mm(L.text.title);
   spec.title.slice(0, 4).forEach((line, i) => {
     // The first line names the document ("WORKING PLAN OF") and is set larger
-    // than the lines that identify the land. Its baseline is 8.2 mm from the
-    // sheet top and the glyphs grow upward, which at 1.25x reaches 3.26 mm --
-    // still clear of the border at 0.5 mm, and of the next line 12.1 mm below.
+    // than the lines that identify the land. Its baseline is 12.5 mm from the
+    // sheet top and the glyphs grow upward, keeping clear both of the border at
+    // 0.5 mm and of the next line 10 mm below.
     d.text(line, S(L.title.cx, L.title.baselines[i]), i === 0 ? th * L.text.titleLeadFactor : th,
       { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
   });
@@ -1504,7 +1578,8 @@ const crowded = crowdedClusters(
     { layer: 'TITLE', style: 'ARIAL', align: 'center' });
 
   /* ---- north arrow */
-  drawNorthArrow(L.northArrow.cx, L.northArrow.cy, 1, 2.12);
+  // Drawn at half its own size: the sheet's meridian arrow, not a compass rose.
+  drawNorthArrow(L.northArrow.cx, L.northArrow.cy, L.northArrow.mainScale, 2.12);
 
   /* ---- approval box */
   if (spec.approvalBox !== false) {
@@ -1559,8 +1634,7 @@ const crowded = crowdedClusters(
     .filter((b) => extensionNames.has(b.name))
     .map((b) => ({ ...b, ...loToGround(b) }));
   // The survey's own ground: everything the main figure draws, notes included.
-  // Its envelope is the footprint shown in the merged map, and the size that
-  // decides which control can be drawn in that map and which must be noted.
+  // Its envelope is the footprint shown in the outlying-marks inset.
   const surveyPts = [...byName.values()]
     .filter((b) => !extensionNames.has(b.name))
     .map((b) => [b.e, b.n])
@@ -1570,32 +1644,36 @@ const crowded = crowdedClusters(
     return { e0: Math.min(...es), e1: Math.max(...es), n0: Math.min(...ns), n1: Math.max(...ns) };
   })();
 
-  if (spec.inset || farMarks.length) {
-    const control = (spec.inset?.beacons ?? []).map((b) => ({ ...b, ...loToGround(b) }));
-    const locality = {
+  // The TRIG INSET: the control the survey was observed from. It is a
+  // requirement of the Surveyor General that a sheet which uses trig beacons
+  // carries them, so when any are given the inset is drawn (a locality diagram
+  // is the only place they fit on a working plan). It is the conventional
+  // sketch: positions true to their relative bearings but not to any scale,
+  // which is what its caption says.
+  if (spec.inset) {
+    insets.push({
       kind: 'locality',
-      specScale: spec.inset?.scale,
-      control,
+      scale: spec.inset.scale,
+      beacons: (spec.inset.beacons ?? []).map((b) => ({ ...b, ...loToGround(b) })),
+    });
+  }
+  // The OUTLYING MARKS inset: the survey's footprint with the far marks the
+  // divided figure set aside, at a scale that shows both -- a measured map,
+  // captioned with its scale, framed close around its marks rather than
+  // sprawled across the cell.
+  if (farMarks.length) {
+    const es = farMarks.map((b) => b.e), ns = farMarks.map((b) => b.n);
+    insets.push({
+      kind: 'merged',
       far: farMarks,
       surveyEnv,
-    };
-    // When the far marks are mapped there is ONE map, and it is measured: the
-    // survey's footprint plus those marks at a scale fitted to all of them. The
-    // fitted envelope is computed once so the map and the control note below
-    // cannot disagree about which station drew and which was set down in type.
-    // (The SCALE that fits it varies with the cell actually given -- a sheet
-    // whose box is shared with a detail fits the map to the half it gets --
-    // so the fit is settled on the way, in the loop, against that cell.)
-    if (farMarks.length) {
-      const es = farMarks.map((b) => b.e), ns = farMarks.map((b) => b.n);
-      locality.env = {
+      env: {
         eMin: Math.min(surveyEnv.e0, ...es),
         eMax: Math.max(surveyEnv.e1, ...es),
         nMin: Math.min(surveyEnv.n0, ...ns),
         nMax: Math.max(surveyEnv.n1, ...ns),
-      };
-    }
-    insets.push(locality);
+      },
+    });
   }
   for (const cluster of crowded) {
     insets.push({ kind: 'detail', beacons: cluster });
@@ -1606,16 +1684,19 @@ const crowded = crowdedClusters(
   insets.forEach((ins, idx) => {
     const B = cells[idx];
     const number = idx + 1;
-    d.polyline([S(B.x0, B.y0), S(B.x1, B.y0), S(B.x1, B.y1), S(B.x0, B.y1)],
-      { layer: 'INSET', closed: true });
+    // Every inset but the merged map takes its whole cell; the merged map
+    // draws its own frame close around its marks below.
+    if (ins.kind !== 'merged') {
+      d.polyline([S(B.x0, B.y0), S(B.x1, B.y0), S(B.x1, B.y1), S(B.x0, B.y1)],
+        { layer: 'INSET', closed: true });
+    }
 
-    // Every DETAIL is schematic enough to say so: the members of a crowded pair
-    // are spread to be read, so no distance in one is exact, and the regulation's
-    // own caption is "Inset (not to scale)" whatever the kind. A LOCALITY is the
-    // one exception: its positions are measured -- the survey among its far
-    // reference marks, or among the control it was observed from -- so it says
-    // its scale instead. Only the localities do.
-    if (ins.kind !== 'locality') {
+    // A DETAIL is schematic enough to say so: the members of a crowded pair
+    // are spread to be read, so no distance in one is exact, and here the
+    // regulation's own caption applies -- "Inset (not to scale)". The OTHER
+    // two insets caption themselves: the trig inset as the conventional sketch,
+    // the merged map with the measured scale it was actually drawn at.
+    if (ins.kind === 'detail') {
       const caption = 'INSET ' + number + ' (NOT TO SCALE)';
       d.text(caption, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
         { layer: 'INSET', style: 'ARIAL-BOLD' });
@@ -1719,21 +1800,23 @@ const crowded = crowdedClusters(
     const nn = L.inset.north;
     drawNorthArrow(B.x1 - nn.dxFromRight, B.y0 + nn.dyFromTop, nn.scale, nn.letterMm);
 
-    if (ins.kind === 'locality' && ins.far.length) {
-      // THE SURVEY AMONG ITS REFERENCE MARKS. One map for the figure and the
-      // marks the divided figure set apart from it, at a scale that shows both
-      // -- no second EXTENSION frame, because there is no second map to host.
-      // A far mark alone cannot define a scale, but it is never alone here:
-      // the survey's own footprint is in the map with it. Everything is a
-      // measured drawing; only the signs stay at their conventional inset
-      // sizes, exactly as the main figure renders its own.
+    if (ins.kind === 'merged') {
+      // THE OUTLYING MARKS. One measured map for the figure and the marks the
+      // divided figure set apart from it, at a scale that shows both -- no
+      // second EXTENSION frame, because there is no second map to host. The
+      // scale is fitted to the cell as with any inset, but the FRAME is drawn
+      // close around the survey's footprint and the marks, not round the cell:
+      // the map is allowed to sit small and low in its space instead of
+      // stretching to cover ground that holds nothing.
       const E = ins.env;
       const cx = (B.x0 + B.x1) / 2, cy = (B.y0 + B.y1) / 2;
       const need = Math.max((E.eMax - E.eMin) / (B.x1 - B.x0),
         (E.nMax - E.nMin) / (B.y1 - B.y0)) * 1000 * FIGURE_BREATHING;
       const F = STANDARD_SCALES.find((s) => s >= need) ?? STANDARD_SCALES.at(-1);
       const ec = { e: (E.eMin + E.eMax) / 2, n: (E.nMin + E.nMax) / 2 };
-      const I = (e, n) => S(cx + ((e - ec.e) / F) * 1000, cy - ((n - ec.n) / F) * 1000);
+      // Sheet-millimetre position of a ground point inside the cell...
+      const P = (e, n) => [cx + ((e - ec.e) / F) * 1000, cy - ((n - ec.n) / F) * 1000];
+      const I = (e, n) => S(P(e, n)[0], P(e, n)[1]);
 
       // The survey's own footprint, light, so a reader can see what stays home
       // and what stands beyond it.
@@ -1742,28 +1825,57 @@ const crowded = crowdedClusters(
       d.polyline([f0, [f1[0], f0[1]], f1, [f0[0], f1[1]]],
         { layer: 'INSET', closed: true, linetype: 'PLANDASH' });
 
-      // Control that lies inside this envelope maps beside the survey; control
-      // beyond it is stated in the note column, not flung to the edge of a map
-      // that belongs to nearer ground.
-      for (const b of ins.control) {
-        if (b.e < E.eMin || b.e > E.eMax || b.n < E.nMin || b.n > E.nMax) continue;
-        const at = I(b.e, b.n);
-        drawSign(at, b.symbol);
-        letter(at, b);
+      // The survey itself, drawn inside its footprint: the boundaries that stay
+      // home and the marks that stand at them, so the map reads as the survey
+      // the far marks measure against, not a blank box. Its own ring edges and
+      // its own signs, nothing lettered -- the names belong to the main figure,
+      // and a measured map the size of a stamp need not repeat them.
+      for (const [pa, pb] of segments) {
+        d.line(I(pa[0], pa[1]), I(pb[0], pb[1]), { layer: 'INSET' });
       }
+      for (const b of figureBeacons()) {
+        drawSign(I(b.e, b.n), b.symbol);
+      }
+
+      // The farthest marks, signs at their conventional inset sizes and the
+      // inscriptions around them exactly as the main figure renders its own.
       for (const b of ins.far) {
         const at = I(b.e, b.n);
         drawSign(at, b.symbol);
         letter(at, b);
       }
-      d.text(`INSET ${number} (1:${F})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
+
+      // The frame hugs what the map plotted: the footprint's corners and the
+      // marks it drew. One station high on the sheet gets its inscription
+      // above the sign, and the caption shares the head of the frame, so the
+      // box is kept clear of the marks on the north side and clipped to the
+      // cell if a lopsided survey would push it over the edge.
+      const plotted = [
+        ...ins.far.map((b) => P(b.e, b.n)),
+        P(ins.surveyEnv.e0, ins.surveyEnv.n0),
+        P(ins.surveyEnv.e1, ins.surveyEnv.n0),
+        P(ins.surveyEnv.e1, ins.surveyEnv.n1),
+        P(ins.surveyEnv.e0, ins.surveyEnv.n1),
+      ];
+      const xs = plotted.map((p) => p[0]), ys = plotted.map((p) => p[1]);
+      const pad = { side: mm(4), top: mm(6), bottom: mm(4) };
+      const fx0 = Math.max(B.x0, Math.min(...xs) - pad.side);
+      const fx1 = Math.min(B.x1, Math.max(...xs) + pad.side);
+      const fy0 = Math.max(B.y0, Math.min(...ys) - pad.top);
+      const fy1 = Math.min(B.y1, Math.max(...ys) + pad.bottom);
+      d.polyline([S(fx0, fy0), S(fx1, fy0), S(fx1, fy1), S(fx0, fy1)],
+        { layer: 'INSET', closed: true });
+      d.text(`INSET ${number} (1:${F})`, S(fx0 + 3, fy0 + 4), mm(L.text.insetTitle),
         { layer: 'INSET', style: 'ARIAL-BOLD' });
       return;
     }
 
     if (ins.kind === 'locality') {
-      // THE CONTROL THE SURVEY WAS OBSERVED FROM, at the scale that fits it.
-      const ib = ins.control;
+      // THE TRIGS THE SURVEY WAS OBSERVED FROM. The Surveyor General's one
+      // requirement of a working plan that uses control: they are carried here,
+      // on the conventional locality sketch -- positions true to their bearings
+      // one from another, but not to any scale, and the caption says so.
+      const ib = ins.beacons;
       const eMin = Math.min(...ib.map((b) => b.e)), eMax = Math.max(...ib.map((b) => b.e));
       const nMin = Math.min(...ib.map((b) => b.n)), nMax = Math.max(...ib.map((b) => b.n));
       const ic = { e: (eMin + eMax) / 2, n: (nMin + nMax) / 2 };
@@ -1773,9 +1885,11 @@ const crowded = crowdedClusters(
       // unchanged pushed the outer stations clean out of the frame and over the
       // figure -- RM7 ended up 24 mm to the left of its own cell. Refit to the
       // cell actually given, and keep whichever scale is coarser so a full-width
-      // cell still draws exactly what it always drew.
+      // cell still draws exactly what it always drew. The refit decides only
+      // the drawing; the caption stays NOT TO SCALE because that is what the
+      // drawing is.
       const iScale = Math.max(
-        Number(ins.specScale) || 0,
+        Number(ins.scale) || 0,
         insetScaleToFit(eMax - eMin, nMax - nMin, B.x1 - B.x0, B.y1 - B.y0),
       );
       const lcx = (B.x0 + B.x1) / 2, lcy = (B.y0 + B.y1) / 2;
@@ -1786,7 +1900,7 @@ const crowded = crowdedClusters(
         drawSign(at, b.symbol);
         letter(at, b);
       }
-      d.text(`INSET ${number} (1:${iScale})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
+      d.text(`INSET ${number} (NOT TO SCALE)`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
         { layer: 'INSET', style: 'ARIAL-BOLD' });
       return;
     }
@@ -1938,33 +2052,6 @@ const crowded = crowdedClusters(
       d.text('INSET ' + number, tail, labelH, { layer: 'INSET', style: 'ARIAL' });
     }
   });
-
-  /* ---- control beyond the map -----------------------------------------------
-   * A merged map draws every control it can, and the stations it cannot hold
-   * are stated here in the free column beside the figure: their names and
-   * reduced coordinates, which is the fact a reader of the plan needs. A trig
-   * a kilometre out would flatten the survey to a dot if it were mapped at all,
-   * and a note carries it further and more honestly than a sign at the edge. */
-  const noted = new Map();
-  for (const ins of insets) {
-    if (ins.kind !== 'locality' || !ins.far.length) continue;
-    for (const b of ins.control) {
-      const E = ins.env;
-      if (b.e >= E.eMin && b.e <= E.eMax && b.n >= E.nMin && b.n <= E.nMax) continue;
-      noted.set(b.name, b);
-    }
-  }
-  if (noted.size) {
-    const C = L.control;
-    d.text('NATIONAL CONTROL OBSERVED', S(C.x0, C.baseline), mm(L.text.title),
-      { layer: 'TITLE', style: 'ARIAL-BOLD' });
-    let y = C.baseline + C.step;
-    for (const b of noted.values()) {
-      d.text(`${b.name}  N ${fmtCoord(-b.n)}  E ${fmtCoord(b.e)}`,
-        S(C.x0, y), mm(L.text.grid), { layer: 'TITLE', style: 'ARIAL' });
-      y += C.step;
-    }
-  }
 
   // sheetSize is reported so the caller can tell the surveyor -- and the plot
   // dialog -- which paper this was drawn for.

@@ -83,7 +83,7 @@ export default async function workingPlanRoutes(fastify) {
         .type('application/dxf')
         .header('Content-Disposition', `attachment; filename="working-plan-${Date.now()}.dxf"`)
         .header('X-Plan-Scale', String(out.scale))
-        .header('X-Plan-Grid', JSON.stringify(out.gridInterval))
+        .header('X-Plan-Grid', JSON.stringify({ ...out.gridInterval, ticks: out.gridTicks }))
         .header('X-Plan-Areas', JSON.stringify(out.areas))
         .send(Buffer.from(out.dxf, 'latin1'))   // matches $DWGCODEPAGE ANSI_1252
     } catch (error) {

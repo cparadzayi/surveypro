@@ -217,23 +217,27 @@ describe('generateWorkingPlan — golden', () => {
     // The lines below it identify the land and are set uniformly, at the same
     // size as the drawing's own text.
     //
-    // The step is one ISO 3098 size -- 5,0 over 3,5 -- not the 1,25 it was set
+    // The step is two ISO 3098 sizes -- 5,0 over 2,5 -- not the 1,25 it was set
     // to: 4,375 mm is not a height on the stencil, and at that ratio the
-    // heading read as merely bigger rather than as the heading.
+    // heading read as merely bigger rather than as the heading. The sheet keeps
+    // title-block matter of other sizes (the scale line, the certificate) on the
+    // same layer, so the heading is measured against the line naming the land
+    // itself, not against the largest title-block text.
     const { dxf } = generateWorkingPlan(brackenhurstSpec)
     const lines = dxf.split('\n')
-    const heights = []
+    const title = []
     for (let i = 0; i < lines.length - 1; i++) {
       if (lines[i] === '0' && lines[i + 1] === 'TEXT') {
         let j = i + 2; const d = {}
         while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
-        if ((d['8'] || [])[0] === 'TITLE' && (d['40'] || [])[0]) heights.push(Number(d['40'][0]))
+        if ((d['8'] || [])[0] === 'TITLE') title.push({ t: (d['1'] || [''])[0], h: Number(d['40'][0]) })
       }
     }
-    const tallest = Math.max(...heights)
-    const body = heights.filter(h => h < tallest)
-    expect(body.length).toBeGreaterThan(0)
-    expect(tallest / Math.max(...body)).toBeCloseTo(5.0 / 3.5, 2)
+    const heading = title.find((t) => t.t.startsWith('Survey of'))
+    const naming = title.find((t) => t.t.startsWith('STANDS 403-405'))
+    expect(heading).toBeDefined()
+    expect(naming).toBeDefined()
+    expect(heading.h / naming.h).toBeCloseTo(5.0 / 2.5, 2)
   })
 
   test('marks an abutting neighbour the way the diagram does', () => {
@@ -541,7 +545,10 @@ describe('generateWorkingPlan — golden', () => {
       const ys = g.flatMap(([, v]) => v.map((q) => q[1]))
       return Math.max(...ys) - Math.min(...ys)
     }
-    expect(span(inset) / span(sheet)).toBeCloseTo(LAYOUT.inset.north.scale, 2)
+    // the inset's arrow is the sheet's at a further fraction, so the ratio of
+    // the two considers both scalings: inset.scale over the sheet's mainScale
+    expect(span(inset) / span(sheet))
+      .toBeCloseTo(LAYOUT.inset.north.scale / LAYOUT.northArrow.mainScale, 2)
     const h = (g) => letters.filter((c) => (g === 'in' ? within(c.at) : !within(c.at)))[0].h
     expect(h('in')).toBeLessThan(h('out'))
   })
@@ -1102,9 +1109,11 @@ describe('generateWorkingPlan — golden', () => {
     //
     // The divided figure answers the same concern without the coarse scale:
     // the main figure is sized for the survey, and the far mark (88X2) is
-    // carried by the merged locality map -- the survey's footprint with the
-    // marks the figure gave up, drawn to scale together in the inset box -- so
-    // every mark is still ON the sheet, and the survey is drawn larger too.
+    // carried by the outlying-marks map -- the survey's footprint with the mark
+    // the figure gave up, drawn to scale together in the inset box -- while the
+    // trigs the survey was observed from get the conventional locality sketch
+    // alongside it. Every mark is still ON the sheet, and the survey is drawn
+    // larger too.
     const { dxf, scale } = generateWorkingPlan({ ...brackenhurstSpec, scale: 'auto' })
     expect(scale).toBe(1500)                   // the survey alone, not the stray RM
     const lines = dxf.split('\n')
@@ -1151,7 +1160,7 @@ describe('generateWorkingPlan — golden', () => {
       || p[1] < Math.min(...by) || p[1] > Math.max(...by))
     expect(outside).toEqual([])
 
-    // and the stray mark is ON the sheet too, inside the merged map
+    // and the stray mark is ON the sheet too, inside the outlying-marks map
     const eightEight = read('TEXT').find((d) => (d['1'] || [''])[0] === '88X2')
     expect(eightEight).toBeDefined()
     const [ex, ey] = [+eightEight['10'][0], +eightEight['20'][0]]
@@ -1159,17 +1168,22 @@ describe('generateWorkingPlan — golden', () => {
     expect(ex).toBeLessThan(Math.max(...bx))
     expect(ey).toBeGreaterThan(Math.min(...by))
     expect(ey).toBeLessThan(Math.max(...by))
-    // one map, not a second frame: the merged map says its scale, and the
-    // control it could not hold is stated as a coordinate note beside the
-    // figure instead of two signs on one unreadable map
-    expect(dxf).toContain('INSET 1 (1:4000)')
+
+    // two maps, no second "extension" frame: the trig inset named as the
+    // sketch it is, and the merged map at the measured scale that fits both the
+    // footprint and its far mark
+    expect(dxf).toContain('INSET 1 (NOT TO SCALE)')
+    expect(dxf).toContain('INSET 2 (1:4000)')
     expect(dxf).not.toContain('EXTENSION')
-    expect(dxf).toContain('NATIONAL CONTROL OBSERVED')
-    const noteLines = ['170/T', '176/T', '49/T', '50/T', 'RM7'].map((n) =>
-      read('TEXT').find((d) => (d['1'] || [''])[0].startsWith(`${n}  N `)))
-    // every noted station, and every note line inside the sheet border
-    expect(noteLines).toHaveLength(5)
-    for (const ent of noteLines) {
+    expect(dxf).not.toContain('NATIONAL CONTROL OBSERVED')
+
+    // the trigs the Surveyor General requires are DRAWN, on the locality
+    // sketch that carries them, each lettered inside the sheet border
+    const trigNames = ['170/T', '176/T', '49/T', '50/T', 'RM7']
+    const trigEnts = trigNames.map((n) =>
+      read('TEXT').find((d) => (d['1'] || [''])[0] === n))
+    expect(trigEnts).toHaveLength(5)
+    for (const ent of trigEnts) {
       expect(ent).toBeDefined()
       const [px, py] = [+ent['10'][0], +ent['20'][0]]
       expect(px).toBeGreaterThan(Math.min(...bx))
@@ -1339,6 +1353,47 @@ describe('generateWorkingPlan — golden', () => {
     test('honours an interval it is given, without hunting for a better one', () => {
       const r = generateWorkingPlan({ ...brackenhurstSpec, scale: 1500, gridInterval: 200 })
       expect(r.gridInterval).toEqual({ e: 200, n: 200 })
+    })
+
+    test('still draws a framework when the figure leaves the lattice nothing', () => {
+      // A survey that fills its panel can defeat every candidate and every
+      // interval: the walk holds each tick a full 7 mm of paper clear of the
+      // boundaries it references, and when a mesh of small stands covers the
+      // whole sheet no lattice node has that room -- so the sheet used to draw
+      // NO coordinate framework at all, silently. A cross a reader has to live
+      // with beats nothing to read, so a sheet that dense earns one: the most
+      // open node that can still letter its X and Y figures.
+      const B = (name, X, Y) => ({ name, X, Y, symbol: 'placed', label: 'auto' })
+      // A 1:1000 panel full of 13 m stands: every point is within 6.5 m --
+      // under the 7 m ground clearance -- of a boundary, so the strict walk
+      // rejects every lattice node and the fallback has to carry the sheet.
+      const step = 13, cols = 12, rows = 13
+      const pts = []
+      for (let c = 0; c <= cols; c++) {
+        for (let r = 0; r <= rows; r++) {
+          // ground e = -Y = c*step; ground n = -X = r*step
+          pts.push(B(`${c}_${r}`, -(r * step), -(c * step)))
+        }
+      }
+      const parcels = []
+      for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+          parcels.push({
+            label: `${c}-${r}`,
+            ring: [`${c}_${r}`, `${c + 1}_${r}`, `${c + 1}_${r + 1}`, `${c}_${r + 1}`],
+          })
+        }
+      }
+      const out = generateWorkingPlan({
+        scale: 1000, gridInterval: 50,
+        beacons: pts, parcels, title: ['WORKING PLAN OF', 'Dense stands'],
+      })
+      expect(out.gridTicks).toBe(1)
+      const { pts: crosses, labels } = grid(out.dxf)
+      expect(crosses.length).toBeGreaterThanOrEqual(1)
+      expect(labels.length).toBeGreaterThanOrEqual(2)   // an X and a Y for it
+      expect(labels.some((t) => t.startsWith('X = '))).toBe(true)
+      expect(labels.some((t) => t.startsWith('Y = '))).toBe(true)
     })
   })
 

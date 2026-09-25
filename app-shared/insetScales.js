@@ -10,13 +10,15 @@
  * late, on paper.
  *
  * These are not the SI 727 Reg 32(2) prescribed scales: those govern the
- * FIGURE. A locality diagram carries true positions -- control stations, or
- * the survey mapped among its far reference marks -- so it is a measured
- * drawing and its caption states the scale it was fitted at; these are the
- * rungs a surveyor expects to read on it.
+ * FIGURE. The trig locality sketch a working plan must carry is drawn with its
+ * positions true to their bearings, one from another, but not to any scale, so
+ * its caption says NOT TO SCALE and these rungs are never printed on it; they
+ * only govern how the sketch is laid out in its box -- and, on the merged map,
+ * how a set of outlying marks is drawn to scale beside the survey's footprint,
+ * where the caption does state the rung in use.
  */
 
-/** Round denominators a surveyor expects to read on a locality diagram. */
+/** Round denominators a surveyor expects between a far mark and the survey. */
 export const INSET_SCALE_LADDER = [
   5000, 10000, 20000, 25000, 50000,
   100000, 200000, 250000, 500000, 1000000, 2000000,

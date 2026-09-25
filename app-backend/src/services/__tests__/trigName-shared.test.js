@@ -20,8 +20,25 @@ describe('displayTrigName', () => {
   test('leaves a vowel-less token alone: it is a code, not a word', () => {
     expect(displayTrigName('CPLX')).toBe('CPLX')
     expect(displayTrigName('TSM')).toBe('TSM')
-    // The same rule keeps an abbreviation in capitals: MT is not read as "Mt".
-    expect(displayTrigName('MT HAMPDEN')).toBe('MT Hampden')
+    // Longer vowel-less tokens in the registry are codes, never words:
+    // GMB (Grain Marketing Board), BLDG, WCT, and STH for South.
+    expect(displayTrigName('GMB')).toBe('GMB')
+    expect(displayTrigName('BLDG')).toBe('BLDG')
+    expect(displayTrigName('M.W.GATOOMA STH')).toBe('M.W.Gatooma STH')
+    // A compass bearing is a code too, so it keeps its capitals.
+    expect(displayTrigName('KHAMI RIVER SW')).toBe('Khami River SW')
+  })
+
+  test('reads a known word abbreviation as the word it stands for', () => {
+    // The registry writes these both ways -- MT x5 but Mt x6, ST x2 but St x3 --
+    // so the mixed-case rows are the form it means; the shouting rows follow them.
+    expect(displayTrigName('MT HAMPDEN')).toBe('Mt Hampden')
+    expect(displayTrigName('MT. TOWLA')).toBe('Mt. Towla')
+    expect(displayTrigName('MT OLYMPUS')).toBe('Mt Olympus')
+    expect(displayTrigName('ST MARYS')).toBe('St Marys')
+    // Already in that form, so nothing moves.
+    expect(displayTrigName('Mt Darwin')).toBe('Mt Darwin')
+    expect(displayTrigName('Mt. Hampden')).toBe('Mt. Hampden')
   })
 
   test('leaves a token carrying a digit alone', () => {

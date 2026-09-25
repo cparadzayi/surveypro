@@ -16,6 +16,7 @@ import { generateNarrativeReportOnSurveyPDF } from '@/utils/reportOnSurveyNarrat
 import { isReportDataEmpty } from '@/utils/reportDataFromWorkflow'
 import type { ReportOnSurveyData } from '@/types/cadastral'
 import { buildDispensationCertificateBlob, type DispensationInput } from './useDispensationCertificate'
+import { buildDSGCertificateBlob, type DSGCertificateData } from './useDSGCertificate'
 
 export interface NarrativeReportOptions {
   surveyorName: string
@@ -43,6 +44,8 @@ export interface ComprehensivePDFOptions {
   narrativeOptions?: NarrativeReportOptions
   /** Dispensation Certificate, appended after the narrative; omit to skip it */
   dispensation?: DispensationInput
+  /** DSG Certificate (1/96), appended after the dispensation; omit to skip it */
+  dsg?: DSGCertificateData
 }
 
 export interface ComprehensivePDFResult {
@@ -55,6 +58,8 @@ export interface ComprehensivePDFResult {
   narrativeBlob?: Blob
   /** The dispensation certificate section on its own */
   dispensationBlob?: Blob
+  /** The DSG certificate section on its own */
+  dsgBlob?: Blob
 }
 
 /**
@@ -124,6 +129,31 @@ export async function appendDispensationCertificate(
 }
 
 /**
+ * Append the DSG Certificate (1/96) to the collated body.
+ *
+ * Like the dispensation certificate, the DSG form is a self-contained formal
+ * document, so it rides as a pure tail append — nothing cross-references it.
+ *
+ * Returns the body unchanged (and no blob) when no certificate data is given.
+ */
+export async function appendDSGCertificate(
+  mergedPdfBytes: Uint8Array,
+  dsg: DSGCertificateData | undefined
+): Promise<{ merged: Uint8Array; dsgBlob?: Blob }> {
+  if (!dsg) {
+    console.log('[ComprehensivePDF] ℹ️ No DSG certificate data — skipping DSG Certificate')
+    return { merged: mergedPdfBytes }
+  }
+  console.log('[ComprehensivePDF] 📄 Appending DSG Certificate (1/96)...')
+  const { blob } = await buildDSGCertificateBlob(dsg)
+  const bodyDoc = await PDFDocument.load(mergedPdfBytes)
+  const certDoc = await PDFDocument.load(await blob.arrayBuffer())
+  const copied = await bodyDoc.copyPages(certDoc, certDoc.getPageIndices())
+  copied.forEach((page) => bodyDoc.addPage(page))
+  return { merged: await bodyDoc.save(), dsgBlob: blob }
+}
+
+/**
  * Generate Comprehensive_Latest PDF with Calculations Part 1 + Area & Consistency
  * 
  * @param options - Configuration options for PDF generation
@@ -144,7 +174,8 @@ export async function generateComprehensiveLatestPDF(
     skipParcelTracking = false,
     reportData,
     narrativeOptions,
-    dispensation
+    dispensation,
+    dsg
   } = options
 
   try {
@@ -200,8 +231,10 @@ export async function generateComprehensiveLatestPDF(
 
     // Fold the Dispensation Certificate in at the very bottom of the record.
     const withDispensation = await appendDispensationCertificate(withNarrative.merged, dispensation)
-    const finalMergedBytes = withDispensation.merged
+    const withDSG = await appendDSGCertificate(withDispensation.merged, dsg)
+    const finalMergedBytes = withDSG.merged
     const dispensationBlob = withDispensation.dispensationBlob
+    const dsgBlob = withDSG.dsgBlob
 
     console.log('[ComprehensivePDF] ✅ PDF generated successfully')
 
@@ -237,7 +270,8 @@ export async function generateComprehensiveLatestPDF(
           pdfBlob: blob,
           areasOnlyBlob,
           narrativeBlob,
-          dispensationBlob
+          dispensationBlob,
+          dsgBlob
         }
       } else {
         console.error('[ComprehensivePDF] ❌ Failed to save PDF:', saveResult.error)
@@ -250,7 +284,8 @@ export async function generateComprehensiveLatestPDF(
           error: saveResult.error,
           pdfBlob: blob,
           narrativeBlob,
-          dispensationBlob
+          dispensationBlob,
+          dsgBlob
         }
       }
     } else {
@@ -262,7 +297,8 @@ export async function generateComprehensiveLatestPDF(
         pdfBlob: blob,
         areasOnlyBlob,
         narrativeBlob,
-        dispensationBlob
+        dispensationBlob,
+        dsgBlob
       }
     }
   } catch (error: any) {

@@ -306,7 +306,7 @@ import { loadSurveyStandNames } from '@/services/spatial'
 import { useRecordComposition } from '@/composables/useRecordComposition'
 import { certificationStatementsForComposition, composeCertificateSurveyOf } from '@/data/dsgCertificatePatterns'
 
-const { workflowState, projectId } = useCadastralWorkflow()
+const { workflowState, projectId, saveStepData } = useCadastralWorkflow()
 
 // Certificate data
 const certificateData = ref({
@@ -579,8 +579,43 @@ async function generateCertificate() {
   try {
     const { blob, pageCount } = await generateDSGCertificatePDF(certificateData.value)
     
+    // Persist the certificate text to the DSG Certificate step so the collated
+    // Comprehensive_Latest record can rebuild this exact certificate later
+    // (same pattern as the dispensation certificate / servitudes).
+    await saveStepData('dsg-certificate', { certificate_data: { ...certificateData.value } })
+    
     // Store in workflow state
     workflowState.documents.dsgCertificate = blob
+    
+    // Save to file system if working directory is set — the lodgement letter
+    // reads the on-disk manifest, so an in-memory blob alone leaves the
+    // certificate listed as a missing document.
+    if (workflowState.projectInfo.workingDirectory) {
+      try {
+        const { saveDocument } = await import('../../../services/documentStorage')
+        const srNumber = workflowState.reportOnSurvey?.srNumber || workflowState.projectInfo.name || 'Project'
+        const fileName = `${srNumber}_DSG_Certificate.pdf`
+        
+        const result = await saveDocument({
+          workingDirectory: workflowState.projectInfo.workingDirectory,
+          documentType: 'dsg-certificate',
+          fileName,
+          pdfBlob: blob,
+          // Regenerating must replace the previous certificate rather than 409
+          // on the overwrite gate.
+          overwrite: true
+        })
+        
+        if (result.success) {
+          console.log('💾 DSG Certificate saved to:', result.filePath)
+        } else {
+          console.warn('[DSGCertificate] Failed to save PDF:', result.error)
+        }
+      } catch (saveError) {
+        console.error('[DSGCertificate] Error saving PDF:', saveError)
+        // Continue even if save fails
+      }
+    }
     
     console.log(`✅ DSG Certificate generated successfully! (${pageCount} page)`)
     alert(`✅ DSG Certificate generated successfully!`)

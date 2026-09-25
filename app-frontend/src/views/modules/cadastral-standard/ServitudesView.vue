@@ -291,7 +291,7 @@
           @click="goBack"
           class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
         >
-          ← Back to Area Computation
+          ← Back to Parcel Digitization & Areas
         </button>
         <button
           @click="goNext"

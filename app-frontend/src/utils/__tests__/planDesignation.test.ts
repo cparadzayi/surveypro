@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   formatStandRanges, extractTownship, buildPlanDesignation,
   normalizeDesignation, designationPhrase, surveyOfTitle, townshipPhrase, fullDesignationPhrase,
-  composeSurveySource, composeDesignation,
+  composeSurveySource, composeDesignation, composeReportSurveyOf,
 } from '../planDesignation';
 
 describe('formatStandRanges', () => {
@@ -168,5 +168,54 @@ describe('composeDesignation', () => {
   });
   it('returns empty string when nothing is provided', () => {
     expect(composeDesignation([], '', '')).toBe('');
+  });
+});
+
+describe('composeReportSurveyOf', () => {
+  it('composes the practitioner-report survey-of line from stands + township + parent', () => {
+    expect(composeReportSurveyOf({
+      standNames: ['403', '404', '405'],
+      township: 'Brackenhurst Township',
+      parentProperty: 'Stand 87 Brackenhurst Township',
+    })).toBe('Stand 403-405 Brackenhurst Township of Stand 87 Brackenhurst Township');
+  });
+  it('says "Stands" only for several disjoint ranges', () => {
+    expect(composeReportSurveyOf({
+      standNames: ['403', '404', '405', '408'],
+      township: 'Maglas Township',
+      parentProperty: 'Shabani Mine Surface Rights A',
+    })).toBe('Stands 403-405, 408 Maglas Township of Shabani Mine Surface Rights A');
+  });
+  it('omits the parent clause for a whole-township survey', () => {
+    expect(composeReportSurveyOf({ standNames: ['12'], township: 'Maglas Township' }))
+      .toBe('Stand 12 Maglas Township');
+  });
+  it('appends "being the remainder" (never "being the whole")', () => {
+    expect(composeReportSurveyOf({
+      standNames: ['403', '404', '405'],
+      township: 'Brackenhurst Township',
+      parentProperty: 'Stand 87 Brackenhurst Township',
+      wholePortion: 'the remainder',
+    })).toBe('Stand 403-405 Brackenhurst Township of Stand 87 Brackenhurst Township, being the remainder');
+    expect(composeReportSurveyOf({
+      standNames: ['403'],
+      township: 'Brackenhurst Township',
+      wholePortion: 'the whole',
+    })).toBe('Stand 403 Brackenhurst Township');
+  });
+  it('states stands alone when no township is known', () => {
+    expect(composeReportSurveyOf({ standNames: ['5', '6', '7'] })).toBe('Stand 5-7');
+  });
+  it('falls back to the authored designation when nothing structured is given', () => {
+    expect(composeReportSurveyOf({ fallbackSurveyOf: 'Stands 1 - 2 Test Township' }))
+      .toBe('Stands 1 - 2 Test Township');
+    expect(composeReportSurveyOf({ fallbackSurveyOf: '  Stands 1 - 2 Test Township  ' }))
+      .toBe('Stands 1 - 2 Test Township');
+  });
+  it('deduplicates stand names fed in twice', () => {
+    expect(composeReportSurveyOf({
+      standNames: ['403', '404', '405', '404'],
+      township: 'Brackenhurst Township',
+    })).toBe('Stand 403-405 Brackenhurst Township');
   });
 });

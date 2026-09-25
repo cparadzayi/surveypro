@@ -91,7 +91,7 @@
                   <li>Connect your survey to the national coordinate system</li>
                   <li>Required for Coordinate List generation (Step 6)</li>
                   <li>Included in the Comprehensive PDF report</li>
-                  <li>Displayed in the Area Computation inset map</li>
+                  <li>Displayed in the Parcel Digitization & Areas inset map</li>
                   <li>Minimum 3 control points required for triangulation</li>
                 </ul>
               </div>

@@ -4,7 +4,7 @@
     <div class="bg-white border-b border-gray-200 px-6 py-4 z-20 relative">
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="text-xl font-semibold text-gray-900">📐 Area Computation & Consistency</h2>
+          <h2 class="text-xl font-semibold text-gray-900">📐 Parcel Digitization & Areas</h2>
           <p class="text-sm text-gray-600 mt-1">🛰️ Satellite overlay with interactive parcel digitizing</p>
         </div>
         <!-- Auto-save indicator -->
@@ -1005,6 +1005,7 @@ import { useRecordComposition } from '@/composables/useRecordComposition';
 import { buildLodgementWarnings } from '@/utils/lodgementDocuments';
 import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
 import { buildReportDataFromWorkflow } from '@/utils/reportDataFromWorkflow';
+import { resolveSurveyDesignation } from '@/utils/surveyDesignation';
 import type { ReportOnSurveyData } from '@/types/cadastral';
 import {
   buildSnapIndex,
@@ -6990,12 +6991,23 @@ async function exportAreaConsistencyPDF() {
       surveyDate: workflowState?.surveyorInfo?.surveyDate || '',
       surveyOf: workflowState?.surveyorInfo?.surveyOf || surveyorInfo.projectTitle || '',
     };
+    // The survey designation comes from one resolver: digitized parcels' stands
+    // + township phrase, the same source the standalone report uses.
+    const designation = await resolveSurveyDesignation(workflowState);
     const narrativeOptions = {
       ...reportOptions,
+      surveyOf: designation.surveyOf,
       firm: workflowState?.surveyorInfo?.firm || '',
       address: workflowState?.surveyorInfo?.address || '',
       district: workflowState?.projectInfo?.district || '',
       assistant: 'N/A',
+      township: designation.township,
+      parentProperty: designation.parentProperty,
+      wholePortion: designation.wholePortion,
+      standNames: designation.standNames,
+      instrumentDescription: surveyorInfo.instrumentDescription || '',
+      instrumentBaseSerial: surveyorInfo.instrumentBaseSerial || '',
+      instrumentRoverSerial: surveyorInfo.instrumentRoverSerial || '',
     };
 
     const result = await generator.generateWithTwoPass({
@@ -7448,7 +7460,7 @@ onMounted(async () => {
     
     // Show detailed error to user
     const errorMsg = error.message || 'Unknown error';
-    alert(`Failed to initialize Area Computation view.\n\nError: ${errorMsg}\n\nPlease check browser console (F12) for details.`);
+    alert(`Failed to initialize Parcel Digitization & Areas view.\n\nError: ${errorMsg}\n\nPlease check browser console (F12) for details.`);
   }
 });
 

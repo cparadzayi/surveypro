@@ -5,11 +5,14 @@
  */
 
 import { jsPDF } from 'jspdf';
-import type { ReportOnSurveyData, FoundBeacon } from '../types/cadastral';
+import type { ReportOnSurveyData } from '../types/cadastral';
 import { stampSequentialPageNumbers } from './pdfPageNumber';
 import { formatDateDDMMYYYY } from './dateFormat';
+import { formatSurveyMonthYear } from './surveyDate';
+import { buildFoundBeaconsNarrative } from './beaconAcceptanceNarrative';
+import { composeReportSurveyOf } from './planDesignation';
 
-interface ReportGenerationOptions {
+export interface ReportGenerationOptions {
   surveyorName: string;
   licenseNumber: string;
   firm: string;
@@ -18,6 +21,23 @@ interface ReportGenerationOptions {
   surveyOf: string;
   district?: string;
   assistant?: string;
+  /** Structured "Survey of" parts: compose the header instead of surveyOf. */
+  township?: string;
+  parentProperty?: string;
+  wholePortion?: string;
+  standNames?: string[];
+  /** Equipment clause for "Survey based on". */
+  instrumentDescription?: string;
+  instrumentBaseSerial?: string;
+  instrumentRoverSerial?: string;
+}
+
+/** Join a list in the practitioner-report manner: "A, B and C" (no serial comma). */
+function naturalList(items: string[]): string {
+  if (items.length === 0) return '';
+  if (items.length === 1) return String(items[0]);
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
 export class NarrativeReportOnSurveyGenerator {
@@ -58,8 +78,8 @@ export class NarrativeReportOnSurveyGenerator {
     // Purpose section
     this.addPurposeSection(reportData);
     
-    // Survey Based On section (narrative)
-    this.addSurveyBasisNarrative(reportData);
+    // Survey based on section (narrative)
+    this.addSurveyBasisNarrative(reportData, options);
     
     // Found Beacons section
     this.addFoundBeaconsNarrative(reportData);
@@ -104,18 +124,27 @@ export class NarrativeReportOnSurveyGenerator {
     this.doc.setFontSize(11);
     this.doc.setFont('helvetica', 'normal');
     
-    // Survey of
-    this.addLabelValuePair('Survey of', options.surveyOf || 'N/A');
+    // Survey of — composed from the stand names + township phrase when the
+    // structured parts are supplied, else the authored surveyOf verbatim.
+    const surveyOf = composeReportSurveyOf({
+      standNames: options.standNames,
+      township: options.township,
+      parentProperty: options.parentProperty,
+      wholePortion: options.wholePortion,
+      fallbackSurveyOf: options.surveyOf,
+    });
+    this.addLabelValuePair('Survey of', surveyOf || 'N/A');
     
     // District
     if (options.district) {
-      this.addLabelValuePair('', options.district);
+      this.addLabelValuePair('District', options.district);
     }
     
     this.currentY += 3;
     
-    // Date of Survey
-    this.addLabelValuePair('Date of Survey', options.surveyDate || 'N/A');
+    // Date of Survey — the month and year the work was done, as the field book
+    // cover states it ("July 2026"), not the day the form was filled in.
+    this.addLabelValuePair('Date of Survey', formatSurveyMonthYear(options.surveyDate) || 'N/A');
     
     this.currentY += 3;
     
@@ -205,9 +234,9 @@ export class NarrativeReportOnSurveyGenerator {
   }
 
   /**
-   * Add Survey Based On section (narrative style)
+   * Add Survey Based On section (narrative)
    */
-  private addSurveyBasisNarrative(reportData: ReportOnSurveyData): void {
+  private addSurveyBasisNarrative(reportData: ReportOnSurveyData, options: ReportGenerationOptions): void {
     this.checkPageBreak(40);
     
     this.doc.setFont('helvetica', 'bold');
@@ -220,25 +249,20 @@ export class NarrativeReportOnSurveyGenerator {
     let narrativeText = '';
     const basis = reportData.surveyBasis;
     
-    // Trig stations
+    // Trig stations — stated in the sample-report wording
+    // "Trigonometrical beacons 176/P (Kenyani), ..., and 49/T (Christmas Gift)".
     if (basis.trigStations && basis.trigStationNames && basis.trigStationNames.length > 0) {
-      narrativeText += 'Trig system through the use of Trigs ';
-      narrativeText += basis.trigStationNames.join(', ');
-      narrativeText += '. ';
+      narrativeText += `Trigonometrical beacons ${naturalList(basis.trigStationNames)}. `;
     }
     
     // Town survey marks
     if (basis.townSurveyMarks && basis.townSurveyMarkNames && basis.townSurveyMarkNames.length > 0) {
-      narrativeText += 'Town Survey Marks ';
-      narrativeText += basis.townSurveyMarkNames.join(', ');
-      narrativeText += '. ';
+      narrativeText += `Town Survey Marks ${naturalList(basis.townSurveyMarkNames)}. `;
     }
     
     // Official control points
     if (basis.officialControlPoints && basis.controlPointNames && basis.controlPointNames.length > 0) {
-      narrativeText += 'Official Control Points ';
-      narrativeText += basis.controlPointNames.join(', ');
-      narrativeText += '. ';
+      narrativeText += `Official Control Points ${naturalList(basis.controlPointNames)}. `;
     }
     
     // Previous survey
@@ -256,6 +280,17 @@ export class NarrativeReportOnSurveyGenerator {
       }
     }
     
+    // Equipment — attached to the last sentence per the sample's
+    // "... beacons X and Y, using Trimble R8 GNSS equipment."
+    const equipment = this.buildEquipmentClause(options);
+    if (equipment) {
+      if (narrativeText) {
+        narrativeText = `${narrativeText.trim().replace(/\.$/, '')}, ${equipment}. `;
+      } else {
+        narrativeText = `${equipment.charAt(0).toUpperCase()}${equipment.slice(1)}. `;
+      }
+    }
+    
     if (!narrativeText) {
       narrativeText = 'Not specified.';
     }
@@ -267,6 +302,22 @@ export class NarrativeReportOnSurveyGenerator {
     });
     
     this.currentY += lines.length * this.lineHeight + 8;
+  }
+
+  /**
+   * "using Trimble R8 GNSS equipment" — the equipment clause appended to the
+   * survey-basis narrative, with serials bracketed when supplied. Empty string
+   * when no instrument was captured, so reports before Project Setup added the
+   * instrument fields print exactly as they always did.
+   */
+  private buildEquipmentClause(options: ReportGenerationOptions): string {
+    const desc = String(options.instrumentDescription || '').trim();
+    if (!desc) return '';
+    const bits: string[] = [];
+    if (options.instrumentBaseSerial) bits.push(`base ${options.instrumentBaseSerial}`);
+    if (options.instrumentRoverSerial) bits.push(`rover ${options.instrumentRoverSerial}`);
+    const serials = bits.length > 0 ? ` (${bits.join(', ')})` : '';
+    return `using ${desc}${serials} equipment`;
   }
 
   /**
@@ -283,44 +334,56 @@ export class NarrativeReportOnSurveyGenerator {
     
     const foundBeacons = reportData.beacons?.filter(b => b.status === 'found') || [];
     
-    let narrativeText = '';
-    
     if (foundBeacons.length === 0) {
-      narrativeText = 'NIL.';
-    } else {
-      // Build narrative for found beacons
-      const beaconDescriptions: string[] = [];
-      
-      foundBeacons.forEach(beacon => {
-        let desc = `Beacon ${beacon.beaconId}`;
-        
-        if (beacon.condition) {
-          desc += ` (${beacon.condition} condition)`;
-        }
-        
-        if (beacon.circumstances) {
-          desc += ` - ${beacon.circumstances}`;
-        }
-        
-        if (beacon.adopted) {
-          desc += ' was measured and adopted';
-        } else if (beacon.rejectionReason) {
-          desc += ` was not adopted (${beacon.rejectionReason})`;
-        }
-        
-        beaconDescriptions.push(desc);
-      });
-      
-      narrativeText = beaconDescriptions.join('. ') + '.';
+      this.doc.text('NIL.', this.margin + this.labelWidth + 5, this.currentY);
+      this.currentY += this.lineHeight + 8;
+      return;
     }
     
-    const lines = this.doc.splitTextToSize(narrativeText, this.pageWidth - this.margin * 2 - this.labelWidth - 5);
-    lines.forEach((line: string, index: number) => {
+    // Composed acceptance narrative: "Beacons A, B ... were found. After
+    // comparison, positions of all the found beacons/stations except X were
+    // accepted ... The coordinates of all found and accepted beacons were
+    // adopted as final coordinates."
+    const narrative = buildFoundBeaconsNarrative(reportData);
+    const narrativeLines = this.doc.splitTextToSize(
+      narrative.fullText,
+      this.pageWidth - this.margin * 2 - this.labelWidth - 5
+    );
+    narrativeLines.forEach((line: string) => {
       this.checkPageBreak(10);
-      this.doc.text(line, this.margin + this.labelWidth + 5, this.currentY + (index * this.lineHeight));
+      this.doc.text(line, this.margin + this.labelWidth + 5, this.currentY);
+      this.currentY += this.lineHeight;
     });
     
-    this.currentY += lines.length * this.lineHeight + 8;
+    // Per-beacon detail notes are kept so the physical circumstances and
+    // rejection reasons the old bullet list carried are not lost.
+    const detailNotes: string[] = [];
+    
+    narrative.acceptedFound.forEach(beacon => {
+      const bits: string[] = [];
+      if (beacon.condition) bits.push(`${beacon.condition} condition`);
+      if (beacon.circumstances) bits.push(beacon.circumstances);
+      if (bits.length > 0) detailNotes.push(`    ${beacon.beaconId}: ${bits.join(', ')}.`);
+    });
+    
+    narrative.rejectedFound.forEach(beacon => {
+      const reason = beacon.rejectionReason || 'outside the accepted comparison tolerance';
+      detailNotes.push(`    ${beacon.beaconId}: not adopted (${reason}).`);
+    });
+    
+    if (detailNotes.length > 0) {
+      this.currentY += 2;
+      detailNotes.forEach(note => {
+        const wrapped = this.doc.splitTextToSize(note, this.pageWidth - this.margin * 2 - this.labelWidth - 5);
+        wrapped.forEach((line: string) => {
+          this.checkPageBreak(10);
+          this.doc.text(line, this.margin + this.labelWidth + 5, this.currentY);
+          this.currentY += this.lineHeight;
+        });
+      });
+    }
+    
+    this.currentY += 8;
   }
 
   /**

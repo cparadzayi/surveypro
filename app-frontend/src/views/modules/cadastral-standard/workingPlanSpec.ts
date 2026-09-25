@@ -41,6 +41,12 @@ export interface WorkingPlanBeacon {
   Y: number
   symbol: WorkingPlanSymbol
   label: 'auto'
+  /**
+   * A control point's monument NAME -- "Mnyami" under trig beacon 170/P. Only
+   * control points (trig beacons / official control points) carry one, and the
+   * renderer letters it centred below the sign. Absent on every other beacon.
+   */
+  cpName?: string
 }
 
 export interface WorkingPlanParcel {
@@ -82,6 +88,8 @@ export interface WorkingPlanInsetBeacon {
   /** The station's own conventional sign. The inset renderer draws the whole
    *  Fifth Schedule set, so a working station appears as a working station. */
   symbol: WorkingPlanSymbol
+  /** Monument name lettered as a second line under a control point's sign. */
+  cpName?: string
 }
 
 export interface WorkingPlanInset {
@@ -167,7 +175,7 @@ export interface WorkingPlanSpecContext {
    * and the inset then had nothing to show and vanished. Still not a proximity
    * search of the registry -- the surveyor picked these.
    */
-  controlPoints?: Array<{ name?: string; X?: number; Y?: number }>
+  controlPoints?: Array<{ name?: string; X?: number; Y?: number; monuName?: string }>
   /**
    * Side annotations per parcel id, from sideAnnotationsBySubject. Sides tagged
    * `contiguous` name the neighbouring property along that side -- the only
@@ -267,17 +275,30 @@ export function selectedControlPointIds(workflowState: any): number[] {
  * from NaN draws at an undefined position and drags the scale with it, so
  * losing the row is much the lesser harm.
  */
+export interface ControlPointForInset {
+  name: string
+  X: number
+  Y: number
+  /** The registry row's monument name (monu_name) -- "MNYAMI" for trig 170/P.
+   *  Empty when the registry holds none; the working plan needs it to letter
+   *  the name under the control point's sign. */
+  monuName: string
+}
+
 export function controlPointsForInset(
   rows: Array<Record<string, any>> | null | undefined,
-): Array<{ name: string; X: number; Y: number }> {
-  const out: Array<{ name: string; X: number; Y: number }> = []
+): ControlPointForInset[] {
+  const out: ControlPointForInset[] = []
 
   for (const row of rows ?? []) {
     const name = String(row?.monu_num ?? row?.name ?? row?.monuNum ?? '').trim()
     const Y = Number(row?.y_gauss ?? row?.yGauss ?? row?.y)   // Westing
     const X = Number(row?.x_gauss ?? row?.xGauss ?? row?.x)   // Southing
     if (!name || !Number.isFinite(X) || !Number.isFinite(Y)) continue
-    out.push({ name, X, Y })
+    out.push({
+      name, X, Y,
+      monuName: String(row?.monu_name ?? row?.monuName ?? '').trim(),
+    })
   }
 
   return out
@@ -308,10 +329,12 @@ function buildInset(
   figure: WorkingPlanBeacon[],
 ): WorkingPlanInset | undefined {
   const control: WorkingPlanInsetBeacon[] = []
-  const add = (name: string, X: number, Y: number) => {
+  const add = (name: string, X: number, Y: number, cpName?: string) => {
     if (!name || !Number.isFinite(X) || !Number.isFinite(Y)) return
     if (control.some(c => c.name === name)) return
-    control.push({ name, X, Y, symbol: insetSymbolFor(name) })
+    const beacon: WorkingPlanInsetBeacon = { name, X, Y, symbol: insetSymbolFor(name) }
+    if (cpName) beacon.cpName = cpName
+    control.push(beacon)
   }
 
   // The calibration first: those pairs are control the surveyor actually
@@ -321,7 +344,7 @@ function buildInset(
     add(String(pair?.pointId ?? '').trim(), Number(pair?.controlNorthing), Number(pair?.controlEasting))
   }
   for (const cp of controlPoints ?? []) {
-    add(String(cp?.name ?? '').trim(), Number(cp?.X), Number(cp?.Y))
+    add(String(cp?.name ?? '').trim(), Number(cp?.X), Number(cp?.Y), String(cp?.monuName ?? '').trim() || undefined)
   }
   if (control.length === 0 || figure.length === 0) return undefined
 
@@ -342,6 +365,7 @@ function buildInset(
     X: chosen.X,
     Y: chosen.Y,
     symbol: chosen.symbol,
+    ...(chosen.cpName ? { cpName: chosen.cpName } : {}),
   }
   const beacons = [...control, site]
   return { scale: insetScaleFor(beacons), beacons }
@@ -768,6 +792,60 @@ function sideFeatures(
   return { notes, roads, contiguous }
 }
 
+/**
+ * A monument designation or name, reduced to the form used for matching.
+ * Case- and punctuation-insensitive: "170/P" (the registry row) and "170P"
+ * (the coordinate list's spelling of the same mark) match, and only the
+ * surveyor's typing kept them apart. Letters and digits are all that survive.
+ */
+export function controlKey(s: unknown): string {
+  return String(s ?? '').toUpperCase().replace(/[^A-Z0-9]+/g, '')
+}
+
+/** A word that names the mark's KIND rather than the mark itself. */
+const KIND_WORD = /\b(trig(onometric(al)?)?|beacon|tsm|ocp|official|control|bench|\bb\.?\s*m\.?\b|reference|working|survey|station|peg|iron|pin|pipe|metal|plane|stone|monument|marks?)\b/i
+
+/** A word that names the mark's STATE rather than the mark itself. */
+const STATE_WORD = /^(found|placed|new|existing|established|observed|reestablished|point|coordinates|coords)$/i
+
+/**
+ * The monument NAME to letter under a control point's sign -- "MNYAMI" under
+ * trig beacon 170/P. The registry is authoritative: the control the surveyor
+ * selected, matched by designation, is the mark's own name.
+ *
+ * The fallback reads the beacon's DESCRIPTION. Real data lands the monument
+ * name there too -- the coordinate list is what actually reaches the sheet --
+ * but a surveyor may also have typed "TRIG BEACON", which is a description of
+ * the mark's KIND, not a name, and must not be promoted into one. Only a
+ * description that reads as a name is accepted: the kind words are struck, and
+ * what must be left is exactly one plain alphabetic word -- "MNYAMI" from
+ * "MNYAMI", "TRIG BEACON MNYAMI" or "MNYAMI TRIG STATION". "TRIG BEACON"
+ * names nothing, "TRIG BEACON FOUND" names a state, and "170/P" is the
+ * designation already lettered beneath the sign, not a name to repeat.
+ */
+function controlPointNameFor(
+  name: string,
+  description: string,
+  registry: Map<string, string>,
+): string | undefined {
+  const key = controlKey(name)
+  const named = registry.get(key)
+  if (named) return named
+
+  const d = String(description ?? '').trim()
+  if (!d) return undefined
+
+  const token = (t: string) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+  const residue = d.split(/\s+/).map(token).filter((t) => t && !KIND_WORD.test(t))
+  if (residue.length !== 1) return undefined
+
+  const candidate = residue[0]
+  if (!/^[A-Za-z]{2,}$/.test(candidate)) return undefined
+  if (STATE_WORD.test(candidate)) return undefined
+  if (controlKey(candidate) === key) return undefined
+  return candidate
+}
+
 export function buildWorkingPlanSpec(
   ctx: WorkingPlanSpecContext,
 ): WorkingPlanSpecResult {
@@ -889,9 +967,24 @@ export function buildWorkingPlanSpec(
   // points cannot shrink the figure. Ring vertices come first so the drawing
   // order stays stable as the coordinate list grows.
   const emitted = [...used, ...[...byName.keys()].filter(n => !seen.has(n))]
+  const controlNames = new Map<string, string>()
+  for (const cp of ctx.controlPoints ?? []) {
+    const num = controlKey(cp?.name)
+    const monu = String(cp?.monuName ?? '').trim()
+    if (num && monu) controlNames.set(num, monu)
+  }
   const beacons: WorkingPlanBeacon[] = emitted.map(name => {
     const b = byName.get(name)!
-    return { name, X: b.X, Y: b.Y, symbol: beaconSymbol(b.description, b.status, name), label: 'auto' as const }
+    const symbol = beaconSymbol(b.description, b.status, name)
+    // Only control points -- trig and official control point signs -- earn a
+    // name beneath them; lettered there, not beside, because it names the mark.
+    const cpName = (symbol === 'trig' || symbol === 'ocp')
+      ? controlPointNameFor(name, b.description, controlNames)
+      : undefined
+    return {
+      name, X: b.X, Y: b.Y, symbol, label: 'auto' as const,
+      ...(cpName ? { cpName } : {}),
+    }
   })
 
   // The inset's site marker is the FIGURE centre, so it must come from the ring

@@ -188,7 +188,7 @@ function formatDocumentType(docType?: string): string {
     'field_book': 'Field Book PDF',
     'calculations_part1': 'Calculations Part 1 PDF',
     'coordinate_list': 'Coordinate List PDF',
-    'area_computation': 'Area Computation PDF',
+    'area_computation': 'Parcel Digitization & Areas PDF',
     'report_on_survey': 'Report on Survey PDF',
     'dsg_certificate': 'DSG Certificate PDF'
   }

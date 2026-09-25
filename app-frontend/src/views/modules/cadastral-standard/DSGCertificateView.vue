@@ -287,7 +287,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { toDateInputFormat } from '@/utils/dateFormat'
 import DateInputDDMMYYYY from '@/components/DateInputDDMMYYYY.vue'
 import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
@@ -302,8 +302,11 @@ import {
 } from '@/composables/useDSGCertificateSuggestions'
 import { generateDSGCertificatePDF, previewDSGCertificate as previewPDF } from '@/utils/dsgCertificateGenerator'
 import { composeSurveySource } from '@/utils/planDesignation'
+import { loadSurveyStandNames } from '@/services/spatial'
+import { useRecordComposition } from '@/composables/useRecordComposition'
+import { certificationStatementsForComposition, composeCertificateSurveyOf } from '@/data/dsgCertificatePatterns'
 
-const { workflowState } = useCadastralWorkflow()
+const { workflowState, projectId } = useCadastralWorkflow()
 
 // Certificate data
 const certificateData = ref({
@@ -314,7 +317,7 @@ const certificateData = ref({
   statement2: 'The coordinates of beacons appearing on the diagrams have been checked against the coordinate list and calculations of the fixes of beacons.',
   statement3: 'All beacons shown on the diagrams have been placed and checked.',
   statement4: 'I have satisfied myself of the correctness of the checks mentioned in subparagraphs 1, 2 and 3 above.',
-  surveyorTitle: 'LAND SURVEYOR',
+  surveyorTitle: 'LAND SURVEYOR (Zim)',
   additionalNotes: '',
   date: toDateInputFormat(new Date())
 })
@@ -357,13 +360,26 @@ const surveyType = computed(() => {
 })
 
 // Initialize from workflow data
-onMounted(() => {
+onMounted(async () => {
   // Auto-populate surveyor information
   if (workflowState.surveyorInfo?.landSurveyor) {
     certificateData.value.surveyorName = workflowState.surveyorInfo.landSurveyor
   }
   if (workflowState.surveyorInfo?.licenseNumber) {
     certificateData.value.licenseNumber = workflowState.surveyorInfo.licenseNumber
+  }
+
+  // Statements 1–3 are driven by the record composition chosen in the Survey
+  // Plan step (Diagrams / General Plans / both). When nothing usable is known
+  // the legacy defaults are kept, so existing reports are not changed.
+  const activeProjectId = workflowState?.selectedProject?.id ?? workflowState.projectInfo?.projectId ?? projectId.value
+  if (activeProjectId) {
+    const { loadComposition } = useRecordComposition()
+    const composition = await loadComposition(Number(activeProjectId), workflowState)
+    const statements = certificationStatementsForComposition(composition)
+    certificateData.value.statement1 = statements.statement1
+    certificateData.value.statement2 = statements.statement2
+    certificateData.value.statement3 = statements.statement3
   }
   
   // Auto-populate Survey Of from persistent project information. The workflow's
@@ -385,24 +401,43 @@ onMounted(() => {
     standNumbers: workflowState.projectInfo?.standReference || workflowState.reportOnSurvey?.purpose?.reference || ''
   }
 
-  // Prefer the made-up location + township/parent phrase and the composed
-  // designation; stand numbers are added per-diagram on the certificate title.
+  // Prefer the composed township + parent property phrase; the suggestion
+  // fallbacks below only cover legacy projects that never recorded a township.
   const composedDesignation = composeSurveySource(projectData.township, projectData.parentProperty)
   const suggestions = getSurveyOfSuggestions(projectData.surveyType || surveyType.value, projectData)
-  if (composedDesignation) {
-    certificateData.value.surveyOf = projectData.standReference
-      ? `${projectData.standReference.toUpperCase()}, ${composedDesignation.toUpperCase()}`
-      : composedDesignation.toUpperCase()
-  } else if (suggestions.length > 0) {
-    certificateData.value.surveyOf = suggestions[0].text
-  } else if (projectData.standReference && projectData.name && projectData.district) {
-    // Fallback: Use stand reference, project name and district directly
-    certificateData.value.surveyOf = `${projectData.standReference.toUpperCase()}, ${projectData.name.toUpperCase()}, ${projectData.district.toUpperCase()} DISTRICT`
-  } else if (projectData.name && projectData.district) {
-    // Fallback: Use project name and district only
-    certificateData.value.surveyOf = `${projectData.name.toUpperCase()}, ${projectData.district.toUpperCase()} DISTRICT`
+  const fallbackSurveyOf = composedDesignation
+    ? (projectData.standReference
+        ? `${projectData.standReference.toUpperCase()}, ${composedDesignation.toUpperCase()}`
+        : composedDesignation.toUpperCase())
+    : suggestions.length > 0
+      ? suggestions[0].text
+      : projectData.standReference && projectData.name && projectData.district
+        // Fallback: Use stand reference, project name and district directly
+        ? `${projectData.standReference.toUpperCase()}, ${projectData.name.toUpperCase()}, ${projectData.district.toUpperCase()} DISTRICT`
+        : projectData.name && projectData.district
+          // Fallback: Use project name and district only
+          ? `${projectData.name.toUpperCase()}, ${projectData.district.toUpperCase()} DISTRICT`
+          : ''
+
+  // The digitized stand range is the single source of truth for the surveyed
+  // stands (same loadSurveyStandNames pipeline the Report on Survey uses). The
+  // DSG/1/96 form prints an all-caps STAND/STANDS label, e.g.
+  // "STANDS 403-405 Brackenhurst Township of Stand 87 Brackenhurst Township".
+  certificateData.value.surveyOf = fallbackSurveyOf
+  if (activeProjectId) {
+    const standNames = await loadSurveyStandNames(Number(activeProjectId))
+    if (standNames.length > 0) {
+      certificateData.value.surveyOf = composeCertificateSurveyOf({
+        standNames,
+        township: projectData.township,
+        parentProperty: projectData.parentProperty,
+        wholePortion: workflowState.projectInfo?.wholePortion || '',
+        district: projectData.district,
+        fallbackSurveyOf
+      })
+    }
   }
-  
+
   console.log('[DSG Certificate] Auto-populated from persistent project data:', {
     surveyType: projectData.surveyType,
     standReference: projectData.standReference,

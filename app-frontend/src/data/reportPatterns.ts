@@ -26,10 +26,10 @@ export const REPORT_PATTERNS: ReportPatterns = {
       'To establish Mining Lease {name} vide permit {reference} dated {date}'
     ],
     surveyBasisTemplates: [
-      'Trig system, Lo {degrees}º through the use of Trigs {trigList}',
-      'Trig Lo {degrees}º by adopting station {station} from {source}',
-      'Trig system through the use of Trigs {trigList}. Office Calibration was done covering the area under survey, see calcs page {page}',
-      'The survey was done using a {equipment} GPS, GPS base was set at a placed Station {station} and measurements were made to Trigs {checkPoints} as checks'
+      'Survey based on Lo {degrees}º through Trigonometrical beacons {trigList}',
+      'Survey based on Lo {degrees}º with station {station} adopted from {source}',
+      'Trigonometrical beacons {trigList}; office calibration was done covering the area under survey, see calcs page {page}',
+      'The survey was done using a {equipment} GPS, with the base station at {station} and measurements made to Trigonometrical beacons {checkPoints} as checks'
     ],
     foundBeaconsTemplates: [
       'NIL',
@@ -59,10 +59,10 @@ export const REPORT_PATTERNS: ReportPatterns = {
       'To subdivide Private land vide permit number {permit} dated {date}'
     ],
     surveyBasisTemplates: [
-      'Trig Lo {degrees}º by adopting station {station} from {source} and Calibration Parameters from {source}',
-      'Adopted station {station} was used as a base station in a RTK GPS survey',
+      'Survey based on Lo {degrees}º with station {station} adopted from {source} and calibration parameters from {source}',
+      'Adopted station {station} was used as a base station in an RTK GPS survey',
       'Based on previous survey {srNumber} and control points {list}',
-      'Trig system through the use of Town Survey Marks {list}'
+      'Survey based on Town Survey Marks {list}'
     ],
     foundBeaconsTemplates: [
       'Existing beacons from previous survey were found and adopted',
@@ -91,9 +91,9 @@ export const REPORT_PATTERNS: ReportPatterns = {
       'Survey of State Land for {purpose} vide approval {reference}'
     ],
     surveyBasisTemplates: [
-      'Trig system, Lo {degrees}º through the use of Trigs {trigList}',
-      'Based on official control points {list} and trig system Lo {degrees}º',
-      'Trig Lo {degrees}º by adopting official control points {list}'
+      'Survey based on Lo {degrees}º through Trigonometrical beacons {trigList}',
+      'Survey based on official control points {list} on Lo {degrees}º',
+      'Survey based on Lo {degrees}º, adopting official control points {list}'
     ],
     foundBeaconsTemplates: [
       'NIL',
@@ -119,9 +119,9 @@ export const REPORT_PATTERNS: ReportPatterns = {
       'Survey of Municipal Land for {purpose} vide approval {reference}'
     ],
     surveyBasisTemplates: [
-      'Town Survey Marks {list} and trig system Lo {degrees}º',
+      'Survey based on Town Survey Marks {list} on Lo {degrees}º',
       'Based on {council} control network and Town Survey Marks {list}',
-      'Trig Lo {degrees}º by adopting Town Survey Marks {list}'
+      'Survey based on Lo {degrees}º through Town Survey Marks {list}'
     ],
     foundBeaconsTemplates: [
       'Town Survey Marks {list} were found and adopted',
@@ -147,9 +147,9 @@ export const REPORT_PATTERNS: ReportPatterns = {
       'Survey of Private land for {purpose} vide permit {reference}'
     ],
     surveyBasisTemplates: [
-      'Trig system, Lo {degrees}º through the use of Trigs {trigList}',
+      'Survey based on Lo {degrees}º through Trigonometrical beacons {trigList}, using {equipment} equipment',
       'Based on previous survey {srNumber} and control points {list}',
-      'Trig Lo {degrees}º by adopting station {station}'
+      'Survey based on Lo {degrees}º with station {station} adopted'
     ],
     foundBeaconsTemplates: [
       'Original beacons from {srNumber} were found and adopted',
@@ -176,7 +176,7 @@ export const REPORT_PATTERNS: ReportPatterns = {
     ],
     surveyBasisTemplates: [
       'Based on previous survey {srNumber} and control points {list}',
-      'Trig system, Lo {degrees}º through the use of control points {list}',
+      'Survey based on Lo {degrees}º through control points {list}',
       'Adopted control points from parent survey {srNumber}'
     ],
     foundBeaconsTemplates: [
@@ -204,7 +204,7 @@ export const REPORT_PATTERNS: ReportPatterns = {
     ],
     surveyBasisTemplates: [
       'Based on original survey {srNumber} and control points {list}',
-      'Trig system as per original survey {srNumber}',
+      'Survey based on original survey {srNumber}',
       'Adopted control from original survey {srNumber} and verified with {checkPoints}'
     ],
     foundBeaconsTemplates: [

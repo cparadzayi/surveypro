@@ -118,8 +118,8 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
   area_computation: {
     id: 'area_computation',
     order: 8,
-    label: 'Area Computation',
-    description: 'Areas and consistencies',
+    label: 'Parcel Digitization & Areas',
+    description: 'Digitize parcels and generate areas with per-parcel consistency checks',
     icon: '📐',
     dbKey: 'area-computation',
     requires: ['qgis_export'],

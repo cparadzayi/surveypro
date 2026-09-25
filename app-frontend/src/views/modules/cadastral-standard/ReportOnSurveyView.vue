@@ -471,6 +471,7 @@ import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow'
 import { useSmartSuggestions } from '../../../composables/useSmartSuggestions'
 import SmartSuggestionDropdown from '../../../components/SmartSuggestionDropdown.vue'
 import type { ReportOnSurveyData } from '../../../types/cadastral'
+import { resolveSurveyDesignation } from '../../../utils/surveyDesignation'
 
 const { workflowState, saveStepData } = useCadastralWorkflow()
 
@@ -566,7 +567,7 @@ const isFormValid = computed(() => {
 })
 
 // Load existing data on mount
-onMounted(() => {
+onMounted(async () => {
   if (workflowState.reportOnSurvey) {
     reportData.value = { ...workflowState.reportOnSurvey }
     
@@ -581,6 +582,11 @@ onMounted(() => {
       controlPointNamesInput.value = reportData.value.surveyBasis.controlPointNames.join(', ')
     }
   }
+
+  // Fresh report: fill the trig section from the Project Setup control points
+  // so "Survey Based On" states "Trigonometrical beacons 176/P (Kenyani) ..."
+  // without retyping the monument numbers.
+  await autofillTrigNamesFromControlPoints()
   
   console.log('[ReportOnSurvey] Loaded with', beaconCount.value, 'beacons')
 })
@@ -685,6 +691,42 @@ const goBack = () => {
 // Generate report
 const isGenerating = ref(false)
 
+// Auto-fill the trig names from the control points selected in Project Setup,
+// in the "176/P (Kenyani)" monument-number (alias) form the sample report uses.
+// Only when the report hasn't already been authored, so a saved report is never
+// overwritten.
+async function autofillTrigNamesFromControlPoints(): Promise<void> {
+  const project = workflowState.projectInfo
+  const ids = project.controlPointIds
+  if (!project.controlPointIds || project.controlPointIds.length === 0) return
+  if (reportData.value.surveyBasis.trigStationNames?.length) return
+
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3050/api'
+  const names: string[] = []
+  try {
+    for (const id of project.controlPointIds) {
+      const response = await fetch(`${API_BASE}/control-points/${id}`)
+      if (!response.ok) continue
+      const cp = await response.json()
+      if (!cp) continue
+      if (cp.monu_num) {
+        names.push(cp.monu_name ? `${cp.monu_num} (${cp.monu_name})` : cp.monu_num)
+      } else if (cp.monu_name) {
+        names.push(cp.monu_name)
+      }
+    }
+  } catch (error) {
+    console.warn('[ReportOnSurvey] Failed to auto-load trig names from control points:', error)
+    return
+  }
+
+  if (names.length > 0) {
+    reportData.value.surveyBasis.trigStationNames = names
+    reportData.value.surveyBasis.trigStations = true
+    trigStationNamesInput.value = names.join(', ')
+  }
+}
+
 const generateReport = async () => {
   if (!isFormValid.value) {
     alert('Please complete all required fields before generating the report.')
@@ -701,7 +743,14 @@ const generateReport = async () => {
     await saveStepData('report-on-survey', { report_data: workflowState.reportOnSurvey })
 
     console.log('[ReportOnSurvey] Generating PDF...', reportData.value, 'Format:', reportFormat.value)
-    
+
+    // The "Survey of" description is composed in one place — resolveSurveyDesignation
+    // — from the surveyed parcels' stands + township + parent property captured in
+    // Project Setup, matching the practitioner report (e.g. "Stand 403-405
+    // Brackenhurst Township of Stand 87 Brackenhurst Township"). The composition
+    // falls back to the authored designation when the parcels cannot be loaded.
+    const designation = await resolveSurveyDesignation(workflowState)
+
     // Prepare generation options
     const options = {
       surveyorName: workflowState.surveyorInfo.landSurveyor,
@@ -709,9 +758,16 @@ const generateReport = async () => {
       firm: workflowState.surveyorInfo.firm,
       address: workflowState.surveyorInfo.address,
       surveyDate: workflowState.surveyorInfo.surveyDate,
-      surveyOf: workflowState.surveyorInfo.surveyOf,
+      surveyOf: designation.surveyOf,
       district: projectDistrict.value,
-      assistant: assistantSurveyor.value
+      assistant: assistantSurveyor.value,
+      township: designation.township,
+      parentProperty: designation.parentProperty,
+      wholePortion: designation.wholePortion,
+      standNames: designation.standNames,
+      instrumentDescription: workflowState.surveyorInfo.instrumentDescription || '',
+      instrumentBaseSerial: workflowState.surveyorInfo.instrumentBaseSerial || '',
+      instrumentRoverSerial: workflowState.surveyorInfo.instrumentRoverSerial || ''
     }
     
     // Generate PDF based on selected format

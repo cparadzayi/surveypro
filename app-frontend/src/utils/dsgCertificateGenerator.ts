@@ -20,6 +20,8 @@ export interface DSGCertificateData {
   date: string
   firm?: string
   address?: string
+  /** The statutory form reference printed above the title, e.g. "DSG/1/96". */
+  formReference?: string
 }
 
 export interface DSGCertificateOptions {
@@ -100,11 +102,17 @@ export async function generateDSGCertificatePDF(
     return y + (lines.length * lineHeight)
   }
 
-  // Add horizontal line
-  const addLine = (y: number, width?: number) => {
-    doc.setLineWidth(0.5)
-    doc.line(margins.left, y, margins.left + (width || contentWidth), y)
-  }
+  // ===== FORM REFERENCE =====
+  const formReference = (data.formReference && data.formReference.trim())
+    ? data.formReference.trim()
+    : 'DSG/1/96'
+  currentY = addText(
+    formReference,
+    margins.left,
+    currentY,
+    { fontSize: 9.5, fontStyle: 'bold', align: 'right', maxWidth: contentWidth }
+  )
+  currentY += 6
 
   // ===== TITLE =====
   currentY = addText(
@@ -116,23 +124,24 @@ export async function generateDSGCertificatePDF(
   currentY += 10
 
   // ===== SURVEY OF =====
+  const surveyOfText = `${data.surveyOf.trim().replace(/[.\s]+$/, '')}.`
   currentY = addText(
-    'SURVEY OF   :',
+    'SURVEY OF:',
     margins.left,
     currentY,
     { fontSize: 11, fontStyle: 'bold' }
   )
   
   currentY = addText(
-    data.surveyOf,
-    margins.left + 35,
+    surveyOfText,
+    margins.left + 30,
     currentY - 7,
-    { fontSize: 11, fontStyle: 'bold', maxWidth: contentWidth - 35 }
+    { fontSize: 11, fontStyle: 'bold', maxWidth: contentWidth - 30 }
   )
   currentY += 10
 
   // ===== INTRODUCTION =====
-  const introduction = `I, ${data.surveyorName.toUpperCase()}, Land Surveyor, do hereby certify that:-`
+  const introduction = `I, ${data.surveyorName.toUpperCase()}, Land Surveyor, do hereby certify that: -`
   currentY = addText(
     introduction,
     margins.left,
@@ -224,26 +233,30 @@ export async function generateDSGCertificatePDF(
   // ===== SIGNATURE SECTION =====
   currentY += 10
 
-  // Signature line
-  const signatureLineY = currentY
-  const signatureLineWidth = 80
-  addLine(signatureLineY, signatureLineWidth)
-  
-  // Date line
-  const dateLineX = margins.left + signatureLineWidth + 10
-  const dateLineWidth = 30
-  doc.line(dateLineX, signatureLineY, dateLineX + dateLineWidth, signatureLineY)
-
-  currentY += 5
-
-  // Surveyor name and title
+  // Dotted signature and date placeholders, as on the DSG/1/96 form: the
+  // surveyor signs over the left dots and writes the date (dd/mm/yyyy) over
+  // the right dots. The surveyor name sits under the signature and the DATE
+  // label under the date field.
+  const signatureDots =
+    '............................................................ ................/................./..................'
   currentY = addText(
-    data.surveyorName.toUpperCase(),
+    signatureDots,
     margins.left,
     currentY,
-    { fontSize: 10, fontStyle: 'bold' }
+    { fontSize: 10, maxWidth: contentWidth }
   )
-  
+  currentY += 4
+
+  // Surveyor name at the signature position; DATE aligned under the date dots.
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'bold')
+  const dotsWidth = doc.getTextWidth(signatureDots)
+  const dateFieldX = margins.left + dotsWidth * 0.57
+  doc.text(data.surveyorName.toUpperCase(), margins.left, currentY)
+  doc.text('DATE', dateFieldX, currentY)
+  currentY += 7
+
+  // Surveyor title
   currentY = addText(
     data.surveyorTitle,
     margins.left,
@@ -258,29 +271,6 @@ export async function generateDSGCertificatePDF(
       margins.left,
       currentY,
       { fontSize: 9 }
-    )
-  }
-
-  // Date label
-  addText(
-    'DATE',
-    dateLineX,
-    signatureLineY + 5,
-    { fontSize: 9, align: 'center', maxWidth: dateLineWidth }
-  )
-
-  // Actual date
-  if (data.date) {
-    const dateParts = data.date.split('-')
-    const formattedDate = dateParts.length === 3 
-      ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`
-      : data.date
-    
-    addText(
-      formattedDate,
-      dateLineX,
-      signatureLineY + 12,
-      { fontSize: 9, align: 'center', maxWidth: dateLineWidth }
     )
   }
 

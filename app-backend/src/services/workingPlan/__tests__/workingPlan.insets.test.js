@@ -38,17 +38,20 @@ describe('the sheet without crowding', () => {
   test('numbers the locality diagram INSET 1', () => {
     const t = texts(generateWorkingPlan(brackenhurstSpec).dxf)
 
-    expect(t).toContain('INSET 1 (NOT TO SCALE)')
-    expect(t.filter((s) => s.startsWith('INSET '))).toEqual(['INSET 1 (NOT TO SCALE)'])
+    expect(t).toContain('INSET 1 (1:200000)')
+    expect(t.filter((s) => s.startsWith('INSET '))).toEqual(['INSET 1 (1:200000)'])
   })
 
-  test('says what kind of inset it is, not to scale like every other', () => {
-    // The locality diagram's content is squeezed to whatever cell the sheet
-    // gives it, so no distance in it is exact. The regulation's own caption
-    // for the inset box is "Inset (not to scale)"; the sheet says so too.
+  test('says what scale the locality diagram is drawn at', () => {
+    // The locality shows the control the survey was observed from, placed at
+    // its true relative positions, so it is a measured drawing and states its
+    // scale -- it has been since the far marks were mapped into it. Only the
+    // DETAILS stay schematically spread, and those keep the regulation's own
+    // caption, "Inset (not to scale)".
     const t = texts(generateWorkingPlan(brackenhurstSpec).dxf)
 
-    expect(t).toContain('INSET 1 (NOT TO SCALE)')
+    expect(t).toContain('INSET 1 (1:200000)')
+    expect(t).not.toContain('INSET 1 (NOT TO SCALE)')
   })
 })
 
@@ -56,7 +59,7 @@ describe('the sheet with two beacons in one spot', () => {
   test('adds a second inset for the pair', () => {
     const t = texts(generateWorkingPlan(withCrowdedPair()).dxf)
 
-    expect(t).toContain('INSET 1 (NOT TO SCALE)')
+    expect(t).toContain('INSET 1 (1:500000)')
     expect(t.some((s) => s.startsWith('INSET 2'))).toBe(true)
   })
 
@@ -87,7 +90,7 @@ describe('the sheet with two beacons in one spot', () => {
     const again = generateWorkingPlan(brackenhurstSpec).dxf
 
     expect(plain).toBe(again)
-    expect(texts(plain)).toContain('INSET 1 (NOT TO SCALE)')
+    expect(texts(plain)).toContain('INSET 1 (1:200000)')
   })
 })
 

@@ -1,5 +1,6 @@
 import api from './api'
 import { clearCoordinatePointsCache } from './coordinatePointCache'
+import { designationStandNames } from '../utils/designationParcels'
 
 export interface Project { id: number; name: string; code?: string; description?: string }
 export interface Layer { id: number; name: string; layer_type?: string; geom_type?: string; project_id: number; srid?: number; params?: Record<string, any> }
@@ -299,6 +300,20 @@ export async function listLandParcels(
 
   const r = await api.get<{ ok: boolean; data: LandParcel[] }>('/land-parcels', { params })
   return r.data.data
+}
+
+// Single source of truth for the surveyed stand range used by every document
+// that prints the "Survey of" detail (Report on Survey, DSG Certificate).
+// designationStandNames skips the remainder and the Outside Figure, so the
+// description states exactly the stands the area computation lodged.
+export async function loadSurveyStandNames(projectId: number): Promise<string[]> {
+  try {
+    const parcels = await listLandParcels(projectId)
+    return designationStandNames(parcels)
+  } catch (error) {
+    console.warn('[loadSurveyStandNames] Failed to load parcels for the stand range:', error)
+    return []
+  }
 }
 
 export async function getLandParcel(id: number) {

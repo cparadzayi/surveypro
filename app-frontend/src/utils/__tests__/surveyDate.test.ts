@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseSurveyDate, formatSurveyDate, toISODate } from '../surveyDate';
+import { parseSurveyDate, formatSurveyDate, toISODate, formatSurveyMonthYear } from '../surveyDate';
 
 describe('parseSurveyDate', () => {
   it('reads dd/mm/yyyy the way Zimbabwe writes it', () => {
@@ -101,5 +101,26 @@ describe('toISODate', () => {
 
   it('is empty when there is no date', () => {
     expect(toISODate(null)).toBe('');
+  });
+});
+
+describe('formatSurveyMonthYear', () => {
+  it('writes the month-and-year the work was done, as the cover states it', () => {
+    expect(formatSurveyMonthYear('2026-07-30')).toBe('July 2026');
+    expect(formatSurveyMonthYear('2026-07-01')).toBe('July 2026');
+    expect(formatSurveyMonthYear('14/12/2025')).toBe('December 2025');
+  });
+
+  it('reads an ISO date with a trailing timestamp', () => {
+    expect(formatSurveyMonthYear('2026-02-15T09:30:00Z')).toBe('February 2026');
+  });
+
+  it('prints an unreadable date exactly as it was recorded', () => {
+    expect(formatSurveyMonthYear('June 2020')).toBe('June 2020');
+  });
+
+  it('is empty when there is no date', () => {
+    expect(formatSurveyMonthYear(null)).toBe('');
+    expect(formatSurveyMonthYear('')).toBe('');
   });
 });

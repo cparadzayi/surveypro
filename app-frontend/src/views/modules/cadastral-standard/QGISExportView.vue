@@ -129,14 +129,14 @@
             <div class="flex items-center justify-between">
               <div class="text-sm text-gray-600">
                 <p class="font-medium mb-1">Ready to continue?</p>
-                <p>After digitizing parcels in QGIS, click Refresh Parcels, then continue to Area Computation.</p>
+                <p>After digitizing parcels in QGIS, click Refresh Parcels, then continue to Parcel Digitization & Areas.</p>
               </div>
               <button
                 @click="continueToNextStep"
                 :disabled="parcelCount === 0"
                 class="px-8 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
               >
-                Continue to Area Computation
+                Continue to Parcel Digitization & Areas
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
                 </svg>
@@ -208,7 +208,7 @@
         </li>
         <li class="flex gap-3">
           <span class="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-semibold">7</span>
-          <span><strong>Return to SurveyPro</strong> and proceed to Step 5(b) - Area Computation for area computation</span>
+          <span><strong>Return to SurveyPro</strong> and proceed to Parcel Digitization & Areas for area computation</span>
         </li>
       </ol>
     </div>

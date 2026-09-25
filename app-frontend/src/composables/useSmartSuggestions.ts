@@ -13,6 +13,12 @@ export interface Suggestion {
   confidence: number
 }
 
+function naturalList(items: string[]): string {
+  if (items.length === 0) return ''
+  if (items.length === 1) return items[0]
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
+}
+
 export function useSmartSuggestions() {
   const activeSuggestions = ref<Suggestion[]>([])
   const showSuggestions = ref(false)
@@ -70,10 +76,12 @@ export function useSmartSuggestions() {
     if (!patterns) return []
 
     const suggestions: Suggestion[] = []
-    const trigList = controlPoints?.filter(p => 
+
+    const trigCandidates = controlPoints?.filter(p => 
       p.includes('Trig') || p.includes('/') || p.includes('P(')
-    ).join(', ') || '[Trig List]'
-    
+    ) || []
+    const trigList = naturalList(trigCandidates) || '[Trig List]'
+
     const degrees = coordinateSystem || '29'
 
     patterns.surveyBasisTemplates.forEach(template => {

@@ -6,9 +6,10 @@ import {
   ringNames,
   workingPlanTitle,
   workingPlanEmptyReason,
-  insetSymbolFor,
+insetSymbolFor,
   controlPointsForInset,
   selectedControlPointIds,
+  controlKey,
 } from '../workingPlanSpec'
 
 /** Beacons as exportBeaconsAsGeoJSON emits them: coordinates are [Y, X]. */
@@ -45,6 +46,16 @@ const ctx = (overrides: Record<string, any> = {}) => ({
   projectInfo: { designation: 'Stands 403-405 Brackenhurst Township' },
   config: { surveyorName: 'A. Surveyor', surveyDate: '2026-07-15' },
   ...overrides,
+})
+
+describe('controlKey', () => {
+  it('reduces a designation to the letters and digits that identify the mark', () => {
+    expect(controlKey('170/P')).toBe('170P')
+    expect(controlKey('170p')).toBe('170P')
+    expect(controlKey(' 170 / P ')).toBe('170P')
+    expect(controlKey('TRIG-170/P')).toBe('TRIG170P')
+    expect(controlKey(null)).toBe('')
+  })
 })
 
 describe('ringNames', () => {
@@ -471,7 +482,7 @@ describe('controlPointsForInset', () => {
       { monu_num: '50/T', y_gauss: -88963.45, x_gauss: 2151238.71 },
     ])
 
-    expect(cp).toEqual({ name: '50/T', X: 2151238.71, Y: -88963.45 })
+    expect(cp).toEqual({ name: '50/T', X: 2151238.71, Y: -88963.45, monuName: '' })
   })
 
   it('accepts the shapes the API has been seen to return', () => {
@@ -481,8 +492,8 @@ describe('controlPointsForInset', () => {
     ])
 
     expect(out).toEqual([
-      { name: '49/T', X: 2146857.23, Y: -88454.47 },
-      { name: '170/P', X: 2136777.89, Y: -81572.33 },
+      { name: '49/T', X: 2146857.23, Y: -88454.47, monuName: '' },
+      { name: '170/P', X: 2136777.89, Y: -81572.33, monuName: '' },
     ])
   })
 
@@ -1482,9 +1493,171 @@ describe('buildWorkingPlanSpec — recognising the remainder', () => {
     expect(spec.remainderBoundary).toBeUndefined()
   })
 
-  it('still honours an explicit Outside Figure id whatever the name', () => {
+it('still honours an explicit Outside Figure id whatever the name', () => {
     const { spec } = buildWorkingPlanSpec(withRem('Portion A', { outsideFigureId: 99 }))
     expect(spec.parcels.map(p => p.label)).toEqual(['404'])
     expect(spec.remainderLabel).toBe('Portion A')
+  })
+})
+
+describe('controlPointsForInset', () => {
+  it('carries the monument name through with the designation', () => {
+    expect(controlPointsForInset([
+      { monu_num: '170/P', monu_name: 'MNYAMI', x_gauss: 2136777.89, y_gauss: -81572.33 },
+    ])).toEqual([{ name: '170/P', X: 2136777.89, Y: -81572.33, monuName: 'MNYAMI' }])
+  })
+
+  it('leaves the monument name empty when the registry has none', () => {
+    const out = controlPointsForInset([{ monu_num: '49/T', x_gauss: 2146857.23, y_gauss: -88454.47 }])
+    expect(out[0].monuName).toBe('')
+  })
+})
+
+describe('buildWorkingPlanSpec — control point names', () => {
+  it('letters the registry name under a matched trig beacon', () => {
+    // "Mnyami" under trig beacon 170/P: the registry row the surveyor picked
+    // carries monu_name, matched here by the designation it was listed under.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFCWithStatus([
+        { name: '170/P', y: -81572.33, x: 2136777.89, status: 'TRIG' },
+      ]),
+      controlPoints: [{ name: '170/P', X: 2136777.89, Y: -81572.33, monuName: 'MNYAMI' }],
+    }))
+
+    expect(spec.beacons.find(b => b.name === '170/P'))
+      .toMatchObject({ symbol: 'trig', cpName: 'MNYAMI' })
+  })
+
+  it('resolves the name from the registry whatever the description says', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFCWithStatus([
+        { name: '170/P', y: -81572.33, x: 2136777.89, status: 'TRIG', description: 'TRIG BEACON' },
+      ]),
+      controlPoints: [{ name: '170/P', X: 2136777.89, Y: -81572.33, monuName: 'MNYAMI' }],
+    }))
+
+    expect(spec.beacons.find(b => b.name === '170/P')?.cpName).toBe('MNYAMI')
+  })
+
+  it('falls back to a name-like description when the registry lacks the designation', () => {
+    // Real data reaches the sheet through the coordinate list, where the
+    // control's description is its monument name. When the registry row was
+    // never selected, the name is still lettered rather than lost.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFCWithStatus([
+        { name: '170/P', y: -81572.33, x: 2136777.89, status: 'TRIG', description: 'MNYAMI' },
+      ]),
+      controlPoints: [],
+    }))
+
+    const trig = spec.beacons.find(b => b.name === '170/P')
+    expect(trig?.symbol).toBe('trig')
+    expect(trig?.cpName).toBe('MNYAMI')
+  })
+
+  it('refuses a description of the mark’s kind as a name', () => {
+    // "TRIG BEACON" says what the mark IS, not its name -- promoting it would
+    // letter every triangle on the property with the same five words.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFCWithStatus([
+        { name: '170/P', y: -81572.33, x: 2136777.89, status: 'TRIG', description: 'Trig beacon' },
+      ]),
+      controlPoints: [],
+    }))
+
+    const trig = spec.beacons.find(b => b.name === '170/P')
+    expect(trig?.symbol).toBe('trig')
+    expect(trig?.cpName).toBeUndefined()
+  })
+
+  it('never names a beacon that is not a control point', () => {
+    // A peg carries no monument name, whatever the registry happens to hold for
+    // that designation -- the line of lettering is reserved for control signs.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      controlPoints: [{ name: 'SD4', X: 2144027.08, Y: -85673.91, monuName: 'MNYAMI' }],
+    }))
+
+    const sd4 = spec.beacons.find(b => b.name === 'SD4')
+    expect(sd4?.symbol).toBe('peg')
+    expect(sd4?.cpName).toBeUndefined()
+  })
+
+  it('displays an official control point’s name under its inverted triangle', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFCWithStatus([
+        { name: '101/C', y: -81550.0, x: 2146700.0, status: 'OCP' },
+      ]),
+      controlPoints: [{ name: '101/C', X: 2146700.0, Y: -81550.0, monuName: 'CPLX' }],
+    }))
+
+    expect(spec.beacons.find(b => b.name === '101/C'))
+      .toMatchObject({ symbol: 'ocp', cpName: 'CPLX' })
+  })
+
+  it('carries the name onto its locality inset beacon', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({
+      controlPoints: [{ name: '49/T', X: 2146857.23, Y: -88454.47, monuName: 'MNYAMI' }],
+    }))
+
+    const t = spec.inset!.beacons.find(b => b.name === '49/T')
+    expect(t?.symbol).toBe('trig')
+    expect(t?.cpName).toBe('MNYAMI')
+  })
+
+  it('matches the registry across the surveyor’s own punctuation', () => {
+    // The coordinate list wrote the trig without its slash; the registry row
+    // keeps it. Both are 170/P, and matching on the literal string lost the
+    // name on every plan whose list and registry disagreed about punctuation.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFCWithStatus([
+        { name: '170P', y: -81572.33, x: 2136777.89, status: 'TRIG' },
+      ]),
+      controlPoints: [{ name: '170/P', X: 2136777.89, Y: -81572.33, monuName: 'MNYAMI' }],
+    }))
+
+    expect(spec.beacons.find(b => b.name === '170P')?.cpName).toBe('MNYAMI')
+  })
+
+  it('recovers a name wrapped in words of the mark’s kind', () => {
+    // A description typed as "TRIG BEACON MNYAMI" names the mark among its
+    // kind words; the name is still lettered rather than the whole phrase.
+    for (const description of ['TRIG BEACON MNYAMI', 'MNYAMI TRIG STATION']) {
+      const { spec } = buildWorkingPlanSpec(ctx({
+        beacons: beaconFCWithStatus([
+          { name: '170/P', y: -81572.33, x: 2136777.89, status: 'TRIG', description },
+        ]),
+        controlPoints: [],
+      }))
+
+      const trig = spec.beacons.find(b => b.name === '170/P')
+      expect(trig?.symbol).toBe('trig')
+      expect(trig?.cpName).toBe('MNYAMI')
+    }
+  })
+
+  it('refuses a description that names a state, not a mark', () => {
+    // "TRIG BEACON FOUND" reports how the beacon was recovered, which is not a
+    // name to put under the sign.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFCWithStatus([
+        { name: '170/P', y: -81572.33, x: 2136777.89, status: 'TRIG', description: 'TRIG BEACON FOUND' },
+      ]),
+      controlPoints: [],
+    }))
+
+    expect(spec.beacons.find(b => b.name === '170/P')?.cpName).toBeUndefined()
+  })
+
+  it('refuses the designator itself when the description repeats it', () => {
+    // "TRIG 170/P" describes the mark by its number -- already lettered beneath
+    // the sign -- so nothing is gained by printing it a second time.
+    const { spec } = buildWorkingPlanSpec(ctx({
+      beacons: beaconFCWithStatus([
+        { name: '170/P', y: -81572.33, x: 2136777.89, status: 'TRIG', description: 'TRIG 170/P' },
+      ]),
+      controlPoints: [],
+    }))
+
+    expect(spec.beacons.find(b => b.name === '170/P')?.cpName).toBeUndefined()
   })
 })

@@ -711,6 +711,7 @@ import { checkLodgementDocuments } from '@/composables/useLodgementCheck';
 import { buildLodgementWarnings } from '@/utils/lodgementDocuments';
 import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
 import { buildReportDataFromWorkflow } from '@/utils/reportDataFromWorkflow';
+import { resolveSurveyDesignation } from '@/utils/surveyDesignation';
 
 // Props
 const props = defineProps<{
@@ -762,7 +763,7 @@ const map = ref<maplibregl.Map | null>(null)
 const parcels = ref<any[]>([])
 const coordinatePoints = ref<any[]>([])
 /** The national control this project was tied to, for the working plan's locality inset. */
-const projectControlPoints = ref<Array<{ name: string; X: number; Y: number }>>([])
+const projectControlPoints = ref<Array<{ name: string; X: number; Y: number; monuName: string }>>([])
 const isExporting = ref(false)
 const exportStatus = ref('')
 const pdfFinalScale = ref<string | null>(null)
@@ -5005,12 +5006,23 @@ async function generateComprehensivePDF() {
       surveyDate: surveyorInfo.surveyDate || '',
       surveyOf: surveyorInfo.projectTitle || projectName || '',
     }
+    // The survey designation comes from one resolver: digitized parcels' stands
+    // + township phrase, the same source the standalone report uses.
+    const designation = await resolveSurveyDesignation(workflowState)
     const narrativeOptions = {
       ...reportOptions,
+      surveyOf: designation.surveyOf,
       firm: surveyorInfo.firm || '',
       address: surveyorInfo.address || '',
       district: surveyorInfo.district || '',
       assistant: 'N/A',
+      township: designation.township,
+      parentProperty: designation.parentProperty,
+      wholePortion: designation.wholePortion,
+      standNames: designation.standNames,
+      instrumentDescription: surveyorInfo.instrumentDescription || '',
+      instrumentBaseSerial: surveyorInfo.instrumentBaseSerial || '',
+      instrumentRoverSerial: surveyorInfo.instrumentRoverSerial || '',
     }
 
     // Party-wall servitude rows for the Field Book and Calculations tables: the

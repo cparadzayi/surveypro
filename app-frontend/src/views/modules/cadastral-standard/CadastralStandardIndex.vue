@@ -110,7 +110,7 @@ const workflowSteps = [
   { id: 'field-book', name: 'Field Book', description: 'Generate electronic field book (3 decimals)' },
   { id: 'calculations-part1', name: 'Calculations Part 1', description: 'Field computations and adjustments' },
   { id: 'coordinate-list', name: 'Coordinate List', description: 'Final coordinate list (2 decimals)' },
-  { id: 'area-computation', name: 'Area Computation', description: 'Areas and consistencies' },
+  { id: 'area-computation', name: 'Parcel Digitization & Areas', description: 'Digitize parcels; areas and consistencies' },
   { id: 'report-on-survey', name: 'Report on Survey', description: 'Standalone survey report' },
   { id: 'dsg-certificate', name: 'DSG Certificate', description: 'Final certificate generation' }
 ]

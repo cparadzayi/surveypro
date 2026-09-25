@@ -135,3 +135,82 @@ export function surveyOfTitle(surveyOf: string, standNames: string[] = []): stri
   const phrase = fullDesignationPhrase(surveyOf, standNames);
   return phrase ? `SURVEY OF ${phrase.toUpperCase()}` : '';
 }
+
+/**
+ * Compress stand names into compact "a-b, c" ranges for the Report on Survey
+ * header (the general-plan formatter above uses spaced dashes; the report
+ * states runs without them, e.g. "Stand 403-405").
+ */
+function compactStandRanges(standNames: string[]): string[] {
+  const numeric: number[] = [];
+  const nonNumeric: string[] = [];
+  for (const name of standNames || []) {
+    const n = parseInt(name, 10);
+    if (!isNaN(n) && String(n) === String(name).trim()) numeric.push(n);
+    else if (name != null && String(name).trim() !== '') nonNumeric.push(String(name));
+  }
+
+  numeric.sort((a, b) => a - b);
+  const uniqueNumeric = Array.from(new Set(numeric));
+  const uniqueNonNumeric = Array.from(new Set(nonNumeric));
+
+  const parts: string[] = [];
+  let i = 0;
+  while (i < uniqueNumeric.length) {
+    let j = i;
+    while (j + 1 < uniqueNumeric.length && uniqueNumeric[j + 1] === uniqueNumeric[j] + 1) j++;
+    parts.push(j === i ? String(uniqueNumeric[i]) : `${uniqueNumeric[i]}-${uniqueNumeric[j]}`);
+    i = j + 1;
+  }
+  for (const name of uniqueNonNumeric) parts.push(name);
+  return parts;
+}
+
+export interface ReportSurveyOfInput {
+  /** Stand names of the surveyed parcels. */
+  standNames?: string[];
+  /** Township from Project Setup, title-cased as entered. */
+  township?: string;
+  /** Immediate parent property from Project Setup. */
+  parentProperty?: string;
+  /** SI 727 Seventh Schedule (b): 'the whole' | 'the remainder' | 'a portion'. */
+  wholePortion?: string;
+  /** Authored designation (from Project Setup) used when no township is known. */
+  fallbackSurveyOf?: string;
+}
+
+/**
+ * "Survey of" line for the Report on Survey: the stands of the surveyed parcels
+ * plus the township phrase, in the practitioner-report wording, e.g.
+ * "Stand 403-405 Brackenhurst Township of Stand 87 Brackenhurst Township".
+ *
+ * Singular "Stand" for a single range, plural "Stands" for several; the
+ * whole/remainder/portion clause is appended only where it is not 'the whole',
+ * and an empty township falls back to the authored designation.
+ */
+export function composeReportSurveyOf(input: ReportSurveyOfInput): string {
+  const { standNames, township, parentProperty, wholePortion } = input;
+  const ranges = compactStandRanges(standNames || []);
+  const t = String(township || '').trim().replace(/\s+/g, ' ');
+  const p = String(parentProperty || '').trim().replace(/\s+/g, ' ');
+
+  let out = '';
+  if (t) {
+    const phrase = p ? `${t} of ${p}` : t;
+    if (ranges.length > 0) {
+      const subject = ranges.length === 1 ? 'Stand' : 'Stands';
+      out = `${subject} ${ranges.join(', ')} ${phrase}`;
+    } else {
+      out = phrase;
+    }
+  } else if (ranges.length > 0) {
+    const subject = ranges.length === 1 ? 'Stand' : 'Stands';
+    out = `${subject} ${ranges.join(', ')}`;
+  } else {
+    return normalizeDesignation(String(input.fallbackSurveyOf || '').trim());
+  }
+
+  const w = String(wholePortion || '').trim().toLowerCase();
+  if (w && w !== 'the whole') out += `, being ${w}`;
+  return out;
+}

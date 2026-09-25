@@ -4,20 +4,31 @@
  */
 
 import { jsPDF } from 'jspdf';
-import type { ReportOnSurveyData, FoundBeacon } from '../types/cadastral';
+import type { ReportOnSurveyData } from '../types/cadastral';
 import {
   renderBeaconComparison,
   type BeaconComparisonCursor,
 } from './beaconComparisonSection';
 import { formatDateDDMMYYYY } from './dateFormat';
+import { buildFoundBeaconsNarrative } from './beaconAcceptanceNarrative';
+import { composeReportSurveyOf } from './planDesignation';
 
-interface ReportGenerationOptions {
+export interface ReportGenerationOptions {
   surveyorName: string;
   licenseNumber: string;
   firm: string;
   address: string;
   surveyDate: string;
   surveyOf: string;
+  /** Structured "Survey of" parts: compose the header instead of surveyOf. */
+  township?: string;
+  parentProperty?: string;
+  wholePortion?: string;
+  standNames?: string[];
+  /** Equipment line for Section 2. */
+  instrumentDescription?: string;
+  instrumentBaseSerial?: string;
+  instrumentRoverSerial?: string;
 }
 
 export class ReportOnSurveyGenerator {
@@ -55,7 +66,7 @@ export class ReportOnSurveyGenerator {
     this.addSection1(reportData);
     
     // Section 2: Survey Based On
-    this.addSection2(reportData);
+    this.addSection2(reportData, options);
     
     // Section 3 & 4: Beacons
     this.addSection3And4(reportData);
@@ -108,13 +119,21 @@ export class ReportOnSurveyGenerator {
     this.doc.setFontSize(10);
     this.doc.setFont('helvetica', 'normal');
     
+    const surveyOf = composeReportSurveyOf({
+      standNames: options.standNames,
+      township: options.township,
+      parentProperty: options.parentProperty,
+      wholePortion: options.wholePortion,
+      fallbackSurveyOf: options.surveyOf,
+    });
+    
     const info = [
       `Land Surveyor: ${options.surveyorName}`,
       `License Number: ${options.licenseNumber}`,
       `Firm: ${options.firm}`,
       `Address: ${options.address}`,
       `Survey Date: ${options.surveyDate}`,
-      `Survey Of: ${options.surveyOf}`
+      `Survey Of: ${surveyOf}`
     ];
     
     info.forEach(line => {
@@ -168,7 +187,7 @@ export class ReportOnSurveyGenerator {
   /**
    * Section 2: Survey Based On
    */
-  private addSection2(reportData: ReportOnSurveyData): void {
+  private addSection2(reportData: ReportOnSurveyData, options: ReportGenerationOptions): void {
     this.checkPageBreak(40);
     
     this.doc.setFontSize(11);
@@ -209,6 +228,14 @@ export class ReportOnSurveyGenerator {
         this.doc.text(`  ${names}`, this.margin + 10, this.currentY);
         this.currentY += this.lineHeight;
       }
+    }
+    
+    if (options.instrumentDescription) {
+      const serials = [options.instrumentBaseSerial, options.instrumentRoverSerial]
+        .filter(Boolean)
+        .join(', ');
+      this.doc.text(`• Equipment: ${options.instrumentDescription}${serials ? ` (${serials})` : ''}`, this.margin + 5, this.currentY);
+      this.currentY += this.lineHeight;
     }
     
     if (basis.previousSurvey) {
@@ -256,6 +283,21 @@ export class ReportOnSurveyGenerator {
     const replacedBeacons = reportData.beacons?.filter(b => b.status === 'replaced') || [];
     
     if (foundBeacons.length > 0) {
+      // Acceptance clause composed from the s.67(5) comparison result:
+      // "Beacons A, B ... were found ... After comparison, positions of all
+      // the found beacons/stations except X were accepted ..."
+      const acceptance = buildFoundBeaconsNarrative(reportData);
+      const acceptanceLines = this.doc.splitTextToSize(
+        `${acceptance.foundSentence} ${acceptance.comparisonSentence} ${acceptance.adoptionSentence}`,
+        this.pageWidth - this.margin * 2 - 10
+      );
+      acceptanceLines.forEach((line: string) => {
+        this.checkPageBreak(10);
+        this.doc.text(line, this.margin + 5, this.currentY);
+        this.currentY += this.lineHeight;
+      });
+      this.currentY += 2;
+      
       foundBeacons.forEach(beacon => {
         this.checkPageBreak(20);
         this.doc.text(`• Beacon ${beacon.beaconId}:`, this.margin + 5, this.currentY);

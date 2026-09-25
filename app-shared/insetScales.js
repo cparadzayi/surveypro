@@ -10,8 +10,10 @@
  * late, on paper.
  *
  * These are not the SI 727 Reg 32(2) prescribed scales: those govern the
- * FIGURE, which is a measured drawing. A locality diagram is a sketch of where
- * the job is, and is captioned as such.
+ * FIGURE. A locality diagram carries true positions -- control stations, or
+ * the survey mapped among its far reference marks -- so it is a measured
+ * drawing and its caption states the scale it was fitted at; these are the
+ * rungs a surveyor expects to read on it.
  */
 
 /** Round denominators a surveyor expects to read on a locality diagram. */

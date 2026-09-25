@@ -20,7 +20,7 @@ import { DxfDocument } from './dxf-r12.js';
 import { contiguousMarks, CONTIG_STUB_MM } from '../diagram/contiguousMarks.js';
 import { edgeStrip } from '../diagram/edgeStrip.js';
 import { SI727_SCALE_LADDER } from '../../../../app-shared/si727Scales.js';
-import { crowdedClusters, INSET_CROWD_MM } from './crowdedBeacons.js';
+import { crowdedClusters } from './crowdedBeacons.js';
 import { insetCells } from './insetCells.js';
 import { insetScaleToFit } from '../../../../app-shared/insetScales.js';
 import { isReferenceMarkName } from '../../../../app-shared/beaconName.js';
@@ -88,6 +88,13 @@ export const LAYOUT = {
   // below 200 mm is clear right across -- the inset ends at 196.13 and the
   // certificate sits on the left at x 5.5/19.94.
   srNumber: { cx: 148.5, baseline: 205.0 },
+
+  // Control the merged locality map cannot hold: the column between the figure
+  // (panel ends at x 152), the approval box (x from 228.13) and the inset
+  // (y from 109.69). A trig ten kilometres out would shrink the survey to a
+  // dot, so instead of drawing it there it is stated here with its reduced
+  // coordinates -- which is how far control is carried on a drawn plan.
+  control: { x0: 156.0, x1: 226.0, baseline: 67.0, step: 4.0, heading: 73.0 },
 
   // cap heights, mm on paper
   /**
@@ -327,6 +334,12 @@ function fmtArea(v) {
   return `${int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')},${dec}`;
 }
 
+/** A control station's reduced coordinate, whole metres, space thousands -- the
+ *  same style as the areas, so the note and the computations read alike. */
+function fmtCoord(v) {
+  return Math.round(Number(v) || 0).toLocaleString('en-US').replace(/,/g, ' ');
+}
+
 /**
  * How far a boundary line must stop short of a beacon, in paper mm: the reach
  * of the largest part of that sign.
@@ -382,7 +395,7 @@ export function generateWorkingPlan(spec) {
     const g = loToGround(t); return [g.e, g.n];
   });
   const all = beaconPts.concat(extraPts);
-  const bb = {
+  const bbAll = {
     e0: Math.min(...all.map((p) => p[0])), e1: Math.max(...all.map((p) => p[0])),
     n0: Math.min(...all.map((p) => p[1])), n1: Math.max(...all.map((p) => p[1])),
   };
@@ -390,11 +403,85 @@ export function generateWorkingPlan(spec) {
   /* ---- scale */
   const panelW = L.panel.x1 - L.panel.x0;
   const panelH = L.panel.y1 - L.panel.y0;
-  let scale = spec.scale;
-  if (scale === 'auto' || scale == null) {
-    const need = Math.max((bb.e1 - bb.e0) / panelW, (bb.n1 - bb.n0) / panelH)
+  const scaleIndex = (s) => STANDARD_SCALES.indexOf(s);
+  const pickScale = (b) => {
+    const need = Math.max((b.e1 - b.e0) / panelW, (b.n1 - b.n0) / panelH)
       * 1000 * FIGURE_BREATHING;
-    scale = STANDARD_SCALES.find((s) => s >= need) ?? STANDARD_SCALES.at(-1);
+    return STANDARD_SCALES.find((s) => s >= need) ?? STANDARD_SCALES.at(-1);
+  };
+
+  /* ---- the divided figure: a far mark must not shrink the survey.
+   *
+   * The extent covers every beacon -- "if that means the next scale up, that is
+   * the honest answer" -- but one far reference mark can push a whole sheet a
+   * prescribed scale coarser than its survey needs, and then the STANDS shrink
+   * to serve a mark a corner reads once. The divided figure pays both bills:
+   * the main figure is drawn for the ground it actually measures, and the
+   * outlying marks are carried by the locality map, which draws the survey's
+   * footprint with them, to a scale that fits the pair together. The sheet
+   * still draws every mark -- nothing is lost -- and the measured survey is
+   * drawn as large as it deserves.
+   *
+   * One boundary rule, taken from the renderer's own corner: a beacon a parcel
+   * ring (or the remainder ring) is built from NEVER moves. Its position is a
+   * corner of the figure, and removing the corner leaves a boundary that does
+   * not close. Only marks the geometry does not stand on -- a far reference
+   * mark, a base point, a station strung out past the plot -- are eligible.
+   *
+   * Splitting is the SCALE GAP: it happens only when leaving the outlier in the
+   * figure's extent forces the figure at least one prescribed scale coarser
+   * than the survey alone needs, and only when the scale is AUTO. An explicit
+   * scale is the surveyor's own instruction for the whole sheet; reorganising
+   * it under them is not forgiveness, it is surprise.
+   */
+  const holdNames = new Set([
+    ...(spec.parcels ?? []).flatMap((p) => p.ring ?? []),
+    ...(spec.remainderRing ?? []).filter((n) => byName.has(n)),
+  ]);
+
+  let bb = bbAll;
+  let scale = spec.scale;
+  /** Beacons the MAIN figure gives up to the locality map (the marks it maps
+   *  beside the survey's footprint, out of range of any figure scale). Empty on
+   *  an ordinary sheet, so nothing is reserved or skipped. */
+  const extensionNames = new Set();
+  if (scale === 'auto' || scale == null) {
+    const scaleAll = pickScale(bbAll);
+    let bbMain = bbAll, scaleMain = scaleAll, remote = [];
+    if (holdNames.size > 0) {
+      // The survey's own ground: the ring vertices, padded by up to a tenth of
+      // its size but never more than 150 m, never less than 30 m. A reference
+      // mark inside that band is part of the survey's fabric and stays on the
+      // figure; one beyond it is the outlier the merged map exists for.
+      const ringPts = [...holdNames].map((n) => byName.get(n)).filter(Boolean);
+      const re0 = Math.min(...ringPts.map((p) => p.e)),
+        re1 = Math.max(...ringPts.map((p) => p.e)),
+        rn0 = Math.min(...ringPts.map((p) => p.n)),
+        rn1 = Math.max(...ringPts.map((p) => p.n));
+      const pad = Math.min(150, Math.max(30,
+        Math.max(re1 - re0, rn1 - rn0) * 0.10));
+      const withinPad = (e, n) => e >= re0 - pad && e <= re1 + pad
+        && n >= rn0 - pad && n <= rn1 + pad;
+      const mainNames = [...byName.values()]
+        .filter((b) => holdNames.has(b.name) || withinPad(b.e, b.n));
+      const mainPts = mainNames.map((b) => [b.e, b.n]).concat(extraPts);
+      bbMain = {
+        e0: Math.min(...mainPts.map((p) => p[0])),
+        e1: Math.max(...mainPts.map((p) => p[0])),
+        n0: Math.min(...mainPts.map((p) => p[1])),
+        n1: Math.max(...mainPts.map((p) => p[1])),
+      };
+      scaleMain = pickScale(bbMain);
+      remote = [...byName.values()]
+        .filter((b) => !holdNames.has(b.name) && !withinPad(b.e, b.n));
+    }
+    if (remote.length > 0 && scaleIndex(scaleMain) < scaleIndex(scaleAll)) {
+      for (const b of remote) extensionNames.add(b.name);
+      bb = bbMain;
+      scale = scaleMain;
+    } else {
+      scale = scaleAll;
+    }
   }
   const mm = (v) => (v * scale) / 1000;              // paper mm -> ground metres
 
@@ -410,16 +497,21 @@ export function generateWorkingPlan(spec) {
    * Its position is a corner of the figure, and removing the corner would leave
    * a boundary that does not close.
    */
-  const crowded = crowdedClusters([...byName.values()], mm(INSET_CROWD_MM));
+const crowded = crowdedClusters(
+    [...byName.values()].filter((b) => !extensionNames.has(b.name)),
+    (b) => mm(symbolClearance(b.symbol)),
+  );
   const ringBeacons = new Set((spec.parcels ?? []).flatMap((p) => p.ring ?? []));
   const insetOnly = new Set(
     crowded.flat()
       .filter((b) => b.symbol === 'foundNotAdopted' && !ringBeacons.has(b.name))
       .map((b) => b.name),
   );
-  /** Beacons the figure itself draws. */
-  const figureBeacons = () => [...byName.values()].filter((b) => !insetOnly.has(b.name));
-
+  /** Beacons the figure itself draws. The marks the divided figure sets aside
+   *  are drawn in the locality map, later; the main figure neither draws nor
+   *  labels them. */
+  const figureBeacons = () => [...byName.values()].filter((b) =>
+    !insetOnly.has(b.name) && !extensionNames.has(b.name));
   /* ---- sheet placement: centre the figure in the plan panel */
   const panelCx = (L.panel.x0 + L.panel.x1) / 2;
   const panelCy = (L.panel.y0 + L.panel.y1) / 2;
@@ -647,6 +739,16 @@ export function generateWorkingPlan(spec) {
     }[p];
   };
 
+  /** How far below its centre a control-point sign reaches, in paper mm. The
+   *  trig triangle's flat BASE hangs below; the official control point, drawn
+   *  inverted, points down. The monument name letters clear whichever part it
+   *  is before the label sits under the symbol. */
+  const symbolDownreach = (symbol) => {
+    const S = L.symbol;
+    if (symbol === 'ocp') return S.trigH * 0.62;
+    return S.trigH * 0.38;                       // trig
+  };
+
   /** The side of a beacon its name prefers: outward from the figure. */
   const namePreferred = (b) => {
     const p = b.label ?? 'auto';
@@ -701,6 +803,20 @@ export function generateWorkingPlan(spec) {
     const rect = textRect(b.name, b.e + c[0], b.n + c[1], h, c[2]);
     reservedName.set(b.name, rect);
     occupied.push(rect);
+  }
+
+  /** A control point's monument NAME -- "Mnyami" under trig beacon 170/P --
+   *  lettered centred below its own symbol. Reserved with the first rank of
+   *  labels so the designation, the grid ticks and every other label work
+   *  around it; drawn once the beacon itself is on the sheet. Only control
+   *  points carry one: it is the registry name of the mark, not commentary. */
+  const underName = new Map();
+  for (const b of figureBeacons()) {
+    if (!b.cpName) continue;
+    const down = mm(symbolDownreach(b.symbol)) + mm(0.6) + h;
+    const at = [b.e, b.n - down];
+    underName.set(b.name, at);
+    occupied.push(textRect(b.cpName, at[0], at[1], h, 'center'));
   }
 
   /** Does a segment cross this rectangle? Cohen-Sutherland, so a label is
@@ -1191,10 +1307,12 @@ export function generateWorkingPlan(spec) {
     if (ang > Math.PI / 2 || ang < -Math.PI / 2) { ang += Math.PI; flip = true; }
     const [sx, sy] = flip ? [b.e, b.n] : [a.e, a.n];
 
-    // Default to the side away from the surveyed figure, unless the caller has
-    // forced a side with a signed offset.
+    // Default to the side away from the surveyed figure. A signed offset names a
+    // specific bank -- +ve LEFT of from->to, -ve right -- and a surveyor's
+    // labourers flatten roads onto whatever side they actually are, so a sign
+    // is honoured as given and never overridden by where the figure sits.
     let base = mm(Math.abs(rd.offset ?? 3));
-    if (rd.offset != null && rd.offset < 0) base = -base;
+    if (rd.offset != null) base = Math.sign(rd.offset) * Math.abs(base);
     else {
       const mx = (a.e + b.e) / 2, my = (a.n + b.n) / 2;
       const side = -Math.sin(ang) * (figCx - mx) + Math.cos(ang) * (figCy - my);
@@ -1210,28 +1328,29 @@ export function generateWorkingPlan(spec) {
     const halfLen = Math.hypot(b.e - a.e, b.n - a.n) / 2;
 
     // A road name is pinned to its own line, so its only freedoms are how far
-    // out, how far along, and -- last -- which side. Tried in that order. This
-    // is why roads are drawn BEFORE beacon names: the label with three freedoms
-    // claims its place before the one with twenty-four.
-    /** Candidates for a name of a given height, centred on the side. */
+    // out and how far ALONG it runs. It never changes bank: a name lettered on
+    // the side it labels is read as naming THAT road, and the same name on the
+    // far side reads as naming whatever lies across it -- which is a different
+    // (and possibly unsurveyed) property. So candidates are stepped outward
+    // from the road on the sign `base` already carries, and the search, the
+    // size ladder and the last-resort fit all keep that sign.
+    /** Candidates for a name of a given height, centred on the labelled side. */
     const roadTries = (hgt) => {
       const start = halfLen - (0.63 * hgt * wf * rd.name.length) / 2;
       const out = [];
-      for (const sideSign of [1, -1]) {
-        for (const outK of [1, 1.8, 2.6]) {
-          // Sliding ALONG the road is the cheapest freedom a road name has: it
-          // stays on its own line and simply moves away from the corner. The
-          // range reaches past the side's terminals, because a long name
-          // centred on a short side covers the very beacons whose numbers have
-          // to sit there, and those are placed after it.
-          for (const alongD of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
-            const off = base * sideSign * outK;
-            const al = start + alongD * mm(9);
-            out.push([
-              sx - Math.sin(ang) * off + Math.cos(ang) * al,
-              sy + Math.cos(ang) * off + Math.sin(ang) * al,
-            ]);
-          }
+      for (const outK of [1, 1.8, 2.6]) {
+        // Sliding ALONG the road is the cheapest freedom a road name has: it
+        // stays on its own line and simply moves away from the corner. The
+        // range reaches past the side's terminals, because a long name
+        // centred on a short side covers the very beacons whose numbers have
+        // to sit there, and those are placed after it.
+        for (const alongD of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+          const off = base * outK;
+          const al = start + alongD * mm(9);
+          out.push([
+            sx - Math.sin(ang) * off + Math.cos(ang) * al,
+            sy + Math.cos(ang) * off + Math.sin(ang) * al,
+          ]);
         }
       }
       return out;
@@ -1242,15 +1361,28 @@ export function generateWorkingPlan(spec) {
     // draughtsman does, and the only honest answer when the room is simply not
     // there. On this sheet 'M  A  I  N   R  O  A  D' is 47 mm against a 40 mm
     // side, with the figure already filling 102 of the panel's 146 mm.
+    // We step down the ISO size ladder so the label shrinks to fit the road
+    // space on its OWN BANK, never changing side. The floor is the smaller
+    // size (1.8 mm); below that the label would be unreadable. Rungs that fall
+    // under the floor in their own right are dropped, not reached: at the
+    // reading size the 0.7 rung is 1.75 mm, and a label smaller than the floor
+    // it ends at would only be reached on the way down to a size it cannot be.
     let chosen = null, rhUsed = rh;
-    for (const hgt of [rh, mm(SMALLER_THAN_READING_MM)]) {
+    const sizes = [
+      rh,
+      rh * 0.9,
+      rh * 0.8,
+      rh * 0.7,
+      mm(SMALLER_THAN_READING_MM),
+    ].filter((s) => s >= mm(SMALLER_THAN_READING_MM) - 1e-9);
+    for (const hgt of sizes) {
       const pick = bestOf(roadTries(hgt), (c) => rotatedRect(rd.name, c[0], c[1], hgt, ang, wf));
       chosen = pick; rhUsed = hgt;
       // The reading size is kept the moment it finds CLEAR ground -- being on
       // the panel is not enough, since the room beside a road is exactly what a
-      // long name runs out of. Failing that the smaller size is taken even if
-      // it too is crowded: a name that cannot fit does less damage set small,
-      // and the loop ends on the smallest tried rather than the largest.
+      // long name runs out of. We continue shrinking until we hit clear ground
+      // or the floor, so the name stays on its own side at the largest size
+      // that actually fits.
       if (pick && pick.clear) break;
     }
     // Last resort: slide it bodily onto the drawing. A name too long for the
@@ -1263,8 +1395,19 @@ export function generateWorkingPlan(spec) {
     if (!insidePanel(rect)) {
       const dx = Math.max(0, panelBox[0] - rect[0]) - Math.max(0, rect[2] - panelBox[2]);
       const dy = Math.max(0, panelBox[1] - rect[1]) - Math.max(0, rect[3] - panelBox[3]);
-      ax += dx; ay += dy;
-      rect = [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy];
+      // The pan back onto the sheet may not carry the name across its own
+      // road: a label overhanging a margin by a millimetre is an honest
+      // overflow of a name too long for its side, but the same name on the
+      // far bank is lettered against the wrong property. Keep the pan only
+      // when the centre it produces is still on the side `base` names.
+      const cx = (rect[0] + rect[2]) / 2 + dx;
+      const cy = (rect[1] + rect[3]) / 2 + dy;
+      const cross = Math.cos(ang) * (cy - a.n) - Math.sin(ang) * (cx - a.e);
+      const onOwnSide = base === 0 || cross * Math.sign(base) >= 0;
+      if (onOwnSide) {
+        ax += dx; ay += dy;
+        rect = [rect[0] + dx, rect[1] + dy, rect[2] + dx, rect[3] + dy];
+      }
     }
     occupied.push(rect);
     d.text(rd.name, [ax, ay], rhUsed,
@@ -1336,6 +1479,15 @@ export function generateWorkingPlan(spec) {
     occupied.push(chosen.rect);
     d.text(b.name, [b.e + P[0], b.n + P[1]], h,
       { layer: 'BEACON-TEXT', style: 'ARIAL', align: P[2] });
+
+    // The monument's own name, centred below its sign where the reservation
+    // already held the ground. It is fixed -- no compass search -- because it
+    // names the mark it belongs to, not a label that may sit anywhere readable.
+    const under = underName.get(b.name);
+    if (under) {
+      d.text(b.cpName, under, h,
+        { layer: 'BEACON-TEXT', style: 'ARIAL', align: 'center' });
+    }
   }
 
   /* ---- title block */
@@ -1388,23 +1540,62 @@ export function generateWorkingPlan(spec) {
 
   /* ---- insets ------------------------------------------------------------
    *
-   * The sheet has one uncommitted region, the inset box at the lower right, and
-   * it may have to hold more than the locality diagram. Beacons that plot on
-   * top of each other at this scale -- 87D and 87DNew of Brackenhurst are
-   * 0.061 m apart, which is 0.03 mm at 1:2000 -- get a detail of their own,
-   * because the figure has room to draw one mark where the ground carries two.
+* The sheet has one uncommitted region, the inset box at the lower right, and
+    * it may have to hold more than the locality diagram. Beacons whose signs
+    * overlap by more than half -- one centre inside the other's mark -- get a
+    * detail of their own: 87D and 87DNew of Brackenhurst are 0.061 m apart,
+    * which is 0.03 mm at 1:2000, and the figure has room to draw one mark where
+    * the ground carries two. A pair that merely touches reads as two marks and
+    * stays on the figure.
    *
    * They are numbered in one sequence. The locality diagram is INSET 1 when
    * there is one and the details follow; with no locality diagram the details
    * start at 1. A sheet with no crowding draws exactly what it always drew.
    */
   const insets = [];
-  if (spec.inset) {
-    insets.push({
+  // A FAR MARK's ground position, in the survey's own lo-axes. These are the
+  // outlying reference marks the divided figure set aside earlier.
+  const farMarks = [...byName.values()]
+    .filter((b) => extensionNames.has(b.name))
+    .map((b) => ({ ...b, ...loToGround(b) }));
+  // The survey's own ground: everything the main figure draws, notes included.
+  // Its envelope is the footprint shown in the merged map, and the size that
+  // decides which control can be drawn in that map and which must be noted.
+  const surveyPts = [...byName.values()]
+    .filter((b) => !extensionNames.has(b.name))
+    .map((b) => [b.e, b.n])
+    .concat(extraPts);
+  const surveyEnv = (() => {
+    const es = surveyPts.map((p) => p[0]), ns = surveyPts.map((p) => p[1]);
+    return { e0: Math.min(...es), e1: Math.max(...es), n0: Math.min(...ns), n1: Math.max(...ns) };
+  })();
+
+  if (spec.inset || farMarks.length) {
+    const control = (spec.inset?.beacons ?? []).map((b) => ({ ...b, ...loToGround(b) }));
+    const locality = {
       kind: 'locality',
-      scale: spec.inset.scale,
-      beacons: spec.inset.beacons.map((b) => ({ ...b, ...loToGround(b) })),
-    });
+      specScale: spec.inset?.scale,
+      control,
+      far: farMarks,
+      surveyEnv,
+    };
+    // When the far marks are mapped there is ONE map, and it is measured: the
+    // survey's footprint plus those marks at a scale fitted to all of them. The
+    // fitted envelope is computed once so the map and the control note below
+    // cannot disagree about which station drew and which was set down in type.
+    // (The SCALE that fits it varies with the cell actually given -- a sheet
+    // whose box is shared with a detail fits the map to the half it gets --
+    // so the fit is settled on the way, in the loop, against that cell.)
+    if (farMarks.length) {
+      const es = farMarks.map((b) => b.e), ns = farMarks.map((b) => b.n);
+      locality.env = {
+        eMin: Math.min(surveyEnv.e0, ...es),
+        eMax: Math.max(surveyEnv.e1, ...es),
+        nMin: Math.min(surveyEnv.n0, ...ns),
+        nMax: Math.max(surveyEnv.n1, ...ns),
+      };
+    }
+    insets.push(locality);
   }
   for (const cluster of crowded) {
     insets.push({ kind: 'detail', beacons: cluster });
@@ -1418,14 +1609,17 @@ export function generateWorkingPlan(spec) {
     d.polyline([S(B.x0, B.y0), S(B.x1, B.y0), S(B.x1, B.y1), S(B.x0, B.y1)],
       { layer: 'INSET', closed: true });
 
-    // Every inset is schematic enough to say so: a locality drawn on the sheet
-    // has its content squeezed to whatever cell the sheet gives it, and the
-    // marks of a crowded pair are spread to be read. No distance in either one
-    // is exact, and the regulation's own caption is "Inset (not to scale)"
-    // whatever the kind. Saying so is not optional.
-    const caption = 'INSET ' + number + ' (NOT TO SCALE)';
-    d.text(caption, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
-      { layer: 'INSET', style: 'ARIAL-BOLD' });
+    // Every DETAIL is schematic enough to say so: the members of a crowded pair
+    // are spread to be read, so no distance in one is exact, and the regulation's
+    // own caption is "Inset (not to scale)" whatever the kind. A LOCALITY is the
+    // one exception: its positions are measured -- the survey among its far
+    // reference marks, or among the control it was observed from -- so it says
+    // its scale instead. Only the localities do.
+    if (ins.kind !== 'locality') {
+      const caption = 'INSET ' + number + ' (NOT TO SCALE)';
+      d.text(caption, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
+        { layer: 'INSET', style: 'ARIAL-BOLD' });
+    }
 
     const iSym = mm(1.0);
     // Every round sign in an inset is drawn at this radius, so it is the
@@ -1485,9 +1679,36 @@ export function generateWorkingPlan(spec) {
       }
     };
 
-    const label = (at, name) =>
-      d.text(name, [at[0], at[1] + mm(1.8)], mm(L.text.insetLabel),
+    /** Inscribe a beacon's inscription around its sign as the INSET draws it:
+     *  the DESIGNATION (170/P) reads ABOVE the mark, a control point's
+     *  MONUMENT NAME (Mnyami) reads centred BELOW it. Both cleared of the
+     *  sign by the same half-millimetre gap. The clearances use the inset's
+     *  own symbol scale so a trig shrunk to its cell is cleared by that
+     *  smaller reach, not by the figure's. */
+    const letter = (at, b) => {
+      const h = mm(L.text.insetLabel);
+      const k = (iRing * 2) / mm(L.symbol.foundOuterDia);
+      const up = (() => {
+        if (b.symbol === 'trig') return mm(L.symbol.trigH) * k * 0.62;
+        if (b.symbol === 'ocp') return mm(L.symbol.trigH) * k * 0.38;
+        if (b.symbol === 'rm') return iSym * 1.2;
+        return iRing;
+      })();
+      const down = (() => {
+        if (b.symbol === 'ocp') return mm(L.symbol.trigH) * k * 0.62;
+        if (b.symbol === 'trig') return mm(L.symbol.trigH) * k * 0.38;
+        if (b.symbol === 'rm') return iSym * 1.2;
+        return iRing;
+      })();
+      // Designation ABOVE the symbol.
+      d.text(b.name, [at[0], at[1] + up + mm(0.5)], h,
         { layer: 'INSET', style: 'ARIAL', align: 'center' });
+      // Monument name BELOW the symbol (control points only).
+      if (b.cpName) {
+        d.text(b.cpName, [at[0], at[1] - down - mm(0.5) - h], h,
+          { layer: 'INSET', style: 'ARIAL', align: 'center' });
+      }
+    };
 
     // North point: the sheet's own meridian arrow at a fraction of its size.
     // Every inset carries one, the locality diagram and the details alike --
@@ -1498,8 +1719,51 @@ export function generateWorkingPlan(spec) {
     const nn = L.inset.north;
     drawNorthArrow(B.x1 - nn.dxFromRight, B.y0 + nn.dyFromTop, nn.scale, nn.letterMm);
 
+    if (ins.kind === 'locality' && ins.far.length) {
+      // THE SURVEY AMONG ITS REFERENCE MARKS. One map for the figure and the
+      // marks the divided figure set apart from it, at a scale that shows both
+      // -- no second EXTENSION frame, because there is no second map to host.
+      // A far mark alone cannot define a scale, but it is never alone here:
+      // the survey's own footprint is in the map with it. Everything is a
+      // measured drawing; only the signs stay at their conventional inset
+      // sizes, exactly as the main figure renders its own.
+      const E = ins.env;
+      const cx = (B.x0 + B.x1) / 2, cy = (B.y0 + B.y1) / 2;
+      const need = Math.max((E.eMax - E.eMin) / (B.x1 - B.x0),
+        (E.nMax - E.nMin) / (B.y1 - B.y0)) * 1000 * FIGURE_BREATHING;
+      const F = STANDARD_SCALES.find((s) => s >= need) ?? STANDARD_SCALES.at(-1);
+      const ec = { e: (E.eMin + E.eMax) / 2, n: (E.nMin + E.nMax) / 2 };
+      const I = (e, n) => S(cx + ((e - ec.e) / F) * 1000, cy - ((n - ec.n) / F) * 1000);
+
+      // The survey's own footprint, light, so a reader can see what stays home
+      // and what stands beyond it.
+      const f0 = I(ins.surveyEnv.e0, ins.surveyEnv.n0);
+      const f1 = I(ins.surveyEnv.e1, ins.surveyEnv.n1);
+      d.polyline([f0, [f1[0], f0[1]], f1, [f0[0], f1[1]]],
+        { layer: 'INSET', closed: true, linetype: 'PLANDASH' });
+
+      // Control that lies inside this envelope maps beside the survey; control
+      // beyond it is stated in the note column, not flung to the edge of a map
+      // that belongs to nearer ground.
+      for (const b of ins.control) {
+        if (b.e < E.eMin || b.e > E.eMax || b.n < E.nMin || b.n > E.nMax) continue;
+        const at = I(b.e, b.n);
+        drawSign(at, b.symbol);
+        letter(at, b);
+      }
+      for (const b of ins.far) {
+        const at = I(b.e, b.n);
+        drawSign(at, b.symbol);
+        letter(at, b);
+      }
+      d.text(`INSET ${number} (1:${F})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
+        { layer: 'INSET', style: 'ARIAL-BOLD' });
+      return;
+    }
+
     if (ins.kind === 'locality') {
-      const ib = ins.beacons;
+      // THE CONTROL THE SURVEY WAS OBSERVED FROM, at the scale that fits it.
+      const ib = ins.control;
       const eMin = Math.min(...ib.map((b) => b.e)), eMax = Math.max(...ib.map((b) => b.e));
       const nMin = Math.min(...ib.map((b) => b.n)), nMax = Math.max(...ib.map((b) => b.n));
       const ic = { e: (eMin + eMax) / 2, n: (nMin + nMax) / 2 };
@@ -1511,7 +1775,7 @@ export function generateWorkingPlan(spec) {
       // cell actually given, and keep whichever scale is coarser so a full-width
       // cell still draws exactly what it always drew.
       const iScale = Math.max(
-        Number(ins.scale) || 0,
+        Number(ins.specScale) || 0,
         insetScaleToFit(eMax - eMin, nMax - nMin, B.x1 - B.x0, B.y1 - B.y0),
       );
       const lcx = (B.x0 + B.x1) / 2, lcy = (B.y0 + B.y1) / 2;
@@ -1520,8 +1784,10 @@ export function generateWorkingPlan(spec) {
       for (const b of ib) {
         const at = I(b.e, b.n);
         drawSign(at, b.symbol);
-        label(at, b.name);
+        letter(at, b);
       }
+      d.text(`INSET ${number} (1:${iScale})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
+        { layer: 'INSET', style: 'ARIAL-BOLD' });
       return;
     }
 
@@ -1557,7 +1823,7 @@ export function generateWorkingPlan(spec) {
       const at = S(dcx + spread * Math.cos(ang), dcy - spread * Math.sin(ang));
       d.line(centre, at, { layer: 'INSET' });
       drawSign(at, b.symbol ?? 'peg');
-      label(at, b.name);
+      letter(at, b);
     });
 
     // And on the figure itself: a leader arrow drives straight at the spot the
@@ -1672,6 +1938,33 @@ export function generateWorkingPlan(spec) {
       d.text('INSET ' + number, tail, labelH, { layer: 'INSET', style: 'ARIAL' });
     }
   });
+
+  /* ---- control beyond the map -----------------------------------------------
+   * A merged map draws every control it can, and the stations it cannot hold
+   * are stated here in the free column beside the figure: their names and
+   * reduced coordinates, which is the fact a reader of the plan needs. A trig
+   * a kilometre out would flatten the survey to a dot if it were mapped at all,
+   * and a note carries it further and more honestly than a sign at the edge. */
+  const noted = new Map();
+  for (const ins of insets) {
+    if (ins.kind !== 'locality' || !ins.far.length) continue;
+    for (const b of ins.control) {
+      const E = ins.env;
+      if (b.e >= E.eMin && b.e <= E.eMax && b.n >= E.nMin && b.n <= E.nMax) continue;
+      noted.set(b.name, b);
+    }
+  }
+  if (noted.size) {
+    const C = L.control;
+    d.text('NATIONAL CONTROL OBSERVED', S(C.x0, C.baseline), mm(L.text.title),
+      { layer: 'TITLE', style: 'ARIAL-BOLD' });
+    let y = C.baseline + C.step;
+    for (const b of noted.values()) {
+      d.text(`${b.name}  N ${fmtCoord(-b.n)}  E ${fmtCoord(b.e)}`,
+        S(C.x0, y), mm(L.text.grid), { layer: 'TITLE', style: 'ARIAL' });
+      y += C.step;
+    }
+  }
 
   // sheetSize is reported so the caller can tell the surveyor -- and the plot
   // dialog -- which paper this was drawn for.

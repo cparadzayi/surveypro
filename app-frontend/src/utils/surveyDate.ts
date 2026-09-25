@@ -109,6 +109,27 @@ export function toISODate(value: string | Date | null | undefined): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
+/** Month names of the local calendar, for the "July 2026" cover wording. */
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * The date as "July 2026", the month-and-year the survey was carried out as the
+ * field book cover and the report on survey state it. A string that cannot be
+ * read is returned exactly as it was recorded, like formatSurveyDate.
+ */
+export function formatSurveyMonthYear(value: string | Date | null | undefined): string {
+  const date = parseSurveyDate(value);
+  if (date) {
+    const monthName = MONTH_NAMES[date.getMonth()];
+    if (monthName) return `${monthName} ${date.getFullYear()}`;
+  }
+
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 /** Column headings that have held the survey date across the CSVs in use. */
 export const SURVEY_DATE_COLUMNS = [
   'date',

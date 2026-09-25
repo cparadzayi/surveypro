@@ -7,7 +7,7 @@
 import jsPDF from 'jspdf';
 import { bankersRound } from './cadastral-precision';
 import type { SiteCalibration } from './siteCalibration';
-import { formatSurveyDate, parseSurveyDate } from './surveyDate';
+import { formatSurveyDate, formatSurveyMonthYear } from './surveyDate';
 import { paginateFieldBook, computePartyWallPaginate, FIELD_BOOK_POINTS_PER_PAGE, type PartyWallRow } from './fieldBookPagination';
 import { isCalculatedPoint } from './calculatedPoint';
 
@@ -48,22 +48,7 @@ export interface FieldBookMetadata {
  * predating the date input hold free text such as "June 2020", and mangling it
  * into "Invalid Date" would be worse than leaving it alone.
  */
-const surveyedIn = (surveyDate?: string): string => {
-  if (!surveyDate) return '';
-
-  // parseSurveyDate reads both the ISO dates the date input produces and the
-  // dd/mm/yyyy a CSV carries, and builds a local date, so there is no timezone
-  // rollover to print the wrong month and year for 1 January.
-  const date = parseSurveyDate(surveyDate);
-  if (!date) return surveyDate;
-
-  const monthName = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ][date.getMonth()];
-
-  return monthName ? `${monthName} ${date.getFullYear()}` : surveyDate;
-};
+const surveyedIn = (surveyDate?: string): string => formatSurveyMonthYear(surveyDate);
 
 export class FieldBookGenerator {
   private options = {

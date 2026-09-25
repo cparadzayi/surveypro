@@ -1164,7 +1164,7 @@
               :disabled="!workflowState.documents.coordinateList"
               class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
-              Continue to Area Computation →
+              Continue to Parcel Digitization & Areas →
             </button>
           </div>
         </div>
@@ -1665,7 +1665,7 @@ const workflowSteps = [
   { id: 'found-beacons', name: 'Found Beacons Assessment' },
   { id: 'coordinate-list', name: 'Coordinate List' },
   { id: 'qgis-export', name: 'QGIS Export & Digitization' },
-  { id: 'area-computation', name: 'Area Computation' },
+  { id: 'area-computation', name: 'Parcel Digitization & Areas' },
   { id: 'servitudes', name: 'Servitudes & Dispensation' },
   { id: 'report-on-survey', name: 'Report on Survey' },
   { id: 'dsg-certificate', name: 'DSG Certificate' }
@@ -3518,7 +3518,7 @@ function handleResetCoordinateList() {
 }
 
 function handleResetAreaComputation() {
-  if (confirm('Reset Area Computation? This will clear all parcel definitions and area computations.')) {
+  if (confirm('Reset Parcel Digitization & Areas? This will clear all parcel definitions and area computations.')) {
     resetAreaComputation();
   }
 }

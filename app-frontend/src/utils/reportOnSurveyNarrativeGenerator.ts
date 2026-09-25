@@ -11,6 +11,7 @@ import { formatDateDDMMYYYY } from './dateFormat';
 import { formatSurveyMonthYear } from './surveyDate';
 import { buildFoundBeaconsNarrative } from './beaconAcceptanceNarrative';
 import { composeReportSurveyOf } from './planDesignation';
+import { purposeSentence } from './reportPurpose';
 
 export interface ReportGenerationOptions {
   surveyorName: string;
@@ -124,6 +125,12 @@ export class NarrativeReportOnSurveyGenerator {
     this.doc.setFontSize(11);
     this.doc.setFont('helvetica', 'normal');
     
+    // S.R. No — the report header pairs it with the designation, right-justified
+    // above the "Survey of" line.
+    const srText = `S.R. No: ${reportData.srNumber || 'N/A'}`;
+    this.doc.text(srText, this.pageWidth - this.margin, this.currentY, { align: 'right' });
+    this.currentY += this.lineHeight;
+    
     // Survey of — composed from the stand names + township phrase when the
     // structured parts are supplied, else the authored surveyOf verbatim.
     const surveyOf = composeReportSurveyOf({
@@ -135,26 +142,17 @@ export class NarrativeReportOnSurveyGenerator {
     });
     this.addLabelValuePair('Survey of', surveyOf || 'N/A');
     
-    // District
-    if (options.district) {
-      this.addLabelValuePair('District', options.district);
-    }
-    
-    this.currentY += 3;
+    // Land Surveyor
+    this.addLabelValuePair('Land Surveyor', options.surveyorName || 'N/A');
     
     // Date of Survey — the month and year the work was done, as the field book
     // cover states it ("July 2026"), not the day the form was filled in.
     this.addLabelValuePair('Date of Survey', formatSurveyMonthYear(options.surveyDate) || 'N/A');
     
-    this.currentY += 3;
-    
-    // Land Surveyor
-    this.addLabelValuePair('Land Surveyor', options.surveyorName || 'N/A');
-    
-    this.currentY += 3;
-    
-    // Assistant
-    this.addLabelValuePair('Assistant', options.assistant || 'N/A');
+    // District
+    if (options.district) {
+      this.addLabelValuePair('District', options.district);
+    }
     
     this.currentY += 8;
   }
@@ -205,24 +203,13 @@ export class NarrativeReportOnSurveyGenerator {
     
     this.doc.setFont('helvetica', 'normal');
     
-    // Build purpose text
-    let purposeText = '';
-    
-    const typeLabels: Record<string, string> = {
-      'state-land': 'Survey of State Land',
-      'municipal-land': 'Survey of Municipal Land',
-      'private-land': 'Survey of Private Land',
-      'amended-title': 'Amended Title',
-      'servitude': 'Survey of Servitude',
-      'replacement': 'Replacement Diagram',
-      'other': reportData.purpose.otherDescription || 'Other'
-    };
-    
-    purposeText = typeLabels[reportData.purpose.type] || 'Survey';
-    
-    if (reportData.purpose.reference) {
-      purposeText += ` vide ${reportData.purpose.reference}.`;
-    }
+    // Build purpose text from the statutory subcategories, with the reference
+    // cited under its statutory term (e.g. planning authority approval).
+    const purposeText = purposeSentence(
+      reportData.purpose.type,
+      reportData.purpose.reference,
+      reportData.purpose.otherDescription
+    );
     
     const lines = this.doc.splitTextToSize(purposeText, this.pageWidth - this.margin * 2 - this.labelWidth - 5);
     lines.forEach((line: string, index: number) => {
@@ -405,7 +392,7 @@ export class NarrativeReportOnSurveyGenerator {
     let narrativeText = '';
     
     if (allPlacedBeacons.length === 0) {
-      narrativeText = 'NIL.';
+      narrativeText = 'All new beacons were positioned in accordance to the approved subdivision layout plan.';
     } else {
       // Build narrative for placed beacons
       const beaconDescriptions: string[] = [];

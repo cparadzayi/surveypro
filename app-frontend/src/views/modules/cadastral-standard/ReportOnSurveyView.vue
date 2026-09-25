@@ -132,20 +132,20 @@
             >
               <option value="">Select survey type...</option>
               <option value="mining-lease">Mining Lease</option>
-              <option value="subdivision">Subdivision</option>
-              <option value="state-land">State Land</option>
-              <option value="municipal-land">Municipal Land</option>
-              <option value="private-land">Private Land</option>
+              <option value="subdivision">Subdivision (General)</option>
+              <option value="state-land">Subdivision of State Land</option>
+              <option value="municipal-land">Subdivision of Municipal Land</option>
+              <option value="private-land">Subdivision of Private Land</option>
               <option value="amended-title">Amended Title</option>
               <option value="servitude">Servitude</option>
-              <option value="replacement">Replacement Diagram</option>
-              <option value="other">Other</option>
+              <option value="replacement">Replacement of Beacons</option>
+              <option value="other">Others</option>
             </select>
           </div>
           
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">
-              Permit/Approval Reference <span class="text-red-500">*</span>
+              {{ referenceLabel }} <span class="text-red-500">*</span>
             </label>
             <input
               v-model="reportData.purpose.reference"
@@ -396,6 +396,18 @@
                 class="w-full px-3 py-2 border border-gray-300 rounded-md"
                 placeholder="e.g., SR 21/2016"
               />
+              
+              <div class="mt-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  Letter Reference Permitting Adoption
+                </label>
+                <input
+                  v-model="reportData.curvilinearBoundaries.previousSurveyReference"
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="e.g., SG/1/2024/501"
+                />
+              </div>
             </div>
             
             <div>
@@ -447,6 +459,19 @@
           </button>
           
           <button
+            @click="previewReport"
+            :disabled="!isFormValid || isGenerating"
+            :class="[
+              'px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500',
+              isFormValid && !isGenerating
+                ? 'text-blue-700 bg-blue-100 border border-blue-300 hover:bg-blue-200' 
+                : 'text-gray-400 bg-gray-100 border border-gray-300 cursor-not-allowed'
+            ]"
+          >
+            👁️ Preview Report
+          </button>
+          
+          <button
             @click="generateReport"
             :disabled="!isFormValid || isGenerating"
             :class="[
@@ -472,8 +497,16 @@ import { useSmartSuggestions } from '../../../composables/useSmartSuggestions'
 import SmartSuggestionDropdown from '../../../components/SmartSuggestionDropdown.vue'
 import type { ReportOnSurveyData } from '../../../types/cadastral'
 import { resolveSurveyDesignation } from '../../../utils/surveyDesignation'
+import { purposeReferenceFieldLabel } from '../../../utils/reportPurpose'
 
 const { workflowState, saveStepData } = useCadastralWorkflow()
+
+// Emit the generated report so the parent can open it in the in-app preview
+// modal — the Report on Survey preview must show the report, not the DSG
+// certificate it precedes.
+const emit = defineEmits<{
+  (e: 'preview-report', payload: { blob: Blob; pageCount: number; fileName: string }): void
+}>()
 
 // Smart Suggestions
 const {
@@ -552,6 +585,10 @@ const updateControlPointNames = () => {
 
 // Computed properties
 const beaconCount = computed(() => reportData.value.beacons?.length || 0)
+
+// The reference input is labelled per the statutory purpose subcategory
+// (letter of instruction reference, planning authority approval reference).
+const referenceLabel = computed(() => purposeReferenceFieldLabel(reportData.value.purpose.type))
 
 const isFormValid = computed(() => {
   return (
@@ -744,47 +781,7 @@ const generateReport = async () => {
 
     console.log('[ReportOnSurvey] Generating PDF...', reportData.value, 'Format:', reportFormat.value)
 
-    // The "Survey of" description is composed in one place — resolveSurveyDesignation
-    // — from the surveyed parcels' stands + township + parent property captured in
-    // Project Setup, matching the practitioner report (e.g. "Stand 403-405
-    // Brackenhurst Township of Stand 87 Brackenhurst Township"). The composition
-    // falls back to the authored designation when the parcels cannot be loaded.
-    const designation = await resolveSurveyDesignation(workflowState)
-
-    // Prepare generation options
-    const options = {
-      surveyorName: workflowState.surveyorInfo.landSurveyor,
-      licenseNumber: workflowState.surveyorInfo.licenseNumber,
-      firm: workflowState.surveyorInfo.firm,
-      address: workflowState.surveyorInfo.address,
-      surveyDate: workflowState.surveyorInfo.surveyDate,
-      surveyOf: designation.surveyOf,
-      district: projectDistrict.value,
-      assistant: assistantSurveyor.value,
-      township: designation.township,
-      parentProperty: designation.parentProperty,
-      wholePortion: designation.wholePortion,
-      standNames: designation.standNames,
-      instrumentDescription: workflowState.surveyorInfo.instrumentDescription || '',
-      instrumentBaseSerial: workflowState.surveyorInfo.instrumentBaseSerial || '',
-      instrumentRoverSerial: workflowState.surveyorInfo.instrumentRoverSerial || ''
-    }
-    
-    // Generate PDF based on selected format
-    let pdf: Blob
-    let pageCount: number
-    
-    if (reportFormat.value === 'narrative') {
-      const { generateNarrativeReportOnSurveyPDF } = await import('../../../utils/reportOnSurveyNarrativeGenerator')
-      const result = await generateNarrativeReportOnSurveyPDF(reportData.value, options)
-      pdf = result.pdf
-      pageCount = result.pageCount
-    } else {
-      const { generateReportOnSurveyPDF } = await import('../../../utils/reportOnSurveyGenerator')
-      const result = await generateReportOnSurveyPDF(reportData.value, options)
-      pdf = result.pdf
-      pageCount = result.pageCount
-    }
+    const { pdf, pageCount } = await buildReportPdf()
     
     console.log('[ReportOnSurvey] PDF generated:', pageCount, 'pages')
     
@@ -821,6 +818,12 @@ const generateReport = async () => {
       }
     }
     
+    // Preview the generated report so the user sees the Report on Survey
+    // itself — not the DSG Certificate that follows this step. The preview
+    // modal is owned by CadastralStandardView.
+    const previewFileName = `${reportData.value.srNumber || 'Report'}_ReportOnSurvey.pdf`
+    emit('preview-report', { blob: pdf, pageCount, fileName: previewFileName })
+    
     alert(`✅ Report on Survey generated successfully! (${pageCount} pages)`)
     
     // Move to next step
@@ -829,6 +832,68 @@ const generateReport = async () => {
   } catch (error) {
     console.error('[ReportOnSurvey] Error generating report:', error)
     alert('❌ Error generating report. Please check the console for details.')
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+// Build the report PDF from the current form data and chosen format.
+const buildReportPdf = async () => {
+  // The "Survey of" description is composed in one place — resolveSurveyDesignation
+  // — from the surveyed parcels' stands + township + parent property captured in
+  // Project Setup, matching the practitioner report (e.g. "Stand 403-405
+  // Brackenhurst Township of Stand 87 Brackenhurst Township"). The composition
+  // falls back to the authored designation when the parcels cannot be loaded.
+  const designation = await resolveSurveyDesignation(workflowState)
+
+  // Prepare generation options
+  const options = {
+    surveyorName: workflowState.surveyorInfo.landSurveyor,
+    licenseNumber: workflowState.surveyorInfo.licenseNumber,
+    firm: workflowState.surveyorInfo.firm,
+    address: workflowState.surveyorInfo.address,
+    surveyDate: workflowState.surveyorInfo.surveyDate,
+    surveyOf: designation.surveyOf,
+    district: projectDistrict.value,
+    assistant: assistantSurveyor.value,
+    township: designation.township,
+    parentProperty: designation.parentProperty,
+    wholePortion: designation.wholePortion,
+    standNames: designation.standNames,
+    instrumentDescription: workflowState.surveyorInfo.instrumentDescription || '',
+    instrumentBaseSerial: workflowState.surveyorInfo.instrumentBaseSerial || '',
+    instrumentRoverSerial: workflowState.surveyorInfo.instrumentRoverSerial || ''
+  }
+
+  // Generate PDF based on selected format
+  if (reportFormat.value === 'narrative') {
+    const { generateNarrativeReportOnSurveyPDF } = await import('../../../utils/reportOnSurveyNarrativeGenerator')
+    return await generateNarrativeReportOnSurveyPDF(reportData.value, options)
+  }
+  const { generateReportOnSurveyPDF } = await import('../../../utils/reportOnSurveyGenerator')
+  return await generateReportOnSurveyPDF(reportData.value, options)
+}
+
+// Preview the report in the parent's document preview modal without saving or
+// advancing the workflow.
+const previewReport = async () => {
+  if (!isFormValid.value) {
+    alert('Please complete all required fields before previewing the report.')
+    return
+  }
+  
+  if (isGenerating.value) return
+  
+  try {
+    isGenerating.value = true
+    
+    const { pdf, pageCount } = await buildReportPdf()
+    const fileName = `${reportData.value.srNumber || 'Report'}_ReportOnSurvey_Preview.pdf`
+    
+    emit('preview-report', { blob: pdf, pageCount, fileName })
+  } catch (error) {
+    console.error('[ReportOnSurvey] Error previewing report:', error)
+    alert('❌ Error generating report preview. Please check the console for details.')
   } finally {
     isGenerating.value = false
   }

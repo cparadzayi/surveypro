@@ -12,6 +12,7 @@ import {
 import { formatDateDDMMYYYY } from './dateFormat';
 import { buildFoundBeaconsNarrative } from './beaconAcceptanceNarrative';
 import { composeReportSurveyOf } from './planDesignation';
+import { purposeStatement } from './reportPurpose';
 
 export interface ReportGenerationOptions {
   surveyorName: string;
@@ -59,8 +60,8 @@ export class ReportOnSurveyGenerator {
     console.log('[ReportOnSurvey] Generating PDF...', reportData);
 
     // Title page
-    this.addTitle(reportData.srNumber);
-    this.addSurveyorInfo(options);
+    this.addTitle();
+    this.addSurveyorInfo(reportData, options);
     
     // Section 1: Purpose
     this.addSection1(reportData);
@@ -95,7 +96,7 @@ export class ReportOnSurveyGenerator {
   /**
    * Add title and header
    */
-  private addTitle(srNumber: string): void {
+  private addTitle(): void {
     this.doc.setFontSize(16);
     this.doc.setFont('helvetica', 'bold');
     this.doc.text('REPORT ON SURVEY', this.pageWidth / 2, this.currentY, { align: 'center' });
@@ -104,18 +105,13 @@ export class ReportOnSurveyGenerator {
     this.doc.setFontSize(12);
     this.doc.text('SI 727 of 1979 - Surveyor General\'s Regulations', this.pageWidth / 2, this.currentY, { align: 'center' });
     
-    this.currentY += 10;
-    this.doc.setFontSize(11);
-    this.doc.setFont('helvetica', 'normal');
-    this.doc.text(`Survey Register Number: ${srNumber}`, this.pageWidth / 2, this.currentY, { align: 'center' });
-    
     this.currentY += 15;
   }
 
   /**
    * Add surveyor information
    */
-  private addSurveyorInfo(options: ReportGenerationOptions): void {
+  private addSurveyorInfo(reportData: ReportOnSurveyData, options: ReportGenerationOptions): void {
     this.doc.setFontSize(10);
     this.doc.setFont('helvetica', 'normal');
     
@@ -128,17 +124,21 @@ export class ReportOnSurveyGenerator {
     });
     
     const info = [
+      `Survey Of: ${surveyOf}`,
+      `S.R. No: ${reportData.srNumber}`,
       `Land Surveyor: ${options.surveyorName}`,
+      `Date of Survey: ${options.surveyDate}`,
       `License Number: ${options.licenseNumber}`,
       `Firm: ${options.firm}`,
-      `Address: ${options.address}`,
-      `Survey Date: ${options.surveyDate}`,
-      `Survey Of: ${surveyOf}`
+      `Address: ${options.address}`
     ];
     
     info.forEach(line => {
-      this.doc.text(line, this.margin, this.currentY);
-      this.currentY += this.lineHeight;
+      const wrapped = this.doc.splitTextToSize(line, this.pageWidth - this.margin * 2);
+      wrapped.forEach((part: string) => {
+        this.doc.text(part, this.margin, this.currentY);
+        this.currentY += this.lineHeight;
+      });
     });
     
     this.currentY += 5;
@@ -160,28 +160,22 @@ export class ReportOnSurveyGenerator {
     this.doc.setFont('helvetica', 'normal');
     this.doc.setFontSize(10);
     
-    // Survey type
-    const typeLabels: Record<string, string> = {
-      'state-land': 'State Land',
-      'municipal-land': 'Municipal Land',
-      'private-land': 'Private Land',
-      'amended-title': 'Amended Title',
-      'servitude': 'Servitude',
-      'replacement': 'Replacement Diagram',
-      'other': 'Other'
-    };
+    // Statutory subcategory, lettered (a)-(g), with the reference cited under
+    // its statutory term (e.g. "letter of instruction reference").
+    const statement = purposeStatement(
+      reportData.purpose.type,
+      reportData.purpose.reference,
+      reportData.purpose.otherDescription
+    );
     
-    const typeLabel = typeLabels[reportData.purpose.type] || reportData.purpose.type;
-    this.doc.text(`Survey Type: ${typeLabel}`, this.margin + 5, this.currentY);
-    this.currentY += this.lineHeight;
-    
-    if (reportData.purpose.type === 'other' && reportData.purpose.otherDescription) {
-      this.doc.text(`Description: ${reportData.purpose.otherDescription}`, this.margin + 5, this.currentY);
+    const lines = this.doc.splitTextToSize(statement, this.pageWidth - this.margin * 2 - 10);
+    lines.forEach((line: string) => {
+      this.checkPageBreak(10);
+      this.doc.text(line, this.margin + 5, this.currentY);
       this.currentY += this.lineHeight;
-    }
+    });
     
-    this.doc.text(`Permit/Approval Reference: ${reportData.purpose.reference}`, this.margin + 5, this.currentY);
-    this.currentY += this.lineHeight + 5;
+    this.currentY += 5;
   }
 
   /**
@@ -201,32 +195,79 @@ export class ReportOnSurveyGenerator {
     const basis = reportData.surveyBasis;
     
     if (basis.trigStations) {
-      this.doc.text('• Trig Stations:', this.margin + 5, this.currentY);
+      this.doc.text('(a) Trigonometrical stations:', this.margin + 5, this.currentY);
       this.currentY += this.lineHeight;
       if (basis.trigStationNames && basis.trigStationNames.length > 0) {
         const names = basis.trigStationNames.join(', ');
-        this.doc.text(`  ${names}`, this.margin + 10, this.currentY);
-        this.currentY += this.lineHeight;
+        const lines = this.doc.splitTextToSize(`   ${names}`, this.pageWidth - this.margin * 2 - 10);
+        lines.forEach((line: string) => {
+          this.checkPageBreak(10);
+          this.doc.text(line, this.margin + 10, this.currentY);
+          this.currentY += this.lineHeight;
+        });
       }
     }
     
     if (basis.townSurveyMarks) {
-      this.doc.text('• Town Survey Marks:', this.margin + 5, this.currentY);
+      this.doc.text('(b) Town survey marks:', this.margin + 5, this.currentY);
       this.currentY += this.lineHeight;
       if (basis.townSurveyMarkNames && basis.townSurveyMarkNames.length > 0) {
         const names = basis.townSurveyMarkNames.join(', ');
-        this.doc.text(`  ${names}`, this.margin + 10, this.currentY);
-        this.currentY += this.lineHeight;
+        const lines = this.doc.splitTextToSize(`   ${names}`, this.pageWidth - this.margin * 2 - 10);
+        lines.forEach((line: string) => {
+          this.checkPageBreak(10);
+          this.doc.text(line, this.margin + 10, this.currentY);
+          this.currentY += this.lineHeight;
+        });
       }
     }
     
     if (basis.officialControlPoints) {
-      this.doc.text('• Official Control Points:', this.margin + 5, this.currentY);
+      this.doc.text('(c) Official control points:', this.margin + 5, this.currentY);
       this.currentY += this.lineHeight;
       if (basis.controlPointNames && basis.controlPointNames.length > 0) {
         const names = basis.controlPointNames.join(', ');
-        this.doc.text(`  ${names}`, this.margin + 10, this.currentY);
-        this.currentY += this.lineHeight;
+        const lines = this.doc.splitTextToSize(`   ${names}`, this.pageWidth - this.margin * 2 - 10);
+        lines.forEach((line: string) => {
+          this.checkPageBreak(10);
+          this.doc.text(line, this.margin + 10, this.currentY);
+          this.currentY += this.lineHeight;
+        });
+      }
+    }
+    
+    if (basis.previousSurvey) {
+      const srLine = basis.previousSurveySRNumber
+        ? `(d) Previous survey (S.R. No: ${basis.previousSurveySRNumber})`
+        : '(d) Previous survey';
+      this.doc.text(srLine, this.margin + 5, this.currentY);
+      this.currentY += this.lineHeight;
+    }
+    
+    if (basis.localSystem) {
+      this.doc.text('(e) Local system:', this.margin + 5, this.currentY);
+      this.currentY += this.lineHeight;
+      if (basis.localSystemDetails) {
+        if (basis.localSystemDetails.baseMeasurementComparison) {
+          this.doc.text('   (i) Comparison of base measurement:', this.margin + 10, this.currentY);
+          this.currentY += this.lineHeight;
+          const lines = this.doc.splitTextToSize(`       ${basis.localSystemDetails.baseMeasurementComparison}`, this.pageWidth - this.margin * 2 - 15);
+          lines.forEach((line: string) => {
+            this.checkPageBreak(10);
+            this.doc.text(line, this.margin + 15, this.currentY);
+            this.currentY += this.lineHeight;
+          });
+        }
+        if (basis.localSystemDetails.trueNorthMethod) {
+          this.doc.text('   (ii) How true north was derived:', this.margin + 10, this.currentY);
+          this.currentY += this.lineHeight;
+          const lines = this.doc.splitTextToSize(`       ${basis.localSystemDetails.trueNorthMethod}`, this.pageWidth - this.margin * 2 - 15);
+          lines.forEach((line: string) => {
+            this.checkPageBreak(10);
+            this.doc.text(line, this.margin + 15, this.currentY);
+            this.currentY += this.lineHeight;
+          });
+        }
       }
     }
     
@@ -236,30 +277,6 @@ export class ReportOnSurveyGenerator {
         .join(', ');
       this.doc.text(`• Equipment: ${options.instrumentDescription}${serials ? ` (${serials})` : ''}`, this.margin + 5, this.currentY);
       this.currentY += this.lineHeight;
-    }
-    
-    if (basis.previousSurvey) {
-      this.doc.text('• Previous Survey:', this.margin + 5, this.currentY);
-      this.currentY += this.lineHeight;
-      if (basis.previousSurveySRNumber) {
-        this.doc.text(`  S.R. Number: ${basis.previousSurveySRNumber}`, this.margin + 10, this.currentY);
-        this.currentY += this.lineHeight;
-      }
-    }
-    
-    if (basis.localSystem) {
-      this.doc.text('• Local System:', this.margin + 5, this.currentY);
-      this.currentY += this.lineHeight;
-      if (basis.localSystemDetails) {
-        if (basis.localSystemDetails.baseMeasurementComparison) {
-          this.doc.text(`  Base Measurement: ${basis.localSystemDetails.baseMeasurementComparison}`, this.margin + 10, this.currentY);
-          this.currentY += this.lineHeight;
-        }
-        if (basis.localSystemDetails.trueNorthMethod) {
-          this.doc.text(`  True North Method: ${basis.localSystemDetails.trueNorthMethod}`, this.margin + 10, this.currentY);
-          this.currentY += this.lineHeight;
-        }
-      }
     }
     
     this.currentY += 5;
@@ -285,7 +302,8 @@ export class ReportOnSurveyGenerator {
     if (foundBeacons.length > 0) {
       // Acceptance clause composed from the s.67(5) comparison result:
       // "Beacons A, B ... were found ... After comparison, positions of all
-      // the found beacons/stations except X were accepted ..."
+      // the found beacons/stations except X were accepted ...", which also
+      // states which lines were adopted.
       const acceptance = buildFoundBeaconsNarrative(reportData);
       const acceptanceLines = this.doc.splitTextToSize(
         `${acceptance.foundSentence} ${acceptance.comparisonSentence} ${acceptance.adoptionSentence}`,
@@ -298,30 +316,59 @@ export class ReportOnSurveyGenerator {
       });
       this.currentY += 2;
       
-      foundBeacons.forEach(beacon => {
-        this.checkPageBreak(20);
-        this.doc.text(`• Beacon ${beacon.beaconId}:`, this.margin + 5, this.currentY);
+      // (a) Particular circumstances — scattered stones, no centre mark,
+      //     concreted by owner, fence-posts, etc.
+      const withCircumstances = foundBeacons.filter(b => b.condition || b.circumstances);
+      if (withCircumstances.length > 0) {
+        this.doc.setFont('helvetica', 'bold');
+        this.doc.text('(a) Circumstances', this.margin + 5, this.currentY);
         this.currentY += this.lineHeight;
+        this.doc.setFont('helvetica', 'normal');
         
-        if (beacon.condition) {
-          this.doc.text(`  Condition: ${beacon.condition}`, this.margin + 10, this.currentY);
-          this.currentY += this.lineHeight;
-        }
-        
-        if (beacon.alignmentTest) {
-          this.doc.text(`  Alignment Test: ${beacon.alignmentTest.testResult}`, this.margin + 10, this.currentY);
-          this.currentY += this.lineHeight;
-        }
-        
-        if (beacon.circumstances) {
-          const lines = this.doc.splitTextToSize(`  Circumstances: ${beacon.circumstances}`, this.pageWidth - this.margin * 2 - 10);
+        withCircumstances.forEach(beacon => {
+          const bits: string[] = [];
+          if (beacon.condition) bits.push(beacon.condition);
+          if (beacon.circumstances) bits.push(beacon.circumstances);
+          const lines = this.doc.splitTextToSize(
+            `  • Beacon ${beacon.beaconId}: ${bits.join('. ')}.`,
+            this.pageWidth - this.margin * 2 - 10
+          );
           lines.forEach((line: string) => {
             this.checkPageBreak(10);
             this.doc.text(line, this.margin + 10, this.currentY);
             this.currentY += this.lineHeight;
           });
-        }
-      });
+        });
+        this.currentY += 2;
+      }
+      
+      // (b) Alignment tests — full details with results.
+      const withTests = foundBeacons.filter(b => b.alignmentTest);
+      if (withTests.length > 0) {
+        this.doc.setFont('helvetica', 'bold');
+        this.doc.text('(b) Alignment tests', this.margin + 5, this.currentY);
+        this.currentY += this.lineHeight;
+        this.doc.setFont('helvetica', 'normal');
+        
+        withTests.forEach(beacon => {
+          const test = beacon.alignmentTest!;
+          const parts: string[] = [];
+          if (test.line) parts.push(`on line ${test.line}`);
+          if (test.testResult) parts.push(test.testResult);
+          if (test.discrepancyMeters !== undefined) parts.push(`${test.discrepancyMeters} m discrepancy`);
+          parts.push(test.acceptable ? 'within tolerance' : 'outside tolerance');
+          const lines = this.doc.splitTextToSize(
+            `  • Beacon ${beacon.beaconId}: ${parts.join(', ')}.`,
+            this.pageWidth - this.margin * 2 - 10
+          );
+          lines.forEach((line: string) => {
+            this.checkPageBreak(10);
+            this.doc.text(line, this.margin + 10, this.currentY);
+            this.currentY += this.lineHeight;
+          });
+        });
+        this.currentY += 2;
+      }
     } else {
       this.doc.text('No beacons found.', this.margin + 5, this.currentY);
       this.currentY += this.lineHeight;
@@ -344,7 +391,7 @@ export class ReportOnSurveyGenerator {
         this.currentY += this.lineHeight;
         
         if (beacon.replacement?.reason) {
-          this.doc.text(`  Reason: ${beacon.replacement.reason}`, this.margin + 10, this.currentY);
+          this.doc.text(`  Reason for choice of position: ${beacon.replacement.reason}`, this.margin + 10, this.currentY);
           this.currentY += this.lineHeight;
         }
         
@@ -393,7 +440,7 @@ export class ReportOnSurveyGenerator {
     
     this.doc.setFontSize(11);
     this.doc.setFont('helvetica', 'bold');
-    this.doc.text('5. CURVILINEAR BOUNDARIES', this.margin, this.currentY);
+    this.doc.text('5. CURVILINEAR BOUNDARIES PLOTTED FROM', this.margin, this.currentY);
     this.currentY += this.lineHeight + 2;
     
     this.doc.setFont('helvetica', 'normal');
@@ -405,22 +452,42 @@ export class ReportOnSurveyGenerator {
       return;
     }
     
-    if (reportData.curvilinearBoundaries.method) {
-      const methodLabels: Record<string, string> = {
-        'previous-survey': 'Previous Survey',
-        'taped-traverse': 'Taped Traverse',
-        'tacheometric-traverse': 'Tacheometric Traverse',
-        'aerial-photography': 'Aerial Photography',
-        'various': 'Various Methods'
-      };
-      
-      const methodLabel = methodLabels[reportData.curvilinearBoundaries.method] || reportData.curvilinearBoundaries.method;
-      this.doc.text(`Method: ${methodLabel}`, this.margin + 5, this.currentY);
-      this.currentY += this.lineHeight;
-    }
+    const methodLetters: Record<string, string> = {
+      'previous-survey': 'a',
+      'taped-traverse': 'b',
+      'tacheometric-traverse': 'c',
+      'aerial-photography': 'd',
+      'various': 'e'
+    };
     
-    if (reportData.curvilinearBoundaries.previousSurveySRNumber) {
-      this.doc.text(`Previous Survey S.R. Number: ${reportData.curvilinearBoundaries.previousSurveySRNumber}`, this.margin + 5, this.currentY);
+    const methodLabels: Record<string, string> = {
+      'previous-survey': 'Previous survey',
+      'taped-traverse': 'Taped traverse',
+      'tacheometric-traverse': 'Tacheometric traverse',
+      'aerial-photography': 'Aerial photography',
+      'various': 'Various methods'
+    };
+    
+    const method = reportData.curvilinearBoundaries.method;
+    const letter = method ? methodLetters[method] : '';
+    const label = method ? methodLabels[method] || method : '';
+    
+    if (method === 'previous-survey') {
+      let line = `(${letter}) ${label}`;
+      if (reportData.curvilinearBoundaries.previousSurveySRNumber) {
+        line += ` - S.R. No: ${reportData.curvilinearBoundaries.previousSurveySRNumber}`;
+      }
+      if (reportData.curvilinearBoundaries.previousSurveyReference) {
+        line += `, letter reference permitting adoption: ${reportData.curvilinearBoundaries.previousSurveyReference}`;
+      }
+      const lines = this.doc.splitTextToSize(line, this.pageWidth - this.margin * 2 - 10);
+      lines.forEach((part: string) => {
+        this.checkPageBreak(10);
+        this.doc.text(part, this.margin + 5, this.currentY);
+        this.currentY += this.lineHeight;
+      });
+    } else if (method) {
+      this.doc.text(`(${letter}) ${label}`, this.margin + 5, this.currentY);
       this.currentY += this.lineHeight;
     }
     

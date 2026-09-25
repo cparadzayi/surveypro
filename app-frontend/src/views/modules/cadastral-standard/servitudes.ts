@@ -234,6 +234,19 @@ export interface PartyWallStatementRow {
  * side. Rows that resolve to the same stands + boundary are merged (a wall is
  * often recorded once per stand, so a single wall can otherwise appear twice).
  */
+/**
+ * Stands are listed in ascending order on the plan -- 1920, 1921 -- so the reader
+ * runs down the numbers. They must compare as NUMBERS: this survey carries 87 and
+ * 1720 together, and a string sort reads 1720 before 87, and 100 before 99. A
+ * stand with a letter sorts on its number first (2833A after 2469), then by text.
+ */
+function compareStands(a: string, b: string): number {
+  const na = parseInt(a, 10)
+  const nb = parseInt(b, 10)
+  if (Number.isNaN(na) || Number.isNaN(nb)) return a.localeCompare(b)
+  return na !== nb ? na - nb : a.localeCompare(b)
+}
+
 export function buildPartyWallStatementRows(
   servitudes: Servitude[],
   standForParcel: (parcelId: string) => string | null | undefined,
@@ -265,7 +278,7 @@ export function buildPartyWallStatementRows(
     const key = `${canonical(stands)}|${boundaryKey}`
     if (seen.has(key)) continue
     seen.add(key)
-    rows.push({ stands: stands.join(', '), boundary })
+    rows.push({ stands: [...stands].sort(compareStands).join(', '), boundary })
   }
   return rows
 }

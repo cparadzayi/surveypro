@@ -8431,7 +8431,7 @@ export function drawScheduleOfAreasMultiTable(
     const deedStartX = currentTableX + colStand + colArea + colDiagram;
 
     // Header text — 6pt Bold, lineBreak:false to prevent wrapping within columns
-    doc.fontSize(6).font("Helvetica-Bold");
+    doc.fontSize(BLOCKS.SCHEDULE_OF_AREAS.singleColumn.headerFontSize).font("Helvetica-Bold");
     doc.text("STAND", currentTableX + 2, headerY + 5, {
       width: colStand - 4,
       align: "center",
@@ -8496,7 +8496,7 @@ export function drawScheduleOfAreasMultiTable(
       const areaM2 = parcel.properties.area_m2 || 0;
       const areaFormatted = formatAreaSquareMetres(areaM2);
 
-      doc.fontSize(7).font("Helvetica");
+      doc.fontSize(BLOCKS.SCHEDULE_OF_AREAS.singleColumn.fontSize).font("Helvetica");
       doc.text(stand, currentTableX + 2, currentY + 4, {
         width: colStand - 4,
         align: "center",
@@ -8644,7 +8644,7 @@ function drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY, scheduleC
   const deedStartX = tableX + colStand + colArea + colDiagram;
 
   // Header text — 6pt Bold, lineBreak:false to prevent any wrapping within columns
-  doc.fontSize(6).font("Helvetica-Bold");
+  doc.fontSize(BLOCKS.SCHEDULE_OF_AREAS.singleColumn.headerFontSize).font("Helvetica-Bold");
 
   // STAND No. (rowspan 2)
   doc.text("STAND", tableX + 2, headerY + 5, {
@@ -8733,7 +8733,7 @@ function drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY, scheduleC
     const areaFormatted = formatAreaSquareMetres(areaM2);
 
     // Row data — 7pt regular (≤ 6pt Bold headers)
-    doc.fontSize(7).font("Helvetica");
+    doc.fontSize(BLOCKS.SCHEDULE_OF_AREAS.singleColumn.fontSize).font("Helvetica");
 
     doc.text(stand, tableX + 2, currentY + 4, {
       width: colStand - 4,
@@ -10878,8 +10878,8 @@ async function _generateGeoPDFInner(options, logger) {
       });
       const _rawWidths = computeScheduleColumnWidths({
         dataRows: _scheduleRows.map(extractScheduleRow),
-        headerFontSize: 6,   // matches drawScheduleOfAreasSingleColumn header font
-        bodyFontSize:   7,   // matches drawScheduleOfAreasSingleColumn body font
+        headerFontSize: BLOCKS.SCHEDULE_OF_AREAS.singleColumn.headerFontSize,
+        bodyFontSize:   BLOCKS.SCHEDULE_OF_AREAS.singleColumn.fontSize,
         measureText:    _pdfScheduleMeasurer,
       });
       // STAND No. / AREAS SQUARE METRES pinned to fixed widths; the remaining

@@ -7,6 +7,11 @@
  * - Backend: Import and use for rendering PDF
  */
 
+// Print-scale text sizes. A surveyor reads these off the paper, so they are
+// specified in millimetres at print scale and converted to the points both
+// renderers work in. 1 pt = 1/72 inch.
+const ptFromMm = (mm) => (mm * 72) / 25.4;
+
 // SI 727 Schedule of Areas - Full 6-column format
 //
 // ALL DIMENSIONS ARE IN PDF POINTS (1 pt = 1/72 inch ≈ 0.353 mm).
@@ -33,10 +38,10 @@ export const SCHEDULE_OF_AREAS = {
       { key: 'deedDate', label: 'DATE', width: 35, align: 'center', parentHeader: 'DEED' },
       { key: 'surveyor', label: 'SURVEYOR-GENERAL', width: 50, align: 'center' }
     ],
-    rowHeight: 13,   // 7pt body text; 13pt is the density that lets a dense schedule sit in two full-height columns
-    headerHeight: 25,
-    fontSize: 7,           // body row font (drawScheduleOfAreasSingleColumn:10434)
-    headerFontSize: 6,     // column header font (drawScheduleOfAreasSingleColumn:10307)
+    rowHeight: 16,   // 3mm body text; 16pt keeps roughly the old text-to-band ratio at the larger size
+    headerHeight: 35,
+    fontSize: ptFromMm(3),        // body row font: 3mm at print scale
+    headerFontSize: ptFromMm(3),  // column header font: 3mm, same as the contents
     titleFontSize: 9       // title font (drawScheduleOfAreasSingleColumn:10247)
   },
 
@@ -52,10 +57,10 @@ export const SCHEDULE_OF_AREAS = {
       { key: 'deedDate', label: 'DATE', width: 35, align: 'center', parentHeader: 'DEED' },
       { key: 'surveyor', label: 'SURVEYOR-GENERAL', width: 50, align: 'center' }
     ],
-    rowHeight: 13,   // must match singleColumn — both are the same table
-    headerHeight: 25,
-    fontSize: 7,
-    headerFontSize: 6,
+    rowHeight: 16,   // must match singleColumn — both are the same table
+    headerHeight: 35,
+    fontSize: ptFromMm(3),        // 3mm at print scale
+    headerFontSize: ptFromMm(3),  // 3mm, same as the contents
     titleFontSize: 9,
     columnSpacing: 10      // _SCHED_SPACING_BETWEEN at pdfkitGeoPDF.js:8941
   },
@@ -277,22 +282,22 @@ export const ENDORSEMENT_BLOCK = {
 // fonts) is defined here.
 export const SERVITUDE_STATEMENT = {
   heading: 'Party-wall servitudes data',
-  headingFont: { family: 'Helvetica-Bold', size: 8.5 },
+  headingFont: { family: 'Helvetica-Bold', size: ptFromMm(5) },   // 5mm at print scale
 
   columns: [
     { key: 'stands',   label: 'STAND NUMBER', align: 'left' },
     { key: 'boundary', label: 'BOUNDARY',     align: 'left' },
   ],
 
-  font:       { family: 'Helvetica',      size: 8    },
-  headerFont: { family: 'Helvetica-Bold', size: 7.5  },
+  font:       { family: 'Helvetica',      size: ptFromMm(3) },   // 3mm at print scale
+  headerFont: { family: 'Helvetica-Bold', size: ptFromMm(3) },   // 3mm, same as the contents
 
   padTop:          6,   // box padding above the heading
   padBottom:       6,   // box padding below the last data row
   headingGap:      4,   // gap between the heading line and the header row
-  headingLineHeight: 11,
-  headerHeight:    15,  // header-row band height
-  rowHeight:       14,  // each data-row band height
+  headingLineHeight: 17,   // fits the 5mm heading
+  headerHeight:    17,  // header-row band height (3mm text)
+  rowHeight:       16,  // each data-row band height (3mm text)
   cellPad:         6,   // per-side horizontal cell padding
   tableInset:      4,   // box edge → table edge
 

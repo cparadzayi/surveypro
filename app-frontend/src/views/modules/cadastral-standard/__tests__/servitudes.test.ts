@@ -152,33 +152,45 @@ describe('buildPartyWallStatementRows', () => {
       ...over,
     })
 
-  it('renders only party-wall servitudes, subject-first stands and beacon boundary', () => {
+  it('renders only party-wall servitudes, stands ascending and beacon boundary', () => {
     const rows = buildPartyWallStatementRows([
       pw({ adjoiningStand: '2469', fromBeacon: '2833A', toBeacon: '2833B' }),
       s({ type: 'storm-water', subjectId: '10' }),
     ], standForParcel)
-    expect(rows).toEqual([{ stands: '2833, 2469', boundary: '2833A – 2833B' }])
+    expect(rows).toEqual([{ stands: '2469, 2833', boundary: '2833A – 2833B' }])
+  })
+
+  it('orders the stands numerically, not as strings', () => {
+    // This survey runs stands 87 and 1720 together, so a plain string sort would
+    // read 1720 before 87, and 100 before 99. The numbers must compare as numbers.
+    const forParcel = (id: string) =>
+      ({ '10': '1720', '20': '87', '30': '100', '40': '99' } as Record<string, string>)[id] ?? undefined
+    const row = (subjectId: string, adjoiningSubjectId: string) =>
+      buildPartyWallStatementRows(
+        [pw({ subjectId, adjoiningSubjectId, adjoiningStand: undefined })], forParcel)[0].stands
+    expect(row('10', '20')).toBe('87, 1720')
+    expect(row('30', '40')).toBe('99, 100')
   })
 
   it('resolves the adjoining stand from the reciprocal parcel id (shared-pattern capture)', () => {
     const rows = buildPartyWallStatementRows([
       pw({ adjoiningSubjectId: '20', fromBeacon: '2833A', toBeacon: '2833B' }),
     ], standForParcel)
-    expect(rows).toEqual([{ stands: '2833, 2469', boundary: '2833A – 2833B' }])
+    expect(rows).toEqual([{ stands: '2469, 2833', boundary: '2833A – 2833B' }])
   })
 
   it('falls back to the side letter when no beacon pair exists', () => {
     expect(buildPartyWallStatementRows([pw({ side: 'BC' })], standForParcel))
-      .toEqual([{ stands: '2833, 2469', boundary: 'BC' }])
+      .toEqual([{ stands: '2469, 2833', boundary: 'BC' }])
   })
 
-  it('dedupes mirrored records (subject/adjoining swapped), keeping first order', () => {
+  it('dedupes mirrored records (subject/adjoining swapped)', () => {
     const rows = buildPartyWallStatementRows([
       pw({ subjectId: '10', adjoiningStand: '2469', fromBeacon: '2833A', toBeacon: '2833B' }),
       pw({ subjectId: '20', adjoiningStand: '2833', fromBeacon: '2833B', toBeacon: '2833A' }),
     ], standForParcel)
     // Canonical key sorts stands, so the mirror maps onto the first row.
-    expect(rows).toEqual([{ stands: '2833, 2469', boundary: '2833A – 2833B' }])
+    expect(rows).toEqual([{ stands: '2469, 2833', boundary: '2833A – 2833B' }])
   })
 
   it('skips records with no resolvable stand', () => {

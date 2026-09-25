@@ -1876,11 +1876,12 @@ export function generateDXF(options, logger) {
   const M_TO_PT = 1000 / S / (25.4 / 72);
   const PT_TO_M = 1 / M_TO_PT;
 
-  const dxfScheduleMeasure = buildScheduleMeasurer(6, 7);
+  const dxfScheduleMeasure = buildScheduleMeasurer(
+    SCHEDULE_OF_AREAS.singleColumn.headerFontSize, SCHEDULE_OF_AREAS.singleColumn.fontSize);
   const rawScheduleColumnWidthsPt = computeScheduleColumnWidths({
     dataRows:       surveyedFeatures.map(extractScheduleRow),
-    headerFontSize: 6,
-    bodyFontSize:   7,
+    headerFontSize: SCHEDULE_OF_AREAS.singleColumn.headerFontSize,
+    bodyFontSize:   SCHEDULE_OF_AREAS.singleColumn.fontSize,
     measureText:    dxfScheduleMeasure,
   });
   // STAND No. / AREAS SQUARE METRES pinned to fixed widths; the remaining

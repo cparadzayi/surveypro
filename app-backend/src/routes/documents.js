@@ -164,6 +164,7 @@ export default async function documentRoutes(fastify, options) {
         scanFolder(path.join(outputDir, 'complete-reports'), 'complete-reports')
         scanFolder(path.join(outputDir, 'reports'), 'reports')
         scanFolder(path.join(outputDir, 'certificates'), 'certificates')
+        scanFolder(path.join(outputDir, 'calibration'), 'calibration')
       }
 
       return { ok: true, documents }

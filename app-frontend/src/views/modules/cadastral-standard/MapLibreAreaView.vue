@@ -977,10 +977,12 @@ import { useAreaCompliance, type AreaType, type Parcel } from '../../../composab
 import { useParcelGeometry } from '../../../composables/useParcelGeometry';
 import { useComprehensivePDF, type NarrativeReportOptions } from '../../../composables/useComprehensivePDF';
 import { dispensationFromWorkflow } from '../../../composables/useDispensationCertificate';
+import { dsgCertificateFromWorkflow } from '../../../composables/useDSGCertificate';
 import { useAreaConsistencyPDF } from '../../../composables/useAreaConsistencyPDF';
 import { CalculationsPart1Generator, type SurveyPoint } from '../../../utils/calculations-part1';
 import { ComprehensiveDocumentGenerator } from '../../../utils/comprehensive-document';
 import { siteCalibrationFrom } from '../../../utils/siteCalibration';
+import { generateCalibrationReportPDF } from '../../../utils/calibration-pdf';
 import { PageAllocationService } from '../../../services/pageAllocation';
 import { autoSaveStepProducts } from '../../../services/workflowProductStorage';
 import { polygon as turfPolygon, featureCollection } from '@turf/helpers';
@@ -7122,6 +7124,13 @@ async function generateComprehensivePDF(
       console.log('[MapLibre] 📑 Dispensation Certificate included:', dispensation.portion, dispensation.servitudes.length, 'servitudes');
     }
 
+    // Dispatch the DSG Certificate (1/96) section from the persisted DSG
+    // Certificate stage (certificate text saved when the certificate was generated).
+    const dsgCertificate = dsgCertificateFromWorkflow(workflowState?.step_data)
+    if (dsgCertificate) {
+      console.log('[MapLibre] 📄 DSG Certificate (1/96) included');
+    }
+
     const result = await generateComprehensiveLatestPDF({
       computedParcels,
       calcPart1Blob,
@@ -7139,7 +7148,8 @@ async function generateComprehensivePDF(
       },
       reportData: reportInputs?.reportData,
       narrativeOptions: reportInputs?.narrativeOptions,
-      dispensation
+      dispensation,
+      dsg: dsgCertificate
     });
     
     if (!result.success) {
@@ -7159,7 +7169,8 @@ async function generateComprehensivePDF(
         `Total parcels in PDF: ${computedParcels.length}\n` +
         `  • New parcels: ${newParcels.length}\n` +
         `  • Existing parcels: ${existingParcels}\n` +
-        (result.dispensationBlob ? `  • Dispensation Certificate included\n` : '') + `\n` +
+        (result.dispensationBlob ? `  • Dispensation Certificate included\n` : '') +
+        (result.dsgBlob ? `  • DSG Certificate (1/96) included\n` : '') + `\n` +
         `File: Comprehensive_Latest.pdf\n` +
         `Location: ${result.filePath}\n\n` +
         `Note: This PDF contains ALL parcels and overwrites the previous version.`
@@ -7181,6 +7192,14 @@ async function generateComprehensivePDF(
     // Save each section of the record as its own file for independent retrieval.
     const recordWorkingDirectory = workflowState?.projectInfo?.workingDirectory;
     if (recordWorkingDirectory && twoPassSections && result.areasOnlyBlob) {
+      const calibration = siteCalibrationFrom(workflowState)
+      let calibrationBlob: Blob | undefined
+      if (calibration) {
+        calibrationBlob = generateCalibrationReportPDF(calibration, {
+          surveyorName: workflowState?.surveyorInfo?.landSurveyor || undefined,
+          projectTitle: (workflowState?.projectInfo as any)?.surveyDescription || undefined,
+        }).blob
+      }
       const split = await saveSurveyRecordSections({
         workingDirectory: recordWorkingDirectory,
         sections: {
@@ -7190,6 +7209,8 @@ async function generateComprehensivePDF(
           areas: result.areasOnlyBlob,
           beaconComparison: twoPassSections.beaconComparison,
           reportOnSurvey: result.narrativeBlob,
+          dsgCertificate: result.dsgBlob,
+          calibration: calibrationBlob,
         },
       });
       if (split.failed.length) {

@@ -13,6 +13,7 @@ describe('resolveTargetFolder', () => {
     expect(resolveTargetFolder('areas-consistency', structure)).toBe(structure.surveyRecord);
     expect(resolveTargetFolder('report-on-survey', structure)).toBe(structure.reports);
     expect(resolveTargetFolder('dsg-certificate', structure)).toBe(structure.certificates);
+    expect(resolveTargetFolder('site-calibration', structure)).toBe(structure.calibration);
   });
 
   it('routes dispensation-certificate to the certificates folder', () => {

@@ -12,6 +12,7 @@ describe('getProjectDirectoryStructure', () => {
     expect(s.generalPlans).toBe('Proj/output/general-plans')
     expect(s.workingPlans).toBe('Proj/output/working-plans')
     expect(s.surveyRecord).toBe('Proj/output/survey-record')
+    expect(s.calibration).toBe('Proj/output/calibration')
   })
 })
 

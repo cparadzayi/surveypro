@@ -1186,7 +1186,10 @@
       <ServitudesView v-if="workflowState.currentStep === 'servitudes'" />
 
       <!-- Step 9: Report on Survey -->
-      <ReportOnSurveyView v-if="workflowState.currentStep === 'report-on-survey'" />
+      <ReportOnSurveyView
+        v-if="workflowState.currentStep === 'report-on-survey'"
+        @preview-report="handleReportOnSurveyPreview"
+      />
 
       <!-- Step 4.5: QGIS Export & Digitization -->
       <QGISExportView v-if="workflowState.currentStep === 'qgis-export'" />
@@ -1411,6 +1414,7 @@ import { planCoordinateRefresh, refreshWorkflowCoordinateCopies } from './parcel
 import { areaCompute } from '../../../services/compute';
 import { useParcelsStore } from '../../../stores/parcels';
 import { parseCalibrationReport } from '../../../utils/siteCalibration';
+import { generateCalibrationReportPDF } from '../../../utils/calibration-pdf';
 import CSVReimportDialog from '../../../components/cadastral/CSVReimportDialog.vue';
 import MergeAnalysisDialog from '../../../components/cadastral/MergeAnalysisDialog.vue';
 import LiveCSVValidator from '../../../components/cadastral/LiveCSVValidator.vue';
@@ -1612,6 +1616,19 @@ function closePreviewModal() {
 function handleDocumentSaved(filePath: string) {
   console.log('✅ Document saved to:', filePath);
   // Optional: Show success notification
+}
+
+// Preview the Report on Survey in the in-app modal. The report is generated in
+// ReportOnSurveyView; this opens the modal with the generated blob.
+function handleReportOnSurveyPreview(payload: { blob: Blob; pageCount: number; fileName: string }) {
+  previewModal.value = {
+    isOpen: true,
+    title: 'Report on Survey',
+    subtitle: `${payload.pageCount || 0} pages`,
+    pdfBlob: payload.blob,
+    documentType: 'report-on-survey',
+    fileName: payload.fileName
+  };
 }
 
 // Calculations Part 1 state
@@ -3116,6 +3133,7 @@ async function handleCalibrationFileChange(event: Event) {
     const calibration = parseCalibrationReport(content);
     setSiteCalibration(calibration);
     console.log(`✅ Site calibration loaded: ${calibration.pairs.length} control pairs`);
+    void persistCalibrationReport(calibration);
   } catch (err: any) {
     // Leave any previously loaded calibration alone: a failed pick should not
     // silently discard a good one already in hand.
@@ -3124,6 +3142,46 @@ async function handleCalibrationFileChange(event: Event) {
   } finally {
     // Clear the input so re-picking the same file fires change again.
     target.value = '';
+  }
+}
+
+/**
+ * File the calibration report in the project's output folder.
+ *
+ * The data persists via setSiteCalibration ('csv-import' step_data), and the
+ * PDF regenerated here is the human-readable half of that persistence: an
+ * examiner finds the calibration in output/calibration/ without asking the
+ * surveyor to re-import the Trimble file. Regenerating with overwrite=true is
+ * exactly how a replacement calibration is handled — the next import simply
+ * rewrites the report.
+ */
+async function persistCalibrationReport(
+  calibration: ReturnType<typeof parseCalibrationReport>
+) {
+  const workingDirectory = workflowState.projectInfo.workingDirectory?.trim();
+  if (!workingDirectory) {
+    console.warn('⚠️ No working directory set - calibration report not saved to disk.');
+    return;
+  }
+  try {
+    const { blob } = generateCalibrationReportPDF(calibration, {
+      surveyorName: workflowState.surveyorInfo.landSurveyor?.trim() || undefined,
+      projectTitle: workflowState.projectInfo.name?.trim() || undefined,
+    });
+    const result = await saveDocument({
+      workingDirectory,
+      documentType: 'site-calibration',
+      fileName: 'CalibrationReport.pdf',
+      pdfBlob: blob,
+      overwrite: true,
+    });
+    console.log(
+      result.success
+        ? `💾 Calibration report saved: ${result.filePath}`
+        : `⚠️ Calibration report not saved: ${result.error || 'unknown error'}`
+    );
+  } catch (err) {
+    console.error('❌ Failed to save calibration report:', err);
   }
 }
 

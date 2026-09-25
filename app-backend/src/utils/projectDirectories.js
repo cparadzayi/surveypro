@@ -48,7 +48,8 @@ export async function createProjectDirectories(workingDirectory) {
       path.join(absolutePath, 'output', 'calculations'),
       path.join(absolutePath, 'output', 'coordinate-list'),
       path.join(absolutePath, 'output', 'reports'),
-      path.join(absolutePath, 'output', 'certificates')
+      path.join(absolutePath, 'output', 'certificates'),
+      path.join(absolutePath, 'output', 'calibration')
     ]
 
     // Create each directory if it doesn't exist
@@ -77,6 +78,7 @@ Directory Structure:
   - coordinate-list/  : Coordinate List PDFs
   - reports/          : Report on Survey PDFs
   - certificates/     : DSG Certificate PDFs
+  - calibration/      : GNSS Site Calibration PDFs
 
 Generated: ${new Date().toISOString()}
 `

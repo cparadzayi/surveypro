@@ -9,6 +9,10 @@ export interface SurveyRecordSections {
   beaconComparison?: Blob
   /** Narrative Report of Survey — copied into the Reports folder */
   reportOnSurvey?: Blob
+  /** DSG Certificate (1/96) — copied into the Certificates folder */
+  dsgCertificate?: Blob
+  /** GNSS Site Calibration report — copied into the Calibration folder */
+  calibration?: Blob
 }
 
 export interface SaveSurveyRecordOptions {
@@ -45,6 +49,17 @@ export async function saveSurveyRecordSections(
   }
   if (sections.reportOnSurvey) {
     jobs.push({ label: 'Report on Survey', documentType: 'report-on-survey', fileName: 'ReportOnSurvey.pdf', pdfBlob: sections.reportOnSurvey })
+  }
+  // The DSG certificate is optional: only saved when the certificate was
+  // persisted in the workflow (generated during the DSG Certificate step).
+  if (sections.dsgCertificate) {
+    jobs.push({ label: 'DSG Certificate', documentType: 'dsg-certificate', fileName: 'DSGCertificate.pdf', pdfBlob: sections.dsgCertificate })
+  }
+  // The calibration report is optional: present whenever a GNSS site
+  // calibration is in the workflow (imported now or persisted earlier), so it
+  // lands in output/calibration/ without having to re-import the Trimble file.
+  if (sections.calibration) {
+    jobs.push({ label: 'Calibration Report', documentType: 'site-calibration', fileName: 'CalibrationReport.pdf', pdfBlob: sections.calibration })
   }
 
   const saved: string[] = []

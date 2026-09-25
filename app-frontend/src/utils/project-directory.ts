@@ -44,6 +44,7 @@ export interface ProjectDirectoryStructure {
   coordinateList: string;
   reports: string;
   certificates: string;
+  calibration: string;
   diagrams: string;
   generalPlans: string;
   workingPlans: string;
@@ -63,6 +64,7 @@ export function getProjectDirectoryStructure(workingDirectory: string): ProjectD
     coordinateList: `${workingDirectory}/output/coordinate-list`,
     reports: `${workingDirectory}/output/reports`,
     certificates: `${workingDirectory}/output/certificates`,
+    calibration: `${workingDirectory}/output/calibration`,
     diagrams: `${workingDirectory}/output/diagrams`,
     generalPlans: `${workingDirectory}/output/general-plans`,
     workingPlans: `${workingDirectory}/output/working-plans`,
@@ -188,6 +190,7 @@ ${structure.root}/
     ├── general-plans/       (General Plan PDFs + DXF)
     ├── working-plans/       (Working Plan PDFs + DXF)
     └── survey-record/       (Survey record documents)
+    ├── calibration/         (GNSS Site Calibration PDFs)
   `.trim();
 }
 

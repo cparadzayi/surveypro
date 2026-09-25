@@ -674,6 +674,7 @@ import { generateSurveyPlanSummaryPDF, type SurveyPlanSummaryData } from '@/util
 import { CalculationsPart1Generator, type SurveyPoint } from '@/utils/calculations-part1'
 import { ComprehensiveDocumentGenerator, type ComprehensiveDocumentData } from '@/utils/comprehensive-document'
 import { siteCalibrationFrom } from '@/utils/siteCalibration'
+import { generateCalibrationReportPDF } from '@/utils/calibration-pdf'
 import type { CoverPageInfo } from '@/utils/cover-page'
 import { listCoordinatePoints, updateLandParcel } from '@/services/spatial'
 import { saveDocument } from '@/services/documentStorage'
@@ -681,6 +682,7 @@ import { generateWorkingPlanDXF } from '@/services/workingPlan'
 import { buildWorkingPlanSpec, workingPlanEmptyReason, controlPointsForInset, selectedControlPointIds } from './workingPlanSpec'
 import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
 import { dispensationFromWorkflow } from '@/composables/useDispensationCertificate'
+import { dsgCertificateFromWorkflow } from '@/composables/useDSGCertificate'
 import api from '@/services/api'
 import { clearCoordinatePointsCache } from '@/services/coordinatePointCache'
 import { buildWorkflowExcel } from '@/utils/workflowExcelExporter'
@@ -4695,12 +4697,25 @@ async function generatePlanDocuments() {
       // plan. Built (above, before any generation work) from the final
       // coordinate list and each parcel's named ring, so no proximity matching
       // is involved.
-      const { blob, scale } = await generateWorkingPlanDXF(workingPlanSpec)
+      const { blob, scale, gridInterval } = await generateWorkingPlanDXF(workingPlanSpec)
       docs.dxf = blob
       dxfExt = 'dxf'
       if (scale) console.log(`[PlanDocs] Working plan drawn at 1:${scale}`)
+      if (gridInterval) {
+        console.log(`[PlanDocs] Working plan grid: ${gridInterval.ticks} cross${gridInterval.ticks === 1 ? '' : 'es'} at ${gridInterval.e} m interval`)
+      }
       if (workingPlanSkipped.length) {
         console.warn('[PlanDocs] Working plan omitted parcels with no named ring:', workingPlanSkipped.join(', '))
+      }
+      const unletteredControl = [
+        ...workingPlanSpec.beacons.filter((b) => (b.symbol === 'trig' || b.symbol === 'ocp') && !b.cpName),
+        ...(workingPlanSpec.inset?.beacons ?? []).filter((b) => b.symbol === 'trig' && !b.cpName),
+      ]
+      if (unletteredControl.length) {
+        console.warn(
+          `[PlanDocs] Working plan ${unletteredControl.length} control point${unletteredControl.length === 1 ? '' : 's'} without a monument name:`,
+          unletteredControl.map((b) => b.name).join(', '),
+        )
       }
     }
 
@@ -5094,6 +5109,13 @@ async function generateComprehensivePDF() {
       console.log(`[ComprehensivePDF] 📑 Dispensation Certificate included (${dispensation.portion}, ${dispensation.servitudes.length} servitudes)`)
     }
 
+    // Dispatch the DSG Certificate (1/96) section from the persisted DSG
+    // Certificate stage (certificate text saved when the certificate was generated).
+    const dsgCertificate = dsgCertificateFromWorkflow(workflowState?.step_data)
+    if (dsgCertificate) {
+      console.log('[ComprehensivePDF] 📄 DSG Certificate (1/96) included')
+    }
+
     const finalResult = await generateComprehensivePDFComposable({
       computedParcels: computedParcels as any,
       calcPart1Blob: result.pdf,
@@ -5119,7 +5141,8 @@ async function generateComprehensivePDF() {
       },
       reportData,
       narrativeOptions,
-      dispensation
+      dispensation,
+      dsgCertificate
     })
 
     if (!finalResult.success) {
@@ -5148,6 +5171,9 @@ async function generateComprehensivePDF() {
       if (finalResult.dispensationBlob) {
         contentsLines.push(`• Dispensation Certificate`)
       }
+      if (finalResult.dsgBlob) {
+        contentsLines.push(`• DSG Certificate (1/96)`)
+      }
       alert(
         `✅ Complete Survey Record Generated!\n\n` +
         `Document: Comprehensive_Latest.pdf\n` +
@@ -5168,6 +5194,14 @@ async function generateComprehensivePDF() {
 
     // Save each section of the record as its own file for independent retrieval.
     if (workingDirectory && result.sections && finalResult.areasOnlyBlob) {
+      const calibration = siteCalibrationFrom(workflowState)
+      let calibrationBlob: Blob | undefined
+      if (calibration) {
+        calibrationBlob = generateCalibrationReportPDF(calibration, {
+          surveyorName: surveyorInfo?.name || undefined,
+          projectTitle: props.projectInfo?.surveyDescription || undefined,
+        }).blob
+      }
       const split = await saveSurveyRecordSections({
         workingDirectory,
         sections: {
@@ -5177,6 +5211,8 @@ async function generateComprehensivePDF() {
           areas: finalResult.areasOnlyBlob,
           beaconComparison: result.sections.beaconComparison,
           reportOnSurvey: finalResult.narrativeBlob,
+          dsgCertificate: finalResult.dsgBlob,
+          calibration: calibrationBlob,
         },
       });
       if (split.failed.length) {

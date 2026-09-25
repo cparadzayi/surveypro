@@ -2,6 +2,7 @@ import { subjectSides } from './sideAnnotations'
 import { parseBeaconStatus } from '@/utils/beaconStatus'
 import { insetScaleToFit } from '../../../../../app-shared/insetScales'
 import { isReferenceMarkName } from '../../../../../app-shared/beaconName'
+import { displayTrigName } from '../../../../../app-shared/trigName'
 import { designationPhrase } from '@/utils/planDesignation'
 import { isRemainderParcel } from '@/utils/designationParcels'
 /**
@@ -864,7 +865,7 @@ function controlPointNameFor(
 ): string | undefined {
   const key = controlKey(name)
   const named = registry.get(key)
-  if (named) return named
+  if (named) return displayTrigName(named)
 
   const d = String(description ?? '').trim()
   if (!d) return undefined
@@ -878,7 +879,7 @@ function controlPointNameFor(
 
   const candidate = residue[0]
   if (controlKey(candidate) === key) return undefined
-  return candidate
+  return displayTrigName(candidate)
 }
 
 export function buildWorkingPlanSpec(

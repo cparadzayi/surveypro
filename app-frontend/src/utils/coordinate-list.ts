@@ -4,6 +4,7 @@ import { useSurveyLookupStore } from '../stores/surveyLookup'
 import type { AdjustedCoordinate } from '../types/adjusted-coordinates'
 import { toCoordinateListPrecision } from '../types/adjusted-coordinates'
 import { fullDesignationPhrase } from './planDesignation'
+import { displayTrigName } from '../../../app-shared/trigName'
 
 // Survey point interface (legacy - for backward compatibility)
 export interface SurveyPoint {
@@ -221,7 +222,7 @@ export class CoordinateListGenerator {
           y: y,
           x: x,
           status: 'TRIG',
-          description: cp.monu_name || cp.name || cp.monu_num || `Control Point ${index + 1}`,
+          description: displayTrigName(cp.monu_name || cp.name || cp.monu_num || `Control Point ${index + 1}`),
           surveyDate: '',
           // Additional fields for coordinate list display
           fieldBookPage: '', // Control points don't have field book entries

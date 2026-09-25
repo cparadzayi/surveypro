@@ -555,7 +555,7 @@ describe('the locality inset from selected control points', () => {
 
     const b = spec.inset!.beacons.find(b => b.name === '170/P')!
     expect(b.symbol).toBe('trig')
-    expect(b.cpName).toBe('MNYAMI')
+    expect(b.cpName).toBe('Mnyami')
   })
 
   it('recovers the monument name from a description when the registry holds none', () => {
@@ -567,7 +567,7 @@ describe('the locality inset from selected control points', () => {
       controlPoints: [{ name: '49/T', X: 2146857.23, Y: -88454.47, description: 'TRIG BEACON MNYAMI FOUND' }],
     }))
 
-    expect(spec.inset!.beacons.find(b => b.name === '49/T')!.cpName).toBe('MNYAMI')
+    expect(spec.inset!.beacons.find(b => b.name === '49/T')!.cpName).toBe('Mnyami')
   })
 
   it('still has no inset when the survey states no control at all', () => {
@@ -1560,7 +1560,7 @@ describe('buildWorkingPlanSpec — control point names', () => {
     }))
 
     expect(spec.beacons.find(b => b.name === '170/P'))
-      .toMatchObject({ symbol: 'trig', cpName: 'MNYAMI' })
+      .toMatchObject({ symbol: 'trig', cpName: 'Mnyami' })
   })
 
   it('resolves the name from the registry whatever the description says', () => {
@@ -1571,7 +1571,7 @@ describe('buildWorkingPlanSpec — control point names', () => {
       controlPoints: [{ name: '170/P', X: 2136777.89, Y: -81572.33, monuName: 'MNYAMI' }],
     }))
 
-    expect(spec.beacons.find(b => b.name === '170/P')?.cpName).toBe('MNYAMI')
+    expect(spec.beacons.find(b => b.name === '170/P')?.cpName).toBe('Mnyami')
   })
 
   it('falls back to a name-like description when the registry lacks the designation', () => {
@@ -1587,7 +1587,7 @@ describe('buildWorkingPlanSpec — control point names', () => {
 
     const trig = spec.beacons.find(b => b.name === '170/P')
     expect(trig?.symbol).toBe('trig')
-    expect(trig?.cpName).toBe('MNYAMI')
+    expect(trig?.cpName).toBe('Mnyami')
   })
 
   it('refuses a description of the mark’s kind as a name', () => {
@@ -1636,7 +1636,7 @@ describe('buildWorkingPlanSpec — control point names', () => {
 
     const t = spec.inset!.beacons.find(b => b.name === '49/T')
     expect(t?.symbol).toBe('trig')
-    expect(t?.cpName).toBe('MNYAMI')
+    expect(t?.cpName).toBe('Mnyami')
   })
 
   it('matches the registry across the surveyor’s own punctuation', () => {
@@ -1650,7 +1650,7 @@ describe('buildWorkingPlanSpec — control point names', () => {
       controlPoints: [{ name: '170/P', X: 2136777.89, Y: -81572.33, monuName: 'MNYAMI' }],
     }))
 
-    expect(spec.beacons.find(b => b.name === '170P')?.cpName).toBe('MNYAMI')
+    expect(spec.beacons.find(b => b.name === '170P')?.cpName).toBe('Mnyami')
   })
 
   it('recovers a name wrapped in words of the mark’s kind', () => {
@@ -1666,7 +1666,7 @@ describe('buildWorkingPlanSpec — control point names', () => {
 
       const trig = spec.beacons.find(b => b.name === '170/P')
       expect(trig?.symbol).toBe('trig')
-      expect(trig?.cpName).toBe('MNYAMI')
+      expect(trig?.cpName).toBe('Mnyami')
     }
   })
 
@@ -1712,7 +1712,7 @@ describe('buildWorkingPlanSpec — control point names', () => {
 
       const trig = spec.beacons.find(b => b.name === '170/P')
       expect(trig?.symbol).toBe('trig')
-      expect(trig?.cpName).toBe('MNYAMI')
+      expect(trig?.cpName).toBe('Mnyami')
     }
   })
 })

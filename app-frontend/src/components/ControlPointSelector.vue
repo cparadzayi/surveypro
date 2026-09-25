@@ -101,7 +101,7 @@
                   {{ point.type }}
                 </span>
               </div>
-              <p class="mt-1 text-sm text-gray-700 ml-6">{{ point.monu_name }}</p>
+              <p class="mt-1 text-sm text-gray-700 ml-6">{{ displayTrigName(point.monu_name) }}</p>
               <div class="mt-1 text-xs text-gray-500 ml-6 grid grid-cols-2 gap-x-4">
                 <div v-if="point.y_gauss && point.x_gauss">
                   <span class="font-medium">Coords:</span>
@@ -207,6 +207,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import axios from 'axios'
+import { displayTrigName } from '../../../app-shared/trigName'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3042/api'
 

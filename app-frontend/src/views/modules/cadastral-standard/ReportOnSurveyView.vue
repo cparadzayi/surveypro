@@ -497,6 +497,7 @@ import { useSmartSuggestions } from '../../../composables/useSmartSuggestions'
 import SmartSuggestionDropdown from '../../../components/SmartSuggestionDropdown.vue'
 import type { ReportOnSurveyData } from '../../../types/cadastral'
 import { resolveSurveyDesignation } from '../../../utils/surveyDesignation'
+import { displayTrigName } from '../../../../../app-shared/trigName'
 import { purposeReferenceFieldLabel } from '../../../utils/reportPurpose'
 
 const { workflowState, saveStepData } = useCadastralWorkflow()
@@ -747,9 +748,9 @@ async function autofillTrigNamesFromControlPoints(): Promise<void> {
       const cp = await response.json()
       if (!cp) continue
       if (cp.monu_num) {
-        names.push(cp.monu_name ? `${cp.monu_num} (${cp.monu_name})` : cp.monu_num)
+        names.push(cp.monu_name ? `${cp.monu_num} (${displayTrigName(cp.monu_name)})` : cp.monu_num)
       } else if (cp.monu_name) {
-        names.push(cp.monu_name)
+        names.push(displayTrigName(cp.monu_name))
       }
     }
   } catch (error) {

@@ -983,6 +983,7 @@ import { CalculationsPart1Generator, type SurveyPoint } from '../../../utils/cal
 import { ComprehensiveDocumentGenerator } from '../../../utils/comprehensive-document';
 import { siteCalibrationFrom } from '../../../utils/siteCalibration';
 import { generateCalibrationReportPDF } from '../../../utils/calibration-pdf';
+import { displayTrigName } from '../../../../../app-shared/trigName';
 import { PageAllocationService } from '../../../services/pageAllocation';
 import { autoSaveStepProducts } from '../../../services/workflowProductStorage';
 import { polygon as turfPolygon, featureCollection } from '@turf/helpers';
@@ -2346,7 +2347,7 @@ const coordinatePoints = computed(() => {
     const x = typeof xRaw === 'number' ? xRaw : parseFloat(xRaw) || 0;
     
     // Extract trig beacon name from various possible fields
-    const trigName = cp.monu_name || cp.name || cp.description || cp.desc || cp.monument_name || cp.monu_num || `Control Point ${index + 1}`;
+    const trigName = displayTrigName(cp.monu_name || cp.name || cp.description || cp.desc || cp.monument_name || cp.monu_num || `Control Point ${index + 1}`);
     
     console.log(`[MapLibre] Control point ${index + 1}:`, {
       id: cp.monu_num || cp.id,

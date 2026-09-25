@@ -50,13 +50,16 @@
         </p>
         <div class="mt-2 flex items-center gap-4 text-xs text-gray-500">
           <span class="inline-flex items-center gap-1">
-            <span class="inline-block w-3 h-0.5 align-middle" style="background:#1F6FB2"></span> Servitude
+            <span class="inline-block w-3 h-0.5 align-middle" style="background:#DC2626"></span> Servitude
           </span>
           <span class="inline-flex items-center gap-1">
             <span class="inline-block w-3 h-0.5 align-middle" style="background:#B7410E"></span> Road
           </span>
           <span class="inline-flex items-center gap-1">
             <span class="inline-block w-3 h-0.5 align-middle border-t border-dashed border-gray-500"></span> Contiguous
+          </span>
+          <span class="inline-flex items-center gap-1">
+            <span class="inline-block w-3 h-3 align-middle rounded-sm" style="background:#16A34A;opacity:0.45"></span> Stand with a servitude
           </span>
         </div>
       </div>
@@ -324,6 +327,7 @@ import {
   upsertServitude,
   removeServitude,
   servitudesInvolving,
+  parcelHasServitude,
   hydrateServitudes,
   servitudeTypeLabel,
   beaconBoundary,
@@ -588,7 +592,12 @@ function buildBaseMapLabels() {
   })
 }
 
-/** Stronger fill/outline for the selected stand — mirrors applyDiagramHighlight. */
+/**
+ * Stronger fill/outline for the selected stand — mirrors applyDiagramHighlight — and
+ * green for a stand that already carries a servitude, so the ones still to be
+ * draughted are the ones left blue. An annotated stand sits a little more opaque
+ * than a plain one, because green at 0.12 is too faint to pick out at a glance.
+ */
 function highlightSelectedParcelOnMap() {
   if (!map.value) return
   parcels.value.forEach((p: any) => {
@@ -596,7 +605,9 @@ function highlightSelectedParcelOnMap() {
     const outlineId = `parcel-${p.id}-outline`
     if (!map.value!.getLayer(fillId) || !map.value!.getLayer(outlineId)) return
     const isSelected = selectedParcelId.value != null && String(p.id) === String(selectedParcelId.value)
-    map.value!.setPaintProperty(fillId, 'fill-opacity', isSelected ? 0.35 : 0.12)
+    const hasServitude = parcelHasServitude(servitudes.value, p.id)
+    map.value!.setPaintProperty(fillId, 'fill-color', hasServitude ? '#16A34A' : '#3b82f6')
+    map.value!.setPaintProperty(fillId, 'fill-opacity', isSelected ? 0.35 : hasServitude ? 0.22 : 0.12)
     map.value!.setPaintProperty(outlineId, 'line-color', isSelected ? '#2563eb' : '#0f172a')
     map.value!.setPaintProperty(outlineId, 'line-width', isSelected ? 4 : 2)
   })
@@ -655,7 +666,10 @@ function updateSidesMapLayer() {
     return
   }
   map.value.addSource(srcId, { type: 'geojson', data })
-  const colour = ['match', ['get', 'role'], 'road', '#B7410E', 'servitude', '#1F6FB2', 'contiguous', '#000000', '#9aa0a6'] as any
+  // Servitude sides read red HERE, on the map the surveyor draughts them from,
+  // against the road's burnt sienna. The diagram and plan output keep their own
+  // servitude blue; this colour is a draughting aid, not a plan convention.
+  const colour = ['match', ['get', 'role'], 'road', '#B7410E', 'servitude', '#DC2626', 'contiguous', '#000000', '#9aa0a6'] as any
   map.value.addLayer({
     id: `${srcId}-solid`, type: 'line', source: srcId,
     filter: ['any', ['==', ['get', 'role'], 'road'], ['==', ['get', 'role'], 'servitude']] as any,

@@ -68,6 +68,16 @@ export function servitudesInvolving(list: Servitude[], subjectId: string | numbe
   return list.filter((x) => x.subjectId === pid || (x.type === 'party-wall' && x.adjoiningSubjectId === pid))
 }
 
+/**
+ * Does this parcel carry a servitude that has been marked? True for the stand a
+ * record burdens, and for either side of a party wall, which is shared by
+ * definition. The servitudes map shades these, so a stand already annotated is
+ * separable at a glance from one still to be draughted.
+ */
+export function parcelHasServitude(list: Servitude[], parcelId: string | number): boolean {
+  return servitudesInvolving(list, parcelId).length > 0
+}
+
 /** Display boundary for a servitude: the beacon pair when named, else the raw letter side. */
 export function beaconBoundary(s: Servitude): string {
   if (s.fromBeacon && s.toBeacon) return `${s.fromBeacon} – ${s.toBeacon}`

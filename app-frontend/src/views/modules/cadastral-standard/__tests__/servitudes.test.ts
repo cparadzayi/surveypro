@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   upsertServitude, removeServitude, servitudesForSubject, servitudesInvolving,
   hydrateServitudes, servitudeTypeLabel, beaconBoundary, resolveBeaconPair,
-  sideMatchingBeaconPair, buildPartyWallStatementRows, type Servitude,
+  sideMatchingBeaconPair, buildPartyWallStatementRows, parcelHasServitude, type Servitude,
 } from '../servitudes'
 import { subjectSides } from '../sideAnnotations'
 
@@ -33,6 +33,23 @@ describe('servitude list helpers', () => {
     ]
     expect(servitudesInvolving(list, '10').map(x => x.id)).toEqual(['1', '2', '4'])
     expect(servitudesInvolving(list, 20).map(x => x.id)).toEqual(['2', '3'])
+  })
+  it('parcelHasServitude marks the burdened parcel and both sides of a party wall', () => {
+    const list = [
+      s({ id: '1', subjectId: '10', type: 'right-of-way' }),
+      s({ id: '2', subjectId: '20', type: 'party-wall', adjoiningSubjectId: '30' }),
+    ]
+    // The stand the servitude burdens.
+    expect(parcelHasServitude(list, '10')).toBe(true)
+    // A party wall is shared, so it counts from either side of the boundary.
+    expect(parcelHasServitude(list, '20')).toBe(true)
+    expect(parcelHasServitude(list, '30')).toBe(true)
+    // A stand no record names, and the empty list.
+    expect(parcelHasServitude(list, '99')).toBe(false)
+    expect(parcelHasServitude([], '10')).toBe(false)
+    // Parcel ids reach this as numbers from the map layers.
+    expect(parcelHasServitude(list, 10)).toBe(true)
+    expect(parcelHasServitude(list, 99)).toBe(false)
   })
   it('hydrate keeps well-formed records, drops malformed ones (bare id, null, non-objects)', () => {
     // s({id:'1'}) is a complete Servitude; { id: '2' } lacks subjectId/side/type → dropped.

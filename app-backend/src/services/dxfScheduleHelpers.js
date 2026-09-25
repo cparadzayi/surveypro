@@ -32,10 +32,28 @@ const PT_TO_MM = 25.4 / 72
  * actual header emission. Drift between the two would silently break
  * the layout.
  *
- * Matches the PDF's _SCHED_TITLE + _SCHED_SPACING + _SCHED_HEADER =
- * 15 + 15 + 25 = 55 pt → 19.4 mm (pdfkitGeoPDF.js:7907-7912).
+ * DERIVED, not written down. It was the hand-computed 15 + 15 + 25 = 55 pt
+ * (19 mm) for years, which held only while the body font stayed at 7 pt: when
+ * the contents went to 3mm (8.504 pt) the band drew 19.48 mm into a 19 mm
+ * reserve, every sub-table overflowed its own budget, and the placer seated
+ * five tables where nine were needed. The drift this comment warned about.
  */
-export const SCHEDULE_HEADER_HEIGHT_MM = 19
+export function scheduleHeaderReserveMm({ titlePt, bodyPt, maxLines }) {
+  // Exactly what addScheduleTable draws below: the retained title strip, the
+  // DEED parent row, then one line per sub-header token.
+  return (titlePt * 1.6 + bodyPt * 1.2 + maxLines * bodyPt * 1.2) * PT_TO_MM
+}
+
+/** Lines in the tallest column label, e.g. AREAS / SQUARE / METRES. */
+function scheduleHeaderLines(columns) {
+  return Math.max(1, ...columns.map((c) => String(c.label).split('\n').length))
+}
+
+export const SCHEDULE_HEADER_HEIGHT_MM = scheduleHeaderReserveMm({
+  titlePt:  SCHEDULE_OF_AREAS.singleColumn.titleFontSize,
+  bodyPt:   SCHEDULE_OF_AREAS.singleColumn.fontSize,
+  maxLines: scheduleHeaderLines(SCHEDULE_OF_AREAS.singleColumn.columns),
+})
 
 /**
  * Returns the next-larger sheet size in SHEET_LADDER, or

@@ -3,7 +3,8 @@
  * Run with:  cd app-backend && npm run test -- dxfScheduleHelpers
  */
 import { describe, test, expect } from '@jest/globals'
-import { nextLargerSheet, extractScheduleRow, computeScheduleLayout, addScheduleTable } from '../dxfScheduleHelpers.js'
+import { nextLargerSheet, extractScheduleRow, computeScheduleLayout, addScheduleTable, SCHEDULE_HEADER_HEIGHT_MM, scheduleHeaderReserveMm } from '../dxfScheduleHelpers.js'
+import { SCHEDULE_OF_AREAS } from '../../../../app-shared/block-definitions.js'
 
 describe('nextLargerSheet', () => {
   test.each([
@@ -487,5 +488,39 @@ describe('addScheduleTable', () => {
     // The deedNumber value 'DG-12345/2024' must appear as a TEXT entry.
     const texts = textCalls.map(c => c.text)
     expect(texts).toContain('DG-12345/2024')
+  })
+})
+
+describe('SCHEDULE_HEADER_HEIGHT_MM tracks the header it reserves for', () => {
+  // addScheduleTable draws the band as:
+  //   hHead * 1.6            the retained title strip
+  // + hBody * 1.2            the DEED parent row
+  // + maxLines * hBody * 1.2 the sub-header lines
+  // The reserve fed to computeScheduleLayout must cover that, or every table
+  // overflows its own budget and the placer seats fewer than the data needs.
+  const PT_TO_MM = 25.4 / 72
+  const drawnMm = (titlePt, bodyPt, maxLines) =>
+    (titlePt * 1.6 + bodyPt * 1.2 + maxLines * bodyPt * 1.2) * PT_TO_MM
+
+  const col = SCHEDULE_OF_AREAS.singleColumn
+  const maxLines = Math.max(
+    ...col.columns.map((c) => String(c.label).split(String.fromCharCode(10)).length))
+
+  test('the sub-header labels still span three lines', () => {
+    expect(maxLines).toBe(3)   // AREAS / SQUARE / METRES
+  })
+
+  test('the reserve covers the band actually drawn at the configured fonts', () => {
+    const drawn = drawnMm(col.titleFontSize, col.fontSize, maxLines)
+    expect(SCHEDULE_HEADER_HEIGHT_MM).toBeGreaterThanOrEqual(drawn)
+  })
+
+  test('the reserve is derived, so it follows the font instead of drifting', () => {
+    // A hand-written constant cannot do this: raising the body font must raise
+    // the reserve, which is exactly what broke when the body went 7pt -> 3mm.
+    expect(scheduleHeaderReserveMm({ titlePt: 9, bodyPt: 7, maxLines: 3 }))
+      .toBeLessThan(scheduleHeaderReserveMm({ titlePt: 9, bodyPt: 8.504, maxLines: 3 }))
+    expect(scheduleHeaderReserveMm({ titlePt: 9, bodyPt: 7, maxLines: 3 }))
+      .toBeCloseTo(drawnMm(9, 7, 3), 6)
   })
 })

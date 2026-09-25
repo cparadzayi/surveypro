@@ -97,105 +97,6 @@
           </button>
         </div>
 
-        <!-- Editor -->
-        <div v-if="selectedSide" class="border-t border-gray-200 pt-4 space-y-4">
-          <h4 class="text-sm font-semibold text-gray-900">
-            {{ editingId ? 'Edit' : 'New' }} servitude — {{ selectedSideBeaconLabel || selectedSide }}
-          </h4>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">Type</label>
-              <select v-model="form.type" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
-                <option v-for="(label, key) in SERVITUDE_TYPE_LABELS" :key="key" :value="key">{{ label }}</option>
-              </select>
-            </div>
-            <div v-if="form.type === 'other'">
-              <label class="block text-xs font-medium text-gray-700 mb-1">Describe type</label>
-              <input
-                v-model="form.typeLabelOther"
-                type="text"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                placeholder="e.g. Access easement"
-              />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">Width (m, optional)</label>
-              <input
-                v-model.number="form.widthM"
-                type="number"
-                min="0"
-                step="0.01"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-              />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">Beneficiary (optional)</label>
-              <input
-                v-model="form.beneficiary"
-                type="text"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                placeholder="e.g. ZESA Holdings"
-              />
-            </div>
-            <div v-if="form.type === 'party-wall'">
-              <label class="block text-xs font-medium text-gray-700 mb-1">Adjoining stand (shared wall)</label>
-              <ParcelSelect
-                :options="adjoiningParcelOptions"
-                v-model="form.adjoiningSubjectId"
-                placeholder="Search the stand this wall is shared with…"
-              />
-            </div>
-            <div v-else>
-              <label class="block text-xs font-medium text-gray-700 mb-1">Benefiting stand (optional)</label>
-              <ParcelSelect
-                :options="adjoiningParcelOptions"
-                v-model="form.beneficiarySubjectId"
-                placeholder="Search the stand this servitude benefits…"
-              />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">Purpose (optional)</label>
-              <input
-                v-model="form.purpose"
-                type="text"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-              />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">Statute reference (optional)</label>
-              <input
-                v-model="form.statuteRef"
-                type="text"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-              />
-            </div>
-          </div>
-
-          <p v-if="resolvedBeacons" class="text-xs text-gray-500">
-            Beacons: {{ resolvedBeacons.fromBeacon }} – {{ resolvedBeacons.toBeacon }}
-          </p>
-          <p v-else class="text-xs text-gray-400">
-            No named beacons resolved for this side — the certificate will reference side {{ selectedSide }} directly.
-          </p>
-
-          <div class="flex gap-3">
-            <button
-              @click="saveServitude"
-              :disabled="savingRecord"
-              class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400"
-            >
-              {{ savingRecord ? 'Saving…' : (editingId ? 'Update servitude' : 'Save servitude') }}
-            </button>
-            <button
-              @click="cancelEdit"
-              class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-
         <!-- Existing servitudes for this stand -->
         <div v-if="subjectServitudes.length" class="border-t border-gray-200 pt-4">
           <h4 class="text-sm font-semibold text-gray-900 mb-2">Existing servitudes</h4>
@@ -217,6 +118,106 @@
         </div>
       </div>
       </div><!-- /map + boundaries columns -->
+
+      <!-- Editor: full width under both columns, so its fields are not squeezed
+           into a half-width column on a medium display. -->
+      <div v-if="selectedSide" class="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
+        <h4 class="text-sm font-semibold text-gray-900">
+          {{ editingId ? 'Edit' : 'New' }} servitude — {{ selectedSideBeaconLabel || selectedSide }}
+        </h4>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Type</label>
+            <select v-model="form.type" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option v-for="(label, key) in SERVITUDE_TYPE_LABELS" :key="key" :value="key">{{ label }}</option>
+            </select>
+          </div>
+          <div v-if="form.type === 'other'">
+            <label class="block text-xs font-medium text-gray-700 mb-1">Describe type</label>
+            <input
+              v-model="form.typeLabelOther"
+              type="text"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+              placeholder="e.g. Access easement"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Width (m, optional)</label>
+            <input
+              v-model.number="form.widthM"
+              type="number"
+              min="0"
+              step="0.01"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Beneficiary (optional)</label>
+            <input
+              v-model="form.beneficiary"
+              type="text"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+              placeholder="e.g. ZESA Holdings"
+            />
+          </div>
+          <div v-if="form.type === 'party-wall'">
+            <label class="block text-xs font-medium text-gray-700 mb-1">Adjoining stand (shared wall)</label>
+            <ParcelSelect
+              :options="adjoiningParcelOptions"
+              v-model="form.adjoiningSubjectId"
+              placeholder="Search the stand this wall is shared with…"
+            />
+          </div>
+          <div v-else>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Benefiting stand (optional)</label>
+            <ParcelSelect
+              :options="adjoiningParcelOptions"
+              v-model="form.beneficiarySubjectId"
+              placeholder="Search the stand this servitude benefits…"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Purpose (optional)</label>
+            <input
+              v-model="form.purpose"
+              type="text"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Statute reference (optional)</label>
+            <input
+              v-model="form.statuteRef"
+              type="text"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+            />
+          </div>
+        </div>
+
+        <p v-if="resolvedBeacons" class="text-xs text-gray-500">
+          Beacons: {{ resolvedBeacons.fromBeacon }} – {{ resolvedBeacons.toBeacon }}
+        </p>
+        <p v-else class="text-xs text-gray-400">
+          No named beacons resolved for this side — the certificate will reference side {{ selectedSide }} directly.
+        </p>
+
+        <div class="flex gap-3">
+          <button
+            @click="saveServitude"
+            :disabled="savingRecord"
+            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+          >
+            {{ savingRecord ? 'Saving…' : (editingId ? 'Update servitude' : 'Save servitude') }}
+          </button>
+          <button
+            @click="cancelEdit"
+            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
 
       <!-- Certificate header details -->
       <div class="bg-white border border-gray-200 rounded-lg p-6 space-y-4">

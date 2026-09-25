@@ -51,6 +51,17 @@ describe('servitude list helpers', () => {
     expect(parcelHasServitude(list, 10)).toBe(true)
     expect(parcelHasServitude(list, 99)).toBe(false)
   })
+  it('parcelHasServitude marks the stand a servitude benefits, not only the one it burdens', () => {
+    // A right of way burdens 10 and benefits 40; 40 need not adjoin 10 at all.
+    const list = [s({ id: '1', subjectId: '10', type: 'right-of-way', beneficiarySubjectId: '40' })]
+    expect(parcelHasServitude(list, '10')).toBe(true)
+    expect(parcelHasServitude(list, '40')).toBe(true)
+    expect(parcelHasServitude(list, '50')).toBe(false)
+    expect(parcelHasServitude(list, 40)).toBe(true)
+    // The burdened-stand list is deliberately unchanged: it reports what a
+    // servitude burdens or shares, never what it benefits.
+    expect(servitudesInvolving(list, '40')).toEqual([])
+  })
   it('hydrate keeps well-formed records, drops malformed ones (bare id, null, non-objects)', () => {
     // s({id:'1'}) is a complete Servitude; { id: '2' } lacks subjectId/side/type → dropped.
     expect(hydrateServitudes([s({ id: '1' }), null, { id: '2' }, 42])).toHaveLength(1)

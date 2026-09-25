@@ -28,6 +28,10 @@ export interface Servitude {
   burdenedStand?: string
   adjoiningStand?: string         // party walls: the reciprocal stand's designation
   adjoiningSubjectId?: string     // party walls: the reciprocal parcel's id (shared-pattern capture)
+  /** The stand this servitude benefits, where a stand benefits at all. Distinct
+   *  from adjoiningSubjectId: a right of way's benefiting stand need not adjoin
+   *  the burdened one, and many servitudes benefit a utility, not a parcel. */
+  beneficiarySubjectId?: string
   purpose?: string
   statuteRef?: string
   fromBeacon?: string
@@ -72,10 +76,14 @@ export function servitudesInvolving(list: Servitude[], subjectId: string | numbe
  * Does this parcel carry a servitude that has been marked? True for the stand a
  * record burdens, and for either side of a party wall, which is shared by
  * definition. The servitudes map shades these, so a stand already annotated is
- * separable at a glance from one still to be draughted.
+ * separable at a glance from one still to be draughted. A stand that only
+ * benefits from a servitude counts too, which is why this is wider than
+ * servitudesInvolving -- that list reports what a stand bears, not what it enjoys.
  */
 export function parcelHasServitude(list: Servitude[], parcelId: string | number): boolean {
+  const pid = String(parcelId)
   return servitudesInvolving(list, parcelId).length > 0
+    || list.some((x) => x.beneficiarySubjectId === pid)
 }
 
 /** Display boundary for a servitude: the beacon pair when named, else the raw letter side. */

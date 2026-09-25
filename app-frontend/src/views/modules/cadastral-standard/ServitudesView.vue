@@ -25,7 +25,7 @@
       </div>
     </div>
 
-    <div class="px-6 py-6 space-y-6 max-w-5xl mx-auto">
+    <div class="px-6 py-6 space-y-6 max-w-7xl mx-auto">
       <!-- Stand selection -->
       <div class="bg-white border border-gray-200 rounded-lg p-6">
         <label class="block text-sm font-semibold text-gray-900 mb-2">Stand</label>
@@ -39,7 +39,11 @@
       </div>
 
       <!-- Interactive map (additive — the dropdown + side list below remain a fallback) -->
-      <div v-if="parcels.length" class="bg-white border border-gray-200 rounded-lg p-6">
+      <!-- Map beside the boundary grid from lg up: click a side on the left, fill it in
+           on the right. Inner indentation is left as it was, to keep this diff readable. -->
+      <div class="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
+      <div v-if="parcels.length" class="bg-white border border-gray-200 rounded-lg p-6 lg:sticky lg:top-6"
+           :class="selectedParcel ? '' : 'lg:col-span-2'">
         <div class="flex items-center justify-between mb-2">
           <label class="block text-sm font-semibold text-gray-900">Map</label>
           <p class="text-xs text-gray-500">Click a stand to select it, then click a boundary to attach a servitude.</p>
@@ -142,6 +146,14 @@
                 placeholder="Search the stand this wall is shared with…"
               />
             </div>
+            <div v-else>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Benefiting stand (optional)</label>
+              <ParcelSelect
+                :options="adjoiningParcelOptions"
+                v-model="form.beneficiarySubjectId"
+                placeholder="Search the stand this servitude benefits…"
+              />
+            </div>
             <div>
               <label class="block text-xs font-medium text-gray-700 mb-1">Purpose (optional)</label>
               <input
@@ -204,6 +216,7 @@
           </ul>
         </div>
       </div>
+      </div><!-- /map + boundaries columns -->
 
       <!-- Certificate header details -->
       <div class="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
@@ -364,6 +377,7 @@ const form = ref<{
   beneficiary: string
   adjoiningStand: string
   adjoiningSubjectId: string | number | null
+  beneficiarySubjectId: string | number | null
   purpose: string
   statuteRef: string
 }>({
@@ -373,6 +387,7 @@ const form = ref<{
   beneficiary: '',
   adjoiningStand: '',
   adjoiningSubjectId: null,
+  beneficiarySubjectId: null,
   purpose: '',
   statuteRef: '',
 })
@@ -784,6 +799,13 @@ function initServitudeMap() {
 // Rebuild the highlight + clickable sides whenever the selected stand changes,
 // or whenever a servitude is saved/deleted (syncAndPersist reassigns `servitudes`
 // and `annotations`, so the side the user just saved recolours to servitude-blue).
+// Selecting a stand halves the map's column on lg screens. MapLibre does not
+// observe its container, so without this it renders clipped into the old width.
+watch(() => !!selectedParcel.value, async () => {
+  await nextTick()
+  map.value?.resize()
+})
+
 watch([selectedParcelId, servitudes, annotations], () => {
   if (!map.value) return
   highlightSelectedParcelOnMap()
@@ -862,6 +884,7 @@ function resetForm() {
     beneficiary: '',
     adjoiningStand: '',
     adjoiningSubjectId: null,
+    beneficiarySubjectId: null,
     purpose: '',
     statuteRef: '',
   }
@@ -896,6 +919,7 @@ function editServitude(s: Servitude) {
     beneficiary: s.beneficiary || '',
     adjoiningStand: s.adjoiningStand || '',
     adjoiningSubjectId: s.adjoiningSubjectId ?? parcelIdForStand(s.adjoiningStand),
+    beneficiarySubjectId: s.beneficiarySubjectId ?? null,
     purpose: s.purpose || '',
     statuteRef: s.statuteRef || '',
   }
@@ -1035,6 +1059,9 @@ async function saveServitude() {
         : undefined,
       adjoiningSubjectId: isPartyWall
         ? (adjoiningParcel?.id != null ? String(adjoiningParcel.id) : undefined)
+        : undefined,
+      beneficiarySubjectId: !isPartyWall && form.value.beneficiarySubjectId != null
+        ? String(form.value.beneficiarySubjectId)
         : undefined,
       purpose: form.value.purpose.trim() || undefined,
       statuteRef: form.value.statuteRef.trim() || undefined,

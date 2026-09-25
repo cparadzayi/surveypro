@@ -39,11 +39,11 @@
       </div>
 
       <!-- Interactive map (additive — the dropdown + side list below remain a fallback) -->
-      <!-- Map beside the boundary grid from lg up: click a side on the left, fill it in
+      <!-- Map beside the boundary grid from md up: click a side on the left, fill it in
            on the right. Inner indentation is left as it was, to keep this diff readable. -->
-      <div class="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
-      <div v-if="parcels.length" class="bg-white border border-gray-200 rounded-lg p-6 lg:sticky lg:top-6"
-           :class="selectedParcel ? '' : 'lg:col-span-2'">
+      <div class="md:grid md:grid-cols-2 md:gap-6 md:items-start">
+      <div v-if="parcels.length" class="bg-white border border-gray-200 rounded-lg p-6 md:sticky md:top-6"
+           :class="selectedParcel ? '' : 'md:col-span-2'">
         <div class="flex items-center justify-between mb-2">
           <label class="block text-sm font-semibold text-gray-900">Map</label>
           <p class="text-xs text-gray-500">Click a stand to select it, then click a boundary to attach a servitude.</p>
@@ -799,7 +799,7 @@ function initServitudeMap() {
 // Rebuild the highlight + clickable sides whenever the selected stand changes,
 // or whenever a servitude is saved/deleted (syncAndPersist reassigns `servitudes`
 // and `annotations`, so the side the user just saved recolours to servitude-blue).
-// Selecting a stand halves the map's column on lg screens. MapLibre does not
+// Selecting a stand halves the map's column on md screens and up. MapLibre does not
 // observe its container, so without this it renders clipped into the old width.
 watch(() => !!selectedParcel.value, async () => {
   await nextTick()

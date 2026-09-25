@@ -6,6 +6,11 @@ import { generateDXF } from '../../services/dxfGenerator.js'
 // Real end-to-end for the georeferenced bundle: no generator mocks. Requires
 // ogr2ogr on the machine (QGIS/GDAL); when it is unavailable the route degrades
 // to DXF + .prj only and the gpkg assertions are skipped.
+//
+// Each case spawns ogr2ogr and builds a real DXF, so each carries its own 60s
+// timeout. Jest's default 5s is enough when this file runs alone (~2s for all
+// three) but not inside a full run, where they failed as timeouts while passing
+// in isolation -- a false alarm on every full suite.
 jest.unstable_mockModule('../../utils/schemaAuth.js', () => ({ authenticateWithSchema: async (request, reply) => {} }))
 
 const { default: geopdfVectorRoutes } = await import('../geopdf-vector.js')
@@ -87,7 +92,7 @@ describe('/api/geopdf/dxf — GeoPackage-in-ZIP (QGIS native georeferencing)', (
     expect(content).toContain('Cape Lo 31 (North-up)')
     expect(content.toLowerCase()).toContain('axis["easting",east')
     expect(content.toLowerCase()).not.toContain('westing')
-  })
+  }, 60000)
 
   test('zip:true + includeGpkg:false ships DXF + .prj only (no .gpkg)', async () => {
     const app = buildApp()
@@ -103,7 +108,7 @@ describe('/api/geopdf/dxf — GeoPackage-in-ZIP (QGIS native georeferencing)', (
     expect(names.find((n) => n.endsWith('.dxf'))).toBeTruthy()
     expect(names.find((n) => n.endsWith('.prj'))).toBeTruthy()
     expect(names.find((n) => n.endsWith('.gpkg'))).toBeFalsy()
-  })
+  }, 60000)
 
   test('gpkgOnly:true responds with the standalone .gpkg (GeoPackage content-type)', async () => {
     const app = buildApp()
@@ -123,5 +128,5 @@ describe('/api/geopdf/dxf — GeoPackage-in-ZIP (QGIS native georeferencing)', (
     const content = gpkg.toString('latin1')
     expect(content).toContain('Cape Lo 31 (North-up)')
     expect(content.toLowerCase()).not.toContain('westing')
-  })
+  }, 60000)
 })

@@ -1049,7 +1049,11 @@ export function buildWorkingPlanSpec(
   // Derived before the notes, because whether the sheet letters its remainder
   // decides whether a note naming it is a duplicate or a real neighbour.
   const remainderId = (ctx.parcels ?? []).find(p => isRemainder(p, ctx.outsideFigureId))?.id
-  const drawnRings = namedRings.filter(r => r.id !== String(remainderId ?? ' ')).map(r => r.names)
+  // A sheet with no remainder excludes nothing here: every named ring is drawn.
+  // Said outright, rather than by comparing ids against a sentinel that matches none.
+  const drawnRings = namedRings
+    .filter(r => remainderId == null || r.id !== String(remainderId))
+    .map(r => r.names)
   const remainderBoundary = (remainderRing ?? []).flatMap((name, i) => {
     const from = name
     const to = remainderRing![(i + 1) % remainderRing!.length]

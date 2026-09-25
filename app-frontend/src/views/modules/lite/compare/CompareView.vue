@@ -736,17 +736,25 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import ModuleScaffold from '@/components/scaffold/ModuleScaffold.vue'
 import { useSurveyAdjustmentStore } from '@/stores/surveyAdjustmentStore'
+import { useProjectSelectionStore } from '@/stores/projectSelection'
 import { f3, f4, f4s, formatDMS, SAMPLE_DATA } from '@/utils/surveyMath'
 import { generateBeaconAdjustmentReport } from '@/utils/beaconAdjustmentReport'
 import { medianPairwiseDistance, suggestedSigma0 } from '@/utils/si727'
 import { parseBeaconCsv, CSV_HEADER } from '@/utils/beaconComparisonCsv'
 import { formatDateDDMMYYYY } from '@/utils/dateFormat'
+import {
+  saveBeaconComparisonPoints,
+  loadBeaconComparisonPoints,
+} from '@/services/beaconComparisonPersistence'
 
-const props = defineProps({ embedded: { type: Boolean, default: false } })
+const props = defineProps({
+  embedded: { type: Boolean, default: false },
+  projectId: { type: Number, default: null },
+})
 
 const scaffoldProps = computed(() =>
   props.embedded
@@ -799,6 +807,71 @@ const sigma0Note = computed(() => {
 })
 const importMsg = ref(null)   // { ok: boolean, text: string } | null
 
+// ── DB PERSISTENCE ───────────────────────────────────────────────────────────
+// The loaded beacon-comparison CSV is saved to the active project (workflow
+// state step_data['beacon-comparison']) so it survives navigation across the
+// App. Auto-saves on upload and on point edits (debounced, snapshot-deduped);
+// standalone entry with a selected project restores the saved network.
+const projectSelection = useProjectSelectionStore()
+const activeProjectId = computed(() =>
+  props.projectId ?? projectSelection.selectedProjectId,
+)
+let lastSavedSnapshot = ''   // JSON of the network last persisted to the DB
+let saveTimer = null
+
+function normalizeRows(list) {
+  return list.map((p) => ({
+    name: String(p?.name ?? '').trim(),
+    yH: Number(p?.yH ?? 0),
+    xH: Number(p?.xH ?? 0),
+    yS: Number(p?.yS ?? 0),
+    xS: Number(p?.xS ?? 0),
+  }))
+}
+
+function isSampleNetwork(rows) {
+  return JSON.stringify(rows) === JSON.stringify(normalizeRows(SAMPLE_DATA))
+}
+
+async function persistNetwork() {
+  const pid = activeProjectId.value
+  const rows = normalizeRows(points.value)
+  if (!pid || rows.length < 3 || isSampleNetwork(rows)) return   // sample is placeholder data
+  const snap = JSON.stringify(rows)
+  if (snap === lastSavedSnapshot) return
+  try {
+    await saveBeaconComparisonPoints(pid, rows)
+    lastSavedSnapshot = snap
+  } catch (err) {
+    // Non-fatal: the in-memory network and report generation still work offline.
+    console.warn('[BeaconComparison] DB save failed:', err?.message ?? err)
+  }
+}
+
+function schedulePersist() {
+  if (!activeProjectId.value) return
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(persistNetwork, 600)
+}
+
+watch(points, schedulePersist, { deep: true })
+
+onMounted(async () => {
+  if (props.embedded) return   // workflow reloads via its own existing-beacons path
+  const pid = activeProjectId.value
+  if (!pid) return
+  try {
+    const rows = await loadBeaconComparisonPoints(pid)
+    if (rows && rows.length >= 3) {
+      store.setPoints(rows.map((r) => ({ name: r.name, yH: r.yH, xH: r.xH, yS: r.yS, xS: r.xS })))
+      lastSavedSnapshot = JSON.stringify(normalizeRows(points.value))
+      importMsg.value = { ok: true, text: `Restored ${rows.length} beacons saved to the project.` }
+    }
+  } catch (err) {
+    console.warn('[BeaconComparison] DB load failed:', err?.message ?? err)
+  }
+})
+
 // ── EXAMINATION REPORT METADATA ───────────────────────────────────────────────
 const surveyorName = ref('')
 const plsNumber    = ref('')
@@ -848,6 +921,10 @@ async function handleUpload(event) {
     const rows = parseBeaconCsv(await file.text())
     store.setPoints(rows)
     importMsg.value = { ok: true, text: `Loaded ${rows.length} beacons from "${file.name}".` }
+    if (activeProjectId.value) {
+      await persistNetwork()
+      if (lastSavedSnapshot) importMsg.value.text += ' Saved to project database.'
+    }
   } catch (err) {
     importMsg.value = { ok: false, text: err.message || 'Could not read the CSV file.' }
   } finally {

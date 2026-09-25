@@ -139,38 +139,59 @@ function renderBeaconComparisonTable(
   cursor.doc.setFont('helvetica', 'bold');
   cursor.doc.setFontSize(9);
 
-  const colX = [cursor.margin + 5, 40, 70, 100, 130, 155];
+  // Uniform column grid: a beacon column plus six numeric columns. Layout is
+  // derived from the page so the table survives width changes without manual
+  // per-column tuning.
+  const startX = cursor.margin + 5;
+  const endX = cursor.pageWidth - cursor.margin - 5;
+  const beaconCol = 20;
+  const numericCols = 6;
+  const numericW = (endX - startX - beaconCol) / numericCols;
+  const colX = [
+    startX,
+    ...Array.from({ length: numericCols }, (_, i) => startX + beaconCol + i * numericW),
+  ];
   const rowHeight = 6;
 
+  // Survey (Y/X) columns are rendered red per SI 727 §67(5) — headers included.
+  cursor.doc.setTextColor(...BLACK);
   cursor.doc.text('Beacon', colX[0], cursor.y);
-  cursor.doc.text('Original Y', colX[1], cursor.y);
-  cursor.doc.text('Original X', colX[2], cursor.y);
-  cursor.doc.text('New Y', colX[3], cursor.y);
-  cursor.doc.text('New X', colX[4], cursor.y);
-  cursor.doc.text('Δ (m)', colX[5], cursor.y);
+  cursor.doc.text('Previous Y', colX[1], cursor.y);
+  cursor.doc.text('Previous X', colX[2], cursor.y);
+  cursor.doc.setTextColor(...RED);
+  cursor.doc.text('Survey Y', colX[3], cursor.y);
+  cursor.doc.text('Survey X', colX[4], cursor.y);
+  cursor.doc.setTextColor(...BLACK);
+  cursor.doc.text('dY (m)', colX[5], cursor.y);
+  cursor.doc.text('dX (m)', colX[6], cursor.y);
 
   cursor.y += rowHeight;
   horizontalLine(cursor);
   cursor.y += 2;
 
   cursor.doc.setFont('helvetica', 'normal');
-  cursor.doc.setFontSize(8);
+  cursor.doc.setFontSize(7.5);
 
   beaconsWithOriginal.forEach((beacon) => {
     checkPageBreak(cursor, 15);
 
-    const origY = beacon.originalData?.coordinates?.y?.toFixed(3) || '-';
-    const origX = beacon.originalData?.coordinates?.x?.toFixed(3) || '-';
-    const newY = beacon.currentCoordinates?.y?.toFixed(3) || '-';
-    const newX = beacon.currentCoordinates?.x?.toFixed(3) || '-';
-    const distance = beacon.discrepancy?.distance?.toFixed(3) || '-';
+    const prevY = beacon.originalData?.coordinates?.y?.toFixed(3) || '-';
+    const prevX = beacon.originalData?.coordinates?.x?.toFixed(3) || '-';
+    const survY = beacon.currentCoordinates?.y?.toFixed(3) || '-';
+    const survX = beacon.currentCoordinates?.x?.toFixed(3) || '-';
+    const dY = beacon.discrepancy?.dy?.toFixed(3) || '-';
+    const dX = beacon.discrepancy?.dx?.toFixed(3) || '-';
 
+    cursor.doc.setTextColor(...BLACK);
     cursor.doc.text(beacon.beaconId, colX[0], cursor.y);
-    cursor.doc.text(origY, colX[1], cursor.y);
-    cursor.doc.text(origX, colX[2], cursor.y);
-    cursor.doc.text(newY, colX[3], cursor.y);
-    cursor.doc.text(newX, colX[4], cursor.y);
-    cursor.doc.text(distance, colX[5], cursor.y);
+    cursor.doc.text(prevY, colX[1], cursor.y);
+    cursor.doc.text(prevX, colX[2], cursor.y);
+    cursor.doc.setTextColor(...RED);
+    cursor.doc.text(survY, colX[3], cursor.y);
+    cursor.doc.text(survX, colX[4], cursor.y);
+    cursor.doc.setTextColor(...BLACK);
+    cursor.doc.text(dY, colX[5], cursor.y);
+    cursor.doc.text(dX, colX[6], cursor.y);
 
     cursor.y += rowHeight;
   });

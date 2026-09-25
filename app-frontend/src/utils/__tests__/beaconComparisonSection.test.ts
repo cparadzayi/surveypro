@@ -89,20 +89,32 @@ function makeReportDataWithFailingEdge(): ReportOnSurveyData {
  *  model of a "current draw colour" set by setDrawColor and read by line/ellipse). */
 function renderCapturing(reportData: ReportOnSurveyData): {
   written: string[];
+  texts: Array<{ text: string; color: [number, number, number] }>;
   cursor: BeaconComparisonCursor;
   lines: Array<{ color: [number, number, number]; x1: number; y1: number; x2: number; y2: number }>;
   ellipses: Array<{ color: [number, number, number] }>;
 } {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const written: string[] = [];
+  const texts: Array<{ text: string; color: [number, number, number] }> = [];
   const lines: Array<{ color: [number, number, number]; x1: number; y1: number; x2: number; y2: number }> = [];
   const ellipses: Array<{ color: [number, number, number] }> = [];
   let currentDrawColor: [number, number, number] = [0, 0, 0];
+  let currentTextColor: [number, number, number] = [0, 0, 0];
 
   const originalText = doc.text.bind(doc);
   (doc as any).text = (text: any, ...rest: any[]) => {
-    written.push(Array.isArray(text) ? text.join(' ') : String(text));
+    const s = Array.isArray(text) ? text.join(' ') : String(text);
+    written.push(s);
+    texts.push({ text: s, color: [...currentTextColor] });
     return (originalText as any)(text, ...rest);
+  };
+
+  const originalSetTextColor = doc.setTextColor.bind(doc);
+  (doc as any).setTextColor = (...args: any[]) => {
+    if (args.length === 3) currentTextColor = [args[0], args[1], args[2]];
+    else if (args.length === 1) currentTextColor = [args[0], args[0], args[0]];
+    return (originalSetTextColor as any)(...args);
   };
 
   const originalSetDrawColor = doc.setDrawColor.bind(doc);
@@ -148,7 +160,7 @@ function renderCapturing(reportData: ReportOnSurveyData): {
     y: 20,
   };
   renderBeaconComparison(cursor, reportData);
-  return { written, cursor, lines, ellipses };
+  return { written, texts, cursor, lines, ellipses };
 }
 
 describe('hasBeaconComparisonData', () => {
@@ -174,15 +186,35 @@ describe('hasBeaconComparisonData', () => {
 
 describe('renderBeaconComparison', () => {
   it('renders heading, method line, adjustment summary, table and conclusion', () => {
-    const { written } = renderCapturing(makeReportData());
+    const { written, texts } = renderCapturing(makeReportData());
     expect(written).toContain('BEACON COMPARISON (SI 727 Section 67(5))');
     expect(written).toContain('Method: Tabulation of Co-ordinates');
     expect(written).toContain('Helmert LSQ, W-test at 95%: all beacons accepted.');
     expect(written).toContain('Beacon');
-    expect(written).toContain('Δ (m)');
+    expect(written).toContain('dY (m)');
+    expect(written).toContain('dX (m)');
     expect(written).toContain('85c');
-    expect(written).toContain('0.061');
+    expect(written).toContain('0.023');
+    expect(written).toContain('0.056');
     expect(written).toContain('Conclusion:');
+
+    // Headers renamed per user request: Previous Y/X (historical) + Survey Y/X (current).
+    expect(written).toContain('Previous Y');
+    expect(written).toContain('Previous X');
+    expect(written).toContain('Survey Y');
+    expect(written).toContain('Survey X');
+
+    // Survey Y/X — header and values — must be red (SI 727 §67(5)); Previous + residuals stay black.
+    const atColor = (s: string) => texts.find((t) => t.text === s)?.color;
+    expect(atColor('Survey Y')).toEqual([220, 0, 0]);
+    expect(atColor('Survey X')).toEqual([220, 0, 0]);
+    expect(atColor('50000.123')).toEqual([220, 0, 0]); // survey Y value
+    expect(atColor('2200000.456')).toEqual([220, 0, 0]); // survey X value
+    expect(atColor('Previous Y')).toEqual([0, 0, 0]);
+    expect(atColor('Previous X')).toEqual([0, 0, 0]);
+    expect(atColor('50000.100')).toEqual([0, 0, 0]); // previous Y value
+    expect(atColor('2200000.400')).toEqual([0, 0, 0]); // previous X value
+    expect(atColor('0.023')).toEqual([0, 0, 0]); // dY stays black
   });
 
   it('prints the tolerance line when no adjustment summary is present', () => {

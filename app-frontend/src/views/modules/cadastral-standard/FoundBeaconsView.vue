@@ -14,7 +14,7 @@
     </div>
 
     <!-- Shared comparison engine, embedded (no lite scaffold chrome) -->
-    <CompareView embedded />
+    <CompareView embedded :project-id="projectId" />
 
     <div v-if="saveError" class="p-4 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">
       {{ saveError }}
@@ -43,6 +43,7 @@ import { ref, computed, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { FoundBeacon } from '../../../types/cadastral'
 import { importHistoricalSurveyPoints } from '../../../services/historicalSurveyPoints'
+import { loadBeaconComparisonPoints } from '../../../services/beaconComparisonPersistence'
 import { useSurveyAdjustmentStore } from '../../../stores/surveyAdjustmentStore'
 import {
   buildFoundBeacons, buildComparisonConfig, toHistoricalRows, pointsFromExistingBeacons,
@@ -68,9 +69,21 @@ const saveError = ref<string | null>(null)
 const canSave = computed(() => !!result.value && points.value.length >= 3)
 
 // Reset the shared singleton store on entry so lite-tool state cannot bleed in:
-// reload the prior comparison from saved beacons, else start empty (user uploads a CSV).
-onMounted(() => {
+// reload the prior comparison from saved beacons, else fall back to the DB copy
+// of the last uploaded CSV, else start empty (user uploads a CSV).
+onMounted(async () => {
   const rows = pointsFromExistingBeacons(props.existingBeacons)
+  if (rows.length === 0 && props.projectId) {
+    try {
+      const saved = await loadBeaconComparisonPoints(props.projectId)
+      if (saved && saved.length >= 3) {
+        store.setPoints(saved.map((r) => ({ name: r.name, yH: r.yH, xH: r.xH, yS: r.yS, xS: r.xS })))
+        return
+      }
+    } catch (e: any) {
+      console.warn('[FoundBeacons] DB load failed:', e?.message)
+    }
+  }
   store.setPoints(rows) // rows may be [] → empty table, awaiting CSV upload
 })
 

@@ -315,53 +315,53 @@ class BeaconAdjustmentReport {
     const body = result.pts.map(p => isWtest ? [
       p.name, f3(p.yH), f3(p.xH), f3(p.yS), f3(p.xS),
       f4s(p.dY), f4s(p.dX), f4s(p.vY), f4s(p.vX),
-      f4(p.resDist), formatDMS(p.resBrg),
+      f4(p.resDist),
       (p.wMax != null ? p.wMax.toFixed(2) : '—'), p.finalStatus || '—',
       p.finalStatus === 'REJECT' ? (REJ_SOURCE_LABEL[p.rejSource] || '—') : '—',
     ] : [
       p.name, f3(p.yH), f3(p.xH), f3(p.yS), f3(p.xS),
-      f4s(p.dY), f4s(p.dX), f4(p.rawDist), formatDMS(p.rawBrg),
+      f4s(p.dY), f4s(p.dX), f4(p.rawDist),
       p.finalStatus || '—',
       p.finalStatus === 'REJECT' ? (REJ_SOURCE_LABEL[p.rejSource] || '—') : '—',
     ])
     autoTable(this.doc, {
       startY: 18, margin: { left: 14, right: 14 },
       head: [isWtest
-        ? ['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'dY', 'dX', 'vY', 'vX', 'Dist', 'Brg (S)', 'W-max', 'Status', 'Rejected by']
-        : ['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'dY', 'dX', 'Dist', 'Brg (S)', 'Status', 'Rejected by']],
+        ? ['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'dY', 'dX', 'vY', 'vX', 'Dist', 'W-max', 'Status', 'Rejected by']
+        : ['Beacon', 'Hist Y', 'Hist X', 'Survey Y', 'Survey X', 'dY', 'dX', 'Dist', 'Status', 'Rejected by']],
       body,
       styles: { fontSize: 7.5, cellPadding: 1, halign: 'right' },
       // SI 727 §67(5): historical = black (default), survey (Y/X) = red.
       columnStyles: {
         0: { halign: 'left' },
         3: { textColor: [220, 38, 38] }, 4: { textColor: [220, 38, 38] },
+        [isWtest ? 11 : 8]: { halign: 'center' },
         [isWtest ? 12 : 9]: { halign: 'center' },
-        [isWtest ? 13 : 10]: { halign: 'center' },
       },
       headStyles: { fillColor: NAVY, halign: 'center', fontSize: 7.5 },
-      // Status sits at index 12 (wtest) or 9 (coords/edges); 'Rejected by' follows it.
-      didParseCell: d => { if (d.section === 'body' && body[d.row.index][isWtest ? 12 : 9] === 'REJECT') d.cell.styles.fillColor = [252, 226, 226] },
+      // Status sits at index 11 (wtest) or 8 (coords/edges); 'Rejected by' follows it.
+      didParseCell: d => { if (d.section === 'body' && body[d.row.index][isWtest ? 11 : 8] === 'REJECT') d.cell.styles.fillColor = [252, 226, 226] },
     })
     const fy = this.doc.lastAutoTable.finalY + 5
     const fw = this.doc.internal.pageSize.getWidth() - 28
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
-    this.doc.text('BLACK = original (historical) · RED = survey · Bearings South-oriented (0°=S, 90°=W)', 14, fy, { maxWidth: fw })
+    this.doc.text('BLACK = original (historical) · RED = survey', 14, fy, { maxWidth: fw })
     // Drawn as discrete single lines (not maxWidth auto-wrap, which jsPDF's
     // browser build fails to emit when called after an autoTable).
     const note = isWtest
       ? [
           'dY, dX = raw difference (survey minus historical): still includes the systematic datum shift, scale and rotation common to every beacon.',
-          'vY, vX = residuals left after the best-fit Helmert transformation is removed - the beacon-specific misfit. Dist and Brg (S) are its size and direction.',
+          'vY, vX = residuals left after the best-fit Helmert transformation is removed - the beacon-specific misfit. Dist is its magnitude.',
           'Acceptance / rejection is decided by the standardised residual W-max (Baarda data snooping), not by the raw difference dY/dX.',
         ]
       : method === 'coords'
         ? [
-            'dY, dX = raw difference (survey minus historical); Dist and Brg (S) are its size and South-oriented direction. Δ/limit = co-ordinate-limit severity (1.0 = exactly at the limit).',
+            'dY, dX = raw difference (survey minus historical); Dist is its magnitude. Δ/limit = co-ordinate-limit severity (1.0 = exactly at the limit).',
             'Acceptance / rejection is a two-gate consistency verdict: a beacon is rejected only when it stands apart from its own network (Δ/limit > 1.25 × network median) '
               + `AND itself exceeds the SI 727 class ${result.surveyClass || 'B'} co-ordinate limit (Δ/limit > 1; Δ > ${result.posLimit != null ? result.posLimit.toFixed(4) : 'class limit'} m ≈95% 2-D) — no Helmert or W-test is applied in this mode.`,
           ]
         : [
-            'dY, dX = raw difference (survey minus historical); Dist and Brg (S) are its size and South-oriented direction.',
+            'dY, dX = raw difference (survey minus historical); Dist is its magnitude.',
             'Acceptance is decided by the SI 727 Second Schedule severity verdict on the inter-beacon line checks (paras 7(1), 8) — no Helmert or W-test is applied in this mode.',
           ]
     note.forEach((ln, i) => this.doc.text(ln, 14, fy + 6 + i * 4))
@@ -377,19 +377,19 @@ class BeaconAdjustmentReport {
     this.doc.text('Transformation Residuals (Historical transformed onto Survey)', 14, 14)
     const body = pts.map(p => [
       p.name, f3(p.yT), f3(p.xT), f3(p.yS), f3(p.xS),
-      f4s(p.tvY), f4s(p.tvX), f4(p.tResid), formatDMS(p.tBrg), p.finalStatus || '—',
+      f4s(p.tvY), f4s(p.tvX), f4(p.tResid), p.finalStatus || '—',
     ])
     autoTable(this.doc, {
       startY: 18, margin: { left: 14, right: 14 },
       head: [['Beacon', 'Transf Y', 'Transf X', 'Survey Y', 'Survey X',
-              'vY (m)', 'vX (m)', 'Resid (m)', 'Brg (S)', 'Status']],
+              'vY (m)', 'vX (m)', 'Resid (m)', 'Status']],
       body,
       styles: { fontSize: 7.5, cellPadding: 1, halign: 'right' },
       // Survey (Y/X) red per SI 727 §67(5); status centred.
       columnStyles: {
         0: { halign: 'left' },
         3: { textColor: [220, 38, 38] }, 4: { textColor: [220, 38, 38] },
-        9: { halign: 'center' },
+        8: { halign: 'center' },
       },
       headStyles: { fillColor: NAVY, halign: 'center', fontSize: 7.5 },
       didParseCell: d => { if (d.section === 'body' && pts[d.row.index].finalStatus === 'REJECT') d.cell.styles.fillColor = [252, 226, 226] },
@@ -400,7 +400,7 @@ class BeaconAdjustmentReport {
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
     const note = [
       `Transf Y/X = historical coordinates transformed by the fitted 4-parameter Helmert (TY=${f4(p.TY)}, TX=${f4(p.TX)}, scale=${p.scale.toFixed(8)}, rotation=${formatDMS(p.rotDeg)}).`,
-      `v = Transf - Survey (residual); Resid = sqrt(vY^2 + vX^2); Brg (S) is its South-oriented direction.`,
+      `v = Transf - Survey (residual); Resid = sqrt(vY^2 + vX^2) is its magnitude.`,
       `For accepted beacons v equals the least-squares residual; for rejected beacons it shows the misfit in the fitted frame (the blunder).`,
     ]
     note.forEach((ln, i) => this.doc.text(ln, 14, y + i * 4))

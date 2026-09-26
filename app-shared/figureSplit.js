@@ -153,7 +153,10 @@ export function resolveEndpoint(ring, p, tolerance = SNAP_TOLERANCE_M) {
     const r = projectOnSegment(a, b, p)
     if (edge === null || r.distance < edge.r.distance) edge = { i, r }
   }
-  return { kind: 'edge', index: edge.i, point: roundPoint(edge.r.point) }
+  // `t` travels with an edge landing so a caller can ORDER two landings on the
+  // same edge. Without it, a cut that starts and ends on one long side -- a
+  // bulge -- could not be walked, and had to be refused as degenerate.
+  return { kind: 'edge', index: edge.i, t: edge.r.t, point: roundPoint(edge.r.point) }
 }
 
 /**
@@ -291,10 +294,29 @@ function insideRing(polyline, ring) {
  * `{ ok: false, error: 'self-intersecting' | 'straddles-stands' | 'interior-outside' | 'degenerate', stands?: string[], at?: {y,x} }`.
  *
  * Checked in this order: degenerate (both ends land in the same place) before
- * a `cut` even exists to check further against; self-intersecting (the cut
- * crosses itself, so `walk`'s ring construction below could not represent the
- * result even if every other rule passed) before the stands and interior
- * checks, both of which assume a simple path.
+ * a `cut` even exists to check further against; then self-intersecting, because
+ * `walk`'s ring construction could not represent a crossing cut even if every
+ * other rule passed, AND because `standsCrossedBy` deliberately does not name a
+ * stand merely enclosed by a loop -- so reporting 'straddles-stands' for a
+ * looping cut would hand the surveyor a list with the enclosed stands missing
+ * while the real fault was the loop. Then interior-outside, so a cut that left
+ * the figure is not reported as slicing a stand that is not even in it.
+ *
+ * SHARED OBJECTS -- read this before lettering. The two part rings, `newPoints`
+ * and the `ring` you passed in all hold the SAME point objects, not copies. So:
+ *
+ *   Do NOT letter by writing a property onto a point. Spec Part 4 requires one
+ *   physical point to carry a different letter on each sheet, and that is
+ *   exactly what this aliasing forbids: the second part would overwrite the
+ *   first, and your own figure would be mutated too. Key a letter map by array
+ *   index, or by object identity, per part.
+ *
+ *   DO match a part-ring point back to `newPoints` with `===`. It is exact,
+ *   where comparing coordinates needs an epsilon and would misclassify a beacon
+ *   surveyed to 3 dp as a created point.
+ *
+ * The sharing is deliberate and pinned by a test. It is also why nothing here
+ * rounds a surveyed vertex: those objects belong to the caller.
  */
 export function splitFigure({ ring, polyline, stands = [], tolerance = SNAP_TOLERANCE_M }) {
   // A ring needs three vertices to enclose anything, and a cut needs two ends.
@@ -310,13 +332,31 @@ export function splitFigure({ ring, polyline, stands = [], tolerance = SNAP_TOLE
   const start = atVertexPrecision(ring, resolveEndpoint(ring, startRaw, tolerance))
   const end = atVertexPrecision(ring, resolveEndpoint(ring, endRaw, tolerance))
 
-  // Both ends on the same edge, or on the same vertex, cuts nothing off.
-  const sameEdge = start.kind === 'edge' && end.kind === 'edge' && start.index === end.index
+  // Both ends on the SAME VERTEX cuts nothing off. Both ends on the same EDGE is
+  // fine -- a bulge taken off one long side is an ordinary split, and the spec's
+  // validation list contains no same-edge prohibition. It used to be refused
+  // because `resolveEndpoint` discarded the projection's `t`, so the ring walk
+  // had no way to order two landings on one edge. It carries `t` now.
   const sameVertex = start.kind === 'vertex' && end.kind === 'vertex' && start.index === end.index
-  if (sameEdge || sameVertex) return { ok: false, error: 'degenerate' }
+  if (sameVertex) return { ok: false, error: 'degenerate' }
 
-  const interior = polyline.slice(1, -1).map(roundPoint)
-  const cut = [start.point, ...interior, end.point]
+
+  // A double-click, or two clicks closer together than the precision we lodge,
+  // arrives as the same point twice. Dropping the repeat is not "adjusting the
+  // cut": a zero-length side has no geometry to adjust. Leaving it in would put
+  // two Coordinate List rows, under two different letters, on one coordinate,
+  // and a zero-length side in the outside-figure table. `selfIntersects` cannot
+  // catch it -- a zero-length segment has a zero determinant and reads as
+  // parallel -- so it is removed here, on the same principle as
+  // `atVertexPrecision`: points that are the same number on the plan are one
+  // point.
+  const cut = withoutRepeats([start.point, ...polyline.slice(1, -1).map(roundPoint), end.point])
+  if (cut.length < 2) return { ok: false, error: 'degenerate' }
+
+  // Derived FROM the deduplicated cut, not alongside it. Built separately, a
+  // repeat dropped from the cut survived into newPoints and still lodged its
+  // duplicate Coordinate List row.
+  const interior = cut.slice(1, -1)
 
   if (selfIntersects(cut)) return { ok: false, error: 'self-intersecting' }
 
@@ -389,6 +429,12 @@ function selfIntersects(points) {
  * An endpoint on an edge leaves that edge's start vertex behind it; an endpoint
  * on a vertex is itself the boundary and is not repeated.
  */
+/** Consecutive points that are the same at the precision we lodge, collapsed to
+ *  one. Compares rounded values, so two clicks 5 mm apart are one point. */
+function withoutRepeats(points) {
+  return points.filter((p, i) => i === 0 || !near(roundPoint(points[i - 1]), roundPoint(p)))
+}
+
 /**
  * The ring as this module wants it: open, with the first vertex not repeated.
  *
@@ -454,6 +500,17 @@ function enclosedArea(points) {
 
 function walk(ring, from, to) {
   const n = ring.length
+
+  // Two landings on ONE edge: no ring vertex lies between them, so the walk is
+  // either empty or the whole ring, and only `t` can say which. Walking forward
+  // from `from`, if `to` is further along the same edge we arrive without
+  // passing a vertex; if it is behind us we go the whole way round first.
+  if (from.kind === 'edge' && to.kind === 'edge' && from.index === to.index) {
+    if (from.t <= to.t) return []
+    const all = []
+    for (let k = 0, i = (from.index + 1) % n; k < n; k++, i = (i + 1) % n) all.push(ring[i])
+    return all
+  }
   // A vertex endpoint IS ring[index]; an edge endpoint lies on the edge
   // leaving ring[index]. Either way, the next ring vertex forward is index + 1.
   const first = (from.index + 1) % n

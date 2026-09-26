@@ -416,10 +416,53 @@ describe('splitFigure', () => {
     expect(r.error).toBe('interior-outside')
   })
 
-  test('both endpoints on the same edge is degenerate, not a split', () => {
+  test('a straight cut along one edge is degenerate, for want of area', () => {
+    // Both ends on the same edge is NOT what makes this degenerate -- see the
+    // bulge test below, which is a valid split with both ends on one edge. This
+    // one encloses nothing, and that is what the area check catches.
     const r = splitFigure({ ring: square, polyline: [P(30, 0), P(60, 0)] })
     expect(r.ok).toBe(false)
     expect(r.error).toBe('degenerate')
+  })
+
+  test('a bulge taken off one long side is an ordinary split', () => {
+    // Both ends land on edge 0. This was refused as 'degenerate' with the
+    // reason "cuts nothing off", which is false: it cuts off a triangle. The
+    // real obstacle was that resolveEndpoint discarded the projection's `t`, so
+    // the ring walk could not tell which of two landings on one edge came first
+    // -- and the guard hid that, while no test protected the guard.
+    const r = splitFigure({ ring: square, polyline: [P(30, 0), P(45, 20), P(60, 0)] })
+    const area = (pts) => {
+      let twice = 0
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        twice += pts[j].y * pts[i].x - pts[i].y * pts[j].x
+      }
+      return Math.abs(twice) / 2
+    }
+
+    expect(r.ok).toBe(true)
+    // The bulge is 1/2 x 30 x 20; the remainder is the square less that.
+    expect(area(r.parts[0]) + area(r.parts[1])).toBeCloseTo(10000, 6)
+    expect(Math.min(area(r.parts[0]), area(r.parts[1]))).toBeCloseTo(300, 6)
+    // All three cut points are new: none of them is an existing ring vertex.
+    expect(r.newPoints).toHaveLength(3)
+  })
+
+  test('a repeated click is one point, not two rows and a zero-length side', () => {
+    // A double-click while drawing, or two clicks closer together than the 2 dp
+    // we lodge, used to survive into both the part ring and newPoints: two
+    // Coordinate List rows for one coordinate under two different letters.
+    // selfIntersects cannot catch it -- a zero-length segment has a zero
+    // determinant and reads as parallel.
+    const r = splitFigure({ ring: square, polyline: [P(50, 0), P(50, 50), P(50, 50), P(50, 100)] })
+    const straight = splitFigure({ ring: square, polyline: [P(50, 0), P(50, 50), P(50, 100)] })
+
+    expect(r.ok).toBe(true)
+    expect(r.newPoints).toEqual(straight.newPoints)
+    for (const part of r.parts) {
+      const ids = part.map((p) => `${p.y},${p.x}`)
+      expect([...new Set(ids)].sort()).toEqual([...ids].sort())
+    }
   })
 
   // Override 3: a snapped endpoint reuses an existing beacon and must not be
@@ -522,6 +565,26 @@ describe('splitFigure', () => {
     const homes = ['0,0', '0,100', '100,0', '100,100']
       .map((corner) => [corner, [a.has(corner), b.has(corner)].filter(Boolean).length])
     expect(homes).toEqual([['0,0', 1], ['0,100', 1], ['100,0', 1], ['100,100', 1]])
+  })
+
+  test('the parts share point objects with each other and with the caller', () => {
+    // Pinned because a follow-on plan WILL letter these points, and this is the
+    // shape that makes the obvious approach wrong: spec Part 4 wants one physical
+    // point lettered differently on each sheet, and writing the letter onto the
+    // point would clobber the other part and mutate the caller's own figure.
+    //
+    // If you are here because you changed this to return copies: reasonable, but
+    // the `===` match from a part ring back to newPoints goes with it, and
+    // callers rely on that. Give them a replacement before taking it away.
+    const ring = [P(0, 0), P(100, 0), P(100, 100), P(0, 100)]
+    const r = splitFigure({ ring, polyline: [P(50, 0), P(50, 100)] })
+
+    // A created point is the SAME object in the part ring and in newPoints.
+    expect(r.parts[0][0]).toBe(r.newPoints[0])
+    // A surveyed vertex in a part ring is the caller's own object.
+    expect(r.parts[0].some((p) => ring.includes(p))).toBe(true)
+    // The cut's points are shared between the two parts.
+    expect(r.parts[0].filter((p) => r.parts[1].includes(p)).length).toBeGreaterThan(0)
   })
 
   test('a closed GeoJSON ring splits exactly as the open one does', () => {

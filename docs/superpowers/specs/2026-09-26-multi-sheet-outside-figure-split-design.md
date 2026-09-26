@@ -88,6 +88,9 @@ Each was settled with the surveyor during design.
    servitude statement for its own stands.
 9. **Each sheet is worded per SI 727 Seventh Schedule (b)**, using the existing
    `multiSheetTemplate`.
+10. **Sheets are numbered geographically**, north to south then west to east,
+    by outside-figure centroid. Numbers are derived from the current splits
+    rather than stored.
 
 ## Part 1 — The sheet model
 
@@ -113,19 +116,28 @@ In **PDF** the plan remains one document and sheets are pages, as
 `generateTiledGeoPDF` already produces them. In **DXF** each sheet is its own
 file (Part 6). The sheet model is shared; only the packaging differs.
 
-### Ordering — PROPOSED, not yet settled
+### Ordering
 
-This is my suggestion rather than a decision taken with the surveyor, and it
-should be confirmed before implementation.
+Sheets are numbered **geographically: north to south, then west to east**, by
+the centroid of each sheet's outside figure. This matches how
+`generateTiledGeoPDF` already numbers its tiles, and how a reader holding three
+sheets expects them to run.
 
-Proposal: number sheets in the order the surveyor creates the splits, not by
-geography. A split of sheet 1 yields sheets 1 and 2; splitting sheet 2 again
-yields 1, 2 and 3. Numbering then stays stable while the surveyor works.
+In Lo co-ordinates that is X ascending (X increases southward), then Y
+ascending (Y increases eastward). So the ordering key is `(centroidX,
+centroidY)` ascending.
 
-The alternative is geographic order (north to south, west to east), which
-matches how `generateTiledGeoPDF` numbers its tiles today and how a reader
-holding three sheets would expect them to run. That is probably what a lodged
-plan should do; renumbering as splits are edited is the cost.
+Two consequences, both accepted:
+
+- **Sheet numbers are derived, not stored.** They are recomputed whenever the
+  splits change, so they always describe the current geography. A surveyor who
+  re-cuts may see sheets renumber, which is the cost of numbers that are always
+  true.
+- **Irregular splits are ordered, not banded.** A strict sort on
+  `(centroidX, centroidY)` gives row-major order for a grid-like division, but
+  it does not group sheets into rows. For an L-shaped or staggered division the
+  order is still deterministic and still runs broadly north-to-south; it simply
+  is not a tidy grid, because the division is not one.
 
 ## Part 2 — The split tool
 

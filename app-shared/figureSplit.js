@@ -103,6 +103,16 @@ export function roundPoint(p) {
 /**
  * Put an endpoint exactly on the ring: on a vertex when it is within tolerance
  * of one, otherwise on the nearest edge.
+ *
+ * A snapped vertex is returned VERBATIM, not rounded. Snapping reuses an
+ * existing beacon rather than creating a point, and Decision 13's 2 dp is for
+ * points the cut invents. Rounding a surveyed vertex here would state it to 2 dp
+ * in the part rings while the Coordinate List states it to 3 -- precisely the
+ * disagreement that rounding once is meant to prevent -- and `splitFigure` puts
+ * this point straight into the part ring, where a rounded copy would sit beside
+ * the walk's unrounded original for the same beacon.
+ *
+ * Only the 'edge' result is a new point, so only it is rounded.
  */
 export function resolveEndpoint(ring, p, tolerance = SNAP_TOLERANCE_M) {
   let best = null
@@ -113,7 +123,7 @@ export function resolveEndpoint(ring, p, tolerance = SNAP_TOLERANCE_M) {
     if (best === null || d < best.d) best = { d, i }
   }
   if (best && best.d <= tolerance) {
-    return { kind: 'vertex', index: best.i, point: roundPoint(ring[best.i]) }
+    return { kind: 'vertex', index: best.i, point: ring[best.i] }
   }
 
   let edge = null

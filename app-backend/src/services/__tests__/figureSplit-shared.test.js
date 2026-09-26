@@ -115,6 +115,21 @@ describe('resolveEndpoint', () => {
     expect(r.point).toEqual(P(33.33, 0))
   })
 
+  test('a snapped vertex keeps its own coordinate, unrounded', () => {
+    // Snapping REUSES an existing beacon; it does not create a point. Decision
+    // 13's rounding is for points the cut invents. Rounding a surveyed vertex
+    // here would state it to 2 dp in the part rings while the Coordinate List
+    // states it to 3 -- the disagreement that rounding once exists to prevent.
+    // Task 6 puts this very object into the part ring, so a rounded copy would
+    // also sit beside the walk's unrounded original for the same beacon.
+    const surveyed = [P(0, 0), P(100.004, 0.007), P(100, 100), P(0, 100)]
+    const r = resolveEndpoint(surveyed, P(100.01, 0.01))
+
+    expect(r.kind).toBe('vertex')
+    expect(r.index).toBe(1)
+    expect(r.point).toEqual(P(100.004, 0.007))
+  })
+
   test('a click well inside still resolves to the nearest boundary', () => {
     // The tool should not let this happen, but the rule must be total.
     const r = resolveEndpoint(square, P(50, 20))

@@ -115,6 +115,21 @@ describe('resolveEndpoint', () => {
     expect(r.point).toEqual(P(33.33, 0))
   })
 
+  test('a vertex exactly at the tolerance snaps; just inside it does not', () => {
+    // Decision 12 says "within 0.10 m", which this reads as inclusive. Pinning
+    // that on 0.10 itself is not possible in binary -- 0.1 * 0.1 square-rooted
+    // is 0.10000000000000002, so the literal boundary is unrepresentable. A
+    // 3-4-5 triangle gives a distance of exactly 5 in integer arithmetic, so
+    // passing the tolerance explicitly tests `<=` against `<` with no slack.
+    expect(resolveEndpoint(square, P(3, 4), 5).kind).toBe('vertex')
+    expect(resolveEndpoint(square, P(3, 4), 5).index).toBe(0)
+
+    const outside = resolveEndpoint(square, P(3, 4), 4.99)
+    expect(outside.kind).toBe('edge')
+    expect(outside.index).toBe(3)            // the edge from vertex 3 back to 0
+    expect(outside.point).toEqual(P(0, 4))
+  })
+
   test('a snapped vertex keeps its own coordinate, unrounded', () => {
     // Snapping REUSES an existing beacon; it does not create a point. Decision
     // 13's rounding is for points the cut invents. Rounding a surveyed vertex

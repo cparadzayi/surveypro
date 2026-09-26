@@ -5,7 +5,7 @@
 import { describe, test, expect } from '@jest/globals'
 import {
   projectOnSegment, segmentIntersection, pointInRing, resolveEndpoint,
-  interiorStaysInside,
+  interiorStaysInside, standsCrossedBy,
 } from '../../../../app-shared/figureSplit.js'
 
 const P = (y, x) => ({ y, x })
@@ -216,5 +216,64 @@ describe('interiorStaysInside', () => {
     // Four crossings, not two: it would cut the figure into three parts.
     const cut = [P(0, 50), P(50, -10), P(100, 50)]
     expect(interiorStaysInside(square, cut).ok).toBe(false)
+  })
+})
+
+describe('standsCrossedBy', () => {
+  const box = (y0, x0, y1, x1) => [P(y0, x0), P(y1, x0), P(y1, x1), P(y0, x1)]
+  const stands = [
+    { name: '1686', ring: box(0, 0, 10, 10) },
+    { name: '1687', ring: box(20, 0, 30, 10) },
+    { name: 'Road', ring: box(10, 0, 20, 10), isPublicPlace: true },
+  ]
+
+  test('a cut down the road slices nothing', () => {
+    expect(standsCrossedBy([P(0, 15), P(40, 15)], stands)).toEqual([])
+  })
+
+  test('a cut through a stand names it', () => {
+    expect(standsCrossedBy([P(5, -5), P(5, 15)], stands)).toEqual(['1686'])
+  })
+
+  test('a cut through several names them all, in order', () => {
+    expect(standsCrossedBy([P(-5, 5), P(40, 5)], stands)).toEqual(['1686', '1687'])
+  })
+
+  test('the road it runs through is never named, exempt by rule', () => {
+    const through = standsCrossedBy([P(12, -5), P(18, 15)], stands)
+    expect(through).not.toContain('Road')
+  })
+
+  test('a cut lying wholly inside one stand still names it', () => {
+    expect(standsCrossedBy([P(2, 2), P(8, 8)], stands)).toEqual(['1686'])
+  })
+
+  // Defect A: the test above proves nothing -- `not.toContain` is satisfied by
+  // an empty array, so it never shows the exemption doing any work. This pair
+  // isolates the isPublicPlace flag as the ONLY variable between two calls of
+  // the same cut against the same stand geometry. Only the exemption can
+  // explain a different outcome between them.
+  test('exemption actually does something: only the isPublicPlace flag changes the outcome', () => {
+    const cut = [P(12, -5), P(18, 15)]
+    const others = [
+      { name: '1686', ring: box(0, 0, 10, 10) },
+      { name: '1687', ring: box(20, 0, 30, 10) },
+    ]
+    const roadExempt = { name: 'Road', ring: box(10, 0, 20, 10), isPublicPlace: true }
+    const roadNotExempt = { name: 'Road', ring: box(10, 0, 20, 10) }
+
+    expect(standsCrossedBy(cut, [...others, roadExempt])).not.toContain('Road')
+    expect(standsCrossedBy(cut, [...others, roadNotExempt])).toContain('Road')
+  })
+
+  // Defect B: 'a cut down the road slices nothing' above runs at x = 15, but
+  // every stand's box spans only x 0..10 -- that cut sits outside all of them
+  // and tests nothing about roads. This cut runs genuinely ALONG the road's
+  // interior: Road's box is box(10, 0, 20, 10), i.e. y 10..20, x 0..10.
+  // P(12, 2) -> P(18, 8) keeps y in (10, 20) and x in (0, 10) throughout, so
+  // it is strictly inside Road and nowhere near 1686 (y 0..10) or 1687
+  // (y 20..30) -- only the exemption keeps the result empty.
+  test('a cut running along the interior of the road slices nothing', () => {
+    expect(standsCrossedBy([P(12, 2), P(18, 8)], stands)).toEqual([])
   })
 })

@@ -171,3 +171,36 @@ const TOUCH_EPS = 1e-6
 function near(p, q) {
   return Math.abs(p.y - q.y) < TOUCH_EPS && Math.abs(p.x - q.x) < TOUCH_EPS
 }
+
+/**
+ * Every stand the cut enters. Spec Decision 7: the split is refused and these
+ * are named, because silently slicing a stand across two sheets is the kind of
+ * error that reaches the Surveyor-General. Public places are exempt -- the cut
+ * runs down a road on purpose.
+ */
+export function standsCrossedBy(polyline, stands) {
+  const hit = []
+  for (const stand of stands ?? []) {
+    if (!stand || stand.isPublicPlace || !Array.isArray(stand.ring)) continue
+    if (crossesRing(polyline, stand.ring) || insideRing(polyline, stand.ring)) {
+      hit.push(stand.name)
+    }
+  }
+  return hit
+}
+
+function crossesRing(polyline, ring) {
+  for (let s = 0; s < polyline.length - 1; s++) {
+    for (let i = 0; i < ring.length; i++) {
+      const r1 = ring[i]
+      const r2 = ring[(i + 1) % ring.length]
+      if (segmentIntersection(polyline[s], polyline[s + 1], r1, r2)) return true
+    }
+  }
+  return false
+}
+
+/** A cut that never touches the stand's edges but lies wholly within it. */
+function insideRing(polyline, ring) {
+  return polyline.some((p) => pointInRing(ring, p))
+}

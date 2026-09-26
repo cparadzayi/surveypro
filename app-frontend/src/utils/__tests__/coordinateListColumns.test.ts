@@ -20,6 +20,7 @@ import type { SurveyorInfo } from '../coordinate-list';
 
 const MM = 72 / 25.4;
 const PAGE_WIDTH_MM = 210;
+const PAGE_HEIGHT_MM = 297;
 const MARGIN_MM = 15;
 
 const surveyorInfo = {
@@ -61,6 +62,54 @@ const widthPt = (text: string): number => {
   ruler.setFont('helvetica', 'normal');
   ruler.setFontSize(10);
   return ruler.getTextWidth(text) * MM;
+};
+
+/** Width of `text` in points, in Helvetica-Bold at 10pt. */
+const boldWidthPt = (text: string): number => {
+  const ruler = new jsPDF({ unit: 'mm', format: 'a4' });
+  ruler.setFont('helvetica', 'bold');
+  ruler.setFontSize(10);
+  return ruler.getTextWidth(text) * MM;
+};
+
+/** The raw PDF of a rendered list, and the stream of the page carrying the table. */
+const tablePage = async (coords: AdjustedCoordinate[]) => {
+  const { pdf } = await new CoordinateListGenerator()
+    .generateCoordinateListPDF(coords, surveyorInfo);
+  const raw = Buffer.from(pdf.output('arraybuffer')).toString('latin1');
+  const page = raw
+    .split('stream\n')
+    .slice(1)
+    .map((s) => s.split('\nendstream')[0])
+    .find((s) => s.includes('(CONSTANTS)'));
+  if (!page) throw new Error('table page never rendered');
+  return { raw, page };
+};
+
+/**
+ * Every text run on the page, with the font resource it was set in.
+ *
+ * jsPDF wraps each run as `/Fn 10 Tf ... x y Td (text) Tj` inside BT/ET, so the
+ * font is whatever the nearest preceding Tf said. Splitting on the BT/ET pairs
+ * rather than one wide regex keeps this working if the leading/trailing lines of
+ * a run (leading, fill colour) change.
+ */
+const textRuns = (page: string) =>
+  [...page.matchAll(/BT\n([\s\S]*?)\nET/g)].map(([, body]) => {
+    const font = body.match(/\/(F\d+) [\d.]+ Tf/)?.[1];
+    const at = body.match(/([\d.]+) ([\d.]+) Td\n\((.*?)\) Tj/);
+    if (!font || !at) return null;
+    return { font, x: Number(at[1]), y: Number(at[2]), t: at[3] };
+  }).filter((r): r is { font: string; x: number; y: number; t: string } => r !== null);
+
+/** Resolve a font resource (/F2) to the PostScript base font it names. */
+const baseFontFor = (raw: string, font: string): string => {
+  const objNum = raw.match(new RegExp(`/${font} (\\d+) 0 R`))?.[1];
+  if (!objNum) throw new Error(`no resource for ${font}`);
+  const body = raw.match(new RegExp(`\\b${objNum} 0 obj\\s*<<([\\s\\S]*?)>>`))?.[1];
+  const base = body?.match(/\/BaseFont\s*\/([A-Za-z-]+)/)?.[1];
+  if (!base) throw new Error(`no BaseFont for ${font}`);
+  return base;
 };
 
 describe('CO-ORDINATE LIST column geometry', () => {
@@ -131,5 +180,63 @@ describe('CO-ORDINATE LIST column geometry', () => {
     const descriptionWidth = (PAGE_WIDTH_MM - MARGIN_MM) * MM - description.x;
 
     expect(descriptionWidth).toBeGreaterThan(beaconsWidth);
+  });
+});
+
+describe('CO-ORDINATE LIST page number', () => {
+  // The page number is what every cross-reference in the document resolves
+  // against: the Field Book's F/B cells, Calculations Part 1's F/B cells, and
+  // the S.R. citations name a page of this list. It was the one piece of
+  // furniture on the page set in the same weight as the data, which made it the
+  // easiest thing on a crowded sheet to lose.
+  beforeEach(() => setActivePinia(createPinia()));
+
+  /**
+   * The page-number run: the only thing drawn at 15mm from the top.
+   *
+   * jsPDF's y is measured from the top of the sheet but the stream's is measured
+   * from the bottom, so the run sits at (297 - 15)mm. Getting that conversion
+   * wrong finds no run at all, which is a clearer failure than finding the wrong
+   * one.
+   */
+  const pageNumberRun = async (coords: AdjustedCoordinate[]) => {
+    const { raw, page } = await tablePage(coords);
+    const at = (PAGE_HEIGHT_MM - 15) * MM;
+    const run = textRuns(page).find((r) => Math.abs(r.y - at) < 0.5);
+    if (!run) throw new Error('no page number on the table page');
+    return { ...run, baseFont: baseFontFor(raw, run.font) };
+  };
+
+  it('is set in bold', async () => {
+    const run = await pageNumberRun([coord({})]);
+
+    expect(run.baseFont).toBe('Helvetica-Bold');
+  });
+
+  it('says 100 on the first table page', async () => {
+    const run = await pageNumberRun([coord({})]);
+
+    expect(run.t).toBe('100');
+  });
+
+  it('still lands hard against the right margin in the wider bold glyphs', async () => {
+    // addPageNumber right-justifies by subtracting getTextWidth from the right
+    // margin. Bold glyphs are wider than the normal ones they replaced, so this
+    // is the assertion that the x is measured after the font is set rather than
+    // before -- measured in the wrong font the number would sit short of the
+    // margin by the difference between the two faces.
+    const run = await pageNumberRun([coord({})]);
+    const rightMargin = (PAGE_WIDTH_MM - MARGIN_MM) * MM;
+
+    expect(run.x + boldWidthPt(run.t)).toBeCloseTo(rightMargin, 1);
+  });
+
+  it('leaves the table body in the normal face', async () => {
+    // The page number is drawn before the running header and the table, both of
+    // which set their own font -- so bolding it must not leak into the rows.
+    const { raw, page } = await tablePage([coord({})]);
+    const body = textRuns(page).find((r) => r.t === '87DNew');
+
+    expect(body && baseFontFor(raw, body.font)).toBe('Helvetica');
   });
 });

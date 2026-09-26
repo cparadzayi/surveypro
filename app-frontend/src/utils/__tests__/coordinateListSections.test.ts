@@ -3,7 +3,7 @@
 // Which section of the Co-ordinate List a point falls under.
 //
 // The Surveyor-General's form groups the list under headings -- Working
-// Stations, Adopted Beacons -- and the grouping here was reading free text
+// Stations, Found Beacons -- and the grouping here was reading free text
 // rather than the Status column the surveyor actually fills in:
 //
 //   isWorkingStation() tested `desc.includes('ws')`, which is true of any
@@ -16,6 +16,15 @@
 // the list entirely, because a point matching no category is excluded.
 //
 // The status is what the surveyor states deliberately. It decides the section.
+//
+// One heading is deliberately absent: ADOPTED BEACONS. It used to be the
+// heading for provenance F, on the reading that a found beacon's coordinates
+// are thereby "found & adopted" -- which made the heading say something the
+// status column did not, and left "adopted" meaning both "found" and something
+// it should not. F is now simply FOUND BEACONS, and "adopted" is reserved for a
+// beacon whose coordinates were carried from a previous approved survey and
+// cited by that survey's record number. No status code produces that section
+// yet; see the note on SECTION_HEADINGS in coordinate-list.ts.
 
 import { describe, it, expect } from 'vitest';
 import { CoordinateListGenerator } from '../coordinate-list';
@@ -76,13 +85,13 @@ describe('the Co-ordinate List sections', () => {
     expect(at.B12).toBe('placed');
   });
 
-  it('separates found-and-adopted from found-not-adopted', () => {
+  it('separates found from found-not-adopted', () => {
     const at = sectionsOf([
       point('86B', 'F', '12mm iron peg in concrete'),
       point('87C', 'FN', '12mm iron peg in concrete'),
     ]);
 
-    expect(at['86B']).toBe('adopted');
+    expect(at['86B']).toBe('found');
     expect(at['87C']).toBe('foundNotAdopted');
   });
 
@@ -149,5 +158,49 @@ describe('sectionsFor -- every populated group actually renders', () => {
     for (const section of sections) {
       expect(groupedLists).toContain(section.points);
     }
+  });
+});
+
+describe('the headings the sections actually print', () => {
+  const headingsFor = (points: Array<Record<string, unknown>>): string[] => {
+    const generator: any = new CoordinateListGenerator();
+    return generator.sectionsFor(generator.groupPointsByType(points)).map(
+      (s: { name: string }) => s.name,
+    );
+  };
+
+  it('prints a found beacon under FOUND BEACONS, not ADOPTED BEACONS', () => {
+    // The regression this guards. Provenance F was printed under the heading
+    // ADOPTED BEACONS, so the document called a beacon "adopted" while its own
+    // status column said only "F". A beacon found in the ground and adopted
+    // from an earlier survey are different facts, and the list has to be able
+    // to say which it means.
+    expect(headingsFor([point('86B', 'F', '12mm iron peg in concrete')]))
+      .toEqual(['FOUND BEACONS']);
+  });
+
+  it('holds ADOPTED BEACONS back until a status code can fill it', () => {
+    // ADOPTED BEACONS is reserved for a beacon whose coordinates come from a
+    // previous approved survey, cited by that survey's record number. Until
+    // the status code and the input routine that supplies the number exist,
+    // nothing may print that heading -- an ADOPTED BEACONS row with no S.R.
+    // number cites nothing at all, which is worse than not printing it.
+    const headings = headingsFor([
+      point('86B', 'F', '12mm iron peg in concrete'),
+      point('87C', 'FN', '12mm iron peg in concrete'),
+      point('SD1', 'P', '12mm iron peg in concrete'),
+      point('X1', '-', ''),
+    ]);
+
+    expect(headings).not.toContain('ADOPTED BEACONS');
+  });
+
+  it('prints FOUND BEACONS before FOUND, NOT ADOPTED', () => {
+    // Both are found; the order has to be the heading order, not the order the
+    // rules happen to be tested in.
+    expect(headingsFor([
+      point('87C', 'FN', '12mm iron peg in concrete'),
+      point('86B', 'F', '12mm iron peg in concrete'),
+    ])).toEqual(['FOUND BEACONS', 'FOUND, NOT ADOPTED']);
   });
 });

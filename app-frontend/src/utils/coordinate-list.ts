@@ -60,7 +60,7 @@ export function surveyOfForSurveyor(surveyorInfo: SurveyorInfo): string {
 interface GroupedPoints {
   trig: AdjustedCoordinate[]
   working: AdjustedCoordinate[]
-  adopted: AdjustedCoordinate[]
+  found: AdjustedCoordinate[]
   foundNotAdopted: AdjustedCoordinate[]
   calculated: AdjustedCoordinate[]
   placed: AdjustedCoordinate[]
@@ -78,11 +78,23 @@ interface GroupedPoints {
  * ran ahead of what actually printed. `sectionsFor` is now the only thing
  * that turns a grouping into rendered sections, so there is nothing left to
  * fall behind.
+ *
+ * There is deliberately no `adopted` key. FOUND BEACONS used to be printed
+ * under the heading ADOPTED BEACONS, because provenance F was read as "found &
+ * adopted" -- so the two words meant the same thing and the heading said
+ * something the status column did not. They are now different states: F is
+ * simply found, and "adopted" is reserved for a beacon whose coordinates were
+ * carried from a previous approved survey, cited by that survey's record
+ * number. Such a beacon needs an S.R. number to print, which needs its own
+ * input routine; until that exists the status code `A` is not accepted, because
+ * accepting it would lodge an ADOPTED BEACONS row citing nothing. When that
+ * routine lands, add the key here, the branch in `groupPointsByType`, and the
+ * heading together -- the Record type is what stops them arriving apart.
  */
 const SECTION_HEADINGS: Record<keyof GroupedPoints, string> = {
   trig: 'TRIG BEACONS / TSMs',
   working: 'WORKING STATIONS',
-  adopted: 'ADOPTED BEACONS',
+  found: 'FOUND BEACONS',
   foundNotAdopted: 'FOUND, NOT ADOPTED',
   calculated: 'CALCULATED POINTS',
   placed: 'PLACED BEACONS',
@@ -320,8 +332,9 @@ export class CoordinateListGenerator {
     this.generateCoverPage(pdf, surveyorInfo, totalPoints);
     
     // Generate continuous list with all sections
-    // Sections flow into each other, separated by section headers
-    // ⭐ CALCULATED POINTS appear after FOUND BEACONS
+    // Sections flow into each other, separated by section headers.
+    // CALCULATED POINTS print before FOUND BEACONS; SECTION_HEADINGS above is
+    // the order, not this comment.
     const allSections = this.sectionsFor(groupedPoints);
     
     console.log('[CoordinateList] 📋 Sections to render:');
@@ -424,15 +437,20 @@ export class CoordinateListGenerator {
    * Points are assigned to ONE category only, with priority order:
    * 1. TRIG BEACONS (highest priority)
    * 2. WORKING STATIONS
-   * 3. FOUND BEACONS
-   * 4. CALCULATED POINTS ⭐ NEW: Not physically beaconed
-   * 5. PLACED BEACONS (lowest priority)
+   * 3. CALCULATED POINTS ⭐ NEW: Not physically beaconed
+   * 4. FOUND BEACONS
+   * 5. FOUND, NOT ADOPTED
+   * 6. PLACED BEACONS (lowest priority)
+   *
+   * CALCULATED POINTS is tested before the provenances because a split vertex
+   * carries '-' yet is not a found or a placed beacon. ADOPTED BEACONS is
+   * absent: see the note on SECTION_HEADINGS.
    */
   private groupPointsByType(points: AdjustedCoordinate[]): GroupedPoints {
     const grouped: GroupedPoints = {
       trig: [],
       working: [],
-      adopted: [],
+      found: [],
       foundNotAdopted: [],
       calculated: [],
       placed: []
@@ -452,7 +470,7 @@ export class CoordinateListGenerator {
       } else if (this.isCalculatedPoint(point)) {
         grouped.calculated.push(point);
       } else if (provenance === 'F') {
-        grouped.adopted.push(point);
+        grouped.found.push(point);
       } else if (provenance === 'FN') {
         grouped.foundNotAdopted.push(point);
       } else if (provenance === '-') {
@@ -463,7 +481,7 @@ export class CoordinateListGenerator {
         // mark exists in the ground that never was.
         grouped.calculated.push(point);
       } else if (this.isFoundBeacon(point)) {
-        grouped.adopted.push(point);
+        grouped.found.push(point);
       } else {
         // Everything else is a placed beacon. Nothing falls through: a point
         // that matched no rule used to be dropped, and a beacon missing from a
@@ -475,7 +493,7 @@ export class CoordinateListGenerator {
     console.log('[CoordinateList] 📊 Point grouping:');
     console.log(`  - TRIG: ${grouped.trig.length}`);
     console.log(`  - WORKING: ${grouped.working.length}`);
-    console.log(`  - ADOPTED: ${grouped.adopted.length}`);
+    console.log(`  - FOUND: ${grouped.found.length}`);
     console.log(`  - FOUND, NOT ADOPTED: ${grouped.foundNotAdopted.length}`);
     console.log(`  - CALCULATED: ${grouped.calculated.length}`);
     console.log(`  - PLACED: ${grouped.placed.length}`);
@@ -858,9 +876,16 @@ export class CoordinateListGenerator {
   
   /**
    * Helper: Add page number to top right
+   *
+   * Bold, because this number is what every cross-reference in the document
+   * resolves against: the Field Book's F/B cells, Calculations Part 1's F/B
+   * cells and the S.R. citations all name a page of this list. It is set in the
+   * base-14 style rather than a heavier face so the x below still lands the
+   * number hard against the right margin -- getTextWidth is called after
+   * setFont, so it measures the bold glyphs and not the normal ones.
    */
   private addPageNumber(pdf: jsPDF, pageNum: number): void {
-    pdf.setFont('helvetica', 'normal');
+    pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(10);
     const pageText = pageNum.toString();
     const pageWidth = pdf.getTextWidth(pageText);

@@ -39,7 +39,8 @@ export const SCHEDULE_OF_AREAS = {
       { key: 'surveyor', label: 'SURVEYOR-GENERAL', width: 50, align: 'center' }
     ],
     rowHeight: ptFromMm(3) * 1.44,   // 3mm text carrying half the leading the 16pt band did
-    headerHeight: 35,
+    headerHeight: 25,   // DOCUMENTS the renderer's hardcoded _SCHED_HEADER; not read
+                        // by it, so changing this number changes nothing but the docs
     fontSize: ptFromMm(3),        // body row font: 3mm at print scale
     headerFontSize: ptFromMm(3),  // column header font: 3mm, same as the contents
     titleFontSize: 9       // title font (drawScheduleOfAreasSingleColumn:10247)
@@ -58,7 +59,7 @@ export const SCHEDULE_OF_AREAS = {
       { key: 'surveyor', label: 'SURVEYOR-GENERAL', width: 50, align: 'center' }
     ],
     rowHeight: ptFromMm(3) * 1.44,   // must match singleColumn — both are the same table
-    headerHeight: 35,
+    headerHeight: 25,   // must match singleColumn
     fontSize: ptFromMm(3),        // 3mm at print scale
     headerFontSize: ptFromMm(3),  // 3mm, same as the contents
     titleFontSize: 9,

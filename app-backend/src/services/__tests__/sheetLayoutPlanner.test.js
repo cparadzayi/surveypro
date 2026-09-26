@@ -3,6 +3,7 @@ import { planSheetLayout } from '../sheetLayoutPlanner.js';
 import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
 import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js';
 import BLOCKS from '../../../../app-shared/block-definitions.js';
+import { scaleBarMetrics } from '../pdfkitGeoPDF.js';
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} };
 const fakeMeasure = (str, { size }) => String(str).length * size * 0.55;
@@ -462,3 +463,25 @@ describe('map furniture reads as one group under the title', () => {
     expect(r.northArrow.x).not.toBeCloseTo(cornerX, 0)
   })
 })
+
+// The planner reserves the scale bar's slot; drawScaleBar draws it. They used to
+// derive the width separately and disagreed four ways -- metres-per-point from the
+// figure box instead of the stated scale, a 40pt target instead of 40mm, its own
+// rounding instead of snapScaleBarSegment, and four segments instead of three.
+// 241pt reserved against 389pt drawn. Harmless while the bar sat alone with space
+// to its right; it put the north arrow on top of the bar once they became a group.
+describe('the scale bar slot is the size of the bar that gets drawn', () => {
+  const REF_WIDTH = 500;   // plan() passes figureBounds.width = 500
+
+  test('the reserved width equals the drawn width', () => {
+    const r = plan(sampleMinimalPlan);
+    const drawn = scaleBarMetrics(sampleMinimalPlan.scale, REF_WIDTH).scaleBarWidth;
+    expect(r.scaleBar.width).toBeCloseTo(drawn, 1);
+  });
+
+  test('the north arrow clears the bar that is actually drawn', () => {
+    const r = plan(sampleMinimalPlan);
+    const drawn = scaleBarMetrics(sampleMinimalPlan.scale, REF_WIDTH).scaleBarWidth;
+    expect(r.northArrow.x).toBeGreaterThanOrEqual(r.scaleBar.x + drawn);
+  });
+});

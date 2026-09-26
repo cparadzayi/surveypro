@@ -4856,83 +4856,82 @@ function drawTitleBlock(
  * @param {Object} position - Centrally calculated collision-free position
  * @param {Object} figureBounds - Map figure bounds (scale bar must stay within this)
  */
-function drawScaleBar(doc, extent, mapBounds, scale, position, figureBounds) {
-  // Extract scale denominator from scale.label (e.g., "1:500" → 500)
-  let denominator = 1000; // Default fallback
-  if (scale && scale.label) {
-    const match = scale.label.match(/:(\d+)/);
-    if (match) {
-      denominator = parseInt(match[1], 10);
-    }
-  }
+/**
+ * Scale bar geometry -- the ONE derivation, shared by the planner and the drawer.
+ *
+ * They used to work it out separately and disagreed four ways: metres-per-point
+ * from the figure box instead of the stated scale, a 40-POINT segment target
+ * instead of 40 MM, home-grown rounding instead of snapScaleBarSegment, and four
+ * segments instead of three. On a 1:1250 general plan that reserved 241pt for a
+ * bar drawn 389pt wide. Harmless while the bar sat alone with empty space to its
+ * right; it put the north arrow on top of the bar the moment the two became a
+ * group. Both callers now read the same numbers from here.
+ */
+export function scaleBarMetrics(scale, refWidth) {
+  // Denominator from the STATED scale ("1:500" -> 500), not from the box: a
+  // box-derived bar graduates to a drawing whose scale may differ from the
+  // ratio printed beside it.
+  let denominator = 1000;
+  const match = scale && scale.label ? String(scale.label).match(/:(\d+)/) : null;
+  if (match) denominator = parseInt(match[1], 10);
 
-  // Ground metres per PDF point AT THE STATED SCALE. This used to be derived
-  // from the box (mapWidthMeters / figureBounds.width), which graduated the bar
-  // to a drawing whose scale was wrong and left it disagreeing with the ratio
-  // printed beside it. 1 pt = 0.352778 mm, so 1 pt spans denominator * 0.352778
-  // mm of ground, i.e. denominator * 0.000352778 metres.
+  // 1 pt spans denominator * 0.352778 mm of ground.
   const metersPerPoint = denominator * 0.000352778;
 
-  // Calculate segment length to achieve consistent visual width (~40mm per segment for aesthetics)
-  // Then round to nearest "nice" cartographic number for readability
-  // Target ~40mm per segment at print scale for balanced aesthetics
-  const TARGET_MM = 40;
-  const POINTS_PER_MM = 2.835; // PDF points per mm (72pt / 25.4mm)
-  const targetPoints = TARGET_MM * POINTS_PER_MM;
-
-  // Calculate meters that fit in target width
-  const rawSegmentMeters = targetPoints * metersPerPoint;
-
-  // Round to the nearest "nice" cartographic number (shared with the DXF scale
-  // bar so both formats graduate identically).
-  const segmentLength = snapScaleBarSegment(rawSegmentMeters);
-
-  // `let`, not `const`: the fit clamps below reduce the segment count and the
-  // total length when the bar is wider than the figure allows. They always
-  // could, but the box used to be most of the page so the branch was
-  // unreachable; a scale-true figure can be narrow enough to enter it, and it
-  // threw "Assignment to constant variable" mid-render.
-  let numSegments = 3; // 3 segments: 0 – 1× – 2× – 3× (clean, compact)
-
+  // ~40mm per segment at print scale, snapped to a round cartographic number.
+  // snapScaleBarSegment is shared with the DXF bar so both graduate identically.
+  const segmentLength = snapScaleBarSegment(40 * 2.835 * metersPerPoint);
   const segmentLengthPoints = segmentLength / metersPerPoint;
+
+  const METRES_LABEL_WIDTH = 55;
+  const maxAllowedWidth = refWidth - 40;   // 20pt margin each side
+
+  let numSegments = 3;                     // 0 - 1x - 2x - 3x
   let totalLengthPoints = segmentLengthPoints * numSegments;
+  let scaleBarWidth = totalLengthPoints + METRES_LABEL_WIDTH;
+
+  // Too wide for the figure: drop segments, then clamp outright.
+  if (scaleBarWidth > maxAllowedWidth && numSegments > 1) {
+    const reduced = Math.max(
+      2, Math.floor((maxAllowedWidth - METRES_LABEL_WIDTH) / segmentLengthPoints));
+    if (reduced < numSegments) {
+      numSegments = reduced;
+      totalLengthPoints = segmentLengthPoints * numSegments;
+      scaleBarWidth = totalLengthPoints + METRES_LABEL_WIDTH;
+    }
+  }
+  if (scaleBarWidth > maxAllowedWidth) {
+    scaleBarWidth = maxAllowedWidth;
+    totalLengthPoints = scaleBarWidth - METRES_LABEL_WIDTH;
+  }
+
+  return {
+    denominator, metersPerPoint, segmentLength, segmentLengthPoints,
+    numSegments, totalLengthPoints, METRES_LABEL_WIDTH, scaleBarWidth,
+  };
+}
+
+
+function drawScaleBar(doc, extent, mapBounds, scale, position, figureBounds) {
+  const _ref = figureBounds || mapBounds;
+  // One derivation, shared with the planner, so the slot it reserves is the bar
+  // that actually gets drawn here. See scaleBarMetrics.
+  let {
+    denominator, metersPerPoint, segmentLength, segmentLengthPoints,
+    numSegments, totalLengthPoints, METRES_LABEL_WIDTH, scaleBarWidth,
+  } = scaleBarMetrics(scale, _ref.width);
 
   const LABEL_FONT_SIZE = 9;   // graduation labels above bar
   const SCALE_FONT_SIZE = 9;   // "SCALE 1:XXXX" below bar
   const METRES_FONT_SIZE = 9;  // "METRES" beside bar
 
-  // Geometry - REDUCED height for better aesthetics (was 18pt, now 9pt = 50% reduction)
-  const barHeight   = 9;  // ~3.2mm - compact but visible
-  const borderWidth = 2.0; // bold outline (was 1.5pt)
-  const tickHeight  = 12;  // tick marks above bar (was 8pt)
-  const labelGap    = 5;   // gap between tick top and label bottom (was 3pt)
-  const barGap      = 10;  // gap between bar bottom and scale text (was 8pt)
-
-  // Total height calculation with increased font sizes
-  const scaleBarHeight = LABEL_FONT_SIZE + labelGap + tickHeight + barHeight + barGap + SCALE_FONT_SIZE + 10;
-  const METRES_LABEL_WIDTH = 55;
-  
-  // Constrain scale bar to fit within figure bounds (with 20pt margin on each side)
-  const _ref = figureBounds || mapBounds;
-  const maxAllowedWidth = _ref.width - 40; // 20pt margin on left and right
-  let scaleBarWidth = totalLengthPoints + METRES_LABEL_WIDTH;
-  
-  // If too wide, reduce number of segments
-  if (scaleBarWidth > maxAllowedWidth && numSegments > 1) {
-    const maxSegmentLengthPoints = (maxAllowedWidth - METRES_LABEL_WIDTH) / numSegments;
-    const reducedSegments = Math.max(2, Math.floor((maxAllowedWidth - METRES_LABEL_WIDTH) / segmentLengthPoints));
-    if (reducedSegments < numSegments) {
-      numSegments = reducedSegments;
-      totalLengthPoints = segmentLengthPoints * numSegments;
-      scaleBarWidth = totalLengthPoints + METRES_LABEL_WIDTH;
-    }
-  }
-  
-  // Final safety clamp - ensure it fits
-  if (scaleBarWidth > maxAllowedWidth) {
-    scaleBarWidth = maxAllowedWidth;
-    totalLengthPoints = scaleBarWidth - METRES_LABEL_WIDTH;
-  }
+  const barHeight   = 9;
+  const borderWidth = 2.0;
+  const tickHeight  = 12;
+  const labelGap    = 5;
+  const barGap      = 10;
+  const scaleBarHeight =
+    LABEL_FONT_SIZE + labelGap + tickHeight + barHeight + barGap + SCALE_FONT_SIZE + 10;
 
   // Use centrally calculated position; fallback to bottom-right of figureBounds
   const scaleBarX = position?.x ?? (_ref.x + _ref.width - scaleBarWidth - 20);
@@ -6045,13 +6044,9 @@ export function calculateBlockPositions(
 
   // --- Scale Bar ---
   const _figW          = figureBounds ? figureBounds.width : mapBounds.width;
-  const mapWidthMeters = extent.maxY - extent.minY;
-  const metersPerPt    = mapWidthMeters / _figW;
-  const rawSeg         = 40 * metersPerPt; // target 40pt per segment
-  const roundTo        = rawSeg < 5 ? 1 : rawSeg < 20 ? 5 : rawSeg < 100 ? 10 : rawSeg < 500 ? 50 : 100;
-  const segMeters      = Math.max(roundTo, Math.round(rawSeg / roundTo) * roundTo);
-  const segPt          = segMeters / metersPerPt;
-  const scaleBarWidth  = segPt * 4 + 55; // 4 segments + METRES label (dynamic)
+  // The slot must be the size of the bar that gets drawn, so both come from
+  // scaleBarMetrics. This used to be a separate estimate (segPt * 4 + 55).
+  const scaleBarWidth = scaleBarMetrics(scale, (figureBounds || mapBounds).width).scaleBarWidth;
   // Height sourced from shared config so the reserved slot can't drift from the
   // renderer (see the S-G box drift bug fixed alongside this).
   const scaleBarHeight = BLOCKS.SCALE_BAR.reservedHeight;

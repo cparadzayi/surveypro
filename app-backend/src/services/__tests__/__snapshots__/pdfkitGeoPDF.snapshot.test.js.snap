@@ -6199,7 +6199,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 10,
     "text": "T",
-    "x": 1389.8,
+    "x": 1469.2,
     "y": 1886.8,
   },
   {
@@ -6207,7 +6207,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 10,
     "text": "N",
-    "x": 1401.8,
+    "x": 1481.2,
     "y": 1886.8,
   },
   {
@@ -6263,7 +6263,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "SCALE 1:1250",
-    "x": 1255.9,
+    "x": 1176.6,
     "y": 1917.5,
   },
   {
@@ -6287,7 +6287,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "METRES",
-    "x": 1464.5,
+    "x": 1385.2,
     "y": 1936.5,
   },
   {
@@ -6327,7 +6327,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "0",
-    "x": 1113.9,
+    "x": 1034.5,
     "y": 1962.5,
   },
   {
@@ -6335,7 +6335,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "50",
-    "x": 1224.8,
+    "x": 1145.4,
     "y": 1962.5,
   },
   {
@@ -6343,7 +6343,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "100",
-    "x": 1335.6,
+    "x": 1256.3,
     "y": 1962.5,
   },
   {
@@ -6351,7 +6351,7 @@ exports[`PDF text+position snapshot Maglas fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "150",
-    "x": 1449,
+    "x": 1369.7,
     "y": 1962.5,
   },
   {
@@ -7092,7 +7092,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 10,
     "text": "T",
-    "x": 1083.7,
+    "x": 1121.9,
     "y": 1036.4,
   },
   {
@@ -7100,7 +7100,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 10,
     "text": "N",
-    "x": 1095.7,
+    "x": 1133.9,
     "y": 1036.4,
   },
   {
@@ -7108,7 +7108,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "SCALE 1:400",
-    "x": 933.9,
+    "x": 895.6,
     "y": 1067.1,
   },
   {
@@ -7116,7 +7116,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "METRES",
-    "x": 1076.2,
+    "x": 1037.9,
     "y": 1086.1,
   },
   {
@@ -7124,7 +7124,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "0",
-    "x": 853.1,
+    "x": 814.8,
     "y": 1112.1,
   },
   {
@@ -7132,7 +7132,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "10",
-    "x": 921.5,
+    "x": 883.2,
     "y": 1112.1,
   },
   {
@@ -7140,7 +7140,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "20",
-    "x": 992.3,
+    "x": 954.1,
     "y": 1112.1,
   },
   {
@@ -7148,7 +7148,7 @@ exports[`PDF text+position snapshot minimal fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "30",
-    "x": 1063.2,
+    "x": 1024.9,
     "y": 1112.1,
   },
   {
@@ -8337,7 +8337,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 10,
     "text": "T",
-    "x": 1072.3,
+    "x": 1185.7,
     "y": 1036.4,
   },
   {
@@ -8345,7 +8345,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 10,
     "text": "N",
-    "x": 1084.3,
+    "x": 1197.7,
     "y": 1036.4,
   },
   {
@@ -8353,7 +8353,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "SCALE 1:1250",
-    "x": 1006.5,
+    "x": 893.1,
     "y": 1067.1,
   },
   {
@@ -8361,7 +8361,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "METRES",
-    "x": 1215.1,
+    "x": 1101.7,
     "y": 1086.1,
   },
   {
@@ -8369,7 +8369,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "0",
-    "x": 864.4,
+    "x": 751,
     "y": 1112.1,
   },
   {
@@ -8377,7 +8377,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "50",
-    "x": 975.3,
+    "x": 861.9,
     "y": 1112.1,
   },
   {
@@ -8385,7 +8385,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "100",
-    "x": 1086.2,
+    "x": 972.8,
     "y": 1112.1,
   },
   {
@@ -8393,7 +8393,7 @@ exports[`PDF text+position snapshot realistic fixture 1`] = `
     "page": 1,
     "size": 9,
     "text": "150",
-    "x": 1199.6,
+    "x": 1086.2,
     "y": 1112.1,
   },
   {

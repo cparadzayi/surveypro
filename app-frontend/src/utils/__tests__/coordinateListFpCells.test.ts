@@ -35,25 +35,38 @@ const point = (over: Record<string, unknown> = {}) => ({
 }) as any;
 
 describe('fpAndFieldBookCells', () => {
-  it('marks a "-"-provenance point not-applicable in both cells', () => {
+  it('marks a "-"-provenance point not-applicable in both cells, page or no page', () => {
+    // The row deliberately CARRIES a field book page ('E2', from the factory).
+    // The F. B cell used to read "-" only because nothing had filled that field
+    // in upstream, so a row that does carry one is what proves the helper
+    // decides for itself: a position never visited has no field book entry
+    // whatever the row says.
     expect(fpAndFieldBookCells(point({ status: '-', description: '' })))
       .toEqual({ fp: '-', fb: '-' });
-  });
-
-  it('decides that itself, rather than inheriting an upstream default', () => {
-    // The F. B cell used to read "-" only because nothing had filled
-    // fieldBookPage in. Give the point a page and the answer must not change:
-    // a position never visited has no field book entry whatever the row says.
-    expect(fpAndFieldBookCells(point({ status: '-', description: '', fieldBookPage: 'E2' })))
+    expect(fpAndFieldBookCells(point({ status: '-', description: '', fieldBookPage: '' })))
       .toEqual({ fp: '-', fb: '-' });
   });
 
   it('reads the provenance rather than the raw status text', () => {
     // 'RM/-' is a reference mark that was defined, not found or placed. The
     // old substring(0, 1) formula would have printed "R" in a column whose
-    // legend defines only F and P.
-    expect(fpAndFieldBookCells(point({ status: 'RM/-', description: '' })))
-      .toEqual({ fp: '-', fb: '-' });
+    // legend defines only F and P. Every kind can be stated alongside a
+    // provenance, so every kind can be stated alongside this one -- each would
+    // have printed its own first letter there.
+    for (const status of ['RM/-', 'WS/-', 'WSU/-', 'TRIG/-', 'OCP/-', '-/WS']) {
+      expect(fpAndFieldBookCells(point({ status, description: '' })), status)
+        .toEqual({ fp: '-', fb: '-' });
+    }
+  });
+
+  it('lets a real provenance win over a dash on the other side of the slash', () => {
+    // 'P/-' contradicts itself. parseBeaconStatus takes the first readable
+    // provenance, so P stands -- the mark was placed, and the F/P column must
+    // say so rather than dashing out a claim the surveyor actually made.
+    expect(fpAndFieldBookCells(point({ status: 'P/-' })))
+      .toEqual({ fp: 'P', fb: 'E2' });
+    expect(fpAndFieldBookCells(point({ status: 'FN/-' })))
+      .toEqual({ fp: 'F', fb: 'E2' });
   });
 
   it('still marks a calculated point not-applicable', () => {

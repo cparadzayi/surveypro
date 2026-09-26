@@ -89,3 +89,39 @@ function onSegment(a, b, p) {
   const withinX = Math.min(a.x, b.x) - ON_SEGMENT_EPS <= p.x && p.x <= Math.max(a.x, b.x) + ON_SEGMENT_EPS
   return withinY && withinX
 }
+
+/** Spec Decision 12: a cut vertex within this of a boundary snaps onto it. */
+export const SNAP_TOLERANCE_M = 0.10
+
+/** Spec Decision 13: points the cut creates are stated to 2 dp. Rounded once,
+ *  here, so the outside-figure table, the Calculations pages and the
+ *  Coordinate List cannot disagree in the last digit. */
+export function roundPoint(p) {
+  return { y: Math.round(p.y * 100) / 100, x: Math.round(p.x * 100) / 100 }
+}
+
+/**
+ * Put an endpoint exactly on the ring: on a vertex when it is within tolerance
+ * of one, otherwise on the nearest edge.
+ */
+export function resolveEndpoint(ring, p, tolerance = SNAP_TOLERANCE_M) {
+  let best = null
+  for (let i = 0; i < ring.length; i++) {
+    const v = ring[i]
+    const dy = p.y - v.y, dx = p.x - v.x
+    const d = Math.sqrt(dy * dy + dx * dx)
+    if (best === null || d < best.d) best = { d, i }
+  }
+  if (best && best.d <= tolerance) {
+    return { kind: 'vertex', index: best.i, point: roundPoint(ring[best.i]) }
+  }
+
+  let edge = null
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]
+    const b = ring[(i + 1) % ring.length]
+    const r = projectOnSegment(a, b, p)
+    if (edge === null || r.distance < edge.r.distance) edge = { i, r }
+  }
+  return { kind: 'edge', index: edge.i, point: roundPoint(edge.r.point) }
+}

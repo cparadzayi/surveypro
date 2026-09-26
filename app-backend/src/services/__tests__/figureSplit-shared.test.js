@@ -4,7 +4,7 @@
  */
 import { describe, test, expect } from '@jest/globals'
 import {
-  projectOnSegment, segmentIntersection, pointInRing,
+  projectOnSegment, segmentIntersection, pointInRing, resolveEndpoint,
 } from '../../../../app-shared/figureSplit.js'
 
 const P = (y, x) => ({ y, x })
@@ -90,5 +90,35 @@ describe('pointInRing', () => {
   test('a point on the edge is not inside', () => {
     expect(pointInRing(square, P(0, 5))).toBe(false)
     expect(pointInRing(square, P(10, 10))).toBe(false)
+  })
+})
+
+describe('resolveEndpoint', () => {
+  const square = [P(0, 0), P(100, 0), P(100, 100), P(0, 100)]
+
+  test('a click near a vertex snaps to that vertex', () => {
+    const r = resolveEndpoint(square, P(100.04, 0.03))
+    expect(r.kind).toBe('vertex')
+    expect(r.index).toBe(1)
+    expect(r.point).toEqual(P(100, 0))
+  })
+
+  test('a click near an edge lands exactly on that edge', () => {
+    const r = resolveEndpoint(square, P(40, 0.07))
+    expect(r.kind).toBe('edge')
+    expect(r.index).toBe(0)          // the edge from vertex 0 to vertex 1
+    expect(r.point).toEqual(P(40, 0))
+  })
+
+  test('the landed point is rounded to 2 dp, once, here', () => {
+    const r = resolveEndpoint(square, P(33.333333, 0.004))
+    expect(r.point).toEqual(P(33.33, 0))
+  })
+
+  test('a click well inside still resolves to the nearest boundary', () => {
+    // The tool should not let this happen, but the rule must be total.
+    const r = resolveEndpoint(square, P(50, 20))
+    expect(r.kind).toBe('edge')
+    expect(r.point).toEqual(P(50, 0))
   })
 })

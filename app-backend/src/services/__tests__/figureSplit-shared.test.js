@@ -174,6 +174,44 @@ describe('interiorStaysInside', () => {
     expect(r.at).toEqual(P(50, 150))
   })
 
+  // Every test above uses the convex square, and on a convex ring an interior
+  // segment CANNOT reach the boundary: a chord between two strictly-interior
+  // points stays strictly inside. So none of them reaches the 'edge-crosses'
+  // branch -- the whole second loop can be deleted and they all still pass.
+  // Verified by deleting it. These two use a ring with a notch in it, which is
+  // what a real outside figure looks like where a road reserve bites into it.
+  describe('on a ring with a notch, where an interior segment CAN reach an edge', () => {
+    // A square with a slot cut down from the x = 100 side, between y = 40 and
+    // y = 60, reaching x = 40. The slot is OUTSIDE the figure.
+    const notched = [
+      P(0, 0), P(100, 0), P(100, 100), P(60, 100),
+      P(60, 40), P(40, 40), P(40, 100), P(0, 100),
+    ]
+
+    test('an interior segment crossing the notch is refused as edge-crosses', () => {
+      // Both interior vertices sit in the body, clear of the slot's y band, so
+      // the vertex loop passes them and only the middle SEGMENT offends: at
+      // x = 60 it runs straight through the slot, cutting both its walls.
+      const cut = [P(10, 0), P(10, 60), P(90, 60), P(90, 0)]
+
+      expect(pointInRing(notched, P(10, 60))).toBe(true)
+      expect(pointInRing(notched, P(90, 60))).toBe(true)
+
+      const r = interiorStaysInside(notched, cut)
+      expect(r.ok).toBe(false)
+      expect(r.reason).toBe('edge-crosses')
+    })
+
+    test('the same cut kept below the notch is fine', () => {
+      // Identical shape, run at x = 20 instead of x = 60 -- under the slot's
+      // floor, so it never meets a wall. This is what stops the test above from
+      // merely proving that a notched ring refuses everything.
+      const cut = [P(10, 0), P(10, 20), P(90, 20), P(90, 0)]
+
+      expect(interiorStaysInside(notched, cut)).toEqual({ ok: true })
+    })
+  })
+
   test('a cut that leaves and re-enters is refused even with both ends on the ring', () => {
     // Four crossings, not two: it would cut the figure into three parts.
     const cut = [P(0, 50), P(50, -10), P(100, 50)]

@@ -425,3 +425,40 @@ describe('planSheetLayout — seated schedule stays inside the drawing area', ()
     }
   });
 });
+
+// The scale bar and the north arrow are map furniture: a surveyor reads them
+// together, and pinning the arrow in the top-right corner cost the schedule the
+// top of a whole column (~85pt, about 5 rows). They are now one group, centred
+// under the title band, so the corner is free and the pair cannot be separated.
+describe('map furniture reads as one group under the title', () => {
+  const GAP = 12
+  const centreY = (b) => b.y + b.height / 2
+
+  test('the arrow sits beside the scale bar, not in the top-right corner', () => {
+    const r = plan(sampleMinimalPlan)
+    expect(r.northArrow.x).toBeGreaterThan(r.scaleBar.x)
+    expect(r.northArrow.x - (r.scaleBar.x + r.scaleBar.width)).toBeCloseTo(GAP, 1)
+  })
+
+  test('both sit on one centre line', () => {
+    const r = plan(sampleMinimalPlan)
+    expect(centreY(r.northArrow)).toBeCloseTo(centreY(r.scaleBar), 1)
+  })
+
+  test('the group is centred on the title block', () => {
+    const r = plan(sampleMinimalPlan)
+    const groupCentre = (r.scaleBar.x + r.northArrow.x + r.northArrow.width) / 2
+    expect(groupCentre).toBeCloseTo(r.titleBlock.x + r.titleBlock.width / 2, 0)
+  })
+
+  test('the group sits below the title band, not over it', () => {
+    const r = plan(sampleMinimalPlan)
+    expect(r.scaleBar.y).toBeGreaterThanOrEqual(r.titleBlock.y + r.titleBlock.height)
+  })
+
+  test('the arrow no longer claims the top-right corner of the drawing', () => {
+    const r = plan(sampleMinimalPlan)
+    const cornerX = A2_MAP_BOUNDS.x + A2_MAP_BOUNDS.width - r.northArrow.width - 14
+    expect(r.northArrow.x).not.toBeCloseTo(cornerX, 0)
+  })
+})

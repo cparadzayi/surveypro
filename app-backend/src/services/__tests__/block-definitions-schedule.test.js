@@ -16,6 +16,7 @@ import {
   classifyBeaconGroups,
   resolveLoSystem,
   snapScaleBarSegment,
+  SCHEDULE_OF_AREAS,
 } from '../../../../app-shared/block-definitions.js'
 
 const beaconsFC = (...names) => ({
@@ -408,5 +409,26 @@ describe('classifyBeaconGroups — SI 727 beacon description grouping', () => {
       { points: 'REMA, SCENIC, SLE', description: '50mm Iron Pipe in Concrete' },
       { points: 'Others', description: '12mm iron peg in concrete' },
     ])
+  })
+})
+
+describe('schedule row band', () => {
+  const col = SCHEDULE_OF_AREAS.singleColumn
+
+  test('the band carries the 3mm text with half the leading it used to', () => {
+    // 3mm is 8.504pt. The band was 16pt, so 7.5pt of that was leading.
+    // Halving the leading leaves ~3.75pt, i.e. a band of about 12.25pt.
+    expect(col.rowHeight - col.fontSize).toBeCloseTo(3.75, 1)
+  })
+
+  test('the band is never smaller than the text it carries', () => {
+    // The guard that matters: halving the BAND rather than the leading would
+    // give an 8pt row, which cannot hold 8.504pt glyphs at all.
+    expect(col.rowHeight).toBeGreaterThan(col.fontSize)
+  })
+
+  test('both column variants use the same band, or PDF and DXF diverge', () => {
+    expect(SCHEDULE_OF_AREAS.multiColumn.rowHeight).toBe(col.rowHeight)
+    expect(SCHEDULE_OF_AREAS.multiColumn.fontSize).toBe(col.fontSize)
   })
 })

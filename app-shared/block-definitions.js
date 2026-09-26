@@ -38,7 +38,7 @@ export const SCHEDULE_OF_AREAS = {
       { key: 'deedDate', label: 'DATE', width: 35, align: 'center', parentHeader: 'DEED' },
       { key: 'surveyor', label: 'SURVEYOR-GENERAL', width: 50, align: 'center' }
     ],
-    rowHeight: 16,   // 3mm body text; 16pt keeps roughly the old text-to-band ratio at the larger size
+    rowHeight: ptFromMm(3) * 1.44,   // 3mm text carrying half the leading the 16pt band did
     headerHeight: 35,
     fontSize: ptFromMm(3),        // body row font: 3mm at print scale
     headerFontSize: ptFromMm(3),  // column header font: 3mm, same as the contents
@@ -57,7 +57,7 @@ export const SCHEDULE_OF_AREAS = {
       { key: 'deedDate', label: 'DATE', width: 35, align: 'center', parentHeader: 'DEED' },
       { key: 'surveyor', label: 'SURVEYOR-GENERAL', width: 50, align: 'center' }
     ],
-    rowHeight: 16,   // must match singleColumn — both are the same table
+    rowHeight: ptFromMm(3) * 1.44,   // must match singleColumn — both are the same table
     headerHeight: 35,
     fontSize: ptFromMm(3),        // 3mm at print scale
     headerFontSize: ptFromMm(3),  // 3mm, same as the contents

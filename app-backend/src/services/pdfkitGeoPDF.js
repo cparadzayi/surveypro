@@ -6322,40 +6322,55 @@ export function calculateBlockPositions(
   // STEP 3 — Run the dynamic placement engine.
   // =========================================================================
 
-  // North Arrow prefers the top-right corner, but it is a small ornament and
-  // the corner is inside the right-hand whitespace strip — pinning it there
-  // costs the schedule the top of a whole column (85pt ≈ 5 rows). It is only
-  // kept there if the seated schedule leaves the corner free; otherwise it is
-  // engine-placed into whatever whitespace remains. Decided below, after the
-  // schedule is seated.
-  const _northArrowPreferred = {
-    name: "northArrow",
-    x: mapBounds.x + mapBounds.width - northArrowWidth - 14,
-    y: mapBounds.y + 14,
-    width: northArrowWidth,
-    height: northArrowHeight,
-  };
+  // Map furniture: the scale bar and the north arrow are one group, centred
+  // under the title band. The arrow used to be pinned top-right, which cost the
+  // schedule the top of a whole column (85pt ~ 5 rows) whenever it held that
+  // corner; grouped here the corner is free for good. Both slots derive from one
+  // rect, so the figure can never separate the pair — they move together.
+  const _FURNITURE_GAP = 12;
+  const _furnitureWidth  = scaleBarWidth + _FURNITURE_GAP + northArrowWidth;
+  const _furnitureHeight = Math.max(scaleBarHeight, northArrowHeight);
 
-  // Scale Bar: prefer below title block, but only pre-place if it doesn't overlap the polygon.
-  // If it overlaps, let the engine find a collision-free position dynamically.
-  const _scaleBarPreferred = {
+  /** Scale bar left, arrow right, each centred in the band's height. */
+  const _furnitureSlots = (g) => ({
+    scaleBar: {
+      name: "scaleBar",
+      x: g.x,
+      y: g.y + (_furnitureHeight - scaleBarHeight) / 2,
+      width: scaleBarWidth, height: scaleBarHeight,
+    },
+    northArrow: {
+      name: "northArrow",
+      x: g.x + scaleBarWidth + _FURNITURE_GAP,
+      y: g.y + (_furnitureHeight - northArrowHeight) / 2,
+      width: northArrowWidth, height: northArrowHeight,
+    },
+  });
+
+  // The group prefers the strip below the title band, and is pre-placed there
+  // unless it would sit on the figure. The whole group is reserved under the
+  // "scaleBar" name, so the engine moves the pair as a unit if it has to.
+  const _furniturePreferred = {
     name: "scaleBar",
-    x: _titleSlot.x + (titleWidth - scaleBarWidth) / 2,
+    x: _titleSlot.x + (titleWidth - _furnitureWidth) / 2,
     y: _titleSlot.y + titleHeight + 8, // 8pt gap below title block
-    width: scaleBarWidth,
-    height: scaleBarHeight,
+    width: _furnitureWidth,
+    height: _furnitureHeight,
   };
-  const _scaleBarOverlapsPolygon = mapFeatureBounds?.pdfPoints?.length > 0 &&
-    rectangleOverlapsPolygon(_scaleBarPreferred, mapFeatureBounds.pdfPoints, 2);
-  const prePlacedScaleBar = _scaleBarOverlapsPolygon ? null : _scaleBarPreferred;
+  const _furnitureOverlapsPolygon = mapFeatureBounds?.pdfPoints?.length > 0 &&
+    rectangleOverlapsPolygon(_furniturePreferred, mapFeatureBounds.pdfPoints, 2);
+  const prePlacedScaleBar = _furnitureOverlapsPolygon ? null : _furniturePreferred;
+  const prePlacedNorthArrow = prePlacedScaleBar
+    ? _furnitureSlots(prePlacedScaleBar).northArrow
+    : null;
   if (prePlacedScaleBar) {
-    logger.info(`[PDFKit] 📌 Scale Bar pre-placed below title block (${prePlacedScaleBar.x.toFixed(0)}, ${prePlacedScaleBar.y.toFixed(0)})`);
+    logger.info(`[PDFKit] 📌 Map furniture pre-placed below title block (${prePlacedScaleBar.x.toFixed(0)}, ${prePlacedScaleBar.y.toFixed(0)})`);
   } else {
-    logger.info(`[PDFKit] 🔄 Scale Bar overlaps polygon at preferred position — will be engine-placed`);
+    logger.info(`[PDFKit] 🔄 Map furniture overlaps polygon below the title — group will be engine-placed`);
     blockDescriptors.push({
       name: "scaleBar",
-      width: scaleBarWidth,
-      height: scaleBarHeight,
+      width: _furnitureWidth,
+      height: _furnitureHeight,
       mandatory: true,
       preferredZone: _nextZone(),
     });
@@ -6369,25 +6384,8 @@ export function calculateBlockPositions(
     [prePlacedTitleBlock, prePlacedScaleBar].filter(Boolean)
   );
 
-  // Now settle the North arrow against the seated schedule.
-  const _northArrowClashes = (_schedStripTables ?? []).some((t) =>
-    _northArrowPreferred.x < t.x + t.width &&
-    _northArrowPreferred.x + _northArrowPreferred.width > t.x &&
-    _northArrowPreferred.y < t.y + t.height &&
-    _northArrowPreferred.y + _northArrowPreferred.height > t.y);
-  const prePlacedNorthArrow = _northArrowClashes ? null : _northArrowPreferred;
-  if (prePlacedNorthArrow) {
-    logger.info(`[PDFKit] 📌 North Arrow pre-placed at top-right (${prePlacedNorthArrow.x.toFixed(0)}, ${prePlacedNorthArrow.y.toFixed(0)})`);
-  } else {
-    logger.info('[PDFKit] 🔄 North Arrow corner taken by the schedule — will be engine-placed into free whitespace');
-    blockDescriptors.push({
-      name: "northArrow",
-      width: northArrowWidth,
-      height: northArrowHeight,
-      mandatory: false,
-      preferredZone: _nextZone(),
-    });
-  }
+  // The North arrow no longer competes with the schedule for the top-right
+  // corner: it travels with the scale bar, so there is nothing to settle here.
 
   let { placements: _enginePlacements, unplaceable, needsScaleUp } = placeBlocks({
     mapBounds,
@@ -6747,15 +6745,13 @@ export function calculateBlockPositions(
     ? _pos("beaconDescription", beaconWidth, beaconHeight)
     : { x: mapBounds.x + 14, y: mapBounds.y + mapBounds.height - 14, width: beaconWidth, height: 0 };
 
-  // Place North Arrow at top-right of map area (preferred position)
-  // Top-right when the schedule left that corner free, otherwise wherever the
-  // engine found room for it.
-  const northArrowPos = prePlacedNorthArrow
-    ? { ...prePlacedNorthArrow }
-    : _pos("northArrow", northArrowWidth, northArrowHeight);
-
-  // Scale Bar — use engine placement if pre-placed was null (polygon overlap), else use pre-placed
-  const scaleBarPos = _pos("scaleBar", scaleBarWidth, scaleBarHeight);
+  // Map furniture: one rect was reserved for the pair, pre-placed below the
+  // title or found by the engine. Both slots come out of it, so the bar and the
+  // arrow stay side by side wherever the group ended up.
+  const _furnitureRect = _pos("scaleBar", _furnitureWidth, _furnitureHeight);
+  const _furniture = _furnitureSlots(_furnitureRect);
+  const scaleBarPos   = _furniture.scaleBar;
+  const northArrowPos = _furniture.northArrow;
 
   const surveyStatementPos = _pos("surveyStatement", ssWidth, ssHeight);
 

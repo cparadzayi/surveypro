@@ -23,9 +23,26 @@ export function projectOnSegment(a, b, p) {
 }
 
 /**
- * Where two segments properly cross, or null. Collinear overlap returns null:
- * a cut that runs ALONG a boundary edge is not a crossing of it, and treating
- * it as one would let a cut enter and leave at the same place.
+ * Where two segments meet, or null. Collinear overlap returns null: a cut that
+ * runs ALONG a boundary edge is not a crossing of it, and treating it as one
+ * would let a cut enter and leave at the same place.
+ *
+ * Contact AT an endpoint counts -- the parameter bounds are inclusive, so a
+ * T-junction, and a touch exactly on a ring vertex, both return that point
+ * rather than null. This is deliberate and load-bearing in two directions:
+ *
+ *   A cut is MEANT to end on the boundary, by snapping to an outside-figure
+ *   point or by crossing out of the figure. `interiorStaysInside` allows that
+ *   only because the touch is reported and it can then see the hit is at the
+ *   cut's own first or last vertex.
+ *
+ *   An INTERIOR segment touching the ring is a violation, and the touch a real
+ *   cut produces is most often exactly on a ring vertex. Excluding endpoints
+ *   would return null for BOTH edges meeting at that vertex, so the violation
+ *   would be missed and a bad cut accepted.
+ *
+ * Every caller uses the result as an existence test rather than a count, so a
+ * vertex touch reporting against both of its adjacent edges costs nothing.
  */
 export function segmentIntersection(p1, p2, p3, p4) {
   const d1y = p2.y - p1.y, d1x = p2.x - p1.x
@@ -39,8 +56,17 @@ export function segmentIntersection(p1, p2, p3, p4) {
   return { y: p1.y + t * d1y, x: p1.x + t * d1x }
 }
 
-/** Ray casting. A point exactly on an edge is NOT inside -- the split rule
- *  needs "strictly inside", and an endpoint sits on the boundary by design. */
+/**
+ * Ray casting. A point exactly on an edge is NOT inside -- the split rule needs
+ * "strictly inside", and an endpoint sits on the boundary by design. That is not
+ * a property of ray casting: it comes from the explicit on-edge check below,
+ * which runs against every edge, not just the one the ray happens to meet.
+ *
+ * `ring` is expected OPEN -- the first vertex not repeated at the end -- since
+ * the loop already pairs the last vertex with the first. A closed ring still
+ * works: the repeated vertex makes one degenerate edge, which straddles nothing
+ * and is skipped.
+ */
 export function pointInRing(ring, p) {
   let inside = false
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {

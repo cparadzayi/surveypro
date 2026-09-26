@@ -276,4 +276,57 @@ describe('standsCrossedBy', () => {
   test('a cut running along the interior of the road slices nothing', () => {
     expect(standsCrossedBy([P(12, 2), P(18, 8)], stands)).toEqual([])
   })
+
+  test('names them in the order the stands were given, not the order the cut meets them', () => {
+    // The fixture is already sorted low-y to high-y, and every other test runs
+    // the cut the same way, so encounter order and input order agree and a
+    // mutant that sorted by position along the cut would pass unnoticed. This
+    // one runs the cut BACKWARDS, high-y to low-y, so it meets 1687 first.
+    expect(standsCrossedBy([P(40, 5), P(-5, 5)], stands)).toEqual(['1686', '1687'])
+  })
+
+  test('a stand whose ring cannot be read is named, not quietly passed over', () => {
+    // This rule exists to refuse. "We could not check this stand" must not come
+    // back looking like "we checked it and it is clear", so an unusable ring is
+    // named and the split is refused until the data is fixed.
+    const clear = [P(0, 15), P(40, 15)]          // misses every real stand
+
+    expect(standsCrossedBy(clear, [{ name: 'NoRing' }])).toEqual(['NoRing'])
+    expect(standsCrossedBy(clear, [{ name: 'NullRing', ring: null }])).toEqual(['NullRing'])
+    expect(standsCrossedBy(clear, [{ name: 'TwoPoints', ring: [P(0, 0), P(1, 1)] }]))
+      .toEqual(['TwoPoints'])
+  })
+
+  test('only a real boolean exempts a stand, so a stringy flag cannot fail open', () => {
+    // A CSV import that yields "false" would be truthy and would have exempted
+    // a genuine stand -- a sliced stand reaching the Surveyor-General with no
+    // warning. The strict check fails closed instead.
+    const through = [P(12, -5), P(18, 15)]
+    const road = (flag) => [{ name: 'Road', ring: box(10, 0, 20, 10), isPublicPlace: flag }]
+
+    expect(standsCrossedBy(through, road(true))).toEqual([])
+    expect(standsCrossedBy(through, road('false'))).toEqual(['Road'])
+    expect(standsCrossedBy(through, road(1))).toEqual(['Road'])
+  })
+
+  test('a stand merely enclosed by a loop in the cut is NOT named, on purpose', () => {
+    // A review read this as a detection gap. It is not one. The stand sits
+    // wholly inside the loop, so it lands wholly in one part and is not sliced
+    // -- naming it would refuse a split that slices nothing. Such a cut is
+    // invalid for a different reason (it self-intersects, which splitFigure's
+    // ring walk cannot represent), and that is not this rule's business.
+    //
+    // Do not "fix" this by winding-number testing the loop. The two checks are
+    // exhaustive for a path ENTERING a stand: a connected path cannot reach an
+    // interior without crossing the boundary.
+    const loop = [P(0, 50), P(50, 0), P(100, 50), P(50, 100), P(0, 50)]
+    const enclosed = [{ name: 'Enclosed', ring: box(45, 45, 55, 55) }]
+
+    // Prove the fixture is what it claims before asserting on it: the stand's
+    // centre really is inside the loop, so this is a genuine enclosure and not
+    // a cut that simply misses the stand somewhere else on the sheet.
+    expect(pointInRing(loop.slice(0, 4), P(50, 50))).toBe(true)
+
+    expect(standsCrossedBy(loop, enclosed)).toEqual([])
+  })
 })

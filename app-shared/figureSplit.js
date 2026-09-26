@@ -177,11 +177,40 @@ function near(p, q) {
  * are named, because silently slicing a stand across two sheets is the kind of
  * error that reaches the Surveyor-General. Public places are exempt -- the cut
  * runs down a road on purpose.
+ *
+ * "Enters" means the cut's PATH goes through the stand, and the two tests below
+ * are exhaustive for that. A connected path cannot reach a region's interior
+ * without crossing its boundary, so either the path meets the ring
+ * (`crossesRing`) or it began inside it (`insideRing`). There is no third way in.
+ *
+ * A stand merely ENCLOSED by a loop in the cut is deliberately not named. It is
+ * not sliced: it lies wholly within one of the two parts, so refusing that split
+ * would be a false alarm. A cut that loops like that has a different problem --
+ * it self-intersects, which `splitFigure`'s ring walk cannot represent -- and
+ * that belongs to the validity of the cut, not to this rule. A review read the
+ * enclosing case as a detection gap; it is not one, and the test named for it
+ * holds this answer in place.
+ *
+ * `isPublicPlace` must be exactly `true`. Truthiness would let a stringified
+ * "false" out of a CSV import exempt a real stand, which fails OPEN: a sliced
+ * stand reaching the Surveyor-General unannounced. Requiring the boolean fails
+ * closed instead -- a road whose flag arrives as "true" is merely named, which
+ * is visible and fixable.
  */
 export function standsCrossedBy(polyline, stands) {
   const hit = []
   for (const stand of stands ?? []) {
-    if (!stand || stand.isPublicPlace || !Array.isArray(stand.ring)) continue
+    if (!stand) continue
+    if (stand.isPublicPlace === true) continue
+
+    // A stand we cannot check is not a stand we have cleared. Skipping it here
+    // would make "unreadable ring" indistinguishable from "verified clear" in a
+    // rule whose whole purpose is to refuse, so it is named instead.
+    if (!Array.isArray(stand.ring) || stand.ring.length < 3) {
+      hit.push(stand.name)
+      continue
+    }
+
     if (crossesRing(polyline, stand.ring) || insideRing(polyline, stand.ring)) {
       hit.push(stand.name)
     }

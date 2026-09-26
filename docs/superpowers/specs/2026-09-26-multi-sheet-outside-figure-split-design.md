@@ -91,6 +91,11 @@ Each was settled with the surveyor during design.
 10. **Sheets are numbered geographically**, north to south then west to east,
     by outside-figure centroid. Numbers are derived from the current splits
     rather than stored.
+11. **Naming.** On a multi-part general plan each part is `Outside Figure Sheet
+    N`; on a single-sheet plan the figure is simply `Outside Figure`.
+12. **A cut vertex within tolerance of a stand boundary snaps onto it**, so a
+    stand is never left ambiguously touching the cut.
+13. **Clicked points round to 2 decimal places** (10 mm), per convention.
 
 ## Part 1 — The sheet model
 
@@ -276,17 +281,43 @@ This design is one sub-project. Deliberately excluded:
 - Non-contiguous sheets.
 - Any change to how the primary outside figure itself is digitised.
 
-## Open risks
+## Resolved risks
 
-1. **The substring name rule** (`includes('outside figure')`) is loose. Sheet
-   parts need names that are recognisable and ordered. If they are named
-   `Outside Figure Sheet 1`, they match the existing rule, which both helps and
-   risks colliding with the primary figure. The naming convention should be
-   settled before implementation.
-2. **Topology quality.** Parcel geometry has known imprecision. Containment tests
-   near a boundary may be ambiguous for a stand that touches the cut, which is
-   why the touching case is called out in the tests.
-3. **Precision of clicked points.** A click resolves to whatever the map scale
-   allows. The `-` provenance records that these are definitional, but the
-   rounding applied before they enter the Coordinate List should be decided
-   explicitly rather than inherited from the projection code.
+The three risks this design opened with are now settled.
+
+### Naming, and why the parts are not parcels
+
+Each part is named `Outside Figure Sheet N`; a single-sheet plan keeps plain
+`Outside Figure`. Both forms satisfy the existing substring predicate
+(`includes('outside figure')`), so no recognition rule changes.
+
+Critically, **the parts are derived, not stored**. The primary figure remains the
+one digitised parcel; parts are computed from it and the cuts, exactly as sheet
+numbers are. This keeps a single source of truth and, incidentally, removes the
+latent defect recorded earlier: because only one stored parcel ever matches the
+predicate, the `features[0]` consumers stay correct and cannot silently drop a
+second outside figure. `Outside Figure Sheet N` is a display name — it heads
+the sheet's outside-figure data table and feeds `figureLabel` — not a row in the
+parcel table.
+
+### Topology near the cut
+
+A cut vertex lying within tolerance of a stand boundary is snapped onto that
+boundary. The ambiguous case — a stand that merely touches the cut, where
+containment could resolve either way — is therefore removed by construction
+rather than adjudicated afterwards.
+
+Adopted tolerance: **0.10 m**. It sits an order of magnitude above the 10 mm
+rounding of clicked points, and well below any real separation between a road
+reserve and the stands fronting it. It is a judgement rather than a derived
+number, and it is the one value here most worth revisiting against real data:
+this survey already shows a vertex matching at 1.164 m, which is far outside the
+tolerance and would correctly be left alone rather than silently snapped.
+
+### Precision of clicked points
+
+Clicked points round to **2 decimal places** (10 mm), matching the convention
+used elsewhere in the co-ordinate output. The rounding happens once, where the
+point is created, so the same number reaches the outside-figure table, the
+Calculations pages and the Coordinate List. Rounding later, or per consumer,
+would let the three disagree in the last digit.

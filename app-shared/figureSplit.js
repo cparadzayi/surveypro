@@ -135,3 +135,39 @@ export function resolveEndpoint(ring, p, tolerance = SNAP_TOLERANCE_M) {
   }
   return { kind: 'edge', index: edge.i, point: roundPoint(edge.r.point) }
 }
+
+/**
+ * The split invariant: both endpoints sit on the ring (resolveEndpoint saw to
+ * that) and everything between them stays strictly inside. A polyline that
+ * satisfies this crosses the boundary exactly twice, which is what makes one
+ * cut yield exactly two parts.
+ */
+export function interiorStaysInside(ring, polyline) {
+  for (let i = 1; i < polyline.length - 1; i++) {
+    if (!pointInRing(ring, polyline[i])) {
+      return { ok: false, reason: 'vertex-outside', at: polyline[i] }
+    }
+  }
+  // Interior segments -- those with neither end on the boundary -- must not
+  // touch the ring at all. The first and last segments legitimately end on it.
+  for (let s = 0; s < polyline.length - 1; s++) {
+    const a = polyline[s]
+    const b = polyline[s + 1]
+    const firstOrLast = s === 0 || s === polyline.length - 2
+    for (let i = 0; i < ring.length; i++) {
+      const r1 = ring[i]
+      const r2 = ring[(i + 1) % ring.length]
+      const hit = segmentIntersection(a, b, r1, r2)
+      if (!hit) continue
+      if (firstOrLast && (near(hit, a) || near(hit, b))) continue
+      return { ok: false, reason: 'edge-crosses', at: hit }
+    }
+  }
+  return { ok: true }
+}
+
+const TOUCH_EPS = 1e-6
+
+function near(p, q) {
+  return Math.abs(p.y - q.y) < TOUCH_EPS && Math.abs(p.x - q.x) < TOUCH_EPS
+}

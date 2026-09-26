@@ -5,6 +5,7 @@
 import { describe, test, expect } from '@jest/globals'
 import {
   projectOnSegment, segmentIntersection, pointInRing, resolveEndpoint,
+  interiorStaysInside,
 } from '../../../../app-shared/figureSplit.js'
 
 const P = (y, x) => ({ y, x })
@@ -150,5 +151,32 @@ describe('resolveEndpoint', () => {
     const r = resolveEndpoint(square, P(50, 20))
     expect(r.kind).toBe('edge')
     expect(r.point).toEqual(P(50, 0))
+  })
+})
+
+describe('interiorStaysInside', () => {
+  const square = [P(0, 0), P(100, 0), P(100, 100), P(0, 100)]
+
+  test('a straight chord across the middle is fine', () => {
+    expect(interiorStaysInside(square, [P(0, 50), P(100, 50)]).ok).toBe(true)
+  })
+
+  test('a bent cut following a road is fine', () => {
+    const cut = [P(0, 50), P(40, 50), P(40, 70), P(100, 70)]
+    expect(interiorStaysInside(square, cut).ok).toBe(true)
+  })
+
+  test('a cut that wanders outside is refused', () => {
+    const cut = [P(0, 50), P(50, 150), P(100, 50)]
+    const r = interiorStaysInside(square, cut)
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe('vertex-outside')
+    expect(r.at).toEqual(P(50, 150))
+  })
+
+  test('a cut that leaves and re-enters is refused even with both ends on the ring', () => {
+    // Four crossings, not two: it would cut the figure into three parts.
+    const cut = [P(0, 50), P(50, -10), P(100, 50)]
+    expect(interiorStaysInside(square, cut).ok).toBe(false)
   })
 })

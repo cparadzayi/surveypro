@@ -1,8 +1,9 @@
 /**
  * Cadastral Workflow Configuration
- * 
- * Defines the 7-step cadastral workflow with dependencies,
- * actions, and navigation rules.
+ *
+ * Defines the cadastral workflow with dependencies, actions, and navigation
+ * rules. `order` is contiguous from 0: `getNextStep`/`getPreviousStep` look
+ * steps up as `order ± 1`, so inserting a step means renumbering those after it.
  */
 
 export interface WorkflowStep {
@@ -43,9 +44,27 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     generatesDocument: false
   },
   
+  site_calibration: {
+    id: 'site_calibration',
+    order: 2,
+    label: 'Site Calibration',
+    description: 'Attach the GNSS site calibration report for this survey',
+    icon: '📡',
+    dbKey: 'site-calibration',
+    // Deliberately no prerequisite. A site calibration is an observation record,
+    // not a coordinate source: a surveyor may load the Trimble report before,
+    // after or entirely without importing a CSV, and gating the step on the
+    // import would imply a dependency that does not exist. It is also absent
+    // from REQUIRED_STEPS on the backend, so a project without one still
+    // finalizes.
+    requires: [],
+    canEdit: true,
+    generatesDocument: false
+  },
+  
   control_point_selection: {
     id: 'control_point_selection',
-    order: 2,
+    order: 3,
     label: 'Control Point Selection',
     description: 'Select trig beacons and control points',
     icon: '🔺',
@@ -57,7 +76,7 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
   
   field_book: {
     id: 'field_book',
-    order: 3,
+    order: 4,
     label: 'Field Book',
     description: 'Generate electronic field book (3 decimals)',
     icon: '📖',
@@ -69,7 +88,7 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
   
   calculations_part1: {
     id: 'calculations_part1',
-    order: 4,
+    order: 5,
     label: 'Calculations Part 1',
     description: 'Field computations and adjustments',
     icon: '🧮',
@@ -81,7 +100,7 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
   
   found_beacons: {
     id: 'found_beacons',
-    order: 5,
+    order: 6,
     label: 'Found Beacons Assessment',
     description: 'Assess found beacons per SI 727 Section 67(5)',
     icon: '🔍',
@@ -93,7 +112,7 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
   
   coordinate_list: {
     id: 'coordinate_list',
-    order: 6,
+    order: 7,
     label: 'Coordinate List',
     description: 'Final coordinate list (2 decimals)',
     icon: '📋',
@@ -105,7 +124,7 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
   
   qgis_export: {
     id: 'qgis_export',
-    order: 7,
+    order: 8,
     label: 'QGIS Export & Digitization',
     description: 'Export coordinates and digitize parcels in QGIS',
     icon: '🗺️',
@@ -117,7 +136,7 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
   
   area_computation: {
     id: 'area_computation',
-    order: 8,
+    order: 9,
     label: 'Parcel Digitization & Areas',
     description: 'Digitize parcels and generate areas with per-parcel consistency checks',
     icon: '📐',
@@ -129,7 +148,7 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
   
   servitudes: {
     id: 'servitudes',
-    order: 9,
+    order: 10,
     label: 'Servitudes & Dispensation',
     description: 'Identify boundary servitudes and generate dispensation certificates',
     icon: '⚖️',
@@ -141,7 +160,7 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
 
   survey_plan: {
     id: 'survey_plan',
-    order: 10,
+    order: 11,
     label: 'Survey Plan',
     description: 'Generate General Plans, Diagrams, or Working Plans',
     icon: '🗺️',
@@ -153,7 +172,7 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
 
   report_on_survey: {
     id: 'report_on_survey',
-    order: 11,
+    order: 12,
     label: 'Report on Survey',
     description: 'Standalone survey report',
     icon: '📄',
@@ -165,7 +184,7 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
 
   dsg_certificate: {
     id: 'dsg_certificate',
-    order: 12,
+    order: 13,
     label: 'DSG Certificate',
     description: 'Final certificate generation',
     icon: '🏆',
@@ -365,7 +384,10 @@ export function getNextStep(currentStepId: string): WorkflowStep | null {
  */
 export function getPreviousStep(currentStepId: string): WorkflowStep | null {
   const current = CADASTRAL_STEPS[currentStepId]
-  if (!current || current.order === 1) return null
+  // 0 is the first step, not 1. The guard used to read `order === 1`, which only
+  // happened to be right while the second step was numbered 1; it silently
+  // stopped "back" from working the moment anything was inserted ahead of it.
+  if (!current || current.order === 0) return null
   
   const steps = getWorkflowSteps()
   return steps.find(s => s.order === current.order - 1) || null

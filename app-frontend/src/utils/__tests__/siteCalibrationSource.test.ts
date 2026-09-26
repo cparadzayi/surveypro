@@ -11,7 +11,8 @@ import { parseSiteCalibration, siteCalibrationFrom } from '../siteCalibration'
  *   - the reactive singleton from useCadastralWorkflow, which holds the parsed
  *     calibration at `documents.siteCalibration`;
  *   - the raw workflow_state fetched from the API, which holds it at
- *     `step_data['csv-import'].site_calibration`.
+ *     `step_data['site-calibration'].site_calibration` (and, for projects
+ *     predating that step, at `step_data['csv-import']`).
  *
  * SurveyPlanMapView shadows the first with the second, so reading `.documents`
  * there silently yielded undefined and the calibration never reached the field
@@ -25,13 +26,29 @@ describe('siteCalibrationFrom', () => {
     expect(siteCalibrationFrom({ documents: { siteCalibration: cal } })).toBe(cal)
   })
 
-  it('reads the raw database workflow_state (step_data)', () => {
+  it('reads the raw database workflow_state from the calibration step', () => {
+    const dbShape = { step_data: { 'site-calibration': { site_calibration: cal } } }
+    expect(siteCalibrationFrom(dbShape)).toBe(cal)
+  })
+
+  it('reads the pre-split location so existing projects keep their field book pages', () => {
     const dbShape = { step_data: { 'csv-import': { site_calibration: cal } } }
     expect(siteCalibrationFrom(dbShape)).toBe(cal)
   })
 
+  it('prefers the calibration step over the legacy location', () => {
+    // A project part-way through migrating has both; the newer key wins.
+    const stale = { ...cal, reportName: 'stale from csv-import' }
+    const dbShape = {
+      step_data: {
+        'site-calibration': { site_calibration: cal },
+        'csv-import': { site_calibration: stale },
+      },
+    }
+    expect(siteCalibrationFrom(dbShape)).toBe(cal)
+  })
+
   it('reads the underscored step key the backend also accepts', () => {
-    // reset_step clears both spellings, and older projects carry import_csv.
     const dbShape = { step_data: { import_csv: { site_calibration: cal } } }
     expect(siteCalibrationFrom(dbShape)).toBe(cal)
   })
@@ -39,6 +56,7 @@ describe('siteCalibrationFrom', () => {
   it('returns undefined when no calibration was imported', () => {
     expect(siteCalibrationFrom({ documents: {} })).toBeUndefined()
     expect(siteCalibrationFrom({ step_data: { 'csv-import': { points: [] } } })).toBeUndefined()
+    expect(siteCalibrationFrom({ step_data: { 'site-calibration': {} } })).toBeUndefined()
     expect(siteCalibrationFrom({})).toBeUndefined()
     expect(siteCalibrationFrom(null)).toBeUndefined()
     expect(siteCalibrationFrom(undefined)).toBeUndefined()
@@ -48,7 +66,7 @@ describe('siteCalibrationFrom', () => {
     const stale = { ...cal, reportName: 'stale from database' }
     const both = {
       documents: { siteCalibration: cal },
-      step_data: { 'csv-import': { site_calibration: stale } },
+      step_data: { 'site-calibration': { site_calibration: stale } },
     }
     expect(siteCalibrationFrom(both)).toBe(cal)
   })

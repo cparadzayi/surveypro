@@ -194,7 +194,11 @@ export function parseSiteCalibration(xml: string): SiteCalibration {
  *   - the reactive singleton from useCadastralWorkflow, holding the parsed
  *     calibration at `documents.siteCalibration`;
  *   - the raw `workflow_state` fetched from the API, holding it at
- *     `step_data['csv-import'].site_calibration`.
+ *     `step_data['site-calibration'].site_calibration`.
+ *
+ * The `csv-import` entries are where projects created before the calibration
+ * became its own workflow step still keep it; both are read so those projects
+ * keep their field book pages.
  *
  * SurveyPlanMapView binds the second to the same name as the first, so reading
  * `.documents` there yielded undefined and the calibration silently never
@@ -211,7 +215,9 @@ export function siteCalibrationFrom(workflowState: any): SiteCalibration | undef
   if (inMemory) return inMemory
 
   const stepData = workflowState.step_data
-  return stepData?.['csv-import']?.site_calibration
+  return stepData?.['site-calibration']?.site_calibration
+      ?? stepData?.site_calibration?.site_calibration
+      ?? stepData?.['csv-import']?.site_calibration
       ?? stepData?.import_csv?.site_calibration
       ?? undefined
 }

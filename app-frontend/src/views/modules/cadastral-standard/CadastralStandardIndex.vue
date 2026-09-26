@@ -98,22 +98,22 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useModulesStore } from '../../../stores/modules'
+import { getWorkflowSteps } from '../../../config/cadastralWorkflow'
 
 const store = useModulesStore()
 const module = computed(() => store.getBySlug('cadastral-standard'))
 
-// Workflow steps for overview
-const workflowSteps = [
-  { id: 'project-setup', name: 'Project Setup', description: 'Configure project details and working directory' },
-  { id: 'csv-import', name: 'Import CSV', description: 'Upload and validate coordinate data' },
-  { id: 'control-point-selection', name: 'Control Point Selection', description: 'Select trig beacons and control points (after knowing survey location)' },
-  { id: 'field-book', name: 'Field Book', description: 'Generate electronic field book (3 decimals)' },
-  { id: 'calculations-part1', name: 'Calculations Part 1', description: 'Field computations and adjustments' },
-  { id: 'coordinate-list', name: 'Coordinate List', description: 'Final coordinate list (2 decimals)' },
-  { id: 'area-computation', name: 'Parcel Digitization & Areas', description: 'Digitize parcels; areas and consistencies' },
-  { id: 'report-on-survey', name: 'Report on Survey', description: 'Standalone survey report' },
-  { id: 'dsg-certificate', name: 'DSG Certificate', description: 'Final certificate generation' }
-]
+// Workflow steps for the overview grid.
+//
+// The descriptive text is local, but the order and membership come from
+// CADASTRAL_STEPS so this list cannot silently fall behind the workflow the way
+// a hand-maintained copy does — it was already missing survey-plan, servitudes,
+// qgis-export and found-beacons.
+const workflowSteps = getWorkflowSteps().map(step => ({
+  id: step.dbKey,
+  name: step.label,
+  description: step.description
+}))
 
 // Other individual tools (currently disabled)
 const otherTools = computed(() => 

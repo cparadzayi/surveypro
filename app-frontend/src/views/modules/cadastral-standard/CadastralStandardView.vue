@@ -339,21 +339,22 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- GNSS site calibration report. OUTSIDE the empty-state guard above, and
-             deliberately so: that guard tears the welcome screen down the moment a
-             CSV import succeeds, so a calibration added inside it became unreachable
-             for the rest of the workflow — the "Replace" affordance could never
-             render. A surveyor who loads the report after importing (the ordinary
-             order, since the report is produced in the field) had no way to attach
-             it without resetting the step and losing the import.
+      <!-- Site calibration, as its own workflow step.
+           It used to sit at the bottom of the CSV import screen, which coupled
+           two unrelated inputs: a GNSS calibration is an observation record,
+           not a coordinate source, and the pairing cost a re-import — the only
+           way back to the panel was to reset the import step, which then wiped
+           the coordinates the surveyor had just carefully loaded. Separate
+           steps mean each is reset on its own terms.
 
-             Kept as its own panel on the same step, and still optional: a plan with
-             no calibration must import and generate exactly as before. Note this is
-             a UX reachability fix, not a page-numbering one — Calculations derives
-             its field book pages from whatever calibration is present at generation
-             time, so attaching the report later still numbers the book correctly. -->
-        <div class="mt-6 max-w-2xl mx-auto text-left">
+           Still optional, deliberately. A plan observed with total station only
+           has no calibration report, so the step declares no prerequisites (you
+           can attach one before or after the import) and is absent from
+           REQUIRED_STEPS, so a project without one still finalizes. -->
+      <div v-show="workflowState.currentStep === 'site-calibration'" class="space-y-6">
+        <div class="max-w-2xl mx-auto text-left">
           <div class="bg-white border border-gray-200 rounded-lg p-4">
             <div class="flex items-start justify-between gap-4">
               <div>
@@ -409,8 +410,32 @@
               </button>
             </div>
           </div>
+
+          <!-- Showing the report's own numbers, not just a count: the point of
+               attaching it is to check the residuals before they end up in a
+               field book an examiner will read. -->
+          <div
+            v-if="workflowState.documents.siteCalibration"
+            class="mt-4 bg-green-50 border border-green-200 rounded-lg p-4"
+          >
+            <h4 class="text-sm font-semibold text-green-900 mb-2">Loaded calibration</h4>
+            <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-green-900 sm:grid-cols-3">
+              <div v-for="pair in workflowState.documents.siteCalibration.pairs" :key="pair.pointId" class="flex flex-col">
+                <dt class="font-medium">{{ pair.pointId }}</dt>
+                <dd class="text-green-700">
+                  <template v-if="Number.isFinite(pair.horizontalResidual)">
+                    h {{ pair.horizontalResidual.toFixed(3) }} m
+                  </template>
+                  <template v-if="pair.verticalResidual !== null && Number.isFinite(pair.verticalResidual)">
+                    · v {{ pair.verticalResidual.toFixed(3) }} m
+                  </template>
+                </dd>
+              </div>
+            </dl>
+          </div>
         </div>
       </div>
+
       <div v-show="workflowState.currentStep === 'field-book'" class="space-y-6">
         <!-- ⭐ NEW: Auto-populated Surveyor Information (Read-only) -->
         <div class="bg-white shadow rounded-lg p-6">
@@ -1210,7 +1235,7 @@
       <DSGCertificateView v-if="workflowState.currentStep === 'dsg-certificate'" />
 
       <!-- Other steps (under development) -->
-      <div v-show="workflowState.currentStep !== 'csv-import' && workflowState.currentStep !== 'field-book' && workflowState.currentStep !== 'calculations-part1' && workflowState.currentStep !== 'coordinate-list' && workflowState.currentStep !== 'qgis-export' && workflowState.currentStep !== 'area-computation' && workflowState.currentStep !== 'servitudes' && workflowState.currentStep !== 'survey-plan' && workflowState.currentStep !== 'report-on-survey' && workflowState.currentStep !== 'dsg-certificate'" class="bg-white shadow rounded-lg p-6">
+      <div v-show="workflowState.currentStep !== 'csv-import' && workflowState.currentStep !== 'site-calibration' && workflowState.currentStep !== 'field-book' && workflowState.currentStep !== 'calculations-part1' && workflowState.currentStep !== 'coordinate-list' && workflowState.currentStep !== 'qgis-export' && workflowState.currentStep !== 'area-computation' && workflowState.currentStep !== 'servitudes' && workflowState.currentStep !== 'survey-plan' && workflowState.currentStep !== 'report-on-survey' && workflowState.currentStep !== 'dsg-certificate'" class="bg-white shadow rounded-lg p-6">
         <div class="text-center py-12">
           <div class="text-4xl mb-4">🚧</div>
           <h2 class="text-xl font-semibold text-gray-900 mb-2">
@@ -1434,6 +1459,7 @@ import {
   dbKeyToStepId, 
   stepIdToDbKey, 
   getNextStep,
+  getWorkflowSteps,
   type WorkflowStep
 } from '../../../config/cadastralWorkflow';
 
@@ -1455,6 +1481,7 @@ const {
   setImportedPoints, 
   setSiteCalibration,
   resetWorkflow: composableResetWorkflow,
+  resetCoordinateDependentState,
   resetFieldBook,
   resetCalculationsPart1,
   resetCoordinateList,
@@ -1566,6 +1593,7 @@ const estimatedTimeRemaining = computed(() => {
   const stepTimes: Record<string, number> = {
     'project-setup': 2,
     'csv-import': 5,
+    'site-calibration': 2,
     'control-point-selection': 5,
     'found-beacons': 8,
     'field-book': 5,
@@ -1573,6 +1601,8 @@ const estimatedTimeRemaining = computed(() => {
     'coordinate-list': 3,
     'qgis-export': 15, // Includes PostGIS export, QGIS setup, and parcel digitization
     'area-computation': 20,
+    'servitudes': 5,
+    'survey-plan': 10,
     'report-on-survey': 5,
     'dsg-certificate': 3
   };
@@ -1684,21 +1714,19 @@ const pendingCSVData = ref<{
   detectedCentralMeridian?: number; // Cape Lo zone from CSV System column
 } | null>(null);
 
-// Workflow steps definition (Complete cadastral workflow)
-const workflowSteps = [
-  { id: 'project-setup', name: 'Project Setup' },
-  { id: 'csv-import', name: 'Import CSV' },
-  { id: 'control-point-selection', name: 'Control Point Selection' },
-  { id: 'field-book', name: 'Field Book' },
-  { id: 'calculations-part1', name: 'Calculations Part 1' },
-  { id: 'found-beacons', name: 'Found Beacons Assessment' },
-  { id: 'coordinate-list', name: 'Coordinate List' },
-  { id: 'qgis-export', name: 'QGIS Export & Digitization' },
-  { id: 'area-computation', name: 'Parcel Digitization & Areas' },
-  { id: 'servitudes', name: 'Servitudes & Dispensation' },
-  { id: 'report-on-survey', name: 'Report on Survey' },
-  { id: 'dsg-certificate', name: 'DSG Certificate' }
-];
+// Workflow steps, in order, for the vertical stepper and for the previous/next
+// buttons. `workflowState.currentStep` holds a dbKey ('csv-import'), so ids here
+// are dbKeys too.
+//
+// Derived from CADASTRAL_STEPS rather than hand-listed: the hand-written copy
+// had fallen behind the registry and was missing `survey-plan` entirely, which
+// made isStepCompleted() answer `findIndex() === -1` — and -1 is less than every
+// current index, so Survey Plan always rendered as already-complete — and made
+// "next" step over it entirely.
+const workflowSteps = getWorkflowSteps().map(step => ({
+  id: step.dbKey,
+  name: step.label
+}));
 
 // Computed properties
 const fixedPointsCount = computed(() => 
@@ -2911,8 +2939,10 @@ async function resetImportStep() {
   const confirmed = confirm(
     'Are you sure you want to reset the Import CSV step? This will:\n' +
     '• Clear all imported coordinate data\n' +
-    '• Remove generated Field Book and Calculations\n' +
-    '• Reset the workflow to the beginning\n\n' +
+    '• Discard the Field Book, Calculations, Coordinate List and Areas, ' +
+    'since they were computed from those coordinates\n' +
+    '• Return the workflow to the import step\n\n' +
+    'Your site calibration is kept — it is attached separately.\n\n' +
     'This action cannot be undone.'
   );
   
@@ -2929,13 +2959,10 @@ async function resetImportStep() {
     
     console.log('✅ Step reset in database');
     
-    // Clear local state
-    workflowState.importedPoints = [];
+    // Clear local state, matching the backend cascade so the screen does not
+    // keep showing documents the database has just discarded.
+    resetCoordinateDependentState();
     workflowState.currentStep = 'csv-import';
-    delete workflowState.documents.fieldBook;
-    delete workflowState.documents.calculationsPart1;
-    delete workflowState.documents.coordinateList;
-    workflowState.adjustedCoordinates = undefined;
     
     // Reload from database to sync
     await reloadWorkflowState();
@@ -3160,8 +3187,8 @@ async function handleCalibrationFileChange(event: Event) {
 /**
  * File the calibration report in the project's output folder.
  *
- * The data persists via setSiteCalibration ('csv-import' step_data), and the
- * PDF regenerated here is the human-readable half of that persistence: an
+ * The data persists via setSiteCalibration ('site-calibration' step_data), and
+ * the PDF regenerated here is the human-readable half of that persistence: an
  * examiner finds the calibration in output/calibration/ without asking the
  * surveyor to re-import the Trimble file. Regenerating with overwrite=true is
  * exactly how a replacement calibration is handled — the next import simply

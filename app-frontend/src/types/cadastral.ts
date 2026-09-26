@@ -427,6 +427,7 @@ export interface CadastralWorkflowState {
     | 'project-setup'
     | 'control-point-selection'
     | 'csv-import'
+    | 'site-calibration'
     | 'found-beacons'
     | 'field-book' 
     | 'calculations-part1' 

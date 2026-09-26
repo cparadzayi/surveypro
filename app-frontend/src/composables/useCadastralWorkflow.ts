@@ -232,10 +232,13 @@ function setImportedPoints(points: CadastralPoint[]) {
 /**
  * Store a parsed GNSS site calibration and persist it.
  *
- * It rides in the SAME 'csv-import' step_data as the points, deliberately: the
- * backend's update action merges rather than replaces, so the two coexist, and
- * resetting the import step clears both. They are supplied together at the same
- * step, so they should disappear together.
+ * Persisted under its own 'site-calibration' step, not alongside the CSV import.
+ * It used to ride in `csv-import` step_data, which coupled two unrelated inputs:
+ * a GNSS calibration is an observation record, not a coordinate source, so
+ * replacing the coordinate CSV used to mean discarding the calibration too, and
+ * the calibration could not be attached without a full import reset. A separate
+ * step lets each be reset on its own terms, and puts the calibration outside the
+ * CSV reset's downstream cascade.
  */
 function setSiteCalibration(calibration: SiteCalibration | null) {
   if (calibration) {
@@ -245,7 +248,7 @@ function setSiteCalibration(calibration: SiteCalibration | null) {
   }
 
   if (!projectId.value) return
-  saveStepData('csv-import', { site_calibration: calibration }).catch(err => {
+  saveStepData('site-calibration', { site_calibration: calibration }).catch(err => {
     console.error('⚠️ Failed to save site calibration:', err)
   })
 }
@@ -256,6 +259,28 @@ function resetWorkflow() {
   workflowState.documents = {};
   workflowState.validation = null;
   workflowState.adjustedCoordinates = undefined;
+}
+
+/**
+ * In-memory mirror of the backend's coordinate-source reset cascade.
+ *
+ * The backend clears every step downstream of the import, because their results
+ * were computed from the coordinates just deleted. The reactive singleton is
+ * merged rather than replaced on reload, so without this the surveyor's screen
+ * went on showing the field book, adjustment and coordinate list that the
+ * database had just thrown away.
+ *
+ * Deliberately does NOT touch `documents.siteCalibration`: it is attached from
+ * its own step now, so re-importing points leaves it alone.
+ */
+function resetCoordinateDependentState() {
+  workflowState.importedPoints = [];
+  delete workflowState.documents.fieldBook;
+  delete workflowState.documents.calculationsPart1;
+  delete workflowState.documents.coordinateList;
+  delete workflowState.documents.areaComputation;
+  workflowState.adjustedCoordinates = undefined;
+  workflowState.validation = null;
 }
 
 // Step-specific reset functions
@@ -343,12 +368,24 @@ async function loadWorkflowState(surveyProjectId: number) {
       // Restore imported points if they exist (check both csv-import and import_csv for backwards compatibility)
       const csvStepData = dbState.step_data?.['csv-import'] || dbState.step_data?.import_csv;
 
-      // Restore the site calibration alongside the points. It is already a plain
-      // parsed object, so it needs no re-parsing — and it must be restored even
-      // when there are no points, since the two are independent.
-      if (csvStepData?.site_calibration) {
-        workflowState.documents.siteCalibration = csvStepData.site_calibration;
-        console.log('✅ Restored site calibration:', csvStepData.site_calibration.pairs?.length ?? 0, 'control pairs');
+      // Restore the site calibration from its own step. It is already a plain
+      // parsed object, so it needs no re-parsing — and it is restored
+      // independently of the points, since the two are independent.
+      //
+      // The 'csv-import' fallback is where projects created before the step split
+      // still keep it; read-only, so a reload does not migrate the row.
+      const calibrationStepData =
+        dbState.step_data?.['site-calibration'] ?? dbState.step_data?.site_calibration
+      const legacyCalibration = dbState.step_data?.['csv-import']?.site_calibration
+        ?? dbState.step_data?.import_csv?.site_calibration
+      const storedCalibration = calibrationStepData?.site_calibration ?? legacyCalibration
+
+      if (storedCalibration) {
+        workflowState.documents.siteCalibration = storedCalibration;
+        console.log('✅ Restored site calibration:', storedCalibration.pairs?.length ?? 0, 'control pairs');
+        if (!calibrationStepData?.site_calibration) {
+          console.log('ℹ️ Site calibration read from the legacy csv-import location')
+        }
       }
 
       console.log('🔍 [DEBUG] csvStepData found?', !!csvStepData);
@@ -719,6 +756,7 @@ export function useCadastralWorkflow() {
     
     // Reset functions
     resetWorkflow,
+    resetCoordinateDependentState,
     resetFieldBook,
     resetCalculationsPart1,
     resetCoordinateList,

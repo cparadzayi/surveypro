@@ -984,7 +984,6 @@ import { ComprehensiveDocumentGenerator } from '../../../utils/comprehensive-doc
 import { siteCalibrationFrom } from '../../../utils/siteCalibration';
 import { generateCalibrationReportPDF } from '../../../utils/calibration-pdf';
 import { displayTrigName } from '../../../../../app-shared/trigName';
-import { PageAllocationService } from '../../../services/pageAllocation';
 import { autoSaveStepProducts } from '../../../services/workflowProductStorage';
 import { polygon as turfPolygon, featureCollection } from '@turf/helpers';
 import booleanContains from '@turf/boolean-contains';

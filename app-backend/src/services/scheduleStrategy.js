@@ -357,3 +357,72 @@ export function levelScheduleTables({ plan, slots, headerHeight, rowHeight }) {
     return out;
   });
 }
+
+/**
+ * Seat the whole split schedule as ONE composite: every column adjacent, all
+ * sharing a top edge, in the first strip that can hold them.
+ *
+ * A split schedule is one table broken into columns and should read as one. The
+ * slot-tiling path seats each column in whatever gap it happens to fit, which on
+ * a real general plan put the two halves 545pt apart at different heights -- an
+ * 80mm stagger of the same table. Composite is therefore tried first; null here
+ * means no strip can hold it and the caller may tile as a last resort.
+ */
+export function seatScheduleAsComposite({
+  strips, numCols, totalRows, colWidth, spacing,
+  headerHeight, rowHeight, obstacles = [], bounds = null, maxCols = null,
+}) {
+  if (!Array.isArray(strips) || !(numCols > 0) || !(totalRows > 0)) return null;
+
+  // Try the asked-for shape first, then narrower columns if the caller allows it.
+  // 240 rows over 2 columns came to 187% of the available height on a real plan --
+  // unseatable, so the schedule fell back to independent slots and staggered. The
+  // same rows over 3 columns are 94%, which fits and still reads as one table.
+  const upper = Math.max(numCols, maxCols ?? numCols);
+  for (let cols = numCols; cols <= upper; cols++) {
+    const seated = seatAt(cols);
+    if (seated) return seated;
+  }
+  return null;
+
+  function seatAt(cols) {
+    // Even split; any remainder rides in the leftmost columns, so the last column
+    // is never the short one a reader mistakes for the end of the data.
+    const base = Math.floor(totalRows / cols);
+    const extra = totalRows % cols;
+    const rowsFor = (i) => base + (i < extra ? 1 : 0);
+    if (rowsFor(0) < 1) return null;
+
+    const width  = cols * colWidth + (cols - 1) * spacing;
+    const height = headerHeight + rowsFor(0) * rowHeight;   // tallest column
+
+    const blocked = (x, y, o) => o &&
+      x < o.x + (o.width ?? o.w) && x + width  > o.x &&
+      y < o.y + (o.height ?? o.h) && y + height > o.y;
+
+    for (const s of strips) {
+      if (!s || s.w < width || s.h < height) continue;
+      const x = s.x, y = s.y;
+      if (bounds && (x < bounds.x || y < bounds.y ||
+          x + width > bounds.x + bounds.w || y + height > bounds.y + bounds.h)) continue;
+      if (obstacles.some((o) => blocked(x, y, o))) continue;
+
+      let startRow = 0;
+      return Array.from({ length: cols }, (_, i) => {
+        const rowCount = rowsFor(i);
+        const table = {
+          x: x + i * (colWidth + spacing),
+          y,
+          width: colWidth,
+          height: headerHeight + rowCount * rowHeight,
+          rowCount,
+          parcelsStartIndex: startRow,
+          isContinuation: i > 0,
+        };
+        startRow += rowCount;
+        return table;
+      });
+    }
+    return null;
+  }
+}

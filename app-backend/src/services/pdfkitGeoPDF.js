@@ -33,7 +33,7 @@ import { planSheetLayout } from './sheetLayoutPlanner.js';
 import { findBlockPosition } from './dxfBlockPlacer.js';
 import { drawSubjectAdjoiningFeatures } from './adjoiningFeatures.js';
 import { buildPolygonForPlanner, buildPlannerObstacles, chooseFigureAlignX } from './polygonForPlanner.js';
-import { measureFigureWhitespace, subdivideStripsForCap, levelScheduleTables } from './scheduleStrategy.js';
+import { measureFigureWhitespace, subdivideStripsForCap, levelScheduleTables, seatScheduleAsComposite } from './scheduleStrategy.js';
 
 /**
  * How much of the drawing band one Schedule of Areas table may occupy.
@@ -5952,6 +5952,45 @@ export function calculateBlockPositions(
       // aside for the schedule. They are passed in as obstacles so each column
       // tiles AROUND them: an 85pt North arrow clipping the top corner of an
       // 1850pt column should push that column down, not delete it.
+      // Composite first. A split schedule is ONE table broken into columns, so
+      // seat it as one wherever a strip can hold it: columns adjacent, sharing a
+      // top. Slot-tiling below is the last resort -- it seats each column in
+      // whatever gap fits, which on a real general plan left the two halves of
+      // the same table 545pt apart at different heights.
+      const _compositeTables = seatScheduleAsComposite({
+        strips: [_strips.left, _strips.right, _strips.bottom, _strips.top],
+        numCols:      _schedNumCols,
+        totalRows:    schedRows,
+        colWidth:     _schedSingleColWidth,
+        spacing:      _schedTableSpacing,
+        headerHeight: _SCHED_CHROME,
+        rowHeight:    _SCHED_ROW,
+        obstacles,
+        bounds: _contentArea,
+        // Narrower columns are allowed if that is what makes the composite fit:
+        // 240 rows over 2 columns was 187% of the available height here, the same
+        // rows over 3 are 94%. Too many columns simply outgrow the strip's width,
+        // so the search stops itself.
+        maxCols: 6,
+      });
+      if (_compositeTables) {
+        _schedStripTables = _compositeTables;
+        const _cl = Math.min(..._schedStripTables.map((t) => t.x));
+        const _cr = Math.max(..._schedStripTables.map((t) => t.x + t.width));
+        const _ct = Math.min(..._schedStripTables.map((t) => t.y));
+        const _cb = Math.max(..._schedStripTables.map((t) => t.y + t.height));
+        schedWidth  = _cr - _cl;
+        schedHeight = _cb - _ct;
+        _schedStripComposite = { x: _cl, y: _ct, width: schedWidth, height: schedHeight };
+        _schedNumCols    = _schedStripTables.length;
+        _schedRowsPerCol = Math.max(..._schedStripTables.map((t) => t.rowCount));
+        logger.info(
+          `[PDFKit] 📊 Schedule seated as one composite: ` +
+          _schedStripTables.map((t) => `${t.rowCount}r@(${t.x.toFixed(0)},${t.y.toFixed(0)})`).join(' ')
+        );
+        return;
+      }
+
       const _slots = subdivideStripsForCap({
         strips: [_strips.left, _strips.right, _strips.bottom, _strips.top],
         maxTableHeight: _contentArea.h * SCHEDULE_MAX_HEIGHT_FRACTION,

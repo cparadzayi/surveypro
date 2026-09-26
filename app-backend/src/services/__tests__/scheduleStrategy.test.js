@@ -3,6 +3,7 @@ import { describe, test, expect } from '@jest/globals';
 import { measureFigureWhitespace } from '../scheduleStrategy.js';
 import { chooseScheduleStrategy } from '../scheduleStrategy.js';
 import { shouldAdoptResplit } from '../scheduleStrategy.js';
+import { seatScheduleAsComposite } from '../scheduleStrategy.js';
 
 describe('shouldAdoptResplit', () => {
   // A 10x10 figure polygon at the origin (min-corner rect convention: tables
@@ -422,5 +423,73 @@ describe('subdivideStripsForCap — slots stay inside the drawing area', () => {
       spacing: 10, headerHeight: 65, rowHeight: 13,
     });
     expect(withBounds).toEqual(without);
+  });
+});
+
+// A split schedule reads as one table broken into columns, so the columns must
+// sit next to each other and share a top edge. Tiling each column into whatever
+// whitespace slot it happens to fit staggered them by 80mm on a real general
+// plan: same data, two tables 545pt apart at different heights.
+describe('seatScheduleAsComposite', () => {
+  const base = {
+    numCols: 2, totalRows: 240, colWidth: 425, spacing: 10,
+    headerHeight: 50, rowHeight: 12.25,
+  };
+  const wide = { x: 100, y: 200, w: 1000, h: 2000 };   // holds the composite
+  const narrow = { x: 100, y: 200, w: 500, h: 2000 };  // one column only
+
+  test('columns sit adjacent and share a top edge', () => {
+    const t = seatScheduleAsComposite({ ...base, strips: [wide] });
+    expect(t).toHaveLength(2);
+    expect(t[0].y).toBe(t[1].y);
+    expect(t[1].x - (t[0].x + t[0].width)).toBe(base.spacing);
+  });
+
+  test('every row is seated, split evenly', () => {
+    const t = seatScheduleAsComposite({ ...base, strips: [wide] });
+    expect(t.reduce((n, x) => n + x.rowCount, 0)).toBe(240);
+    expect(t.map((x) => x.rowCount)).toEqual([120, 120]);
+  });
+
+  test('an odd total puts the extra row in the first column', () => {
+    const t = seatScheduleAsComposite({ ...base, totalRows: 241, strips: [wide] });
+    expect(t.map((x) => x.rowCount)).toEqual([121, 120]);
+    expect(t.reduce((n, x) => n + x.rowCount, 0)).toBe(241);
+  });
+
+  test('null when no strip can hold the composite, so the caller can tile', () => {
+    expect(seatScheduleAsComposite({ ...base, strips: [narrow] })).toBeNull();
+  });
+
+  test('null when the only wide strip is too short', () => {
+    const shallow = { x: 100, y: 200, w: 1000, h: 60 };
+    expect(seatScheduleAsComposite({ ...base, strips: [shallow] })).toBeNull();
+  });
+
+  test('adds a column when the composite is too tall to fit as it stands', () => {
+    // The real case: 240 rows over 2 columns is 187% of the available height, so
+    // it cannot be seated as one block and the schedule ends up staggered. Three
+    // columns of 80 is 94% -- it fits, and reads as one table.
+    const strip = { x: 0, y: 0, w: 1400, h: 1100 };
+    const t = seatScheduleAsComposite({ ...base, strips: [strip], maxCols: 4 });
+    expect(t).toHaveLength(3);
+    expect(t.map((x) => x.rowCount)).toEqual([80, 80, 80]);
+    expect(new Set(t.map((x) => x.y)).size).toBe(1);   // one top edge
+  });
+
+  test('does not add columns unless asked, so callers opt in', () => {
+    const strip = { x: 0, y: 0, w: 1400, h: 1100 };
+    expect(seatScheduleAsComposite({ ...base, strips: [strip] })).toBeNull();
+  });
+
+  test('skips a strip an obstacle sits in, and takes the next', () => {
+    const blocked = { x: 100, y: 200, w: 1000, h: 2000 };
+    const clear   = { x: 2000, y: 200, w: 1000, h: 2000 };
+    const obstacle = { x: 150, y: 250, width: 300, height: 300 };
+    const t = seatScheduleAsComposite({
+      ...base, strips: [blocked, clear], obstacles: [obstacle],
+    });
+    expect(t).not.toBeNull();
+    expect(t[0].x).toBe(2000);
   });
 });

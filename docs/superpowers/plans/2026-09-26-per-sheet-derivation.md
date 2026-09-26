@@ -137,6 +137,20 @@ describe('orderSheets', () => {
     const order = orderSheets(parts)
     expect([...order].sort()).toEqual([1, 2, 3])
   })
+
+  test('west still precedes east when the east part reaches further north', () => {
+    // THIS is the test that separates banding from a plain lexicographic sort.
+    // On a tidy 2x2 grid the two agree, so the test above cannot tell them
+    // apart. Here the parts share a band -- their southing ranges overlap, 0..80
+    // and 0..20 -- but east's centroid is further NORTH than west's (x 10 against
+    // x 40). Sorted lexicographically by southing then easting, east comes first
+    // and the sheets are numbered right to left. Banded, they are one band and
+    // run west to east, which is what Decision 10 says.
+    const west = box(0, 0, 50, 80)    // centroid (25, 40)
+    const east = box(50, 0, 100, 20)  // centroid (75, 10)
+
+    expect(orderSheets([west, east])).toEqual([1, 2])
+  })
 })
 ```
 
@@ -256,7 +270,7 @@ export function orderSheets(parts) {
 cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js sheetDerivation-shared
 ```
 
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Prove the banding is load-bearing**
 
@@ -269,7 +283,9 @@ Temporarily replace `orderSheets`' body with a plain lexicographic sort:
     .reduce((out, p, i) => { out[p.index] = i + 1; return out }, new Array(parts.length))
 ```
 
-Run the suite. The two-rows-of-two test must fail. Restore, confirm green again, and paste both outputs in your report. If the lexicographic version passes everything, the fixtures are not testing the banding and the test needs fixing, not the code.
+Run the suite. **`west still precedes east when the east part reaches further north` must fail**, and it is the only one that will — the tidy 2x2 fixture gives `[4, 1, 3, 2]` under both orderings, so it cannot tell them apart. That is exactly why the extra test exists; do not expect the 2x2 one to catch this.
+
+Restore, confirm green again, and paste both outputs in your report. If the lexicographic version passes everything, stop and say so: it means the discriminating fixture no longer discriminates, and the test needs fixing rather than the code.
 
 - [ ] **Step 6: Commit**
 
@@ -445,7 +461,7 @@ export function assignStands(parts, stands) {
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Expected: PASS, 14 tests.
+Expected: PASS, 15 tests.
 
 - [ ] **Step 5: Prove the two refusals are distinguishable**
 
@@ -562,7 +578,7 @@ export function letterPart(part) {
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Expected: PASS, 18 tests.
+Expected: PASS, 19 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -706,7 +722,7 @@ export function standRange(names) {
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Expected: PASS, 29 tests.
+Expected: PASS, 30 tests.
 
 - [ ] **Step 5: Commit**
 

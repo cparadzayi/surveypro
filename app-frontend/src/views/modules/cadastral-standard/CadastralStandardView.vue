@@ -332,69 +332,81 @@
                 ✅ {{ workflowState.importedPoints.length }} points imported (Lo {{ selectedLoZone }})
               </p>
               
-              <!-- Optional: GNSS site calibration report.
-                   Separate from the CSV because it is optional — a plan without
-                   one must import and generate exactly as before. -->
-              <div class="mt-6 pt-6 border-t border-gray-200 text-left">
-                <div class="flex items-start justify-between gap-4">
-                  <div>
-                    <p class="text-sm font-medium text-gray-700">
-                      GNSS Site Calibration <span class="font-normal text-gray-500">(optional)</span>
-                    </p>
-                    <p class="mt-1 text-xs text-gray-500">
-                      Trimble Site Calibration Report (.xml or .html). Its parameters and residuals are
-                      added to the Electronic Field Book as evidence the GNSS observations were
-                      tied to the local grid.
-                    </p>
-                  </div>
-                  <input
-                    ref="calibrationInputRef"
-                    id="calibration-file-input"
-                    type="file"
-                    accept=".xml,.html,.xhtml,.htm"
-                    @change="handleCalibrationFileChange"
-                    class="hidden"
-                  />
-                  <button
-                    @click="triggerCalibrationInput"
-                    :disabled="!selectedProjectId"
-                    :class="selectedProjectId
-                      ? 'border-blue-300 text-blue-700 bg-white hover:bg-blue-50'
-                      : 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'"
-                    class="shrink-0 inline-flex items-center px-4 py-2 border text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                  >
-                    📡 {{ workflowState.documents.siteCalibration ? 'Replace' : 'Add' }} Calibration
-                  </button>
-                </div>
-
-                <p v-if="calibrationError" class="mt-2 text-sm text-red-600">
-                  ⚠️ {{ calibrationError }}
-                </p>
-                <div
-                  v-else-if="workflowState.documents.siteCalibration"
-                  class="mt-2 flex items-center gap-3 text-sm text-green-700"
-                >
-                  <span>
-                    ✅ Calibration loaded —
-                    {{ workflowState.documents.siteCalibration.pairs.length }} control
-                    {{ workflowState.documents.siteCalibration.pairs.length === 1 ? 'pair' : 'pairs' }}<template
-                      v-if="workflowState.documents.siteCalibration.summary.maxHorizontalResidual !== null"
-                    >, max residual
-                    {{ workflowState.documents.siteCalibration.summary.maxHorizontalResidual.toFixed(3) }} m</template>
-                  </span>
-                  <button
-                    @click="clearSiteCalibration"
-                    class="text-xs text-red-600 hover:text-red-800 underline"
-                  >
-                    remove
-                  </button>
-                </div>
-              </div>
-
               <div class="mt-6 text-sm text-gray-500">
                 <p>Required format: Point, Y, X, Status, Description, Date of survey</p>
                 <p class="mt-1">Sample: P2,97538.004,2247107.872,F,50mm Iron Pipe in Concrete,1/10/2025</p>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- GNSS site calibration report. OUTSIDE the empty-state guard above, and
+             deliberately so: that guard tears the welcome screen down the moment a
+             CSV import succeeds, so a calibration added inside it became unreachable
+             for the rest of the workflow — the "Replace" affordance could never
+             render. A surveyor who loads the report after importing (the ordinary
+             order, since the report is produced in the field) had no way to attach
+             it without resetting the step and losing the import.
+
+             Kept as its own panel on the same step, and still optional: a plan with
+             no calibration must import and generate exactly as before. Note this is
+             a UX reachability fix, not a page-numbering one — Calculations derives
+             its field book pages from whatever calibration is present at generation
+             time, so attaching the report later still numbers the book correctly. -->
+        <div class="mt-6 max-w-2xl mx-auto text-left">
+          <div class="bg-white border border-gray-200 rounded-lg p-4">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-sm font-medium text-gray-700">
+                  GNSS Site Calibration <span class="font-normal text-gray-500">(optional)</span>
+                </p>
+                <p class="mt-1 text-xs text-gray-500">
+                  Trimble Site Calibration Report (.xml or .html). Its parameters and residuals are
+                  added to the Electronic Field Book as evidence the GNSS observations were
+                  tied to the local grid.
+                </p>
+              </div>
+              <input
+                ref="calibrationInputRef"
+                id="calibration-file-input"
+                type="file"
+                accept=".xml,.html,.xhtml,.htm"
+                @change="handleCalibrationFileChange"
+                class="hidden"
+              />
+              <button
+                @click="triggerCalibrationInput"
+                :disabled="!selectedProjectId"
+                :class="selectedProjectId
+                  ? 'border-blue-300 text-blue-700 bg-white hover:bg-blue-50'
+                  : 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'"
+                class="shrink-0 inline-flex items-center px-4 py-2 border text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+              >
+                📡 {{ workflowState.documents.siteCalibration ? 'Replace' : 'Add' }} Calibration
+              </button>
+            </div>
+
+            <p v-if="calibrationError" class="mt-2 text-sm text-red-600">
+              ⚠️ {{ calibrationError }}
+            </p>
+            <div
+              v-else-if="workflowState.documents.siteCalibration"
+              class="mt-2 flex items-center gap-3 text-sm text-green-700"
+            >
+              <span>
+                ✅ Calibration loaded —
+                {{ workflowState.documents.siteCalibration.pairs.length }} control
+                {{ workflowState.documents.siteCalibration.pairs.length === 1 ? 'pair' : 'pairs' }}<template
+                  v-if="workflowState.documents.siteCalibration.summary.maxHorizontalResidual !== null"
+                >, max residual
+                {{ workflowState.documents.siteCalibration.summary.maxHorizontalResidual.toFixed(3) }} m</template>
+              </span>
+              <button
+                @click="clearSiteCalibration"
+                class="text-xs text-red-600 hover:text-red-800 underline"
+              >
+                remove
+              </button>
             </div>
           </div>
         </div>
@@ -1366,7 +1378,7 @@ import { ref, computed, reactive, provide, toRaw, markRaw, watch } from 'vue';
 import type { CadastralWorkflowState, CadastralPoint } from '../../../types/cadastral';
 import { validateAndParseCSV } from '../../../utils/cadastral-csv';
 import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow';
-import { FieldBookPDFGenerator } from '../../../utils/pdf-generator';
+import { FieldBookGenerator } from '../../../utils/field-book';
 import { batchDownloadDocuments } from '../../../utils/batchExport';
 import { SimplifiedCadastralCombinedGenerator } from '../../../utils/cadastral-combined-simple';
 import type { SurveyPoint } from '../../../utils/calculations-part1';
@@ -3593,51 +3605,73 @@ function handleSurveyPlanContinue() {
   setCurrentStep('report-on-survey');
 }
 
+/**
+ * Assemble the inputs for the standalone field book the View and Download
+ * buttons render.
+ *
+ * Both used to drive FieldBookPDFGenerator (utils/pdf-generator.ts), a second
+ * field-book renderer that predates the canonical one in utils/field-book.ts and
+ * is no longer imported anywhere. It never emitted a calibration page, so on a
+ * calibrated survey these two buttons produced a book with the observations on
+ * E1 and no calibration at all, while the lodged document from the two-pass
+ * pipeline had the calibration on E1 and the observations from E2 — the same
+ * field book, numbered two different ways, and the standalone one was the wrong
+ * one. Routing both through the canonical renderer makes the calibration reach
+ * them and the E-numbers agree by construction rather than by agreement.
+ */
+function buildStandaloneFieldBook() {
+  const points = workflowState.documents.fieldBook?.points ?? [];
+  const info = workflowState.surveyorInfo;
+
+  return {
+    // The workflow holds coordinates as display strings; the renderer calls
+    // toFixed on them, so they have to be numbers by the time they get there.
+    points: points.map(p => ({
+      id: p.id,
+      y: Number(p.coordinates?.y),
+      x: Number(p.coordinates?.x),
+      status: p.status as string | undefined,
+      description: p.description,
+      surveyDate: p.surveyDate ?? undefined,
+    })),
+    metadata: {
+      surveyorName: info.landSurveyor,
+      surveyOf: info.surveyOf,
+      surveyDescription: info.surveyOf,
+      surveyDate: info.surveyDate,
+      instruments: info.instruments,
+      assistedBy: info.assistedBy,
+      instrumentDescription: info.instrumentDescription,
+      instrumentBaseSerial: info.instrumentBaseSerial,
+      instrumentRoverSerial: info.instrumentRoverSerial,
+      address: info.address,
+    },
+    // Optional, like everywhere else: a plan without a calibration report must
+    // still render, starting its observations at E1.
+    calibration: workflowState.documents.siteCalibration,
+  };
+}
+
 async function viewFieldBook() {
-  if (!workflowState.documents.fieldBook || !workflowState.documents.fieldBook.points || workflowState.documents.fieldBook.points.length === 0) {
+  const points = workflowState.documents.fieldBook?.points;
+  if (!points || points.length === 0) {
     alert('No field book data available to preview.');
     return;
   }
-  
+
   try {
-    const fieldBook = workflowState.documents.fieldBook;
-    const pdfGenerator = new FieldBookPDFGenerator({
-      filename: `FieldBook_${new Date().toISOString().split('T')[0]}.pdf`
-    });
-    
-    const enhancedFieldBook = {
-      ...fieldBook,
-      metadata: {
-        ...fieldBook.metadata,
-        surveyorName: workflowState.surveyorInfo.landSurveyor,
-        surveyDescription: workflowState.surveyorInfo.surveyOf,
-        surveyDate: workflowState.surveyorInfo.surveyDate,
-        instruments: workflowState.surveyorInfo.instruments,
-        assistedBy: workflowState.surveyorInfo.assistedBy,
-        instrumentDescription: workflowState.surveyorInfo.instrumentDescription,
-        instrumentBaseSerial: workflowState.surveyorInfo.instrumentBaseSerial,
-        instrumentRoverSerial: workflowState.surveyorInfo.instrumentRoverSerial,
-        address: workflowState.surveyorInfo.address
-      },
-      points: fieldBook.points
-    };
-    
-    // Generate PDF Blob
-    const pdfBlobUrl = await (pdfGenerator as any).generatePDFBlob?.(enhancedFieldBook);
-    if (!pdfBlobUrl) {
-      alert('Failed to generate PDF preview.');
-      return;
-    }
-    
-    const response = await fetch(pdfBlobUrl);
-    const pdfBlob = await response.blob();
-    URL.revokeObjectURL(pdfBlobUrl);
-    
+    const { points: fbPoints, metadata, calibration } = buildStandaloneFieldBook();
+    const { pdf, pageCount } = await new FieldBookGenerator().generateFieldBookPDF(
+      fbPoints, metadata, calibration,
+    );
+
+    const pdfBlob = new Blob([pdf.output('blob')], { type: 'application/pdf' });
+
     // Open preview modal
     previewModal.value = {
       isOpen: true,
       title: 'Electronic Field Book',
-      subtitle: `${workflowState.importedPoints.length} coordinates • ${(fieldBook.metadata as any).pageCount || 0} pages`,
+      subtitle: `${points.length} coordinates • ${pageCount} pages`,
       pdfBlob,
       documentType: 'field-book',
       fileName: `FieldBook_${new Date().toISOString().split('T')[0]}.pdf`
@@ -3649,49 +3683,27 @@ async function viewFieldBook() {
 }
 
 async function downloadFieldBook() {
-  console.log('downloadFieldBook called');
-  console.log('fieldBook exists:', !!workflowState.documents.fieldBook);
-  if (!workflowState.documents.fieldBook || !workflowState.documents.fieldBook.points || workflowState.documents.fieldBook.points.length === 0) {
+  const points = workflowState.documents.fieldBook?.points;
+  if (!points || points.length === 0) {
     alert('No field book data available to download.');
     return;
   }
   try {
-    const fieldBook = workflowState.documents.fieldBook;
-    if (!fieldBook.points || fieldBook.points.length === 0) {
-      alert('No points found in field book for download.');
-      return;
-    }
     const fileName = `fieldbook_${new Date().toISOString().split('T')[0]}.pdf`;
-    const pdfGenerator = new FieldBookPDFGenerator({ filename: fileName });
-    const enhancedFieldBook = {
-      ...fieldBook,
-      metadata: {
-        ...fieldBook.metadata,
-        surveyorName: workflowState.surveyorInfo.landSurveyor,
-        surveyDescription: workflowState.surveyorInfo.surveyOf,
-        surveyDate: workflowState.surveyorInfo.surveyDate,
-        instruments: workflowState.surveyorInfo.instruments,
-        assistedBy: workflowState.surveyorInfo.assistedBy,
-        instrumentDescription: workflowState.surveyorInfo.instrumentDescription,
-        instrumentBaseSerial: workflowState.surveyorInfo.instrumentBaseSerial,
-        instrumentRoverSerial: workflowState.surveyorInfo.instrumentRoverSerial,
-        address: workflowState.surveyorInfo.address
-      },
-      points: fieldBook.points // ensure points are present
-    };
-    const pdfBlobUrl = await pdfGenerator.generatePDFBlob(enhancedFieldBook);
-    if (pdfBlobUrl) {
-      const link = document.createElement('a');
-      link.href = pdfBlobUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(pdfBlobUrl);
-      console.log('Field book PDF download initiated:', fileName);
-    } else {
-      alert('Failed to generate PDF for download. Please try again.');
-    }
+    const { points: fbPoints, metadata, calibration } = buildStandaloneFieldBook();
+    const { pdf } = await new FieldBookGenerator().generateFieldBookPDF(
+      fbPoints, metadata, calibration,
+    );
+
+    const url = URL.createObjectURL(new Blob([pdf.output('blob')], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    console.log('Field book PDF download initiated:', fileName);
   } catch (error) {
     console.error('Error downloading field book:', error);
     alert('Error downloading PDF: ' + (error instanceof Error ? error.message : 'Unknown error'));
@@ -4059,312 +4071,6 @@ async function generateCoordinateList() {
   } finally {
     isGenerating.value = false;
   }
-}
-
-function generateFieldBookHTML(fieldBook: any): string {
-  const points = fieldBook.points;
-  const metadata = fieldBook.metadata;
-  
-  // Format coordinates to 3 decimal places
-  const formatCoordinate = (value: number): string => {
-    return value.toFixed(3);
-  };
-  
-  const pageStyles = `
-    <style>
-      @page {
-        size: A4;
-        margin: 2.5cm;
-      }
-      
-      body {
-        font-family: 'Times New Roman', serif;
-        font-size: 14pt;
-        line-height: 1.6;
-        color: #000;
-        margin: 0;
-        padding: 0;
-      }
-      
-      .cover-page {
-        page-break-after: always;
-        padding: 60px 40px;
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-      }
-      
-      .cover-title {
-        font-size: 28pt;
-        font-weight: bold;
-        text-align: center;
-        margin-bottom: 80px;
-        letter-spacing: 3px;
-        text-transform: uppercase;
-        border-bottom: 3px solid #000;
-        padding-bottom: 20px;
-      }
-      
-      .cover-content {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-        font-size: 16pt;
-        line-height: 1.8;
-      }
-      
-      .cover-field {
-        display: flex;
-        margin-bottom: 30px;
-        align-items: flex-start;
-      }
-      
-      .field-label {
-        font-weight: bold;
-        min-width: 160px;
-        flex-shrink: 0;
-      }
-      
-      .field-separator {
-        margin: 0 20px 0 10px;
-        font-weight: bold;
-      }
-      
-      .field-value {
-        flex: 1;
-        text-align: left;
-      }
-      
-      .cover-field.survey-of .field-value {
-        font-size: 15pt;
-      }
-      
-      .cover-field.instruments .field-value {
-        font-size: 14pt;
-        line-height: 1.6;
-      }
-      
-      .cover-field.address .field-value {
-        font-size: 15pt;
-        line-height: 1.4;
-      }
-      
-      .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 30px;
-        font-weight: bold;
-        font-size: 18pt;
-        border-bottom: 2px solid #000;
-        padding-bottom: 10px;
-      }
-      
-      .page-number {
-        font-size: 24pt;
-        font-weight: bold;
-        color: #000;
-      }
-      
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 30px;
-        font-size: 12pt;
-      }
-      
-      th, td {
-        border: 2px solid #000;
-        padding: 12px;
-        text-align: center;
-      }
-      
-      th {
-        background-color: #f5f5f5;
-        font-weight: bold;
-        font-size: 13pt;
-      }
-      
-      .point-id {
-        font-weight: bold;
-        font-size: 13pt;
-      }
-      
-      .coordinate {
-        font-family: 'Courier New', monospace;
-      }
-      
-      .page-break {
-        page-break-before: always;
-      }
-      
-      .metadata-section {
-        margin-bottom: 40px;
-        text-align: left;
-        font-size: 14pt;
-      }
-      
-      .metadata-item {
-        margin-bottom: 15px;
-        font-size: 14pt;
-      }
-      
-      .document-header {
-        text-align: center;
-        font-size: 20pt;
-        font-weight: bold;
-        margin-bottom: 30px;
-        text-transform: uppercase;
-      }
-      
-      .status-f { background-color: #e8f5e8; }
-      .status-p { background-color: #fff3cd; }
-    </style>
-  `;
-
-  // Calculate dynamic points per page based on available space
-  // A4 page height: 297mm, with margins and header/footer, usable space ~240mm
-  // Each table row height: ~8mm (including borders and padding)
-  // Header height: ~30mm, Footer: ~20mm, Table header: ~10mm
-  // Available for rows: 297 - 30 - 20 - 10 - 20 (margins) = 217mm
-  // Points per page: 217mm / 8mm ≈ 27 points (conservative estimate)
-  // This preview emits no calibration page of its own, so hasCalibration is
-  // always false — its E1-start is internally consistent.
-  const hasCalibration = false;
-  const pointsPerPage = FIELD_BOOK_POINTS_PER_PAGE;
-  const pages: string[] = [];
-
-  for (let i = 0; i < points.length; i += pointsPerPage) {
-    const pagePoints = points.slice(i, i + pointsPerPage);
-    // Derived from this page's own position, not looked up by id: a
-    // re-observed beacon can carry the same id on an earlier AND a later
-    // page, and pointPageMap keeps only the last write for that id -- a
-    // by-id lookup here would print that page's number on every page the id
-    // appears on, leaving another page unlabelled. (generateFieldBookHTML has
-    // zero callers today, but the pattern is fixed anyway.)
-    const pageIndex = i / pointsPerPage;
-    const offset = hasCalibration ? 1 : 0;
-    const pageLabel = `E${pageIndex + 1 + offset}`;
-
-    const tableRows = pagePoints.map((point: any, index: number) => `
-      <tr class="${point.status === 'F' ? 'status-f' : point.status === 'P' ? 'status-p' : ''}">
-        <td class="point-id">${point.id}</td>
-        <td class="coordinate">${typeof point.coordinates.y === 'string' ? point.coordinates.y : formatCoordinate(point.coordinates.y)}</td>
-        <td class="coordinate">${typeof point.coordinates.x === 'string' ? point.coordinates.x : formatCoordinate(point.coordinates.x)}</td>
-        <td>${point.status === 'F' ? 'Fixed' : point.status === 'P' ? 'Peg' : point.status || ''}</td>
-        <td>${point.description}</td>
-        <td>${formatDateDDMMYYYY(point.surveyDate)}</td>
-      </tr>
-    `).join('');
-
-    pages.push(`
-      <div class="${i > 0 ? 'page-break' : ''}">
-        <div class="page-header">
-          <span>ELECTRONIC FIELD BOOK</span>
-          <span class="page-number">${pageLabel}</span>
-        </div>
-        
-        <table>
-          <thead>
-            <tr>
-              <th>Point ID</th>
-              <th>Y Coordinate (m)</th>
-              <th>X Coordinate (m)</th>
-              <th>Status</th>
-              <th>Description</th>
-              <th>Survey Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
-      </div>
-    `);
-  }
-
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${metadata.title}</title>
-      ${pageStyles}
-    </head>
-    <body>
-      <!-- Cover Page (No page numbering) -->
-      <div class="cover-page">
-        <div class="cover-title">ELECTRONIC FIELD BOOK</div>
-        
-        <div class="cover-content">
-          <div class="cover-field">
-            <span class="field-label">Land Surveyor</span>
-            <span class="field-separator">:</span>
-            <span class="field-value">${workflowState.surveyorInfo.landSurveyor}</span>
-          </div>
-          
-          <div class="cover-field survey-of">
-            <span class="field-label">Survey of</span>
-            <span class="field-separator">:</span>
-            <span class="field-value">${workflowState.surveyorInfo.surveyOf}</span>
-          </div>
-          
-          <div class="cover-field">
-            <span class="field-label">Surveyed in</span>
-            <span class="field-separator">:</span>
-            <span class="field-value">${workflowState.surveyorInfo.surveyDate}</span>
-          </div>
-          
-          <div class="cover-field instruments">
-            <span class="field-label">Instruments</span>
-            <span class="field-separator">:</span>
-            <span class="field-value">${workflowState.surveyorInfo.instruments.replace(/\n/g, '<br>')}</span>
-          </div>
-          
-          <div class="cover-field address">
-            <span class="field-label">Address</span>
-            <span class="field-separator">:</span>
-            <span class="field-value">${workflowState.surveyorInfo.address.replace(/\n/g, '<br>')}</span>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Data Pages (E1, E2, E3, etc.) -->
-      ${pages.join('')}
-      
-      <!-- Document Information Page -->
-      <div class="page-break">
-        <div class="document-header">DOCUMENT INFORMATION</div>
-        
-        <div class="metadata-section">
-          <div class="metadata-item"><strong>Document Generated:</strong> ${formatDateTimeSecDDMMYYYY(metadata.dateGenerated)}</div>
-          <div class="metadata-item"><strong>Total Pages:</strong> ${metadata.pageCount} (including cover)</div>
-          <div class="metadata-item"><strong>Coordinate Precision:</strong> 3 decimal places (millimeter accuracy)</div>
-          <div class="metadata-item"><strong>Datum:</strong> WGS84</div>
-          <div class="metadata-item"><strong>Projection:</strong> UTM Zone 35 South</div>
-          <div class="metadata-item"><strong>Survey Method:</strong> Final Adjusted Coordinates</div>
-          
-          <div style="margin-top: 50px; font-size: 12pt; line-height: 1.8;">
-            <p><strong>Notes:</strong></p>
-            <p>• All coordinates are final adjusted values</p>
-            <p>• Coordinates shown to 3 decimal places for field book purposes</p>
-            <p>• Status codes: F = Fixed, P = Peg</p>
-            <p>• This document forms part of the official cadastral record</p>
-          </div>
-          
-          <div style="margin-top: 60px;">
-            <h3>Summary Statistics</h3>
-            <p><strong>Fixed Points:</strong> ${points.filter((p: any) => p.status === 'F').length}</p>
-            <p><strong>Peg Points:</strong> ${points.filter((p: any) => p.status === 'P').length}</p>
-            <p><strong>Other Points:</strong> ${points.filter((p: any) => !['F', 'P'].includes(p.status)).length}</p>
-          </div>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
 }
 
 // Surveyor and project change handlers

@@ -5,7 +5,7 @@
 import { describe, test, expect } from '@jest/globals'
 import {
   projectOnSegment, segmentIntersection, pointInRing, resolveEndpoint,
-  interiorStaysInside, standsCrossedBy,
+  interiorStaysInside, standsCrossedBy, splitFigure,
 } from '../../../../app-shared/figureSplit.js'
 
 const P = (y, x) => ({ y, x })
@@ -328,5 +328,119 @@ describe('standsCrossedBy', () => {
     expect(pointInRing(loop.slice(0, 4), P(50, 50))).toBe(true)
 
     expect(standsCrossedBy(loop, enclosed)).toEqual([])
+  })
+})
+
+describe('splitFigure', () => {
+  const square = [P(0, 0), P(100, 0), P(100, 100), P(0, 100)]
+
+  test('a straight chord yields two parts that share the cut', () => {
+    const r = splitFigure({ ring: square, polyline: [P(50, 0), P(50, 100)] })
+    expect(r.ok).toBe(true)
+    expect(r.parts).toHaveLength(2)
+    for (const part of r.parts) {
+      expect(part).toContainEqual(P(50, 0))
+      expect(part).toContainEqual(P(50, 100))
+    }
+  })
+
+  test('the two parts between them hold every original vertex', () => {
+    const r = splitFigure({ ring: square, polyline: [P(50, 0), P(50, 100)] })
+    const all = [...r.parts[0], ...r.parts[1]]
+    for (const v of square) expect(all).toContainEqual(v)
+  })
+
+  test('the points the cut created are reported, and are new', () => {
+    const r = splitFigure({ ring: square, polyline: [P(50, 0), P(50, 100)] })
+    expect(r.newPoints).toEqual([P(50, 0), P(50, 100)])
+  })
+
+  test('an endpoint snapped to a corner creates no new point there', () => {
+    const r = splitFigure({ ring: square, polyline: [P(0, 0.02), P(50, 100)] })
+    expect(r.ok).toBe(true)
+    expect(r.newPoints).toEqual([P(50, 100)])
+  })
+
+  // Override 1: when an endpoint snaps to a vertex, `cut` already carries
+  // that vertex object (resolveEndpoint returns it verbatim), so `walk` must
+  // not push it again -- doing so would duplicate it within the SAME part
+  // ring (not merely have it appear once in each of the two parts, which is
+  // expected and correct, since both parts share the cut).
+  test('an endpoint snapped to a vertex is not duplicated within its part ring', () => {
+    const r = splitFigure({ ring: square, polyline: [P(0, 0.02), P(50, 100)] })
+    expect(r.ok).toBe(true)
+    const isOrigin = (v) => v.y === 0 && v.x === 0
+    for (const part of r.parts) {
+      expect(part.filter(isOrigin)).toHaveLength(1)
+    }
+  })
+
+  test('a bent cut keeps its bends in both parts', () => {
+    const cut = [P(0, 50), P(40, 50), P(40, 70), P(100, 70)]
+    const r = splitFigure({ ring: square, polyline: cut })
+    expect(r.ok).toBe(true)
+    for (const part of r.parts) {
+      expect(part).toContainEqual(P(40, 50))
+      expect(part).toContainEqual(P(40, 70))
+    }
+  })
+
+  test('a cut slicing a stand is refused, naming it', () => {
+    const stands = [{ name: '1686', ring: [P(40, 40), P(60, 40), P(60, 60), P(40, 60)] }]
+    const r = splitFigure({ ring: square, polyline: [P(50, 0), P(50, 100)], stands })
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('straddles-stands')
+    expect(r.stands).toEqual(['1686'])
+  })
+
+  test('a cut wandering outside is refused', () => {
+    const r = splitFigure({ ring: square, polyline: [P(0, 50), P(50, 150), P(100, 50)] })
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('interior-outside')
+  })
+
+  test('both endpoints on the same edge is degenerate, not a split', () => {
+    const r = splitFigure({ ring: square, polyline: [P(30, 0), P(60, 0)] })
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('degenerate')
+  })
+
+  // Override 3: a snapped endpoint reuses an existing beacon and must not be
+  // reported as new, even though that beacon's own coordinate is unrounded.
+  // resolveEndpoint returns a snapped vertex VERBATIM (see its own tests), so
+  // a beacon surveyed to y = 100.004 does not equal its own rounded copy
+  // (100.00) within the tight TOUCH_EPS a geometric "is this a ring vertex?"
+  // comparison would need. Deriving newPoints from the resolved KIND, not from
+  // comparing coordinates, is what keeps this beacon out of newPoints.
+  test('a beacon reused by a snapped endpoint is not reported as new, despite unrounded coordinates', () => {
+    const surveyed = [P(0, 0), P(100.004, 0.007), P(100, 100), P(0, 100)]
+    const r = splitFigure({ ring: surveyed, polyline: [P(100.01, 0.01), P(50, 100)] })
+    expect(r.ok).toBe(true)
+    // Only the edge-resolved point at (50, 100) is new; the snapped beacon at
+    // (100.004, 0.007) is reused, not invented, and must not appear here too.
+    expect(r.newPoints).toEqual([P(50, 100)])
+  })
+
+  // Override 4: a cut that loops back across itself cannot be walked into two
+  // simple ring parts, so it must be refused outright as malformed -- a
+  // different failure from "encloses a stand" (standsCrossedBy deliberately
+  // does not flag that case; see its own tests) and from "wanders outside".
+  // This cut's middle four points form an X: (30,20)-(70,80) crosses
+  // (30,80)-(70,20) at (50,50), and those two segments are non-adjacent.
+  test('a cut that crosses itself is refused as malformed', () => {
+    const cut = [P(0, 50), P(30, 20), P(70, 80), P(30, 80), P(70, 20), P(100, 50)]
+    const r = splitFigure({ ring: square, polyline: cut })
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('self-intersecting')
+  })
+
+  // Negative control for Override 4: a bent cut has consecutive segments that
+  // share an endpoint by construction (adjacent), and segmentIntersection's
+  // inclusive bounds mean a naive all-pairs check would flag every one of
+  // those shared endpoints as a "crossing". This must still succeed.
+  test('a bent cut is not mistaken for self-intersecting because its segments share endpoints', () => {
+    const cut = [P(0, 50), P(40, 50), P(40, 70), P(100, 70)]
+    const r = splitFigure({ ring: square, polyline: cut })
+    expect(r.ok).toBe(true)
   })
 })

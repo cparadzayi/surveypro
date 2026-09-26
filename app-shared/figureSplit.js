@@ -233,3 +233,107 @@ function crossesRing(polyline, ring) {
 function insideRing(polyline, ring) {
   return polyline.some((p) => pointInRing(ring, p))
 }
+
+/**
+ * Divide a figure in two along a cut.
+ *
+ * The cut's endpoints are landed on the boundary first, so the parts always
+ * close against each other. Both parts carry the cut: it is the last side of
+ * one and the first of the other, which is why the same new points appear in
+ * both sheets' outside-figure tables, lettered independently.
+ *
+ * Returns `{ ok: true, parts: [ring, ring], newPoints: [{y,x}] }` or
+ * `{ ok: false, error: 'self-intersecting' | 'straddles-stands' | 'interior-outside' | 'degenerate', stands?: string[], at?: {y,x} }`.
+ *
+ * Checked in this order: degenerate (both ends land in the same place) before
+ * a `cut` even exists to check further against; self-intersecting (the cut
+ * crosses itself, so `walk`'s ring construction below could not represent the
+ * result even if every other rule passed) before the stands and interior
+ * checks, both of which assume a simple path.
+ */
+export function splitFigure({ ring, polyline, stands = [], tolerance = SNAP_TOLERANCE_M }) {
+  const startRaw = polyline[0]
+  const endRaw = polyline[polyline.length - 1]
+  const start = resolveEndpoint(ring, startRaw, tolerance)
+  const end = resolveEndpoint(ring, endRaw, tolerance)
+
+  // Both ends on the same edge, or on the same vertex, cuts nothing off.
+  const sameEdge = start.kind === 'edge' && end.kind === 'edge' && start.index === end.index
+  const sameVertex = start.kind === 'vertex' && end.kind === 'vertex' && start.index === end.index
+  if (sameEdge || sameVertex) return { ok: false, error: 'degenerate' }
+
+  const interior = polyline.slice(1, -1).map(roundPoint)
+  const cut = [start.point, ...interior, end.point]
+
+  if (selfIntersects(cut)) return { ok: false, error: 'self-intersecting' }
+
+  const sliced = standsCrossedBy(cut, stands)
+  if (sliced.length > 0) return { ok: false, error: 'straddles-stands', stands: sliced }
+
+  const inside = interiorStaysInside(ring, cut)
+  if (!inside.ok) return { ok: false, error: 'interior-outside', at: inside.at }
+
+  const partA = [...cut, ...walk(ring, end, start)]
+  const partB = [...reversed(cut), ...walk(ring, start, end)]
+
+  // The points the cut created, in the order they appear along the cut: an
+  // endpoint resolved onto an EDGE is new -- the cut put it there. One resolved
+  // onto a VERTEX is an existing beacon reused, not new. Every interior vertex
+  // is new: interiorStaysInside already refused any interior vertex that is
+  // not strictly inside the ring, and a ring vertex sits on the boundary, so
+  // an interior vertex can never coincide with one.
+  //
+  // This is deliberately not decided by geometric comparison against the
+  // ring. resolveEndpoint returns a snapped vertex UNROUNDED -- it is an
+  // existing beacon, not a new point -- so comparing a rounded cut point
+  // against unrounded ring vertices with a tight epsilon would misclassify a
+  // real beacon, surveyed to 3 dp, as new, and hand it a `-` provenance row it
+  // never earned.
+  const newPoints = []
+  if (start.kind === 'edge') newPoints.push(start.point)
+  newPoints.push(...interior)
+  if (end.kind === 'edge') newPoints.push(end.point)
+
+  return { ok: true, parts: [partA, partB], newPoints }
+}
+
+function reversed(points) {
+  return points.slice().reverse()
+}
+
+/**
+ * True if any two non-adjacent segments of `points` intersect. Adjacent
+ * segments share an endpoint by construction -- segment i ends exactly where
+ * segment i+1 begins -- and segmentIntersection's bounds are INCLUSIVE, so a
+ * naive all-pairs loop would report every adjacent pair as a "crossing" at
+ * their shared point. Only non-adjacent pairs are checked.
+ */
+function selfIntersects(points) {
+  const segments = points.length - 1
+  for (let i = 0; i < segments; i++) {
+    for (let j = i + 1; j < segments; j++) {
+      if (j === i + 1) continue // adjacent: shares an endpoint by construction
+      if (segmentIntersection(points[i], points[i + 1], points[j], points[j + 1])) return true
+    }
+  }
+  return false
+}
+
+/**
+ * The ring vertices strictly between two resolved endpoints, walking forward.
+ * An endpoint on an edge leaves that edge's start vertex behind it; an endpoint
+ * on a vertex is itself the boundary and is not repeated.
+ */
+function walk(ring, from, to) {
+  const n = ring.length
+  // A vertex endpoint IS ring[index]; an edge endpoint lies on the edge
+  // leaving ring[index]. Either way, the next ring vertex forward is index + 1.
+  const first = (from.index + 1) % n
+  const stop = to.kind === 'vertex' ? to.index : (to.index + 1) % n
+  const out = []
+  for (let k = 0, i = first; k <= n; k++, i = (i + 1) % n) {
+    if (i === stop) break
+    out.push(ring[i])
+  }
+  return out
+}

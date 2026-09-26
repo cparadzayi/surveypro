@@ -93,8 +93,8 @@ Each was settled with the surveyor during design.
     rather than stored.
 11. **Naming.** On a multi-part general plan each part is `Outside Figure Sheet
     N`; on a single-sheet plan the figure is simply `Outside Figure`.
-12. **A cut vertex within tolerance of a stand boundary snaps onto it**, so a
-    stand is never left ambiguously touching the cut.
+12. **A cut that grazes a stand boundary is refused and the stand named.** The
+    tool never silently moves the surveyor's cut onto a stand.
 13. **Clicked points round to 2 decimal places** (10 mm), per convention.
 
 ## Part 1 — The sheet model
@@ -302,12 +302,27 @@ parcel table.
 
 ### Topology near the cut
 
-A cut vertex lying within tolerance of a stand boundary is snapped onto that
-boundary. The ambiguous case — a stand that merely touches the cut, where
-containment could resolve either way — is therefore removed by construction
-rather than adjudicated afterwards.
+A cut that comes to touch a stand boundary is **refused**, naming that stand, and
+the surveyor moves their own cut. The ambiguous case — a stand that merely
+touches the cut, where containment could resolve either way — is therefore
+removed by rejecting it, not by resolving it.
 
-Adopted tolerance: **0.10 m**. It sits an order of magnitude above the 10 mm
+This reverses an earlier draft of this decision, which had the cut SNAP onto the
+stand boundary within tolerance. That could not work. Snapping a vertex onto a
+stand's boundary makes the cut touch that stand, and because the intersection
+test counts endpoint contact, the straddle rule then names it and refuses the
+split anyway — so the snap bought nothing and cost the surveyor a silently
+moved point. Allowing the touch instead would have meant weakening the straddle
+rule, which is the check that stops a sliced stand reaching the
+Surveyor-General. The draft also contradicted Part 5's "it never silently
+adjusts the cut". Refusing honours Part 5, keeps the straddle rule at full
+strength, and leaves the geometry the surveyor drew as the geometry that is
+lodged.
+
+The **0.10 m** tolerance remains, in the place it does real work: snapping a
+cut's ENDPOINT onto an existing outside-figure point (Decision 4), so a cut
+starting at a known beacon reuses it rather than inventing a duplicate a
+centimetre away. It is not a stand tolerance. It sits an order of magnitude above the 10 mm
 rounding of clicked points, and well below any real separation between a road
 reserve and the stands fronting it. It is a judgement rather than a derived
 number, and it is the one value here most worth revisiting against real data:

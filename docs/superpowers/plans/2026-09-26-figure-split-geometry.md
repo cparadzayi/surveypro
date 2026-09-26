@@ -868,8 +868,12 @@ Checked against the spec:
   they belong to the three later plans and are listed under "What this plan does
   NOT cover".
 
-Spec Part 7 lists "a stand touching the cut" as a test case. That case is
-removed by construction rather than tested here: Decision 12 snaps a cut vertex
-onto a boundary within tolerance, so a stand cannot be left touching. The
-later per-sheet derivation plan should still assert parcel assignment for a
-stand whose edge coincides with the cut.
+Spec Part 7 lists "a stand touching the cut" as a test case. An earlier draft of
+this plan claimed it was "removed by construction" because Decision 12 snapped a
+cut vertex onto a nearby boundary. That was wrong twice over: no snapping against
+a stand boundary was ever implemented, and the snap could not have worked anyway
+(it would have made the cut touch the stand, which the straddle rule then
+refuses). Decision 12 now REFUSES a grazing stand and names it, which is what the
+module does, and `standsCrossedBy` has a test pinning it. The later per-sheet
+derivation plan should still assert parcel assignment for a stand whose edge
+comes close to the cut without touching it.

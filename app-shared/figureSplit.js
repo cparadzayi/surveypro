@@ -227,6 +227,15 @@ function atEndpoint(hit, p) {
  * enclosing case as a detection gap; it is not one, and the test named for it
  * holds this answer in place.
  *
+ * A stand the cut merely GRAZES -- touching its boundary without entering -- is
+ * named too, and the split refused. That is Decision 12, and it is deliberate:
+ * an earlier draft had the cut snap onto such a boundary instead, which cannot
+ * work, because the snap makes the cut touch the stand and this rule then refuses
+ * it anyway. Allowing the touch would mean weakening the one check that stops a
+ * sliced stand reaching the Surveyor-General, and moving the cut would break the
+ * promise that the tool never silently adjusts what the surveyor drew. So a graze
+ * is rejected rather than resolved, and the surveyor moves their own cut.
+ *
  * `isPublicPlace` must be exactly `true`. Truthiness would let a stringified
  * "false" out of a CSV import exempt a real stand, which fails OPEN: a sliced
  * stand reaching the Surveyor-General unannounced. Requiring the boolean fails

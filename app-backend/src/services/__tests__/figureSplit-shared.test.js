@@ -309,6 +309,23 @@ describe('standsCrossedBy', () => {
     expect(standsCrossedBy(through, road(1))).toEqual(['Road'])
   })
 
+  test('a stand the cut merely grazes is named, and the split refused', () => {
+    // Decision 12, as settled: a graze is REJECTED, not resolved. An earlier
+    // draft had the cut snap onto such a boundary, which cannot work -- the snap
+    // makes the cut touch the stand and this very rule then refuses it anyway,
+    // so it bought nothing and silently moved the surveyor's point. Do not
+    // "fix" this into a snap, and do not relax it to let a pure touch through:
+    // that would weaken the check that stops a sliced stand being lodged.
+    const grazed = [{ name: '1686', ring: box(0, 0, 10, 10) }]
+
+    // The cut runs exactly along the stand's x = 10 side, entering nothing.
+    expect(standsCrossedBy([P(-5, 10), P(15, 10)], grazed)).toEqual(['1686'])
+    // And a cut touching a single corner of it.
+    expect(standsCrossedBy([P(5, 15), P(15, 5)], grazed)).toEqual(['1686'])
+    // A cut genuinely clear of it is still clear.
+    expect(standsCrossedBy([P(-5, 12), P(15, 12)], grazed)).toEqual([])
+  })
+
   test('a stand merely enclosed by a loop in the cut is NOT named, on purpose', () => {
     // A review read this as a detection gap. It is not one. The stand sits
     // wholly inside the loop, so it lands wholly in one part and is not sliced

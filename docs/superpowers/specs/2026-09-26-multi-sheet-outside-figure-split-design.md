@@ -109,15 +109,23 @@ renderers. It gains two fields the Seventh Schedule template needs:
 - `figureLabel` — this sheet's beacon sequence, e.g. `AB.BC.CD.DA.AB`
 - `otherSheets` — a rendered list naming the rest, e.g. `sheets 2 and 3`
 
-The plan remains **one document**. Sheets are pages, as `generateTiledGeoPDF`
-already produces them.
+In **PDF** the plan remains one document and sheets are pages, as
+`generateTiledGeoPDF` already produces them. In **DXF** each sheet is its own
+file (Part 6). The sheet model is shared; only the packaging differs.
 
-### Ordering
+### Ordering — PROPOSED, not yet settled
 
-Sheets are numbered in the order the surveyor creates the splits, not by
+This is my suggestion rather than a decision taken with the surveyor, and it
+should be confirmed before implementation.
+
+Proposal: number sheets in the order the surveyor creates the splits, not by
 geography. A split of sheet 1 yields sheets 1 and 2; splitting sheet 2 again
-yields 1, 2 and 3. This keeps numbering stable as the surveyor works, and the key
-plan shows which is which.
+yields 1, 2 and 3. Numbering then stays stable while the surveyor works.
+
+The alternative is geographic order (north to south, west to east), which
+matches how `generateTiledGeoPDF` numbers its tiles today and how a reader
+holding three sheets would expect them to run. That is probably what a lodged
+plan should do; renumbering as splits are edited is the cost.
 
 ## Part 2 — The split tool
 

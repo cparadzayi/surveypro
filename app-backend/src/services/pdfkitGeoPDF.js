@@ -12,7 +12,7 @@ import {
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
 import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, tickRungLadder } from "../../../app-shared/tickMarks.js";
-import { computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, planScheduleSplit } from "../../../app-shared/block-definitions.js";
+import { scheduleHeaderScale, scheduleHeaderBandPt, computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, planScheduleSplit } from "../../../app-shared/block-definitions.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { splitBeaconName, labelParts } from "../../../app-shared/beaconName.js";
 import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js';
@@ -5837,7 +5837,7 @@ export function calculateBlockPositions(
   const schedRows   = parcels?.features?.length ?? 0;
   const _SCHED_TITLE   = 15;
   const _SCHED_SPACING = 15;
-  const _SCHED_HEADER  = 25;
+  const _SCHED_HEADER  = scheduleHeaderBandPt();
   const _SCHED_ROW     = BLOCKS.SCHEDULE_OF_AREAS.singleColumn.rowHeight;
   const _SCHED_PAD     = 10;
   // Everything in a table that is not a data row: title, its spacing, the
@@ -7261,7 +7261,7 @@ function drawScheduleOfAreas(
   // Shared dimension constants — must match drawScheduleOfAreasSingleColumn exactly
   const _SCHED_TITLE   = 15;
   const _SCHED_SPACING = 15;
-  const _SCHED_HEADER  = 25;
+  const _SCHED_HEADER  = scheduleHeaderBandPt();
   const _SCHED_ROW     = BLOCKS.SCHEDULE_OF_AREAS.singleColumn.rowHeight;
   const _SCHED_PAD     = 10;
   const _SCHED_SPACING_BETWEEN = 10; // gap between side-by-side tables
@@ -7640,7 +7640,9 @@ export function drawScheduleOfAreasMultiTable(
   const colSurveyor   = dynColWidths[5];
   const tableWidth    = dynColWidths.reduce((s, w) => s + w, 0);
   const rowHeight = BLOCKS.SCHEDULE_OF_AREAS.singleColumn.rowHeight;
-  const headerHeight = 25;
+  // The drawn band must match the reserve, and both follow the header font:
+  // a fixed 25 left METRES struck through by its own bottom rule at 3mm.
+  const headerHeight = scheduleHeaderBandPt();
   const titleSpacing = 15;
   const tableSpacing = tableSpacingParam; // Space between tables horizontally
   const rowSpacing = 20; // Space between table rows vertically
@@ -8452,62 +8454,64 @@ export function drawScheduleOfAreasMultiTable(
     // sizing/placement is unchanged.
 
     // Header
+    // Same authored-at-6pt offsets as the single-column drawer.
+    const _hdrScale = scheduleHeaderScale();
     const headerY = currentTableY + titleSpacing;
     doc.lineWidth(0.5);
     // Sub-header separator Y for DEED merged cell (used below for header TEXT
     // positioning; the border/divider LINES are drawn once, after all rows
     // are known, by drawScheduleTableGrid — see the end of this loop body).
-    const deedHeaderY = headerY + 12;
+    const deedHeaderY = headerY + 12 * _hdrScale;
     const deedStartX = currentTableX + colStand + colArea + colDiagram;
 
     // Header text — 6pt Bold, lineBreak:false to prevent wrapping within columns
     doc.fontSize(BLOCKS.SCHEDULE_OF_AREAS.singleColumn.headerFontSize).font("Helvetica-Bold");
-    doc.text("STAND", currentTableX + 2, headerY + 5, {
+    doc.text("STAND", currentTableX + 2, headerY + 5 * _hdrScale, {
       width: colStand - 4,
       align: "center",
       lineBreak: false,
     });
-    doc.text("No.", currentTableX + 2, headerY + 12, {
+    doc.text("No.", currentTableX + 2, headerY + 12 * _hdrScale, {
       width: colStand - 4,
       align: "center",
       lineBreak: false,
     });
-    doc.text("AREAS", currentTableX + colStand + 2, headerY + 2, {
+    doc.text("AREAS", currentTableX + colStand + 2, headerY + 2 * _hdrScale, {
       width: colArea - 4,
       align: "center",
       lineBreak: false,
     });
-    doc.text("SQUARE", currentTableX + colStand + 2, headerY + 9, {
+    doc.text("SQUARE", currentTableX + colStand + 2, headerY + 9 * _hdrScale, {
       width: colArea - 4,
       align: "center",
       lineBreak: false,
     });
-    doc.text("METRES", currentTableX + colStand + 2, headerY + 16, {
+    doc.text("METRES", currentTableX + colStand + 2, headerY + 16 * _hdrScale, {
       width: colArea - 4,
       align: "center",
       lineBreak: false,
     });
-    doc.text("DIAGRAM", currentTableX + colStand + colArea + 2, headerY + 5, {
+    doc.text("DIAGRAM", currentTableX + colStand + colArea + 2, headerY + 5 * _hdrScale, {
       width: colDiagram - 4,
       align: "center",
       lineBreak: false,
     });
-    doc.text("NUMBER", currentTableX + colStand + colArea + 2, headerY + 12, {
+    doc.text("NUMBER", currentTableX + colStand + colArea + 2, headerY + 12 * _hdrScale, {
       width: colDiagram - 4,
       align: "center",
       lineBreak: false,
     });
-    doc.text("DEED", deedStartX + 2, headerY + 3, {
+    doc.text("DEED", deedStartX + 2, headerY + 3 * _hdrScale, {
       width: colDeedNumber + colDeedDate - 4,
       align: "center",
       lineBreak: false,
     });
-    doc.text("NUMBER", deedStartX + 2, deedHeaderY + 2, {
+    doc.text("NUMBER", deedStartX + 2, deedHeaderY + 2 * _hdrScale, {
       width: colDeedNumber - 4,
       align: "center",
       lineBreak: false,
     });
-    doc.text("DATE", deedStartX + colDeedNumber + 2, deedHeaderY + 2, {
+    doc.text("DATE", deedStartX + colDeedNumber + 2, deedHeaderY + 2 * _hdrScale, {
       width: colDeedDate - 4,
       align: "center",
       lineBreak: false,
@@ -8515,7 +8519,7 @@ export function drawScheduleOfAreasMultiTable(
     doc.text(
       "SURVEYOR-GENERAL",
       currentTableX + tableWidth - colSurveyor + 2,
-      headerY + 8,
+      headerY + 8 * _hdrScale,
       { width: colSurveyor - 4, align: "center", lineBreak: false }
     );
 
@@ -8651,7 +8655,9 @@ function drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY, scheduleC
     colStand + colArea + colDiagram + colDeedNumber + colDeedDate + colSurveyor;
 
   const rowHeight = BLOCKS.SCHEDULE_OF_AREAS.singleColumn.rowHeight;
-  const headerHeight = 25;
+  // The drawn band must match the reserve, and both follow the header font:
+  // a fixed 25 left METRES struck through by its own bottom rule at 3mm.
+  const headerHeight = scheduleHeaderBandPt();
 
   doc.save();
   // Force black text: the removed title used to set the fill, and the header /
@@ -8664,73 +8670,76 @@ function drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY, scheduleC
   // placement is unchanged.
 
   // Table header - Row 1
+  // These header line offsets were authored for a 6pt font at a 7pt pitch.
+  // Scaling them keeps the stacked lines their leading as the font grows.
+  const _hdrScale = scheduleHeaderScale();
   const headerY = tableY + 15;
   doc.lineWidth(0.5);
 
   // Sub-header separator Y for DEED merged cell (used below for header TEXT
   // positioning; the border/divider LINES are drawn once, after all rows are
   // known, by drawScheduleTableGrid — see the end of this function).
-  const deedHeaderY = headerY + 12;
+  const deedHeaderY = headerY + 12 * _hdrScale;
   const deedStartX = tableX + colStand + colArea + colDiagram;
 
   // Header text — 6pt Bold, lineBreak:false to prevent any wrapping within columns
   doc.fontSize(BLOCKS.SCHEDULE_OF_AREAS.singleColumn.headerFontSize).font("Helvetica-Bold");
 
   // STAND No. (rowspan 2)
-  doc.text("STAND", tableX + 2, headerY + 5, {
+  doc.text("STAND", tableX + 2, headerY + 5 * _hdrScale, {
     width: colStand - 4,
     align: "center",
     lineBreak: false,
   });
-  doc.text("No.", tableX + 2, headerY + 12, {
+  doc.text("No.", tableX + 2, headerY + 12 * _hdrScale, {
     width: colStand - 4,
     align: "center",
     lineBreak: false,
   });
 
   // AREAS SQUARE METRES (rowspan 2)
-  doc.text("AREAS", tableX + colStand + 2, headerY + 2, {
+  doc.text("AREAS", tableX + colStand + 2, headerY + 2 * _hdrScale, {
     width: colArea - 4,
     align: "center",
     lineBreak: false,
   });
-  doc.text("SQUARE", tableX + colStand + 2, headerY + 9, {
+  doc.text("SQUARE", tableX + colStand + 2, headerY + 9 * _hdrScale, {
     width: colArea - 4,
     align: "center",
     lineBreak: false,
   });
-  doc.text("METRES", tableX + colStand + 2, headerY + 16, {
+  doc.text("METRES", tableX + colStand + 2, headerY + 16 * _hdrScale, {
     width: colArea - 4,
     align: "center",
     lineBreak: false,
   });
 
   // DIAGRAM NUMBER (rowspan 2)
-  doc.text("DIAGRAM", tableX + colStand + colArea + 2, headerY + 5, {
+  doc.text("DIAGRAM", tableX + colStand + colArea + 2, headerY + 5 * _hdrScale, {
     width: colDiagram - 4,
     align: "center",
     lineBreak: false,
   });
-  doc.text("NUMBER", tableX + colStand + colArea + 2, headerY + 12, {
+  doc.text("NUMBER", tableX + colStand + colArea + 2, headerY + 12 * _hdrScale, {
     width: colDiagram - 4,
     align: "center",
     lineBreak: false,
   });
 
   // DEED (colspan 2)
-  doc.text("DEED", deedStartX + 2, headerY + 3, {
+  doc.text("DEED", deedStartX + 2, headerY + 3 * _hdrScale, {
     width: colDeedNumber + colDeedDate - 4,
     align: "center",
     lineBreak: false,
   });
 
   // DEED sub-headers
-  doc.text("NUMBER", deedStartX + 2, deedHeaderY + 2, {
+  doc.text("NUMBER", deedStartX + 2, deedHeaderY + 2 * _hdrScale, {
     width: colDeedNumber - 4,
     align: "center",
     lineBreak: false,
   });
-  doc.text("DATE", deedStartX + colDeedNumber + 2, deedHeaderY + 2, {
+  doc.text("DATE", deedStartX + colDeedNumber + 2, deedHeaderY + 2 * _hdrScale, {
     width: colDeedDate - 4,
     align: "center",
     lineBreak: false,
@@ -8738,7 +8747,7 @@ function drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY, scheduleC
 
   // SURVEYOR-GENERAL (rowspan 2, one line — the table now targets a 15cm
   // print width so this fits without wrapping)
-  doc.text("SURVEYOR-GENERAL", tableX + tableWidth - colSurveyor + 2, headerY + 8, {
+  doc.text("SURVEYOR-GENERAL", tableX + tableWidth - colSurveyor + 2, headerY + 8 * _hdrScale, {
     width: colSurveyor - 4,
     align: "center",
     lineBreak: false,
@@ -8788,232 +8797,6 @@ function drawScheduleOfAreasSingleColumn(doc, parcels, tableX, tableY, scheduleC
     rowHeight,
     rowCount: surveyedParcels.length,
   });
-
-  doc.restore();
-}
-
-/**
- * Draw Schedule of Areas - Multi-column layout (for >50 stands)
- * Full SI 727 6-column format split into multiple vertical columns
- */
-function drawScheduleOfAreasMultiColumn(
-  doc,
-  parcels,
-  tableX,
-  tableY,
-  mapBounds
-) {
-  const standCount = parcels.features.length;
-
-  // SI 727 full format column widths (smaller for multi-column)
-  const colStand = 28;
-  const colArea = 35;
-  const colDiagram = 32;
-  const colDeedNumber = 32;
-  const colDeedDate = 28;
-  const colSurveyor = 40;
-  const columnWidth =
-    colStand + colArea + colDiagram + colDeedNumber + colDeedDate + colSurveyor;
-  const columnSpacing = 8;
-
-  const rowHeight = 10; // Tighter spacing for large datasets
-  const headerHeight = 22;
-  const titleHeight = 12;
-
-  // Calculate how many stands per column based on available vertical space
-  const availableHeight = mapBounds.height - 100;
-  const maxRowsPerColumn = Math.floor(
-    (availableHeight - titleHeight - headerHeight) / rowHeight
-  );
-
-  // Calculate number of columns needed
-  const numColumns = Math.ceil(standCount / maxRowsPerColumn);
-  const standsPerColumn = Math.ceil(standCount / numColumns);
-
-  doc.save();
-  // Force black text: the removed title used to set the fill, and the header /
-  // data draws below don't — without this they inherit the previous fill (the
-  // beacon circles' white), rendering the values invisibly.
-  doc.fillColor("#000000");
-
-  // Schedule title ("SCHEDULE OF AREAS") intentionally omitted — the column
-  // headers identify the table. The titleHeight strip is retained so table
-  // sizing / placement is unchanged.
-
-  // Draw each column
-  for (let col = 0; col < numColumns; col++) {
-    const colX = tableX + col * (columnWidth + columnSpacing);
-    const startIndex = col * standsPerColumn;
-    const endIndex = Math.min(startIndex + standsPerColumn, standCount);
-    const columnParcels = parcels.features.slice(startIndex, endIndex);
-
-    if (columnParcels.length === 0) continue;
-
-    // Column header
-    const headerY = tableY + titleHeight;
-    doc.lineWidth(0.5);
-    doc.rect(colX, headerY, columnWidth, headerHeight).stroke();
-
-    // Draw vertical lines for columns
-    let currentX = colX + colStand;
-    doc
-      .moveTo(currentX, headerY)
-      .lineTo(currentX, headerY + headerHeight)
-      .stroke();
-
-    currentX += colArea;
-    doc
-      .moveTo(currentX, headerY)
-      .lineTo(currentX, headerY + headerHeight)
-      .stroke();
-
-    currentX += colDiagram;
-    doc
-      .moveTo(currentX, headerY)
-      .lineTo(currentX, headerY + headerHeight)
-      .stroke();
-
-    currentX += colDeedNumber;
-    doc
-      .moveTo(currentX, headerY)
-      .lineTo(currentX, headerY + headerHeight)
-      .stroke();
-
-    currentX += colDeedDate;
-    doc
-      .moveTo(currentX, headerY)
-      .lineTo(currentX, headerY + headerHeight)
-      .stroke();
-
-    // Draw horizontal line separating DEED header from sub-headers
-    const deedHeaderY = headerY + 11;
-    const deedStartX = colX + colStand + colArea + colDiagram;
-    doc
-      .moveTo(deedStartX, deedHeaderY)
-      .lineTo(deedStartX + colDeedNumber + colDeedDate, deedHeaderY)
-      .stroke();
-
-    // Header text
-    doc.fontSize(5.5).font("Helvetica-Bold");
-
-    // STAND No.
-    doc.text("STAND", colX + 1, headerY + 3, {
-      width: colStand - 2,
-      align: "center",
-    });
-    doc.text("No.", colX + 1, headerY + 9, {
-      width: colStand - 2,
-      align: "center",
-    });
-
-    // AREAS SQUARE METRES
-    doc.text("AREAS", colX + colStand + 1, headerY + 2, {
-      width: colArea - 2,
-      align: "center",
-    });
-    doc.text("SQUARE", colX + colStand + 1, headerY + 7, {
-      width: colArea - 2,
-      align: "center",
-    });
-    doc.text("METRES", colX + colStand + 1, headerY + 12, {
-      width: colArea - 2,
-      align: "center",
-    });
-
-    // DIAGRAM NUMBER
-    doc.text("DIAGRAM", colX + colStand + colArea + 1, headerY + 3, {
-      width: colDiagram - 2,
-      align: "center",
-    });
-    doc.text("NUMBER", colX + colStand + colArea + 1, headerY + 9, {
-      width: colDiagram - 2,
-      align: "center",
-    });
-
-    // DEED
-    doc.text("DEED", deedStartX + 1, headerY + 2, {
-      width: colDeedNumber + colDeedDate - 2,
-      align: "center",
-    });
-    doc.text("NUMBER", deedStartX + 1, deedHeaderY + 2, {
-      width: colDeedNumber - 2,
-      align: "center",
-    });
-    doc.text("DATE", deedStartX + colDeedNumber + 1, deedHeaderY + 2, {
-      width: colDeedDate - 2,
-      align: "center",
-    });
-
-    // SURVEYOR-GENERAL
-    doc.text("SURVEYOR-", colX + columnWidth - colSurveyor + 1, headerY + 3, {
-      width: colSurveyor - 2,
-      align: "center",
-    });
-    doc.text("GENERAL", colX + columnWidth - colSurveyor + 1, headerY + 9, {
-      width: colSurveyor - 2,
-      align: "center",
-    });
-
-    // Data rows
-    let currentY = headerY + headerHeight;
-
-    columnParcels.forEach((parcel, index) => {
-      const stand = parcel.properties.stand || `P${startIndex + index + 1}`;
-      const areaM2 = parcel.properties.area_m2 || 0;
-      const areaFormatted = formatAreaSquareMetres(areaM2);
-
-      // Draw row border
-      doc.rect(colX, currentY, columnWidth, rowHeight).stroke();
-
-      // Draw vertical lines
-      currentX = colX + colStand;
-      doc
-        .moveTo(currentX, currentY)
-        .lineTo(currentX, currentY + rowHeight)
-        .stroke();
-
-      currentX += colArea;
-      doc
-        .moveTo(currentX, currentY)
-        .lineTo(currentX, currentY + rowHeight)
-        .stroke();
-
-      currentX += colDiagram;
-      doc
-        .moveTo(currentX, currentY)
-        .lineTo(currentX, currentY + rowHeight)
-        .stroke();
-
-      currentX += colDeedNumber;
-      doc
-        .moveTo(currentX, currentY)
-        .lineTo(currentX, currentY + rowHeight)
-        .stroke();
-
-      currentX += colDeedDate;
-      doc
-        .moveTo(currentX, currentY)
-        .lineTo(currentX, currentY + rowHeight)
-        .stroke();
-
-      // Row data
-      doc.fontSize(5.5).font("Helvetica");
-
-      doc.text(stand, colX + 1, currentY + 3, {
-        width: colStand - 2,
-        align: "center",
-        lineBreak: false,
-      });
-      doc.text(areaFormatted, colX + colStand + 1, currentY + 3, {
-        width: colArea - 2,
-        align: "center",
-        lineBreak: false,
-      });
-      // Diagram Number, Deed Number, Deed Date, Surveyor-General left blank
-
-      currentY += rowHeight;
-    });
-  }
 
   doc.restore();
 }

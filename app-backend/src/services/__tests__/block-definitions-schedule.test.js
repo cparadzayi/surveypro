@@ -17,6 +17,8 @@ import {
   resolveLoSystem,
   snapScaleBarSegment,
   SCHEDULE_OF_AREAS,
+  scheduleHeaderScale,
+  scheduleHeaderBandPt,
 } from '../../../../app-shared/block-definitions.js'
 
 const beaconsFC = (...names) => ({
@@ -430,5 +432,30 @@ describe('schedule row band', () => {
   test('both column variants use the same band, or PDF and DXF diverge', () => {
     expect(SCHEDULE_OF_AREAS.multiColumn.rowHeight).toBe(col.rowHeight)
     expect(SCHEDULE_OF_AREAS.multiColumn.fontSize).toBe(col.fontSize)
+  })
+})
+
+describe('schedule header band', () => {
+  const col = SCHEDULE_OF_AREAS.singleColumn
+  const AUTHORED_FONT = 6      // the size the header layout was drawn for
+  const AUTHORED_PITCH = 7     // its line pitch: +2 / +9 / +16
+  const AUTHORED_BAND = 25
+
+  test('the authored 6pt layout is reproduced exactly', () => {
+    // Deriving must not move anything at the size the offsets were written for.
+    expect(scheduleHeaderScale(AUTHORED_FONT)).toBe(1)
+    expect(scheduleHeaderBandPt(AUTHORED_FONT)).toBe(AUTHORED_BAND)
+  })
+
+  test('the line pitch always clears the font, so stacked lines cannot touch', () => {
+    // AREAS / SQUARE / METRES sit one pitch apart. At 3mm on the old fixed 7pt
+    // pitch the glyphs collided; the pitch has to grow with the font.
+    for (const size of [6, 7, col.headerFontSize, 12]) {
+      expect(AUTHORED_PITCH * scheduleHeaderScale(size)).toBeGreaterThan(size)
+    }
+  })
+
+  test('the reserved band grows with the font it has to hold', () => {
+    expect(scheduleHeaderBandPt(col.headerFontSize)).toBeGreaterThan(AUTHORED_BAND)
   })
 })

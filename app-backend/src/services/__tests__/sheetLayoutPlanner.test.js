@@ -4,6 +4,7 @@ import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
 import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js';
 import BLOCKS from '../../../../app-shared/block-definitions.js';
 import { scaleBarMetrics } from '../pdfkitGeoPDF.js';
+import { scheduleHeaderBandPt } from '../../../../app-shared/block-definitions.js';
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} };
 const fakeMeasure = (str, { size }) => String(str).length * size * 0.55;
@@ -138,7 +139,9 @@ describe('planSheetLayout — dense schedule fills the drawing height', () => {
     // Conservative, so it can't cause an overlap, but they are not the same
     // number and this assertion must track the one actually drawn.
     // Row height comes from config so a density change moves both together.
-    const RENDER_CHROME = 15 + BLOCKS.SCHEDULE_OF_AREAS.singleColumn.headerHeight + 10;
+    // The band is derived from the header font now, not the config's frozen 25:
+    // at 3mm it draws 35.43pt, and a fixed 25 struck METRES through its own rule.
+    const RENDER_CHROME = 15 + scheduleHeaderBandPt() + 10;
     expect(r.scheduleOfAreas.height).toBeCloseTo(
       RENDER_CHROME + 120 * BLOCKS.SCHEDULE_OF_AREAS.singleColumn.rowHeight, 0);
   });

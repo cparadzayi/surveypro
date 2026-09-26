@@ -39,8 +39,9 @@ export const SCHEDULE_OF_AREAS = {
       { key: 'surveyor', label: 'SURVEYOR-GENERAL', width: 50, align: 'center' }
     ],
     rowHeight: ptFromMm(3) * 1.44,   // 3mm text carrying half the leading the 16pt band did
-    headerHeight: 25,   // DOCUMENTS the renderer's hardcoded _SCHED_HEADER; not read
-                        // by it, so changing this number changes nothing but the docs
+    headerHeight: 25,   // The band the layout was AUTHORED at. The live value is
+                        // scheduleHeaderBandPt(), which scales it with the header
+                        // font; this number is the 6pt baseline it scales from.
     fontSize: ptFromMm(3),        // body row font: 3mm at print scale
     headerFontSize: ptFromMm(3),  // column header font: 3mm, same as the contents
     titleFontSize: 9       // title font (drawScheduleOfAreasSingleColumn:10247)
@@ -68,6 +69,25 @@ export const SCHEDULE_OF_AREAS = {
 
   threshold: 50 // Switch to multi-column if stands > threshold
 }
+
+/**
+ * The schedule header's line offsets were authored for a 6pt header font at a
+ * 7pt pitch: AREAS / SQUARE / METRES sit at +2, +9, +16 below the band top.
+ * Those numbers are fixed in the drawers, so when the header font grew to 3mm
+ * (8.504pt) the three lines were still one 7pt pitch apart and their glyphs
+ * touched. These carry the authored layout to whatever size the config sets.
+ *
+ * At 6pt the scale is exactly 1, so nothing about the original drawing moves.
+ */
+const SCHEDULE_HEADER_LAYOUT_BASE_PT = 6;
+const SCHEDULE_HEADER_AUTHORED_BAND_PT = 25;
+
+export const scheduleHeaderScale = (headerFontSize) =>
+  (headerFontSize ?? SCHEDULE_OF_AREAS.singleColumn.headerFontSize) / SCHEDULE_HEADER_LAYOUT_BASE_PT;
+
+/** The reserved header band, scaled with the font it has to hold. */
+export const scheduleHeaderBandPt = (headerFontSize) =>
+  SCHEDULE_HEADER_AUTHORED_BAND_PT * scheduleHeaderScale(headerFontSize);
 
 // Outside Figure Data — ALL DIMENSIONS IN PDF POINTS.
 // Updated 2026-06-05 to match the values hardcoded in

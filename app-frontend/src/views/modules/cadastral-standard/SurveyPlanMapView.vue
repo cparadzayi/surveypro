@@ -623,7 +623,8 @@ import { toDateInputFormat, formatDateDDMMYYYY } from '@/utils/dateFormat'
 import DateInputDDMMYYYY from '@/components/DateInputDDMMYYYY.vue'
 import { jsPDF } from 'jspdf'
 import html2canvas from 'html2canvas'
-import { capeLoToWGS84, capeLoArrayToWGS84, calculateWGS84Bounds, geoJsonToCapeLoPoint, type CapeLoPoint } from '@/utils/coordinateTransform'
+import { capeLoToWGS84, capeLoArrayToWGS84, geoJsonToCapeLoPoint, type CapeLoPoint } from '@/utils/coordinateTransform'
+import { mapFitTarget } from '@/utils/mapExtent'
 import { getCoordinatePointsForProject } from '@/utils/parcelMetadataComputer'
 import { snapOuterRingToRegistry, computeRegistryAreaM2, computeParcelRegistryArea } from '@/utils/registryGeometry'
 import { asBaseMapParcel, loadBaseMapParcels, parcelFromBaseRecord, digitizedPoints, snapshotEdgesStale, type SurveyParcel } from '@/utils/surveyParcels'
@@ -1840,10 +1841,13 @@ function initializeMap() {
     
     if (coordinatePoints.value.length > 0) {
       addPointsToMap()
-      fitBounds()
     } else {
       console.warn('[SurveyPlanMap] ⚠️ No coordinate points to display')
     }
+    
+    // Fit unconditionally, not inside the points branch: with no points the
+    // parcels are still on screen and the default camera is nowhere near them.
+    fitBounds()
     
     // Add topology layer if intelligent preview is available
     if (intelligentPreview.value) {
@@ -3728,7 +3732,7 @@ function calculateCentroid(geom: any) {
 }
 
 function fitBounds() {
-  if (!map.value || coordinatePoints.value.length === 0) return
+  if (!map.value) return
   
   console.log('[SurveyPlanMap] 🎯 Fitting bounds to data...')
   
@@ -3743,15 +3747,32 @@ function fitBounds() {
   }))
   
   const wgs84Points = capeLoArrayToWGS84(capeLoPoints, config.value.centralMeridian)
-  const boundsData = calculateWGS84Bounds(wgs84Points)
   
-  console.log('[SurveyPlanMap] 📍 Bounds:', boundsData)
-  console.log('[SurveyPlanMap] 📍 Center:', boundsData.center)
+  // Frame the points when there are any, and the parcels when there are not.
+  //
+  // Gating this on the points was why a project whose CSV had been re-imported
+  // opened on an empty map: four parcels were loaded and drawn, but the fit
+  // bailed at `coordinatePoints.length === 0` and the camera stayed on the
+  // hardcoded Gweru default, miles from the geometry. The parcel layer is the
+  // one that survives a failed import, so it is what to fall back to.
+  const parcelFeatures = parcels.value
+    .map(p => transformParcelGeometry(p.geom))
+    .filter(Boolean)
+
+  const target = mapFitTarget({ wgs84Points, wgs84Features: parcelFeatures })
+  if (!target) {
+    console.log('[SurveyPlanMap] ⚠️ Nothing to fit: no coordinate points and no parcel geometry')
+    return
+  }
+  
+  const { extent, source } = target
+  
+  console.log('[SurveyPlanMap] 📍 Bounds:', extent, `(${source})`)
   console.log(`[SurveyPlanMap] 📍 Using Lo zone: ${config.value.centralMeridian}`)
   
   const bounds = new maplibregl.LngLatBounds(
-    [boundsData.minLng, boundsData.minLat],
-    [boundsData.maxLng, boundsData.maxLat]
+    [extent.minLng, extent.minLat],
+    [extent.maxLng, extent.maxLat]
   )
   
   map.value.fitBounds(bounds, { 

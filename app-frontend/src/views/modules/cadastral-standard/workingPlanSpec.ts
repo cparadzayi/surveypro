@@ -438,8 +438,20 @@ function statusSymbol(status: string | null | undefined): WorkingPlanSymbol | un
 
   // No kind stated, so the provenance is all there is to draw from -- which is
   // exactly what a bare "P" or "F" has always meant.
+  //
+  // "-" is neither found nor placed -- a figure-split point defined by a
+  // click, with no mark in the ground at all. The spec that introduces it
+  // only settles the Co-ordinate List's F/P column; it says nothing about a
+  // conventional sign, so drawing NONE was considered. It does not work here:
+  // WorkingPlanBeacon.symbol is not optional, and an explicit "-" returning
+  // undefined would fall through to the description check below it, exactly
+  // the "status decides, description is only a fallback" bug this same
+  // function had to fix for every other code. So the deliberate choice is
+  // 'peg' -- the vocabulary's own no-claim sign, already what an unrecognised
+  // description draws, and the least specific one on offer: it does not
+  // assert a discovery (found/foundNotAdopted) that never happened.
   if (provenance) {
-    return ({ P: 'placed', F: 'found', FN: 'foundNotAdopted' } as const)[provenance]
+    return ({ P: 'placed', F: 'found', FN: 'foundNotAdopted', '-': 'peg' } as const)[provenance]
   }
 
   return undefined

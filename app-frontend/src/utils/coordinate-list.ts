@@ -67,6 +67,28 @@ interface GroupedPoints {
 }
 
 /**
+ * The Co-ordinate List heading for each GroupedPoints key, in print order.
+ *
+ * This is the ONE place that names a section, and `Record<keyof
+ * GroupedPoints, string>` makes that a compiler-checked fact: a key added to
+ * GroupedPoints without a heading here fails to build, rather than rendering
+ * silently short. That is the exact class of bug that already happened once
+ * -- CALCULATED POINTS existed in the grouping but not in the hand-written
+ * section list, so the page count (built from the grouping itself, below)
+ * ran ahead of what actually printed. `sectionsFor` is now the only thing
+ * that turns a grouping into rendered sections, so there is nothing left to
+ * fall behind.
+ */
+const SECTION_HEADINGS: Record<keyof GroupedPoints, string> = {
+  trig: 'TRIG BEACONS / TSMs',
+  working: 'WORKING STATIONS',
+  adopted: 'ADOPTED BEACONS',
+  foundNotAdopted: 'FOUND, NOT ADOPTED',
+  calculated: 'CALCULATED POINTS',
+  placed: 'PLACED BEACONS',
+};
+
+/**
  * Trim `text` so it fits within `maxWidthMm` in the document's current font.
  *
  * Column overruns in this document are a function of glyph width, not character
@@ -249,14 +271,7 @@ export class CoordinateListGenerator {
     // Generate continuous list with all sections
     // Sections flow into each other, separated by section headers
     // ⭐ CALCULATED POINTS appear after FOUND BEACONS
-    const allSections = [
-      { name: 'TRIG BEACONS / TSMs', points: groupedPoints.trig },
-      { name: 'WORKING STATIONS', points: groupedPoints.working },
-      { name: 'ADOPTED BEACONS', points: groupedPoints.adopted },
-      { name: 'FOUND, NOT ADOPTED', points: groupedPoints.foundNotAdopted },
-      { name: 'CALCULATED POINTS', points: groupedPoints.calculated },
-      { name: 'PLACED BEACONS', points: groupedPoints.placed }
-    ].filter(section => section.points.length > 0);
+    const allSections = this.sectionsFor(groupedPoints);
     
     console.log('[CoordinateList] 📋 Sections to render:');
     allSections.forEach((section, index) => {
@@ -389,6 +404,13 @@ export class CoordinateListGenerator {
         grouped.adopted.push(point);
       } else if (provenance === 'FN') {
         grouped.foundNotAdopted.push(point);
+      } else if (provenance === '-') {
+        // A point defined by a figure split, not surveyed -- neither found
+        // nor placed. That is exactly what "calculated" already means for
+        // this list: not physically beaconed, F/P column rendered as "-".
+        // Filing it as placed would tell the Surveyor-General a mark exists
+        // in the ground that never was.
+        grouped.calculated.push(point);
       } else if (this.isFoundBeacon(point)) {
         grouped.adopted.push(point);
       } else {
@@ -409,7 +431,21 @@ export class CoordinateListGenerator {
     
     return grouped;
   }
-  
+
+  /**
+   * Turn a grouping into the named, ordered, non-empty sections the
+   * Co-ordinate List actually prints -- the single place `generateCoordinateList`
+   * and any check of it should read, so a section can no longer exist in the
+   * grouping but not in the rendered document (see SECTION_HEADINGS above).
+   */
+  private sectionsFor(
+    grouped: GroupedPoints
+  ): Array<{ name: string; points: AdjustedCoordinate[] }> {
+    return (Object.keys(SECTION_HEADINGS) as Array<keyof GroupedPoints>)
+      .map(key => ({ name: SECTION_HEADINGS[key], points: grouped[key] }))
+      .filter(section => section.points.length > 0);
+  }
+
   /**
    * Check if point is a trig beacon or TSM (Town Survey Mark)
    * TSMs are identified by pointId starting with 'TSM' followed by numbers

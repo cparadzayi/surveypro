@@ -97,4 +97,57 @@ describe('the Co-ordinate List sections', () => {
     expect(at['87DNew']).toBe('calculated');
     expect(at.SD1).toBe('placed');
   });
+
+  it('files a "-"-provenance point as calculated, not placed', () => {
+    // "-" means the point was defined by a figure split, not surveyed --
+    // neither found nor placed. Decision 6 of the multi-sheet spec requires
+    // the Co-ordinate List to show that; filing it under PLACED BEACONS (the
+    // catch-all's previous behaviour) is precisely the outcome it forbids.
+    const at = sectionsOf([point('X1', '-', '')]);
+
+    expect(at.X1).toBe('calculated');
+  });
+
+  it('still lets a kind take precedence over a "-" provenance, same as any other', () => {
+    const at = sectionsOf([point('X2', 'WS/-', '')]);
+
+    expect(at.X2).toBe('working');
+  });
+});
+
+describe('sectionsFor -- every populated group actually renders', () => {
+  // A page count built from the grouping and a section list built by hand can
+  // drift apart: CALCULATED POINTS once existed in one and not the other, so
+  // the page total ran ahead of what actually printed. This asserts the
+  // invariant structurally, for whatever the grouping produces, rather than
+  // naming one example group -- so a future group is caught here too, not
+  // just for "-".
+  it('gives every non-empty group from groupPointsByType a rendered section', () => {
+    const generator: any = new CoordinateListGenerator();
+    const points = [
+      point('THORNHILL', 'TRIG', 'THORNHILL'),
+      point('BASE', 'WS', 'GNSS base'),
+      point('86B', 'F', '12mm iron peg in concrete'),
+      point('87C', 'FN', '12mm iron peg in concrete'),
+      point('87DNew', 'C', 'Not Beaconed'),
+      point('SD1', 'P', '12mm iron peg in concrete'),
+      point('X1', '-', ''),
+    ];
+
+    const grouped = generator.groupPointsByType(points);
+    const sections = generator.sectionsFor(grouped);
+
+    for (const [key, list] of Object.entries(grouped as Record<string, unknown[]>)) {
+      if (list.length === 0) continue;
+      const rendered = sections.find((s: { points: unknown[] }) => s.points === list);
+      expect(rendered, `group "${key}" has points but no rendered section`).toBeDefined();
+    }
+
+    // And the reverse: nothing rendered is a section sectionsFor invented --
+    // every section's point list is one of the grouping's own arrays.
+    const groupedLists = Object.values(grouped as Record<string, unknown[]>);
+    for (const section of sections) {
+      expect(groupedLists).toContain(section.points);
+    }
+  });
 });

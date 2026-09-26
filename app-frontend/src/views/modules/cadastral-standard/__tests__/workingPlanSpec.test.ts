@@ -703,6 +703,16 @@ describe('beaconSymbol — status takes precedence over description', () => {
     expect(beaconSymbol('Trig beacon', '')).toBe('trig')
     expect(beaconSymbol('12mm iron peg', undefined)).toBe('peg')
   })
+
+  it('resolves an explicit "-" status on its own, not by falling through to the description', () => {
+    // A "-" point was defined by a click (a figure-split vertex), not
+    // surveyed -- neither found nor placed. An explicit status must settle
+    // the symbol itself, the same as every other status above; letting it
+    // fall through to the description would mean a "-" beacon drawn as a
+    // trig station just because its notes happen to say "trig".
+    expect(beaconSymbol('Trig beacon', '-')).toBe('peg')
+    expect(beaconSymbol('Reference mark', '-')).toBe('peg')
+  })
 })
 
 describe('buildWorkingPlanSpec — status-driven symbols', () => {

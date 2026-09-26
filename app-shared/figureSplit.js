@@ -93,12 +93,30 @@ function onSegment(a, b, p) {
 /** Spec Decision 12: a cut vertex within this of a boundary snaps onto it. */
 export const SNAP_TOLERANCE_M = 0.10
 
+/** Spec Decision 13: points the cut creates are stated to 2 dp. */
+const ROUND_DP = 2
+const ROUND_SCALE = 10 ** ROUND_DP
+
 /** Spec Decision 13: points the cut creates are stated to 2 dp. Rounded once,
  *  here, so the outside-figure table, the Calculations pages and the
  *  Coordinate List cannot disagree in the last digit. */
 export function roundPoint(p) {
-  return { y: Math.round(p.y * 100) / 100, x: Math.round(p.x * 100) / 100 }
+  return { y: Math.round(p.y * ROUND_SCALE) / ROUND_SCALE, x: Math.round(p.x * ROUND_SCALE) / ROUND_SCALE }
 }
+
+/**
+ * How far `roundPoint` can move a point: half a quantum on each axis, so
+ * `hypot(0,005, 0,005)` -- about 7 mm at 2 dp.
+ *
+ * This is DERIVED from the rounding rather than chosen, because the two being
+ * picked independently is what broke the module. An endpoint is projected onto
+ * a boundary edge and then rounded, which lifts it off that edge -- and on a
+ * skew side, often to the OUTSIDE of the figure. Any check asking "is this
+ * boundary crossing the cut's own endpoint?" must therefore allow at least this
+ * much, or it refuses the cut the surveyor correctly drew. It stays an order of
+ * magnitude below Decision 12's 0,10 m snap, so it cannot act as a snap.
+ */
+const ROUNDING_SLOP_M = Math.hypot(1 / (2 * ROUND_SCALE), 1 / (2 * ROUND_SCALE))
 
 /**
  * Put an endpoint exactly on the ring: on a vertex when it is within tolerance
@@ -159,17 +177,33 @@ export function interiorStaysInside(ring, polyline) {
       const r2 = ring[(i + 1) % ring.length]
       const hit = segmentIntersection(a, b, r1, r2)
       if (!hit) continue
-      if (firstOrLast && (near(hit, a) || near(hit, b))) continue
+      if (firstOrLast && (atEndpoint(hit, a) || atEndpoint(hit, b))) continue
       return { ok: false, reason: 'edge-crosses', at: hit }
     }
   }
   return { ok: true }
 }
 
+/** Numerical noise only. NOT a geometric tolerance -- see ROUNDING_SLOP_M. */
 const TOUCH_EPS = 1e-6
 
+/** Exact-to-precision equality, for comparing two already-rounded points. */
 function near(p, q) {
   return Math.abs(p.y - q.y) < TOUCH_EPS && Math.abs(p.x - q.x) < TOUCH_EPS
+}
+
+/**
+ * Whether a boundary crossing IS the cut's own endpoint `p`, allowing for the
+ * fact that `p` was rounded after being projected onto the boundary.
+ *
+ * The slop is the geometric excursion the rounding can introduce; TOUCH_EPS is
+ * the floating-point noise floor on top of it. Using `near` here -- a 1 micron
+ * per-axis test against a point that rounding may have moved 7 mm -- refused
+ * roughly half of all ordinary cuts on any skew boundary, and no test saw it
+ * because every fixture ring was axis-aligned, where the rounding is a no-op.
+ */
+function atEndpoint(hit, p) {
+  return Math.hypot(hit.y - p.y, hit.x - p.x) <= ROUNDING_SLOP_M + TOUCH_EPS
 }
 
 /**

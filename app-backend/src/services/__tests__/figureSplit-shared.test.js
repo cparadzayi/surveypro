@@ -507,6 +507,47 @@ describe('splitFigure', () => {
     expect(homes).toEqual([['0,0', 1], ['0,100', 1], ['100,0', 1], ['100,100', 1]])
   })
 
+  // Every ring above is axis-aligned with 2-dp coordinates, which makes
+  // roundPoint a no-op on an edge landing: the exact projection is ALREADY at
+  // 2 dp, so nothing moves and no tolerance is tested. A real surveyed boundary
+  // is skew. There, projecting onto an edge and then rounding lifts the point
+  // off that edge -- often to the OUTSIDE of the figure -- and the check asking
+  // "is this crossing the cut's own endpoint?" has to allow for it. It did not,
+  // and refused about half of all ordinary cuts while all 50 tests passed.
+  describe('on a skew boundary, where rounding actually moves the endpoint', () => {
+    // One side running x = 0,3y: no landing on it lands on a 2-dp coordinate.
+    const skew = [P(0, 0), P(100, 30), P(100, 100), P(0, 100)]
+
+    test('an ordinary cut from a skew side is accepted', () => {
+      const r = splitFigure({ ring: skew, polyline: [P(20, 6.04), P(50, 99)] })
+
+      expect(r.ok).toBe(true)
+      expect(r.parts).toHaveLength(2)
+    })
+
+    test('the rounded endpoint may sit outside the figure, and that is tolerated', () => {
+      // This is the fact the tolerance exists for, stated outright: Decision 13
+      // is what puts the point there, so refusing it would refuse the decision.
+      const landed = resolveEndpoint(skew, P(20, 6.04))
+
+      expect(landed.kind).toBe('edge')
+      expect(pointInRing(skew, landed.point)).toBe(false)
+      expect(splitFigure({ ring: skew, polyline: [P(20, 6.04), P(50, 99)] }).ok).toBe(true)
+    })
+
+    test('every landing along the whole skew side is accepted, not half of them', () => {
+      // One case could pass by luck of where it rounds. This walks the side.
+      const refused = []
+      for (let y = 5; y < 95; y += 2.5) {
+        const click = P(y, y * 0.3 + 0.04)          // 40 mm inside the skew side
+        const r = splitFigure({ ring: skew, polyline: [click, P(50, 99)] })
+        if (!r.ok) refused.push(`${click.y},${click.x} -> ${r.error}`)
+      }
+
+      expect(refused).toEqual([])
+    })
+  })
+
   test('the other two endpoint-kind pairings split correctly too', () => {
     // Only edge/edge and vertex/edge appear in the brief's fixtures. These are
     // edge/vertex and vertex/vertex, and the walk indices differ in each.

@@ -24,8 +24,9 @@
 /** Kinds that pick a conventional sign and a Co-ordinate List section. */
 export type BeaconKind = 'WS' | 'WSU' | 'RM' | 'TRIG' | 'OCP';
 
-/** How the mark came to be there: the F/P column. */
-export type BeaconProvenance = 'F' | 'FN' | 'P';
+/** How the mark came to be there: the F/P column. `-` is neither -- the point
+ *  was defined (a split vertex), not surveyed, so the column shows a dash. */
+export type BeaconProvenance = 'F' | 'FN' | 'P' | '-';
 
 export interface BeaconStatus {
   /** The kind of mark, or null when the status names only a provenance. */
@@ -37,7 +38,7 @@ export interface BeaconStatus {
 }
 
 const KINDS = new Set<string>(['WS', 'WSU', 'RM', 'TRIG', 'OCP']);
-const PROVENANCES = new Set<string>(['F', 'FN', 'P']);
+const PROVENANCES = new Set<string>(['F', 'FN', 'P', '-']);
 
 /**
  * Split a status into the two facts it can carry.

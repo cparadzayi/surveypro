@@ -81,3 +81,17 @@ describe('the accessors', () => {
     expect(statusProvenance('WS')).toBeNull();
   });
 });
+
+describe('the "-" provenance', () => {
+  it('reads a bare dash as neither found nor placed', () => {
+    const s = parseBeaconStatus('-')
+    expect(s.provenance).toBe('-')
+    expect(s.kind).toBeNull()
+  })
+
+  it('reads a dash alongside a kind, as the slash form allows', () => {
+    const s = parseBeaconStatus('WS/-')
+    expect(s.kind).toBe('WS')
+    expect(s.provenance).toBe('-')
+  })
+})

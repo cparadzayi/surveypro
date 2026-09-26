@@ -63,9 +63,11 @@ export function segmentIntersection(p1, p2, p3, p4) {
  * which runs against every edge, not just the one the ray happens to meet.
  *
  * `ring` is expected OPEN -- the first vertex not repeated at the end -- since
- * the loop already pairs the last vertex with the first. A closed ring still
- * works: the repeated vertex makes one degenerate edge, which straddles nothing
- * and is skipped.
+ * the loop already pairs the last vertex with the first. THIS function tolerates
+ * a closed ring (the repeated vertex makes a degenerate edge that straddles
+ * nothing and is skipped), but the module does not: `resolveEndpoint`, `walk`
+ * and `enclosedArea` all assume open. Do not read this paragraph as a promise
+ * about `splitFigure` -- it normalises its own input instead, see `openRing`.
  */
 export function pointInRing(ring, p) {
   let inside = false
@@ -290,8 +292,9 @@ export function splitFigure({ ring, polyline, stands = [], tolerance = SNAP_TOLE
   // resolveEndpoint deliberately carries no guard for this -- a valid figure
   // always has a real ring -- so it is caught here, as a refusal rather than
   // the TypeError it used to raise from inside the projection loop.
-  if (!Array.isArray(ring) || ring.length < 3) return { ok: false, error: 'degenerate' }
   if (!Array.isArray(polyline) || polyline.length < 2) return { ok: false, error: 'degenerate' }
+  ring = openRing(ring)
+  if (ring === null || ring.length < 3) return { ok: false, error: 'degenerate' }
 
   const startRaw = polyline[0]
   const endRaw = polyline[polyline.length - 1]
@@ -377,6 +380,27 @@ function selfIntersects(points) {
  * An endpoint on an edge leaves that edge's start vertex behind it; an endpoint
  * on a vertex is itself the boundary and is not repeated.
  */
+/**
+ * The ring as this module wants it: open, with the first vertex not repeated.
+ *
+ * A GeoJSON ring is always closed -- RFC 7946 repeats the first position -- and
+ * the outside figure is stored as GeoJSON, so a closed ring is the DEFAULT thing
+ * a caller has in hand. Left closed it produced a duplicated vertex and a
+ * zero-length side in the part ring, which would have been lodged in the
+ * outside-figure data table. Normalising here rather than refusing means no
+ * caller has to remember to strip it; forgetting once is all it would take.
+ *
+ * The returned array holds the caller's own point OBJECTS, so identity
+ * comparison against `newPoints` still works.
+ */
+function openRing(ring) {
+  if (!Array.isArray(ring) || ring.length === 0) return null
+  const first = ring[0]
+  const last = ring[ring.length - 1]
+  if (!first || !last) return null
+  return near(roundPoint(first), roundPoint(last)) ? ring.slice(0, -1) : ring
+}
+
 /**
  * Treat an edge landing that has come out numerically ON a ring vertex as the
  * vertex it lands on.

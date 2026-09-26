@@ -507,6 +507,26 @@ describe('splitFigure', () => {
     expect(homes).toEqual([['0,0', 1], ['0,100', 1], ['100,0', 1], ['100,100', 1]])
   })
 
+  test('a closed GeoJSON ring splits exactly as the open one does', () => {
+    // RFC 7946 repeats the first position, and the outside figure is stored as
+    // GeoJSON, so CLOSED is the default shape a caller has in hand -- not an
+    // edge case. Left closed it produced a duplicated vertex and a zero-length
+    // side, which would have been lodged in the outside-figure data table.
+    const closed = [...square, P(0, 0)]
+    const ids = (r) => r.parts.map((part) => part.map((p) => `${p.y},${p.x}`))
+
+    // Two cuts, because the duplicate landed at the end of one part for one
+    // orientation and in the MIDDLE of the other part for the other.
+    for (const polyline of [[P(50, 0), P(50, 100)], [P(100, 50), P(0, 50)]]) {
+      const fromOpen = splitFigure({ ring: square, polyline })
+      const fromClosed = splitFigure({ ring: closed, polyline })
+
+      expect(fromClosed.ok).toBe(true)
+      expect(ids(fromClosed)).toEqual(ids(fromOpen))
+      expect(fromClosed.newPoints).toEqual(fromOpen.newPoints)
+    }
+  })
+
   // Every ring above is axis-aligned with 2-dp coordinates, which makes
   // roundPoint a no-op on an edge landing: the exact projection is ALREADY at
   // 2 dp, so nothing moves and no tolerance is tested. A real surveyed boundary

@@ -148,6 +148,57 @@ const COL = {
 /** Page width less both margins, in mm. Nothing is drawn past this. */
 const USABLE = 180;
 
+/**
+ * Whether a row describes a position that was computed rather than observed.
+ *
+ * Module scope so the grouping and the F/P cell read the SAME predicate: the
+ * two used to decide not-applicable separately, and only one of them knew
+ * about a point defined rather than surveyed.
+ */
+function isCalculatedRow(
+  point: Pick<AdjustedCoordinate, 'status' | 'description'>,
+): boolean {
+  const status = (point.status || '').toLowerCase();
+  const desc = (point.description || '').toLowerCase();
+  return status === 'c' || 
+         status === 'calc' || 
+         status.includes('calculated') ||
+         desc.includes('calculated') ||
+         desc.includes('not beaconed');
+}
+
+/**
+ * The F/P and F. B cells for one row.
+ *
+ * Both answer whether the position was observed in the field, and the F/P
+ * legend defines only F and P. A position never visited has neither, and no
+ * field book page records an observation of it, so both cells carry the "-"
+ * not-applicable marker and only the Calcs reference is real.
+ *
+ * A figure-split point (provenance "-") is such a position: defined by a
+ * click, with no mark in the ground. It printed "-" before this function
+ * existed, but by accident -- `isCalculatedRow` matches the TEXT of the status
+ * and description, which a bare "-" does not, so the other arm ran and
+ * `'-'.toUpperCase().substring(0, 1)` echoed the character back, while the
+ * F. B cell read "-" only because nothing had filled fieldBookPage in. Deciding
+ * it here from the parsed provenance makes the value the spec mandates
+ * deliberate, and testable without rendering a PDF.
+ */
+export function fpAndFieldBookCells(
+  point: Pick<AdjustedCoordinate, 'status' | 'description' | 'fieldBookPage'>,
+): { fp: string; fb: string } {
+  const { provenance } = parseBeaconStatus(point.status);
+
+  if (provenance === '-' || isCalculatedRow(point)) return { fp: '-', fb: '-' };
+
+  // Unchanged for every observed point: the first character of the status,
+  // upper-cased, and the field book page it cross-references.
+  return {
+    fp: (point.status || '').toUpperCase().substring(0, 1),
+    fb: point.fieldBookPage || '-',
+  };
+}
+
 export class CoordinateListGenerator {
   private currentPage = 100; // Starting page for Coordinate List
   private surveyorInfo!: SurveyorInfo; // Store surveyor info for use in page headers
@@ -406,10 +457,10 @@ export class CoordinateListGenerator {
         grouped.foundNotAdopted.push(point);
       } else if (provenance === '-') {
         // A point defined by a figure split, not surveyed -- neither found
-        // nor placed. That is exactly what "calculated" already means for
-        // this list: not physically beaconed, F/P column rendered as "-".
-        // Filing it as placed would tell the Surveyor-General a mark exists
-        // in the ground that never was.
+        // nor placed. It belongs with the calculated points because that is
+        // the section for a position computed rather than observed, which is
+        // what this is. Filing it as placed would tell the Surveyor-General a
+        // mark exists in the ground that never was.
         grouped.calculated.push(point);
       } else if (this.isFoundBeacon(point)) {
         grouped.adopted.push(point);
@@ -491,13 +542,7 @@ export class CoordinateListGenerator {
    * ⭐ NEW: Calculated points are not physically beaconed
    */
   private isCalculatedPoint(point: AdjustedCoordinate): boolean {
-    const status = (point.status || '').toLowerCase();
-    const desc = (point.description || '').toLowerCase();
-    return status === 'c' || 
-           status === 'calc' || 
-           status.includes('calculated') ||
-           desc.includes('calculated') ||
-           desc.includes('not beaconed');
+    return isCalculatedRow(point);
   }
   
   /**
@@ -793,19 +838,15 @@ export class CoordinateListGenerator {
       // F/P status (skip for TRIG beacons from national system)
       // RIGHT-JUSTIFIED
       if (point.calculationsPage !== 0) {
-        // ⭐ CRITICAL: A calculated point was derived, not visited. It is neither
-        // Found nor Placed — the only two values this column's legend defines —
-        // and no field book page records an observation of it. Both cells carry
-        // the "-" not-applicable marker; only the Calcs page reference is real.
-        const isCalculated = this.isCalculatedPoint(point);
+        // ⭐ CRITICAL: both cells say whether the position was observed. See
+        // fpAndFieldBookCells, which decides them; this only places them.
+        const { fp, fb } = fpAndFieldBookCells(point);
 
-        const status = isCalculated ? '-' : point.status.toUpperCase().substring(0, 1);
-        pdf.text(status, this.options.marginLeft + COL.fpRight, yPos, { align: 'right' });
+        pdf.text(fp, this.options.marginLeft + COL.fpRight, yPos, { align: 'right' });
 
         // F.B column - Field Book page reference (cross-reference to Field Book)
         // RIGHT-JUSTIFIED
-        const fbPage = isCalculated ? '-' : (point.fieldBookPage || '-');
-        pdf.text(fbPage, this.options.marginLeft + COL.fbRefRight, yPos, { align: 'right' });
+        pdf.text(fb, this.options.marginLeft + COL.fbRefRight, yPos, { align: 'right' });
       }
       
       yPos += rowHeight;

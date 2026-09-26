@@ -252,10 +252,17 @@ function insideRing(polyline, ring) {
  * checks, both of which assume a simple path.
  */
 export function splitFigure({ ring, polyline, stands = [], tolerance = SNAP_TOLERANCE_M }) {
+  // A ring needs three vertices to enclose anything, and a cut needs two ends.
+  // resolveEndpoint deliberately carries no guard for this -- a valid figure
+  // always has a real ring -- so it is caught here, as a refusal rather than
+  // the TypeError it used to raise from inside the projection loop.
+  if (!Array.isArray(ring) || ring.length < 3) return { ok: false, error: 'degenerate' }
+  if (!Array.isArray(polyline) || polyline.length < 2) return { ok: false, error: 'degenerate' }
+
   const startRaw = polyline[0]
   const endRaw = polyline[polyline.length - 1]
-  const start = resolveEndpoint(ring, startRaw, tolerance)
-  const end = resolveEndpoint(ring, endRaw, tolerance)
+  const start = atVertexPrecision(ring, resolveEndpoint(ring, startRaw, tolerance))
+  const end = atVertexPrecision(ring, resolveEndpoint(ring, endRaw, tolerance))
 
   // Both ends on the same edge, or on the same vertex, cuts nothing off.
   const sameEdge = start.kind === 'edge' && end.kind === 'edge' && start.index === end.index
@@ -267,14 +274,26 @@ export function splitFigure({ ring, polyline, stands = [], tolerance = SNAP_TOLE
 
   if (selfIntersects(cut)) return { ok: false, error: 'self-intersecting' }
 
-  const sliced = standsCrossedBy(cut, stands)
-  if (sliced.length > 0) return { ok: false, error: 'straddles-stands', stands: sliced }
-
+  // The cut must be shown to lie within THIS figure before asking what it
+  // slices. Reversed, a cut that wanders outside could be refused as
+  // 'straddles-stands', naming a stand that is not in this figure at all,
+  // while the real fault is that the cut left it.
   const inside = interiorStaysInside(ring, cut)
   if (!inside.ok) return { ok: false, error: 'interior-outside', at: inside.at }
 
+  const sliced = standsCrossedBy(cut, stands)
+  if (sliced.length > 0) return { ok: false, error: 'straddles-stands', stands: sliced }
+
   const partA = [...cut, ...walk(ring, end, start)]
   const partB = [...reversed(cut), ...walk(ring, start, end)]
+
+  // A cut can land on two different edges and still enclose nothing -- running
+  // along a boundary that carries an intermediate beacon, for instance, where
+  // the two landings and the vertex between them are collinear. The kind+index
+  // guard above cannot see that, because the indices differ. Area can.
+  if (enclosedArea(partA) <= AREA_EPS_M2 || enclosedArea(partB) <= AREA_EPS_M2) {
+    return { ok: false, error: 'degenerate' }
+  }
 
   // The points the cut created, in the order they appear along the cut: an
   // endpoint resolved onto an EDGE is new -- the cut put it there. One resolved
@@ -324,6 +343,48 @@ function selfIntersects(points) {
  * An endpoint on an edge leaves that edge's start vertex behind it; an endpoint
  * on a vertex is itself the boundary and is not repeated.
  */
+/**
+ * Treat an edge landing that has come out numerically ON a ring vertex as the
+ * vertex it lands on.
+ *
+ * `projectOnSegment` clamps, so a click in the exterior wedge beyond a convex
+ * corner projects onto the corner itself, and rounding to 2 dp then makes it
+ * equal to that vertex whenever the ring is stated to 2 dp. Left as an edge
+ * landing it breaks two things at once: `walk` starts from `index + 1`, which is
+ * that same vertex, so the part ring carries the corner twice with a zero-length
+ * side between; and `newPoints` reports an existing beacon as created, which
+ * would lodge a `-` provenance row for a mark that was surveyed.
+ *
+ * This is not snapping by distance, and it does not widen Decision 12's 0,10 m.
+ * It is deduplication at the precision we lodge: two points that are the same
+ * number on the plan are one point, and the one that already exists wins. The
+ * promoted result carries the vertex's own unrounded coordinate, exactly as a
+ * snap within tolerance would.
+ */
+function atVertexPrecision(ring, resolved) {
+  if (resolved.kind !== 'edge') return resolved
+  const n = ring.length
+  for (const index of [resolved.index, (resolved.index + 1) % n]) {
+    if (near(roundPoint(ring[index]), resolved.point)) {
+      return { kind: 'vertex', index, point: ring[index] }
+    }
+  }
+  return resolved
+}
+
+/** Below this a part encloses nothing. A real sliver -- 10 mm by 100 m -- is a
+ *  square metre, six orders of magnitude above it. */
+const AREA_EPS_M2 = 1e-6
+
+/** Shoelace, unsigned. The ring is open, so the last vertex closes to the first. */
+function enclosedArea(points) {
+  let twice = 0
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    twice += points[j].y * points[i].x - points[i].y * points[j].x
+  }
+  return Math.abs(twice) / 2
+}
+
 function walk(ring, from, to) {
   const n = ring.length
   // A vertex endpoint IS ring[index]; an edge endpoint lies on the edge

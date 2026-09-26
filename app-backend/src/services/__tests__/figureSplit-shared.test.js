@@ -443,4 +443,79 @@ describe('splitFigure', () => {
     const r = splitFigure({ ring: square, polyline: cut })
     expect(r.ok).toBe(true)
   })
+
+  test('a click in the wedge beyond a corner uses that corner, not a copy of it', () => {
+    // projectOnSegment clamps, so a click outside a convex corner and beyond
+    // snap tolerance projects onto the corner and then ROUNDS onto it. Left as
+    // an edge landing, the part ring carried that corner twice with a
+    // zero-length side, and newPoints claimed a surveyed beacon as created --
+    // a '-' provenance row for a mark that exists in the ground.
+    const r = splitFigure({ ring: square, polyline: [P(100.2, 100.2), P(0, 50)] })
+
+    expect(r.ok).toBe(true)
+    for (const part of r.parts) {
+      const seen = part.map((p) => `${p.y},${p.x}`)
+      // No vertex twice: deduplicating must not shorten the list.
+      expect([...new Set(seen)].sort()).toEqual([...seen].sort())
+    }
+    // Only the far end is new. P(100,100) is ring[2] and was already surveyed.
+    expect(r.newPoints).toEqual([P(0, 50)])
+  })
+
+  test('a cut that encloses no area is degenerate, even on two different edges', () => {
+    // Running along a boundary that carries an intermediate beacon lands the two
+    // ends on DIFFERENT edges, so the kind+index guard sees nothing wrong, yet
+    // one part is three collinear points enclosing nothing.
+    const withBeacon = [P(0, 0), P(50, 0), P(100, 0), P(100, 100), P(0, 100)]
+
+    expect(splitFigure({ ring: withBeacon, polyline: [P(25, 0), P(75, 0)] }))
+      .toEqual({ ok: false, error: 'degenerate' })
+    // And a cut shaved along one side, which used to return the whole figure as
+    // one part and a two-point ring as the other.
+    expect(splitFigure({ ring: square, polyline: [P(0, 0.02), P(100, 0.02)] }))
+      .toEqual({ ok: false, error: 'degenerate' })
+  })
+
+  test('a ring or cut too small to mean anything is refused, not thrown', () => {
+    // These used to raise a TypeError out of the projection loop. A caller
+    // handing splitFigure rubbish should get a refusal it can report.
+    expect(splitFigure({ ring: [], polyline: [P(0, 0), P(1, 1)] }))
+      .toEqual({ ok: false, error: 'degenerate' })
+    expect(splitFigure({ ring: [P(0, 0), P(100, 0)], polyline: [P(0, 0.02), P(60, 5)] }))
+      .toEqual({ ok: false, error: 'degenerate' })
+    expect(splitFigure({ ring: square, polyline: [] }))
+      .toEqual({ ok: false, error: 'degenerate' })
+    expect(splitFigure({ ring: square, polyline: [P(50, 50)] }))
+      .toEqual({ ok: false, error: 'degenerate' })
+  })
+
+  test('each part takes its own side of the ring, and the two do not agree', () => {
+    // Every other test checks the CONCATENATION, which cannot tell the two parts
+    // apart: swapping the two walks leaves both parts as bowties and every one
+    // of those tests still passes. This names which vertices go where.
+    const r = splitFigure({ ring: square, polyline: [P(50, 0), P(50, 100)] })
+    const ids = (part) => part.map((p) => `${p.y},${p.x}`)
+
+    expect(ids(r.parts[0])).toEqual(['50,0', '50,100', '0,100', '0,0'])
+    expect(ids(r.parts[1])).toEqual(['50,100', '50,0', '100,0', '100,100'])
+
+    // Each original corner in exactly one part, none in both.
+    const a = new Set(ids(r.parts[0]))
+    const b = new Set(ids(r.parts[1]))
+    const homes = ['0,0', '0,100', '100,0', '100,100']
+      .map((corner) => [corner, [a.has(corner), b.has(corner)].filter(Boolean).length])
+    expect(homes).toEqual([['0,0', 1], ['0,100', 1], ['100,0', 1], ['100,100', 1]])
+  })
+
+  test('the other two endpoint-kind pairings split correctly too', () => {
+    // Only edge/edge and vertex/edge appear in the brief's fixtures. These are
+    // edge/vertex and vertex/vertex, and the walk indices differ in each.
+    const edgeThenVertex = splitFigure({ ring: square, polyline: [P(50, 0), P(100, 100)] })
+    expect(edgeThenVertex.ok).toBe(true)
+    expect(edgeThenVertex.newPoints).toEqual([P(50, 0)])
+
+    const vertexThenVertex = splitFigure({ ring: square, polyline: [P(0, 0), P(100, 100)] })
+    expect(vertexThenVertex.ok).toBe(true)
+    expect(vertexThenVertex.newPoints).toEqual([])
+  })
 })

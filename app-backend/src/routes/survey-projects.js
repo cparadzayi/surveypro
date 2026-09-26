@@ -2,6 +2,7 @@ import SurveyProject from '../models/SurveyProject.js'
 import SurveyorProfile from '../models/SurveyorProfile.js'
 import { createProjectDirectories, deleteProjectDirectory } from '../utils/projectDirectories.js'
 import { authenticateWithSchema } from '../utils/schemaAuth.js'
+import { applyStepReset, canFinalize, canonicalStep } from '../utils/workflowReset.js'
 
 export default async function surveyProjectRoutes(fastify, options) {
   // Get recent survey projects (last 5, sorted by last_used)
@@ -454,11 +455,17 @@ export default async function surveyProjectRoutes(fastify, options) {
         }
         fastify.log.info(`[PATCH /workflow] Document '${document_key}' added`)
       } else if (action === 'reset_step') {
-        // Remove step from completed steps and clear its data
-        currentState.completed_steps = currentState.completed_steps.filter(s => s !== step && s !== 'csv-import' && s !== 'import_csv')
-        delete currentState.step_data[step]
-        delete currentState.step_data['csv-import']  // Clear both variations
-        delete currentState.step_data['import_csv']
+        // Clear the named step AND everything computed from it.
+        //
+        // Clearing only the named step is what produced the split-brain state
+        // this now prevents: a csv-import reset deleted the `coordinate_points`
+        // rows but left `step_data['calculations-part1']`, the field book, the
+        // coordinate list and the area computation behind, each still marked
+        // complete. The area step went on reporting adjusted coordinates that
+        // no longer had a single source row, the Survey Plan map loaded an empty
+        // point set, and the plan preview 404'd — with the workflow claiming the
+        // project was further along than it was.
+        const cleared = applyStepReset(currentState, step)
 
         // Send the surveyor back to the step being reset.
         //
@@ -467,13 +474,13 @@ export default async function surveyProjectRoutes(fastify, options) {
         // 'csv-import' AND no points are loaded, and the step navigation that
         // would let you click back to it is itself hidden when there are no
         // imported points. Resetting from a later step therefore removed every
-        // route back to the importer. The rest of workflow_state uses the
-        // hyphenated keys, so normalise the CSV step's two spellings onto it.
+        // route back to the importer.
+        const canonical = canonicalStep(step)
         currentState.current_step =
-          (step === 'import_csv' || step === 'csv-import') ? 'csv-import' : step
+          (canonical === 'csv-import') ? 'csv-import' : canonical
 
         // If resetting CSV import step, also delete coordinate points from database
-        if (step === 'import_csv' || step === 'csv-import') {
+        if (canonical === 'csv-import') {
           try {
             // `db` is already schema-scoped -- getSurveyorPool sets
             // `search_path = <surveyor schema>, public` before every query -- so
@@ -497,12 +504,14 @@ export default async function surveyProjectRoutes(fastify, options) {
           }
         }
 
-        fastify.log.info(`[PATCH /workflow] Step '${step}' reset; current_step now '${currentState.current_step}'`)
+        fastify.log.info(
+          `[PATCH /workflow] Step '${step}' reset; cleared ${cleared.join(', ')}; ` +
+          `current_step now '${currentState.current_step}'`
+        )
       }
       
       // Check if workflow can be finalized (all required steps completed)
-      const requiredSteps = ['project-setup', 'control-point-selection', 'csv-import', 'field-book', 'calculations-part1', 'coordinate-list', 'area-computation', 'report-on-survey', 'dsg-certificate']
-      currentState.can_finalize = requiredSteps.every(s => currentState.completed_steps.includes(s))
+      currentState.can_finalize = canFinalize(currentState)
       
       // Update database using schema-aware connection
       const result = await db.query(

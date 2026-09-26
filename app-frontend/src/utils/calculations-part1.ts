@@ -28,7 +28,6 @@ export interface DuplicateAnalysis {
   maxResidualY: number
   maxResidualX: number
   withinTolerance: boolean
-  fieldBookPages: number[]
 }
 
 // Survey tolerance standards (in meters) - based on Zimbabwe Survey Regulations
@@ -61,7 +60,18 @@ export class CalculationsPart1Generator {
   // IMPORTANT: Must match the actual Field Book PDF generation
   // Dynamic calculation: A4 page (297mm) - margins/headers (80mm) = 217mm available
   // Row height: ~8mm → 217mm / 8mm ≈ 27 points per page
-  private generateFieldBookPageLookup(surveyPoints: SurveyPoint[]): Record<string, string> {
+  /**
+   * @param authoritativeMap - The field book's own pointPageMap. Supply it
+   * whenever the field book has already been paginated for this run: only the
+   * field book knows whether a calibration page opened the book at E1, and that
+   * decision shifts every point page by one. Recomputing the map here without
+   * that knowledge is what made Calculations cite E1 for observations the field
+   * book recorded on E2.
+   */
+  private generateFieldBookPageLookup(
+    surveyPoints: SurveyPoint[],
+    authoritativeMap?: Record<string, string>,
+  ): Record<string, string> {
     const lookup: Record<string, string> = {};
 
     // ⭐ CRITICAL: Filter out calculated points - they don't appear in field book
@@ -69,26 +79,42 @@ export class CalculationsPart1Generator {
       const desc = (pt.description || '').toLowerCase();
       const status = (pt.status || '').toLowerCase();
       const isCalculated = desc.includes('calculated') || status === 'c' || status === 'calc';
-      
+
       if (isCalculated) {
         console.log(`[CalculationsPart1] 🧮 Excluding calculated point from F/B lookup: ${pt.pointId}`);
         lookup[pt.pointId] = '-'; // Set calculated points to show "-" in F/B column
       }
-      
+
       return !isCalculated;
     });
-    
+
     console.log(`[CalculationsPart1] 📊 Field Book lookup: ${surveyPoints.length} total, ${fieldBookPoints.length} in field book, ${surveyPoints.length - fieldBookPoints.length} calculated`);
-    
-    // The field book renders only observed points, so pagination sees only those.
-    // Whether the book opens with a calibration page is not knowable here, so this
-    // lookup is the ESTIMATE used when the real map is unavailable; the two-pass
-    // path overwrites it with FieldBookGenerator's actual pointPageMap.
-    const { pointPageMap } = paginateFieldBook(
-      fieldBookPoints.map(pt => ({ id: pt.pointId })),
-      { hasCalibration: false, hasCover: false },
-    )
-    Object.assign(lookup, pointPageMap)
+
+    if (authoritativeMap) {
+      // Read through the observed-point list rather than assigning the whole map:
+      // it is keyed on what the field book rendered, and every entry that
+      // survives the filter above is one of those.
+      for (const pt of fieldBookPoints) {
+        const page = authoritativeMap[pt.pointId];
+        if (page !== undefined) lookup[pt.pointId] = page;
+      }
+    } else {
+      // Fallback for callers that have not paginated the field book yet. The
+      // field book renders only observed points, so pagination sees only those,
+      // but the calibration offset is unknowable from here -- so this is an
+      // ESTIMATE, correct only for a survey with no calibration report. A
+      // calibrated survey that reaches this branch will mis-cite by one page.
+      console.warn(
+        '[CalculationsPart1] ⚠️ No field book page map supplied; estimating F/B ' +
+        'references without a calibration offset. Pass the field book\'s ' +
+        'pointPageMap to cite a calibrated survey correctly.',
+      );
+      const { pointPageMap } = paginateFieldBook(
+        fieldBookPoints.map(pt => ({ id: pt.pointId })),
+        { hasCalibration: false, hasCover: false },
+      )
+      Object.assign(lookup, pointPageMap)
+    }
 
     // Persist lookup in Pinia for canonical reference
     const lookupStore = useSurveyLookupStore();
@@ -127,6 +153,10 @@ export class CalculationsPart1Generator {
    * @param measureOnly - If true, only measure without rendering (for two-pass generation)
    * @param partyWalls - Party-wall servitude rows; appended as a table on the final page(s)
    * @param partyWallPageMap - index -> field-book E-page of each row (the far-right column)
+   * @param fieldBookPageMap - The field book's own pointPageMap. Pass it whenever the
+   * field book has been paginated for this run, or the F/B column is estimated
+   * without the calibration offset and every citation shifts by one page on a
+   * calibrated survey. See generateFieldBookPageLookup.
    */
   async generateCalculationsPart1PDF(
     surveyPoints: SurveyPoint[],
@@ -142,6 +172,7 @@ export class CalculationsPart1Generator {
     measureOnly: boolean = false,
     partyWalls: PartyWallRow[] = [],
     partyWallPageMap: Record<number, string> = {},
+    fieldBookPageMap?: Record<string, string>,
   ): Promise<CalculationsPart1Result | CalculationsMeasurement> {
     // Set the starting page for this generation
     this.currentPage = startingPage;
@@ -168,7 +199,7 @@ export class CalculationsPart1Generator {
       
       // Add combined points table
   const lookupStore = useSurveyLookupStore();
-  const fieldBookPageLookup = this.generateFieldBookPageLookup(surveyPoints);
+  const fieldBookPageLookup = this.generateFieldBookPageLookup(surveyPoints, fieldBookPageMap);
   lookupStore.setFieldBookPageLookup(fieldBookPageLookup);
   this.generateCombinedPointsTable(pdf, sortedFieldBookPoints, lookupStore.fieldBookPageLookup);
 
@@ -621,9 +652,6 @@ export class CalculationsPart1Generator {
     const tolerance = this.getToleranceForPoint(observations[0])
     const withinTolerance = maxResidualY <= tolerance && maxResidualX <= tolerance
     
-    // Calculate field book pages (simplified - would need actual page mapping)
-    const fieldBookPages = observations.map((_, index) => Math.floor(index / 35) + 1)
-    
     return {
       pointId,
       observations,
@@ -633,8 +661,7 @@ export class CalculationsPart1Generator {
       residualsX,
       maxResidualY,
       maxResidualX,
-      withinTolerance,
-      fieldBookPages
+      withinTolerance
     }
   }
 

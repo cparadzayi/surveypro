@@ -1,34 +1,31 @@
+// @vitest-environment happy-dom
+//
+// jsPDF and the site-calibration parser both need a DOM to construct.
 /**
- * createFieldBookLookup paginated at 20 points per page while every other
- * derivation used 27, so it mis-cited every point past the 20th. It is reachable
- * only from the deprecated generateComprehensiveDocument, which is why nobody
- * noticed. This pins it to the shared module.
+ * Every consumer of a field-book E-number must agree on it.
+ *
+ * This began as a single assertion after `createFieldBookLookup` paginated at 20
+ * points per page while every other derivation used 27, mis-citing every point
+ * past the 20th. It was reachable only from the deprecated
+ * generateComprehensiveDocument, which is why nobody noticed — and that method,
+ * along with the service behind it, has since been deleted. The guard is worth
+ * keeping for the consumers that remain: the renderer, Calculations Part 1, the
+ * workflow Excel export, and now the calibrated case, which every one of these
+ * comparisons used to pin as `hasCalibration: false` and so were blind to.
  */
 
 import { describe, it, expect } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import * as XLSX from 'xlsx';
-import { PageAllocationService } from '../../services/pageAllocation';
+// @ts-expect-error — ?raw has no ambient type declaration in this project
+import sampleXml from './fixtures/siteCalibrationReport.xml?raw';
 import { paginateFieldBook } from '../fieldBookPagination';
 import { FieldBookGenerator } from '../field-book';
 import { CalculationsPart1Generator } from '../calculations-part1';
+import { parseSiteCalibration } from '../siteCalibration';
+import { useSurveyLookupStore } from '../../stores/surveyLookup';
 import { buildWorkflowExcel } from '../workflowExcelExporter';
 import type { CadastralWorkflowState, CadastralPoint } from '../../types/cadastral';
-
-describe('pageAllocation field book lookup', () => {
-  it('agrees with the shared module past the 20th point', () => {
-    const observations = Array.from({ length: 30 }, (_, i) => ({ pointId: `P${i + 1}` }));
-
-    const lookup = new PageAllocationService().createFieldBookLookup(observations);
-    const expected = paginateFieldBook(
-      observations.map(o => ({ id: o.pointId })),
-      { hasCalibration: false, hasCover: false },
-    ).pointPageMap;
-
-    expect(lookup.P21).toBe('E1'); // was "E2" under the 20-per-page bug
-    expect(lookup).toEqual(expected);
-  });
-});
 
 const surveyorInfo = {
   name: 'C. Paradzayi', licenseNumber: 'PLS 1', firm: '', address: '',
@@ -60,14 +57,10 @@ describe('every consumer agrees on a point E-number', () => {
       calcs.adjustedCoordinates.map((c: any) => [c.pointId, c.fieldBookPage]),
     );
 
-    const fromAllocation = new PageAllocationService()
-      .createFieldBookLookup(surveyPoints.map(p => ({ pointId: p.pointId })));
-
     expect(fromCalcs).toEqual(rendered.pointPageMap);
-    expect(fromAllocation).toEqual(rendered.pointPageMap);
   });
 
-  it('the renderer and page allocation agree on how many pages that is', async () => {
+  it('the rendered page count is the cover plus the numbered pages', async () => {
     const fieldBookPoints = ids.map((id, i) => ({
       id, y: i, x: i, status: 'P', description: 'iron peg', surveyDate: '2026-01-01',
     }));
@@ -75,15 +68,6 @@ describe('every consumer agrees on a point E-number', () => {
     const rendered = await new FieldBookGenerator().generateFieldBookPDF(
       fieldBookPoints, { surveyorName: 'C. Paradzayi' },
     );
-    const allocation = new PageAllocationService().calculateAllPageNumbers({
-      observations: ids.map(id => ({ pointId: id })),
-      points: [],
-      duplicateAnalyses: [],
-      parcels: [],
-    } as any);
-
-    // Both are PHYSICAL counts: the cover is a page that carries no E-number.
-    expect(allocation.fieldBook.pageCount).toBe(rendered.pageCount);
 
     // Derived from the shared module (not a literal `/ 27`) -- a hardcoded page
     // size here would be blind to any page size that still rounds a 30-point
@@ -91,9 +75,128 @@ describe('every consumer agrees on a point E-number', () => {
     // probe this file's own guard is meant to survive.
     const { ePageCount } = paginateFieldBook(
       ids.map(id => ({ id })),
-      { hasCalibration: false, hasCover: false },
+      { hasCalibration: false, hasCover: true },
     );
-    expect(allocation.fieldBook.displayEnd).toBe(`E${ePageCount}`);
+
+    // The cover is a physical page that carries no E-number, so it counts
+    // towards pageCount but not towards ePageCount.
+    expect(rendered.pageCount).toBe(ePageCount + 1);
+  });
+});
+
+/**
+ * The parity guard above pinned `hasCalibration: false` in every comparison, so
+ * it was structurally blind to a calibrated survey — the one case where the
+ * consumers genuinely disagree.
+ *
+ * A calibration report occupies E1 of the field book and pushes every
+ * observation to E2 onwards. Calculations used to re-derive the page numbers
+ * with the offset hardcoded to false, so on a calibrated survey its F/B column
+ * cited E1 for points the printed book recorded on E2: a cross-reference to a
+ * page that holds the calibration, not the observation.
+ */
+describe('every consumer agrees on a point E-number when a calibration is present', () => {
+  beforeEach(() => setActivePinia(createPinia()));
+
+  // 30 points crosses the 27-per-page boundary, so this covers the shift on both
+  // the first and the second point page (E2 and E3).
+  const ids = Array.from({ length: 30 }, (_, i) => `P${i + 1}`);
+
+  const fieldBookPoints = ids.map((id, i) => ({
+    id, y: i, x: i, status: 'P', description: 'iron peg', surveyDate: '2026-01-01',
+  }));
+  const surveyPoints = ids.map((id, i) => ({
+    pointId: id, y: i, x: i, status: 'P', description: 'iron peg', surveyDate: '2026-01-01',
+  }));
+
+  it('puts the first observation on E2, not E1', async () => {
+    const rendered = await new FieldBookGenerator().generateFieldBookPDF(
+      fieldBookPoints, { surveyorName: 'C. Paradzayi' }, parseSiteCalibration(sampleXml),
+    );
+
+    // E1 is the calibration report; the observations begin on E2.
+    expect(rendered.pointPageMap['P1']).toBe('E2');
+    expect(rendered.pointPageMap['P27']).toBe('E2');
+    expect(rendered.pointPageMap['P28']).toBe('E3');
+  });
+
+  it('makes Calculations cite the same pages the rendered book prints', async () => {
+    const rendered = await new FieldBookGenerator().generateFieldBookPDF(
+      fieldBookPoints, { surveyorName: 'C. Paradzayi' }, parseSiteCalibration(sampleXml),
+    );
+
+    // The map the two-pass generator hands to Calculations: the field book's own.
+    const calcs: any = await new CalculationsPart1Generator()
+      .generateCalculationsPart1PDF(
+        surveyPoints, surveyorInfo, 116, false, [], {},
+        rendered.pointPageMap,
+      );
+    const fromCalcs = Object.fromEntries(
+      calcs.adjustedCoordinates.map((c: any) => [c.pointId, c.fieldBookPage]),
+    );
+
+    expect(fromCalcs).toEqual(rendered.pointPageMap);
+    // The regression itself: this was E1 before the field book's map was threaded
+    // through, citing the calibration page for the first observed point.
+    expect(fromCalcs['P1']).toBe('E2');
+  });
+
+  it('leaves the Pinia lookup on the rendered pages, not the estimate', async () => {
+    const rendered = await new FieldBookGenerator().generateFieldBookPDF(
+      fieldBookPoints, { surveyorName: 'C. Paradzayi' }, parseSiteCalibration(sampleXml),
+    );
+
+    await new CalculationsPart1Generator().generateCalculationsPart1PDF(
+      surveyPoints, surveyorInfo, 116, false, [], {},
+      rendered.pointPageMap,
+    );
+
+    // The store is documented as the canonical reference, and the Excel export
+    // and workflow state read it. It must not be left holding the uncalibrated
+    // estimate the fallback branch produces.
+    expect(useSurveyLookupStore().fieldBookPageLookup).toEqual(rendered.pointPageMap);
+  });
+
+  it('offsets the Excel Field Book sheet by the calibration page too', async () => {
+    const testPoints = Array.from({ length: 30 }, (_, i) => ({
+      id: `P${i + 1}`,
+      original: { y: 100 + i, x: 200 + i },
+      fieldBook: { y: (100 + i).toFixed(3), x: (200 + i).toFixed(3) },
+      coordinateList: { y: (100 + i).toFixed(2), x: (200 + i).toFixed(2) },
+      status: 'P',
+      description: 'Peg',
+      surveyDate: new Date('2026-01-01'),
+      includeInFieldBook: true,
+      includeInCoordinateList: true,
+    })) as any;
+
+    const workflowState = {
+      surveyorInfo: {
+        landSurveyor: 'C. Paradzayi', licenseNumber: 'PLS 1', firm: '', address: '',
+        surveyDate: '2026-01-01', surveyOf: '', instruments: '',
+      },
+      projectInfo: { name: 'Test', district: 'X' },
+      importedPoints: testPoints,
+      documents: { siteCalibration: parseSiteCalibration(sampleXml) },
+    } as unknown as CadastralWorkflowState;
+
+    const blob = buildWorkflowExcel(workflowState);
+    const wb = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
+    const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets['Field Book'], { header: 1 });
+
+    const fromSheet: Record<string, string> = {};
+    for (let i = 6; i < rows.length; i++) {
+      const [page, id] = rows[i];
+      if (id) fromSheet[id] = page;
+    }
+
+    const expected = paginateFieldBook(
+      testPoints.map(p => ({ id: p.id })),
+      { hasCalibration: true, hasCover: false },
+    ).pointPageMap;
+
+    expect(fromSheet).toEqual(expected);
+    expect(fromSheet['P1']).toBe('E2');
   });
 });
 

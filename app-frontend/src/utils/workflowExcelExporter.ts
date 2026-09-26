@@ -82,11 +82,15 @@ function buildFieldBookSheet(ws: CadastralWorkflowState): XLSX.WorkSheet {
   } else {
     // Fall back to importedPoints filtered to field-book-eligible points
     const fbPoints = (ws.importedPoints || []).filter(p => p.includeInFieldBook !== false)
-    // This sheet emits no calibration page of its own, so hasCalibration is
-    // always false — its E1-start is internally consistent.
+    // A calibration report occupies E1 of the field book, so the E-numbers here
+    // have to start one page later to match it. Read the flag from the same
+    // workflow state the primary branch's page numbers come from.
     const { pointPageMap } = paginateFieldBook(
       fbPoints.map(p => ({ id: p.id })),
-      { hasCalibration: false, hasCover: false },
+      {
+        hasCalibration: Boolean(ws.documents?.siteCalibration),
+        hasCover: false,
+      },
     )
     for (const pt of fbPoints) {
       rows.push([

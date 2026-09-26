@@ -17,7 +17,14 @@ export interface FieldBookPoint {
   y: number;
   x: number;
   status?: string;
-  surveyDate?: string;
+  /**
+   * As surveyed. A Date as well as a string because the workflow's own
+   * ElectronicFieldBook point carries one, and the View/Download buttons feed
+   * those straight in. formatSurveyDate has always read both, and it re-reads an
+   * ISO string's calendar components rather than its instant, so a Date is not
+   * lossy here the way a toISOString() round-trip would be.
+   */
+  surveyDate?: string | Date;
   description?: string;
 }
 

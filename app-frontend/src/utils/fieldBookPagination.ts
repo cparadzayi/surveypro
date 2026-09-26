@@ -2,11 +2,21 @@
  * Every field-book page number is decided here, and nowhere else.
  *
  * This used to be derived independently in five places — the renderer, the
- * measurement pass, the Calculations F/B lookup, and twice in pageAllocation —
- * which is how one of them came to paginate at 20 points per page while the rest
- * used 27, quietly mis-citing every point past the 20th. Cross-references in a
- * survey record are only as trustworthy as the arithmetic behind them, so there
- * is now one function and one constant.
+ * measurement pass, the Calculations F/B lookup, and twice in the page-allocation
+ * service — which is how one of them came to paginate at 20 points per page
+ * while the rest used 27, quietly mis-citing every point past the 20th.
+ * Cross-references in a survey record are only as trustworthy as the arithmetic
+ * behind them, so there is now one function and one constant.
+ *
+ * A second failure mode got in the same way. `hasCalibration` shifts every point
+ * page by one, because a site calibration report occupies E1, and four call sites
+ * passed a literal `false` for it — including the one in the field-book renderer,
+ * which was a separate, second renderer reached from the View/Download Field Book
+ * buttons. On a calibrated survey those buttons printed a book with no calibration
+ * and its observations on E1, disagreeing with the lodged document. The second
+ * renderer and the page-allocation service are gone; of the original sites only
+ * the Calculations fallback below still passes a literal, and it warns when it
+ * does. Pass `Boolean(calibration)` from anything that renders a field book.
  */
 
 /** Rows that fit on one field book page: A4 portrait less margins and header. */

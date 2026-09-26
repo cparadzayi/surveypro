@@ -69,7 +69,11 @@ export interface DuplicateAnalysis {
   maxResidualY: number
   maxResidualX: number
   withinTolerance: boolean
-  fieldBookPages: number[]
+  // No fieldBookPages here. It was computed as `index / 35` — the Coordinate
+  // List's page size, and indexed by observation-within-group rather than by
+  // point — and never read. The F/B column the PDF actually prints comes from
+  // surveyLookup.fieldBookPageLookup, i.e. the field book's own pointPageMap.
+  // Derive page numbers from that map, never from a divisor here.
 }
 
 /**

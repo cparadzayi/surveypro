@@ -137,6 +137,7 @@ export class TwoPassDocumentGenerator {
       data,
       calcStartPage,
       fieldBookMeasure.partyWallPageMap || {},
+      fieldBookMeasure.pointPageMap,
     )
     console.log(`     ✓ ${calcsMeasure.pages} pages (${calcsMeasure.startPage}-${calcsMeasure.endPage})`)
     console.log(`     ✓ ${Object.keys(calcsMeasure.pointPageMap).length} points tracked`)
@@ -234,7 +235,8 @@ export class TwoPassDocumentGenerator {
     const calcsPDF = await this.renderCalculations(
       data,
       measurements.calculations.startPage,
-      fieldBookResult.partyWallPageMap
+      fieldBookResult.partyWallPageMap,
+      fieldBookResult.pointPageMap,
     )
     pdfs.push(calcsPDF)
     console.log(`     ✓ ${measurements.calculations.pages} pages generated`)
@@ -320,6 +322,7 @@ export class TwoPassDocumentGenerator {
     data: TwoPassDocumentData,
     calcStartPage: number,
     partyWallPageMap: Record<number, string> = {},
+    fieldBookPageMap?: Record<string, string>,
   ): Promise<CalculationsMeasurement> {
     console.log(`     → Calculations will start at page: ${calcStartPage}`)
     console.log(`     → Generating Calculations Part 1 to measure actual pages...`)
@@ -333,6 +336,11 @@ export class TwoPassDocumentGenerator {
       false, // measureOnly = false → Actually generate the PDF!
       data.partyWalls || [],
       partyWallPageMap,
+      // The measured field book already decided whether a calibration page
+      // opened the book, so hand its map over rather than letting Calculations
+      // re-estimate it. This pass writes the lookup to the store, so getting it
+      // wrong here leaks the estimate into every later consumer.
+      fieldBookPageMap,
     ) as CalculationsPart1Result
     
     // Extract page count and point page map from the generated PDF
@@ -527,7 +535,8 @@ export class TwoPassDocumentGenerator {
   private async renderCalculations(
     data: TwoPassDocumentData,
     startingPage: number,
-    partyWallPageMap: Record<number, string> = {}
+    partyWallPageMap: Record<number, string> = {},
+    fieldBookPageMap?: Record<string, string>,
   ): Promise<Blob> {
     const result = await this.calcGenerator.generateCalculationsPart1PDF(
       data.surveyPoints,
@@ -535,7 +544,12 @@ export class TwoPassDocumentGenerator {
       startingPage,
       false, // measureOnly = false (normal rendering)
       data.partyWalls || [],
-      partyWallPageMap
+      partyWallPageMap,
+      // The field book rendered above is the authority on its own page numbers,
+      // including the calibration page that opens a calibrated survey. Passing
+      // it here is what makes the F/B column agree with the book it cites --
+      // the same way renderCoordinateList is handed that map.
+      fieldBookPageMap,
     ) as any // Result is CalculationsPart1Result when measureOnly = false
     
     return result.pdf

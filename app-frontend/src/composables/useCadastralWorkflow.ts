@@ -128,14 +128,17 @@ function buildCoordinateList() {
 function buildFieldBook() {
   const lookupStore = useSurveyLookupStore();
 
-  // This composable has no access to a SiteCalibration object at this point
-  // in the workflow, so hasCalibration is always false here — this map is an
-  // ESTIMATE, not the final word. The two-pass PDF generator overwrites this
-  // store entry with the renderer's real pointPageMap once a calibration (if
-  // any) is known, the same justification calculations-part1.ts carries.
+  // The calibration report is persisted in this same workflow state, so the
+  // offset is knowable here rather than guessed: it occupies E1 of the field book
+  // and pushes every observation one page later. Assuming it is absent makes the
+  // page numbers recorded here — and the Excel export built from them — cite a
+  // page the printed book does not use.
   const pagination = paginateFieldBook(
     workflowState.importedPoints.map(point => ({ id: point.id })),
-    { hasCalibration: false, hasCover: false },
+    {
+      hasCalibration: Boolean(workflowState.documents.siteCalibration),
+      hasCover: false,
+    },
   );
 
   // Store lookup table in Pinia for cross-referencing

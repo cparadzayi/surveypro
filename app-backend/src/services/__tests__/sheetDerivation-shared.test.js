@@ -3,7 +3,7 @@
  * Run: cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js sheetDerivation-shared
  */
 import { describe, test, expect } from '@jest/globals'
-import { centroid, orderSheets, assignStands, vertexLetter, letterPart } from '../../../../app-shared/sheetDerivation.js'
+import { centroid, orderSheets, assignStands, vertexLetter, letterPart, figureLabel, otherSheetsPhrase, standRange } from '../../../../app-shared/sheetDerivation.js'
 
 const P = (y, x) => ({ y, x })
 /** An open box from (y0,x0) to (y1,x1), in ring order. */
@@ -263,5 +263,60 @@ describe('letterPart', () => {
     expect(letterPart(partB)[0]).toBe('A')
     // The point itself is untouched -- no letter written anywhere on it.
     expect(Object.keys(shared).sort()).toEqual(['x', 'y'])
+  })
+})
+
+describe('figureLabel', () => {
+  test('a single-sheet plan keeps the plain name', () => {
+    expect(figureLabel(1, 1)).toBe('Outside Figure')
+  })
+
+  test('a multi-part plan names its sheet', () => {
+    expect(figureLabel(2, 3)).toBe('Outside Figure Sheet 2')
+  })
+
+  test('both forms still satisfy the outside-figure predicate', () => {
+    // parcelValidation.ts and designationParcels.ts recognise an outside figure
+    // by that substring alone, so neither form changes a recognition rule.
+    for (const label of [figureLabel(1, 1), figureLabel(2, 3)]) {
+      expect(label.toLowerCase().includes('outside figure')).toBe(true)
+    }
+  })
+})
+
+describe('otherSheetsPhrase', () => {
+  test('a single-sheet plan has no others', () => {
+    expect(otherSheetsPhrase(1, 1)).toBe('')
+  })
+
+  test('names the one other sheet', () => {
+    expect(otherSheetsPhrase(1, 2)).toBe('Sheet 2')
+  })
+
+  test('joins two others with "and"', () => {
+    expect(otherSheetsPhrase(2, 3)).toBe('Sheets 1 and 3')
+  })
+
+  test('commas the rest and "and"s the last', () => {
+    expect(otherSheetsPhrase(3, 5)).toBe('Sheets 1, 2, 4 and 5')
+  })
+})
+
+describe('standRange', () => {
+  test('states the numeric extremes', () => {
+    expect(standRange(['1690', '1686', '1699'])).toBe('1686 to 1699')
+  })
+
+  test('a single stand is not a range', () => {
+    expect(standRange(['1686'])).toBe('1686')
+  })
+
+  test('sorts as numbers, not as text', () => {
+    // A string sort puts 1720 before 87, and 100 before 99.
+    expect(standRange(['87', '1720', '100'])).toBe('87 to 1720')
+  })
+
+  test('a lettered stand ranges on its number', () => {
+    expect(standRange(['2833A', '2469'])).toBe('2469 to 2833A')
   })
 })

@@ -226,3 +226,38 @@ export function vertexLetter(index) {
 export function letterPart(part) {
   return part.map((_, i) => vertexLetter(i))
 }
+
+/** Spec Decision 11. Both forms contain "outside figure", so the substring
+ *  predicate every consumer uses keeps working unchanged. */
+export function figureLabel(sheetNumber, totalSheets) {
+  return totalSheets > 1 ? `Outside Figure Sheet ${sheetNumber}` : 'Outside Figure'
+}
+
+/** The other sheets this one is read with, for multiSheetTemplate's
+ *  {otherSheets}. Empty when there are none. */
+export function otherSheetsPhrase(sheetNumber, totalSheets) {
+  const others = []
+  for (let n = 1; n <= totalSheets; n++) if (n !== sheetNumber) others.push(String(n))
+  if (others.length === 0) return ''
+  if (others.length === 1) return `Sheet ${others[0]}`
+  return `Sheets ${others.slice(0, -1).join(', ')} and ${others[others.length - 1]}`
+}
+
+/**
+ * The plan's stand range, for {standRange}.
+ *
+ * Compared as NUMBERS: this survey carries 87 and 1720 together, and a string
+ * sort reads 1720 before 87, and 100 before 99. A stand with a letter sorts on
+ * its number first, so 2833A follows 2469.
+ */
+export function standRange(names) {
+  const sorted = [...names].sort((a, b) => {
+    const na = parseInt(a, 10)
+    const nb = parseInt(b, 10)
+    if (Number.isNaN(na) || Number.isNaN(nb)) return String(a).localeCompare(String(b))
+    return na !== nb ? na - nb : String(a).localeCompare(String(b))
+  })
+  if (sorted.length === 0) return ''
+  if (sorted.length === 1) return String(sorted[0])
+  return `${sorted[0]} to ${sorted[sorted.length - 1]}`
+}

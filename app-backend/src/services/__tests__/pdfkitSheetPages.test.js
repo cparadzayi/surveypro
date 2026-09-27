@@ -104,6 +104,10 @@ describe('generateSheetedGeoPDF', () => {
     const one = [{ ...payloads()[0], sheetNumber: 1, totalSheets: 1, figureLabel: 'Outside Figure', otherSheets: '' }]
     const { pageCount, pdf } = await generateSheetedGeoPDF({ sheets: one, metadata: {} })
     expect(pageCount).toBe(1)
-    expect(textOf(pdf)).not.toContain('SHEET 1 OF')
+    // Asserted as 'SHEET 1', not 'SHEET 1 OF': the test claims there is NO sheet
+    // chrome, and a single sheet has no other sheet to refer to, so the label
+    // would say nothing. The narrower string would pass even if 'SHEET 1' were
+    // drawn, which is the thing this test exists to forbid.
+    expect(textOf(pdf)).not.toContain('SHEET 1')
   })
 })

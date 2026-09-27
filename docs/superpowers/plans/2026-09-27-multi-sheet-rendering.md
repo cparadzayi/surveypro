@@ -475,7 +475,7 @@ git commit -m "test(sheets): a created point reaches the Coordinate List as a da
 
 **Interfaces:**
 - Consumes: `SheetPayload[]` (serialised over the route; plain JSON).
-- Produces: `generateSheetedGeoPDF({ sheets, metadata, beacons, projection, ... }, logger) -> { pdf, pageCount }` — one page per payload, in `sheetNumber` order, each with its own figure, schedule, outside-figure table, servitude statement and "SHEET N OF M" chrome.
+- Produces: `generateSheetedGeoPDF({ sheets, metadata, beacons, projection, ... }, logger) -> { pdf, pageCount }` — one page per payload, in `sheetNumber` order, each with its own figure, schedule, outside-figure table, servitude statement and its "SHEET N" chrome.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -538,7 +538,9 @@ describe('generateSheetedGeoPDF', () => {
     const one = [{ ...payloads()[0], sheetNumber: 1, totalSheets: 1, figureLabel: 'Outside Figure', otherSheets: '' }]
     const { pageCount, pdf } = await generateSheetedGeoPDF({ sheets: one, metadata: {} })
     expect(pageCount).toBe(1)
-    expect(textOf(pdf)).not.toContain('SHEET 1 OF')
+    // A single sheet gets no sheet chrome at all -- there is no other sheet to
+    // refer to, so the label would say nothing.
+    expect(textOf(pdf)).not.toContain('SHEET 1')
   })
 })
 ```
@@ -551,7 +553,13 @@ Expected: FAIL — `generateSheetedGeoPDF` is not exported.
 
 Reuse, do not rewrite:
 - `_generateKeyPlanSheet` for the first page, fed the payloads' rings instead of a tile grid. Skip it entirely when `totalSheets === 1`.
-- `_generateGeoPDFInner` per sheet, passing `sheetInfo: { sheetNumber, totalSheets }` so the existing title-block code draws "SHEET N OF M".
+- `_generateGeoPDFInner` per sheet, passing `sheetInfo: { sheetNumber, totalSheets }`.
+  The existing title-block code draws **`SHEET N` only, and that is correct** — a
+  general plan names the sheet or sheets it is read WITH, which the Seventh
+  Schedule sentence already does via `{otherSheets}` ("together with the figures
+  on Sheets 1 and 3"). Do NOT add a total. `totalSheets` is still needed on the
+  payload, because it decides whether there is a key plan at all and which
+  template the sentence uses.
 - The payload's `stands` where the schedule builder wants parcels; its `edges`/`constants` where `outsideFigureData` goes; its `servitudeRows` for the servitude block.
 - The figure-description sentence: `multiSheetTemplate` when `totalSheets > 1`, `template` when it is 1. **This is the single-sheet hazard from the Global Constraints — read it again before writing this line.**
 

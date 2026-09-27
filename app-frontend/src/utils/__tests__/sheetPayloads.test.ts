@@ -67,6 +67,44 @@ describe('buildSheetPayloads', () => {
     expect(out.sheets[0].newPoints.every((p) => p.status === '-')).toBe(true);
   });
 
+  it("carries each sheet's OWN parcels, not just their names", () => {
+    // Found by looking at a rendered page, not by a test: with names only, the
+    // schedule's Area, Diagram, Deed and S.G. columns were all blank, and the
+    // figure had nothing to place each stand by, so their number labels collided.
+    // Every other assertion in this file is about names, numbers, letters or
+    // wording -- not one of them could see it.
+    const withAreas = {
+      ...input(),
+      stands: [
+        { name: '1686', ring: box(10, 10, 40, 40), area_m2: 1234.56 },
+        { name: '1687', ring: box(60, 10, 90, 40), area_m2: 2345.67 },
+      ],
+    };
+    const out = buildSheetPayloads(withAreas as never);
+    if (!out.ok) throw new Error('expected ok');
+
+    for (const s of out.sheets) {
+      // One parcel per stand, in the same order.
+      expect(s.parcels.map((p) => p.name)).toEqual(s.stands);
+      // And the area travels with them.
+      for (const p of s.parcels) {
+        expect((p as unknown as { area_m2: number }).area_m2).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("hands over the caller's own parcel objects, not copies", () => {
+    // The renderer reads whatever the single-sheet path already reads off a
+    // parcel, so these have to BE the caller's objects: copying would silently
+    // drop any field this module does not happen to know about.
+    const given = input();
+    const out = buildSheetPayloads(given);
+    if (!out.ok) throw new Error('expected ok');
+    for (const p of out.sheets.flatMap((s) => s.parcels)) {
+      expect(given.stands).toContain(p);
+    }
+  });
+
   it('states the whole plan\'s stand range on every sheet, not the sheet\'s own', () => {
     // multiSheetTemplate says what the sheets TOGETHER represent.
     const out = buildSheetPayloads(input());

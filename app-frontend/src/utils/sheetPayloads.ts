@@ -50,6 +50,22 @@ export interface SheetPayload {
   ring: LoPoint[]
   /** This sheet's stands, ascending. */
   stands: string[]
+  /**
+   * This sheet's parcels -- the caller's OWN objects, in the same ascending order
+   * as `stands`.
+   *
+   * Names alone are not enough and the gap was found by looking at a rendered
+   * page rather than by any test: the schedule of areas draws its Area, Diagram,
+   * Deed and S.G. columns from parcel data, so with names only every one of them
+   * came out blank, and the figure had nothing to place each stand by, so their
+   * number labels piled on top of each other. A schedule of areas with a blank
+   * Area column is not lodgeable.
+   *
+   * These are the caller's objects by reference, not copies, so they carry
+   * whatever the single-sheet renderer already knows how to read -- `area_m2`,
+   * the designation, the metadata. Do not write to them.
+   */
+  parcels: StandInput[]
   /** Lettered from A, 'cut' or 'survey'. */
   vertices: OfdVertex[]
   edges: OfdEdge[]
@@ -133,6 +149,20 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
   // figure were a stand spanning the cut).
   const namedStands = stands.filter((s) => s && s.isPublicPlace !== true).map((s) => s.name)
 
+  /**
+   * The caller's parcel objects for a sheet's stand names, in the names' order.
+   *
+   * Matched by name because that is what `assignStands` returns -- it is the
+   * assignment RULE and returning names is correct, so the mapping happens here
+   * rather than by changing it. A name with no matching parcel is dropped rather
+   * than turned into a hole in the schedule: it cannot occur for a stand that
+   * came from `stands` in the first place, which every name here did.
+   */
+  const parcelsNamed = (names: string[]): StandInput[] => {
+    const byName = new Map(stands.filter((s) => s && s.name != null).map((s) => [String(s.name), s]))
+    return names.map((n) => byName.get(String(n))).filter((s): s is StandInput => s !== undefined)
+  }
+
   // Step 1: fewer than two polyline points means no cut -- one sheet, the
   // figure itself. Do not call splitFigure with nothing to split.
   if (!Array.isArray(input.polyline) || input.polyline.length < 2) {
@@ -147,6 +177,7 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
       otherSheets: otherSheetsPhrase(1, 1),
       ring,
       stands: sheetStands,
+      parcels: parcelsNamed(sheetStands),
       vertices,
       edges,
       constants,
@@ -207,6 +238,7 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
       otherSheets: otherSheetsPhrase(sheetNumber, totalSheets),
       ring: part,
       stands: sheetStands,
+      parcels: parcelsNamed(sheetStands),
       vertices,
       edges,
       constants,

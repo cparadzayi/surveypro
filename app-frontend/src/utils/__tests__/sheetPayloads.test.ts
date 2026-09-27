@@ -42,10 +42,19 @@ describe('buildSheetPayloads', () => {
     const out = buildSheetPayloads(input());
     if (!out.ok) throw new Error('expected ok');
     for (const s of out.sheets) expect(s.vertices[0].pointId).toBe('A');
-    // The cut's endpoints appear on both sheets under different letters.
-    const cutOn = (n: number) =>
-      out.sheets[n].vertices.filter((v) => v.type === 'cut').map((v) => v.pointId);
-    expect(cutOn(0)).not.toEqual(cutOn(1));
+
+    // Spec Part 4 is about ONE PHYSICAL POINT carrying two letters, which is not
+    // the same as the two sheets having different SETS of cut letters -- an
+    // earlier version of this test compared the sets and could never pass, since
+    // splitFigure puts the cut's endpoints first in both parts so both read
+    // ['A','B']. Compare the letter a shared point gets on each sheet instead.
+    const shared = out.sheets[0].ring.filter((p) => out.sheets[1].ring.includes(p));
+    expect(shared.length).toBeGreaterThan(0);
+
+    const letterOn = (n: number, point: unknown) =>
+      out.sheets[n].vertices[out.sheets[n].ring.indexOf(point as never)].pointId;
+    const differing = shared.filter((p) => letterOn(0, p) !== letterOn(1, p));
+    expect(differing.length).toBeGreaterThan(0);
   });
 
   it('names the created points once for the whole plan, avoiding taken names', () => {

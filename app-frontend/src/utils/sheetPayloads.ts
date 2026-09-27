@@ -13,6 +13,8 @@
  * See docs/superpowers/specs/2026-09-26-multi-sheet-outside-figure-split-design.md
  */
 import { splitFigure, roundPoint } from '../../../app-shared/figureSplit'
+import { statementRowsForSheet } from './servitudeStatement'
+import type { PartyWallStatementRow } from './servitudeStatement'
 import {
   orderSheets,
   assignStands,
@@ -36,17 +38,6 @@ export interface StandInput {
   isPublicPlace?: boolean
 }
 
-/**
- * A row of the General Plan party-wall servitude statement. Structurally the
- * same shape as `PartyWallStatementRow` in
- * `views/modules/cadastral-standard/servitudes.ts`. Redeclared rather than
- * imported: `utils/` must never import from `views/`, and that module is
- * where the real type lives.
- */
-export interface PartyWallStatementRow {
-  stands: string
-  boundary: string
-}
 
 export interface SheetPayload {
   sheetNumber: number
@@ -78,16 +69,14 @@ export interface BuildSheetPayloadsInput {
   polyline: LoPoint[]
   stands: StandInput[]
   /**
-   * The plan's party-wall statement rows, ALREADY built via
-   * `buildPartyWallStatementRows(servitudes, standForParcel)` by the caller.
+   * The whole plan's party-wall statement rows, already built by the caller
+   * with `buildPartyWallStatementRows(servitudes, standForParcel)`.
    *
-   * That function, and the per-sheet filter `statementRowsForSheet`, both live
-   * in `views/modules/cadastral-standard/servitudes.ts` -- a view module this
-   * `utils/` file must never import. So the whole-plan rows are taken as an
-   * input instead of being built here, and the per-sheet filter is a local
-   * copy of `statementRowsForSheet`'s own algorithm (see
-   * `filterServitudeRowsForSheet` below) since that function is equally
-   * unimportable. Optional; defaults to no rows.
+   * Taken as a parameter rather than built here because that builder lives in
+   * `views/`, and `utils/` may not import from `views/`. The per-sheet FILTER
+   * does not have that problem any more: it was briefly copied into this file,
+   * which put two implementations of one rule in the tree, and now lives in
+   * `utils/servitudeStatement.ts` with `servitudes.ts` re-exporting it.
    */
   servitudeRows?: PartyWallStatementRow[]
   /** Names already in use on the plan, so a created point avoids them. */
@@ -123,28 +112,6 @@ function openRing(ring: LoPoint[]): LoPoint[] {
   return ring
 }
 
-/**
- * The party-wall statement rows a given sheet must carry (spec Decision 8).
- *
- * A duplicate of `statementRowsForSheet` in
- * `views/modules/cadastral-standard/servitudes.ts` -- see the note on
- * `servitudeRows` above for why it is copied rather than imported. Filters
- * the ROWS, not the servitudes: a row's `stands` already merges the two
- * stands a wall joins, so a wall between stands on different sheets belongs
- * on both statements.
- */
-function filterServitudeRowsForSheet(
-  rows: PartyWallStatementRow[],
-  sheetStands: string[],
-): PartyWallStatementRow[] {
-  const wanted = new Set(sheetStands.map((s) => String(s).trim()))
-  return rows.filter((row) =>
-    String(row.stands)
-      .split(/\s+and\s+|,\s*/)
-      .map((name) => name.trim())
-      .some((name) => wanted.has(name)),
-  )
-}
 
 /** Ascending, numeric-aware -- matches the ordering `standRange` itself uses. */
 function compareStands(a: string, b: string): number {
@@ -183,7 +150,7 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
       vertices,
       edges,
       constants,
-      servitudeRows: filterServitudeRowsForSheet(servitudeRows, sheetStands),
+      servitudeRows: statementRowsForSheet(servitudeRows, sheetStands),
       standRange: standRange(namedStands),
       totalStandCount: namedStands.length,
       newPoints: [],
@@ -243,7 +210,7 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
       vertices,
       edges,
       constants,
-      servitudeRows: filterServitudeRowsForSheet(servitudeRows, sheetStands),
+      servitudeRows: statementRowsForSheet(servitudeRows, sheetStands),
       standRange: wholePlanStandRange,
       totalStandCount: wholePlanStandCount,
       newPoints: namedNewPoints,

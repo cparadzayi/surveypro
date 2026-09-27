@@ -219,10 +219,13 @@ export function backfillServitudesFromAnnotations(
  * A row of the General Plan party-wall servitude statement:
  * the stands bound by the wall and the wall's beacon-pair boundary.
  */
-export interface PartyWallStatementRow {
-  stands: string
-  boundary: string
-}
+// Both moved to utils/servitudeStatement.ts, because utils/ may not import from
+// views/ and sheetPayloads.ts needs the per-sheet filter. Re-exported here so
+// every existing caller and test keeps working unchanged.
+export type { PartyWallStatementRow } from '@/utils/servitudeStatement'
+export { statementRowsForSheet } from '@/utils/servitudeStatement'
+import type { PartyWallStatementRow as Row } from '@/utils/servitudeStatement'
+type PartyWallStatementRow = Row
 
 /**
  * Build the General Plan "party-wall servitude" statement table from the
@@ -283,26 +286,3 @@ export function buildPartyWallStatementRows(
   return rows
 }
 
-/**
- * The party-wall statement rows a given sheet must carry (spec Decision 8).
- *
- * Filters the ROWS, not the servitudes. A row's `stands` already merges the two
- * stands a wall joins, and a wall between stands on different sheets is a
- * boundary of both, so it belongs on both statements; filtering servitudes by
- * their subject would drop it from one side.
- *
- * Matches whole names: '168' must not match stand 1686, and 1686 must not match
- * 16860.
- */
-export function statementRowsForSheet(
-  rows: PartyWallStatementRow[],
-  sheetStands: string[],
-): PartyWallStatementRow[] {
-  const wanted = new Set(sheetStands.map((s) => String(s).trim()))
-  return rows.filter((row) =>
-    String(row.stands)
-      .split(/\s+and\s+|,\s*/)
-      .map((name) => name.trim())
-      .some((name) => wanted.has(name)),
-  )
-}

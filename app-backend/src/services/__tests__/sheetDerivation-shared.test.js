@@ -3,7 +3,7 @@
  * Run: cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js sheetDerivation-shared
  */
 import { describe, test, expect } from '@jest/globals'
-import { centroid, orderSheets } from '../../../../app-shared/sheetDerivation.js'
+import { centroid, orderSheets, assignStands } from '../../../../app-shared/sheetDerivation.js'
 
 const P = (y, x) => ({ y, x })
 /** An open box from (y0,x0) to (y1,x1), in ring order. */
@@ -110,5 +110,67 @@ describe('orderSheets', () => {
       .map((s) => s.x)
 
     expect(southings).toEqual([...southings].sort((a, b) => a - b))
+  })
+})
+
+describe('assignStands', () => {
+  const west = box(0, 0, 50, 100)
+  const east = box(50, 0, 100, 100)
+  const parts = [west, east]
+  const stand = (name, y0, x0, y1, x1, extra = {}) =>
+    ({ name, ring: box(y0, x0, y1, x1), ...extra })
+
+  test('puts each stand on the part that holds it', () => {
+    const r = assignStands(parts, [
+      stand('1686', 10, 10, 20, 20),
+      stand('1687', 60, 10, 70, 20),
+    ])
+    expect(r).toEqual({ ok: true, bySheet: [['1686'], ['1687']] })
+  })
+
+  test('keeps the order the stands were given', () => {
+    const r = assignStands(parts, [
+      stand('1687', 30, 10, 40, 20),
+      stand('1686', 10, 10, 20, 20),
+    ])
+    expect(r.bySheet[0]).toEqual(['1687', '1686'])
+  })
+
+  test('refuses a stand no part holds, naming it', () => {
+    const r = assignStands(parts, [stand('9999', 200, 200, 210, 210)])
+    expect(r).toEqual({ ok: false, error: 'stand-off-plan', stands: ['9999'] })
+  })
+
+  test('refuses a stand two parts hold, naming it', () => {
+    // A stand spanning the cut. standsCrossedBy refuses such a cut, so reaching
+    // this means an earlier rule failed -- which is why it is caught rather than
+    // resolved by picking a side.
+    const r = assignStands(parts, [stand('1690', 40, 10, 60, 20)])
+    expect(r).toEqual({ ok: false, error: 'stand-straddles-sheets', stands: ['1690'] })
+  })
+
+  test('names every unplaceable stand, not just the first', () => {
+    const r = assignStands(parts, [
+      stand('9998', 200, 200, 210, 210),
+      stand('1686', 10, 10, 20, 20),
+      stand('9999', 300, 300, 310, 310),
+    ])
+    expect(r.ok).toBe(false)
+    expect(r.stands).toEqual(['9998', '9999'])
+  })
+
+  test('an unplaceable public place is skipped, not refused', () => {
+    // Roads are not digitised yet -- the same reason Decision 7 exempts them
+    // from the straddle rule. Refusing would block every split in a township.
+    const r = assignStands(parts, [
+      stand('1686', 10, 10, 20, 20),
+      { name: 'Road', isPublicPlace: true },
+    ])
+    expect(r).toEqual({ ok: true, bySheet: [['1686'], []] })
+  })
+
+  test('a non-public stand with no usable ring is still refused', () => {
+    const r = assignStands(parts, [{ name: 'NoRing' }])
+    expect(r).toEqual({ ok: false, error: 'stand-off-plan', stands: ['NoRing'] })
   })
 })

@@ -11,6 +11,8 @@
  * See docs/superpowers/specs/2026-09-26-multi-sheet-outside-figure-split-design.md
  */
 
+import { pointInRing } from './figureSplit.js'
+
 /**
  * Area-weighted centroid of an open ring.
  *
@@ -74,4 +76,70 @@ export function orderSheets(parts) {
       sheetOf[p.index] = i + 1
       return sheetOf
     }, new Array(parts.length))
+}
+
+/**
+ * Whether `part` holds the stand bounded by `ring`.
+ *
+ * Any vertex inside is enough, and the centroid is checked too so a stand larger
+ * than the part it sits in is still placed. A stand cannot legitimately be half
+ * in: standsCrossedBy refuses a cut that would slice one, so a stand matching two
+ * parts is a symptom, not a case to resolve.
+ */
+function partHolds(part, ring) {
+  return ring.some((p) => pointInRing(part, p)) || pointInRing(part, centroid(ring))
+}
+
+/**
+ * Which stands belong to which part.
+ *
+ * Each must land on exactly one. On none means the figure does not cover the
+ * survey; on two means a slicing cut got through. Both refuse, naming EVERY
+ * offending stand rather than the first, so the surveyor fixes the survey once
+ * instead of meeting the next one on the next attempt.
+ *
+ * A PUBLIC PLACE with no usable ring is skipped rather than refused. Roads are
+ * not digitised yet -- the same fact behind Decision 7's exemption -- and
+ * refusing every split in a township until they are would make the tool
+ * unusable. A non-public stand with no ring is still a refusal: that is missing
+ * survey data, not an absent road.
+ */
+export function assignStands(parts, stands) {
+  const bySheet = parts.map(() => [])
+  const unplaceable = []
+  const holderCount = new Map()
+
+  for (const stand of stands ?? []) {
+    if (!stand) continue
+    const usable = Array.isArray(stand.ring) && stand.ring.length >= 3
+    if (!usable) {
+      if (stand.isPublicPlace === true) continue
+      unplaceable.push(stand.name)
+      holderCount.set(stand.name, 0)
+      continue
+    }
+
+    const holders = []
+    for (let i = 0; i < parts.length; i++) {
+      if (partHolds(parts[i], stand.ring)) holders.push(i)
+    }
+    holderCount.set(stand.name, holders.length)
+
+    if (holders.length === 1) bySheet[holders[0]].push(stand.name)
+    else unplaceable.push(stand.name)
+  }
+
+  if (unplaceable.length > 0) {
+    // Which error it is depends on how the FIRST offender failed: no part held
+    // it, or more than one did. Counted while assigning, so this does not redo
+    // the containment work.
+    const straddles = (holderCount.get(unplaceable[0]) ?? 0) > 1
+    return {
+      ok: false,
+      error: straddles ? 'stand-straddles-sheets' : 'stand-off-plan',
+      stands: unplaceable,
+    }
+  }
+
+  return { ok: true, bySheet }
 }

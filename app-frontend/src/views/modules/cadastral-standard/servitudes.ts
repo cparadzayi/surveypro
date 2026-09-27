@@ -282,3 +282,27 @@ export function buildPartyWallStatementRows(
   }
   return rows
 }
+
+/**
+ * The party-wall statement rows a given sheet must carry (spec Decision 8).
+ *
+ * Filters the ROWS, not the servitudes. A row's `stands` already merges the two
+ * stands a wall joins, and a wall between stands on different sheets is a
+ * boundary of both, so it belongs on both statements; filtering servitudes by
+ * their subject would drop it from one side.
+ *
+ * Matches whole names: '168' must not match stand 1686, and 1686 must not match
+ * 16860.
+ */
+export function statementRowsForSheet(
+  rows: PartyWallStatementRow[],
+  sheetStands: string[],
+): PartyWallStatementRow[] {
+  const wanted = new Set(sheetStands.map((s) => String(s).trim()))
+  return rows.filter((row) =>
+    String(row.stands)
+      .split(/\s+and\s+|,\s*/)
+      .map((name) => name.trim())
+      .some((name) => wanted.has(name)),
+  )
+}

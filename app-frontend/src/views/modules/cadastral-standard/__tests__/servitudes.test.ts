@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   upsertServitude, removeServitude, servitudesForSubject, servitudesInvolving,
   hydrateServitudes, servitudeTypeLabel, beaconBoundary, resolveBeaconPair,
-  sideMatchingBeaconPair, buildPartyWallStatementRows, parcelHasServitude, type Servitude,
+  sideMatchingBeaconPair, buildPartyWallStatementRows, parcelHasServitude,
+  statementRowsForSheet, type Servitude,
 } from '../servitudes'
 import { subjectSides } from '../sideAnnotations'
 
@@ -197,5 +198,41 @@ describe('buildPartyWallStatementRows', () => {
     expect(buildPartyWallStatementRows([
       pw({ subjectId: '999', adjoiningStand: '' }),
     ], standForParcel)).toEqual([])
+  })
+})
+
+describe('statementRowsForSheet', () => {
+  const rows = [
+    { stands: '1686 and 1687', boundary: 'A-B' },
+    { stands: '1690 and 1691', boundary: 'C-D' },
+    { stands: '1687 and 1690', boundary: 'E-F' },
+  ]
+
+  it('keeps the rows naming one of this sheet\'s stands', () => {
+    expect(statementRowsForSheet(rows, ['1686', '1687'])).toEqual([
+      { stands: '1686 and 1687', boundary: 'A-B' },
+      { stands: '1687 and 1690', boundary: 'E-F' },
+    ])
+  })
+
+  it('puts a wall between two sheets on BOTH of them', () => {
+    // 1687 is on sheet 1, 1690 on sheet 2, and the wall between them is a
+    // boundary of each -- so each sheet's statement carries it. Filtering the
+    // servitudes instead of the rows would drop it from one side.
+    const sheet1 = statementRowsForSheet(rows, ['1686', '1687'])
+    const sheet2 = statementRowsForSheet(rows, ['1690', '1691'])
+
+    expect(sheet1).toContainEqual({ stands: '1687 and 1690', boundary: 'E-F' })
+    expect(sheet2).toContainEqual({ stands: '1687 and 1690', boundary: 'E-F' })
+  })
+
+  it('matches whole stand names, not substrings', () => {
+    const tricky = [{ stands: '1686 and 16860', boundary: 'A-B' }]
+    expect(statementRowsForSheet(tricky, ['168'])).toEqual([])
+    expect(statementRowsForSheet(tricky, ['16860'])).toEqual(tricky)
+  })
+
+  it('a sheet with no servitudes gets no rows', () => {
+    expect(statementRowsForSheet(rows, ['9999'])).toEqual([])
   })
 })

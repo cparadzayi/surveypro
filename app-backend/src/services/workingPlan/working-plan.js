@@ -222,6 +222,25 @@ const STANDARD_SCALES = SI727_SCALE_LADDER;
 const GRID_INTERVALS = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000];
 
 /**
+ * The scale a working plan is DRAWN at unless the ground will not fit on it.
+ *
+ * The Surveyor General accepts a working plan at 1:2500 in place of a separate
+ * compilation plot, so 1:2500 is the scale that discharges the requirement: a
+ * sheet at this scale needs no second plot, and a sheet at anything finer does.
+ * That makes it a FLOOR on the automatic choice, not a rung to pass through --
+ * fitting the figure as large as it will go put a typical stand at 1:1000 or
+ * 1:1500, each of which leaves the surveyor still owing a compilation plot.
+ *
+ * The scale moves off 1:2500 in one direction only: when the ground will not fit
+ * the panel, it steps coarser through the prescribed ladder as it always did. A
+ * small figure at 1:2500 is not treated as a failure -- this A4 panel carries
+ * about 330 m of ground at 1:2500 once the breathing room below is allowed
+ * for, so even a modest stand draws as a legible field plan, and the
+ * crowded-beacon and inset machinery is there for the ones that are not.
+ */
+const PREFERRED_SCALE = 2500;
+
+/**
  * How many coordinate ticks a sheet must carry.
  *
  * A grid is a FRAMEWORK, not a reference point. With one tick a reader cannot
@@ -401,7 +420,11 @@ export function generateWorkingPlan(spec) {
   const pickScale = (b) => {
     const need = Math.max((b.e1 - b.e0) / panelW, (b.n1 - b.n0) / panelH)
       * 1000 * FIGURE_BREATHING;
-    return STANDARD_SCALES.find((s) => s >= need) ?? STANDARD_SCALES.at(-1);
+    const fit = STANDARD_SCALES.find((s) => s >= need) ?? STANDARD_SCALES.at(-1);
+    // The finest scale the figure fits at, but never finer than the one that
+    // discharges the compilation-plot requirement. 1:2500 is itself prescribed,
+    // so the floor can only ever return a rung the regulation offers.
+    return Math.max(fit, PREFERRED_SCALE);
   };
 
   /* ---- the divided figure: a far mark must not shrink the survey.

@@ -132,11 +132,12 @@ const farMarks = () => [
 
 describe('generateWorkingPlan — the divided figure', () => {
   test('carries a far non-ring mark in the merged map and draws the survey finer', () => {
-    // The 100 m ring alone fits at 1:1000; holding two marks 300 m east it
-    // would be 1:4000. The split gives the survey its 1:1000 and maps the
-    // survey's footprint with both marks, to scale, in the one inset.
+    // The 100 m ring alone would fit at 1:1000; holding two marks 300 m east it
+    // would be 1:4000. The split gives the survey its own 1:2500 -- the
+    // preferred scale, and finer than the 1:4000 the far marks force -- and maps
+    // the survey's footprint with both marks, to scale, in the one inset.
     const out = generateWorkingPlan(survey(farMarks()))
-    expect(out.scale).toBe(1000)
+    expect(out.scale).toBe(2500)
 
     // Not main-figure beacons any more ...
     expect(inserts(out.dxf)).toHaveLength(4)
@@ -148,10 +149,14 @@ describe('generateWorkingPlan — the divided figure', () => {
     // There is no second frame to number: the map IS the locality diagram.
     expect(out.dxf).not.toContain('EXTENSION')
 
-    // 100 m of ground between them at 1:4000 is 25 mm of paper.
+    // 100 m of ground between them at 1:4000 is 25 mm of paper. Measured in
+    // PAPER millimetres, not in the file's own units: the DXF carries a position
+    // as paper mm times the figure's scale over 1000, so the same 25 mm reads
+    // 25 at 1:1000 and 62.5 at 1:2500. Dividing the scale back out is what
+    // makes this the map's scale being checked, and not the figure's.
     const p1 = at(out.dxf, 'R1')[0], p2 = at(out.dxf, 'R2')[0]
-    const sep = Math.hypot(p2[0] - p1[0], p2[1] - p1[1])
-    expect(sep).toBeCloseTo(25.0, 0)
+    const sepMm = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * 1000 / out.scale
+    expect(sepMm).toBeCloseTo(25.0, 0)
 
     // The map is not just the footprint's blank box: the survey's own corners
     // are drawn inside it at the same true positions, one ring sign each, with
@@ -174,7 +179,7 @@ describe('generateWorkingPlan — the divided figure', () => {
     // merged map is never alone: the survey's footprint measures with it, so
     // the map can always promise a scale, and does.
     const out = generateWorkingPlan(survey([farMarks()[0]]))
-    expect(out.scale).toBe(1000)
+    expect(out.scale).toBe(2500)
     expect(out.dxf).toContain('INSET 1 (1:4000)')
     expect(out.dxf).not.toContain('EXTENSION')
     expect(texts(out.dxf, 'INSET')).toContain('R1')
@@ -194,9 +199,36 @@ describe('generateWorkingPlan — the divided figure', () => {
   })
 
   test('does not split when the outlier buys no finer rung', () => {
-    // The ring is wide (200 m) but shallow (50 m), so its own scale is set by
-    // the easting, and a mark 40 m further east stretches that axis by exactly
-    // the amount that still leaves the same rung: 1:2000 with or without it.
+    // A survey large enough that its own rung is coarser than the 1:2500 floor,
+    // so the ladder is genuinely engaged and the rung can be won or lost. This
+    // ring is 340 m wide: on its own that needs 1:3000, and the mark 50 m east
+    // of it -- past the 34 m padded band, so a real outlier -- stretches the
+    // easting to 390 m, which still needs 1:3000. The outlier buys no finer
+    // rung, so there is nothing to buy and the figure is not reorganised.
+    const tall = {
+      scale: 'auto',
+      beacons: [
+        { name: 'A', X: 2144000, Y: -85400, symbol: 'peg', label: 'auto' },
+        { name: 'B', X: 2144000, Y: -85740, symbol: 'peg', label: 'auto' },
+        { name: 'C', X: 2144030, Y: -85740, symbol: 'peg', label: 'auto' },
+        { name: 'D', X: 2144030, Y: -85400, symbol: 'peg', label: 'auto' },
+        { name: 'R1', X: 2144030, Y: -85790, symbol: 'rm', label: 'E' },
+      ],
+      parcels: [{ label: '404', ring: ['A', 'B', 'C', 'D'] }],
+      title: ['WORKING PLAN OF', 'Stand 404'],
+    }
+    const out = generateWorkingPlan(tall)
+    expect(out.scale).toBe(3000)
+    expect(out.dxf).not.toContain('EXTENSION')
+    expect(out.dxf).not.toContain('INSET 1')
+    expect(inserts(out.dxf)).toHaveLength(5)
+  })
+
+  test('does not split when the floor has already claimed the survey rung', () => {
+    // A survey small enough to sit at the 1:2500 floor cannot be drawn finer,
+    // so a mark beside it that would once have cost a rung now costs nothing:
+    // both the survey alone and the survey with the mark resolve to 1:2500, and
+    // the split rule declines. Every mark still lands on the one figure.
     const tall = {
       scale: 'auto',
       beacons: [
@@ -210,7 +242,7 @@ describe('generateWorkingPlan — the divided figure', () => {
       title: ['WORKING PLAN OF', 'Stand 404'],
     }
     const out = generateWorkingPlan(tall)
-    expect(out.scale).toBe(2000)
+    expect(out.scale).toBe(2500)
     expect(out.dxf).not.toContain('EXTENSION')
     expect(out.dxf).not.toContain('INSET 1')
     expect(inserts(out.dxf)).toHaveLength(5)

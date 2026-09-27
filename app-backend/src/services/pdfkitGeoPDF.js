@@ -12868,3 +12868,313 @@ export async function generateTiledGeoPDF(options, logger) {
     tileGridInfo,
   };
 }
+
+// ============================================================================
+// PER-SHEET-PAYLOAD PDF GENERATION (SI 727 Seventh Schedule (b), polyline cut)
+// ============================================================================
+//
+// generateTiledGeoPDF (above) slices ONE rectangular tile window out of a
+// single whole-plan dataset — every tile shares the same master outside
+// figure, just clipped differently. generateSheetedGeoPDF is a SIBLING entry
+// point for the other kind of multi-sheet plan: one where the surveyor draws
+// a polyline through road space that divides the outside figure itself into
+// geographically distinct parts, one per sheet (see
+// app-frontend/src/utils/sheetPayloads.ts — buildSheetPayloads). Each part
+// already carries its own ring, its own stand list, its own outside-figure
+// edges/constants and its own servitude rows; there is nothing left to filter
+// or clip here, unlike the tile path. The tile path is untouched by anything
+// below.
+
+const _silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
+
+/**
+ * Close an open Lo {y,x} ring for GeoJSON Polygon use. A SheetPayload's
+ * `ring` is documented as "open" (see sheetPayloads.ts); GeoJSON requires the
+ * first position repeated at the end. Idempotent when already closed.
+ */
+function _closeLoRing(ring) {
+  if (!Array.isArray(ring) || ring.length === 0) return [];
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  const EPS = 1e-6;
+  const alreadyClosed =
+    Math.abs(first.y - last.y) < EPS && Math.abs(first.x - last.x) < EPS;
+  return alreadyClosed ? ring : [...ring, { y: first.y, x: first.x }];
+}
+
+/**
+ * Key plan (Sheet 0) for a polyline-cut multi-sheet plan: each cell of
+ * _generateKeyPlanSheet's uniform tile grid becomes, here, one payload's own
+ * `ring` polygon (an arbitrary shape, not a rectangle), scaled to fit one
+ * shared drawing area and labelled "SHEET N". A NEW function rather than a
+ * branch inside _generateKeyPlanSheet, so the tile path's key plan (and its
+ * only caller, generateTiledGeoPDF) is untouched.
+ */
+async function _generateKeyPlanSheetFromRings(sheets, metadata, logger) {
+  const KP_W = 297 * MM_TO_PT;
+  const KP_H = 210 * MM_TO_PT;
+  const MARGIN = 15 * MM_TO_PT;
+  const TITLE_H = 32 * MM_TO_PT;
+  const FOOTER_H = 12 * MM_TO_PT;
+
+  const doc = new PDFDocument({ size: [KP_W, KP_H], margin: 0 });
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+
+  const township = (metadata?.surveyOf || metadata?.township || metadata?.title || 'Township').toUpperCase();
+  const district = (metadata?.district || '').toUpperCase();
+  const totalSheets = sheets.length;
+
+  // ── Outer border ──
+  doc.rect(MARGIN, MARGIN, KP_W - 2 * MARGIN, KP_H - 2 * MARGIN)
+    .lineWidth(2).stroke('#000000');
+
+  // ── Title block (top) — same styling as _generateKeyPlanSheet ──
+  const titleX = MARGIN;
+  const titleY = MARGIN;
+  const titleW = KP_W - 2 * MARGIN;
+  doc.rect(titleX, titleY, titleW, TITLE_H).lineWidth(0.5).stroke('#000000');
+
+  doc.fillColor('#000000').fontSize(16).font('Helvetica-Bold')
+    .text('GENERAL PLAN', titleX, titleY + 4 * MM_TO_PT, { width: titleW, align: 'center' });
+  doc.fontSize(9).font('Helvetica-Oblique')
+    .text('of', titleX, titleY + 12 * MM_TO_PT, { width: titleW, align: 'center' });
+  doc.fontSize(11).font('Helvetica-Bold')
+    .text(`${township}${district ? ', ' + district + ' DISTRICT' : ''}`, titleX, titleY + 17 * MM_TO_PT, { width: titleW, align: 'center' });
+  doc.fontSize(10).font('Helvetica-Bold')
+    .text('KEY PLAN', titleX, titleY + 24 * MM_TO_PT, { width: titleW, align: 'center' });
+
+  // ── Drawing area for the sheet ring shapes ──
+  const naGutter = 20 * MM_TO_PT; // room for the north arrow at right
+  const drawX = MARGIN + 4 * MM_TO_PT;
+  const drawY = MARGIN + TITLE_H + 6 * MM_TO_PT;
+  const drawW = KP_W - 2 * MARGIN - 8 * MM_TO_PT - naGutter;
+  const drawH = KP_H - 2 * MARGIN - TITLE_H - 6 * MM_TO_PT - FOOTER_H - 4 * MM_TO_PT;
+
+  // Overall bounding box across every sheet's ring (Lo Y/X metres).
+  let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity;
+  for (const sheet of sheets) {
+    for (const p of sheet.ring || []) {
+      if (!Number.isFinite(p?.y) || !Number.isFinite(p?.x)) continue;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+    }
+  }
+  const hasExtent = Number.isFinite(minY) && Number.isFinite(maxY) && Number.isFinite(minX) && Number.isFinite(maxX) && maxY > minY && maxX > minX;
+  const spanY = hasExtent ? (maxY - minY) : 1;
+  const spanX = hasExtent ? (maxX - minX) : 1;
+  const fitScale = Math.min(drawW / spanY, drawH / spanX);
+  const offX = drawX + (drawW - spanY * fitScale) / 2;
+  const offY = drawY + (drawH - spanX * fitScale) / 2;
+
+  // Lo Y (Westing/easting) -> horizontal; Lo X (Southing) -> vertical (down).
+  const project = (p) => ({
+    px: offX + (p.y - minY) * fitScale,
+    py: offY + (p.x - minX) * fitScale,
+  });
+
+  const palette = ['#eef5fb', '#fbeeee', '#eefbee', '#fbf7ee', '#f0eefb', '#eefbf7'];
+  for (let i = 0; i < sheets.length; i++) {
+    const sheet = sheets[i];
+    const ring = _closeLoRing(sheet.ring);
+    const pts = ring.map(project);
+    if (pts.length < 3) {
+      logger.warn(`[SheetedKeyPlan] Sheet ${sheet.sheetNumber} ring has < 3 points — skipping cell`);
+      continue;
+    }
+    doc.save();
+    doc.moveTo(pts[0].px, pts[0].py);
+    for (const pt of pts.slice(1)) doc.lineTo(pt.px, pt.py);
+    doc.closePath();
+    doc.lineWidth(1).fillAndStroke(palette[i % palette.length], '#1a3a5c');
+    doc.restore();
+
+    // Centroid of the ring's own vertices (excluding the closing repeat) for the label.
+    const uniquePts = pts.slice(0, pts.length - 1);
+    const cx = uniquePts.reduce((s, p) => s + p.px, 0) / uniquePts.length;
+    const cy = uniquePts.reduce((s, p) => s + p.py, 0) / uniquePts.length;
+    doc.fillColor('#1a3a5c').fontSize(12).font('Helvetica-Bold')
+      .text(`SHEET ${sheet.sheetNumber}`, cx - 30, cy - 6, { width: 60, align: 'center', lineBreak: false });
+  }
+
+  // ── Drawing area outer border (drawn on top of the sheet cells) ──
+  doc.rect(drawX, drawY, drawW, drawH).lineWidth(1.5).stroke('#000000');
+
+  // ── North arrow (right of the drawing area, its own gutter) ──
+  const naX = drawX + drawW + 6 * MM_TO_PT;
+  const naY = drawY + 5 * MM_TO_PT;
+  const naSize = 12 * MM_TO_PT;
+  doc.moveTo(naX + naSize / 2, naY + naSize)
+    .lineTo(naX + naSize / 2, naY)
+    .lineWidth(1).stroke('#000000');
+  doc.moveTo(naX + naSize / 2 - 4, naY + 6)
+    .lineTo(naX + naSize / 2, naY)
+    .lineTo(naX + naSize / 2 + 4, naY + 6)
+    .stroke('#000000');
+  doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold')
+    .text('N', naX + naSize / 2 - 5, naY + naSize + 2);
+
+  // ── Scale/sheet info block, below the north arrow ──
+  const infoX = naX;
+  const infoY = naY + naSize + 14 * MM_TO_PT;
+  doc.fillColor('#000').fontSize(7).font('Helvetica-Bold')
+    .text('Sheet division', infoX, infoY, { width: 18 * MM_TO_PT });
+  doc.font('Helvetica')
+    .text(`Total sheets: ${totalSheets}`, infoX, infoY + 8, { width: 18 * MM_TO_PT });
+
+  // ── Footer ──
+  const footerY = KP_H - MARGIN - FOOTER_H;
+  doc.moveTo(MARGIN, footerY).lineTo(KP_W - MARGIN, footerY).lineWidth(0.5).stroke('#000000');
+  doc.fillColor('#333').fontSize(6.5).font('Helvetica')
+    .text(
+      `SI 727 of 1979, Seventh Schedule (b) — General Plan comprising more than one sheet. ` +
+      `This key plan accompanies ${totalSheets} survey sheets, divided by a surveyor's cut through road space. ` +
+      `Printed: ${new Date().toISOString().slice(0, 10)}`,
+      MARGIN + 2, footerY + 2, { width: KP_W - 2 * MARGIN - 4 }
+    );
+
+  doc.end();
+  await new Promise((resolve, reject) => { doc.on('end', resolve); doc.on('error', reject); });
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Render a multi-sheet SI 727 General Plan directly from pre-derived
+ * SheetPayload objects (app-frontend/src/utils/sheetPayloads.ts), one PDF
+ * page per sheet, preceded by a key plan when there is more than one sheet.
+ *
+ * A SheetPayload names its stands but carries no per-stand geometry — only
+ * the sheet's own outside-figure `ring`. So the synthetic "parcels" built
+ * here for the schedule of areas all share that same ring as their geometry:
+ * enough for a correct schedule (stand name + blank area/deed columns) and a
+ * non-crashing figure (the ring itself, which IS what should fill the
+ * drawing area), but NOT a substitute for individually-drawn stand
+ * boundaries when a sheet carries more than one stand — see task-4-report.md.
+ *
+ * @param {Object} options
+ * @param {Array}  options.sheets   SheetPayload[], any order (re-sorted by sheetNumber).
+ * @param {Object} [options.metadata]  Whole-plan metadata (surveyOf/district/…), shared by every sheet.
+ * @param {Object} [options.beacons]   Whole-plan beacons GeoJSON FeatureCollection (optional).
+ * @param {string} [options.projection]
+ * @param {string} [options.scale]
+ * @param {string} [options.sheetSize]
+ * @param {string} [options.planType]
+ * @param {string} [options.outputPath]  When set, the merged PDF is also written to disk.
+ * @param {boolean} [options.returnPages]  When true, also return `pages`: the
+ *   raw per-page PDF buffers (key plan first when present), for tests that
+ *   need to verify one sheet's content in isolation from another's.
+ * @returns {Promise<{ pdf: Buffer, pageCount: number, pages?: Buffer[] }>}
+ */
+export async function generateSheetedGeoPDF(options, logger) {
+  const log = logger || _silentLogger;
+  const {
+    sheets,
+    metadata = {},
+    beacons = null,
+    // undefined, never null: doc.info.GeoPDF_Projection = null crashes
+    // PDFKit's own doc.end() (new PDFReference(doc, id, null) skips its
+    // `data = {}` default because the arg is null, not undefined, so
+    // `this.data.Filter` throws). undefined leaves the default param intact.
+    projection = undefined,
+    scale = undefined,
+    sheetSize = undefined,
+    planType = undefined,
+    outputPath = null,
+    returnPages = false,
+  } = options || {};
+
+  if (!Array.isArray(sheets) || sheets.length === 0) {
+    throw new Error('generateSheetedGeoPDF: options.sheets must be a non-empty array');
+  }
+
+  const orderedSheets = [...sheets].sort((a, b) => a.sheetNumber - b.sheetNumber);
+  const totalSheets = orderedSheets[0].totalSheets;
+
+  const beaconsFC = (beacons && Array.isArray(beacons.features))
+    ? beacons
+    : { type: 'FeatureCollection', features: [] };
+  const emptyFC = () => ({ type: 'FeatureCollection', features: [] });
+
+  const pageBuffers = [];
+
+  // ── Key plan (Sheet 0) — skipped entirely for a single-sheet plan: SI 727
+  // Seventh Schedule (b) key plans exist to index MULTIPLE sheets. ──
+  if (totalSheets > 1) {
+    const keyPlanBuf = await _generateKeyPlanSheetFromRings(orderedSheets, metadata, log);
+    pageBuffers.push(keyPlanBuf);
+    log.info(`[SheetedPDF] Key plan generated from ${orderedSheets.length} sheet rings`);
+  }
+
+  for (const sheet of orderedSheets) {
+    const ringClosed = _closeLoRing(sheet.ring);
+    const ringCoords = ringClosed.map((p) => [p.y, p.x]); // [y, x] = [easting, southing], never {x, y} PDF points
+
+    const outsideFigure = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [ringCoords] },
+      }],
+    };
+
+    // No per-stand geometry travels in a SheetPayload — every synthetic
+    // parcel for this sheet's schedule shares the sheet's own ring.
+    const parcels = {
+      type: 'FeatureCollection',
+      features: (sheet.stands || []).map((standName) => ({
+        type: 'Feature',
+        properties: { stand: standName },
+        geometry: { type: 'Polygon', coordinates: [ringCoords] },
+      })),
+    };
+
+    // The payload's edges/constants are already in the exact shape
+    // _generateGeoPDFInner expects for outsideFigureData — no translation.
+    const outsideFigureData = {
+      edges: sheet.edges || [],
+      constants: sheet.constants || null,
+    };
+
+    // Per-sheet servitude rows, never the whole plan's — do not mutate the
+    // shared `metadata` object across sheets.
+    const sheetMetadata = {
+      ...metadata,
+      servitudeStatement: { rows: sheet.servitudeRows || [] },
+    };
+
+    const result = await _generateGeoPDFInner({
+      parcels,
+      beacons: beaconsFC,
+      annotations: emptyFC(),
+      outsideFigure,
+      projection,
+      metadata: sheetMetadata,
+      outsideFigureData,
+      beaconLabels: null,
+      scale,
+      sheetSize,
+      planType,
+      // No fullFigureLabel: unlike a rectangular tile (a slice of ONE shared
+      // master figure), each sheet here has its OWN distinct outside figure,
+      // so the title block's beacon sequence must come from THIS sheet's own
+      // vertices, which is what omitting fullFigureLabel already falls back to.
+      sheetInfo: { sheetNumber: sheet.sheetNumber, totalSheets: sheet.totalSheets },
+    }, log);
+
+    pageBuffers.push(result.pdfBuffer);
+    log.info(`[SheetedPDF] Sheet ${sheet.sheetNumber}/${sheet.totalSheets} generated (${result.pdfBuffer.length} bytes)`);
+  }
+
+  const pdf = await _mergePDFBuffers(pageBuffers, log);
+
+  if (outputPath) {
+    await writeFile(outputPath, pdf);
+  }
+
+  const out = { pdf, pageCount: pageBuffers.length };
+  if (returnPages) out.pages = pageBuffers;
+  return out;
+}

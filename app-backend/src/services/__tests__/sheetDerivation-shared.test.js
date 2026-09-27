@@ -247,6 +247,16 @@ describe('vertexLetter', () => {
   })
 })
 
+describe('vertexLetter refuses an impossible index', () => {
+  test('a negative or fractional index throws instead of lettering "@"', () => {
+    // It used to return '@' for -1, which would have been lettered onto a lodged
+    // sheet with nothing to say it was wrong.
+    expect(() => vertexLetter(-1)).toThrow(RangeError)
+    expect(() => vertexLetter(1.5)).toThrow(RangeError)
+    expect(vertexLetter(0)).toBe('A')
+  })
+})
+
 describe('letterPart', () => {
   test('letters one part from A, by position', () => {
     expect(letterPart(box(0, 0, 10, 10))).toEqual(['A', 'B', 'C', 'D'])
@@ -316,11 +326,39 @@ describe('standRange', () => {
     expect(standRange(['87', '1720', '100'])).toBe('87 to 1720')
   })
 
-  test('one stand named twice is not a range', () => {
-    // Used to read "1686 to 1686". A duplicate should not appear in a schedule at
-    // all, but a sentence on a lodged plan should not be the thing that says so.
+  test('one stand named twice is not a range, however it is spelt', () => {
+    // Used to read "1686 to 1686". Deduplicating on the literal string was one
+    // character away from useless: a trailing space reproduced the same
+    // self-range, and '087' against '87' reported one stand as two. The dedupe
+    // now uses the same numeric identity the sort does.
     expect(standRange(['1686', '1686'])).toBe('1686')
+    expect(standRange(['1686', '1686 '])).toBe('1686')
+    expect(standRange(['1686', ' 1686'])).toBe('1686')
+    expect(standRange(['087', '87'])).toBe('087')
+    expect(standRange([1686, '1686'])).toBe('1686')
     expect(standRange(['1690', '1686', '1690'])).toBe('1686 to 1690')
+  })
+
+  test('a lettered stand is not the same stand as its bare number', () => {
+    // 2833A is its own parcel, so this is a genuine two-stand range -- the dedupe
+    // must not collapse it the way it collapses '087' and '87'.
+    expect(standRange(['2833A', '2833'])).toBe('2833 to 2833A')
+  })
+
+  test('a blank or missing name is dropped, not printed', () => {
+    // "null to 1686" and " to 1686" both used to reach the sentence.
+    expect(standRange(['', '1686'])).toBe('1686')
+    expect(standRange([null, '1686'])).toBe('1686')
+    expect(standRange([undefined, '1686'])).toBe('1686')
+    expect(standRange([null])).toBe('')
+  })
+
+  test('a missing list is an empty range, not a crash', () => {
+    // These threw a TypeError out of `.map`. A sentence with no stands is a
+    // caller problem to notice, not a reason to fail plan generation.
+    expect(standRange(undefined)).toBe('')
+    expect(standRange(null)).toBe('')
+    expect(standRange([])).toBe('')
   })
 
   test('a lettered stand ranges on its number', () => {

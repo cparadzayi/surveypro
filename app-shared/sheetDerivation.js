@@ -204,6 +204,12 @@ export function assignStands(parts, stands) {
  * 26 -- do not copy it.
  */
 export function vertexLetter(index) {
+  // A negative or fractional index used to return '@' and similar, which would
+  // have been lettered onto a lodged sheet with nothing to say it was wrong. A
+  // bad index here is a programming error, so it is loud.
+  if (!Number.isInteger(index) || index < 0) {
+    throw new RangeError(`vertexLetter: index must be a non-negative integer, got ${index}`)
+  }
   let n = index
   let out = ''
   do {
@@ -259,15 +265,62 @@ export function otherSheetsPhrase(sheetNumber, totalSheets) {
  * sort reads 1720 before 87, and 100 before 99. A stand with a letter sorts on
  * its number first, so 2833A follows 2469.
  */
+/**
+ * A stand's identity for ranging: its leading number, then whatever follows.
+ *
+ * So '087' and '87' are one stand, and a trailing space is not a second one --
+ * but '2833A' and '2833' stay distinct, because a lettered stand is its own
+ * parcel. A name with no leading digits keys on its text alone.
+ */
+function standKey(text) {
+  const digits = text.match(/^\d+/)
+  return digits ? `${parseInt(digits[0], 10)}|${text.slice(digits[0].length)}` : `~|${text}`
+}
+
+/**
+ * The plan's stand range, for {standRange}.
+ *
+ * Compared as NUMBERS: this survey carries 87 and 1720 together, and a string
+ * sort reads 1720 before 87, and 100 before 99. A stand with a letter sorts on
+ * its number first, so 2833A follows 2469.
+ *
+ * Names are deduplicated on `standKey`, not on their literal text. An earlier
+ * version deduplicated on the string, which was one character away from useless:
+ * ['1686', '1686 '] still produced "1686 to 1686 " -- the very self-range the
+ * dedupe was added to remove -- and ['087', '87'] reported one stand as a
+ * two-stand range. The numeric key was already being computed two lines below for
+ * the sort; now both use it.
+ *
+ * Blank and nullish names are dropped rather than printed: "null to 1686" and
+ * " to 1686" both used to reach the sentence. A non-array argument yields an
+ * empty string instead of throwing.
+ *
+ * Names are expected to be NUMBERED stands. A remainder or an outside figure is
+ * not one, and the caller excludes those already -- `isRemainderParcel` and
+ * `isOutsideFigureParcel` in `app-frontend/src/utils/designationParcels.ts`. This
+ * function does not second-guess that: a non-numeric name sorts last and prints
+ * as given, so it is visible rather than silently dropped.
+ */
 export function standRange(names) {
-  // Deduplicated first: the same stand named twice used to read "1686 to 1686".
-  const sorted = [...new Set(names.map((n) => String(n)))].sort((a, b) => {
+  if (!Array.isArray(names)) return ''
+
+  const firstByKey = new Map()
+  for (const raw of names) {
+    const text = String(raw ?? '').trim()
+    if (text === '') continue
+    const key = standKey(text)
+    if (!firstByKey.has(key)) firstByKey.set(key, text)
+  }
+
+  const sorted = [...firstByKey.values()].sort((a, b) => {
     const na = parseInt(a, 10)
     const nb = parseInt(b, 10)
-    if (Number.isNaN(na) || Number.isNaN(nb)) return String(a).localeCompare(String(b))
-    return na !== nb ? na - nb : String(a).localeCompare(String(b))
+    if (Number.isNaN(na) || Number.isNaN(nb)) return a.localeCompare(b)
+    return na !== nb ? na - nb : a.localeCompare(b)
   })
+
   if (sorted.length === 0) return ''
-  if (sorted.length === 1) return String(sorted[0])
+  if (sorted.length === 1) return sorted[0]
   return `${sorted[0]} to ${sorted[sorted.length - 1]}`
 }
+

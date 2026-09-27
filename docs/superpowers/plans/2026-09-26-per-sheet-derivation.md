@@ -54,11 +54,26 @@ A rectangular grid-tiling multi-sheet path already exists and is wired up (`gene
 
 ---
 
-### Task 1: Geographic sheet ordering
+### Task 1: Geographic sheet ordering — COMPLETE (commits 524e122, and the correction below)
 
-Spec Decision 10. A reader holding three sheets expects them to run north to south, then west to east — and `generateTiledGeoPDF` already numbers its tiles that way, so this is also what the renderer will expect.
+Spec Decision 10: north to south, then west to east, **by centroid** — a two-key
+sort with southing as the primary key.
 
-A plain sort on centroid `x` then `y` does not express "north to south then west to east". Two parts side by side would be ordered by whichever centroid southing happened to be smaller, so a left-right pair could come back as 1 and 2 in either order on a millimetre's difference. Parts must first be grouped into **bands** that share a north–south range, then ordered west to east within a band.
+**This task was implemented, reviewed, and then its rule was REPLACED.** The
+original plan grouped parts into bands of overlapping southing range and ordered
+west to east inside a band, meaning to give the reader tidy rows. That was wrong:
+a single part spanning the southing extent of two otherwise disjoint rows chained
+them into one band, and the sheets then interleaved the rows — north-west,
+south-west, north-east, south-east. A cut leaving one wide part beside two stacked
+narrower ones produces exactly that, so it was ordinary geometry rather than a
+contrivance. Sorting on the centroid cannot interleave rows, because the sequence
+it produces is monotonic in southing by construction.
+
+The cost is the case the banding was invented for: two parts in one visual row
+whose centroids differ slightly in southing are ordered by that difference rather
+than west to east. That is a left-right swap within one row, against a whole-plan
+zigzag — and it is what Decision 10's wording asks for, since a part whose middle
+lies further north IS further north.
 
 **Files:**
 - Create: `app-shared/sheetDerivation.js`
@@ -68,103 +83,10 @@ A plain sort on centroid `x` then `y` does not express "north to south then west
 - Consumes: nothing.
 - Produces:
   - `centroid(ring) -> { y, x }` — area-weighted centroid of an open ring.
-  - `orderSheets(parts) -> number[]` — for each part, in input order, its 1-based sheet number.
+  - `orderSheets(parts) -> number[]` — for each part, in input order, its 1-based
+    sheet number. Sorted by centroid southing, then centroid easting.
 
-- [ ] **Step 1: Write the failing test**
-
-Create `app-backend/src/services/__tests__/sheetDerivation-shared.test.js`:
-
-```javascript
-/**
- * app-shared/sheetDerivation.js -- what each sheet states about itself.
- * Run: cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js sheetDerivation-shared
- */
-import { describe, test, expect } from '@jest/globals'
-import { centroid, orderSheets } from '../../../../app-shared/sheetDerivation.js'
-
-const P = (y, x) => ({ y, x })
-/** An open box from (y0,x0) to (y1,x1), in ring order. */
-const box = (y0, x0, y1, x1) => [P(y0, x0), P(y1, x0), P(y1, x1), P(y0, x1)]
-
-describe('centroid', () => {
-  test('finds the middle of a square', () => {
-    const c = centroid(box(0, 0, 100, 100))
-    expect(c.y).toBeCloseTo(50, 9)
-    expect(c.x).toBeCloseTo(50, 9)
-  })
-
-  test('is area-weighted, not the mean of the vertices', () => {
-    // An L-shape. The vertex mean and the area centroid differ, and only the
-    // area centroid is inside the figure.
-    const L = [P(0, 0), P(90, 0), P(90, 30), P(30, 30), P(30, 90), P(0, 90)]
-    const c = centroid(L)
-    const vertexMeanY = (0 + 90 + 90 + 30 + 30 + 0) / 6
-    expect(c.y).not.toBeCloseTo(vertexMeanY, 3)
-  })
-})
-
-describe('orderSheets', () => {
-  test('a single part is sheet 1', () => {
-    expect(orderSheets([box(0, 0, 100, 100)])).toEqual([1])
-  })
-
-  test('runs north to south', () => {
-    // x is southing, so the smaller x is further north.
-    const north = box(0, 0, 100, 50)
-    const south = box(0, 50, 100, 100)
-    expect(orderSheets([south, north])).toEqual([2, 1])
-  })
-
-  test('runs west to east within one band', () => {
-    // Same southing range, so one band; y is easting, so the smaller y is west.
-    const west = box(0, 0, 50, 100)
-    const east = box(50, 0, 100, 100)
-    expect(orderSheets([east, west])).toEqual([2, 1])
-  })
-
-  test('bands first, then west to east inside each band', () => {
-    // Two rows of two, handed over scrambled. This is the test a plain
-    // lexicographic sort fails.
-    const nw = box(0, 0, 50, 50)
-    const ne = box(50, 0, 100, 50)
-    const sw = box(0, 50, 50, 100)
-    const se = box(50, 50, 100, 100)
-    expect(orderSheets([se, nw, sw, ne])).toEqual([4, 1, 3, 2])
-  })
-
-  test('every part gets exactly one number, and they are 1..n', () => {
-    const parts = [box(0, 0, 40, 40), box(40, 0, 80, 40), box(0, 40, 40, 80)]
-    const order = orderSheets(parts)
-    expect([...order].sort()).toEqual([1, 2, 3])
-  })
-
-  test('west still precedes east when the east part reaches further north', () => {
-    // THIS is the test that separates banding from a plain lexicographic sort.
-    // On a tidy 2x2 grid the two agree, so the test above cannot tell them
-    // apart. Here the parts share a band -- their southing ranges overlap, 0..80
-    // and 0..20 -- but east's centroid is further NORTH than west's (x 10 against
-    // x 40). Sorted lexicographically by southing then easting, east comes first
-    // and the sheets are numbered right to left. Banded, they are one band and
-    // run west to east, which is what Decision 10 says.
-    const west = box(0, 0, 50, 80)    // centroid (25, 40)
-    const east = box(50, 0, 100, 20)  // centroid (75, 10)
-
-    expect(orderSheets([west, east])).toEqual([1, 2])
-  })
-})
-```
-
-- [ ] **Step 2: Run it and watch it fail**
-
-```bash
-cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js sheetDerivation-shared
-```
-
-Expected: FAIL — `Cannot find module '../../../../app-shared/sheetDerivation.js'`.
-
-- [ ] **Step 3: Implement it**
-
-Create `app-shared/sheetDerivation.js`:
+**As shipped** — `app-shared/sheetDerivation.js`:
 
 ```javascript
 /**
@@ -211,89 +133,172 @@ export function centroid(ring) {
   return { y: cy / (3 * twiceArea), x: cx / (3 * twiceArea) }
 }
 
-function southingRange(ring) {
-  let min = Infinity
-  let max = -Infinity
-  for (const p of ring) {
-    if (p.x < min) min = p.x
-    if (p.x > max) max = p.x
-  }
-  return { min, max }
-}
-
 /**
  * The sheet number for each part, in the order the parts were given.
  *
- * Spec Decision 10: north to south, then west to east. Those are two orderings,
- * and one sort cannot express both -- two parts side by side would be ordered by
- * whichever centroid southing was smaller, so a left-right pair could come out
- * either way on a millimetre. Parts are therefore BANDED first: two share a band
- * when their southing ranges overlap, which needs no sheet size to decide. Bands
- * run north to south; parts run west to east inside a band.
+ * Spec Decision 10: north to south, then west to east, BY CENTROID -- which is a
+ * two-key sort, southing first. `x` is southing, so the smaller `x` sorts first;
+ * `y` is easting, so within one southing the smaller `y` sorts first.
+ *
+ * An earlier version grouped parts into bands of overlapping southing RANGE and
+ * ordered west to east inside a band, meaning to give a reader tidy rows. It was
+ * wrong, and not subtly: one part spanning the southing extent of two otherwise
+ * disjoint rows chained them into a single band, and the sheets then interleaved
+ * the rows -- north-west, south-west, north-east, south-east. A cut that leaves
+ * one wide part beside two stacked narrower ones produces exactly that, so it was
+ * ordinary geometry, not a contrivance. Sorting on the centroid cannot interleave
+ * rows, because the sequence it produces is monotonic in southing by
+ * construction.
+ *
+ * The cost is the case that motivated the banding: two parts in one visual row
+ * whose centroids differ slightly in southing are ordered by that difference
+ * rather than west to east. That is a left-right swap within a row, against a
+ * whole-plan zigzag, and it is what Decision 10's wording actually asks for --
+ * the primary key is north to south, and a part whose middle lies further north
+ * IS further north.
  */
 export function orderSheets(parts) {
-  const described = parts.map((ring, index) => ({
-    index,
-    c: centroid(ring),
-    range: southingRange(ring),
-  }))
-
-  const northFirst = [...described].sort((a, b) => a.c.x - b.c.x)
-
-  const bands = []
-  for (const part of northFirst) {
-    const band = bands[bands.length - 1]
-    const overlaps = band && part.range.min <= band.max && part.range.max >= band.min
-    if (overlaps) {
-      band.parts.push(part)
-      band.min = Math.min(band.min, part.range.min)
-      band.max = Math.max(band.max, part.range.max)
-    } else {
-      bands.push({ parts: [part], min: part.range.min, max: part.range.max })
-    }
-  }
-
-  const sheetOf = new Array(parts.length)
-  let sheet = 1
-  for (const band of bands) {
-    for (const part of [...band.parts].sort((a, b) => a.c.y - b.c.y)) {
-      sheetOf[part.index] = sheet++
-    }
-  }
-  return sheetOf
-}
-```
-
-- [ ] **Step 4: Run it and watch it pass**
-
-```bash
-cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js sheetDerivation-shared
-```
-
-Expected: PASS, 8 tests.
-
-- [ ] **Step 5: Prove the banding is load-bearing**
-
-Temporarily replace `orderSheets`' body with a plain lexicographic sort:
-
-```javascript
   return parts
     .map((ring, index) => ({ index, c: centroid(ring) }))
     .sort((a, b) => a.c.x - b.c.x || a.c.y - b.c.y)
-    .reduce((out, p, i) => { out[p.index] = i + 1; return out }, new Array(parts.length))
+    .reduce((sheetOf, p, i) => {
+      sheetOf[p.index] = i + 1
+      return sheetOf
+    }, new Array(parts.length))
+}
 ```
 
-Run the suite. **`west still precedes east when the east part reaches further north` must fail**, and it is the only one that will — the tidy 2x2 fixture gives `[4, 1, 3, 2]` under both orderings, so it cannot tell them apart. That is exactly why the extra test exists; do not expect the 2x2 one to catch this.
+**Its tests** — `app-backend/src/services/__tests__/sheetDerivation-shared.test.js`:
 
-Restore, confirm green again, and paste both outputs in your report. If the lexicographic version passes everything, stop and say so: it means the discriminating fixture no longer discriminates, and the test needs fixing rather than the code.
+```javascript
+/**
+ * app-shared/sheetDerivation.js -- what each sheet states about itself.
+ * Run: cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js sheetDerivation-shared
+ */
+import { describe, test, expect } from '@jest/globals'
+import { centroid, orderSheets } from '../../../../app-shared/sheetDerivation.js'
 
-- [ ] **Step 6: Commit**
+const P = (y, x) => ({ y, x })
+/** An open box from (y0,x0) to (y1,x1), in ring order. */
+const box = (y0, x0, y1, x1) => [P(y0, x0), P(y1, x0), P(y1, x1), P(y0, x1)]
+
+describe('centroid', () => {
+  test('finds the middle of a square', () => {
+    const c = centroid(box(0, 0, 100, 100))
+    expect(c.y).toBeCloseTo(50, 9)
+    expect(c.x).toBeCloseTo(50, 9)
+  })
+
+  test('keeps easting and southing apart', () => {
+    // Both other fixtures are diagonally symmetric, so a centroid that
+    // accumulated the easting terms into the southing accumulator and vice versa
+    // would pass them unchanged. This rectangle is wider than it is tall, so the
+    // two coordinates cannot be swapped without the test noticing -- and Task 2
+    // consumes centroid, so a silent axis swap here would travel.
+    const wide = box(0, 0, 100, 20)
+    const c = centroid(wide)
+    expect(c.y).toBeCloseTo(50, 9)
+    expect(c.x).toBeCloseTo(10, 9)
+  })
+
+  test('is area-weighted, not the mean of the vertices', () => {
+    // An L-shape. The vertex mean and the area centroid differ, and only the
+    // area centroid is inside the figure.
+    const L = [P(0, 0), P(90, 0), P(90, 30), P(30, 30), P(30, 90), P(0, 90)]
+    const c = centroid(L)
+    const vertexMeanY = (0 + 90 + 90 + 30 + 30 + 0) / 6
+    expect(c.y).not.toBeCloseTo(vertexMeanY, 3)
+  })
+})
+
+describe('orderSheets', () => {
+  test('a single part is sheet 1', () => {
+    expect(orderSheets([box(0, 0, 100, 100)])).toEqual([1])
+  })
+
+  test('runs north to south', () => {
+    // x is southing, so the smaller x is further north.
+    const north = box(0, 0, 100, 50)
+    const south = box(0, 50, 100, 100)
+    expect(orderSheets([south, north])).toEqual([2, 1])
+  })
+
+  test('runs west to east when two parts share a southing', () => {
+    // Equal centroid southings, so the secondary key decides; y is easting, so
+    // the smaller y is west.
+    const west = box(0, 0, 50, 100)
+    const east = box(50, 0, 100, 100)
+    expect(orderSheets([east, west])).toEqual([2, 1])
+  })
+
+  test('reads a grid row by row: north row west to east, then south row', () => {
+    // Two rows of two, handed over scrambled. This is the test a plain
+    // lexicographic sort fails.
+    const nw = box(0, 0, 50, 50)
+    const ne = box(50, 0, 100, 50)
+    const sw = box(0, 50, 50, 100)
+    const se = box(50, 50, 100, 100)
+    expect(orderSheets([se, nw, sw, ne])).toEqual([4, 1, 3, 2])
+  })
+
+  test('every part gets exactly one number, and they are 1..n', () => {
+    const parts = [box(0, 0, 40, 40), box(40, 0, 80, 40), box(0, 40, 40, 80)]
+    const order = orderSheets(parts)
+    expect([...order].sort()).toEqual([1, 2, 3])
+  })
+
+  test('the part whose middle lies further north comes first, even if it is east', () => {
+    // This test was the other way round while orderSheets grouped parts into
+    // bands of overlapping southing range. That rule chained two disjoint rows
+    // into one band whenever a part spanned both, and interleaved them, so it
+    // was replaced by the two-key centroid sort Decision 10 actually describes.
+    // Under it, southing is the PRIMARY key: east's middle is 30 m further north
+    // than west's, so east is sheet 1. A part whose middle lies further north is
+    // further north.
+    const west = box(0, 0, 50, 80)    // centroid (25, 40)
+    const east = box(50, 0, 100, 20)  // centroid (75, 10)
+
+    expect(orderSheets([west, east])).toEqual([2, 1])
+  })
+
+  test('a part spanning two rows never interleaves them', () => {
+    // The defect that retired the banding rule. `bridge` spans the whole
+    // southing extent, and the two rows it spans do not overlap each other at
+    // all -- yet banding chained them and numbered the plan north-west,
+    // SOUTH-west, north-east, south-east. Ordinary geometry: one wide part
+    // beside two stacked narrower ones.
+    const west1 = box(0, 0, 20, 20)
+    const east1 = box(30, 0, 50, 20)
+    const west2 = box(0, 80, 20, 100)
+    const east2 = box(30, 80, 50, 100)
+    const bridge = box(0, 60, 100, 80)
+    const parts = [west1, east1, west2, east2, bridge]
+
+    const order = orderSheets(parts)
+    // The sequence must run monotonically north to south: no sheet may sit
+    // further north than the sheet before it.
+    const southings = order
+      .map((sheet, i) => ({ sheet, x: centroid(parts[i]).x }))
+      .sort((a, b) => a.sheet - b.sheet)
+      .map((s) => s.x)
+
+    expect(southings).toEqual([...southings].sort((a, b) => a - b))
+  })
+})
+```
+
+Run from `app-backend`:
 
 ```bash
-git add app-shared/sheetDerivation.js app-backend/src/services/__tests__/sheetDerivation-shared.test.js
-git diff --cached --name-only   # must list exactly those two
-git commit -m "feat(sheets): number the parts north to south, then west to east"
+node --experimental-vm-modules node_modules/jest/bin/jest.js sheetDerivation-shared
 ```
+
+10 tests. Each was mutation-verified rather than assumed: swapping the two sort
+keys fails three of them, dropping the secondary key fails two, and transposing
+the two coordinate accumulators inside `centroid` fails three — including
+`keeps easting and southing apart`, which exists because every other fixture is
+diagonally symmetric and would pass a silent axis swap. Task 2 consumes
+`centroid`, so that swap would have travelled.
 
 ---
 
@@ -461,7 +466,7 @@ export function assignStands(parts, stands) {
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Expected: PASS, 15 tests.
+Expected: PASS, 17 tests.
 
 - [ ] **Step 5: Prove the two refusals are distinguishable**
 
@@ -578,7 +583,7 @@ export function letterPart(part) {
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Expected: PASS, 19 tests.
+Expected: PASS, 21 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -722,7 +727,7 @@ export function standRange(names) {
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Expected: PASS, 30 tests.
+Expected: PASS, 32 tests.
 
 - [ ] **Step 5: Commit**
 

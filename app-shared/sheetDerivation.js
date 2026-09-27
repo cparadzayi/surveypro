@@ -42,57 +42,36 @@ export function centroid(ring) {
   return { y: cy / (3 * twiceArea), x: cx / (3 * twiceArea) }
 }
 
-function southingRange(ring) {
-  let min = Infinity
-  let max = -Infinity
-  for (const p of ring) {
-    if (p.x < min) min = p.x
-    if (p.x > max) max = p.x
-  }
-  return { min, max }
-}
-
 /**
  * The sheet number for each part, in the order the parts were given.
  *
- * Spec Decision 10: north to south, then west to east. Those are two orderings,
- * and one sort cannot express both -- two parts side by side would be ordered by
- * whichever centroid southing was smaller, so a left-right pair could come out
- * either way on a millimetre. Parts are therefore BANDED first: two share a band
- * when their southing ranges overlap, which needs no sheet size to decide. Bands
- * run north to south; parts run west to east inside a band.
+ * Spec Decision 10: north to south, then west to east, BY CENTROID -- which is a
+ * two-key sort, southing first. `x` is southing, so the smaller `x` sorts first;
+ * `y` is easting, so within one southing the smaller `y` sorts first.
+ *
+ * An earlier version grouped parts into bands of overlapping southing RANGE and
+ * ordered west to east inside a band, meaning to give a reader tidy rows. It was
+ * wrong, and not subtly: one part spanning the southing extent of two otherwise
+ * disjoint rows chained them into a single band, and the sheets then interleaved
+ * the rows -- north-west, south-west, north-east, south-east. A cut that leaves
+ * one wide part beside two stacked narrower ones produces exactly that, so it was
+ * ordinary geometry, not a contrivance. Sorting on the centroid cannot interleave
+ * rows, because the sequence it produces is monotonic in southing by
+ * construction.
+ *
+ * The cost is the case that motivated the banding: two parts in one visual row
+ * whose centroids differ slightly in southing are ordered by that difference
+ * rather than west to east. That is a left-right swap within a row, against a
+ * whole-plan zigzag, and it is what Decision 10's wording actually asks for --
+ * the primary key is north to south, and a part whose middle lies further north
+ * IS further north.
  */
 export function orderSheets(parts) {
-  const described = parts.map((ring, index) => ({
-    index,
-    c: centroid(ring),
-    range: southingRange(ring),
-  }))
-
-  const northFirst = [...described].sort((a, b) => a.c.x - b.c.x)
-
-  const bands = []
-  for (const part of northFirst) {
-    const band = bands[bands.length - 1]
-    // Strict: two ranges that merely touch at a shared boundary (e.g. [0,50]
-    // and [50,100]) are adjacent, not overlapping, and must stay in separate
-    // bands. A non-strict <=/>= here collapses touching bands into one.
-    const overlaps = band && part.range.min < band.max && part.range.max > band.min
-    if (overlaps) {
-      band.parts.push(part)
-      band.min = Math.min(band.min, part.range.min)
-      band.max = Math.max(band.max, part.range.max)
-    } else {
-      bands.push({ parts: [part], min: part.range.min, max: part.range.max })
-    }
-  }
-
-  const sheetOf = new Array(parts.length)
-  let sheet = 1
-  for (const band of bands) {
-    for (const part of [...band.parts].sort((a, b) => a.c.y - b.c.y)) {
-      sheetOf[part.index] = sheet++
-    }
-  }
-  return sheetOf
+  return parts
+    .map((ring, index) => ({ index, c: centroid(ring) }))
+    .sort((a, b) => a.c.x - b.c.x || a.c.y - b.c.y)
+    .reduce((sheetOf, p, i) => {
+      sheetOf[p.index] = i + 1
+      return sheetOf
+    }, new Array(parts.length))
 }

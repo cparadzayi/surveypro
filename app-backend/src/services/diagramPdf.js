@@ -756,8 +756,14 @@ export async function generateDiagramPDF(options, logger) {
   const figureH = Math.max(Math.min(140, Math.max(0, availableH)), availableH)
   layout.figure = { ...layout.figure, y: blocksBottom + REGION_MARGIN, height: figureH }
   layout.scaleBar = { ...layout.scaleBar, y: layout.figure.y + figureH + FIG_SCALE_GAP }
-  // North arrow tracks the figure's new top.
-  layout.northArrow = { ...layout.northArrow, y: layout.figure.y + 8 }
+  // The figure box was just re-fitted vertically to the block stack, so the
+  // arrow's mid-height centring has to be recomputed against the new height —
+  // it cannot stay where computeDiagramLayout put it. Its x stays in the
+  // gutter the layout reserved.
+  layout.northArrow = {
+    ...layout.northArrow,
+    y: layout.figure.y + (layout.figure.height - layout.northArrow.height) / 2,
+  }
 
   const { denom, label, escalatedFrom } = pickDiagramScale(extent, layout.figure, requestedScale)
   const tf = makeTransform(extent, layout.figure, denom)

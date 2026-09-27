@@ -179,18 +179,53 @@ describe('ground to paper', () => {
 
 describe('scale limits are reported, not silently drawn badly', () => {
   test('the SI 727 working scales are clean', () => {
-    for (const d of [500, 1000, 1250, 2000, 2500]) {
+    // Capped at 1:1500, not 1:2500: the labels are 9pt to match the statement's
+    // "4 049 square metres", and at 1:2000 the majors on the left half are only
+    // 5mm apart with 3.9mm-wide labels. See the crowding test below.
+    for (const d of [500, 1000, 1250, 1500]) {
       expect(scaleBarLayout(d).warnings).toEqual([]);
     }
   });
 
-  test('the clean range reaches ~1:3000, one step further than at 0.25mm rules', () => {
-    // The floor is ~3x the minor rule's own width, so thinning 0.25 -> 0.2mm
-    // drops the pitch floor 0.75 -> 0.6mm and buys back a scale step. It is the
-    // only thing thinning buys here; the remedy past the limit is still a shorter
-    // bar span, never a thinner rule.
-    expect(scaleBarLayout(3000).warnings).toEqual([]);
+  test('9pt labels are the binding limit, and they cap the clean range at ~1:1500', () => {
+    // Matching the statement text costs two scale steps. The minor rules still
+    // separate out to ~1:3000 (0.667mm apart, above the 0.6mm floor), so the
+    // graduations are NOT what fails here — the LABELS are: 0-10m is 6.7mm at
+    // 1:1500 and 5.0mm at 1:2000, against 3.9mm of label plus 1.5mm of clear.
+    // The bar stops being readable at a coarser scale than it used to, and the
+    // remedy is a bigger sheet (A3 lands on 1:1500, clean), never smaller type.
+    const clean = scaleBarLayout(1500);
+    expect(clean.warnings).toEqual([]);
+    // The minor comb is still healthy at 1:3000 — it is the labels that stop.
     expect(scaleBarLayout(3000).minorPitchMm).toBeCloseTo(0.667, 3);
+    const crowded = scaleBarLayout(2000);
+    expect(crowded.warnings.join(' ')).toMatch(/labels are 5\.0mm apart/);
+    expect(crowded.warnings.join(' ')).toMatch(/9pt/);
+  });
+
+  test('the label-crowding warning names the tightest pair, not the bar width', () => {
+    // The majors are unevenly spaced (0-10m and 10-20m are one 2m step; 0-20m
+    // and 20-40m are two), so the binding pair has to be read off the label
+    // positions. Measuring one minor step instead gets the answer 5x too small
+    // and warns at every scale, including 1:500 where the bar is 120mm wide.
+    const wide = scaleBarLayout(500);
+    expect(wide.warnings).toEqual([]);
+    const sorted = [...wide.labels].map((t) => t.xMm).sort((a, b) => a - b);
+    const tightest = Math.min(...sorted.slice(1).map((x, i) => x - sorted[i]));
+    expect(tightest).toBeCloseTo(20, 6);   // 10m at 1:500 = 20mm, not 4mm
+  });
+
+  test('graduation labels are sized to the statement area text, not to the old 2mm', () => {
+    // 3.175mm is 9pt. This is the whole point of the change: the bar's type must
+    // match "4 049 square metres" on the same sheet.
+    expect(SI727_SCALE_BAR.labelHeightMm).toBeCloseTo(3.175, 4);
+    expect(SI727_SCALE_BAR.labelHeightMm * 72 / 25.4).toBeCloseTo(9, 2);
+    for (const t of scaleBarLayout(1000).labels) expect(t.heightMm).toBe(3.175);
+  });
+
+  test('the unit label follows the graduation labels', () => {
+    // It is derived from labelHeightMm, so it cannot drift away from them.
+    expect(scaleBarLayout(1000).unitLabel.heightMm).toBe(SI727_SCALE_BAR.labelHeightMm);
   });
 
   test('past that the 2 m graduations stop separating', () => {

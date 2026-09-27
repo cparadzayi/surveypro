@@ -1,6 +1,6 @@
 import { describe, test, expect } from '@jest/globals'
 import {
-  DIAGRAM_MARGINS_MM, CONTENT_PAD, pageDimsPt, marginsPt, computeDiagramLayout,
+  DIAGRAM_MARGINS_MM, CONTENT_PAD, ARROW_GUTTER, pageDimsPt, marginsPt, computeDiagramLayout,
 } from '../diagramLayout.js'
 
 const MM = 72 / 25.4
@@ -39,7 +39,27 @@ describe('computeDiagramLayout', () => {
     expect(CONTENT_PAD).toBeGreaterThan(0)
     expect(L.table.x).toBeCloseTo(L.border.x + CONTENT_PAD, 3)
     expect(L.table.y).toBeCloseTo(L.border.y + CONTENT_PAD, 3)
-    expect(L.figure.width).toBeCloseTo(L.border.width - 2 * CONTENT_PAD, 3)
+    // The figure is the one band NOT flush to the content edges: it gives up
+    // ARROW_GUTTER at its left so the north arrow has a column of its own.
+    expect(L.figure.x).toBeCloseTo(L.border.x + CONTENT_PAD + ARROW_GUTTER, 3)
+    expect(L.figure.width).toBeCloseTo(L.border.width - 2 * CONTENT_PAD - ARROW_GUTTER, 3)
+    // Every other band still runs the full content width.
+    expect(L.statement.width).toBeCloseTo(L.border.width - 2 * CONTENT_PAD, 3)
+  })
+
+  test('the north arrow sits in its gutter, left of the figure, mid-height of it', () => {
+    // Placed at figure.x + 15 before, i.e. drawn ON the figure. There is no
+    // left margin inside the neat line to retreat to, only CONTENT_PAD, so the
+    // gutter is carved out of the figure instead.
+    expect(L.northArrow.x).toBeLessThan(L.figure.x)
+    expect(L.northArrow.x + L.northArrow.width).toBeLessThanOrEqual(L.figure.x)
+    // Centred on the figure's height, so the arrow reads as a reference for the
+    // drawing rather than as a heading above it.
+    const arrowMid = L.northArrow.y + L.northArrow.height / 2
+    const figureMid = L.figure.y + L.figure.height / 2
+    expect(arrowMid).toBeCloseTo(figureMid, 6)
+    // ...and the gutter is the arrow's width plus a gap, not an arbitrary inset.
+    expect(ARROW_GUTTER).toBeGreaterThan(L.northArrow.width)
   })
 
   test('figure flexes = padded content height minus fixed bands', () => {

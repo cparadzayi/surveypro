@@ -20,6 +20,13 @@ const BAND = { table: 150, header: 66, scaleBar: 34, statement: 92, refGrid: 100
 // never touch the border/margins.
 export const CONTENT_PAD = 6
 
+// North arrow (pt) and the gutter it occupies at the figure's left. The gutter
+// is the arrow's width plus a clear gap; exported so a test can assert the arrow
+// never re-enters the figure rather than hard-coding 52.
+export const ARROW_WIDTH = 40
+export const ARROW_HEIGHT = 50
+export const ARROW_GUTTER = ARROW_WIDTH + 12
+
 export function pageDimsPt(sheetSize) {
   return PAGE_DIMS_PT[sheetSize] || PAGE_DIMS_PT.A4
 }
@@ -64,9 +71,24 @@ export function computeDiagramLayout({ pageWidthPt, pageHeightPt, margins }) {
   const approved = { x: sgNoBox.x, y, width: contentRight - sgNoBox.x, height: 45 }
   y += BAND.header
 
-  const figure = { x: cx, y, width: cw, height: figureH }
-  // North arrow sits near the top of the figure, in the left margin.
-  const northArrow = { x: figure.x + 15, y: figure.y + 8, width: 40, height: 50 }
+  // The figure is inset by a gutter at its left to make room for the north
+  // arrow. The figure used to span the full content width and the arrow was
+  // placed at figure.x + 15, i.e. ON TOP of the drawing — the comment claimed it
+  // was "in the left margin" but there is no left margin inside the neat line
+  // to sit in, only CONTENT_PAD (6pt) of inset. So the arrow had to be carved
+  // out of the figure itself. A dedicated gutter costs the figure 52pt of width
+  // and buys the arrow a column of its own; at 1:2500 the drawing still fits
+  // (330pt wide in a 389pt box), so no step of the scale ladder is lost.
+  const figure = { x: cx + ARROW_GUTTER, y, width: cw - ARROW_GUTTER, height: figureH }
+  // Centred on the figure's height, not top-aligned to it. The arrow is a
+  // reference FOR the drawing, so sitting beside the middle of it reads as
+  // belonging to the figure; at the top it read as a heading for the page.
+  const northArrow = {
+    x: cx,
+    y: figure.y + (figureH - ARROW_HEIGHT) / 2,
+    width: ARROW_WIDTH,
+    height: ARROW_HEIGHT,
+  }
   y += figureH
 
   const scaleBar = { x: cx + (cw - 160) / 2, y, width: 160, height: BAND.scaleBar }

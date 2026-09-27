@@ -71,7 +71,17 @@ export const SI727_SCALE_BAR = {
   // start on the bottom rule and still cross the middle one — 3mm clears a 2.5mm
   // gap — so the two horizontals read as continuous across the whole bar.
   minorHeightFactor: 0.6,
-  labelHeightMm: 2,
+  // The graduation labels and the unit label are set to the SAME size as the
+  // statement block's area figure ("4 049 square metres"), which the renderers
+  // draw at Helvetica 9pt. 9pt expressed in the millimetres this module works
+  // in: 9 / (72/25.4) = 3.175mm. Matching it is what makes the bar read as part
+  // of the sheet's typography rather than as a stamped-on graphic.
+  //
+  // This is a big step up from the 2mm (5.67pt) the bar used to carry, and it is
+  // not free: at 1:2500 the whole bar is only 24mm wide, so the labels are now
+  // the dominant feature and they crowd each other. `minLabelPitchMm` is the
+  // guard, and scaleBarLayout reports rather than silently overlapping.
+  labelHeightMm: 3.175,             // == 9pt
   labelGapMm: 0.8,                  // label baseline above the tallest bar
   captionHeightMm: 2.5,
   captionGapMm: 1.2,                // below the bottom rule
@@ -80,6 +90,9 @@ export const SI727_SCALE_BAR = {
   // ---- scale limits -------------------------------------------------------
   // ~3x the minor rule's own width, so ten rules still read as ten rules.
   minMinorPitchMm: 0.6,
+  // Clear paper two adjacent graduation labels must keep between them. Half a
+  // label width reads as a gap rather than as a run-together number.
+  minLabelClearMm: 1.5,
   // Below this width:height the bar stops reading as a bar and becomes a block.
   minBarAspect: 3,
 };
@@ -202,6 +215,26 @@ export function scaleBarLayout(scale) {
     warnings.push(
       `1:${denominator}: the bar is ${widthMm.toFixed(1)}mm x ${G.barHeightMm}mm, ` +
       `too stubby to read as a bar. Use a smaller denominator.`
+    );
+  }
+  // Label crowding, measured on the ACTUAL label positions rather than on a
+  // multiplier worked out by hand. The majors are not evenly spaced — 0 to 10 m
+  // and 10 to 20 m are one minor step each, 0 to 20 m and 20 to 40 m are two —
+  // so the pair that decides legibility is the tightest pair that exists, and the
+  // only reliable way to find it is to read the labels' own x values. Deriving it
+  // from `minorStepMetres` instead gets it wrong by a factor of five.
+  const sortedLabels = [...labels].sort((a, b) => a.xMm - b.xMm);
+  const minLabelGapMm = sortedLabels.length < 2
+    ? Infinity
+    : Math.min(...sortedLabels.slice(1).map((t, i) => t.xMm - sortedLabels[i].xMm));
+  const widestLabelMm = Math.max(
+    ...labels.map((t) => estimateTextWidthMm(t.text, G.labelHeightMm))
+  );
+  if (minLabelGapMm < widestLabelMm + G.minLabelClearMm) {
+    warnings.push(
+      `1:${denominator}: the tightest graduation labels are ${minLabelGapMm.toFixed(1)}mm ` +
+      `apart at ${G.labelHeightMm}mm (9pt) but are ${widestLabelMm.toFixed(1)}mm wide, so ` +
+      `they will touch. Use a smaller denominator.`
     );
   }
 

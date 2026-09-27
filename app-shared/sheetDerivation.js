@@ -195,3 +195,34 @@ export function assignStands(parts, stands) {
 
   return { ok: true, bySheet }
 }
+
+/**
+ * The letter for a 0-based vertex position: A..Z, then AA, AB, ...
+ *
+ * A developed township's outside figure runs past 26 vertices. The fallback
+ * elsewhere in this codebase is String.fromCharCode(65 + i), which yields '[' at
+ * 26 -- do not copy it.
+ */
+export function vertexLetter(index) {
+  let n = index
+  let out = ''
+  do {
+    out = String.fromCharCode(65 + (n % 26)) + out
+    n = Math.floor(n / 26) - 1
+  } while (n >= 0)
+  return out
+}
+
+/**
+ * The letter for each vertex of ONE part, by position.
+ *
+ * Returned as an array rather than written onto the points, because a part ring
+ * shares its point objects with the other part and with the caller's figure.
+ * Spec Part 4 requires the same physical point to carry a different letter on
+ * each sheet, which is exactly what annotating a shared object cannot do: the
+ * second part would overwrite the first, and the surveyor's own figure would be
+ * mutated too. Index this array with the vertex's position.
+ */
+export function letterPart(part) {
+  return part.map((_, i) => vertexLetter(i))
+}

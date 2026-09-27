@@ -3,7 +3,7 @@
  * Run: cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js sheetDerivation-shared
  */
 import { describe, test, expect } from '@jest/globals'
-import { centroid, orderSheets, assignStands } from '../../../../app-shared/sheetDerivation.js'
+import { centroid, orderSheets, assignStands, vertexLetter, letterPart } from '../../../../app-shared/sheetDerivation.js'
 
 const P = (y, x) => ({ y, x })
 /** An open box from (y0,x0) to (y1,x1), in ring order. */
@@ -229,5 +229,39 @@ describe('assignStands', () => {
   test('a non-public stand with no usable ring is still refused', () => {
     const r = assignStands(parts, [{ name: 'NoRing' }])
     expect(r).toEqual({ ok: false, error: 'stand-off-plan', stands: ['NoRing'] })
+  })
+})
+
+describe('vertexLetter', () => {
+  test('runs A to Z', () => {
+    expect(vertexLetter(0)).toBe('A')
+    expect(vertexLetter(25)).toBe('Z')
+  })
+
+  test('continues past Z instead of running into punctuation', () => {
+    // String.fromCharCode(65 + 26) is '[', which is what the old fallback did.
+    expect(vertexLetter(26)).toBe('AA')
+    expect(vertexLetter(27)).toBe('AB')
+    expect(vertexLetter(51)).toBe('AZ')
+    expect(vertexLetter(52)).toBe('BA')
+  })
+})
+
+describe('letterPart', () => {
+  test('letters one part from A, by position', () => {
+    expect(letterPart(box(0, 0, 10, 10))).toEqual(['A', 'B', 'C', 'D'])
+  })
+
+  test('letters each part from A independently, and touches no point', () => {
+    // Spec Part 4: the SAME physical point carries a different letter on each
+    // sheet. Both parts here hold the object `shared`.
+    const shared = P(50, 0)
+    const partA = [P(0, 0), shared, P(50, 100), P(0, 100)]
+    const partB = [shared, P(100, 0), P(100, 100), P(50, 100)]
+
+    expect(letterPart(partA)[1]).toBe('B')
+    expect(letterPart(partB)[0]).toBe('A')
+    // The point itself is untouched -- no letter written anywhere on it.
+    expect(Object.keys(shared).sort()).toEqual(['x', 'y'])
   })
 })

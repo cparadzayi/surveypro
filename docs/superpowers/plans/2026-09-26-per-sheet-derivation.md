@@ -466,7 +466,7 @@ export function assignStands(parts, stands) {
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Expected: PASS, 17 tests.
+Expected: PASS, 22 tests.
 
 - [ ] **Step 5: Prove the two refusals are distinguishable**
 
@@ -583,7 +583,7 @@ export function letterPart(part) {
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Expected: PASS, 21 tests.
+Expected: PASS, 26 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -727,7 +727,7 @@ export function standRange(names) {
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Expected: PASS, 32 tests.
+Expected: PASS, 37 tests.
 
 - [ ] **Step 5: Commit**
 

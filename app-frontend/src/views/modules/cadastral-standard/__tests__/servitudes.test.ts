@@ -232,6 +232,34 @@ describe('statementRowsForSheet', () => {
     expect(statementRowsForSheet(tricky, ['16860'])).toEqual(tricky)
   })
 
+  it('filters the rows buildPartyWallStatementRows actually produces', () => {
+    // Every other fixture here writes "1686 and 1687" by hand. The builder joins
+    // with ", " (see its final push), so none of them uses the separator
+    // production emits -- the split regex accepts both, so they all pass while
+    // testing a shape that never occurs. Narrow the regex to `and` alone and
+    // they would ALL still pass while the real thing broke.
+    //
+    // This one takes its rows from the builder, so it cannot drift from the
+    // format.
+    const wall = (id: string, subjectId: string, adjoining: string) => ({
+      id, subjectId, side: 'BC', type: 'party-wall' as const,
+      adjoiningStand: adjoining, fromBeacon: 'B', toBeacon: 'C',
+    })
+    const standFor = (parcelId: string) =>
+      ({ p1686: '1686', p1690: '1690' } as Record<string, string>)[parcelId]
+
+    const rows = buildPartyWallStatementRows(
+      [wall('s1', 'p1686', '1687'), wall('s2', 'p1690', '1691')],
+      standFor,
+    )
+    // Confirm the shape before relying on it.
+    expect(rows.map((r) => r.stands)).toEqual(['1686, 1687', '1690, 1691'])
+
+    expect(statementRowsForSheet(rows, ['1686'])).toEqual([rows[0]])
+    expect(statementRowsForSheet(rows, ['1691'])).toEqual([rows[1]])
+    expect(statementRowsForSheet(rows, ['9999'])).toEqual([])
+  })
+
   it('a sheet with no servitudes gets no rows', () => {
     expect(statementRowsForSheet(rows, ['9999'])).toEqual([])
   })

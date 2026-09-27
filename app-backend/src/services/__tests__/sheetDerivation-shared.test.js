@@ -316,6 +316,13 @@ describe('standRange', () => {
     expect(standRange(['87', '1720', '100'])).toBe('87 to 1720')
   })
 
+  test('one stand named twice is not a range', () => {
+    // Used to read "1686 to 1686". A duplicate should not appear in a schedule at
+    // all, but a sentence on a lodged plan should not be the thing that says so.
+    expect(standRange(['1686', '1686'])).toBe('1686')
+    expect(standRange(['1690', '1686', '1690'])).toBe('1686 to 1690')
+  })
+
   test('a lettered stand ranges on its number', () => {
     expect(standRange(['2833A', '2469'])).toBe('2469 to 2833A')
   })

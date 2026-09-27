@@ -233,8 +233,17 @@ export function figureLabel(sheetNumber, totalSheets) {
   return totalSheets > 1 ? `Outside Figure Sheet ${sheetNumber}` : 'Outside Figure'
 }
 
-/** The other sheets this one is read with, for multiSheetTemplate's
- *  {otherSheets}. Empty when there are none. */
+/**
+ * The other sheets this one is read with, for multiSheetTemplate's
+ * {otherSheets}. Empty string when there are none.
+ *
+ * An empty return is a SIGNAL, not a value to interpolate. A single-sheet plan
+ * uses `figureDescription.template`, not `multiSheetTemplate` -- they are
+ * siblings on the same block. Interpolating '' into the multi-sheet sentence
+ * produces "the figures on , represents", which would be lodged as written.
+ * `figureLabel(1, 1)` returning the plain name is for Decision 11's naming rule;
+ * it is not permission to use the multi-sheet wording for one sheet.
+ */
 export function otherSheetsPhrase(sheetNumber, totalSheets) {
   const others = []
   for (let n = 1; n <= totalSheets; n++) if (n !== sheetNumber) others.push(String(n))
@@ -251,7 +260,8 @@ export function otherSheetsPhrase(sheetNumber, totalSheets) {
  * its number first, so 2833A follows 2469.
  */
 export function standRange(names) {
-  const sorted = [...names].sort((a, b) => {
+  // Deduplicated first: the same stand named twice used to read "1686 to 1686".
+  const sorted = [...new Set(names.map((n) => String(n)))].sort((a, b) => {
     const na = parseInt(a, 10)
     const nb = parseInt(b, 10)
     if (Number.isNaN(na) || Number.isNaN(nb)) return String(a).localeCompare(String(b))

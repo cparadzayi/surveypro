@@ -11,7 +11,7 @@
  * See docs/superpowers/specs/2026-09-26-multi-sheet-outside-figure-split-design.md
  */
 
-import { pointInRing } from './figureSplit.js'
+import { pointInRing, segmentIntersection } from './figureSplit.js'
 
 /**
  * Area-weighted centroid of an open ring.
@@ -86,34 +86,82 @@ export function orderSheets(parts) {
  * in: standsCrossedBy refuses a cut that would slice one, so a stand matching two
  * parts is a symptom, not a case to resolve.
  */
-function partHolds(part, ring) {
-  return ring.some((p) => pointInRing(part, p)) || pointInRing(part, centroid(ring))
+const CROSSING_EPS = 1e-9
+
+/** Whether two segments cross at a point interior to BOTH of them.
+ *
+ *  `segmentIntersection`'s bounds are inclusive by design -- figureSplit needs a
+ *  touch at a ring vertex to register -- so it reports two rings that merely
+ *  ABUT as intersecting. Two stands either side of the cut share that boundary
+ *  without sharing any area, and treating the touch as overlap refused every one
+ *  of them: every real split, in other words. So the endpoints are excluded here.
+ */
+function crossesProperly(a1, a2, b1, b2) {
+  const hit = segmentIntersection(a1, a2, b1, b2)
+  if (!hit) return false
+  for (const end of [a1, a2, b1, b2]) {
+    if (Math.abs(hit.y - end.y) < CROSSING_EPS && Math.abs(hit.x - end.x) < CROSSING_EPS) {
+      return false
+    }
+  }
+  return true
 }
 
 /**
- * Which stands belong to which part.
+ * Whether two rings share AREA, not merely a boundary.
  *
- * Each must land on exactly one. On none means the figure does not cover the
- * survey; on two means a slicing cut got through. Both refuse, naming EVERY
- * offending stand rather than the first, so the surveyor fixes the survey once
- * instead of meeting the next one on the next attempt.
+ * Three ways in, because no one of them is sufficient:
  *
- * A PUBLIC PLACE with no usable ring is skipped rather than refused. Roads are
- * not digitised yet -- the same fact behind Decision 7's exemption -- and
- * refusing every split in a township until they are would make the tool
- * unusable. A non-public stand with no ring is still a refusal: that is missing
- * survey data, not an absent road.
+ *   A vertex of either lying strictly inside the other. `pointInRing` is already
+ *   strict -- a point on an edge is not inside -- which is what keeps two
+ *   abutting stands apart.
+ *
+ *   The centroid of either lying inside the other. This is what catches
+ *   CONTAINMENT: a stand covering the whole of a part, but extending past it,
+ *   has no vertex strictly inside the part and shares three boundary lines with
+ *   it, so nothing else notices. That case used to be refused as missing from the
+ *   plan -- a valid survey rejected.
+ *
+ *   A proper crossing of edges. Two rings can overlap with no vertex of either
+ *   inside the other and neither centroid inside the other.
  */
+function ringsOverlap(a, b) {
+  if (a.some((p) => pointInRing(b, p))) return true
+  if (b.some((p) => pointInRing(a, p))) return true
+  if (pointInRing(b, centroid(a))) return true
+  if (pointInRing(a, centroid(b))) return true
+  for (let i = 0; i < a.length; i++) {
+    const a1 = a[i]
+    const a2 = a[(i + 1) % a.length]
+    for (let k = 0; k < b.length; k++) {
+      if (crossesProperly(a1, a2, b[k], b[(k + 1) % b.length])) return true
+    }
+  }
+  return false
+}
+
 export function assignStands(parts, stands) {
   const bySheet = parts.map(() => [])
   const unplaceable = []
   const holderCount = new Map()
 
+  let anyStraddles = false
+
   for (const stand of stands ?? []) {
     if (!stand) continue
-    const usable = Array.isArray(stand.ring) && stand.ring.length >= 3
-    if (!usable) {
-      if (stand.isPublicPlace === true) continue
+
+    // A PUBLIC PLACE is exempt entirely -- not assigned, not refused, whether it
+    // carries a ring or not. A road legitimately spans the cut: that is what the
+    // cut runs down. `standsCrossedBy` exempts it unconditionally for the same
+    // reason, and an earlier version of this function exempted it only when the
+    // ring was ABSENT, so the moment roads were digitised the two rules
+    // contradicted each other -- the split was accepted and then the road it ran
+    // along was reported as straddling. Public places also carry no schedule row
+    // (the Seventh Schedule sentence describes them collectively), so they have
+    // no place in `bySheet` either.
+    if (stand.isPublicPlace === true) continue
+
+    if (!Array.isArray(stand.ring) || stand.ring.length < 3) {
       unplaceable.push(stand.name)
       holderCount.set(stand.name, 0)
       continue
@@ -121,22 +169,26 @@ export function assignStands(parts, stands) {
 
     const holders = []
     for (let i = 0; i < parts.length; i++) {
-      if (partHolds(parts[i], stand.ring)) holders.push(i)
+      if (ringsOverlap(parts[i], stand.ring)) holders.push(i)
     }
     holderCount.set(stand.name, holders.length)
 
     if (holders.length === 1) bySheet[holders[0]].push(stand.name)
-    else unplaceable.push(stand.name)
+    else {
+      unplaceable.push(stand.name)
+      if (holders.length > 1) anyStraddles = true
+    }
   }
 
   if (unplaceable.length > 0) {
-    // Which error it is depends on how the FIRST offender failed: no part held
-    // it, or more than one did. Counted while assigning, so this does not redo
-    // the containment work.
-    const straddles = (holderCount.get(unplaceable[0]) ?? 0) > 1
+    // When the offenders are of mixed kinds, report the more serious one. A
+    // straddling stand is lodged twice and has its area counted twice; an
+    // off-plan stand is merely absent. Reporting by the FIRST offender, as an
+    // earlier version did, told a surveyor to go looking for missing geometry
+    // when the real fault was a cut needing to be moved.
     return {
       ok: false,
-      error: straddles ? 'stand-straddles-sheets' : 'stand-off-plan',
+      error: anyStraddles ? 'stand-straddles-sheets' : 'stand-off-plan',
       stands: unplaceable,
     }
   }

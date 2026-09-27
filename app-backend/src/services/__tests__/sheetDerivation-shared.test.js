@@ -159,6 +159,63 @@ describe('assignStands', () => {
     expect(r.stands).toEqual(['9998', '9999'])
   })
 
+  test('a digitised road spanning the cut is exempt, not a straddle', () => {
+    // The case the whole sub-project exists for: the cut runs DOWN a road, so the
+    // road spans both sheets by design. figureSplit's standsCrossedBy exempts a
+    // public place unconditionally; this function used to exempt one only when its
+    // ring was ABSENT, so the moment roads were digitised the two rules
+    // contradicted each other -- the split was accepted and then the road it ran
+    // along was refused as straddling.
+    const road = { name: 'Road', isPublicPlace: true, ring: box(48, 10, 52, 90) }
+
+    expect(assignStands(parts, [road])).toEqual({ ok: true, bySheet: [[], []] })
+  })
+
+  test('a public place carries no schedule row, so it is not in bySheet', () => {
+    // The Seventh Schedule sentence describes public places collectively, not one
+    // row each, so a road must not appear among a sheet's stands.
+    const road = { name: 'Road', isPublicPlace: true, ring: box(10, 10, 20, 20) }
+    const r = assignStands(parts, [stand('1686', 30, 10, 40, 20), road])
+
+    expect(r.ok).toBe(true)
+    expect(r.bySheet.flat()).toEqual(['1686'])
+  })
+
+  test('a stand covering a whole part, but reaching past it, belongs to that part', () => {
+    // It has no vertex strictly inside the part and shares three boundary lines
+    // with it, so a vertex-and-centroid test found nothing and refused it as
+    // missing from the plan -- a valid survey rejected. The part's own centroid
+    // lying inside the stand is what catches containment.
+    const covering = { name: 'COVER', ring: box(0, -400, 50, 100) }
+
+    expect(assignStands(parts, [covering])).toEqual({ ok: true, bySheet: [['COVER'], []] })
+  })
+
+  test('two stands abutting the cut from opposite sides are not straddles', () => {
+    // The normal cadastral case, since a cut follows the road reserve between
+    // stands: their boundaries lie exactly ON the cut. Counting a shared boundary
+    // as shared area refuses both -- which is every real split.
+    const west = stand('W', 40, 10, 50, 20)
+    const east = stand('E', 50, 10, 60, 20)
+
+    expect(assignStands(parts, [west, east]))
+      .toEqual({ ok: true, bySheet: [['W'], ['E']] })
+  })
+
+  test('a mixed refusal reports the more serious kind, whichever came first', () => {
+    // A straddling stand is lodged twice with its area counted twice; an off-plan
+    // stand is merely absent. Reporting by the first offender told a surveyor to
+    // hunt for missing geometry when the real fault was a cut needing to move.
+    const offPlan = stand('OFF', 500, 500, 510, 510)
+    const straddler = stand('STRAD', 40, 10, 60, 20)
+
+    for (const order of [[offPlan, straddler], [straddler, offPlan]]) {
+      const r = assignStands(parts, order)
+      expect(r.error).toBe('stand-straddles-sheets')
+      expect([...r.stands].sort()).toEqual(['OFF', 'STRAD'])
+    }
+  })
+
   test('an unplaceable public place is skipped, not refused', () => {
     // Roads are not digitised yet -- the same reason Decision 7 exempts them
     // from the straddle rule. Refusing would block every split in a township.

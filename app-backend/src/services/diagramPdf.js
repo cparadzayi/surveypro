@@ -746,14 +746,38 @@ export async function generateDiagramPDF(options, logger) {
   const FIG_SCALE_GAP = 6
   const scaleBarH = layout.scaleBar.height
   const regionH = layout.statement.y - blocksBottom
-  const figureH = Math.max(140, regionH - 2 * REGION_MARGIN - FIG_SCALE_GAP - scaleBarH)
+  // The figure gets whatever the region leaves, floored at 140pt so a cramped
+  // sheet still shows something. The floor is CLAMPED to the region, not allowed
+  // to exceed it: `Math.max(140, available)` alone could hand back a figure
+  // taller than the space between the blocks and the statement, which pushed the
+  // scale bar past the statement and down the page. Prefer the cramped-but-legal
+  // figure over a comfortable one that displaces the bar.
+  const availableH = regionH - 2 * REGION_MARGIN - FIG_SCALE_GAP - scaleBarH
+  const figureH = Math.max(Math.min(140, Math.max(0, availableH)), availableH)
   layout.figure = { ...layout.figure, y: blocksBottom + REGION_MARGIN, height: figureH }
   layout.scaleBar = { ...layout.scaleBar, y: layout.figure.y + figureH + FIG_SCALE_GAP }
   // North arrow tracks the figure's new top.
   layout.northArrow = { ...layout.northArrow, y: layout.figure.y + 8 }
 
-  const { denom, label } = pickDiagramScale(extent, layout.figure, requestedScale)
+  const { denom, label, escalatedFrom } = pickDiagramScale(extent, layout.figure, requestedScale)
   const tf = makeTransform(extent, layout.figure, denom)
+  logger?.info?.(
+    `[Diagram] scale 1:${denom}` +
+    (escalatedFrom ? ` (escalated from a requested 1:${escalatedFrom} that would not fit)` : '') +
+    ` — figure box ${layout.figure.width.toFixed(0)}x${layout.figure.height.toFixed(0)}pt,` +
+    ` drawing ${tf.drawW.toFixed(0)}x${tf.drawH.toFixed(0)}pt`
+  )
+  // The figure box does not clip, so a drawing taller than its box is drawn over
+  // whatever sits below — which is the scale bar, 6pt under the box's bottom.
+  // Assert the real geometry rather than trusting the scale picker, and say
+  // exactly how far it overruns so this is diagnosable from a log.
+  const barTop = layout.scaleBar.y
+  if (tf.bottomPt > barTop) {
+    logger?.warn?.(
+      `[Diagram] ⚠️ figure overruns the scale bar by ${(tf.bottomPt - barTop).toFixed(0)}pt ` +
+      `at 1:${denom} (box ${layout.figure.height.toFixed(0)}pt, drawing ${tf.drawH.toFixed(0)}pt)`
+    )
+  }
 
   const doc = new PDFDocument({ size: [dims.width, dims.height], margin: 0 })
   const bufferPromise = docToBuffer(doc)

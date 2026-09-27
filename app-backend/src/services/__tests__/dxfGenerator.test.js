@@ -318,16 +318,29 @@ describe('generateDXF — scale bar', () => {
         const y2 = parseFloat((body.match(/\b21\s*\n\s*(-?[\d.]+)/) || [])[1])
         if (Math.abs(x1 - x2) < 1e-6 && Math.abs(y1 - y2) > 1) verticalXs.push(x1)
       } else {
-        // Tick labels are the signed integers; "Metres" and "Scale 1 : n" are not.
+        // Tick labels are bare integers; "Metres" and "Scale 1 : n" are not.
         const t = ((body.match(/\b1\s*\n\s*(.+)/) || [])[1] || '').trim()
-        if (/^-?\d+$/.test(t)) {
+        if (/^\d+$/.test(t)) {
           const lx = parseFloat((body.match(/\b10\s*\n\s*(-?[\d.]+)/) || [])[1])
-          labels.push({ at: parseInt(t, 10), x: lx })
+          labels.push({ text: t, x: lx })
         }
       }
     }
     verticalXs.sort((a, b) => a - b)
     const barWidth = verticalXs[verticalXs.length - 1] - verticalXs[0]
+
+    // The labels are MAGNITUDES — the bar prints "20" twice, once each side of 0
+    // — so a label is no longer a key you can look a graduation up by. Resolve
+    // every label back to its graduation from its POSITION instead, using "0" as
+    // the one label that is still unique, and the drawn rules for the scale.
+    // Deriving `at` from the text is what this had to stop doing.
+    const zeroLabel = labels.find((l) => l.text === '0')
+    expect(zeroLabel).toBeDefined()
+    const mmPerMetre = (zeroLabel.x - verticalXs[0]) / 20   // 0 rule is 20 m from the left end
+    for (const l of labels) {
+      l.at = Math.round((l.x - zeroLabel.x) / mmPerMetre)
+    }
+    const labelAt = (metres) => labels.find((l) => l.at === metres)
 
     // SI 727, not a snapped round number: -20 to +40.
     expect(barWidth).toBeCloseTo(60, 0)
@@ -340,10 +353,15 @@ describe('generateDXF — scale bar', () => {
     // the rules are where a ruler reads them — the 0 rule is the origin, +40 is
     // twice as far from 0 as -20 is, and the 2 m steps are uniform.
     const xOf = (metres) => verticalXs.find(
-      (x) => Math.abs(x - labels.find((l) => l.at === metres).x) < 1e-6);
+      (x) => Math.abs(x - labelAt(metres).x) < 1e-6);
     const zero = xOf(0);
     expect(zero - xOf(-20)).toBeCloseTo(20, 0);
     expect(xOf(40) - zero).toBeCloseTo(40, 0);
+
+    // The signed graduation, not the printed text, is what the two "20"s are.
+    expect(labels.filter((l) => l.text === '20').map((l) => l.at).sort((a, b) => a - b))
+      .toEqual([-20, 20]);
+    expect(labels.every((l) => !l.text.startsWith('-'))).toBe(true);
 
     // The ten left-hand graduations are evenly spaced at 2 m (ascending, so the
     // step is leftRules[i] - leftRules[i-1]).

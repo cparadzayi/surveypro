@@ -43,14 +43,35 @@ function metresToPt(metres, denom) {
 }
 
 export function pickDiagramScale(extent, figureAreaPt, requestedScale) {
-  const m = typeof requestedScale === 'string' && requestedScale.match(/1\s*:\s*(\d+)/)
-  if (m) {
-    const denom = Number(m[1])
-    return { denom, label: `1:${denom}` }
-  }
   const fits = (denom) =>
     metresToPt(extent.widthM, denom) <= figureAreaPt.width &&
     metresToPt(extent.heightM, denom) <= figureAreaPt.height
+
+  // A requested scale is a FLOOR, not a licence to overflow.
+  //
+  // This branch used to return the request verbatim, without ever consulting
+  // `fits`. A 1:1000 request over a 291 x 282 m extent draws 291 x 282 mm of
+  // paper — wider than A4 is — and `makeTransform` CENTRES the result, so the
+  // overflow came off equally on both sides: the top ran off the sheet and the
+  // bottom landed squarely on the scale bar, which sits just under the figure
+  // box. The figure box cannot clip, because nothing draws a clip path here, so
+  // the figure and the bar ended up printed on top of each other.
+  //
+  // The fix is the same rule the plan path already uses for a declared sheet
+  // size: honour the request when it fits, otherwise step up the ladder to the
+  // smallest scale that does. A diagram at 1:1250 is a correct diagram; one with
+  // the scale bar through the middle of it is not.
+  const m = typeof requestedScale === 'string' && requestedScale.match(/1\s*:\s*(\d+)/)
+  if (m) {
+    const requested = Number(m[1])
+    if (fits(requested)) return { denom: requested, label: `1:${requested}` }
+    // Step UP (larger denominator = smaller drawing) until it fits. If even the
+    // coarsest rung overflows, that is a genuinely unplottable extent; return the
+    // coarsest rather than something that runs off the page.
+    const coarser = SCALE_LADDER.filter((d) => d >= requested)
+    const denom = coarser.find(fits) ?? SCALE_LADDER[SCALE_LADDER.length - 1]
+    return { denom, label: `1:${denom}`, escalatedFrom: requested }
+  }
   const denom = SCALE_LADDER.find(fits) ?? SCALE_LADDER[SCALE_LADDER.length - 1]
   return { denom, label: `1:${denom}` }
 }
@@ -66,7 +87,12 @@ export function makeTransform(extent, figureAreaPt, denom) {
   const drawH = metresToPt(extent.heightM || 1, denom)
   const ox = figureAreaPt.x + (figureAreaPt.width - drawW) / 2
   const oy = figureAreaPt.y + (figureAreaPt.height - drawH) / 2
-  return (coord) => {
+  // Stays a plain callable — every caller uses it as `tf(coord)` — with the
+  // true extent of the drawing hung off it. Exposed because the overlap that
+  // motivated pickDiagramScale's escalation is otherwise silent: nothing here
+  // clips, so a drawing larger than the figure box simply overruns it, and the
+  // caller has no way to notice except by trusting the scale picker.
+  const tf = (coord) => {
     const [y, x] = normalizeCapeLoYX(coord[0], coord[1])
     return {
       // East to the right: most-west maps to the left edge, most-east to the right.
@@ -75,4 +101,11 @@ export function makeTransform(extent, figureAreaPt, denom) {
       py: oy + ((x - extent.minX) / (extent.heightM || 1)) * drawH,
     }
   }
+  tf.drawW = drawW
+  tf.drawH = drawH
+  tf.bottomPt = oy + drawH   // must stay above the scale bar
+  tf.topPt = oy
+  tf.overflows =
+    drawW > figureAreaPt.width + 0.5 || drawH > figureAreaPt.height + 0.5
+  return tf
 }

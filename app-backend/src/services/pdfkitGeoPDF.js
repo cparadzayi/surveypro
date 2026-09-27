@@ -28,7 +28,7 @@ import { TrueGeoPDFGenerator, GeospatialFeature } from "./trueGeoPDF.js";
 import { LayerManager } from "./layerManager.js";
 import { AdaptiveRenderer } from "./adaptiveRenderer.js";
 import { boxesIntersect, isRectWithinBounds } from "../utils/collisionPrimitives.js";
-import { placeBlocks } from "./blockPlacementEngine.js";
+import { placeBlocks, EDGE_PADDING } from "./blockPlacementEngine.js";
 import { findPoleOfInaccessibility } from '../utils/labelPlacer.js';
 import { planSheetLayout } from './sheetLayoutPlanner.js';
 import { findBlockPosition } from './dxfBlockPlacer.js';
@@ -4900,6 +4900,63 @@ export function scaleBarMetrics(scale, refWidth) {
   };
 }
 
+/**
+ * The map-furniture group — scale bar + north arrow, side by side — as one rect.
+ *
+ * This exists as a single function because the sheet has to reserve the SAME
+ * number in two places that cannot see each other: the planner, which seats the
+ * pair `title.bottom + MAP_FURNITURE_TITLE_GAP`, and the renderer, which insets
+ * the figure below the title band. When those two disagreed the bar landed INSIDE
+ * the figure box — the band was reserved as `titleHeight + 12` while the bar was
+ * seated at `titleHeight + 8` with the furniture's own height below it, so the
+ * bar's top edge overtook the figure's top edge by 10pt and there was no
+ * collision-free slot for it at all.
+ *
+ * The height is deliberately scale-independent: the bar's vertical print
+ * geometry is fixed millimetres (SI 727 pins it), so only the WIDTH moves with
+ * the denominator. That is what lets the renderer reserve the space before the
+ * scale is even known.
+ */
+export const MAP_FURNITURE_TITLE_GAP = 8;   // bar top to title bottom
+// Clear paper between the bottom of the furniture group and the top of the
+// figure. Without it the two abut exactly and the bar reads as part of the
+// drawing — the user asked for a gap, and the extra 10pt is cheap next to the
+// ~100pt the figure has already given up to the band.
+export const MAP_FURNITURE_FIGURE_GAP = 10;
+const _FURNITURE_INTERNAL_GAP = 12;          // bar to arrow, within the group
+
+export function mapFurnitureMetrics(scale) {
+  const arrow = BLOCKS.NORTH_ARROW;
+  const bar = scaleBarMetrics(scale);
+  // The group is as tall as its taller member. The scale bar's height is fixed
+  // print millimetres (SI 727 pins the whole vertical stack), so the group height
+  // does not move with the plan scale — only the bar's WIDTH does, and that is why
+  // `scale` is a parameter here. Pass the real denominator: the bar is 60 m of
+  // ground, so the wrong scale here is a 60 000 mm bar.
+  return {
+    scaleBarHeight: bar.scaleBarHeight,
+    northArrowHeight: arrow.blockHeight,
+    height: Math.max(bar.scaleBarHeight, arrow.blockHeight),
+    width: bar.scaleBarWidth + _FURNITURE_INTERNAL_GAP + arrow.blockWidth,
+    titleGap: MAP_FURNITURE_TITLE_GAP,
+  };
+}
+
+/**
+ * Clear space the sheet must leave below the drawing-area top for the figure.
+ *
+ * Measured from the drawing-area's own top edge, so it has to include the inset
+ * the engine seats blocks at, not just the block stack: the title does not start
+ * at the very top of the area, it starts EDGE_PADDING in. Every term here is
+ * fixed and scale-independent, so the renderer can reserve this BEFORE the plan
+ * scale is known — which it has to, since the scale is itself fitted into the
+ * space this frees.
+ */
+export function titleBandHeight(titleHeight) {
+  return EDGE_PADDING + titleHeight + MAP_FURNITURE_TITLE_GAP
+    + mapFurnitureMetrics(1).height + MAP_FURNITURE_FIGURE_GAP;
+}
+
 
 function drawScaleBar(doc, extent, mapBounds, scale, position, figureBounds) {
   const _ref = figureBounds || mapBounds;
@@ -6319,9 +6376,10 @@ export function calculateBlockPositions(
   // schedule the top of a whole column (85pt ~ 5 rows) whenever it held that
   // corner; grouped here the corner is free for good. Both slots derive from one
   // rect, so the figure can never separate the pair — they move together.
-  const _FURNITURE_GAP = 12;
-  const _furnitureWidth  = scaleBarWidth + _FURNITURE_GAP + northArrowWidth;
-  const _furnitureHeight = Math.max(scaleBarHeight, northArrowHeight);
+  const _FURNITURE_GAP = _FURNITURE_INTERNAL_GAP;
+  const _furnitureMetrics = mapFurnitureMetrics(scale);
+  const _furnitureWidth  = _furnitureMetrics.width;
+  const _furnitureHeight = _furnitureMetrics.height;
 
   /** Scale bar left, arrow right, each centred in the band's height. */
   const _furnitureSlots = (g) => ({
@@ -6345,7 +6403,7 @@ export function calculateBlockPositions(
   const _furniturePreferred = {
     name: "scaleBar",
     x: _titleSlot.x + (titleWidth - _furnitureWidth) / 2,
-    y: _titleSlot.y + titleHeight + 8, // 8pt gap below title block
+    y: _titleSlot.y + titleHeight + MAP_FURNITURE_TITLE_GAP, // shared with titleBandHeight()
     width: _furnitureWidth,
     height: _furnitureHeight,
   };
@@ -10671,15 +10729,23 @@ async function _generateGeoPDFInner(options, logger) {
   // drives both the scale and the on-page position.
   {
     const _titleBandH = calculateTitleBlockHeight(doc, metadata, outsideFigureData, mapBounds, logger, parcels, sheetInfo);
-    const _TITLE_FIGURE_GAP = 12; // pt of clear space between title and figure
-    const _band = Math.min(_titleBandH + _TITLE_FIGURE_GAP, figureBounds.height * 0.5);
+    // The band has to clear the map furniture as well as the title, because the
+    // planner seats the scale bar + north arrow immediately below the title (see
+    // mapFurnitureMetrics). Reserving title-only used to leave the bar's top edge
+    // 10pt ABOVE the figure's top edge — the bar printed inside the figure, and on
+    // a busy plan the engine could not find it a legal slot at all and fell back to
+    // a relaxed scan. Clearing the furniture too costs figure height; that is the
+    // trade the user asked for, and it is the same trade the title band already
+    // makes.
+    const _FURNITURE_CLEARANCE = titleBandHeight(_titleBandH);
+    const _band = Math.min(_FURNITURE_CLEARANCE, figureBounds.height * 0.5);
     figureBounds = {
       x: figureBounds.x,
       y: figureBounds.y + _band,
       width: figureBounds.width,
       height: figureBounds.height - _band,
     };
-    logger.info(`[PDFKit] 📐 Reserved ${_band.toFixed(0)}pt title band — figure fitted below (figureBounds.y=${figureBounds.y.toFixed(0)}, h=${figureBounds.height.toFixed(0)})`);
+    logger.info(`[PDFKit] 📐 Reserved ${_band.toFixed(0)}pt title band (title ${_titleBandH.toFixed(0)}pt + furniture ${mapFurnitureMetrics(1).height.toFixed(0)}pt) — figure fitted below (figureBounds.y=${figureBounds.y.toFixed(0)}, h=${figureBounds.height.toFixed(0)})`);
   }
 
   // The dynamic X-offset block that used to sit here is gone. It nudged the

@@ -52,9 +52,17 @@ describe('PDF text+position snapshot', () => {
   // 600000, matching labelFit: this case takes ~260s, and passed under the old
   // 60s only because the render never yields — the first genuine `await` on that
   // path would have turned it into a spurious red.
+  //
+  // This render is measured at 260–570 s and is wildly variable run to run (a
+  // single observation above 900 s turned out to be noise, not a regression, so
+  // do not "optimise" the placement engine based on one slow run). 600 s left
+  // only a ~30 s margin over a typical 570 s, which is not a margin — it is a coin
+  // flip. 1800 s is headroom. The other two fixtures render in ~3 s each, so a
+  // real plan is nowhere near this slow; this fixture is an outlier that happens
+  // to be the one we snapshot.
   test('Maglas fixture', async () => {
     const { pdfBuffer } = await generateGeoPDF(sampleMaglasPlan, fakeLogger);
     const items = await extractTextPositions(pdfBuffer);
     expect(items).toMatchSnapshot();
-  }, 600000);
+  }, 1800000);
 });

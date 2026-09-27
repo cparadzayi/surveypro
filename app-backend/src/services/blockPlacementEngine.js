@@ -38,7 +38,12 @@ const SEG_BUFFER = 8;
  * Prevents blocks from sitting flush against the drawn margin line.
  * 14pt ≈ 5mm — enough visual breathing room without wasting space.
  */
-const EDGE_PADDING = 14;
+// Inset every block keeps from the drawing-area edge. Exported because the
+// renderer's title-band reservation has to start measuring from the same inset
+// the engine seats blocks at — see titleBandHeight() in pdfkitGeoPDF.js. When the
+// two disagreed, blocks were seated 14pt lower than the band assumed and the
+// scale bar overran the figure.
+export const EDGE_PADDING = 14;
 
 
 // ---------------------------------------------------------------------------

@@ -42,7 +42,27 @@ describe('SI 727 graduations', () => {
 
   test('the labelled majors are exactly -20, -10, 0, 20, 40', () => {
     expect(majorsOf(l).map((v) => v.metres)).toEqual([-20, -10, 0, 20, 40]);
-    expect(l.labels.map((t) => t.text)).toEqual(['-20', '-10', '0', '20', '40']);
+  });
+
+  test('labels are MAGNITUDES, so left of 0 reads 20, 10 — not -20, -10', () => {
+    // A bar scale is not a signed axis. The minus sign is a claim about the
+    // sheet's coordinate frame that the bar is not making, and it reads as a
+    // negative length to anyone measuring off the paper. What marks the left of
+    // 0 is the subdivision density, not the sign of the text.
+    expect(l.labels.map((t) => t.text)).toEqual(['20', '10', '0', '20', '40']);
+    expect(l.labels.some((t) => t.text.startsWith('-'))).toBe(false);
+  });
+
+  test('two graduations 20 m apart both print "20", and x is what tells them apart', () => {
+    // The duplicate is the point: a label is no longer a unique key, so anything
+    // matching a label back to its graduation has to match on x, not on text.
+    const twenties = l.labels.filter((t) => t.text === '20');
+    expect(twenties).toHaveLength(2);
+    expect(twenties[0].xMm).toBeLessThan(twenties[1].xMm);
+    expect(twenties[0].atMm).toBe(-20);
+    expect(twenties[1].atMm).toBe(20);
+    expect(majorsOf(l).filter((v) => v.label === '20').map((v) => v.metres))
+      .toEqual([-20, 20]);
   });
 
   test('only the majors carry a label', () => {
@@ -77,9 +97,9 @@ describe('the two horizontal rules and the vertical bar height', () => {
     }
   });
 
-  test('the vertical bars are twice the distance between the horizontals', () => {
+  test('the labelled bars are twice the distance between the horizontals', () => {
     expect(G.barHeightMm).toBe(2 * G.ruleGapMm);
-    for (const v of l.verticals) {
+    for (const v of majorsOf(l)) {
       expect(v.y0Mm).toBe(0);
       expect(v.y1Mm).toBe(G.barHeightMm);
     }
@@ -87,11 +107,29 @@ describe('the two horizontal rules and the vertical bar height', () => {
     // rules are apart.
     expect(G.barHeightMm - G.ruleGapMm).toBe(G.ruleGapMm);
   });
+
+  test('the unlabelled graduations stand at 60% of the labelled ones', () => {
+    expect(G.minorHeightFactor).toBe(0.6);
+    for (const v of minorsOf(l)) {
+      expect(v.y0Mm).toBe(0);
+      expect(v.y1Mm).toBeCloseTo(G.barHeightMm * 0.6, 6);
+    }
+    // They are subdivision, not a second tier of label — so they never reach the
+    // height the labels clear.
+    expect(G.barHeightMm * G.minorHeightFactor).toBeLessThan(G.barHeightMm);
+  });
+
+  test('the short graduations still cross the middle rule', () => {
+    // 60% of 5mm is 3mm against a 2.5mm gap, so both horizontals read as
+    // continuous across the whole bar instead of being chopped by the minors.
+    const shortTop = G.barHeightMm * G.minorHeightFactor;
+    expect(shortTop).toBeGreaterThan(G.ruleGapMm);
+  });
 });
 
 describe('legibility arithmetic — the weights, not the gap, are the decision', () => {
-  test('no rule is thinner than 0.25mm', () => {
-    expect(G.minorWeightMm).toBeGreaterThanOrEqual(0.25);
+  test('no rule is thinner than 0.2mm', () => {
+    expect(G.minorWeightMm).toBeGreaterThanOrEqual(0.2);
     expect(G.majorWeightMm).toBeGreaterThanOrEqual(G.minorWeightMm);
     expect(G.frameWeightMm).toBeGreaterThanOrEqual(G.majorWeightMm);
   });
@@ -102,10 +140,14 @@ describe('legibility arithmetic — the weights, not the gap, are the decision',
 
   test('the weight tiers separate by enough to be told apart unaided', () => {
     expect(G.frameWeightMm / G.minorWeightMm).toBeGreaterThanOrEqual(1.8);
+    expect(G.majorWeightMm / G.minorWeightMm).toBeGreaterThanOrEqual(1.3);
   });
 
   test('the verticals are tall enough to read as bars, not ticks', () => {
     expect(G.barHeightMm / G.minorWeightMm).toBeGreaterThanOrEqual(10);
+    // The short minors carry a weaker case, so they get their own floor.
+    expect(G.barHeightMm * G.minorHeightFactor / G.minorWeightMm)
+      .toBeGreaterThanOrEqual(10);
   });
 });
 
@@ -142,8 +184,17 @@ describe('scale limits are reported, not silently drawn badly', () => {
     }
   });
 
-  test('past ~1:2500 the 2 m graduations stop separating', () => {
-    // 1:5000 puts them 0.4mm apart with 0.25mm rules — a grey band, not a comb.
+  test('the clean range reaches ~1:3000, one step further than at 0.25mm rules', () => {
+    // The floor is ~3x the minor rule's own width, so thinning 0.25 -> 0.2mm
+    // drops the pitch floor 0.75 -> 0.6mm and buys back a scale step. It is the
+    // only thing thinning buys here; the remedy past the limit is still a shorter
+    // bar span, never a thinner rule.
+    expect(scaleBarLayout(3000).warnings).toEqual([]);
+    expect(scaleBarLayout(3000).minorPitchMm).toBeCloseTo(0.667, 3);
+  });
+
+  test('past that the 2 m graduations stop separating', () => {
+    // 1:5000 puts them 0.4mm apart with 0.2mm rules — a grey band, not a comb.
     const l = scaleBarLayout(5000);
     expect(l.minorPitchMm).toBe(0.4);
     expect(l.warnings.join(' ')).toMatch(/graduations are 0\.40mm apart/);

@@ -14,8 +14,10 @@
  *   graduations to the right of 0, at 20 m and 40 m. Vertical bars at
  *   -20, -10, 0, 20 and 40, each standing twice the distance between the
  *   horizontal rules, so they cross the middle rule and stand as proud of it as
- *   the two rules are apart. No alternating fill: graduations are rules, not
- *   blocks. Labels sit above the bar.
+ *   the two rules are apart; the unlabelled 2 m ones stand at 60% of that, as
+ *   subdivision. No alternating fill: graduations are rules, not blocks. Labels
+ *   sit above the bar, and carry MAGNITUDES — they read 20, 10, 0, 20, 40, not
+ *   -20, -10, 0, 20, 40.
  *
  * WHY THESE PRINT SIZES
  *   The bar's print geometry is a physical object on paper and does NOT scale
@@ -24,18 +26,22 @@
  *   changes with the plan scale is how far apart the rules land. Three
  *   constraints set the weights:
  *
- *   1. A rule has to be at least ~0.25mm to reproduce as a LINE rather than a
- *      tint, and to still be one after a photocopy. That is the minor weight.
+ *   1. A rule has to be wide enough to reproduce as a LINE rather than a tint.
+ *      0.2 mm is the practical floor for a graduation tick and holds up on a
+ *      decent plot; it is the first thing a photocopy degrades, so it is the
+ *      tier to revisit if these ever get faxed.
  *   2. Two parallel rules closer than about 4x the heavier weight merge into one
- *      grey band. At a 0.5mm frame that floors the gap at 2mm; 2.5mm leaves
- *      headroom, which is why the gap is not 2mm.
+ *      grey band. At a 0.4mm frame that floors the gap at 1.6mm; 2.5mm leaves
+ *      generous headroom, which is why the gap is comfortably not 2mm.
  *   3. The tiers have to separate by weight alone, so frame : major : minor is
- *      0.5 : 0.4 : 0.25 — a 2:1 spread across the pair, the usual hierarchy.
+ *      0.4 : 0.3 : 0.2 — a 2:1 spread across the pair, the usual hierarchy.
  *
  *   The consequence worth knowing: the ten 2 m graduations, not the gap, are what
- *   limit the plan scale. Their pitch is 2000/denominator mm, so past about
- *   1:2500 the rules stop separating. The remedy is a SHORTER BAR SPAN, never a
- *   thinner rule — `scaleBarLayout` reports it rather than silently thinning.
+ *   limit the plan scale. Their pitch is 2000/denominator mm, and a minor rule
+ *   needs about 3x its own width of clear paper either side to read as separate
+ *   lines — 0.6mm of pitch at this weight. Past about 1:3000 they stop
+ *   separating. The remedy is a SHORTER BAR SPAN, never a thinner rule —
+ *   `scaleBarLayout` reports it rather than silently thinning.
  */
 
 export const SI727_SCALE_BAR = {
@@ -44,15 +50,27 @@ export const SI727_SCALE_BAR = {
   leftSpanMetres: 20,
   rightMarksMetres: [20, 40],       // no subdivisions right of 0
   majorMarksMetres: [-20, -10, 0, 20, 40],
+  // A bar scale's labels are MAGNITUDES, not signed distances: left of 0 the
+  // labels read 20, 10, 0, 20, 40. The minus sign would be a claim about the
+  // sheet's coordinate frame that the bar is not making, and it reads as a
+  // negative length to anyone measuring off the paper. What distinguishes the
+  // left of 0 from the right is the graduation density — ten minor rules to the
+  // left, none to the right — never the sign of the text.
+  unsignedLabels: true,
   unitLabel: 'Metres',
   caption: (denominator) => `Scale 1 : ${denominator}`,
 
   // ---- print geometry, millimetres on the sheet ---------------------------
   ruleGapMm: 2.5,                   // bottom rule to middle rule
   barHeightMm: 5,                   // = 2 x ruleGapMm, the vertical bars' height
-  frameWeightMm: 0.5,               // the two long horizontal rules
-  majorWeightMm: 0.4,               // the labelled graduations
-  minorWeightMm: 0.25,              // the unlabelled 2 m graduations
+  frameWeightMm: 0.4,               // the two long horizontal rules
+  majorWeightMm: 0.3,               // the labelled graduations
+  minorWeightMm: 0.2,               // the unlabelled 2 m graduations
+  // The unlabelled graduations stand at 60% of the labelled ones' height, so the
+  // eye counts the labelled points and reads the rest as subdivision. They still
+  // start on the bottom rule and still cross the middle one — 3mm clears a 2.5mm
+  // gap — so the two horizontals read as continuous across the whole bar.
+  minorHeightFactor: 0.6,
   labelHeightMm: 2,
   labelGapMm: 0.8,                  // label baseline above the tallest bar
   captionHeightMm: 2.5,
@@ -60,9 +78,8 @@ export const SI727_SCALE_BAR = {
   unitGapMm: 1.2,                   // gap before the unit label
 
   // ---- scale limits -------------------------------------------------------
-  // A minor rule needs about 3x its own width of clear paper either side before
-  // the ten rules read as separate lines.
-  minMinorPitchMm: 0.75,
+  // ~3x the minor rule's own width, so ten rules still read as ten rules.
+  minMinorPitchMm: 0.6,
   // Below this width:height the bar stops reading as a bar and becomes a block.
   minBarAspect: 3,
 };
@@ -94,6 +111,10 @@ export function scaleBarLayout(scale) {
   const xOf = (metres) => metres * mmPerMetre;
 
   const majors = new Set(G.majorMarksMetres);
+  // Bar-scale labels are magnitudes, so -20 and +20 both print as "20". Which
+  // side of 0 a graduation sits on is carried by `metres` and by the
+  // subdivision density, never by the text.
+  const labelFor = (m) => (G.unsignedLabels ? String(Math.abs(m)) : String(m));
   const verticals = [];
   for (let m = 0; m >= -G.leftSpanMetres; m -= G.minorStepMetres) {
     const major = majors.has(m);
@@ -103,8 +124,8 @@ export function scaleBarLayout(scale) {
       major,
       weightMm: major ? G.majorWeightMm : G.minorWeightMm,
       y0Mm: 0,
-      y1Mm: G.barHeightMm,
-      label: major ? String(m) : null,
+      y1Mm: major ? G.barHeightMm : G.barHeightMm * G.minorHeightFactor,
+      label: major ? labelFor(m) : null,
     });
   }
   for (const m of G.rightMarksMetres) {
@@ -115,7 +136,7 @@ export function scaleBarLayout(scale) {
       weightMm: G.majorWeightMm,
       y0Mm: 0,
       y1Mm: G.barHeightMm,
-      label: String(m),
+      label: labelFor(m),
     });
   }
   verticals.sort((a, b) => a.metres - b.metres);
@@ -135,10 +156,16 @@ export function scaleBarLayout(scale) {
 
   // Labels above, centred on their rule; the unit beside the right end,
   // centred on the bar; the caption below, centred under the bar.
+  //
+  // `atMm` is the graduation a label belongs to, and it is signed while `text` is
+  // not — with magnitudes, "20" names two different graduations, so anything that
+  // needs to get from a label back to its rule (tests, a renderer's hit-testing,
+  // a future SI 727 variation) must go via this, not the text.
   const labels = verticals
     .filter((v) => v.label !== null)
     .map((v) => ({
       text: v.label,
+      atMm: v.metres,
       xMm: v.xMm,
       yMm: G.barHeightMm + G.labelGapMm,
       heightMm: G.labelHeightMm,

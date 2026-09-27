@@ -305,6 +305,23 @@ describe('letterPart', () => {
   })
 })
 
+describe('letterPart past Z', () => {
+  test('letters a township-sized figure, not just a four-corner one', () => {
+    // vertexLetter is tested at the rollover, but letterPart is what gets called,
+    // and every fixture for it is a four-vertex box -- so the composition past Z
+    // was never exercised. A developed township's outside figure runs well past
+    // 26 vertices.
+    const ring = Array.from({ length: 30 }, (_, i) => P(i, i * 2))
+    const letters = letterPart(ring)
+
+    expect(letters).toHaveLength(30)
+    expect(letters[25]).toBe('Z')
+    expect(letters[26]).toBe('AA')
+    expect(letters[29]).toBe('AD')
+    expect(new Set(letters).size).toBe(30)
+  })
+})
+
 describe('figureLabel', () => {
   test('a single-sheet plan keeps the plain name', () => {
     expect(figureLabel(1, 1)).toBe('Outside Figure')

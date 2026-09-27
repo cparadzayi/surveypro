@@ -27,7 +27,7 @@
 // yet; see the note on SECTION_HEADINGS in coordinate-list.ts.
 
 import { describe, it, expect } from 'vitest';
-import { CoordinateListGenerator } from '../coordinate-list';
+import { CoordinateListGenerator, fpAndFieldBookCells } from '../coordinate-list';
 
 /** The section each point was filed under, by point id. */
 function sectionsOf(points: Array<Record<string, unknown>>): Record<string, string> {
@@ -202,5 +202,24 @@ describe('the headings the sections actually print', () => {
       point('87C', 'FN', '12mm iron peg in concrete'),
       point('86B', 'F', '12mm iron peg in concrete'),
     ])).toEqual(['FOUND BEACONS', 'FOUND, NOT ADOPTED']);
+  });
+});
+
+describe('a point the cut created', () => {
+  it('is filed under calculated points, not placed', () => {
+    const at = sectionsOf([
+      { pointId: 'C1', status: '-', description: '', y: -85700, x: 2144000,
+        fieldBookPage: '', calculationsPage: 101 },
+    ]);
+    expect(at.C1).toBe('calculated');
+  });
+
+  it('carries "-" into both the F/P and F. B cells', () => {
+    // fpAndFieldBookCells decides this from the parsed provenance. A created
+    // point was never visited, so neither cell has anything real to say.
+    expect(fpAndFieldBookCells({
+      pointId: 'C1', status: '-', description: '',
+      fieldBookPage: 'E2', calculationsPage: 101,
+    } as never)).toEqual({ fp: '-', fb: '-' });
   });
 });

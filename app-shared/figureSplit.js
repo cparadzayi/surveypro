@@ -82,6 +82,23 @@ export function pointInRing(ring, p) {
   return inside
 }
 
+/**
+ * On-edge tolerance for `onSegment`, as an absolute epsilon on a CROSS PRODUCT --
+ * not a distance in metres. Its effective perpendicular tolerance is therefore
+ * eps divided by the segment's length, so its adequacy depends on the figure's
+ * SCALE.
+ *
+ * The formula differences against `a` before multiplying, so the terms are of
+ * order length squared and the rounding error is about length^2 * 1e-16. At
+ * township scale that is comfortable -- a 2 km side gives ~4e-10, inside this
+ * epsilon -- but it INVERTS for a figure spanning about 10 km, where the error
+ * reaches ~1e-8 and a point genuinely on an edge could be missed.
+ *
+ * This matters more than it once did: `sheetDerivation.js` now decides which
+ * sheet every stand belongs to through `pointInRing`, which is built on this.
+ * Verified correct at real Lo magnitudes (y ~ -85 000, x ~ 2 144 000) for
+ * township-scale figures; revisit before a figure of that span.
+ */
 const ON_SEGMENT_EPS = 1e-9
 
 function onSegment(a, b, p) {

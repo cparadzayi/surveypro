@@ -4,6 +4,7 @@
  */
 import { describe, test, expect } from '@jest/globals'
 import { centroid, orderSheets, assignStands, vertexLetter, letterPart, figureLabel, otherSheetsPhrase, standRange } from '../../../../app-shared/sheetDerivation.js'
+import { pointInRing } from '../../../../app-shared/figureSplit.js'
 
 const P = (y, x) => ({ y, x })
 /** An open box from (y0,x0) to (y1,x1), in ring order. */
@@ -200,6 +201,34 @@ describe('assignStands', () => {
 
     expect(assignStands(parts, [west, east]))
       .toEqual({ ok: true, bySheet: [['W'], ['E']] })
+  })
+
+  test('finds an overlap no vertex and no centroid can see', () => {
+    // Every other fixture in this file is a box, and two overlapping boxes always
+    // put a vertex of one strictly inside the other -- so the edge-crossing
+    // clause of ringsOverlap is never reached. Deleting that clause outright left
+    // all 42 tests passing, which is the same blind spot a convex ring produced in
+    // the predecessor plan one layer down.
+    //
+    // A U-shaped part is what a cut that goes in and comes back out leaves. Here a
+    // stand lies across BOTH of its arms, in the open region: no vertex of either
+    // ring is strictly inside the other, and neither centroid is inside the other
+    // (the U's own centroid sits in its notch). Only the edges meet.
+    const U = [
+      P(0, 0), P(100, 0), P(100, 100), P(60, 100),
+      P(60, 40), P(40, 40), P(40, 100), P(0, 100),
+    ]
+    const across = { name: 'ACROSS', ring: box(0, 70, 100, 80) }
+    const elsewhere = box(200, 200, 300, 300)
+
+    // Prove the fixture is what it claims before asserting on it.
+    expect(across.ring.some((p) => pointInRing(U, p))).toBe(false)
+    expect(U.some((p) => pointInRing(across.ring, p))).toBe(false)
+    expect(pointInRing(U, centroid(across.ring))).toBe(false)
+    expect(pointInRing(across.ring, centroid(U))).toBe(false)
+
+    expect(assignStands([U, elsewhere], [across]))
+      .toEqual({ ok: true, bySheet: [['ACROSS'], []] })
   })
 
   test('a mixed refusal reports the more serious kind, whichever came first', () => {

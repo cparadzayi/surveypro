@@ -25,9 +25,11 @@ export interface OfdVertex {
   x: number
   /**
    * survey = real survey/coordinate point from the project
-   * clip   = auto-generated at the tile boundary by S-H clipping
+   * cut    = created by a figure split, so it carries provenance '-'
+   * clip   = auto-generated at a tile boundary by S-H clipping (grid tiling,
+   *          being retired -- see the per-sheet derivation plan)
    */
-  type: 'survey' | 'clip'
+  type: 'survey' | 'cut' | 'clip'
 }
 
 export interface OfdEdge {
@@ -35,7 +37,7 @@ export interface OfdEdge {
   distance: number
   direction: string
   pointId: string
-  fromType: 'survey' | 'clip'
+  fromType: 'survey' | 'cut' | 'clip'
   /** End-point Westing (for SI 727 coordinates column) */
   y: number
   /** End-point Southing */

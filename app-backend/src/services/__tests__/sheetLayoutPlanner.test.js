@@ -4,6 +4,7 @@ import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
 import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js';
 import BLOCKS from '../../../../app-shared/block-definitions.js';
 import { scaleBarMetrics } from '../pdfkitGeoPDF.js';
+import { scaleBarLayout } from '../../../../app-shared/scaleBar.js';
 import { scheduleHeaderBandPt } from '../../../../app-shared/block-definitions.js';
 
 const fakeLogger = { info: () => {}, warn: () => {}, error: () => {} };
@@ -69,9 +70,15 @@ describe('planSheetLayout — output shape', () => {
     expect(r.northArrow.height).toBe(BLOCKS.NORTH_ARROW.blockHeight);
   });
 
-  test('scaleBar reserved height matches SCALE_BAR.reservedHeight', () => {
+  test('scaleBar slot matches the drawn SI 727 bar', () => {
     const r = plan(sampleMinimalPlan);
-    expect(r.scaleBar.height).toBe(BLOCKS.SCALE_BAR.reservedHeight);
+    // The reserved slot must be exactly what scaleBarLayout() declares — labels
+    // above, bar, caption below — or the planner and the drawer drift apart, as
+    // they did when the height was a hand-set 85pt in the shared config.
+    const L = scaleBarLayout(sampleMinimalPlan.scale);
+    const pt = (mm) => mm * 72 / 25.4;
+    expect(r.scaleBar.height).toBeCloseTo(pt(L.reserved.heightMm), 1);
+    expect(r.scaleBar.width).toBeCloseTo(pt(L.reserved.widthMm), 1);
   });
 
   test('schedule of areas: single column for the 2-stand fixture', () => {
@@ -470,7 +477,7 @@ describe('map furniture reads as one group under the title', () => {
 // The planner reserves the scale bar's slot; drawScaleBar draws it. They used to
 // derive the width separately and disagreed four ways -- metres-per-point from the
 // figure box instead of the stated scale, a 40pt target instead of 40mm, its own
-// rounding instead of snapScaleBarSegment, and four segments instead of three.
+// a 40-POINT segment target instead of 40 MM.
 // 241pt reserved against 389pt drawn. Harmless while the bar sat alone with space
 // to its right; it put the north arrow on top of the bar once they became a group.
 describe('the scale bar slot is the size of the bar that gets drawn', () => {

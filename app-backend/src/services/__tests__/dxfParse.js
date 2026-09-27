@@ -53,6 +53,34 @@ export function parseFirstEntityOf(dxf, entityType, layerName) {
   return null
 }
 
+/**
+ * Every entity on `layerName`, in file order, as { type, layer, text?, x?, y?,
+ * x2?, y2? }. The general form behind `entityCount` / `parseFirstEntityOf` —
+ * reach for this when a test needs to inspect what was drawn rather than just
+ * how much of it there is.
+ */
+export function entitiesOnLayer(dxf, layerName) {
+  const ents = extractEntitiesSection(dxf)
+  if (!ents) return []
+  const out = []
+  // Each entity is "0\n<TYPE>\n..." up to the next "0\n<TYPE>".
+  for (const frag of ents.match(/\b0\s*\n\s*[A-Z]+\b[\s\S]*?(?=\b0\s*\n\s*[A-Z]+\b|$)/g) || []) {
+    const type = (frag.match(/^\s*0\s*\n\s*([A-Z]+)/) || [])[1]
+    if (!type) continue
+    if (!new RegExp(`\\b8\\s*\\n\\s*${layerName}\\b`).test(frag)) continue
+    const num = (code) => {
+      const v = (frag.match(new RegExp(`\\b${code}\\s*\\n\\s*(-?[\\d.]+)`)) || [])[1]
+      return v == null ? undefined : parseFloat(v)
+    }
+    out.push({
+      type,
+      text: (frag.match(/\b1\s*\n\s*([^\n]*)/) || [])[1]?.trim(),
+      x: num(10), y: num(20), x2: num(11), y2: num(21),
+    })
+  }
+  return out
+}
+
 function extractEntitiesSection(dxf) {
   const m = dxf.match(/\bSECTION\b\s*\n\s*2\s*\n\s*ENTITIES\b([\s\S]*?)\bENDSEC\b/)
   return m ? m[1] : null

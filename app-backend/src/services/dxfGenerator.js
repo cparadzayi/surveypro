@@ -31,9 +31,9 @@ import {
   SCHEDULE_TARGET_WIDTH_PT,
   edgeDistanceMetres,
   classifyBeaconGroups,
-  snapScaleBarSegment,
   resolveLoSystem,
 } from '../../../app-shared/block-definitions.js'
+import { scaleBarLayout } from '../../../app-shared/scaleBar.js';
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { SI727_GENERAL_PLAN_SHEET_SIZES, sheetContentMm } from '../../../app-shared/si727SheetSizes.js';
 import { splitBeaconName, labelParts } from '../../../app-shared/beaconName.js';
@@ -951,41 +951,38 @@ export function generateDXF(options, logger) {
   }
 
   /**
-   * Graduated horizontal scale bar — equal round-number segments graduated
-   * 0, L, 2L, 3L (e.g. "0  5  10  15  METRES"), ported from the PDF's drawScaleBar
-   * so the two formats read identically. The segment length is ~40 mm of paper at
-   * the plan scale, snapped to a nice cartographic number via the shared
-   * snapScaleBarSegment(). The bar is reduced segment-by-segment if it would spill
-   * past its planner slot (maxWidthGround), so it never overruns the schedule.
+   * SI 727 graphic scale bar. The geometry — ten 2 m graduations left of 0,
+   * two right at 20 m and 40 m, two horizontal rules, the majors labelled, the
+   * print weights — all comes from app-shared/scaleBar.js, the same source the
+   * PDF and the diagrams read, so the formats cannot disagree. This walks the
+   * primitive list; it derives no lengths of its own.
+   *
+   * The layout's y = 0 is the BOTTOM rule and its x = 0 is the 0 graduation, so
+   * `originX`/`bottomY` convert once here and every primitive below is a plain
+   * mm offset from them.
    */
-  function addScaleBar(layer, cx, cy, scaleDenom, maxWidthGround) {
-    const rawSegmentMeters = 0.04 * scaleDenom   // 40 mm of paper at 1:scaleDenom
-    const segmentLength = snapScaleBarSegment(rawSegmentMeters)
-    let numSegments = 3
-    // Reserve room for the " METRES" label on the right. The bar is centred in
-    // the slot, so reserve it on both sides to keep label + bar inside the slot.
-    const metresReserve = mm(8)
-    if (maxWidthGround && maxWidthGround > 0) {
-      while (numSegments > 1 && segmentLength * numSegments + 2 * metresReserve > maxWidthGround) numSegments--
+  function addScaleBar(layer, originX, bottomY, scaleDenom) {
+    const L = scaleBarLayout(scaleDenom)
+    for (const w of L.warnings) console.warn(`[scale bar] ${w}`)
+    const X = (mmX) => originX + L.mmPerMetre * mmX;
+    const Y = (mmY) => bottomY + L.mmPerMetre * mmY;
+
+    for (const h of L.horizontals) {
+      addLine(layer, X(h.x0Mm), Y(h.yMm), X(h.x1Mm), Y(h.yMm));
     }
-    const barWidthGround = segmentLength * numSegments
-    const halfW = barWidthGround / 2
-    const halfH = mm(2)
-    const left = cx - halfW
-    // Outer rectangle (2 horizontal LINEs) + centreline
-    addLine(layer, left, cy + halfH, left + barWidthGround, cy + halfH)
-    addLine(layer, left, cy - halfH, left + barWidthGround, cy - halfH)
-    addLine(layer, left, cy, left + barWidthGround, cy)
-    // Vertical graduation ticks at 0, L, 2L … with round-number labels below.
-    for (let i = 0; i <= numSegments; i++) {
-      const x = left + i * segmentLength
-      addLine(layer, x, cy - halfH, x, cy + halfH)
-      addText(layer, x, cy - halfH - mm(3), String(i * segmentLength), mm(2), 0)
+    for (const v of L.verticals) {
+      addLine(layer, X(v.xMm), Y(v.y0Mm), X(v.xMm), Y(v.y1Mm));
     }
-    // "METRES" unit label beside the right end of the bar.
-    addText(layer, left + barWidthGround + mm(3), cy - halfH - mm(3), 'METRES', mm(2), 0)
-    // "SCALE 1:<denom>" footer, centred under the bar.
-    addText(layer, cx, cy - halfH - mm(8), `SCALE 1:${scaleDenom}`, mm(2.5), 0)
+    // DXF carries no line weight per entity, so the weight hierarchy is carried
+    // by the layer-visible geometry alone; the majors are drawn first so a
+    // viewer drawing over the bar paints the labelled rules last.
+    for (const t of L.labels) {
+      addTextC(layer, X(t.xMm), Y(t.yMm), t.text, mm(t.heightMm), 'BOLD');
+    }
+    addText(layer, X(L.unitLabel.xMm), Y(L.unitLabel.yMm), L.unitLabel.text,
+      mm(L.unitLabel.heightMm), 0, 'BOLD');
+    addTextC(layer, X(L.caption.xMm), Y(L.caption.yMm), L.caption.text,
+      mm(L.caption.heightMm), 'BOLD');
   }
 
   /**
@@ -2597,8 +2594,15 @@ export function generateDXF(options, logger) {
   if (scaleBarPos) {
     const size = { width: scaleBarPos.width, height: scaleBarPos.height };
     _tasks.push({ label: 'scaleBar', pos: { x: scaleBarPos.x, y: scaleBarPos.y }, size,
-      // bar line near slot top (− mm(4)); labels/footer fall below, within the slot height.
-      emit: (p) => addScaleBar('SCALE_BAR', p.x + size.width / 2, p.y - mm(4), S, size.width) });
+      // Centre the BAR (not the 0 graduation — the bar runs 20 m left of 0 and
+      // 40 m right, so 0 is off-centre) in the slot, and put the bottom rule 4mm
+      // below the slot top. Labels above and the caption below follow from that.
+      emit: (p) => {
+        const L = scaleBarLayout(S);
+        addScaleBar('SCALE_BAR',
+          p.x + size.width / 2 - (L.x0Mm + L.x1Mm) / 2 * L.mmPerMetre,
+          p.y - mm(4), S);
+      } });
   }
   if (northArrowPos) {
     const size = { width: northArrowPos.width, height: northArrowPos.height };

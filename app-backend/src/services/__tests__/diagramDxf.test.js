@@ -1,5 +1,7 @@
 import { describe, test, expect } from '@jest/globals'
 import { generateDiagramDXF } from '../diagramDxf.js'
+import { entitiesOnLayer } from './dxfParse.js'
+import { scaleBarLayout } from '../../../../app-shared/scaleBar.js'
 
 const subject = {
   type: 'Feature',
@@ -160,8 +162,27 @@ describe('generateDiagramDXF', () => {
     expect(text).toContain('APPROVED\n')
     expect(text).toContain('for Surveyor-General')
     expect(text).toContain('SCALE_BAR\n')
-    expect(text).toContain('SOLID')
     expect(text).toMatch(/Scale 1 : \d+/)
+  })
+
+  test('the scale bar is the SI 727 one: 2 rules, 15 graduations, no fills', async () => {
+    const r = await generateDiagramDXF(options, logger)
+    const dxf = r.dxfBuffer.toString('utf8')
+    const L = scaleBarLayout(0)  // denominator is irrelevant to the counts below
+    const ents = entitiesOnLayer(dxf, 'SCALE_BAR')
+
+    // The bar is drawn as rules, not blocks: exactly the two horizontals and the
+    // vertical bars the shared layout declares, and no filled SOLID cells. The
+    // old checkerboard drew SOLID rectangles here, which is what this replaced.
+    expect(ents.filter((e) => e.type === 'LINE')).toHaveLength(
+      L.horizontals.length + L.verticals.length)
+    expect(ents.filter((e) => e.type === 'SOLID')).toHaveLength(0)
+    expect(ents.filter((e) => e.type === 'LWPOLYLINE')).toHaveLength(0)
+
+    // The five labelled majors, in order left to right.
+    const labels = ents.filter((e) => e.type === 'TEXT').map((e) => e.text)
+    expect(labels).toEqual(expect.arrayContaining(['-20', '-10', '0', '20', '40']))
+    expect(labels).toContain('Metres')
   })
 
   test('renders the statement block', async () => {

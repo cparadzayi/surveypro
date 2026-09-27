@@ -22,7 +22,8 @@ import {
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
 import { formatSI } from './diagram/numberFormat.js'
-import { resolveLoSystem, snapScaleBarSegment } from '../../../app-shared/block-definitions.js'
+import { resolveLoSystem } from '../../../app-shared/block-definitions.js'
+import { scaleBarLayout, scaleBarFrame } from '../../../app-shared/scaleBar.js'
 
 /** ground metres per PDF point at SI 727 scale denominator S. */
 function ptToGround(pt, S) { return pt * S * 0.000352778 }
@@ -397,34 +398,35 @@ function drawApprovedBoxDxf(w, layout, toG, toGLen) {
 
 function drawScaleBarDxf(w, layout, denom, toG, toGLen) {
   const R = layout.scaleBar
-  const PT_PER_MM = 72 / 25.4
-  const ptPerM = PT_PER_MM * 1000 / denom
-  const barGroundM = (R.width / PT_PER_MM) * denom / 1000
-  const seg = snapScaleBarSegment(barGroundM / 3)
-  const segW = seg * ptPerM
-  const barY = R.y + 10
-  const bx = R.x + R.width / 2 - 1.5 * segW
-  const x0 = bx + segW
-  const barH = 4
-  const subN = 5, subW = segW / subN
+  // The same SI 727 bar the plan PDF and the plan DXF draw, from the same source.
+  // The diagram used to graduate 0/seg/2*seg with a 4pt-tall single-row
+  // checkerboard, which agreed with neither the plan nor SI 727.
+  const L = scaleBarLayout(denom)
+  for (const msg of L.warnings) console.warn(`[scale bar] ${msg}`)
+  const { X, Y, textTop, pt } = scaleBarFrame(L, R)
+  // A text item's anchor: the TOP of its box, since the layout records box bottoms.
+  const at = (t) => toG({ px: X(t.xMm), py: textTop(t.yMm, t.heightMm) })
 
-  for (let idx = 0; idx < subN; idx += 2) {
-    const c1 = toG({ px: bx + idx * subW, py: barY }), c2 = toG({ px: bx + (idx + 1) * subW, py: barY + barH })
-    w.addSolidRect('SCALE_BAR', c1.x, c1.y, c2.x, c2.y)
+  for (const h of L.horizontals) {
+    const a = toG({ px: X(h.x0Mm), py: Y(h.yMm) }), b = toG({ px: X(h.x1Mm), py: Y(h.yMm) })
+    w.addLine('SCALE_BAR', a.x, a.y, b.x, b.y)
   }
-  { const c1 = toG({ px: x0 + segW, py: barY }), c2 = toG({ px: x0 + 2 * segW, py: barY + barH })
-    w.addSolidRect('SCALE_BAR', c1.x, c1.y, c2.x, c2.y) }
-  const f0 = toG({ px: bx, py: barY }), f1 = toG({ px: bx + 3 * segW, py: barY })
-  const f2 = toG({ px: bx + 3 * segW, py: barY + barH }), f3 = toG({ px: bx, py: barY + barH })
-  w.addPolylineOutline('SCALE_BAR', [f0, f1, f2, f3], true)
-
-  const lbl = (val, cxPt) => { const g = toG({ px: cxPt, py: R.y + 6.5 }); w.addTextC('SCALE_BAR', g.x, g.y, String(Math.round(val)), toGLen(6.5)) }
-  lbl(seg, bx)
-  lbl(0, x0)
-  lbl(seg, x0 + segW)
-  lbl(2 * seg, x0 + 2 * segW)
-  { const g = toG({ px: x0 + 2 * segW + 6, py: barY + 6.5 }); w.addText('SCALE_BAR', g.x, g.y, 'metres', toGLen(6.5)) }
-  { const g = toG({ px: R.x + R.width / 2, py: R.y + 20 + 6.5 }); w.addTextC('SCALE_BAR', g.x, g.y, `Scale 1 : ${denom}`, toGLen(6.5)) }
+  for (const v of L.verticals) {
+    const a = toG({ px: X(v.xMm), py: Y(v.y0Mm) }), b = toG({ px: X(v.xMm), py: Y(v.y1Mm) })
+    w.addLine('SCALE_BAR', a.x, a.y, b.x, b.y)
+  }
+  for (const t of L.labels) {
+    const g = at(t)
+    w.addTextC('SCALE_BAR', g.x, g.y, t.text, toGLen(pt(t.heightMm)))
+  }
+  {
+    const g = at(L.unitLabel)
+    w.addText('SCALE_BAR', g.x, g.y, L.unitLabel.text, toGLen(pt(L.unitLabel.heightMm)))
+  }
+  {
+    const g = at(L.caption)
+    w.addTextC('SCALE_BAR', g.x, g.y, L.caption.text, toGLen(pt(L.caption.heightMm)))
+  }
 }
 
 function drawStatementDxf(w, layout, geometry, metadata, toG, toGLen) {

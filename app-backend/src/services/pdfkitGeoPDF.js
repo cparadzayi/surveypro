@@ -12,7 +12,8 @@ import {
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
 import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, tickRungLadder } from "../../../app-shared/tickMarks.js";
-import { scheduleHeaderScale, scheduleHeaderBandPt, computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, snapScaleBarSegment, planScheduleSplit } from "../../../app-shared/block-definitions.js";
+import { scheduleHeaderScale, scheduleHeaderBandPt, computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, planScheduleSplit } from "../../../app-shared/block-definitions.js";
+import { scaleBarLayout, scaleBarFrame } from "../../../app-shared/scaleBar.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { splitBeaconName, labelParts } from "../../../app-shared/beaconName.js";
 import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js';
@@ -4857,57 +4858,45 @@ function drawTitleBlock(
  * @param {Object} figureBounds - Map figure bounds (scale bar must stay within this)
  */
 /**
- * Scale bar geometry -- the ONE derivation, shared by the planner and the drawer.
+ * Scale bar geometry in PDF points -- a straight conversion of the shared
+ * mm-based layout, shared by the planner and the drawer so the slot reserved is
+ * the bar actually drawn.
  *
  * They used to work it out separately and disagreed four ways: metres-per-point
  * from the figure box instead of the stated scale, a 40-POINT segment target
- * instead of 40 MM, home-grown rounding instead of snapScaleBarSegment, and four
+ * instead of 40 MM, and four
  * segments instead of three. On a 1:1250 general plan that reserved 241pt for a
  * bar drawn 389pt wide. Harmless while the bar sat alone with empty space to its
  * right; it put the north arrow on top of the bar the moment the two became a
- * group. Both callers now read the same numbers from here.
+ * group. Both callers now read the same numbers from here -- and the numbers
+ * themselves come from app-shared/scaleBar.js, which the DXF and the diagram
+ * renderers read too.
  */
+const PT_PER_MM = 72 / 25.4;
+const mmToPt = (mm) => mm * PT_PER_MM;
+
 export function scaleBarMetrics(scale, refWidth) {
-  // Denominator from the STATED scale ("1:500" -> 500), not from the box: a
-  // box-derived bar graduates to a drawing whose scale may differ from the
-  // ratio printed beside it.
-  let denominator = 1000;
-  const match = scale && scale.label ? String(scale.label).match(/:(\d+)/) : null;
-  if (match) denominator = parseInt(match[1], 10);
+  const L = scaleBarLayout(scale);
+  for (const w of L.warnings) console.warn(`[scale bar] ${w}`);
 
-  // 1 pt spans denominator * 0.352778 mm of ground.
-  const metersPerPoint = denominator * 0.000352778;
-
-  // ~40mm per segment at print scale, snapped to a round cartographic number.
-  // snapScaleBarSegment is shared with the DXF bar so both graduate identically.
-  const segmentLength = snapScaleBarSegment(40 * 2.835 * metersPerPoint);
-  const segmentLengthPoints = segmentLength / metersPerPoint;
-
-  const METRES_LABEL_WIDTH = 55;
-  const maxAllowedWidth = refWidth - 40;   // 20pt margin each side
-
-  let numSegments = 3;                     // 0 - 1x - 2x - 3x
-  let totalLengthPoints = segmentLengthPoints * numSegments;
-  let scaleBarWidth = totalLengthPoints + METRES_LABEL_WIDTH;
-
-  // Too wide for the figure: drop segments, then clamp outright.
-  if (scaleBarWidth > maxAllowedWidth && numSegments > 1) {
-    const reduced = Math.max(
-      2, Math.floor((maxAllowedWidth - METRES_LABEL_WIDTH) / segmentLengthPoints));
-    if (reduced < numSegments) {
-      numSegments = reduced;
-      totalLengthPoints = segmentLengthPoints * numSegments;
-      scaleBarWidth = totalLengthPoints + METRES_LABEL_WIDTH;
-    }
-  }
-  if (scaleBarWidth > maxAllowedWidth) {
-    scaleBarWidth = maxAllowedWidth;
-    totalLengthPoints = scaleBarWidth - METRES_LABEL_WIDTH;
+  // SI 727 fixes the bar's ground span, so the width is whatever the print scale
+  // makes it -- there is no "reduce the segments" fallback, and inventing one is
+  // how the bar used to end up wider than its slot. Warn instead.
+  const scaleBarWidth = mmToPt(L.reserved.widthMm);
+  if (refWidth > 0 && scaleBarWidth > refWidth - 20) {
+    console.warn(
+      `[scale bar] 1:${L.denominator}: the SI 727 bar needs ` +
+      `${(scaleBarWidth / PT_PER_MM).toFixed(1)}mm but the figure offers ` +
+      `${((refWidth - 20) / PT_PER_MM).toFixed(1)}mm.`
+    );
   }
 
   return {
-    denominator, metersPerPoint, segmentLength, segmentLengthPoints,
-    numSegments, totalLengthPoints, METRES_LABEL_WIDTH, scaleBarWidth,
+    layout: L,
+    denominator: L.denominator,
+    // kept for the planner, which reserves a width in points
+    scaleBarWidth,
+    scaleBarHeight: mmToPt(L.reserved.heightMm),
   };
 }
 
@@ -4916,89 +4905,58 @@ function drawScaleBar(doc, extent, mapBounds, scale, position, figureBounds) {
   const _ref = figureBounds || mapBounds;
   // One derivation, shared with the planner, so the slot it reserves is the bar
   // that actually gets drawn here. See scaleBarMetrics.
-  let {
-    denominator, metersPerPoint, segmentLength, segmentLengthPoints,
-    numSegments, totalLengthPoints, METRES_LABEL_WIDTH, scaleBarWidth,
-  } = scaleBarMetrics(scale, _ref.width);
+  const { layout: L, scaleBarWidth, scaleBarHeight } = scaleBarMetrics(scale, _ref.width);
 
-  const LABEL_FONT_SIZE = 9;   // graduation labels above bar
-  const SCALE_FONT_SIZE = 9;   // "SCALE 1:XXXX" below bar
-  const METRES_FONT_SIZE = 9;  // "METRES" beside bar
-
-  const barHeight   = 9;
-  const borderWidth = 2.0;
-  const tickHeight  = 12;
-  const labelGap    = 5;
-  const barGap      = 10;
-  const scaleBarHeight =
-    LABEL_FONT_SIZE + labelGap + tickHeight + barHeight + barGap + SCALE_FONT_SIZE + 10;
-
-  // Use centrally calculated position; fallback to bottom-right of figureBounds
-  const scaleBarX = position?.x ?? (_ref.x + _ref.width - scaleBarWidth - 20);
-  const scaleBarY = position?.y ?? (_ref.y + _ref.height - scaleBarHeight - 20);
-
-  // barTop: leave room above for tick + label
-  const barTop    = scaleBarY + LABEL_FONT_SIZE + labelGap + tickHeight;
-  const barBottom = barTop + barHeight;
-
-  doc.save();
-
-  // --- Draw alternating black/white segments ---
-  doc.lineWidth(borderWidth);
-  for (let i = 0; i < numSegments; i++) {
-    const x = scaleBarX + i * segmentLengthPoints;
-    doc.rect(x, barTop, segmentLengthPoints, barHeight);
-    if (i % 2 === 0) {
-      doc.fillAndStroke("#000000", "#000000");
-    } else {
-      doc.fillAndStroke("#FFFFFF", "#000000");
-    }
-  }
-
-  // --- Tick marks and graduation labels above bar ---
-  doc.lineWidth(1.0).strokeColor("#000000");
-  doc.fontSize(LABEL_FONT_SIZE).font("Helvetica-Bold").fillColor("#000000");
-
-  for (let i = 0; i <= numSegments; i++) {
-    const x = scaleBarX + i * segmentLengthPoints;
-    const value = i * segmentLength;
-
-    // Tick
-    doc.moveTo(x, barTop).lineTo(x, barTop - tickHeight).stroke();
-
-    // Label (centered on tick)
-    const labelText = value.toString();
-    const lw = doc.widthOfString(labelText);
-    doc.text(labelText, x - lw / 2, scaleBarY, { lineBreak: false });
-  }
-
-  // --- "METRES" label beside bar (vertically centered on bar) ---
-  doc
-    .fontSize(METRES_FONT_SIZE)
-    .font("Helvetica-Bold")
-    .text("METRES", scaleBarX + totalLengthPoints + 8, barTop + barHeight / 2 - METRES_FONT_SIZE / 2, {
-      lineBreak: false,
-    });
-
-  // --- Scale notation below bar (centered under bar) ---
-  const scaleText = `SCALE ${scale.label}`;
-  doc.fontSize(SCALE_FONT_SIZE).font("Helvetica-Bold");
-  const scaleTextWidth = doc.widthOfString(scaleText);
-  doc.text(
-    scaleText,
-    scaleBarX + totalLengthPoints / 2 - scaleTextWidth / 2,
-    barBottom + barGap,
-    { lineBreak: false }
-  );
-
-  doc.restore();
-
-  return {
-    x: scaleBarX,
-    y: scaleBarY,
+  const slot = {
+    x: position?.x ?? (_ref.x + _ref.width - scaleBarWidth - 20),
+    y: position?.y ?? (_ref.y + _ref.height - scaleBarHeight - 20),
     width: scaleBarWidth,
     height: scaleBarHeight,
   };
+  // The y flip and the off-centre 0 graduation are the frame's problem, not ours.
+  const { X, Y, textTop, pt } = scaleBarFrame(L, slot);
+
+  doc.save();
+  doc.strokeColor('#000000').fillColor('#000000');
+
+  // --- The two horizontal rules, bottom and middle ---
+  for (const h of L.horizontals) {
+    doc.lineWidth(pt(h.weightMm))
+      .moveTo(X(h.x0Mm), Y(h.yMm))
+      .lineTo(X(h.x1Mm), Y(h.yMm))
+      .stroke();
+  }
+
+  // --- The vertical bars: -20, -10, 0, 20, 40 labelled, the 2 m ones not ---
+  for (const v of L.verticals) {
+    doc.lineWidth(pt(v.weightMm))
+      .moveTo(X(v.xMm), Y(v.y0Mm))
+      .lineTo(X(v.xMm), Y(v.y1Mm))
+      .stroke();
+  }
+
+  // --- Graduation labels, above the bar, centred on their rule ---
+  doc.font('Helvetica-Bold');
+  for (const t of L.labels) {
+    doc.fontSize(pt(t.heightMm));
+    const w = doc.widthOfString(t.text);
+    doc.text(t.text, X(t.xMm) - w / 2, textTop(t.yMm, t.heightMm), { lineBreak: false });
+  }
+
+  // --- Unit label beside the right end, vertically centred on the bar ---
+  doc.fontSize(pt(L.unitLabel.heightMm))
+    .text(L.unitLabel.text, X(L.unitLabel.xMm),
+      textTop(L.unitLabel.yMm, L.unitLabel.heightMm), { lineBreak: false });
+
+  // --- Caption ("Scale 1 : n") below the bar, centred ---
+  doc.fontSize(pt(L.caption.heightMm));
+  const cw = doc.widthOfString(L.caption.text);
+  doc.text(L.caption.text, X(L.caption.xMm) - cw / 2,
+    textTop(L.caption.yMm - L.caption.heightMm, L.caption.heightMm), { lineBreak: false });
+
+  doc.restore();
+
+  return slot;
 }
 
 /**
@@ -6082,13 +6040,13 @@ export function calculateBlockPositions(
   const ssHeight = 110;
 
   // --- Scale Bar ---
-  const _figW          = figureBounds ? figureBounds.width : mapBounds.width;
-  // The slot must be the size of the bar that gets drawn, so both come from
-  // scaleBarMetrics. This used to be a separate estimate (segPt * 4 + 55).
-  const scaleBarWidth = scaleBarMetrics(scale, (figureBounds || mapBounds).width).scaleBarWidth;
-  // Height sourced from shared config so the reserved slot can't drift from the
-  // renderer (see the S-G box drift bug fixed alongside this).
-  const scaleBarHeight = BLOCKS.SCALE_BAR.reservedHeight;
+  // The slot must be the size of the bar that gets drawn, so BOTH dimensions come
+  // from scaleBarMetrics. The width used to come from there while the height came
+  // from a hand-set 85pt in the shared config — the same class of drift as the S-G
+  // box, and it reserved 30mm of sheet for a bar that draws 8.3mm.
+  const _sbMetrics = scaleBarMetrics(scale, (figureBounds || mapBounds).width);
+  const scaleBarWidth  = _sbMetrics.scaleBarWidth;
+  const scaleBarHeight = _sbMetrics.scaleBarHeight;
 
   // --- North Arrow --- reserved bbox sourced from shared config (matches the
   // renderer's boxW/boxH exactly; single source of truth).

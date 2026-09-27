@@ -15,7 +15,6 @@ import {
   edgeDistanceMetres,
   classifyBeaconGroups,
   resolveLoSystem,
-  snapScaleBarSegment,
   SCHEDULE_OF_AREAS,
   scheduleHeaderScale,
   scheduleHeaderBandPt,
@@ -321,25 +320,6 @@ describe('edgeDistanceMetres — accepts both `distance` and `metres`', () => {
     expect(edgeDistanceMetres({ distance: 'abc' })).toBeNull()
     expect(edgeDistanceMetres(null)).toBeNull()
     expect(edgeDistanceMetres(undefined)).toBeNull()
-  })
-})
-
-describe('snapScaleBarSegment — shared scale-bar graduation (DXF/PDF parity)', () => {
-  test('snaps to the first nice number ≥ half the raw segment', () => {
-    // raw 8 → half 4 → first nice ≥ 4 is 5
-    expect(snapScaleBarSegment(8)).toBe(5)
-    // raw 20 → half 10 → 10
-    expect(snapScaleBarSegment(20)).toBe(10)
-    // raw 0.04 * 500 = 20 → 10  (a 1:500 plan graduates 0,10,20,30)
-    expect(snapScaleBarSegment(0.04 * 500)).toBe(10)
-  })
-
-  test('tiny raw value floors at 1', () => {
-    expect(snapScaleBarSegment(0.5)).toBe(1)
-  })
-
-  test('enormous raw value falls back to 100', () => {
-    expect(snapScaleBarSegment(1e9)).toBe(100)
   })
 })
 

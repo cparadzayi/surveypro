@@ -5,6 +5,7 @@
 import { describe, test, expect } from '@jest/globals'
 import { countLayerOnTable, entityCount } from './dxfParse.js'
 import { capeLoToDxfSouthUp, generateDXF, degToDMSForDistance } from '../dxfGenerator.js'
+import { scaleBarLayout } from '../../../../app-shared/scaleBar.js'
 
 describe('dxfParse helpers (smoke)', () => {
   test('countLayerOnTable returns 0 for an empty input', () => {
@@ -270,21 +271,23 @@ describe('generateDXF — scale bar', () => {
     // original strength instead of being relaxed to accommodate the escalation.
     metadata: {}, scale: '1:1000', sheetSize: 'SI727_500x400',
   }
-  test('emits centreline + tick LINEs and metre labels on SCALE_BAR', () => {
+  test('emits the two horizontal rules, every graduation and the metre labels on SCALE_BAR', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
     const dxf = buffer.toString()
-    // Outer rect (2 LINEs) + centreline (1) + 4 tick verticals = 7 LINEs
-    expect(entityCount(dxf, 'LINE', 'SCALE_BAR')).toBeGreaterThanOrEqual(7)
-    // Tick labels (4) + "1:<scale>" footer (1) = 5 TEXT entities
-    expect(entityCount(dxf, 'TEXT', 'SCALE_BAR')).toBeGreaterThanOrEqual(5)
+    const L = scaleBarLayout(opts.scale)
+    // exactly the rules the shared layout declares: 2 horizontals + every vertical
+    expect(entityCount(dxf, 'LINE', 'SCALE_BAR'))
+      .toBe(L.horizontals.length + L.verticals.length);
+    // 5 labelled majors + "Metres" + "Scale 1 : n"
+    expect(entityCount(dxf, 'TEXT', 'SCALE_BAR')).toBe(L.labels.length + 2);
   })
 
-  test('scale-bar physical width matches the labelled ground length', () => {
-    // The bar is now fitted to the planner's reserved scale-bar slot (so it can
-    // never overflow into the schedule placed beside it), so its labelled length
-    // is the largest "nice" length that fits the slot — not a fixed 50 m. What
-    // must always hold is dimensional honesty: the bar's physical ground width
-    // equals its rightmost tick label. We assert that invariant.
+  test('the bar spans -20 m to +40 m and every graduation is where it is labelled', () => {
+    // SI 727 fixes the span: ten 2 m graduations left of 0 over 20 m, then 20 m
+    // and 40 m. So the bar is 60 m long and the ground width between the outer
+    // rules equals rightmost label MINUS leftmost label — a stronger check than
+    // the old "width == largest label", which only held because the bar used to
+    // start at 0 and would not have noticed a missing left half.
     // A real outside figure is required so the page layout has finite coordinates.
     const optsWithGeom = {
       ...opts,
@@ -299,12 +302,11 @@ describe('generateDXF — scale bar', () => {
     }
     const { buffer } = generateDXF(optsWithGeom, fakeLogger)
     const dxf = buffer.toString()
-    // The 4 ticks are at f = 0, 0.25, 0.5, 1 of the bar width.
-    // Extract their x-coordinates by walking SCALE_BAR LINEs that are vertical
-    // (i.e., x1 === x2). The leftmost x is f=0, the rightmost is f=1; their
-    // difference is the bar's ground width.
-    const tickXs = []
-    const tickLabels = []
+    // Walk the SCALE_BAR LINEs that are vertical (x1 === x2): those are the
+    // graduation bars. The horizontals are ignored, so the extremes are the
+    // -20 m and +40 m rules.
+    const verticalXs = []
+    const labels = []
     const entRe = /\b0\s*\n\s*(LINE|TEXT)\b([\s\S]*?)(?=\b0\s*\n\s*[A-Z]+\b)/g
     for (const m of dxf.matchAll(entRe)) {
       const body = m[2]
@@ -314,21 +316,42 @@ describe('generateDXF — scale bar', () => {
         const y1 = parseFloat((body.match(/\b20\s*\n\s*(-?[\d.]+)/) || [])[1])
         const x2 = parseFloat((body.match(/\b11\s*\n\s*(-?[\d.]+)/) || [])[1])
         const y2 = parseFloat((body.match(/\b21\s*\n\s*(-?[\d.]+)/) || [])[1])
-        if (Math.abs(x1 - x2) < 1e-6 && Math.abs(y1 - y2) > 1) tickXs.push(x1)   // vertical
+        if (Math.abs(x1 - x2) < 1e-6 && Math.abs(y1 - y2) > 1) verticalXs.push(x1)
       } else {
-        // TEXT: collect the pure-number tick labels (exclude the "1:<scale>" footer).
+        // Tick labels are the signed integers; "Metres" and "Scale 1 : n" are not.
         const t = ((body.match(/\b1\s*\n\s*(.+)/) || [])[1] || '').trim()
-        if (/^\d+$/.test(t)) tickLabels.push(parseInt(t, 10))
+        if (/^-?\d+$/.test(t)) {
+          const lx = parseFloat((body.match(/\b10\s*\n\s*(-?[\d.]+)/) || [])[1])
+          labels.push({ at: parseInt(t, 10), x: lx })
+        }
       }
     }
-    tickXs.sort((a, b) => a - b)
-    expect(tickXs.length).toBeGreaterThanOrEqual(2)
-    const barWidth = tickXs[tickXs.length - 1] - tickXs[0]
-    // Dimensional honesty: physical width == the largest (rightmost) tick label.
-    const maxLabel = Math.max(...tickLabels)
-    expect(barWidth).toBeCloseTo(maxLabel, 0)
-    // And the bar is slot-fitted, so it never exceeds the un-capped picker length.
-    expect(barWidth).toBeLessThanOrEqual(50)
+    verticalXs.sort((a, b) => a - b)
+    const barWidth = verticalXs[verticalXs.length - 1] - verticalXs[0]
+
+    // SI 727, not a snapped round number: -20 to +40.
+    expect(barWidth).toBeCloseTo(60, 0)
+    expect(Math.min(...labels.map((l) => l.at))).toBe(-20)
+    expect(Math.max(...labels.map((l) => l.at))).toBe(40)
+    // and the drawn width agrees with the labelled span
+    expect(barWidth).toBeCloseTo(60, 0);
+
+    // Dimensional honesty, part 2: every label is centred on its own rule, and
+    // the rules are where a ruler reads them — the 0 rule is the origin, +40 is
+    // twice as far from 0 as -20 is, and the 2 m steps are uniform.
+    const xOf = (metres) => verticalXs.find(
+      (x) => Math.abs(x - labels.find((l) => l.at === metres).x) < 1e-6);
+    const zero = xOf(0);
+    expect(zero - xOf(-20)).toBeCloseTo(20, 0);
+    expect(xOf(40) - zero).toBeCloseTo(40, 0);
+
+    // The ten left-hand graduations are evenly spaced at 2 m (ascending, so the
+    // step is leftRules[i] - leftRules[i-1]).
+    const leftRules = verticalXs.filter((x) => x <= zero + 1e-6);
+    expect(leftRules).toHaveLength(11);
+    for (let i = 1; i < leftRules.length; i++) {
+      expect(leftRules[i] - leftRules[i - 1]).toBeCloseTo(2, 1);
+    }
   })
 })
 

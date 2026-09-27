@@ -22,9 +22,8 @@ import {
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
 import { buildBeaconDescription } from './diagram/beaconDescription.js'
 import { formatSI } from './diagram/numberFormat.js'
-import {
-  resolveLoSystem, snapScaleBarSegment,
-} from '../../../app-shared/block-definitions.js'
+import { resolveLoSystem } from '../../../app-shared/block-definitions.js'
+import { scaleBarLayout, scaleBarFrame } from '../../../app-shared/scaleBar.js'
 
 // SI 727 figure styling.
 const PT_PER_MM = 72 / 25.4
@@ -510,43 +509,32 @@ function drawApprovedBox(doc, layout) {
 
 function drawScaleBar(doc, layout, denom) {
   const R = layout.scaleBar
-  const ptPerM = (72 / 25.4) * 1000 / denom
-  const barGroundM = (R.width / (72 / 25.4)) * denom / 1000
-  // Bar = 1 subdivided segment LEFT of 0 + 2 equal segments RIGHT of 0 (SG style).
-  const seg = snapScaleBarSegment(barGroundM / 3)
-  const w = seg * ptPerM
-  const barY = R.y + 10
-  // Centre the 3-segment bar (width 3w) on the region centre — the same x as the figure
-  // sequence "A.B.C…A" above it — so the two read as vertically symmetric. Snapping makes
-  // 3w ≠ R.width, so the bar is re-centred rather than left-anchored at R.x.
-  const bx = R.x + R.width / 2 - 1.5 * w
-  const x0 = bx + w // ground zero, after the left (subdivided) segment
-  const barH = 4
-  doc.save().lineWidth(0.75).strokeColor('#000').font('Helvetica').fontSize(6.5)
-  // SG-style checkerboard. Fill alternate cells with fill()-ONLY so each graduation is
-  // exactly its cell width and all read uniform. The old fillAndStroke('#000','#000')
-  // bled the 1pt stroke ~0.5pt past every black cell (and the white cells' own borders
-  // inset their interior), which made the black graduations appear wider than the white
-  // ones and left the bar's top/bottom edges ragged.
-  // Left segment: 5 equal subdivisions left of 0, alternating black (B W B W B).
-  const subN = 5
-  const subW = w / subN
-  for (let i = 0; i < subN; i += 2) doc.rect(bx + i * subW, barY, subW, barH).fill('#000')
-  // Right of 0: two equal segments continuing the alternation past 0 (W B).
-  doc.rect(x0 + w, barY, w, barH).fill('#000')
-  // One outer frame across all three segments, stroked once on top of the fills, so the
-  // whole checkerboard sits inside a single clean rectangle with straight top/bottom edges.
-  doc.strokeColor('#000').rect(bx, barY, 3 * w, barH).stroke()
-  // Tick labels: seg | 0 | seg | 2*seg, centred under each tick.
-  const lbl = (val, cx) => doc.fillColor('#000').text(String(Math.round(val)), cx - 8, R.y, { width: 16, align: 'center' })
-  lbl(seg, bx)
-  lbl(0, x0)
-  lbl(seg, x0 + w)
-  lbl(2 * seg, x0 + 2 * w)
-  doc.text('metres', x0 + 2 * w + 6, barY)
-  // Caption centred on the region centre (= the figure sequence "A.B.C…A" centre above),
-  // so it stays symmetric under the bar regardless of the number's width.
-  doc.text(`Scale 1 : ${denom}`, R.x, R.y + 20, { width: R.width, align: 'center' })
+  // Same SI 727 bar as the general plan, from the same source: ten 2 m
+  // graduations left of 0 over 20 m, 20 m and 40 m right, two horizontal rules,
+  // the majors labelled above. The diagram used to draw its own bar — five
+  // subdivisions left of 0, 4pt tall, 0.75pt rules — which read nothing like the
+  // plan's.
+  const L = scaleBarLayout(denom)
+  for (const w of L.warnings) console.warn(`[scale bar] ${w}`)
+  const { X, Y, textTop, pt } = scaleBarFrame(L, R)
+
+  doc.save().strokeColor('#000').fillColor('#000').font('Helvetica-Bold')
+  for (const h of L.horizontals) {
+    doc.lineWidth(pt(h.weightMm)).moveTo(X(h.x0Mm), Y(h.yMm)).lineTo(X(h.x1Mm), Y(h.yMm)).stroke()
+  }
+  for (const v of L.verticals) {
+    doc.lineWidth(pt(v.weightMm)).moveTo(X(v.xMm), Y(v.y0Mm)).lineTo(X(v.xMm), Y(v.y1Mm)).stroke()
+  }
+  for (const t of L.labels) {
+    doc.fontSize(pt(t.heightMm)).text(t.text, X(t.xMm) - doc.widthOfString(t.text) / 2,
+      textTop(t.yMm, t.heightMm), { lineBreak: false })
+  }
+  doc.fontSize(pt(L.unitLabel.heightMm))
+    .text(L.unitLabel.text, X(L.unitLabel.xMm), textTop(L.unitLabel.yMm, L.unitLabel.heightMm),
+      { lineBreak: false })
+  doc.fontSize(pt(L.caption.heightMm))
+    .text(L.caption.text, X(L.caption.xMm) - doc.widthOfString(L.caption.text) / 2,
+      textTop(L.caption.yMm - L.caption.heightMm, L.caption.heightMm), { lineBreak: false })
   doc.restore()
 }
 

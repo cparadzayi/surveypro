@@ -343,28 +343,24 @@ export const NORTH_ARROW = {
 }
 
 // Scale Bar
+//
+// The bar itself is NOT defined here. Its graduations, print weights and
+// reserved slot all live in app-shared/scaleBar.js, which the plan PDF, the plan
+// DXF, the diagram PDF, the diagram DXF and the frontend preview all read — that
+// module is the single source of truth for the SI 727 bar. What is left here is
+// only where it sits on the sheet.
+//
+// Note there is no `lengthRules` any more. It offered a 50/100/200 m bar by
+// scale range, which contradicted SI 727's fixed 20 m left of 0 and 40 m right
+// of it — a bar that claimed 100 m while being drawn 40 m long.
 export const SCALE_BAR = {
   position: 'bottom-right',
   offset: { x: -150, y: -40 },
-  
-  barHeight: 4,
+
   barColor: '#000000',
 
-  // Reserved layout height (PDF pts) the block planner sets aside for the scale
-  // bar. Unlike the N-arrow / S-G box, the scale bar's WIDTH is dynamic (depends
-  // on scale + segment count), so only the height is pinned here. The renderer
-  // draws a shorter bar (~64 pt) WITHIN this slot; keep this ≥ the drawn height.
-  reservedHeight: 85,
-
-  labelFont: { family: 'Helvetica', size: 9 },
-  scaleFont: { family: 'Helvetica-Bold', size: 9 },
-  
-  // Length calculation based on scale
-  lengthRules: {
-    '1:1000-1:2500': 50,  // 50m bar
-    '1:2500-1:5000': 100, // 100m bar
-    '1:5000+': 200        // 200m bar
-  }
+  labelFont: { family: 'Helvetica-Bold', size: 2 * 72 / 25.4 },   // 2 mm
+  scaleFont: { family: 'Helvetica-Bold', size: 2.5 * 72 / 25.4 }, // 2.5 mm
 }
 
 // Label Configuration (UI and PDF consistency)
@@ -552,19 +548,6 @@ export function classifyBeaconGroups(beacons) {
       description,
       points: (points.length === 1 && points[0] === 'Others') ? 'Others' : sortNames(points).join(', '),
     }))
-}
-
-// Snap a raw scale-bar segment length (in ground metres) to the nearest "nice"
-// cartographic number so graduation labels read 0, L, 2L, 3L (e.g. 0 5 10 15)
-// rather than awkward fractions. Single source of truth shared by the PDF and
-// DXF scale bars. Mirrors the PDF's original rule: the first nice number that is
-// ≥ half the raw segment; falls back to 100 m when the raw value is enormous.
-export function snapScaleBarSegment(rawSegmentMeters) {
-  const niceNumbers = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
-  for (const n of niceNumbers) {
-    if (n >= rawSegmentMeters / 2) return n
-  }
-  return 100
 }
 
 // Generates tick points along all 4 edges of a bounding rectangle at a
@@ -839,7 +822,6 @@ export default {
   edgeDistanceMetres,
   classifyBeaconGroups,
   resolveLoSystem,
-  snapScaleBarSegment,
   formatCoordinate,
   formatBearing,
   getAdaptiveLabelSize

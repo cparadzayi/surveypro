@@ -13120,15 +13120,42 @@ export async function generateSheetedGeoPDF(options, logger) {
       }],
     };
 
-    // No per-stand geometry travels in a SheetPayload — every synthetic
-    // parcel for this sheet's schedule shares the sheet's own ring.
+    // Each of this sheet's parcels, as the caller's own object gave it.
+    //
+    // An earlier version had no parcel data to work with -- the payload carried
+    // stand NAMES only -- so it synthesised one parcel per name, all sharing the
+    // sheet's ring. That drew a legible figure and an EMPTY schedule: the Area,
+    // Diagram, Deed and S.G. columns all read from parcel properties, and with
+    // more than one stand on a sheet their number labels landed on top of each
+    // other, since every parcel had the same outline. A schedule of areas with a
+    // blank Area column is not lodgeable.
+    //
+    // `properties.stand` and `properties.area_m2` are the names the schedule
+    // drawer reads (see the schedule row builder below); the rest of the caller's
+    // fields pass through untouched, so anything the single-sheet path already
+    // understands keeps working. `ring` is dropped from properties because its
+    // place is the geometry.
+    const parcelFeature = (parcel) => {
+      const { ring, ...rest } = parcel || {};
+      const own = Array.isArray(ring) && ring.length >= 3 ? ring : ringClosed;
+      return {
+        type: 'Feature',
+        properties: { ...rest, stand: parcel?.name ?? rest.stand ?? '' },
+        geometry: { type: 'Polygon', coordinates: [own.map((p) => [p.y, p.x])] },
+      };
+    };
+
     const parcels = {
       type: 'FeatureCollection',
-      features: (sheet.stands || []).map((standName) => ({
-        type: 'Feature',
-        properties: { stand: standName },
-        geometry: { type: 'Polygon', coordinates: [ringCoords] },
-      })),
+      features: Array.isArray(sheet.parcels) && sheet.parcels.length > 0
+        ? sheet.parcels.map(parcelFeature)
+        // A payload built before `parcels` existed, or a sheet holding only
+        // public places: fall back to names so the page still renders.
+        : (sheet.stands || []).map((standName) => ({
+            type: 'Feature',
+            properties: { stand: standName },
+            geometry: { type: 'Polygon', coordinates: [ringCoords] },
+          })),
     };
 
     // The payload's edges/constants are already in the exact shape

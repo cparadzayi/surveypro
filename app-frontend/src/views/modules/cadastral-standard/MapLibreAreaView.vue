@@ -112,6 +112,45 @@
         >
           ✏️ Start Drawing
         </button>
+
+        <!-- Split-figure toggle: a click can only do one or the other -->
+        <button
+          v-if="!isDrawing && !isSplitting"
+          @click="startSplitting"
+          class="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-md text-sm font-medium transition-all hover:from-purple-700 hover:to-purple-800 shadow-md"
+          title="Split the Outside Figure into sheets along a cut you draw through road space"
+        >
+          ✂️ Split figure
+        </button>
+
+        <!-- Split-figure controls -->
+        <div v-if="isSplitting" class="flex flex-col gap-2 border-t border-gray-200 pt-2">
+          <button
+            @click="undoCut"
+            :disabled="cutDraft.vertices.length === 0"
+            class="px-4 py-2 bg-yellow-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Remove last cut vertex (Ctrl+Z)"
+          >
+            ↩️ Undo ({{ cutDraft.vertices.length }})
+          </button>
+
+          <button
+            @click="finishSplit"
+            :disabled="cutDraft.verdict !== 'ok'"
+            class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Finish the cut (or double-click the map)"
+          >
+            ✅ Finish
+          </button>
+
+          <button
+            @click="cancelSplit"
+            class="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-red-700"
+            title="Cancel and clear the cut (ESC)"
+          >
+            ❌ Cancel
+          </button>
+        </div>
         
         <!-- Normal drawing controls -->
         <div v-if="isDrawing && !isEditingVertices" class="flex flex-col gap-2 border-t border-gray-200 pt-2">
@@ -291,6 +330,15 @@
         >
           {{ satelliteVisible ? '🛰️ Satellite ON' : '🗺️ Satellite OFF' }}
         </button>
+      </div>
+
+      <!-- Split-figure verdict line: under the map, not a toast that can be missed -->
+      <div
+        v-if="isSplitting"
+        class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 bg-white rounded-lg shadow-lg px-4 py-2 flex items-center gap-3 text-sm font-medium"
+        :class="cutDraft.verdict === 'ok' ? 'text-green-700' : cutDraft.verdict === 'incomplete' ? 'text-gray-500' : 'text-red-700'"
+      >
+        ✂️ {{ verdictText }}
       </div>
 
       <!-- Trig Beacon Inset Map -->
@@ -971,6 +1019,9 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import axios from 'axios';
 import { capeLoToWGS84, capeLoArrayToWGS84, calculateWGS84Bounds, geoJsonToCapeLoPoint, type CapeLoPoint } from '../../../utils/coordinateTransform';
+import { wgs84ToCape, type LoZone } from '../../../utils/geodeticTransform';
+import { newDraft, addVertex, undoVertex, clearDraft, type CutDraft } from '../../../utils/cutDrawing';
+import { splitFigure } from '../../../../../app-shared/figureSplit';
 import { areaCompute, type AreaComputeResponse } from '../../../services/compute';
 import { asBaseMapParcel, parcelFromBaseRecord } from '../../../utils/surveyParcels';
 import { useAreaCompliance, type AreaType, type Parcel } from '../../../composables/useAreaCompliance';
@@ -2099,6 +2150,43 @@ const areaType = ref<AreaType>('urban'); // Default to urban
 const isComputing = ref(false);
 const overlapMessage = ref<string | null>(null);
 
+// ── Split-the-figure drawing ───────────────────────────────────────────────────
+// The cut that divides the outside figure into sheets is drawn HERE, in the
+// MapLibre view only (see docs/superpowers/plans/2026-09-27-interactive-split-tool.md).
+// Every rule lives in cutDrawing.ts; this view owns only pointer events and
+// painting. While active, a click CANNOT also digitise a parcel.
+const isSplitting = ref(false);
+const cutDraft = ref<CutDraft>(newDraft());
+const cutCursorLngLat = ref<{ lng: number; lat: number } | null>(null);
+
+let cutVerticesSource: maplibregl.GeoJSONSource | null = null;
+let cutLineSource: maplibregl.GeoJSONSource | null = null;
+let cutRubberSource: maplibregl.GeoJSONSource | null = null;
+
+/** The figure being split is the Outside Figure parcel, ring in Cape Lo. */
+const splitFigureRing = computed<{ y: number; x: number }[]>(() => {
+  for (const p of savedParcels.value.values()) {
+    const name = p.designation || p.stand;
+    if (name && name.toLowerCase().includes('outside figure')) {
+      return ((p.metadata?.cape_lo_points as any[]) || []).map((pt: any) => ({ y: pt.y, x: pt.x }));
+    }
+  }
+  return [];
+});
+
+/** Every stand the cut may slice; public places are exempt by splitFigure itself. */
+const splitStands = computed<{ name: string; ring: { y: number; x: number }[] }[]>(() => {
+  const out: { name: string; ring: { y: number; x: number }[] }[] = [];
+  for (const p of savedParcels.value.values()) {
+    const name = p.designation || p.stand;
+    if (!name || name.toLowerCase().includes('outside figure')) continue;
+    const ring = ((p.metadata?.cape_lo_points as any[]) || []).map((pt: any) => ({ y: pt.y, x: pt.x }));
+    if (ring.length < 3) continue;
+    out.push({ name, ring });
+  }
+  return out;
+});
+
 // ── Click-to-insert vertex editing ────────────────────────────────────────────
 // Vertex-editing state (edit existing saved parcel geometry).
 //
@@ -2752,6 +2840,60 @@ async function initializeMapOnce() {
 
     tempPolygonSource = map.getSource('temp-polygon') as maplibregl.GeoJSONSource;
 
+    // ========== SPLIT-FIGURE LAYERS ==========
+    // The cut's committed vertices, the polyline through them, and the rubber
+    // band from the last vertex to the cursor. All display-only; the rules live
+    // in utils/cutDrawing.ts.
+    map.addSource('cut-vertices', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'cut-vertices-circle',
+      type: 'circle',
+      source: 'cut-vertices',
+      paint: {
+        'circle-radius': 6,
+        'circle-color': ['case', ['get', 'snapped'], '#059669', '#7c3aed'],
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 2
+      }
+    });
+
+    map.addSource('cut-line', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'cut-line-path',
+      type: 'line',
+      source: 'cut-line',
+      paint: {
+        'line-color': '#7c3aed',
+        'line-width': 3
+      }
+    });
+
+    map.addSource('cut-rubber', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'cut-rubber-path',
+      type: 'line',
+      source: 'cut-rubber',
+      paint: {
+        'line-color': '#c084fc',
+        'line-width': 2,
+        'line-dasharray': [1, 2]
+      }
+    });
+
+    cutVerticesSource = map.getSource('cut-vertices') as maplibregl.GeoJSONSource;
+    cutLineSource = map.getSource('cut-line') as maplibregl.GeoJSONSource;
+    cutRubberSource = map.getSource('cut-rubber') as maplibregl.GeoJSONSource;
+    // ========== END SPLIT-FIGURE LAYERS ==========
+
     // Add completed parcels source and layers
     map.addSource('parcels', {
       type: 'geojson',
@@ -2853,6 +2995,8 @@ async function initializeMapOnce() {
       // click-to-insert vertex editing, which sets isDrawing to reuse the drawing
       // click handler. Neither may have a parcel selected underneath it.
       if (isDrawing.value) return;
+      // Split mode owns the click too: it draws cut vertices, never selects.
+      if (isSplitting.value) return;
       if (!e.features || e.features.length === 0) return;
       const id = Number(e.features[0].properties?.id);
       if (!Number.isFinite(id)) {
@@ -2865,24 +3009,34 @@ async function initializeMapOnce() {
 
     // Clicking bare ground clears the selection. MapLibre fires both the layer
     // handler and this one for the same click, so re-query rather than assume order.
+    // In split mode the ground click is a cut vertex instead.
     map.on('click', (e) => {
+      if (isSplitting.value) {
+        addCutVertex(e.lngLat);
+        return;
+      }
       if (draggingVertexIndex.value !== null) return;
       const hits = map!.queryRenderedFeatures(e.point, { layers: visibleSelectionLayers() });
       if (hits.length === 0) selectedParcelId.value = null;
     });
 
+    // Double-click finishes a legal split; the two clicks before it are vertices.
+    map.on('dblclick', () => {
+      if (isSplitting.value && cutDraft.value.verdict === 'ok') finishSplit();
+    });
+
     map.on('mouseenter', 'parcels-fill', () => {
-      if (map && !isDrawing.value) map.getCanvas().style.cursor = 'pointer';
+      if (map && !isDrawing.value && !isSplitting.value) map.getCanvas().style.cursor = 'pointer';
     });
     map.on('mouseleave', 'parcels-fill', () => {
-      if (map && !isDrawing.value && draggingVertexIndex.value === null) map.getCanvas().style.cursor = '';
+      if (map && !isDrawing.value && draggingVertexIndex.value === null && !isSplitting.value) map.getCanvas().style.cursor = '';
     });
 
     // MapLibre has no vertex-drag primitive, so the gesture is assembled from raw
     // handlers. e.preventDefault() on the layer mousedown is what suppresses the
     // map pan for the duration of the drag.
     map.on('mouseenter', 'vertices-circle', () => {
-      if (map && draggingVertexIndex.value === null) map.getCanvas().style.cursor = 'grab';
+      if (map && draggingVertexIndex.value === null && !isSplitting.value) map.getCanvas().style.cursor = 'grab';
     });
     map.on('mouseleave', 'vertices-circle', () => {
       if (map && draggingVertexIndex.value === null) map.getCanvas().style.cursor = '';
@@ -2892,11 +3046,17 @@ async function initializeMapOnce() {
       // Refuse before preventDefault: while drawing or click-to-insert editing owns
       // the map, a stale marker must never swallow a beacon click.
       if (isDrawing.value) return;
+      if (isSplitting.value) return;
       if (!e.features || e.features.length === 0) return;
       e.preventDefault();
       beginVertexDrag(Number(e.features[0].properties?.index));
     });
     map.on('mousemove', (e) => {
+      if (isSplitting.value) {
+        cutCursorLngLat.value = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+        paintCutRubber(e.lngLat);
+        return;
+      }
       if (draggingVertexIndex.value !== null) moveVertexDrag(e.point, e.lngLat);
     });
     map.on('mouseup', () => endVertexDrag());
@@ -2904,6 +3064,7 @@ async function initializeMapOnce() {
     // Field use is on tablets: the same path, single touch only.
     map.on('touchstart', 'vertices-circle', (e) => {
       if (isDrawing.value) return;
+      if (isSplitting.value) return;
       if (!e.features || e.features.length === 0) return;
       if (e.points.length !== 1) return;
       e.preventDefault();
@@ -3583,6 +3744,7 @@ function addSurveyPoints(wgs84Points: any[]) {
 
   // Add click handler for trig beacons
   map.on('click', 'trig-beacons-symbol', (e) => {
+    if (isSplitting.value) return; // the generic handler takes the vertex
     if (!e.features || e.features.length === 0) return;
     const props = e.features[0].properties;
     new maplibregl.Popup()
@@ -3604,6 +3766,10 @@ function addSurveyPoints(wgs84Points: any[]) {
   map.on('click', 'survey-pegs-circle', (e) => {
     if (!e.features || e.features.length === 0) return;
     const props = e.features[0].properties;
+    
+    // If split mode is active, the click is a split vertex: let the generic
+    // handler own it, never a beacon popup.
+    if (isSplitting.value) return;
     
     // If drawing mode is active, add point to polygon
     if (isDrawing.value) {
@@ -3962,6 +4128,8 @@ function zoomToPoint(point: any) {
  * Start drawing mode
  */
 function startDrawing() {
+  // Parcel drawing and split mode never overlap: a click can do only one.
+  if (isSplitting.value) cancelSplit();
   // Check if we have coordinate points to digitize
   if (coordinatePoints.value.length === 0) {
     alert(
@@ -4003,6 +4171,144 @@ function cancelDrawing() {
   updateTempPolygon([]);
   console.log('[MapLibre] ❌ Drawing cancelled');
 }
+
+// ── Split-the-figure interactions ──────────────────────────────────────────────
+const splitLoZone = () => (workflowState?.projectInfo?.centralMeridian || 31) as LoZone;
+
+function clearCutPaint() {
+  if (cutVerticesSource) cutVerticesSource.setData({ type: 'FeatureCollection', features: [] });
+  if (cutLineSource) cutLineSource.setData({ type: 'FeatureCollection', features: [] });
+  if (cutRubberSource) cutRubberSource.setData({ type: 'FeatureCollection', features: [] });
+}
+
+function renderCutDraft() {
+  if (!map || !cutVerticesSource || !cutLineSource) return;
+  const vertices = cutDraft.value.vertices;
+  const wgs84 = capeLoArrayToWGS84(
+    vertices.map((v, i) => ({ id: String(i), y: v.y, x: v.x })),
+    splitLoZone()
+  );
+  const n = wgs84.length;
+  cutVerticesSource.setData({
+    type: 'FeatureCollection',
+    features: wgs84.map((w, i) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [w.lng, w.lat] },
+      properties: {
+        index: i,
+        snapped:
+          i === 0 ? (cutDraft.value.startsAt?.snapped ?? false)
+            : i === n - 1 ? (cutDraft.value.endsAt?.snapped ?? false)
+            : false,
+      },
+    })),
+  });
+  cutLineSource.setData({
+    type: 'FeatureCollection',
+    features: n >= 2 ? [{
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: wgs84.map(w => [w.lng, w.lat]) },
+      properties: {},
+    }] : [],
+  });
+}
+
+/**
+ * Rubber-band the cut from its last vertex to the cursor. Drawn straight in WGS84,
+ * exactly like previewDragToCursor: turning the cursor into Cape Lo would be the
+ * coordinate-deriving path. The committed vertices carry the only Lo values.
+ */
+function paintCutRubber(cursor: { lng: number; lat: number }) {
+  if (!map || !cutRubberSource) return;
+  const vertices = cutDraft.value.vertices;
+  if (vertices.length === 0) {
+    cutRubberSource.setData({ type: 'FeatureCollection', features: [] });
+    return;
+  }
+  const last = vertices[vertices.length - 1];
+  const [w] = capeLoArrayToWGS84([{ id: 'last', y: last.y, x: last.x }], splitLoZone());
+  cutRubberSource.setData({
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: [[w.lng, w.lat], [cursor.lng, cursor.lat]] },
+      properties: {},
+    }],
+  });
+}
+
+function startSplitting() {
+  if (isDrawing.value) cancelDrawing();
+  exitVertexDragMode();
+  if (splitFigureRing.value.length < 3) {
+    alert('No Outside Figure parcel to split. Designate a parcel as "Outside Figure" first.');
+    return;
+  }
+  isSplitting.value = true;
+  cutDraft.value = newDraft();
+  cutCursorLngLat.value = null;
+  clearCutPaint();
+  if (map) map.getCanvas().style.cursor = 'crosshair';
+  console.log('[MapLibre] ✂️ Split-figure mode started');
+}
+
+/** A click lands here: raw WGS84 at the boundary, rounded by cutDrawing's addVertex. */
+function addCutVertex(lngLat: { lng: number; lat: number }) {
+  if (splitFigureRing.value.length < 3) return;
+  const cape = wgs84ToCape(lngLat.lng, lngLat.lat, splitLoZone(), 'M');
+  cutDraft.value = addVertex(cutDraft.value, splitFigureRing.value, splitStands.value, { y: cape.y, x: cape.x });
+  cutCursorLngLat.value = { lng: lngLat.lng, lat: lngLat.lat };
+  renderCutDraft();
+  paintCutRubber(lngLat);
+}
+
+function undoCut() {
+  cutDraft.value = undoVertex(cutDraft.value, splitFigureRing.value, splitStands.value);
+  renderCutDraft();
+  if (cutCursorLngLat.value) paintCutRubber(cutCursorLngLat.value);
+}
+
+/** Leave the mode with the draft intact; Task 4 persists it on this path. */
+function finishSplit() {
+  if (cutDraft.value.verdict !== 'ok') return;
+  isSplitting.value = false;
+  if (map) map.getCanvas().style.cursor = '';
+  console.log('[MapLibre] ✂️ Split-figure finished');
+}
+
+/** Escape / Cancel: clear the draft AND leave the mode, so parcel digitising returns. */
+function cancelSplit() {
+  isSplitting.value = false;
+  cutDraft.value = newDraft();
+  cutCursorLngLat.value = null;
+  clearCutPaint();
+  if (map) map.getCanvas().style.cursor = '';
+  console.log('[MapLibre] ❌ Split-figure cancelled');
+}
+
+/** Sheet count from splitFigure's parts — the verdict's own source, not a re-estimate. */
+const cutPartsCount = computed<number | null>(() => {
+  if (cutDraft.value.verdict !== 'ok' || cutDraft.value.vertices.length < 2) return null;
+  const outcome = splitFigure({
+    ring: splitFigureRing.value,
+    polyline: cutDraft.value.vertices,
+    stands: splitStands.value,
+  });
+  return outcome.ok ? outcome.parts.length : null;
+});
+
+const verdictText = computed(() => {
+  const d = cutDraft.value;
+  switch (d.verdict) {
+    case 'incomplete': return 'Click a second point to close the cut.';
+    case 'ok': return `This cut divides the figure into ${cutPartsCount.value ?? 2} sheet${cutPartsCount.value === 1 ? '' : 's'}.`;
+    case 'straddles-stands': return `Would slice stand ${d.offenders.join(', ')}.`;
+    case 'interior-outside': return 'The cut leaves the figure.';
+    case 'self-intersecting': return 'The cut crosses itself.';
+    case 'degenerate': return 'Both ends land in the same place.';
+    default: return '';
+  }
+});
 
 function dismissOverlapWarning() {
   overlapMessage.value = null;
@@ -7393,6 +7699,16 @@ async function saveMergedPDFToProject(pdfBytes: Uint8Array, projectName: string)
  * Handle keyboard events
  */
 function handleKeyPress(e: KeyboardEvent) {
+  // Split mode owns the keyboard while active: Undo via Ctrl+Z.
+  if (isSplitting.value && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    undoCut();
+    return;
+  }
+  if (isSplitting.value && e.key === 'Escape') {
+    cancelSplit();
+    return;
+  }
   if (e.key === 'Escape' && draggingVertexIndex.value !== null) {
     cancelVertexDrag();
     return;

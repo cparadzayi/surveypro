@@ -672,7 +672,22 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         let finalPdfBuffer
         let isMultiSheet = false
 
-        if (tileGrid) {
+        // A plan is several sheets when the SURVEYOR divided the figure, and
+        // that fact arrives in the request: `sheets` is what the frontend's
+        // buildSheetPayloads derived from the stored cut. More than one sheet
+        // means the cut really divided the figure; exactly one means it did
+        // not (no cut, or a cut that was withdrawn) and the mature single-plan
+        // renderer is the right one.
+        //
+        // `tileGrid` is kept only as a legacy signal for a request that claims
+        // a figure which does not fit one sheet. Tiling was retired
+        // (planSheeting.js always resolves a best-effort single sheet), so
+        // `needsTiling` is permanently false and this route's `tileGrid` is
+        // permanently null — gating on it alone silently dropped every cut.
+        const sheets = Array.isArray(request.body.sheets) ? request.body.sheets : null
+        const cutDividesFigure = sheets !== null && sheets.length > 1
+
+        if (tileGrid || cutDividesFigure) {
           // SI 727 Reg 32(3): the figure does not fit one sheet. There is
           // nothing to tile anymore — a sheet boundary is a survey judgement,
           // so the only path to several sheets is the surveyor's own cuts.
@@ -686,7 +701,6 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
             return reply.code(400).send({ error: choice.error, message: choice.message })
           }
 
-          const sheets = request.body.sheets
           if (!Array.isArray(sheets) || sheets.length === 0) {
             return reply.code(400).send({
               error: 'sheets-required',
@@ -694,7 +708,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
             })
           }
 
-          fastify.log.warn(`[GeoPDF] 🗺️ SI 727 Reg 32(3): multi-sheet plan required — ${sheets.length} sheets from the surveyor's cuts`)
+          fastify.log.warn(`[GeoPDF] 🗺️ SI 727 Reg 32(3): multi-sheet plan — ${sheets.length} sheets from the surveyor's cuts`)
           const sheetedResult = await generateSheetedGeoPDF(
             { sheets, metadata, beacons, projection, scale, sheetSize, planType },
             fastify.log

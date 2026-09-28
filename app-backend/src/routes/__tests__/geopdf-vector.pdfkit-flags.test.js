@@ -178,4 +178,64 @@ describe('/api/geopdf/vector trueGeoPDF flag forwarding', () => {
     expect(res.statusCode).toBe(400)
     expect(JSON.parse(res.rawPayload.toString()).error).toBe('sheets-required')
   })
+
+  // ── A cut that actually divided the figure IS the multi-sheet signal. ──
+  //
+  // These used to be reachable only by forcing `tileGrid`, but tiling was
+  // retired: planSheeting.js now always returns a best-effort single-sheet
+  // candidate, so `needsTiling` is permanently false and `tileGrid` is
+  // permanently null. A gate that can never open meant a surveyor's cut was
+  // stored, carried all the way to this route, and then dropped. What a
+  // surveyor drew is the evidence — not whether the figure overflows.
+
+  test('a cut that divided the figure into 2 sheets renders the sheeted PDF with no tileGrid', async () => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/vector',
+      payload: {
+        ...basePayload,
+        planType: 'general-undeveloped',
+        sheets: [
+          { sheetNumber: 1, totalSheets: 2, ring: [], stands: ['1'], vertices: [], edges: [] },
+          { sheetNumber: 2, totalSheets: 2, ring: [], stands: ['2'], vertices: [], edges: [] }
+        ]
+      }
+    })
+    expect(res.statusCode).toBe(200)
+    expect(mockGenerateSheetedGeoPDF).toHaveBeenCalledTimes(1)
+    expect(mockGenerateSheetedGeoPDF.mock.calls[0][0].sheets).toHaveLength(2)
+    expect(res.rawPayload.toString()).toBe('SHEETED-PDF')
+    expect(res.headers['x-sheet-count']).toBe('2')
+    expect(res.headers['content-disposition']).toContain('general-plan-multisheet')
+  })
+
+  test('ONE sheet is not a split: it keeps the mature single-plan path', async () => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/vector',
+      payload: {
+        ...basePayload,
+        planType: 'general-undeveloped',
+        sheets: [{ sheetNumber: 1, totalSheets: 1, ring: [], stands: ['1'], vertices: [], edges: [] }]
+      }
+    })
+    expect(res.statusCode).toBe(200)
+    expect(mockGenerateSheetedGeoPDF).not.toHaveBeenCalled()
+    expect(mockGenerateGeoPDF).toHaveBeenCalledTimes(1)
+    expect(res.rawPayload.toString()).toBe('PDF')
+  })
+
+  test('a no-cut plan is untouched: single-plan path, no sheet count header', async () => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/vector',
+      payload: { ...basePayload, planType: 'general-undeveloped' }
+    })
+    expect(res.statusCode).toBe(200)
+    expect(mockGenerateSheetedGeoPDF).not.toHaveBeenCalled()
+    expect(res.headers['x-sheet-count']).toBeUndefined()
+  })
 })

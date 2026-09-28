@@ -35,6 +35,14 @@ import { findBlockPosition } from './dxfBlockPlacer.js';
 import { drawSubjectAdjoiningFeatures } from './adjoiningFeatures.js';
 import { buildPolygonForPlanner, buildPlannerObstacles, chooseFigureAlignX } from './polygonForPlanner.js';
 import { measureFigureWhitespace, subdivideStripsForCap, levelScheduleTables, seatScheduleAsComposite } from './scheduleStrategy.js';
+import {
+  closeLoRing,
+  sheetOutsideFigure,
+  sheetParcels,
+  sheetOutsideFigureData,
+  sheetMetadata,
+  sheetSheetInfo,
+} from './sheetPayloadGeometry.js';
 
 /**
  * How much of the drawing band one Schedule of Areas table may occupy.
@@ -12887,20 +12895,11 @@ export async function generateTiledGeoPDF(options, logger) {
 
 const _silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
 
-/**
- * Close an open Lo {y,x} ring for GeoJSON Polygon use. A SheetPayload's
- * `ring` is documented as "open" (see sheetPayloads.ts); GeoJSON requires the
- * first position repeated at the end. Idempotent when already closed.
- */
-function _closeLoRing(ring) {
-  if (!Array.isArray(ring) || ring.length === 0) return [];
-  const first = ring[0];
-  const last = ring[ring.length - 1];
-  const EPS = 1e-6;
-  const alreadyClosed =
-    Math.abs(first.y - last.y) < EPS && Math.abs(first.x - last.x) < EPS;
-  return alreadyClosed ? ring : [...ring, { y: first.y, x: first.x }];
-}
+// The payload -> GeoJSON translation lives in sheetPayloadGeometry.js, shared
+// with the DXF renderer: "which parcels are on this sheet" is one rule, and two
+// renderers each answering it in their own words is how the PDF and the DXF end
+// up stating different things about the same survey.
+const _closeLoRing = closeLoRing;
 
 /**
  * Key plan (Sheet 0) for a polyline-cut multi-sheet plan: each cell of
@@ -13045,13 +13044,10 @@ async function _generateKeyPlanSheetFromRings(sheets, metadata, logger) {
  * SheetPayload objects (app-frontend/src/utils/sheetPayloads.ts), one PDF
  * page per sheet, preceded by a key plan when there is more than one sheet.
  *
- * A SheetPayload names its stands but carries no per-stand geometry — only
- * the sheet's own outside-figure `ring`. So the synthetic "parcels" built
- * here for the schedule of areas all share that same ring as their geometry:
- * enough for a correct schedule (stand name + blank area/deed columns) and a
- * non-crashing figure (the ring itself, which IS what should fill the
- * drawing area), but NOT a substitute for individually-drawn stand
- * boundaries when a sheet carries more than one stand — see task-4-report.md.
+ * Each sheet's own figure, stands, parcels, outside-figure table and servitude
+ * rows come straight off its SheetPayload — there is nothing to filter or clip,
+ * because each part already IS its own figure. The payload -> GeoJSON reshaping
+ * is in sheetPayloadGeometry.js, shared with the DXF renderer.
  *
  * @param {Object} options
  * @param {Array}  options.sheets   SheetPayload[], any order (re-sorted by sheetNumber).
@@ -13108,69 +13104,12 @@ export async function generateSheetedGeoPDF(options, logger) {
   }
 
   for (const sheet of orderedSheets) {
-    const ringClosed = _closeLoRing(sheet.ring);
-    const ringCoords = ringClosed.map((p) => [p.y, p.x]); // [y, x] = [easting, southing], never {x, y} PDF points
-
-    const outsideFigure = {
-      type: 'FeatureCollection',
-      features: [{
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'Polygon', coordinates: [ringCoords] },
-      }],
-    };
-
-    // Each of this sheet's parcels, as the caller's own object gave it.
-    //
-    // An earlier version had no parcel data to work with -- the payload carried
-    // stand NAMES only -- so it synthesised one parcel per name, all sharing the
-    // sheet's ring. That drew a legible figure and an EMPTY schedule: the Area,
-    // Diagram, Deed and S.G. columns all read from parcel properties, and with
-    // more than one stand on a sheet their number labels landed on top of each
-    // other, since every parcel had the same outline. A schedule of areas with a
-    // blank Area column is not lodgeable.
-    //
-    // `properties.stand` and `properties.area_m2` are the names the schedule
-    // drawer reads (see the schedule row builder below); the rest of the caller's
-    // fields pass through untouched, so anything the single-sheet path already
-    // understands keeps working. `ring` is dropped from properties because its
-    // place is the geometry.
-    const parcelFeature = (parcel) => {
-      const { ring, ...rest } = parcel || {};
-      const own = Array.isArray(ring) && ring.length >= 3 ? ring : ringClosed;
-      return {
-        type: 'Feature',
-        properties: { ...rest, stand: parcel?.name ?? rest.stand ?? '' },
-        geometry: { type: 'Polygon', coordinates: [own.map((p) => [p.y, p.x])] },
-      };
-    };
-
-    const parcels = {
-      type: 'FeatureCollection',
-      features: Array.isArray(sheet.parcels) && sheet.parcels.length > 0
-        ? sheet.parcels.map(parcelFeature)
-        // A payload built before `parcels` existed, or a sheet holding only
-        // public places: fall back to names so the page still renders.
-        : (sheet.stands || []).map((standName) => ({
-            type: 'Feature',
-            properties: { stand: standName },
-            geometry: { type: 'Polygon', coordinates: [ringCoords] },
-          })),
-    };
-
-    // The payload's edges/constants are already in the exact shape
-    // _generateGeoPDFInner expects for outsideFigureData — no translation.
-    const outsideFigureData = {
-      edges: sheet.edges || [],
-      constants: sheet.constants || null,
-    };
-
+    const outsideFigure = sheetOutsideFigure(sheet);
+    const parcels = sheetParcels(sheet);
+    const outsideFigureData = sheetOutsideFigureData(sheet);
     // Per-sheet servitude rows, never the whole plan's — do not mutate the
     // shared `metadata` object across sheets.
-    const sheetMetadata = {
-      ...metadata,
-      servitudeStatement: { rows: sheet.servitudeRows || [] },
-    };
+    const perSheetMetadata = sheetMetadata(metadata, sheet);
 
     const result = await _generateGeoPDFInner({
       parcels,
@@ -13178,7 +13117,7 @@ export async function generateSheetedGeoPDF(options, logger) {
       annotations: emptyFC(),
       outsideFigure,
       projection,
-      metadata: sheetMetadata,
+      metadata: perSheetMetadata,
       outsideFigureData,
       beaconLabels: null,
       scale,
@@ -13188,7 +13127,7 @@ export async function generateSheetedGeoPDF(options, logger) {
       // master figure), each sheet here has its OWN distinct outside figure,
       // so the title block's beacon sequence must come from THIS sheet's own
       // vertices, which is what omitting fullFigureLabel already falls back to.
-      sheetInfo: { sheetNumber: sheet.sheetNumber, totalSheets: sheet.totalSheets },
+      sheetInfo: sheetSheetInfo(sheet),
     }, log);
 
     pageBuffers.push(result.pdfBuffer);

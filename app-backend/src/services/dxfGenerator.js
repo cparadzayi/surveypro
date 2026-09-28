@@ -82,6 +82,12 @@ import { SI727_SCALE_LADDER } from '../../../app-shared/si727Scales.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 import { roundBearingSouth } from '../utils/zim-geo.js'
 import { emitSubjectAdjoiningFeaturesDxf } from './adjoiningFeaturesDxf.js'
+import {
+  sheetParcels,
+  sheetOutsideFigureData,
+  sheetMetadata,
+  sheetSheetInfo,
+} from './sheetPayloadGeometry.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
 // External consumers (tests, other modules) keep importing from dxfGenerator.js.
@@ -157,14 +163,18 @@ export function formatVideLine(maxLineChars) {
  * Placeholder substitutions and missing-field fallbacks are documented in
  * the spec (2026-06-01-dxf-title-block-si727-design.md, Components).
  *
- * Note: single-sheet template only. The multi-sheet variant
- * (`figureDescription.multiSheetTemplate`) is owned by sub-project #6
- * (multi-sheet tiling).
+ * `sheetInfo` is OPTIONAL and, when its `otherSheets` is a non-empty string, the
+ * MULTI-SHEET template is used instead. The two are siblings on the same block,
+ * and the choice is driven by `otherSheets` being empty rather than by a sheet
+ * count, because an empty return is a signal: interpolating '' into the
+ * multi-sheet sentence produces "the figures on , represents", which would be
+ * lodged as written. A single sheet must therefore use the plain `template`
+ * however it is reached. `figureLabel`, `otherSheets`, `standRange` and
+ * `totalStandCount` come off the SheetPayload (see sheetSheetInfo) rather than
+ * being recomputed, so the DXF and the PDF cannot disagree about which sheets
+ * this one is read with, or what the sheets between them represent.
  */
-export function formatFigureDescription(metadata, outsideFigureData, surveyedParcels, maxLineChars) {
-  const template = TITLE_BLOCK?.figureDescription?.template
-  if (!template) throw new Error('TITLE_BLOCK.figureDescription.template missing from app-shared/block-definitions.js')
-
+export function formatFigureDescription(metadata, outsideFigureData, surveyedParcels, maxLineChars, sheetInfo = null) {
   const edges = outsideFigureData?.edges
   if (!Array.isArray(edges) || edges.length === 0) return []
   if (!Array.isArray(surveyedParcels) || surveyedParcels.length === 0) return []
@@ -175,6 +185,16 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
   const beaconSequence = getOutsideFigureVertices(outsideFigureData, null).sequence
   if (!beaconSequence) return []
 
+  const multiSheet = typeof sheetInfo?.otherSheets === 'string' && sheetInfo.otherSheets.trim() !== ''
+  const template = multiSheet
+    ? TITLE_BLOCK?.figureDescription?.multiSheetTemplate
+    : TITLE_BLOCK?.figureDescription?.template
+  if (!template) {
+    throw new Error(
+      `TITLE_BLOCK.figureDescription.${multiSheet ? 'multiSheetTemplate' : 'template'} missing from app-shared/block-definitions.js`
+    )
+  }
+
   const township = (metadata?.township || 'the township').toUpperCase()
   const district = (metadata?.district || 'the district').toUpperCase()
   const parentProperty = (metadata?.parentProperty || '').trim().toUpperCase()
@@ -183,6 +203,30 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
 
   const standNames = surveyedParcels.map(sp => String(sp?.stand ?? '')).filter(Boolean)
   if (standNames.length === 0) return []
+
+  if (multiSheet) {
+    // The WHOLE plan's count and range, not this sheet's own: the sentence says
+    // what the sheets TOGETHER represent.
+    const totalStandCount = Number.isInteger(sheetInfo?.totalStandCount) && sheetInfo.totalStandCount > 0
+      ? sheetInfo.totalStandCount
+      : standNames.length
+    const standRangeText = (typeof sheetInfo?.standRange === 'string' && sheetInfo.standRange.trim())
+      ? sheetInfo.standRange
+      : formatStandRanges(standNames)
+
+    const sentence = template
+      .replace('{figureLabel}',     sheetInfo.figureLabel || 'Outside Figure')
+      .replace('{otherSheets}',     sheetInfo.otherSheets)
+      .replace('{township}',        township)
+      .replace('{totalStandCount}', String(totalStandCount))
+      .replace('{standRange}',      standRangeText)
+      .replace('{wholePortion}',    wholePortion)
+      .replace('{ofTarget}',        ofTarget)
+      .replace('{district}',        district)
+
+    return splitToWidth(sentence, maxLineChars)
+  }
+
   const standCount = standNames.length
 
   const sentence = template
@@ -1843,7 +1887,7 @@ export function generateDXF(options, logger) {
   const _desigLines = formatPlanDesignation(metadata, surveyedParcels)
     ? splitToWidth(formatPlanDesignation(metadata, surveyedParcels), _desigMaxChars).length : 0;
   const _sheetLines = formatSheetLabel(sheetInfo).length;
-  const _figLines   = formatFigureDescription(metadata, outsideFigureData, surveyedParcels, _titleMaxChars).length;
+  const _figLines   = formatFigureDescription(metadata, outsideFigureData, surveyedParcels, _titleMaxChars, sheetInfo).length;
   const _videLines  = formatVideLine(_titleMaxChars).length;
   const titleBandH =
       mm(8)                                   // top inset to first baseline
@@ -2005,7 +2049,7 @@ export function generateDXF(options, logger) {
   }
 
   // (b.ii) Figure description sentence (replaces the old ad-hoc line).
-  for (const line of formatFigureDescription(metadata, outsideFigureData, surveyedParcels, titleMaxLineChars)) {
+  for (const line of formatFigureDescription(metadata, outsideFigureData, surveyedParcels, titleMaxLineChars, sheetInfo)) {
     ty -= hBody * 1.6
     addTextC(TB, txC, ty, line, hBody)
   }
@@ -2819,4 +2863,101 @@ export function generateDXF(options, logger) {
     scale: `1:${S}`,
     sheetSize: normalizedSheetSize,
   };
+}
+
+// ============================================================================
+// ONE DXF PER SHEET (SI 727 Seventh Schedule (b), polyline cut)
+// ============================================================================
+//
+// Spec Part 1: in PDF the plan is ONE document with a page per sheet; in DXF
+// each sheet is its OWN file. generateSheetedDXF is the DXF sibling of
+// generateSheetedGeoPDF (pdfkitGeoPDF.js) -- it invokes the single-plan
+// generateDXF once per SheetPayload and names the results, rather than
+// reimplementing any drawing code.
+//
+// Nothing here filters or clips. Unlike a rectangular tile, which is a window
+// onto ONE shared master figure, each sheet's part already IS its own figure
+// with its own stands, its own outside-figure table and its own servitude rows
+// (app-frontend/src/utils/sheetPayloads.ts). The payload -> GeoJSON reshaping
+// is in sheetPayloadGeometry.js, the same module the PDF renderer uses, so the
+// two cannot drift on what a sheet contains.
+
+const _silentDxfLogger = { info: () => {}, warn: () => {}, error: () => {} };
+
+/**
+ * `general-plan-<designation>` or similar, with the characters Windows will not
+ * take in a filename removed. Mirrors the frontend's `composePlanBaseName`
+ * (app-frontend/src/views/modules/cadastral-standard/planPayload.ts) so a file
+ * named here lands in the project's output folder under the name the surveyor's
+ * other artefacts already use.
+ */
+function _sheetedDxfBaseName(metadata, baseName) {
+  if (typeof baseName === 'string' && baseName.trim()) return baseName.trim();
+  const source = metadata?.designation || metadata?.surveyOf || metadata?.township || 'survey-plan';
+  return String(source).replace(/[^\w.-]+/g, '_').slice(0, 60) || 'survey-plan';
+}
+
+/**
+ * Render one DXF per SheetPayload, in sheetNumber order.
+ *
+ * `formatSheetLabel` already returns [] for a single sheet, so a one-sheet plan
+ * gets no SHEET line without a special case here — and its filename is left
+ * plain, because "sheet 1 of 1" states nothing and would put a word in the
+ * surveyor's folder that the plan does not need.
+ *
+ * @param {Object} options
+ * @param {Array}  options.sheets   SheetPayload[], any order (re-sorted by sheetNumber).
+ * @param {Object} [options.metadata]  Whole-plan metadata, shared by every sheet.
+ * @param {Object} [options.beacons]   Whole-plan beacons GeoJSON FeatureCollection.
+ * @param {string} [options.baseName]  Filename stem; derived from metadata when absent.
+ * @param {string} [options.projection] [options.scale] [options.sheetSize]
+ *   [options.orientation] [options.planType] [options.beaconLabels]
+ *   Forwarded to generateDXF unchanged — the caller decides sheeting exactly as
+ *   it does for a single-sheet plan.
+ * @returns {Array<{ sheetNumber: number, totalSheets: number, filename: string,
+ *   dxf: string, buffer: Buffer, warnings: object, scale: string, sheetSize: string }>}
+ *   One entry per payload, in sheetNumber order. `dxf` is the document as text
+ *   (what generateDXF builds internally, and what a .dxf is); `buffer` is the
+ *   same bytes, for callers that write or attach it.
+ */
+export function generateSheetedDXF(options, logger) {
+  const { sheets, metadata = {}, beacons = null, baseName, ...forwarded } = options || {};
+  if (!Array.isArray(sheets) || sheets.length === 0) {
+    throw new Error('generateSheetedDXF: options.sheets must be a non-empty array of SheetPayload objects');
+  }
+  // generateDXF logs unconditionally and has no default; silence it rather than
+  // make every caller remember, exactly as generateSheetedGeoPDF does for the PDF.
+  const log = logger || _silentDxfLogger;
+
+  const ordered = [...sheets].sort((a, b) => a.sheetNumber - b.sheetNumber);
+  const stem = _sheetedDxfBaseName(metadata, baseName);
+
+  return ordered.map((sheet) => {
+    const totalSheets = sheet.totalSheets ?? ordered.length;
+    const { buffer, warnings, scale, sheetSize } = generateDXF(
+      {
+        ...forwarded,
+        parcels: sheetParcels(sheet),
+        beacons: beacons || { type: 'FeatureCollection', features: [] },
+        outsideFigureData: sheetOutsideFigureData(sheet),
+        // A copy: `metadata` is shared by every sheet, and one sheet's servitude
+        // rows written into it would leave the next sheet stating them.
+        metadata: sheetMetadata(metadata, sheet),
+        sheetInfo: sheetSheetInfo({ ...sheet, totalSheets }),
+      },
+      log
+    );
+
+    const suffix = totalSheets > 1 ? `-sheet-${sheet.sheetNumber}-of-${totalSheets}` : '';
+    return {
+      sheetNumber: sheet.sheetNumber,
+      totalSheets,
+      filename: `${stem}${suffix}.dxf`,
+      dxf: buffer.toString('utf8'),
+      buffer,
+      warnings,
+      scale,
+      sheetSize,
+    };
+  });
 }

@@ -9,91 +9,14 @@ import LandParcel from '../models/landParcel.js'
 import { computeAreaConsistency } from '../utils/area-computation.js'
 import { authenticateWithSchema } from '../utils/schemaAuth.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
-import { prjForDxf, northUpWktForDxf } from '../utils/crsDefinitions.js'
+import { prjForDxf } from '../utils/crsDefinitions.js'
+import { dxfToGeoreferencedGpkg, getOGR2OGRCommand, getGDALVersion } from '../utils/dxfGpkg.js'
 import { zipSync } from 'fflate'
 
 const execAsync = promisify(exec)
 const execFileAsync = promisify(execFile)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-
-let cachedOGR2OGRPath = null
-
-/**
- * Convert a DXF's ground geometry into a QGIS-native GeoPackage (.gpkg) whose
- * CRS is declared inside the file. Unlike .prj sidecars — which the GDAL DXF
- * driver ignores ("DXF files are considered to have no georeferencing
- * information") — a GeoPackage is self-describing, so QGIS auto-places it in
- * the right hemisphere with zero manual steps.
- *
- * The DXF coordinates are already plain north-up easting/northing (negative
- * in the southern hemisphere — easting west of the Lo central meridian,
- * northing south of the equator). We ASSIGN the matching north-up CRS with
- * `-a_srs` (no `-t_srs` reprojection): feeding them through official
- * EPSG:22291 instead stores a South-Orientated *(westing, southing)* tuple
- * whose axes both point the wrong way, so QGIS renders the plan rotated 180°.
- *
- * Any WKT AUTHORITY tag is deliberately omitted so GDAL/QGIS use the WKT's
- * declared AXIS east/north rather than substituting EPSG:22291's canonical
- * south-orientated axes.
- *
- * Returns the .gpkg buffer, or null when ogr2ogr is unavailable or the
- * conversion fails (callers fall back to DXF + .prj only).
- */
-async function dxfToGeoreferencedGpkg(dxfBuffer, projection, logger) {
-  const ogrCmd = await getOGR2OGRCommand()
-  if (!ogrCmd || !dxfBuffer || dxfBuffer.length === 0) return null
-
-  const tempDir = path.join(__dirname, '../../temp/dxf')
-  if (!existsSync(tempDir)) await mkdir(tempDir, { recursive: true })
-
-  const ts = Date.now()
-  const srcDxf = path.join(tempDir, `gpkg-src-${ts}.dxf`)
-  const outGpkg = path.join(tempDir, `gpkg-out-${ts}.gpkg`)
-
-  // Use QGIS's own PROJ database — the system PATH may resolve a PostGIS
-  // proj.db with an incompatible DATABASE.LAYOUT.VERSION (breaks SRS parsing).
-  const env = { ...process.env }
-  const qgisOgrPath = ogrCmd.includes('QGIS')
-    ? (ogrCmd.match(/"([^"]+)"/)?.[1] || ogrCmd.replaceAll('"', ''))
-    : null
-  const projLib = qgisOgrPath
-    ? path.join(path.dirname(qgisOgrPath), '..', 'share', 'proj')
-    : null
-  if (projLib && existsSync(projLib)) {
-    env.PROJ_LIB = projLib
-    env.PROJ_DATA = projLib
-  }
-
-  try {
-    await writeFile(srcDxf, dxfBuffer)
-    const northUpWkt = northUpWktForDxf(projection)
-    if (!northUpWkt) return null
-    // execFile, not exec/shell: the WKT contains double quotes that cmd.exe
-    // would mangle, and the argv array sidesteps all quoting entirely.
-    const { stderr } = await execFileAsync(
-      ogrCmd.replaceAll('"', ''),
-      ['-f', 'GPKG', outGpkg, srcDxf, '-a_srs', northUpWkt],
-      {
-        maxBuffer: 10 * 1024 * 1024,
-        env,
-        // A wedged or pathologically slow ogr2ogr must never hang a surveyplan
-        // export: the route degrades to DXF + .prj on timeout instead.
-        timeout: 60_000,
-      }
-    )
-    if (stderr && !stderr.includes('Warning')) logger?.warn?.(`[DXF] ogr2ogr gpkg stderr: ${stderr.substring(0, 1000)}`)
-    if (!existsSync(outGpkg)) return null
-    const gpkg = await readFile(outGpkg)
-    logger?.info?.(`[DXF] ✅ georeferenced GeoPackage created (${gpkg.length} bytes)`)
-    return gpkg
-  } catch (err) {
-    logger?.warn?.(`[DXF] ⚠️ GeoPackage conversion skipped: ${(err?.message || err?.code || 'unknown error').substring(0, 300)}${err?.killed ? ' (killed after timeout)' : ''}`)
-    return null
-  } finally {
-    await Promise.all([unlink(srcDxf).catch(() => {}), unlink(outGpkg).catch(() => {})])
-  }
-}
 
 /**
  * Bundle a DXF with a .prj (ESRI/OGC WKT) CRS sidecar into a single ZIP, and —
@@ -113,57 +36,32 @@ async function zipDxfWithPrj(dxfBuffer, projection, baseName, logger, includeGpk
   return Buffer.from(zipSync(entries, { level: 9 }))
 }
 
-async function findOGR2OGR() {
-  const commonPaths = [
-    'ogr2ogr',
-    'C:\\Program Files\\QGIS 3.44.3\\bin\\ogr2ogr.exe',
-    'C:\\Program Files\\QGIS 3.36.3\\bin\\ogr2ogr.exe',
-    'C:\\Program Files\\QGIS 3.34\\bin\\ogr2ogr.exe',
-    'C:\\OSGeo4W64\\bin\\ogr2ogr.exe',
-    'C:\\OSGeo4W\\bin\\ogr2ogr.exe',
-    '/usr/bin/ogr2ogr',
-    '/usr/local/bin/ogr2ogr',
-    '/opt/homebrew/bin/ogr2ogr'
-  ]
-
-  for (const ogrPath of commonPaths) {
-    try {
-      if (!ogrPath.includes('\\') && !ogrPath.includes('/')) {
-        try {
-          await execAsync(`${ogrPath} --version`)
-          return ogrPath
-        } catch {
-          continue
-        }
-      }
-
-      if (existsSync(ogrPath)) {
-        const quotedPath = `"${ogrPath}"`
-        try {
-          await execAsync(`${quotedPath} --version`)
-          return quotedPath
-        } catch {
-          continue
-        }
-      }
-    } catch {
-      continue
+/**
+ * Bundle N per-sheet DXFs into one ZIP, one .dxf per sheet, each with its own
+ * .gpkg when asked for, plus ONE .prj for the plan.
+ *
+ * The sheeted plan is N files on purpose (Spec Part 1: in PDF the plan is one
+ * document with a page per sheet, in DXF each sheet is its own file). The
+ * archive is only how they travel together over HTTP; unzipped it is exactly
+ * the N files the surveyor lodges.
+ *
+ * The .prj is written once, under the plan's own name, rather than once per
+ * sheet: every sheet is in the same Lo zone, and CAD software pairs a sidecar to
+ * its drawing by stem, so per-sheet sidecars would have to be named
+ * `<sheet>.prj` beside `<sheet>.dxf` and no other — 2N files, every one of them
+ * the same three lines.
+ */
+async function zipSheetedDxfWithPrj(files, projection, planBaseName, logger, includeGpkg = true) {
+  const entries = {}
+  for (const file of files) {
+    entries[file.filename] = new Uint8Array(file.buffer)
+    if (includeGpkg) {
+      const gpkg = await dxfToGeoreferencedGpkg(file.buffer, projection, logger)
+      if (gpkg) entries[file.filename.replace(/\.dxf$/, '.gpkg')] = new Uint8Array(gpkg)
     }
   }
-
-  return null
-}
-
-async function getOGR2OGRCommand() {
-  if (cachedOGR2OGRPath === null) {
-    cachedOGR2OGRPath = await findOGR2OGR()
-  }
-  return cachedOGR2OGRPath || 'ogr2ogr'
-}
-
-async function getGDALVersion(cmd) {
-  const { stdout } = await execAsync(`${cmd} --version`).catch(() => ({ stdout: null }))
-  return stdout?.trim() || null
+  entries[`${planBaseName}.prj`] = new Uint8Array(Buffer.from(prjForDxf(projection) || '', 'utf8'))
+  return Buffer.from(zipSync(entries, { level: 9 }))
 }
 
 function swapYxToXyGeometry(geometry) {
@@ -273,10 +171,19 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         zip = false,
         includeGpkg = true,
         gpkgOnly = false,
+        // Per-sheet payloads from app-frontend/src/utils/sheetPayloads.ts. When
+        // present the request is for a cut-based multi-sheet plan and `parcels`
+        // is ignored: each sheet already carries its own parcels, and the whole
+        // plan's set would put every sheet's stands on every sheet.
+        sheets = null,
+        baseName = null,
       } = request.body
 
-      if (!parcels || !beacons) {
+      if (sheets === null && (!parcels || !beacons)) {
         return reply.code(400).send({ error: 'Missing required fields: parcels, beacons' })
+      }
+      if (sheets !== null && !Array.isArray(sheets)) {
+        return reply.code(400).send({ error: 'sheets must be an array of SheetPayload objects' })
       }
 
       fastify.log.info(`[DXF] Request planType=${JSON.stringify(planType)} zip=${zip} includeGpkg=${includeGpkg} gpkgOnly=${gpkgOnly} beaconLabels=${Array.isArray(beaconLabels) ? beaconLabels.length : 'none'}`)
@@ -318,6 +225,80 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           })
           .send(dxfPayload)
         return
+      }
+
+      // ── Cut-based multi-sheet plan: one DXF file per sheet ──
+      // Spec Part 1. Two ways to ask for it, and the difference matters:
+      //
+      //   sheets: [one]  → ONE .dxf named by the payload, which is what the
+      //     frontend's artefact loop saves per file (so the existing 409
+      //     prompt-before-overwrite gate fires per sheet, as it does for every
+      //     other artefact).
+      //   sheets: [N], zip → one archive of N .dxf files, for a single download.
+      //
+      // N sheets with no zip is refused rather than quietly answered with sheet
+      // 1 alone: a surveyor handed two files when they asked for a sheeted plan,
+      // and only one of them, cannot tell it from a plan that fits.
+      if (sheets !== null) {
+        if (sheets.length === 0) {
+          return reply.code(400).send({ error: 'sheets was given but empty' })
+        }
+        const { generateSheetedDXF } = await import('../services/dxfGenerator.js')
+        const files = generateSheetedDXF(
+          { sheets, metadata, beacons, projection, scale, sheetSize, orientation, planType, beaconLabels, baseName },
+          fastify.log
+        )
+        const warningCount = files.reduce((sum, f) => sum + (f.warnings?.count || 0), 0)
+        const warningSummary = files.map((f) => f.warnings?.summary).filter(Boolean)
+        const sheetedHeaders = {
+          'X-Sheet-Count': String(files.length),
+          'X-Used-Scale': files[0].scale,
+          'X-Used-Sheet-Size': files[0].sheetSize,
+        }
+        if (warningCount > 0) {
+          sheetedHeaders['X-DXF-Warning-Count'] = String(warningCount)
+          sheetedHeaders['X-DXF-Warnings'] = JSON.stringify(warningSummary)
+        }
+        fastify.log.info(`[DXF] 🗂️ Sheeted DXF: ${files.length} files (${files.map((f) => f.filename).join(', ')})`)
+
+        if (gpkgOnly) {
+          // One GeoPackage cannot hold "the DXF of the plan" when the plan is
+          // several DXFs; say so rather than shipping the first sheet's geometry
+          // under a name that promises the lot. Checked before the zip rule,
+          // because it is the more specific answer to what the caller asked for.
+          return reply.code(400).send({
+            error: 'gpkgOnly is not available for a multi-sheet DXF',
+            message: `${files.length} sheets cannot be one GeoPackage. Request the DXF, or ogr2ogr each sheet yourself.`,
+          })
+        }
+
+        if (files.length > 1 && !zip) {
+          return reply.code(400).send({
+            error: 'A multi-sheet DXF is one file per sheet and cannot be sent as one',
+            message: `This plan is ${files.length} sheets. Request it with zip: true for one archive of ${files.length} .dxf files, or one sheet at a time (sheets: [payload]) to save each file separately.`,
+            sheets: files.map((f) => f.filename),
+          })
+        }
+
+        if (zip) {
+          const planBase = files[0].filename.replace(/-sheet-\d+-of-\d+\.dxf$/, '').replace(/\.dxf$/, '')
+          const archive = await zipSheetedDxfWithPrj(files, projection, planBase, fastify.log, includeGpkg)
+          return reply
+            .type('application/zip')
+            .headers({
+              ...sheetedHeaders,
+              'Content-Disposition': `attachment; filename="${planBase}-${files.length}-sheets.zip"`,
+            })
+            .send(archive)
+        }
+
+        return reply
+          .type('application/dxf')
+          .headers({
+            ...sheetedHeaders,
+            'Content-Disposition': `attachment; filename="${files[0].filename}"`,
+          })
+          .send(files[0].buffer)
       }
 
       const { generateDXF } = await import('../services/dxfGenerator.js')

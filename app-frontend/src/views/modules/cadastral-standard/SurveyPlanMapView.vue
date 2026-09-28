@@ -4336,23 +4336,35 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
         isOutsideFigure: false,
       })
     }
-    const built = buildSheetPayloads({
-      ring,
-      polyline: storedCuts[0].vertices,
-      stands,
-      // The servitude rows this plan already states, so each sheet can state the
-      // ones for the stands ON it. Omitting these is what blanked the servitude
-      // statement on every sheet: no per-sheet rows arrived, and the renderer
-      // was handed nothing to print.
-      servitudeRows: servitudeStatementRows.value,
-      // The plan's existing point names, so a generated cut point (C1, C2, ...)
-      // cannot collide with a beacon that already holds that name.
-      takenNames: beaconMap.map((b: { name?: string }) => b?.name).filter(Boolean) as string[],
-    })
-    if (built.ok) {
-      sheets = built.sheets
-    } else {
-      console.warn('[SurveyPlanMap] ⚠️ Stored cut no longer splits cleanly; rendering as one sheet:', built.error)
+    // A stored cut is an ENHANCEMENT: it splits this plan into sheets, and if
+    // deriving those sheets goes wrong for any reason the surveyor must still get
+    // a plan. `built.ok` handles a cut that no longer splits cleanly; this try
+    // handles anything else, so a fault in the optional cut path degrades to the
+    // single-sheet plan rather than failing generation outright.
+    try {
+      const built = buildSheetPayloads({
+        ring,
+        polyline: storedCuts[0].vertices,
+        stands,
+        // The servitude rows this plan already states, so each sheet can state the
+        // ones for the stands ON it. Omitting these is what blanked the servitude
+        // statement on every sheet: no per-sheet rows arrived, and the renderer
+        // was handed nothing to print.
+        servitudeRows: servitudeStatementRows.value,
+        // The plan's existing point names, so a generated cut point (C1, C2, ...)
+        // cannot collide with a beacon that already holds that name. Read from
+        // the coordinate-point registry, which is what `loadCoordinatePoints`
+        // filled: the beacon label builders keep their own private `beaconMap`,
+        // local to those functions and not visible here.
+        takenNames: coordinatePoints.value.map((p: { name?: string }) => p?.name).filter(Boolean) as string[],
+      })
+      if (built.ok) {
+        sheets = built.sheets
+      } else {
+        console.warn('[SurveyPlanMap] ⚠️ Stored cut no longer splits cleanly; rendering as one sheet:', built.error)
+      }
+    } catch (err: any) {
+      console.warn('[SurveyPlanMap] ⚠️ Could not derive sheets from the stored cut; rendering as one sheet:', err?.message ?? err)
     }
   }
 

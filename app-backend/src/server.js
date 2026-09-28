@@ -24,7 +24,6 @@ await app.register(cors, {
   exposedHeaders: [
     'X-Used-Scale',
     'X-Suggested-Scale',
-    'X-Tile-Grid',
     'X-Used-Sheet-Size',
     'X-Plan-Scale',
     'X-Plan-Grid',

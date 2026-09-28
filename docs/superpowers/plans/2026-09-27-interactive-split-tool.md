@@ -403,17 +403,17 @@ git commit -m "feat(split): draw the cut on the map, with its verdict live"
 **Files:**
 - Modify: `app-frontend/src/views/modules/cadastral-standard/MapLibreAreaView.vue`
 
-- [ ] **Step 1: Save on finish, restore on load**
+- [x] **Step 1: Save on finish, restore on load**
 
 Finishing a valid draft calls `writeCuts` and persists the project metadata by whatever path this view already uses for a parcel edit — do not invent a second one. On mount, `readCuts` and paint any stored cut so the surveyor sees it exists.
 
-- [ ] **Step 2: Refuse to save an invalid draft**
+- [x] **Step 2: Refuse to save an invalid draft**
 
 Only a draft whose verdict is `ok` can be saved. The Finish control is disabled otherwise, with the verdict visible beside it, so the reason is never a mystery.
 
-- [ ] **Step 3: Show what the cut produces**
+- [x] **Step 3: Show what the cut produces**
 
-Once stored, show the sheet count and each sheet's number over its part, from `buildSheetPayloads` (rendering plan, Task 2). If that plan has not landed yet, show the part count from `splitFigure` alone and leave a comment naming what replaces it — do not reimplement numbering here. **Decision 10's numbering lives in `orderSheets` and must have exactly one implementation.**
+Once stored, show the sheet count and each sheet's number over its part, from `buildSheetPayloads` (rendering plan, Task 2). **Decision 10's numbering lives in `orderSheets` and must have exactly one implementation.** *(Done: parts paint `N/M` labels over each part from `buildSheetPayloads`. The renderer hand-off required more than this plan's file list — `SurveyPlanMapView.vue` reads the stored cut, calls `buildSheetPayloads`, and attaches `sheets` to the PDF/DXF payload through `planPayload.ts` and `geopdf.ts`. The backend `sheets` route predates this plan.*)
 
 - [ ] **Step 4: Build, then check by hand**
 
@@ -425,7 +425,7 @@ cd app-frontend && npx vitest run src/utils/__tests__/ && npx vite build; echo "
 3. Generate a plan. It comes out as two sheets.
 4. Delete the cut, save, generate again. One sheet.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app-frontend/src/views/modules/cadastral-standard/MapLibreAreaView.vue
@@ -442,6 +442,8 @@ git commit -m "feat(split): persist a cut and reload it"
 If the answer is that Leaflet must have it too, this task mirrors Tasks 3 and 4 against `AreaComputationView.vue`, reusing `cutDrawing.ts` and `cutStorage.ts` unchanged — which is the point of every rule living in a `.ts` module. Budget it as roughly the size of Tasks 3 and 4 together, and expect the same manual checks, since no test can see either view.
 
 If the answer is MapLibre only, close this task by writing that down: a note in `AreaComputationView.vue` saying splitting is done in the MapLibre view, so the next person does not conclude it was forgotten.
+
+*(Answer: MapLibre only. Done — `AreaComputationView.vue`'s deprecation banner now says splitting is done in the MapLibre view.)*
 
 ---
 

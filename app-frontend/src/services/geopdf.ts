@@ -1,4 +1,5 @@
 import api from './api'
+import type { SheetPayload } from '../utils/sheetPayloads'
 
 export interface GeoPDFRequest {
   mapImage: string // base64 encoded PNG
@@ -80,6 +81,12 @@ export interface VectorGeoPDFRequest {
    * plans and never sets a tile grid.
    */
   planType?: 'general-developed' | 'general-undeveloped' | 'diagram' | 'working-plan' | null
+  /**
+   * One payload per sheet of a multi-part plan, from buildSheetPayloads. Absent
+   * when the Outside Figure has no stored cut: the backend returns a single
+   * sheet (or 400 `cuts-required` if the sheet is multi-sheet-required).
+   */
+  sheets?: SheetPayload[]
   // Legacy fields (still accepted for backward compatibility)
   outsideFigure?: GeoJSON.FeatureCollection
   outsideFigureData?: any
@@ -231,6 +238,9 @@ export async function generateDXF(
     // developed-township general plans (per-stand survey diagrams carry that
     // detail). Mirrors what /geopdf/vector forwards via `request` directly.
     planType: request.planType,
+    // Per-sheet payloads for a multi-part plan (from buildSheetPayloads); the
+    // backend emits one DXF per sheet instead of a single ground file.
+    sheets: request.sheets,
     // UI-computed beacon-to-parcel assignments. The DXF generator uses these
     // to display suffix-only labels inside their parcels (e.g. "A" instead of
     // "2475A") — matches the PDF's behavior at pdfkitGeoPDF.js:4654-4733.

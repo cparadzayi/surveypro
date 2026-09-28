@@ -1,4 +1,5 @@
 import type { VectorGeoPDFRequest } from '../../../services/geopdf'
+import type { SheetPayload } from '../../../utils/sheetPayloads'
 import { getPlanTypeMeta, type PlanType, type SubjectMode } from './planTypes'
 
 export interface PlanPayloadContext {
@@ -22,6 +23,8 @@ export interface PlanPayloadContext {
   interactive?: boolean
   enableLayers?: boolean
   enableMeasurements?: boolean
+  /** Per-sheet payloads for a split plan; absent means a single sheet. */
+  sheets?: SheetPayload[]
 }
 
 /** Vertex match tolerance in Cape Lo metres. */
@@ -94,6 +97,7 @@ export function buildPlanPayload(ctx: PlanPayloadContext): VectorGeoPDFRequest {
     interactive: ctx.interactive ?? false,
     enableLayers: ctx.enableLayers ?? false,
     enableMeasurements: ctx.enableMeasurements ?? false,
+    sheets: ctx.sheets,
   }
 }
 

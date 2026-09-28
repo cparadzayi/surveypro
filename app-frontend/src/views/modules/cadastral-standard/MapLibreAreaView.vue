@@ -123,6 +123,16 @@
           ✂️ Split figure
         </button>
 
+        <!-- Remove the stored cut: the plan renders one sheet again -->
+        <button
+          v-if="storedCut && !isSplitting && !isDrawing"
+          @click="deleteStoredCut"
+          class="px-4 py-2 bg-gradient-to-r from-rose-600 to-rose-700 text-white rounded-md text-sm font-medium transition-all hover:from-rose-700 hover:to-rose-800 shadow-md"
+          title="Remove the stored cut so the plan renders as one sheet"
+        >
+          🗑️ Remove cut
+        </button>
+
         <!-- Split-figure controls -->
         <div v-if="isSplitting" class="flex flex-col gap-2 border-t border-gray-200 pt-2">
           <button
@@ -339,6 +349,14 @@
         :class="cutDraft.verdict === 'ok' ? 'text-green-700' : cutDraft.verdict === 'incomplete' ? 'text-gray-500' : 'text-red-700'"
       >
         ✂️ {{ verdictText }}
+      </div>
+
+      <!-- Stored-cut summary: shown once a cut is saved, not while drawing -->
+      <div
+        v-if="storedCut && !isSplitting"
+        class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 bg-white rounded-lg shadow-lg px-4 py-2 flex items-center gap-3 text-sm font-medium text-indigo-700"
+      >
+        📐 Stored cut divides the figure into {{ storedSheetCount ?? 2 }} sheet{{ storedSheetCount === 1 ? '' : 's' }}.
       </div>
 
       <!-- Trig Beacon Inset Map -->
@@ -1021,6 +1039,8 @@ import axios from 'axios';
 import { capeLoToWGS84, capeLoArrayToWGS84, calculateWGS84Bounds, geoJsonToCapeLoPoint, type CapeLoPoint } from '../../../utils/coordinateTransform';
 import { wgs84ToCape, type LoZone } from '../../../utils/geodeticTransform';
 import { newDraft, addVertex, undoVertex, clearDraft, type CutDraft } from '../../../utils/cutDrawing';
+import { readCuts, writeCuts, type StoredCut } from '../../../utils/cutStorage';
+import { buildSheetPayloads } from '../../../utils/sheetPayloads';
 import { splitFigure } from '../../../../../app-shared/figureSplit';
 import { areaCompute, type AreaComputeResponse } from '../../../services/compute';
 import { asBaseMapParcel, parcelFromBaseRecord } from '../../../utils/surveyParcels';
@@ -2159,9 +2179,13 @@ const isSplitting = ref(false);
 const cutDraft = ref<CutDraft>(newDraft());
 const cutCursorLngLat = ref<{ lng: number; lat: number } | null>(null);
 
+/** The cut the surveyor finished and saved. Restored on mount; drives the renderers. */
+const storedCut = ref<StoredCut | null>(null);
+
 let cutVerticesSource: maplibregl.GeoJSONSource | null = null;
 let cutLineSource: maplibregl.GeoJSONSource | null = null;
 let cutRubberSource: maplibregl.GeoJSONSource | null = null;
+let splitSheetLabelsSource: maplibregl.GeoJSONSource | null = null;
 
 /** The figure being split is the Outside Figure parcel, ring in Cape Lo. */
 const splitFigureRing = computed<{ y: number; x: number }[]>(() => {
@@ -2185,6 +2209,28 @@ const splitStands = computed<{ name: string; ring: { y: number; x: number }[] }[
     out.push({ name, ring });
   }
   return out;
+});
+
+/**
+ * The stored cut, rebuilt into renderer payloads at drawer level. Same inputs
+ * as the draft's verdict (ring + stands from savedParcels, vertices at 2dp), so
+ * what is shown here is exactly what the plan will render. Sheet NUMBERING
+ * still comes from buildSheetPayloads/orderSheets's single implementation --
+ * this view only displays the result, never re-derives it.
+ */
+const storedSheets = computed(() => {
+  if (!storedCut.value) return null;
+  return buildSheetPayloads({
+    ring: splitFigureRing.value,
+    polyline: storedCut.value.vertices,
+    stands: splitStands.value,
+  });
+});
+
+const storedSheetCount = computed(() => {
+  const built = storedSheets.value;
+  if (!built || !built.ok) return null;
+  return built.sheets.length;
 });
 
 // ── Click-to-insert vertex editing ────────────────────────────────────────────
@@ -2889,9 +2935,37 @@ async function initializeMapOnce() {
       }
     });
 
+    // Per-sheet number labels over a STORED cut's parts (display-only; the
+    // parts come from buildSheetPayloads, the same source the renderers read).
+    map.addSource('split-sheet-labels', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'split-sheet-labels-symbol',
+      type: 'symbol',
+      source: 'split-sheet-labels',
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+        'text-size': 15,
+        'text-offset': [0, -0.4],
+        'text-anchor': 'center',
+        'text-allow-overlap': true
+      },
+      paint: {
+        'text-color': '#4338ca',
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 2
+      }
+    });
+
     cutVerticesSource = map.getSource('cut-vertices') as maplibregl.GeoJSONSource;
     cutLineSource = map.getSource('cut-line') as maplibregl.GeoJSONSource;
     cutRubberSource = map.getSource('cut-rubber') as maplibregl.GeoJSONSource;
+    splitSheetLabelsSource = map.getSource('split-sheet-labels') as maplibregl.GeoJSONSource;
+    // Sources exist now; repaint a stored cut restored before map init.
+    paintStoredCut();
     // ========== END SPLIT-FIGURE LAYERS ==========
 
     // Add completed parcels source and layers
@@ -4237,6 +4311,100 @@ function paintCutRubber(cursor: { lng: number; lat: number }) {
   });
 }
 
+/** The outside figure parcel this view saves the cut to, if any. */
+function getOutsideFigureParcelForSplit() {
+  for (const p of savedParcels.value.values()) {
+    const name = p.designation || p.stand;
+    if (name && name.toLowerCase().includes('outside figure')) return p;
+  }
+  return null;
+}
+
+/**
+ * Persist the cut the way a parcel edit is persisted: it belongs to the Outside
+ * Figure parcel, so it rides that parcel's metadata and updateLandParcel (the
+ * same API the view already uses everywhere else). writeCuts stores only the
+ * vertices -- parts, sheet numbers and labels stay derived, never stored.
+ */
+async function saveStoredCut(cut: StoredCut | null) {
+  const parcel = getOutsideFigureParcelForSplit();
+  if (!parcel?.id) {
+    console.warn('[MapLibre] ✂️ No Outside Figure parcel to persist the cut to');
+    return;
+  }
+  const metadata = writeCuts((parcel.metadata as object) ?? {}, cut ? [cut] : []);
+  try {
+    const db = await updateLandParcel(parcel.id, { metadata });
+    savedParcels.value.set(parcel.designation || parcel.stand, {
+      ...parcel,
+      metadata: (db && db.metadata) || metadata,
+    });
+    console.log(`[MapLibre] ✂️ Cut persisted to Outside Figure parcel ${parcel.id}`);
+  } catch (e) {
+    console.warn('[MapLibre] ⚠️ Failed to persist cut to Outside Figure parcel:', e);
+  }
+}
+
+/** Paint the STORED cut: its line in the shared cut-line layer, its sheet numbers on it. */
+function paintStoredCut() {
+  const cut = storedCut.value;
+  if (cutLineSource) {
+    cutLineSource.setData(
+      cut && cut.vertices.length >= 2
+        ? {
+            type: 'FeatureCollection',
+            features: [{
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: capeLoArrayToWGS84(
+                cut.vertices.map((v, i) => ({ id: String(i), y: v.y, x: v.x })),
+                splitLoZone()
+              ).map(w => [w.lng, w.lat]) },
+              properties: {},
+            }],
+          }
+        : { type: 'FeatureCollection', features: [] }
+    );
+  }
+  paintStoredSheetLabels();
+}
+
+/** Each sheet's number over its part, from buildSheetPayloads -- displayed, not re-derived. */
+function paintStoredSheetLabels() {
+  if (!splitSheetLabelsSource) return;
+  const built = storedSheets.value;
+  if (!built || !built.ok) {
+    splitSheetLabelsSource.setData({ type: 'FeatureCollection', features: [] });
+    return;
+  }
+  const features = built.sheets.map((sheet) => {
+    const pts = sheet.ring.length ? sheet.ring : [{ y: 0, x: 0 }];
+    const centroid = {
+      y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+      x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+    };
+    const [w] = capeLoArrayToWGS84([{ id: 'centroid', y: centroid.y, x: centroid.x }], splitLoZone());
+    return {
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [w.lng, w.lat] },
+      properties: { label: `${sheet.sheetNumber}/${sheet.totalSheets}` },
+    };
+  });
+  splitSheetLabelsSource.setData({ type: 'FeatureCollection', features });
+}
+
+function clearStoredCutPaint() {
+  if (splitSheetLabelsSource) splitSheetLabelsSource.setData({ type: 'FeatureCollection', features: [] });
+}
+
+/** Remove the stored cut: clears the Overlay so the plan renders one sheet again. */
+async function deleteStoredCut() {
+  if (!storedCut.value) return;
+  storedCut.value = null;
+  await saveStoredCut(null);
+  paintStoredCut();
+  console.log('[MapLibre] ✂️ Stored cut deleted');
+}
+
 function startSplitting() {
   if (isDrawing.value) cancelDrawing();
   exitVertexDragMode();
@@ -4268,12 +4436,19 @@ function undoCut() {
   if (cutCursorLngLat.value) paintCutRubber(cutCursorLngLat.value);
 }
 
-/** Leave the mode with the draft intact; Task 4 persists it on this path. */
-function finishSplit() {
+/**
+ * Leave the mode and persist the valid cut. Only an `ok` verdict gets this far
+ * (the Finish control is disabled otherwise), so this is the single write path.
+ */
+async function finishSplit() {
   if (cutDraft.value.verdict !== 'ok') return;
   isSplitting.value = false;
+  cutCursorLngLat.value = null;
   if (map) map.getCanvas().style.cursor = '';
-  console.log('[MapLibre] ✂️ Split-figure finished');
+  storedCut.value = { vertices: cutDraft.value.vertices };
+  await saveStoredCut(storedCut.value);
+  paintStoredCut();
+  console.log('[MapLibre] ✂️ Split-figure finished and persisted');
 }
 
 /** Escape / Cancel: clear the draft AND leave the mode, so parcel digitising returns. */
@@ -4282,6 +4457,7 @@ function cancelSplit() {
   cutDraft.value = newDraft();
   cutCursorLngLat.value = null;
   clearCutPaint();
+  paintStoredCut();
   if (map) map.getCanvas().style.cursor = '';
   console.log('[MapLibre] ❌ Split-figure cancelled');
 }
@@ -4937,6 +5113,20 @@ async function loadParcelsFromDatabase() {
     } else {
       console.log('[MapLibre] ℹ️ No Outside Figure parcel found - skipping metadata update');
     }
+
+    // Restore any stored cut from the Outside Figure parcel's metadata and show
+    // what it produces. Kept after the metadata recompute above so the read is
+    // against the same object the renderers will read.
+    const storedFigure = existingParcels.find(p =>
+      p.designation?.toLowerCase().includes('outside figure') ||
+      p.stand?.toLowerCase().includes('outside figure')
+    );
+    const restored = storedFigure ? readCuts(storedFigure.metadata) : [];
+    storedCut.value = restored.length > 0 ? restored[0] : null;
+    if (storedCut.value) {
+      console.log('[MapLibre] ✂️ Restored stored cut from Outside Figure metadata');
+    }
+    paintStoredCut();
     
   } catch (error) {
     console.error('[MapLibre] ❌ Failed to load parcels from database:', error);

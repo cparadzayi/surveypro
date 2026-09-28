@@ -417,6 +417,8 @@ import { generateSurveyPlanSummaryPDF, type SurveyPlanSummaryData } from '@/util
 import { CalculationsPart1Generator, type SurveyPoint } from '@/utils/calculations-part1'
 import { ComprehensiveDocumentGenerator, type ComprehensiveDocumentData } from '@/utils/comprehensive-document'
 import { siteCalibrationFrom } from '@/utils/siteCalibration'
+import { readCuts } from '@/utils/cutStorage'
+import { buildSheetPayloads, type StandInput, type SheetPayload } from '@/utils/sheetPayloads'
 import { generateCalibrationReportPDF } from '@/utils/calibration-pdf'
 import type { CoverPageInfo } from '@/utils/cover-page'
 import { listCoordinatePoints, updateLandParcel } from '@/services/spatial'
@@ -4295,6 +4297,37 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
   const orientation: 'landscape' | 'portrait' =
     _sheet ? (_sheet.width > _sheet.height ? 'landscape' : 'portrait') : 'landscape'
 
+  // A stored cut (drawn in the MapLibre area view, persisted as the Outside
+  // Figure parcel's metadata) turns the plan into one payload per sheet. Same
+  // inputs as the drawer's preview -- the figure ring + stands from the DB
+  // parcel metadata, the cut's raw vertices -- so sheets reflect exactly what
+  // the surveyor validated. On failure (figure changed since the cut was
+  // drawn), sheets stays undefined and the plan renders single-sheet: the cut
+  // is the surveyor's to redraw, not a renderer's to second-guess.
+  let sheets: SheetPayload[] | undefined
+  const isOutsideFigurePlan =
+    config.value.planType === 'general-undeveloped' || config.value.planType === 'general-developed'
+  const outsideFigureParcel = isOutsideFigurePlan ? getOutsideFigureParcel() : null
+  const outsideFigureRing = isOutsideFigurePlan ? getOutsideFigureCapeLoRing() : null
+  const storedCuts = outsideFigureParcel ? readCuts(outsideFigureParcel.metadata) : []
+  if (outsideFigureParcel && outsideFigureRing && storedCuts.length > 0) {
+    const ring = outsideFigureRing.map(p => ({ y: p.y, x: p.x }))
+    const stands: StandInput[] = []
+    for (const p of parcels.value) {
+      if (p.id === outsideFigureParcel.id) continue
+      const pts = ((p.metadata?.cape_lo_points as any[]) || [])
+        .map((pt: any) => ({ y: Number(pt.y), x: Number(pt.x) }))
+        .filter((pt: any) => Number.isFinite(pt.y) && Number.isFinite(pt.x))
+      if (pts.length >= 3) stands.push({ name: p.designation || p.stand || String(p.id), ring: pts })
+    }
+    const built = buildSheetPayloads({ ring, polyline: storedCuts[0].vertices, stands })
+    if (built.ok) {
+      sheets = built.sheets
+    } else {
+      console.warn('[SurveyPlanMap] ⚠️ Stored cut no longer splits cleanly; rendering as one sheet:', built.error)
+    }
+  }
+
   return {
     planType: config.value.planType as any,
     subjectParcelId: selectedDiagramParcelId.value,
@@ -4312,6 +4345,7 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
     beaconGroups: props.projectInfo.beaconGroups || [],
     annotations: { type: 'FeatureCollection', features: [] },
     renderEngine: 'pdfkit',
+    sheets,
   }
 }
 

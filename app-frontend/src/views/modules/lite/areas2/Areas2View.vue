@@ -299,7 +299,8 @@ import { areaCompute } from '../../../../services/compute'
 import { parseFlexibleNumberOrDMS, decimalToDMS, formatDMS, bankersRound } from '../../../../utils/dms'
 import { getDMSPolicy, getAreaPolicy } from '../../../../utils/displayConfig'
 import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '../../../../utils/dateFormat'
-import { searchFeatures, getLayer, listLayerFeatures, listLayers, createLayer, batchCreateFeatures, listLandParcels, createLandParcel, checkParcelDuplicates } from '@/services/spatial'
+import { searchFeatures, getLayer, listLayerFeatures, listLayers, createLayer, batchCreateFeatures, listLandParcels, createLandParcel, checkParcelDuplicates, type Layer } from '@/services/spatial'
+import type { Feature } from 'geojson'
 import { useProjectContext } from '../../../../stores/projectContext'
 const DataMap = defineAsyncComponent(() => import('../../../../components/maps/DataMap.vue'))
 

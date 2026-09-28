@@ -6789,11 +6789,17 @@ function computeResidualsFromPoints(points: any[]): any {
  * 5. Area & Consistency (continues from Calculations)
  */
 async function exportAreaConsistencyPDF() {
+  // Declared here, at the function's top, NOT inside the try below: the
+  // coordinate-points fallback further down needs it too, and a `const` inside
+  // the try block is out of scope by the time that line runs -- a
+  // ReferenceError, not an undefined value. `.catch()` could not rescue it
+  // either, since `Number(projectId)` is evaluated before the call it guards.
+  const projectId = workflowState?.projectInfo?.projectId;
+
   // ⭐ FIRST: Load all parcels from database to ensure we have complete data
   console.log('[MapLibre] 📥 Loading all parcels from database before PDF generation...');
   
   try {
-    const projectId = workflowState?.projectInfo?.projectId;
     if (!projectId) {
       alert('No project selected. Please select a project first.');
       return;

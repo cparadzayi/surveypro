@@ -10,13 +10,13 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "lib": ["ES2020", "DOM"],
-    "types": ["node", "vite/client"],
+    "lib": ["ES2021", "DOM"],
+    "types": ["node", "vite/client", "vitest/globals", "geojson"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue"],
   "references": []
 }

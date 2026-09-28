@@ -103,6 +103,70 @@ export function sheetParcels(sheet) {
 }
 
 /**
+ * The sheet's features taken from the WHOLE-PLAN collection, not rebuilt from
+ * the payload.
+ *
+ * This is the difference between a sheet that looks like the single-sheet plan
+ * and one that does not. The route's single-sheet pass hands the renderer
+ * parcels already carrying computed areas, edges, closure data and metadata;
+ * rebuilding a sheet's parcels from the payload instead re-derives all of that
+ * from `name` + `ring` and quietly loses whatever the payload did not carry.
+ * That is how a cut plan rendered its stands on the right sheets with a blank
+ * Area column and no servitude statement: two correct halves with a different
+ * set of fields between them.
+ *
+ * A sheet is the same render restricted to that sheet's own stands, so the
+ * features are the plan's OWN objects, taken by name -- never reconstructed.
+ * `sheet.stands` is authoritative about which stands are on the sheet; a stand
+ * the plan collection does not carry (a public place, or a name the plan spells
+ * differently) falls back to the payload so the sheet still draws it.
+ *
+ * Matches on `stand` OR `designation`, because the payload names a stand by
+ * `designation || stand` while the plan's own features carry `stand`.
+ */
+export function selectSheetFeatures(wholePlanParcels, sheet) {
+  const planFeatures = Array.isArray(wholePlanParcels?.features) ? wholePlanParcels.features : [];
+  const stands = sheet?.stands || [];
+  if (stands.length === 0 || planFeatures.length === 0) return sheetParcels(sheet);
+
+  // Index the plan's own features by every name they answer to, so a stand the
+  // payload calls by designation is still found under `stand` and vice versa.
+  const byName = new Map();
+  for (const f of planFeatures) {
+    const p = f?.properties || {};
+    for (const key of [p.stand, p.designation]) {
+      const name = String(key ?? '');
+      if (name && !byName.has(name)) byName.set(name, f);
+    }
+  }
+
+  const payload = new Map();
+  for (const parcel of sheet?.parcels || []) {
+    const name = String(parcel?.name ?? parcel?.stand ?? '');
+    if (name && !payload.has(name)) payload.set(name, parcel);
+  }
+
+  const out = [];
+  for (const stand of stands) {
+    const name = String(stand);
+    // The plan's own feature for this stand, computed data and all; failing
+    // that the payload's. Per stand, not per sheet: a sheet holding stands the
+    // plan collection partly covers (a public place, a stand it spells
+    // differently) must still draw every one of them. An all-or-nothing
+    // fallback would drop the uncovered stands from the page entirely.
+    const chosen = byName.get(name);
+    if (chosen) {
+      out.push(chosen);
+    } else if (payload.has(name)) {
+      out.push(sheetParcels({ ...sheet, stands: [name], parcels: [payload.get(name)] }).features[0]);
+    }
+  }
+
+  if (out.length === 0) return sheetParcels(sheet);
+  return { type: 'FeatureCollection', features: out };
+}
+
+/**
  * The sheet's own outside-figure table input, in the exact shape the renderers
  * already take for `outsideFigureData` -- no translation, and nothing from the
  * whole plan mixed in.
@@ -121,12 +185,20 @@ export function sheetOutsideFigureData(sheet) {
  * A copy, never a mutation: `metadata` is shared by every sheet, and writing one
  * sheet's rows into it would leave the next sheet stating the first sheet's
  * servitudes.
+ *
+ * The override is CONDITIONAL, and that is the point. A payload that carries no
+ * per-sheet rows -- an older one, or a caller that never passed them -- used to
+ * replace the plan's statement with an empty one, so a sheet that could have
+ * stated the plan's servitudes stated none at all. A sheet that has its own rows
+ * states those; a sheet that has none leaves the plan's statement alone rather
+ * than erasing it.
  */
 export function sheetMetadata(metadata, sheet) {
-  return {
-    ...(metadata || {}),
-    servitudeStatement: { rows: sheet?.servitudeRows || [] },
-  };
+  const own = Array.isArray(sheet?.servitudeRows) ? sheet.servitudeRows : null;
+  if (own && own.length > 0) {
+    return { ...(metadata || {}), servitudeStatement: { rows: own } };
+  }
+  return { ...(metadata || {}) };
 }
 
 /**

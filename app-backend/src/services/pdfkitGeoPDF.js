@@ -38,7 +38,7 @@ import { measureFigureWhitespace, subdivideStripsForCap, levelScheduleTables, se
 import {
   closeLoRing,
   sheetOutsideFigure,
-  sheetParcels,
+  selectSheetFeatures,
   sheetOutsideFigureData,
   sheetMetadata,
   sheetSheetInfo,
@@ -12583,6 +12583,16 @@ export async function generateSheetedGeoPDF(options, logger) {
     sheets,
     metadata = {},
     beacons = null,
+    // The WHOLE-PLAN collection the single-sheet pass renders, already carrying
+    // computed areas, edges, closure data and metadata. Each sheet selects its
+    // own features from it rather than rebuilding parcels from the payload, so
+    // a sheet differs from the single-sheet plan ONLY in which stands are on it.
+    parcels: planParcels = null,
+    // Passed through untouched, for the same reason. The single-sheet pass gets
+    // the UI's collision-free beacon labels and its side annotations; handing a
+    // sheet neither is not a simpler sheet, it is a different plan.
+    beaconLabels = null,
+    annotations = null,
     // undefined, never null: doc.info.GeoPDF_Projection = null crashes
     // PDFKit's own doc.end() (new PDFReference(doc, id, null) skips its
     // `data = {}` default because the arg is null, not undefined, so
@@ -12606,6 +12616,9 @@ export async function generateSheetedGeoPDF(options, logger) {
     ? beacons
     : { type: 'FeatureCollection', features: [] };
   const emptyFC = () => ({ type: 'FeatureCollection', features: [] });
+  const annotationsFC = (annotations && Array.isArray(annotations.features))
+    ? annotations
+    : emptyFC();
 
   const pageBuffers = [];
 
@@ -12619,21 +12632,25 @@ export async function generateSheetedGeoPDF(options, logger) {
 
   for (const sheet of orderedSheets) {
     const outsideFigure = sheetOutsideFigure(sheet);
-    const parcels = sheetParcels(sheet);
+    // The plan's own features for this sheet's stands, when the whole-plan
+    // collection was supplied -- so the sheet keeps the computed areas, edges
+    // and metadata the single-sheet pass renders. Falls back to the payload's
+    // own parcels when it was not.
+    const parcels = selectSheetFeatures(planParcels, sheet);
     const outsideFigureData = sheetOutsideFigureData(sheet);
-    // Per-sheet servitude rows, never the whole plan's — do not mutate the
-    // shared `metadata` object across sheets.
+    // This sheet's servitude rows where it has them, the plan's where it does
+    // not, on a copy -- never mutating the shared `metadata` between sheets.
     const perSheetMetadata = sheetMetadata(metadata, sheet);
 
     const result = await _generateGeoPDFInner({
       parcels,
       beacons: beaconsFC,
-      annotations: emptyFC(),
+      annotations: annotationsFC,
       outsideFigure,
       projection,
       metadata: perSheetMetadata,
       outsideFigureData,
-      beaconLabels: null,
+      beaconLabels,
       scale,
       sheetSize,
       planType,

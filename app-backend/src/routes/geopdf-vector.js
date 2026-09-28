@@ -710,7 +710,24 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
 
           fastify.log.warn(`[GeoPDF] 🗺️ SI 727 Reg 32(3): multi-sheet plan — ${sheets.length} sheets from the surveyor's cuts`)
           const sheetedResult = await generateSheetedGeoPDF(
-            { sheets, metadata, beacons, projection, scale, sheetSize, planType },
+            {
+              sheets,
+              metadata,
+              beacons,
+              projection,
+              scale,
+              sheetSize,
+              planType,
+              // Everything the single-sheet pass above already had. A sheet is
+              // that same render restricted to its own stands, so withholding
+              // the computed parcels, the refined beacon labels or the side
+              // annotations is what made a cut plan look unlike the plan it was
+              // cut from -- blank Area column, no servitude statement, unlabelled
+              // beacons.
+              parcels: parcelsWithComputedData,
+              beaconLabels,
+              annotations,
+            },
             fastify.log
           )
           finalPdfBuffer = sheetedResult.pdf

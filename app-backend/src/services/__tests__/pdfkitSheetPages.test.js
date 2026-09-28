@@ -164,6 +164,77 @@ describe('generateSheetedGeoPDF', () => {
     expect((await textItemsOf(pages[2])).map((i) => i.text)).toContain('2.5000Ha')
   })
 
+  test("a sheet takes its parcels from the plan, keeping the computed data", async () => {
+    // The sheets were rebuilt from the payload, so they re-derived every field
+    // from `name` + `ring` and lost whatever the payload did not carry. Here the
+    // payload deliberately carries NO area: if a sheet could still print one, it
+    // can only have come from the whole-plan collection the single-sheet pass
+    // renders.
+    const bare = payloads().map((s) => ({
+      ...s,
+      parcels: s.parcels.map((p) => ({ name: p.name, ring: p.ring })),
+    }))
+    const planParcel = (stand, area) => ({
+      type: 'Feature',
+      properties: { stand, area_m2: area },
+      geometry: { type: 'Polygon', coordinates: [[[10, 10], [10, 40], [40, 40], [40, 10], [10, 10]]] },
+    })
+
+    const { pages } = await generateSheetedGeoPDF({
+      sheets: bare,
+      metadata: {},
+      parcels: {
+        type: 'FeatureCollection',
+        features: [planParcel('1686', 8000), planParcel('1687', 25000)],
+      },
+      returnPages: true,
+    })
+
+    // Same values the payload-only test above prints, reached by the other route.
+    expect((await textItemsOf(pages[1])).map((i) => i.text)).toContain('8000')
+    expect((await textItemsOf(pages[2])).map((i) => i.text)).toContain('2.5000Ha')
+  }, 120000)
+
+  test('a sheet states the servitudes it has rows for', async () => {
+    const withRows = payloads()
+    withRows[0].servitudeRows = [{ stands: '1686 to 1687', boundary: '3m wide road servitude' }]
+
+    const { pages } = await generateSheetedGeoPDF({
+      sheets: withRows,
+      // `metadata.planType` is what gates the statement: a cut plan is always a
+      // general plan, and the frontend does set it (SurveyPlanMapView metadata).
+      metadata: {
+        planType: 'general-undeveloped',
+        servitudeStatement: { rows: [{ stands: 'WHOLE PLAN ONLY', boundary: 'x' }] },
+      },
+      returnPages: true,
+    })
+
+    const sheet1 = (await textItemsOf(pages[1])).map((i) => i.text).join(' ')
+    expect(sheet1).toContain('3m wide road servitude')
+    // A sheet that has its own rows states its own, not the plan's.
+    expect(sheet1).not.toContain('WHOLE PLAN ONLY')
+  }, 120000)
+
+  test('a sheet with no rows of its own keeps the plan servitude statement', async () => {
+    // The regression: `sheetMetadata` replaced the statement with `{ rows: [] }`
+    // whenever a sheet had no rows, so the servitude data the plan already held
+    // was destroyed rather than merely not narrowed. This is what the user saw
+    // as servitudes going missing on the multi-sheet output.
+    const { pages } = await generateSheetedGeoPDF({
+      sheets: payloads(), // servitudeRows: [] on both
+      metadata: {
+        planType: 'general-undeveloped',
+        servitudeStatement: { rows: [{ stands: 'Servitude stand list', boundary: '6m drain servitude' }] },
+      },
+      returnPages: true,
+    })
+
+    const sheet1 = (await textItemsOf(pages[1])).map((i) => i.text).join(' ')
+    expect(sheet1).toContain('Servitude stand list')
+    expect(sheet1).toContain('6m drain servitude')
+  }, 120000)
+
   test('two stands on one sheet are labelled where their own parcels put them', async () => {
     // With synthetic parcels sharing the sheet's ring there was nothing to place
     // a stand by, so two number labels landed on top of each other. Distinct

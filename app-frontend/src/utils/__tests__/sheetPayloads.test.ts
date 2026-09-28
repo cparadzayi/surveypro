@@ -115,6 +115,35 @@ describe('buildSheetPayloads', () => {
     }
   });
 
+  it('gives each sheet only the servitude rows naming its own stands', () => {
+    // The rows are handed to the payload so the renderer has something to
+    // print. Nothing passed them: the single-sheet plan stated its
+    // servitudes from `metadata`, the sheets were rebuilt from `name` + `ring`
+    // alone, and every sheet came out with an empty statement.
+    const rows = [
+      { stands: '1686', boundary: '3m road servitude' },
+      { stands: '1687', boundary: '2m drain servitude' },
+    ];
+    const out = buildSheetPayloads({ ...input(), servitudeRows: rows as any });
+    if (!out.ok) throw new Error('expected ok');
+
+    expect(out.sheets[0].servitudeRows).toEqual([rows[0]]);
+    expect(out.sheets[1].servitudeRows).toEqual([rows[1]]);
+  });
+
+  it('gives a sheet stating both stands every row that names either', () => {
+    const rows = [
+      { stands: '1686', boundary: '3m road servitude' },
+      { stands: '1687', boundary: '2m drain servitude' },
+      { stands: '1686 and 1687', boundary: '6m wayleave' },
+    ];
+    const both = buildSheetPayloads({ ...input(), polyline: [], servitudeRows: rows as any });
+    if (!both.ok) throw new Error('expected ok');
+    // One sheet, all three rows: a statement spanning stands cannot be split
+    // between sheets that do not exist.
+    expect(both.sheets[0].servitudeRows).toHaveLength(3);
+  });
+
   it('gives a single-sheet plan the plain name and no other sheets', () => {
     const out = buildSheetPayloads({ ...input(), polyline: [] });
     if (!out.ok) throw new Error('expected ok');

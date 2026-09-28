@@ -4336,7 +4336,19 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
         isOutsideFigure: false,
       })
     }
-    const built = buildSheetPayloads({ ring, polyline: storedCuts[0].vertices, stands })
+    const built = buildSheetPayloads({
+      ring,
+      polyline: storedCuts[0].vertices,
+      stands,
+      // The servitude rows this plan already states, so each sheet can state the
+      // ones for the stands ON it. Omitting these is what blanked the servitude
+      // statement on every sheet: no per-sheet rows arrived, and the renderer
+      // was handed nothing to print.
+      servitudeRows: servitudeStatementRows.value,
+      // The plan's existing point names, so a generated cut point (C1, C2, ...)
+      // cannot collide with a beacon that already holds that name.
+      takenNames: beaconMap.map((b: { name?: string }) => b?.name).filter(Boolean) as string[],
+    })
     if (built.ok) {
       sheets = built.sheets
     } else {

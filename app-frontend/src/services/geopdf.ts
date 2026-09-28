@@ -145,22 +145,11 @@ export async function generateGeoPDF(request: GeoPDFRequest): Promise<Blob> {
   return response.data
 }
 
-export interface TileGridSummary {
-  totalSheets: number
-  cols: number
-  rows: number
-  scaleDenominator: number
-  scaleLabel: string
-  sheetSize: string
-}
-
 export interface VectorGeoPDFResult {
   blob: Blob
   suggestedScale: string | null  // e.g. '1:2500' — set when block placement needed a higher scale
   usedScale: string | null        // actual scale used for this render
   usedSheetSize: string | null    // actual sheet size after any A2→A1→A0 escalation
-  /** Non-null when SI 727 Reg 32(3) requires multi-sheet tiling */
-  tileGrid: TileGridSummary | null
 }
 
 /**
@@ -186,22 +175,12 @@ export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promis
   const suggestedScale  = response.headers['x-suggested-scale']  ?? null
   const usedScale       = response.headers['x-used-scale']       ?? null
   const usedSheetSize   = response.headers['x-used-sheet-size']  ?? null
-  const tileGridRaw     = response.headers['x-tile-grid']        ?? null
-  const tileGrid: TileGridSummary | null = tileGridRaw ? JSON.parse(tileGridRaw) : null
-
-  if (tileGrid) {
-    console.warn(
-      `[VectorGeoPDF] 🗺️ SI 727 Reg 32(3): multi-sheet plan — ` +
-      `${tileGrid.totalSheets} sheets (${tileGrid.cols}×${tileGrid.rows}) at ${tileGrid.scaleLabel}`
-    )
-  }
 
   console.log('[VectorGeoPDF] ✅ Received PDF blob:', {
     size: `${(response.data.size / 1024).toFixed(2)} KB`,
     type: response.data.type,
     usedScale,
     suggestedScale,
-    tileGrid,
   })
 
   // Validate response is actually a PDF (avoid downloading JSON/HTML error as .pdf)
@@ -215,7 +194,7 @@ export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promis
     throw new Error(e?.message || 'Failed to validate GeoPDF response')
   }
   
-  return { blob: response.data, suggestedScale, usedScale, usedSheetSize, tileGrid }
+  return { blob: response.data, suggestedScale, usedScale, usedSheetSize }
 }
 
 /**

@@ -22,6 +22,9 @@
               <li>Satellite imagery overlay</li>
               <li>Built-in collision detection for labels</li>
               <li>Professional cadastral symbols (SGO standards)</li>
+              <li>Splitting the Outside Figure into sheets along a cut — done in the MapLibre
+                  view, not here (this Leaflet view has no cut-drawing machinery; see
+                  MapLibreAreaView.vue's ✂️ Split figure tool)</li>
             </ul>
           </div>
         </div>

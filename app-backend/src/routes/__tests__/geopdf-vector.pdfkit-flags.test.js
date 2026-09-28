@@ -1,7 +1,7 @@
 import { describe, test, expect, jest, beforeEach } from '@jest/globals'
 import Fastify from 'fastify'
 
-// ── Mock all heavy dependencies so the test only validates flag forwarding ──
+// ── Mock all heavy dependencies so the test only validates route behaviour ──
 const mockGenerateGeoPDF = jest.fn(async () => ({
   pdfBuffer: Buffer.from('PDF'),
   suggestedScale: null,
@@ -11,11 +11,9 @@ const mockGenerateGeoPDF = jest.fn(async () => ({
   tileGrid: null,
   warnings: {}
 }))
-const mockGenerateTiledGeoPDF = jest.fn(async () => ({
-  pdfBuffer: Buffer.from('TILED-PDF'),
-  totalSheets: 2,
-  scaleLabel: '1:500',
-  tileGridInfo: {}
+const mockGenerateSheetedGeoPDF = jest.fn(async () => ({
+  pdf: Buffer.from('SHEETED-PDF'),
+  pageCount: 3
 }))
 const mockGenerateDiagramPDF = jest.fn(async () => ({
   pdfBuffer: Buffer.from('DIAGRAM-PDF'),
@@ -32,7 +30,7 @@ const mockComputeAreaConsistency = jest.fn(() => ({
 
 jest.unstable_mockModule('../../services/pdfkitGeoPDF.js', () => ({
   generateGeoPDF: mockGenerateGeoPDF,
-  generateTiledGeoPDF: mockGenerateTiledGeoPDF
+  generateSheetedGeoPDF: mockGenerateSheetedGeoPDF
 }))
 jest.unstable_mockModule('../../services/diagramPdf.js', () => ({
   generateDiagramPDF: mockGenerateDiagramPDF
@@ -74,7 +72,7 @@ const basePayload = {
 describe('/api/geopdf/vector trueGeoPDF flag forwarding', () => {
   beforeEach(() => {
     mockGenerateGeoPDF.mockClear()
-    mockGenerateTiledGeoPDF.mockClear()
+    mockGenerateSheetedGeoPDF.mockClear()
     mockGenerateDiagramPDF.mockClear()
     mockComputeAreaConsistency.mockClear()
   })
@@ -128,10 +126,56 @@ describe('/api/geopdf/vector trueGeoPDF flag forwarding', () => {
     expect(passedOptions.enableMeasurements).toBe(false)
   })
 
-  test('non-tiled path is used when tileGrid is null', async () => {
+  test('single-plan path is used when tileGrid is null', async () => {
     const app = buildApp()
     await app.inject({ method: 'POST', url: '/vector', payload: basePayload })
     expect(mockGenerateGeoPDF).toHaveBeenCalledTimes(1)
-    expect(mockGenerateTiledGeoPDF).not.toHaveBeenCalled()
+    expect(mockGenerateSheetedGeoPDF).not.toHaveBeenCalled()
+  })
+
+  // ── Task 6: tileGrid present means multi-sheet-required. The only path to
+  // several sheets is the surveyor's own cut payloads; there is no grid to
+  // fall back to. ──
+
+  test('tileGrid present with sheets renders the cut-based sheeted PDF', async () => {
+    mockGenerateGeoPDF.mockReturnValueOnce(Promise.resolve({ ...mockGenerateGeoPDF(), tileGrid: { totalSheets: 2 } }))
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/vector',
+      payload: {
+        ...basePayload,
+        sheets: [{ sheetNumber: 1, totalSheets: 2, ring: [], stands: ['1'], vertices: [], edges: [] }],
+      }
+    })
+    expect(res.statusCode).toBe(200)
+    expect(mockGenerateSheetedGeoPDF).toHaveBeenCalledTimes(1)
+    expect(res.rawPayload.toString()).toBe('SHEETED-PDF')
+    expect(res.headers['x-sheet-count']).toBe('1')
+    expect(res.headers['content-disposition']).toContain('general-plan-multisheet')
+    expect(res.headers['x-tile-grid']).toBeUndefined()
+  })
+
+  test('tileGrid present with NO cuts refuses, and says the cuts are a survey judgement', async () => {
+    mockGenerateGeoPDF.mockReturnValueOnce(Promise.resolve({ ...mockGenerateGeoPDF(), tileGrid: { totalSheets: 2 } }))
+    const app = buildApp()
+    const res = await app.inject({ method: 'POST', url: '/vector', payload: { ...basePayload } })
+    expect(res.statusCode).toBe(400)
+    const body = JSON.parse(res.rawPayload.toString())
+    expect(body.error).toBe('cuts-required')
+    expect(body.message).toMatch(/draw the cut lines/i)
+    expect(mockGenerateSheetedGeoPDF).not.toHaveBeenCalled()
+  })
+
+  test('cuts present but payloads absent refuses rather than guessing at sheets', async () => {
+    mockGenerateGeoPDF.mockReturnValueOnce(Promise.resolve({ ...mockGenerateGeoPDF(), tileGrid: { totalSheets: 2 } }))
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/vector',
+      payload: { ...basePayload, cuts: [{ y: 50, x: 0 }, { y: 50, x: 100 }] }
+    })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.rawPayload.toString()).error).toBe('sheets-required')
   })
 })

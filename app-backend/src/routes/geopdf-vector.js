@@ -11,6 +11,7 @@ import { authenticateWithSchema } from '../utils/schemaAuth.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
 import { prjForDxf } from '../utils/crsDefinitions.js'
 import { dxfToGeoreferencedGpkg, getOGR2OGRCommand, getGDALVersion } from '../utils/dxfGpkg.js'
+import { chooseSheeting } from './chooseSheeting.js'
 import { zipSync } from 'fflate'
 
 const execAsync = promisify(exec)
@@ -636,14 +637,11 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           return
         }
 
-        const {
-          generateGeoPDF: generatePDFKitGeoPDF,
-          generateTiledGeoPDF,
-        } = await import('../services/pdfkitGeoPDF.js')
+        const { generateGeoPDF: generatePDFKitGeoPDF, generateSheetedGeoPDF } = await import('../services/pdfkitGeoPDF.js')
 
         fastify.log.info(`[GeoPDF] 📐 Forwarding scale=${scale}, sheetSize=${sheetSize} to PDFKit renderer`)
 
-        // First-pass render — detects whether multi-sheet tiling is required
+        // First-pass render — detects whether multi-sheet is required
         const firstPass = await generatePDFKitGeoPDF(
           {
             parcels: parcelsWithComputedData,
@@ -666,49 +664,50 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           fastify.log
         )
 
-        const suggestedScale  = firstPass?.suggestedScale ?? null
+        const suggestedScale = firstPass?.suggestedScale ?? null
         const usedScale       = firstPass?.scale ?? scale
         const usedSheetSize   = firstPass?.sheetSize ?? sheetSize ?? null
         const tileGrid        = firstPass?.tileGrid ?? null
 
         let finalPdfBuffer
-        let isTiled = false
+        let isMultiSheet = false
 
         if (tileGrid) {
-          // Multi-sheet: generate all tile sheets + key plan, merge into one PDF
-          fastify.log.warn(
-            `[GeoPDF] 🗺️ SI 727 Reg 32(3): multi-sheet plan required — ` +
-            `${tileGrid.totalSheets} sheets (${tileGrid.cols}×${tileGrid.rows}) at ${tileGrid.scaleLabel}`
-          )
-          const tiledResult = await generateTiledGeoPDF(
-            {
-              parcels: parcelsWithComputedData,
-              beacons,
-              annotations,
-              outsideFigure,
-              projection,
-              metadata,
-              outsideFigureData,
-              beaconLabels,
-              sheetSize: tileGrid.sheetSize,
-              planType,
-              tileGridInfo: tileGrid,
-              trueGeoPDF,
-              interactive,
-              enableLayers,
-              enableMeasurements
-            },
+          // SI 727 Reg 32(3): the figure does not fit one sheet. There is
+          // nothing to tile anymore — a sheet boundary is a survey judgement,
+          // so the only path to several sheets is the surveyor's own cuts.
+          // Cut-based SheetPayloads come from the frontend's buildSheetPayloads;
+          // the presence of `sheets` IS the evidence the cuts have been drawn.
+          const choice = chooseSheeting({
+            recommendedSheetSize: 'multi-sheet-required',
+            cuts: Array.isArray(request.body.sheets) ? request.body.sheets : (request.body.cuts ?? []),
+          })
+          if (!choice.ok) {
+            return reply.code(400).send({ error: choice.error, message: choice.message })
+          }
+
+          const sheets = request.body.sheets
+          if (!Array.isArray(sheets) || sheets.length === 0) {
+            return reply.code(400).send({
+              error: 'sheets-required',
+              message: 'The cuts are drawn but this plan\'s per-sheet payloads were not included in the request. Rebuild them from the map and generate again.',
+            })
+          }
+
+          fastify.log.warn(`[GeoPDF] 🗺️ SI 727 Reg 32(3): multi-sheet plan required — ${sheets.length} sheets from the surveyor's cuts`)
+          const sheetedResult = await generateSheetedGeoPDF(
+            { sheets, metadata, beacons, projection, scale, sheetSize, planType },
             fastify.log
           )
-          finalPdfBuffer = tiledResult.pdfBuffer
-          isTiled = true
+          finalPdfBuffer = sheetedResult.pdf
+          isMultiSheet = true
         } else {
           finalPdfBuffer = firstPass?.pdfBuffer ?? firstPass
         }
 
         const ts = Date.now()
         const replyHeaders = {
-          'Content-Disposition': isTiled
+          'Content-Disposition': isMultiSheet
             ? `attachment; filename="general-plan-multisheet-${ts}.pdf"`
             : `attachment; filename="survey-plan-professional-${ts}.pdf"`,
           'X-Used-Scale':      usedScale,
@@ -718,15 +717,8 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           replyHeaders['X-Suggested-Scale'] = suggestedScale
           fastify.log.warn(`[GeoPDF] 📏 Suggested scale for next render: ${suggestedScale}`)
         }
-        if (tileGrid) {
-          replyHeaders['X-Tile-Grid'] = JSON.stringify({
-            totalSheets: tileGrid.totalSheets,
-            cols: tileGrid.cols,
-            rows: tileGrid.rows,
-            scaleDenominator: tileGrid.scaleDenominator,
-            scaleLabel: tileGrid.scaleLabel,
-            sheetSize: tileGrid.sheetSize
-          })
+        if (isMultiSheet) {
+          replyHeaders['X-Sheet-Count'] = String(request.body.sheets.length)
         }
 
         reply

@@ -4318,7 +4318,23 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
       const pts = ((p.metadata?.cape_lo_points as any[]) || [])
         .map((pt: any) => ({ y: Number(pt.y), x: Number(pt.x) }))
         .filter((pt: any) => Number.isFinite(pt.y) && Number.isFinite(pt.x))
-      if (pts.length >= 3) stands.push({ name: p.designation || p.stand || String(p.id), ring: pts })
+      if (pts.length < 3) continue
+      // The SAME property set the single-sheet exporter puts on a parcel
+      // (exportParcelsAsGeoJSON). sheetParcels spreads these into the GeoJSON
+      // the renderers read, and the schedule of areas draws its Area column
+      // from `area_m2` -- so handing it name+ring alone produced a schedule
+      // with the stand numbers and no areas on any of the sheets. Kept as an
+      // explicit literal so the two paths cannot drift.
+      stands.push({
+        name: p.designation || p.stand || String(p.id),
+        ring: pts,
+        stand: p.stand,
+        area_m2: p.area_m2,
+        area_ha: Number.isFinite(Number(p.area_m2)) ? (Number(p.area_m2) / 10000).toFixed(4) : undefined,
+        description: p.description || '',
+        id: p.id,
+        isOutsideFigure: false,
+      })
     }
     const built = buildSheetPayloads({ ring, polyline: storedCuts[0].vertices, stands })
     if (built.ok) {

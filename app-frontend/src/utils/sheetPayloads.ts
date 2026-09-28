@@ -36,6 +36,19 @@ export interface StandInput {
   name: string
   ring?: LoPoint[]
   isPublicPlace?: boolean
+  /**
+   * Whatever else the caller's parcel carries (`area_m2`, `area_ha`,
+   * `description`, `id`, `isOutsideFigure`, ...).
+   *
+   * Open on purpose. `sheetPayloadGeometry.sheetParcels` spreads a payload
+   * parcel's own fields straight into the GeoJSON properties both renderers
+   * read, so the set of fields that matters is whatever the single-sheet
+   * exporter already puts on a parcel -- a list that grows as the plan grows,
+   * and one this module must not have to be taught about to stay correct.
+   * Declaring the fields individually is what produced a blank Area column:
+   * the payload typed cleanly while silently carrying nothing worth drawing.
+   */
+  [key: string]: unknown
 }
 
 

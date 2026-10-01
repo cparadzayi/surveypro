@@ -1,11 +1,11 @@
 <template>
   <div class="h-screen flex flex-col bg-gray-50 relative">
-    <!-- Header -->
-    <div class="bg-white border-b border-gray-200 px-6 py-4 z-20 relative">
+    <!-- Header — hidden in focus mode so the whole viewport becomes map -->
+    <div v-if="!focusMode" class="bg-white border-b border-gray-200 px-6 py-3 z-20 relative flex-shrink-0">
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="text-xl font-semibold text-gray-900">📐 Parcel Digitization & Areas</h2>
-          <p class="text-sm text-gray-600 mt-1">🛰️ Satellite overlay with interactive parcel digitizing</p>
+          <h2 class="text-lg font-semibold text-gray-900">📐 Parcel Digitization & Areas</h2>
+          <p class="text-xs text-gray-600 mt-0.5">🛰️ Satellite overlay with interactive parcel digitizing</p>
         </div>
         <!-- Auto-save indicator -->
         <div class="flex items-center gap-3">
@@ -22,59 +22,62 @@
         </div>
       </div>
 
-      <!-- Toolbar row -->
-      <div class="flex flex-wrap items-center gap-2 mt-3">
-        <!-- Edit Point Names toggle -->
-        <button
-          @click="showRenamePanel = !showRenamePanel; console.log('[PointRename] toggled. surveyPegPoints:', surveyPegPoints.length, 'adjustedCoords:', workflowState?.adjustedCoordinates?.length)"
-          :class="[
-            'flex-shrink-0 px-3 py-2 rounded-lg text-sm font-medium transition-colors border',
-            showRenamePanel
-              ? 'bg-blue-600 text-white border-blue-600'
-              : 'bg-white text-blue-700 border-blue-300 hover:bg-blue-50'
-          ]"
-          :title="showRenamePanel ? 'Hide point name editor' : 'Edit imported point names before digitizing'"
-        >
-          ✏️ {{ showRenamePanel ? 'Hide' : 'Edit Point Names' }}
-          <span class="ml-1 text-xs opacity-75">({{ surveyPegPoints.length }})</span>
-        </button>
-        <!-- Repair button: fixes stale beacon names in saved parcels after rename -->
-        <button
-          @click="repairParcelBeaconNames"
-          :disabled="isRecomputing"
-          class="flex-shrink-0 px-3 py-2 rounded-lg text-sm font-medium transition-colors border bg-white text-amber-700 border-amber-300 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Re-match parcel beacon names to current coordinate point names. Use after renaming beacons that were already digitized into parcels."
-        >
-          🔧 Repair Beacon Names
-        </button>
-        <!-- Auto-calculation info banner -->
-        <div class="flex-1 min-w-0 bg-blue-50 border border-blue-200 rounded-md px-3 py-2 text-xs text-blue-800">
-          <span class="font-semibold">⚡ Auto-calculation enabled:</span>
-          <span class="ml-1">Areas, perimeters, and centroids are automatically computed from geometry when parcels are saved.</span>
-        </div>
-      </div>
-
-
-      <div
-        v-if="overlapMessage"
-        class="absolute top-4 left-1/2 transform -translate-x-1/2 mt-28 bg-red-50 border border-red-300 text-red-800 px-4 py-2 rounded-md shadow-lg z-30 max-w-xl text-sm flex items-center gap-3"
-      >
-        <div class="flex-1 flex items-center gap-2">
-          <span class="font-semibold">Parcel overlap detected:</span>
-          <span>{{ overlapMessage }}</span>
-        </div>
-        <button
-          type="button"
-          @click="dismissOverlapWarning"
-          class="text-xs px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-100 transition-colors"
-        >
-          Dismiss
-        </button>
+      <!-- Compact auto-calculation note (the action buttons live in the ribbon now) -->
+      <div class="mt-2 bg-blue-50 border border-blue-200 rounded-md px-3 py-1.5 text-xs text-blue-800">
+        <span class="font-semibold">⚡ Auto-calculation enabled:</span>
+        <span class="ml-1">Areas, perimeters, and centroids are automatically computed from geometry when parcels are saved.</span>
       </div>
     </div>
 
+    <!-- Ribbon (QGIS / ArcGIS style) -->
+    <ParcelDigitizeRibbon
+      v-if="!focusMode"
+      :is-drawing="isDrawing"
+      :is-splitting="isSplitting"
+      :is-editing-vertices="isEditingVertices"
+      :editing-parcel-designation="editingParcelDesignation"
+      :selected-count="selectedPoints.length"
+      :cut-vertex-count="cutDraft.vertices.length"
+      :cut-ready="cutDraft.verdict === 'ok'"
+      :insert-after-index="insertAfterIndex"
+      :insert-after-label="insertAfterIndex !== null ? (selectedPoints[insertAfterIndex]?.id ?? '') : ''"
+      :is-computing="isComputing"
+      :is-recomputing="isRecomputing"
+      :has-stored-cut="!!storedCut"
+      :show-a-i-panel="showAIPanel"
+      :show-labels="showLabels"
+      :show-trig-inset="showTrigInset"
+      :satellite-visible="satelliteVisible"
+      :trig-beacon-count="trigBeacons.length"
+      :saved-parcel-count="savedParcels.size"
+      :computed-parcel-count="parcels.length"
+      :show-rename-panel="showRenamePanel"
+      :survey-peg-count="surveyPegPoints.length"
+      :dock-open="dockOpen"
+      :focus-mode="focusMode"
+      @action="runRibbonAction"
+    />
+
+    <!-- Overlap warning: sits over the map, clear of the ribbon -->
+    <div
+      v-if="overlapMessage"
+      class="absolute top-3 left-1/2 -translate-x-1/2 bg-red-50 border border-red-300 text-red-800 px-4 py-2 rounded-md shadow-lg z-40 max-w-xl text-sm flex items-center gap-3"
+    >
+      <div class="flex-1 flex items-center gap-2">
+        <span class="font-semibold">Parcel overlap detected:</span>
+        <span>{{ overlapMessage }}</span>
+      </div>
+      <button
+        type="button"
+        @click="dismissOverlapWarning"
+        class="text-xs px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-100 transition-colors"
+      >
+        Dismiss
+      </button>
+    </div>
+
     <!-- Point Rename Panel (in-flow, between header and map) -->
-    <div v-if="showRenamePanel" class="bg-white border-b border-gray-200 px-4 py-3 overflow-y-auto" style="max-height: 380px; flex-shrink: 0;">
+    <div v-if="showRenamePanel && !focusMode" class="bg-white border-b border-gray-200 px-4 py-3 overflow-y-auto" style="max-height: 380px; flex-shrink: 0;">
       <div v-if="surveyPegPoints.length === 0" class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
         ⚠️ No survey points available. Complete Calculations Part 1 first to load coordinate points.
       </div>
@@ -101,252 +104,14 @@
         </div>
       </div>
 
-      <!-- Toolbar -->
-      <div class="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-2 flex flex-col gap-2 z-10">
-        <!-- Drawing Controls -->
-        <button
-          v-if="!isDrawing"
-          @click="startDrawing"
-          class="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-md text-sm font-medium transition-all hover:from-green-700 hover:to-green-800 shadow-md"
-          title="Start polygon drawing"
-        >
-          ✏️ Start Drawing
-        </button>
-
-        <!-- Split-figure toggle: a click can only do one or the other -->
-        <button
-          v-if="!isDrawing && !isSplitting"
-          @click="startSplitting"
-          class="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-md text-sm font-medium transition-all hover:from-purple-700 hover:to-purple-800 shadow-md"
-          title="Split the Outside Figure into sheets along a cut you draw through road space"
-        >
-          ✂️ Split figure
-        </button>
-
-        <!-- Remove the stored cut: the plan renders one sheet again -->
-        <button
-          v-if="storedCut && !isSplitting && !isDrawing"
-          @click="deleteStoredCut"
-          class="px-4 py-2 bg-gradient-to-r from-rose-600 to-rose-700 text-white rounded-md text-sm font-medium transition-all hover:from-rose-700 hover:to-rose-800 shadow-md"
-          title="Remove the stored cut so the plan renders as one sheet"
-        >
-          🗑️ Remove cut
-        </button>
-
-        <!-- Split-figure controls -->
-        <div v-if="isSplitting" class="flex flex-col gap-2 border-t border-gray-200 pt-2">
-          <button
-            @click="undoCut"
-            :disabled="cutDraft.vertices.length === 0"
-            class="px-4 py-2 bg-yellow-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Remove last cut vertex (Ctrl+Z)"
-          >
-            ↩️ Undo ({{ cutDraft.vertices.length }})
-          </button>
-
-          <button
-            @click="finishSplit"
-            :disabled="cutDraft.verdict !== 'ok'"
-            class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Finish the cut (or double-click the map)"
-          >
-            ✅ Finish
-          </button>
-
-          <button
-            @click="cancelSplit"
-            class="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-red-700"
-            title="Cancel and clear the cut (ESC)"
-          >
-            ❌ Cancel
-          </button>
-        </div>
-        
-        <!-- Normal drawing controls -->
-        <div v-if="isDrawing && !isEditingVertices" class="flex flex-col gap-2 border-t border-gray-200 pt-2">
-          <button
-            @click="undoLastPoint"
-            :disabled="selectedPoints.length === 0"
-            class="px-4 py-2 bg-yellow-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Remove last point"
-          >
-            ↩️ Undo ({{ selectedPoints.length }})
-          </button>
-          
-          <button
-            @click="completePolygon"
-            :disabled="selectedPoints.length < 3"
-            class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Complete polygon (or press ESC)"
-          >
-            ✅ Complete
-          </button>
-          
-          <button
-            @click="cancelDrawing"
-            class="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-red-700"
-            title="Cancel drawing"
-          >
-            ❌ Cancel
-          </button>
-        </div>
-
-        <!-- Vertex-editing controls (edit existing parcel geometry) -->
-        <div v-if="isEditingVertices" class="flex flex-col gap-2 border-t border-gray-200 pt-2">
-          <div class="px-2 py-1 bg-orange-100 border border-orange-300 rounded text-xs text-orange-800 font-semibold text-center">
-            ✏️ Editing: {{ editingParcelDesignation }}
-          </div>
-          <p class="text-xs text-gray-500 px-1">
-            <span v-if="insertAfterIndex === null">Click a beacon on the map to <strong>append</strong> it, or press ➕ to <strong>insert after</strong> a specific vertex.</span>
-            <span v-else class="text-orange-700 font-semibold">⬇️ Click a beacon to insert after vertex {{ insertAfterIndex + 1 }} ({{ selectedPoints[insertAfterIndex]?.id }})</span>
-          </p>
-          <div class="max-h-48 overflow-y-auto border border-gray-200 rounded p-1 bg-gray-50">
-            <template v-for="(pt, idx) in selectedPoints" :key="pt.id + '-' + idx">
-              <!-- Vertex row -->
-              <div
-                :class="[
-                  'flex items-center justify-between text-xs rounded px-2 py-0.5',
-                  insertAfterIndex === idx
-                    ? 'bg-orange-100 border border-orange-400'
-                    : 'bg-white border border-gray-200'
-                ]"
-              >
-                <span class="font-mono text-gray-800">{{ idx + 1 }}. {{ pt.id }}</span>
-                <div class="flex items-center gap-1 ml-2">
-                  <!-- Insert-after toggle -->
-                  <button
-                    @click="setInsertAfter(idx)"
-                    :class="[
-                      'font-bold leading-none transition-colors',
-                      insertAfterIndex === idx
-                        ? 'text-orange-600 hover:text-orange-800'
-                        : 'text-green-500 hover:text-green-700'
-                    ]"
-                    :title="insertAfterIndex === idx ? 'Cancel insert mode' : `Insert new vertex after ${pt.id}`"
-                  >{{ insertAfterIndex === idx ? '✕ins' : '➕' }}</button>
-                  <!-- Remove vertex -->
-                  <button
-                    @click="removeVertexByIndex(idx)"
-                    :disabled="selectedPoints.length <= 3"
-                    class="text-red-500 hover:text-red-700 disabled:opacity-30 font-bold leading-none"
-                    title="Remove this vertex"
-                  >✕</button>
-                </div>
-              </div>
-              <!-- Insert-here indicator -->
-              <div
-                v-show="insertAfterIndex === idx"
-                class="text-center text-xs text-orange-600 font-semibold py-0.5 bg-orange-50 border-x border-orange-200"
-              >⬇ next click inserts here ⬇</div>
-            </template>
-          </div>
-          <button
-            @click="commitVertexEdit"
-            :disabled="selectedPoints.length < 3 || isComputing"
-            class="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Save vertex changes"
-          >
-            <span v-if="isComputing" class="inline-block animate-spin mr-1">⏳</span>
-            💾 Save Changes ({{ selectedPoints.length }} pts)
-          </button>
-          <button
-            @click="cancelVertexEdit"
-            class="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium transition-colors hover:bg-red-700"
-            title="Cancel without saving"
-          >
-            ❌ Cancel Edit
-          </button>
-        </div>
-
-        <div class="border-t border-gray-200 pt-2"></div>
-        
-        <!-- AI Detection Button -->
-        <button
-          v-if="!isDrawing"
-          @click="showAIPanel = !showAIPanel"
-          :class="[
-            'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-            showAIPanel ? 'bg-purple-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-          ]"
-          title="AI Parcel Detection"
-        >
-          🤖 AI Detect
-        </button>
-        
-        <button
-          @click="toggleLabels"
-          :class="[
-            'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-            showLabels ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-          ]"
-          title="Toggle point labels"
-        >
-          🏷️ Labels
-        </button>
-        
-        <button
-          @click="fitToPoints"
-          class="px-4 py-2 bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 rounded-md text-sm font-medium transition-colors"
-          title="Fit view to all points"
-        >
-          🎯 Fit View
-        </button>
-        
-        <button
-          @click="refreshParcelsFromDatabase"
-          class="px-4 py-2 bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 rounded-md text-sm font-medium transition-colors"
-          title="Reload parcels from database"
-        >
-          🔄 Refresh
-        </button>
-        
-        <button
-          v-if="!isDrawing"
-          @click="openAddBeaconModal"
-          class="px-4 py-2 bg-teal-600 text-white hover:bg-teal-700 rounded-md text-sm font-medium transition-colors"
-          title="Add a new survey beacon (Cape Lo coordinates)"
-        >
-          ➕ Add Beacon
-        </button>
-
-        <button
-          @click="recomputeAllParcels"
-          :disabled="isRecomputing || savedParcels.size === 0"
-          class="px-4 py-2 bg-orange-600 text-white hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
-          title="Recompute all parcels with latest backend code (includes banker's rounding)"
-        >
-          {{ isRecomputing ? '⏳ Recomputing...' : '🔧 Recompute All' }}
-        </button>
-        
-        <button
-          v-if="trigBeacons.length > 0"
-          @click="showTrigInset = !showTrigInset"
-          :class="[
-            'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-            showTrigInset ? 'bg-red-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-          ]"
-          title="Toggle trig beacon inset"
-        >
-          🔺 Trigs ({{ trigBeacons.length }})
-        </button>
-        
-        <button
-          @click="toggleSatellite"
-          :class="[
-            'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-            satelliteVisible ? 'bg-green-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-          ]"
-          title="Toggle satellite imagery"
-        >
-          {{ satelliteVisible ? '🛰️ Satellite ON' : '🗺️ Satellite OFF' }}
-        </button>
-      </div>
-
       <!-- Split-figure verdict line: under the map, not a toast that can be missed -->
       <div
         v-if="isSplitting"
-        class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 bg-white rounded-lg shadow-lg px-4 py-2 flex items-center gap-3 text-sm font-medium"
-        :class="cutDraft.verdict === 'ok' ? 'text-green-700' : cutDraft.verdict === 'incomplete' ? 'text-gray-500' : 'text-red-700'"
+        class="absolute bottom-4 z-30 bg-white rounded-lg shadow-lg px-4 py-2 flex items-center gap-3 text-sm font-medium -translate-x-1/2"
+        :class="[
+          focusMode || dockOpen ? 'left-[calc(50%-10.5rem)]' : 'left-1/2',
+          cutDraft.verdict === 'ok' ? 'text-green-700' : cutDraft.verdict === 'incomplete' ? 'text-gray-500' : 'text-red-700'
+        ]"
       >
         ✂️ {{ verdictText }}
       </div>
@@ -354,13 +119,29 @@
       <!-- Stored-cut summary: shown once a cut is saved, not while drawing -->
       <div
         v-if="storedCut && !isSplitting"
-        class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 bg-white rounded-lg shadow-lg px-4 py-2 flex items-center gap-3 text-sm font-medium text-indigo-700"
+        class="absolute bottom-4 z-30 bg-white rounded-lg shadow-lg px-4 py-2 flex items-center gap-3 text-sm font-medium text-indigo-700 -translate-x-1/2"
+        :class="focusMode || dockOpen ? 'left-[calc(50%-10.5rem)]' : 'left-1/2'"
       >
         📐 Stored cut divides the figure into {{ storedSheetCount ?? 2 }} sheet{{ storedSheetCount === 1 ? '' : 's' }}.
       </div>
 
+      <!-- Focus-mode escape hatch: the only chrome left when the map is bare -->
+      <button
+        v-if="focusMode"
+        @click="toggleFocusMode"
+        class="absolute top-3 right-3 z-40 flex items-center gap-1.5 px-3 py-1.5 bg-white/95 border border-gray-300 rounded-md shadow-lg text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+        title="Bring back the header, ribbon and side panel"
+      >
+        ⤢ Show Ribbon
+      </button>
+
       <!-- Trig Beacon Inset Map -->
-      <div v-if="showTrigInset && trigBeacons.length > 0" class="absolute top-4 right-4 bg-white rounded-lg shadow-xl border-2 border-red-500 z-20" style="width: 300px; height: 250px;">
+      <div
+        v-if="showTrigInset && trigBeacons.length > 0 && !focusMode"
+        class="absolute top-3 bg-white rounded-lg shadow-xl border-2 border-red-500 z-20"
+        :class="dockOpen ? 'right-[21.5rem]' : 'right-3'"
+        style="width: 300px; height: 250px;"
+      >
         <div class="bg-gradient-to-r from-red-600 to-red-700 text-white px-3 py-1.5 rounded-t-lg flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span class="text-sm">🔺</span>
@@ -377,8 +158,9 @@
         <div ref="insetMapContainer" class="w-full h-full rounded-b-lg" style="height: calc(100% - 32px);"></div>
       </div>
 
-      <!-- AI Detection Panel -->
-      <div v-if="showAIPanel && !isDrawing" class="absolute top-20 left-4 z-30 w-96 max-h-[calc(100vh-200px)] overflow-y-auto">
+      <!-- AI Detection Panel. Sits below the zoom buttons (top-left) so the two
+           never overlap. -->
+      <div v-if="showAIPanel && !isDrawing && !focusMode" class="absolute top-24 left-3 z-30 w-96 max-h-[calc(100%-7rem)] overflow-y-auto">
         <ParcelDetectionPanel
           :coordinates="adjustedCoordinatesForDetection"
           :min-points="3"
@@ -390,8 +172,12 @@
       <!-- Drawing Status Bar (bottom, non-obstructive) -->
       <div
         v-if="isDrawing"
-        class="absolute bottom-0 left-0 right-0 flex items-center gap-3 px-3 py-1.5 z-30 text-xs"
-        :class="isEditingVertices ? 'bg-orange-600/90' : 'bg-gray-900/80'"
+        class="absolute bottom-0 flex items-center gap-3 px-3 py-1.5 z-30 text-xs"
+        :class="[
+          focusMode || dockOpen ? 'left-3' : 'left-0',
+          focusMode ? 'right-3 rounded-t-md' : 'right-0',
+          isEditingVertices ? 'bg-orange-600/90' : 'bg-gray-900/80'
+        ]"
       >
         <span class="font-semibold text-white whitespace-nowrap">
           {{ isEditingVertices ? `✏️ Editing: ${editingParcelDesignation}` : '✏️ Drawing' }}
@@ -431,218 +217,318 @@
         <template v-else>release to cancel — no point within snap range</template>
       </div>
 
-      <!-- Parcel Status Legend -->
-      <div :class="['absolute right-4 bg-white rounded-lg shadow-lg p-3 z-20 border-2 border-gray-200', isDrawing ? 'bottom-10' : 'bottom-4']">
-        <h3 class="font-semibold text-gray-900 text-xs mb-2">🎨 Parcel Status</h3>
-        <div class="space-y-1.5 text-xs">
-          <div class="flex items-center gap-2">
-            <div class="w-4 h-4 rounded border-2 border-amber-600 bg-amber-400 bg-opacity-30"></div>
-            <span class="text-gray-700">📝 Draft</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="w-4 h-4 rounded border-2 border-blue-700 bg-blue-500 bg-opacity-30"></div>
-            <span class="text-gray-700">✅ Finalized</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="w-4 h-4 rounded border-2 border-green-700 bg-green-500 bg-opacity-30"></div>
-            <span class="text-gray-700">🎯 Approved</span>
-          </div>
-        </div>
-        <div class="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-600">
-          <p class="font-medium">🛡️ Overlap Protection:</p>
-          <p class="text-gray-500">All existing parcels checked</p>
-        </div>
-      </div>
+      <!-- ══ Side dock: parcels / vertices / legend ══════════════════════ -->
+      <SideDock
+        v-if="dockOpen && !focusMode"
+        v-model="dockTab"
+        :tabs="dockTabs"
+        :open="true"
+        @close="dockOpen = false"
+      >
+        <!-- ── Parcels tab ─────────────────────────────────────────── -->
+        <div v-if="dockTab === 'parcels'" class="p-3">
+          <!-- Saved Parcels (from database) -->
+          <template v-if="savedParcels.size > 0 && parcels.length === 0">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-gray-900 text-sm">💾 Saved Parcels ({{ savedParcels.size }})</h3>
+              <button
+                @click="refreshParcelsFromDatabase"
+                class="px-3 py-1 bg-gray-600 text-white rounded-md text-xs font-medium hover:bg-gray-700 transition-colors"
+                title="Refresh from database"
+              >
+                🔄 Refresh
+              </button>
+            </div>
+            <div class="mb-3">
+              <ParcelSelect
+                :options="savedParcelOptions"
+                v-model="managedParcelSelection"
+                placeholder="Find a saved parcel…"
+                @select="onManagedParcelPicked"
+              />
+            </div>
+            <div class="space-y-2">
+              <div
+                v-for="[designation, dbParcel] in Array.from(savedParcels.entries())" 
+                :key="dbParcel.id"
+                :class="[
+                  'border-2 rounded-lg p-3',
+                  dbParcel.status === 'finalized' ? 'border-blue-600 bg-blue-50' :
+                  dbParcel.status === 'approved' ? 'border-green-600 bg-green-50' :
+                  'border-amber-500 bg-amber-50'
+                ]"
+              >
+                <div class="flex items-center justify-between mb-2">
+                  <h4 class="font-semibold text-gray-900 text-sm truncate">{{ designation }}</h4>
+                  <div class="flex items-center gap-1 flex-shrink-0">
+                    <span :class="[
+                      'text-xs font-bold px-2 py-0.5 rounded',
+                      dbParcel.status === 'finalized' ? 'bg-blue-200 text-blue-900' :
+                      dbParcel.status === 'approved' ? 'bg-green-200 text-green-900' :
+                      'bg-amber-200 text-amber-900'
+                    ]">
+                      {{ dbParcel.status === 'finalized' ? '✅ FIN' : 
+                         dbParcel.status === 'approved' ? '🎯 APP' : 
+                         '📝 DRAFT' }}
+                    </span>
+                    <button
+                      @click="startEditingVertices(designation)"
+                      :disabled="isDrawing || isEditingVertices"
+                      class="text-orange-600 hover:text-orange-800 hover:bg-orange-100 rounded p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Edit vertices (add/remove beacons)"
+                    >
+                      🔺
+                    </button>
+                    <button
+                      @click="openParcelRenameModal({ id: dbParcel.id, oldName: designation, source: 'saved' })"
+                      class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded p-1 transition-colors"
+                      title="Rename parcel"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      @click="deleteSavedParcel(dbParcel)"
+                      class="text-red-600 hover:text-red-800 hover:bg-red-100 rounded p-1 transition-colors"
+                      title="Delete parcel from database"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+                
+                <div class="text-xs text-gray-700 space-y-1">
+                  <p><strong>Area:</strong> {{ Number(dbParcel.area_m2 || 0).toFixed(2) }} m² ({{ (Number(dbParcel.area_m2 || 0) / 10000).toFixed(4) }} ha)</p>
+                  <p v-if="dbParcel.metadata?.points_count"><strong>Points:</strong> {{ dbParcel.metadata.points_count }}</p>
+                  <p v-if="dbParcel.metadata?.closure_ratio"><strong>Closure Ratio:</strong> {{ dbParcel.metadata.closure_ratio }}</p>
+                </div>
+              </div>
+            </div>
+          </template>
 
-      <!-- Saved Parcels Panel (Database) -->
-      <div v-if="savedParcels.size > 0 && parcels.length === 0" class="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-4 max-w-md z-20">
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="font-semibold text-gray-900 text-sm">💾 Saved Parcels ({{ savedParcels.size }})</h3>
-          <button
-            @click="refreshParcelsFromDatabase"
-            class="px-3 py-1 bg-gray-600 text-white rounded-md text-xs font-medium hover:bg-gray-700 transition-colors"
-            title="Refresh from database"
-          >
-            🔄 Refresh
-          </button>
-        </div>
-        <div class="mb-2">
-          <ParcelSelect
-            :options="savedParcelOptions"
-            v-model="managedParcelSelection"
-            placeholder="Find a saved parcel…"
-            @select="onManagedParcelPicked"
-          />
-        </div>
-        <div class="space-y-2 max-h-64 overflow-y-auto">
-          <div
-            v-for="[designation, dbParcel] in Array.from(savedParcels.entries())" 
-            :key="dbParcel.id"
-            :class="[
-              'border-2 rounded-lg p-3',
-              dbParcel.status === 'finalized' ? 'border-blue-600 bg-blue-50' :
-              dbParcel.status === 'approved' ? 'border-green-600 bg-green-50' :
-              'border-amber-500 bg-amber-50'
-            ]"
-          >
-            <div class="flex items-center justify-between mb-2">
-              <h4 class="font-semibold text-gray-900 text-sm">{{ designation }}</h4>
-              <div class="flex items-center gap-2">
-                <span :class="[
-                  'text-xs font-bold px-2 py-0.5 rounded',
-                  dbParcel.status === 'finalized' ? 'bg-blue-200 text-blue-900' :
-                  dbParcel.status === 'approved' ? 'bg-green-200 text-green-900' :
-                  'bg-amber-200 text-amber-900'
-                ]">
-                  {{ dbParcel.status === 'finalized' ? '✅ FINALIZED' : 
-                     dbParcel.status === 'approved' ? '🎯 APPROVED' : 
-                     '📝 DRAFT' }}
-                </span>
+          <!-- Computed Parcels (in memory) -->
+          <template v-else-if="parcels.length > 0">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-gray-900 text-sm">📊 Computed ({{ parcels.length }})</h3>
+              <div class="flex gap-1.5">
                 <button
-                  @click="startEditingVertices(designation)"
-                  :disabled="isDrawing || isEditingVertices"
-                  class="text-orange-600 hover:text-orange-800 hover:bg-orange-100 rounded p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Edit vertices (add/remove beacons)"
+                  @click="exportAreaConsistencyPDF"
+                  class="px-2 py-1 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 transition-colors"
+                  title="Export Area & Consistency PDF (SGO Format)"
                 >
-                  🔺
+                  📄
                 </button>
                 <button
-                  @click="openParcelRenameModal({ id: dbParcel.id, oldName: designation, source: 'saved' })"
-                  class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded p-1 transition-colors"
-                  title="Rename parcel"
+                  @click="saveAllParcels"
+                  class="px-2 py-1 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors"
+                  title="Save all parcels to the database"
                 >
-                  ✏️
-                </button>
-                <button
-                  @click="deleteSavedParcel(dbParcel)"
-                  class="text-red-600 hover:text-red-800 hover:bg-red-100 rounded p-1 transition-colors"
-                  title="Delete parcel from database"
-                >
-                  🗑️
+                  💾
                 </button>
               </div>
             </div>
-            
-            <div class="text-xs text-gray-700 space-y-1">
-              <p><strong>Area:</strong> {{ Number(dbParcel.area_m2 || 0).toFixed(2) }} m² ({{ (Number(dbParcel.area_m2 || 0) / 10000).toFixed(4) }} ha)</p>
-              <p v-if="dbParcel.metadata?.points_count"><strong>Points:</strong> {{ dbParcel.metadata.points_count }}</p>
-              <p v-if="dbParcel.metadata?.closure_ratio"><strong>Closure Ratio:</strong> {{ dbParcel.metadata.closure_ratio }}</p>
+            <div class="relative mb-3">
+              <input
+                v-model="parcelSearchQuery"
+                type="text"
+                placeholder="Search parcel… e.g. 1996"
+                class="w-full px-3 py-1.5 pr-7 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <button
+                v-if="parcelSearchQuery"
+                @click="clearParcelSearch"
+                class="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 px-1 text-sm leading-none"
+                title="Clear search"
+              >✕</button>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Parcels Panel (In-Memory) -->
-      <div v-if="parcels.length > 0" class="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-4 max-w-md z-20">
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="font-semibold text-gray-900 text-sm">📊 Computed Parcels ({{ parcels.length }})</h3>
-          <div class="flex gap-2">
-            <button
-              @click="exportAreaConsistencyPDF"
-              class="px-3 py-1 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 transition-colors"
-              title="Export Area & Consistency PDF (SGO Format)"
-            >
-              📄 PDF
-            </button>
-            <button
-              @click="saveAllParcels"
-              class="px-3 py-1 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors"
-            >
-              💾 Save All
-            </button>
-          </div>
-        </div>
-        <div class="relative mb-2">
-          <input
-            v-model="parcelSearchQuery"
-            type="text"
-            placeholder="Search parcel… e.g. 1996"
-            class="w-full px-3 py-1.5 pr-7 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          <button
-            v-if="parcelSearchQuery"
-            @click="clearParcelSearch"
-            class="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 px-1 text-sm leading-none"
-            title="Clear search"
-          >✕</button>
-        </div>
-        <div ref="parcelsListRef" class="space-y-2 max-h-64 overflow-y-auto">
-          <div
-            v-if="filteredParcels.length === 0"
-            class="text-xs text-gray-500 text-center py-4"
-          >
-            No parcels match "{{ parcelSearchQuery }}"
-          </div>
-          <div 
-            v-for="parcel in filteredParcels" 
-            :key="parcel.designation"
-            :class="[
-              'border-2 rounded-lg p-3',
-              parcel.areaResult 
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-300 bg-gray-50'
-            ]"
-          >
-            <div class="flex items-center justify-between mb-2">
-              <h4 class="font-semibold text-gray-900 text-sm">{{ parcel.designation }}</h4>
-              <div class="flex items-center gap-2">
-                <span v-if="parcel.areaResult" class="text-xs font-bold px-2 py-0.5 rounded bg-blue-200 text-blue-900">
-                  ✅ COMPUTED
-                </span>
-                <span v-else class="text-xs text-gray-500">Computing...</span>
-                <button
-                  @click="startEditingVertices(parcel.designation)"
-                  :disabled="isDrawing || isEditingVertices"
-                  class="text-orange-600 hover:text-orange-800 hover:bg-orange-100 rounded p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Edit vertices (add/remove beacons)"
-                >
-                  🔺
-                </button>
-                <button
-                  @click="openParcelRenameModal({ id: typeof parcel.id === 'number' ? parcel.id : undefined, oldName: parcel.designation, source: 'memory', parcelRef: parcel })"
-                  class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded p-1 transition-colors"
-                  title="Rename parcel"
-                >
-                  ✏️
-                </button>
-                <button
-                  @click="deleteParcelConfirm(parcel)"
-                  class="text-red-600 hover:text-red-800 hover:bg-red-100 rounded p-1 transition-colors"
-                  title="Delete parcel"
-                >
-                  🗑️
-                </button>
+            <div ref="parcelsListRef" class="space-y-2">
+              <div
+                v-if="filteredParcels.length === 0"
+                class="text-xs text-gray-500 text-center py-4"
+              >
+                No parcels match "{{ parcelSearchQuery }}"
+              </div>
+              <div 
+                v-for="parcel in filteredParcels" 
+                :key="parcel.designation"
+                :class="[
+                  'border-2 rounded-lg p-3',
+                  parcel.areaResult 
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-300 bg-gray-50'
+                ]"
+              >
+                <div class="flex items-center justify-between mb-2">
+                  <h4 class="font-semibold text-gray-900 text-sm truncate">{{ parcel.designation }}</h4>
+                  <div class="flex items-center gap-1 flex-shrink-0">
+                    <span v-if="parcel.areaResult" class="text-xs font-bold px-2 py-0.5 rounded bg-blue-200 text-blue-900">
+                      ✅ OK
+                    </span>
+                    <span v-else class="text-xs text-gray-500">…</span>
+                    <button
+                      @click="startEditingVertices(parcel.designation)"
+                      :disabled="isDrawing || isEditingVertices"
+                      class="text-orange-600 hover:text-orange-800 hover:bg-orange-100 rounded p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Edit vertices (add/remove beacons)"
+                    >
+                      🔺
+                    </button>
+                    <button
+                      @click="openParcelRenameModal({ id: typeof parcel.id === 'number' ? parcel.id : undefined, oldName: parcel.designation, source: 'memory', parcelRef: parcel })"
+                      class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded p-1 transition-colors"
+                      title="Rename parcel"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      @click="deleteParcelConfirm(parcel)"
+                      class="text-red-600 hover:text-red-800 hover:bg-red-100 rounded p-1 transition-colors"
+                      title="Delete parcel"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+                
+                <div v-if="parcel.areaResult" class="text-xs text-gray-700 space-y-1">
+                  <p><strong>Area:</strong> {{ formatArea(parcel.areaResult.area) }}</p>
+                  <p><strong>Points:</strong> {{ parcel.points.length }}</p>
+                  <p><strong>Closure Ratio:</strong> 1:{{ Math.round(calculateClosureRatio(parcel)).toLocaleString() }}</p>
+                  <p class="text-gray-600 italic">
+                    <strong>Closure Error:</strong> {{ (Math.sqrt((parcel.areaResult.residuals?.sumDy || 0)**2 + (parcel.areaResult.residuals?.sumDx || 0)**2)).toFixed(3) }}m
+                  </p>
+                </div>
               </div>
             </div>
-            
-            <div v-if="parcel.areaResult" class="text-xs text-gray-700 space-y-1">
-              <p><strong>Area:</strong> {{ formatArea(parcel.areaResult.area) }}</p>
-              <p><strong>Points:</strong> {{ parcel.points.length }}</p>
-              <p><strong>Closure Ratio:</strong> 1:{{ Math.round(calculateClosureRatio(parcel)).toLocaleString() }}</p>
-              <p class="text-gray-600 italic">
-                <strong>Closure Error:</strong> {{ (Math.sqrt((parcel.areaResult.residuals?.sumDy || 0)**2 + (parcel.areaResult.residuals?.sumDx || 0)**2)).toFixed(3) }}m
-              </p>
+          </template>
+
+          <!-- Nothing digitized yet -->
+          <div v-else class="text-center py-8 px-3">
+            <div class="text-3xl mb-2">🗺️</div>
+            <p class="text-sm font-medium text-gray-700">No parcels yet</p>
+            <p class="text-xs text-gray-500 mt-1">
+              Press <strong>✏️ Draw Parcel</strong> in the ribbon, then click the pegs on the map to trace the boundary.
+              Double-click the first point to close it.
+            </p>
+          </div>
+        </div>
+
+        <!-- ── Vertices tab (only meaningful while editing) ────────── -->
+        <div v-else-if="dockTab === 'vertices'" class="p-3">
+          <div v-if="!isEditingVertices" class="text-center py-8 px-3">
+            <div class="text-3xl mb-2">🔺</div>
+            <p class="text-sm font-medium text-gray-700">No parcel being edited</p>
+            <p class="text-xs text-gray-500 mt-1">
+              Press 🔺 on a parcel in the Parcels tab to edit its vertices.
+            </p>
+          </div>
+
+          <div v-else>
+            <div class="px-2 py-1.5 bg-orange-100 border border-orange-300 rounded text-xs text-orange-800 font-semibold text-center mb-2">
+              ✏️ Editing: {{ editingParcelDesignation }}
+            </div>
+            <p class="text-xs text-gray-600 mb-2">
+              <span v-if="insertAfterIndex === null">Click a beacon on the map to <strong>append</strong> it, or press ➕ to <strong>insert after</strong> a specific vertex.</span>
+              <span v-else class="text-orange-700 font-semibold">⬇️ Click a beacon to insert after vertex {{ insertAfterIndex + 1 }} ({{ selectedPoints[insertAfterIndex]?.id }})</span>
+            </p>
+            <div class="space-y-0.5">
+              <template v-for="(pt, idx) in selectedPoints" :key="pt.id + '-' + idx">
+                <!-- Vertex row -->
+                <div
+                  :class="[
+                    'flex items-center justify-between text-xs rounded px-2 py-0.5',
+                    insertAfterIndex === idx
+                      ? 'bg-orange-100 border border-orange-400'
+                      : 'bg-white border border-gray-200'
+                  ]"
+                >
+                  <span class="font-mono text-gray-800 truncate">{{ idx + 1 }}. {{ pt.id }}</span>
+                  <div class="flex items-center gap-1 ml-2 flex-shrink-0">
+                    <!-- Insert-after toggle -->
+                    <button
+                      @click="setInsertAfter(idx)"
+                      :class="[
+                        'font-bold leading-none transition-colors',
+                        insertAfterIndex === idx
+                          ? 'text-orange-600 hover:text-orange-800'
+                          : 'text-green-500 hover:text-green-700'
+                      ]"
+                      :title="insertAfterIndex === idx ? 'Cancel insert mode' : `Insert new vertex after ${pt.id}`"
+                    >{{ insertAfterIndex === idx ? '✕ins' : '➕' }}</button>
+                    <!-- Remove vertex -->
+                    <button
+                      @click="removeVertexByIndex(idx)"
+                      :disabled="selectedPoints.length <= 3"
+                      class="text-red-500 hover:text-red-700 disabled:opacity-30 font-bold leading-none"
+                      title="Remove this vertex"
+                    >✕</button>
+                  </div>
+                </div>
+                <!-- Insert-here indicator -->
+                <div
+                  v-show="insertAfterIndex === idx"
+                  class="text-center text-xs text-orange-600 font-semibold py-0.5 bg-orange-50 border-x border-orange-200"
+                >⬇ next click inserts here ⬇</div>
+              </template>
+            </div>
+            <div class="flex gap-2 mt-3">
+              <button
+                @click="commitVertexEdit"
+                :disabled="selectedPoints.length < 3 || isComputing"
+                class="flex-1 px-3 py-2 bg-green-600 text-white rounded-md text-xs font-medium transition-colors hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Save vertex changes"
+              >
+                <span v-if="isComputing" class="inline-block animate-spin mr-1">⏳</span>
+                💾 Save ({{ selectedPoints.length }} pts)
+              </button>
+              <button
+                @click="cancelVertexEdit"
+                class="px-3 py-2 bg-red-600 text-white rounded-md text-xs font-medium transition-colors hover:bg-red-700"
+                title="Cancel without saving"
+              >
+                ✕ Cancel
+              </button>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Info Panel -->
-      <div class="absolute bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-md z-10">
-        <h3 class="font-semibold text-gray-900 mb-2">🌍 Coordinate System Info</h3>
-        <div class="text-sm text-gray-600 space-y-1">
-          <p><strong>Source:</strong> {{ sourceEPSG }} ({{ loZoneDisplay }})</p>
-          <p><strong>Display:</strong> EPSG:4326 (WGS84)</p>
-          <p><strong>Points:</strong> {{ coordinatePoints.length }} survey points</p>
-          <p><strong>Trig Beacons:</strong> <span class="text-red-600 font-semibold">{{ trigBeacons.length }}</span></p>
-          <p v-if="parcels.length > 0" class="text-green-700 font-semibold">
-            <strong>Parcels:</strong> {{ parcels.length }} computed
-          </p>
-          <p class="text-xs text-gray-500 mt-2">
-            ℹ️ Coordinates transformed once at load - no runtime overhead
-          </p>
+        <!-- ── Legend tab ──────────────────────────────────────────── -->
+        <div v-else class="p-3">
+          <h3 class="font-semibold text-gray-900 text-xs mb-2">🎨 Parcel Status</h3>
+          <div class="space-y-1.5 text-xs">
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 rounded border-2 border-amber-600 bg-amber-400 bg-opacity-30 flex-shrink-0"></div>
+              <span class="text-gray-700">📝 Draft</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 rounded border-2 border-blue-700 bg-blue-500 bg-opacity-30 flex-shrink-0"></div>
+              <span class="text-gray-700">✅ Finalized</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 rounded border-2 border-green-700 bg-green-500 bg-opacity-30 flex-shrink-0"></div>
+              <span class="text-gray-700">🎯 Approved</span>
+            </div>
+          </div>
+
+          <div class="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-600">
+            <p class="font-medium">🛡️ Overlap Protection:</p>
+            <p class="text-gray-500">All existing parcels checked</p>
+          </div>
+
+          <div class="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-600 space-y-1">
+            <p class="font-semibold text-gray-900">🌍 Coordinate System</p>
+            <p><strong>Source:</strong> {{ sourceEPSG }} ({{ loZoneDisplay }})</p>
+            <p><strong>Display:</strong> EPSG:4326 (WGS84)</p>
+            <p><strong>Points:</strong> {{ coordinatePoints.length }} survey points</p>
+            <p><strong>Trig Beacons:</strong> <span class="text-red-600 font-semibold">{{ trigBeacons.length }}</span></p>
+            <p v-if="parcels.length > 0" class="text-green-700 font-semibold">
+              <strong>Parcels:</strong> {{ parcels.length }} computed
+            </p>
+            <p class="text-xs text-gray-500 mt-1">
+              ℹ️ Coordinates transformed once at load - no runtime overhead
+            </p>
+          </div>
         </div>
-      </div>
+      </SideDock>
     </div>
 
     <!-- Parcel rename modal -->
@@ -1069,6 +955,8 @@ import { nextDesignation } from '../../../utils/parcelNumbering';
 import type { DetectedParcel } from '../../../utils/automatedParcelDetector';
 import type { ParcelDetectionResult } from '../../../services/parcelDetection';
 import PointRenamePanel from '../../../components/cadastral/PointRenamePanel.vue';
+import ParcelDigitizeRibbon from '../../../components/cadastral/ParcelDigitizeRibbon.vue';
+import SideDock from '../../../components/cadastral/SideDock.vue';
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation, composeSurveySource } from '@/utils/planDesignation';
@@ -1101,6 +989,102 @@ const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../compone
 
 // Inject workflow state
 const workflowState = inject<any>('workflowState');
+
+// ── Ribbon / dock shell ───────────────────────────────────────────────────────
+// dockOpen + focusMode default to false so the map starts completely clear for
+// digitizing. Focus mode additionally drops the header, ribbon and every overlay,
+// leaving the whole viewport as bare map.
+const dockOpen = ref(false);
+const focusMode = ref(false);
+const dockTab = ref<'parcels' | 'vertices' | 'legend'>('parcels');
+
+const dockTabs = computed(() => [
+  {
+    id: 'parcels',
+    label: 'Parcels',
+    icon: '🗺️',
+    title: 'Saved and computed parcels',
+    badge: savedParcels.value.size + parcels.value.length || null,
+  },
+  {
+    id: 'vertices',
+    label: 'Vertices',
+    icon: '🔺',
+    title: 'Vertex list of the parcel being edited',
+    badge: isEditingVertices.value ? selectedPoints.value.length : null,
+  },
+  { id: 'legend', label: 'Legend', icon: '🎨', title: 'Parcel status colours and CRS info' },
+]);
+
+/** Single entry point for every ribbon tile. */
+function runRibbonAction(id: string) {
+  switch (id) {
+    // Parcel
+    case 'start-drawing': return startDrawing();
+    case 'start-splitting': return startSplitting();
+    case 'delete-cut': return deleteStoredCut();
+    case 'add-beacon': return openAddBeaconModal();
+
+    // Drawing
+    case 'undo-point': return undoLastPoint();
+    case 'complete-polygon': return completePolygon();
+    case 'cancel-drawing': return cancelDrawing();
+
+    // Cut line
+    case 'undo-cut': return undoCut();
+    case 'finish-split': return finishSplit();
+    case 'cancel-split': return cancelSplit();
+
+    // Vertex editing
+    case 'commit-vertex-edit': return commitVertexEdit();
+    case 'cancel-vertex-edit': return cancelVertexEdit();
+
+    // Assist
+    case 'toggle-ai':
+      showAIPanel.value = !showAIPanel.value;
+      return;
+
+    // Output
+    case 'export-pdf': return exportAreaConsistencyPDF();
+    case 'save-all': return saveAllParcels();
+
+    // Layers
+    case 'toggle-satellite': return toggleSatellite();
+    case 'toggle-labels': return toggleLabels();
+    case 'toggle-trigs':
+      showTrigInset.value = !showTrigInset.value;
+      return;
+
+    // Navigation
+    case 'fit-view': return fitToPoints();
+    case 'refresh': return refreshParcelsFromDatabase();
+    case 'recompute': return recomputeAllParcels();
+
+    // Points
+    case 'toggle-rename':
+      showRenamePanel.value = !showRenamePanel.value;
+      return;
+    case 'repair-beacons': return repairParcelBeaconNames();
+
+    // Shell
+    case 'toggle-dock': return toggleDock();
+    case 'toggle-focus': return toggleFocusMode();
+    case 'open-panel': return toggleDock();
+    default: return;
+  }
+}
+
+/** Side panel. Vertex editing forces it open on the Vertices tab. */
+function toggleDock() {
+  dockOpen.value = !dockOpen.value;
+}
+
+function toggleFocusMode() {
+  focusMode.value = !focusMode.value;
+  // Leaving focus mode restores the header and ribbon but deliberately leaves the
+  // side panel as the user had it, so returning from a cleared drawing area gives
+  // the bare map back rather than popping the parcels panel open.
+}
 
 const { loadComposition } = useRecordComposition();
 
@@ -2250,6 +2234,14 @@ const setInsertAfter = (index: number | null) => {
   insertAfterIndex.value = index
 }
 
+// Starting a vertex edit reveals the vertex list — open the dock on its Vertices
+// tab so the insert/remove controls are reachable without hunting for them.
+watch(isEditingVertices, (editing) => {
+  if (!editing) return
+  dockTab.value = 'vertices'
+  if (!focusMode.value) dockOpen.value = true
+});
+
 // ── Vertex drag-to-snap ───────────────────────────────────────────────────────
 // A drag is a RE-REFERENCE, never a coordinate change: the dragged vertex is
 // replaced by the snap target's stored values, copied verbatim. See
@@ -2753,7 +2745,9 @@ async function initializeMapOnce() {
     });
 
     // Add navigation controls
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    // Top-left, not top-right: the side dock lives on the right and would sit
+    // on top of the zoom buttons.
+    map.addControl(new maplibregl.NavigationControl(), 'top-left');
     map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
 
     let suppressedOsmTileErrors = 0;

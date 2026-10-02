@@ -44,7 +44,6 @@
       :is-computing="isComputing"
       :is-recomputing="isRecomputing"
       :has-stored-cut="!!storedCut"
-      :show-a-i-panel="showAIPanel"
       :show-labels="showLabels"
       :show-trig-inset="showTrigInset"
       :satellite-visible="satelliteVisible"
@@ -106,6 +105,20 @@
         </div>
       </div>
 
+      <!-- Empty state: no survey points. Shown inline rather than throwing, so a
+           surveyor who lands here sees what to do next instead of a modal. -->
+      <div v-else-if="mapError" class="absolute inset-0 bg-gray-50 flex items-center justify-center z-40 p-8">
+        <div class="max-w-md text-center">
+          <div class="text-4xl mb-3">🗺️</div>
+          <h3 class="text-lg font-semibold text-gray-900 mb-2">No survey points to display</h3>
+          <p class="text-sm text-gray-600 mb-4">{{ mapError }}</p>
+          <p class="text-xs text-gray-500">
+            Import a CSV of coordinates and complete Calculations Part 1 first —
+            the map needs points to initialize.
+          </p>
+        </div>
+      </div>
+
       <!-- Split-figure verdict line: under the map, not a toast that can be missed -->
       <div
         v-if="isSplitting"
@@ -158,17 +171,6 @@
         </div>
         <!-- Mini map container for trig beacons -->
         <div ref="insetMapContainer" class="w-full h-full rounded-b-lg" style="height: calc(100% - 32px);"></div>
-      </div>
-
-      <!-- AI Detection Panel. Sits below the zoom buttons (top-left) so the two
-           never overlap. -->
-      <div v-if="showAIPanel && !isDrawing && !focusMode" class="absolute top-24 left-3 z-30 w-96 max-h-[calc(100%-7rem)] overflow-y-auto">
-        <ParcelDetectionPanel
-          :coordinates="adjustedCoordinatesForDetection"
-          :min-points="3"
-          @parcel-selected="handleAIParcelSelected"
-          @parcels-detected="handleAIParcelsDetected"
-        />
       </div>
 
       <!-- Drawing Status Bar (bottom, non-obstructive) -->
@@ -920,7 +922,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, inject, computed, watch, defineAsyncComponent, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, inject, computed, watch, nextTick } from 'vue';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import axios from 'axios';
@@ -954,8 +956,6 @@ import api from '../../../services/api';
 import { saveDocument } from '../../../services/documentStorage';
 import { validateParcel, formatValidationMessage, type ValidationResult } from '../../../services/parcelValidation';
 import { nextDesignation } from '../../../utils/parcelNumbering';
-import type { DetectedParcel } from '../../../utils/automatedParcelDetector';
-import type { ParcelDetectionResult } from '../../../services/parcelDetection';
 import PointRenamePanel from '../../../components/cadastral/PointRenamePanel.vue';
 import ParcelDigitizeRibbon from '../../../components/cadastral/ParcelDigitizeRibbon.vue';
 import SideDock from '../../../components/ribbon/SideDock.vue';
@@ -986,8 +986,6 @@ import { outsideFigureFirst } from './parcelRenderOrder';
 import { normalizeBeaconName, findCaseFoldDuplicates, splitBeaconName, labelParts } from '../../../../../app-shared/beaconName';
 import { formatSummary } from './beaconReconcile';
 import { propagateRename, describeRepairResult, renameWorkflowCopies, renamePointList, buildBeaconRepairPlan, runBeaconRepair } from './beaconRepairFlow';
-
-const ParcelDetectionPanel = defineAsyncComponent(() => import('../../../components/ParcelDetectionPanel.vue'));
 
 // Inject workflow state
 const workflowState = inject<any>('workflowState');
@@ -1043,11 +1041,6 @@ function runRibbonAction(id: string) {
     // Vertex editing
     case 'commit-vertex-edit': return commitVertexEdit();
     case 'cancel-vertex-edit': return cancelVertexEdit();
-
-    // Assist
-    case 'toggle-ai':
-      showAIPanel.value = !showAIPanel.value;
-      return;
 
     // Output
     case 'export-pdf': return exportAreaConsistencyPDF();
@@ -2386,11 +2379,6 @@ function onManagedParcelPicked(option: { id: string | number }) {
 }
 const managedParcelSelection = ref<string | number | null>(null)
 
-// AI Detection state
-const showAIPanel = ref(false);
-const detectedParcels = ref<DetectedParcel[]>([]);
-const aiDetectionResult = ref<ParcelDetectionResult | null>(null);
-
 // MapLibre drawing layer sources
 let tempPolygonSource: maplibregl.GeoJSONSource | null = null;
 let parcelsSource: maplibregl.GeoJSONSource | null = null;
@@ -2548,20 +2536,6 @@ const loZoneDisplay = computed(() => {
   return `Cape Lo${loZone}`;
 });
 
-// Prepare coordinates for AI detection (convert to AdjustedCoordinate format)
-const adjustedCoordinatesForDetection = computed(() => {
-  return coordinatePoints.value.map((pt: any) => ({
-    pointId: pt.id,
-    y: pt.y,
-    x: pt.x,
-    description: pt.description || '',
-    status: pt.status || 'F',
-    surveyDate: pt.surveyDate || '',
-    calculationsPage: 0,
-    fieldBookPage: 'E1'
-  }));
-});
-
 // Two paths reach map initialisation and they can overlap.
 //
 // onMounted awaits control points and parcels before calling it, while a
@@ -2626,6 +2600,8 @@ async function waitForMapStyle(theMap: maplibregl.Map | null = map, timeoutMs = 
 }
 
 // Initialize MapLibre map
+const mapError = ref<string | null>(null);
+
 async function initializeMapOnce() {
   if (!mapContainer.value) return;
 
@@ -2634,10 +2610,15 @@ async function initializeMapOnce() {
 
   try {
     isLoading.value = true;
+    mapError.value = null;
 
     // Check if we have points to transform
     if (coordinatePoints.value.length === 0) {
-      throw new Error('No coordinate points available to display on map');
+      // Report inline instead of throwing: a modal alert plus a console stack
+      // trace is no way to tell a surveyor they simply have no data yet.
+      mapError.value = 'No coordinate points available to display on map.';
+      isLoading.value = false;
+      return;
     }
 
     console.log('[MapLibre] 🔄 Starting coordinate transformation...');
@@ -4006,149 +3987,6 @@ function toggleSatellite() {
     );
   }
 }
-
-// ============================================================================
-// AI PARCEL DETECTION HANDLERS
-// ============================================================================
-
-/**
- * Handle AI parcels detected event
- */
-function handleAIParcelsDetected(result: ParcelDetectionResult) {
-  console.log('[MapLibre] 🤖 AI detected', result.summary.parcelsDetected, 'parcels');
-  console.log('[MapLibre] 🤖 High confidence:', result.summary.highConfidence);
-  console.log('[MapLibre] 🤖 Medium confidence:', result.summary.mediumConfidence);
-  console.log('[MapLibre] 🤖 Low confidence:', result.summary.lowConfidence);
-  
-  aiDetectionResult.value = result;
-  detectedParcels.value = result.parcels;
-  
-  // Display all detected parcels on map with confidence-based colors
-  displayDetectedParcelsOnMap(result.parcels);
-}
-
-/**
- * Handle AI parcel selected event (user clicks "Add to Map" on a detected parcel)
- */
-function handleAIParcelSelected(parcel: DetectedParcel) {
-  console.log('[MapLibre] 🤖 User selected AI parcel:', parcel.designation);
-  console.log('[MapLibre] 🤖 Confidence:', (parcel.confidence * 100).toFixed(0) + '%');
-  console.log('[MapLibre] 🤖 Area:', parcel.areaFormatted);
-  console.log('[MapLibre] 🤖 Points:', parcel.boundaryPoints.length);
-  
-  // Add to map and compute area
-  addAIParcelToMap(parcel);
-}
-
-/**
- * Display all detected parcels on map with semi-transparent polygons
- */
-function displayDetectedParcelsOnMap(detectedParcels: DetectedParcel[]) {
-  if (!map) return;
-  
-  console.log('[MapLibre] 🤖 Displaying', detectedParcels.length, 'detected parcels on map');
-  
-  // TODO: Add semi-transparent polygons for all detected parcels
-  // Color-coded by confidence: green (≥90%), amber (70-90%), red (<70%)
-  
-  detectedParcels.forEach(parcel => {
-    const color = getConfidenceColor(parcel.confidence);
-    console.log(`[MapLibre] 🤖 ${parcel.designation}: ${color} (${(parcel.confidence * 100).toFixed(0)}%)`);
-    
-    // Add polygon visualization (implementation pending)
-    // addPolygonToMap(parcel, color, 0.3) // 30% opacity
-  });
-}
-
-/**
- * Add AI-detected parcel to the parcels array and compute area
- */
-async function addAIParcelToMap(parcel: DetectedParcel) {
-  console.log('[MapLibre] 🤖 Adding AI parcel to map:', parcel.designation);
-  console.log('[MapLibre] 🤖 Confidence:', (parcel.confidence * 100).toFixed(0) + '%');
-  console.log('[MapLibre] 🤖 Predicted area:', parcel.areaFormatted);
-  
-  // Convert detected parcel coordinates to the format expected by existing system
-  const points = parcel.coordinates.map(c => {
-    // Find the full point data from coordinatePoints
-    const fullPoint = coordinatePoints.value.find((p: any) => p.id === c.pointId);
-    return {
-      id: c.pointId,
-      y: c.y,
-      x: c.x,
-      status: fullPoint?.status || 'F',
-      description: fullPoint?.description || ''
-    };
-  });
-  
-  // Create new parcel in existing format (matching Parcel type)
-  const newParcel: Parcel = {
-    designation: parcel.designation,
-    points: points
-    // areaResult will be added after computation
-  };
-  
-  // Add to parcels array
-  parcels.value.push(newParcel);
-  const parcelIndex = parcels.value.length - 1;
-  
-  console.log('[MapLibre] 🤖 Parcel added to array. Total parcels:', parcels.value.length);
-  
-  // Compute area using existing areaCompute service (same as manual drawing)
-  try {
-    isComputing.value = true;
-    
-    const response = await areaCompute({
-      points: newParcel.points.map(p => ({ y: p.y, x: p.x })),
-      includeResiduals: true,
-      roundMetersDecimals: 2,
-      roundHectaresDecimals: 4
-    });
-    
-    // Update parcel with results
-    parcels.value[parcelIndex].areaResult = response;
-    
-    const closureError = Math.sqrt(
-      (response.residuals?.sumDy || 0) ** 2 + (response.residuals?.sumDx || 0) ** 2
-    );
-    
-    console.log(`[MapLibre] 🤖 ✅ Area computed for ${parcel.designation}:`);
-    console.log(`  - AI predicted: ${parcel.areaFormatted}`);
-    console.log(`  - Actual computed: ${formatArea(response.area)}`);
-    console.log(`  - Closure error: ${closureError.toFixed(3)}m`);
-    console.log(`  - Closure ratio: 1:${Math.round(calculateClosureRatio(parcels.value[parcelIndex])).toLocaleString()}`);
-    
-    // Add completed polygon to map
-    addCompletedParcelToMap(parcels.value[parcelIndex]);
-    
-    // Auto-save to database
-    await autoSaveParcel(parcels.value[parcelIndex], closureError);
-    
-    console.log('[MapLibre] 🤖 ✅ AI parcel fully integrated:', parcel.designation);
-    
-  } catch (error) {
-    console.error('[MapLibre] 🤖 ❌ Error computing AI parcel area:', error);
-    alert(`Failed to compute area for AI-detected parcel "${parcel.designation}". Check console for details.`);
-    
-    // Remove failed parcel
-    parcels.value.splice(parcelIndex, 1);
-  } finally {
-    isComputing.value = false;
-  }
-}
-
-/**
- * Get color based on confidence level
- */
-function getConfidenceColor(confidence: number): string {
-  if (confidence >= 0.9) return '#10b981'; // green-500
-  if (confidence >= 0.7) return '#f59e0b'; // amber-500
-  return '#ef4444'; // red-500
-}
-
-// ============================================================================
-// END AI PARCEL DETECTION HANDLERS
-// ============================================================================
 
 // Zoom to a specific trig beacon point
 function zoomToPoint(point: any) {

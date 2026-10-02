@@ -1,5 +1,11 @@
 import { defineStore } from 'pinia'
 import { useAuthStore } from './auth'
+import { getWorkflowSteps } from '../config/cadastralWorkflow'
+
+// The workflow has grown (site calibration, servitudes, QGIS export, area
+// computation) and hand-written step counts in the submenu copy had drifted to
+// "7" and "9" against 14 real steps. Derive it so the label cannot go stale.
+const CADASTRAL_STEP_COUNT = getWorkflowSteps().length
 
 export interface ModuleSubmenu {
   slug: string
@@ -227,7 +233,7 @@ export const useModulesStore = defineStore('modules', {
         icon: '📋',
         requiredRole: 'registered', // Only registered surveyors can access
         submenus: [
-          { slug: 'workflow', title: 'Cadastral Workflow', description: 'Complete 7-step cadastral records production', icon: '📋', badge: 'New' },
+          { slug: 'workflow', title: 'Cadastral Workflow', description: `Complete ${CADASTRAL_STEP_COUNT}-step cadastral records production`, icon: '📋', badge: 'New' },
           { slug: 'parcels', title: 'Parcels', description: 'Stand / parcel management', disabled: true },
           { slug: 'beacons', title: 'Beacons', description: 'Boundary beacons list', disabled: true },
           { slug: 'inverse', title: 'Inverse', description: 'Bearing & distance between points', disabled: true },

@@ -1,8 +1,10 @@
 <!--
   Cadastral Standard Module View
-  
-  Main view for the SurveyPro Cadastral Standard workflow.
-  Handles the complete 7-step process from CSV import to DSG certificate generation.
+
+  Main view for the SurveyPro Cadastral Standard workflow — the module's only
+  surface. Handles the complete process from CSV import to DSG certificate
+  generation. Step count and order come from CADASTRAL_STEPS via
+  getWorkflowSteps(); don't restate a number in prose here, it goes stale.
 -->
 
 <template>

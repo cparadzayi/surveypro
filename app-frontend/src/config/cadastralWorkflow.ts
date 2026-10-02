@@ -1,9 +1,16 @@
 /**
  * Cadastral Workflow Configuration
  *
- * Defines the cadastral workflow with dependencies, actions, and navigation
- * rules. `order` is contiguous from 0: `getNextStep`/`getPreviousStep` look
- * steps up as `order ± 1`, so inserting a step means renumbering those after it.
+ * Defines the cadastral workflow: the step registry, its display order, and the
+ * actions each step offers. `order` is contiguous from 0 —
+ * `getNextStep`/`getPreviousStep` look steps up as `order ± 1`, so inserting a
+ * step means renumbering those after it.
+ *
+ * Steps are NOT sequentially gated. A step is reachable whenever the surveyor
+ * needs it; whether it can do anything useful depends on the data present, which
+ * each step reports itself. This is deliberate — surveyors routinely work out of
+ * order and import work done outside the app, and a rigid prerequisite chain
+ * blocked legitimate use.
  */
 
 export interface WorkflowStep {
@@ -13,7 +20,6 @@ export interface WorkflowStep {
   description: string
   icon: string
   dbKey: string // Maps to existing step names in codebase
-  requires: string[] // Prerequisites
   canEdit: boolean
   generatesDocument: boolean
   isFinal?: boolean
@@ -27,7 +33,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Configure project details and working directory',
     icon: '⚙️',
     dbKey: 'project-setup',
-    requires: [],
     canEdit: true,
     generatesDocument: false
   },
@@ -39,7 +44,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Upload and validate coordinate data',
     icon: '📥',
     dbKey: 'csv-import',
-    requires: ['project_setup'],
     canEdit: true,
     generatesDocument: false
   },
@@ -51,13 +55,10 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Attach the GNSS site calibration report for this survey',
     icon: '📡',
     dbKey: 'site-calibration',
-    // Deliberately no prerequisite. A site calibration is an observation record,
-    // not a coordinate source: a surveyor may load the Trimble report before,
-    // after or entirely without importing a CSV, and gating the step on the
-    // import would imply a dependency that does not exist. It is also absent
-    // from REQUIRED_STEPS on the backend, so a project without one still
-    // finalizes.
-    requires: [],
+    // A site calibration is an observation record, not a coordinate source: a
+    // surveyor may load the Trimble report before, after or entirely without
+    // importing a CSV. It is also absent from REQUIRED_STEPS on the backend, so a
+    // project without one still finalizes.
     canEdit: true,
     generatesDocument: false
   },
@@ -69,7 +70,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Select trig beacons and control points',
     icon: '🔺',
     dbKey: 'control-point-selection',
-    requires: ['import_csv'],
     canEdit: true,
     generatesDocument: false
   },
@@ -81,7 +81,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Generate electronic field book (3 decimals)',
     icon: '📖',
     dbKey: 'field-book',
-    requires: ['import_csv'],
     canEdit: true,
     generatesDocument: true
   },
@@ -93,7 +92,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Field computations and adjustments',
     icon: '🧮',
     dbKey: 'calculations-part1',
-    requires: ['field_book'],
     canEdit: true,
     generatesDocument: true
   },
@@ -105,7 +103,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Assess found beacons per SI 727 Section 67(5)',
     icon: '🔍',
     dbKey: 'found-beacons',
-    requires: ['calculations_part1'],
     canEdit: true,
     generatesDocument: false
   },
@@ -117,7 +114,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Final coordinate list (2 decimals)',
     icon: '📋',
     dbKey: 'coordinate-list',
-    requires: ['found_beacons'],
     canEdit: true,
     generatesDocument: true
   },
@@ -129,7 +125,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Export coordinates and digitize parcels in QGIS',
     icon: '🗺️',
     dbKey: 'qgis-export',
-    requires: ['coordinate_list'],
     canEdit: true,
     generatesDocument: false
   },
@@ -141,7 +136,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Digitize parcels and generate areas with per-parcel consistency checks',
     icon: '📐',
     dbKey: 'area-computation',
-    requires: ['qgis_export'],
     canEdit: false,
     generatesDocument: true
   },
@@ -153,7 +147,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Identify boundary servitudes and generate dispensation certificates',
     icon: '⚖️',
     dbKey: 'servitudes',
-    requires: ['area_computation'],
     canEdit: true,
     generatesDocument: true
   },
@@ -165,7 +158,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Generate General Plans, Diagrams, or Working Plans',
     icon: '🗺️',
     dbKey: 'survey-plan',
-    requires: ['area_computation'],
     canEdit: true,
     generatesDocument: true
   },
@@ -177,7 +169,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Standalone survey report',
     icon: '📄',
     dbKey: 'report-on-survey',
-    requires: ['survey_plan'],
     canEdit: true,
     generatesDocument: true
   },
@@ -189,7 +180,6 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     description: 'Final certificate generation',
     icon: '🏆',
     dbKey: 'dsg-certificate',
-    requires: ['report_on_survey'],
     canEdit: false,
     generatesDocument: true,
     isFinal: true
@@ -231,64 +221,6 @@ export function dbKeyToStepId(dbKey: string): string {
 export function stepIdToDbKey(stepId: string): string {
   const step = CADASTRAL_STEPS[stepId]
   return step?.dbKey || stepId
-}
-
-/**
- * Check if user can access a step
- */
-export function canAccessStep(
-  stepId: string,
-  completedSteps: string[]
-): {
-  allowed: boolean
-  reason?: string
-  missingSteps?: string[]
-} {
-  const step = CADASTRAL_STEPS[stepId]
-  
-  if (!step) {
-    return { allowed: false, reason: 'Invalid step' }
-  }
-  
-  // Check prerequisites
-  const missingSteps = step.requires.filter(
-    reqStep => !completedSteps.includes(reqStep)
-  )
-  
-  if (missingSteps.length > 0) {
-    const missingLabels = missingSteps
-      .map(id => CADASTRAL_STEPS[id]?.label || id)
-      .join(', ')
-    
-    return {
-      allowed: false,
-      reason: `Please complete: ${missingLabels}`,
-      missingSteps
-    }
-  }
-  
-  return { allowed: true }
-}
-
-/**
- * Get step status
- */
-export function getStepStatus(
-  stepId: string,
-  completedSteps: string[],
-  currentStep: string
-): 'completed' | 'active' | 'available' | 'locked' {
-  if (completedSteps.includes(stepId)) {
-    return 'completed'
-  }
-  
-  const dbKey = stepIdToDbKey(stepId)
-  if (currentStep === dbKey) {
-    return 'active'
-  }
-  
-  const access = canAccessStep(stepId, completedSteps)
-  return access.allowed ? 'available' : 'locked'
 }
 
 /**
@@ -399,28 +331,4 @@ export function getPreviousStep(currentStepId: string): WorkflowStep | null {
 export function getWorkflowProgress(completedSteps: string[]): number {
   const totalSteps = Object.keys(CADASTRAL_STEPS).length
   return Math.round((completedSteps.length / totalSteps) * 100)
-}
-
-/**
- * Check if editing a step will affect downstream steps
- */
-export function hasDownstreamDependents(
-  stepId: string,
-  completedSteps: string[]
-): boolean {
-  const step = CADASTRAL_STEPS[stepId]
-  if (!step) return false
-  
-  const downstreamSteps = Object.values(CADASTRAL_STEPS)
-    .filter(s => s.order > step.order)
-  
-  return downstreamSteps.some(s => completedSteps.includes(s.id))
-}
-
-/**
- * Get steps that depend on this step
- */
-export function getDependentSteps(stepId: string): WorkflowStep[] {
-  return Object.values(CADASTRAL_STEPS)
-    .filter(step => step.requires.includes(stepId))
 }

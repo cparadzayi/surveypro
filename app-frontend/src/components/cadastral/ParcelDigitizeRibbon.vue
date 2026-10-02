@@ -34,7 +34,6 @@ const props = withDefaults(defineProps<{
   isComputing: boolean
   isRecomputing: boolean
   hasStoredCut: boolean
-  showAIPanel: boolean
   showLabels: boolean
   showTrigInset: boolean
   satelliteVisible: boolean
@@ -175,18 +174,6 @@ const digitizeGroups = computed(() => {
       },
     ], `${props.cutVertexCount} cut vertex/vertices placed`))
   }
-
-  groups.push(group('Assist', [
-    {
-      id: 'toggle-ai',
-      icon: '🤖',
-      label: 'AI Detect',
-      title: 'Detect parcel outlines from the coordinate points',
-      tone: 'accent',
-      active: props.showAIPanel,
-      when: !props.isDrawing,
-    },
-  ]))
 
   groups.push(group('Output', [
     {

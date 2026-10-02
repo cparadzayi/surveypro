@@ -1,5 +1,25 @@
 # 📋 Parcel Detection Decision Log
 
+> **Status: CLOSED — the implementation has been removed.**
+>
+> The detector, its service wrapper, its UI panel and the "🤖 AI Detect" ribbon
+> button were deleted on 2026-10-02. This document is kept as the record of *why*,
+> so the reasoning is not re-litigated or re-attempted from scratch. Nothing in
+> the detection path changed between the last attempt (`5908bad`, 2026-08-30) and
+> its removal; that commit's own conclusion is the deciding evidence:
+>
+> > *"78% of stands in that township carry only 1-2 own corners, so a coordinate
+> > list alone cannot determine parcel boundaries; correcting that needs real
+> > boundary data, not more geometric guesswork."*
+>
+> Removed: `automatedParcelDetector.ts`, `parcelDetection.ts`,
+> `ParcelDetectionPanel.vue`, `parcelDetection.test.ts`,
+> `scripts/clear-ai-parcels.{sql,js}`. No `PARCEL-%` rows remained in
+> `land_parcels`, so no data needed clearing. Note the map visualisation was
+> never completed — `displayDetectedParcelsOnMap()` was a TODO stub.
+>
+> Parcel boundaries come from the surveyor's own digitizing (or QGIS export).
+
 ## 🎯 Executive Summary
 
 **Date:** November 25, 2025  

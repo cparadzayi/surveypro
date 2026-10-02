@@ -16,8 +16,6 @@ import {
   getWorkflowSteps,
   getStepActions,
   getStepByDbKey,
-  getStepStatus,
-  canAccessStep,
   dbKeyToStepId,
   stepIdToDbKey
 } from '../cadastralWorkflow'
@@ -56,12 +54,6 @@ describe('site calibration step', () => {
     expect(step.id).not.toBe(CADASTRAL_STEPS.import_csv.id)
   })
 
-  it('requires nothing, since a calibration does not depend on the coordinates', () => {
-    // A surveyor may attach a Trimble report before, after or without a CSV.
-    expect(step.requires).toEqual([])
-    expect(canAccessStep('site_calibration', []).allowed).toBe(true)
-  })
-
   it('is reachable from the import step and leads on to control points', () => {
     expect(getNextStep('import_csv')?.id).toBe('site_calibration')
     expect(getNextStep('site_calibration')?.id).toBe('control_point_selection')
@@ -79,21 +71,6 @@ describe('db key mapping', () => {
 
   it('leaves an unmapped db key alone', () => {
     expect(dbKeyToStepId('not-a-step')).toBe('not-a-step')
-  })
-})
-
-describe('step status', () => {
-  it('reports a completed step as completed', () => {
-    expect(getStepStatus('site_calibration', ['site_calibration'], 'field-book')).toBe('completed')
-  })
-
-  it('reports the current step as active', () => {
-    expect(getStepStatus('site_calibration', [], 'site-calibration')).toBe('active')
-  })
-
-  it('locks a step whose prerequisites are unmet', () => {
-    expect(getStepStatus('field_book', [], 'csv-import')).toBe('locked')
-    expect(canAccessStep('field_book', []).allowed).toBe(false)
   })
 })
 

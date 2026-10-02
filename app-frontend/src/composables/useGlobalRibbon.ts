@@ -144,7 +144,9 @@ export function useGlobalRibbon() {
       case 'go-dashboard': return router.push('/dashboard')
       case 'go-modules': return router.push('/modules/lite')
       case 'open-projects': return router.push('/modules/settings/projects')
-      case 'open-workflow': return router.push('/modules/cadastral-standard')
+      // The cadastral module index redirects here, but link straight to the
+      // workflow so this button lands on the step ribbon with no extra hop.
+      case 'open-workflow': return router.push('/modules/cadastral-standard/workflow')
       case 'open-manual': return window.open('/help/user-manual.pdf', '_blank', 'noopener')
       case 'open-sis': return router.push('/modules/conversions/datum')
       default: return

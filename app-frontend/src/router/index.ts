@@ -15,6 +15,15 @@ const routes: RouteRecordRaw[] = [
   { path: '/map', component: () => import('../views/MapView.vue') },
   { path: '/test-project', component: () => import('../views/TestProjectRunner.vue'), meta: { requiresAuth: true } },
 
+  // Cadastral (Standard) is a single-surface module: the workflow IS the
+  // interface, reached directly. Declared before the generic ':module' route so
+  // it wins the match, and CadastralStandardIndex.vue is not needed.
+  //
+  // Auth and role checks still run on the redirect target — '/workflow' resolves
+  // to 'module-submenu', so the beforeResolve hook below validates
+  // canAccessModule('cadastral-standard') exactly as it did before.
+  { path: '/modules/cadastral-standard', redirect: '/modules/cadastral-standard/workflow' },
+
   // Module index (dynamic). We'll lazy-resolve the component path based on slug.
   {
     path: '/modules/:module',

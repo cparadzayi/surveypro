@@ -109,10 +109,6 @@ bankersRound(1.2355, 2)  // 1.24 (rounds to even)
 - ⏳ `app-frontend/src/views/modules/cadastral-standard/AreaComputationView.vue`
 - ⏳ `app-frontend/src/views/modules/cadastral-standard/MapLibreAreaView.vue`
 
-### Services
-- ⏳ `app-frontend/src/services/parcelDetection.ts`
-- ⏳ `app-frontend/src/utils/automatedParcelDetector.ts`
-
 ## Migration Checklist
 
 ### Phase 1: Core Implementation ✅
@@ -134,8 +130,8 @@ bankersRound(1.2355, 2)  // 1.24 (rounds to even)
 - [ ] Update `MapLibreAreaView.vue`
 
 ### Phase 4: Services ⏳
-- [ ] Update `parcelDetection.ts`
-- [ ] Update `automatedParcelDetector.ts`
+_(none — the parcel-detection service and detector were removed; see
+[PARCEL_DETECTION_DECISION_LOG.md](PARCEL_DETECTION_DECISION_LOG.md))_
 
 ### Phase 5: Testing ⏳
 - [ ] Test Schedule of Areas formatting

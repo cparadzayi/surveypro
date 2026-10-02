@@ -12,9 +12,9 @@ import { group, sep, type RibbonItem, type RibbonTab, type RibbonTone } from '..
  * command surface for the 14-step production workflow.
  *
  * Tabs:
- *   - Step      every step as a tile (lock/active/completed states) + the
+ *   - Step      every step as a tile (active/completed states) + the
  *               actions (Start / View / Edit / Download / Proceed) for the
- *               current step, like the old WorkflowDashboard action buttons.
+ *               current step.
  *   - Documents export shortcuts for the documents that exist.
  *
  * Emitted ids are namespaced so the view can route them without a huge switch:
@@ -37,30 +37,23 @@ export function useWorkflowRibbon(opts: {
       .sort((a, b) => a.order - b.order),
   )
 
-  const statusTone = (completed: boolean, active: boolean, locked: boolean): RibbonTone =>
-    active ? 'primary' : completed ? 'success' : locked ? 'default' : 'accent'
+  const statusTone = (completed: boolean, active: boolean): RibbonTone =>
+    active ? 'primary' : completed ? 'success' : 'accent'
 
-  /** Status of every workflow step, driving lock/active/completed tile tones. */
+  /** Status of every workflow step, driving active/completed tile tones. */
   const stepItems = computed<RibbonItem[]>(() =>
     Object.values(CADASTRAL_STEPS)
       .sort((a, b) => a.order - b.order)
       .map(step => {
         const completed = opts.completedStepIds().includes(step.id)
         const active = opts.currentStep() === step.dbKey
-        const actions = getStepActions(
-          step.id,
-          opts.completedStepIds(),
-          !!opts.stepData()[step.id]?.document_url,
-        )
-        const locked =
-          !completed && !active && actions.every(a => a.action !== 'start' && a.action !== 'view')
 
         return {
           id: `wf-step:${step.dbKey}`,
           icon: step.icon,
           label: step.label.replace(' & Digitization', '').replace(' Assessment', ''),
-          title: locked ? `${step.label} — locked, complete the earlier steps first` : step.description,
-          tone: statusTone(completed, active, locked),
+          title: step.description,
+          tone: statusTone(completed, active),
           active,
         }
       }),

@@ -5,6 +5,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Accidental empty manifests created at the repo root. The real projects live in
+# app-backend/ and app-frontend/. Root-anchored so project package.json files
+# stay tracked.
+/package.json
+/package-lock.json
+
 # Environment variables
 .env
 .env.local

@@ -129,45 +129,6 @@
       </div>
     </div>
 
-    <!-- Header -->
-    <div class="bg-white shadow-sm border-b border-gray-200">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-3xl font-bold text-gray-900">Cadastral Standard</h1>
-            <p class="mt-1 text-sm text-gray-600">
-              Digital cadastral records production from reduced field notes
-            </p>
-          </div>
-          
-          <div v-if="workflowState.importedPoints.length > 0" class="text-right flex items-center gap-4">
-            <!-- ✅ Phase 1: Autosave Indicator -->
-            <div class="text-sm">
-              <div class="flex items-center gap-2">
-                <span v-if="isSaving" class="text-blue-600">💾 Saving...</span>
-                <span v-else class="text-gray-500">✅ {{ lastSavedText }}</span>
-              </div>
-            </div>
-            
-            <button
-              v-if="!isNewProject"
-              @click="resetImportStep"
-              class="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
-              title="Clear all imported data and restart workflow"
-            >
-              🔄 Reset Import
-            </button>
-            <div>
-              <div class="text-sm text-gray-500">Project Status</div>
-              <div class="text-lg font-semibold text-blue-600">
-                {{ getStepDisplayName(workflowState.currentStep) }}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Main Content -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <!-- ⭐ PHASE 2: Automation Progress Indicator -->
@@ -337,6 +298,9 @@
               </p>
               <p v-else-if="workflowState.importedPoints.length > 0" class="mt-2 text-sm text-green-600">
                 ✅ {{ workflowState.importedPoints.length }} points imported (Lo {{ selectedLoZone }})
+              </p>
+              <p v-if="csvSaveStatus" class="mt-1 text-xs text-green-600">
+                💾 {{ csvSaveStatus }}
               </p>
               
               <div class="mt-6 text-sm text-gray-500">
@@ -1448,28 +1412,13 @@ const calibrationError = ref<string>('');
 // ✅ Phase 1: CSV Template & Format Guide
 const showFormatGuide = ref(false);
 
-// ✅ Phase 1: Autosave System
-const lastSaved = ref<Date | null>(null);
-const isSaving = ref(false);
-const autosaveInterval = ref<number | null>(null);
+// Save-status feedback, surfaced in the step that performs the save. The raw
+// CSV is written to the project folder on import, so the CSV Import panel
+// shows the confirmation (see handleDataImported).
+const csvSaveStatus = ref('');
 
 // ✅ Phase 1: Batch Export
 const isExporting = ref(false);
-
-// Computed property for last saved text
-const lastSavedText = computed(() => {
-  if (isSaving.value) return 'Saving...';
-  if (!lastSaved.value) return 'Not saved yet';
-  
-  const minutes = Math.floor((Date.now() - lastSaved.value.getTime()) / 60000);
-  if (minutes === 0) return 'Saved just now';
-  if (minutes === 1) return 'Saved 1 minute ago';
-  if (minutes < 60) return `Saved ${minutes} minutes ago`;
-  
-  const hours = Math.floor(minutes / 60);
-  if (hours === 1) return 'Saved 1 hour ago';
-  return `Saved ${hours} hours ago`;
-});
 
 // Document preview panel state
 const previewModal = ref({
@@ -2239,6 +2188,7 @@ async function handleDataImported(points: CadastralPoint[]) {
         rawCSV: csvContent
       }
     });
+    csvSaveStatus.value = 'Raw CSV saved to project folder';
   }
   
   // ✅ Auto-export to PostGIS database for persistence

@@ -11,7 +11,7 @@
  * Run: cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js sheetedRouteSelection
  */
 import { describe, test, expect } from '@jest/globals'
-import { chooseSheeting } from '../chooseSheeting.js'
+import { chooseSheeting } from '../../services/chooseSheeting.js'
 
 const oneCut = [{ y: 50, x: 0 }, { y: 50, x: 100 }]
 

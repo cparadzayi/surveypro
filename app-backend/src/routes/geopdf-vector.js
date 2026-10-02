@@ -11,7 +11,7 @@ import { authenticateWithSchema } from '../utils/schemaAuth.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
 import { prjForDxf } from '../utils/crsDefinitions.js'
 import { dxfToGeoreferencedGpkg, getOGR2OGRCommand, getGDALVersion } from '../utils/dxfGpkg.js'
-import { chooseSheeting } from './chooseSheeting.js'
+import { chooseSheeting } from '../services/chooseSheeting.js'
 import { zipSync } from 'fflate'
 
 const execAsync = promisify(exec)

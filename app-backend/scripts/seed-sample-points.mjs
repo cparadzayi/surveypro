@@ -30,7 +30,7 @@ async function ensureUser(email = 'demo@example.com', passwordHash = null) {
   if (!userRes.rows[0]) {
     const bcrypt = await import('bcrypt')
     const hash = await bcrypt.hash('demo1234', 10)
-    userRes = await db.query('INSERT INTO users (email, password_hash) VALUES ($1,$2) RETURNING *', [email, hash])
+    userRes = await db.query('INSERT INTO users (email, password_hash, user_type) VALUES ($1,$2,$3) RETURNING *', [email, hash, 'registered_surveyor'])
   }
   return userRes.rows[0]
 }
@@ -87,12 +87,12 @@ async function main() {
   }
   // Backfill bbox for any existing point features lacking it (as double precision[])
   await db.query(`UPDATE features
-    SET bbox = ARRAY[
+    SET bbox = to_jsonb(ARRAY[
       ((geometry->'coordinates')->>0)::double precision,
       ((geometry->'coordinates')->>1)::double precision,
       ((geometry->'coordinates')->>0)::double precision,
       ((geometry->'coordinates')->>1)::double precision
-    ]::double precision[]
+    ]::double precision[])
     WHERE layer_id = $1 AND (geometry->>'type')='Point' AND bbox IS NULL`, [layer.id])
   console.log(`Seeded ${count} points into project '${project.name}' layer '${layer.name}'.`)
 }

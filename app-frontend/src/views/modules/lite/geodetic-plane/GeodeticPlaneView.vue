@@ -2,6 +2,8 @@
   <ModuleScaffold
     title="Geodetic ↔ Plane Transformations"
     description="Transform Cape Datum coordinates (Lo 25/27/29/31/33) to WGS84 with mapping and export capabilities"
+    :tabs="ribbonTabs"
+    @action="runRibbonAction"
   >
     <div class="space-y-4">
       <!-- Header Info -->
@@ -397,6 +399,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import ModuleScaffold from '../../../../components/scaffold/ModuleScaffold.vue'
+import { group, btn, type RibbonTab } from '../../../../components/ribbon/types'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import {
@@ -436,6 +439,78 @@ const showLabels = ref(true)
 const editingPolygon = ref<number | null>(null)
 const addingVerticesTo = ref<number | null>(null)
 const isSatellite = ref(false)
+
+// ── Ribbon: transform / map / export toolbar ──────────────────────────────────
+function triggerFilePicker() {
+  if (fileInput.value) fileInput.value.click()
+}
+
+const ribbonTabs = computed<RibbonTab[]>(() => [
+  {
+    id: 'transform',
+    label: 'Transform',
+    icon: '🔄',
+    groups: [
+      group('Input', [
+        btn({ id: 'gp-import', icon: '📂', label: 'Import CSV', title: 'Import Cape Datum coordinates from a CSV file' }),
+        btn({ id: 'gp-add', icon: '➕', label: 'Add Point', title: 'Add a single Cape Datum point manually' }),
+      ], `${capePoints.value.length} points in the working set.`),
+      group('Data', [
+        btn({ id: 'gp-fit', icon: '🎯', label: 'Fit View' }),
+        btn({ id: 'gp-clear', icon: '🗑️', label: 'Clear All', tone: 'danger' }),
+      ]),
+    ],
+  },
+  {
+    id: 'map',
+    label: 'Map',
+    icon: '🗺️',
+    groups: [
+      group('Draw', [
+        btn({ id: 'gp-draw', icon: '🖊️', label: 'Draw Polygon', active: isDrawingMode.value }),
+        btn({ id: 'gp-undo', icon: '↩️', label: 'Undo vertex', large: false, disabled: drawingPoints.value.length === 0 }),
+        btn({ id: 'gp-close', icon: '🔒', label: 'Close', large: false, tone: 'success', disabled: drawingPoints.value.length < 3 }),
+      ], `${drawingPoints.value.length} vertices in the sketch.`),
+      group('Display', [
+        btn({ id: 'gp-sat', icon: '🛰️', label: 'Satellite', active: isSatellite.value }),
+        btn({ id: 'gp-labels', icon: '🏷️', label: 'Labels', active: showLabels.value }),
+        btn({ id: 'gp-snap', icon: '🧲', label: 'Snap', active: snapToPoints.value }),
+      ]),
+    ],
+  },
+  {
+    id: 'export',
+    label: 'Export',
+    icon: '📤',
+    groups: [
+      group('Export', [
+        btn({ id: 'gp-kml', icon: '📍', label: 'KML' }),
+        btn({ id: 'gp-csv', icon: '📄', label: 'CSV' }),
+        btn({ id: 'gp-gmaps', icon: '🗺️', label: 'Google Maps' }),
+        btn({ id: 'gp-gmaps-poly', icon: '🛰️', label: 'Polylines', title: 'Open the drawn polygons in Google Maps' }),
+        btn({ id: 'gp-whatsapp', icon: '💬', label: 'WhatsApp' }),
+      ], `${wgs84Points.value.length} WGS84 points ready.`),
+    ],
+  },
+])
+
+function runRibbonAction(id: string) {
+  if (id === 'gp-import') triggerFilePicker()
+  else if (id === 'gp-add') addManualPoint()
+  else if (id === 'gp-fit') fitToBounds()
+  else if (id === 'gp-clear') clearAllData()
+  else if (id === 'gp-draw') toggleDrawingMode()
+  else if (id === 'gp-undo') removeLastVertex()
+  else if (id === 'gp-close') closePolygon()
+  else if (id === 'gp-sat') toggleSatellite()
+  else if (id === 'gp-labels') toggleLabels()
+  else if (id === 'gp-snap') toggleSnapMode()
+  else if (id === 'gp-kml') exportKML()
+  else if (id === 'gp-csv') exportCSV()
+  else if (id === 'gp-gmaps') exportToGoogleMaps()
+  else if (id === 'gp-gmaps-poly') exportPolygonsToGoogleMaps()
+  else if (id === 'gp-whatsapp') exportToWhatsApp()
+}
 
 // Manual entry
 const manualEntry = ref({

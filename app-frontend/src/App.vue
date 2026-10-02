@@ -22,9 +22,10 @@
         </nav>
       </header>
       
-      <!-- Surveyor Info Banner -->
+      <!-- Surveyor Info Banner. Not sticky: the global ribbon below the header is,
+           and stacking two sticky bars means guessing ribbon heights. -->
       <div v-if="isSurveyor && currentSurveyor" :class="[
-        'border-b px-4 py-2 sticky top-[73px] z-10',
+        'border-b px-4 py-2 z-10',
         currentSurveyor.surveyor_type === 'registered' ? 'bg-blue-50 border-blue-200' :
         currentSurveyor.surveyor_type === 'in_training' ? 'bg-yellow-50 border-yellow-200' :
         currentSurveyor.surveyor_type === 'technician' ? 'bg-purple-50 border-purple-200' :
@@ -115,6 +116,19 @@
         </div>
       </div>
       
+      <!-- Global ribbon: available on every screen, so navigation, project
+           context and help never depend on where the user happens to be.
+           Collapsible, like the QGIS/ArcGIS ribbon minimise control. -->
+      <Ribbon
+        v-if="isAuthed"
+        :tabs="globalRibbonTabs"
+        :initial-tab="globalInitialTab"
+        :collapsed="ribbonCollapsed"
+        class="sticky top-14 z-20"
+        @action="globalRibbon.run"
+        @update:collapsed="ribbonCollapsed = $event"
+      />
+
       <main :class="isAuthed ? 'flex-1 p-4 sm:p-6' : 'flex-1'">
         <RouterView />
       </main>
@@ -128,11 +142,27 @@ import { RouterLink, RouterView } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { ref, watch } from 'vue'
 import { useAuthStore } from './stores/auth'
+import { useGlobalRibbon } from './composables/useGlobalRibbon'
 // @ts-ignore - SFC default export provided via shim
 import SideNav from './components/SideNav.vue'
+// @ts-ignore - SFC default export provided via shim
+import Ribbon from './components/ribbon/Ribbon.vue'
 
 const auth = useAuthStore()
 const { isAuthed, isSurveyor, currentSurveyor } = storeToRefs(auth)
+
+const globalRibbon = useGlobalRibbon()
+// Top-level ref bindings are what templates auto-unwrap; a nested computed on a
+// plain object (globalRibbon) is not.
+const globalRibbonTabs = globalRibbon.tabs
+
+// Ribbon state. Open the Modules tab when the user is already inside a module,
+// otherwise start on Home — it makes the bar feel like it belongs to the screen.
+const globalInitialTab = ref('home')
+const ribbonCollapsed = ref(false)
+watch(() => globalRibbon.currentModuleSlug.value, slug => {
+  if (slug) globalInitialTab.value = 'modules'
+}, { immediate: true })
 
 function handleLogout() {
   auth.logout()

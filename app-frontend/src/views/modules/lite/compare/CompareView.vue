@@ -3,7 +3,7 @@
   <!-- Lite • Compare — Beacon Coordinate Comparison & Least Squares Adjustment -->
   <!-- Section 67(5): 4-param Helmert · iterative data snooping · W-test · χ²    -->
   <!-- ─────────────────────────────────────────────────────────────────────── -->
-  <component :is="embedded ? 'div' : ModuleScaffold" v-bind="scaffoldProps">
+  <component :is="embedded ? 'div' : ModuleScaffold" v-bind="scaffoldProps" @action="runRibbonAction">
     <div class="space-y-4">
 
       <!-- CONFIGURATION ────────────────────────────────────────────────────── -->
@@ -92,6 +92,7 @@
             >
               ⬆ Upload CSV
               <input
+                ref="csvFileInput"
                 type="file" accept=".csv,text/csv"
                 class="hidden"
                 @change="handleUpload"
@@ -739,6 +740,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import ModuleScaffold from '@/components/scaffold/ModuleScaffold.vue'
+import { group, btn } from '@/components/ribbon/types'
 import { useSurveyAdjustmentStore } from '@/stores/surveyAdjustmentStore'
 import { useProjectSelectionStore } from '@/stores/projectSelection'
 import { f3, f4, f4s, formatDMS, SAMPLE_DATA } from '@/utils/surveyMath'
@@ -768,6 +770,7 @@ const scaffoldProps = computed(() =>
           { label: 'Transform' },
           { label: 'Beacon Comparison' },
         ],
+        tabs: ribbonTabs.value,
       },
 )
 
@@ -806,6 +809,56 @@ const sigma0Note = computed(() => {
     : `SI 727 class ${surveyClass.value}`
 })
 const importMsg = ref(null)   // { ok: boolean, text: string } | null
+
+// ── RIBBON CONFIG ─────────────────────────────────────────────────────────────
+const csvFileInput = ref(null)
+function triggerUpload() {
+  if (csvFileInput.value) csvFileInput.value.click()
+}
+
+const ribbonTabs = computed(() => [
+  {
+    id: 'data',
+    label: 'Data',
+    icon: '🗂️',
+    groups: [
+      group('Input', [
+        btn({ id: 'cmp-upload', icon: '📂', label: 'Upload CSV' }),
+        btn({ id: 'cmp-sample', icon: '🎲', label: 'Sample', title: 'Load the sample beacon network' }),
+        btn({ id: 'cmp-add', icon: '➕', label: 'Beacon', title: 'Insert a new beacon row' }),
+        btn({ id: 'cmp-template', icon: '⬇️', label: 'Template', title: 'Download a CSV template pre-filled with sample data' }),
+      ], `${points.value.length} beacons · minimum 3 required.`),
+      group('Run', [
+        btn({ id: 'cmp-compute', icon: '🧮', label: 'Compute', tone: 'primary', disabled: points.value.length < 3 }),
+        btn({ id: 'cmp-report', icon: '📄', label: 'Report', tone: 'success', disabled: !result.value || points.value.length < 3 }),
+      ]),
+    ],
+  },
+  {
+    id: 'method',
+    label: 'Method',
+    icon: '⚖️',
+    groups: [
+      group('Comparison check', [
+        btn({ id: 'cmp-method-coords', icon: '⚖️', label: 'Co-ordinates', active: checkMethod.value === 'coords', title: '§67(5) co-ordinate comparison' }),
+        btn({ id: 'cmp-method-edges', icon: '📐', label: 'Edge compliance', active: checkMethod.value === 'edges', title: 'SI 727 edge compliance with network swing' }),
+        btn({ id: 'cmp-method-wtest', icon: '📊', label: 'Baarda W-test', active: checkMethod.value === 'wtest', title: '4-parameter Helmert with iterative W-test' }),
+      ], checkMethodHint.value),
+    ],
+  },
+])
+
+function runRibbonAction(id) {
+  if (id === 'cmp-upload') triggerUpload()
+  else if (id === 'cmp-sample') store.loadSample()
+  else if (id === 'cmp-add') store.addPoint()
+  else if (id === 'cmp-template') downloadTemplate()
+  else if (id === 'cmp-compute') store.compute()
+  else if (id === 'cmp-report') downloadReport()
+  else if (id === 'cmp-method-coords') setCheckMethod('coords')
+  else if (id === 'cmp-method-edges') setCheckMethod('edges')
+  else if (id === 'cmp-method-wtest') setCheckMethod('wtest')
+}
 
 // ── DB PERSISTENCE ───────────────────────────────────────────────────────────
 // The loaded beacon-comparison CSV is saved to the active project (workflow

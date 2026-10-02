@@ -7,6 +7,128 @@
 
 <template>
   <div class="cadastral-module">
+    <!-- ── Ribbon: the step workflow + documents, QGIS style ────────────── -->
+    <Ribbon
+      :tabs="workflowRibbonTabs"
+      initial-tab="step"
+      class="border-b border-gray-200"
+      @action="runWorkflowRibbonAction"
+    />
+
+    <!-- Inline document preview: opens in-place below the ribbon instead of a
+         modal overlay. The step/document preview state now feeds this panel. -->
+    <div v-if="previewModal.isOpen" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+      <DocumentPreviewPanel
+        :is-open="previewModal.isOpen"
+        :title="previewModal.title"
+        :subtitle="previewModal.subtitle"
+        :pdf-blob="previewModal.pdfBlob"
+        :working-directory="selectedProject?.working_directory || workflowState.projectInfo.workingDirectory"
+        :document-type="previewModal.documentType"
+        :file-name="previewModal.fileName"
+        @close="closePreviewModal"
+        @saved="handleDocumentSaved"
+      />
+    </div>
+
+    <!-- Inline CSV format guide: reference panel shown below the ribbon rather
+         than a modal overlay. -->
+    <div v-if="showFormatGuide" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+      <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden max-h-[85vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h3 class="text-xl font-semibold text-gray-900">📖 CSV Format Guide</h3>
+          <button @click="showFormatGuide = false" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="px-6 py-4 space-y-6 overflow-y-auto">
+          <!-- Required Format -->
+          <div>
+            <h4 class="text-lg font-semibold text-gray-900 mb-2">Required Columns</h4>
+            <div class="bg-gray-50 rounded-lg p-4 font-mono text-sm">
+              Point, Y, X, Status, Description, Date
+            </div>
+            <p class="mt-2 text-sm text-gray-600">
+              All columns are required. Column names must match exactly (case-sensitive).
+            </p>
+          </div>
+
+          <!-- Column Descriptions -->
+          <div>
+            <h4 class="text-lg font-semibold text-gray-900 mb-3">Column Descriptions</h4>
+            <div class="space-y-3">
+              <div class="border-l-4 border-blue-500 pl-4">
+                <div class="font-semibold text-gray-900">Point</div>
+                <div class="text-sm text-gray-600">Point identifier (e.g., "1", "P2", "ALPHA")</div>
+              </div>
+              <div class="border-l-4 border-green-500 pl-4">
+                <div class="font-semibold text-gray-900">Y</div>
+                <div class="text-sm text-gray-600">Y coordinate (Westing) in Cape Lo system (e.g., 12345.67)</div>
+              </div>
+              <div class="border-l-4 border-green-500 pl-4">
+                <div class="font-semibold text-gray-900">X</div>
+                <div class="text-sm text-gray-600">X coordinate (Southing) in Cape Lo system (e.g., 2234567.89)</div>
+              </div>
+              <div class="border-l-4 border-purple-500 pl-4">
+                <div class="font-semibold text-gray-900">Status</div>
+                <div class="text-sm text-gray-600">Point status: "F" (Found/Fixed) or "P" (Placed/Peg)</div>
+              </div>
+              <div class="border-l-4 border-yellow-500 pl-4">
+                <div class="font-semibold text-gray-900">Description</div>
+                <div class="text-sm text-gray-600">Point description (e.g., "50mm Iron Pipe in Concrete")</div>
+              </div>
+              <div class="border-l-4 border-red-500 pl-4">
+                <div class="font-semibold text-gray-900">Date</div>
+                <div class="text-sm text-gray-600">Survey date in format: DD/MM/YYYY (e.g., "15/01/2025")</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Example -->
+          <div>
+            <h4 class="text-lg font-semibold text-gray-900 mb-2">Example CSV</h4>
+            <div class="bg-gray-900 text-green-400 rounded-lg p-4 font-mono text-xs overflow-x-auto">
+              <div>Point,Y,X,Status,Description,Date</div>
+              <div>1,12345.67,2234567.89,F,Control Point ALPHA,15/01/2025</div>
+              <div>2,12346.78,2234568.90,F,Control Point BETA,15/01/2025</div>
+              <div>3,12347.89,2234569.01,P,Peg 1,15/01/2025</div>
+              <div>4,12348.90,2234570.12,P,Peg 2,15/01/2025</div>
+            </div>
+          </div>
+
+          <!-- Tips -->
+          <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h4 class="text-sm font-semibold text-blue-900 mb-2">💡 Tips</h4>
+            <ul class="text-sm text-blue-800 space-y-1 list-disc list-inside">
+              <li>Use the "Download CSV Template" button for a pre-formatted file</li>
+              <li>Coordinates should be in Cape Lo system (will be auto-converted to WGS84)</li>
+              <li>Ensure no extra spaces or special characters</li>
+              <li>Save your file with UTF-8 encoding</li>
+              <li>Maximum file size: 5MB</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
+          <button
+            @click="downloadCSVTemplate"
+            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            📥 Download Template
+          </button>
+          <button
+            @click="showFormatGuide = false"
+            class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Header -->
     <div class="bg-white shadow-sm border-b border-gray-200">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -44,121 +166,6 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- ✅ Phase 1: Enhanced Progress Indicator -->
-    <div v-if="workflowState.importedPoints.length > 0" class="bg-gray-50 border-b border-gray-200">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <!-- Progress Summary Bar -->
-        <div class="mb-4 bg-white rounded-lg shadow-sm p-4">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-3">
-              <span class="text-sm font-medium text-gray-700">
-                {{ completedSteps.length }} of {{ workflowSteps.length }} steps completed
-              </span>
-              <span class="text-lg font-bold text-blue-600">
-                {{ actualProgressPercentage }}% Complete
-              </span>
-            </div>
-            <div class="text-sm text-gray-600">
-              <span v-if="estimatedTimeRemaining > 0">
-                ⏱️ Est. {{ estimatedTimeRemaining }} min remaining
-              </span>
-              <span v-else class="text-green-600 font-medium">
-                ✅ Almost done!
-              </span>
-            </div>
-          </div>
-          
-          <!-- Visual Progress Bar -->
-          <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-            <div 
-              class="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-500 ease-out"
-              :style="{ width: `${actualProgressPercentage}%` }"
-            >
-            </div>
-          </div>
-        </div>
-        
-        <nav aria-label="Progress">
-          <ol class="flex items-center">
-            <li 
-              v-for="(step, index) in workflowSteps" 
-              :key="step.id"
-              class="relative"
-              :class="{ 'pr-8 sm:pr-20': index < workflowSteps.length - 1 }"
-            >
-              <!-- Step Circle -->
-              <div class="flex items-center">
-                <div
-                  :class="{
-                    'bg-blue-600 text-white': isStepCompleted(step.id) || isStepCurrent(step.id),
-                    'bg-gray-200 text-gray-500': !isStepCompleted(step.id) && !isStepCurrent(step.id)
-                  }"
-                  class="relative w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium"
-                >
-                  <span v-if="isStepCompleted(step.id)">✓</span>
-                  <span v-else>{{ index + 1 }}</span>
-                </div>
-                
-                <!-- Step Label -->
-                <span
-                  :class="{
-                    'text-blue-600 font-medium': isStepCurrent(step.id),
-                    'text-gray-500': !isStepCurrent(step.id)
-                  }"
-                  class="ml-3 text-sm hidden sm:block"
-                >
-                  {{ step.name }}
-                </span>
-              </div>
-              
-              <!-- Connector Line -->
-              <div
-                v-if="index < workflowSteps.length - 1"
-                :class="{
-                  'bg-blue-600': isStepCompleted(step.id),
-                  'bg-gray-200': !isStepCompleted(step.id)
-                }"
-                class="absolute top-4 left-8 w-full h-0.5 -translate-y-1/2"
-              ></div>
-            </li>
-          </ol>
-        </nav>
-      </div>
-    </div>
-
-    <!-- Phase 2: Workflow Dashboard -->
-    <div v-if="workflowState.importedPoints.length > 0 || completedSteps.length > 0" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <!-- ✅ Phase 1: Batch Export Button -->
-      <div v-if="hasGeneratedDocuments" class="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 shadow-sm">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="text-3xl">📦</div>
-            <div>
-              <h3 class="text-lg font-semibold text-gray-900">Export All Documents</h3>
-              <p class="text-sm text-gray-600">Download all generated documents as a compressed ZIP archive</p>
-            </div>
-          </div>
-          <button
-            @click="exportAllDocuments"
-            :disabled="isExporting"
-            class="inline-flex items-center px-6 py-3 bg-green-600 text-white text-base font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-          >
-            <span v-if="isExporting">🔄 Creating ZIP...</span>
-            <span v-else>📥 Download ZIP</span>
-          </button>
-        </div>
-      </div>
-      
-      <WorkflowDashboard
-        :completed-steps="completedSteps"
-        :current-step="workflowState.currentStep"
-        :step-data="stepData"
-        :working-directory="workflowState.projectInfo.workingDirectory"
-        @step-click="handleStepClick"
-        @action="handleStepAction"
-      />
     </div>
 
     <!-- Main Content -->
@@ -1265,19 +1272,6 @@
       </div>
     </div>
 
-    <!-- Document Preview Modal -->
-    <DocumentPreviewModal
-      :is-open="previewModal.isOpen"
-      :title="previewModal.title"
-      :subtitle="previewModal.subtitle"
-      :pdf-blob="previewModal.pdfBlob"
-      :working-directory="selectedProject?.working_directory || workflowState.projectInfo.workingDirectory"
-      :document-type="previewModal.documentType"
-      :file-name="previewModal.fileName"
-      @close="closePreviewModal"
-      @saved="handleDocumentSaved"
-    />
-    
     <!-- ⭐ CSV Re-import Dialog -->
     <CSVReimportDialog
       v-if="reimportDialog.existingImport"
@@ -1298,102 +1292,6 @@
       @view-details="handleMergeAnalysisViewDetails"
     />
     
-    <!-- ✅ Phase 1: CSV Format Guide Modal -->
-    <div v-if="showFormatGuide" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h3 class="text-xl font-semibold text-gray-900">📖 CSV Format Guide</h3>
-          <button @click="showFormatGuide = false" class="text-gray-400 hover:text-gray-600">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <div class="px-6 py-4 space-y-6">
-          <!-- Required Format -->
-          <div>
-            <h4 class="text-lg font-semibold text-gray-900 mb-2">Required Columns</h4>
-            <div class="bg-gray-50 rounded-lg p-4 font-mono text-sm">
-              Point, Y, X, Status, Description, Date
-            </div>
-            <p class="mt-2 text-sm text-gray-600">
-              All columns are required. Column names must match exactly (case-sensitive).
-            </p>
-          </div>
-          
-          <!-- Column Descriptions -->
-          <div>
-            <h4 class="text-lg font-semibold text-gray-900 mb-3">Column Descriptions</h4>
-            <div class="space-y-3">
-              <div class="border-l-4 border-blue-500 pl-4">
-                <div class="font-semibold text-gray-900">Point</div>
-                <div class="text-sm text-gray-600">Point identifier (e.g., "1", "P2", "ALPHA")</div>
-              </div>
-              <div class="border-l-4 border-green-500 pl-4">
-                <div class="font-semibold text-gray-900">Y</div>
-                <div class="text-sm text-gray-600">Y coordinate (Westing) in Cape Lo system (e.g., 12345.67)</div>
-              </div>
-              <div class="border-l-4 border-green-500 pl-4">
-                <div class="font-semibold text-gray-900">X</div>
-                <div class="text-sm text-gray-600">X coordinate (Southing) in Cape Lo system (e.g., 2234567.89)</div>
-              </div>
-              <div class="border-l-4 border-purple-500 pl-4">
-                <div class="font-semibold text-gray-900">Status</div>
-                <div class="text-sm text-gray-600">Point status: "F" (Found/Fixed) or "P" (Placed/Peg)</div>
-              </div>
-              <div class="border-l-4 border-yellow-500 pl-4">
-                <div class="font-semibold text-gray-900">Description</div>
-                <div class="text-sm text-gray-600">Point description (e.g., "50mm Iron Pipe in Concrete")</div>
-              </div>
-              <div class="border-l-4 border-red-500 pl-4">
-                <div class="font-semibold text-gray-900">Date</div>
-                <div class="text-sm text-gray-600">Survey date in format: DD/MM/YYYY (e.g., "15/01/2025")</div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Example -->
-          <div>
-            <h4 class="text-lg font-semibold text-gray-900 mb-2">Example CSV</h4>
-            <div class="bg-gray-900 text-green-400 rounded-lg p-4 font-mono text-xs overflow-x-auto">
-              <div>Point,Y,X,Status,Description,Date</div>
-              <div>1,12345.67,2234567.89,F,Control Point ALPHA,15/01/2025</div>
-              <div>2,12346.78,2234568.90,F,Control Point BETA,15/01/2025</div>
-              <div>3,12347.89,2234569.01,P,Peg 1,15/01/2025</div>
-              <div>4,12348.90,2234570.12,P,Peg 2,15/01/2025</div>
-            </div>
-          </div>
-          
-          <!-- Tips -->
-          <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 class="text-sm font-semibold text-blue-900 mb-2">💡 Tips</h4>
-            <ul class="text-sm text-blue-800 space-y-1 list-disc list-inside">
-              <li>Use the "Download CSV Template" button for a pre-formatted file</li>
-              <li>Coordinates should be in Cape Lo system (will be auto-converted to WGS84)</li>
-              <li>Ensure no extra spaces or special characters</li>
-              <li>Save your file with UTF-8 encoding</li>
-              <li>Maximum file size: 5MB</li>
-            </ul>
-          </div>
-        </div>
-        
-        <div class="sticky bottom-0 bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
-          <button
-            @click="downloadCSVTemplate"
-            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-          >
-            📥 Download Template
-          </button>
-          <button
-            @click="showFormatGuide = false"
-            class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -1423,8 +1321,9 @@ import ProjectSetupView from './ProjectSetupView.vue';
 import ControlPointSelectionView from './ControlPointSelectionView.vue';
 import FoundBeaconsView from './FoundBeaconsView.vue';
 import WorkingDirectorySelector from '../../../components/cadastral/WorkingDirectorySelector.vue';
-import DocumentPreviewModal from '../../../components/cadastral/DocumentPreviewModal.vue';
-import WorkflowDashboard from '../../../components/cadastral/WorkflowDashboard.vue';
+import DocumentPreviewPanel from '../../../components/cadastral/DocumentPreviewPanel.vue';
+import Ribbon from '../../../components/ribbon/Ribbon.vue';
+import { useWorkflowRibbon } from '../../../composables/useWorkflowRibbon';
 import { useSurveyors, type Surveyor, type SurveyProject } from '../../../composables/useSurveyors';
 import { useSurveyLookupStore } from '../../../stores/surveyLookup';
 import { useProjectContext } from '../../../stores/projectContext';
@@ -1460,6 +1359,7 @@ import {
   stepIdToDbKey, 
   getNextStep,
   getWorkflowSteps,
+  CADASTRAL_STEPS,
   type WorkflowStep
 } from '../../../config/cadastralWorkflow';
 
@@ -1571,66 +1471,7 @@ const lastSavedText = computed(() => {
   return `Saved ${hours} hours ago`;
 });
 
-// ✅ Phase 1: Progress Percentage & Time Estimate
-const currentStepIndex = computed(() => {
-  return workflowSteps.findIndex(s => s.id === workflowState.currentStep);
-});
-
-const progressPercentage = computed(() => {
-  const index = currentStepIndex.value;
-  if (index < 0) return 0;
-  return Math.round(((index + 1) / workflowSteps.length) * 100);
-});
-
-// ✅ Actual progress based on completed steps (not current step position)
-const actualProgressPercentage = computed(() => {
-  if (workflowSteps.length === 0) return 0;
-  return Math.round((completedSteps.value.length / workflowSteps.length) * 100);
-});
-
-const estimatedTimeRemaining = computed(() => {
-  // Average time per step in minutes (based on UX research)
-  const stepTimes: Record<string, number> = {
-    'project-setup': 2,
-    'csv-import': 5,
-    'site-calibration': 2,
-    'control-point-selection': 5,
-    'found-beacons': 8,
-    'field-book': 5,
-    'calculations-part1': 10,
-    'coordinate-list': 3,
-    'qgis-export': 15, // Includes PostGIS export, QGIS setup, and parcel digitization
-    'area-computation': 20,
-    'servitudes': 5,
-    'survey-plan': 10,
-    'report-on-survey': 5,
-    'dsg-certificate': 3
-  };
-  
-  const currentIndex = currentStepIndex.value;
-  if (currentIndex < 0) return 0;
-  
-  let totalTime = 0;
-  for (let i = currentIndex + 1; i < workflowSteps.length; i++) {
-    const stepId = workflowSteps[i].id;
-    totalTime += stepTimes[stepId] || 5; // Default 5 min if not specified
-  }
-  
-  return totalTime;
-});
-
-// ✅ Phase 1: Batch Export - Check if any documents are generated
-const hasGeneratedDocuments = computed(() => {
-  return !!(
-    workflowState.documents.fieldBook ||
-    workflowState.documents.calculationsPart1 ||
-    workflowState.documents.coordinateList ||
-    pdfBlobStorage.calculationsPart1 ||
-    pdfBlobStorage.coordinateList
-  );
-});
-
-// Document Preview Modal state
+// Document preview panel state
 const previewModal = ref({
   isOpen: false,
   title: '',
@@ -1714,15 +1555,12 @@ const pendingCSVData = ref<{
   detectedCentralMeridian?: number; // Cape Lo zone from CSV System column
 } | null>(null);
 
-// Workflow steps, in order, for the vertical stepper and for the previous/next
-// buttons. `workflowState.currentStep` holds a dbKey ('csv-import'), so ids here
-// are dbKeys too.
+// Workflow steps, in order, for the stepper and previous/next navigation.
+// `workflowState.currentStep` holds a dbKey ('csv-import'), so ids here are
+// dbKeys too.
 //
-// Derived from CADASTRAL_STEPS rather than hand-listed: the hand-written copy
-// had fallen behind the registry and was missing `survey-plan` entirely, which
-// made isStepCompleted() answer `findIndex() === -1` — and -1 is less than every
-// current index, so Survey Plan always rendered as already-complete — and made
-// "next" step over it entirely.
+// Derived from CADASTRAL_STEPS rather than hand-listed so the list can never
+// fall behind the registry.
 const workflowSteps = getWorkflowSteps().map(step => ({
   id: step.dbKey,
   name: step.label
@@ -3248,16 +3086,6 @@ function getStepDisplayName(stepId: string): string {
   return step ? step.name : stepId;
 }
 
-function isStepCompleted(stepId: string): boolean {
-  const currentIndex = workflowSteps.findIndex(s => s.id === workflowState.currentStep);
-  const stepIndex = workflowSteps.findIndex(s => s.id === stepId);
-  return stepIndex < currentIndex;
-}
-
-function isStepCurrent(stepId: string): boolean {
-  return workflowState.currentStep === stepId;
-}
-
 function goToPreviousStep() {
   const currentIndex = workflowSteps.findIndex(s => s.id === workflowState.currentStep);
   if (currentIndex > 0) {
@@ -3414,6 +3242,43 @@ async function generateFieldBook() {
 
 function formatDate(date: Date): string {
   return formatDateTimeSecDDMMYYYY(date);
+}
+
+// Phase 2: Ribbon-driven workflow commands ─────────────────────────────────
+// The ribbon is data-driven; ids come back namespaced (`wf-step:`, `wf-action:`)
+// so this tiny router just prefixes the otherwise-identical dashboard handlers.
+const workflowRibbon = useWorkflowRibbon({
+  currentStep: () => workflowState.currentStep as string,
+  completedStepIds: () => completedSteps.value,
+  stepData: () => stepData.value,
+  isExporting: () => isExporting.value,
+})
+// Top-level ref binding so the template auto-unwraps it (nested computed on the
+// composable object is not unwrapped).
+const workflowRibbonTabs = workflowRibbon.tabs
+
+function runWorkflowRibbonAction(id: string) {
+  const parsed = workflowRibbon.parse(id)
+  switch (parsed.kind) {
+    case 'step': {
+      const step = Object.values(CADASTRAL_STEPS).find(s => s.dbKey === parsed.dbKey)
+      if (step) handleStepClick(step)
+      return
+    }
+    case 'action': {
+      const step = Object.values(CADASTRAL_STEPS).find(s => s.dbKey === parsed.dbKey)
+      if (step) handleStepAction(step, { action: parsed.action })
+      return
+    }
+    default:
+      switch (id) {
+        case 'wf-prev': return goToPreviousStep()
+        case 'wf-next': return goToNextStep()
+        case 'wf-export-all': return exportAllDocuments()
+        case 'wf-service-docs': return window.open('/help/user-manual.pdf', '_blank', 'noopener')
+        default: return
+      }
+  }
 }
 
 // Phase 2: Workflow Dashboard Handlers

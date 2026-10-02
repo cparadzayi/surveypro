@@ -19,6 +19,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import type { RibbonTone } from './types'
+
 /**
  * One tile in a ribbon group. Big glyph over a caption, like the QGIS /
  * ArcGIS Pro ribbon. Purely presentational — the parent owns the behaviour.
@@ -31,7 +34,7 @@ const props = withDefaults(defineProps<{
   active?: boolean
   large?: boolean
   badge?: string | number | null
-  tone?: 'default' | 'primary' | 'success' | 'danger' | 'warn' | 'accent'
+  tone?: RibbonTone
 }>(), {
   title: '',
   disabled: false,
@@ -41,16 +44,18 @@ const props = withDefaults(defineProps<{
   tone: 'default',
 })
 
-const toneClass = (() => {
-  switch (props.tone) {
-    case 'primary': return 'rb-on-primary'
-    case 'success': return 'rb-on-success'
-    case 'danger': return 'rb-on-danger'
-    case 'warn': return 'rb-on-warn'
-    case 'accent': return 'rb-on-accent'
-    default: return 'rb-on-primary'
-  }
-})()
+const TONE_CLASS: Record<RibbonTone, string> = {
+  default: 'rb-on-primary',
+  primary: 'rb-on-primary',
+  success: 'rb-on-success',
+  danger: 'rb-on-danger',
+  warn: 'rb-on-warn',
+  accent: 'rb-on-accent',
+}
+
+// computed, not a const: a tile can change tone as the view's mode changes
+// (e.g. the basemap button flips between "Satellite" and "Street Map").
+const toneClass = computed(() => TONE_CLASS[props.tone])
 
 defineEmits<{ (e: 'click'): void }>()
 </script>

@@ -3,6 +3,8 @@
     title="Lite • Polar"
     :breadcrumbs="[{ label: 'Home', to: '/' }, { label: 'Lite', to: '/modules/lite' }, { label: 'Polar' }]"
     description="Compute Q from P(Y,X), distance, bearing (south-oriented)."
+    :tabs="ribbonTabs"
+    @action="runRibbonAction"
   >
     <form class="grid grid-cols-1 sm:grid-cols-2 gap-4" @submit.prevent="onCompute">
       <fieldset class="space-y-2">
@@ -103,6 +105,7 @@
 <script setup lang="ts">
 import { reactive, ref, computed } from 'vue'
 import ModuleScaffold from '../../../../components/scaffold/ModuleScaffold.vue'
+import { group, btn, type RibbonTab } from '../../../../components/ribbon/types'
 import { computePolar, type PolarRequest, type PolarResponse } from '../../../../services/compute'
 import DMSBearingInput from '../../../../components/inputs/DMSBearingInput.vue'
 import LayerSelect from '../../../../components/inputs/LayerSelect.vue'
@@ -207,6 +210,59 @@ async function onCompute() {
     result.value = { ok: false, error: e?.response?.data?.error || e.message }
   } finally {
     loading.value = false
+  }
+}
+
+// ── Ribbon: Solve toolbar ─────────────────────────────────────────────────────
+function resetAll() {
+  form.y = 0
+  form.x = 0
+  form.distance = 0
+  form.bearingDeg = 0
+  form.save = false
+  form.layer_id = undefined
+  form.properties = {}
+  knownName.value = ''
+  q.value = ''
+  searchError.value = ''
+  clearSuggestions()
+  result.value = null
+}
+
+const ribbonTabs = computed<RibbonTab[]>(() => [
+  {
+    id: 'solve',
+    label: 'Solve',
+    icon: '🧮',
+    groups: [
+      group('Compute', [
+        btn({ id: 'polar-compute', icon: '🧮', label: 'Compute', tone: 'primary', disabled: loading.value }),
+        btn({ id: 'polar-clear', icon: '🗑️', label: 'Clear', tone: 'danger' }),
+      ], 'P(Y,X) → Q(Y,X) from distance and south-oriented bearing.'),
+      group('Known Point', [
+        btn({ id: 'polar-use', icon: '📌', label: 'Use point', disabled: !selectedSuggestion.value }),
+        btn({ id: 'polar-clear-search', icon: '🧹', label: 'Clear search', large: false }),
+      ], 'Search a beacon in the layer to prefill Y/X.'),
+      group('Options', [
+        btn({ id: 'polar-save', icon: '💾', label: 'Save', active: form.save, title: 'Save the computed point to a layer' }),
+      ]),
+    ],
+  },
+])
+
+async function runRibbonAction(id: string) {
+  if (id === 'polar-compute') {
+    await onCompute()
+  } else if (id === 'polar-clear') {
+    resetAll()
+  } else if (id === 'polar-use') {
+    useSelected()
+  } else if (id === 'polar-clear-search') {
+    q.value = ''
+    searchError.value = ''
+    clearSuggestions()
+  } else if (id === 'polar-save') {
+    form.save = !form.save
   }
 }
 </script>

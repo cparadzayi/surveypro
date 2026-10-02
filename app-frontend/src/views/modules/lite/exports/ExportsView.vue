@@ -1,5 +1,5 @@
 <template>
-  <ModuleScaffold title="Lite • Imports/Exports" description="Import CSV data (Points/Lines/Polygons) and prepare exports." :breadcrumbs="breadcrumbs">
+  <ModuleScaffold title="Lite • Imports/Exports" description="Import CSV data (Points/Lines/Polygons) and prepare exports." :breadcrumbs="breadcrumbs" :tabs="ribbonTabs" @action="runRibbonAction">
     <div class="grid gap-6 lg:grid-cols-2">
       <div class="space-y-3 p-4 rounded border">
         <h3 class="font-semibold">One‑click CSV Import</h3>
@@ -32,7 +32,7 @@
         </div>
         <div class="space-y-2">
           <label class="block text-sm font-medium">CSV File</label>
-          <input type="file" accept=".csv,text/csv" @change="onPick" />
+          <input ref="fileInput" type="file" accept=".csv,text/csv" @change="onPick" />
         </div>
         <div class="flex gap-2">
           <button :disabled="!file || busy" @click="doImport" class="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm disabled:opacity-50">Import</button>
@@ -73,8 +73,9 @@
   </ModuleScaffold>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import ModuleScaffold from '../../../../components/scaffold/ModuleScaffold.vue'
+import { group, btn, type RibbonTab } from '../../../../components/ribbon/types'
 import LayerSelect from '../../../../components/inputs/LayerSelect.vue'
 import { importCsv } from '../../../../services/spatial'
 
@@ -97,6 +98,51 @@ const result = ref<any>(null)
 function onPick(e: Event) {
   const input = e.target as HTMLInputElement
   file.value = input.files && input.files[0] ? input.files[0] : null
+}
+
+// ── Ribbon: import toolbar ────────────────────────────────────────────────────
+const fileInput = ref<HTMLInputElement | null>(null)
+
+function triggerPick() {
+  fileInput.value?.click()
+}
+
+const ribbonTabs = computed<RibbonTab[]>(() => [
+  {
+    id: 'import',
+    label: 'Import',
+    icon: '📥',
+    groups: [
+      group('CSV', [
+        btn({ id: 'exp-pick', icon: '📂', label: 'Choose file', title: 'Pick a CSV from disk' }),
+        btn({ id: 'exp-import', icon: '🚀', label: 'Import', tone: 'success', disabled: !file.value || busy.value }),
+      ], file.value ? `File: ${file.value.name}` : 'No file selected.'),
+      group('Options', [
+        btn({ id: 'exp-create', icon: '🆕', label: 'Create layer', active: createNew.value, title: 'Create a new project/layer if none is selected' }),
+      ]),
+      group('Geometry', [
+        btn({ id: 'exp-geom-point', icon: '📍', label: 'Point', large: false, active: geometryType.value === 'Point', disabled: !createNew.value }),
+        btn({ id: 'exp-geom-line', icon: '📏', label: 'Line', large: false, active: geometryType.value === 'LineString', disabled: !createNew.value }),
+        btn({ id: 'exp-geom-poly', icon: '⬠', label: 'Polygon', large: false, active: geometryType.value === 'Polygon', disabled: !createNew.value }),
+      ], 'Geometry type when creating a new layer.'),
+    ],
+  },
+])
+
+async function runRibbonAction(id: string) {
+  if (id === 'exp-pick') {
+    triggerPick()
+  } else if (id === 'exp-import') {
+    await doImport()
+  } else if (id === 'exp-create') {
+    createNew.value = !createNew.value
+  } else if (id === 'exp-geom-point') {
+    geometryType.value = 'Point'
+  } else if (id === 'exp-geom-line') {
+    geometryType.value = 'LineString'
+  } else if (id === 'exp-geom-poly') {
+    geometryType.value = 'Polygon'
+  }
 }
 
 async function doImport() {

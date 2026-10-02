@@ -393,6 +393,22 @@ async function loadWorkflowState(surveyProjectId: number) {
       console.log('🔍 [DEBUG] csvStepData keys:', csvStepData ? Object.keys(csvStepData) : []);
       console.log('🔍 [DEBUG] csvStepData.points exists?', !!csvStepData?.points);
       
+      // Drop the previous project's points before rebuilding this project's.
+      //
+      // `workflowState` is a module-level singleton, and the two restore paths
+      // below are both conditional, so without this reset the array kept the
+      // values of whichever project was loaded last. Both symptoms that caused
+      // were the same stale count: the csv-import step body is gated on
+      // `importedPoints.length === 0` with no `v-else`, so a project with no
+      // points of its own rendered a blank step; and the coordinate_points
+      // fallback below is gated on the array being empty, so it never ran for
+      // a project that legitimately had none.
+      //
+      // Only `importedPoints` is reset. The downstream documents are NOT rebuilt
+      // from step_data by this function, so clearing them here would discard
+      // them for good on every reload.
+      workflowState.importedPoints = []
+      
       if (csvStepData?.points) {
         console.log('🔍 Restoring points from database...');
         console.log('  - Points in DB:', csvStepData.points.length);

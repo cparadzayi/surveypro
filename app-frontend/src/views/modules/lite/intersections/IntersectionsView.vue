@@ -3,6 +3,8 @@
     title="Lite • Intersections"
     :breadcrumbs="[{ label: 'Home', to: '/' }, { label: 'Lite', to: '/modules/lite' }, { label: 'Intersections' }]"
     description="Bearing–Bearing intersection using P(Y,X) and south-oriented bearings."
+    :tabs="ribbonTabs"
+    @action="runRibbonAction"
   >
     <form class="grid grid-cols-1 sm:grid-cols-2 gap-4" @submit.prevent="onCompute">
       <fieldset class="space-y-2">
@@ -64,6 +66,7 @@
 <script setup lang="ts">
 import { reactive, ref, computed } from 'vue'
 import ModuleScaffold from '../../../../components/scaffold/ModuleScaffold.vue'
+import { group, btn, type RibbonTab } from '../../../../components/ribbon/types'
 import DMSBearingInput from '../../../../components/inputs/DMSBearingInput.vue'
 import LayerSelect from '../../../../components/inputs/LayerSelect.vue'
 import { computeIntersectionBB, type BBIntersectionRequest, type BBIntersectionResponse } from '../../../../services/compute'
@@ -94,6 +97,43 @@ async function onCompute() {
     result.value = { ok: false, error: e?.response?.data?.error || e.message }
   } finally {
     loading.value = false
+  }
+}
+
+// ── Ribbon: Solve toolbar ─────────────────────────────────────────────────────
+function resetAll() {
+  form.p1 = { y: 0, x: 0, bearingDeg: 0 }
+  form.p2 = { y: 0, x: 0, bearingDeg: 0 }
+  form.save = false
+  form.layer_id = undefined
+  form.properties = {}
+  result.value = null
+}
+
+const ribbonTabs = computed<RibbonTab[]>(() => [
+  {
+    id: 'solve',
+    label: 'Solve',
+    icon: '🧮',
+    groups: [
+      group('Compute', [
+        btn({ id: 'inter-compute', icon: '🧮', label: 'Compute', tone: 'primary', disabled: loading.value }),
+        btn({ id: 'inter-clear', icon: '🗑️', label: 'Clear', tone: 'danger' }),
+      ], 'Intersection of two south-oriented bearing rays through P1 and P2.'),
+      group('Options', [
+        btn({ id: 'inter-save', icon: '💾', label: 'Save', active: form.save, title: 'Save the computed point to a layer' }),
+      ]),
+    ],
+  },
+])
+
+async function runRibbonAction(id: string) {
+  if (id === 'inter-compute') {
+    await onCompute()
+  } else if (id === 'inter-clear') {
+    resetAll()
+  } else if (id === 'inter-save') {
+    form.save = !form.save
   }
 }
 </script>

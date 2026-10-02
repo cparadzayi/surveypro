@@ -7,6 +7,15 @@
         <span v-if="i < breadcrumbs.length - 1" class="opacity-50">/</span>
       </span>
     </nav>
+    <!-- Ribbon: any screen using ModuleScaffold gets a ribbon by passing the
+         `tabs` prop, without rewriting its action markup. See Ribbon.vue for the
+         declarative tab/group/button model. -->
+    <Ribbon
+      v-if="tabs.length"
+      :tabs="tabs"
+      :initial-tab="initialTab"
+      @action="(id) => emit('action', id)"
+    />
     <header class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
       <div>
         <h2 class="text-xl font-semibold tracking-tight">{{ title }}</h2>
@@ -40,6 +49,8 @@
 </template>
 <script lang="ts" setup>
 import { computed, useSlots, withDefaults } from 'vue'
+import Ribbon from '../ribbon/Ribbon.vue'
+import type { RibbonTab } from '../ribbon/types'
 
 interface Crumb { label: string; to?: string }
 interface Props {
@@ -49,8 +60,18 @@ interface Props {
   loading?: boolean;
   error?: boolean | string;
   empty?: boolean;
+  /** Declarative ribbon config. When empty no ribbon is rendered, so existing
+   *  scaffold consumers behave exactly as before. */
+  tabs?: RibbonTab[];
+  /** First tab selected when the screen mounts. Defaults to the first tab. */
+  initialTab?: string;
 }
-const props = withDefaults(defineProps<Props>(), { breadcrumbs: () => [] })
+const props = withDefaults(defineProps<Props>(), {
+  breadcrumbs: () => [],
+  tabs: () => [],
+  initialTab: '',
+})
+const emit = defineEmits<{ (e: 'action', id: string): void }>()
 const errorMessage = computed(() => typeof props.error === 'string' ? props.error : 'An unexpected error occurred.')
 // Declare named slots for TS template inference
 defineSlots<{

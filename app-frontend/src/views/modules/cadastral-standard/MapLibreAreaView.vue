@@ -55,6 +55,8 @@
       :survey-peg-count="surveyPegPoints.length"
       :dock-open="dockOpen"
       :focus-mode="focusMode"
+      :collapsed="ribbonCollapsed"
+      @update:collapsed="ribbonCollapsed = $event"
       @action="runRibbonAction"
     />
 
@@ -956,7 +958,7 @@ import type { DetectedParcel } from '../../../utils/automatedParcelDetector';
 import type { ParcelDetectionResult } from '../../../services/parcelDetection';
 import PointRenamePanel from '../../../components/cadastral/PointRenamePanel.vue';
 import ParcelDigitizeRibbon from '../../../components/cadastral/ParcelDigitizeRibbon.vue';
-import SideDock from '../../../components/cadastral/SideDock.vue';
+import SideDock from '../../../components/ribbon/SideDock.vue';
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation, composeSurveySource } from '@/utils/planDesignation';
@@ -997,6 +999,9 @@ const workflowState = inject<any>('workflowState');
 const dockOpen = ref(false);
 const focusMode = ref(false);
 const dockTab = ref<'parcels' | 'vertices' | 'legend'>('parcels');
+// Ribbon can be minimised to just its tab strip, the way AutoCAD and QGIS let
+// you reclaim the canvas without losing access to the commands.
+const ribbonCollapsed = ref(false);
 
 const dockTabs = computed(() => [
   {

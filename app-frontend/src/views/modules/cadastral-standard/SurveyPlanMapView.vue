@@ -429,6 +429,7 @@ import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
 import { dispensationFromWorkflow } from '@/composables/useDispensationCertificate'
 import { dsgCertificateFromWorkflow } from '@/composables/useDSGCertificate'
 import api from '@/services/api'
+import { bankersRound as sharedBankersRound } from '@/utils/dms'
 import { clearCoordinatePointsCache } from '@/services/coordinatePointCache'
 import { buildWorkflowExcel } from '@/utils/workflowExcelExporter'
 import { autoSaveStepProducts } from '@/services/workflowProductStorage'
@@ -4805,10 +4806,13 @@ async function generateComprehensivePDF() {
     
     if (controlPointIds.length > 0) {
       try {
-        const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3050/api'
-        const response = await fetch(`${API_BASE}/control-points?gauss_lo=${centralMeridian}&limit=5000`)
-        const data = await response.json()
-        
+        // Raw fetch() with no Authorization header, so this only worked while
+        // /api/control-points was unauthenticated. Uses the shared client now.
+        const response = await api.get('/control-points', {
+          params: { gauss_lo: centralMeridian, limit: 5000 }
+        })
+        const data = response.data
+
         if (data.data && Array.isArray(data.data)) {
           controlPoints = data.data.filter((cp: any) => controlPointIds.includes(cp.id))
           console.log(`[ComprehensivePDF] ✅ Found ${controlPoints.length} control points`)
@@ -5883,18 +5887,11 @@ watch(intelligentPreview, (newPreview, oldPreview) => {
 // Helper: Banker's rounding (round half to even) - Zimbabwe SGO requirement
 // MUST be defined BEFORE outsideFigureData computed property
 function bankersRound(value: number, decimals: number): number {
-  const multiplier = Math.pow(10, decimals)
-  const shifted = value * multiplier
-  const floor = Math.floor(shifted)
-  const decimal = shifted - floor
-  
-  if (decimal === 0.5) {
-    // Exactly at midpoint - round to even
-    return (floor % 2 === 0 ? floor : floor + 1) / multiplier
-  } else {
-    // Not at midpoint - use standard rounding
-    return Math.round(shifted) / multiplier
-  }
+  // Fifth frontend copy. It compared the IEEE 754 remainder with `=== 0.5`,
+  // which essentially never matches, so ties silently fell through to
+  // Math.round and disagreed with the backend by a centimetre. Delegates to the
+  // shared rule (utils/dms.ts) that matches app-backend/src/utils/zim-geo.js.
+  return sharedBankersRound(value, decimals)
 }
 
 // Helper: Convert decimal degrees to DMS format with banker's rounding

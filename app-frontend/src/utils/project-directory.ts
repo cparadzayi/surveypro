@@ -5,9 +5,10 @@
  * The working directory contains all input files and generated output files.
  */
 
-import axios from 'axios'
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3042/api'
+// Shared API client. This file previously hardcoded
+// http://localhost:3042/api — a port nothing listens on — so every call failed
+// in any build that had not set VITE_API_BASE.
+import api from '../services/api';
 
 // Cache for system home directory
 let cachedHomeDirectory: string | null = null
@@ -21,7 +22,7 @@ export async function getSystemHomeDirectory(): Promise<string> {
   }
 
   try {
-    const response = await axios.get(`${API_BASE}/system/info`)
+    const response = await api.get('/system/info')
     if (response.data.ok && response.data.system?.homeDirectory) {
       cachedHomeDirectory = response.data.system.homeDirectory
       return cachedHomeDirectory as string

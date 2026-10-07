@@ -206,10 +206,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import axios from 'axios'
+// axios no longer used directly; all calls go through the shared client.
 import { displayTrigName } from '../../../app-shared/trigName'
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3042/api'
+import api, { API_BASE } from '../services/api'
 
 interface ControlPoint {
   id: number
@@ -276,7 +275,7 @@ const loadCacheFromDatabase = async () => {
   
   try {
     console.log(`[ControlPointSelector] Loading cache from database for project ${props.projectId}`)
-    const response = await axios.get(`${API_BASE}/projects/${props.projectId}/meridian-cache`)
+    const response = await api.get(`/projects/${props.projectId}/meridian-cache`)
     
     if (response.data.ok && response.data.cache) {
       // Load cached IDs for each meridian
@@ -313,7 +312,7 @@ const saveCacheToDatabase = async (meridian: number, pointIds: number[]) => {
   
   try {
     console.log(`[ControlPointSelector] Saving ${pointIds.length} points to database for project ${props.projectId}, Lo${meridian}`)
-    await axios.post(`${API_BASE}/projects/${props.projectId}/meridian-cache`, {
+    await api.post(`/projects/${props.projectId}/meridian-cache`, {
       meridian,
       controlPointIds: pointIds
     })
@@ -407,10 +406,10 @@ const fetchControlPoints = async (meridian: number) => {
   error.value = null
   
   console.log(`[ControlPointSelector] Fetching control points for Lo${meridian}`)
-  console.log(`[ControlPointSelector] API URL: ${API_BASE}/control-points?gauss_lo=${meridian}&limit=1000`)
+  console.log(`[ControlPointSelector] fetching control-points gauss_lo=${meridian} limit=1000`)
   
   try {
-    const response = await axios.get(`${API_BASE}/control-points`, {
+    const response = await api.get(`/control-points`, {
       params: {
         gauss_lo: meridian,
         limit: 5000  // Increased to fetch all control points including TSM

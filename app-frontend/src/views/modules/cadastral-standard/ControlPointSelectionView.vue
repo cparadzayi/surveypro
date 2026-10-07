@@ -258,7 +258,8 @@ import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
 import { useSurveyors } from '@/composables/useSurveyors'
 import { capeLoToWGS84 } from '@/utils/coordinateTransform'
 import { siteCalibrationFrom, matchCalibrationControlPoints } from '@/utils/siteCalibration'
-import axios from 'axios'
+// axios no longer used directly; all calls go through the shared client.
+import api from '../../../services/api'
 
 const { workflowState, saveWorkflowState, completeCurrentStep } = useCadastralWorkflow()
 
@@ -469,10 +470,11 @@ async function fetchControlPoints() {
   isLoadingControlPoints.value = true
   
   try {
-    const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3050/api'
     console.log(`[ControlPointSelection] Fetching control points for Lo${loZone}...`)
-    
-    const response = await axios.get(`${API_BASE}/control-points`, {
+
+    // Shared client: bare axios here bypassed the auth interceptor, so this
+    // request carried no Authorization header.
+    const response = await api.get(`/control-points`, {
       params: { 
         gauss_lo: loZone,
         limit: 5000

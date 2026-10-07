@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import api from '../services/api';
 
 export interface LandParcel {
   id?: number;
@@ -43,7 +44,12 @@ export const useParcelsStore = defineStore('parcels', () => {
   const isLoading = ref(false);
   const error = ref<string | null>(null);
 
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3050/api';
+  // Requests must carry the bearer token. These previously used bare fetch()
+  // with a hardcoded http://localhost:3050/api base, so parcel CRUD failed
+  // entirely outside the developer's machine and never surfaced a 401.
+  // Bumped per load so a slow response for a previous project cannot overwrite
+  // the current one (see loadParcels).
+  let loadToken = 0;
 
   const currentParcels = computed(() => {
     if (!currentProjectId.value) return [];
@@ -54,41 +60,36 @@ export const useParcelsStore = defineStore('parcels', () => {
   const calculatedParcels = computed(() => currentParcels.value.filter(p => p.status === 'calculated'));
 
   async function loadParcels(projectId: number) {
+    const token = ++loadToken;
     isLoading.value = true;
     error.value = null;
     currentProjectId.value = projectId;
 
     try {
-      const response = await fetch(`${API_BASE}/parcels/${projectId}`);
-      const data = await response.json();
+      const response = await api.get(`/parcels/${projectId}`);
+      const data = response.data;
+      // Discard a response the user has already navigated away from: assigning
+      // here would repopulate `parcels` with the previous project's rows while
+      // currentProjectId reads the new one, and currentParcels filters on it.
+      if (token !== loadToken) return;
       if (data.success) {
         parcels.value = data.data;
       }
     } catch (err) {
+      if (token !== loadToken) return;
       error.value = err instanceof Error ? err.message : 'Unknown error';
     } finally {
-      isLoading.value = false;
+      if (token === loadToken) isLoading.value = false;
     }
   }
 
   async function createParcel(parcel: Omit<LandParcel, 'id'>) {
     try {
       console.log('[Parcels Store] Creating parcel:', parcel.parcel_number);
-      const response = await fetch(`${API_BASE}/parcels`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parcel)
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
+      const response = await api.post('/parcels', parcel);
+      const data = response.data;
       if (data.success) {
         parcels.value.push(data.data);
-        console.log('[Parcels Store] Parcel created successfully:', data.data.id);
       }
       return data.data;
     } catch (err) {
@@ -99,17 +100,8 @@ export const useParcelsStore = defineStore('parcels', () => {
 
   async function updateParcel(id: number, updates: Partial<LandParcel>) {
     try {
-      const response = await fetch(`${API_BASE}/parcels/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
+      const response = await api.put(`/parcels/${id}`, updates);
+      const data = response.data;
       const index = parcels.value.findIndex(p => p.id === id);
       if (index !== -1) parcels.value[index] = data.data;
       return data.data;
@@ -121,10 +113,7 @@ export const useParcelsStore = defineStore('parcels', () => {
 
   async function deleteParcel(id: number) {
     try {
-      const response = await fetch(`${API_BASE}/parcels/${id}`, { method: 'DELETE' });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      await api.delete(`/parcels/${id}`);
       parcels.value = parcels.value.filter(p => p.id !== id);
     } catch (err) {
       console.error('[Parcels Store] Error deleting parcel:', err);
@@ -134,15 +123,10 @@ export const useParcelsStore = defineStore('parcels', () => {
 
   async function checkDuplicate(projectId: number, parcelNumber: string) {
     try {
-      const response = await fetch(`${API_BASE}/parcels/${projectId}/check-duplicate/${parcelNumber}`);
-      
-      if (!response.ok) {
-        console.error('[Parcels Store] Duplicate check failed:', response.status);
-        return false; // Assume not duplicate if check fails
-      }
-      
-      const data = await response.json();
-      return data.exists;
+      const response = await api.get(
+        `/parcels/${projectId}/check-duplicate/${encodeURIComponent(parcelNumber)}`
+      );
+      return response.data.exists;
     } catch (err) {
       console.error('[Parcels Store] Error checking duplicate:', err);
       return false; // Assume not duplicate if check fails

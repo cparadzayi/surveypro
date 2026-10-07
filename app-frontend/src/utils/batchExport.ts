@@ -5,7 +5,7 @@
  */
 
 import JSZip from 'jszip';
-import axios from 'axios';
+import api from '@/services/api';
 
 interface DocumentInfo {
   name: string;
@@ -82,8 +82,8 @@ export async function batchDownloadDocuments(
     // Construct file path in project folder
     const filePath = `${workingDirectory}/output/batch-export/${zipFileName}`;
     
-    // Save via backend API (uses Vite proxy /api -> http://127.0.0.1:3050)
-    const response = await axios.post('/api/documents/save-zip', {
+    // Shared client: bare axios + hardcoded '/api' path bypassed the auth interceptor.
+    const response = await api.post('/documents/save-zip', {
       zipBase64,
       filePath
     });

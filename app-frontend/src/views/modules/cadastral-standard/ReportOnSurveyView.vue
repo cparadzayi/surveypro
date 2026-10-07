@@ -492,6 +492,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import api from '../../../services/api'
 import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow'
 import { useSmartSuggestions } from '../../../composables/useSmartSuggestions'
 import SmartSuggestionDropdown from '../../../components/SmartSuggestionDropdown.vue'
@@ -739,13 +740,18 @@ async function autofillTrigNamesFromControlPoints(): Promise<void> {
   if (!project.controlPointIds || project.controlPointIds.length === 0) return
   if (reportData.value.surveyBasis.trigStationNames?.length) return
 
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3050/api'
   const names: string[] = []
   try {
     for (const id of project.controlPointIds) {
-      const response = await fetch(`${API_BASE}/control-points/${id}`)
-      if (!response.ok) continue
-      const cp = await response.json()
+      // Shared client: the raw fetch() here sent no Authorization header.
+      // A 404/403 skips this point rather than aborting the whole loop.
+      let cp: any
+      try {
+        const response = await api.get(`/control-points/${id}`)
+        cp = response.data
+      } catch {
+        continue
+      }
       if (!cp) continue
       if (cp.monu_num) {
         names.push(cp.monu_name ? `${cp.monu_num} (${displayTrigName(cp.monu_name)})` : cp.monu_num)

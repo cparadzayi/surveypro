@@ -16,20 +16,17 @@
 
 import { computeCapeLoPointsFromGeometry, type CapeLoPoint } from '@/utils/parcelMetadataComputer'
 import { asBaseMapParcel } from '@/utils/surveyParcels'
+import { bankersRound } from './dms'
 
-/** Banker's rounding (round half to even) — Zimbabwe SGO convention. Mirrors
- *  backend `bankersRound` in app-backend/src/utils/zim-geo.js. */
-export function bankersRound(value: number, decimals = 0): number {
-  const factor = Math.pow(10, decimals)
-  const n = value * factor
-  const f = Math.floor(n)
-  const r = n - f
-  if (Math.abs(r - 0.5) < 1e-12) {
-    // exactly half: round to even
-    return (f % 2 === 0 ? f : f + 1) / factor
-  }
-  return Math.round(n) / factor
-}
+/** Banker's rounding (round half to even) — Zimbabwe SGO convention.
+ *
+ *  This was a sixth independent copy of the rule. It happened to match the
+ *  backend (app-backend/src/utils/zim-geo.js), but six copies of a rounding
+ *  rule that decides whether a coordinate on a legal plan reads .13 or .14 is
+ *  one bad edit away from a silent cross-boundary disagreement. Kept as a
+ *  re-export so existing call sites (and the parity test) are unaffected.
+ *  The implementation of record is utils/dms.ts. */
+export { bankersRound }
 
 /** Signed shoelace area for a polygon of {y, x} Cape Lo points (open or closed).
  *  Mirrors backend `shoelaceAreaYX`. */

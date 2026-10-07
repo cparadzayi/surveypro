@@ -4,8 +4,7 @@
  */
 
 import { getProjectDirectoryStructure, type ProjectDirectoryStructure } from '../utils/project-directory'
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3042/api'
+import api from './api'
 
 export interface SaveDocumentOptions {
   workingDirectory: string
@@ -75,34 +74,29 @@ export async function saveDocument(options: SaveDocumentOptions): Promise<SaveDo
     formData.append('filePath', filePath)
     if (overwrite) formData.append('overwrite', 'true')
 
-    const response = await fetch(`${API_BASE}/documents/save`, {
-      method: 'POST',
-      body: formData
-    })
-
-    if (!response.ok) {
-      // The backend uses `message` for classified write errors (e.g. locked file)
-      // and `error` for the 409 EXISTS gate — read both so the real reason isn't
-      // masked, and surface `code` so callers can prompt-and-retry with overwrite.
-      const body = await response.json().catch(() => ({} as Record<string, unknown>))
-      return {
-        success: false,
-        error: (body.message as string) || (body.error as string) || 'Failed to save document',
-        code: body.code as string | undefined,
-      }
-    }
-
-    const result = await response.json()
+    // Shared client so the bearer token is attached; raw fetch() sent no
+    // Authorization header and only worked while /documents/* was open.
+    // Axios sets the multipart boundary itself — do not set Content-Type here.
+    const response = await api.post('/documents/save', formData)
 
     return {
       success: true,
-      filePath: result.filePath
+      filePath: response.data.filePath
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving document:', error)
+    // The backend uses `message` for classified write errors (e.g. locked file)
+    // and `error` for the 409 EXISTS gate — read both so the real reason isn't
+    // masked, and surface `code` so callers can prompt-and-retry with overwrite.
+    const body = error?.response?.data ?? {}
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error:
+        body.message ||
+        body.error ||
+        error?.message ||
+        'Failed to save document',
+      code: body.code,
     }
   }
 }
@@ -112,13 +106,11 @@ export async function saveDocument(options: SaveDocumentOptions): Promise<SaveDo
  */
 export async function getProjectDocuments(workingDirectory: string) {
   try {
-    const response = await fetch(`${API_BASE}/documents/list?workingDirectory=${encodeURIComponent(workingDirectory)}`)
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch documents')
-    }
+    const response = await api.get('/documents/list', {
+      params: { workingDirectory }
+    })
 
-    return await response.json()
+    return response.data
   } catch (error) {
     console.error('Error fetching project documents:', error)
     return { documents: [] }
@@ -133,11 +125,10 @@ export async function getOutputManifest(
   workingDirectory: string
 ): Promise<{ files: { name: string; relDir: string; mtimeMs?: number; pageCount?: number }[] }> {
   try {
-    const response = await fetch(
-      `${API_BASE}/documents/output-manifest?workingDirectory=${encodeURIComponent(workingDirectory)}`
-    )
-    if (!response.ok) throw new Error('Failed to fetch output manifest')
-    const body = await response.json()
+    const response = await api.get('/documents/output-manifest', {
+      params: { workingDirectory }
+    })
+    const body = response.data
     return { files: Array.isArray(body.files) ? body.files : [] }
   } catch (error) {
     console.error('Error fetching output manifest:', error)
@@ -150,17 +141,9 @@ export async function getOutputManifest(
  */
 export async function openDocument(filePath: string) {
   try {
-    const response = await fetch(`${API_BASE}/documents/open`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filePath })
-    })
+    const response = await api.post('/documents/open', { filePath })
 
-    if (!response.ok) {
-      throw new Error('Failed to open document')
-    }
-
-    return { success: true }
+    return { success: true, ...(response.data ?? {}) }
   } catch (error) {
     console.error('Error opening document:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }

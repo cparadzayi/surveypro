@@ -8,6 +8,7 @@
  */
 
 import type { PrecisionManager } from '../types/cadastral';
+import { bankersRound as sharedBankersRound } from './dms';
 
 /**
  * Implementation of banker's rounding (round half to even)
@@ -18,18 +19,7 @@ import type { PrecisionManager } from '../types/cadastral';
  * @returns Rounded number using banker's rounding
  */
 export function bankersRound(value: number, decimals: number = 2): number {
-  const multiplier = Math.pow(10, decimals);
-  const shifted = value * multiplier;
-  const floor = Math.floor(shifted);
-  const remainder = shifted - floor;
-  
-  // If remainder is exactly 0.5, round to the nearest even number
-  if (Math.abs(remainder - 0.5) < Number.EPSILON) {
-    return (floor % 2 === 0 ? floor : floor + 1) / multiplier;
-  }
-  
-  // Otherwise, use standard rounding
-  return Math.round(shifted) / multiplier;
+  return sharedBankersRound(value, decimals);
 }
 
 /**

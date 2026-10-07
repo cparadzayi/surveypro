@@ -609,6 +609,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import api from '../../../services/api'
 import { toDateInputFormat } from '@/utils/dateFormat'
 import DateInputDDMMYYYY from '@/components/DateInputDDMMYYYY.vue'
 import WorkingDirectorySelector from '../../../components/cadastral/WorkingDirectorySelector.vue'
@@ -906,27 +907,16 @@ async function createPendingProject() {
   try {
     console.log('[ProjectSetup] Creating pending project:', pendingNewProject.value.name)
     
-    const response = await fetch('/api/survey-projects', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
-      },
-      body: JSON.stringify({
-        name: pendingNewProject.value.name,
-        surveyor_profile_id: setupData.value.surveyorId,
-        type: setupData.value.surveyType || 'Cadastral',
-        district: setupData.value.district,
-        survey_date: setupData.value.surveyDate
-      })
+    // Shared client: hand-rolled Authorization header + hardcoded '/api' path.
+    const response = await api.post('/survey-projects', {
+      name: pendingNewProject.value.name,
+      surveyor_profile_id: setupData.value.surveyorId,
+      type: setupData.value.surveyType || 'Cadastral',
+      district: setupData.value.district,
+      survey_date: setupData.value.surveyDate
     })
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: 'Failed to create project' }))
-      throw new Error(errorData.message || 'Failed to create project')
-    }
-    
-    const data = await response.json()
+
+    const data = response.data
     console.log('[ProjectSetup] ✅ Project created:', data)
     
     // Remove temporary project from list
@@ -956,15 +946,9 @@ async function loadSurveyors() {
   surveyorsError.value = ''
   
   try {
-    const response = await fetch('/api/surveyors', {
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
-    })
-    
-    if (!response.ok) throw new Error('Failed to load surveyors')
-    
-    const data = await response.json()
+    // Shared client: hand-rolled Authorization header + hardcoded '/api' path.
+    const response = await api.get('/surveyors')
+    const data = response.data
     // Backend returns { ok: true, surveyors: [...] }
     surveyors.value = Array.isArray(data.surveyors) ? data.surveyors : (Array.isArray(data) ? data : [])
     console.log('[ProjectSetup] Loaded surveyors:', surveyors.value.length)
@@ -985,15 +969,9 @@ async function loadSurveyors() {
 
 async function loadProjects() {
   try {
-    const response = await fetch('/api/survey-projects', {
-      headers: {
-        'Authorization': `Bearer ${authStore.token}`
-      }
-    })
-    
-    if (!response.ok) throw new Error('Failed to load projects')
-    
-    const data = await response.json()
+    // Shared client: hand-rolled Authorization header + hardcoded '/api' path.
+    const response = await api.get('/survey-projects')
+    const data = response.data
     // Backend returns { ok: true, projects: [...] }
     projects.value = Array.isArray(data.projects) ? data.projects : (Array.isArray(data) ? data : [])
     console.log('[ProjectSetup] Loaded projects:', projects.value.length)

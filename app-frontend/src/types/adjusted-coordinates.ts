@@ -5,6 +5,13 @@
  * Calculations Part 1 (duplicate analysis, GPS adjustments, etc.)
  */
 
+// This module used to implement its own banker's rounding. It tested the tie
+// *after* Math.round had already discarded the remainder, so the branch could
+// never fire, and it hardcoded factor = 100 while deriving the tie digit as
+// `rounded % 10`. Both are gone: the shared rule (utils/dms.ts) is one of the
+// two frontend copies that actually agrees with app-backend/src/utils/zim-geo.js.
+import { bankersRound as sharedBankersRound } from '../utils/dms';
+
 /**
  * Adjusted coordinate for a single point
  * This is the output from Calculations Part 1
@@ -132,16 +139,7 @@ export function formatCoordinate(value: number, precision: CoordinatePrecision):
  * Apply banker's rounding to 2 decimal places for Coordinate List
  */
 export function bankersRound(value: number): number {
-  const factor = 100 // For 2 decimal places
-  const rounded = Math.round(value * factor)
-  const decimal = rounded % 10
-  
-  // Banker's rounding: round to nearest even number when exactly .5
-  if (Math.abs(value * factor - rounded) === 0.5) {
-    return decimal % 2 === 0 ? rounded / factor : (rounded - 1) / factor
-  }
-  
-  return rounded / factor
+  return sharedBankersRound(value, 2);
 }
 
 /**

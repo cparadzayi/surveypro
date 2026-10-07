@@ -1,4 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
+import api from '../api'
 import { saveWorkflowProduct, type WorkflowProduct } from '../workflowProductStorage'
 import * as documentStorage from '../documentStorage'
 
@@ -10,13 +11,20 @@ vi.mock('../documentStorage', async () => {
   }
 })
 
-const resp = (body: any = {}) => ({ ok: true, status: 200, json: async () => body }) as any
+// CSV/xlsx products post through the shared axios client (not global fetch) so
+// the bearer token is attached. See saveWithOverwritePrompt.test.ts.
+vi.mock('../api', () => ({
+  default: { post: vi.fn() },
+  API_BASE: '/api',
+}))
+
+const post = vi.mocked(api.post)
 
 const workingDirectory = 'C:/Users/User/Documents/SurveyPro/Surveyors/Tester/test-project'
 
 beforeEach(() => {
-  vi.restoreAllMocks()
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(resp({ filePath: '/abs/out.pdf' })))
+  vi.clearAllMocks()
+  post.mockResolvedValue({ status: 200, data: { filePath: '/abs/out.pdf' } } as any)
 })
 
 describe('saveWorkflowProduct', () => {
@@ -33,8 +41,7 @@ describe('saveWorkflowProduct', () => {
     const product: WorkflowProduct = { type: 'csv', category: 'raw-data', fileName: 'import.csv', data: 'a,b,c' }
     const r = await saveWorkflowProduct(workingDirectory, product)
     expect(r.success).toBe(true)
-    const fetchMock = vi.mocked(fetch)
-    const body = fetchMock.mock.calls[0][1].body as FormData
+    const body = post.mock.calls[0][1] as FormData
     expect(body.get('overwrite')).toBe('true')
   })
 
@@ -42,8 +49,7 @@ describe('saveWorkflowProduct', () => {
     const product: WorkflowProduct = { type: 'xlsx', category: 'general-plan', fileName: 'report.xlsx', data: new Blob(['x']) }
     const r = await saveWorkflowProduct(workingDirectory, product)
     expect(r.success).toBe(true)
-    const fetchMock = vi.mocked(fetch)
-    const body = fetchMock.mock.calls[0][1].body as FormData
+    const body = post.mock.calls[0][1] as FormData
     expect(body.get('overwrite')).toBe('true')
   })
 })

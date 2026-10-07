@@ -14,8 +14,7 @@
 import { toISODate } from '../utils/surveyDate'
 import { saveDocument } from './documentStorage'
 import { makeAbsolutePath, getProjectDirectoryStructure } from '../utils/project-directory'
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3042/api'
+import api from './api'
 
 export interface WorkflowProduct {
   type: 'csv' | 'pdf' | 'xlsx'
@@ -60,13 +59,8 @@ export async function saveWorkflowProduct(
       formData.append('file', product.data as Blob, product.fileName)
       formData.append('filePath', filePath)
       formData.append('overwrite', 'true')
-      const response = await fetch(`${API_BASE}/documents/save`, { method: 'POST', body: formData })
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.message || 'Failed to save xlsx file')
-      }
-      const result = await response.json()
-      return { success: true, filePath: result.filePath }
+      const response = await api.post('/documents/save', formData)
+      return { success: true, filePath: response.data.filePath }
     }
 
     // For PDF files, use existing document storage service
@@ -130,27 +124,17 @@ async function saveCsvFile(
     formData.append('filePath', filePath)
     formData.append('overwrite', 'true')
 
-    const response = await fetch(`${API_BASE}/documents/save`, {
-      method: 'POST',
-      body: formData
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || 'Failed to save CSV file')
-    }
-
-    const result = await response.json()
+    const response = await api.post('/documents/save', formData)
 
     return {
       success: true,
-      filePath: result.filePath
+      filePath: response.data.filePath
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving CSV file:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error?.response?.data?.message || error?.response?.data?.error || error?.message || 'Unknown error'
     }
   }
 }
@@ -367,12 +351,28 @@ export interface SavePlanFileResult {
   error?: string
 }
 
-function postSave(filePath: string, fileName: string, blob: Blob, overwrite: boolean): Promise<Response> {
+/**
+ * POST one file to /documents/save via the shared client so the bearer token
+ * is attached. Resolves with a plain Response-like shape so the 409 EXISTS
+ * overwrite handshake below keeps working unchanged.
+ */
+async function postSave(
+  filePath: string,
+  fileName: string,
+  blob: Blob,
+  overwrite: boolean
+): Promise<{ ok: boolean; status: number; json: () => Promise<any> }> {
   const formData = new FormData()
   formData.append('file', blob, fileName)
   formData.append('filePath', filePath)
   formData.append('overwrite', overwrite ? 'true' : 'false')
-  return fetch(`${API_BASE}/documents/save`, { method: 'POST', body: formData })
+  try {
+    const res = await api.post('/documents/save', formData)
+    return { ok: true, status: res.status, json: async () => res.data }
+  } catch (e: any) {
+    const status = e?.response?.status ?? 0
+    return { ok: false, status, json: async () => e?.response?.data ?? {} }
+  }
 }
 
 /**

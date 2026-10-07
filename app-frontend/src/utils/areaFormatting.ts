@@ -7,6 +7,13 @@
  * - Areas ≥ 10,000 m²: Display in hectares with 4 decimal places (banker's rounding)
  */
 
+// Re-exported from utils/dms, which is one of only two frontend copies that
+// actually matches the backend (app-backend/src/utils/zim-geo.js). The copy
+// that used to live here guarded the tie branch with `Math.abs(fraction - 0.5)
+// < Number.EPSILON` (~2.2e-16), which is unreachable for any double — so every
+// tie fell through to Math.round and disagreed with the persisted coordinates.
+import { bankersRound as sharedBankersRound } from './dms';
+
 /**
  * Banker's Rounding (Round Half to Even)
  * 
@@ -24,18 +31,7 @@
  * @returns Rounded number
  */
 export function bankersRound(value: number, decimals: number): number {
-  const multiplier = Math.pow(10, decimals)
-  const shifted = value * multiplier
-  const floor = Math.floor(shifted)
-  const fraction = shifted - floor
-  
-  // If exactly 0.5, round to nearest even
-  if (Math.abs(fraction - 0.5) < Number.EPSILON) {
-    return (floor % 2 === 0 ? floor : floor + 1) / multiplier
-  }
-  
-  // Otherwise, use standard rounding
-  return Math.round(shifted) / multiplier
+  return sharedBankersRound(value, decimals)
 }
 
 /**

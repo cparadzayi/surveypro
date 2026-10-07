@@ -18,6 +18,7 @@ import type { Parcel } from './useAreaCompliance';
 import { listCoordinatePoints } from '@/services/spatial';
 import { isGenericFallbackName, findBeaconNameBySpatialMatch } from '@/utils/beaconNameMatch';
 import { formatDateDDMMYYYY } from '@/utils/dateFormat';
+import { bankersRound as sharedBankersRound } from '@/utils/dms';
 
 // Cache for coordinate points to avoid repeated API calls
 let cachedCoordinatePoints: any[] | null = null;
@@ -68,19 +69,12 @@ interface TraverseRow {
  * @param decimals - Number of decimal places
  * @returns Rounded number
  */
+// The local copy tested `decimal === 0.5` against the raw remainder, where
+// `decimal` is an IEEE 754 remainder — exact ties essentially never occur, so
+// every value silently fell through to Math.round and disagreed with the
+// backend (zim-geo.js) by a centimetre on ties. Delegates to the shared rule.
 function bankersRound(value: number, decimals: number): number {
-  const multiplier = Math.pow(10, decimals);
-  const shifted = value * multiplier;
-  const floor = Math.floor(shifted);
-  const decimal = shifted - floor;
-  
-  if (decimal === 0.5) {
-    // Exactly at midpoint - round to even
-    return (floor % 2 === 0 ? floor : floor + 1) / multiplier;
-  } else {
-    // Not at midpoint - use standard rounding
-    return Math.round(shifted) / multiplier;
-  }
+  return sharedBankersRound(value, decimals);
 }
 
 /**

@@ -8,19 +8,51 @@ const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   max: 20, // Maximum number of clients
   idleTimeoutMillis: 30000,
-  // Cold start loads ~30 route modules (pdfkit, proj4, turf, …) which can block the
-  // event loop past a tight window, delaying the very first handshake. 2s timed out
-  // the startup probe (below) and process.exit(1) killed the server. 10s is safe.
+  // Per-attempt handshake budget. The startup probe below retries, so this does
+  // not need to cover the whole cold-start module load — just one handshake.
   connectionTimeoutMillis: 10000,
 })
 
-// Test the connection
-pool.query('SELECT NOW()', (err) => {
-  if (err) {
-    console.error('Database connection error:', err.message)
-    process.exit(1)
+// Verify the database is reachable before serving traffic.
+//
+// A single attempt is not enough. Cold start loads ~30 route modules (pdfkit,
+// proj4, turf, …) and this file is imported at the top of server.js, so the
+// probe's first handshake competes with that loading work. On a cold boot the
+// server took 24s to reach "listening", and the probe's connect was still
+// waiting on a connectionTimeoutMillis=10s window when it fired — killing a
+// server whose database was completely healthy. Bumping the timeout only moves
+// the threshold; the loading time is not a fixed constant. Retry instead, so
+// fail-fast is preserved for a genuinely unreachable database while a slow
+// first handshake is given room to land.
+const STARTUP_PROBE_ATTEMPTS = 5
+const STARTUP_PROBE_RETRY_MS = 1000
+
+async function probeDatabase(attempt = 1) {
+  try {
+    const client = await pool.connect()
+    try {
+      await client.query('SELECT NOW()')
+    } finally {
+      client.release()
+    }
+    console.log(`Database connection established (attempt ${attempt})`)
+  } catch (err) {
+    if (attempt >= STARTUP_PROBE_ATTEMPTS) {
+      console.error(
+        `Database connection error after ${STARTUP_PROBE_ATTEMPTS} attempts:`,
+        err.message
+      )
+      process.exit(1)
+      return
+    }
+    console.warn(
+      `Database connection attempt ${attempt}/${STARTUP_PROBE_ATTEMPTS} failed (${err.message}); retrying in ${STARTUP_PROBE_RETRY_MS}ms`
+    )
+    setTimeout(() => probeDatabase(attempt + 1), STARTUP_PROBE_RETRY_MS)
   }
-})
+}
+
+probeDatabase()
 
 // Helper function to generate schema name from email/username
 function generateSchemaName(identifier) {
@@ -41,16 +73,36 @@ function getSurveyorPool(schemaName) {
     async query(sql, params) {
       const client = await pool.connect()
       try {
-        // Set search path to surveyor schema + public (for shared data)
-        // Safe to use string interpolation after validation above
-        await client.query(`SET search_path = ${schemaName}, public`)
-        const result = await client.query(sql, params)
-        return result
+        // SET LOCAL is transaction-scoped: Postgres reverts it at COMMIT/ROLLBACK,
+        // so this connection never carries one tenant's search_path to the next
+        // borrower of the shared pool. A bare SET here leaked the previous
+        // tenant's schema into subsequent pool.query() calls, because every model
+        // uses unqualified table names and each surveyor_* schema has its own.
+        await client.query('BEGIN')
+        try {
+          // Safe to use string interpolation after validation above.
+          await client.query(`SET LOCAL search_path = ${schemaName}, public`)
+          const result = await client.query(sql, params)
+          await client.query('COMMIT')
+          return result
+        } catch (err) {
+          // Never let a rollback failure mask the original error.
+          await client.query('ROLLBACK').catch(() => {})
+          throw err
+        }
       } finally {
         client.release()
       }
     },
-    
+
+    // KNOWN GAP: search_path set here is session-scoped and is NOT reset on
+    // release, because the caller owns release(). The 7 call sites in
+    // utils/beaconNameDoors.js, models/SurveyProject.js, routes/csvImports.js
+    // and routes/historicalSurveyPoints.js must be refactored to bracket their
+    // work in BEGIN/COMMIT with SET LOCAL, as query() above now does.
+    // Do NOT "fix" this by resetting inside a patched release(): the pool can
+    // hand the connection to another borrower before an async reset lands,
+    // which reintroduces the same cross-tenant leak in a harder-to-see form.
     async connect() {
       const client = await pool.connect()
       // Set search path immediately on connect

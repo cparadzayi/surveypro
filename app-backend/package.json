@@ -11,18 +11,19 @@
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "migrate": "node scripts/migrate.js",
+    "migrate:status": "node scripts/migrations-status.js",
     "setup:schemas": "node scripts/setup-surveyor-schemas.js",
     "setup:auto": "node scripts/auto-setup.js",
     "seed:sample": "node scripts/seed-sample-points.mjs",
     "fix:projects": "node scripts/fix-project-linkage.js",
     "fix:charles": "node scripts/fix-charles-projects.js",
-    "convert:wgs84": "psql -h localhost -U postgres -d surveypro_v1 -f scripts/populate-wgs84-all-zones.sql",
-    "convert:wgs84:correct": "psql -h localhost -U postgres -d surveypro_v1 -f scripts/populate-wgs84-cape-datum-correct.sql",
-    "check:projects": "psql -h localhost -U postgres -d surveypro_v1 -f scripts/check-projects.sql",
-    "fix:orphaned": "psql -h localhost -U postgres -d surveypro_v1 -f scripts/fix-orphaned-projects.sql",
-    "check:user": "psql -h localhost -U postgres -d surveypro_v1 -f scripts/check-user-profile.sql",
-    "check:details": "psql -h localhost -U postgres -d surveypro_v1 -f scripts/check-project-details.sql",
-    "check:wgs84": "psql -h localhost -U postgres -d surveypro_v1 -f scripts/check-wgs84-sample.sql"
+    "convert:wgs84": "psql -h localhost -U postgres -d surveypro_app -f scripts/populate-wgs84-all-zones.sql",
+    "convert:wgs84:correct": "psql -h localhost -U postgres -d surveypro_app -f scripts/populate-wgs84-cape-datum-correct.sql",
+    "check:projects": "psql -h localhost -U postgres -d surveypro_app -f scripts/check-projects.sql",
+    "fix:orphaned": "psql -h localhost -U postgres -d surveypro_app -f scripts/fix-orphaned-projects.sql",
+    "check:user": "psql -h localhost -U postgres -d surveypro_app -f scripts/check-user-profile.sql",
+    "check:details": "psql -h localhost -U postgres -d surveypro_app -f scripts/check-project-details.sql",
+    "check:wgs84": "psql -h localhost -U postgres -d surveypro_app -f scripts/check-wgs84-sample.sql"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
@@ -44,5 +45,9 @@
     "@jest/globals": "^30.2.0",
     "jest": "^30.2.0",
     "pdfjs-dist": "^4.10.38"
+  },
+  "allowScripts": {
+    "bcrypt@5.1.1": true,
+    "unrs-resolver@1.11.1": true
   }
 }

@@ -17,8 +17,14 @@ const fastify = Fastify({
 })
 
 // Database connection
+// Fail closed: this file previously fell back to a hardcoded, committed
+// password, so a missing DATABASE_URL silently connected with a leaked secret
+// instead of surfacing the misconfiguration.
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is required (legacy backend is retired; migrate to app-backend)')
+}
 const db = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://postgres:cairo2025@localhost:5432/surveypro'
+  connectionString: process.env.DATABASE_URL
 })
 
 // Add database to fastify instance

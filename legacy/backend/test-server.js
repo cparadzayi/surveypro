@@ -19,8 +19,12 @@ const fastify = Fastify({
 })
 
 // Database connection
+// Was hardcoded to a committed password. Read from the environment instead.
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is required')
+}
 const db = new Pool({
-  connectionString: 'postgres://postgres:cairo2025@localhost:5432/surveypro'
+  connectionString: process.env.DATABASE_URL
 })
 
 console.log('Database pool created')

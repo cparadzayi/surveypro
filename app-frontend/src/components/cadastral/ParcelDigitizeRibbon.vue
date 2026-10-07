@@ -157,7 +157,7 @@ const digitizeGroups = computed(() => {
         id: 'complete-polygon',
         icon: '✅',
         label: 'Complete',
-        title: 'Finish the parcel and compute its area',
+        title: 'Finish the parcel and compute its area (or right-click the map)',
         tone: 'primary',
         disabled: props.selectedCount < 3,
       },
@@ -168,7 +168,7 @@ const digitizeGroups = computed(() => {
         title: 'Abandon the sketch',
         tone: 'danger',
       },
-    ], `${props.selectedCount} point${props.selectedCount === 1 ? '' : 's'} placed — click the start vertex to close`))
+    ], `${props.selectedCount} point${props.selectedCount === 1 ? '' : 's'} placed — ${props.selectedCount < 3 ? `need ${3 - props.selectedCount} more` : 'right-click to close'}`))
   }
 
   if (props.isSplitting) {

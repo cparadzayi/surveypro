@@ -432,7 +432,7 @@
             <p class="text-sm font-medium text-gray-700">No parcels yet</p>
             <p class="text-xs text-gray-500 mt-1">
               Press <strong>✏️ Draw Parcel</strong> in the ribbon, then click the pegs on the map to trace the boundary.
-              Double-click the first point to close it.
+              <strong>Right-click</strong> to close the parcel — or click the first point again.
             </p>
           </div>
         </div>
@@ -3324,6 +3324,23 @@ async function initializeMapOnce() {
       if (isSplitting.value && cutDraft.value.verdict === 'ok') finishSplit();
     });
 
+    // Right-click closes the in-progress sketch — the fast path: no hunting
+    // for the start vertex and no designation dialog (the session's next
+    // designation is taken as-is; with no suggestion yet it falls back to the
+    // prompt). MapLibre fires this only for a PLAIN right-click — a
+    // right-button drag is the rotate/pitch gesture and is suppressed — and
+    // its own drag handlers already preventDefault the browser menu. The
+    // guards mirror the start-vertex close: a vertex edit shares isDrawing
+    // but must not complete (it would build a second parcel from the geometry
+    // being edited), and a coordinate pick owns its clicks.
+    map.on('contextmenu', () => {
+      if (!isDrawing.value || isEditingVertices.value) return;
+      if (pickingCoordinates.value) return;
+      if (selectedPoints.value.length < 3) return;
+      console.log('[MapLibre] 🖱️ Right-click — closing polygon');
+      closePolygonWithSuggestion();
+    });
+
     map.on('mouseenter', 'parcels-fill', () => {
       if (map && !isDrawing.value && !isSplitting.value) map.getCanvas().style.cursor = 'pointer';
     });
@@ -4753,18 +4770,11 @@ function undoLastPoint() {
 }
 
 /**
- * Complete polygon and compute area
+ * Suggested designation for the next parcel: the one last entered THIS
+ * session, bumped past any number already on the plan. Empty until the
+ * first parcel of the session is entered by hand — nothing to bump from.
  */
-async function completePolygon() {
-  if (selectedPoints.value.length < 3) {
-    alert('Minimum 3 points required to create a polygon.');
-    return;
-  }
-  
-  // Prompt for designation, pre-filled with (last-entered + 1). The guess is
-  // based on the designation the surveyor last entered THIS session, skipping
-  // any number already on the plan. It is empty until the first parcel of the
-  // session is entered by hand. The field stays editable.
+function suggestNextDesignation(): string {
   const _existing = parcels.value.map((p: any) => p.designation ?? '').filter(Boolean);
   const _suggestion = lastEnteredDesignation.value
     ? nextDesignation(lastEnteredDesignation.value, _existing)
@@ -4774,15 +4784,52 @@ async function completePolygon() {
     suggestion: _suggestion || '(empty — first parcel of the session)',
     existingCount: _existing.length,
   });
+  return _suggestion;
+}
+
+/**
+ * Complete polygon and compute area — prompts for the designation first.
+ * The start-vertex click and the ribbon's Complete button both land here.
+ */
+async function completePolygon() {
+  if (selectedPoints.value.length < 3) {
+    alert('Minimum 3 points required to create a polygon.');
+    return;
+  }
+  
   const designation = prompt(
     'Enter parcel designation (e.g., LOT 1, STAND 2283):',
-    _suggestion
+    suggestNextDesignation()
   );
   if (!designation || designation.trim() === '') {
     console.log('[MapLibre] Polygon completion cancelled - no designation provided');
     return;
   }
+  await finalizePolygon(designation);
+}
 
+/**
+ * Right-click close: the suggested next designation is taken as-is so the
+ * surveyor never leaves the map or touches a dialog. Falls back to the
+ * prompt when there is no suggestion yet (first parcel of a session — it
+ * has nothing to bump from and must be typed).
+ */
+async function closePolygonWithSuggestion() {
+  const suggestion = suggestNextDesignation();
+  if (!suggestion) {
+    await completePolygon();
+    return;
+  }
+  console.log(`[MapLibre] 🖱️ Right-click close, designation ${suggestion}`);
+  await finalizePolygon(suggestion);
+}
+
+/**
+ * Validate the designation and geometry, then build the parcel: the half of
+ * completion after the prompt (duplicate/overlap guards, create, chain the
+ * next sketch, compute the area). Shared by both close paths.
+ */
+async function finalizePolygon(designation: string) {
   // === Check for duplicate designation (case/whitespace-insensitive) ===
   const _submitted = designation.trim();
   const duplicateParcel = parcels.value.find(p =>
@@ -4795,7 +4842,6 @@ async function completePolygon() {
       `Each parcel must have a unique designation — delete the existing one or choose a different number.`;
     console.warn('[MapLibre] ❌ Duplicate designation rejected', {
       submitted: _submitted,
-      suggested: _suggestion,
       matchedExisting: duplicateParcel.designation,
       totalParcelsInList: parcels.value.length,
     });

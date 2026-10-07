@@ -23,6 +23,7 @@ import { group, type RibbonButton, type RibbonItem, type RibbonTab } from '../ri
 
 const props = withDefaults(defineProps<{
   isDrawing: boolean
+  digitizingLocked: boolean
   isSplitting: boolean
   isEditingVertices: boolean
   editingParcelDesignation: string | null
@@ -71,6 +72,16 @@ const windowControls = (): RibbonItem[] => [
     active: props.dockOpen,
   },
   {
+    id: 'toggle-digitizing-lock',
+    icon: props.digitizingLocked ? '🔒' : '⏸️',
+    label: props.digitizingLocked ? 'Start Digitizing' : 'Stop Digitizing',
+    title: props.digitizingLocked
+      ? 'Unlock parcel drawing — allow digitizing new parcels'
+      : 'Lock parcel drawing — prevent accidental "Draw Parcel" clicks',
+    active: props.digitizingLocked,
+    tone: props.digitizingLocked ? 'warn' : 'default',
+  },
+  {
     id: 'toggle-focus',
     icon: props.focusMode ? '⤢' : '⛶',
     label: props.focusMode ? 'Show Ribbon' : 'Clear Drawing Area',
@@ -90,9 +101,12 @@ const digitizeGroups = computed(() => {
       id: 'start-drawing',
       icon: '✏️',
       label: 'Draw Parcel',
-      title: 'Start drawing a parcel polygon — click pegs on the map',
+      title: props.digitizingLocked
+        ? 'Digitizing is locked — toggle "Start Digitizing" to resume'
+        : 'Start drawing a parcel polygon — click pegs on the map',
       tone: 'success',
       when: !props.isDrawing && !props.isSplitting,
+      disabled: props.digitizingLocked,
     },
     {
       id: 'start-splitting',
@@ -101,6 +115,7 @@ const digitizeGroups = computed(() => {
       title: 'Cut the Outside Figure into sheets along a line through road space',
       tone: 'accent',
       when: !props.isDrawing && !props.isSplitting,
+      disabled: props.digitizingLocked,
     },
     {
       id: 'delete-cut',
@@ -114,8 +129,17 @@ const digitizeGroups = computed(() => {
       id: 'add-beacon',
       icon: '➕',
       label: 'Add Beacon',
-      title: 'Add a new survey beacon (Cape Lo coordinates)',
+      title: 'Add a new survey beacon by typing its Cape Lo coordinates',
       when: !props.isDrawing,
+      disabled: props.digitizingLocked,
+    },
+    {
+      id: 'pick-point',
+      icon: '📍',
+      label: 'Pick Point',
+      title: 'Click a position on the map to capture its Cape Lo coordinates as a new beacon — no typing',
+      when: !props.isDrawing && !props.isSplitting,
+      disabled: props.digitizingLocked,
     },
   ]))
 

@@ -168,16 +168,24 @@
 
       <!-- CSV Import Step (Step 1) -->
       <div v-if="workflowState.currentStep === 'csv-import'">
-        <!-- Welcome screen - Always show when no data imported -->
-        <div v-if="workflowState.importedPoints.length === 0" class="py-12">
+        <!-- Import panel. This used to render only while no data was imported,
+             which hid Reset and the sample CSV the moment a file loaded — the
+             two controls a surveyor needs precisely when re-importing. -->
+        <div class="py-12">
           <div class="max-w-2xl mx-auto">
             <div class="text-center mb-8">
               <div class="text-6xl mb-6">📋</div>
               <h2 class="text-2xl font-bold text-gray-900 mb-4">
-                Import Survey Coordinates
+                {{ workflowState.importedPoints.length > 0 ? 'Coordinates Imported' : 'Import Survey Coordinates' }}
               </h2>
               <p class="text-gray-600">
-                Upload your reduced field notes CSV file to begin the workflow.
+                <template v-if="workflowState.importedPoints.length > 0">
+                  {{ workflowState.importedPoints.length }} points are loaded (Lo {{ selectedLoZone }}).
+                  Import a new file to replace them, or reset the step to start over.
+                </template>
+                <template v-else>
+                  Upload your reduced field notes CSV file to begin the workflow.
+                </template>
               </p>
             </div>
 
@@ -258,6 +266,38 @@
               </div>
             </div>
 
+            <!-- Loaded-data summary: keeps the step informative after an
+                 import, instead of rendering the same welcome text as if
+                 nothing had happened. -->
+            <div
+              v-if="workflowState.importedPoints.length > 0"
+              class="bg-white border border-green-300 rounded-lg p-4 mb-6"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-sm font-semibold text-green-900">Imported coordinates</h4>
+                <button
+                  @click="workflowState.currentStep = 'field-book'"
+                  class="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  View in Field Book →
+                </button>
+              </div>
+              <div class="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div class="text-xl font-bold text-blue-600">{{ workflowState.importedPoints.length }}</div>
+                  <div class="text-xs text-gray-600">Total points</div>
+                </div>
+                <div>
+                  <div class="text-xl font-bold text-green-600">{{ fixedPointsCount }}</div>
+                  <div class="text-xs text-gray-600">Fixed (F)</div>
+                </div>
+                <div>
+                  <div class="text-xl font-bold text-orange-600">{{ pegPointsCount }}</div>
+                  <div class="text-xs text-gray-600">Pegs (P)</div>
+                </div>
+              </div>
+            </div>
+
             <!-- Import Button -->
             <div class="text-center">
               <input
@@ -283,12 +323,17 @@
                 </button>
                 
                 <button
-                  v-if="workflowState.importedPoints.length > 0 && !isNewProject"
                   @click="resetImportStep"
-                  class="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
-                  title="Clear imported data and reset this step"
+                  :disabled="workflowState.importedPoints.length === 0"
+                  :class="workflowState.importedPoints.length > 0
+                    ? 'border-red-300 text-red-700 bg-white hover:bg-red-50'
+                    : 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'"
+                  class="inline-flex items-center px-4 py-2 border text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
+                  :title="workflowState.importedPoints.length > 0
+                    ? 'Clear imported data and reset this step'
+                    : 'Import a CSV file first'"
                 >
-                  🔄 Reset Step
+                  🔄 Reset Import
                 </button>
               </div>
               
@@ -1263,6 +1308,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, provide, toRaw, markRaw, watch } from 'vue';
+import api from '../../../services/api';
 // import CadastralCSVImport from '../../../components/cadastral/CadastralCSVImport.vue';
 import type { CadastralWorkflowState, CadastralPoint } from '../../../types/cadastral';
 import { validateAndParseCSV } from '../../../utils/cadastral-csv';
@@ -1297,7 +1343,6 @@ import { useProjectSelectionStore } from '../../../stores/projectSelection';
 import { saveDocument } from '../../../services/documentStorage';
 import { autoSaveStepProducts, pointsToCSV } from '../../../services/workflowProductStorage';
 import { useAuthStore } from '../../../stores/auth';
-import api from '../../../services/api';
 import { onMounted, nextTick } from 'vue';
 // CSV Import Management
 import { 
@@ -1741,13 +1786,15 @@ async function generateCalculationsPart1() {
     let projectControlPoints: any[] | undefined = undefined;
     if (selectedProject.value?.control_points && selectedProject.value.control_points.length > 0) {
       try {
-        const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3050/api';
         const centralMeridian = workflowState.projectInfo.centralMeridian || 31;
         console.log(`[generateCalculations] Fetching control points for Lo${centralMeridian}`);
-        
-        const response = await fetch(`${API_BASE}/control-points?gauss_lo=${centralMeridian}&limit=5000`);
-        const data = await response.json();
-        
+
+        // Shared client: the raw fetch() here sent no Authorization header.
+        const response = await api.get('/control-points', {
+          params: { gauss_lo: centralMeridian, limit: 5000 }
+        });
+        const data = response.data;
+
         if (data.data && Array.isArray(data.data)) {
           const controlPointIds = selectedProject.value.control_points.map((cp: any) => cp.id);
           projectControlPoints = data.data.filter((cp: any) => controlPointIds.includes(cp.id));
@@ -3779,11 +3826,12 @@ async function generateCoordinateList() {
     let projectControlPoints: any[] = [];
     if (workflowState.projectInfo.projectId && workflowState.projectInfo.controlPointIds?.length) {
       try {
-        const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3050/api';
         console.log(`[CoordinateList] Fetching control points for Lo${centralMeridian}`);
-        const response = await fetch(`${API_BASE}/control-points?gauss_lo=${centralMeridian}&limit=5000`);
-        const data = await response.json();
-        
+        const response = await api.get('/control-points', {
+          params: { gauss_lo: centralMeridian, limit: 5000 }
+        });
+        const data = response.data;
+
         // API returns { data: [...], pagination: {...} }
         if (data.data && Array.isArray(data.data)) {
           projectControlPoints = data.data.filter((cp: any) => workflowState.projectInfo.controlPointIds!.includes(cp.id));

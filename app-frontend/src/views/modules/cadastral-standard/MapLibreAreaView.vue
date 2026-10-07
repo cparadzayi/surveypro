@@ -33,6 +33,7 @@
     <ParcelDigitizeRibbon
       v-if="!focusMode"
       :is-drawing="isDrawing"
+      :digitizing-locked="digitizingLocked"
       :is-splitting="isSplitting"
       :is-editing-vertices="isEditingVertices"
       :editing-parcel-designation="editingParcelDesignation"
@@ -202,6 +203,26 @@
         <span v-if="selectedPoints.length < 3" class="text-yellow-300 text-xs">min 3 pts</span>
       </div>
 
+      <!-- Coordinate capture bar: what the next click on the map would record -->
+      <div
+        v-if="pickingCoordinates"
+        class="absolute bottom-0 flex items-center gap-3 px-3 py-1.5 z-30 text-xs bg-teal-700/90"
+        :class="[
+          focusMode || dockOpen ? 'left-3' : 'left-0',
+          focusMode ? 'right-3 rounded-t-md' : 'right-0'
+        ]"
+      >
+        <span class="font-semibold text-white whitespace-nowrap">📍 Pick a coordinate</span>
+        <span class="text-white/70">·</span>
+        <span class="text-white/90">
+          Click the position — Y/X are captured from it ·
+          snaps to a beacon within {{ PICK_SNAP_RADIUS_PX }}px ·
+          <kbd class="bg-white/20 px-1 rounded">ESC</kbd> cancels
+        </span>
+        <span class="flex-1"></span>
+        <span class="font-mono text-teal-100 whitespace-nowrap">{{ pickReadout || '…' }}</span>
+      </div>
+
       <!-- Drag hover chip: what releasing here will do. Nothing is written until mouseup. -->
       <div
         v-if="draggingVertexIndex !== null && dragChipPx"
@@ -277,9 +298,9 @@
                     </span>
                     <button
                       @click="startEditingVertices(designation)"
-                      :disabled="isDrawing || isEditingVertices"
+                      :disabled="isEditingVertices || isSplitting"
                       class="text-orange-600 hover:text-orange-800 hover:bg-orange-100 rounded p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      title="Edit vertices (add/remove beacons)"
+                      :title="isEditingVertices ? 'Finish or cancel the current vertex edit first' : 'Edit vertices (add/remove beacons)'"
                     >
                       🔺
                     </button>
@@ -370,9 +391,9 @@
                     <span v-else class="text-xs text-gray-500">…</span>
                     <button
                       @click="startEditingVertices(parcel.designation)"
-                      :disabled="isDrawing || isEditingVertices"
+                      :disabled="isEditingVertices || isSplitting"
                       class="text-orange-600 hover:text-orange-800 hover:bg-orange-100 rounded p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      title="Edit vertices (add/remove beacons)"
+                      :title="isEditingVertices ? 'Finish or cancel the current vertex edit first' : 'Edit vertices (add/remove beacons)'"
                     >
                       🔺
                     </button>
@@ -651,6 +672,10 @@
                 />
               </div>
             </div>
+            <p
+              v-if="beaconModal.captured"
+              class="text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-md px-2 py-1"
+            >📍 {{ beaconModal.captured }}</p>
             <div>
               <label class="block text-xs font-medium text-gray-700 mb-1">Description <span class="text-gray-400">(optional)</span></label>
               <input
@@ -665,19 +690,27 @@
             <p v-if="beaconModal.error" class="text-xs text-red-600">{{ beaconModal.error }}</p>
           </div>
           <!-- Actions -->
-          <div class="px-5 pb-5 flex gap-3 justify-end">
+          <div class="px-5 pb-5 flex gap-3 justify-between">
             <button
-              @click="beaconModal = null"
-              class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >Cancel</button>
-            <button
-              @click="confirmBeaconSave"
-              :disabled="beaconModal.saving || !beaconModal.name.trim() || !beaconModal.y || !beaconModal.x"
-              class="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-            >
-              <span v-if="beaconModal.saving" class="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></span>
-              {{ beaconModal.saving ? 'Saving...' : (beaconModal.mode === 'add' ? 'Add Beacon' : 'Save Changes') }}
-            </button>
+              @click="beginCoordinatePick"
+              :disabled="beaconModal.saving"
+              class="px-4 py-2 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 disabled:opacity-50 transition-colors"
+              title="Close this dialog and click the position on the map — Y and X are captured from where you click"
+            >📍 Pick on map</button>
+            <div class="flex gap-3">
+              <button
+                @click="beaconModal = null"
+                class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >Cancel</button>
+              <button
+                @click="confirmBeaconSave"
+                :disabled="beaconModal.saving || !beaconModal.name.trim() || !beaconModal.y || !beaconModal.x"
+                class="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+              >
+                <span v-if="beaconModal.saving" class="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></span>
+                {{ beaconModal.saving ? 'Saving...' : (beaconModal.mode === 'add' ? 'Add Beacon' : 'Save Changes') }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -925,12 +958,14 @@
 import { ref, onMounted, onBeforeUnmount, inject, computed, watch, nextTick } from 'vue';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import axios from 'axios';
+// axios no longer used directly: all calls go through the shared client so the
+// bearer token is attached.
 import { capeLoToWGS84, capeLoArrayToWGS84, calculateWGS84Bounds, geoJsonToCapeLoPoint, type CapeLoPoint } from '../../../utils/coordinateTransform';
 import { wgs84ToCape, type LoZone } from '../../../utils/geodeticTransform';
 import { newDraft, addVertex, undoVertex, clearDraft, type CutDraft } from '../../../utils/cutDrawing';
 import { readCuts, writeCuts, type StoredCut } from '../../../utils/cutStorage';
 import { buildSheetPayloads } from '../../../utils/sheetPayloads';
+import { shoelaceAreaYX } from '../../../utils/registryGeometry';
 import { splitFigure } from '../../../../../app-shared/figureSplit';
 import { areaCompute, type AreaComputeResponse } from '../../../services/compute';
 import { asBaseMapParcel, parcelFromBaseRecord } from '../../../utils/surveyParcels';
@@ -1024,9 +1059,32 @@ function runRibbonAction(id: string) {
   switch (id) {
     // Parcel
     case 'start-drawing': return startDrawing();
+    case 'toggle-digitizing-lock': {
+      const wasLocked = digitizingLocked.value;
+      digitizingLocked.value = !digitizingLocked.value;
+      // "Stop Digitizing" must actually stop: while an active sketch survives
+      // the lock, the Drawing group (Undo/Complete/Cancel and the "N points
+      // placed" note) keeps rendering unchanged and map clicks keep adding
+      // points — the control looked like it did nothing. Unlocking below
+      // assumes no sketch is running, and startDrawing() refuses while
+      // locked, so a mid-sketch lock was a dead end. A vertex edit also sets
+      // isDrawing but belongs to Modify, not digitizing — leave it open.
+      if (digitizingLocked.value) {
+        if (isSplitting.value) cancelSplit();
+        if (isDrawing.value && !isEditingVertices.value) cancelDrawing();
+        return;
+      }
+      // "Start Digitizing" should drop straight into a new parcel sketch —
+      // no separate "Draw Parcel" click needed each time.
+      if (wasLocked && !isDrawing.value && !isSplitting.value) {
+        startDrawing();
+      }
+      return;
+    }
     case 'start-splitting': return startSplitting();
     case 'delete-cut': return deleteStoredCut();
     case 'add-beacon': return openAddBeaconModal();
+    case 'pick-point': return startPickPoint();
 
     // Drawing
     case 'undo-point': return undoLastPoint();
@@ -1930,7 +1988,7 @@ function handleRenameComplete(renames: Array<{ oldName: string; newName: string 
 // BEACON ADD / EDIT MODAL
 // ============================================================================
 
-const beaconModal = ref<{
+type BeaconModalState = {
   mode: 'add' | 'edit';
   dbId: number | null;       // null when adding a new beacon
   originalName: string;      // name at modal open — survives rename in the form
@@ -1940,7 +1998,11 @@ const beaconModal = ref<{
   description: string;
   error: string;
   saving: boolean;
-} | null>(null);
+  /** Where the Y/X came from — shown under the fields (map click, snap target). */
+  captured?: string;
+};
+
+const beaconModal = ref<BeaconModalState | null>(null);
 
 const beaconModalNameRef = ref<HTMLInputElement | null>(null);
 
@@ -1966,6 +2028,131 @@ function openEditBeaconModal(pt: { id: string | number; y: number; x: number; de
   // If we still don't have a DB id, refresh in the background so the save handler finds it
   if (!resolvedId) refreshDbPointNames().catch(() => {});
   nextTick(() => { beaconModalNameRef.value?.focus(); });
+}
+
+// ── Capture coordinates from a map click ──────────────────────────────────────
+// Typing Y/X stays available; this is the other way in, for points that only
+// exist as a place on the plan: park the dialog, click the position, and the
+// dialog comes back with the coordinates filled in.
+
+/** Clicks within this many pixels prefer a known point's stored coordinates. */
+const PICK_SNAP_RADIUS_PX = 10;
+
+/** The dialog parked on the way to the map, so the click has somewhere to land. */
+const pickDraft = ref<BeaconModalState | null>(null);
+const pickingCoordinates = ref(false);
+/** Live Y/X (or snap target) under the cursor — what the click would record. */
+const pickReadout = ref('');
+
+/**
+ * Cape Lo → WGS84 for every known point, built once per pick. The transform is
+ * the slow part; `map.project` per mousemove is not, so snapping stays cheap.
+ */
+type PickSnapTarget = { id: string; y: number; x: number; lng: number; lat: number };
+
+let pickSnapTargets: PickSnapTarget[] | null = null;
+
+function pickSnapTargetsNow(): PickSnapTarget[] {
+  if (pickSnapTargets) return pickSnapTargets;
+  const zone = splitLoZone();
+  const targets: PickSnapTarget[] = [];
+  for (const p of coordinatePoints.value as any[]) {
+    if (!Number.isFinite(p?.y) || !Number.isFinite(p?.x)) continue;
+    try {
+      const wgs = capeLoToWGS84({ id: String(p.id), y: p.y, x: p.x }, zone);
+      targets.push({ id: String(p.id), y: p.y, x: p.x, lng: wgs.lng, lat: wgs.lat });
+    } catch {
+      // A point whose zone will not invert is simply not snappable.
+    }
+  }
+  pickSnapTargets = targets;
+  return targets;
+}
+
+/** Nearest known point within PICK_SNAP_RADIUS_PX of a screen position, or null. */
+function nearestKnownPoint(pt: { x: number; y: number }) {
+  if (!map) return null;
+  let best: { id: string; y: number; x: number; lng: number; lat: number; dist: number } | null = null;
+  for (const t of pickSnapTargetsNow()) {
+    const sp = map.project([t.lng, t.lat]);
+    const dist = Math.hypot(sp.x - pt.x, sp.y - pt.y);
+    if (dist <= PICK_SNAP_RADIUS_PX && (!best || dist < best.dist)) {
+      best = { ...t, dist };
+    }
+  }
+  return best;
+}
+
+/** Ribbon entry: straight to the map, with a blank add-draft waiting behind it. */
+function startPickPoint() {
+  beaconModal.value = { mode: 'add', dbId: null, originalName: '', name: '', y: '', x: '', description: '', error: '', saving: false };
+  beginCoordinatePick();
+}
+
+/** Park the dialog and hand the map over: the next click supplies Y and X. */
+function beginCoordinatePick() {
+  const modal = beaconModal.value;
+  if (!modal || modal.saving) return;
+  if (isSplitting.value) return; // the split owns every click — refuse rather than fight it
+  pickDraft.value = { ...modal };
+  beaconModal.value = null;
+  pickingCoordinates.value = true;
+  pickReadout.value = '';
+  pickSnapTargets = null; // points may have been added since the last pick
+  if (map) map.getCanvas().style.cursor = 'crosshair';
+  console.log('[BeaconPick] 📍 Click the map to capture coordinates');
+}
+
+/** Escape / abort: give the parked draft back exactly as it was. */
+function cancelCoordinatePick() {
+  if (!pickingCoordinates.value) return;
+  pickingCoordinates.value = false;
+  pickReadout.value = '';
+  if (map) map.getCanvas().style.cursor = '';
+  const draft = pickDraft.value;
+  pickDraft.value = null;
+  if (draft) {
+    beaconModal.value = draft;
+    nextTick(() => { beaconModalNameRef.value?.focus(); });
+  }
+  console.log('[BeaconPick] ❌ Coordinate pick cancelled');
+}
+
+/**
+ * A click lands here: snapped to a known point when one is under the cursor,
+ * otherwise the clicked position converted to Cape Lo at millimetre precision.
+ */
+function capturePickedCoordinate(e: { point: { x: number; y: number }; lngLat: { lng: number; lat: number } }) {
+  if (!pickingCoordinates.value) return;
+  const draft = pickDraft.value;
+  pickDraft.value = null;
+  pickReadout.value = '';
+  if (map) map.getCanvas().style.cursor = '';
+  // Cleared on nextTick rather than now: this dispatch still has the trig- and
+  // peg-layer click handlers to run (registered after the generic handler), and
+  // they test this flag to stay out of the way of the capture.
+  nextTick(() => { pickingCoordinates.value = false; });
+
+  const snap = nearestKnownPoint(e.point);
+  let y: number;
+  let x: number;
+  let captured: string;
+  if (snap) {
+    y = snap.y;
+    x = snap.x;
+    captured = `Map click — snapped to ${snap.id}`;
+  } else {
+    const cape = wgs84ToCape(e.lngLat.lng, e.lngLat.lat, splitLoZone(), 'M');
+    y = Math.round(cape.y * 1000) / 1000;
+    x = Math.round(cape.x * 1000) / 1000;
+    captured = 'Map click';
+  }
+
+  if (draft) {
+    beaconModal.value = { ...draft, y: String(y), x: String(x), error: '', captured };
+    nextTick(() => { beaconModalNameRef.value?.focus(); });
+  }
+  console.log(`[BeaconPick] 📍 Captured Y=${y} X=${x}${snap ? ` (snapped to ${snap.id})` : ''}`);
 }
 
 async function confirmBeaconSave() {
@@ -2147,6 +2334,13 @@ const { generateAreaConsistencyPDF } = useAreaConsistencyPDF();
 
 // Drawing state
 const isDrawing = ref(false);
+
+/**
+ * When true, parcel drawing is locked — the "Draw Parcel" button is disabled
+ * and `startDrawing()` refuses to enter drawing mode. Toggle via the ribbon's
+ * "Stop Digitizing" / "Start Digitizing" control.
+ */
+const digitizingLocked = ref(false);
 const selectedPoints = ref<any[]>([]);
 const areaType = ref<AreaType>('urban'); // Default to urban
 const isComputing = ref(false);
@@ -2168,6 +2362,11 @@ let cutVerticesSource: maplibregl.GeoJSONSource | null = null;
 let cutLineSource: maplibregl.GeoJSONSource | null = null;
 let cutRubberSource: maplibregl.GeoJSONSource | null = null;
 let splitSheetLabelsSource: maplibregl.GeoJSONSource | null = null;
+/** The cut's parts, painted as regions: what makes the figure read as divided. */
+let splitPartsSource: maplibregl.GeoJSONSource | null = null;
+
+/** One colour per sheet, so the two parts of a divided figure are tellable apart. */
+const PART_COLORS = ['#4f46e5', '#0d9488'];
 
 /** The figure being split is the Outside Figure parcel, ring in Cape Lo. */
 const splitFigureRing = computed<{ y: number; x: number }[]>(() => {
@@ -2401,12 +2600,14 @@ const fetchControlPoints = async () => {
   }
   
   try {
-    const API_BASE = '/api';
     console.log(`[MapLibre] Fetching control points for Lo${centralMeridian}, IDs:`, controlPointIds);
-    
-    const response = await fetch(`${API_BASE}/control-points?gauss_lo=${centralMeridian}&limit=5000`);
-    const data = await response.json();
-    
+
+    // Shared client: raw fetch() sent no Authorization header.
+    const response = await api.get('/control-points', {
+      params: { gauss_lo: centralMeridian, limit: 5000 }
+    });
+    const data = response.data;
+
     if (data.data && Array.isArray(data.data)) {
       controlPoints.value = data.data.filter((cp: any) => controlPointIds.includes(cp.id));
       console.log(`[MapLibre] ✅ Fetched ${controlPoints.value.length} control points:`, 
@@ -2988,6 +3189,32 @@ async function initializeMapOnce() {
       }
     });
 
+    // The cut's PARTS, painted as regions: this is what makes the figure read
+    // as divided rather than as a whole polygon with a line across it. Derived
+    // from the stored cut on every paint (storedSheets), never stored itself --
+    // the design keeps one digitised figure and computes its parts, see
+    // specs/2026-09-26-multi-sheet-outside-figure-split-design.md "why the
+    // parts are not parcels". Placed above parcels-fill so the parts sit on the
+    // figure's own wash, and below parcels-outline so the boundary stays crisp.
+    map.addSource('split-parts', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+
+    map.addLayer({
+      id: 'split-parts-fill',
+      type: 'fill',
+      source: 'split-parts',
+      paint: {
+        'fill-color': ['get', 'color'],
+        'fill-opacity': 0.3
+      }
+    }, 'parcels-outline');
+
+    splitPartsSource = map.getSource('split-parts') as maplibregl.GeoJSONSource;
+    // The source exists now; a cut restored before map init paints with it.
+    paintStoredCut();
+
     map.addLayer({
       id: 'parcels-labels',
       type: 'symbol',
@@ -3042,9 +3269,21 @@ async function initializeMapOnce() {
 
     parcelsSource = map.getSource('parcels') as maplibregl.GeoJSONSource;
 
+    // The cut stack was added BEFORE the parcels, so the figure's gray wash and
+    // the part colours would otherwise cover the line the surveyor just drew.
+    // Lift it above them, one move each, directly under the selected-parcel
+    // vertex markers -- those must stay topmost because they are dragged. The
+    // order of the moves is what keeps the stack's own order sensible: rubber
+    // band, cut line, its vertices, then the sheet labels on top of them.
+    for (const id of ['cut-rubber-path', 'cut-line-path', 'cut-vertices-circle', 'split-sheet-labels-symbol']) {
+      map.moveLayer(id, 'vertices-circle');
+    }
+
     // Click a parcel to select it for drag-to-snap. The 🔺 buttons are the entry
     // point for the other editor (click-to-insert), which adds and removes vertices.
     map.on('click', 'parcels-fill', (e) => {
+      // A coordinate pick is in progress: this click is Y/X, never a selection.
+      if (pickingCoordinates.value) return;
       // isDrawing covers BOTH flows that own the map: drawing a new parcel and
       // click-to-insert vertex editing, which sets isDrawing to reuse the drawing
       // click handler. Neither may have a parcel selected underneath it.
@@ -3065,6 +3304,12 @@ async function initializeMapOnce() {
     // handler and this one for the same click, so re-query rather than assume order.
     // In split mode the ground click is a cut vertex instead.
     map.on('click', (e) => {
+      // Capture wins over everything: this click is being recorded as Y/X, not
+      // as a selection, a cut vertex, or a beacon action.
+      if (pickingCoordinates.value) {
+        capturePickedCoordinate(e);
+        return;
+      }
       if (isSplitting.value) {
         addCutVertex(e.lngLat);
         return;
@@ -3099,6 +3344,7 @@ async function initializeMapOnce() {
     map.on('mousedown', 'vertices-circle', (e) => {
       // Refuse before preventDefault: while drawing or click-to-insert editing owns
       // the map, a stale marker must never swallow a beacon click.
+      if (pickingCoordinates.value) return;
       if (isDrawing.value) return;
       if (isSplitting.value) return;
       if (!e.features || e.features.length === 0) return;
@@ -3106,6 +3352,19 @@ async function initializeMapOnce() {
       beginVertexDrag(Number(e.features[0].properties?.index));
     });
     map.on('mousemove', (e) => {
+      if (pickingCoordinates.value) {
+        // Live readout of what a click here would record.
+        const snap = nearestKnownPoint(e.point);
+        if (snap) {
+          pickReadout.value = `snap ${snap.id} · Y ${snap.y} · X ${snap.x}`;
+        } else {
+          const cape = wgs84ToCape(e.lngLat.lng, e.lngLat.lat, splitLoZone(), 'M');
+          pickReadout.value =
+            `Y ${(Math.round(cape.y * 1000) / 1000).toFixed(3)} · ` +
+            `X ${(Math.round(cape.x * 1000) / 1000).toFixed(3)}`;
+        }
+        return;
+      }
       if (isSplitting.value) {
         cutCursorLngLat.value = { lng: e.lngLat.lng, lat: e.lngLat.lat };
         paintCutRubber(e.lngLat);
@@ -3117,6 +3376,7 @@ async function initializeMapOnce() {
 
     // Field use is on tablets: the same path, single touch only.
     map.on('touchstart', 'vertices-circle', (e) => {
+      if (pickingCoordinates.value) return;
       if (isDrawing.value) return;
       if (isSplitting.value) return;
       if (!e.features || e.features.length === 0) return;
@@ -3798,6 +4058,7 @@ function addSurveyPoints(wgs84Points: any[]) {
 
   // Add click handler for trig beacons
   map.on('click', 'trig-beacons-symbol', (e) => {
+    if (pickingCoordinates.value) return; // the generic handler captures this click
     if (isSplitting.value) return; // the generic handler takes the vertex
     if (!e.features || e.features.length === 0) return;
     const props = e.features[0].properties;
@@ -3818,6 +4079,7 @@ function addSurveyPoints(wgs84Points: any[]) {
   
   // Add click handler for survey pegs (with drawing mode support)
   map.on('click', 'survey-pegs-circle', (e) => {
+    if (pickingCoordinates.value) return; // the generic handler captures this click
     if (!e.features || e.features.length === 0) return;
     const props = e.features[0].properties;
     
@@ -4039,6 +4301,16 @@ function zoomToPoint(point: any) {
  * Start drawing mode
  */
 function startDrawing() {
+  // Digitizing lock: refuse to enter drawing mode when the user has stopped.
+  if (digitizingLocked.value) {
+    console.log('[MapLibre] ⏸️ Digitizing is locked — toggle "Start Digitizing" to resume');
+    return;
+  }
+  // A click belongs to one mode at a time: hand the parked dialog back first.
+  if (pickingCoordinates.value) cancelCoordinatePick();
+  // A fresh sketch replaces any vertex edit in progress rather than wiping its
+  // points and leaving the edit flags set (a state where clicks go nowhere).
+  if (isEditingVertices.value) cancelVertexEdit();
   // Parcel drawing and split mode never overlap: a click can do only one.
   if (isSplitting.value) cancelSplit();
   // Check if we have coordinate points to digitize
@@ -4076,6 +4348,11 @@ function startDrawing() {
  * Cancel drawing mode
  */
 function cancelDrawing() {
+  // Leaving drawing must also leave vertex editing. The two share `isDrawing`,
+  // so a half-exited edit (isEditingVertices true, isDrawing false) ignores every
+  // beacon click while keeping the 🔺 buttons disabled — the editor looks dead.
+  // cancelVertexEdit clears the edit state and the preview, and is idempotent here.
+  if (isEditingVertices.value) cancelVertexEdit();
   isDrawing.value = false;
   selectedPoints.value = [];
   if (map) map.getCanvas().style.cursor = '';
@@ -4205,25 +4482,58 @@ function paintStoredCut() {
   paintStoredSheetLabels();
 }
 
-/** Each sheet's number over its part, from buildSheetPayloads -- displayed, not re-derived. */
+/** Paint the cut's parts: each part as its own coloured region, with its sheet
+ *  name and area at the part's centroid, from buildSheetPayloads -- displayed,
+ *  never re-derived. Empty whenever there is no stored cut, so a deleted cut
+ *  clears both the regions and the labels. */
 function paintStoredSheetLabels() {
-  if (!splitSheetLabelsSource) return;
   const built = storedSheets.value;
-  if (!built || !built.ok) {
+  const painted = built && built.ok && built.sheets.length > 1 ? built : null;
+
+  if (splitPartsSource) {
+    splitPartsSource.setData({
+      type: 'FeatureCollection',
+      features: painted
+        ? painted.sheets.flatMap((sheet) => {
+            if (sheet.ring.length < 3) return [];
+            const coords = capeLoArrayToWGS84(
+              sheet.ring.map((p, i) => ({ id: String(i), y: p.y, x: p.x })),
+              splitLoZone()
+            ).map((w) => [w.lng, w.lat] as [number, number]);
+            // GeoJSON rings are closed; the parts arrive open from splitFigure.
+            coords.push(coords[0]);
+            return [{
+              type: 'Feature' as const,
+              geometry: { type: 'Polygon' as const, coordinates: [coords] },
+              properties: {
+                color: PART_COLORS[(sheet.sheetNumber - 1) % PART_COLORS.length],
+              },
+            }];
+          })
+        : [],
+    });
+  }
+
+  if (!splitSheetLabelsSource) return;
+  if (!painted) {
     splitSheetLabelsSource.setData({ type: 'FeatureCollection', features: [] });
     return;
   }
-  const features = built.sheets.map((sheet) => {
+  const features = painted.sheets.map((sheet) => {
     const pts = sheet.ring.length ? sheet.ring : [{ y: 0, x: 0 }];
     const centroid = {
       y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
       x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
     };
     const [w] = capeLoArrayToWGS84([{ id: 'centroid', y: centroid.y, x: centroid.x }], splitLoZone());
+    const area = Math.abs(shoelaceAreaYX(sheet.ring));
+    const areaText = area >= 10000
+      ? `${(area / 10000).toFixed(4)} ha`
+      : `${area.toFixed(2)} m²`;
     return {
       type: 'Feature' as const,
       geometry: { type: 'Point' as const, coordinates: [w.lng, w.lat] },
-      properties: { label: `${sheet.sheetNumber}/${sheet.totalSheets}` },
+      properties: { label: `${sheet.figureLabel}\n${sheet.sheetNumber}/${sheet.totalSheets} • ${areaText}` },
     };
   });
   splitSheetLabelsSource.setData({ type: 'FeatureCollection', features });
@@ -4231,6 +4541,7 @@ function paintStoredSheetLabels() {
 
 function clearStoredCutPaint() {
   if (splitSheetLabelsSource) splitSheetLabelsSource.setData({ type: 'FeatureCollection', features: [] });
+  if (splitPartsSource) splitPartsSource.setData({ type: 'FeatureCollection', features: [] });
 }
 
 /** Remove the stored cut: clears the Overlay so the plan renders one sheet again. */
@@ -4243,6 +4554,7 @@ async function deleteStoredCut() {
 }
 
 function startSplitting() {
+  if (pickingCoordinates.value) cancelCoordinatePick();
   if (isDrawing.value) cancelDrawing();
   exitVertexDragMode();
   if (splitFigureRing.value.length < 3) {
@@ -4385,7 +4697,10 @@ function handlePointClick(point: any) {
   if (!isDrawing.value) return;
   
   // Check if starting point clicked again (auto-complete)
-  if (selectedPoints.value.length >= 3 && point.id === selectedPoints.value[0].id) {
+  // Skipped while editing vertices: the first vertex is a normal point there, and
+  // completing would prompt for a NEW designation and build a second parcel from
+  // the geometry being edited.
+  if (!isEditingVertices.value && selectedPoints.value.length >= 3 && point.id === selectedPoints.value[0].id) {
     console.log('[MapLibre] 🎯 Starting point clicked again - auto-completing polygon');
     completePolygon();
     return;
@@ -4571,11 +4886,19 @@ async function completePolygon() {
   isDrawing.value = false;
   selectedPoints.value = [];
   updateTempPolygon([]);
-  
+
   if (map) {
     map.getCanvas().style.cursor = '';
   }
-  
+
+  // Chain digitizing: once the user has "Started Digitizing", completing a
+  // parcel drops straight into the next sketch instead of requiring another
+  // "Draw Parcel" click. Locking (Stop Digitizing) breaks the chain, and so does
+  // an open vertex edit — that mode owns the map, not the next sketch.
+  if (!digitizingLocked.value && !isSplitting.value && !isEditingVertices.value) {
+    startDrawing();
+  }
+
   // Compute area in background
   try {
     isComputing.value = true;
@@ -5091,8 +5414,19 @@ function startEditingVertices(designation: string) {
   }
 
   // Past every guard, so this mode is definitely being entered: hand the map over
-  // from drag-to-snap. Done here rather than at the top so a refused entry (no
-  // parcel, no id, no vertices) leaves an existing selection alone.
+  // from drag-to-snap, and from an in-progress sketch. Done here rather than at the
+  // top so a refused entry (no parcel, no id, no vertices) leaves an existing
+  // selection alone. Without this an open sketch would silently win — the editor
+  // would never load while `isDrawing` stayed true.
+  if (isDrawing.value) {
+    if (
+      selectedPoints.value.length > 0 &&
+      !confirm('A parcel sketch is in progress.\n\nEditing vertices will discard it. Continue?')
+    ) {
+      return;
+    }
+    cancelDrawing();
+  }
   exitVertexDragMode();
 
   // Map to the same shape handlePointClick uses
@@ -7254,8 +7588,8 @@ async function exportAreaConsistencyPDF() {
         console.log('[MapLibre] 📍 Fetching control points...');
         console.log('[MapLibre] - Control Point IDs:', workflowState.projectInfo.controlPointIds);
         
-        const API_BASE = '/api';
-        const response = await axios.get(`${API_BASE}/control-points`, {
+        // Shared client: bare axios bypassed the auth interceptor.
+        const response = await api.get('/control-points', {
           params: { 
             gauss_lo: centralMeridian,  // ⭐ FIX: Use gauss_lo parameter
             limit: 5000  // Fetch all control points for this meridian
@@ -7732,6 +8066,12 @@ async function saveMergedPDFToProject(pdfBytes: Uint8Array, projectName: string)
  * Handle keyboard events
  */
 function handleKeyPress(e: KeyboardEvent) {
+  // Coordinate capture is the topmost mode: the pick was opened from a dialog
+  // and Escape hands that dialog back.
+  if (e.key === 'Escape' && pickingCoordinates.value) {
+    cancelCoordinatePick();
+    return;
+  }
   // Split mode owns the keyboard while active: Undo via Ctrl+Z.
   if (isSplitting.value && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault();
@@ -7748,6 +8088,14 @@ function handleKeyPress(e: KeyboardEvent) {
   }
   if (e.key === 'Escape' && selectedParcelId.value !== null && !isDrawing.value) {
     selectedParcelId.value = null;
+    return;
+  }
+  // Vertex editing owns Escape first: it also sets isDrawing, so falling through
+  // to the drawing branch below would either discard the sketch-to-be or (with
+  // >= 3 pre-loaded points) run completePolygon() and prompt to create a NEW
+  // parcel from the geometry being edited, leaving the edit flags stuck on.
+  if (e.key === 'Escape' && isEditingVertices.value) {
+    cancelVertexEdit();
     return;
   }
   if (e.key === 'Escape' && isDrawing.value) {

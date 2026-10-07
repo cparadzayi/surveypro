@@ -17,6 +17,7 @@
           </option>
         </select>
         <button
+          v-if="authStore.isAdmin"
           type="button"
           @click="showAddModal = true"
           class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"

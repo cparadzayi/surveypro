@@ -1,8 +1,12 @@
 import db from '../config/db.js'
 
 export default async function projectMeridianCacheRoutes(fastify, options) {
+  // Per-project meridian cache: read/write/delete was open, so any caller could
+  // poison or delete another survey's cached coordinate transforms.
+  const auth = { preHandler: [fastify.authenticate] }
+
   // Get cached selections for a project (all meridians)
-  fastify.get('/projects/:projectId/meridian-cache', async (request, reply) => {
+  fastify.get('/projects/:projectId/meridian-cache', auth, async (request, reply) => {
     try {
       const { projectId } = request.params
       
@@ -34,7 +38,7 @@ export default async function projectMeridianCacheRoutes(fastify, options) {
   })
 
   // Save/update cached selections for a specific meridian
-  fastify.post('/projects/:projectId/meridian-cache', async (request, reply) => {
+  fastify.post('/projects/:projectId/meridian-cache', auth, async (request, reply) => {
     try {
       const { projectId } = request.params
       const { meridian, controlPointIds } = request.body
@@ -97,7 +101,7 @@ export default async function projectMeridianCacheRoutes(fastify, options) {
   })
 
   // Clear cache for a specific meridian
-  fastify.delete('/projects/:projectId/meridian-cache/:meridian', async (request, reply) => {
+  fastify.delete('/projects/:projectId/meridian-cache/:meridian', auth, async (request, reply) => {
     try {
       const { projectId, meridian } = request.params
       
@@ -114,7 +118,7 @@ export default async function projectMeridianCacheRoutes(fastify, options) {
   })
 
   // Clear all cached meridians for a project
-  fastify.delete('/projects/:projectId/meridian-cache', async (request, reply) => {
+  fastify.delete('/projects/:projectId/meridian-cache', auth, async (request, reply) => {
     try {
       const { projectId } = request.params
       

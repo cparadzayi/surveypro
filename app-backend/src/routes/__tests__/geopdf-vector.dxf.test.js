@@ -32,7 +32,14 @@ jest.unstable_mockModule('../../utils/dxfGpkg.js', () => ({
   getOGR2OGRCommand: async () => null,
   getGDALVersion: async () => null,
 }))
-jest.unstable_mockModule('../../utils/schemaAuth.js', () => ({ authenticateWithSchema: async (request, reply) => {} }))
+// Both auth hooks are no-ops so the preHandler passes through: this suite tests
+// DXF generation, not authorization. `requireSchema` must be present even though
+// it is unused here -- the route module imports both names, and ESM linking
+// fails hard on a missing named export.
+jest.unstable_mockModule('../../utils/schemaAuth.js', () => ({
+  authenticateWithSchema: async (request, reply) => {},
+  requireSchema: async (request, reply) => {}
+}))
 
 const { default: geopdfVectorRoutes } = await import('../geopdf-vector.js')
 

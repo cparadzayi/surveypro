@@ -72,18 +72,39 @@ export const useProjectSelectionStore = defineStore('projectSelection', () => {
   /**
    * Load project from localStorage (for app initialization)
    */
-  function loadFromLocalStorage() {
+  function loadFromLocalStorage(currentProfileId?: number | null) {
     try {
       const stored = localStorage.getItem('selectedProject')
-      if (stored) {
-        const project = JSON.parse(stored) as Project
-        selectedProject.value = project
-        console.log('[ProjectSelection] ✅ Loaded from localStorage:', project.name)
-        return true
-      } else {
+      if (!stored) {
         console.log('[ProjectSelection] ℹ️ No project in localStorage')
         return false
       }
+
+      const project = JSON.parse(stored) as Project
+
+      // Ownership check. Without this, a second surveyor signing in on the same
+      // browser was silently placed into the previous surveyor's project
+      // (logout() never cleared this key, and the stored object already carries
+      // surveyor_profile_id). A mismatch means the entry is stale, not ours.
+      if (
+        currentProfileId != null &&
+        project.surveyor_profile_id != null &&
+        project.surveyor_profile_id !== currentProfileId
+      ) {
+        console.warn(
+          '[ProjectSelection] discarding selection owned by another profile:',
+          project.surveyor_profile_id,
+          '!=',
+          currentProfileId
+        )
+        localStorage.removeItem('selectedProject')
+        selectedProject.value = null
+        return false
+      }
+
+      selectedProject.value = project
+      console.log('[ProjectSelection] ✅ Loaded from localStorage:', project.name)
+      return true
     } catch (error) {
       console.error('[ProjectSelection] ❌ Failed to load from localStorage:', error)
       return false

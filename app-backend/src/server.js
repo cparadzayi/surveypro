@@ -11,9 +11,28 @@ import pool from './config/db.js'
 // Load environment variables
 config()
 
+// Default to production so the error handler never leaks error.message just
+// because NODE_ENV happened to be unset in the deploy target.
+if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = 'production'
+}
+
 // Create Fastify instance
 const app = Fastify({
-  logger: true,
+  logger: {
+    // Never write credentials to disk. A committed log file previously
+    // contained 31 copies of a signed JWT in an Authorization header.
+    redact: {
+      paths: [
+        'req.headers.authorization',
+        'req.headers.Authorization',
+        'req.headers.cookie',
+        'req.headers["set-cookie"]',
+        'res.headers["set-cookie"]'
+      ],
+      censor: '[redacted]'
+    }
+  },
   trustProxy: true
 })
 
@@ -31,8 +50,20 @@ await app.register(cors, {
   ]
 })
 
+// A missing/weak JWT secret must stop the process, not silently fall back.
+// The old fallback ('your-secret-key') is public knowledge: anyone can mint a
+// token for any user id/email, which turns every authenticated-only route into
+// an unauthenticated one.
+const jwtSecret = process.env.JWT_SECRET
+if (!jwtSecret || jwtSecret.length < 32) {
+  console.error(
+    'FATAL: JWT_SECRET is missing or shorter than 32 characters. Refusing to start.'
+  )
+  process.exit(1)
+}
+
 await app.register(jwt, {
-  secret: process.env.JWT_SECRET || 'your-secret-key'
+  secret: jwtSecret
 })
 
 await app.register(multipart, {
@@ -65,7 +96,46 @@ const routeFiles = await import('fs').then(fs =>
 
 app.log.info(`📂 Found ${routeFiles.length} route files: ${routeFiles.join(', ')}`)
 
+/**
+ * Routes that are deliberately NOT mounted.
+ *
+ * Both of these are structurally incapable of executing, verified against the
+ * live database rather than inferred:
+ *
+ *   parcels.js       selects/inserts 19 columns that exist in NO schema
+ *                    (parcel_number, parcel_name, boundary_points, area_sqm,
+ *                    geometry_geojson, compactness_index, bounding_box, ...), so
+ *                    all 5 routes fail with `column "parcel_number" does not
+ *                    exist`.
+ *   area-parcels.js  all 7 routes query a table literally named `parcels`, which
+ *                    exists in neither `public` nor any surveyor_* schema.
+ *
+ * The files stay on disk. To restore either, drop it from this set.
+ *
+ * Why not leave them mounted: each call cost a Postgres round-trip to return a
+ * 500 whose body is the Postgres error text. That text is itself a small
+ * disclosure -- it named columns and schemas to anyone who could reach the
+ * endpoint. Unmounted, they return a plain 404.
+ *
+ * Note both are still called by the frontend (`stores/parcels.ts` via
+ * `CadastralStandardView.vue`, and `services/areaParcels.ts`), so those callers
+ * now see 404 instead of 500. Both already treat failure as "no data" rather
+ * than crashing.
+ *
+ * The live parcel model is the 27-column per-surveyor `land_parcels` served by
+ * landParcels.js. Rewriting parcels.js against it is a product decision -- it
+ * means declaring that model canonical and rewiring the cadastral view -- so it
+ * is tracked in CLAUDE.md rather than done here.
+ */
+const UNMOUNTED_ROUTES = new Set(['parcels.js', 'area-parcels.js'])
+
 for (const file of routeFiles) {
+  // Checked before the import so a dead module is never even evaluated.
+  if (UNMOUNTED_ROUTES.has(file)) {
+    app.log.warn(`⏭️  Skipping unmounted dead route: ${file}`)
+    continue
+  }
+
   try {
     app.log.info(`📥 Loading route: ${file}`)
     const route = await import(pathToFileURL(join(routesDir, file)).href)

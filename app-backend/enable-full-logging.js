@@ -133,7 +133,18 @@ const routeFiles = await fsPromises.readdir(routesDir)
 
 app.log.info(`📂 Found ${routeFiles.length} route files: ${routeFiles.join(', ')}`)
 
+// Mirrors UNMOUNTED_ROUTES in src/server.js: parcels.js and area-parcels.js are
+// dead (see the long comment there). Kept in sync deliberately -- this script
+// duplicates the registration logic rather than importing it, because it boots
+// its own instrumented instance.
+const UNMOUNTED_ROUTES = new Set(['parcels.js', 'area-parcels.js'])
+
 for (const file of routeFiles) {
+  if (UNMOUNTED_ROUTES.has(file)) {
+    app.log.warn(`⏭️  Skipping unmounted dead route: ${file}`)
+    continue
+  }
+
   try {
     app.log.info(`📥 Loading route: ${file}`)
     const route = await import(pathToFileURL(join(routesDir, file)).href)

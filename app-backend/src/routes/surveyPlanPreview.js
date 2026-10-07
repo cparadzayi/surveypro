@@ -9,7 +9,7 @@ import { buildTopology } from '../utils/topologyBuilder.js'
 import { placeLabels } from '../utils/labelPlacer.js'
 import { formatArea } from '../utils/formatters.js'
 import { calculateBeaconSymbolSize, calculateBeaconLabelSize } from '../utils/beaconSymbolStandards.js'
-import { authenticateWithSchema } from '../utils/schemaAuth.js'
+import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
 import { SI727_PRESCRIBED_SCALES } from '../utils/si727Constants.js'
 import { resolvePlanSheeting } from '../../../app-shared/planSheeting.js'
 import { splitBeaconName, labelParts } from '../../../app-shared/beaconName.js'
@@ -24,7 +24,7 @@ export default async function surveyPlanPreviewRoutes(fastify, options) {
    * Get complete preview data for survey plan
    */
   fastify.get('/preview/:projectId', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     const { projectId } = request.params
     const { scale, sheetSize, areaType, planType } = request.query

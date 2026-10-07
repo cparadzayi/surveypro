@@ -8,7 +8,23 @@
 
 import pool from '../config/db.js';
 
+// Columns a client is allowed to set on zim_control_points. The UPDATE builder
+// interpolates column names into SQL (bind params only cover values), so the set
+// of legal names must be fixed here. Deriving it from Object.keys(request.body)
+// let a body key like "monu_num = $1 WHERE 1=1 --" reach the SET clause.
+// Keep in sync with the body schema on PUT /:id below.
+const UPDATABLE_COLUMNS = Object.freeze([
+  'monu_num', 'monu_name', 'type', 'comp_sheet', 'topo',
+  'gauss_lo', 'y_gauss', 'x_gauss', 'msl_hgt', 'ped_hgt', 'pill_hgt',
+  'top_signal', 'bot_signal', 'last_insp', 'deg_sqr', 'remark', 'area_nm'
+]);
+
 const controlPointsRoutes = async (fastify, options) => {
+  // The national control-point network is reference data, but it was readable
+  // and writable by anyone, and every consumer in the frontend already goes
+  // through the shared api client, so gating costs nothing.
+  const auth = { preHandler: [fastify.authenticate] }
+
 
   // Debug middleware to log all requests
   fastify.addHook('onRequest', async (request, reply) => {
@@ -28,6 +44,7 @@ const controlPointsRoutes = async (fastify, options) => {
    * Get all control points with optional filtering and pagination
    */
   fastify.get('/', {
+    preHandler: [fastify.authenticate],
     schema: {
       querystring: {
         type: 'object',
@@ -132,6 +149,7 @@ const controlPointsRoutes = async (fastify, options) => {
    * MOVED BEFORE /:id to prevent route matching issues
    */
   fastify.get('/nearby', {
+    preHandler: [fastify.authenticate],
     schema: {
       querystring: {
         type: 'object',
@@ -179,7 +197,7 @@ const controlPointsRoutes = async (fastify, options) => {
    * Get statistics about control points
    * MOVED BEFORE /:id to prevent route matching issues
    */
-  fastify.get('/stats', async (request, reply) => {
+  fastify.get('/stats', auth, async (request, reply) => {
     try {
       const result = await pool.query(`
         SELECT 
@@ -209,6 +227,7 @@ const controlPointsRoutes = async (fastify, options) => {
    * MUST BE AFTER /nearby and /stats to avoid matching those routes
    */
   fastify.get('/:id', {
+    preHandler: [fastify.authenticate],
     schema: {
       params: {
         type: 'object',
@@ -248,6 +267,7 @@ const controlPointsRoutes = async (fastify, options) => {
    * Get a control point by monument number
    */
   fastify.get('/monument/:monu_num', {
+    preHandler: [fastify.authenticate],
     schema: {
       params: {
         type: 'object',
@@ -365,6 +385,7 @@ const controlPointsRoutes = async (fastify, options) => {
       },
       body: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           monu_num: { type: 'string', maxLength: 20 },
           monu_name: { type: 'string', maxLength: 100 },
@@ -390,14 +411,26 @@ const controlPointsRoutes = async (fastify, options) => {
     try {
       const { id } = request.params;
       const userId = request.user.id;
-      const updates = request.body;
+      const updates = request.body || {};
+
+      // Reject anything outside the allowlist rather than silently dropping it,
+      // so a caller sending a bad field finds out instead of losing data.
+      const unknownKeys = Object.keys(updates).filter(k => !UPDATABLE_COLUMNS.includes(k));
+      if (unknownKeys.length > 0) {
+        return reply.status(400).send({
+          error: 'Unknown or non-updatable field(s)',
+          fields: unknownKeys
+        });
+      }
 
       // Build dynamic UPDATE query
       const fields = [];
       const values = [];
       let paramIndex = 1;
 
-      Object.keys(updates).forEach(key => {
+      UPDATABLE_COLUMNS.forEach(key => {
+        if (!Object.prototype.hasOwnProperty.call(updates, key)) return;
+        // `key` is from the frozen allowlist above, never from user input.
         fields.push(`${key} = $${paramIndex++}`);
         values.push(updates[key]);
       });

@@ -7,13 +7,19 @@
 import crypto from 'crypto';
 
 export default async function historicalSurveyPointsRoutes(fastify, options) {
+  // Unauthenticated read of historical survey geometry, plus import and
+  // delete. All queries go through the global pool rather than a
+  // tenant-scoped schema, so a token requirement is the only thing standing
+  // between an anonymous caller and every surveyor's coordinate history.
+  const auth = { preHandler: [fastify.authenticate] }
+
   const db = fastify.pg;
 
   /**
    * GET /historical-survey-points?project_id=X
    * Get all historical survey points for a project
    */
-  fastify.get('/historical-survey-points', async (request, reply) => {
+  fastify.get('/historical-survey-points', auth, async (request, reply) => {
     const { project_id } = request.query;
 
     if (!project_id) {
@@ -39,7 +45,7 @@ export default async function historicalSurveyPointsRoutes(fastify, options) {
    * GET /historical-survey-points/comparison?project_id=X
    * Get beacon comparison analysis for a project
    */
-  fastify.get('/historical-survey-points/comparison', async (request, reply) => {
+  fastify.get('/historical-survey-points/comparison', auth, async (request, reply) => {
     const { project_id, tolerance_type = 'urban' } = request.query;
 
     if (!project_id) {
@@ -88,7 +94,7 @@ export default async function historicalSurveyPointsRoutes(fastify, options) {
    * Import historical survey points from CSV data
    * Expected CSV format: Point, Y, X, SR_num, Description, Survey_date
    */
-  fastify.post('/historical-survey-points/import', async (request, reply) => {
+  fastify.post('/historical-survey-points/import', auth, async (request, reply) => {
     const {
       project_id,
       points,
@@ -206,7 +212,7 @@ export default async function historicalSurveyPointsRoutes(fastify, options) {
    * Get beacon comparison with least squares analysis of dy/dx residuals
    * Returns matched beacons with residuals and statistical analysis
    */
-  fastify.get('/historical-survey-points/least-squares', async (request, reply) => {
+  fastify.get('/historical-survey-points/least-squares', auth, async (request, reply) => {
     const { project_id, tolerance_type = 'urban' } = request.query;
 
     if (!project_id) {
@@ -413,7 +419,7 @@ export default async function historicalSurveyPointsRoutes(fastify, options) {
    * DELETE /historical-survey-points/:id
    * Delete a single historical survey point
    */
-  fastify.delete('/historical-survey-points/:id', async (request, reply) => {
+  fastify.delete('/historical-survey-points/:id', auth, async (request, reply) => {
     const { id } = request.params;
 
     try {
@@ -437,7 +443,7 @@ export default async function historicalSurveyPointsRoutes(fastify, options) {
    * DELETE /historical-survey-points/project/:project_id
    * Delete all historical survey points for a project
    */
-  fastify.delete('/historical-survey-points/project/:project_id', async (request, reply) => {
+  fastify.delete('/historical-survey-points/project/:project_id', auth, async (request, reply) => {
     const { project_id } = request.params;
 
     try {

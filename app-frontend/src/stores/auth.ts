@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import api from '../services/api';
+import { useProjectSelectionStore } from './projectSelection';
 
 interface Supervisor {
   id: number;
@@ -18,6 +19,9 @@ interface SurveyorProfile {
   address?: string;
   phone?: string;
   institution?: string;
+  /** Authorisation role. Added by migration 094_surveyor_role.do.sql; absent on
+   *  accounts created before it ran, so treat undefined as least privilege. */
+  role?: 'surveyor' | 'admin';
   supervisor?: Supervisor;
 }
 
@@ -69,6 +73,9 @@ export const useAuthStore = defineStore('auth', {
     isInTraining: (state) => state.profile?.profile?.surveyor_type === 'in_training',
     isTechnician: (state) => state.profile?.profile?.surveyor_type === 'technician',
     isStudent: (state) => state.profile?.profile?.surveyor_type === 'student',
+    // May manage surveyor profiles (POST/PUT/DELETE /surveyors). Gates the UI;
+    // the API enforces it independently via requireAdmin().
+    isAdmin: (state) => state.profile?.profile?.role === 'admin',
     requiresSupervision: (state) => ['in_training', 'student'].includes(state.profile?.profile?.surveyor_type || ''),
     
     // Access level getters
@@ -185,6 +192,18 @@ export const useAuthStore = defineStore('auth', {
       localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
     },
     logout() {
+      // Clear the cached project selection too. It used to survive logout, so
+      // the next user of a shared browser was dropped into the previous
+      // surveyor's project (parcels, coordinates and generated plans included).
+      // Also resets the live Pinia selection, not just localStorage — otherwise
+      // this tab keeps rendering the old project until reload.
+      try {
+        localStorage.removeItem('selectedProject')
+      } catch {
+        /* storage unavailable (private mode) - nothing to clear */
+      }
+      useProjectSelectionStore().clearSelection()
+
       this.token = '';
       this.profile = null;
       this.lastActivity = 0;

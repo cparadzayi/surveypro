@@ -6,11 +6,17 @@ import path from 'path'
  * Provides system information for the frontend
  */
 export default async function systemRoutes(fastify, options) {
+  // /system/info discloses the service account's home directory and
+  // /system/resolve-path probes arbitrary paths for existence. Neither is
+  // sensitive enough to need a role check, but both are reconnaissance for an
+  // attacker staging a traversal, so they now require a valid token.
+  const auth = { preHandler: [fastify.authenticate] }
+
   /**
    * GET /system/info
    * Returns system information including home directory
    */
-  fastify.get('/system/info', async (request, reply) => {
+  fastify.get('/system/info', auth, async (request, reply) => {
     try {
       const homeDir = process.env.USERPROFILE || process.env.HOME || os.homedir()
       
@@ -35,7 +41,7 @@ export default async function systemRoutes(fastify, options) {
    * POST /system/resolve-path
    * Resolves a relative path to absolute
    */
-  fastify.post('/system/resolve-path', async (request, reply) => {
+  fastify.post('/system/resolve-path', auth, async (request, reply) => {
     try {
       const { path: relativePath } = request.body
 

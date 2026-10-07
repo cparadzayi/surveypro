@@ -22,8 +22,16 @@ function resolveWorkingDirectory(workingDirectory) {
 }
 
 export default async function documentRoutes(fastify, options) {
+  // Every route in this plugin writes to, lists, or opens files on the server
+  // filesystem, and /documents/save-pdf shells out to LibreOffice. All of that
+  // was reachable without a token, so an anonymous request could write an
+  // arbitrary executable anywhere the service account could reach and then have
+  // it run. Requiring a valid JWT is the minimum bar; per-project ownership of
+  // workingDirectory is a separate gap (still open -- see the route handlers).
+  const auth = { preHandler: [fastify.authenticate] }
+
   // Save document to project folder
-  fastify.post('/documents/save', async (request, reply) => {
+  fastify.post('/documents/save', auth, async (request, reply) => {
     // Declared out here (not inside try) so the catch block can name the file
     // when classifying a write error (e.g. a locked target file).
     let fileBuffer = null
@@ -120,7 +128,7 @@ export default async function documentRoutes(fastify, options) {
   })
 
   // List documents in project folder
-  fastify.get('/documents/list', async (request, reply) => {
+  fastify.get('/documents/list', auth, async (request, reply) => {
     try {
       const { workingDirectory } = request.query
       
@@ -176,7 +184,7 @@ export default async function documentRoutes(fastify, options) {
 
   // Recursive manifest of every file under output/ and input/ (all extensions).
   // Used by the comprehensive-record letter to tick enclosed documents that exist.
-  fastify.get('/documents/output-manifest', async (request, reply) => {
+  fastify.get('/documents/output-manifest', auth, async (request, reply) => {
     try {
       const { workingDirectory } = request.query
       if (!workingDirectory) {
@@ -192,7 +200,7 @@ export default async function documentRoutes(fastify, options) {
   })
 
   // Save PDF from base64 string (for merged PDFs)
-  fastify.post('/documents/save-pdf', async (request, reply) => {
+  fastify.post('/documents/save-pdf', auth, async (request, reply) => {
     try {
       const { pdfBase64, filePath } = request.body
       
@@ -249,7 +257,7 @@ export default async function documentRoutes(fastify, options) {
   })
 
   // Save ZIP archive from base64 string (for batch export)
-  fastify.post('/documents/save-zip', async (request, reply) => {
+  fastify.post('/documents/save-zip', auth, async (request, reply) => {
     try {
       const { zipBase64, filePath } = request.body
       
@@ -306,7 +314,7 @@ export default async function documentRoutes(fastify, options) {
   })
 
   // Open document in system default viewer
-  fastify.post('/documents/open', async (request, reply) => {
+  fastify.post('/documents/open', auth, async (request, reply) => {
     try {
       const { filePath } = request.body
       

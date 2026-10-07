@@ -1,11 +1,11 @@
 import CoordinatePoint from '../models/coordinatePoint.js'
-import { authenticateWithSchema } from '../utils/schemaAuth.js'
+import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
 import { renameByName, applyNameNormalization } from '../utils/beaconNameDoors.js'
 
 export default async function coordinatePointRoutes(app) {
   // List coordinate points by project
   app.get('/coordinate-points', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       querystring: {
         type: 'object',
@@ -17,17 +17,17 @@ export default async function coordinatePointRoutes(app) {
     }
   }, async (request, reply) => {
     const { project_id } = request.query
-    const db = request.db || (await import('../config/db.js')).default
+    const db = request.db
     const points = await CoordinatePoint.findByProject(db, project_id)
     return { ok: true, data: points }
   })
 
   // Get single coordinate point
   app.get('/coordinate-points/:id', {
-    preHandler: [app.authenticate, authenticateWithSchema]
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     const { id } = request.params
-    const db = request.db || (await import('../config/db.js')).default
+    const db = request.db
     const point = await CoordinatePoint.findById(db, id)
     if (!point) return reply.code(404).send({ ok: false, error: 'Point not found' })
     return { ok: true, data: point }
@@ -35,7 +35,7 @@ export default async function coordinatePointRoutes(app) {
 
   // Create coordinate point
   app.post('/coordinate-points', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -55,7 +55,7 @@ export default async function coordinatePointRoutes(app) {
     }
   }, async (request, reply) => {
     const data = request.body
-    const db = request.db || (await import('../config/db.js')).default
+    const db = request.db
     const point = await CoordinatePoint.create(db, {
       projectId: data.project_id,
       name: data.name,
@@ -72,7 +72,7 @@ export default async function coordinatePointRoutes(app) {
 
   // Batch create coordinate points
   app.post('/coordinate-points/batch', {
-    preHandler: [app.authenticate, authenticateWithSchema]
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       console.log('[Batch Insert] 📥 Route handler started');
@@ -94,7 +94,7 @@ export default async function coordinatePointRoutes(app) {
         console.log(`  ${idx + 1}. Name: ${pt.name}, Y: ${pt.y}, X: ${pt.x}`);
       });
       
-      const db = request.db || (await import('../config/db.js')).default
+      const db = request.db
       console.log('[Batch Insert] 🗄️ Calling CoordinatePoint.batchCreate...');
       
       const { created, conflicts } = await CoordinatePoint.batchCreate(db, project_id, points, surveyClass)
@@ -123,7 +123,7 @@ export default async function coordinatePointRoutes(app) {
 
   // Rename coordinate point by project_id + current name (no row ID needed on frontend)
   app.patch('/coordinate-points/rename', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -137,7 +137,7 @@ export default async function coordinatePointRoutes(app) {
     }
   }, async (request, reply) => {
     const { project_id, old_name, new_name } = request.body
-    const db = request.db || (await import('../config/db.js')).default
+    const db = request.db
 
     // new_name is normalised inside renameByName BEFORE the conflict check (decision 14).
     const outcome = await renameByName(db, project_id, old_name, new_name)
@@ -159,7 +159,7 @@ export default async function coordinatePointRoutes(app) {
   // Backfill phase A1 (🔧 Repair Beacon Names): capitalise lowercase beacon suffixes in
   // ONE transaction. The server re-plans from its own rows and refuses a stale plan.
   app.post('/coordinate-points/normalize-names', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -186,7 +186,7 @@ export default async function coordinatePointRoutes(app) {
     }
   }, async (request, reply) => {
     const { project_id, renames } = request.body
-    const db = request.db || (await import('../config/db.js')).default
+    const db = request.db
     const result = await applyNameNormalization(db, project_id, renames)
     if (result.stale) {
       return reply.code(409).send({
@@ -199,7 +199,7 @@ export default async function coordinatePointRoutes(app) {
 
   // Update coordinate point (rename and/or update coordinates)
   app.put('/coordinate-points/:id', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       params: {
         type: 'object',
@@ -224,7 +224,7 @@ export default async function coordinatePointRoutes(app) {
   }, async (request, reply) => {
     const { id } = request.params
     const data = request.body
-    const db = request.db || (await import('../config/db.js')).default
+    const db = request.db
     const point = await CoordinatePoint.update(db, id, {
       name: data.name,
       y: data.y,
@@ -240,17 +240,17 @@ export default async function coordinatePointRoutes(app) {
 
   // Delete coordinate point by numeric id
   app.delete('/coordinate-points/:id', {
-    preHandler: [app.authenticate, authenticateWithSchema]
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     const { id } = request.params
-    const db = request.db || (await import('../config/db.js')).default
+    const db = request.db
     await CoordinatePoint.delete(db, id)
     return { ok: true }
   })
 
   // Delete coordinate point by project_id + name (no numeric id required)
   app.delete('/coordinate-points/by-name', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -263,7 +263,7 @@ export default async function coordinatePointRoutes(app) {
     }
   }, async (request, reply) => {
     const { project_id, name } = request.body
-    const db = request.db || (await import('../config/db.js')).default
+    const db = request.db
     const result = await db.query(
       'DELETE FROM coordinate_points WHERE project_id = $1 AND name = $2 RETURNING id',
       [project_id, name]
@@ -277,12 +277,12 @@ export default async function coordinatePointRoutes(app) {
 
   // Repair geom column for points with null geom using workflow step_data
   app.post('/coordinate-points/repair-geom', {
-    preHandler: [app.authenticate, authenticateWithSchema]
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     const { project_id } = request.body
     if (!project_id) return reply.code(400).send({ ok: false, error: 'project_id required' })
 
-    const db = request.db || (await import('../config/db.js')).default
+    const db = request.db
 
     // Load workflow_state for this project to get coordinates
     const wfResult = await db.query(

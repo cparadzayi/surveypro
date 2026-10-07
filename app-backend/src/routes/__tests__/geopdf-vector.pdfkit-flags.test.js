@@ -35,8 +35,13 @@ jest.unstable_mockModule('../../services/pdfkitGeoPDF.js', () => ({
 jest.unstable_mockModule('../../services/diagramPdf.js', () => ({
   generateDiagramPDF: mockGenerateDiagramPDF
 }))
+// Both auth hooks are no-ops so the preHandler passes through: this suite tests
+// PDF flags, not authorization. `requireSchema` has to be present even though it
+// is unused here -- the route module imports both names, and ESM linking fails
+// hard on a missing named export.
 jest.unstable_mockModule('../../utils/schemaAuth.js', () => ({
-  authenticateWithSchema: async () => {}
+  authenticateWithSchema: async () => {},
+  requireSchema: async () => {}
 }))
 jest.unstable_mockModule('../../utils/area-computation.js', () => ({
   computeAreaConsistency: mockComputeAreaConsistency

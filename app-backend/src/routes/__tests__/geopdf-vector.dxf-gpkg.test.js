@@ -11,7 +11,14 @@ import { generateDXF } from '../../services/dxfGenerator.js'
 // timeout. Jest's default 5s is enough when this file runs alone (~2s for all
 // three) but not inside a full run, where they failed as timeouts while passing
 // in isolation -- a false alarm on every full suite.
-jest.unstable_mockModule('../../utils/schemaAuth.js', () => ({ authenticateWithSchema: async (request, reply) => {} }))
+// Both auth hooks are no-ops so the preHandler passes through: this suite tests
+// GPKG conversion, not authorization. `requireSchema` must be present even
+// though it is unused here -- the route module imports both names, and ESM
+// linking fails hard on a missing named export.
+jest.unstable_mockModule('../../utils/schemaAuth.js', () => ({
+  authenticateWithSchema: async (request, reply) => {},
+  requireSchema: async (request, reply) => {}
+}))
 
 const { default: geopdfVectorRoutes } = await import('../geopdf-vector.js')
 

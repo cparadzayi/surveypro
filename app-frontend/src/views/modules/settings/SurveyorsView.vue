@@ -9,6 +9,7 @@
           </p>
         </div>
         <button
+          v-if="isAdmin"
           @click="showAddModal = true"
           class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
         >
@@ -33,8 +34,11 @@
     <div v-else-if="surveyors.length === 0" class="text-center py-12 bg-gray-50 rounded-lg">
       <div class="text-6xl mb-4">👤</div>
       <h3 class="text-lg font-semibold text-gray-900 mb-2">No Surveyors Yet</h3>
-      <p class="text-gray-600 mb-6">Add your first surveyor to get started</p>
+      <p class="text-gray-600 mb-6">
+        {{ isAdmin ? 'Add your first surveyor to get started' : 'No surveyor profile is linked to your account yet' }}
+      </p>
       <button
+        v-if="isAdmin"
         @click="showAddModal = true"
         class="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
       >
@@ -54,7 +58,7 @@
             <h3 class="text-lg font-semibold text-gray-900">{{ surveyor.name }}</h3>
             <p class="text-sm text-gray-600">License: {{ surveyor.license_number }}</p>
           </div>
-          <div class="flex gap-2">
+          <div v-if="isAdmin" class="flex gap-2">
             <button
               @click="editSurveyor(surveyor)"
               class="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
@@ -212,10 +216,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useSurveyors, type Surveyor } from '../../../composables/useSurveyors'
+import { useAuthStore } from '../../../stores/auth'
 
 const { surveyors, loading, error, fetchSurveyors, createSurveyor, updateSurveyor, deleteSurveyor } = useSurveyors()
+
+const authStore = useAuthStore()
+
+// POST/PUT/DELETE /surveyors are admin-only (see routes/surveyors.js and
+// migration 094_surveyor_role.do.sql). Without this the page offers buttons
+// that always 403. The role comes from GET /auth/me.
+const isAdmin = computed(() => authStore.isAdmin)
 
 const showAddModal = ref(false)
 const editingsurveyor = ref<Surveyor | null>(null)

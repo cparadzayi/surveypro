@@ -1,13 +1,13 @@
 import SurveyProject from '../models/SurveyProject.js'
 import SurveyorProfile from '../models/SurveyorProfile.js'
 import { createProjectDirectories, deleteProjectDirectory } from '../utils/projectDirectories.js'
-import { authenticateWithSchema } from '../utils/schemaAuth.js'
+import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
 import { applyStepReset, canFinalize, canonicalStep } from '../utils/workflowReset.js'
 
 export default async function surveyProjectRoutes(fastify, options) {
   // Get recent survey projects (last 5, sorted by last_used)
   fastify.get('/recent', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       const userId = request.user.sub || request.user.id
@@ -24,7 +24,7 @@ export default async function surveyProjectRoutes(fastify, options) {
         })
       }
       
-      const db = request.db || (await import('../config/db.js')).default
+      const db = request.db
       const projects = await SurveyProject.findRecent(db, profile.id, limit)
       
       fastify.log.info(`[GET /survey-projects/recent] Returning ${projects.length} recent projects`)
@@ -38,7 +38,7 @@ export default async function surveyProjectRoutes(fastify, options) {
 
   // Get all survey projects (filtered by current user if authenticated)
   fastify.get('/', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       const userId = request.user.sub || request.user.id
@@ -54,7 +54,7 @@ export default async function surveyProjectRoutes(fastify, options) {
         })
       }
       
-      const db = request.db || (await import('../config/db.js')).default
+      const db = request.db
       const projects = await SurveyProject.findAll(db, profile.id)
       
       return { ok: true, projects }
@@ -66,7 +66,7 @@ export default async function surveyProjectRoutes(fastify, options) {
 
   // Update project last_used timestamp
   fastify.post('/:id/touch', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       const { id } = request.params
@@ -79,7 +79,7 @@ export default async function surveyProjectRoutes(fastify, options) {
         return reply.code(404).send({ ok: false, error: 'No surveyor profile found' })
       }
       
-      const db = request.db || (await import('../config/db.js')).default
+      const db = request.db
       
       // Verify project exists (ownership is implicit from schema context)
       const project = await SurveyProject.findById(db, id)
@@ -98,11 +98,11 @@ export default async function surveyProjectRoutes(fastify, options) {
 
   // Get survey project by ID
   fastify.get('/:id', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       const { id } = request.params
-      const db = request.db || (await import('../config/db.js')).default
+      const db = request.db
       const project = await SurveyProject.findById(db, id)
       
       if (!project) {
@@ -120,7 +120,7 @@ export default async function surveyProjectRoutes(fastify, options) {
 
   // Create new survey project
   fastify.post('/', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       fastify.log.info(`[POST /survey-projects] Creating project for user: ${request.user?.email}`)
@@ -169,7 +169,7 @@ export default async function surveyProjectRoutes(fastify, options) {
       const centralMeridian = controlPoints?.meridian || null
       const controlPointIds = controlPoints?.points || []
 
-      const db = request.db || (await import('../config/db.js')).default
+      const db = request.db
       // assistedBy/instrumentDescription/instrumentBaseSerial/instrumentRoverSerial
       // are deliberately NOT forwarded here: SurveyProject.create()'s INSERT
       // does not name those columns (migration 089 is unapplied on this
@@ -229,12 +229,12 @@ export default async function surveyProjectRoutes(fastify, options) {
 
   // Update survey project
   fastify.put('/:id', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       const { id } = request.params
       
-      const db = request.db || (await import('../config/db.js')).default
+      const db = request.db
       
       // Verify project exists (ownership is implicit from schema context)
       const existingProject = await SurveyProject.findById(db, id)
@@ -284,13 +284,13 @@ export default async function surveyProjectRoutes(fastify, options) {
 
   // Delete survey project (soft delete or permanent delete)
   fastify.delete('/:id', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       const { id } = request.params
       const { permanent } = request.query // Check if permanent deletion is requested
       
-      const db = request.db || (await import('../config/db.js')).default
+      const db = request.db
       
       // Verify project exists (ownership is implicit from schema context)
       const existingProject = await SurveyProject.findById(db, id)
@@ -349,11 +349,11 @@ export default async function surveyProjectRoutes(fastify, options) {
 
   // Get workflow state for a project
   fastify.get('/:id/workflow', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       const { id } = request.params
-      const db = request.db || (await import('../config/db.js')).default
+      const db = request.db
       const project = await SurveyProject.findById(db, id)
       
       if (!project) {
@@ -383,7 +383,7 @@ export default async function surveyProjectRoutes(fastify, options) {
 
   // Update workflow state for a project
   fastify.patch('/:id/workflow', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       const { id } = request.params
@@ -391,7 +391,7 @@ export default async function surveyProjectRoutes(fastify, options) {
       
       fastify.log.info(`[PATCH /workflow] Updating workflow for project ${id}: step=${step}, action=${action}`)
       
-      const db = request.db || (await import('../config/db.js')).default
+      const db = request.db
       
       // Get existing project
       const project = await SurveyProject.findById(db, id)

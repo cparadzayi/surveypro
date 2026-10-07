@@ -84,6 +84,34 @@ class SurveyorProfile {
   }
 
   /**
+   * Get the profiles a caller is permitted to READ.
+   *
+   * That is their own profile, plus any profile that names them as
+   * `supervisor_id` (their own supervisees). `findAll()` returns every
+   * surveyor's contact details, so routes must not use it directly.
+   *
+   * `surveyor_profiles` has no admin/role column, so a
+   * supervisor_id back-reference is the only privilege signal the schema
+   * offers. Today no profile supervises another, so this resolves to
+   * self-only; it widens by itself if supervision is ever wired up.
+   */
+  static async findVisibleTo(profileId) {
+    const result = await db.query(
+      `SELECT
+        p.*,
+        u.email,
+        supervisor.name as supervisor_name
+      FROM surveyor_profiles p
+      JOIN users u ON u.id = p.user_id
+      LEFT JOIN surveyor_profiles supervisor ON supervisor.id = p.supervisor_id
+      WHERE p.id = $1 OR p.supervisor_id = $1
+      ORDER BY p.name`,
+      [profileId]
+    )
+    return result.rows
+  }
+
+  /**
    * Get surveyors by type
    */
   static async findByType(surveyorType) {

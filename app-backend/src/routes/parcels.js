@@ -4,12 +4,18 @@
  */
 
 export default async function (fastify, opts) {
-  
+  // These were fully open CRUD over every survey's parcel geometry. A token is
+  // now required, which closes anonymous read/write. It does NOT close the
+  // cross-tenant IDOR: :projectId / :id are still taken at face value, so any
+  // authenticated user can still read or mutate another surveyor's parcels.
+  // Ownership enforcement is the next step (see route handlers).
+  const auth = { preHandler: [fastify.authenticate] }
+
   /**
    * GET /api/parcels/:projectId
    * Get all parcels for a specific project
    */
-  fastify.get('/:projectId', async (request, reply) => {
+  fastify.get('/:projectId', auth, async (request, reply) => {
     const { projectId } = request.params;
     
     const result = await fastify.pg.query(
@@ -39,7 +45,7 @@ export default async function (fastify, opts) {
    * POST /api/parcels
    * Create a new parcel (draft status)
    */
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', auth, async (request, reply) => {
     const { 
       project_id, 
       parcel_number, 
@@ -128,7 +134,7 @@ export default async function (fastify, opts) {
    * PUT /api/parcels/:id
    * Update a parcel (add points, calculate area, update geometry)
    */
-  fastify.put('/:id', async (request, reply) => {
+  fastify.put('/:id', auth, async (request, reply) => {
     const { id } = request.params;
     const { 
       boundary_points,
@@ -208,7 +214,7 @@ export default async function (fastify, opts) {
    * DELETE /api/parcels/:id
    * Delete a parcel
    */
-  fastify.delete('/:id', async (request, reply) => {
+  fastify.delete('/:id', auth, async (request, reply) => {
     const { id } = request.params;
     
     const result = await fastify.pg.query(
@@ -235,7 +241,7 @@ export default async function (fastify, opts) {
    * GET /api/parcels/:projectId/check-duplicate/:parcelNumber
    * Check if a parcel number already exists in the project
    */
-  fastify.get('/:projectId/check-duplicate/:parcelNumber', async (request, reply) => {
+  fastify.get('/:projectId/check-duplicate/:parcelNumber', auth, async (request, reply) => {
     const { projectId, parcelNumber } = request.params;
     
     const result = await fastify.pg.query(

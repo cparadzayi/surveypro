@@ -5,12 +5,15 @@
  */
 
 export default async function (fastify, opts) {
+  // Unauthenticated CRUD over computed area parcels for every survey.
+  const auth = { preHandler: [fastify.authenticate] }
+
   
   /**
    * GET /api/area-parcels?project_id=X&status=Y
    * Get all parcels for a specific project with optional status filter
    */
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', auth, async (request, reply) => {
     const { project_id, status } = request.query;
     
     if (!project_id) {
@@ -54,7 +57,7 @@ export default async function (fastify, opts) {
    * POST /api/area-parcels
    * Create a new parcel (auto-save on digitization)
    */
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', auth, async (request, reply) => {
     const { 
       project_id, 
       designation,
@@ -131,7 +134,7 @@ export default async function (fastify, opts) {
    * PUT /api/area-parcels/:id
    * Update a parcel (edit geometry, recalculate area, etc.)
    */
-  fastify.put('/:id', async (request, reply) => {
+  fastify.put('/:id', auth, async (request, reply) => {
     const { id } = request.params;
     const { 
       designation,
@@ -235,7 +238,7 @@ export default async function (fastify, opts) {
    * DELETE /api/area-parcels/:id
    * Delete a parcel
    */
-  fastify.delete('/:id', async (request, reply) => {
+  fastify.delete('/:id', auth, async (request, reply) => {
     const { id } = request.params;
     
     const result = await fastify.pg.query(
@@ -263,7 +266,7 @@ export default async function (fastify, opts) {
    * PATCH /api/area-parcels/finalize
    * Finalize multiple parcels (batch status update)
    */
-  fastify.patch('/finalize', async (request, reply) => {
+  fastify.patch('/finalize', auth, async (request, reply) => {
     const { project_id, parcel_ids } = request.body;
     
     if (!project_id || !parcel_ids || !Array.isArray(parcel_ids)) {
@@ -302,7 +305,7 @@ export default async function (fastify, opts) {
    * GET /api/area-parcels/check-duplicate
    * Check if a designation already exists in the project
    */
-  fastify.get('/check-duplicate', async (request, reply) => {
+  fastify.get('/check-duplicate', auth, async (request, reply) => {
     const { project_id, designation } = request.query;
     
     if (!project_id || !designation) {
@@ -329,7 +332,7 @@ export default async function (fastify, opts) {
    * GET /api/area-parcels/stats
    * Get statistics for parcels in a project
    */
-  fastify.get('/stats', async (request, reply) => {
+  fastify.get('/stats', auth, async (request, reply) => {
     const { project_id } = request.query;
     
     if (!project_id) {

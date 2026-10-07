@@ -7,7 +7,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import LandParcel from '../models/landParcel.js'
 import { computeAreaConsistency } from '../utils/area-computation.js'
-import { authenticateWithSchema } from '../utils/schemaAuth.js'
+import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
 import { prjForDxf } from '../utils/crsDefinitions.js'
 import { dxfToGeoreferencedGpkg, getOGR2OGRCommand, getGDALVersion } from '../utils/dxfGpkg.js'
@@ -109,12 +109,16 @@ function swapYxToXyFeatureCollection(fc) {
  * - metadata: { title, surveyor, date, designation, etc. }
  */
 export default async function vectorGeoPDFRoutes(fastify, options) {
+  // /capabilities reports whether ogr2ogr/GDAL is present on this host, which
+  // is useful fingerprinting. Gated to match the sibling routes in this file.
+  const auth = { preHandler: [fastify.authenticate] }
+
   
   /**
    * Get GeoPDF generation capabilities
    * GET /api/geopdf/capabilities
    */
-  fastify.get('/capabilities', async (request, reply) => {
+  fastify.get('/capabilities', auth, async (request, reply) => {
     try {
       const ogrCmd = await getOGR2OGRCommand()
       
@@ -153,7 +157,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
    * Accepts the same payload as /vector but returns a DXF file
    */
   fastify.post('/dxf', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       fastify.log.info('[DXF] DXF generation started')
@@ -361,7 +365,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
    * POST /api/geopdf/vector
    */
   fastify.post('/vector', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     console.log('========================================')
     console.log('[GeoPDF ROUTE] 🚀 ROUTE HANDLER EXECUTING - VERSION 2026-01-06-18:05')
@@ -417,7 +421,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
       // Query Outside Figure parcel from database if projectId provided
       let outsideFigure = null
       if (projectId) {
-        const dbConnection = request.db || request.surveyorPool || request.server.pg
+        const dbConnection = request.db
         const outsideFigureParcel = await LandParcel.findOutsideFigure(dbConnection, projectId)
         
         if (outsideFigureParcel && outsideFigureParcel.geom) {
@@ -450,7 +454,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
       let coordinatePointsList = []
       if (projectId) {
         try {
-          const dbConnection = request.db || request.surveyorPool || request.server.pg
+          const dbConnection = request.db
           // Geometry is stored in project's native CRS — read directly, no transform needed
           const coordinatePoints = await dbConnection.query(
             `SELECT name, ST_Y(geom) as y, ST_X(geom) as x FROM coordinate_points WHERE project_id = $1`,
@@ -564,7 +568,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
       if (projectId) {
         fastify.log.info('[GeoPDF] 💾 Saving computed edges/closure data to parcel metadata...')
         
-        const dbConnection = request.db || request.surveyorPool || request.server.pg
+        const dbConnection = request.db
         
         for (const parcel of parcelsWithComputedData.features) {
           try {

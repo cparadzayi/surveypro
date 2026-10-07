@@ -86,12 +86,62 @@ export async function attachSchemaIfAvailable(request, reply) {
 
 /**
  * Helper to check if request has schema context
+ *
+ * MUST stay `async`. Fastify 5 (lib/hooks.js) advances a hook chain only when
+ * the hook returns a thenable:
+ *
+ *     const result = iterator(functions[i++], request, reply, next)
+ *     if (result && typeof result.then === 'function') { result.then(...) }
+ *
+ * A synchronous hook that falls off the end returns undefined, so next() is
+ * never called and the request hangs until the client gives up. There is no
+ * error and no server-side timeout -- it just never responds.
+ *
+ * The failure mode is deceptive: this hook's DENY path calls reply.send(),
+ * which finishes the response without needing next(), so every deny-path test
+ * passed while every allow-path request hung. Do not make this sync, and do not
+ * "simplify" it by adding an explicit `return` instead -- that still returns
+ * undefined.
  */
-export function requireSchema(request, reply) {
+export async function requireSchema(request, reply) {
   if (!request.surveyorSchema || !request.db) {
     return reply.code(400).send({ 
       error: 'Schema context required',
       message: 'This operation requires a surveyor profile with schema'
+    })
+  }
+}
+
+/**
+ * Fail closed unless the caller holds the 'admin' role.
+ *
+ * Must run AFTER authenticateWithSchema, which resolves
+ * `request.surveyorProfile` to the caller's full surveyor_profiles row (a
+ * `SELECT p.*`, so it carries `role` from migration 094).
+ *
+ * A caller with no surveyor profile has `surveyorProfile === null` and is
+ * rejected here, rather than falling through to a handler that would then use
+ * the unscoped global pool.
+ *
+ * MUST stay `async` -- see requireSchema above. A sync hook that returns
+ * undefined never advances the chain in Fastify 5 and the request hangs; the
+ * deny paths here only appear to work because reply.send() finishes the
+ * response without needing next().
+ */
+export async function requireAdmin(request, reply) {
+  const role = request.surveyorProfile?.role
+
+  if (!role) {
+    return reply.code(403).send({
+      error: 'No surveyor profile',
+      message: 'This operation requires a completed surveyor profile'
+    })
+  }
+
+  if (role !== 'admin') {
+    return reply.code(403).send({
+      error: 'Forbidden',
+      message: 'This operation requires the admin role'
     })
   }
 }

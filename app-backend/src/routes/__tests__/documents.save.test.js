@@ -14,6 +14,7 @@ import Fastify from 'fastify'
 import multipart from '@fastify/multipart'
 import os from 'os'
 import documentRoutes from '../documents.js'
+import { buildApp, rejectAll } from './helpers/buildApp.js'
 
 function buildMultipart(boundary, { fileName, fileContent, filePath }) {
   const CRLF = '\r\n'
@@ -31,7 +32,7 @@ function buildMultipart(boundary, { fileName, fileContent, filePath }) {
 
 describe('POST /documents/save error handling', () => {
   test('a write failure returns a classified error, not "fileName is not defined"', async () => {
-    const app = Fastify()
+    const app = buildApp(Fastify)
     await app.register(multipart)
     await app.register(documentRoutes)
     await app.ready()
@@ -68,7 +69,7 @@ describe('POST /documents/save error handling', () => {
   test('existing file without overwrite returns 409 EXISTS and does not change it', async () => {
     const fs = await import('fs')
     const path = await import('path')
-    const app = Fastify(); await app.register(multipart); await app.register(documentRoutes); await app.ready()
+    const app = buildApp(Fastify); await app.register(multipart); await app.register(documentRoutes); await app.ready()
 
     const target = path.join(os.tmpdir(), `sp-exists-${Date.now()}.pdf`)
     fs.writeFileSync(target, 'ORIGINAL')
@@ -88,7 +89,7 @@ describe('POST /documents/save error handling', () => {
   test('existing file with overwrite=true replaces it', async () => {
     const fs = await import('fs')
     const path = await import('path')
-    const app = Fastify(); await app.register(multipart); await app.register(documentRoutes); await app.ready()
+    const app = buildApp(Fastify); await app.register(multipart); await app.register(documentRoutes); await app.ready()
 
     const target = path.join(os.tmpdir(), `sp-ovr-${Date.now()}.pdf`)
     fs.writeFileSync(target, 'ORIGINAL')
@@ -108,6 +109,53 @@ describe('POST /documents/save error handling', () => {
     expect(res.json().ok).toBe(true)
     expect(fs.readFileSync(target, 'utf8')).toBe('NEW')
     fs.unlinkSync(target)
+    await app.close()
+  })
+})
+
+describe('POST /documents/* requires authentication', () => {
+  // Every route in documents.js writes to, lists, or opens files on the server
+  // filesystem, and /documents/save-pdf shells out to LibreOffice. All of it was
+  // reachable with no token at all. This is the regression guard for that.
+  const ROUTES = [
+    { method: 'POST', url: '/documents/save' },
+    { method: 'GET', url: '/documents/list?workingDirectory=.' },
+    { method: 'GET', url: '/documents/output-manifest?workingDirectory=.' },
+    { method: 'POST', url: '/documents/save-pdf' },
+    { method: 'POST', url: '/documents/save-zip' },
+    { method: 'POST', url: '/documents/open' },
+  ]
+
+  test.each(ROUTES)('$method $url returns 401 without a token', async (route) => {
+    const app = buildApp(Fastify, { authenticate: rejectAll() })
+    await app.register(multipart)
+    await app.register(documentRoutes)
+    await app.ready()
+
+    const res = await app.inject({ method: route.method, url: route.url, payload: {} })
+
+    expect(res.statusCode).toBe(401)
+    await app.close()
+  })
+
+  test('the guard is a real hook, not a no-op', async () => {
+    // Guards against the failure mode where someone "fixes" a broken test by
+    // dropping `auth` from a route: this asserts the hook is actually invoked.
+    let hookRan = false
+    const app = buildApp(Fastify, {
+      authenticate: async (request, reply) => {
+        hookRan = true
+        reply.code(401).send({ error: 'Unauthorized' })
+      },
+    })
+    await app.register(multipart)
+    await app.register(documentRoutes)
+    await app.ready()
+
+    const res = await app.inject({ method: 'POST', url: '/documents/save', payload: {} })
+
+    expect(hookRan).toBe(true)
+    expect(res.statusCode).toBe(401)
     await app.close()
   })
 })

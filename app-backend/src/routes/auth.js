@@ -182,6 +182,9 @@ export default async function authRoutes(app) {
         phone: profile.phone,
         institution: profile.institution,
         schema_name: profile.schema_name,
+        // Lets the frontend hide admin-only affordances (see
+        // SurveyorsView.vue) rather than offering buttons the API will 403.
+        role: profile.role,
         supervisor: profile.supervisor_id ? {
           id: profile.supervisor_id,
           name: profile.supervisor_name,

@@ -1,11 +1,11 @@
 import LandParcel from '../models/landParcel.js'
-import { authenticateWithSchema } from '../utils/schemaAuth.js'
+import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
 import db from '../config/db.js'
 
 export default async function landParcelRoutes(app) {
   // List land parcels by project (with optional status filter)
   app.get('/land-parcels', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       querystring: {
         type: 'object',
@@ -20,7 +20,7 @@ export default async function landParcelRoutes(app) {
     }
   }, async (request, reply) => {
     const { project_id, status, page = 1, limit = 50 } = request.query
-    const dbConnection = request.db || db
+    const dbConnection = request.db
 
     const result = await LandParcel.findFullByProject(dbConnection, project_id, status, { page, limit })
     return { ok: true, ...result }
@@ -28,10 +28,10 @@ export default async function landParcelRoutes(app) {
 
   // Get single land parcel
   app.get('/land-parcels/:id', {
-    preHandler: [app.authenticate, authenticateWithSchema]
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     const { id } = request.params
-    const dbConnection = request.db || db
+    const dbConnection = request.db
     const parcel = await LandParcel.findById(dbConnection, id)
     if (!parcel) return reply.code(404).send({ ok: false, error: 'Parcel not found' })
     return { ok: true, data: parcel }
@@ -39,7 +39,7 @@ export default async function landParcelRoutes(app) {
 
   // Check for duplicate parcels before creating
   app.post('/land-parcels/check-duplicates', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -54,7 +54,7 @@ export default async function landParcelRoutes(app) {
     }
   }, async (request, reply) => {
     const { project_id, stand, geom, exclude_id } = request.body
-    const dbConnection = request.db || db
+    const dbConnection = request.db
     
     try {
       const result = await LandParcel.checkDuplicates(dbConnection, project_id, stand, geom, exclude_id)
@@ -71,7 +71,7 @@ export default async function landParcelRoutes(app) {
 
   // Create land parcel
   app.post('/land-parcels', {
-    preHandler: [app.authenticate], // Temporarily disabled authenticateWithSchema until schemas are created
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -103,7 +103,7 @@ export default async function landParcelRoutes(app) {
       }
     }
   }, async (request, reply) => {
-    const dbConnection = request.db || db
+    const dbConnection = request.db
     
     try {
       const data = request.body
@@ -182,7 +182,7 @@ export default async function landParcelRoutes(app) {
 
   // Batch create land parcels
   app.post('/land-parcels/batch', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -216,7 +216,7 @@ export default async function landParcelRoutes(app) {
     }
   }, async (request, reply) => {
     const { project_id, parcels } = request.body
-    const dbConnection = request.db || db
+    const dbConnection = request.db
     
     try {
       const created = []
@@ -268,7 +268,7 @@ export default async function landParcelRoutes(app) {
 
   // Update land parcel
   app.put('/land-parcels/:id', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -289,7 +289,7 @@ export default async function landParcelRoutes(app) {
   }, async (request, reply) => {
     const { id } = request.params
     const data = request.body
-    const dbConnection = request.db || db
+    const dbConnection = request.db
     try {
       const parcel = await LandParcel.update(dbConnection, id, {
         stand: data.stand,
@@ -324,17 +324,17 @@ export default async function landParcelRoutes(app) {
 
   // Delete land parcel
   app.delete('/land-parcels/:id', {
-    preHandler: [app.authenticate, authenticateWithSchema]
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     const { id } = request.params
-    const dbConnection = request.db || db
+    const dbConnection = request.db
     await LandParcel.delete(dbConnection, id)
     return { ok: true }
   })
 
   // Update project_id for parcels that don't have it (after QGIS digitization)
   app.post('/land-parcels/update-project', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -346,14 +346,18 @@ export default async function landParcelRoutes(app) {
     }
   }, async (request, reply) => {
     const { project_id } = request.body
-    const dbConnection = request.db || db
+    const dbConnection = request.db
     const result = await LandParcel.updateProjectId(dbConnection, project_id)
     return { ok: true, updated: result.rowCount }
   })
 
   // Export land parcels to PDF
   app.get('/land-parcels/export-pdf', {
-    // preHandler: [app.authenticate], // Temporarily disabled for testing
+    // Auth had been commented out with a "temporarily disabled for testing"
+    // note and never restored, leaving this the only unguarded route in an
+    // otherwise-gated plugin: it renders every parcel in a project to PDF for
+    // an anonymous caller. Restored to match its 12 siblings.
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       querystring: {
         type: 'object',
@@ -372,7 +376,7 @@ export default async function landParcelRoutes(app) {
       const project = { id: project_id, name: 'Project ' + project_id };
       
       // Get parcels with full details (fetch all for PDF — no display pagination needed)
-      const dbConnection = request.db || db
+      const dbConnection = request.db
       const { data: parcels } = await LandParcel.findFullByProject(dbConnection, project_id, null, { page: 1, limit: 10000 });
 
       if (!parcels || parcels.length === 0) {
@@ -403,7 +407,7 @@ export default async function landParcelRoutes(app) {
 
   // Calculate areas for parcels using shoelace method
   app.post('/land-parcels/calculate-areas', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -425,7 +429,7 @@ export default async function landParcelRoutes(app) {
       
       // Get parcels for this project (fetch all — area calculation requires full dataset)
       console.log(`🔍 Fetching parcels for project ${project_id}...`);
-      const dbConnection = request.db || db
+      const dbConnection = request.db
       const { data: parcels } = await LandParcel.findFullByProject(dbConnection, project_id, null, { page: 1, limit: 10000 });
       console.log(`📊 Found ${parcels.length} parcels to process`);
       
@@ -531,7 +535,7 @@ export default async function landParcelRoutes(app) {
 
   // Finalize parcels (batch status update)
   app.patch('/land-parcels/finalize', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -546,7 +550,7 @@ export default async function landParcelRoutes(app) {
     }
   }, async (request, reply) => {
     const { parcel_ids } = request.body
-    const dbConnection = request.db || db
+    const dbConnection = request.db
     
     try {
       const finalized = await LandParcel.batchFinalize(dbConnection, parcel_ids)
@@ -567,7 +571,7 @@ export default async function landParcelRoutes(app) {
 
   // Generate metadata for QGIS-digitized parcels
   app.post('/land-parcels/generate-metadata', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -583,7 +587,7 @@ export default async function landParcelRoutes(app) {
     }
   }, async (request, reply) => {
     const { parcel_ids, project_id } = request.body
-    const dbConnection = request.db || db
+    const dbConnection = request.db
     
     try {
       console.log('[Generate Metadata] Request:', { parcel_ids, project_id })
@@ -664,7 +668,7 @@ export default async function landParcelRoutes(app) {
 
   // Check database schema for land_parcels table
   app.get('/land-parcels/schema', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       querystring: {
         type: 'object',

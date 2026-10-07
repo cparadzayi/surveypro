@@ -4,7 +4,7 @@
  */
 
 import crypto from 'crypto';
-import { authenticateWithSchema } from '../utils/schemaAuth.js';
+import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js';
 import { getCapeLoSRID } from '../utils/capeLoSRID.js';
 import { normalizeMergeNames, BeaconNameCaseError } from '../utils/beaconNameDoors.js';
 import { resolveDuplicateGroups } from '../../../app-shared/si727Tolerances.js';
@@ -17,7 +17,7 @@ export default async function csvImportRoutes(fastify, options) {
    * Get all CSV imports for a project
    */
   fastify.get('/csv-imports', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     const { project_id } = request.query;
 
@@ -25,7 +25,7 @@ export default async function csvImportRoutes(fastify, options) {
       return reply.code(400).send({ error: 'project_id is required' });
     }
 
-    const schemaDb = request.db || db;
+    const schemaDb = request.db;
 
     try {
       const result = await schemaDb.query(
@@ -47,23 +47,23 @@ export default async function csvImportRoutes(fastify, options) {
    * Get details of a specific CSV import
    */
   fastify.get('/csv-imports/:id', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     const { id } = request.params;
-    const schemaDb = request.db || db;
+    const schemaDb = request.db;
 
     try {
       const result = await schemaDb.query(
         `SELECT i.*, 
                 COUNT(DISTINCT p.id) AS parcel_count,
                 COUNT(DISTINCT cp.id) AS point_count,
-                u.username AS imported_by_username
+                u.email AS imported_by_username
          FROM project_csv_imports i
          LEFT JOIN land_parcels p ON p.import_id = i.id
          LEFT JOIN coordinate_points cp ON cp.import_id = i.id
          LEFT JOIN users u ON u.id = i.imported_by
          WHERE i.id = $1
-         GROUP BY i.id, u.username`,
+         GROUP BY i.id, u.email`,
         [id]
       );
 
@@ -83,10 +83,10 @@ export default async function csvImportRoutes(fastify, options) {
    * Get the latest CSV import for a project
    */
   fastify.get('/csv-imports/latest/:project_id', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     const { project_id } = request.params;
-    const schemaDb = request.db || db;
+    const schemaDb = request.db;
 
     try {
       const result = await schemaDb.query(
@@ -113,7 +113,7 @@ export default async function csvImportRoutes(fastify, options) {
    * Create a new CSV import record
    */
   fastify.post('/csv-imports', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     console.log('[CSV Import] 📥 POST /csv-imports endpoint hit');
     console.log('[CSV Import] Request body keys:', Object.keys(request.body || {}));
@@ -146,7 +146,7 @@ export default async function csvImportRoutes(fastify, options) {
       console.log('[CSV Import] ✅ Validation passed, proceeding with import...');
       
       // Use surveyor-specific schema database connection
-      const schemaDb = request.db || db;
+      const schemaDb = request.db;
       
       // Calculate CSV hash
       const csv_hash = crypto
@@ -172,8 +172,13 @@ export default async function csvImportRoutes(fastify, options) {
         return { data: existingResult.rows[0], reused: true };
       }
 
-      // Get user ID from request (set by authenticate middleware)
-      const imported_by = request.user?.id || null;
+      // Get user ID from request (set by authenticate middleware).
+      // The JWT payload is { sub, email } -- there is no `id` claim, so reading
+      // request.user.id silently yielded undefined and every import was
+      // recorded with imported_by = NULL, which in turn made
+      // imported_by_username null on the read path. Match the rest of the
+      // codebase: sub first, id as a fallback.
+      const imported_by = request.user?.sub ?? request.user?.id ?? null;
 
       // Create new import record in surveyor's schema
       const result = await schemaDb.query(
@@ -196,7 +201,7 @@ export default async function csvImportRoutes(fastify, options) {
    * Update CSV import metadata (e.g., mark documents as generated)
    */
   fastify.put('/csv-imports/:id', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     const { id } = request.params;
     const { has_generated_documents, metadata } = request.body;
@@ -222,7 +227,7 @@ export default async function csvImportRoutes(fastify, options) {
 
       values.push(id);
 
-      const schemaDb = request.db || db;
+      const schemaDb = request.db;
       const result = await schemaDb.query(
         `UPDATE project_csv_imports 
          SET ${updates.join(', ')}
@@ -247,7 +252,7 @@ export default async function csvImportRoutes(fastify, options) {
    * Analyze potential merge between existing and new CSV data
    */
   fastify.post('/csv-imports/analyze-merge', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     // Beacon names are normalised at this door (spec decision 14): analyze-merge mints
     // newId from new_points[].id (:311), execute-merge stores newId (:528-535) and
@@ -280,7 +285,7 @@ export default async function csvImportRoutes(fastify, options) {
 
     try {
       console.log('[CSV Import] Starting merge analysis for project:', project_id);
-      const schemaDb = request.db || db;
+      const schemaDb = request.db;
       // Get existing points for the project
       console.log('[CSV Import] Querying existing points...');
       const existingPointsResult = await schemaDb.query(
@@ -469,7 +474,7 @@ export default async function csvImportRoutes(fastify, options) {
    * Execute a smart merge based on analysis results
    */
   fastify.post('/csv-imports/execute-merge', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     // Beacon names are normalised at this door (spec decision 14): analyze-merge mints
     // newId from new_points[].id (:311), execute-merge stores newId (:528-535) and
@@ -512,7 +517,7 @@ export default async function csvImportRoutes(fastify, options) {
       });
     }
 
-    const schemaDb = request.db || db;
+    const schemaDb = request.db;
     const client = await schemaDb.connect();
 
     try {
@@ -692,12 +697,12 @@ export default async function csvImportRoutes(fastify, options) {
    * Get point history for a specific import
    */
   fastify.get('/csv-imports/:id/history', {
-    preHandler: [fastify.authenticate, authenticateWithSchema]
+    preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     const { id } = request.params;
 
     try {
-      const schemaDb = request.db || db;
+      const schemaDb = request.db;
       const result = await schemaDb.query(
         `SELECT h.*, cp.name as current_point_name
          FROM coordinate_point_history h

@@ -1,6 +1,11 @@
 // Diagnostic route to check import issues
 export default async function diagnosticRoute(fastify, options) {
-  fastify.get('/diagnostic', async (request, reply) => {
+  // Returns error.stack on failure, disclosing absolute paths and internal
+  // module layout to an anonymous caller. Gated; consider deleting before
+  // production.
+  const auth = { preHandler: [fastify.authenticate] }
+
+  fastify.get('/diagnostic', auth, async (request, reply) => {
     try {
       // Test importing each new service
       const testResults = {};

@@ -2,11 +2,122 @@ import Project from '../models/project.js'
 import Layer from '../models/layer.js'
 import Feature from '../models/feature.js'
 import db from '../config/db.js'
-import { authenticateWithSchema } from '../utils/schemaAuth.js'
+import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
+
+/**
+ * Ownership gate for the shared spatial tables.
+ *
+ * `projects`, `layers` and `features` live in `public`, NOT in a per-surveyor
+ * schema -- so authenticateWithSchema/requireSchema buy nothing here: they only
+ * scope search_path, and an unqualified `projects` resolves to the same shared
+ * table for everyone. Isolation has to come from the row instead, and
+ * `projects.user_id` is the only ownership column in the whole chain
+ * (layers.project_id -> projects.id, features.layer_id -> layers.project_id).
+ *
+ * Every route in this file used to resolve its target by bare ID, so any
+ * authenticated caller could read, rewrite or delete another user's layers,
+ * features and per-project QGIS views.
+ *
+ * Both helpers reply on failure and return null, so callers use the `if (!x)
+ * return` idiom to stop. A 404 is returned for a row that does not exist and a
+ * 403 for one belonging to somebody else -- deliberately, so an ID that is not
+ * yours is distinguishable from one that is not there.
+ */
+export async function ownedProject(request, reply, projectId) {
+  const id = Number(projectId)
+
+  if (!Number.isFinite(id)) {
+    reply.code(404).send({ error: 'Project not found' })
+    return null
+  }
+
+  const project = await Project.findById(id)
+  if (!project) {
+    reply.code(404).send({ error: 'Project not found' })
+    return null
+  }
+
+  // project.user_id comes back as an integer from Postgres and request.user.sub
+  // comes from the JWT, so compare numerically rather than by string equality.
+  if (Number(project.user_id) !== Number(request.user.sub)) {
+    reply.code(403).send({
+      error: 'Forbidden',
+      message: 'You do not have access to this project'
+    })
+    return null
+  }
+
+  return project
+}
+
+/** Resolve a layer and prove the caller owns the project it belongs to. */
+export async function ownedLayer(request, reply, layerId) {
+  const id = Number(layerId)
+
+  if (!Number.isFinite(id)) {
+    reply.code(404).send({ error: 'Layer not found' })
+    return null
+  }
+
+  const layer = await Layer.findById(id)
+  if (!layer) {
+    reply.code(404).send({ error: 'Layer not found' })
+    return null
+  }
+
+  // ownedProject replies 403 itself, so just propagate its verdict.
+  if (!(await ownedProject(request, reply, layer.project_id))) {
+    return null
+  }
+
+  return layer
+}
+
+/**
+ * Ownership gate for the caller's own survey_projects.
+ *
+ * Distinct from ownedProject above on purpose. The shared `public.projects`
+ * table backs the layer/feature workspace, but the QGIS project-views feature
+ * is keyed on `survey_projects`, which is per-surveyor. Those are separate id
+ * spaces, so a project-views request must NOT be checked against
+ * public.projects -- and create_project_views()/drop_project_views() are plpgsql
+ * functions that resolve `survey_projects` against the caller's search_path at
+ * run time, so reaching them through the caller's own schema is also what makes
+ * them resolve to the right tenant's table.
+ *
+ * Requires authenticateWithSchema + requireSchema, so request.db is present.
+ */
+export async function ownedSurveyProject(request, reply, projectId) {
+  const id = Number(projectId)
+
+  if (!Number.isFinite(id)) {
+    reply.code(404).send({ error: 'Project not found' })
+    return null
+  }
+
+  const result = await request.db.query(
+    'SELECT id, name, client_name FROM survey_projects WHERE id = $1',
+    [id]
+  )
+  const project = result.rows[0]
+
+  if (!project) {
+    reply.code(404).send({ error: 'Project not found' })
+    return null
+  }
+
+  return project
+}
 
 export default async function spatialRoutes(app) {
   // Get QGIS layer configuration for a specific project
   app.get('/spatial/qgis-layer/:projectId', {
+    // This route returned a ready-to-paste libpq connection URI containing the
+    // live DB_PASSWORD, and it had no preHandler — so an anonymous GET handed
+    // anyone full read credentials for the production database. Both fixed:
+    // a token is required, and the password is no longer echoed. QGIS prompts
+    // for the password when the URI omits it, so the paste-in flow is intact.
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       params: {
         type: 'object',
@@ -19,8 +130,12 @@ export default async function spatialRoutes(app) {
   }, async (request, reply) => {
     const { projectId } = request.params
     
-    // Get project details
-    const projectResult = await db.query(
+    // Get project details. This is the caller's OWN schema, not the shared
+    // pool: survey_projects exists per-surveyor, and reading it through
+    // `db` resolved to public.survey_projects, which holds no rows -- so this
+    // route answered 404 for every project while looking up another tenant's
+    // table. requireSchema guarantees request.db is set.
+    const projectResult = await request.db.query(
       'SELECT id, name, client_name FROM survey_projects WHERE id = $1',
       [projectId]
     )
@@ -36,14 +151,17 @@ export default async function spatialRoutes(app) {
       ok: true,
       project: {
         id: project.id,
-        name: project.project_name,
+        // The column is `name`; this read `project.project_name`, so the QGIS
+        // connection name was always "undefined". survey_projects has no
+        // project_name column (see information_schema).
+        name: project.name,
         client: project.client_name
       },
       qgis: {
         connection: {
           host: process.env.DB_HOST || 'localhost',
           port: process.env.DB_PORT || 5432,
-          database: process.env.DB_NAME || 'surveypro',
+          database: process.env.DB_NAME || 'surveypro_app',
           username: process.env.DB_USER || 'postgres',
           schema: 'public',
           table: 'land_parcels',
@@ -51,7 +169,10 @@ export default async function spatialRoutes(app) {
           srid: 22291 // Cape Lo 31
         },
         filter: `"project_id" = ${projectId}`,
-        uri: `dbname='${process.env.DB_NAME || 'surveypro'}' host=${process.env.DB_HOST || 'localhost'} port=${process.env.DB_PORT || 5432} user='${process.env.DB_USER || 'postgres'}' password='${process.env.DB_PASSWORD}' sslmode=disable table="land_parcels" (geom) sql="project_id" = ${projectId}`,
+        // No password= segment: this response is served over HTTP to any
+        // authenticated user and was leaking the live DB credential. QGIS
+        // prompts for the password when the URI omits it.
+        uri: `dbname='${process.env.DB_NAME || 'surveypro_app'}' host=${process.env.DB_HOST || 'localhost'} port=${process.env.DB_PORT || 5432} user='${process.env.DB_USER || 'postgres'}' sslmode=disable table="land_parcels" (geom) sql="project_id" = ${projectId}`,
         instructions: [
           '1. Open QGIS',
           '2. Layer → Add Layer → Add PostGIS Layers',
@@ -59,7 +180,7 @@ export default async function spatialRoutes(app) {
           `4. Name: SurveyPro - ${project.name}`,
           `5. Host: ${process.env.DB_HOST || 'localhost'}`,
           `6. Port: ${process.env.DB_PORT || 5432}`,
-          `7. Database: ${process.env.DB_NAME || 'surveypro'}`,
+          `7. Database: ${process.env.DB_NAME || 'surveypro_app'}`,
           `8. Username: ${process.env.DB_USER || 'postgres'}`,
           '9. Click "Test Connection"',
           '10. Click "Connect"',
@@ -135,10 +256,8 @@ export default async function spatialRoutes(app) {
     const projectId = Number(request.params.projectId)
   const { name, layer_type, geom_type, srid, params } = request.body
 
-    const project = await Project.findById(projectId)
-    if (!project) {
-      return reply.code(404).send({ error: 'Project not found' })
-    }
+    const project = await ownedProject(request, reply, projectId)
+    if (!project) return
 
     const layer = await Layer.create({ 
       name,
@@ -163,8 +282,13 @@ export default async function spatialRoutes(app) {
         }
       }
     }
-  }, async (request) => {
+  }, async (request, reply) => {
     const projectId = Number(request.params.projectId)
+
+    // Was: Layer.findByProject(projectId) with no ownership check, so any
+    // authenticated caller could enumerate another user's layers.
+    if (!await ownedProject(request, reply, projectId)) return
+
     return Layer.findByProject(projectId)
   })
 
@@ -180,8 +304,8 @@ export default async function spatialRoutes(app) {
     }
   }, async (request, reply) => {
     const layerId = Number(request.params.layerId)
-    const layer = await Layer.findById(layerId)
-    if (!layer) return reply.code(404).send({ error: 'Layer not found' })
+    const layer = await ownedLayer(request, reply, layerId)
+    if (!layer) return
     return layer
   })
 
@@ -214,10 +338,8 @@ export default async function spatialRoutes(app) {
     const layerId = Number(request.params.layerId)
     const { geometry, properties } = request.body
 
-    const layer = await Layer.findById(layerId)
-    if (!layer) {
-      return reply.code(404).send({ error: 'Layer not found' })
-    }
+    const layer = await ownedLayer(request, reply, layerId)
+    if (!layer) return
 
     const feature = await Feature.create({
       layerId,
@@ -256,10 +378,8 @@ export default async function spatialRoutes(app) {
     const layerId = Number(request.params.layerId)
     const { bbox } = request.body
 
-    const layer = await Layer.findById(layerId)
-    if (!layer) {
-      return reply.code(404).send({ error: 'Layer not found' })
-    }
+    const layer = await ownedLayer(request, reply, layerId)
+    if (!layer) return
 
     return Feature.queryByBBox(layerId, bbox)
   })
@@ -280,8 +400,8 @@ export default async function spatialRoutes(app) {
     }
   }, async (request, reply) => {
     const layerId = Number(request.params.layerId)
-    const layer = await Layer.findById(layerId)
-    if (!layer) return reply.code(404).send({ error: 'Layer not found' })
+    const layer = await ownedLayer(request, reply, layerId)
+    if (!layer) return
     const { page = 1, limit = 50, search = '' } = request.query || {}
     const { items, total } = await Feature.listPaged(layerId, { page: Number(page)||1, limit: Number(limit)||50, search: String(search||'') })
     return { items, total, page: Number(page)||1, limit: Number(limit)||50 }
@@ -296,8 +416,8 @@ export default async function spatialRoutes(app) {
     }
   }, async (request, reply) => {
     const layerId = Number(request.params.layerId)
-    const layer = await Layer.findById(layerId)
-    if (!layer) return reply.code(404).send({ error: 'Layer not found' })
+    const layer = await ownedLayer(request, reply, layerId)
+    if (!layer) return
     const { items } = await Feature.listPaged(layerId, { page: 1, limit: 2000, search: String(request.query?.search||'') })
     return Feature.buildFeatureCollection(items)
   })
@@ -336,6 +456,11 @@ export default async function spatialRoutes(app) {
       return reply.code(404).send({ error: 'Feature not found' })
     }
 
+    // Was: any authenticated caller could rewrite any feature by ID. The
+    // feature carries no owner, so ownership is proven through
+    // layer_id -> layers.project_id -> projects.user_id.
+    if (!await ownedLayer(request, reply, existing.layer_id)) return
+
     const feature = await Feature.update(id, {
       geometry: geometry || existing.geometry,
       properties: properties || existing.properties
@@ -365,10 +490,8 @@ export default async function spatialRoutes(app) {
     const layerId = Number(request.params.layerId)
     const { q, limit } = request.query
 
-    const layer = await Layer.findById(layerId)
-    if (!layer) {
-      return reply.code(404).send({ error: 'Layer not found' })
-    }
+    const layer = await ownedLayer(request, reply, layerId)
+    if (!layer) return
 
     const rows = await Feature.searchByName(layerId, q, { limit: limit ? Number(limit) : 20 })
     return rows
@@ -403,8 +526,8 @@ export default async function spatialRoutes(app) {
     const layerId = Number(request.params.layerId)
     const { points } = request.body
 
-    const layer = await Layer.findById(layerId)
-    if (!layer) return reply.code(404).send({ error: 'Layer not found' })
+    const layer = await ownedLayer(request, reply, layerId)
+    if (!layer) return
     const srid = Number(layer.srid || 0)
     if (!srid || !Number.isFinite(srid)) {
       return { ok: true, coords: points.map(() => null), note: 'No SRID on layer' }
@@ -450,8 +573,8 @@ export default async function spatialRoutes(app) {
   }, async (request, reply) => {
     const layerId = Number(request.params.layerId)
     const { srid, central_meridian } = request.body || {}
-    const layer = await Layer.findById(layerId)
-    if (!layer) return reply.code(404).send({ error: 'Layer not found' })
+    const layer = await ownedLayer(request, reply, layerId)
+    if (!layer) return
 
     let newSrid = Number(srid || layer.srid || 0)
     // If only central_meridian provided, map to EPSG
@@ -476,7 +599,7 @@ export default async function spatialRoutes(app) {
 
   // Create project-specific views for QGIS workflow
   app.post('/spatial/create-project-views', {
-    preHandler: [app.authenticate],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       body: {
         type: 'object',
@@ -489,6 +612,11 @@ export default async function spatialRoutes(app) {
   }, async (request, reply) => {
     const { project_id } = request.body
     
+    // create_project_views() builds the view from public.survey_projects, so an
+    // unvalidated project_id let any authenticated caller materialise (and then
+    // read through QGIS) a view over somebody else's survey.
+    if (!await ownedSurveyProject(request, reply, project_id)) return
+
     try {
       const result = await db.query('SELECT create_project_views($1) as result', [project_id])
       const viewInfo = result.rows[0]?.result
@@ -506,7 +634,7 @@ export default async function spatialRoutes(app) {
 
   // Drop project-specific views
   app.delete('/spatial/project-views/:projectId', {
-    preHandler: [app.authenticate],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       params: {
         type: 'object',
@@ -519,6 +647,11 @@ export default async function spatialRoutes(app) {
   }, async (request, reply) => {
     const { projectId } = request.params
     
+    // drop_project_views() drops triggers, functions and views in `public` by
+    // name. Without this check any authenticated caller could tear down another
+    // user's QGIS integration.
+    if (!await ownedSurveyProject(request, reply, projectId)) return
+
     try {
       const result = await db.query('SELECT drop_project_views($1) as result', [projectId])
       const viewInfo = result.rows[0]?.result
@@ -536,13 +669,24 @@ export default async function spatialRoutes(app) {
 
   // List all project views
   app.get('/spatial/project-views', {
-    preHandler: [app.authenticate]
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
     try {
       const result = await db.query('SELECT * FROM list_project_views()')
-      return { 
-        ok: true, 
-        views: result.rows
+
+      // list_project_views() returns every *_project_<id> view in `public` --
+      // no filtering, no owner. The ids it reports are survey_projects ids
+      // (that is what create_project_views is called with), so intersect with
+      // the caller's own survey_projects via their own schema. The views
+      // themselves stay in `public`, which makes this intersection the only
+      // isolation on the endpoint.
+      const mine = await request.db.query('SELECT id FROM survey_projects')
+      const mineIds = new Set(mine.rows.map((r) => Number(r.id)))
+      const views = (result.rows || []).filter((v) => mineIds.has(Number(v.project_id)))
+
+      return {
+        ok: true,
+        views
       }
     } catch (err) {
       app.log.error(err)
@@ -552,7 +696,7 @@ export default async function spatialRoutes(app) {
 
   // Get database connection info for QGIS integration (with schema-aware configuration)
   app.get('/spatial/db-connection', {
-    preHandler: [app.authenticate, authenticateWithSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
     schema: {
       querystring: {
         type: 'object',
@@ -572,7 +716,7 @@ export default async function spatialRoutes(app) {
     const dbConfig = {
       host: process.env.DB_HOST || 'localhost',
       port: process.env.DB_PORT || 5432,
-      database: process.env.DB_NAME || 'surveypro_v1',
+      database: process.env.DB_NAME || 'surveypro_app',
       username: process.env.DB_USER || 'postgres',
       sslmode: process.env.DB_SSL || 'disable',
       schema: surveyorSchema
@@ -605,8 +749,12 @@ export default async function spatialRoutes(app) {
 
     // If project_id provided, include project-specific view names and check if views exist
     if (project_id) {
-      // Get project details
-      const projectResult = await db.query(
+      // Through the caller's schema, not the shared pool. survey_projects is
+      // per-surveyor, so scoping search_path IS the ownership check here -- the
+      // previous `db.query` read public.survey_projects (0 rows) and, had any
+      // existed, would have described another tenant's project while handing
+      // back this caller's schema name.
+      const projectResult = await request.db.query(
         'SELECT id, name, client_name FROM survey_projects WHERE id = $1',
         [project_id]
       )
@@ -751,10 +899,8 @@ export default async function spatialRoutes(app) {
     const layerId = Number(request.params.layerId)
     const { features, replace_duplicates = false } = request.body
 
-    const layer = await Layer.findById(layerId)
-    if (!layer) {
-      return reply.code(404).send({ error: 'Layer not found' })
-    }
+    const layer = await ownedLayer(request, reply, layerId)
+    if (!layer) return
 
     const results = {
       total: features.length,

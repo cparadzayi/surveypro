@@ -24,6 +24,31 @@ build/
 # Logs
 logs/
 *.log
+# Fastify/Pino writes *-logs.txt, which *.log does not match. This file was
+# committed with 31 copies of a signed (non-expiring) JWT in it.
+*logs*.txt
+app-backend/recent-backend-logs.txt
+
+# Local agent/tooling state — per-developer, never shared
+.claude/
+.superpowers/brainstorm/
+*.pid
+
+# Database dumps and ad-hoc SQL scratch.
+# Anchored with a leading slash: app-backend/migrations/*.sql is real, tracked
+# source and must stay that way.
+*.dump
+/*.sql
+/app-backend/*.sql
+/app-backend/backup-*
+
+# Runtime output and client documents
+app-backend/Documents/
+app-frontend/tariff/
+
+# Root-level sample/fieldbook data (real client survey coordinates).
+# Anchored so fixture CSVs elsewhere in the tree stay tracked.
+/*.csv
 
 # IDE
 .vscode/

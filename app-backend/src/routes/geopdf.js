@@ -4,131 +4,34 @@ import { writeFile, unlink, mkdir, readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { findGdalTool, qgisProjDir } from '../utils/gdalDiscovery.js'
 
 const execAsync = promisify(exec)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-/**
- * Auto-detect GDAL installation in common QGIS locations
- * Returns the full path to gdal_translate or null if not found
- */
-async function findGDAL() {
-  const commonPaths = [
-    // Standard PATH
-    'gdal_translate',
-    // QGIS 3.x installations (newest first)
-    'C:\\Program Files\\QGIS 3.44.3\\bin\\gdal_translate.exe',
-    'C:\\Program Files\\QGIS 3.36.3\\bin\\gdal_translate.exe',
-    'C:\\Program Files\\QGIS 3.34\\bin\\gdal_translate.exe',
-    'C:\\Program Files\\QGIS 3.32\\bin\\gdal_translate.exe',
-    'C:\\Program Files\\QGIS 3.30\\bin\\gdal_translate.exe',
-    'C:\\Program Files\\QGIS 3.28\\bin\\gdal_translate.exe',
-    // OSGeo4W installations
-    'C:\\OSGeo4W64\\bin\\gdal_translate.exe',
-    'C:\\OSGeo4W\\bin\\gdal_translate.exe',
-    // QGIS Long Term Release
-    'C:\\Program Files\\QGIS 3.34 LTR\\bin\\gdal_translate.exe',
-    'C:\\Program Files\\QGIS 3.28 LTR\\bin\\gdal_translate.exe',
-    // Alternative QGIS locations
-    'C:\\Program Files\\QGIS\\bin\\gdal_translate.exe',
-    'C:\\QGIS\\bin\\gdal_translate.exe',
-    // Linux/Mac paths (for cross-platform support)
-    '/usr/bin/gdal_translate',
-    '/usr/local/bin/gdal_translate',
-    '/opt/homebrew/bin/gdal_translate'
-  ]
-
-  for (const gdalPath of commonPaths) {
-    try {
-      // For simple command names, test if they work
-      if (!gdalPath.includes('\\') && !gdalPath.includes('/')) {
-        try {
-          await execAsync(`${gdalPath} --version`)
-          return gdalPath
-        } catch {
-          continue
-        }
-      }
-      
-      // For full paths, check if file exists AND can execute
-      if (existsSync(gdalPath)) {
-        const quotedPath = `"${gdalPath}"`
-        try {
-          await execAsync(`${quotedPath} --version`)
-          return quotedPath
-        } catch {
-          continue
-        }
-      }
-    } catch (error) {
-      // Continue checking other paths
-    }
-  }
-
-  return null
-}
+// Both tools are located by scanning the QGIS/OSGeo install directories rather
+// than by a pinned version list — see utils/gdalDiscovery.js. This host has
+// QGIS 3.44.15 and the old list named 3.44.3, so /geopdf/check answered
+// `{"available": false}` while GDAL sat on disk.
 
 // Cache the GDAL path on first lookup
 let cachedGDALPath = null
 
 async function getGDALCommand() {
   if (cachedGDALPath === null) {
-    cachedGDALPath = await findGDAL()
+    cachedGDALPath = await findGdalTool('gdal_translate')
   }
   return cachedGDALPath || 'gdal_translate' // Fallback to PATH
-}
-
-/**
- * Find ogr2ogr command (GDAL vector tool)
- */
-async function findOGR2OGR() {
-  const commonPaths = [
-    'ogr2ogr',
-    'C:\\Program Files\\QGIS 3.44.3\\bin\\ogr2ogr.exe',
-    'C:\\Program Files\\QGIS 3.36.3\\bin\\ogr2ogr.exe',
-    'C:\\Program Files\\QGIS 3.34\\bin\\ogr2ogr.exe',
-    'C:\\OSGeo4W64\\bin\\ogr2ogr.exe',
-    'C:\\OSGeo4W\\bin\\ogr2ogr.exe',
-    '/usr/bin/ogr2ogr',
-    '/usr/local/bin/ogr2ogr',
-    '/opt/homebrew/bin/ogr2ogr'
-  ]
-
-  for (const ogrPath of commonPaths) {
-    try {
-      if (!ogrPath.includes('\\') && !ogrPath.includes('/')) {
-        try {
-          await execAsync(`${ogrPath} --version`)
-          return ogrPath
-        } catch {
-          continue
-        }
-      }
-      
-      if (existsSync(ogrPath)) {
-        const quotedPath = `"${ogrPath}"`
-        try {
-          await execAsync(`${quotedPath} --version`)
-          return quotedPath
-        } catch {
-          continue
-        }
-      }
-    } catch (error) {
-      // Continue checking
-    }
-  }
-  return null
 }
 
 let cachedOGR2OGRPath = null
 
 async function getOGR2OGRCommand() {
   if (cachedOGR2OGRPath === null) {
-    cachedOGR2OGRPath = await findOGR2OGR()
+    cachedOGR2OGRPath = await findGdalTool('ogr2ogr')
   }
-  return cachedOGR2OGRPath || 'ogr2ogr'
+  return cachedOGR2OGRPath || 'ogr2ogr' // Fallback to PATH
 }
 
 /**
@@ -136,11 +39,16 @@ async function getOGR2OGRCommand() {
  * Creates vector GeoPDFs from GeoJSON using GDAL/OGR
  */
 export default async function geoPDFRoutes(fastify, options) {
+  // /geopdf/generate shells out via execAsync with values taken from the
+  // request. That was reachable anonymously -- remote command execution with no
+  // credential. A token is now required.
+  const auth = { preHandler: [fastify.authenticate] }
+
   
   /**
    * Check if GDAL/OGR is installed and available
    */
-  fastify.get('/geopdf/check', async (request, reply) => {
+  fastify.get('/geopdf/check', auth, async (request, reply) => {
     try {
       const gdalCommand = await getGDALCommand()
       const ogrCommand = await getOGR2OGRCommand()
@@ -183,7 +91,7 @@ export default async function geoPDFRoutes(fastify, options) {
    * - projection: EPSG code (e.g., "EPSG:22291" for Cape Lo 31)
    * - metadata: { title, surveyor, date, designation, etc. }
    */
-  fastify.post('/geopdf/generate', async (request, reply) => {
+  fastify.post('/geopdf/generate', auth, async (request, reply) => {
     const tempDir = path.join(__dirname, '../../temp/geopdf')
     
     try {
@@ -260,11 +168,10 @@ export default async function geoPDFRoutes(fastify, options) {
       fastify.log.info(`[GeoPDF] Extent: ${JSON.stringify(extent)}`)
 
       // Set PROJ_LIB to use QGIS's PROJ data instead of PostgreSQL's
-      const qgisPath = gdalCmd.includes('QGIS') ? gdalCmd.match(/"([^"]+)"/)?.[1] || gdalCmd : null
-      const projLib = qgisPath ? path.join(path.dirname(qgisPath), '..', 'share', 'proj') : null
-      
+      const projLib = qgisProjDir(gdalCmd)
+
       const env = { ...process.env }
-      if (projLib && existsSync(projLib)) {
+      if (projLib) {
         env.PROJ_LIB = projLib
         fastify.log.info(`[GeoPDF] 📍 Setting PROJ_LIB: ${projLib}`)
       }
@@ -330,7 +237,7 @@ export default async function geoPDFRoutes(fastify, options) {
   /**
    * Get GeoPDF capabilities and system info
    */
-  fastify.get('/geopdf/info', async (request, reply) => {
+  fastify.get('/geopdf/info', auth, async (request, reply) => {
     try {
       const gdalCmd = await getGDALCommand()
       

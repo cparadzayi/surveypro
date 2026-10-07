@@ -10,6 +10,7 @@ import { existsSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { northUpWktForDxf } from './crsDefinitions.js'
+import { findGdalTool, qgisProjDir } from './gdalDiscovery.js'
 
 const execAsync = promisify(exec)
 const execFileAsync = promisify(execFile)
@@ -18,50 +19,11 @@ const __dirname = path.dirname(__filename)
 
 let cachedOGR2OGRPath = null
 
-async function findOGR2OGR() {
-  const commonPaths = [
-    'ogr2ogr',
-    'C:\\Program Files\\QGIS 3.44.3\\bin\\ogr2ogr.exe',
-    'C:\\Program Files\\QGIS 3.36.3\\bin\\ogr2ogr.exe',
-    'C:\\Program Files\\QGIS 3.34\\bin\\ogr2ogr.exe',
-    'C:\\OSGeo4W64\\bin\\ogr2ogr.exe',
-    'C:\\OSGeo4W\\bin\\ogr2ogr.exe',
-    '/usr/bin/ogr2ogr',
-    '/usr/local/bin/ogr2ogr',
-    '/opt/homebrew/bin/ogr2ogr'
-  ]
-
-  for (const ogrPath of commonPaths) {
-    try {
-      if (!ogrPath.includes('\\') && !ogrPath.includes('/')) {
-        try {
-          await execAsync(`${ogrPath} --version`)
-          return ogrPath
-        } catch {
-          continue
-        }
-      }
-
-      if (existsSync(ogrPath)) {
-        const quotedPath = `"${ogrPath}"`
-        try {
-          await execAsync(`${quotedPath} --version`)
-          return quotedPath
-        } catch {
-          continue
-        }
-      }
-    } catch {
-      continue
-    }
-  }
-
-  return null
-}
-
 export async function getOGR2OGRCommand() {
   if (cachedOGR2OGRPath === null) {
-    cachedOGR2OGRPath = await findOGR2OGR()
+    // Discovered by directory scan, not a pinned QGIS version -- see
+    // utils/gdalDiscovery.js for why the version list was removed.
+    cachedOGR2OGRPath = await findGdalTool('ogr2ogr')
   }
   return cachedOGR2OGRPath || 'ogr2ogr'
 }
@@ -106,13 +68,8 @@ export async function dxfToGeoreferencedGpkg(dxfBuffer, projection, logger) {
   // Use QGIS's own PROJ database — the system PATH may resolve a PostGIS
   // proj.db with an incompatible DATABASE.LAYOUT.VERSION (breaks SRS parsing).
   const env = { ...process.env }
-  const qgisOgrPath = ogrCmd.includes('QGIS')
-    ? (ogrCmd.match(/"([^"]+)"/)?.[1] || ogrCmd.replaceAll('"', ''))
-    : null
-  const projLib = qgisOgrPath
-    ? path.join(path.dirname(qgisOgrPath), '..', 'share', 'proj')
-    : null
-  if (projLib && existsSync(projLib)) {
+  const projLib = qgisProjDir(ogrCmd)
+  if (projLib) {
     env.PROJ_LIB = projLib
     env.PROJ_DATA = projLib
   }

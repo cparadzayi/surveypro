@@ -6879,18 +6879,65 @@ async function deleteSavedParcel(dbParcel: any) {
 }
 
 /**
+ * Resolve the DB row (if any) that backs an in-memory parcel whose designation
+ * is `designation`, across every place a saved parcel can be tracked.
+ *
+ * `savedParcels` is keyed differently on different code paths — the loader uses
+ * `designation || stand` (:5239), the PDF export re-hydrates it with
+ * `stand || designation` (:7031) — and there are legacy rows where the two
+ * fields differ. A delete that only looks up the exact designation key can miss
+ * the row, silently turning a "delete" into a map-only removal. When that
+ * happens the land_parcels row survives, and re-digitizing the same parcel then
+ * fails the backend duplicate check ("Identical polygon already exists … /
+ * ❌ Cannot save …"). This lookup tries the direct key first, then any key whose
+ * designation/stand matches case-insensitively, then the existingParcelIds map.
+ */
+function findSavedParcelByDesignation(
+  designation: string
+): { parcel: { id: number } | any; keys: string[] } | null {
+  const norm = (s: unknown) => String(s ?? '').trim().toLowerCase();
+  const target = norm(designation);
+  if (!target) return null;
+
+  const direct = savedParcels.value.get(designation);
+  if (direct) return { parcel: direct, keys: [designation] };
+
+  const keys: string[] = [];
+  let found: any = null;
+  for (const [key, value] of savedParcels.value.entries()) {
+    if (norm(key) === target || norm(value.designation) === target || norm(value.stand) === target) {
+      keys.push(key);
+      if (!found) found = value;
+    }
+  }
+  if (found) return { parcel: found, keys };
+
+  const directId = existingParcelIds.value.get(designation);
+  if (directId) return { parcel: { id: directId }, keys: [designation] };
+
+  for (const [key, id] of existingParcelIds.value.entries()) {
+    if (norm(key) === target) return { parcel: { id }, keys: [key] };
+  }
+
+  return null;
+}
+
+/**
  * Delete a parcel with confirmation (in-memory parcels)
  */
 async function deleteParcelConfirm(parcel: Parcel) {
-  // Get the saved parcel from database (if it exists)
-  const savedParcel = savedParcels.value.get(parcel.designation);
+  // Resolve the saved parcel from the database (if it exists). Keyed lookup
+  // alone is not enough: savedParcels keys drift between the loader, the
+  // auto-save path and the PDF export's re-hydration, so fall back to a scan.
+  const found = findSavedParcelByDesignation(parcel.designation);
   
   // Confirmation dialog
   const confirmed = confirm(
     `⚠️ Delete Parcel?\n\n` +
     `Designation: ${parcel.designation}\n` +
-    `Area: ${parcel.areaResult ? formatArea(parcel.areaResult.area) : 'N/A'}\n\n` +
-    `This action cannot be undone.\n\n` +
+    `Area: ${parcel.areaResult ? formatArea(parcel.areaResult.area) : 'N/A'}\n` +
+    (found?.parcel?.id ? `Database ID: ${found.parcel.id}\n` : ``) +
+    `\nThis action cannot be undone.\n\n` +
     `Click OK to delete, or Cancel to keep the parcel.`
   );
   
@@ -6902,26 +6949,51 @@ async function deleteParcelConfirm(parcel: Parcel) {
   try {
     console.log(`[MapLibre] 🗑️ Deleting parcel: ${parcel.designation}`);
     
-    // Delete from database if it was saved
-    if (savedParcel) {
-      await deleteLandParcel(savedParcel.id);
-      savedParcels.value.delete(parcel.designation);
-      existingParcelIds.value.delete(parcel.designation);
-      console.log(`[MapLibre] ✅ Deleted parcel ${parcel.designation} from database (ID: ${savedParcel.id})`);
+    // Delete from database if there is a row behind this parcel. A parcel that
+    // was only ever drawn in-memory (never auto-saved) has no row and is handled
+    // below as a local-only removal.
+    if (found?.parcel?.id) {
+      const dbId = Number(found.parcel.id);
+      await deleteLandParcel(dbId);
+      
+      // Drop EVERY tracking key that points at this row, not just the one the
+      // designation lookup happened to hit — stale keys here are exactly what
+      // makes a later re-digitize look like the deleted parcel still exists.
+      const obsoleteKeys = new Set<string>(found.keys);
+      for (const [key, value] of savedParcels.value.entries()) {
+        if (value?.id !== undefined && Number(value.id) === dbId) obsoleteKeys.add(key);
+      }
+      obsoleteKeys.forEach(key => savedParcels.value.delete(key));
+      existingParcelIds.value = new Map(
+        [...existingParcelIds.value.entries()].filter(([, id]) => Number(id) !== dbId)
+      );
+      
+      console.log(`[MapLibre] ✅ Deleted parcel ${parcel.designation} from database (ID: ${dbId})`);
+    } else {
+      console.warn(
+        `[MapLibre] ⚠️ Parcel ${parcel.designation} has no saved DB row — removing locally only`
+      );
     }
     
-    // Remove from local parcels array
-    const index = parcels.value.findIndex(p => p.designation === parcel.designation);
+    // Remove from local parcels array (normalized match so a case/space variant
+    // of the designation cannot linger in the list and trip the duplicate guard)
+    const norm = (s: unknown) => String(s ?? '').trim().toLowerCase();
+    const target = norm(parcel.designation);
+    const index = parcels.value.findIndex(p => norm(p.designation) === target);
     if (index !== -1) {
       parcels.value.splice(index, 1);
       console.log(`[MapLibre] ✅ Removed parcel ${parcel.designation} from local array`);
     }
     
-    // Remove from map
+    // Remove from map — by designation AND by DB id, so a feature that carried a
+    // different property casing cannot survive as a ghost overlap source.
     if (parcelsSource) {
       const currentData = (parcelsSource as any)._data as any;
+      const dbId = found?.parcel?.id !== undefined ? Number(found.parcel.id) : null;
       const features = (currentData?.features || []).filter(
-        (f: any) => f.properties?.designation !== parcel.designation
+        (f: any) =>
+          norm(f.properties?.designation) !== target &&
+          (dbId === null || f.properties?.id === undefined || Number(f.properties.id) !== dbId)
       );
       
       parcelsSource.setData({
@@ -6936,7 +7008,7 @@ async function deleteParcelConfirm(parcel: Parcel) {
     
   } catch (error: any) {
     console.error('[MapLibre] ❌ Failed to delete parcel:', error);
-    alert(`Failed to delete parcel ${parcel.designation}.\n\nError: ${error.message || 'Unknown error'}`);
+    alert(`Failed to delete parcel ${parcel.designation}.\n\nError: ${error?.response?.data?.error || error.message || 'Unknown error'}`);
   }
 }
 
@@ -7028,7 +7100,7 @@ async function exportAreaConsistencyPDF() {
     
     // Update savedParcels map
     response.forEach((dbParcel: any) => {
-      savedParcels.value.set(dbParcel.stand || dbParcel.designation, dbParcel);
+      savedParcels.value.set(dbParcel.designation || dbParcel.stand, dbParcel);
     });
     
   } catch (error) {

@@ -1,0 +1,162 @@
+diff --git a/src/views/surveyor/views/modules/cadastral-extended/transform/TransformView.vue b/src/views/surveyor/views/modules/cadastral-extended/transform/TransformView.vue
+index 39c67a71..d87bdc64 100644
+--- a/src/views/surveyor/views/modules/cadastral-extended/transform/TransformView.vue
++++ b/src/views/surveyor/views/modules/cadastral-extended/transform/TransformView.vue
+@@ -13,14 +13,16 @@
+         </label>
+         <label class="flex flex-col gap-1">
+           <span class="font-medium text-gray-700">Cape Lo zone</span>
+-          <select v-model.number="zone" class="xt-input">
+-            <option v-for="z in zones" :key="z.srid" :value="z.centralMeridian">
+-              Lo {{ z.centralMeridian }} (EPSG:{{ z.srid }})
++          <select v-model="zoneKey" class="xt-input" :disabled="loading">
++            <option v-for="z in zones" :key="z.key" :value="z.key">
++              {{ z.label }} (SRID {{ z.srid }})
+             </option>
+           </select>
+         </label>
+-        <button class="xt-btn" :disabled="!input.trim()" @click="run">Transform</button>
++        <button class="xt-btn" :disabled="!input.trim() || loading || !selectedDef" @click="run">Transform</button>
+         <button v-if="results.length" class="xt-btn subtle" @click="downloadCsv">Download CSV</button>
++        <span v-if="loading" class="text-gray-500">Loading CRS definitions…</span>
++        <span v-if="loadError" class="text-red-600">{{ loadError }}</span>
+       </div>
+ 
+       <div class="grid md:grid-cols-2 gap-4">
+@@ -44,7 +46,7 @@
+               </tr>
+             </thead>
+             <tbody>
+-              <tr v-for="r in results" :key="r.name + r.a">
++              <tr v-for="r in results" :key="r.name + r.a + r.b">
+                 <td class="border px-2 py-1">{{ r.name }}</td>
+                 <td class="border px-2 py-1 text-right font-mono">{{ r.a }}</td>
+                 <td class="border px-2 py-1 text-right font-mono">{{ r.b }}</td>
+@@ -56,38 +58,97 @@
+       </div>
+ 
+       <p class="text-[11px] text-gray-500">
+-        Uses the Cape Datum (Clarke 1880) south-orientated Gauss conformal
+-        definition (+axis=wsu) — the same projection machinery as the
+-        cadastral map views. Verify against known control before lodgement.
++        Definitions are loaded from <code>/api/gms/crs</code> (registry). The Cape Lo defs use
++        <code>+axis=wsu</code>; proj4js ignores this, so the frontend negates both axes
++        internally when reading WGS84→Lo? No — this view passes [Y,X] directly to proj4
++        with the registry def. Compare against the map readout for the same point.
+       </p>
+     </div>
+   </ModuleScaffold>
+ </template>
+ 
+ <script setup lang="ts">
+-import { ref } from 'vue'
++import { ref, computed, onMounted } from 'vue'
+ import proj4 from 'proj4'
+ import ModuleScaffold from '../../../../components/scaffold/ModuleScaffold.vue'
+-import { CAPE_LO_ZONES, CAPE_LO_PROJ4_DEF } from '../../../../services/coordinateTransform'
++
++interface CrsRow {
++  srid: number
++  code: string
++  name: string
++  datum: string
++  proj4text: string
++  is_survey: boolean
++  transform_method?: string
++  accuracy_m?: number | null
++}
+ 
+ const breadcrumbs = [
+   { label: 'Cadastral Extended', to: '/surveyor-workspace/modules/cadastral-extended' },
+   { label: 'Advanced Transform' },
+ ]
+ 
+-const zones = Object.values(CAPE_LO_ZONES)
+-const zone = ref(31) // Lo 31 covers the Vungu / Gweru district
++const zones = ref<Array<{
++  key: string
++  label: string
++  srid: number
++  belt: number | null
++  proj4text: string
++}>>([])
++const zoneKey = ref('')
+ const direction = ref<'toWGS84' | 'toCapeLo'>('toWGS84')
+ const input = ref('')
+ const results = ref<Array<{ name: string; a: string; b: string }>>([])
+ const parseError = ref('')
++const loading = ref(false)
++const loadError = ref('')
+ 
+ const WGS84 = '+proj=longlat +datum=WGS84 +no_defs'
+ 
++const selectedDef = computed(() => zones.value.find(z => z.key === zoneKey.value)?.proj4text || '')
++
++onMounted(async () => {
++  loading.value = true
++  loadError.value = ''
++  try {
++    const res = await fetch('/api/gms/crs')
++    if (!res.ok) throw new Error(`Failed to load CRS registry (${res.status})`)
++    const body = await res.json()
++    const data = (body?.data || []) as CrsRow[]
++    const list = data
++      .filter(d => d.is_survey)
++      .map(d => {
++        const m = d.code?.match(/^Lo(\d+)$/i)
++        const belt = m ? Number(m[1]) : null
++        return {
++          key: String(d.srid),
++          label: d.code || d.name,
++          srid: d.srid,
++          belt,
++          proj4text: d.proj4text,
++        }
++      })
++      .sort((a, b) => {
++        if (a.belt !== null && b.belt !== null) return a.belt - b.belt
++        return a.srid - b.srid
++      })
++    zones.value = list
++    if (list.length && !zoneKey.value) {
++      const preferred = list.find(z => z.belt === 31) || list[0]
++      zoneKey.value = preferred.key
++    }
++  } catch (e: any) {
++    loadError.value = e?.message || 'Failed to load CRS registry'
++  } finally {
++    loading.value = false
++  }
++})
++
+ function run() {
+   parseError.value = ''
+   results.value = []
+-  const capeDef = CAPE_LO_PROJ4_DEF(zone.value)
++  if (!selectedDef.value) { parseError.value = 'No projection definition loaded'; return }
++  const capeDef = selectedDef.value
+   const rows = input.value.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+   const out: Array<{ name: string; a: string; b: string }> = []
+   for (const [i, line] of rows.entries()) {
+@@ -100,12 +161,9 @@ function run() {
+     }
+     try {
+       if (direction.value === 'toWGS84') {
+-        // Cape Lo point P(Y westing, X southing) — proj4 def uses +axis=wsu,
+-        // so forward input order is [Y, X].
+         const [lng, lat] = proj4(capeDef, WGS84, [v1, v2])
+         out.push({ name, a: lat.toFixed(8), b: lng.toFixed(8) })
+       } else {
+-        // input: name, lat, lng → Cape Lo [Y, X]
+         const [Y, X] = proj4(WGS84, capeDef, [v2, v1])
+         out.push({ name, a: Y.toFixed(3), b: X.toFixed(3) })
+       }
+@@ -121,7 +179,7 @@ function downloadCsv() {
+   const csv = [head, ...results.value.map(r => `${r.name},${r.a},${r.b}`)].join('\n')
+   const a = document.createElement('a')
+   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+-  a.download = `transform-lo${zone.value}-${direction.value}.csv`
++  a.download = `transform-${direction.value}.csv`
+   a.click()
+   URL.revokeObjectURL(a.href)
+ }

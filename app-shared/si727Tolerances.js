@@ -8,7 +8,9 @@
 // distFactor from para 7(5) (Limits of Error — distances) and dirK from para 8
 // (i.t.o. s.15(2)) — the paragraphs that govern accepting a PREVIOUS survey's
 // co-ordinates, which is what a found-beacon comparison does. Paras 7 and 8 define
-// class B and class C only — class A does not exist here.
+// class B and class C only. (Para 1 of the Schedule defines three classes by kind of survey: A town survey-marks, B townships, C other; a
+// parcel survey is B or C. CHECK against the regulations: the "7(5)" citation above, and whether found-beacon comparison should use these
+// distance factors or the para 7(1) limits of 0.01 / 0.02 times the distance — see VunGIS docs/SURVEYPRO-INTEGRATION.md.)
 //
 // Corrected 2026-09-21 (surveying reference): the distance limit of error is
 // K·√(0.075f + 0.00015f²) with K = 0,04 (class B) / 0,06 (class C) — the 0.075

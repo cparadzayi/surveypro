@@ -133,6 +133,10 @@ Only the platform operator can make a head surveyor; nobody can appoint themselv
 
 Verified end to end against a real SurveyPro server on a scratch database, driven from VunGIS: the appointments flow, the launch, the reopen, and every refusal (forged, altered, expired, wrong key, replayed, no account, not appointed, appointment ended, unknown council).
 
+## The SI 727 survey class
+
+SI 727 (the Land Survey (General) Regulations, 1979, Second Schedule paras 7 and 8) prescribes limits of error per survey class. Para 1 of the Schedule defines three classes by the kind of survey: **A** town survey-marks, **B** townships, **C** every other survey (there is no D). A parcel survey is B or C, and this code (`app-shared/si727Tolerances.js`) holds the limits for those two. The class changes every verdict made against those limits, so the surveyor **declares** it on the project rather than leaving it to a default (migration 101): `PATCH /api/survey-projects/:id/survey-class` with `{ "survey_class": "B" | "C" | null }` (stored in the project's metadata until the application is switched to the shared tables, then promoted to `survey.survey_projects.survey_class` by a trigger when the schema is adopted). The council's `survey_share.projects` view carries it, and VunGIS writes it to the register as the parcel's survey class. A class is a property of the *survey*; whether it has been delivered, accepted or approved is shown elsewhere (`delivered_at`, `survey.project_review`). There is no screen to declare it yet.
+
 ## What is left
 
 1. **Switch the application over.** Request-scoped connections (`SET ROLE surveypro_request` plus `app.user_id`, reset on release, as `tenantPool` does in VunGIS) replace `getSurveyorPool(schema)` and `request.db`; `search_path` becomes `survey, public` and the per-surveyor schemas are retired. Projects take an `authority_id` (choose among the surveyor's appointments) and `surveyor_user_id`. This also closes the pooled-connection `search_path` leak at its root. The existing SQL needs no change.

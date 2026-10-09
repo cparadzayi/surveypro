@@ -15,6 +15,7 @@ import {
 } from './cadastral-precision';
 
 import { parseSurveyDate, SURVEY_DATE_COLUMNS } from './surveyDate';
+import { isCalculatedPoint } from './calculatedPoint';
 
 import { capeLoToWGS84, type CapeLoPoint } from './coordinateTransform';
 import { normalizeBeaconName, findCaseFoldDuplicates } from '../../../app-shared/beaconName';
@@ -37,10 +38,14 @@ const EXPECTED_HEADERS = [
 /**
  * Parse a single CSV row, handling quoted values and commas
  * 
+ * Exported because the adopted-beacons parser reads the same kind of file:
+ * one quote-aware row parser, not two that drift when a comma inside a
+ * description is written one way in one file and another way in the other.
+ *
  * @param row - CSV row string
  * @returns Array of cell values
  */
-function parseCSVRow(row: string): string[] {
+export function parseCSVRow(row: string): string[] {
   const cells: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -262,27 +267,24 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
         }
       }
       
-      // Detect calculated points
-      // Calculated points are identified by:
-      // 1. Point Type column = "Calculated" or "C"
-      // 2. Status column = "C" or "CALC"
-      // 3. Description contains "calculated" (case-insensitive)
+      // Detect calculated points.
+      // The Point Type column says so outright ("Calculated" / "C"), or the
+      // shared predicate matches the status/description spellings real data
+      // uses ("C", "CALC", "calculated", "Not Beaconed") — the same one every
+      // document filters with, so includeInFieldBook cannot disagree with
+      // what the field book actually prints.
       const pointType = getColumnValue(record, ['type', 'point type', 'pointtype']).toLowerCase();
-      const statusValue = (record['status'] || '').toLowerCase();
-      const descriptionValue = (record['description'] || '').toLowerCase();
       
       const isCalculated = 
         pointType === 'calculated' || 
         pointType === 'c' ||
-        statusValue === 'c' ||
-        statusValue === 'calc' ||
-        descriptionValue.includes('calculated');
+        isCalculatedPoint({ status: record['status'], description: record['description'] });
       
       if (i === 1 && isCalculated) {
         console.log('[CSV Parser] 🧮 Detected CALCULATED point:', record['point']);
         console.log('  - Point Type:', pointType);
-        console.log('  - Status:', statusValue);
-        console.log('  - Description:', descriptionValue);
+        console.log('  - Status:', record['status']);
+        console.log('  - Description:', record['description']);
       }
       
       const point: CadastralPoint = {
@@ -303,7 +305,7 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
         status: (record['status'] || '') as any,
         description: record['description'] || '',
         surveyDate: parsedDate,
-        includeInFieldBook: !isCalculated,  // Exclude calculated points from field book
+        includeInFieldBook: !isCalculated,  // Keep them off the observation pages -- the field book prints them in its own CALCULATED POINTS block
         includeInCoordinateList: true       // Include all points in coordinate list
       };
       // Throwaway key consumed by the case-fold duplicate check below — never
@@ -373,7 +375,7 @@ result.preview.push(point);
   console.log('[CSV Parser] 📊 Import Summary:');
   console.log(`  - Total Points: ${result.summary.totalPoints}`);
   console.log(`  - Field Book Points: ${result.summary.fieldBookPoints}`);
-  console.log(`  - Calculated Points: ${result.summary.calculatedPoints} (excluded from field book)`);
+  console.log(`  - Calculated Points: ${result.summary.calculatedPoints} (CALCULATED POINTS block, not observations)`);
   console.log(`  - Fixed Points (F): ${result.summary.fixedPoints}`);
   console.log(`  - Peg Points (P): ${result.summary.pegPoints}`);
   console.log(`  - Other Points: ${result.summary.otherPoints}`);

@@ -5,8 +5,9 @@
 // A field book records what was visited and measured. A working station was
 // occupied -- it is where the instrument stood, or where the GNSS base sat --
 // so it is among the most thoroughly visited points of the whole survey. That
-// is the opposite of a calculated point, which was never visited at all and is
-// excluded for exactly that reason.
+// is the opposite of a calculated point, which was never visited at all and
+// therefore never joins the observations: it is filed under the book's own
+// CALCULATED POINTS block, after them.
 //
 // The distinction is easy to lose: both are "not a boundary beacon", and a
 // filter written around that idea would drop the stations along with the
@@ -39,19 +40,24 @@ describe('the field book and working stations', () => {
     expect(raw).toContain('(BASE)');
   });
 
-  it('still leaves out the point that was never visited', async () => {
+  it('files the point that was never visited under the block heading', async () => {
     const { raw } = await render();
 
-    expect(raw).not.toContain('(87DNew)');
+    // Not among the stations -- see the page map below for where it lands --
+    // but present in the book, under the heading that says what it is.
+    expect(raw).toContain('(CALCULATED POINTS)');
+    expect(raw).toContain('(87DNew)');
   });
 
-  it('gives each station a page, like any other observed point', async () => {
+  it('gives each station a page, and the calculated point a block page', async () => {
     const { pointPageMap } = await render();
 
     expect(pointPageMap.ST1).toBe('E1');
     expect(pointPageMap.BASE).toBe('E1');
     expect(pointPageMap.SD1).toBe('E1');
-    expect(pointPageMap['87DNew']).toBeUndefined();
+    // 4 observations fill E1; the computed point opens the block at E2, and
+    // that is the page the CO-ORDINATE LIST's F. B cell cites for it.
+    expect(pointPageMap['87DNew']).toBe('E2');
   });
 
   it('shows whether the station was found or placed', async () => {

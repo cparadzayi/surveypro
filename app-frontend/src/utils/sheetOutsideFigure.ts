@@ -15,22 +15,35 @@ interface LoPoint {
   x: number
 }
 
+export interface LoPointNamed {
+  y: number
+  x: number
+  name?: string
+  id?: string
+}
+
 export function sheetOutsideFigureVertices(
-  part: LoPoint[],
-  newPoints: LoPoint[],
+  part: LoPointNamed[],
+  newPoints: LoPointNamed[],
+  names?: Map<LoPointNamed, string>,
 ): OfdVertex[] {
   // A Set of the actual OBJECTS. splitFigure returns the same objects in the part
   // ring and in newPoints, so identity is exact -- where a coordinate comparison
   // would need an epsilon and would misclassify a beacon surveyed to 3 dp as a
   // created point.
-  const created = new Set<LoPoint>(newPoints)
+  const created = new Set<LoPointNamed>(newPoints)
   const letters = letterPart(part)
+  const namesMap = names ?? new Map<LoPointNamed, string>()
 
-  return part.map((p, i) => ({
-    id: `${i}`,
-    pointId: letters[i],
-    y: p.y,
-    x: p.x,
-    type: created.has(p) ? 'cut' : 'survey',
-  }))
+  return part.map((p, i) => {
+    const named = namesMap.get(p) ?? p.name ?? p.id
+    const pointId = named != null && String(named).trim() !== '' ? String(named) : letters[i]
+    return {
+      id: `${i}`,
+      pointId,
+      y: p.y,
+      x: p.x,
+      type: created.has(p) ? 'cut' : 'survey',
+    }
+  })
 }

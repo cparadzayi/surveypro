@@ -130,6 +130,7 @@
         ]"
       >
         ✂️ {{ verdictText }}
+        <span v-if="cutSnapCandidate" class="text-amber-600 ml-1">· snap {{ cutSnapCandidate.id }}</span>
       </div>
 
       <!-- Stored-cut summary: shown once a cut is saved, not while drawing -->
@@ -199,6 +200,25 @@
           <template v-else-if="isEditingVertices">Click beacon to append · ➕ to insert at position</template>
           <template v-else>Click pegs to build polygon · click start to close · <kbd class="bg-white/20 px-1 rounded">ESC</kbd> to finish</template>
         </span>
+        <template v-if="!isEditingVertices">
+          <span class="text-white/50">·</span>
+          <label
+            class="flex items-center gap-1.5 cursor-pointer select-none text-white/80"
+            title="Right-click only completes the parcel in auto-increment mode with a number in the box"
+          >
+            <input v-model="autoIncrementMode" type="checkbox" class="accent-teal-400 cursor-pointer" />
+            Auto #
+          </label>
+          <input
+            v-if="autoIncrementMode"
+            ref="parcelDesignationInputEl"
+            v-model="parcelDesignationInput"
+            @keydown.enter.prevent="completePolygon()"
+            placeholder="Designation…"
+            class="w-28 bg-white/15 border border-white/25 rounded px-1.5 py-0.5 text-white placeholder-white/40 focus:outline-none focus:border-teal-300"
+          />
+        </template>
+        <span v-if="autoIncrementHint" class="text-yellow-300 whitespace-nowrap" role="status">{{ autoIncrementHint }}</span>
         <span class="flex-1"></span>
         <span v-if="selectedPoints.length < 3" class="text-yellow-300 text-xs">min 3 pts</span>
       </div>
@@ -966,7 +986,7 @@ import { newDraft, addVertex, undoVertex, clearDraft, type CutDraft } from '../.
 import { readCuts, writeCuts, type StoredCut } from '../../../utils/cutStorage';
 import { buildSheetPayloads } from '../../../utils/sheetPayloads';
 import { shoelaceAreaYX } from '../../../utils/registryGeometry';
-import { splitFigure } from '../../../../../app-shared/figureSplit';
+import { splitFigure, splitFigureMultiple } from '../../../../../app-shared/figureSplit';
 import { areaCompute, type AreaComputeResponse } from '../../../services/compute';
 import { asBaseMapParcel, parcelFromBaseRecord } from '../../../utils/surveyParcels';
 import { useAreaCompliance, type AreaType, type Parcel } from '../../../composables/useAreaCompliance';
@@ -988,6 +1008,7 @@ import area from '@turf/area';
 import { listLandParcels, createLandParcel, finalizeLandParcels, deleteLandParcel, updateLandParcel, listCoordinatePoints, renameCoordinatePoint, createCoordinatePoint, updateCoordinatePoint, deleteCoordinatePoint, deleteCoordinatePointByName, normalizeCoordinatePointNames, type LandParcel, type CoordinatePoint } from '../../../services/spatial';
 import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow';
 import api from '../../../services/api';
+import { listAdoptedBeacons } from '../../../services/adoptedBeacons';
 import { saveDocument } from '../../../services/documentStorage';
 import { validateParcel, formatValidationMessage, type ValidationResult } from '../../../services/parcelValidation';
 import { nextDesignation } from '../../../utils/parcelNumbering';
@@ -2354,13 +2375,17 @@ const overlapMessage = ref<string | null>(null);
 const isSplitting = ref(false);
 const cutDraft = ref<CutDraft>(newDraft());
 const cutCursorLngLat = ref<{ lng: number; lat: number } | null>(null);
+// The coordinate point the cut's cursor is currently snapped to (hover preview).
+const cutSnapCandidate = ref<SnapCandidate | null>(null);
 
 /** The cut the surveyor finished and saved. Restored on mount; drives the renderers. */
 const storedCut = ref<StoredCut | null>(null);
+const storedCutsArray = ref<StoredCut[]>([]);
 
 let cutVerticesSource: maplibregl.GeoJSONSource | null = null;
 let cutLineSource: maplibregl.GeoJSONSource | null = null;
 let cutRubberSource: maplibregl.GeoJSONSource | null = null;
+let cutSnapPreviewSource: maplibregl.GeoJSONSource | null = null;
 let splitSheetLabelsSource: maplibregl.GeoJSONSource | null = null;
 /** The cut's parts, painted as regions: what makes the figure read as divided. */
 let splitPartsSource: maplibregl.GeoJSONSource | null = null;
@@ -2393,6 +2418,24 @@ const splitStands = computed<{ name: string; ring: { y: number; x: number }[] }[
 });
 
 /**
+ * Every point a cut vertex may snap to: the project's coordinate points plus
+ * every saved parcel's vertices -- the Outside Figure's ring among them. A
+ * click within SNAP_RADIUS_PX reuses the target's OWN stored Lo values instead
+ * of the raw click coordinate, so cuts land exactly on surveyed points and
+ * create no slivers beside them.
+ */
+const splitSnapCandidates = computed<SnapCandidate[]>(() => {
+  const parcels = (Array.from(savedParcels.value.values()) as any[])
+    .map((p: any) => ({
+      id: p.id,
+      designation: p.designation || p.stand,
+      points: (p.metadata?.cape_lo_points as any[]) || [],
+    }))
+    .filter((p) => p.points.length >= 3);
+  return buildSnapIndex(coordinatePoints.value as any[], parcels).candidates;
+});
+
+/**
  * The stored cut, rebuilt into renderer payloads at drawer level. Same inputs
  * as the draft's verdict (ring + stands from savedParcels, vertices at 2dp), so
  * what is shown here is exactly what the plan will render. Sheet NUMBERING
@@ -2400,10 +2443,10 @@ const splitStands = computed<{ name: string; ring: { y: number; x: number }[] }[
  * this view only displays the result, never re-derives it.
  */
 const storedSheets = computed(() => {
-  if (!storedCut.value) return null;
+  if (storedCutsArray.value.length === 0) return null;
   return buildSheetPayloads({
     ring: splitFigureRing.value,
-    polyline: storedCut.value.vertices,
+    polylines: storedCutsArray.value.map(c => c.vertices),
     stands: splitStands.value,
   });
 });
@@ -2535,6 +2578,32 @@ watch(parcelSearchQuery, () => {
 // one (last-entered + 1). Deliberately not derived from parcels[] order — the
 // list is seeded from the DB with the Outside Figure last, which is not a stand.
 const lastEnteredDesignation = ref('');
+
+// Auto-increment mode: when activated, the designation input box in the drawing
+// status bar holds the next number (last-entered + 1) and right-click closes the
+// sketch with that value. Right-click completion is ONLY available in this mode
+// with a non-blank value in the box.
+const autoIncrementMode = ref(false);
+const parcelDesignationInput = ref('');
+const parcelDesignationInputEl = ref<HTMLInputElement | null>(null);
+// Transient hint shown in the drawing status bar when right-click completion is
+// unavailable (auto-increment off or a blank designation box).
+const autoIncrementHint = ref('');
+let autoIncrementHintTimer: ReturnType<typeof setTimeout> | undefined;
+
+// Turning auto-increment on seeds the box with the next suggested number so the
+// surveyor can confirm (or edit) it while tracing the parcel. When nothing can be
+// suggested (a plan with no numbered parcels) the box is focused so the first
+// designation can be typed straight in.
+watch(autoIncrementMode, (on) => {
+  if (!on) return;
+  parcelDesignationInput.value = suggestNextDesignation();
+  nextTick(() => {
+    if (!parcelDesignationInput.value && parcelDesignationInputEl.value) {
+      parcelDesignationInputEl.value.focus();
+    }
+  });
+});
 
 // Beacon labels (intelligent labeling: suffix inside parcels, full names outside)
 interface BeaconLabel {
@@ -3101,6 +3170,20 @@ async function initializeMapOnce() {
       }
     });
 
+    map.addSource('cut-stored-lines', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'cut-stored-lines-path',
+      type: 'line',
+      source: 'cut-stored-lines',
+      paint: {
+        'line-color': '#a855f7',
+        'line-width': 3
+      }
+    });
+
     map.addSource('cut-rubber', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] }
@@ -3113,6 +3196,25 @@ async function initializeMapOnce() {
         'line-color': '#c084fc',
         'line-width': 2,
         'line-dasharray': [1, 2]
+      }
+    });
+
+    // The ring that marks a point the cursor is about to snap to -- feedback
+    // only. The click re-derives the same target from the cursor position, so
+    // the preview can never leak a coordinate that was not meant to commit.
+    map.addSource('cut-snap-preview', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: 'cut-snap-preview-circle',
+      type: 'circle',
+      source: 'cut-snap-preview',
+      paint: {
+        'circle-radius': 13,
+        'circle-color': 'transparent',
+        'circle-stroke-color': '#f59e0b',
+        'circle-stroke-width': 3
       }
     });
 
@@ -3144,6 +3246,7 @@ async function initializeMapOnce() {
     cutVerticesSource = map.getSource('cut-vertices') as maplibregl.GeoJSONSource;
     cutLineSource = map.getSource('cut-line') as maplibregl.GeoJSONSource;
     cutRubberSource = map.getSource('cut-rubber') as maplibregl.GeoJSONSource;
+    cutSnapPreviewSource = map.getSource('cut-snap-preview') as maplibregl.GeoJSONSource;
     splitSheetLabelsSource = map.getSource('split-sheet-labels') as maplibregl.GeoJSONSource;
     // Sources exist now; repaint a stored cut restored before map init.
     paintStoredCut();
@@ -3275,7 +3378,7 @@ async function initializeMapOnce() {
     // vertex markers -- those must stay topmost because they are dragged. The
     // order of the moves is what keeps the stack's own order sensible: rubber
     // band, cut line, its vertices, then the sheet labels on top of them.
-    for (const id of ['cut-rubber-path', 'cut-line-path', 'cut-vertices-circle', 'split-sheet-labels-symbol']) {
+    for (const id of ['cut-rubber-path', 'cut-line-path', 'cut-vertices-circle', 'split-sheet-labels-symbol', 'cut-snap-preview-circle']) {
       map.moveLayer(id, 'vertices-circle');
     }
 
@@ -3311,7 +3414,7 @@ async function initializeMapOnce() {
         return;
       }
       if (isSplitting.value) {
-        addCutVertex(e.lngLat);
+        addCutVertex(e.lngLat, e.point);
         return;
       }
       if (draggingVertexIndex.value !== null) return;
@@ -3324,19 +3427,38 @@ async function initializeMapOnce() {
       if (isSplitting.value && cutDraft.value.verdict === 'ok') finishSplit();
     });
 
-    // Right-click closes the in-progress sketch — the fast path: no hunting
-    // for the start vertex and no designation dialog (the session's next
-    // designation is taken as-is; with no suggestion yet it falls back to the
-    // prompt). MapLibre fires this only for a PLAIN right-click — a
-    // right-button drag is the rotate/pitch gesture and is suppressed — and
-    // its own drag handlers already preventDefault the browser menu. The
-    // guards mirror the start-vertex close: a vertex edit shares isDrawing
-    // but must not complete (it would build a second parcel from the geometry
-    // being edited), and a coordinate pick owns its clicks.
+    // Right-click closes the in-progress sketch — but ONLY when auto-increment
+    // mode is on and the designation box has a value (that value is taken as-is;
+    // a blank box never completes, not even via the prompt). MapLibre fires this
+    // only for a PLAIN right-click — a right-button drag is the rotate/pitch
+    // gesture and is suppressed — and its own drag handlers already preventDefault
+    // the browser menu. The guards mirror the start-vertex close: a vertex edit
+    // shares isDrawing but must not complete (it would build a second parcel from
+    // the geometry being edited), and a coordinate pick owns its clicks.
     map.on('contextmenu', () => {
       if (!isDrawing.value || isEditingVertices.value) return;
       if (pickingCoordinates.value) return;
       if (selectedPoints.value.length < 3) return;
+      if (!autoIncrementMode.value || !parcelDesignationInput.value.trim()) {
+        console.log('[MapLibre] 🖱️ Right-click ignored — right-click completion needs auto-increment ON and a number in the designation box', {
+          autoIncrement: autoIncrementMode.value,
+          designation: parcelDesignationInput.value || '(blank)',
+        });
+        // Visible feedback instead of a silent ignore: focus the box and flash a
+        // hint so the surveyor knows why the parcel did not close.
+        autoIncrementHint.value = autoIncrementMode.value
+          ? 'Right-click needs a number — type a designation in the box'
+          : 'Enable Auto # and type a designation to complete with right-click';
+        parcelDesignationInputEl.value?.focus();
+        if (autoIncrementHintTimer) clearTimeout(autoIncrementHintTimer);
+        autoIncrementHintTimer = setTimeout(() => { autoIncrementHint.value = ''; }, 4000);
+        return;
+      }
+      autoIncrementHint.value = '';
+      if (autoIncrementHintTimer) {
+        clearTimeout(autoIncrementHintTimer);
+        autoIncrementHintTimer = undefined;
+      }
       console.log('[MapLibre] 🖱️ Right-click — closing polygon');
       closePolygonWithSuggestion();
     });
@@ -3384,7 +3506,17 @@ async function initializeMapOnce() {
       }
       if (isSplitting.value) {
         cutCursorLngLat.value = { lng: e.lngLat.lng, lat: e.lngLat.lat };
-        paintCutRubber(e.lngLat);
+        const target = snappedCutTarget(e.point);
+        cutSnapCandidate.value = target;
+        paintCutSnapPreview(target);
+        if (target) {
+          const w = cutTargetWgs84(target);
+          if (w) paintCutRubber(w);
+          if (map) map.getCanvas().style.cursor = 'pointer';
+        } else {
+          paintCutRubber(e.lngLat);
+          if (map) map.getCanvas().style.cursor = 'crosshair';
+        }
         return;
       }
       if (draggingVertexIndex.value !== null) moveVertexDrag(e.point, e.lngLat);
@@ -4384,6 +4516,7 @@ function clearCutPaint() {
   if (cutVerticesSource) cutVerticesSource.setData({ type: 'FeatureCollection', features: [] });
   if (cutLineSource) cutLineSource.setData({ type: 'FeatureCollection', features: [] });
   if (cutRubberSource) cutRubberSource.setData({ type: 'FeatureCollection', features: [] });
+  if (cutSnapPreviewSource) cutSnapPreviewSource.setData({ type: 'FeatureCollection', features: [] });
 }
 
 function renderCutDraft() {
@@ -4463,7 +4596,8 @@ async function saveStoredCut(cut: StoredCut | null) {
     console.warn('[MapLibre] ✂️ No Outside Figure parcel to persist the cut to');
     return;
   }
-  const metadata = writeCuts((parcel.metadata as object) ?? {}, cut ? [cut] : []);
+  const cutsToStore = storedCutsArray.value.length > 0 ? storedCutsArray.value : (cut ? [cut] : [])
+  const metadata = writeCuts((parcel.metadata as object) ?? {}, cutsToStore);
   try {
     const db = await updateLandParcel(parcel.id, { metadata });
     savedParcels.value.set(parcel.designation || parcel.stand, {
@@ -4478,16 +4612,28 @@ async function saveStoredCut(cut: StoredCut | null) {
 
 /** Paint the STORED cut: its line in the shared cut-line layer, its sheet numbers on it. */
 function paintStoredCut() {
-  const cut = storedCut.value;
+  const cutLineSourceStored = (map && (map.getSource('cut-stored-lines') as any)) as maplibregl.GeoJSONSource | null
+  if (cutLineSourceStored) {
+    const features = (storedCutsArray.value || []).filter(c => c.vertices.length >= 2).map(c => ({
+      type: 'Feature' as const,
+      geometry: { type: 'LineString' as const, coordinates: capeLoArrayToWGS84(
+        c.vertices.map((v, i) => ({ id: String(i), y: v.y, x: v.x })),
+        splitLoZone()
+      ).map(w => [w.lng, w.lat]) },
+      properties: {},
+    }))
+    cutLineSourceStored.setData({ type: 'FeatureCollection', features })
+  }
   if (cutLineSource) {
+    const draft = storedCut.value
     cutLineSource.setData(
-      cut && cut.vertices.length >= 2
+      draft && draft.vertices.length >= 2
         ? {
             type: 'FeatureCollection',
             features: [{
               type: 'Feature',
               geometry: { type: 'LineString', coordinates: capeLoArrayToWGS84(
-                cut.vertices.map((v, i) => ({ id: String(i), y: v.y, x: v.x })),
+                draft.vertices.map((v, i) => ({ id: String(i), y: v.y, x: v.x })),
                 splitLoZone()
               ).map(w => [w.lng, w.lat]) },
               properties: {},
@@ -4559,12 +4705,15 @@ function paintStoredSheetLabels() {
 function clearStoredCutPaint() {
   if (splitSheetLabelsSource) splitSheetLabelsSource.setData({ type: 'FeatureCollection', features: [] });
   if (splitPartsSource) splitPartsSource.setData({ type: 'FeatureCollection', features: [] });
+  const storedLines = (map && (map.getSource('cut-stored-lines') as any)) as maplibregl.GeoJSONSource | null
+  if (storedLines) storedLines.setData({ type: 'FeatureCollection', features: [] });
 }
 
 /** Remove the stored cut: clears the Overlay so the plan renders one sheet again. */
 async function deleteStoredCut() {
   if (!storedCut.value) return;
   storedCut.value = null;
+  storedCutsArray.value = [];
   await saveStoredCut(null);
   paintStoredCut();
   console.log('[MapLibre] ✂️ Stored cut deleted');
@@ -4581,19 +4730,75 @@ function startSplitting() {
   isSplitting.value = true;
   cutDraft.value = newDraft();
   cutCursorLngLat.value = null;
+  cutSnapCandidate.value = null;
   clearCutPaint();
   if (map) map.getCanvas().style.cursor = 'crosshair';
   console.log('[MapLibre] ✂️ Split-figure mode started');
 }
 
-/** A click lands here: raw WGS84 at the boundary, rounded by cutDrawing's addVertex. */
-function addCutVertex(lngLat: { lng: number; lat: number }) {
+/** Cape Lo of a snap target back to WGS84, for painting it on the map. */
+function cutTargetWgs84(target: SnapCandidate): { lng: number; lat: number } | null {
+  const [w] = capeLoArrayToWGS84([{ id: target.id || 'target', y: target.y, x: target.x }], splitLoZone());
+  return w ?? null;
+}
+
+/** The point under the cursor a cut vertex would snap to, or null past the radius. */
+function snappedCutTarget(pt: { x: number; y: number }): SnapCandidate | null {
+  if (!map) return null;
+  const targets = splitSnapCandidates.value;
+  if (targets.length === 0) return null;
+  return nearestCandidate(targets, pt, (c) => {
+    const w = cutTargetWgs84(c);
+    return w ? map!.project([w.lng, w.lat]) : null;
+  }, SNAP_RADIUS_PX);
+}
+
+/** Paint (or clear) the ring around the point the cursor is about to snap to. */
+function paintCutSnapPreview(target: SnapCandidate | null) {
+  if (!cutSnapPreviewSource) return;
+  if (!target) {
+    cutSnapPreviewSource.setData({ type: 'FeatureCollection', features: [] });
+    return;
+  }
+  const w = cutTargetWgs84(target);
+  cutSnapPreviewSource.setData({
+    type: 'FeatureCollection',
+    features: w ? [{
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [w.lng, w.lat] },
+      properties: { id: target.id },
+    }] : [],
+  });
+}
+
+/**
+ * A click lands here. When the cursor is over a known point (within
+ * SNAP_RADIUS_PX) that vertex commits that point's OWN stored Lo values instead
+ * of the raw WGS84 click -- including points along the Outside Figure's ring --
+ * so the cut reuses surveyed points exactly and no slivers appear beside them.
+ */
+function addCutVertex(lngLat: { lng: number; lat: number }, point?: { x: number; y: number }) {
   if (splitFigureRing.value.length < 3) return;
-  const cape = wgs84ToCape(lngLat.lng, lngLat.lat, splitLoZone(), 'M');
-  cutDraft.value = addVertex(cutDraft.value, splitFigureRing.value, splitStands.value, { y: cape.y, x: cape.x });
+  const target = point ? snappedCutTarget(point) : null;
+  cutSnapCandidate.value = target;
+  paintCutSnapPreview(target);
+  let lo: { y: number; x: number };
+  if (target) {
+    lo = { y: target.y, x: target.x };
+    console.log(`[MapLibre] ✂️ Cut vertex snapped to point ${target.id} at Y ${target.y}, X ${target.x}`);
+  } else {
+    const cape = wgs84ToCape(lngLat.lng, lngLat.lat, splitLoZone(), 'M');
+    lo = { y: cape.y, x: cape.x };
+  }
+  cutDraft.value = addVertex(cutDraft.value, splitFigureRing.value, splitStands.value, lo);
   cutCursorLngLat.value = { lng: lngLat.lng, lat: lngLat.lat };
   renderCutDraft();
-  paintCutRubber(lngLat);
+  if (target) {
+    const w = cutTargetWgs84(target);
+    if (w) paintCutRubber(w);
+  } else {
+    paintCutRubber(lngLat);
+  }
 }
 
 function undoCut() {
@@ -4610,9 +4815,12 @@ async function finishSplit() {
   if (cutDraft.value.verdict !== 'ok') return;
   isSplitting.value = false;
   cutCursorLngLat.value = null;
+  cutSnapCandidate.value = null;
   if (map) map.getCanvas().style.cursor = '';
-  storedCut.value = { vertices: cutDraft.value.vertices };
-  await saveStoredCut(storedCut.value);
+  const newCut: StoredCut = { vertices: cutDraft.value.vertices };
+  storedCutsArray.value = [...storedCutsArray.value, newCut];
+  storedCut.value = newCut;
+  await saveStoredCut(newCut);
   paintStoredCut();
   console.log('[MapLibre] ✂️ Split-figure finished and persisted');
 }
@@ -4622,6 +4830,7 @@ function cancelSplit() {
   isSplitting.value = false;
   cutDraft.value = newDraft();
   cutCursorLngLat.value = null;
+  cutSnapCandidate.value = null;
   clearCutPaint();
   paintStoredCut();
   if (map) map.getCanvas().style.cursor = '';
@@ -4631,9 +4840,10 @@ function cancelSplit() {
 /** Sheet count from splitFigure's parts — the verdict's own source, not a re-estimate. */
 const cutPartsCount = computed<number | null>(() => {
   if (cutDraft.value.verdict !== 'ok' || cutDraft.value.vertices.length < 2) return null;
-  const outcome = splitFigure({
+  const polylines = [...storedCutsArray.value.map(c => c.vertices), cutDraft.value.vertices];
+  const outcome = splitFigureMultiple({
     ring: splitFigureRing.value,
-    polyline: cutDraft.value.vertices,
+    polylines,
     stands: splitStands.value,
   });
   return outcome.ok ? outcome.parts.length : null;
@@ -4770,18 +4980,44 @@ function undoLastPoint() {
 }
 
 /**
- * Suggested designation for the next parcel: the one last entered THIS
- * session, bumped past any number already on the plan. Empty until the
- * first parcel of the session is entered by hand — nothing to bump from.
+ * Of the designations given, return the one carrying the numerically largest
+ * trailing run of digits (e.g. "STAND 390" over "LOT 12"; "Outside Figure" is
+ * skipped). Used to seed the auto-increment box on a fresh session where the
+ * surveyor has not typed a designation yet — the plan itself determines the
+ * next number, so right-click completion works from the very first parcel.
+ */
+function maxNumberedDesignation(existing: string[]): string {
+  let best = '';
+  let bestN = -1;
+  for (const d of existing) {
+    const m = String(d).match(/(\d+)(\D*)$/);
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > bestN) {
+      bestN = n;
+      best = d;
+    }
+  }
+  return best;
+}
+
+/**
+ * Suggested designation for the next parcel: the one last entered THIS session
+ * bumped past any number already on the plan, or — when nothing has been typed
+ * yet — the highest-numbered stand already on the plan bumped by one. Empty
+ * only when the plan itself has no numbered parcels (a truly empty project,
+ * where the first designation must be typed by hand).
  */
 function suggestNextDesignation(): string {
   const _existing = parcels.value.map((p: any) => p.designation ?? '').filter(Boolean);
-  const _suggestion = lastEnteredDesignation.value
-    ? nextDesignation(lastEnteredDesignation.value, _existing)
-    : '';
+  // Fresh session (nothing typed yet): fall back to the highest-numbered stand
+  // already on the plan so the auto-increment box opens with a real value.
+  const _seed = lastEnteredDesignation.value || maxNumberedDesignation(_existing);
+  const _suggestion = _seed ? nextDesignation(_seed, _existing) : '';
   console.log('[MapLibre] 🔢 Next-designation suggestion', {
+    seed: _seed || '(none — type the first designation)',
     lastEntered: lastEnteredDesignation.value || '(none yet this session)',
-    suggestion: _suggestion || '(empty — first parcel of the session)',
+    suggestion: _suggestion || '(empty — a first designation must be typed)',
     existingCount: _existing.length,
   });
   return _suggestion;
@@ -4796,7 +5032,15 @@ async function completePolygon() {
     alert('Minimum 3 points required to create a polygon.');
     return;
   }
-  
+
+  // Auto-increment mode: the designation already sits in the box — complete
+  // straight from it without a dialog. The prompt remains the fallback when
+  // the box is blank or auto-increment is off.
+  if (autoIncrementMode.value && parcelDesignationInput.value.trim()) {
+    await finalizePolygon(parcelDesignationInput.value.trim());
+    return;
+  }
+
   const designation = prompt(
     'Enter parcel designation (e.g., LOT 1, STAND 2283):',
     suggestNextDesignation()
@@ -4809,17 +5053,15 @@ async function completePolygon() {
 }
 
 /**
- * Right-click close: the suggested next designation is taken as-is so the
- * surveyor never leaves the map or touches a dialog. Falls back to the
- * prompt when there is no suggestion yet (first parcel of a session — it
- * has nothing to bump from and must be typed).
+ * Right-click close: the designation is taken as-is from the auto-increment
+ * box so the surveyor never leaves the map or touches a dialog. Only reachable
+ * when auto-increment mode is on AND the box has a value (the contextmenu
+ * handler gates it) — a blank box must not complete, not even via the prompt,
+ * so a stray right-click can never silently name a parcel.
  */
 async function closePolygonWithSuggestion() {
-  const suggestion = suggestNextDesignation();
-  if (!suggestion) {
-    await completePolygon();
-    return;
-  }
+  const suggestion = parcelDesignationInput.value.trim();
+  if (!suggestion) return;
   console.log(`[MapLibre] 🖱️ Right-click close, designation ${suggestion}`);
   await finalizePolygon(suggestion);
 }
@@ -4927,7 +5169,20 @@ async function finalizePolygon(designation: string) {
 
   // Remember what was just entered so the next parcel pre-fills as this + 1.
   lastEnteredDesignation.value = parcel.designation;
-  
+
+  // Auto-increment mode: advance the box to the next number so the right-click
+  // chain (and the seeded box) stays one ahead of parcel creation.
+  if (autoIncrementMode.value) {
+    const next = suggestNextDesignation();
+    if (next) parcelDesignationInput.value = next;
+  }
+  // Any transient right-click hint is stale once a parcel closed.
+  autoIncrementHint.value = '';
+  if (autoIncrementHintTimer) {
+    clearTimeout(autoIncrementHintTimer);
+    autoIncrementHintTimer = undefined;
+  }
+
   // Reset drawing state
   isDrawing.value = false;
   selectedPoints.value = [];
@@ -5328,9 +5583,10 @@ async function loadParcelsFromDatabase() {
       p.stand?.toLowerCase().includes('outside figure')
     );
     const restored = storedFigure ? readCuts(storedFigure.metadata) : [];
-    storedCut.value = restored.length > 0 ? restored[0] : null;
-    if (storedCut.value) {
-      console.log('[MapLibre] ✂️ Restored stored cut from Outside Figure metadata');
+    storedCutsArray.value = restored;
+    storedCut.value = restored.length > 0 ? restored[restored.length - 1] : null;
+    if (storedCutsArray.value.length > 0) {
+      console.log(`[MapLibre] ✂️ Restored ${storedCutsArray.value.length} stored cut(s) from Outside Figure metadata`);
     }
     paintStoredCut();
     
@@ -7803,6 +8059,25 @@ async function exportAreaConsistencyPDF() {
       instrumentRoverSerial: surveyorInfo.instrumentRoverSerial || '',
     };
 
+    // Adopted beacons: carried from a previous approved survey, persisted in
+    // project_adopted_beacons by the Import CSV step. They belong to the
+    // Co-ordinate List only (ADOPTED BEACONS, after trig) -- without them the
+    // whole ADOPTED BEACONS section silently disappears from this document.
+    // Always log the outcome: a fetch skipped for a missing project id used
+    // to fail silently, and the section simply did not print.
+    const adoptedProjectId = workflowState?.projectInfo?.projectId;
+    let adoptedBeacons: any[] = [];
+    if (adoptedProjectId) {
+      try {
+        adoptedBeacons = await listAdoptedBeacons(adoptedProjectId);
+      } catch (e: any) {
+        console.warn('[MapLibre] ❌ failed to load adopted beacons:', e?.message);
+      }
+    }
+    console.log(
+      `[MapLibre] 📌 Adopted beacons: projectId=${adoptedProjectId ?? 'NONE'}, rows=${adoptedBeacons.length}`,
+    );
+
     const result = await generator.generateWithTwoPass({
       projectInfo: coverPageInfo,
       surveyorInfo: surveyorInfo,
@@ -7813,6 +8088,7 @@ async function exportAreaConsistencyPDF() {
       surveyPoints: surveyPoints,
       adjustedCoordinates: adjustedCoordinates,
       projectControlPoints: controlPoints,
+      adoptedBeacons,
       duplicateAnalyses: workflowState?.duplicateAnalyses || [],
       parcels: computedParcels.map(p => ({
         id: p.id?.toString(),

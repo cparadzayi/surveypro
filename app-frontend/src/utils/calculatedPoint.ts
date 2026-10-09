@@ -4,7 +4,10 @@
  * A calculated point is derived rather than visited: no beacon was placed and
  * nothing was measured on the ground. That distinction decides which documents
  * it may appear in — it belongs in the Calculations and the Co-ordinate List,
- * and never in the Field Book, which records observations.
+ * and in the Field Book only as its own: never among the observation pages,
+ * but in the CALCULATED POINTS block the book appends after them (and before
+ * the party-wall servitudes), which is the page the Co-ordinate List's F. B
+ * cell cites for it.
  *
  * This existed as three different predicates, each stricter than the last:
  *

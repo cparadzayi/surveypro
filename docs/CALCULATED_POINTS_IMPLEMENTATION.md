@@ -1,7 +1,7 @@
 # Calculated Points Implementation
 
 ## Overview
-The cadastral workflow has been refactored to support **calculated points** - points that are computed mathematically rather than observed in the field. These points do NOT appear in the Field Book but DO appear in Calculations and the Coordinate List.
+The cadastral workflow has been refactored to support **calculated points** - points that are computed mathematically rather than observed in the field. These points never appear among the Field Book's observation pages, but they DO appear in the Field Book's own **CALCULATED POINTS block** (after the observations, before the party-wall servitudes), in the combined **CALCULATIONS** table (recorded exactly once, like every other point), and in the Coordinate List — where F. B cites the block page and Calcs cites the page of that table carrying the point's row.
 
 ## What Are Calculated Points?
 
@@ -73,7 +73,7 @@ The system automatically detects calculated points if ANY of these conditions ar
 [CSV Parser] 📊 Import Summary:
   - Total Points: 150
   - Field Book Points: 142
-  - Calculated Points: 8 (excluded from field book)
+  - Calculated Points: 8 (CALCULATED POINTS block, not observations)
   - Fixed Points (F): 12
   - Peg Points (P): 138
   - Other Points: 0
@@ -86,24 +86,20 @@ The system automatically detects calculated points if ANY of these conditions ar
 - `app-frontend/src/utils/comprehensive-document.ts`
 
 **Changes:**
-- Filter out calculated points before generating field book
-- Only observed points appear in field book pages (E1-E99)
-- Calculated points are excluded from page numbering
+- Calculated points never join the observation pages: they are split off before pagination and rendered in the field book's own CALCULATED POINTS block — after the last observation page, before the party-wall servitudes
+- `paginateFieldBook()` receives them as a separate list (`opts.calculated`), so they earn block E-numbers without shifting any observation E-number
+- The block's E-page is what the Coordinate List's F. B cell cites for a calculated point
 
-**Filtering Logic:**
+**Partitioning Logic (one predicate, shared — `utils/calculatedPoint.ts`):**
 ```typescript
-const filteredPoints = data.surveyPoints.filter(pt => {
-  const desc = (pt.description || '').toLowerCase();
-  const isCalculated = desc.includes('calculated');
-  return !isCalculated;
-});
+const calculated = points.filter(pt => isCalculatedPoint(pt));
+const observed = points.filter(pt => !isCalculatedPoint(pt));
 ```
 
 **Console Output:**
 ```
-[FieldBook] 🧮 Excluding calculated point: CP1
-[FieldBook] 🧮 Excluding calculated point: CP2
-[FieldBook] 📊 Points: 150 total, 142 in field book, 8 calculated (excluded)
+[FieldBook] 🧮 8 calculated point(s) -> CALCULATED POINTS block: CP1, CP2, ...
+[FieldBook] 📊 Points: 150 total, 142 observed, 8 calculated (block)
 ```
 
 ### 3. Calculations Part 1
@@ -111,15 +107,16 @@ const filteredPoints = data.surveyPoints.filter(pt => {
 **File:** `app-frontend/src/utils/calculations-part1.ts`
 
 **Changes:**
-- Updated `generateFieldBookPageLookup()` to filter calculated points
-- Calculated points show "-" in F/B column (not "E1", "E2", etc.)
-- Only observed points get field book page references
+- `generateFieldBookPageLookup()` gives calculated points the E-page of the field book's CALCULATED POINTS block (no longer "-")
+- The combined table's F/B column cites that block page for every calculated row — the cross-reference between field book and calculations
+- A separate CALCULATED POINTS section was tried and removed: the combined table already recorded every point, so the second listing printed the same rows twice in one document
 
 **Behavior:** Calculated points **DO appear** in calculations
-- All points (observed + calculated) are included in calculations table
-- Calculated points show "-" for field book reference
-- Calculations show how calculated points were derived
-- Page numbering includes calculated points
+- All points (observed + calculated) are listed in the combined calculations table, each row underlined by the red rule that certifies its coordinates
+- Calculated rows cite their block page in F/B
+- The Coordinate List's Calcs cell cites the combined-table page carrying the point's row
+- Recorded exactly once: no second listing follows the table
+- A survey with no calculated points paginates as any other — the table records what exists
 
 ### 4. Coordinate List
 
@@ -134,7 +131,7 @@ const filteredPoints = data.surveyPoints.filter(pt => {
 **Behavior:** Calculated points **DO appear** in coordinate list
 - Listed in separate "CALCULATED POINTS" section
 - Appear after "FOUND BEACONS" and before "PLACED BEACONS"
-- Cross-references to Field Book show "-" (not beaconed)
+- Cross-references to Field Book cite the E-page of the field book's CALCULATED POINTS block ("-" only when the row carries no page)
 - Cross-references to Calculations show correct page numbers (C1, C2, etc.)
 
 ---
@@ -191,25 +188,38 @@ export interface CSVValidationResult {
 │ P1   │ 18862.520  │ 2268555.010│ ... │
 │ P2   │ 18900.123  │ 2268600.456│ ... │
 │ P3   │ 18950.789  │ 2268650.123│ ... │
-│      │            │            │     │  ← CP1 NOT shown (calculated)
 │ P4   │ 19000.456  │ 2268700.789│ ... │
 └──────┴────────────┴────────────┴─────┘
+  (CP1 is not among the observations -- it prints on its own block page:)
+
+┌──────────────────────────────────────┐
+│ Electronic Field Book - Page E2      │
+├──────────────────────────────────────┤
+│ CALCULATED POINTS                    │
+├──────┬────────────┬────────────┬──────────────┐
+│ Point│ Y (Westing)│ X (Southing)│ Description  │
+├──────┼────────────┼────────────┼──────────────┤
+│ CP1  │ 18900.000  │ 2268600.000│ Not beaconed  │
+└──────┴────────────┴────────────┴──────────────┘
+  ← the page the CO-ORDINATE LIST's F. B cell cites for CP1
 ```
 
 ### Calculations Part 1 (C1-C99)
 ```
-┌─────────────────────────────────────────────────────┐
-│ Calculations Part 1 - Page C1                       │
-├──────┬────────────┬────────────┬────────┬──────────┤
-│ Point│ Y (Westing)│ X (Southing)│ Status │   F/B    │
-├──────┼────────────┼────────────┼────────┼──────────┤
-│ P1   │ 18862.520  │ 2268555.010│ F      │ E1       │
-│ P2   │ 18900.123  │ 2268600.456│ P      │ E1       │
-│ P3   │ 18950.789  │ 2268650.123│ P      │ E1       │
-│ M5   │ 96892.200  │ 2247571.920│ Calc   │ -        │  ← Shows "-" not "E1"
-│ M6   │ 96750.760  │ 2247697.040│ Calc   │ -        │  ← Shows "-" not "E1"
-│ P4   │ 19000.456  │ 2268700.789│ P      │ E2       │
-└──────┴────────────┴────────────┴────────┴──────────┘
+┌─────────────────────────────────────────────────┐
+│ Calculations Part 1 - Page C1                   │
+├──────┬────────────┬────────────┬────────────────┤
+│ ID   │ Y (Westing)│ X (Southing)│    F/B        │
+├──────┼────────────┼────────────┼────────────────┤
+│ P1   │ 18862.520  │ 2268555.010│ E1            │
+│ P2   │ 18900.123  │ 2268600.456│ E1            │
+│ P3   │ 18950.789  │ 2268650.123│ E1            │
+│ M5   │ 96892.200  │ 2247571.920│ E7            │  ← F/B = block page
+│ M6   │ 96750.760  │ 2247697.040│ E7            │  ← F/B = block page
+│ P4   │ 19000.456  │ 2268700.789│ E2            │
+└──────┴────────────┴────────────┴────────────────┘
+  ← every row — calculated ones too — above the red rule that
+    certifies its coordinates; the point is recorded here exactly once
 ```
 
 ### Coordinate List (L1-L99)
@@ -229,9 +239,9 @@ export interface CSVValidationResult {
 ├──────┬───────────┬───────────┬──────────┬───────────┤
 │ Point│ Y (West)  │ X (South) │ Field Bk │ Calc Page │
 ├──────┼───────────┼───────────┼──────────┼───────────┤
-│ M5   │ 96892.20  │ 2247571.92│ -        │ C1        │  ← Shows "-" for F/B
-│ M6   │ 96750.76  │ 2247697.04│ -        │ C1        │  ← Shows calc page
-│ M7   │ 96995.07  │ 2247744.27│ -        │ C1        │
+│ M5   │ 96892.20  │ 2247571.92│ E7       │ C1        │  ← F/B = block page
+│ M6   │ 96750.76  │ 2247697.04│ E7       │ C1        │  ← Calc = combined-table page
+│ M7   │ 96995.07  │ 2247744.27│ E7       │ C1        │
 ├──────┴───────────┴───────────┴──────────┴───────────┤
 │ PLACED BEACONS                                       │
 ├──────┬───────────┬───────────┬──────────┬───────────┤
@@ -257,11 +267,11 @@ P2,18950.789,2268650.123,P,12mm iron peg,1/10/2025
 
 **Expected:**
 - Total: 3 points
-- Field Book: 2 points (P1, P2)
+- Field Book observations: 2 points (P1, P2)
 - Calculated: 1 point (CP1)
-- Field Book pages: E1 (2 points)
-- Calculations pages: C1 (3 points)
-- Coordinate List: L1 (3 points, CP1 shows "-" for field book)
+- Field Book pages: E1 (2 observations), E2 (CALCULATED POINTS block)
+- Calculations pages: C1 (combined table; the calculated points recorded there, F/B citing their block page)
+- Coordinate List: L1 (3 points, CP1 cites block page E2 in F/B)
 
 ### Test Scenario 2: Multiple Calculated Points
 
@@ -278,18 +288,18 @@ P3,19000.456,2268700.789,P,12mm iron peg,1/10/2025,Observed
 
 **Expected:**
 - Total: 6 points
-- Field Book: 3 points (P1, P2, P3)
+- Field Book observations: 3 points (P1, P2, P3)
 - Calculated: 3 points (CP1, CP2, CP3)
-- Field Book pages: E1 (3 points)
-- Calculations pages: C1 (6 points)
-- Coordinate List: L1 (6 points, CP1/CP2/CP3 show "-" for field book)
+- Field Book pages: E1 (3 observations), E2 (CALCULATED POINTS block)
+- Calculations pages: C1 (combined table; the calculated points recorded there, F/B citing their block page)
+- Coordinate List: L1 (6 points, CP1/CP2/CP3 cite block page E2 in F/B)
 
 ---
 
 ## Benefits
 
 ### 1. **Accuracy**
-- Field book only shows physically observed points
+- Field book observation pages show only physically observed points; computed ones gather under their own heading, never mixed in
 - Matches actual field work procedures
 - Prevents confusion about which points were beaconed
 
@@ -333,7 +343,7 @@ If you have existing CSV files without calculated points:
 
 3. **Import CSV** - system will automatically:
    - Detect calculated points
-   - Exclude them from field book
+   - Keep them off the field book's observation pages (they go to the CALCULATED POINTS block)
    - Include them in calculations and coordinate list
 
 ---
@@ -351,26 +361,24 @@ The system provides detailed logging for debugging:
 [CSV Parser] 📊 Import Summary:
   - Total Points: 150
   - Field Book Points: 142
-  - Calculated Points: 8 (excluded from field book)
+  - Calculated Points: 8 (CALCULATED POINTS block, not observations)
   - Fixed Points (F): 12
   - Peg Points (P): 138
   - Other Points: 0
 
-[FieldBook] 🧮 Excluding calculated point: CP1
-[FieldBook] 🧮 Excluding calculated point: CP2
-[FieldBook] 📊 Points: 150 total, 142 in field book, 8 calculated (excluded)
-[FieldBook] Will generate 6 pages (E1-E6)
+[FieldBook] 🧮 8 calculated point(s) -> CALCULATED POINTS block: CP1, CP2, ...
+[FieldBook] 📊 Points: 150 total, 142 observed, 8 calculated (block)
+[FieldBook] Generated page E1: 27 points
+[FieldBook] 🧮 Generated 1 CALCULATED POINTS page(s)
 
-[ComprehensiveDoc] 🧮 Excluding calculated point from Field Book: CP1
+[ComprehensiveDoc] 🧮 CP1 is calculated: observation pages no, CALCULATED POINTS block yes
 [ComprehensiveDoc] 📋 Survey points filtering:
-[ComprehensiveDoc] - Total survey points: 150
-[ComprehensiveDoc] - TRIG beacons filtered out: 0
-[ComprehensiveDoc] - Calculated points filtered out: 8
-[ComprehensiveDoc] - Points for Field Book: 142
+[ComprehensiveDoc]   - Total: 150
+[ComprehensiveDoc]   - TRIG beacons: 0
+[ComprehensiveDoc]   - For processing: 150
 
-[CalculationsPart1] 🧮 Excluding calculated point from F/B lookup: M5
-[CalculationsPart1] 🧮 Excluding calculated point from F/B lookup: M6
-[CalculationsPart1] 📊 Field Book lookup: 150 total, 142 in field book, 8 calculated
+[CalculationsPart1] 🧮 8 calculated point(s) cite the field book's CALCULATED POINTS block
+[CalculationsPart1] 📊 Field Book lookup: 150 total, 142 observed, 8 calculated
 
 [CoordinateList] 📊 Point grouping:
   - TRIG: 2
@@ -414,6 +422,8 @@ The system provides detailed logging for debugging:
    - Updated `renderPointsOnPageContinuous()` to force "-" for calculated points in F.B column
    - Added console logging for point grouping statistics
 
+7. **CALCULATED POINTS blocks and cross-references** - calculated points now appear in the Field Book in their own block (after the observations, before the party-wall servitudes), recorded exactly once in the combined CALCULATIONS table of Calculations (every row — calculated ones too — under the red rule; a second CALCULATED POINTS listing was removed as duplication), and in the Coordinate List's own CALCULATED POINTS section. F. B cites the block E-page instead of "-", Calcs cites the page of the combined table carrying the point's row, the table's F/B cites the block E-page, `paginateFieldBook()` takes the block as a separate list so no observation E-number moves, and `fpAndFieldBookCells()` prints the row's block page rather than forcing "-".
+
 ---
 
 ## Future Enhancements
@@ -441,5 +451,5 @@ For questions or issues:
 3. Ensure calculated points have valid coordinates
 4. Review this documentation for proper usage
 
-**Last Updated:** December 14, 2025
-**Version:** 1.0.0
+**Last Updated:** October 8, 2026
+**Version:** 1.1.0

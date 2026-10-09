@@ -17,17 +17,32 @@
 //
 // The status is what the surveyor states deliberately. It decides the section.
 //
-// One heading is deliberately absent: ADOPTED BEACONS. It used to be the
-// heading for provenance F, on the reading that a found beacon's coordinates
-// are thereby "found & adopted" -- which made the heading say something the
-// status column did not, and left "adopted" meaning both "found" and something
-// it should not. F is now simply FOUND BEACONS, and "adopted" is reserved for a
-// beacon whose coordinates were carried from a previous approved survey and
-// cited by that survey's record number. No status code produces that section
-// yet; see the note on SECTION_HEADINGS in coordinate-list.ts.
+// One heading is reserved: ADOPTED BEACONS. It used to be the heading for
+// provenance F, on the reading that a found beacon's coordinates are thereby
+// "found & adopted" -- which made the heading say something the status column
+// did not, and left "adopted" meaning both "found" and something it should
+// not. F is now simply FOUND BEACONS, and "adopted" is reserved for a beacon
+// whose coordinates were carried from a previous approved survey and cited by
+// that survey's record number. That section is keyed on `srNumber`, supplied
+// by the adopted-beacons input routine (see adoptedBeaconsCsv.ts) -- never on
+// the Status column, whose verbatim value ("F" in the usual case) would file
+// the row under FOUND BEACONS and lose the S.R. citation. See the note on
+// SECTION_HEADINGS in coordinate-list.ts.
 
 import { describe, it, expect } from 'vitest';
+import { setActivePinia, createPinia } from 'pinia';
 import { CoordinateListGenerator, fpAndFieldBookCells } from '../coordinate-list';
+
+/** Enough SurveyorInfo for a generateCoordinateListPDF call in these tests. */
+const testSurveyorInfo = {
+  name: 'Test Surveyor',
+  licenseNumber: 'LS001',
+  firm: 'Test Firm',
+  address: '123 Test Street',
+  surveyDate: 'October 2025',
+  projectTitle: 'Test Survey Project',
+  district: 'Test District',
+} as any;
 
 /** The section each point was filed under, by point id. */
 function sectionsOf(points: Array<Record<string, unknown>>): Record<string, string> {
@@ -179,12 +194,13 @@ describe('the headings the sections actually print', () => {
       .toEqual(['FOUND BEACONS']);
   });
 
-  it('holds ADOPTED BEACONS back until a status code can fill it', () => {
+  it('holds ADOPTED BEACONS back from the Status column alone', () => {
     // ADOPTED BEACONS is reserved for a beacon whose coordinates come from a
-    // previous approved survey, cited by that survey's record number. Until
-    // the status code and the input routine that supplies the number exist,
-    // nothing may print that heading -- an ADOPTED BEACONS row with no S.R.
-    // number cites nothing at all, which is worse than not printing it.
+    // previous approved survey, cited by that survey's record number. The
+    // section is keyed on `srNumber`, not on status: an ADOPTED BEACONS row
+    // with no S.R. number cites nothing at all, which is worse than not
+    // printing it -- and the usual adopted status is a plain "F", which would
+    // otherwise drag any found beacon into the section.
     const headings = headingsFor([
       point('86B', 'F', '12mm iron peg in concrete'),
       point('87C', 'FN', '12mm iron peg in concrete'),
@@ -195,6 +211,37 @@ describe('the headings the sections actually print', () => {
     expect(headings).not.toContain('ADOPTED BEACONS');
   });
 
+  it('files an S.R.-cited beacon under adopted, whatever its status says', () => {
+    // The adopted-beacons import keeps the file's status verbatim ("F" for
+    // the usual case). Reading it as a section would file the row under FOUND
+    // BEACONS and lose the S.R. citation; srNumber is what says adopted.
+    const at = sectionsOf([
+      { ...point('P2', 'F', '50mm Iron Pipe in Concrete'), srNumber: '112/2021' },
+      { ...point('ZA', 'F', '50mm Iron Pipe in Concrete'), srNumber: '112/2021' },
+      point('86B', 'F', '12mm iron peg in concrete'),
+    ]);
+
+    expect(at.P2).toBe('adopted');
+    expect(at.ZA).toBe('adopted');
+    expect(at['86B']).toBe('found');
+  });
+
+  it('prints ADOPTED BEACONS right after TRIG', () => {
+    // Adopted beacons come from earlier work, so the section sits where that
+    // work's control would: immediately after the trig beacons.
+    const headings = headingsFor([
+      point('THORNHILL', 'TRIG', 'THORNHILL'),
+      { ...point('P2', 'F', '50mm Iron Pipe in Concrete'), srNumber: '112/2021' },
+      point('SD1', 'P', '12mm iron peg in concrete'),
+    ]);
+
+    expect(headings).toEqual([
+      'TRIG BEACONS / TSMs',
+      'ADOPTED BEACONS',
+      'PLACED BEACONS',
+    ]);
+  });
+
   it('prints FOUND BEACONS before FOUND, NOT ADOPTED', () => {
     // Both are found; the order has to be the heading order, not the order the
     // rules happen to be tested in.
@@ -202,6 +249,66 @@ describe('the headings the sections actually print', () => {
       point('87C', 'FN', '12mm iron peg in concrete'),
       point('86B', 'F', '12mm iron peg in concrete'),
     ])).toEqual(['FOUND BEACONS', 'FOUND, NOT ADOPTED']);
+  });
+});
+
+describe('the adopted beacons handed to the generator', () => {
+  // The 6th parameter of generateCoordinateListPDF is the only way adopted
+  // beacons reach the document: they are not in adjustedCoordinates (they are
+  // not in this survey's calculations at all) and no status code can produce
+  // the section, so a caller that forgets to fetch and pass them leaves the
+  // whole ADOPTED BEACONS section out of the printed list. This drives the
+  // real entry point -- not just groupPointsByType -- with the rows exactly as
+  // the API returns them (snake_case keys, coordinates as strings).
+  const sectionsRenderedFor = async (adoptedBeacons: Array<Record<string, unknown>>) => {
+    setActivePinia(createPinia());
+    const generator: any = new CoordinateListGenerator();
+    const rendered: string[] = [];
+    const sectionsFor = generator.sectionsFor.bind(generator);
+    generator.sectionsFor = (grouped: any) => {
+      const sections = sectionsFor(grouped);
+      rendered.push(...sections.map((s: { name: string }) => s.name));
+      return sections;
+    };
+
+    await generator.generateCoordinateListPDF(
+      [
+        { ...point('THORNHILL', 'TRIG', 'THORNHILL') },
+        { ...point('86B', 'F', '12mm iron peg in concrete') },
+        { ...point('SD1', 'P', '12mm iron peg in concrete') },
+      ],
+      testSurveyorInfo,
+      undefined,
+      undefined,
+      undefined,
+      adoptedBeacons,
+    );
+    return rendered;
+  };
+
+  const apiRow = {
+    id: 1, project_id: 6, sr_number: '112/2021', point_name: 'P2',
+    y: '97538.004', x: '2247107.872', status: 'F',
+    description: '50mm Iron Pipe in Concrete', survey_date: 'February-21',
+    point_order: 0,
+  };
+
+  it('renders the ADOPTED BEACONS section for rows from the API', async () => {
+    expect(await sectionsRenderedFor([apiRow])).toContain('ADOPTED BEACONS');
+  });
+
+  it('prints adopted beacons above the found beacons', async () => {
+    // The order the surveyor sees: trig, then the beacons carried from the
+    // earlier survey, then this survey's own found and placed marks.
+    const rendered = await sectionsRenderedFor([apiRow]);
+    expect(rendered.indexOf('ADOPTED BEACONS'))
+      .toBeGreaterThan(-1);
+    expect(rendered.indexOf('ADOPTED BEACONS'))
+      .toBeLessThan(rendered.indexOf('FOUND BEACONS'));
+  });
+
+  it('prints no adopted section when the project has none', async () => {
+    expect(await sectionsRenderedFor([])).not.toContain('ADOPTED BEACONS');
   });
 });
 

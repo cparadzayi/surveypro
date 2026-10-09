@@ -177,6 +177,72 @@ export function resolveEndpoint(ring, p, tolerance = SNAP_TOLERANCE_M) {
 }
 
 /**
+ * Resolve an endpoint using the cut's OWN direction.
+ *
+ * `resolveEndpoint` projects the click onto the nearest edge, which is right
+ * when the click sits ON the boundary. But a surveyor may draw the split LINE
+ * straight across the figure and let it run out beyond the boundary on each
+ * side: there is then no outside-figure point to start or stop on, and the
+ * point that belongs there is where the line itself crosses the boundary, not
+ * the perpendicular foot of the click. That is what this resolves.
+ *
+ * The vertex snap still wins: a click within the 0.10 m tolerance of an
+ * existing outside-figure point REUSES that point rather than inventing a
+ * duplicate a few centimetres along the line. A point strictly inside the ring
+ * also falls through to the projection -- the cut has not reached the boundary
+ * there, and `splitFigure`'s interior check is what judges it. Only when the
+ * click lies outside (or on) the boundary AND the cut leaves toward a known
+ * neighbour do we look for the crossing, choosing the FIRST boundary the line
+ * meets walking outward from the click.
+ *
+ * The returned landing carries the edge's own parameter `t`, exactly as an
+ * edge projection does, so `walk` can order two landings on one edge.
+ *
+ * It also carries `viaCrossing`: true only when the landing was found by
+ * shooting the ray toward the neighbour and meeting the ring. Callers
+ * that replay the resolution to preview a draft use it to tell a real
+ * crossing -- the click ran past the boundary and the landing is where
+ * the line itself meets the figure -- from a perpendicular projection
+ * of a click that never left the interior. Only the former may replace
+ * the clicked vertex in a draft: the interior click is a real vertex
+ * of the cut the surveyor traced, and `splitFigure` projects it at
+ * execution time exactly as the preview did.
+ */
+export function resolveEndpointToward(ring, p, neighbour, tolerance = SNAP_TOLERANCE_M) {
+  const snapped = resolveEndpoint(ring, p, tolerance)
+  if (snapped.kind === 'vertex') return { ...snapped, viaCrossing: false }
+  // Strictly inside: the boundary is behind us on every side and the line has
+  // not crossed it. The nearest-edge projection is the rule there.
+  if (!neighbour || pointInRing(ring, p)) return { ...snapped, viaCrossing: false }
+  const crossing = firstRingCrossing(ring, p, neighbour)
+  return crossing ? { ...crossing, viaCrossing: true } : { ...snapped, viaCrossing: false }
+}
+
+/**
+ * Where the ray from `p` toward `neighbour` first meets the ring, or null.
+ * Choose the nearest crossing to `p` so a line that runs out of the figure,
+ * back in, and out again is stopped at the first wall, not the last.
+ */
+function firstRingCrossing(ring, p, neighbour) {
+  const dy = neighbour.y - p.y
+  const dx = neighbour.x - p.x
+  const len2 = dy * dy + dx * dx
+  let best = null
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]
+    const b = ring[(i + 1) % ring.length]
+    const hit = segmentIntersection(p, neighbour, a, b)
+    if (!hit) continue
+    const t = len2 === 0 ? 0 : ((hit.y - p.y) * dy + (hit.x - p.x) * dx) / len2
+    if (best === null || t < best.t) best = { i, t, hit }
+  }
+  if (best === null) return null
+  const a = ring[best.i]
+  const b = ring[(best.i + 1) % ring.length]
+  return { kind: 'edge', index: best.i, t: projectOnSegment(a, b, best.hit).t, point: roundPoint(best.hit) }
+}
+
+/**
  * The split invariant: both endpoints sit on the ring (resolveEndpoint saw to
  * that) and everything between them stays strictly inside. A polyline that
  * satisfies this crosses the boundary exactly twice, which is what makes one
@@ -346,8 +412,12 @@ export function splitFigure({ ring, polyline, stands = [], tolerance = SNAP_TOLE
 
   const startRaw = polyline[0]
   const endRaw = polyline[polyline.length - 1]
-  const start = atVertexPrecision(ring, resolveEndpoint(ring, startRaw, tolerance))
-  const end = atVertexPrecision(ring, resolveEndpoint(ring, endRaw, tolerance))
+  // Endpoint resolution uses the cut's own direction, so a line drawn straight
+  // across (and out of) the figure lands where it crosses the boundary rather
+  // than where a perpendicular from the click happens to fall. See
+  // resolveEndpointToward.
+  const start = atVertexPrecision(ring, resolveEndpointToward(ring, startRaw, polyline[1], tolerance))
+  const end = atVertexPrecision(ring, resolveEndpointToward(ring, endRaw, polyline[polyline.length - 2], tolerance))
 
   // Both ends on the SAME VERTEX cuts nothing off. Both ends on the same EDGE is
   // fine -- a bulge taken off one long side is an ordinary split, and the spec's
@@ -417,6 +487,172 @@ export function splitFigure({ ring, polyline, stands = [], tolerance = SNAP_TOLE
   if (end.kind === 'edge') newPoints.push(end.point)
 
   return { ok: true, parts: [partA, partB], newPoints }
+}
+
+/**
+ * Divide a figure into as many parts as the surveyor's cuts produce: one cut
+ * gives two sheets, two cuts three, and so on -- there is deliberately no
+ * ceiling. Each cut is applied to the ONE current part that contains it, so a
+ * later cut may stop on the figure's own boundary or on an earlier cut
+ * (a T-junction), but it may not run across an earlier cut into a part on the
+ * far side; that is refused rather than silently truncated.
+ *
+ * The parts always tile the figure exactly -- they are produced by successive
+ * `splitFigure` calls on the parts themselves, never by independently drawn
+ * polygons -- so coverage is true by construction. Every point any cut creates
+ * is collected once, in cut order, for the caller to name.
+ *
+ * Returns `{ ok: true, parts, newPoints }` or the refusal from the first cut
+ * that cannot be applied, with the same `error`/`stands`/`at` shape
+ * `splitFigure` returns.
+ */
+export function splitFigureMultiple({ ring, polylines, stands = [], tolerance = SNAP_TOLERANCE_M } = {}) {
+  const cuts = (Array.isArray(polylines) ? polylines : [])
+    .filter((c) => Array.isArray(c) && c.length >= 2)
+
+  const base = openRing(ring)
+  if (base === null || base.length < 3) return { ok: false, error: 'degenerate' }
+
+  // Zero cuts is not a refusal: one cut gives two sheets, two cuts three -- so
+  // no cuts gives the one sheet the figure already is. Callers that derive
+  // regions before a draft cut exists rely on this, and it keeps the
+  // "n cuts -> n+1 parts" rule true at n = 0.
+  if (cuts.length === 0) return { ok: true, parts: [base.slice()], newPoints: [] }
+
+  // A copy, because post-split bookkeeping inserts a shared T-junction point
+  // into a neighbouring part's ring and the caller's own figure must not move.
+  let regions = [base.slice()]
+  const newPoints = []
+
+  for (const polyline of cuts) {
+    const found = regionForCut(regions, polyline)
+    if (found.error) {
+      return { ok: false, error: found.error, ...(found.at ? { at: found.at } : {}) }
+    }
+
+    const outcome = splitFigure({ ring: regions[found.index], polyline, stands, tolerance })
+    if (!outcome.ok) return outcome
+
+    newPoints.push(...outcome.newPoints)
+    regions = regions
+      .slice(0, found.index)
+      .concat(outcome.parts, regions.slice(found.index + 1))
+
+    // The two child parts already carry the cut's points. A point that landed
+    // on an earlier cut must also appear in the part on the OTHER side of that
+    // cut, or the two boundaries stop matching and a later cut could invent a
+    // duplicate at the same coordinate.
+    insertOnNeighbouringRegions(regions, found.index, found.index + 1, outcome.newPoints)
+  }
+
+  return { ok: true, parts: regions, newPoints }
+}
+
+/**
+ * The region index containing the cut's interior, or a refusal.
+ *
+ * The whole interior must lie in ONE region. Samples landing in two regions mean
+ * the cut runs across an earlier cut into the part beyond it, and the design
+ * refuses that rather than silently truncating the line at the shared boundary.
+ * The first draft of this only looked at the first interior sample, so a cut
+ * drawn across an earlier one was truncated at that line and the far half
+ * quietly discarded -- exactly the silent adjustment the spec forbids.
+ *
+ * A raw vertex strictly inside a DIFFERENT part is the same fault reaching only
+ * as far as the vertex, and is refused too.
+ */
+function regionForCut(regions, polyline) {
+  const samples = interiorSamples(polyline)
+  const counts = new Map()
+  const sampleIn = new Map()
+  for (const s of samples) {
+    for (let i = 0; i < regions.length; i++) {
+      if (pointInRing(regions[i], s)) {
+        counts.set(i, (counts.get(i) ?? 0) + 1)
+        if (!sampleIn.has(i)) sampleIn.set(i, s)
+        break
+      }
+    }
+  }
+  if (counts.size === 0) return { error: 'interior-outside', at: samples[0] }
+  if (counts.size > 1) {
+    // Name the region the cut intrudes into, not the one it mostly belongs to.
+    const byCount = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a))
+    return { error: 'interior-outside', at: sampleIn.get(byCount[1]) }
+  }
+  const index = [...counts.keys()][0]
+
+  // A raw vertex strictly inside a DIFFERENT part means the cut reaches past an
+  // earlier cut into that part. Left alone, resolveEndpoint would pull the far
+  // end back to the shared edge and silently shorten the surveyor's line.
+  for (const p of polyline) {
+    for (let i = 0; i < regions.length; i++) {
+      if (i !== index && pointInRing(regions[i], p)) {
+        return { error: 'interior-outside', at: p }
+      }
+    }
+  }
+  return { index }
+}
+
+/** Points along the polyline, strictly between its ends, to test containment. */
+function interiorSamples(points) {
+  const segs = []
+  let total = 0
+  for (let i = 0; i < points.length - 1; i++) {
+    const d = Math.hypot(points[i + 1].y - points[i].y, points[i + 1].x - points[i].x)
+    segs.push(d)
+    total += d
+  }
+  const out = []
+  if (total === 0) {
+    out.push({ y: points[0].y, x: points[0].x })
+    return out
+  }
+  for (const f of [0.5, 0.25, 0.75, 0.1, 0.9, 1 / 3, 2 / 3]) {
+    const target = total * f
+    let acc = 0
+    for (let i = 0; i < segs.length; i++) {
+      const d = segs[i]
+      if (acc + d >= target - 1e-9) {
+        const t = d === 0 ? 0 : (target - acc) / d
+        out.push({
+          y: points[i].y + t * (points[i + 1].y - points[i].y),
+          x: points[i].x + t * (points[i + 1].x - points[i].x),
+        })
+        break
+      }
+      acc += d
+    }
+  }
+  return out
+}
+
+/** Put each created point into every OTHER part whose boundary carries it. */
+function insertOnNeighbouringRegions(regions, aIndex, bIndex, points) {
+  for (const p of points) {
+    for (let i = 0; i < regions.length; i++) {
+      if (i === aIndex || i === bIndex) continue
+      insertPointOnRing(regions[i], p)
+    }
+  }
+}
+
+/** Insert `p` between the two vertices of the edge it lies on, if any. */
+function insertPointOnRing(ring, p) {
+  const rounded = roundPoint(p)
+  for (const v of ring) {
+    if (near(roundPoint(v), rounded)) return
+  }
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]
+    const b = ring[(i + 1) % ring.length]
+    const r = projectOnSegment(a, b, p)
+    if (r.t > 0 && r.t < 1 && r.distance <= ROUNDING_SLOP_M + TOUCH_EPS) {
+      ring.splice(i + 1, 0, p)
+      return
+    }
+  }
 }
 
 function reversed(points) {

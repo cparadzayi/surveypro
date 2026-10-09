@@ -1,0 +1,89 @@
+================================================================================
+WHERE IS THE BATCH AREA COMPUTATION UI?
+================================================================================
+
+IMPORTANT: You are currently looking at the WRONG file!
+
+Current file open: Areas2View.vue  ❌ WRONG
+Correct file:      AreasView.vue   ✅ CORRECT
+
+================================================================================
+
+THE UI IS IN: AreasView.vue (NOT Areas2View.vue)
+
+File Location:
+  app-frontend/src/views/modules/lite/areas/AreasView.vue
+
+URL to Access:
+  http://localhost:5173/modules/lite/areas
+
+Page Title:
+  "Areas (Shoelace, ZIM P(Y,X))"
+
+================================================================================
+
+WHAT YOU'LL SEE:
+
+1. Input Mode selector (Ad-hoc Points / Load from DB)
+2. "Load Lines/Polygons" section
+3. 🚀 "Batch Area Computation (QGIS Workflow)" section ← THE NEW UI
+   - Blue background panel
+   - Show/Hide Instructions button
+   - Coordinate List Layer selector
+   - "Export Current Points to DB (X points)" button
+   - Polygon Layer selector
+   - "Compute All Areas" button
+   - Tolerance input
+   - Two checkboxes:
+     * Save results to polygon properties
+     * Replace duplicates on export
+
+================================================================================
+
+TO TEST:
+
+1. Start servers:
+   cd app-backend
+   npm run dev
+   
+   (new terminal)
+   cd app-frontend
+   npm run dev
+
+2. Open browser:
+   http://localhost:5173/modules/lite/areas
+   
+   NOT: http://localhost:5173/modules/lite/areas2  ← Wrong URL
+
+3. Scroll down to see the blue "Batch Area Computation" panel
+
+4. Add 3 test points:
+   - Click "Add Point" 3 times
+   - Enter: A (123.45, 678.90), B (124.50, 679.20), C (125.00, 680.00)
+
+5. Test export:
+   - Select a coordinate list layer
+   - Click "Export Current Points to DB (3 points)"
+   - Should see: "Export complete: 3 created"
+
+================================================================================
+
+WHY THE CONFUSION?
+
+There are TWO different "Areas" views:
+
+1. AreasView.vue     ← Has batch computation (NEW FEATURES)
+2. Areas2View.vue    ← Different UI, NO batch computation
+
+You were looking at Areas2View.vue, which is why you couldn't see the UI.
+
+================================================================================
+
+QUICK FIX:
+
+Close Areas2View.vue and open:
+  app-frontend/src/views/modules/lite/areas/AreasView.vue
+
+Look at lines 41-109 to see the batch computation UI code.
+
+================================================================================

@@ -5,6 +5,7 @@ import type { AdjustedCoordinate } from '../types/adjusted-coordinates'
 import { toCoordinateListPrecision } from '../types/adjusted-coordinates'
 import { fullDesignationPhrase } from './planDesignation'
 import { displayTrigName } from '../../../app-shared/trigName'
+import { formatAdoptedSurveyDateLines } from './adoptedBeaconsCsv'
 
 // Survey point interface (legacy - for backward compatibility)
 export interface SurveyPoint {
@@ -59,6 +60,7 @@ export function surveyOfForSurveyor(surveyorInfo: SurveyorInfo): string {
 // Grouped points interface
 interface GroupedPoints {
   trig: AdjustedCoordinate[]
+  adopted: AdjustedCoordinate[]
   working: AdjustedCoordinate[]
   found: AdjustedCoordinate[]
   foundNotAdopted: AdjustedCoordinate[]
@@ -79,20 +81,22 @@ interface GroupedPoints {
  * that turns a grouping into rendered sections, so there is nothing left to
  * fall behind.
  *
- * There is deliberately no `adopted` key. FOUND BEACONS used to be printed
- * under the heading ADOPTED BEACONS, because provenance F was read as "found &
- * adopted" -- so the two words meant the same thing and the heading said
- * something the status column did not. They are now different states: F is
- * simply found, and "adopted" is reserved for a beacon whose coordinates were
- * carried from a previous approved survey, cited by that survey's record
- * number. Such a beacon needs an S.R. number to print, which needs its own
- * input routine; until that exists the status code `A` is not accepted, because
- * accepting it would lodge an ADOPTED BEACONS row citing nothing. When that
- * routine lands, add the key here, the branch in `groupPointsByType`, and the
- * heading together -- the Record type is what stops them arriving apart.
+ * `adopted` is the section that waited for its own input routine. FOUND BEACONS
+ * used to be printed under the heading ADOPTED BEACONS, because provenance F
+ * was read as "found & adopted" -- so the two words meant the same thing and the
+ * heading said something the status column did not. They are now different
+ * states: F is simply found, and "adopted" is reserved for a beacon whose
+ * coordinates were carried from a previous approved survey, cited by that
+ * survey's record number. That routine exists now: the adopted-beacons CSV
+ * (SR_num,Point,Y,X,Status,Description,Date) is imported to its own table
+ * (project_adopted_beacons), and a point carries `srNumber` when it comes from
+ * there. No status code can produce this section -- an ADOPTED BEACONS row
+ * citing nothing stays impossible, which is why the grouping keys on
+ * `srNumber` rather than on the Status column.
  */
 const SECTION_HEADINGS: Record<keyof GroupedPoints, string> = {
   trig: 'TRIG BEACONS / TSMs',
+  adopted: 'ADOPTED BEACONS',
   working: 'WORKING STATIONS',
   found: 'FOUND BEACONS',
   foundNotAdopted: 'FOUND, NOT ADOPTED',
@@ -183,9 +187,13 @@ function isCalculatedRow(
  * The F/P and F. B cells for one row.
  *
  * Both answer whether the position was observed in the field, and the F/P
- * legend defines only F and P. A position never visited has neither, and no
- * field book page records an observation of it, so both cells carry the "-"
- * not-applicable marker and only the Calcs reference is real.
+ * legend defines only F and P. A position never visited has neither, so its
+ * F/P cell carries the "-" not-applicable marker — but the F. B cell is a
+ * cross-reference, and a calculated point DOES have a page to cite: the page
+ * of the field book's CALCULATED POINTS block it prints on. Only when the row
+ * carries no such page (nothing has paginated the field book for it) does the
+ * cell fall back to "-", alongside the Calcs reference staying the one real
+ * number a split or figure point can claim.
  *
  * A figure-split point (provenance "-") is such a position: defined by a
  * click, with no mark in the ground. It printed "-" before this function
@@ -201,7 +209,11 @@ export function fpAndFieldBookCells(
 ): { fp: string; fb: string } {
   const { provenance } = parseBeaconStatus(point.status);
 
-  if (provenance === '-' || isCalculatedRow(point)) return { fp: '-', fb: '-' };
+  if (provenance === '-') return { fp: '-', fb: '-' };
+
+  // Not visited, so no F or P to claim — but the F. B cell cites the page of
+  // the field book's CALCULATED POINTS block the point prints on.
+  if (isCalculatedRow(point)) return { fp: '-', fb: point.fieldBookPage || '-' };
 
   // Unchanged for every observed point: the first character of the status,
   // upper-cased, and the field book page it cross-references.
@@ -233,13 +245,20 @@ export class CoordinateListGenerator {
    * @param projectControlPoints - Optional control points from national trig system
    * @param calcPageLookup - Optional lookup for calculation page references (Point ID → Calc Page)
    * @param fieldBookLookup - Optional lookup for field book page references (Point ID → Field Book Page)
+   * @param adoptedBeacons - Optional beacons carried from a previous approved
+   *   survey (project_adopted_beacons rows: sr_number, point_name, y, x,
+   *   status, description, survey_date). They print under ADOPTED BEACONS,
+   *   where the Calcs cell cites the S.R. number and the F. B cell the source
+   *   survey's date -- they have no pages of this document to cite, never
+   *   having been in the field book or the calculations.
    */
   async generateCoordinateListPDF(
     adjustedCoordinates: AdjustedCoordinate[],
     surveyorInfo: SurveyorInfo,
     projectControlPoints?: any[],
     calcPageLookup?: Record<string, number>,
-    fieldBookLookup?: Record<string, string>
+    fieldBookLookup?: Record<string, string>,
+    adoptedBeacons?: any[]
   ): Promise<{ pdf: jsPDF, pageCount: number }> {
     const pdf = new jsPDF(this.options);
     const lookupStore = useSurveyLookupStore();
@@ -326,9 +345,38 @@ export class CoordinateListGenerator {
       // Prepend control points to trig beacons (they come first)
       groupedPoints.trig = [...trigPoints, ...groupedPoints.trig];
     }
+
+    // Adopted beacons, converted the same way control points are: never in
+    // the field book or the calculations, so fieldBookPage/calculationsPage
+    // carry their not-a-page markers and the cross-references they DO have
+    // (S.R. number, source survey date) ride on srNumber and surveyDate.
+    if (adoptedBeacons && adoptedBeacons.length > 0) {
+      console.log('[CoordinateList] Processing adopted beacons:', adoptedBeacons.length);
+
+      const adoptedPoints: AdjustedCoordinate[] = adoptedBeacons.map((ab) => ({
+        pointId: ab.point_name,
+        y: typeof ab.y === 'number' ? ab.y : parseFloat(ab.y) || 0,
+        x: typeof ab.x === 'number' ? ab.x : parseFloat(ab.x) || 0,
+        status: ab.status || '',
+        description: ab.description || '',
+        surveyDate: ab.survey_date || '',
+        srNumber: ab.sr_number,
+        fieldBookPage: '',
+        calculationsPage: 0,
+        adjustment: {
+          isDuplicate: false,
+          observationCount: 1,
+          method: 'computed' as const
+        }
+      }));
+
+      groupedPoints.adopted = [...groupedPoints.adopted, ...adoptedPoints];
+    }
     
     // Generate cover page
-    const totalPoints = adjustedCoordinates.length + (projectControlPoints?.length || 0);
+    const totalPoints = adjustedCoordinates.length
+      + (projectControlPoints?.length || 0)
+      + (adoptedBeacons?.length || 0);
     this.generateCoverPage(pdf, surveyorInfo, totalPoints);
     
     // Generate continuous list with all sections
@@ -436,19 +484,24 @@ export class CoordinateListGenerator {
    * Group points by type based on description and status
    * Points are assigned to ONE category only, with priority order:
    * 1. TRIG BEACONS (highest priority)
-   * 2. WORKING STATIONS
-   * 3. CALCULATED POINTS ⭐ NEW: Not physically beaconed
-   * 4. FOUND BEACONS
-   * 5. FOUND, NOT ADOPTED
-   * 6. PLACED BEACONS (lowest priority)
+   * 2. ADOPTED BEACONS (carried from a previous approved survey)
+   * 3. WORKING STATIONS
+   * 4. CALCULATED POINTS ⭐ NEW: Not physically beaconed
+   * 5. FOUND BEACONS
+   * 6. FOUND, NOT ADOPTED
+   * 7. PLACED BEACONS (lowest priority)
    *
    * CALCULATED POINTS is tested before the provenances because a split vertex
    * carries '-' yet is not a found or a placed beacon. ADOPTED BEACONS is
-   * absent: see the note on SECTION_HEADINGS.
+   * keyed on `srNumber`, not on the Status column: the status of an adopted
+   * row is kept verbatim from the import file (F for the usual case), so
+   * reading it as a section would file the row under FOUND BEACONS and the
+   * S.R. citation would be lost. See the note on SECTION_HEADINGS.
    */
   private groupPointsByType(points: AdjustedCoordinate[]): GroupedPoints {
     const grouped: GroupedPoints = {
       trig: [],
+      adopted: [],
       working: [],
       found: [],
       foundNotAdopted: [],
@@ -465,6 +518,11 @@ export class CoordinateListGenerator {
 
       if (kind === 'TRIG' || kind === 'OCP' || this.isTrigBeacon(point)) {
         grouped.trig.push(point);
+      } else if (point.srNumber) {
+        // An adopted beacon: coordinates carried from the survey record its
+        // srNumber names. Its status ("F" in the usual case) says how the mark
+        // was recorded in THAT survey and must not re-file it here.
+        grouped.adopted.push(point);
       } else if (kind === 'WS' || kind === 'WSU' || this.isWorkingStation(point)) {
         grouped.working.push(point);
       } else if (this.isCalculatedPoint(point)) {
@@ -492,6 +550,7 @@ export class CoordinateListGenerator {
     
     console.log('[CoordinateList] 📊 Point grouping:');
     console.log(`  - TRIG: ${grouped.trig.length}`);
+    console.log(`  - ADOPTED: ${grouped.adopted.length}`);
     console.log(`  - WORKING: ${grouped.working.length}`);
     console.log(`  - FOUND: ${grouped.found.length}`);
     console.log(`  - FOUND, NOT ADOPTED: ${grouped.foundNotAdopted.length}`);
@@ -816,9 +875,16 @@ export class CoordinateListGenerator {
       
       // Calcs column - Calculations Part 1 page reference (from adjusted coordinate)
       // Skip for TRIG beacons from national system (calculationsPage === 0)
-      const calcsPage = point.calculationsPage === 0 ? '' : (point.calculationsPage?.toString() || '-');
-      if (calcsPage) {
-        pdf.text(calcsPage, this.options.marginLeft + COL.calcs, yPos);
+      // An ADOPTED beacon cites the survey record it was adopted from instead:
+      // it has no page of this document, and 112/2021 is exactly the reference
+      // the Calcs column exists to carry for it.
+      if (point.srNumber) {
+        pdf.text(point.srNumber, this.options.marginLeft + COL.calcs, yPos);
+      } else {
+        const calcsPage = point.calculationsPage === 0 ? '' : (point.calculationsPage?.toString() || '-');
+        if (calcsPage) {
+          pdf.text(calcsPage, this.options.marginLeft + COL.calcs, yPos);
+        }
       }
       
       // Point - Point ID
@@ -855,7 +921,36 @@ export class CoordinateListGenerator {
       
       // F/P status (skip for TRIG beacons from national system)
       // RIGHT-JUSTIFIED
-      if (point.calculationsPage !== 0) {
+      if (point.srNumber) {
+        // An ADOPTED beacon: F/P reads the status verbatim from the import
+        // file ("F" for the usual case, "-" when the column was blank -- this
+        // survey neither found nor placed the mark), and F. B cites the survey
+        // date of the record it was adopted from, not a page of this
+        // document's field book, which it was never in.
+        const { fp } = fpAndFieldBookCells(point);
+        pdf.text(fp || '-', this.options.marginLeft + COL.fpRight, yPos, { align: 'right' });
+
+        // The F. B cell is narrow and sits hard against F/P, so "February
+        // 2021" written on one line ran back into the status. The date is
+        // stacked instead -- abbreviated month over the year, at a smaller
+        // size -- which keeps the whole citation inside its own column:
+        //     Feb
+        //    2021
+        const dateLines = formatAdoptedSurveyDateLines(point.surveyDate);
+        if (dateLines.bottom) {
+          pdf.setFontSize(8);
+          pdf.text(dateLines.top, this.options.marginLeft + COL.fbRefRight, yPos - 1.1, { align: 'right' });
+          pdf.text(dateLines.bottom, this.options.marginLeft + COL.fbRefRight, yPos + 2.3, { align: 'right' });
+          pdf.setFontSize(10);
+        } else {
+          pdf.text(
+            dateLines.top || '-',
+            this.options.marginLeft + COL.fbRefRight,
+            yPos,
+            { align: 'right' },
+          );
+        }
+      } else if (point.calculationsPage !== 0) {
         // ⭐ CRITICAL: both cells say whether the position was observed. See
         // fpAndFieldBookCells, which decides them; this only places them.
         const { fp, fb } = fpAndFieldBookCells(point);

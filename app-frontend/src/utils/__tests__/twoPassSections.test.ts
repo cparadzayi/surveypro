@@ -257,12 +257,15 @@ describe('field book page-count guard', () => {
   }, 30000);
 
   it('agrees with the renderer when calculated points cross a page boundary', async () => {
-    // 28 points, one of them calculated: the renderer excludes calculated
-    // points before pagination (27 rendered -> 1 page), but a measurement that
-    // paginates the unfiltered list sees 28 (2 pages). Without measureFieldBook
-    // and renderFieldBook sourcing the same filtered list, this mismatch trips
-    // the guard and generation throws -- on real survey data, which routinely
-    // contains calculated points, not just in a contrived test.
+    // 28 points, one of them calculated: both passes partition the list with
+    // the one predicate -- 27 observations at 27/page = 1 E-page, the computed
+    // point = 1 CALCULATED POINTS block page, plus the unnumbered cover = 3
+    // physical pages. The old failure mode was one pass paginating the
+    // unfiltered 28 (2 E-pages + cover) while the other rendered 1 + cover:
+    // without measureFieldBook and renderFieldBook sourcing the same
+    // partition, this mismatch trips the guard and generation throws -- on
+    // real survey data, which routinely contains calculated points, not just
+    // in a contrived test.
     const points = Array.from({ length: 28 }, (_, i) => ({
       pointId: `B${i + 1}`,
       y: 50000 + i,
@@ -286,9 +289,6 @@ describe('field book page-count guard', () => {
     } as any);
 
     expect(result.sections?.fieldBook).toBeInstanceOf(Blob);
-    // 27 rendered points at 27/page = exactly 1 E-page, plus the unnumbered
-    // cover = 2 physical pages -- not the 3 an unfiltered 28-point count
-    // would measure (2 E-pages + cover).
-    expect(result.measurements!.fieldBook.pages).toBe(2);
+    expect(result.measurements!.fieldBook.pages).toBe(3);
   }, 30000);
 });

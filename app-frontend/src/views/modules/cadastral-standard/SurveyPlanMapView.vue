@@ -422,6 +422,7 @@ import { buildSheetPayloads, type StandInput, type SheetPayload } from '@/utils/
 import { generateCalibrationReportPDF } from '@/utils/calibration-pdf'
 import type { CoverPageInfo } from '@/utils/cover-page'
 import { listCoordinatePoints, updateLandParcel } from '@/services/spatial'
+import { listAdoptedBeacons } from '@/services/adoptedBeacons'
 import { saveDocument } from '@/services/documentStorage'
 import { generateWorkingPlanDXF } from '@/services/workingPlan'
 import { buildWorkingPlanSpec, workingPlanEmptyReason, controlPointsForInset, selectedControlPointIds } from './workingPlanSpec'
@@ -4345,7 +4346,7 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
     try {
       const built = buildSheetPayloads({
         ring,
-        polyline: storedCuts[0].vertices,
+        polylines: storedCuts.map(c => c.vertices),
         stands,
         // The servitude rows this plan already states, so each sheet can state the
         // ones for the stands ON it. Omitting these is what blanked the servitude
@@ -4874,6 +4875,28 @@ async function generateComprehensivePDF() {
     }
     console.log(`[ComprehensivePDF] 🧱 ${partyWalls.length} party-wall servitude rows`)
 
+    // Adopted beacons: carried from a previous approved survey, persisted in
+    // project_adopted_beacons by the Import CSV step. They belong to the
+    // Co-ordinate List only (ADOPTED BEACONS, after trig) -- without them the
+    // whole ADOPTED BEACONS section silently disappears from this document.
+    //
+    // The project id comes from props: `workflowState` here is the raw object
+    // fetched from /survey-projects/:id/workflow above, not the app's injected
+    // state, and it carries no projectInfo.projectId -- reading the id from it
+    // used to evaluate undefined and skip the fetch without a word of logging.
+    const adoptedProjectId = props.projectId ?? workflowState?.projectInfo?.projectId;
+    let adoptedBeacons: any[] = [];
+    if (adoptedProjectId) {
+      try {
+        adoptedBeacons = await listAdoptedBeacons(adoptedProjectId);
+      } catch (e: any) {
+        console.warn('[ComprehensivePDF] ❌ failed to load adopted beacons:', e?.message);
+      }
+    }
+    console.log(
+      `[ComprehensivePDF] 📌 Adopted beacons: projectId=${adoptedProjectId ?? 'NONE'}, rows=${adoptedBeacons.length}`,
+    );
+
     const result = await generator.generateWithTwoPass({
       projectInfo: coverPageInfo,
       surveyorInfo: surveyorInfo,
@@ -4885,6 +4908,7 @@ async function generateComprehensivePDF() {
       surveyPoints: surveyPoints,
       adjustedCoordinates: adjustedCoordinates,
       projectControlPoints: controlPoints,
+      adoptedBeacons,
       duplicateAnalyses: duplicateAnalyses,
       parcels: computedParcels.map(p => ({
         id: p.designation,

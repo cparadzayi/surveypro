@@ -81,14 +81,23 @@ export interface FieldBookPagination {
 /**
  * Number the pages of a field book.
  *
- * `points` must be EXACTLY the points the field book will render, in render
- * order. Calculated points never appear in the field book, so a caller that
- * passes an unfiltered list shifts every E-number after the first calculated
- * point. This function does not filter; it paginates what it is given.
+ * `points` must be EXACTLY the points the field book will render on its
+ * OBSERVATION pages, in render order. A computed point is not an observation,
+ * so it never joins this list — it is passed separately in `opts.calculated`
+ * and lands in the CALCULATED POINTS block this function paginates after the
+ * last observation page and before the party-wall servitudes. Mixing the two
+ * lists would shift every E-number after the first calculated point.
+ * This function does not filter; it paginates what it is given.
  */
 export function paginateFieldBook(
   points: FieldBookPaginationPoint[],
-  opts: { hasCalibration: boolean; hasCover: boolean; partyWalls?: PartyWallRow[] },
+  opts: {
+    hasCalibration: boolean;
+    hasCover: boolean;
+    partyWalls?: PartyWallRow[];
+    /** Computed points, render order — block pages after the observation pages. */
+    calculated?: FieldBookPaginationPoint[];
+  },
 ): FieldBookPagination {
   const { hasCalibration, hasCover } = opts;
 
@@ -103,12 +112,21 @@ export function paginateFieldBook(
 
   const pointPages = Math.ceil(points.length / FIELD_BOOK_POINTS_PER_PAGE);
 
-  // The party-wall section opens on its own page after the last point page and
-  // stays in the E-series, so a Calculations table can cite the exact page.
+  // The CALCULATED POINTS block: its own page(s) after the observations,
+  // numbered in the same E-series so the CO-ORDINATE LIST's F. B cell can
+  // cite the page a computed point actually appears on.
+  const calculatedPages = Math.ceil((opts.calculated?.length ?? 0) / FIELD_BOOK_POINTS_PER_PAGE);
+  opts.calculated?.forEach((point, index) => {
+    const page = Math.floor(index / FIELD_BOOK_POINTS_PER_PAGE) + 1 + offset + pointPages;
+    pointPageMap[point.id] = `E${page}`;
+  });
+
+  // The party-wall section opens on its own page after the calculated-point
+  // block and stays in the E-series, so a Calculations table can cite the exact page.
   const partyWallPages = computePartyWallPaginate(opts.partyWalls?.length ?? 0);
   const partyWallPageMap: Record<number, string> = {};
+  const partyWallBasePage = pointPages + calculatedPages + offset + 1;
   if (partyWallPages.length) {
-    const partyWallBasePage = pointPages + offset + 1;
     partyWallPages.forEach((rows, pageIndex) => {
       const pageLabel = `E${partyWallBasePage + pageIndex}`;
       rows.forEach((dataRow) => {
@@ -117,13 +135,13 @@ export function paginateFieldBook(
     });
   }
 
-  const ePageCount = pointPages + offset + partyWallPages.length;
+  const ePageCount = pointPages + calculatedPages + offset + partyWallPages.length;
 
   return {
     pointPageMap,
     calibrationPage: hasCalibration ? 'E1' : null,
     partyWallPageMap,
-    partyWallBasePage: partyWallPages.length ? pointPages + offset + 1 : 0,
+    partyWallBasePage: partyWallPages.length ? partyWallBasePage : 0,
     ePageCount,
     physicalPageCount: ePageCount + (hasCover ? 1 : 0),
   };

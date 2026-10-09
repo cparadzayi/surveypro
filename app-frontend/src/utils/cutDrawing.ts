@@ -1,4 +1,4 @@
-import { splitFigure, resolveEndpoint, roundPoint } from '../../../app-shared/figureSplit'
+import { splitFigure, splitFigureMultiple, resolveEndpoint, resolveEndpointToward, roundPoint } from '../../../app-shared/figureSplit'
 
 /**
  * The drawing state machine for a figure cut. Pure, testable, owns every rule;
@@ -28,6 +28,17 @@ export interface EndpointPreview {
   point: LoPoint
   /** True when the endpoint landed within snap tolerance of that vertex. */
   snapped: boolean
+  /**
+   * True only when the landing was found by shooting the cut's own ray
+   * through the click and meeting the figure -- i.e. the click ran past
+   * the boundary and the landing is where the line itself crosses it.
+   * A perpendicular projection of a click still inside the figure is NOT
+   * a crossing: that click is a real vertex of the traced cut, and the
+   * draft must keep it exactly where the surveyor put it. Only a crossing
+   * may replace the clicked vertex, which is how a guide pair of clicks
+   * (one outside, one inside) falls away to the single boundary point.
+   */
+  viaCrossing?: boolean
 }
 
 export interface CutDraft {
@@ -60,21 +71,22 @@ interface Revalidated {
   offenders: string[]
 }
 
-function previewAt(ring: LoPoint[], p: LoPoint): EndpointPreview {
-  const resolved = resolveEndpoint(ring, p)
+function previewAt(ring: LoPoint[], p: LoPoint, neighbour?: LoPoint): EndpointPreview {
+  const resolved = neighbour ? resolveEndpointToward(ring, p, neighbour) : resolveEndpoint(ring, p)
   if (resolved.kind === 'vertex') {
-    return { kind: 'vertex', index: resolved.index, point: resolved.point, snapped: true }
+    return { kind: 'vertex', index: resolved.index, point: resolved.point, snapped: true, viaCrossing: false }
   }
-  return { kind: 'edge', index: resolved.index, point: resolved.point, snapped: false }
+  return { kind: 'edge', index: resolved.index, point: resolved.point, snapped: false, viaCrossing: resolved.viaCrossing === true }
 }
 
-function revalidated(vertices: LoPoint[], ring: LoPoint[], stands: unknown[]): Revalidated {
+function revalidated(vertices: LoPoint[], ring: LoPoint[], stands: unknown[], existingCuts: LoPoint[][] = []): Revalidated {
   if (vertices.length < 2) {
     return { startsAt: null, endsAt: null, verdict: 'incomplete', offenders: [] }
   }
-  const startsAt = previewAt(ring, vertices[0])
-  const endsAt = previewAt(ring, vertices[vertices.length - 1])
-  const outcome = splitFigure({ ring, polyline: vertices, stands })
+  const startsAt = previewAt(ring, vertices[0], vertices[1])
+  const endsAt = previewAt(ring, vertices[vertices.length - 1], vertices[vertices.length - 2])
+  const polylines = [...existingCuts, vertices]
+  const outcome = splitFigureMultiple({ ring, polylines, stands })
   if (outcome.ok) {
     return { startsAt, endsAt, verdict: 'ok', offenders: [] }
   }
@@ -86,6 +98,7 @@ export function addVertex(
   ring: LoPoint[],
   stands: unknown[],
   p: LoPoint,
+  existingCuts: LoPoint[][] = [],
 ): CutDraft {
   if (draft.vertices.length >= MAX_CUT_VERTICES) return draft
   // Decision 13: the click is rounded exactly once, here, so the Coordinate
@@ -95,14 +108,35 @@ export function addVertex(
   const v = roundPoint(p)
   const last = draft.vertices[draft.vertices.length - 1]
   if (last && last.y === v.y && last.x === v.x) return draft
-  const vertices = [...draft.vertices, v]
-  return { vertices, ...revalidated(vertices, ring, stands) }
+  let vertices = [...draft.vertices, v]
+  // Re-validate with direction awareness, then let a genuine crossing
+  // replace the clicked vertex. `viaCrossing` is only set when the click
+  // ran past the boundary and the ray toward its neighbour met the figure:
+  // the two guide clicks (one outside, one inside) fall away to the single
+  // point where the split line crosses the outside figure. A projection of
+  // a click still inside the figure is NOT a crossing -- that click is a
+  // real vertex of the traced cut and stays where the surveyor put it.
+  const preview = revalidated(vertices, ring, stands, existingCuts)
+  if (vertices.length >= 2 && preview.startsAt?.viaCrossing) {
+    const s = preview.startsAt.point
+    if (!(vertices[0].y === s.y && vertices[0].x === s.x)) {
+      vertices = [s, ...vertices.slice(1)]
+    }
+  }
+  if (vertices.length >= 2 && preview.endsAt?.viaCrossing) {
+    const e = preview.endsAt.point
+    const last = vertices[vertices.length - 1]
+    if (!(last.y === e.y && last.x === e.x)) {
+      vertices = [...vertices.slice(0, -1), e]
+    }
+  }
+  return { vertices, ...revalidated(vertices, ring, stands, existingCuts) }
 }
 
-export function undoVertex(draft: CutDraft, ring: LoPoint[], stands: unknown[]): CutDraft {
+export function undoVertex(draft: CutDraft, ring: LoPoint[], stands: unknown[], existingCuts: LoPoint[][] = []): CutDraft {
   if (draft.vertices.length === 0) return draft
   const vertices = draft.vertices.slice(0, -1)
-  return { vertices, ...revalidated(vertices, ring, stands) }
+  return { vertices, ...revalidated(vertices, ring, stands, existingCuts) }
 }
 
 export function clearDraft(): CutDraft {

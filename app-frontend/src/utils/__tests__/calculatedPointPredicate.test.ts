@@ -10,7 +10,9 @@
 // the third, and appeared in a field book that records observations.
 //
 // A field book is a record of what was visited and measured. A point that was
-// computed was never visited, so it cannot appear there.
+// computed was never visited, so it cannot sit among the observations — it is
+// printed in the book's own CALCULATED POINTS block instead, which is the page
+// the Co-ordinate List's F. B cell cites for it.
 
 import { describe, it, expect } from 'vitest';
 import { isCalculatedPoint } from '../calculatedPoint';
@@ -43,7 +45,7 @@ describe('isCalculatedPoint', () => {
 });
 
 describe('the field book', () => {
-  it('records observed beacons and omits computed ones', async () => {
+  it('keeps observed beacons on the point pages and files computed ones under the block heading', async () => {
     const points: FieldBookPoint[] = [
       { id: '86B', y: -85728.708, x: 2143972.144, status: 'F', description: '12mm iron peg in concrete', surveyDate: '2026-07-02' },
       { id: '87DNew', y: -85729.942, x: 2144164.763, status: 'C', description: 'Not Beaconed', surveyDate: '2026-07-02' },
@@ -56,12 +58,18 @@ describe('the field book', () => {
 
     expect(raw).toContain('(86B)');
     expect(raw).toContain('(SD1)');
-    expect(raw).not.toContain('(87DNew)');
-    expect(raw).not.toContain('(Not Beaconed)');
 
-    // And it consumes no E-page slot, so the observed points keep their numbers.
-    expect(pointPageMap['87DNew']).toBeUndefined();
+    // The computed point IS in the book — under its own heading, not among
+    // the observations, and echoing the CSV's own description for it.
+    expect(raw).toContain('(CALCULATED POINTS)');
+    expect(raw).toContain('(87DNew)');
+    expect(raw).toContain('(Not Beaconed)');
+
+    // It consumes no observation slot, so the observed points keep their
+    // numbers: 2 observed = E1, the block starts at E2 — the page the
+    // Co-ordinate List's F. B cell cites for 87DNew.
     expect(pointPageMap['86B']).toBe('E1');
     expect(pointPageMap['SD1']).toBe('E1');
+    expect(pointPageMap['87DNew']).toBe('E2');
   });
 });

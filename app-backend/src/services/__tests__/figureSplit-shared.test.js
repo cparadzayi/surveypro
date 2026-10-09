@@ -5,7 +5,8 @@
 import { describe, test, expect } from '@jest/globals'
 import {
   projectOnSegment, segmentIntersection, pointInRing, resolveEndpoint,
-  interiorStaysInside, standsCrossedBy, splitFigure,
+  resolveEndpointToward, interiorStaysInside, standsCrossedBy, splitFigure,
+  splitFigureMultiple,
 } from '../../../../app-shared/figureSplit.js'
 
 const P = (y, x) => ({ y, x })
@@ -504,12 +505,12 @@ describe('splitFigure', () => {
     expect(r.ok).toBe(true)
   })
 
-  test('a click in the wedge beyond a corner uses that corner, not a copy of it', () => {
-    // projectOnSegment clamps, so a click outside a convex corner and beyond
-    // snap tolerance projects onto the corner and then ROUNDS onto it. Left as
-    // an edge landing, the part ring carried that corner twice with a
-    // zero-length side, and newPoints claimed a surveyed beacon as created --
-    // a '-' provenance row for a mark that exists in the ground.
+  // The old rule projected a click outside a corner onto the corner's clamped
+  // foot, which rounding then turned into the corner itself. The endpoint is now
+  // resolved along the CUT'S OWN direction, so a click beyond the boundary lands
+  // where the line actually crosses the figure -- which is what lets a surveyor
+  // draw a split line straight across and past the edge.
+  test('a click outside the figure lands where the cut line crosses the boundary', () => {
     const r = splitFigure({ ring: square, polyline: [P(100.2, 100.2), P(0, 50)] })
 
     expect(r.ok).toBe(true)
@@ -518,8 +519,44 @@ describe('splitFigure', () => {
       // No vertex twice: deduplicating must not shorten the list.
       expect([...new Set(seen)].sort()).toEqual([...seen].sort())
     }
-    // Only the far end is new. P(100,100) is ring[2] and was already surveyed.
-    expect(r.newPoints).toEqual([P(0, 50)])
+    // (99.8, 100) is where the line from the click to (0, 50) meets the x = 100
+    // side. The surveyed corner (100, 100) is NOT reused, so both landings are
+    // new points and no existing beacon is claimed as created.
+    expect(r.newPoints).toEqual([P(99.8, 100), P(0, 50)])
+  })
+
+  describe('resolveEndpointToward', () => {
+    const square2 = [P(0, 0), P(100, 0), P(100, 100), P(0, 100)]
+
+    test('a click ON the boundary still projects, it does not shoot a ray', () => {
+      // (0, 50) is on the x = 0 side. With a neighbour toward the interior the
+      // first crossing would be the click itself, so the projection and the ray
+      // agree -- but the click must not be dragged off to the far side.
+      const r = resolveEndpointToward(square2, P(0, 50), P(100, 50))
+      expect(r.kind).toBe('edge')
+      expect(r.point).toEqual(P(0, 50))
+    })
+
+    test('a click strictly inside projects to the nearest edge, no crossing is taken', () => {
+      const r = resolveEndpointToward(square2, P(50, 20), P(50, 80))
+      expect(r.point).toEqual(P(50, 0))
+    })
+
+    test('a vertex snap beats the line crossing', () => {
+      // Just beyond the corner, within tolerance: reuse the beacon, do not
+      // invent a point where the line happens to meet the wall.
+      const r = resolveEndpointToward(square2, P(100.04, 100.04), P(0, 50))
+      expect(r.kind).toBe('vertex')
+      expect(r.index).toBe(2)
+      expect(r.point).toEqual(P(100, 100))
+    })
+
+    test('falls back to the projection when the ray never meets the ring', () => {
+      // No neighbour: nothing to shoot toward, so the old projection rule holds.
+      const r = resolveEndpointToward(square2, P(120, 50), null)
+      expect(r.kind).toBe('edge')
+      expect(r.point).toEqual(P(100, 50))
+    })
   })
 
   test('a cut that encloses no area is degenerate, even on two different edges', () => {
@@ -658,5 +695,117 @@ describe('splitFigure', () => {
     const vertexThenVertex = splitFigure({ ring: square, polyline: [P(0, 0), P(100, 100)] })
     expect(vertexThenVertex.ok).toBe(true)
     expect(vertexThenVertex.newPoints).toEqual([])
+  })
+})
+
+describe('splitFigureMultiple', () => {
+  const square = [P(0, 0), P(100, 0), P(100, 100), P(0, 100)]
+  const area = (pts) => {
+    let twice = 0
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      twice += pts[j].y * pts[i].x - pts[i].y * pts[j].x
+    }
+    return Math.abs(twice) / 2
+  }
+  const ids = (part) => part.map((p) => `${p.y},${p.x}`)
+
+  test('no cuts is the figure itself, as one part', () => {
+    // n cuts -> n+1 parts holds at n = 0. Callers that derive the current
+    // regions before a draft cut exists depend on this not being a refusal.
+    const r = splitFigureMultiple({ ring: square, polylines: [] })
+    expect(r.ok).toBe(true)
+    expect(r.parts).toHaveLength(1)
+    expect(r.parts[0].map((p) => `${p.y},${p.x}`)).toEqual(ids(square))
+    expect(r.newPoints).toEqual([])
+  })
+
+  test('two parallel cuts make three parts that tile the figure', () => {
+    const r = splitFigureMultiple({
+      ring: square,
+      polylines: [[P(25, 0), P(25, 100)], [P(50, 0), P(50, 100)]],
+    })
+    expect(r.ok).toBe(true)
+    expect(r.parts).toHaveLength(3)
+    // Coverage is true by construction: the parts sum to the whole square.
+    expect(r.parts.reduce((s, part) => s + area(part), 0)).toBeCloseTo(10000, 6)
+    // One cut creates two points, so two cuts create four.
+    expect(r.newPoints).toHaveLength(4)
+    for (const name of [[25, 0], [25, 100], [50, 0], [50, 100]]) {
+      expect(r.newPoints).toContainEqual(P(name[0], name[1]))
+    }
+  })
+
+  test('a later cut lands in the part left by an earlier one, whatever the order', () => {
+    // The reverse order of the test above: the y = 50 cut is stored first, then
+    // the y = 25 one. The second must find the northern part (y < 50) and sub-
+    // divide THAT, not re-split the whole figure. Areas prove it did: 0..25,
+    // 25..50, 50..100 of a 100x100 square.
+    const r = splitFigureMultiple({
+      ring: square,
+      polylines: [[P(50, 0), P(50, 100)], [P(25, 0), P(25, 100)]],
+    })
+    expect(r.ok).toBe(true)
+    expect(r.parts).toHaveLength(3)
+    expect(r.parts.map(area).sort((a, b) => a - b)).toEqual([2500, 2500, 5000])
+  })
+
+  test('a later cut may terminate on an earlier cut (T-junction)', () => {
+    // Cut 1 runs straight across at y = 50. Cut 2 starts ON that line at
+    // (50, 50) and runs to the y = 0 side, subdividing the northern part.
+    const r = splitFigureMultiple({
+      ring: square,
+      polylines: [[P(50, 0), P(50, 100)], [P(50, 50), P(0, 75)]],
+    })
+    expect(r.ok).toBe(true)
+    expect(r.parts).toHaveLength(3)
+    // The T point is created once and named, and BOTH parts meeting at it carry
+    // it -- otherwise their shared boundary would disagree and the next cut
+    // could invent a duplicate at the same coordinate.
+    expect(r.newPoints).toContainEqual(P(50, 50))
+    const carriers = r.parts.filter((part) => ids(part).includes('50,50'))
+    expect(carriers.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test('a cut that crosses an earlier cut into the far part is refused, not truncated', () => {
+    // Cut 2 runs the full width at x = 50. It meets cut 1's line at (50, 50)
+    // and keeps going into the part beyond. The first draft of the multiple
+    // walk shortened it at the shared line and silently split only one part.
+    const r = splitFigureMultiple({
+      ring: square,
+      polylines: [[P(50, 0), P(50, 100)], [P(0, 50), P(100, 50)]],
+    })
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('interior-outside')
+  })
+
+  test('every created point is reported once, in cut order', () => {
+    const r = splitFigureMultiple({
+      ring: square,
+      polylines: [[P(50, 0), P(50, 100)], [P(25, 0), P(25, 100)]],
+    })
+    expect(r.ok).toBe(true)
+    // The two points of the first cut precede the two of the second, so a
+    // caller lettering them in order (C1, C2, ...) names them along the cuts.
+    expect(r.newPoints).toEqual([P(50, 0), P(50, 100), P(25, 0), P(25, 100)])
+    const keys = r.newPoints.map((p) => `${p.y},${p.x}`)
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+
+  test('a cut crossing a stand is refused with the stand named', () => {
+    const stands = [{ name: '1686', ring: [P(40, 40), P(60, 40), P(60, 60), P(40, 60)] }]
+    const r = splitFigureMultiple({
+      ring: square,
+      polylines: [[P(50, 0), P(50, 100)]],
+      stands,
+    })
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('straddles-stands')
+    expect(r.stands).toEqual(['1686'])
+  })
+
+  test('an unreadable ring is refused, not thrown', () => {
+    expect(splitFigureMultiple({ ring: [], polylines: [[P(0, 0), P(1, 1)]] }))
+      .toEqual({ ok: false, error: 'degenerate' })
+    expect(splitFigureMultiple({ ring: square, polylines: [] })).toMatchObject({ ok: true })
   })
 })

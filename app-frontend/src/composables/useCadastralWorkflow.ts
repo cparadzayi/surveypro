@@ -3,6 +3,7 @@ import type { CadastralWorkflowState, CadastralPoint } from '../types/cadastral'
 import type { SiteCalibration } from '../utils/siteCalibration'
 import { useSurveyLookupStore } from '../stores/surveyLookup'
 import { paginateFieldBook } from '../utils/fieldBookPagination'
+import { isCalculatedPoint } from '../utils/calculatedPoint'
 import { parseSurveyDate, toISODate } from '../utils/surveyDate'
 import api from '../services/api'
 
@@ -70,10 +71,12 @@ function buildCoordinateList() {
     return 'Other';
   }
 
+  // Same order the Co-ordinate List document prints its sections in:
+  // trig, adopted, working, found ... (see SECTION_HEADINGS in coordinate-list.ts).
   const groupOrder = [
     'Trig/Town Survey Mark',
-    'Working Station',
     'Adopted',
+    'Working Station',
     'Found',
     'Placed',
     'Computed',
@@ -133,11 +136,20 @@ function buildFieldBook() {
   // and pushes every observation one page later. Assuming it is absent makes the
   // page numbers recorded here — and the Excel export built from them — cite a
   // page the printed book does not use.
+  //
+  // Computed points ride along separately so they land in the CALCULATED POINTS
+  // block, exactly where the field book renderer puts them: pagination interleaved
+  // them among the observations, and this map — written into the shared Pinia
+  // store — would disagree with the printed book on every page after the first
+  // calculated point.
+  const observed = workflowState.importedPoints.filter(point => !isCalculatedPoint(point))
+  const calculated = workflowState.importedPoints.filter(point => isCalculatedPoint(point))
   const pagination = paginateFieldBook(
-    workflowState.importedPoints.map(point => ({ id: point.id })),
+    observed.map(point => ({ id: point.id })),
     {
       hasCalibration: Boolean(workflowState.documents.siteCalibration),
       hasCover: false,
+      calculated: calculated.map(point => ({ id: point.id })),
     },
   );
 

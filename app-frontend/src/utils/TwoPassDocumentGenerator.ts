@@ -36,6 +36,9 @@ export interface TwoPassDocumentData {
   adjustedCoordinates: AdjustedCoordinate[]
   surveyorInfo: SurveyorInfo
   projectControlPoints?: any[]
+  /** Beacons carried from a previous approved survey (project_adopted_beacons
+   *  rows); print under ADOPTED BEACONS in the Co-ordinate List only. */
+  adoptedBeacons?: any[]
   parcels?: any[]
   /** SI 727 s.67(5) Beacon Comparison Report inputs; omit to skip the section */
   reportData?: ReportOnSurveyData | null
@@ -269,13 +272,15 @@ export class TwoPassDocumentGenerator {
   // ========================================
 
   /**
-   * Points the field book actually renders: calculated points are excluded
-   * (they don't appear in the field book -- they still reach Calculations,
-   * via a separate lookup, but never the field book). `paginateFieldBook`'s
-   * contract requires "EXACTLY the points the field book will render, in
-   * render order", so `measureFieldBook` and `renderFieldBook` must agree on
-   * this list -- both read it from here instead of filtering independently,
-   * so they cannot drift apart.
+   * Points the field book renders on its OBSERVATION pages: calculated points
+   * are excluded (they don't sit among the observations -- they still reach
+   * Calculations, via a separate lookup, and the field book itself, via the
+   * CALCULATED POINTS block its renderer appends after the observations).
+   * `paginateFieldBook`'s contract requires "EXACTLY the points the field book
+   * will render on each list, in render order", so `measureFieldBook` and
+   * `renderFieldBook` must agree on this list -- both read it from here
+   * instead of filtering independently, so they cannot drift apart. The
+   * computed points travel beside it, from `calculatedPoints`.
    */
   private fieldBookPoints(data: TwoPassDocumentData): SurveyPoint[] {
     return data.surveyPoints.filter(pt => {
@@ -284,21 +289,33 @@ export class TwoPassDocumentGenerator {
       // status "C" with description "Not Beaconed" was treated as observed and
       // printed in a field book of observations.
       if (isCalculatedPoint(pt)) {
-        console.log(`[FieldBook] 🧮 Excluding calculated point: ${pt.pointId}`);
+        console.log(`[FieldBook] 🧮 Calculated point ${pt.pointId} -> block, not observations`);
         return false;
       }
       return true;
     });
   }
 
+  /** The computed half of the book: block pages, in render order. */
+  private calculatedPoints(data: TwoPassDocumentData): SurveyPoint[] {
+    return data.surveyPoints.filter(pt => isCalculatedPoint(pt));
+  }
+
   private measureFieldBook(data: TwoPassDocumentData): FieldBookMeasurement {
     // The calibration opens the book at E1, so it DOES move every point -- the
     // opposite of the rule this method used to encode. fieldBookPagination is the
-    // single place that decision lives.
+    // single place that decision lives. The calculated points ride along as
+    // their own block, so the measured page count includes them exactly as the
+    // renderer will print them.
     const points = this.fieldBookPoints(data)
     const pagination = paginateFieldBook(
       points.map(pt => ({ id: pt.pointId })),
-      { hasCalibration: Boolean(data.siteCalibration), hasCover: true, partyWalls: data.partyWalls },
+      {
+        hasCalibration: Boolean(data.siteCalibration),
+        hasCover: true,
+        partyWalls: data.partyWalls,
+        calculated: this.calculatedPoints(data).map(pt => ({ id: pt.pointId })),
+      },
     )
 
     return {
@@ -381,7 +398,8 @@ export class TwoPassDocumentGenerator {
       data.surveyorInfo,
       data.projectControlPoints,
       undefined, // No calc page lookup yet (we'll apply it in render phase)
-      undefined  // No field book lookup yet (we'll apply it in render phase)
+      undefined, // No field book lookup yet (we'll apply it in render phase)
+      data.adoptedBeacons
     )
     
     const actualPages = result.pageCount
@@ -467,14 +485,16 @@ export class TwoPassDocumentGenerator {
     partyWallPageMap: Record<number, string>;
     pageCount: number;
   }> {
-    // Calculated points don't appear in the field book -- see fieldBookPoints,
-    // the one place this filter lives (measureFieldBook uses the same helper).
-    const filteredPoints = this.fieldBookPoints(data);
+    // Every point goes in: the renderer splits the list exactly the way
+    // measureFieldBook paginates it -- observations on the point pages, the
+    // computed ones in the CALCULATED POINTS block -- so one partition, made
+    // by the one predicate in utils/calculatedPoint.ts, drives both passes.
+    const observedCount = this.fieldBookPoints(data).length;
 
-    console.log(`[FieldBook] 📊 Points: ${data.surveyPoints.length} total, ${filteredPoints.length} in field book, ${data.surveyPoints.length - filteredPoints.length} calculated (excluded)`);
+    console.log(`[FieldBook] 📊 Points: ${data.surveyPoints.length} total, ${observedCount} observed, ${data.surveyPoints.length - observedCount} calculated (block)`);
     
     // Convert survey points to field book format
-    const fieldBookPoints = filteredPoints.map((pt, idx) => ({
+    const fieldBookPoints = data.surveyPoints.map((pt, idx) => ({
       id: pt.pointId, // FieldBookPoint requires 'id' field
       pointId: pt.pointId,
       y: pt.y,
@@ -525,7 +545,8 @@ export class TwoPassDocumentGenerator {
       data.surveyorInfo,
       data.projectControlPoints,
       calcPageLookup, // ✅ Pass accurate calculation page lookup
-      fieldBookLookup // ✅ Pass accurate field book page lookup
+      fieldBookLookup, // ✅ Pass accurate field book page lookup
+      data.adoptedBeacons
     )
     
     // Convert jsPDF to Blob

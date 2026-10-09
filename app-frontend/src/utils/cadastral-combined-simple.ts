@@ -23,11 +23,15 @@ export class SimplifiedCadastralCombinedGenerator {
   
   /**
    * Generate combined document
+   *
+   * @param adoptedBeacons - Beacons carried from a previous approved survey;
+   *   they print under ADOPTED BEACONS in the Co-ordinate List only.
    */
   async generateCombinedDocument(
     surveyPoints: SurveyPoint[],
     surveyorInfo: SurveyorInfo,
-    projectControlPoints?: any[]
+    projectControlPoints?: any[],
+    adoptedBeacons?: any[]
   ) {
     console.log('[Simplified Combined] Starting generation...')
     console.log('[Simplified Combined] Control points received:', projectControlPoints?.length || 0)
@@ -52,7 +56,10 @@ export class SimplifiedCadastralCombinedGenerator {
     const coordListResultTemp = await this.coordListGen.generateCoordinateListPDF(
       calcResult.adjustedCoordinates,
       surveyorInfo,
-      projectControlPoints
+      projectControlPoints,
+      undefined,
+      undefined,
+      adoptedBeacons
     )
     
     // Get the ACTUAL last page number from the generated Coordinate List
@@ -89,7 +96,10 @@ export class SimplifiedCadastralCombinedGenerator {
     const coordListResult = await this.coordListGen.generateCoordinateListPDF(
       calcResult.adjustedCoordinates,
       surveyorInfo,
-      projectControlPoints
+      projectControlPoints,
+      undefined,
+      undefined,
+      adoptedBeacons
     )
     
     console.log('[Simplified Combined] Coordinate List regenerated with correct cross-references')

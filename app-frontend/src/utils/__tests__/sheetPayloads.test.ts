@@ -38,23 +38,31 @@ describe('buildSheetPayloads', () => {
     for (const s of out.sheets) expect(s.stands).toHaveLength(1);
   });
 
-  it('letters each sheet from A, so one point carries two letters', () => {
+  it('names shared cut points the same on every sheet', () => {
     const out = buildSheetPayloads(input());
     if (!out.ok) throw new Error('expected ok');
-    for (const s of out.sheets) expect(s.vertices[0].pointId).toBe('A');
 
-    // Spec Part 4 is about ONE PHYSICAL POINT carrying two letters, which is not
-    // the same as the two sheets having different SETS of cut letters -- an
-    // earlier version of this test compared the sets and could never pass, since
-    // splitFigure puts the cut's endpoints first in both parts so both read
-    // ['A','B']. Compare the letter a shared point gets on each sheet instead.
+    // splitFigure puts the cut's endpoints first in every part, and those
+    // points are named ONCE for the whole plan -- so the same physical
+    // point reads 'C1' (or 'C2') on every sheet it appears on, instead
+    // of a different letter per sheet. That is the point of carrying
+    // real names in each sheet's outside-figure data.
     const shared = out.sheets[0].ring.filter((p) => out.sheets[1].ring.includes(p));
     expect(shared.length).toBeGreaterThan(0);
 
-    const letterOn = (n: number, point: unknown) =>
+    const idOn = (n: number, point: unknown) =>
       out.sheets[n].vertices[out.sheets[n].ring.indexOf(point as never)].pointId;
-    const differing = shared.filter((p) => letterOn(0, p) !== letterOn(1, p));
-    expect(differing.length).toBeGreaterThan(0);
+    for (const p of shared) {
+      const name = idOn(0, p);
+      expect(name).toBe(idOn(1, p));
+      expect(name).toMatch(/^C\d+$/);
+    }
+
+    // Survey points the plan never named still fall back to this
+    // sheet's own letters, which restart at A on every sheet.
+    for (const s of out.sheets) {
+      expect(s.vertices.some((v) => /^[A-Z]$/.test(v.pointId))).toBe(true);
+    }
   });
 
   it('names the created points once for the whole plan, avoiding taken names', () => {
@@ -157,7 +165,10 @@ describe('buildSheetPayloads', () => {
     if (!out.ok) throw new Error('expected ok');
     for (const s of out.sheets) {
       expect(s.edges).toHaveLength(s.ring.length);
-      expect(s.edges[s.edges.length - 1].side.endsWith('-A')).toBe(true);
+      // The table closes: the last edge returns to the FIRST vertex,
+      // whatever that point is called -- a lettered survey point or a
+      // plan-named cut point ('C1' here, since the cut leads the ring).
+      expect(s.edges[s.edges.length - 1].side.endsWith(`-${s.vertices[0].pointId}`)).toBe(true);
       expect(s.edges.every((e) => e.distance > 0)).toBe(true);
     }
   });

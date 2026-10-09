@@ -91,33 +91,36 @@ export class FieldBookGenerator {
     calibration?: SiteCalibration,
     /**
      * Party-wall servitude rows (stands + boundary). Rendered on their own page(s)
-     * IMMEDIATELY after the last point page, still in the E-series, so the
-     * Calculations document can cite the exact field-book page of each wall. The
-     * first row of the section is the "Party-wall servitudes" heading; skipped
-     * entirely when no rows are given.
+     * AFTER the last point page and the CALCULATED POINTS block, still in the
+     * E-series, so the Calculations document can cite the exact field-book page
+     * of each wall. The first row of the section is the "Party-wall servitudes"
+     * heading; skipped entirely when no rows are given.
      */
     partyWalls: PartyWallRow[] = [],
   ): Promise<{ pdf: jsPDF; pageCount: number; pointPageMap: Record<string, string>; partyWallPageMap: Record<number, string> }> {
     const pdf = new jsPDF(this.options);
 
-    // A field book records what was visited and measured, so a computed point
-    // cannot appear in one. Enforced here rather than left to each caller: the
-    // rule belongs to the document, and a caller that forgets it produces a
-    // field book that misrepresents what was observed on the ground.
-    //
-    // Filtering BEFORE pagination keeps paginateFieldBook's contract intact --
-    // it still receives exactly the points that will be rendered, in order.
-    const excluded = points.filter(pt => isCalculatedPoint(pt));
-    if (excluded.length) {
-      console.log(`[FieldBook] 🧮 Excluding ${excluded.length} calculated point(s):`,
-        excluded.map(pt => pt.id).join(', '));
+    // A field book's point pages record what was visited and measured, so a
+    // computed point cannot sit among them. It still belongs in the book: the
+    // CO-ORDINATE LIST's F. B cell cites the page it appears on, which is the
+    // CALCULATED POINTS block rendered after the observations and before the
+    // party-wall servitudes. Splitting here rather than left to each caller
+    // keeps that block and paginateFieldBook's contract in step — the
+    // pagination still receives exactly the points each list will render, in
+    // order, with the computed ones handed over separately.
+    const calculated = points.filter(pt => isCalculatedPoint(pt));
+    const observed = points.filter(pt => !isCalculatedPoint(pt));
+    if (calculated.length) {
+      console.log(`[FieldBook] 🧮 ${calculated.length} calculated point(s) -> CALCULATED POINTS block:`,
+        calculated.map(pt => pt.id).join(', '));
     }
-    points = points.filter(pt => !isCalculatedPoint(pt));
+    points = observed;
 
     const pagination = paginateFieldBook(points, {
       hasCalibration: Boolean(calibration),
       hasCover: true,
       partyWalls,
+      calculated,
     });
     this.pointPageMap = pagination.pointPageMap;
 
@@ -160,6 +163,28 @@ export class FieldBookGenerator {
 
       this.generateFieldBookPage(pdf, pagePoints, pageNumber, metadata);
       console.log(`[FieldBook] Generated page E${pageNumber}: ${pagePoints.length} points`);
+    }
+
+    // CALCULATED POINTS block: computed positions get their own page(s) after
+    // the observations and before the party-wall servitudes, in the E-series —
+    // this is the page the CO-ORDINATE LIST's F. B cell cites for them. Same
+    // grid as a point page (paginateFieldBook numbered them at
+    // FIELD_BOOK_POINTS_PER_PAGE), with a heading instead of an observation
+    // date, because nothing was measured on the day.
+    if (calculated.length > 0) {
+      const offset = calibration ? 1 : 0;
+      const totalBlockPages = Math.ceil(calculated.length / FIELD_BOOK_POINTS_PER_PAGE);
+      for (let pageIndex = 0; pageIndex < totalBlockPages; pageIndex++) {
+        startPage();
+        const startIndex = pageIndex * FIELD_BOOK_POINTS_PER_PAGE;
+        this.generateCalculatedPointsPage(
+          pdf,
+          calculated.slice(startIndex, startIndex + FIELD_BOOK_POINTS_PER_PAGE),
+          offset + totalPointPages + pageIndex + 1,
+          pageIndex === 0,
+        );
+      }
+      console.log(`[FieldBook] 🧮 Generated ${totalBlockPages} CALCULATED POINTS page(s)`);
     }
 
     // Party-wall servitude section: begins on its own page after the last point
@@ -457,6 +482,69 @@ export class FieldBookGenerator {
       
       pdf.setTextColor(0, 0, 0);
       pdf.setLineWidth(0.2);
+    }
+  }
+
+  /**
+   * Render one page of the CALCULATED POINTS block.
+   *
+   * The heading opens the block on its FIRST page; continuation pages carry
+   * the column header straight away. Columns are Point/Y/X/Description only —
+   * Status and Date would ask when a position was observed, and none was.
+   * The description echoes whatever the import stored — the CSV's own text,
+   * not a fixed label — so the block says exactly what the record says.
+   */
+  private generateCalculatedPointsPage(
+    pdf: jsPDF,
+    points: FieldBookPoint[],
+    pageNumber: number,
+    isFirstPage: boolean,
+  ): void {
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const maxYPosition = pageHeight - 30;
+    const rowHeight = 7;
+
+    const col1 = this.options.marginLeft; // Point ID
+    const col2 = col1 + 18;               // Y
+    const col3 = col2 + 28;               // X
+    const col4 = col3 + 28;               // Description
+
+    // Masthead + E-number, matching the point pages.
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(16);
+    pdf.text('ELECTRONIC FIELD BOOK', this.options.marginLeft, 25);
+    const pageLabel = `E${pageNumber}`;
+    const pageLabelWidth = pdf.getTextWidth(pageLabel);
+    pdf.text(pageLabel, pageWidth - this.options.marginRight - pageLabelWidth, 25);
+
+    let yPosition = isFirstPage ? 45 : 35;
+    if (isFirstPage) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(11);
+      pdf.text('CALCULATED POINTS', col1, yPosition);
+      yPosition += 7;
+    }
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(10);
+    pdf.text('Point', col1, yPosition);
+    pdf.text('Y', col2, yPosition);
+    pdf.text('X', col3, yPosition);
+    pdf.text('Description', col4, yPosition);
+    yPosition += 3;
+    pdf.line(this.options.marginLeft, yPosition, pageWidth - this.options.marginRight, yPosition);
+    yPosition += 7;
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    for (const point of points) {
+      if (yPosition > maxYPosition) break;
+      pdf.text(point.id, col1, yPosition);
+      pdf.text(point.y.toFixed(3), col2, yPosition);
+      pdf.text(point.x.toFixed(3), col3, yPosition);
+      pdf.text(point.description || '', col4, yPosition);
+      yPosition += rowHeight;
     }
   }
 

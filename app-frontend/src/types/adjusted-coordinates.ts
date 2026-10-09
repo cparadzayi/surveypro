@@ -40,6 +40,14 @@ export interface AdjustedCoordinate {
   
   /** Calculations Part 1 page reference (e.g., 115, 116, 117...) */
   calculationsPage: number
+
+  /** Survey record number this beacon was adopted from (e.g., "112/2021").
+   *  Present only on an adopted beacon -- coordinates carried forward from a
+   *  previous approved survey, never visited in this one. It keys the ADOPTED
+   *  BEACONS section of the Co-ordinate List and prints in the Calcs column;
+   *  `surveyDate` then holds the source survey's date verbatim (e.g.
+   *  "February-21"), which the F. B column formats and cites. */
+  srNumber?: string
   
   /** Adjustment metadata */
   adjustment?: {

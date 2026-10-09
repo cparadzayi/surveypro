@@ -90,11 +90,13 @@
               <span v-else>No coordinates to display. Please import or generate points in previous steps.</span>
             </td>
           </tr>
-          <tr v-else v-for="point in filteredCoordinateList" :key="point.id"
+          <tr v-else v-for="point in filteredCoordinateList" :key="point.isAdopted ? 'adopted-' + point.id : point.id"
               :class="{ 'bg-yellow-50': renamingId === point.id }">
             <td class="px-4 py-2">{{ point.group }}</td>
             <td class="px-4 py-2">{{ getObservedFieldBookPage(point.id) }}</td>
-            <td class="px-4 py-2">{{ getCalcsPage(point.id) }}</td>
+            <!-- An adopted beacon cites the survey record it came from, not a
+                 page of this survey's calculations -->
+            <td class="px-4 py-2">{{ point.isAdopted ? point.srNumber : getCalcsPage(point.id) }}</td>
             <!-- Editable point name cell -->
             <td class="px-4 py-2">
               <div v-if="renamingId === point.id" class="flex items-center gap-1">
@@ -109,19 +111,24 @@
                 <span v-if="renameSaving" class="text-xs text-gray-400">saving…</span>
               </div>
               <button
-                v-else
+                v-else-if="!point.isAdopted"
                 class="text-left font-mono text-sm hover:text-blue-600 hover:underline cursor-pointer focus:outline-none"
                 :title="'Click to rename ' + point.id"
                 @click="startRename(point.id)"
               >{{ point.id }}</button>
+              <span v-else class="font-mono text-sm" title="An adopted beacon is renamed at the Import CSV step">{{ point.id }}</span>
             </td>
             <td class="px-4 py-2">{{ point.coordinates?.y ?? '-' }}</td>
             <td class="px-4 py-2">{{ point.coordinates?.x ?? '-' }}</td>
             <td class="px-4 py-2">{{ point.description }}</td>
             <td class="px-4 py-2">{{ point.status }}</td>
-            <td class="px-4 py-2">{{ getFieldBookPage(point.id) }}</td>
+            <!-- An adopted beacon's F/B cites the source survey's date
+                 ("February 2021"), not a field book page: it was never in
+                 this survey's field book -->
+            <td class="px-4 py-2">{{ point.isAdopted ? (formatAdoptedSurveyDate(point.surveyDate) || '-') : getFieldBookPage(point.id) }}</td>
             <td class="px-4 py-2">
               <button
+                v-if="!point.isAdopted"
                 @click="deletePoint(point.id)"
                 :disabled="deletingId === point.id"
                 class="px-2 py-1 text-xs font-medium text-red-600 bg-red-50 rounded hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -138,9 +145,11 @@
 </template>
 
 <script lang="ts">
-import { inject, computed, ref, nextTick } from 'vue';
+import { inject, computed, ref, nextTick, watch } from 'vue';
 import { useSurveyLookupStore } from '../../../stores/surveyLookup';
 import { renameCoordinatePoint, deleteCoordinatePointByName, listLandParcels, updateLandParcel } from '../../../services/spatial';
+import { listAdoptedBeacons, type AdoptedBeacon } from '../../../services/adoptedBeacons';
+import { formatAdoptedSurveyDate } from '../../../utils/adoptedBeaconsCsv';
 import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow';
 import { propagateRename } from './beaconRepairFlow';
 import { normalizeBeaconName } from '../../../../../app-shared/beaconName';
@@ -150,6 +159,26 @@ export default {
     const workflowState = inject('workflowState') as any;
     const lookupStore = useSurveyLookupStore();
     const { projectId } = useCadastralWorkflow();
+
+    // Adopted beacons: carried from a previous approved survey, persisted in
+    // project_adopted_beacons. They belong on this list (under ADOPTED
+    // BEACONS, after trig) but are not editable here -- rename/delete act on
+    // coordinate_points, which these are not. The surveyor manages them at
+    // the Import CSV step.
+    const adoptedBeacons = ref<AdoptedBeacon[]>([]);
+    async function loadAdoptedBeacons() {
+      if (!projectId.value) {
+        adoptedBeacons.value = [];
+        return;
+      }
+      try {
+        adoptedBeacons.value = await listAdoptedBeacons(projectId.value);
+      } catch (error) {
+        console.error('[CoordinateList] Failed to load adopted beacons:', error);
+        adoptedBeacons.value = [];
+      }
+    }
+    watch(projectId, loadAdoptedBeacons, { immediate: true });
     
     // Control point reminder state
     const reminderDismissed = ref(false);
@@ -302,29 +331,58 @@ export default {
       if (status.includes('computed')) return 'Computed';
       return 'Other';
     }
+    // Adopted beacons as display rows for this table: flagged so the Calcs
+    // cell cites their S.R. number and F/B their source survey's date, and so
+    // rename/delete (which act on coordinate_points) stay hidden.
+    const adoptedRows = computed(() =>
+      adoptedBeacons.value.map((b) => ({
+        id: b.point_name,
+        coordinates: { y: b.y, x: b.x },
+        description: b.description || '',
+        status: b.status || '',
+        group: 'Adopted',
+        isAdopted: true,
+        srNumber: b.sr_number,
+        surveyDate: b.survey_date || '',
+      }))
+    );
+
+    // The document's own section order: trig, adopted, working, found ... so
+    // the screen matches the Co-ordinate List it previews. ADOPTED BEACONS
+    // sits above FOUND BEACONS (and above everything else but trig) because
+    // those beacons come from earlier work rather than from this survey.
+    const groupOrder = [
+      'Trig/Town Survey Mark',
+      'Adopted',
+      'Working Station',
+      'Found',
+      'Placed',
+      'Computed',
+      'Other'
+    ];
+
     const sortedCoordinateList = computed(() => {
       // Prefer processed coordinate list from workflowState.documents if available
-      if (workflowState?.documents?.coordinateList?.points) {
-        return workflowState.documents.coordinateList.points;
-      }
-      if (!workflowState || !workflowState.importedPoints) return [];
-      return [...workflowState.importedPoints].map(point => ({
-        ...point,
-        group: getPointGroup(point)
-      })).sort((a, b) => {
-        const groupOrder = [
-          'Trig/Town Survey Mark',
-          'Working Station',
-          'Adopted',
-          'Found',
-          'Placed',
-          'Computed',
-          'Other'
-        ];
+      const base: any[] = workflowState?.documents?.coordinateList?.points
+        ? [...workflowState.documents.coordinateList.points]
+        : (!workflowState || !workflowState.importedPoints)
+          ? []
+          : workflowState.importedPoints.map((point: any) => ({ ...point }));
+
+      // Rows stored by earlier steps carry no group (the Group column read
+      // blank for them), so derive it -- then merge the adopted rows in by
+      // group rather than appending them, which used to drop them at the very
+      // bottom of the list, below the found beacons they belong above.
+      const rows = [
+        ...base.map((point: any) => (point.group ? point : { ...point, group: getPointGroup(point) })),
+        ...adoptedRows.value,
+      ];
+
+      return rows.sort((a, b) => {
         const groupA = groupOrder.indexOf(a.group);
         const groupB = groupOrder.indexOf(b.group);
         if (groupA !== groupB) return groupA - groupB;
-        return a.id.localeCompare(b.id);
+        return String(a.id ?? '').localeCompare(String(b.id ?? ''));
       });
     });
     const filteredCoordinateList = computed(() => {
@@ -374,6 +432,16 @@ export default {
       // For now, return the same as getFieldBookPage since most points are observed
       return getFieldBookPage(pointId);
     }
+    // The Calcs and F/B cells for one row, the same rule the table template
+    // applies: an adopted beacon cites the survey record it came from (its
+    // S.R. number) and that record's date -- it has no page of THIS survey's
+    // calculations or field book to cite, never having been in either.
+    function calcsCellFor(point: any) {
+      return point.isAdopted ? (point.srNumber || '-') : getCalcsPage(point.id);
+    }
+    function fbCellFor(point: any) {
+      return point.isAdopted ? (formatAdoptedSurveyDate(point.surveyDate) || '-') : getFieldBookPage(point.id);
+    }
     function exportPDF() {
       // PDF export logic with new column order
       // Uses jsPDF (assumed available in project)
@@ -406,13 +474,13 @@ export default {
           const row = [
             point.group,
             getObservedFieldBookPage(point.id),
-            getCalcsPage(point.id),
+            calcsCellFor(point),
             point.id,
             String(point.coordinates?.y ?? '-'),
             String(point.coordinates?.x ?? '-'),
             point.description,
             point.status,
-            getFieldBookPage(point.id)
+            fbCellFor(point)
           ];
           row.forEach((cell, i) => {
             doc.text(cell ? String(cell) : '-', rowX + 2, y);
@@ -435,13 +503,13 @@ export default {
       const rows = (sortedCoordinateList.value as any[]).map((point: any) => [
         point.group,
         getObservedFieldBookPage(point.id),
-        getCalcsPage(point.id),
+        calcsCellFor(point),
         point.id,
         String(point.coordinates?.y ?? '-'),
         String(point.coordinates?.x ?? '-'),
         point.description,
         point.status,
-        getFieldBookPage(point.id)
+        fbCellFor(point)
       ]);
       let csvContent = colHeaders.join(',') + '\n';
       rows.forEach(row => {
@@ -469,13 +537,13 @@ export default {
         html += '<tr>' + [
           point.group,
           getObservedFieldBookPage(point.id),
-          getCalcsPage(point.id),
+          calcsCellFor(point),
           point.id,
           String(point.coordinates?.y ?? '-'),
           String(point.coordinates?.x ?? '-'),
           point.description,
           point.status,
-          getFieldBookPage(point.id)
+          fbCellFor(point)
         ].map(cell => `<td style=\"padding:4px\">${cell ? String(cell) : '-'}</td>`).join('') + '</tr>';
       });
       html += '</tbody></table>';
@@ -514,6 +582,8 @@ export default {
       startRename,
       cancelRename,
       commitRename,
+      // Adopted beacons (S.R. citation / source date formatting)
+      formatAdoptedSurveyDate,
     };
   }
 };

@@ -1,14 +1,19 @@
 /**
  * The F/P and F. B cells of the CO-ORDINATE LIST.
  *
- * These two cells answer one question -- was this position observed in the
- * field? -- and the column legend defines only two values for it, F and P. A
- * position that was never visited has neither, and no field book page records
- * an observation of it, so both cells carry the "-" not-applicable marker.
+ * F/P answers one question -- was this position observed in the field? -- and
+ * the column legend defines only two values for it, F and P. A position never
+ * visited has neither, so that cell carries the "-" not-applicable marker.
  *
- * A figure-split point (provenance "-") is exactly such a position: defined by
- * a click, with no mark in the ground. The spec requires the list to print its
- * F/P cell literally as "-".
+ * F. B is different: it is a cross-reference, and a calculated point DOES have
+ * a page to cite -- the E-page of the field book's CALCULATED POINTS block it
+ * prints on. Only when the row carries no such page does that cell fall back
+ * to "-" as well.
+ *
+ * A figure-split point (provenance "-") is a position with no book entry at
+ * all: defined by a click, with no mark in the ground. The spec requires the
+ * list to print its F/P cell literally as "-", and its F. B cell has nowhere
+ * to point.
  *
  * It did print that, but by accident: the renderer decided not-applicable from
  * `isCalculatedPoint`, a predicate matching the TEXT of the status and
@@ -69,10 +74,20 @@ describe('fpAndFieldBookCells', () => {
       .toEqual({ fp: 'F', fb: 'E2' });
   });
 
-  it('still marks a calculated point not-applicable', () => {
+  it('marks a calculated point not-applicable in F/P but cites its block page in F. B', () => {
+    // F/P: the legend defines only F and P, and nothing was found or placed --
+    // but F. B is a cross-reference, and the row's fieldBookPage is the E-page
+    // of the field book's CALCULATED POINTS block. Citing it is the whole point
+    // of the block: the reader can turn to where the computed point prints.
     expect(fpAndFieldBookCells(point({ status: 'C', description: 'Not Beaconed' })))
-      .toEqual({ fp: '-', fb: '-' });
+      .toEqual({ fp: '-', fb: 'E2' });
     expect(fpAndFieldBookCells(point({ status: '', description: 'Not Beaconed' })))
+      .toEqual({ fp: '-', fb: 'E2' });
+    // No page to cite (nothing has paginated the field book for this row) --
+    // and never one invented: "-" stays the fallback.
+    expect(fpAndFieldBookCells(point({ status: 'C', description: 'Calculated', fieldBookPage: '' })))
+      .toEqual({ fp: '-', fb: '-' });
+    expect(fpAndFieldBookCells(point({ status: 'C', description: 'Calculated', fieldBookPage: '-' })))
       .toEqual({ fp: '-', fb: '-' });
   });
 

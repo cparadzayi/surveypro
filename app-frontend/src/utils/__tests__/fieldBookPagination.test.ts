@@ -84,6 +84,60 @@ describe('paginateFieldBook', () => {
     });
   });
 
+  describe('the CALCULATED POINTS block', () => {
+    const calculated = { calculated: [{ id: 'C1' }, { id: 'C2' }] };
+
+    it('numbers calculated points after the observations, never among them', () => {
+      const { pointPageMap, ePageCount } = paginateFieldBook(
+        points(5), { hasCalibration: false, ...noCover, ...calculated },
+      );
+
+      // The observations keep every page they had: a computed point joins no
+      // observation list, so it cannot shift a single E-number before it.
+      expect(pointPageMap.P5).toBe('E1');
+      // Both calculated points share one block page -- 27 per page, the same
+      // grid -- which follows the observations in the E-series.
+      expect(pointPageMap.C1).toBe('E2');
+      expect(pointPageMap.C2).toBe('E2');
+      expect(ePageCount).toBe(2);
+    });
+
+    it('pushes the party-wall appendix past the block', () => {
+      const { pointPageMap, partyWallPageMap, partyWallBasePage, ePageCount } =
+        paginateFieldBook(
+          points(1),
+          {
+            hasCalibration: false,
+            ...noCover,
+            calculated: [{ id: 'C1' }],
+            partyWalls: [{ stands: 'STANDS 1', boundary: 'A-B' }],
+          },
+        );
+
+      // E1 observations, E2 block, E3 walls -- the appendix used to open at
+      // E2, so without counting the block every wall citation would be short
+      // one page in any survey that computed a point.
+      expect(pointPageMap.P1).toBe('E1');
+      expect(pointPageMap.C1).toBe('E2');
+      expect(partyWallBasePage).toBe(3);
+      expect(partyWallPageMap[0]).toBe('E3');
+      expect(ePageCount).toBe(3);
+    });
+
+    it('leaves a survey with no calculated points exactly where it was', () => {
+      const plain = paginateFieldBook(
+        points(27),
+        { hasCalibration: true, hasCover: false, partyWalls: [{ stands: 'S', boundary: 'A-B' }] },
+      );
+      const emptyBlock = paginateFieldBook(
+        points(27),
+        { hasCalibration: true, hasCover: false, calculated: [], partyWalls: [{ stands: 'S', boundary: 'A-B' }] },
+      );
+
+      expect(emptyBlock).toEqual(plain);
+    });
+  });
+
   describe('an empty survey', () => {
     it('reports no pages rather than inventing one', () => {
       const result = paginateFieldBook([], { hasCalibration: false, hasCover: false });

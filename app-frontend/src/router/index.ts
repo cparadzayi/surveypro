@@ -8,6 +8,7 @@ import { useModulesStore } from '../stores/modules';
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/landing' },
   { path: '/landing', component: () => import('../views/LandingView.vue'), meta: { public: true } },
+  { path: '/launch', component: () => import('../views/LaunchView.vue'), meta: { public: true } }, // a job opened from the council system (VunGIS)
   { path: '/login', redirect: '/landing' }, // Legacy redirect
   { path: '/register', redirect: '/landing' }, // Legacy redirect
   { path: '/complete-profile', component: () => import('../views/CompleteProfileView.vue'), meta: { requiresAuth: true } },

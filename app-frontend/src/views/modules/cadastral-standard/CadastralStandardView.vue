@@ -356,6 +356,21 @@
               </div>
             </div>
           </div>
+
+          <!-- Adopted beacons are input data like the CSV above, so they live
+               in the same step -- but they are a different KIND of input:
+               coordinates carried from a previous approved survey, never
+               visited in the field. They get their own table
+               (project_adopted_beacons) and their own file format, so a
+               re-import of the field CSV cannot touch them and they cannot
+               leak into the field book or Calculations Part 1. -->
+          <div class="max-w-2xl mx-auto mt-8">
+            <AdoptedBeaconsImport
+              :project-id="selectedProjectId"
+              :imported-point-names="importedPointNames"
+              :reclassify="handleAdoptedReclassify"
+            />
+          </div>
         </div>
       </div>
 
@@ -1354,7 +1369,8 @@ import {
   type MergeAnalysis 
 } from '../../../services/csvImports';
 // Spatial data export
-import { batchCreateCoordinatePoints, listCoordinatePoints, normalizeCoordinatePointNames, listLandParcels, updateLandParcel } from '../../../services/spatial';
+import { batchCreateCoordinatePoints, listCoordinatePoints, normalizeCoordinatePointNames, listLandParcels, updateLandParcel, deleteCoordinatePointByName } from '../../../services/spatial';
+import { normalizeAdoptedBeaconName } from '../../../utils/adoptedBeaconsCsv';
 import { toISODate } from '../../../utils/surveyDate';
 import { buildBeaconRepairPlan, runBeaconRepair, describeRepairResult, renameWorkflowCopies, renamePointList } from './beaconRepairFlow';
 import { planCoordinateRefresh, refreshWorkflowCoordinateCopies } from './parcelSnapshotRefresh';
@@ -1365,6 +1381,8 @@ import { generateCalibrationReportPDF } from '../../../utils/calibration-pdf';
 import CSVReimportDialog from '../../../components/cadastral/CSVReimportDialog.vue';
 import MergeAnalysisDialog from '../../../components/cadastral/MergeAnalysisDialog.vue';
 import LiveCSVValidator from '../../../components/cadastral/LiveCSVValidator.vue';
+import AdoptedBeaconsImport from '../../../components/cadastral/AdoptedBeaconsImport.vue';
+import { listAdoptedBeacons } from '../../../services/adoptedBeacons';
 import { 
   dbKeyToStepId, 
   stepIdToDbKey, 
@@ -1574,6 +1592,87 @@ const pegPointsCount = computed(() =>
 const otherPointsCount = computed(() => 
   workflowState.importedPoints.filter(p => !p.status).length
 );
+
+// Names already imported for this survey, so the adopted-beacons panel can
+// report a collision (two different beacons under one name on the Co-ordinate
+// List) before the save, not after. The beacon name rides in `id` (see
+// handleDataImported's `name: point.id`).
+const importedPointNames = computed(() =>
+  workflowState.importedPoints.map(p => p.id).filter(Boolean)
+);
+
+/**
+ * Reclassify points that were captured as live observations by mistake, so the
+ * adopted-beacons import can own their names (the Import CSV step's
+ * "remove from this survey and adopt instead" action).
+ *
+ * Mirrors CoordinateListView.deletePoint -- database row, then the in-memory
+ * workflow state the Co-ordinate List and map read -- but batched, and it
+ * PERSISTS the removal. deletePoint only splices the reactive singleton, so
+ * without the writes below the points returned on reload from
+ * step_data['csv-import'].points and step_data['calculations-part1']
+ * .adjusted_coordinates.
+ */
+async function handleAdoptedReclassify(pointNames: string[]): Promise<void> {
+  if (!pointNames.length) return;
+
+  const pid = selectedProjectId.value ? Number(selectedProjectId.value) : null;
+  const wanted = new Set(pointNames.map((n) => normalizeAdoptedBeaconName(n)));
+  const isReclassified = (name: unknown) =>
+    wanted.has(normalizeAdoptedBeaconName(name));
+
+  // 1. The authoritative rows. A name present only in the workflow JSON (no
+  //    coordinate_points row) is not a failure -- keep going for the rest.
+  if (pid) {
+    for (const name of pointNames) {
+      try {
+        await deleteCoordinatePointByName(pid, name);
+      } catch (err: any) {
+        console.warn(
+          `[AdoptedReclassify] "${name}" not deleted from coordinate_points:`,
+          err?.response?.status ?? err?.message,
+        );
+      }
+    }
+  }
+
+  // 2. In-memory workflow state, the same places deletePoint cleans.
+  const before = workflowState.importedPoints.length;
+  const remaining = workflowState.importedPoints.filter((p) => !isReclassified(p.id));
+
+  if (workflowState.adjustedCoordinates) {
+    workflowState.adjustedCoordinates = workflowState.adjustedCoordinates.filter(
+      (p: any) => !isReclassified(p.pointId),
+    );
+  }
+  if (workflowState.documents.coordinateList?.points) {
+    workflowState.documents.coordinateList.points =
+      workflowState.documents.coordinateList.points.filter((p: any) => !isReclassified(p.id));
+  }
+  if (workflowState.documents.fieldBook?.points) {
+    workflowState.documents.fieldBook.points =
+      workflowState.documents.fieldBook.points.filter((p: any) => !isReclassified(p.id));
+  }
+
+  // 3. Persist. setImportedPoints writes step_data['csv-import'].points (where
+  //    a reload rebuilds importedPoints from); the adjusted coordinates are
+  //    restored from calculations-part1, so update that too.
+  setImportedPoints(remaining);
+  if (pid && workflowState.adjustedCoordinates) {
+    try {
+      await saveStepData('calculations-part1', {
+        adjusted_coordinates: workflowState.adjustedCoordinates,
+        point_count: workflowState.adjustedCoordinates.length,
+      });
+    } catch (err: any) {
+      console.error('[AdoptedReclassify] failed to persist adjusted coordinates:', err);
+    }
+  }
+
+  console.log(
+    `[AdoptedReclassify] removed ${before - remaining.length} live observation(s) from this survey: ${pointNames.join(', ')}`,
+  );
+}
 
 // Fixed points for beacon assessment
 const fixedPointsForBeaconAssessment = computed(() => {
@@ -1809,9 +1908,22 @@ async function generateCalculationsPart1() {
       }
     }
     
+    // Adopted beacons: carried from a previous approved survey, persisted in
+    // project_adopted_beacons by the Import CSV step. The combined document's
+    // Co-ordinate List prints them under ADOPTED BEACONS.
+    let adoptedBeacons: any[] = [];
+    if (workflowState.projectInfo.projectId) {
+      try {
+        adoptedBeacons = await listAdoptedBeacons(workflowState.projectInfo.projectId);
+        console.log(`[generateCalculations] Found ${adoptedBeacons.length} adopted beacons`);
+      } catch (error) {
+        console.error('[generateCalculations] Error fetching adopted beacons:', error);
+      }
+    }
+    
     // Use the new combined generator
     const generator = new SimplifiedCadastralCombinedGenerator();
-    const result = await generator.generateCombinedDocument(surveyPoints, surveyorInfo, projectControlPoints);
+    const result = await generator.generateCombinedDocument(surveyPoints, surveyorInfo, projectControlPoints, adoptedBeacons);
     
     // ⭐ Store adjusted coordinates and duplicate analyses in workflow state
     workflowState.adjustedCoordinates = result.adjustedCoordinates;
@@ -3847,12 +3959,30 @@ async function generateCoordinateList() {
       console.log('[CoordinateList] No project control points configured');
     }
     
+    // Adopted beacons: carried from a previous approved survey, persisted in
+    // project_adopted_beacons by the Import CSV step. They print under
+    // ADOPTED BEACONS (after trig), citing their S.R. number and source date.
+    let adoptedBeacons: any[] = [];
+    if (workflowState.projectInfo.projectId) {
+      try {
+        adoptedBeacons = await listAdoptedBeacons(workflowState.projectInfo.projectId);
+        console.log(`[CoordinateList] Found ${adoptedBeacons.length} adopted beacons`);
+      } catch (error) {
+        console.error('[CoordinateList] Error fetching adopted beacons:', error);
+      }
+    } else {
+      console.log('[CoordinateList] No project linked, no adopted beacons');
+    }
+    
     // Generate Coordinate List using adjusted coordinates
     const generator = new CoordinateListGenerator();
     const result = await generator.generateCoordinateListPDF(
       adjustedCoordinates,
       surveyorInfo,
-      projectControlPoints
+      projectControlPoints,
+      undefined,
+      undefined,
+      adoptedBeacons
     );
     
     console.log(`Coordinate List generated: ${result.pageCount} pages`);

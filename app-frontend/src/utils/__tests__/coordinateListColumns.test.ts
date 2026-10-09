@@ -41,9 +41,9 @@ const coord = (over: Partial<AdjustedCoordinate>): AdjustedCoordinate => ({
 });
 
 /** Every text placement on the page carrying the table. */
-const tableCells = async (coords: AdjustedCoordinate[]) => {
+const tableCells = async (coords: AdjustedCoordinate[], adopted?: any[]) => {
   const { pdf } = await new CoordinateListGenerator()
-    .generateCoordinateListPDF(coords, surveyorInfo);
+    .generateCoordinateListPDF(coords, surveyorInfo, undefined, undefined, undefined, adopted);
   const raw = Buffer.from(pdf.output('arraybuffer')).toString('latin1');
   const page = raw
     .split('stream\n')
@@ -180,6 +180,65 @@ describe('CO-ORDINATE LIST column geometry', () => {
     const descriptionWidth = (PAGE_WIDTH_MM - MARGIN_MM) * MM - description.x;
 
     expect(descriptionWidth).toBeGreaterThan(beaconsWidth);
+  });
+});
+
+describe('the ADOPTED BEACON F. B citation', () => {
+  beforeEach(() => setActivePinia(createPinia()));
+
+  // The imported row, exactly as the API returns it, with the source survey's
+  // date in the surveyor's own style.
+  const adopted = [{
+    point_name: 'P2', y: 97538.004, x: 2247107.872, status: 'F',
+    description: '50mm Iron Pipe in Concrete', survey_date: 'February-21',
+    sr_number: '112/2021',
+  }];
+
+  /** Width of `text` in points at the small size the stacked date is set in. */
+  const widthPt8 = (text: string): number => {
+    const ruler = new jsPDF({ unit: 'mm', format: 'a4' });
+    ruler.setFont('helvetica', 'normal');
+    ruler.setFontSize(8);
+    return ruler.getTextWidth(text) * MM;
+  };
+
+  it('stacks the abbreviated month over the year instead of running them together', async () => {
+    const cells = await tableCells([coord({})], adopted);
+
+    expect(cells.some((c) => c.t === 'Feb')).toBe(true);
+    expect(cells.some((c) => c.t === '2021')).toBe(true);
+    // The full form is what crowded the F/P cell; it must no longer print.
+    expect(cells.some((c) => c.t.includes('February 2021'))).toBe(false);
+  });
+
+  it('lands both parts in the F. B column, clear of the F/P status', async () => {
+    const cells = await tableCells([coord({})], adopted);
+    const feb = cells.find((c) => c.t === 'Feb')!;
+    const year = cells.find((c) => c.t === '2021')!;
+    const status = cells.find((c) => c.t === 'F')!;
+
+    // F/P is right-justified at 166mm; the date has to start to the right of
+    // that, not reach back across it (which is what "February 2021" did).
+    const fpRight = 166 * MM;
+    expect(feb.x).toBeGreaterThan(fpRight);
+    expect(year.x).toBeGreaterThan(fpRight);
+    expect(status.x + widthPt('F')).toBeLessThanOrEqual(feb.x);
+
+    // And both stay inside the right margin.
+    const rightMargin = (PAGE_WIDTH_MM - MARGIN_MM) * MM;
+    for (const c of [feb, year]) {
+      expect(c.x + widthPt8(c.t)).toBeLessThanOrEqual(rightMargin + 0.5);
+    }
+  });
+
+  it('puts the month above the year', async () => {
+    const cells = await tableCells([coord({})], adopted);
+    const feb = cells.find((c) => c.t === 'Feb')!;
+    const year = cells.find((c) => c.t === '2021')!;
+
+    // jsPDF's stream y is measured from the bottom, so a higher date line has
+    // the larger y.
+    expect(feb.y).toBeGreaterThan(year.y);
   });
 });
 

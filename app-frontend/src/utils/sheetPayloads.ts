@@ -12,7 +12,7 @@
  *
  * See docs/superpowers/specs/2026-09-26-multi-sheet-outside-figure-split-design.md
  */
-import { splitFigure, roundPoint } from '../../../app-shared/figureSplit'
+import { splitFigure, splitFigureMultiple, roundPoint } from '../../../app-shared/figureSplit'
 import { statementRowsForSheet } from './servitudeStatement'
 import type { PartyWallStatementRow } from './servitudeStatement'
 import {
@@ -30,6 +30,8 @@ import type { OfdVertex, OfdEdge } from './ofdClipping'
 export interface LoPoint {
   y: number
   x: number
+  name?: string
+  id?: string
 }
 
 export interface StandInput {
@@ -95,7 +97,9 @@ export interface BuildSheetPayloadsInput {
   /** The outside figure's own ring -- open or closed, either is accepted. */
   ring: LoPoint[]
   /** The surveyor's cut. Fewer than two points means "no cut": one sheet. */
-  polyline: LoPoint[]
+  polyline?: LoPoint[]
+  /** Multiple cuts. If both `polylines` and `polyline` are provided, `polylines` takes precedence. */
+  polylines?: LoPoint[][]
   stands: StandInput[]
   /**
    * The whole plan's party-wall statement rows, already built by the caller
@@ -176,9 +180,13 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
     return names.map((n) => byName.get(String(n))).filter((s): s is StandInput => s !== undefined)
   }
 
+  const polylines = Array.isArray(input.polylines) && input.polylines.length > 0
+    ? input.polylines
+    : (Array.isArray(input.polyline) && input.polyline.length >= 2 ? [input.polyline] : [])
+
   // Step 1: fewer than two polyline points means no cut -- one sheet, the
   // figure itself. Do not call splitFigure with nothing to split.
-  if (!Array.isArray(input.polyline) || input.polyline.length < 2) {
+  if (polylines.length === 0) {
     const ring = openRing(input.ring)
     const vertices = sheetOutsideFigureVertices(ring, [])
     const { edges, constants } = buildEdgeTable(vertices)
@@ -203,9 +211,9 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
   }
 
   // Step 2: split. On refusal, pass it through verbatim.
-  const split = splitFigure({
+  const split = splitFigureMultiple({
     ring: openRing(input.ring),
-    polyline: input.polyline,
+    polylines,
     stands,
     ...(tolerance !== undefined ? { tolerance } : {}),
   })
@@ -219,7 +227,16 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
   // not the originals) -- for the payload's own `newPoints` field. Identity
   // matching against a part ring must still use the RAW `split.newPoints`
   // objects, which are the ones actually aliased into the part rings.
-  const namedNewPoints = nameCutPoints(split.newPoints, takenNames)
+  const augmentedTaken = [...takenNames]
+  const ringNames = (openRing(input.ring) || []).map((p) => p.name).filter((n): n is string => !!n)
+  augmentedTaken.push(...ringNames)
+  const namedNewPoints = nameCutPoints(split.newPoints, augmentedTaken)
+
+  // Build a map from RAW split.newPoints objects to their assigned names
+  const namesMap = new Map<LoPoint, string>()
+  for (let i = 0; i < split.newPoints.length; i++) {
+    namesMap.set(split.newPoints[i], namedNewPoints[i].name)
+  }
 
   // Step 4: assign every stand to exactly one part. On refusal, pass it
   // through verbatim.
@@ -240,7 +257,7 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
 
   const payloads: SheetPayload[] = split.parts.map((part, partIndex) => {
     const sheetNumber = sheetOf[partIndex]
-    const vertices = sheetOutsideFigureVertices(part, split.newPoints)
+    const vertices = sheetOutsideFigureVertices(part, split.newPoints, namesMap)
     const { edges, constants } = buildEdgeTable(vertices)
     const sheetStands = [...assigned.bySheet[partIndex]].sort(compareStands)
 

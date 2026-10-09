@@ -75,13 +75,16 @@ const isTrigSurveyPoint = (pt: { description?: string; status?: string }): boole
 const isCalculatedSurveyPoint = isCalculatedPoint;
 
 /**
- * Field Book and Calculations do NOT take the same points.
+ * Field Book point pages and Calculations do NOT take the same points.
  *
- * The Field Book records observations, so a calculated point has no place in it.
- * Calculations is where a calculated point is derived, so it must be there — that
- * run is what assigns it the page number the Coordinate List later cites. Feeding
- * one shared list to both sections leaves calculated points with no Calculations
- * page at all, and the reference silently disappears from the Coordinate List.
+ * The field book's observation pages record what was visited, so a calculated
+ * point never joins them — the field book itself appends the computed points
+ * in a CALCULATED POINTS block after the observations, from the same list
+ * every other section received. Calculations is where a calculated point is
+ * derived, so it must be there — that run is what assigns it the page number
+ * the Coordinate List's Calcs column cites. Feeding one shared list to both
+ * sections leaves calculated points with no Calculations page at all, and the
+ * reference silently disappears from the Coordinate List.
  */
 export function splitSurveyPointsForSections<T extends { pointId?: string; description?: string; status?: string }>(
   points: T[],
@@ -89,7 +92,7 @@ export function splitSurveyPointsForSections<T extends { pointId?: string; descr
   const forCalculations = points.filter(pt => !isTrigSurveyPoint(pt));
   const forFieldBook = forCalculations.filter(pt => {
     if (isCalculatedSurveyPoint(pt)) {
-      console.log(`[ComprehensiveDoc] 🧮 Excluding calculated point from Field Book: ${pt.pointId}`);
+      console.log(`[ComprehensiveDoc] 🧮 ${pt.pointId} is calculated: observation pages no, CALCULATED POINTS block yes`);
       return false;
     }
     return true;
@@ -115,6 +118,9 @@ export interface ComprehensiveDocumentData {
   surveyPoints: SurveyPoint[];
   adjustedCoordinates: AdjustedCoordinate[];
   projectControlPoints?: any[];
+  /** Beacons carried from a previous approved survey (project_adopted_beacons
+   *  rows); print under ADOPTED BEACONS in the Co-ordinate List only. */
+  adoptedBeacons?: any[];
   
   // Calculations
   duplicateAnalyses: DuplicateAnalysis[];
@@ -192,6 +198,7 @@ export class ComprehensiveDocumentGenerator {
       adjustedCoordinates: data.adjustedCoordinates,
       surveyorInfo: data.surveyorInfo,
       projectControlPoints: data.projectControlPoints,
+      adoptedBeacons: data.adoptedBeacons,
       parcels: data.parcels,
       reportData: data.reportData,
       reportOptions: data.reportOptions,

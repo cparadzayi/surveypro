@@ -4,6 +4,7 @@ import type { AdjustedCoordinate, CalculationsPart1Result } from '../types/adjus
 import { VirtualPDFMeasurer } from './VirtualPDFMeasurer'
 import type { CalculationsMeasurement } from '../types/document-measurements'
 import { paginateFieldBook, computePartyWallPaginate, type PartyWallRow } from './fieldBookPagination'
+import { isCalculatedPoint } from './calculatedPoint'
 import { formatDateDDMMYYYY } from './dateFormat'
 
 // Survey point interface for calculations
@@ -74,44 +75,41 @@ export class CalculationsPart1Generator {
   ): Record<string, string> {
     const lookup: Record<string, string> = {};
 
-    // ⭐ CRITICAL: Filter out calculated points - they don't appear in field book
-    const fieldBookPoints = surveyPoints.filter(pt => {
-      const desc = (pt.description || '').toLowerCase();
-      const status = (pt.status || '').toLowerCase();
-      const isCalculated = desc.includes('calculated') || status === 'c' || status === 'calc';
+    // The field book renders every point -- observations on the point pages,
+    // computed ones in the CALCULATED POINTS block -- so every point may carry
+    // a page. The partition below exists because the fallback estimate has to
+    // paginate the same way the field book does: observations first, the
+    // block after them.
+    const observed = surveyPoints.filter(pt => !isCalculatedPoint(pt));
+    const calculated = surveyPoints.filter(pt => isCalculatedPoint(pt));
+    if (calculated.length) {
+      console.log(`[CalculationsPart1] 🧮 ${calculated.length} calculated point(s) cite the field book's CALCULATED POINTS block`);
+    }
 
-      if (isCalculated) {
-        console.log(`[CalculationsPart1] 🧮 Excluding calculated point from F/B lookup: ${pt.pointId}`);
-        lookup[pt.pointId] = '-'; // Set calculated points to show "-" in F/B column
-      }
-
-      return !isCalculated;
-    });
-
-    console.log(`[CalculationsPart1] 📊 Field Book lookup: ${surveyPoints.length} total, ${fieldBookPoints.length} in field book, ${surveyPoints.length - fieldBookPoints.length} calculated`);
+    console.log(`[CalculationsPart1] 📊 Field Book lookup: ${surveyPoints.length} total, ${observed.length} observed, ${calculated.length} calculated`);
 
     if (authoritativeMap) {
-      // Read through the observed-point list rather than assigning the whole map:
+      // Read through the point list rather than assigning the whole map:
       // it is keyed on what the field book rendered, and every entry that
-      // survives the filter above is one of those.
-      for (const pt of fieldBookPoints) {
+      // survives the partition above is one of those.
+      for (const pt of surveyPoints) {
         const page = authoritativeMap[pt.pointId];
         if (page !== undefined) lookup[pt.pointId] = page;
       }
     } else {
       // Fallback for callers that have not paginated the field book yet. The
-      // field book renders only observed points, so pagination sees only those,
-      // but the calibration offset is unknowable from here -- so this is an
-      // ESTIMATE, correct only for a survey with no calibration report. A
+      // field book renders observations first and the calculated block after
+      // them, but the calibration offset is unknowable from here -- so this is
+      // an ESTIMATE, correct only for a survey with no calibration report. A
       // calibrated survey that reaches this branch will mis-cite by one page.
       console.warn(
-        '[CalculationsPart1] ⚠️ No field book page map supplied; estimating F/B ' +
+        '[CalculationsPart1] No field book page map supplied; estimating F/B ' +
         'references without a calibration offset. Pass the field book\'s ' +
         'pointPageMap to cite a calibrated survey correctly.',
       );
       const { pointPageMap } = paginateFieldBook(
-        fieldBookPoints.map(pt => ({ id: pt.pointId })),
-        { hasCalibration: false, hasCover: false },
+        observed.map(pt => ({ id: pt.pointId })),
+        { hasCalibration: false, hasCover: false, calculated: calculated.map(pt => ({ id: pt.pointId })) },
       )
       Object.assign(lookup, pointPageMap)
     }

@@ -2,7 +2,8 @@
  * Delivering a project to its authority, and the authority's review of it.
  *
  *   POST /api/survey-projects/:id/deliver     the surveyor hands the project to the council   { authority_code? }
- *   GET  /api/survey-projects/:id/delivery    where it stands: not_delivered | awaiting_review | accepted | rejected | returned
+ *   GET  /api/survey-projects/:id/delivery    where it stands: not_delivered | awaiting_review | accepted | rejected | returned, with the declared class,
+ *                                             the council it is for and how many parcels are ready to deliver
  *   GET  /api/reviews/queue                   delivered projects awaiting a decision, for a reviewer / head surveyor  ?authority=CODE
  *   GET  /api/reviews/projects/:id            one delivered project for review: its facts, parcels and past decisions
  *   POST /api/reviews/projects/:id/decision   { decision: accepted | rejected | returned, note }
@@ -89,7 +90,16 @@ export default async function deliveryRoutes(app) {
            LEFT JOIN LATERAL (SELECT x.decision, x.decided_at, x.note FROM survey.project_review x WHERE x.project_id = sp.id ORDER BY x.decided_at DESC, x.id DESC LIMIT 1) r ON true
           WHERE ${surveyStore() === 'shared' ? 'sp.id = $1' : 'sp.legacy_schema = $1 AND sp.legacy_id = $2'}`,
         surveyStore() === 'shared' ? [id] : [request.surveyorSchema, id])).rows[0])
-      return { data: { state: stateOf(p), ...(p ? { shared_project_id: p.id, authority_code: p.authority_code, delivered_at: p.delivered_at,
+      // what the surveyor's own project says, in whichever store it lives: the declared class, the council it is for, and how many parcels are ready
+      const shared = surveyStore() === 'shared'
+      const work = (await request.db.query(shared
+        ? 'SELECT sp.survey_class, a.code AS authority_code FROM survey_projects sp LEFT JOIN survey.authority a ON a.id = sp.authority_id WHERE sp.id = $1'
+        : "SELECT metadata ->> 'survey_class' AS survey_class, metadata ->> 'authority_code' AS authority_code FROM survey_projects WHERE id = $1", [id])).rows[0]
+      if (!work) return reply.code(404).send({ error: 'not_found' })
+      const ready = (await request.db.query(
+        "SELECT count(*)::int AS n FROM land_parcels WHERE project_id = $1 AND status IN ('finalized', 'approved') AND COALESCE(parcel_status, 'active') = 'active'", [id])).rows[0].n
+      return { data: { state: stateOf(p), survey_class: work.survey_class || null, authority_code: (p && p.authority_code) || work.authority_code || null, parcels_ready: ready,
+        ...(p ? { shared_project_id: p.id, delivered_at: p.delivered_at,
         decision: stateOf(p) === 'awaiting_review' ? null : p.review_decision, decided_at: p.reviewed_at, note: p.review_note } : {}) } }
     } catch (err) { return refuse(reply, err) }
   })

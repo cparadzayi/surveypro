@@ -181,6 +181,18 @@ Verified on a scratch database through a real SurveyPro server: private and coun
 
 Not done: the screens; the application's own login is still the owner of the tables (server-side functions need it), so retiring that, as VunGIS did with a separate runtime login, remains; the spatial module is still per user; registration still creates a per-surveyor schema (needed for the way back, to go when the schemas are retired).
 
+## The screens
+
+Three screens over the APIs above (`app-frontend/src/views/council/`, service `services/council.ts`); the database still decides everything, the screens show its answers and its refusal messages.
+
+| route | for | does |
+|---|---|---|
+| `/council/appointments` | anyone appointed; head surveyors manage | the person's own appointments (council, role, employed or contracted, period); for each council they head, the panel, appointing a surveyor or reviewer by email (engagement, period, note) and ending an appointment today |
+| `/projects/:id/delivery` | the project's surveyor (a "Deliver" link on each dashboard card) | where the project stands (not delivered, with the council, accepted, returned or rejected with the reviewer's note); declare the SI 727 class, choose the council (or it is fixed when the project came from a council's job), see how many finalized parcels will be delivered; deliver, or deliver again after a return |
+| `/council/reviews` | reviewers and head surveyors (a "Reviews" link on the dashboard) | the queue of delivered projects, a project's facts, parcels and earlier decisions, and accept / return / reject with a note required for the last two |
+
+The dashboard shows "Your councils" only to people appointed to one; private practice sees no change. Walked through in a browser against a scratch backend on the shared store: declare class, deliver, review and return with a note, appoint (including an unknown email and a duplicate, which show the backend's own messages), and end an appointment. `GET /survey-projects/:id/delivery` now also returns the declared class, the council and the number of parcels ready, in either store.
+
 ## The SI 727 survey class
 
 SI 727 (the Land Survey (General) Regulations, 1979, Second Schedule paras 7 and 8) prescribes limits of error per survey class. Para 1 of the Schedule defines three classes by the kind of survey: **A** town survey-marks, **B** townships, **C** every other survey (there is no D). A parcel survey is B or C, and this code (`app-shared/si727Tolerances.js`) holds the limits for those two. The class changes every verdict made against those limits, so the surveyor **declares** it on the project rather than leaving it to a default (migration 101): `PATCH /api/survey-projects/:id/survey-class` with `{ "survey_class": "B" | "C" | null }` (stored in the project's metadata until the application is switched to the shared tables, then promoted to `survey.survey_projects.survey_class` by a trigger when the schema is adopted). The council's `survey_share.projects` view carries it, and VunGIS writes it to the register as the parcel's survey class. A class is a property of the *survey*; whether it has been delivered, accepted or approved is shown elsewhere (`delivered_at`, `survey.project_review`). There is no screen to declare it yet.
@@ -188,7 +200,7 @@ SI 727 (the Land Survey (General) Regulations, 1979, Second Schedule paras 7 and
 ## What is left
 
 1. **Make the switch the default and retire the private schemas.** The code is written and verified (see above); what remains is running the cut-over on the live database, setting `SURVEY_STORE=shared`, and later dropping the per-surveyor schemas, the `survey.*` snapshot function and registration's schema creation.
-2. **Screens:** appointments, delivering a project (with the survey class), and the reviewer's queue and accept / reject / return. The APIs exist.
+2. **Screens: built** (below). Not yet: a screen for the platform operator to create councils and their first head surveyor (still SQL), and the survey class chosen while a project is set up rather than at delivery.
 3. **The rest of the hand-off with VunGIS** (`app-backend/docs/SURVEYPRO-INTEGRATION.md` in the VunGIS repository): the launch, delivery, review and the VunGIS importer are done; still to come are plan documents stored as files with a checksum (formats beyond PDF to be redesigned).
 4. **The spatial module** (`public.projects/layers/features`) still belongs to a user, not an authority.
 5. **The migration chain does not build a fresh database** (migration 077 names `surveyor_surveyor_kuda`, a schema that only exists on one machine). VunGIS proves its chain from scratch on every change; SurveyPro should too, with a baseline snapshot. The scratch database used to verify this work was built from a schema-only dump instead.

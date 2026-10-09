@@ -64,8 +64,9 @@
             <span class="text-xs text-gray-500">
               Created {{ formatDateDDMMYYYY(new Date(project.created_at)) }}
             </span>
-            <span class="text-indigo-600 group-hover:text-indigo-700 text-sm font-medium">
-              Open →
+            <span class="flex items-center gap-3">
+              <router-link :to="`/projects/${project.id}/delivery`" class="text-xs text-gray-600 hover:text-indigo-700 hover:underline" @click.stop>Deliver</router-link>
+              <span class="text-indigo-600 group-hover:text-indigo-700 text-sm font-medium">Open →</span>
             </span>
           </div>
         </div>
@@ -83,6 +84,16 @@
           <span class="text-xl">🚀</span>
           Start Cadastral Workflow
         </router-link>
+      </div>
+    </section>
+
+    <!-- Councils: shown to anyone appointed to one -->
+    <section v-if="mine.length" class="space-y-3" aria-labelledby="councils-heading">
+      <h3 id="councils-heading" class="text-sm font-semibold uppercase tracking-wide text-gray-700">Your councils</h3>
+      <div class="flex flex-wrap items-center gap-3 text-sm">
+        <span v-for="c in councilNames" :key="c" class="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-800 text-xs font-medium">{{ c }}</span>
+        <router-link to="/council/appointments" class="text-indigo-600 hover:underline">Appointments</router-link>
+        <router-link v-if="canReview" to="/council/reviews" class="text-indigo-600 hover:underline">Reviews</router-link>
       </div>
     </section>
 
@@ -108,6 +119,7 @@ import { useModulesStore } from '../stores/modules'
 import { useProjectSelectionStore } from '../stores/projectSelection'
 import { useSurveyors } from '../composables/useSurveyors'
 import { formatDateDDMMYYYY } from '../utils/dateFormat'
+import { mayReview, myAppointments, type MyAppointment } from '../services/council'
 // @ts-ignore - SFC default export provided via shim
 import ModuleCard from '../components/ModuleCard.vue'
 
@@ -118,6 +130,12 @@ const projectSelectionStore = useProjectSelectionStore()
 const { surveyProjects: projects, loading: loadingProjects, fetchSurveyProjects } = useSurveyors()
 
 const modules = computed(() => modulesStore.accessibleModules)
+
+// councils the person is appointed to (empty for private practice: the section stays hidden)
+const mine = ref<MyAppointment[]>([])
+const councilNames = computed(() => [...new Set(mine.value.filter((a) => a.active).map((a) => a.name))])
+const canReview = computed(() => mayReview(mine.value))
+myAppointments().then((a) => { mine.value = a }).catch(() => { /* councils are optional: the dashboard works without them */ })
 
 async function loadProjects() {
   console.log('📊 Loading projects - Token:', auth.token ? '✅' : '❌', 'Surveyor:', auth.isSurveyor ? '✅' : '❌')

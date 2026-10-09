@@ -14,6 +14,10 @@ const routes: RouteRecordRaw[] = [
   { path: '/complete-profile', component: () => import('../views/CompleteProfileView.vue'), meta: { requiresAuth: true } },
   { path: '/dashboard', component: () => import('../views/DashboardView.vue'), meta: { requiresAuth: true } },
   { path: '/map', component: () => import('../views/MapView.vue') },
+  // Councils: appointments, delivering a project, and the reviewer's queue (docs/AUTHORITY_TENANCY.md)
+  { path: '/council/appointments', component: () => import('../views/council/AppointmentsView.vue'), meta: { requiresAuth: true } },
+  { path: '/council/reviews', component: () => import('../views/council/ReviewsView.vue'), meta: { requiresAuth: true } },
+  { path: '/projects/:id/delivery', component: () => import('../views/council/ProjectDeliveryView.vue'), meta: { requiresAuth: true } },
   { path: '/test-project', component: () => import('../views/TestProjectRunner.vue'), meta: { requiresAuth: true } },
 
   // Cadastral (Standard) is a single-surface module: the workflow IS the

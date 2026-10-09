@@ -17,6 +17,7 @@
  * Open to the world by necessity (the token IS the credential), so it says as little as it can to someone without a good one.
  */
 import pool, { getSurveyorPool } from '../config/db.js'
+import { sharedDb, surveyStore } from '../config/sharedDb.js'
 import User from '../models/user.js'
 import SurveyorProfile from '../models/SurveyorProfile.js'
 import { loadPublicKey, verifyLaunchToken } from '../utils/launchToken.js'
@@ -59,7 +60,7 @@ export default async function launchRoutes(app) {
     const user = await User.findByEmail(claims.sub)
     if (!user) return fail(404, 'no_surveypro_account', `There is no SurveyPro account for ${claims.sub}. Register at SurveyPro with the same email address, then open the job again.`)
     const profile = await SurveyorProfile.findByUserId(user.id)
-    if (!profile || !profile.schema_name) return fail(409, 'no_surveyor_profile', 'Complete your surveyor profile in SurveyPro, then open the job again.')
+    if (!profile || (!profile.schema_name && surveyStore() !== 'shared')) return fail(409, 'no_surveyor_profile', 'Complete your surveyor profile in SurveyPro, then open the job again.')
 
     const authority = (await pool.query('SELECT id, code, name FROM survey.authority WHERE code = $1 AND active', [tokenAuthority.code])).rows[0]
     if (!authority) return fail(409, 'unknown_authority', `${tokenAuthority.name || tokenAuthority.code} is not set up in SurveyPro. Ask SurveyPro support to add it.`)
@@ -74,8 +75,13 @@ export default async function launchRoutes(app) {
     }
 
     // the project for this job: found again if it was opened before, created otherwise
-    const db = getSurveyorPool(profile.schema_name)
-    const found = (await db.query(`SELECT id, name FROM survey_projects WHERE metadata ->> 'external_job_id' = $1 ORDER BY id LIMIT 1`, [job.id])).rows[0]
+    // On the shared store the project is made AS the surveyor, so the database itself checks the appointment again and records them as its owner.
+    const shared = surveyStore() === 'shared'
+    const db = shared ? sharedDb({ userId: user.id, platform: false }) : getSurveyorPool(profile.schema_name)
+    const found = (await db.query(shared
+      ? `SELECT id, name FROM survey_projects WHERE authority_id = $2 AND metadata ->> 'external_job_id' = $1 ORDER BY id LIMIT 1`
+      : `SELECT id, name FROM survey_projects WHERE metadata ->> 'external_job_id' = $1 ORDER BY id LIMIT 1`,
+      shared ? [job.id, authority.id] : [job.id])).rows[0]
     let project = found
     let created = false
     if (!project) {
@@ -84,11 +90,14 @@ export default async function launchRoutes(app) {
         external_job_id: job.id, authority_code: authority.code, engagement: appointment.engagement,
         vungis: { ...job }, launched_at: new Date().toISOString(), launched_by: user.email,
       }
-      const row = (await db.query(
-        `INSERT INTO survey_projects (name, client_name, survey_type, township, designation, central_meridian, status, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active', $7::jsonb) RETURNING id, name`,
-        [`${label}${job.stand_number ? ` - Stand ${job.stand_number}` : ''}`.slice(0, 255), authority.name, label,
-         job.suburb_ward || null, job.stand_number || null, job.gauss_lo ? String(job.gauss_lo) : null, JSON.stringify(metadata)])).rows[0]
+      const values = [`${label}${job.stand_number ? ` - Stand ${job.stand_number}` : ''}`.slice(0, 255), authority.name, label,
+        job.suburb_ward || null, job.stand_number || null, job.gauss_lo ? String(job.gauss_lo) : null, JSON.stringify(metadata)]
+      const row = (await db.query(shared
+        ? `INSERT INTO survey_projects (name, client_name, survey_type, township, designation, central_meridian, status, metadata, authority_id, engagement, external_job_id)
+           VALUES ($1, $2, $3, $4, $5, $6, 'active', $7::jsonb, $8, $9, $10) RETURNING id, name`
+        : `INSERT INTO survey_projects (name, client_name, survey_type, township, designation, central_meridian, status, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6, 'active', $7::jsonb) RETURNING id, name`,
+        shared ? [...values, authority.id, appointment.engagement, /^[0-9a-fA-F-]{36}$/.test(String(job.id)) ? job.id : null] : values)).rows[0]
       project = row
       created = true
     }

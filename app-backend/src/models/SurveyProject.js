@@ -16,7 +16,8 @@ class SurveyProject {
     designation,
     workingDirectory,
     centralMeridian,
-    controlPointIds
+    controlPointIds,
+    authorityCode
   }) {
     const client = await dbConnection.connect()
     
@@ -25,12 +26,21 @@ class SurveyProject {
       
       // Create project (surveyor schema tables have limited columns - see migration 040.do.sql)
       // Available columns: name, client_name, survey_type, survey_date, district, central_meridian, working_directory, status, metadata
+      // On the shared store (SURVEY_STORE=shared) a project may be for an authority: the database checks the surveyor is appointed to it
+      // and fills the engagement from the appointment. Without one it is private practice. surveyor_user_id defaults to the person asking.
+      let authorityId = null
+      if (dbConnection.shared && authorityCode) {
+        authorityId = (await client.query('SELECT id FROM survey.authority WHERE code = $1 AND active', [authorityCode])).rows[0]?.id
+        if (!authorityId) { const e = new Error(`Unknown authority ${authorityCode}`); e.statusCode = 422; throw e }
+      }
       const result = await client.query(
         `INSERT INTO survey_projects 
-         (name, client_name, district, survey_type, survey_date, working_directory, central_meridian, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (name, client_name, district, survey_type, survey_date, working_directory, central_meridian, status${authorityId ? ', authority_id' : ''})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8${authorityId ? ', $9' : ''})
          RETURNING *`,
-        [name, clientName, district, surveyType, surveyDate, workingDirectory, centralMeridian, 'active']
+        authorityId
+          ? [name, clientName, district, surveyType, surveyDate, workingDirectory, centralMeridian, 'active', authorityId]
+          : [name, clientName, district, surveyType, surveyDate, workingDirectory, centralMeridian, 'active']
       )
       
       const project = result.rows[0]

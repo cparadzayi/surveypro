@@ -1,6 +1,12 @@
 import User from '../models/user.js'
 import SurveyorProfile from '../models/SurveyorProfile.js'
 import { getSurveyorPool } from '../config/db.js'
+import { sharedDb, surveyStore } from '../config/sharedDb.js'
+
+// The handle a request uses for survey data: the shared tables, as the signed-in person (SURVEY_STORE=shared), or the surveyor's own schema.
+const dbFor = (profile, userId) => surveyStore() === 'shared'
+  ? sharedDb({ userId, platform: profile.role === 'admin' })
+  : getSurveyorPool(profile.schema_name)
 
 /**
  * Authentication decorator that adds schema context to requests
@@ -31,8 +37,8 @@ export async function authenticateWithSchema(request, reply) {
       return
     }
 
-    // Check if surveyor has a schema
-    if (!profile.schema_name) {
+    // Check if surveyor has a schema (the shared store does not need one)
+    if (!profile.schema_name && surveyStore() !== 'shared') {
       console.warn(`[Schema Auth] ⚠️ ${profile.name} has no schema - using public`)
       request.surveyorSchema = 'public'
       request.surveyorProfile = profile
@@ -43,7 +49,7 @@ export async function authenticateWithSchema(request, reply) {
     // Attach schema context to request
     request.surveyorSchema = profile.schema_name
     request.surveyorProfile = profile
-    request.db = getSurveyorPool(profile.schema_name)
+    request.db = dbFor(profile, user.id)
 
     // Also attach for convenience
     request.user.profileId = profile.id
@@ -69,12 +75,12 @@ export async function attachSchemaIfAvailable(request, reply) {
     if (!user) return
 
     const profile = await SurveyorProfile.findByUserId(user.id)
-    if (!profile || !profile.schema_name) return
+    if (!profile || (!profile.schema_name && surveyStore() !== 'shared')) return
 
     // Attach schema context
     request.surveyorSchema = profile.schema_name
     request.surveyorProfile = profile
-    request.db = getSurveyorPool(profile.schema_name)
+    request.db = dbFor(profile, user.id)
     request.user.profileId = profile.id
     request.user.schemaName = profile.schema_name
 
@@ -104,7 +110,7 @@ export async function attachSchemaIfAvailable(request, reply) {
  * undefined.
  */
 export async function requireSchema(request, reply) {
-  if (!request.surveyorSchema || !request.db) {
+  if (!request.db || (!request.surveyorSchema && surveyStore() !== 'shared')) {
     return reply.code(400).send({ 
       error: 'Schema context required',
       message: 'This operation requires a surveyor profile with schema'

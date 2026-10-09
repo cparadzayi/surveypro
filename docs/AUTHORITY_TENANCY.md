@@ -1,6 +1,6 @@
 # Authority tenancy: survey data belongs to the authority, surveyors administer it
 
-Status: database layer built and verified (migrations 096-100); **jobs can be opened from VunGIS and head surveyors can appoint people through the API**; the application switch, the administration and review screens, and reading accepted work back into VunGIS are still to do (see *What is left*).
+Status: database layer built and verified (migrations 096-100); **jobs can be opened from VunGIS and head surveyors can appoint people through the API**; the application switch, delivery, review and reading accepted work back into VunGIS work through the API; the application runs on the shared tables behind `SURVEY_STORE=shared`; the screens are still to do (see *What is left*).
 
 ## Why
 
@@ -133,15 +133,63 @@ Only the platform operator can make a head surveyor; nobody can appoint themselv
 
 Verified end to end against a real SurveyPro server on a scratch database, driven from VunGIS: the appointments flow, the launch, the reopen, and every refusal (forged, altered, expired, wrong key, replayed, no account, not appointed, appointment ended, unknown council).
 
+## Delivering a project, and the council's review
+
+```
+POST /api/survey-projects/:id/deliver     { authority_code? }     the surveyor hands the project to the council
+GET  /api/survey-projects/:id/delivery                            not_delivered | awaiting_review | accepted | rejected | returned, and the reviewer's note
+GET  /api/reviews/queue?authority=CODE                            delivered projects awaiting a decision (reviewer, head surveyor)
+GET  /api/reviews/projects/:id                                    one delivered project: facts, parcels, point and beacon counts, past decisions, can_decide
+POST /api/reviews/projects/:id/decision   { decision: accepted|rejected|returned, note }
+```
+
+On the survey-projects routes `:id` is the surveyor's own project; on /reviews it is the shared project id (what the council sees, and what the VunGIS importer reads).
+
+**Delivery is a snapshot** (migration 102, `survey.deliver_project`). Until the application runs on the shared tables a project lives in its surveyor's private schema, so delivery copies that one project (points, parcels, beacons, control points, imports, history) into `survey.*` as the surveyor's project for that council and stamps `delivered_at`. Nothing else of the surveyor's work is shared. Delivering again after a return or rejection **replaces** the snapshot with the corrected work; the shared project row stays, so its review history is never lost. Once the application is switched, delivery reduces to stamping `delivered_at`.
+
+It refuses, with a message: no council named; unknown council; the surveyor is not appointed to it today (as surveyor or head surveyor; the engagement, employed or contracted, is taken from the appointment); no declared survey class; no finalized parcel; already awaiting review; already accepted (final: a changed survey is a new project); delivered to another council before. Who is delivering comes from the token, never the request.
+
+**Review** runs as the signed-in person, so the database decides who may review: an appointed reviewer or head surveyor of the project's council, never their own work. A decision needs a note when it rejects or returns. A trigger (`survey.project_review_guard`) makes a delivery decided once and refuses decisions on work nobody delivered, so no other client can get round the route. An *accepted* project is what the VunGIS importer reads: its parcels enter the register, carrying the declared class.
+
+Verified end to end on a scratch database through a real SurveyPro server: every refusal above, the return with its note, re-delivery replacing the snapshot while keeping the earlier decision, acceptance, the database refusing a second decision, and the council's reader login feeding the VunGIS importer (two parcels, class B). Not exercised: delivery of a project with CSV imports and point history (same copy pattern as `adopt_surveyor_schema`, tested there). There are no screens yet.
+
+## Running on the shared tables (SURVEY_STORE=shared)
+
+Migration 103 and `config/sharedDb.js` are the application switch. With `SURVEY_STORE=shared` every request that touches survey data runs on `survey.*` **as the signed-in person**: each statement is inside a transaction that does `SET LOCAL ROLE surveypro_request` and sets `app.user_id`, so row-level security decides what they see and change. Nothing outlives the transaction, so the pooled-connection leak recorded in `CLAUDE.md` cannot happen on this path (`connect()` included: its `BEGIN` is what steps down, and `release()` rolls back anything left open). The default is still `SURVEY_STORE=schema`, the per-surveyor schemas, so nothing changes until it is set.
+
+What changes for people:
+
+- **One dataset.** A council's project is the working dataset itself: its head surveyor and reviewers read it while it is being done, the surveyor administers it, and delivery is a check and a timestamp (`survey.deliver_shared_project`), not a copy.
+- **Private practice is unchanged in effect.** A project with no authority is visible to its surveyor alone; the council's head surveyor, reviewers and reader login never see it.
+- **A project may be for a council from the start.** `POST /api/survey-projects` takes an optional `authorityCode`; the database refuses it unless the surveyor is appointed today, and fills the engagement (employed or contracted) from the appointment. `surveyor_user_id` defaults to the person asking, so nobody can create a project in another's name. A job launched from VunGIS is made the same way.
+- **Frozen while it is with the council.** From delivery until a decision, and for good once accepted, nobody but the platform operator can change the project or anything under it (points, parcels, class). A return or rejection unfreezes it; delivering again freezes it again. What the council reviews is what they are looking at.
+- **Refusals are 403s.** A refusal by the database comes back as 403 `not_allowed`, not a 500.
+- **Per-project QGIS views are off** (`/spatial/create-project-views` and friends answer 410): they were built from each surveyor's own `survey_projects`. The council reads its work through its reader login on `survey_share`.
+
+### Cut-over
+
+```
+node scripts/cutover-to-shared.js                                  # dry run: each schema, whose it is, what would move
+node scripts/cutover-to-shared.js --apply                          # moves them as private practice
+node scripts/cutover-to-shared.js --apply --map surveyor_kuda=VUNGU:employed --map surveyor_x=GWERU:contracted
+# then set SURVEY_STORE=shared and restart
+```
+
+Nobody's work is guessed onto a council: a schema moves as private practice unless `--map` names the authority and engagement; a project opened from a council's job keeps its own. The private schemas are copied, never changed or dropped, so setting `SURVEY_STORE=schema` again is the way back (work done on the shared store since is not copied back). **Project ids change** (`legacy_schema` / `legacy_id` say which is which): anything holding an old id must reopen the project.
+
+Verified on a scratch database through a real SurveyPro server: private and council projects, who sees what (surveyor, another surveyor, head surveyor, reviewer), writes refused for a stranger and a reviewer, delivery in place, the freeze and the unfreeze on a return, acceptance, the council's reader login and the VunGIS importer reading the working dataset, and the cut-over itself (dry run, an unknown authority and a malformed `--map` refused, counts verified, a second run copying nothing, then the moved work served through the shared store). `verify-authority-tenancy.js` passes (its review checks now deliver the projects first, as 102 requires).
+
+Not done: the screens; the application's own login is still the owner of the tables (server-side functions need it), so retiring that, as VunGIS did with a separate runtime login, remains; the spatial module is still per user; registration still creates a per-surveyor schema (needed for the way back, to go when the schemas are retired).
+
 ## The SI 727 survey class
 
 SI 727 (the Land Survey (General) Regulations, 1979, Second Schedule paras 7 and 8) prescribes limits of error per survey class. Para 1 of the Schedule defines three classes by the kind of survey: **A** town survey-marks, **B** townships, **C** every other survey (there is no D). A parcel survey is B or C, and this code (`app-shared/si727Tolerances.js`) holds the limits for those two. The class changes every verdict made against those limits, so the surveyor **declares** it on the project rather than leaving it to a default (migration 101): `PATCH /api/survey-projects/:id/survey-class` with `{ "survey_class": "B" | "C" | null }` (stored in the project's metadata until the application is switched to the shared tables, then promoted to `survey.survey_projects.survey_class` by a trigger when the schema is adopted). The council's `survey_share.projects` view carries it, and VunGIS writes it to the register as the parcel's survey class. A class is a property of the *survey*; whether it has been delivered, accepted or approved is shown elsewhere (`delivered_at`, `survey.project_review`). There is no screen to declare it yet.
 
 ## What is left
 
-1. **Switch the application over.** Request-scoped connections (`SET ROLE surveypro_request` plus `app.user_id`, reset on release, as `tenantPool` does in VunGIS) replace `getSurveyorPool(schema)` and `request.db`; `search_path` becomes `survey, public` and the per-surveyor schemas are retired. Projects take an `authority_id` (choose among the surveyor's appointments) and `surveyor_user_id`. This also closes the pooled-connection `search_path` leak at its root. The existing SQL needs no change.
-2. **Screens:** appointments (the API exists), delivering a project, the reviewer's accept / reject / return.
-3. **The rest of the hand-off with VunGIS** (`app-backend/docs/SURVEYPRO-INTEGRATION.md` in the VunGIS repository): the launch is done; still to come are delivering a project, the importer on the VunGIS side that reads the council's views, and plan documents stored as files with a checksum (formats beyond PDF to be redesigned).
+1. **Make the switch the default and retire the private schemas.** The code is written and verified (see above); what remains is running the cut-over on the live database, setting `SURVEY_STORE=shared`, and later dropping the per-surveyor schemas, the `survey.*` snapshot function and registration's schema creation.
+2. **Screens:** appointments, delivering a project (with the survey class), and the reviewer's queue and accept / reject / return. The APIs exist.
+3. **The rest of the hand-off with VunGIS** (`app-backend/docs/SURVEYPRO-INTEGRATION.md` in the VunGIS repository): the launch, delivery, review and the VunGIS importer are done; still to come are plan documents stored as files with a checksum (formats beyond PDF to be redesigned).
 4. **The spatial module** (`public.projects/layers/features`) still belongs to a user, not an authority.
 5. **The migration chain does not build a fresh database** (migration 077 names `surveyor_surveyor_kuda`, a schema that only exists on one machine). VunGIS proves its chain from scratch on every change; SurveyPro should too, with a baseline snapshot. The scratch database used to verify this work was built from a schema-only dump instead.
 6. **Retire the non-owner gap:** the application still connects as the owner of the tables, which bypasses row-level security. VunGIS closed that with a separate runtime login; do the same once the switch is made.

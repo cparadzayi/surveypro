@@ -197,6 +197,11 @@ app.setErrorHandler((error, request, reply) => {
     })
   }
 
+  // The database refusing on tenancy grounds (SURVEY_STORE=shared: row-level security or a missing privilege) is a refusal, not a fault
+  if (error.code === '42501' || /row-level security/.test(error.message || '')) {
+    return reply.code(403).send({ error: 'not_allowed', message: 'You may not do that to this project.' })
+  }
+
   // Default error
   reply.code(500).send({
     error: 'Internal Server Error',

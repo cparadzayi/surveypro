@@ -141,7 +141,8 @@ export default async function surveyProjectRoutes(fastify, options) {
         instrumentRoverSerial,
         designation,
         workingDirectory,
-        controlPoints
+        controlPoints,
+        authorityCode
       } = request.body
       
       if (!name) {
@@ -190,7 +191,8 @@ export default async function surveyProjectRoutes(fastify, options) {
         designation,
         workingDirectory,
         centralMeridian,
-        controlPointIds
+        controlPointIds,
+        authorityCode
       })
 
       // Create project directory structure if working directory is provided
@@ -219,6 +221,8 @@ export default async function surveyProjectRoutes(fastify, options) {
       console.error(`Stack:`, error.stack)
       console.error(`Full error:`, error)
       fastify.log.error(error)
+      if (error.statusCode === 422) return reply.code(422).send({ ok: false, error: error.message })
+      if (error.code === '42501') return reply.code(403).send({ ok: false, error: 'You are not appointed to that authority. Ask its head surveyor to appoint you.' })
       return reply.code(500).send({ 
         ok: false, 
         error: 'Failed to create survey project',

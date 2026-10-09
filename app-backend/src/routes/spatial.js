@@ -3,6 +3,15 @@ import Layer from '../models/layer.js'
 import Feature from '../models/feature.js'
 import db from '../config/db.js'
 import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
+import { surveyStore } from '../config/sharedDb.js'
+
+// The per-project QGIS views (create_project_views and friends) are built from each surveyor's own survey_projects. On the shared store the
+// council reads its work through its own login on the survey_share views instead, so these endpoints say so rather than build views over nothing.
+const notOnSharedStore = async (request, reply) => {
+  if (surveyStore() === 'shared') {
+    return reply.code(410).send({ ok: false, error: 'Per-project QGIS views are not used on the shared store. Ask the head surveyor of the council for its survey_share reader login.' })
+  }
+}
 
 /**
  * Ownership gate for the shared spatial tables.
@@ -599,7 +608,7 @@ export default async function spatialRoutes(app) {
 
   // Create project-specific views for QGIS workflow
   app.post('/spatial/create-project-views', {
-    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema, notOnSharedStore],
     schema: {
       body: {
         type: 'object',
@@ -634,7 +643,7 @@ export default async function spatialRoutes(app) {
 
   // Drop project-specific views
   app.delete('/spatial/project-views/:projectId', {
-    preHandler: [app.authenticate, authenticateWithSchema, requireSchema],
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema, notOnSharedStore],
     schema: {
       params: {
         type: 'object',
@@ -669,7 +678,7 @@ export default async function spatialRoutes(app) {
 
   // List all project views
   app.get('/spatial/project-views', {
-    preHandler: [app.authenticate, authenticateWithSchema, requireSchema]
+    preHandler: [app.authenticate, authenticateWithSchema, requireSchema, notOnSharedStore]
   }, async (request, reply) => {
     try {
       const result = await db.query('SELECT * FROM list_project_views()')

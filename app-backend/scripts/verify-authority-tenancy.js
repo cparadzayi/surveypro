@@ -182,17 +182,20 @@ async function main() {
 
     await as(u.s1)
     { const names = (await q('SELECT name FROM survey_share.projects')).map(r => r.name); ok(names.includes('P1 s1 at A1') && names.every(n => ['P1 s1 at A1', 'mine at A1'].includes(n)), `a surveyor reading the shared views sees only their own work (${names.join('; ')})`) }
+    // a decision is only recorded on work that has been delivered (migration 102): deliver these, as the owner
+    await c.query('RESET ROLE')
+    await c.query("UPDATE survey.survey_projects SET delivered_at = now() - interval '1 minute' WHERE id = ANY($1::int[])", [[P.P1, P.P2, P.P3, P.P5, P8]])
+    await as(u.s1)
+    ok(await attempt("INSERT INTO survey.project_review (project_id, decision) VALUES ($1, 'accepted')", [P.P1]) === 'refused', 'a surveyor cannot accept their own work')
     await as(u.r1)
     ok(await attempt("INSERT INTO survey.project_review (project_id, decision, note) VALUES ($1, 'accepted', 'checked')", [P.P1]) === 1, "a reviewer accepts an authority's delivered project")
     ok(await attempt("INSERT INTO survey.project_review (project_id, decision) VALUES ($1, 'accepted')", [P.P5]) === 'refused', "…but not another authority's")
-    ok(await attempt("INSERT INTO survey.project_review (project_id, decision, reviewer_user_id) VALUES ($1, 'accepted', $2)", [P.P1, u.h1]) === 'refused', "…and not in somebody else's name")
+    ok(await attempt("INSERT INTO survey.project_review (project_id, decision, reviewer_user_id) VALUES ($1, 'accepted', $2)", [P.P3, u.h1]) === 'refused', "…and not in somebody else's name")
     ok(await attempt("UPDATE survey.project_review SET decision = 'rejected'") === 'refused', 'a decision cannot be changed afterwards')
     ok(await attempt('DELETE FROM survey.project_review') === 'refused', '…or deleted')
-    await as(u.s1)
-    ok(await attempt("INSERT INTO survey.project_review (project_id, decision) VALUES ($1, 'accepted')", [P.P1]) === 'refused', 'a surveyor cannot accept their own work')
     await as(u.h1)
     ok(await attempt("INSERT INTO survey.project_review (project_id, decision) VALUES ($1, 'accepted')", [P8]) === 'refused', 'a head surveyor cannot accept their own work either')
-    ok(await attempt("INSERT INTO survey.project_review (project_id, decision) VALUES ($1, 'returned')", [P.P2]) === 1, "…but reviews a colleague's")
+    ok(await attempt("INSERT INTO survey.project_review (project_id, decision, note) VALUES ($1, 'returned', 'see the note')", [P.P2]) === 1, "…but reviews a colleague's")
     await asReader()
     const rv = (await q("SELECT review_decision FROM survey_share.projects WHERE id = $1", [P.P1]))[0]
     ok(rv && rv.review_decision === 'accepted', "the authority's login sees the decision on the project")

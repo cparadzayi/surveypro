@@ -10,6 +10,7 @@
  * in their schema.
  */
 import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
+import { surveyStore } from '../config/sharedDb.js'
 
 export default async function surveyClassRoutes(app) {
   app.patch('/survey-projects/:id/survey-class', {
@@ -28,8 +29,16 @@ export default async function surveyClassRoutes(app) {
     const sql = cls
       ? `UPDATE survey_projects SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('survey_class', $2::text), updated_at = NOW() WHERE id = $1 RETURNING id, metadata ->> 'survey_class' AS survey_class`
       : `UPDATE survey_projects SET metadata = COALESCE(metadata, '{}'::jsonb) - 'survey_class', updated_at = NOW() WHERE id = $1 RETURNING id, NULL::text AS survey_class`
-    const { rows } = await request.db.query(sql, cls ? [id, cls] : [id])
-    if (!rows[0]) return reply.code(404).send({ error: 'not_found' })
+    // On the shared store the class is the column itself; the database decides whether the person may change this project, and a project
+    // that is with the council (or accepted) is frozen, so the update finds nothing to change.
+    const sharedSql = `UPDATE survey_projects SET survey_class = $2, updated_at = NOW() WHERE id = $1 RETURNING id, survey_class`
+    const { rows } = surveyStore() === 'shared' ? await request.db.query(sharedSql, [id, cls]) : await request.db.query(sql, cls ? [id, cls] : [id])
+    if (!rows[0]) {
+      if (surveyStore() === 'shared' && (await request.db.query('SELECT 1 FROM survey_projects WHERE id = $1', [id])).rows[0]) {
+        return reply.code(409).send({ error: 'frozen', message: 'This project is with the council or accepted; it cannot be changed until it is returned.' })
+      }
+      return reply.code(404).send({ error: 'not_found' })
+    }
     return { data: { id: rows[0].id, survey_class: rows[0].survey_class } }
   })
 }

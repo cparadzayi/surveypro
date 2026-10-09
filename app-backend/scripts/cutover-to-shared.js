@@ -5,6 +5,7 @@
  *   node scripts/cutover-to-shared.js                       dry run: what would move, for whom, and for which authority
  *   node scripts/cutover-to-shared.js --apply               move it (--again also re-copies schemas already moved, for anything new since)
  *   node scripts/cutover-to-shared.js --apply --map surveyor_kuda=VUNGU:employed --map surveyor_x=GWERU:contracted
+ *   node scripts/cutover-to-shared.js --apply --skip surveyor_finalize_test     (a schema you have looked at and decided not to move)
  *
  * Nobody's work is guessed onto a council. A schema moves as PRIVATE PRACTICE (no authority) unless --map names the authority and the
  * engagement for it; a project that was opened from a council's job (POST /api/auth/launch) carries its authority and engagement in its own
@@ -23,6 +24,8 @@ const args = process.argv.slice(2)
 const apply = args.includes('--apply')
 const again = args.includes('--again')     // also schemas already moved once: copies only what is new since
 const maps = {}
+const skips = new Set()      // schemas the operator has looked at and decided not to move (--skip surveyor_x)
+for (let i = 0; i < args.length; i++) if (args[i] === '--skip' && /^surveyor_[a-z0-9_]+$/.test(args[i + 1] || '')) skips.add(args[i + 1])
 for (let i = 0; i < args.length; i++) {
   if (args[i] !== '--map') continue
   const [schema, rest = ''] = String(args[i + 1] || '').split('=')
@@ -41,6 +44,10 @@ try {
   let problems = 0
   for (const t of todo) {
     const schema = t.schema_name
+    if (skips.has(schema)) { console.log(`  ${schema}: skipped (--skip)`); continue }
+    const absent = []
+    for (const tbl of ['survey_projects', 'coordinate_points', 'land_parcels']) if (!(await pool.query('SELECT to_regclass($1) AS r', [`${schema}.${tbl}`])).rows[0].r) absent.push(tbl)
+    if (absent.length) { console.log(`  ${schema}: INCOMPLETE (missing ${absent.join(', ')}); not moved. Repair or retire it, or pass --skip ${schema} once you have decided`); problems++; continue }
     const owner = t.user_id ? { user_id: t.user_id } : null
     const m = maps[schema]
     const authority = m ? (await pool.query('SELECT id FROM survey.authority WHERE code = $1', [m.code])).rows[0] : null

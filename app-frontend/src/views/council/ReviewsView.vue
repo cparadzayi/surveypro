@@ -87,6 +87,11 @@
             <p class="text-xs text-gray-500 mt-1">Only finalized or approved parcels enter the council's register once accepted.</p>
           </div>
 
+          <div v-if="selected !== null">
+            <h4 class="text-sm font-semibold text-gray-800 mb-1">The register</h4>
+            <RegisterCheck :key="selected" :check="() => checkRegisterAsReviewer(selected as number)" />
+          </div>
+
           <div v-if="detail.reviews.length">
             <h4 class="text-sm font-semibold text-gray-800 mb-1">Earlier decisions</h4>
             <ul class="space-y-1 text-sm">
@@ -134,8 +139,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { decide, errorMessage, reviewDetail, reviewQueue, STATE_LABEL, type Decision, type QueueItem, type ReviewDetail } from '../../services/council'
+import { checkRegisterAsReviewer, decide, errorMessage, reviewDetail, reviewQueue, STATE_LABEL, type Decision, type QueueItem, type ReviewDetail } from '../../services/council'
 import { formatDateDDMMYYYY } from '../../utils/dateFormat'
+import RegisterCheck from '../../components/council/RegisterCheck.vue'
 
 const DECISION_LABEL: Record<Decision, string> = { accepted: 'Accepted', rejected: 'Rejected', returned: 'Returned for correction' }
 const stamp = (d: string | null | undefined) => (d ? `${formatDateDDMMYYYY(new Date(d))} ${new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : '—')

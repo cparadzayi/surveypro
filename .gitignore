@@ -109,3 +109,5 @@ repair_*.json
 # authority reader logins written by scripts/create-authority-reader.js (secrets)
 .reader-*.env
 app-backend/.reader-*.env
+.service-key*.pem
+app-backend/.service-key*.pem

@@ -74,6 +74,12 @@
           </p>
         </div>
 
+        <div>
+          <p class="text-sm font-medium text-gray-900">4. The register <span class="font-normal text-gray-500">(optional)</span></p>
+          <p class="text-xs text-gray-500 mb-2">Find out now whether the register would refuse the layout, instead of after the council has accepted it.</p>
+          <RegisterCheck :check="() => checkRegister(id, fixedAuthority ? undefined : authority || undefined)" :disabled="!chosen || !status.parcels_ready" />
+        </div>
+
         <div class="flex items-center gap-3 pt-2 border-t">
           <button type="button" :disabled="!ready || busy"
             class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -92,8 +98,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '../../services/api'
-import { deliver, deliveryStatus, deliverableTo, errorMessage, myAppointments, setSurveyClass, STATE_LABEL, type DeliveryState, type DeliveryStatus, type MyAppointment, type SurveyClass } from '../../services/council'
+import { checkRegister, deliver, deliveryStatus, deliverableTo, errorMessage, myAppointments, setSurveyClass, STATE_LABEL, type DeliveryState, type DeliveryStatus, type MyAppointment, type SurveyClass } from '../../services/council'
 import { formatDateDDMMYYYY } from '../../utils/dateFormat'
+import RegisterCheck from '../../components/council/RegisterCheck.vue'
 
 const BADGE: Record<DeliveryState, string> = {
   not_delivered: 'bg-gray-100 text-gray-700',

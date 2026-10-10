@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('../api', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
 
 import api from '../api'
-import { deliver, deliverableTo, errorMessage, headOf, mayReview, reviewQueue, setSurveyClass, type MyAppointment } from '../council'
+import { checkRegister, checkRegisterAsReviewer, deliver, deliverableTo, describeIssue, errorMessage, headOf, mayReview, reviewQueue, setSurveyClass, type MyAppointment } from '../council'
 
 const appt = (over: Partial<MyAppointment>): MyAppointment => ({
   id: 1, code: 'VUNGU', name: 'Vungu RDC', role: 'surveyor', engagement: 'contracted', valid_from: '2026-01-01', valid_to: null, active: true, ...over,
@@ -64,5 +64,27 @@ describe('calls', () => {
     expect(api.get).toHaveBeenLastCalledWith('/reviews/queue', { params: {} })
     await reviewQueue('VUNGU')
     expect(api.get).toHaveBeenLastCalledWith('/reviews/queue', { params: { authority: 'VUNGU' } })
+  })
+})
+
+describe('the register check', () => {
+  test('each problem the register can find reads as a sentence a surveyor can act on', () => {
+    expect(describeIssue({ code: 'stand_no_exists', stand: '12', parcel_id: 'P-0000301' })).toBe('Stand 12 is already registered in this township (P-0000301).')
+    expect(describeIssue({ code: 'overlaps_existing', stand: '3', stand_no: '9', overlap_m2: 612.5 })).toBe('Stand 3 overlaps the registered stand 9 by 612.5 m².')
+    expect(describeIssue({ code: 'overlap_within_project', stands: ['6', '7'], overlap_m2: 300 })).toBe('Stands 6 and 7 overlap each other by 300 m².')
+    expect(describeIssue({ code: 'unsupported_crs', stand: '5', lo_zone: 25 })).toMatch(/Lo25.*Lo27, Lo29, Lo31 and Lo33/)
+    expect(describeIssue({ code: 'class_vs_township', survey_class: 'C', expected: 'B' })).toMatch(/class is C.*in a township is class B/)
+  })
+  test('a code it does not know is shown as itself, never hidden', () => {
+    expect(describeIssue({ code: 'something_new' })).toBe('something_new')
+  })
+  test('the surveyor and the reviewer ask different routes', async () => {
+    ;(api.post as any).mockResolvedValue({ data: { data: { ok: true, errors: [], warnings: [], checked: 2 } } })
+    expect((await checkRegister(7)).checked).toBe(2)
+    expect(api.post).toHaveBeenLastCalledWith('/survey-projects/7/check-layout', {})
+    await checkRegister(7, 'VUNGU')
+    expect(api.post).toHaveBeenLastCalledWith('/survey-projects/7/check-layout', { authority_code: 'VUNGU' })
+    await checkRegisterAsReviewer(9)
+    expect(api.post).toHaveBeenLastCalledWith('/reviews/projects/9/check-layout', {})
   })
 })

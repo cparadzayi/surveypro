@@ -31,7 +31,7 @@ SURVEYPRO_SOURCE_ENV=<env file holding the real DATABASE_URL> REHEARSAL_ADMIN_UR
 
 It copies the database (as the administrator, read-only) into a throw-away one, creates the two roles, applies 096-103 as the application login, runs the cut-over exactly as below, and checks: no tenancy violations; counts equal; each person, through the request role, sees their own work and only that; a second run copies nothing; and a real SurveyPro server in shared mode returns each person's projects and points through its API. Then it drops the copy, the roles it made and the dump file.
 
-**Result (2026-10-10, with the decisions above): passed.** 096-103 applied cleanly on the real data; 6 projects, 2,947 points and 831 parcels moved with counts matching; user 3 saw exactly 6, 2,947 and 831 and a stranger saw nothing; the API listed the six projects and returned all 2,947 points.
+**Result (2026-10-10, with the decisions above): passed, including the runtime login (a real server as the non-owner login, in shared mode and in schema mode).** 096-104 applied cleanly on the real data; 6 projects, 2,947 points and 831 parcels moved with counts matching; user 3 saw exactly 6, 2,947 and 831 and a stranger saw nothing; the API listed the six projects and returned all 2,947 points.
 
 ## The day
 
@@ -44,12 +44,13 @@ Allow an hour; the move itself takes seconds at this size. Nobody should be work
    pg_restore -l surveypro_app-before-cutover.dump | head
    ```
    Keep the file somewhere other than the database's disk. This is the only way back from a mistake in step 4; steps 5-7 are undone by setting `SURVEY_STORE=schema`.
-3. **Create the two roles, once, as an administrator** (the application login cannot):
+3. **Create the two group roles, once, as an administrator** (the application login cannot; the runtime login itself is made in step 4):
    ```sql
    CREATE ROLE surveypro_request NOLOGIN;  GRANT surveypro_request TO surveypro_app;
    CREATE ROLE survey_reader NOLOGIN;
    ```
-4. **Apply the migrations** (096-103): `npm run migrate` in `app-backend`. Check `npm run migrate:status`, then `select * from tenancy.violations;` must return no rows.
+4. **Apply the migrations** (096-104): `npm run migrate` in `app-backend`. Check `npm run migrate:status`, then `select * from tenancy.violations;` must return no rows.
+   **Then create the runtime login** (docs/RUNTIME_LOGIN.md): `create-runtime-login.js --apply` with an administrator and the owner, then `node --env-file=.env.runtime scripts/verify-runtime-login.js` must say ALL OK. The server is started with `.env.runtime` from step 7; the owner login stays for migrations and the scripts in these steps.
 5. **Preflight**: `node scripts/cutover-preflight.js`. The only blocker left should be the incomplete `surveyor_finalize_test`, which decision 2 acknowledges (the skip is given to the cut-over in the next step). Anything else: stop and look.
 6. **Dry run**, then apply, with the decisions above:
    ```
@@ -57,7 +58,7 @@ Allow an hour; the move itself takes seconds at this size. Nobody should be work
    node scripts/cutover-to-shared.js --apply --skip surveyor_finalize_test
    ```
    Each schema prints `verified: counts match`. Anything else: stop, do not switch. (No `--map`: the work moves as private practice, decision 1.)
-7. **Switch**: set `SURVEY_STORE=shared` in SurveyPro's environment and start it. Smoke test, signed in as a surveyor: the project list shows their projects (the same six for cparadzayi, 2,947 points between them), a project opens, points load, the Deliver screen opens.
+7. **Switch**: set `SURVEY_STORE=shared` in SurveyPro's environment and start it **as the runtime login** (`node --env-file=.env.runtime src/server.js`). Smoke test, signed in as a surveyor: the project list shows their projects (the same six for cparadzayi, 2,947 points between them), a project opens, points load, the Deliver screen opens.
 8. **Set up councils** (only when there is one): as an administrator, `INSERT INTO survey.authority (code, name, kind)` for the council (the code is the one VunGIS uses), appoint its first head surveyor in `survey.authority_member` (everything after is done through the Appointments screen), and make its reader login with `node scripts/create-authority-reader.js --authority CODE --apply`. To launch jobs from VunGIS, set `VUNGIS_LAUNCH_PUBLIC_KEY`.
 9. **Watch** the first day: failed requests (a 403 means the database refused; check the appointment), and `select * from tenancy.violations;` stays empty.
 

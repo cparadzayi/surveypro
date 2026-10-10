@@ -65,11 +65,9 @@ export default async function launchRoutes(app) {
     const authority = (await pool.query('SELECT id, code, name FROM survey.authority WHERE code = $1 AND active', [tokenAuthority.code])).rows[0]
     if (!authority) return fail(409, 'unknown_authority', `${tokenAuthority.name || tokenAuthority.code} is not set up in SurveyPro. Ask SurveyPro support to add it.`)
 
-    const appointment = (await pool.query(
-      `SELECT role, engagement FROM survey.authority_member
-        WHERE user_id = $1 AND authority_id = $2 AND role IN ('surveyor', 'head_surveyor')
-          AND valid_from <= CURRENT_DATE AND (valid_to IS NULL OR valid_to > CURRENT_DATE)
-        ORDER BY (role = 'head_surveyor') DESC LIMIT 1`, [user.id, authority.id])).rows[0]
+    // asked through survey.active_appointment(): authority_member's row-level security answers for the person asking, and the server is asking
+    // on the person's behalf (the runtime login has no rights on the table itself)
+    const appointment = (await pool.query('SELECT role, engagement FROM survey.active_appointment($1, $2, $3::text[]) LIMIT 1', [user.id, authority.code, ['surveyor', 'head_surveyor']])).rows[0]
     if (!appointment) {
       return fail(403, 'not_appointed', `You are not appointed to ${authority.name}. Ask its head surveyor to appoint you in SurveyPro, then open the job again.`)
     }

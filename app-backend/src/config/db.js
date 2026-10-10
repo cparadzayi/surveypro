@@ -4,8 +4,10 @@ import { config } from 'dotenv'
 config()
 
 // Create a connection pool
+// The server connects as the RUNTIME login (APP_DATABASE_URL: no ownership, no bypass of row-level security, no rights on the tenant tables, migration 104).
+// DATABASE_URL, the owner, is for migrations and operator scripts. With no APP_DATABASE_URL the server keeps using DATABASE_URL, as it always has.
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.APP_DATABASE_URL || process.env.DATABASE_URL,
   max: 20, // Maximum number of clients
   idleTimeoutMillis: 30000,
   // Per-attempt handshake budget. The startup probe below retries, so this does
@@ -116,10 +118,15 @@ function getSurveyorPool(schemaName) {
 async function createSurveyorSchema(identifier) {
   const schemaName = generateSchemaName(identifier)
   try {
-    const result = await pool.query(
-      'SELECT create_surveyor_schema($1) AS schema_name',
-      [schemaName]
-    )
+    // provision_surveyor_schema() makes the schema as its owner and gives the calling (runtime) login its rights on it; a database without
+    // migration 104 has only the plain function, which an owner login can call itself
+    let result
+    try {
+      result = await pool.query('SELECT provision_surveyor_schema($1) AS schema_name', [schemaName])
+    } catch (err) {
+      if (err.code !== '42883') throw err
+      result = await pool.query('SELECT create_surveyor_schema($1) AS schema_name', [schemaName])
+    }
     return result.rows[0].schema_name
   } catch (error) {
     console.error('Error creating surveyor schema:', error.message)

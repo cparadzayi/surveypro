@@ -36,10 +36,8 @@ export default async function layoutCheckRoutes(app) {
     if (isRefusal(err)) return reply.code(403).send({ error: 'not_allowed', message: 'You may not do that.' })
     throw err
   }
-  const appointed = async (userId, code, roles) => (await pool.query(
-    `SELECT 1 FROM survey.authority_member m JOIN survey.authority a ON a.id = m.authority_id
-      WHERE m.user_id = $1 AND a.code = $2 AND m.role = ANY($3::text[]) AND m.valid_from <= CURRENT_DATE AND (m.valid_to IS NULL OR m.valid_to > CURRENT_DATE)`,
-    [userId, code, roles])).rowCount > 0
+  // survey.active_appointment(): the person is passed in, because the server asks on their behalf (the runtime login has no rights on the table)
+  const appointed = async (userId, code, roles) => (await pool.query('SELECT 1 FROM survey.active_appointment($1, $2, $3::text[])', [userId, code, roles])).rowCount > 0
   // numeric columns arrive from the driver as strings; VunGIS's schema takes a number
   const asNumbers = (rows) => rows.map((p) => ({ ...p, area_m2: p.area_m2 == null ? null : Number(p.area_m2) }))
   const done = (r) => ({ data: { ok: r.ok, errors: r.errors, warnings: r.warnings, checked: r.checked } })
@@ -64,7 +62,7 @@ export default async function layoutCheckRoutes(app) {
       }
       const parcels = asNumbers((await request.db.query(`SELECT ${PARCEL_COLUMNS()} FROM land_parcels WHERE project_id = $1 AND ${READY} ORDER BY id`, [id])).rows)
       // the id VunGIS knows the project by is the shared one (the importer's source key); before delivery there is none, and nothing is imported yet
-      const sharedId = shared ? id : (await pool.query('SELECT id FROM survey.survey_projects WHERE legacy_schema = $1 AND legacy_id = $2', [request.surveyorSchema, id])).rows[0]?.id
+      const sharedId = shared ? id : (await withRequest(person, async (c) => (await c.query('SELECT id FROM survey.survey_projects WHERE legacy_schema = $1 AND legacy_id = $2', [request.surveyorSchema, id])).rows[0]?.id))
       const report = await checkLayout({ authority_code: code, project_id: sharedId || id, township: project.township || null, survey_class: project.survey_class || null, parcels },
         { email: person.email })
       return done(report)

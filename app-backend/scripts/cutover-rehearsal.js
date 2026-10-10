@@ -10,8 +10,9 @@
  *   2. applies the pending migrations (096 onward) as the application login, then the cut-over (dry run, then --apply with the same --map)
  *   3. checks: no tenancy violations; every schema's counts equal what moved; each person, speaking through the request role, sees exactly
  *      their own work and nobody else's; a second run copies nothing
- *   4. boots a real SurveyPro server in shared mode on the copy, signs a token for each person and reads their projects and points back
- *      through the HTTP API, which is what they will do on the day
+ *   4. makes the NON-OWNER runtime login the way the real procedure does, proves what it can and cannot do (verify-runtime-login.js)
+ *   5. boots a real SurveyPro server AS THAT LOGIN, in shared mode and then in schema mode (the way back), signs a token for each person and reads
+ *      their projects and points back through the HTTP API, which is what they will do on the day
  * Then it drops the copy and any role it had to create. Exit code 0 only if every check passed. Prints no credentials.
  */
 import crypto from 'node:crypto'
@@ -138,29 +139,51 @@ async function main() {
     ok((await c0.query('SELECT count(*)::int AS n FROM survey.survey_projects')).rows[0].n === 0, 'a stranger sees nothing')
   } finally { await c0.query('ROLLBACK'); c0.release() }
 
-  console.log('\n5. A real SurveyPro server on the copy, in shared mode, read through its API')
+  console.log('\n5. The non-owner runtime login, made as the real procedure makes it')
+  // the administrator creates the login and lets it step down to the request role; the owner issues the grants (scripts/create-runtime-login.js)
+  const RT = 'surveypro_rehearsal_runtime'
+  const rtPass = crypto.randomBytes(18).toString('hex')
+  await admin.query(`CREATE ROLE ${RT} LOGIN PASSWORD '${rtPass}' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT`); createdRoles.push(RT)
+  await admin.query(`GRANT surveypro_request TO ${RT}`); await admin.query(`GRANT CONNECT ON DATABASE ${COPY} TO ${RT}`)
+  await app.query('SELECT survey.grant_runtime($1)', [RT])
+  const rtUrl = new URL(copyUrl); rtUrl.username = RT; rtUrl.password = rtPass
+  const verify = spawnSync('node', [path.join(here, 'verify-runtime-login.js')], { cwd: backend, encoding: 'utf8',
+    env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, APP_DATABASE_URL: rtUrl.toString(), DATABASE_URL: copyUrl } })
+  console.log(verify.stdout.split('\n').map((l) => '  | ' + l).join('\n').trimEnd())
+  ok(verify.status === 0, 'the runtime login can do what the server needs and nothing more')
+
+  // the same real server, as that login, in the new mode (shared) and in the way back (schema)
   const secret = crypto.randomBytes(24).toString('hex')
-  child = spawn('node', ['src/server.js'], { cwd: backend, stdio: 'ignore', env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, PORT: String(PORT), HOST: '127.0.0.1', DATABASE_URL: copyUrl, DB_NAME: COPY, JWT_SECRET: secret, SURVEY_STORE: 'shared' } })
-  let up = false
-  for (let i = 0; i < 70 && !up; i++) { await new Promise((r2) => setTimeout(r2, 1500)); try { up = (await fetch(`http://127.0.0.1:${PORT}/api/health`)).ok } catch {} }
-  ok(up, 'the server starts on the shared store')
-  if (up) {
-    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')
-    const token = (u) => { const h = b64({ alg: 'HS256', typ: 'JWT' }), p = b64({ sub: u.id, email: u.email, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 600 }); return `${h}.${p}.${crypto.createHmac('sha256', secret).update(`${h}.${p}`).digest('base64url')}` }
-    for (const [uid, b] of Object.entries(before)) {
-      const u = (await app.query('SELECT id, email FROM public.users WHERE id = $1', [uid])).rows[0]
-      if (!u) continue
-      const H = { headers: { Authorization: 'Bearer ' + token(u) } }
-      const res = await fetch(`http://127.0.0.1:${PORT}/api/survey-projects`, H)
-      const body = res.ok ? await res.json() : {}
-      ok(res.ok && (body.projects || []).length === b.projects, `user ${uid}: the API lists ${(body.projects || []).length} project(s) (expected ${b.projects})`)
-      if (b.points && body.projects?.length) {
-        let pts = 0
-        for (const p of body.projects) pts += ((await (await fetch(`http://127.0.0.1:${PORT}/api/coordinate-points?project_id=${p.id}`, H)).json()).data || []).length
-        ok(pts === b.points, `user ${uid}: the API returns ${pts} point(s) across them (expected ${b.points})`)
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')
+  const token = (u) => { const h = b64({ alg: 'HS256', typ: 'JWT' }), p = b64({ sub: u.id, email: u.email, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 600 }); return `${h}.${p}.${crypto.createHmac('sha256', secret).update(`${h}.${p}`).digest('base64url')}` }
+  const serve = async (store, port) => {
+    console.log(`\n6. A real SurveyPro server on the copy, as the runtime login, in ${store} mode, read through its API`)
+    child = spawn('node', ['src/server.js'], { cwd: backend, stdio: 'ignore', env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, PORT: String(port), HOST: '127.0.0.1',
+      DATABASE_URL: copyUrl, APP_DATABASE_URL: rtUrl.toString(), DB_NAME: COPY, JWT_SECRET: secret, SURVEY_STORE: store } })
+    let up = false
+    for (let k = 0; k < 70 && !up; k++) { await new Promise((r2) => setTimeout(r2, 1500)); try { up = (await fetch(`http://127.0.0.1:${port}/api/health`)).ok } catch {} }
+    ok(up, `the server starts on the ${store} store`)
+    if (up) {
+      for (const [uid, b] of Object.entries(before)) {
+        const u = (await app.query('SELECT id, email FROM public.users WHERE id = $1', [uid])).rows[0]
+        if (!u) continue
+        const H = { headers: { Authorization: 'Bearer ' + token(u) } }
+        const res = await fetch(`http://127.0.0.1:${port}/api/survey-projects`, H)
+        const body = res.ok ? await res.json() : {}
+        ok(res.ok && (body.projects || []).length === b.projects, `user ${uid}: the API lists ${(body.projects || []).length} project(s) (expected ${b.projects})`)
+        if (b.points && body.projects?.length) {
+          let pts = 0
+          for (const pr of body.projects) pts += ((await (await fetch(`http://127.0.0.1:${port}/api/coordinate-points?project_id=${pr.id}`, H)).json()).data || []).length
+          ok(pts === b.points, `user ${uid}: the API returns ${pts} point(s) across them (expected ${b.points})`)
+        }
       }
     }
+    try { child.kill() } catch {}
+    child = null
+    await new Promise((r2) => setTimeout(r2, 1500))
   }
+  await serve('shared', PORT)
+  await serve('schema', PORT + 1)
   await app.end(); await copyAdmin.end()
 }
 

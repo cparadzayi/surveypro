@@ -41,31 +41,56 @@ export class RegisterCheckError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code }
 }
 
+/** One signed, read-only question to VunGIS. `purpose` is the token's scope and the path's meaning; the answers are mapped to things a person can act on. */
+async function ask(path, purpose, authority, body, person, { fetchImpl = fetch, env = process.env } = {}) {
+  if (!isConfigured(env)) throw new RegisterCheckError(503, 'check_not_configured', 'SurveyPro is not connected to the council system, so the register cannot be asked yet.')
+  const token = signServiceToken({ email: person.email, authority, scope: purpose }, { privateKey: loadPrivateKey(env) })
+  let res
+  try {
+    res = await fetchImpl(`${env.VUNGIS_API_URL.replace(/\/+$/, '')}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    })
+  } catch {
+    throw new RegisterCheckError(502, 'register_unreachable', 'The council system could not be reached. Try again in a moment; delivering does not depend on it.')
+  }
+  let answer = null
+  try { answer = await res.json() } catch { /* an unreadable answer is handled below */ }
+  return { res, answer }
+}
+
+const refused = ({ res, answer }) => {
+  if (res.status === 503) return new RegisterCheckError(503, 'check_not_connected', 'The council system is not set up to accept requests from SurveyPro yet.')
+  if (res.status === 404) return new RegisterCheckError(409, 'authority_unknown_to_vungis', (answer && answer.message) || 'The council system does not know this council.')
+  if (res.status === 401 || res.status === 403) return new RegisterCheckError(502, 'check_refused', 'The council system did not accept this request. SurveyPro\'s key may not match; tell your administrator.')
+  if (res.status === 422 || res.status === 409) return new RegisterCheckError(422, (answer && answer.error) || 'register_declined', (answer && answer.message) || 'The council system could not answer that question.')
+  return new RegisterCheckError(502, 'register_error', 'The council system could not complete the request.')
+}
+
 /**
  * The layout check: the parcels of one project against VunGIS's register.
  *   layout   { authority_code, project_id, township, survey_class, parcels: [{ id, stand, designation, area_m2, lo_zone, srid, geojson }] }
  *   person   { email }
  * Returns VunGIS's report { ok, errors, warnings, checked }.
  */
-export async function checkLayout(layout, person, { fetchImpl = fetch, env = process.env } = {}) {
-  if (!isConfigured(env)) throw new RegisterCheckError(503, 'check_not_configured', 'SurveyPro is not connected to the council system, so the register cannot be checked yet.')
-  const token = signServiceToken({ email: person.email, authority: layout.authority_code, scope: 'check-layout' }, { privateKey: loadPrivateKey(env) })
-  let res
-  try {
-    res = await fetchImpl(`${env.VUNGIS_API_URL.replace(/\/+$/, '')}/api/context/check-layout`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify(layout),
-      signal: AbortSignal.timeout(30_000),
-    })
-  } catch {
-    throw new RegisterCheckError(502, 'register_unreachable', 'The council system could not be reached. Try again in a moment; delivering does not depend on this check.')
+export async function checkLayout(layout, person, opts) {
+  const r = await ask('/api/context/check-layout', 'check-layout', layout.authority_code, layout, person, opts)
+  if (r.res.ok && r.answer && typeof r.answer.ok === 'boolean') return { ok: r.answer.ok, errors: r.answer.errors || [], warnings: r.answer.warnings || [], checked: r.answer.checked ?? layout.parcels.length }
+  throw refused(r)
+}
+
+/**
+ * What the register already holds around a place: public facts, in the survey system, each with how far to trust it.
+ *   query    { authority_code, lo_zone, buffer_m?, area: { bbox: [w, s, e, n] } | { center: { lon, lat }, radius_m } }
+ * Returns { authority, as_of, lo_zone, srid, truncated, count, features: [{ type, properties, geometry }] }.
+ */
+export async function contextParcels(query, person, opts) {
+  const r = await ask('/api/context/parcels', 'context-parcels', query.authority_code, query, person, opts)
+  if (r.res.ok && r.answer && Array.isArray(r.answer.features)) {
+    const { success, ...rest } = r.answer
+    return rest
   }
-  let body = null
-  try { body = await res.json() } catch { /* an unreadable answer is handled below */ }
-  if (res.ok && body && typeof body.ok === 'boolean') return { ok: body.ok, errors: body.errors || [], warnings: body.warnings || [], checked: body.checked ?? layout.parcels.length }
-  if (res.status === 503) throw new RegisterCheckError(503, 'check_not_connected', 'The council system is not set up to accept register checks from SurveyPro yet.')
-  if (res.status === 404) throw new RegisterCheckError(409, 'authority_unknown_to_vungis', (body && body.message) || 'The council system does not know this council.')
-  if (res.status === 401 || res.status === 403) throw new RegisterCheckError(502, 'check_refused', 'The council system did not accept this request. SurveyPro\'s key may not match; tell your administrator.')
-  throw new RegisterCheckError(502, 'register_error', 'The council system could not complete the check.')
+  throw refused(r)
 }

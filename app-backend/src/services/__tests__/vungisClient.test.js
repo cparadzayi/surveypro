@@ -4,7 +4,7 @@
  */
 import { describe, test, expect } from '@jest/globals'
 import crypto from 'node:crypto'
-import { checkLayout, signServiceToken, isConfigured, RegisterCheckError } from '../vungisClient.js'
+import { checkLayout, contextParcels, signServiceToken, isConfigured, RegisterCheckError } from '../vungisClient.js'
 
 const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519')
 const ENV = { VUNGIS_API_URL: 'https://vungis.example.test/', SURVEYPRO_SERVICE_PRIVATE_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }).replace(/\n/g, '\\n') }
@@ -80,5 +80,38 @@ describe('asking VunGIS', () => {
   test('anything else, or an unreadable answer: 502', async () => {
     expect((await fails(reply(500, { error: 'x' }))).code).toBe('register_error')
     expect((await fails(async () => ({ ok: true, status: 200, json: async () => { throw new Error('not json') } }))).code).toBe('register_error')
+  })
+})
+
+describe('what is already on the ground', () => {
+  const query = { authority_code: 'VUNGU', lo_zone: 29, area: { bbox: [-84000, 2151300, -83900, 2151400] } }
+  const features = [{ type: 'Feature', properties: { parcel_id: 'P-1', quality: 'approved' }, geometry: { type: 'Polygon', coordinates: [] } }]
+
+  test('it asks with a token for THAT purpose, and hands back the features without the envelope', async () => {
+    let seen
+    const fetchImpl = async (url, init) => { seen = { url, init }; return reply(200, { success: true, authority: 'VUNGU', lo_zone: 29, srid: 922029, truncated: false, count: 1, as_of: 'x', features })() }
+    const r = await contextParcels(query, person, { fetchImpl, env: ENV })
+    expect(seen.url).toBe('https://vungis.example.test/api/context/parcels')
+    expect(JSON.parse(seen.init.body)).toEqual(query)
+    expect(claimsOf(seen.init.headers.authorization.replace('Bearer ', ''))).toMatchObject({ sub: 'surveyor@vungu.test', authority: 'VUNGU', scp: 'context-parcels' })
+    expect(r).toEqual({ authority: 'VUNGU', lo_zone: 29, srid: 922029, truncated: false, count: 1, as_of: 'x', features })
+    expect(r.success).toBeUndefined()
+  })
+
+  const fails = async (fetchImpl, env = ENV) => { try { await contextParcels(query, person, { fetchImpl, env }) } catch (e) { return e } return null }
+
+  test('a question VunGIS declines (too big, no such belt) says why, in its own words', async () => {
+    const e = await fails(reply(422, { error: 'area_too_large', message: 'the area (with its buffer) may be at most 6000 m on a side' }))
+    expect([e.status, e.code]).toEqual([422, 'area_too_large'])
+    expect(e.message).toMatch(/6000 m/)
+    const z = await fails(reply(409, { error: 'zone_unknown', message: 'the register has no Lo25 belt' }))
+    expect([z.status, z.code]).toEqual([422, 'zone_unknown'])
+  })
+  test('not connected, unreachable, refused: as for the layout check', async () => {
+    expect((await fails(async () => {}, {})).code).toBe('check_not_configured')
+    expect((await fails(async () => { throw new Error('ECONNREFUSED') })).code).toBe('register_unreachable')
+    expect((await fails(reply(401, {}))).code).toBe('check_refused')
+    expect((await fails(reply(503, {}))).code).toBe('check_not_connected')
+    expect((await fails(reply(200, { success: true }))).code).toBe('register_error')              // an answer without features is not an answer
   })
 })

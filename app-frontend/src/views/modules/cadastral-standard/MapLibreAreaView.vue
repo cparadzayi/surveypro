@@ -96,6 +96,7 @@
     <!-- Map Container -->
     <div class="flex-1 relative bg-gray-200">
       <div ref="mapContainer" class="absolute inset-0 w-full h-full"></div>
+      <div class="absolute left-2 bottom-8 z-10"><RegisterContextControl :ctx="registerContext" /></div>
       
       <!-- Loading Overlay -->
       <div v-if="isLoading" class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50">
@@ -993,6 +994,8 @@ import { validateParcel, formatValidationMessage, type ValidationResult } from '
 import { nextDesignation } from '../../../utils/parcelNumbering';
 import PointRenamePanel from '../../../components/cadastral/PointRenamePanel.vue';
 import ParcelDigitizeRibbon from '../../../components/cadastral/ParcelDigitizeRibbon.vue';
+import RegisterContextControl from '../../../components/cadastral/RegisterContextControl.vue';
+import { useRegisterContext } from '../../../composables/useRegisterContext';
 import SideDock from '../../../components/ribbon/SideDock.vue';
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
@@ -1148,6 +1151,11 @@ const { loadComposition } = useRecordComposition();
 const mapContainer = ref<HTMLDivElement | null>(null);
 const insetMapContainer = ref<HTMLDivElement | null>(null);
 let map: maplibregl.Map | null = null;
+
+// What the register already holds around this survey (farms, approved stands, the council's own surveyed stands), as an optional layer under the survey's
+// own. Advisory; the map works the same without it. docs/AUTHORITY_TENANCY.md, "The register around a survey".
+const contextProjectId = computed(() => { const n = Number(workflowState?.projectInfo?.projectId); return Number.isInteger(n) && n > 0 ? n : null; });
+const registerContext = useRegisterContext(() => map, contextProjectId, { Popup: maplibregl.Popup });
 let insetMap: maplibregl.Map | null = null;
 const isLoading = ref(true);
 const showLabels = ref(true);
@@ -2985,6 +2993,7 @@ async function initializeMapOnce() {
     // then addSource at addSurveyPoints() threw "Style is not done loading"
     // and aborted initialization with no survey points or parcels drawn.
     await waitForMapStyle();
+    try { registerContext.attach(); } catch (err) { console.warn('[MapLibre] the register layer could not be added', err); }   // under the layers added below
     console.log('[MapLibre] ✅ Map and style loaded successfully');
     console.log('[MapLibre] Current center:', map!.getCenter());
     console.log('[MapLibre] Current zoom:', map!.getZoom());

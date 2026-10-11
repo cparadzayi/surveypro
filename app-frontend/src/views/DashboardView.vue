@@ -14,6 +14,24 @@
       </div>
     </header>
 
+    <!-- The job the surveyor arrived with from the council system -->
+    <section v-if="job" class="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-2" aria-labelledby="job-heading" data-test="job-banner">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h3 id="job-heading" class="text-sm font-semibold text-indigo-900">Your job from {{ job.authorityName }}</h3>
+          <p class="text-sm text-indigo-900">
+            {{ job.standNumber || job.projectName }}<span v-if="job.ward"> · {{ job.ward }}</span><span v-if="job.dueDate"> · due {{ job.dueDate }}</span><span v-if="job.engagement"> · {{ job.engagement }}</span>
+          </p>
+          <p v-if="job.instructions" class="text-sm text-indigo-800">{{ job.instructions }}</p>
+        </div>
+        <button type="button" class="text-xs text-indigo-700 hover:underline" @click="dismissJob">Dismiss</button>
+      </div>
+      <div class="flex flex-wrap gap-3 text-sm">
+        <button type="button" class="px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700" @click="openJob">Open the project</button>
+        <router-link :to="`/projects/${job.projectId}/delivery`" class="px-3 py-1.5 rounded-md border border-indigo-300 text-indigo-800 hover:bg-white">Deliver</router-link>
+      </div>
+    </section>
+
     <!-- Projects Section -->
     <section v-if="auth.isSurveyor" class="space-y-4">
       <div>
@@ -120,6 +138,7 @@ import { useProjectSelectionStore } from '../stores/projectSelection'
 import { useSurveyors } from '../composables/useSurveyors'
 import { formatDateDDMMYYYY } from '../utils/dateFormat'
 import { mayReview, myAppointments, type MyAppointment } from '../services/council'
+import { launchedJob, forgetLaunchedJob, type LaunchedJob } from '../services/launchedJob'
 // @ts-ignore - SFC default export provided via shim
 import ModuleCard from '../components/ModuleCard.vue'
 
@@ -136,6 +155,16 @@ const mine = ref<MyAppointment[]>([])
 const councilNames = computed(() => [...new Set(mine.value.filter((a) => a.active).map((a) => a.name))])
 const canReview = computed(() => mayReview(mine.value))
 myAppointments().then((a) => { mine.value = a }).catch(() => { /* councils are optional: the dashboard works without them */ })
+
+// the job this session was launched with (from the council system), until dismissed
+const job = ref<LaunchedJob | null>(launchedJob())
+function dismissJob() { forgetLaunchedJob(); job.value = null }
+function openJob() {
+  if (!job.value) return
+  const p = (projects.value || []).find((x: any) => Number(x.id) === job.value!.projectId)
+  if (p) projectSelectionStore.selectProject(p as any)   // the list's rows are the same projects, typed more loosely
+  router.push('/modules/cadastral-standard/workflow')
+}
 
 async function loadProjects() {
   console.log('📊 Loading projects - Token:', auth.token ? '✅' : '❌', 'Surveyor:', auth.isSurveyor ? '✅' : '❌')

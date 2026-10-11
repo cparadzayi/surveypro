@@ -34,6 +34,7 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import { useProjectSelectionStore } from '../stores/projectSelection'
+import { fromLaunch, rememberLaunchedJob } from '../services/launchedJob'
 
 const route = useRoute()
 const router = useRouter()
@@ -79,7 +80,8 @@ onMounted(async () => {
     selection.selectProject(project)
     job.value = { projectName: data.project.name }
     state.value = 'done'
-    await router.replace('/modules/cadastral-standard/workflow')
+    rememberLaunchedJob(fromLaunch(data))      // the dashboard says which job this is
+    await router.replace('/dashboard')
   } catch (e: any) {
     const body = e?.response?.data || {}
     state.value = 'failed'

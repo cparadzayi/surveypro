@@ -71,3 +71,27 @@ Allow an hour; the move itself takes seconds at this size. Nobody should be work
 ## Afterwards (not part of the day)
 
 Retire the per-surveyor schemas and registration's schema creation only once the shared store has run long enough to trust, and only after a fresh backup. Until then they are the way back.
+
+## The cut-over as it was run (2026-10-11)
+
+Run on the real `surveypro_app`, by the runbook above, with these particulars.
+
+| Step | What was done | Result |
+|---|---|---|
+| 1 | SurveyPro stopped. The old server (started from the `nov-alpha` checkout) ran elevated and could not be stopped from a normal terminal: stop it from an elevated one | port 3050 free |
+| 2 | `pg_dump -Fc` as the administrator | `cutover-backup/surveypro_app-before-cutover-20261011-0359.dump`, 921 KB, `pg_restore -l` lists 723 entries, 51 tables of data |
+| 3 | the two roles | `surveypro_request`, `survey_reader` created |
+| 4 | `npm run migrate` (096-104), then `create-runtime-login.js --apply`, `verify-runtime-login.js` | `tenancy.violations` empty; ALL OK |
+| 5 | `cutover-preflight.js` | only the acknowledged blocker (`surveyor_finalize_test`) |
+| 6 | `cutover-to-shared.js --apply --skip surveyor_finalize_test`, run twice | 6 projects, 2,947 points, 831 parcels moved, counts match; the second run copied nothing |
+| 7 | server started as the runtime login: `SURVEY_STORE=shared node --env-file=<real .env> --env-file=.env.runtime --env-file=.env.vungis src/server.js` | health ok, no errors |
+| 8 | `VUNGU` added to `survey.authority`; the first head surveyor appointed; reader login `sp_reader_vungu`; launch key pair (VunGIS), service key pair (SurveyPro); VunGIS `SURVEYPRO_URL`, `SURVEYPRO_LAUNCH_KEY_FILE`, `SURVEYPRO_SERVICE_PUBLIC_KEY`, `SURVEYPRO_READERS_FILE`; SurveyPro `.env.vungis` | a test job launched from VunGIS opened project 7 for VUNGU, linked to the job |
+
+Things the day taught, which the steps above do not say:
+
+- **The web application must be served from this branch as well.** The backend on 3050 does not make the new screens appear: a web server started from the `nov-alpha` checkout has the `/launch` page (so a launch works) but no Deliver, Reviews, Appointments or register check. Serve `app-frontend` of this branch (it needs the `node_modules` of the main checkout; `mklink /J` it) with `VITE_DEV_PROXY_TARGET` at the backend, and point VunGIS's `SURVEYPRO_URL` at it.
+- **`create-authority-reader.js` reads `DATABASE_URL` as the administrator**, not `ADMIN_DATABASE_URL` (`create-runtime-login.js` is the opposite). Do not pass the application `.env` to it.
+- **A person must exist in both systems before a job can be assigned to them**, with the same email: a VunGIS account (an administrator invites them; with `MAIL_TRANSPORT=console` the invitation is only printed in the VunGIS server's console) and a SurveyPro account.
+- **There is no screen to assign a survey job.** The test job was inserted directly into `spatial_planning.survey_task` (task type layout, `gauss_lo` 29, `authority_id` set).
+- `npm run migrate:status` reports 094 as modified and 095 as missing: the databases were migrated from the `nov-alpha` branch, whose set differs. Not caused by 096-104 and not harmful.
+- Still to do: `SURVEYPRO_IMPORT_MINUTES` (the importer is manual for the first days), real SMTP for VunGIS, and retiring the per-surveyor schemas after the shared store has run long enough to trust.

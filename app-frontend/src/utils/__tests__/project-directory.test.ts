@@ -1,5 +1,8 @@
-import { describe, test, expect } from 'vitest'
+import { describe, test, expect, vi, beforeEach } from 'vitest'
+vi.mock('../../services/api', () => ({ default: { get: vi.fn() } }))
+import api from '../../services/api'
 import {
+  getSystemHomeDirectory, primeHomeDirectory, forgetHomeDirectory, resolveToAbsolutePath, makeAbsolutePath,
   getProjectDirectoryStructure,
   generateDefaultWorkingDirectory,
   planTypeOutputSubdir,
@@ -39,5 +42,29 @@ describe('planTypeOutputSubdir', () => {
     expect(planTypeOutputSubdir('working-plan')).toBe('working-plans')
     expect(planTypeOutputSubdir('survey-record')).toBe('survey-record')
     expect(planTypeOutputSubdir('unknown')).toBe('output')
+  })
+})
+
+describe('the home directory the server reports', () => {
+  beforeEach(() => { forgetHomeDirectory(); (api.get as any).mockReset() })
+
+  test('builds paths from what the server says once it has been asked', async () => {
+    const home = 'C:' + String.fromCharCode(92) + 'Users' + String.fromCharCode(92) + 'Dr Paradzayi'   // the server answers with backslashes
+    ;(api.get as any).mockResolvedValue({ data: { ok: true, system: { homeDirectory: home } } })
+    await primeHomeDirectory()
+    expect(resolveToAbsolutePath('Documents/SurveyPro/x')).toBe('C:/Users/Dr Paradzayi/Documents/SurveyPro/x')
+    expect(makeAbsolutePath('Documents/SurveyPro/x')).toBe(home + '/Documents/SurveyPro/x')
+  })
+
+  test('does not remember a guess when the server could not be asked', async () => {
+    ;(api.get as any).mockRejectedValueOnce(new Error('offline'))
+    expect(await getSystemHomeDirectory()).toBe('C:/Users/User')          // this call only
+    ;(api.get as any).mockResolvedValueOnce({ data: { ok: true, system: { homeDirectory: 'D:/Home/Pat' } } })
+    expect(await getSystemHomeDirectory()).toBe('D:/Home/Pat')            // the next call asks again
+  })
+
+  test('priming never throws', async () => {
+    ;(api.get as any).mockRejectedValue(new Error('offline'))
+    await expect(primeHomeDirectory()).resolves.toBeUndefined()
   })
 })

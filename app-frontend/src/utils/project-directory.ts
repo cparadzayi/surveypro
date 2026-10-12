@@ -12,6 +12,7 @@ import api from '../services/api';
 
 // Cache for system home directory
 let cachedHomeDirectory: string | null = null
+const FALLBACK_HOME = 'C:/Users/User'
 
 /**
  * Fetch the actual system home directory from the backend
@@ -31,10 +32,18 @@ export async function getSystemHomeDirectory(): Promise<string> {
     console.error('Failed to fetch system home directory:', error)
   }
 
-  // Fallback to default
-  cachedHomeDirectory = 'C:/Users/User'
-  return cachedHomeDirectory
+  // Fallback to a default for this call only. It is NOT remembered: a remembered guess would send every later document
+  // to a folder of another person's name (C:/Users/User) when the server could not be asked just once.
+  return FALLBACK_HOME
 }
+
+/** Ask the server for the home directory now, so the synchronous path helpers below have it. Never throws. */
+export function primeHomeDirectory(): Promise<void> {
+  return getSystemHomeDirectory().then(() => undefined, () => undefined)
+}
+
+/** For tests: forget what was learned. */
+export function forgetHomeDirectory() { cachedHomeDirectory = null }
 
 export interface ProjectDirectoryStructure {
   root: string;
@@ -234,6 +243,7 @@ export function makeAbsolutePath(path: string, basePath?: string): string {
   // In browser, we'll use a sensible default
   let base = basePath;
   
+  if (!base && cachedHomeDirectory) base = cachedHomeDirectory   // what the server said, once asked (primeHomeDirectory)
   if (!base) {
     // Try to detect Windows user profile
     // Note: In browser context, we can't access process.env directly
@@ -261,7 +271,7 @@ export function resolveToAbsolutePath(path: string): string {
   if (isAbsolutePath(path)) return path;
   
   // Use cached home directory or fallback
-  const userProfile = cachedHomeDirectory || 'C:/Users/User';
+  const userProfile = cachedHomeDirectory || FALLBACK_HOME;
   
   return `${userProfile}/${path}`.replace(/\\/g, '/');
 }

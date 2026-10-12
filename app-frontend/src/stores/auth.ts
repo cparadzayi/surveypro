@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import api from '../services/api';
 import { useProjectSelectionStore } from './projectSelection';
+import { primeHomeDirectory } from '../utils/project-directory';
 
 interface Supervisor {
   id: number;
@@ -131,6 +132,7 @@ export const useAuthStore = defineStore('auth', {
       try {
         const { data } = await api.get<UserProfile>('/auth/me');
         this.profile = data;
+        void primeHomeDirectory();   // documents are saved to paths built from the server's home directory: learn it as soon as we are signed in
         
         // Store complete profile in localStorage for persistence
         if (data) {

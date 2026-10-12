@@ -109,12 +109,8 @@ export default async function documentRoutes(fastify, options) {
         size: fileBuffer.length
       }
     } catch (error) {
-      fastify.log.error('[SAVE] Error:', error)
-      fastify.log.error('[SAVE] Error details:', {
-        message: error.message,
-        stack: error.stack,
-        code: error.code
-      })
+      // pino takes the error as the FIRST argument: given second it was dropped and the log said only "Error:"
+      fastify.log.error({ err: error, code: error.code, absolutePath: filePath }, '[SAVE] Error')
       // A locked target file (e.g. the doc is open in a PDF viewer) becomes a
       // clear, actionable 409 instead of a cryptic 500 EBUSY.
       const classified = classifyFsWriteError(error, fileName)

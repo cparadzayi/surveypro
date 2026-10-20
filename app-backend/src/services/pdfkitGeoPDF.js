@@ -4517,6 +4517,34 @@ function _wrapLineCount(doc, text, fontFamily, fontSize, width) {
 }
 
 /**
+ * How far the title block advances after drawing the designation: one line plus
+ * the 6pt gap, plus a full line for every extra line it wraps onto.
+ *
+ * The designation is a stand list (STANDS 2283, 2288 - 2293, ... MAGLAS TOWNSHIP)
+ * and can wrap at the 600pt text width. Both the height measurement and
+ * drawTitleBlock must use THIS number: the drawer used to advance by one line
+ * regardless, so the SHEET label and the figure description were drawn where the
+ * designation's second line already was -- printed on top of it -- while the
+ * measurement, which did count the wrapped lines, reserved the right band.
+ * Takes the larger of the nominal line advance and the font's own measured height
+ * so a wrapped line is never overdrawn.
+ */
+function _designationAdvance(doc, text, config, width) {
+  const size = config.designation.font.size;
+  const family = config.designation.font.family;
+  const lines = _wrapLineCount(doc, text, family, size, width);
+  const oneLine = size + 6;
+  if (lines <= 1) return oneLine;
+  const nominal = oneLine + (lines - 1) * (size + 2);
+  if (typeof doc.heightOfString !== 'function') return nominal;
+  doc.save?.();
+  doc.font(family).fontSize(size);
+  const measured = doc.heightOfString(text, { width, lineGap: 2 });
+  doc.restore?.();
+  return Math.max(nominal, measured + 4);
+}
+
+/**
  * Accurate height of the title block as a single cohesive block, covering ALL
  * its elements — GENERAL PLAN, "of", optional SHEET N, the designation, the
  * figure-description sentence, AND the Vide line — measured at the width they
@@ -4538,14 +4566,11 @@ function calculateTitleBlockHeight(doc, metadata, outsideFigureData, mapBounds, 
   h += config.ofText.font.size;                  // of
   h += config.spacing.afterOf;
 
-  // Designation line(s). drawTitleBlock advances by (font.size + 6) for the
-  // first line; wrapped lines add their own height.
-  const desigLines = designation
-    ? _wrapLineCount(doc, config.designation.template.replace('{designation}', designation),
-        config.designation.font.family, config.designation.font.size, actualTextWidth)
-    : 1;
-  h += config.designation.font.size + 6
-     + Math.max(0, desigLines - 1) * (config.designation.font.size + 2);
+  // Designation line(s): the same advance drawTitleBlock uses, wrapped lines included.
+  h += designation
+    ? _designationAdvance(doc, config.designation.template.replace('{designation}', designation),
+        config, actualTextWidth)
+    : config.designation.font.size + 6;
 
   // Optional SHEET N line (multi-sheet only).
   if (isMultiSheet) {
@@ -4694,7 +4719,9 @@ function drawTitleBlock(
       });
 
     // ── SI 727 Seventh Schedule (b): "SHEET N" line below designation ──
-    let afterDesignationY = designationY + config.designation.font.size + 6;
+    // Below ALL of the designation's lines, not just the first: a long stand list
+    // wraps, and a one-line advance drew SHEET N over the wrapped second line.
+    let afterDesignationY = designationY + _designationAdvance(doc, surveyText, config, actualTextWidth);
     if (isMultiSheet) {
       const sheetLabelText = `SHEET ${sheetInfo.sheetNumber}`;
       const sheetLabelWidth = Math.min(200, actualTextWidth / 2);

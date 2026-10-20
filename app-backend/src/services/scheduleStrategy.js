@@ -425,26 +425,43 @@ export function seatScheduleAsComposite({
 
     for (const s of strips) {
       if (!s || s.w < width || s.h < height) continue;
-      const x = s.x, y = s.y;
-      if (bounds && (x < bounds.x || y < bounds.y ||
-          x + width > bounds.x + bounds.w || y + height > bounds.y + bounds.h)) continue;
-      if (obstacles.some((o) => blocked(x, y, o))) continue;
+      const x = s.x;
+      // A strip's corner is not the only place the composite can start. A block
+      // already sitting at the top of the strip (the Outside Figure Data table)
+      // is something to stack UNDER, not a reason to give the strip up: try the
+      // corner first, then just below each block that overlaps the strip's
+      // columns, top to bottom.
+      const ys = [s.y];
+      for (const o of obstacles) {
+        const oh = o && (o.height ?? o.h), ow = o && (o.width ?? o.w);
+        if (!o || !(oh > 0) || !(o.x < x + width && o.x + ow > x)) continue;
+        const below = o.y + oh + spacing;
+        if (below > s.y) ys.push(below);
+      }
+      ys.sort((a, b) => a - b);
 
-      let startRow = 0;
-      return Array.from({ length: cols }, (_, i) => {
-        const rowCount = rowsFor(i);
-        const table = {
-          x: x + i * (colWidth + spacing),
-          y,
-          width: colWidth,
-          height: headerHeight + rowCount * rowHeight,
-          rowCount,
-          parcelsStartIndex: startRow,
-          isContinuation: i > 0,
-        };
-        startRow += rowCount;
-        return table;
-      });
+      for (const y of ys) {
+        if (y + height > s.y + s.h) break;                 // no room left in this strip
+        if (bounds && (x < bounds.x || y < bounds.y ||
+            x + width > bounds.x + bounds.w || y + height > bounds.y + bounds.h)) continue;
+        if (obstacles.some((o) => blocked(x, y, o))) continue;
+
+        let startRow = 0;
+        return Array.from({ length: cols }, (_, i) => {
+          const rowCount = rowsFor(i);
+          const table = {
+            x: x + i * (colWidth + spacing),
+            y,
+            width: colWidth,
+            height: headerHeight + rowCount * rowHeight,
+            rowCount,
+            parcelsStartIndex: startRow,
+            isContinuation: i > 0,
+          };
+          startRow += rowCount;
+          return table;
+        });
+      }
     }
     return null;
   }

@@ -5921,6 +5921,10 @@ export function calculateBlockPositions(
   // the schedule having to dodge seven already-placed blocks and failing.
   let _schedStripTables = null;
   let _schedStripComposite = null;
+  // Outside Figure Data reserved at the top of the strip the schedule stacks
+  // under, so the two share one column instead of the table forcing the schedule
+  // into a second corner. Null when no strip can hold both.
+  let _schedOfdReservation = null;
   // Called once the fixed blocks (title, North arrow, scale bar) are known, so
   // their rects can be excluded from the whitespace: those are pre-placed, not
   // engine-placed, so nothing will move them out of the schedule's way later.
@@ -6001,6 +6005,10 @@ export function calculateBlockPositions(
           ({ schedWidth, schedHeight, _schedNumCols, _schedRowsPerCol } = _orig);
         }
       };
+      // Everything from here seats the schedule given a set of obstacles; it runs
+      // once with the Outside Figure Data reserved at a strip top and, failing
+      // that, once without. A failed attempt leaves _schedStripTables null.
+      const _trySeat = (obstacles) => {
       // Side strips first — one tall column down each side is the General Plan
       // look — then the horizontal bands above and below the figure, which a
       // left-aligned wide figure leaves as the only remaining room. (The helper
@@ -6118,6 +6126,29 @@ export function calculateBlockPositions(
           `(${_slots.length} slot(s)) — keeping the composite path`
         );
       }
+      };   // _trySeat
+
+      // Reserve the Outside Figure Data at the top of a strip and stack the
+      // schedule beneath it. The table is a fixed-size block with a known
+      // footprint, so it should share a column with the schedule rather than
+      // push it into a second corner. Strips are tried in the order the schedule
+      // prefers; the first that seats EVERY stand with the table in place wins.
+      if (ofdRows > 0) {
+        const _overlap = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x &&
+                                   a.y < b.y + b.height && a.y + a.height > b.y;
+        for (const s of [_strips.right, _strips.left, _strips.bottom, _strips.top]) {
+          if (!s || s.w < ofdWidth || s.h < ofdHeight) continue;
+          const r = { x: s.x, y: s.y, width: ofdWidth, height: ofdHeight };
+          if (obstacles.some((o) => o && _overlap(r, o))) continue;
+          _trySeat([...obstacles, r]);
+          if (_schedStripTables) {
+            _schedOfdReservation = r;
+            logger.info(`[PDFKit] 📊 Outside Figure Data reserved at (${r.x.toFixed(0)},${r.y.toFixed(0)}); schedule stacks beneath it`);
+            break;
+          }
+        }
+      }
+      if (!_schedStripTables) _trySeat(obstacles);
       _restoreIfForced();
     }
   };
@@ -6483,7 +6514,8 @@ export function calculateBlockPositions(
     mapFeatureBounds,
     // A seated schedule is not the engine's to place — it is an obstacle below.
     blocks: _schedStripTables
-      ? blockDescriptors.filter((b) => b.name !== "scheduleOfAreas")
+      ? blockDescriptors.filter((b) => b.name !== "scheduleOfAreas" &&
+          !(_schedOfdReservation && b.name === "outsideFigureData"))
       : blockDescriptors,
     tickMarkBounds,
     logger,
@@ -6493,6 +6525,7 @@ export function calculateBlockPositions(
       // Schedule-first ordering: each seated schedule table is an obstacle the
       // engine must place the other blocks around.
       ...(_schedStripTables ?? []).map((t, i) => ({ name: `scheduleOfAreas#${i}`, ...t })),
+      ...(_schedOfdReservation ? [{ name: "outsideFigureData", ..._schedOfdReservation }] : []),
     ].filter(Boolean),
     parcelSegments: mapFeatureBounds?.parcelSegments ?? [],
   });
@@ -6529,6 +6562,7 @@ export function calculateBlockPositions(
     titleBlock:  prePlacedTitleBlock,
     northArrow:  prePlacedNorthArrow,
     ...(prePlacedScaleBar ? { scaleBar: prePlacedScaleBar } : {}),
+    ...(_schedOfdReservation ? { outsideFigureData: _schedOfdReservation } : {}),
     ..._enginePlacements,
   };
 

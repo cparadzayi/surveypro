@@ -523,14 +523,34 @@ describe('seatScheduleAsComposite', () => {
     expect(seatScheduleAsComposite({ ...base, strips: [strip] })).toBeNull();
   });
 
-  test('skips a strip an obstacle sits in, and takes the next', () => {
+  test('skips a strip an obstacle leaves no room beneath, and takes the next', () => {
     const blocked = { x: 100, y: 200, w: 1000, h: 2000 };
     const clear   = { x: 2000, y: 200, w: 1000, h: 2000 };
-    const obstacle = { x: 150, y: 250, width: 300, height: 300 };
+    // Fills nearly the whole strip height, so there is nothing to stack under.
+    const obstacle = { x: 150, y: 250, width: 300, height: 1900 };
     const t = seatScheduleAsComposite({
       ...base, strips: [blocked, clear], obstacles: [obstacle],
     });
     expect(t).not.toBeNull();
     expect(t[0].x).toBe(2000);
+  });
+
+  test('stacks under a block sitting at the top of the strip instead of giving the strip up', () => {
+    const strip = { x: 100, y: 200, w: 1000, h: 2000 };
+    const ofd = { x: 100, y: 200, width: 300, height: 300 };      // at the strip corner
+    const t = seatScheduleAsComposite({
+      ...base, strips: [strip], obstacles: [ofd],
+    });
+    expect(t).not.toBeNull();
+    expect(t[0].x).toBe(100);                                      // same strip
+    expect(t[0].y).toBeGreaterThanOrEqual(ofd.y + ofd.height);     // below the block
+    expect(t.every((x) => x.y === t[0].y)).toBe(true);             // columns still share a top
+  });
+
+  test('leaves a gap between the block and the composite stacked under it', () => {
+    const strip = { x: 100, y: 200, w: 1000, h: 2000 };
+    const ofd = { x: 100, y: 200, width: 300, height: 300 };
+    const t = seatScheduleAsComposite({ ...base, strips: [strip], obstacles: [ofd] });
+    expect(t[0].y - (ofd.y + ofd.height)).toBe(base.spacing);
   });
 });

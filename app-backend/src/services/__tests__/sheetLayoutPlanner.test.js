@@ -211,6 +211,63 @@ describe('planSheetLayout — endorsement slot', () => {
   });
 });
 
+describe('planSheetLayout — scale bar and north arrow are independent', () => {
+  // Plan with a figure polygon covering the given rect (mapFeatureBounds feeds the
+  // engine's pre-placement check; polyPts the rest of the planner).
+  function planWithFigure(rect) {
+    const f = sampleMinimalPlan;
+    const poly = rect
+      ? [{ x: rect.x, y: rect.y }, { x: rect.x + rect.width, y: rect.y },
+         { x: rect.x + rect.width, y: rect.y + rect.height }, { x: rect.x, y: rect.y + rect.height },
+         { x: rect.x, y: rect.y }]
+      : [];
+    return planSheetLayout({
+      metadata: f.metadata, parcels: f.parcels, outsideFigureData: f.outsideFigureData,
+      beacons: f.beacons, mapBounds: A2_MAP_BOUNDS,
+      mapFeatureBounds: { x: 100, y: 100, width: 500, height: 400, pdfPoints: poly },
+      scale: f.scale, extent: { minX: 50000, maxX: 50100, minY: 2200000, maxY: 2200060 },
+      tickMarkBounds: [], figureBounds: { x: 100, y: 100, width: 500, height: 400 },
+      polyPts: poly, measureText: fakeMeasure, logger: fakeLogger,
+    });
+  }
+  const overlap = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x &&
+                            a.y < b.y + b.height && a.y + a.height > b.y;
+
+  test('a figure covering only the arrow moves the arrow and leaves the bar where it was', () => {
+    const clear = planWithFigure(null);                  // both at their preferred slots
+    const arrow = clear.northArrow;
+    // Cover the arrow's slot (and a margin round it) but not the bar's.
+    const cover = { x: arrow.x - 3, y: arrow.y - 3, width: arrow.width + 6, height: arrow.height + 6 };
+    expect(overlap(cover, clear.scaleBar)).toBe(false);
+
+    const r = planWithFigure(cover);
+    expect(r.scaleBar.x).toBeCloseTo(clear.scaleBar.x, 3);     // bar did not follow the arrow
+    expect(r.scaleBar.y).toBeCloseTo(clear.scaleBar.y, 3);
+    expect(overlap(r.northArrow, cover)).toBe(false);          // arrow got off the figure
+    expect(
+      Math.abs(r.northArrow.x - arrow.x) + Math.abs(r.northArrow.y - arrow.y)
+    ).toBeGreaterThan(1);                                       // and really moved
+  });
+
+  test('a figure covering only the bar moves the bar and leaves the arrow where it was', () => {
+    const clear = planWithFigure(null);
+    const bar = clear.scaleBar;
+    const cover = { x: bar.x - 3, y: bar.y - 3, width: bar.width + 6, height: bar.height + 6 };
+    expect(overlap(cover, clear.northArrow)).toBe(false);
+
+    const r = planWithFigure(cover);
+    expect(r.northArrow.x).toBeCloseTo(clear.northArrow.x, 3);
+    expect(r.northArrow.y).toBeCloseTo(clear.northArrow.y, 3);
+    expect(overlap(r.scaleBar, cover)).toBe(false);
+  });
+
+  test('with no figure in the way they sit side by side under the title, as before', () => {
+    const r = planWithFigure(null);
+    expect(r.northArrow.x).toBeGreaterThan(r.scaleBar.x + r.scaleBar.width);
+    expect(r.scaleBar.y).toBeGreaterThan(r.titleBlock.y + r.titleBlock.height);
+  });
+});
+
 describe('planSheetLayout — scheduleColumnWidthsPt override', () => {
   test('uses caller-provided widths when scheduleColumnWidthsPt is set', () => {
     // Wide widths: 50, 80, 60, 60, 50, 70 sum = 370 pt

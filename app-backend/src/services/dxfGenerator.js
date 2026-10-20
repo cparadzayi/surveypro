@@ -2164,6 +2164,13 @@ export function generateDXF(options, logger) {
     mapBounds:  { x: 0, y: 0, width: contentWidthPt, height: contentHeightPt },
     closeRing:  false,
     alignX:     dxfAlignX,   // must match the drawn figure's alignment (contentCX above)
+    // The page is positioned so the figure is centred, pushed down only as far
+    // as it takes to clear the title band (contentCY above), and never past the
+    // content bottom.
+    figureTop:  (polyH) => Math.min(
+      contentHeightPt - polyH,
+      Math.max((contentHeightPt - polyH) / 2, titleBandH * M_TO_PT),
+    ),
   });
 
   // Pre-seeded obstacles: same shift/flip.

@@ -105,8 +105,8 @@ function readRingVertex(v) {
  * @returns {Array<{x:number,y:number}>}  Vertex list in planner pt-space, or
  *                                        [] if no usable ring was found.
  */
-export function buildPolygonForPlanner({ outsideFigure, scaleDenom, mapBounds, closeRing = false, alignX = 'center' }) {
-  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX });
+export function buildPolygonForPlanner({ outsideFigure, scaleDenom, mapBounds, closeRing = false, alignX = 'center', figureTop = null }) {
+  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX, figureTop });
   if (!t) return [];
 
   const out = t.capeVerts.map(([cy, cx]) => t.project(cy, cx));
@@ -139,8 +139,8 @@ export function buildPolygonForPlanner({ outsideFigure, scaleDenom, mapBounds, c
  *                                       the format actually draws its figure.
  * @returns {{ polyPts: Array<{x:number,y:number}>, parcelSegments: Array<{x1:number,y1:number,x2:number,y2:number}> }}
  */
-export function buildPlannerObstacles({ outsideFigure, parcels, scaleDenom, mapBounds, closeRing = false, alignX = 'center' }) {
-  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX });
+export function buildPlannerObstacles({ outsideFigure, parcels, scaleDenom, mapBounds, closeRing = false, alignX = 'center', figureTop = null }) {
+  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX, figureTop });
   if (!t) return { polyPts: [], parcelSegments: [] };
 
   const polyPts = t.capeVerts.map(([cy, cx]) => t.project(cy, cx));
@@ -174,7 +174,7 @@ export function buildPlannerObstacles({ outsideFigure, parcels, scaleDenom, mapB
  * Internal: build the shared transform anchored on the OF polygon bbox.
  * Returns { project, capeVerts } or null if inputs are unusable.
  */
-function _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX = 'center' }) {
+function _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX = 'center', figureTop = null }) {
   if (!outsideFigure || !Number.isFinite(scaleDenom) || scaleDenom <= 0) return null;
   if (!mapBounds || !Number.isFinite(mapBounds.width) || !Number.isFinite(mapBounds.height)) return null;
 
@@ -230,14 +230,34 @@ function _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX =
   // flushes it to mapBounds.x so the drawn figure (left-aligned with the same
   // value by its generator) and this search polygon stay coincident.
   const offsetX = mapBounds.x + (alignX === 'left' ? 0 : (mapBounds.width  - polyWidthPt)  / 2);
-  const offsetY = mapBounds.y + (mapBounds.height - polyHeightPt) / 2;
+  // Vertical position is the format's own rule, not a constant. The PDF fits the
+  // figure into the area BELOW its title band (so it sits band/2 under centre);
+  // the DXF centres it and only pushes it down far enough to clear the band.
+  // `figureTop(polyHeightPt)` returns the figure's top edge measured from
+  // mapBounds.y, so the search polygon lands where that format really draws it.
+  // Without it the polygon is centred, which was the PDF's 137pt phantom gap:
+  // blocks seated "below the figure" sat on it, and the escalation gate (which
+  // checks the real polygon) rejected them.
+  const centredTop = (mapBounds.height - polyHeightPt) / 2;
+  const topFromMap = typeof figureTop === 'function' ? figureTop(polyHeightPt) : centredTop;
+  const offsetY = mapBounds.y + (Number.isFinite(topFromMap) ? topFromMap : centredTop);
 
-  // (capeY, capeX) → planner pt with northing flipped to y-down.
+  // (capeY, capeX) → planner pt, NORTH-UP and EAST-RIGHT, y-down.
+  //
+  // Cape Lo is Y-westing / X-southing, so easting = -Y and northing = -X. That
+  // is exactly what both renderers draw: the PDF's transformCoords
+  // (easting = -y, northing = -x) and the DXF's capeLoToDxfSouthUp (x = -capeY,
+  // y = -capeX, flipped from south-up on 2026-06-05 so the two formats agree).
+  // This projection was left behind in the old south-up orientation, i.e. it
+  // was the drawn figure rotated 180 degrees. A rectangle or a symmetric grid is
+  // its own 180-degree rotation, so every fixture hid it; on an irregular
+  // figure (fcmag3) the planner seated blocks around a phantom, rotated figure
+  // while the escalation gate checked the real one.
   // Parcels outside the OF bbox land outside mapBounds; that's fine since the
   // engine only evaluates candidate slots inside mapBounds.
   const project = (cy, cx) => ({
-    x: (cy - minCapY) * M_TO_PT + offsetX,
-    y: (maxCapX - cx) * M_TO_PT + offsetY,
+    x: (maxCapY - cy) * M_TO_PT + offsetX,
+    y: (cx - minCapX) * M_TO_PT + offsetY,
   });
 
   return { project, capeVerts };

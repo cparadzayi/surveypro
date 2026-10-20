@@ -153,7 +153,15 @@ function _computePolyInfo(mapBounds, mapFeatureBounds) {
     };
   }
 
-  const pts = mapFeatureBounds.pdfPoints;
+  // rectangleOverlapsPolygon walks the edges it is given, so an open ring (last
+  // vertex != first) never tests the closing edge and a block can be seated on
+  // it. The planner polygon is built open for PDF/DXF parity; close it here, at
+  // the one consumer that does collision tests, rather than changing its shape.
+  const raw = mapFeatureBounds.pdfPoints;
+  const first = raw[0], last = raw[raw.length - 1];
+  const pts = raw.length >= 3 && (first.x !== last.x || first.y !== last.y)
+    ? [...raw, { x: first.x, y: first.y }]
+    : raw;
   const minX = Math.min(...pts.map(p => p.x));
   const maxX = Math.max(...pts.map(p => p.x));
   const minY = Math.min(...pts.map(p => p.y));

@@ -10844,6 +10844,10 @@ async function _generateGeoPDFInner(options, logger) {
     }
   })();
 
+  // The band actually reserved below; the planner polygon needs it to sit where
+  // the figure is really drawn (see buildPlannerObstacles' figureTop).
+  let _titleBandApplied = 0;
+
   // ── Reserve a top band for the title block; fit the outside figure below it ──
   // The title block (GENERAL PLAN / of / SHEET / designation / figure description
   // / Vide) is a single cohesive block at top-center. Inset the figure's drawing
@@ -10863,6 +10867,7 @@ async function _generateGeoPDFInner(options, logger) {
     // makes.
     const _FURNITURE_CLEARANCE = titleBandHeight(_titleBandH);
     const _band = Math.min(_FURNITURE_CLEARANCE, figureBounds.height * 0.5);
+    _titleBandApplied = _band;
     figureBounds = {
       x: figureBounds.x,
       y: figureBounds.y + _band,
@@ -11861,6 +11866,9 @@ async function _generateGeoPDFInner(options, logger) {
     mapBounds,
     closeRing:  false,
     alignX:     figAlignX,   // must match the drawn figure's alignment (see sizeFigureBox)
+    // sizeFigureBox centres the figure in the area BELOW the title band, so its
+    // top is band + half the slack there -- not the centre of the whole area.
+    figureTop:  (polyH) => _titleBandApplied + (mapBounds.height - _titleBandApplied - polyH) / 2,
   });
   // mapFeatureBounds.pdfPoints feeds the planner's polygon obstacle list, so
   // it must use the planner polygon (not _topoPolyPts). parcelSegments

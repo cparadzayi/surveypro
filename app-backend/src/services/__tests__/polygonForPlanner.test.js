@@ -70,3 +70,20 @@ describe('planner polygon vertical placement', () => {
     expect(t).toBeGreaterThan((mapBounds.height - h) / 2)       // lower than plain centring
   })
 })
+
+describe('planner polygon clearance from the margin', () => {
+  const ring = [[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]]
+  const outsideFigure = { geometry: { type: 'Polygon', coordinates: [ring] } }
+  const mapBounds = { x: 142, y: 142, width: 4000, height: 4000 }
+  const minX = (opts) => Math.min(...buildPolygonForPlanner({
+    outsideFigure, scaleDenom: 1000, mapBounds, ...opts }).map((q) => q.x))
+
+  test("a 'left'-aligned figure sits the clearance in from the margin, not on it", () => {
+    expect(minX({ alignX: 'left' })).toBeCloseTo(mapBounds.x, 6)                    // flush (old)
+    expect(minX({ alignX: 'left', insetLeftPt: 28 })).toBeCloseTo(mapBounds.x + 28, 6)
+  })
+
+  test('centring is symmetric, so the clearance leaves a centred figure where it was', () => {
+    expect(minX({ alignX: 'center', insetLeftPt: 28 })).toBeCloseTo(minX({ alignX: 'center' }), 6)
+  })
+})

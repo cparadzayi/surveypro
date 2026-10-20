@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals';
-import { resolvePlanSheeting, drawingAreaMm, narrowestStandWidthM, TOPOLOGY_GATED_FRACTION } from '../../../../app-shared/planSheeting.js';
+import { resolvePlanSheeting, drawingAreaMm, narrowestStandWidthM, TOPOLOGY_GATED_FRACTION, FIGURE_MARGIN_MM } from '../../../../app-shared/planSheeting.js';
 
 /** Build a FeatureCollection of `count` square stands of the given area. */
 function stands(count, areaM2) {
@@ -168,14 +168,16 @@ describe('resolvePlanSheeting — surveyor overrides', () => {
 
 describe('drawingAreaMm — the real available area', () => {
   test('is the margin-inset sheet less the title band', () => {
-    // 500 - 50 - 150 = 300 wide; 400 - 50 - 50 - 55 = 245 high.
-    expect(drawingAreaMm('SI727_500x400')).toEqual({ widthMm: 300, heightMm: 245 });
-    expect(drawingAreaMm('SI727_1000x800')).toEqual({ widthMm: 800, heightMm: 645 });
+    // Margin-inset sheet less the title band, less the clearance the figure keeps
+    // from the left/right/bottom margins (FIGURE_MARGIN_MM = 10):
+    //   500 - 50 - 150 = 300 wide  - 2*10 = 280; 400 - 50 - 50 - 55 = 245 high - 10 = 235.
+    expect(drawingAreaMm('SI727_500x400')).toEqual({ widthMm: 280, heightMm: 235 });
+    expect(drawingAreaMm('SI727_1000x800')).toEqual({ widthMm: 780, heightMm: 635 });
   });
 
   test('a measured title band overrides the estimate', () => {
     expect(drawingAreaMm('SI727_500x400', { titleBandMm: 46.2 }).heightMm)
-      .toBeCloseTo(253.8, 6);
+      .toBeCloseTo(243.8, 6);   // 400 - 100 - 46.2 - 10
   });
 });
 
@@ -276,5 +278,23 @@ describe('resolvePlanSheeting — topology-gated fraction', () => {
     });
     const onSheet = onSheet1000(r);
     expect(onSheet[0].scaleDenominator).toBe(1000);
+  });
+});
+
+describe('drawingAreaMm — the figure keeps clear of the drawing margins', () => {
+  test('takes the clearance off both sides of the width and the bottom of the height', () => {
+    // SI727_1000x800: 1000 - 50 - 150 = 800 wide; 800 - 50 - 50 - band tall.
+    const a = drawingAreaMm('SI727_1000x800', { titleBandMm: 55 });
+    expect(a.widthMm).toBe(800 - 2 * FIGURE_MARGIN_MM);
+    expect(a.heightMm).toBe(700 - 55 - FIGURE_MARGIN_MM);
+  });
+
+  test('the clearance is a readable gap', () => {
+    expect(FIGURE_MARGIN_MM).toBeGreaterThanOrEqual(8);
+  });
+
+  test('a figure that exactly filled the old area no longer fits', () => {
+    const a = drawingAreaMm('SI727_1000x800', { titleBandMm: 55 });
+    expect(a.widthMm).toBeLessThan(800);
   });
 });

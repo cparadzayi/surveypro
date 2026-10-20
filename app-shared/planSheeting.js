@@ -37,6 +37,19 @@ const MARGIN_LEFT = 50, MARGIN_RIGHT = 150, MARGIN_TOP = 50, MARGIN_BOTTOM = 50;
 export const TITLE_BAND_ESTIMATE_MM = 55;
 
 /**
+ * Open paper between the figure (polygon, beacon symbols and their vertex
+ * letters) and the drawing margin, in millimetres, on the left, right and
+ * bottom. The top already has the title band and the furniture gap. Without it
+ * a figure the resolver judges to "fit" can sit with its beacons on the margin
+ * line -- fcmag3's left-aligned figure started exactly on the left margin.
+ *
+ * Part of the figure-available area, so the scale is chosen with it in hand and
+ * both renderers inherit it; ~10 mm clears a beacon symbol and its letter with
+ * room to read.
+ */
+export const FIGURE_MARGIN_MM = 10;
+
+/**
  * Share of the available area the figure may occupy. The remainder is the
  * budget for the Schedule of Areas, coordinate list and endorsement blocks.
  *
@@ -132,8 +145,8 @@ export function drawingAreaMm(sheetName, { titleBandMm = TITLE_BAND_ESTIMATE_MM 
   const sheet = SI727_GENERAL_PLAN_SHEET_SIZES.find((s) => s.name === sheetName);
   if (!sheet) throw new Error(`Unknown SI 727 sheet size: ${sheetName}`);
   return {
-    widthMm: sheet.width - MARGIN_LEFT - MARGIN_RIGHT,
-    heightMm: sheet.height - MARGIN_TOP - MARGIN_BOTTOM - titleBandMm,
+    widthMm: sheet.width - MARGIN_LEFT - MARGIN_RIGHT - 2 * FIGURE_MARGIN_MM,
+    heightMm: sheet.height - MARGIN_TOP - MARGIN_BOTTOM - titleBandMm - FIGURE_MARGIN_MM,
   };
 }
 

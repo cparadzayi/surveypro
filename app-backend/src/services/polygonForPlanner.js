@@ -105,8 +105,8 @@ function readRingVertex(v) {
  * @returns {Array<{x:number,y:number}>}  Vertex list in planner pt-space, or
  *                                        [] if no usable ring was found.
  */
-export function buildPolygonForPlanner({ outsideFigure, scaleDenom, mapBounds, closeRing = false, alignX = 'center', figureTop = null }) {
-  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX, figureTop });
+export function buildPolygonForPlanner({ outsideFigure, scaleDenom, mapBounds, closeRing = false, alignX = 'center', figureTop = null, insetLeftPt = 0 }) {
+  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX, figureTop, insetLeftPt });
   if (!t) return [];
 
   const out = t.capeVerts.map(([cy, cx]) => t.project(cy, cx));
@@ -139,8 +139,8 @@ export function buildPolygonForPlanner({ outsideFigure, scaleDenom, mapBounds, c
  *                                       the format actually draws its figure.
  * @returns {{ polyPts: Array<{x:number,y:number}>, parcelSegments: Array<{x1:number,y1:number,x2:number,y2:number}> }}
  */
-export function buildPlannerObstacles({ outsideFigure, parcels, scaleDenom, mapBounds, closeRing = false, alignX = 'center', figureTop = null }) {
-  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX, figureTop });
+export function buildPlannerObstacles({ outsideFigure, parcels, scaleDenom, mapBounds, closeRing = false, alignX = 'center', figureTop = null, insetLeftPt = 0 }) {
+  const t = _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX, figureTop, insetLeftPt });
   if (!t) return { polyPts: [], parcelSegments: [] };
 
   const polyPts = t.capeVerts.map(([cy, cx]) => t.project(cy, cx));
@@ -174,7 +174,7 @@ export function buildPlannerObstacles({ outsideFigure, parcels, scaleDenom, mapB
  * Internal: build the shared transform anchored on the OF polygon bbox.
  * Returns { project, capeVerts } or null if inputs are unusable.
  */
-function _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX = 'center', figureTop = null }) {
+function _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX = 'center', figureTop = null, insetLeftPt = 0 }) {
   if (!outsideFigure || !Number.isFinite(scaleDenom) || scaleDenom <= 0) return null;
   if (!mapBounds || !Number.isFinite(mapBounds.width) || !Number.isFinite(mapBounds.height)) return null;
 
@@ -229,7 +229,9 @@ function _buildPlannerTransform({ outsideFigure, scaleDenom, mapBounds, alignX =
   // Center polygon within mapBounds — same on both formats. alignX:'left'
   // flushes it to mapBounds.x so the drawn figure (left-aligned with the same
   // value by its generator) and this search polygon stay coincident.
-  const offsetX = mapBounds.x + (alignX === 'left' ? 0 : (mapBounds.width  - polyWidthPt)  / 2);
+  // 'left' flushes to the left edge PLUS the format's clearance from the margin;
+  // centring is symmetric, so the clearance leaves it where it was.
+  const offsetX = mapBounds.x + (alignX === 'left' ? (insetLeftPt || 0) : (mapBounds.width  - polyWidthPt)  / 2);
   // Vertical position is the format's own rule, not a constant. The PDF fits the
   // figure into the area BELOW its title band (so it sits band/2 under centre);
   // the DXF centres it and only pushes it down far enough to clear the band.

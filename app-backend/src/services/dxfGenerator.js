@@ -77,7 +77,7 @@ import { rectangleOverlapsPolygon, lineSegmentsIntersect } from './dxfGeometry.j
 import { selectTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-shared/tickMarks.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
 import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER } from '../utils/si727Constants.js'
-import { resolvePlanSheeting, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js'
+import { resolvePlanSheeting, FIGURE_MARGIN_MM, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js'
 import { SI727_SCALE_LADDER } from '../../../app-shared/si727Scales.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 import { endorsementShiftPt } from './marginStack.js'
@@ -1952,10 +1952,14 @@ export function generateDXF(options, logger) {
   // band, and never so far that it overruns the content bottom.
   // alignX 'left' pins the content area to the figure's LEFT edge (cntL = dL),
   // leaving the entire right-hand column free for the Schedule of Areas.
-  const contentCX = dxfAlignX === 'left' ? dL + contentW / 2 : dCX;   // drawing centered horizontally
+  // The figure keeps FIGURE_MARGIN_MM of open paper from the left/right/bottom
+  // margins (its polygon and beacons must not touch the drawing margin); the
+  // resolver chose the scale with that already taken out of the area.
+  const figClearG = mm(FIGURE_MARGIN_MM);
+  const contentCX = dxfAlignX === 'left' ? dL - figClearG + contentW / 2 : dCX;   // drawing centered horizontally
   const _naturalCY = (dT + dB) / 2;                   // figure centred in content
   const _desiredCY = dT - contentH / 2 + titleBandH;  // figure top at cntT − band
-  const _maxCY     = dB + contentH / 2;               // figure bottom at cntB (don't overrun)
+  const _maxCY     = dB + contentH / 2 - figClearG;   // figure bottom a clearance above cntB (don't overrun)
   const contentCY  = Math.min(_maxCY, Math.max(_naturalCY, _desiredCY));
 
   // Page edges (outer border)
@@ -2168,9 +2172,10 @@ export function generateDXF(options, logger) {
     // as it takes to clear the title band (contentCY above), and never past the
     // content bottom.
     figureTop:  (polyH) => Math.min(
-      contentHeightPt - polyH,
+      contentHeightPt - polyH - figClearG * M_TO_PT,
       Math.max((contentHeightPt - polyH) / 2, titleBandH * M_TO_PT),
     ),
+    insetLeftPt: figClearG * M_TO_PT,
   });
 
   // Pre-seeded obstacles: same shift/flip.

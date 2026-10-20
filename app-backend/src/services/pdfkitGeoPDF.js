@@ -16,7 +16,7 @@ import { scheduleHeaderScale, scheduleHeaderBandPt, computeScheduleColumnWidths,
 import { scaleBarLayout, scaleBarFrame } from "../../../app-shared/scaleBar.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { splitBeaconName, labelParts } from "../../../app-shared/beaconName.js";
-import { resolvePlanSheeting, drawingAreaMm, FIGURE_MAX_FRACTION, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js';
+import { resolvePlanSheeting, drawingAreaMm, FIGURE_MARGIN_MM, FIGURE_MAX_FRACTION, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js';
 import { sheetContentMm } from '../../../app-shared/si727SheetSizes.js';
 import { certifyTopologyGate } from './dxfTopology.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
@@ -10845,6 +10845,7 @@ async function _generateGeoPDFInner(options, logger) {
   // The band actually reserved below; the planner polygon needs it to sit where
   // the figure is really drawn (see buildPlannerObstacles' figureTop).
   let _titleBandApplied = 0;
+  let _figureClearPt = 0;
 
   // ── Reserve a top band for the title block; fit the outside figure below it ──
   // The title block (GENERAL PLAN / of / SHEET / designation / figure description
@@ -10866,11 +10867,16 @@ async function _generateGeoPDFInner(options, logger) {
     const _FURNITURE_CLEARANCE = titleBandHeight(_titleBandH);
     const _band = Math.min(_FURNITURE_CLEARANCE, figureBounds.height * 0.5);
     _titleBandApplied = _band;
+    // Clear paper between the figure and the left, right and bottom margins: the
+    // figure's polygon and its beacons must not touch the drawing margin. (The top
+    // is the title band.) Matches FIGURE_MARGIN_MM in the shared resolver, which
+    // chose the scale with this inset already taken out of the area.
+    _figureClearPt = FIGURE_MARGIN_MM * MM_TO_PT;
     figureBounds = {
-      x: figureBounds.x,
+      x: figureBounds.x + _figureClearPt,
       y: figureBounds.y + _band,
-      width: figureBounds.width,
-      height: figureBounds.height - _band,
+      width: figureBounds.width - 2 * _figureClearPt,
+      height: figureBounds.height - _band - _figureClearPt,
     };
     logger.info(`[PDFKit] 📐 Reserved ${_band.toFixed(0)}pt title band (title ${_titleBandH.toFixed(0)}pt + furniture ${mapFurnitureMetrics(1).height.toFixed(0)}pt) — figure fitted below (figureBounds.y=${figureBounds.y.toFixed(0)}, h=${figureBounds.height.toFixed(0)})`);
   }
@@ -11866,7 +11872,8 @@ async function _generateGeoPDFInner(options, logger) {
     alignX:     figAlignX,   // must match the drawn figure's alignment (see sizeFigureBox)
     // sizeFigureBox centres the figure in the area BELOW the title band, so its
     // top is band + half the slack there -- not the centre of the whole area.
-    figureTop:  (polyH) => _titleBandApplied + (mapBounds.height - _titleBandApplied - polyH) / 2,
+    figureTop:  (polyH) => _titleBandApplied + (mapBounds.height - _titleBandApplied - _figureClearPt - polyH) / 2,
+    insetLeftPt: _figureClearPt,   // 'left' alignment sits that far in from the margin
   });
   // mapFeatureBounds.pdfPoints feeds the planner's polygon obstacle list, so
   // it must use the planner polygon (not _topoPolyPts). parcelSegments
@@ -11971,7 +11978,7 @@ async function _generateGeoPDFInner(options, logger) {
   //   2. ONLY if already at the largest sheet size, try the next higher scale
   //      denominator.
   // =========================================================================
-  const MAX_SCALE_UP_ATTEMPTS = 1;
+  const MAX_SCALE_UP_ATTEMPTS = 2;
   let suggestedScale = null;
 
   if (blockPositions.needsScaleUp) {

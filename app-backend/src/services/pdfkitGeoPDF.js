@@ -34,7 +34,8 @@ import { planSheetLayout } from './sheetLayoutPlanner.js';
 import { findBlockPosition } from './dxfBlockPlacer.js';
 import { drawSubjectAdjoiningFeatures } from './adjoiningFeatures.js';
 import { buildPolygonForPlanner, buildPlannerObstacles, chooseFigureAlignX } from './polygonForPlanner.js';
-import { measureFigureWhitespace, subdivideStripsForCap, levelScheduleTables, seatScheduleAsComposite } from './scheduleStrategy.js';
+import { marginStackSlots } from './marginStack.js';
+import { measureFigureWhitespace, subdivideStripsForCap, levelScheduleTables, seatScheduleAsComposite, balanceScheduleTables } from './scheduleStrategy.js';
 import {
   closeLoRing,
   sheetOutsideFigure,
@@ -5873,7 +5874,7 @@ export function calculateBlockPositions(
   // split into multiple side-by-side tables.
   const _schedAvailableHeight = mapBounds.height - 28; // 14pt margin top + bottom
   const _schedTableSpacing    = 10; // pt gap between side-by-side tables
-  const _schedNeedsSplit      = _schedSingleColHeight > _schedAvailableHeight && schedRows > 0;
+  let   _schedNeedsSplit      = _schedSingleColHeight > _schedAvailableHeight && schedRows > 0;
   let schedWidth, schedHeight, _schedNumCols, _schedRowsPerCol;
   if (_schedNeedsSplit) {
     // Link each sub-table's height to the DRAWING height, not an arbitrary
@@ -5924,7 +5925,7 @@ export function calculateBlockPositions(
   // their rects can be excluded from the whitespace: those are pre-placed, not
   // engine-placed, so nothing will move them out of the schedule's way later.
   const _seatScheduleInStrips = (obstacles = []) => {
-    if (!(_schedNeedsSplit && schedRows > 0)) return;
+    if (!(schedRows > 0)) return;
     // Take the figure's extent from the POLYGON, not from mapFeatureBounds'
     // x/y/width/height. Those fields do not mean the same thing in both callers:
     // the PDF fills them with the drawn figure box, but the DXF passes the whole
@@ -5965,6 +5966,41 @@ export function calculateBlockPositions(
         },
         contentArea: _contentArea,
       });
+
+      // A schedule that fits the sheet height is not "split", yet one that is
+      // nearly as tall as the sheet (fcmag3: 143 rows, 1827pt of 2240pt) needs a
+      // whole column of clear paper. Beside a wide figure no such column exists,
+      // the engine finds no slot, and the fallback drops it top-left over the
+      // figure -- while the DXF, planning at a different scale, finds a corner.
+      // So when a tall single column fits NO whitespace strip, take the strip
+      // path for it too: split it into columns that do. Short schedules are left
+      // to the engine as before, and a failed seating restores the single column.
+      let _forcedSplit = false;
+      const _orig = { schedWidth, schedHeight, _schedNumCols, _schedRowsPerCol };
+      if (!_schedNeedsSplit) {
+        if (_schedSingleColHeight < _contentArea.h * 0.5) return;
+        const _whole = seatScheduleAsComposite({
+          strips: [_strips.left, _strips.right, _strips.bottom, _strips.top],
+          numCols: 1, totalRows: schedRows,
+          colWidth: _schedSingleColWidth, spacing: _schedTableSpacing,
+          headerHeight: _SCHED_CHROME, rowHeight: _SCHED_ROW,
+          obstacles, bounds: _contentArea,
+        });
+        if (_whole) return;                    // fits whole: the engine places it
+        _schedNeedsSplit = true;
+        _forcedSplit = true;
+        _schedNumCols    = 2;
+        _schedRowsPerCol = Math.ceil(schedRows / _schedNumCols);
+        schedHeight = _SCHED_CHROME + _schedRowsPerCol * _SCHED_ROW;
+        schedWidth  = _schedNumCols * _schedSingleColWidth + (_schedNumCols - 1) * _schedTableSpacing;
+        logger.info(`[PDFKit] 📊 Tall single-column schedule (${_schedSingleColHeight.toFixed(0)}pt) fits no whitespace strip — seating it as columns instead`);
+      }
+      const _restoreIfForced = () => {
+        if (_forcedSplit && !_schedStripTables) {
+          _schedNeedsSplit = false;
+          ({ schedWidth, schedHeight, _schedNumCols, _schedRowsPerCol } = _orig);
+        }
+      };
       // Side strips first — one tall column down each side is the General Plan
       // look — then the horizontal bands above and below the figure, which a
       // left-aligned wide figure leaves as the only remaining room. (The helper
@@ -6082,6 +6118,7 @@ export function calculateBlockPositions(
           `(${_slots.length} slot(s)) — keeping the composite path`
         );
       }
+      _restoreIfForced();
     }
   };
 
@@ -6355,13 +6392,9 @@ export function calculateBlockPositions(
       mandatory: true,
       preferredZone: _nextZone(),
     },
-    {
-      name: "sgSignature",
-      width: sgWidth,
-      height: sgHeight,
-      mandatory: false,
-      preferredZone: _nextZone(),
-    },
+    // sgSignature is NOT an engine block: it has a fixed slot in the right
+    // margin, centred above the endorsements (see marginStack.js), so the map
+    // area keeps the whitespace it used to cost.
     // Party-wall servitude statement — last in priority, and only present on a
     // General Plan that actually has rows. Absent blocks are simply not placed,
     // so diagrams / working plans / servitude-free plans leave every other block
@@ -6813,7 +6846,7 @@ export function calculateBlockPositions(
 
   const surveyStatementPos = _pos("surveyStatement", ssWidth, ssHeight);
 
-  const sgSignaturePos = _pos("sgSignature", sgWidth, sgHeight);
+  const sgSignaturePos = marginStackSlots(mapBounds, sgWidth, sgHeight).sgSignature;
 
   const servitudeStatementPos = svHasRows
     ? { ..._pos("servitudeStatement", svWidth, svHeight), columns: svColumns }
@@ -6987,14 +7020,40 @@ export function calculateBlockPositions(
         { searchOnly: true },
       );
       if (_schedSearch?.composite && Array.isArray(_schedSearch.placedTables) && _schedSearch.placedTables.length > 0) {
+        // Balance HERE, once, so PDF and DXF both consume the same tables. This
+        // used to run at draw time in the DXF only, in its own frame, which is
+        // why the two formats laid the same schedule out differently. The guards
+        // in balanceScheduleTables (content bounds, sibling blocks and tables,
+        // the real figure) are what make a mirror safe on a wide pool too.
+        let _balancedTables = _schedSearch.placedTables;
+        if (_collisionPolyPts?.length >= 3) {
+          const _px = _collisionPolyPts.map((p) => p.x);
+          const _figCX = (Math.min(..._px) + Math.max(..._px)) / 2;
+          const _otherBlocks = [
+            titleBlockPos, outsideFigurePos, beaconPos, scaleBarPos,
+            surveyStatementPos, northArrowPos, sgSignaturePos, servitudeStatementPos,
+            ...(tickMarkBounds || []),
+          ].filter((b) => b && b.width > 0 && b.height > 0);
+          _balancedTables = balanceScheduleTables(
+            _schedSearch.placedTables, _figCX,
+            mapBounds.x + 14, mapBounds.x + mapBounds.width - 14,
+            _otherBlocks, _collisionPolyPts, { yDown: true },
+          );
+        }
+        const _bx0 = Math.min(..._balancedTables.map((t) => t.x));
+        const _by0 = Math.min(..._balancedTables.map((t) => t.y));
+        const _bx1 = Math.max(..._balancedTables.map((t) => t.x + t.width));
+        const _by1 = Math.max(..._balancedTables.map((t) => t.y + t.height));
         scheduleOfAreasFinal = {
-          x:      _schedSearch.composite.x,
-          y:      _schedSearch.composite.y,
-          width:  _schedSearch.composite.width,
-          height: _schedSearch.composite.height,
-          placedTables: _schedSearch.placedTables,
+          x:      _bx0,
+          y:      _by0,
+          width:  _bx1 - _bx0,
+          height: _by1 - _by0,
+          placedTables: _balancedTables,
           standsPlaced:  _schedSearch.standsPlaced,
           missingStands: _schedSearch.missingStands,
+          // The planner has now balanced; the DXF must not mirror a second time.
+          scheduleBalanced: true,
         };
         logger.info(`[PDFKit] 📊 Planner-side schedule search: ${_schedSearch.placedTables.length} sub-tables at composite (${_schedSearch.composite.x.toFixed(0)}, ${_schedSearch.composite.y.toFixed(0)}) ${_schedSearch.composite.width.toFixed(0)}×${_schedSearch.composite.height.toFixed(0)} (${_schedSearch.standsPlaced}/${_schedSearch.standsPlaced + _schedSearch.missingStands} stands)`);
       } else {

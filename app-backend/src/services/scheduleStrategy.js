@@ -150,14 +150,34 @@ export function shouldAdoptResplit({ resplitTables, missingStandCount, figurePol
   return !overlapsSibling;
 }
 
-export function balanceScheduleTables(tables, figureCX, contentL, contentR, obstacles = []) {
+export function balanceScheduleTables(
+  tables, figureCX, contentL, contentR, obstacles = [], figurePolygon = null,
+  { yDown = false } = {},
+) {
   if (!Array.isArray(tables) || tables.length < 2) return tables;
   const half = Math.ceil(tables.length / 2);
 
-  // Rect overlap with `y` = top edge, extending downward by `height` (DXF south-up).
-  const overlaps = (a, b) =>
-    a.x < b.x + b.width && a.x + a.width > b.x &&
-    (a.y - a.height) < b.y && a.y > (b.y - b.height);
+  // Everything is compared as an axis-aligned box with (x, y) = min corner.
+  // `yDown` frames (the PDF planner: y grows downward, y = top edge) already are;
+  // the DXF south-up frame has `y` = TOP edge extending DOWN by `height`, so its
+  // min corner is y - height. One helper, so the two formats cannot disagree
+  // about what "overlap" means.
+  const box = (r) => (yDown
+    ? { x: r.x, y: r.y, width: r.width, height: r.height }
+    : { x: r.x, y: r.y - r.height, width: r.width, height: r.height });
+  const overlaps = (a, b) => {
+    const A = box(a), B = box(b);
+    return A.x < B.x + B.width && A.x + A.width > B.x &&
+           A.y < B.y + B.height && A.y + A.height > B.y;
+  };
+
+  // Mirroring across the centre line is only a proxy for "the other side is
+  // free". An irregular figure juts past its own centre line, so a mirrored
+  // table can land on the figure itself; and the destination may already hold a
+  // sibling table (kept or previously mirrored). Check both against the final
+  // position, not just the sibling bottom-zone blocks in `obstacles`.
+  const hasFigure = Array.isArray(figurePolygon) && figurePolygon.length >= 3;
+  const onFigure = (c) => hasFigure && rectangleOverlapsPolygon(box(c), figurePolygon, 0);
 
   const out = tables.map((t) => ({ ...t }));
   let movedAny = false;
@@ -168,7 +188,10 @@ export function balanceScheduleTables(tables, figureCX, contentL, contentR, obst
     const candidate = { x: mx, y: my, width: t.width, height: t.height };
     const fitsContent = mx >= contentL && (mx + t.width) <= contentR;
     const clear = obstacles.every((o) => !overlaps(candidate, o));
-    if (fitsContent && clear) { out[i].x = mx; out[i].y = my; movedAny = true; }
+    const clearOfSiblings = out.every((s, j) => j === i || !overlaps(candidate, s));
+    if (fitsContent && clear && clearOfSiblings && !onFigure(candidate)) {
+      out[i].x = mx; out[i].y = my; movedAny = true;
+    }
   }
   return movedAny ? out : tables;
 }

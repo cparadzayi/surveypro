@@ -195,6 +195,47 @@ describe('balanceScheduleTables', () => {
     expect(out[1].x).toBe(200);        // mirror still applied
     expect(out[1].y).toBe(800);
   });
+
+  // An irregular figure juts past its own centre line, so "mirror across the
+  // centre" can land the table on the figure. Frame: tables have y = TOP edge;
+  // the polygon is in the same frame, so the table occupies y∈[y-height, y].
+  test('skips the mirror when the destination overlaps the figure polygon', () => {
+    const tables = [t(700, 800), t(700, 560)];
+    // Mirror destination is x∈[200,300], y∈[600,800]; this lobe sits inside it.
+    const lobe = [{ x: 250, y: 650 }, { x: 400, y: 650 }, { x: 400, y: 750 }, { x: 250, y: 750 }];
+    expect(balanceScheduleTables(tables, 500, 0, 1000, [], lobe)).toBe(tables);
+  });
+
+  test('still mirrors when the figure polygon is clear of the destination', () => {
+    const tables = [t(700, 800), t(700, 560)];
+    const clearFigure = [{ x: 400, y: 650 }, { x: 600, y: 650 }, { x: 600, y: 750 }, { x: 400, y: 750 }];
+    const out = balanceScheduleTables(tables, 500, 0, 1000, [], clearFigure);
+    expect(out[1].x).toBe(200);
+  });
+
+  // The PDF planner is y-DOWN (y = top-left, extending +height); the DXF is
+  // south-up (y = TOP, extending down). The same layout must decide the same way
+  // in both, or the two formats stop being congruent.
+  test('y-down frame: mirrors, and rejects a figure lobe at the same place', () => {
+    const tables = [t(700, 600), t(700, 860)];            // y-down: occupy y∈[600,800] and [860,1060]
+    const out = balanceScheduleTables(tables, 500, 0, 1000, [], null, { yDown: true });
+    expect(out[1]).toMatchObject({ x: 200, y: 600 });      // top-aligned to tables[0]
+    const lobe = [{ x: 250, y: 650 }, { x: 400, y: 650 }, { x: 400, y: 750 }, { x: 250, y: 750 }];
+    expect(balanceScheduleTables(tables, 500, 0, 1000, [], lobe, { yDown: true })).toBe(tables);
+  });
+
+  test('y-down frame: an obstacle below the destination does not block it', () => {
+    const tables = [t(700, 600), t(700, 860)];
+    const below = { x: 150, y: 820, width: 200, height: 100 };  // y∈[820,920], clear of [600,800]
+    expect(balanceScheduleTables(tables, 500, 0, 1000, [below], null, { yDown: true })[1].x).toBe(200);
+  });
+
+  test('skips the mirror when the destination already holds a sibling table', () => {
+    // Table 2 mirrors to x=700,y=800 — exactly where table 0 already sits.
+    const tables = [t(700, 800), t(700, 560), t(200, 800)];
+    const out = balanceScheduleTables(tables, 500, 0, 1000);
+    expect(out[2]).toEqual(t(200, 800));   // not moved onto its sibling
+  });
 });
 
 import { subdivideStripsForCap } from '../scheduleStrategy.js';

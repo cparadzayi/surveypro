@@ -80,6 +80,7 @@ import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_F
 import { resolvePlanSheeting, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js'
 import { SI727_SCALE_LADDER } from '../../../app-shared/si727Scales.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
+import { endorsementShiftPt } from './marginStack.js'
 import { roundBearingSouth } from '../utils/zim-geo.js'
 import { emitSubjectAdjoiningFeaturesDxf } from './adjoiningFeaturesDxf.js'
 import {
@@ -2080,7 +2081,9 @@ export function generateDXF(options, logger) {
   // Fills the right-margin strip from the drawing-area right margin (endDivX)
   // out to the paper edge (pageR), and from the top margin (cntT) to the bottom
   // margin (cntB). Title + all rules are drawn inside drawEndorsementZone.
-  drawEndorsementZone(endDivX, pageR, cntT, cntB);
+  // The SG "Approved" box sits above the table in the same margin (marginStack.js),
+  // so the table starts below it plus a gap -- the same shift the PDF planner applies.
+  drawEndorsementZone(endDivX, pageR, cntT - pt(endorsementShiftPt(SURVEYOR_GENERAL_BOX.height)), cntB);
 
   // ── C) BOTTOM ZONE — topological emission (3-v4) ──
   // Replaces the pre-3-v4 fixed bottom-zone partition. All five blocks
@@ -2437,7 +2440,7 @@ export function generateDXF(options, logger) {
   const _placedTablesBalanced = _placedTablesGround
     ? (_plannerAlreadyBalanced
         ? _placedTablesGround
-        : balanceScheduleTables(_placedTablesGround, dCX, cntL, cntR, _scheduleObstacles))
+        : balanceScheduleTables(_placedTablesGround, dCX, cntL, cntR, _scheduleObstacles, figurePolygon))
     : null;
 
   // Sibling bottom-zone blocks the re-split search must NOT land on (the planner

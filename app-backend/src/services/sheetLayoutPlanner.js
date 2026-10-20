@@ -15,6 +15,8 @@
  */
 
 import { calculateBlockPositions } from './pdfkitGeoPDF.js';
+import { marginStackSlots } from './marginStack.js';
+import BLOCKS from '../../../app-shared/block-definitions.js';
 
 /**
  * Build a fake PDFKit-doc-like object whose widthOfString delegates to the
@@ -98,12 +100,11 @@ export function planSheetLayout(args) {
   // Endorsement block — fixed right-margin position. Mirrors the inline
   // computation in drawEndorsementBlock (which is now rewired to consume
   // this slot in Task 5). 150 mm × 150 mm at top-right of the map area.
-  blockPositions.endorsement = {
-    x: mapBounds.x + mapBounds.width,
-    y: mapBounds.y,
-    width: 150 * 2.835,  // 150 mm → PDF points
-    height: 150,
-  };
+  // The SG "Approved" box sits above it, centred in the same margin, so the
+  // endorsement table starts below the box plus a gap (marginStack.js).
+  blockPositions.endorsement = marginStackSlots(
+    mapBounds, BLOCKS.SURVEYOR_GENERAL_BOX.width, BLOCKS.SURVEYOR_GENERAL_BOX.height,
+  ).endorsement;
 
   return blockPositions;
 }

@@ -6492,9 +6492,11 @@ export function calculateBlockPositions(
     },
   });
 
-  // The group prefers the strip below the title band, and is pre-placed there
-  // unless it would sit on the figure. The whole group is reserved under the
-  // "scaleBar" name, so the engine moves the pair as a unit if it has to.
+  // The pair PREFERS the strip below the title band, side by side, and each is
+  // pre-placed at its own slot there unless that slot sits on the figure. They are
+  // independent from then on: one that cannot stay is placed by the engine on its
+  // own, without dragging the other off a perfectly good slot (and without needing
+  // a free rect big enough for both).
   const _furniturePreferred = {
     name: "scaleBar",
     x: _titleSlot.x + (titleWidth - _furnitureWidth) / 2,
@@ -6502,23 +6504,21 @@ export function calculateBlockPositions(
     width: _furnitureWidth,
     height: _furnitureHeight,
   };
-  const _furnitureOverlapsPolygon = mapFeatureBounds?.pdfPoints?.length > 0 &&
-    rectangleOverlapsPolygon(_furniturePreferred, mapFeatureBounds.pdfPoints, 2);
-  const prePlacedScaleBar = _furnitureOverlapsPolygon ? null : _furniturePreferred;
-  const prePlacedNorthArrow = prePlacedScaleBar
-    ? _furnitureSlots(prePlacedScaleBar).northArrow
-    : null;
-  if (prePlacedScaleBar) {
-    logger.info(`[PDFKit] 📌 Map furniture pre-placed below title block (${prePlacedScaleBar.x.toFixed(0)}, ${prePlacedScaleBar.y.toFixed(0)})`);
-  } else {
-    logger.info(`[PDFKit] 🔄 Map furniture overlaps polygon below the title — group will be engine-placed`);
-    blockDescriptors.push({
-      name: "scaleBar",
-      width: _furnitureWidth,
-      height: _furnitureHeight,
-      mandatory: true,
-      preferredZone: _nextZone(),
-    });
+  const _preferredSlots = _furnitureSlots(_furniturePreferred);
+  const _onFigure = (r) => mapFeatureBounds?.pdfPoints?.length > 0 &&
+    rectangleOverlapsPolygon(r, mapFeatureBounds.pdfPoints, 2);
+  const prePlacedScaleBar   = _onFigure(_preferredSlots.scaleBar)   ? null : _preferredSlots.scaleBar;
+  const prePlacedNorthArrow = _onFigure(_preferredSlots.northArrow) ? null : _preferredSlots.northArrow;
+  for (const [name, pre, w, h] of [
+    ["scaleBar",   prePlacedScaleBar,   scaleBarWidth,   scaleBarHeight],
+    ["northArrow", prePlacedNorthArrow, northArrowWidth, northArrowHeight],
+  ]) {
+    if (pre) {
+      logger.info(`[PDFKit] 📌 ${name} pre-placed below title block (${pre.x.toFixed(0)}, ${pre.y.toFixed(0)})`);
+    } else {
+      logger.info(`[PDFKit] 🔄 ${name} slot below the title overlaps the figure — engine-placed on its own`);
+      blockDescriptors.push({ name, width: w, height: h, mandatory: true, preferredZone: _nextZone() });
+    }
   }
 
   // Seat the schedule in the figure's whitespace now that the pre-placed blocks
@@ -6526,7 +6526,7 @@ export function calculateBlockPositions(
   // places afterwards is placed AROUND the result. The North arrow is NOT an
   // obstacle here — it yields to the schedule rather than the other way round.
   _seatScheduleInStrips(
-    [prePlacedTitleBlock, prePlacedScaleBar].filter(Boolean)
+    [prePlacedTitleBlock, prePlacedScaleBar, prePlacedNorthArrow].filter(Boolean)
   );
 
   // The North arrow no longer competes with the schedule for the top-right
@@ -6583,7 +6583,7 @@ export function calculateBlockPositions(
   // Merge ALL pre-placed blocks into engine placements (single source of truth)
   const placements = {
     titleBlock:  prePlacedTitleBlock,
-    northArrow:  prePlacedNorthArrow,
+    ...(prePlacedNorthArrow ? { northArrow: prePlacedNorthArrow } : {}),
     ...(prePlacedScaleBar ? { scaleBar: prePlacedScaleBar } : {}),
     ...(_schedOfdReservation ? { outsideFigureData: _schedOfdReservation } : {}),
     ..._enginePlacements,
@@ -6896,10 +6896,8 @@ export function calculateBlockPositions(
   // Map furniture: one rect was reserved for the pair, pre-placed below the
   // title or found by the engine. Both slots come out of it, so the bar and the
   // arrow stay side by side wherever the group ended up.
-  const _furnitureRect = _pos("scaleBar", _furnitureWidth, _furnitureHeight);
-  const _furniture = _furnitureSlots(_furnitureRect);
-  const scaleBarPos   = _furniture.scaleBar;
-  const northArrowPos = _furniture.northArrow;
+  const scaleBarPos   = _pos("scaleBar",   scaleBarWidth,   scaleBarHeight);
+  const northArrowPos = _pos("northArrow", northArrowWidth, northArrowHeight);
 
   const surveyStatementPos = _pos("surveyStatement", ssWidth, ssHeight);
 
@@ -6986,7 +6984,7 @@ export function calculateBlockPositions(
 
   // 6b. Block-to-polygon overlap check (2pt buffer — tight check for actual overlap)
   // Mandatory blocks that overlap the polygon trigger paper-size escalation.
-  const _mandatoryBlockNames = new Set(["outsideFigureData", "scheduleOfAreas", "scaleBar", "surveyStatement"]);
+  const _mandatoryBlockNames = new Set(["outsideFigureData", "scheduleOfAreas", "scaleBar", "northArrow", "surveyStatement"]);
   let _polyCollisionOnMandatory = false;
   const _collisionPolyPts = _gatePolyPts;
   if (_collisionPolyPts?.length > 0) {

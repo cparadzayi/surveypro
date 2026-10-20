@@ -1,5 +1,6 @@
 import { describe, test, expect } from '@jest/globals';
 import { planSheetLayout } from '../sheetLayoutPlanner.js';
+import { endorsementShiftPt } from '../marginStack.js';
 import { sampleMinimalPlan } from './fixtures/sampleMinimalPlan.js';
 import { sampleMaglasPlan } from './fixtures/sampleMaglasPlan.js';
 import BLOCKS from '../../../../app-shared/block-definitions.js';
@@ -191,12 +192,22 @@ describe('planSheetLayout — endorsement slot', () => {
   test('returns endorsement slot at right-margin position', () => {
     const r = plan(sampleMinimalPlan);
     expect(r.endorsement).toBeDefined();
-    // Per drawEndorsementBlock: top-left = (mapBounds.x + mapBounds.width, mapBounds.y),
-    // width = 150mm in PDF points (150 * 2.835), height = 150 PDF points.
+    // Left edge = the right edge of the drawing area; width = 150mm in PDF points
+    // (150 * 2.835), height = 150 PDF points. It starts BELOW the Surveyor-General
+    // "Approved" box, which sits above it in the same margin (marginStack.js).
     expect(r.endorsement.x).toBeCloseTo(A2_MAP_BOUNDS.x + A2_MAP_BOUNDS.width, 0);
-    expect(r.endorsement.y).toBeCloseTo(A2_MAP_BOUNDS.y, 0);
     expect(r.endorsement.width).toBeCloseTo(150 * 2.835, 1);
     expect(r.endorsement.height).toBeCloseTo(150, 0);
+    expect(r.endorsement.y).toBeCloseTo(
+      A2_MAP_BOUNDS.y + endorsementShiftPt(BLOCKS.SURVEYOR_GENERAL_BOX.height), 0);
+  });
+
+  test('puts the SG approval box in the margin, centred above the endorsement with a gap', () => {
+    const r = plan(sampleMinimalPlan);
+    const sg = r.sgSignature, end = r.endorsement;
+    expect(sg.x).toBeGreaterThanOrEqual(A2_MAP_BOUNDS.x + A2_MAP_BOUNDS.width);   // outside the map
+    expect(sg.x + sg.width / 2).toBeCloseTo(end.x + end.width / 2, 3);             // centred
+    expect(end.y - (sg.y + sg.height)).toBeGreaterThanOrEqual(20);                 // readable gap
   });
 });
 

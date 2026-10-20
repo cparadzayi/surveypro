@@ -320,6 +320,41 @@ describe('planSheetLayout — a tall single-column schedule is seated before the
     const t = r.scheduleOfAreas.placedTables[0];
     expect(overlap(t, { x: 400, y: 300, width: 500, height: 600 })).toBe(false);
   });
+
+  // The figure's beacon symbols and name labels (2459C, 2283T ...) stand out from
+  // its outline by tens of points, so a table 14pt off the outline landed on them.
+  // With room to spare it keeps well clear; it only comes down to 14pt when it must.
+  test('with room to spare, the schedule keeps well clear of the figure (room for its labels)', () => {
+    const t = r.scheduleOfAreas.placedTables[0];
+    const figureRight = 900, figureLeft = 400;
+    const gap = Math.min(Math.abs(t.x - figureRight), Math.abs((t.x + t.width) - figureLeft));
+    expect(t.x >= figureRight ? t.x - figureRight : figureLeft - (t.x + t.width)).toBeGreaterThanOrEqual(45);
+    expect(gap).toBeGreaterThan(0);
+  });
+
+  test('when the strip is tight it still seats, at the smaller clearance', () => {
+    // Figure pushed right so the right strip is only a little wider than the table
+    // itself: 60pt clearance cannot fit, 14pt can.
+    const tableW = r.scheduleOfAreas.placedTables[0].width;
+    const contentRight = A2_MAP_BOUNDS.x + A2_MAP_BOUNDS.width - 14;
+    const right = contentRight - (tableW + 20);           // leaves tableW + 20 beside the figure
+    const left = A2_MAP_BOUNDS.x + 14 + 20;               // and only 20pt on the other side
+    const tightPoly = [{ x: left, y: 300 }, { x: right, y: 300 }, { x: right, y: 900 }, { x: left, y: 900 }, { x: left, y: 300 }];
+    const f2 = sampleMinimalPlan;
+    const r2 = planSheetLayout({
+      metadata: f2.metadata, parcels, outsideFigureData: f2.outsideFigureData, beacons: f2.beacons,
+      mapBounds: A2_MAP_BOUNDS,
+      mapFeatureBounds: { x: left, y: 300, width: right - left, height: 600, pdfPoints: tightPoly },
+      scale: f2.scale, extent: { minX: 50000, maxX: 50100, minY: 2200000, maxY: 2200060 },
+      tickMarkBounds: [], figureBounds: { x: left, y: 300, width: right - left, height: 600 },
+      polyPts: tightPoly, measureText: fakeMeasure, logger: fakeLogger,
+    });
+    expect(r2.scheduleOfAreas.placedTables).toHaveLength(1);
+    const t2 = r2.scheduleOfAreas.placedTables[0];
+    expect(overlap(t2, { x: left, y: 300, width: right - left, height: 600 })).toBe(false);
+    expect(t2.x - right).toBeGreaterThanOrEqual(14);
+    expect(t2.x - right).toBeLessThan(45);                // it could not have the roomy clearance
+  });
 });
 
 describe('planSheetLayout — scheduleColumnWidthsPt override', () => {

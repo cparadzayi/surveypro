@@ -5955,7 +5955,7 @@ export function calculateBlockPositions(
   // Called once the fixed blocks (title, North arrow, scale bar) are known, so
   // their rects can be excluded from the whitespace: those are pre-placed, not
   // engine-placed, so nothing will move them out of the schedule's way later.
-  const _seatScheduleInStrips = (obstacles = []) => {
+  const _seatScheduleInStrips = (obstacles = [], _figClear = 14) => {
     if (!(schedRows > 0)) return;
     // Take the figure's extent from the POLYGON, not from mapFeatureBounds'
     // x/y/width/height. Those fields do not mean the same thing in both callers:
@@ -5984,12 +5984,13 @@ export function calculateBlockPositions(
         x: mapBounds.x + 14, y: mapBounds.y + 14,
         w: mapBounds.width - 28, h: mapBounds.height - 28,
       };
-      // Cut the strips against the figure INFLATED by the same 14pt the
-      // placement engine keeps as edge padding. Two reasons: a schedule butted
-      // flush against the figure reads badly, and the collision polygon runs a
-      // hair wider than the bbox (fractions of a point), so a flush strip hands
-      // back a table that technically bites into the figure.
-      const _figClear = 14;
+      // Cut the strips against the figure INFLATED by `_figClear`: the room the
+      // figure's own ink needs, not just its outline. 14pt is the floor -- the
+      // placement engine's edge padding, and enough that a flush strip does not
+      // hand back a table that technically bites into the figure. Beacon symbols
+      // and their name labels (2459C, 2283T ...) stand out from the outline by
+      // more than that, so the caller asks for more whenever the strip has it
+      // (see _seatScheduleInStripsClear) and comes down to 14 only when it must.
       const _strips = measureFigureWhitespace({
         figureBBox: {
           x: _figBox.x - _figClear, y: _figBox.y - _figClear,
@@ -6578,9 +6579,20 @@ export function calculateBlockPositions(
   // afterwards is placed AROUND the result. The North arrow is NOT an obstacle
   // here: it yields to the schedule rather than the other way round, because its
   // corner is also the top of a side strip a tall schedule wants.
-  _seatScheduleInStrips(
-    [prePlacedTitleBlock, prePlacedScaleBar].filter(Boolean)
-  );
+  // Seat with the most clearance from the figure that still lets the schedule seat:
+  // the figure's beacon symbols and name labels reach well past its outline, and a
+  // table 14pt from the outline landed on them (maglas2283 sheet 1, with 345pt of
+  // free paper beside it). Each step down is only taken if the one above fails.
+  const _FIGURE_INK_CLEARANCES = [60, 45, 30, 14];
+  for (const _clear of _FIGURE_INK_CLEARANCES) {
+    _seatScheduleInStrips([prePlacedTitleBlock, prePlacedScaleBar].filter(Boolean), _clear);
+    if (_schedStripTables) {
+      if (_clear !== _FIGURE_INK_CLEARANCES[0]) {
+        logger.info(`[PDFKit] 📊 Schedule seated ${_clear}pt from the figure (more did not fit)`);
+      }
+      break;
+    }
+  }
 
   // The arrow takes its corner unless that sits on the figure or on what was just
   // seated (schedule tables, the reserved Outside Figure Data table); then it is

@@ -467,6 +467,33 @@ describe('subdivideStripsForCap — slots stay inside the drawing area', () => {
   });
 });
 
+describe('subdivideStripsForCap — band tables sit beside the main column', () => {
+  const CONTENT = { x: 14, y: 14, w: 2400, h: 1956 };
+  const COL_W = 535;
+  const args = { maxTableHeight: CONTENT.h, tableWidth: COL_W, spacing: 10,
+                 headerHeight: 65, rowHeight: 13, bounds: CONTENT };
+  // Figure spans x 100..1700; the side strip is to its right, the band above it.
+  const band = { x: 100, y: 14, w: 1600, h: 330 };
+
+  test('left-anchored band keeps the default: first table at the band left end', () => {
+    const [slot] = subdivideStripsForCap({ ...args, strips: [band] });
+    expect(slot.x).toBe(band.x);
+  });
+
+  test('right-anchored band seats its table at the end next to the side strip', () => {
+    const [slot] = subdivideStripsForCap({ ...args, strips: [{ ...band, anchor: 'right' }] });
+    expect(slot.x + slot.width).toBe(band.x + band.w - 10);   // spacing off the side strip
+    expect(slot.x).toBeGreaterThan(band.x);
+  });
+
+  test('right-anchored columns fill leftward from that end', () => {
+    const wide = { ...band, w: 1200, anchor: 'right' };       // room for two columns
+    const slots = subdivideStripsForCap({ ...args, strips: [wide] });
+    const xs = slots.map((t) => t.x).sort((a, b) => b - a);
+    expect(xs[0] - xs[1]).toBe(COL_W + 10);
+  });
+});
+
 // A split schedule reads as one table broken into columns, so the columns must
 // sit next to each other and share a top edge. Tiling each column into whatever
 // whitespace slot it happens to fit staggered them by 80mm on a real general

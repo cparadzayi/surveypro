@@ -247,7 +247,7 @@ export function subdivideStripsForCap({
     const y0 = Math.max(s.y, bounds.y);
     const x1 = Math.min(s.x + (s.w ?? s.width), bounds.x + (bounds.w ?? bounds.width));
     const y1 = Math.min(s.y + (s.h ?? s.height), bounds.y + (bounds.h ?? bounds.height));
-    return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+    return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0), anchor: s.anchor };
   };
 
   // Tile one clear vertical run into cap-limited, whole-row tables.
@@ -299,12 +299,28 @@ export function subdivideStripsForCap({
     const columns = Math.floor((width + spacing) / (tableWidth + spacing));
     if (columns < 1) continue;
 
-    const perColumn = [];
-    for (let c = 0; c < columns; c++) {
-      const x = strip.x + c * (tableWidth + spacing);
-      const tiles = clearRuns(x, strip.y, strip.y + height)
-        .flatMap(([top, bottom]) => tileRun(top, bottom));
-      perColumn.push({ x, tiles });
+    // Columns normally fill from the strip's left end. A strip can ask to fill
+    // from the RIGHT instead (`anchor: 'right'`): a band above or below the
+    // figure whose right end meets the side strip holding the main column wants
+    // its tables beside that column, not stranded at the far end of the band.
+    const buildColumns = (fromRight) => {
+      const out = [];
+      for (let c = 0; c < columns; c++) {
+        const x = fromRight
+          ? strip.x + width - spacing - tableWidth - c * (tableWidth + spacing)
+          : strip.x + c * (tableWidth + spacing);
+        const tiles = clearRuns(x, strip.y, strip.y + height)
+          .flatMap(([top, bottom]) => tileRun(top, bottom));
+        out.push({ x, tiles });
+      }
+      return out;
+    };
+    let perColumn = buildColumns(strip.anchor === 'right');
+    // An obstacle (e.g. the title block) can cover the anchored end of the band
+    // entirely. The band is then no use from that end, but it is not lost:
+    // fall back to filling from the other.
+    if (strip.anchor === 'right' && !perColumn.some((col) => col.tiles.length > 0)) {
+      perColumn = buildColumns(false);
     }
     if (perColumn.some((col) => col.tiles.length > 0)) prepared.push({ columns, perColumn });
   }

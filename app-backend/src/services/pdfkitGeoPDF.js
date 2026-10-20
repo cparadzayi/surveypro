@@ -6058,8 +6058,15 @@ export function calculateBlockPositions(
         return;
       }
 
+      // Bands above/below the figure hold what the side strips cannot. Seat them
+      // from the end that meets the side strip carrying the main column, so a
+      // remainder table sits beside its siblings rather than at the far end of
+      // the band. (Left-to-right is kept when only the left strip is usable.)
+      const _sideUsable = (st) => st && st.w >= _schedSingleColWidth;
+      const _bandAnchor = _sideUsable(_strips.right) ? 'right' : 'left';
       const _slots = subdivideStripsForCap({
-        strips: [_strips.left, _strips.right, _strips.bottom, _strips.top],
+        strips: [_strips.left, _strips.right,
+          { ..._strips.bottom, anchor: _bandAnchor }, { ..._strips.top, anchor: _bandAnchor }],
         maxTableHeight: _contentArea.h * SCHEDULE_MAX_HEIGHT_FRACTION,
         tableWidth: _schedSingleColWidth,
         spacing: _schedTableSpacing,
@@ -6283,6 +6290,21 @@ export function calculateBlockPositions(
     const centerX = mapBounds.x + (mapBounds.width - titleWidth) / 2;
     // scan Y rows from top downward (stop at mid-map so it stays a title block)
     const maxY = mapBounds.y + mapBounds.height / 2 - titleHeight;
+    // A tall schedule wants a whole column of clear paper beside the figure. A
+    // title block centred over a figure narrower than itself reaches into that
+    // column and costs it the title's height -- enough, on fcmag3, to turn one
+    // 143-row column into 123 rows plus a remainder stranded elsewhere. So
+    // prefer slots that stay above the figure rather than over a side strip.
+    // This only reorders candidates; if none clear the strips, the original
+    // centre-first order still applies.
+    let _intrudesStrip = () => false;
+    if (_titlePolyPts.length >= 3 && _schedSingleColHeight >= (mapBounds.height - 28) * 0.5) {
+      const xs = _titlePolyPts.map((p) => p.x);
+      const figL = Math.min(...xs) - 14, figR = Math.max(...xs) + 14;
+      const rightUsable = (mapBounds.x + mapBounds.width - 14) - figR >= _schedSingleColWidth;
+      const leftUsable  = figL - (mapBounds.x + 14) >= _schedSingleColWidth;
+      _intrudesStrip = (tx) => (rightUsable && tx + titleWidth > figR) || (leftUsable && tx < figL);
+    }
     for (let ty = mapBounds.y + _TITLE_EDGE; ty <= maxY; ty += 20) {
       // build candidate X list: center first, then alternate left/right in 40pt steps
       const candidates = [centerX];
@@ -6290,6 +6312,7 @@ export function calculateBlockPositions(
         if (centerX + dx + titleWidth <= mapBounds.x + mapBounds.width - _TITLE_MARGIN) candidates.push(centerX + dx);
         if (centerX - dx >= mapBounds.x + _TITLE_MARGIN) candidates.push(centerX - dx);
       }
+      candidates.sort((a, b) => Number(_intrudesStrip(a)) - Number(_intrudesStrip(b)));   // stable
       for (const tx of candidates) {
         if (tx < mapBounds.x + _TITLE_MARGIN || tx + titleWidth > mapBounds.x + mapBounds.width - _TITLE_MARGIN) continue;
         const rect = { x: tx, y: ty, width: titleWidth, height: titleHeight };

@@ -280,7 +280,13 @@ export function scaleBarFrame(layout, slot) {
   const widthPt = pt(layout.reserved.widthMm);
   const heightPt = pt(layout.reserved.heightMm);
   const originX = slot.x + (slot.width - widthPt) / 2 - pt(layout.reserved.xMm);
-  const originY = slot.y + (slot.height - heightPt) / 2 + pt(layout.reserved.yMm);
+  // The layout's y runs UP from the bar's bottom rule, with the caption at negative
+  // y: the reserved box spans [yMm, yMm + heightMm]. Its TOP is the labels, and on
+  // the page that top must sit at the slot's top (plus any centring slack), so the
+  // origin is that far DOWN -- yMm + heightMm. Using yMm alone put the origin a full
+  // bar-height too high: the bar printed in the strip ABOVE its slot, over whatever
+  // the planner had kept that slot clear of (a figure vertex, in the field).
+  const originY = slot.y + (slot.height - heightPt) / 2 + pt(layout.reserved.yMm + layout.reserved.heightMm);
   return {
     widthPt,
     heightPt,

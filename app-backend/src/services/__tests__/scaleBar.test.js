@@ -2,6 +2,7 @@ import {
   SI727_SCALE_BAR,
   scaleBarLayout,
   scaleDenominatorOf,
+  scaleBarFrame,
   estimateTextWidthMm,
 } from '../../../../app-shared/scaleBar.js';
 
@@ -284,4 +285,55 @@ describe('labels and the reserved slot', () => {
 test('estimateTextWidthMm grows with length and with type size', () => {
   expect(estimateTextWidthMm('Metres', 2)).toBeGreaterThan(estimateTextWidthMm('0', 2));
   expect(estimateTextWidthMm('Metres', 3)).toBeGreaterThan(estimateTextWidthMm('Metres', 2));
+});
+
+// The planner reserves a slot and keeps it clear of the figure; the bar must be
+// drawn INSIDE that slot. scaleBarFrame's origin was one bar-height too high, so
+// the bar printed in the strip above its slot -- over a figure vertex, in the
+// field -- while the planner's collision checks passed on the empty slot below.
+describe('scaleBarFrame draws the bar inside the slot it was given', () => {
+  const PT = 72 / 25.4;
+
+  // The slot is the layout's own reserved box -- what a planner reserves -- placed
+  // at an arbitrary page position.
+  const slotFor = (L) => ({
+    x: 1000, y: 1960, width: L.reserved.widthMm * PT, height: L.reserved.heightMm * PT,
+  });
+
+  const extentOf = (denominator) => {
+    const L = scaleBarLayout(denominator);
+    const slot = slotFor(L);
+    const F = scaleBarFrame(L, slot);
+    const ys = [], xs = [];
+    for (const h of L.horizontals) { ys.push(F.Y(h.yMm)); xs.push(F.X(h.x0Mm), F.X(h.x1Mm)); }
+    for (const v of L.verticals) { ys.push(F.Y(v.y0Mm), F.Y(v.y1Mm)); xs.push(F.X(v.xMm)); }
+    for (const t of [...L.labels, L.caption, L.unitLabel].filter((t) => t && typeof t === 'object')) {
+      const top = F.textTop(t.yMm, t.heightMm);
+      ys.push(top, top + t.heightMm * PT);
+    }
+    // The unit label is the rightmost thing: it starts at xMm and runs widthMm.
+    xs.push(F.X(L.unitLabel.xMm) + (L.unitLabel.widthMm ?? 0) * PT);
+    return { slot, minY: Math.min(...ys), maxY: Math.max(...ys), minX: Math.min(...xs), maxX: Math.max(...xs) };
+  };
+
+  test.each([500, 750, 1000, 1250, 2000])('1:%i: nothing is drawn above or below the slot', (d) => {
+    const e = extentOf(d);
+    expect(e.minY).toBeGreaterThanOrEqual(e.slot.y - 0.01);
+    expect(e.maxY).toBeLessThanOrEqual(e.slot.y + e.slot.height + 0.01);
+  });
+
+  test.each([500, 750, 1000, 1250, 2000])('1:%i: the bar and its unit label stay within the slot width', (d) => {
+    const e = extentOf(d);
+    expect(e.minX).toBeGreaterThanOrEqual(e.slot.x - 0.01);
+    expect(e.maxX).toBeLessThanOrEqual(e.slot.x + e.slot.width + 0.5);
+  });
+
+  test('the labels along the top sit at the slot top, the caption inside its bottom', () => {
+    const L = scaleBarLayout(1000);
+    const slot = slotFor(L);
+    const F = scaleBarFrame(L, slot);
+    expect(F.textTop(L.labels[0].yMm, L.labels[0].heightMm)).toBeCloseTo(slot.y, 1);
+    const cap = L.caption;
+    expect(F.textTop(cap.yMm, cap.heightMm) + cap.heightMm * PT).toBeLessThanOrEqual(slot.y + slot.height + 0.01);
+  });
 });

@@ -6555,8 +6555,11 @@ export function calculateBlockPositions(
       width: northArrowWidth, height: northArrowHeight,
     },
   };
+  // 6pt, not 2: the bar and the arrow are drawn with their labels right up to the
+  // edge of the slot, and a beacon symbol or vertex letter sits just outside the
+  // figure's outline, so a 2pt gap reads as touching.
   const _onFigure = (r) => mapFeatureBounds?.pdfPoints?.length > 0 &&
-    rectangleOverlapsPolygon(r, mapFeatureBounds.pdfPoints, 2);
+    rectangleOverlapsPolygon(r, mapFeatureBounds.pdfPoints, 6);
   // True when the rects overlap or sit closer than `gap` -- an arrow butted
   // against a table is as unreadable as one on it.
   const _rectsHit = (a, b, gap = 0) =>
@@ -12207,8 +12210,13 @@ async function _generateGeoPDFInner(options, logger) {
     ].map(_asRect).filter(Boolean);
     const _occupied = [..._fixedObstacles, ..._tickRects];
     const _overlapsAnyTick = (r) => _tickRects.some((t) => rectanglesOverlap(r, t, 0));
+    // The same 6pt the finder below demands of a block it places. Checking a block
+    // that already sits at 0pt but only seating a relocated one at 6pt let a block
+    // stay 2-4pt off the figure -- close enough that a beacon symbol or a vertex
+    // letter drawn there touches it.
+    const _FIGURE_CLEARANCE = 6;
     const _overlapsFigure = (r) =>
-      _accurateFigurePoly ? rectangleOverlapsPolygon(r, _accurateFigurePoly, 0) : false;
+      _accurateFigurePoly ? rectangleOverlapsPolygon(r, _accurateFigurePoly, _FIGURE_CLEARANCE) : false;
     const _needsRelocation = (r) => _overlapsAnyTick(r) || _overlapsFigure(r);
     // Widest-first (matches DXF task ordering) so the hardest-to-fit blocks claim
     // whitespace before the smaller ones do.

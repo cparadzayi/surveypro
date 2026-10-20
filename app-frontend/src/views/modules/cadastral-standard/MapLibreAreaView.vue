@@ -2394,11 +2394,11 @@ let splitPartsSource: maplibregl.GeoJSONSource | null = null;
 const PART_COLORS = ['#4f46e5', '#0d9488'];
 
 /** The figure being split is the Outside Figure parcel, ring in Cape Lo. */
-const splitFigureRing = computed<{ y: number; x: number }[]>(() => {
+const splitFigureRing = computed<{ y: number; x: number; id?: string }[]>(() => {
   for (const p of savedParcels.value.values()) {
     const name = p.designation || p.stand;
     if (name && name.toLowerCase().includes('outside figure')) {
-      return ((p.metadata?.cape_lo_points as any[]) || []).map((pt: any) => ({ y: pt.y, x: pt.x }));
+      return ((p.metadata?.cape_lo_points as any[]) || []).map((pt: any) => ({ y: pt.y, x: pt.x, id: pt.id != null ? String(pt.id) : undefined }));
     }
   }
   return [];

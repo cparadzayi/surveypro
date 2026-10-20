@@ -12803,7 +12803,7 @@ export async function generateSheetedGeoPDF(options, logger) {
     const outsideFigureData = sheetOutsideFigureData(sheet);
     // This sheet's servitude rows where it has them, the plan's where it does
     // not, on a copy -- never mutating the shared `metadata` between sheets.
-    const perSheetMetadata = sheetMetadata(metadata, sheet);
+    const perSheetMetadata = sheetMetadata(metadata, sheet, orderedSheets);
 
     const result = await _generateGeoPDFInner({
       parcels,

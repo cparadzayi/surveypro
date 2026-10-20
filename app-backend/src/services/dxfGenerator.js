@@ -2957,7 +2957,7 @@ export function generateSheetedDXF(options, logger) {
         outsideFigureData: sheetOutsideFigureData(sheet),
         // A copy: `metadata` is shared by every sheet, and one sheet's servitude
         // rows written into it would leave the next sheet stating them.
-        metadata: sheetMetadata(metadata, sheet),
+        metadata: sheetMetadata(metadata, sheet, ordered),
         sheetInfo: sheetSheetInfo({ ...sheet, totalSheets }),
       },
       log

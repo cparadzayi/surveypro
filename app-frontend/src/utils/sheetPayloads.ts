@@ -228,7 +228,7 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
   // matching against a part ring must still use the RAW `split.newPoints`
   // objects, which are the ones actually aliased into the part rings.
   const augmentedTaken = [...takenNames]
-  const ringNames = (openRing(input.ring) || []).map((p) => p.name).filter((n): n is string => !!n)
+  const ringNames = (openRing(input.ring) || []).map((p) => p.name ?? p.id).filter((n): n is string => !!n)
   augmentedTaken.push(...ringNames)
   const namedNewPoints = nameCutPoints(split.newPoints, augmentedTaken)
 

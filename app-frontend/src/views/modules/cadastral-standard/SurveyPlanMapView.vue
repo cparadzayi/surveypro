@@ -2603,13 +2603,16 @@ const isPointInRing = (point: [number, number], ring: [number, number][]): boole
   return inside
 }
 
-function getOutsideFigureCapeLoRing(): Array<{ x: number; y: number }> | null {
+function getOutsideFigureCapeLoRing(): Array<{ x: number; y: number; id?: string }> | null {
   const outsideFigureParcel = getOutsideFigureParcel()
   const points = outsideFigureParcel?.metadata?.cape_lo_points
   if (!points || !Array.isArray(points) || points.length < 3) return null
 
   const ring = points
-    .map((p: any) => ({ x: Number(p.x), y: Number(p.y) }))
+    // The point's own name rides along (the figure's vertices are real, named
+    // beacons: M9, 2473A, 2283L ...). Dropping it here is what made a sheet's
+    // outside-figure table fall back to generated letters.
+    .map((p: any) => ({ x: Number(p.x), y: Number(p.y), id: p.id != null ? String(p.id) : undefined }))
     .filter((p: any) => Number.isFinite(p.x) && Number.isFinite(p.y))
 
   if (ring.length < 3) return null
@@ -2617,7 +2620,7 @@ function getOutsideFigureCapeLoRing(): Array<{ x: number; y: number }> | null {
   const first = ring[0]
   const last = ring[ring.length - 1]
   if (first.x !== last.x || first.y !== last.y) {
-    ring.push({ x: first.x, y: first.y })
+    ring.push({ x: first.x, y: first.y, id: first.id })
   }
   return ring
 }
@@ -4313,7 +4316,7 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
   const outsideFigureRing = isOutsideFigurePlan ? getOutsideFigureCapeLoRing() : null
   const storedCuts = outsideFigureParcel ? readCuts(outsideFigureParcel.metadata) : []
   if (outsideFigureParcel && outsideFigureRing && storedCuts.length > 0) {
-    const ring = outsideFigureRing.map(p => ({ y: p.y, x: p.x }))
+    const ring = outsideFigureRing.map(p => ({ y: p.y, x: p.x, id: p.id }))
     const stands: StandInput[] = []
     for (const p of parcels.value) {
       if (p.id === outsideFigureParcel.id) continue

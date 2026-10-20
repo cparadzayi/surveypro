@@ -65,6 +65,28 @@ describe('buildSheetPayloads', () => {
     }
   });
 
+  it("keeps the figure's real point names in each sheet's table instead of letters", () => {
+    // The outside figure's vertices are named beacons (2283L, M9, ZE ...). When the
+    // ring carries them they must reach the sheet's outside-figure table; letters
+    // are only the fallback for a point that has no name at all.
+    const named = ring.map((p, i) => ({ ...p, id: ['2283L', 'M9', 'ZE', '2463C'][i] }));
+    const out = buildSheetPayloads({ ...input(), ring: named });
+    if (!out.ok) throw new Error('expected ok');
+    const ids = out.sheets.flatMap((s) => s.vertices.map((v) => v.pointId));
+    for (const real of ['2283L', 'M9', 'ZE', '2463C']) expect(ids).toContain(real);
+    // No survey vertex fell back to a generated letter.
+    expect(ids.filter((id) => /^[A-Z]$/.test(id))).toEqual([]);
+    // The cut's own points are still C-numbered.
+    expect(ids.filter((id) => /^C\d+$/.test(id)).length).toBeGreaterThan(0);
+  });
+
+  it('never gives a cut point the name a real figure point already has', () => {
+    const named = ring.map((p, i) => ({ ...p, id: ['C1', 'M9', 'ZE', '2463C'][i] }));
+    const out = buildSheetPayloads({ ...input(), ring: named });
+    if (!out.ok) throw new Error('expected ok');
+    expect(out.sheets[0].newPoints.map((p) => p.name)).not.toContain('C1');
+  });
+
   it('names the created points once for the whole plan, avoiding taken names', () => {
     const out = buildSheetPayloads({ ...input(), takenNames: ['C1'] });
     if (!out.ok) throw new Error('expected ok');

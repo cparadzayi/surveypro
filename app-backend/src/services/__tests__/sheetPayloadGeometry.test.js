@@ -187,12 +187,31 @@ describe('sheetMetadata', () => {
     expect(merged.other).toBe('kept')
   })
 
-  test("does not erase the plan's statement when the sheet has no rows", () => {
+  test("does not erase the plan's statement when the payloads carry no rows at all", () => {
     // The regression: no rows meant `{ rows: [] }`, so a sheet stated NO
     // servitude at all even though the plan had them. Worse than dropping the
-    // per-sheet override -- it destroyed the whole-plan statement.
+    // per-sheet override -- it destroyed the whole-plan statement. When NO sheet
+    // has rows the payloads did not compute them, so the plan's statement stays.
     expect(sheetMetadata(plan, {}).servitudeStatement.rows).toHaveLength(1)
     expect(sheetMetadata(plan, { servitudeRows: [] }).servitudeStatement.rows).toHaveLength(1)
+    const none = [{ servitudeRows: [] }, { servitudeRows: [] }]
+    expect(sheetMetadata(plan, none[0], none).servitudeStatement.rows).toHaveLength(1)
+  })
+
+  test('a sheet with none of the servitude stands states none when another sheet has them', () => {
+    // The table belongs only on the sheet holding the parcels it describes. Sheet 2
+    // has no servitude stands; sheet 1 does. Sheet 2 must not print the plan's table.
+    const sheet1 = { servitudeRows: [{ stands: '1686', boundary: 'A - B' }] }
+    const sheet2 = { servitudeRows: [] }
+    const all = [sheet1, sheet2]
+    expect(sheetMetadata(plan, sheet1, all).servitudeStatement.rows).toEqual(sheet1.servitudeRows)
+    expect(sheetMetadata(plan, sheet2, all).servitudeStatement.rows).toEqual([])
+    expect(sheetMetadata(plan, sheet2, all).other).toBe('kept')
+  })
+
+  test('a sheet that did not carry the field keeps the plan statement even if others have rows', () => {
+    const all = [{ servitudeRows: [{ stands: '1686', boundary: 'A - B' }] }, {}]
+    expect(sheetMetadata(plan, all[1], all).servitudeStatement.rows).toHaveLength(1)
   })
 
   test('never mutates the shared plan metadata between sheets', () => {

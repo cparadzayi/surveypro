@@ -186,17 +186,32 @@ export function sheetOutsideFigureData(sheet) {
  * sheet's rows into it would leave the next sheet stating the first sheet's
  * servitudes.
  *
- * The override is CONDITIONAL, and that is the point. A payload that carries no
+ * The override is CONDITIONAL, and that is the point. `sheets` is the full set the
+ * sheet belongs to; it lets an empty list mean "none here" instead of "unknown".
+ *
+ * (Original note:) A payload that carries no
  * per-sheet rows -- an older one, or a caller that never passed them -- used to
  * replace the plan's statement with an empty one, so a sheet that could have
  * stated the plan's servitudes stated none at all. A sheet that has its own rows
  * states those; a sheet that has none leaves the plan's statement alone rather
  * than erasing it.
  */
-export function sheetMetadata(metadata, sheet) {
+export function sheetMetadata(metadata, sheet, sheets = null) {
   const own = Array.isArray(sheet?.servitudeRows) ? sheet.servitudeRows : null;
   if (own && own.length > 0) {
     return { ...(metadata || {}), servitudeStatement: { rows: own } };
+  }
+  // A sheet whose stands carry NO servitudes states none -- but only when the
+  // payloads prove the rows were worked out per sheet, i.e. some sheet in the
+  // set has rows of its own. Then an empty list is an answer, and printing the
+  // whole plan's table on a sheet with none of those stands is wrong: the
+  // table belongs only on the sheet(s) holding the parcels it describes. If NO
+  // sheet carries rows, the payloads simply did not compute them (the case the
+  // fallback above exists for), and the plan's statement stays.
+  const perSheetKnown = own && Array.isArray(sheets)
+    && sheets.some((s) => Array.isArray(s?.servitudeRows) && s.servitudeRows.length > 0);
+  if (perSheetKnown) {
+    return { ...(metadata || {}), servitudeStatement: { rows: [] } };
   }
   return { ...(metadata || {}) };
 }

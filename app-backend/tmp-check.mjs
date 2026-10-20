@@ -1,1 +1,0 @@
-import { buildServer } from "@platformatic/db"; import { sql } from "@databases/sql"; import "dotenv/config"; buildServer().then(app => app.platformatic.db.query(sql`SELECT * FROM feature_layers`)).then(console.log)

@@ -261,10 +261,64 @@ describe('planSheetLayout — scale bar and north arrow are independent', () => 
     expect(overlap(r.scaleBar, cover)).toBe(false);
   });
 
-  test('with no figure in the way they sit side by side under the title, as before', () => {
+  test('with no figure in the way the bar is centred under the title and the arrow is in the top-right corner', () => {
     const r = planWithFigure(null);
-    expect(r.northArrow.x).toBeGreaterThan(r.scaleBar.x + r.scaleBar.width);
+    // Bar: centred on the title block, below it.
+    expect(r.scaleBar.x + r.scaleBar.width / 2).toBeCloseTo(r.titleBlock.x + r.titleBlock.width / 2, 3);
     expect(r.scaleBar.y).toBeGreaterThan(r.titleBlock.y + r.titleBlock.height);
+    // Arrow: flush to the top-right corner of the drawing area, inside its edge padding.
+    expect(r.northArrow.x + r.northArrow.width).toBeCloseTo(A2_MAP_BOUNDS.x + A2_MAP_BOUNDS.width - 14, 3);
+    expect(r.northArrow.y).toBeCloseTo(A2_MAP_BOUNDS.y + 14, 3);
+  });
+
+  test('they read as two separate items: the gap between them is well over the old 12pt', () => {
+    const r = planWithFigure(null);
+    const gapX = Math.max(0, r.northArrow.x - (r.scaleBar.x + r.scaleBar.width),
+                             r.scaleBar.x - (r.northArrow.x + r.northArrow.width));
+    expect(gapX).toBeGreaterThan(100);
+  });
+});
+
+describe('planSheetLayout — a tall single-column schedule is seated before the Outside Figure Data', () => {
+  // 70 stands is one ~975pt column on the 1134pt-high A2 area: taller than half of
+  // it, but it does not need splitting. It used to be left to the engine, which
+  // placed the OFD table first, found "no collision-free slot" for the schedule
+  // and dropped it (relaxed fallback) onto the OFD table. It is now seated in the
+  // figure's whitespace first, as one table, and the OFD table is placed around it.
+  const parcels = {
+    type: 'FeatureCollection',
+    features: Array.from({ length: 70 }, (_, i) => ({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [[
+        [50000 + i, 2200000], [50001 + i, 2200000], [50001 + i, 2200001], [50000 + i, 2200001], [50000 + i, 2200000]] ] },
+      properties: { stand: String(100 + i), area_m2: 500 },
+    })),
+  };
+  const f = sampleMinimalPlan;
+  const poly = [{ x: 400, y: 300 }, { x: 900, y: 300 }, { x: 900, y: 900 }, { x: 400, y: 900 }, { x: 400, y: 300 }];
+  const r = planSheetLayout({
+    metadata: f.metadata, parcels, outsideFigureData: f.outsideFigureData, beacons: f.beacons,
+    mapBounds: A2_MAP_BOUNDS,
+    mapFeatureBounds: { x: 400, y: 300, width: 500, height: 600, pdfPoints: poly },
+    scale: f.scale, extent: { minX: 50000, maxX: 50100, minY: 2200000, maxY: 2200060 },
+    tickMarkBounds: [], figureBounds: { x: 400, y: 300, width: 500, height: 600 },
+    polyPts: poly, measureText: fakeMeasure, logger: fakeLogger,
+  });
+  const overlap = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x &&
+                            a.y < b.y + b.height && a.y + a.height > b.y;
+
+  test('is seated in the strips as ONE table', () => {
+    expect(r.scheduleOfAreas.placedTables).toHaveLength(1);
+    expect(r.scheduleOfAreas.placedTables[0].rowCount).toBe(70);
+  });
+
+  test('the schedule and the Outside Figure Data table do not overlap', () => {
+    expect(overlap(r.scheduleOfAreas.placedTables[0], r.outsideFigureData)).toBe(false);
+  });
+
+  test('the schedule does not sit on the figure', () => {
+    const t = r.scheduleOfAreas.placedTables[0];
+    expect(overlap(t, { x: 400, y: 300, width: 500, height: 600 })).toBe(false);
   });
 });
 
@@ -505,40 +559,29 @@ describe('planSheetLayout — seated schedule stays inside the drawing area', ()
   });
 });
 
-// The scale bar and the north arrow are map furniture: a surveyor reads them
-// together, and pinning the arrow in the top-right corner cost the schedule the
-// top of a whole column (~85pt, about 5 rows). They are now one group, centred
-// under the title band, so the corner is free and the pair cannot be separated.
-describe('map furniture reads as one group under the title', () => {
-  const GAP = 12
-  const centreY = (b) => b.y + b.height / 2
-
-  test('the arrow sits beside the scale bar, not in the top-right corner', () => {
+// The scale bar and the north arrow are two separate items with different homes.
+// They used to be one group, 12pt apart under the title, so the arrow touched the
+// end of the bar's labels and the pair read as a single unit. Now the bar is
+// centred under the title block and the arrow takes the top-right corner of the
+// drawing area -- unless a seated schedule or the figure has it, when the arrow is
+// placed on its own.
+describe('map furniture: the scale bar and north arrow are separate items', () => {
+  test('the scale bar is centred on the title block, below it', () => {
     const r = plan(sampleMinimalPlan)
-    expect(r.northArrow.x).toBeGreaterThan(r.scaleBar.x)
-    expect(r.northArrow.x - (r.scaleBar.x + r.scaleBar.width)).toBeCloseTo(GAP, 1)
-  })
-
-  test('both sit on one centre line', () => {
-    const r = plan(sampleMinimalPlan)
-    expect(centreY(r.northArrow)).toBeCloseTo(centreY(r.scaleBar), 1)
-  })
-
-  test('the group is centred on the title block', () => {
-    const r = plan(sampleMinimalPlan)
-    const groupCentre = (r.scaleBar.x + r.northArrow.x + r.northArrow.width) / 2
-    expect(groupCentre).toBeCloseTo(r.titleBlock.x + r.titleBlock.width / 2, 0)
-  })
-
-  test('the group sits below the title band, not over it', () => {
-    const r = plan(sampleMinimalPlan)
+    expect(r.scaleBar.x + r.scaleBar.width / 2).toBeCloseTo(r.titleBlock.x + r.titleBlock.width / 2, 1)
     expect(r.scaleBar.y).toBeGreaterThanOrEqual(r.titleBlock.y + r.titleBlock.height)
   })
 
-  test('the arrow no longer claims the top-right corner of the drawing', () => {
+  test('the arrow is in the top-right corner of the drawing area', () => {
     const r = plan(sampleMinimalPlan)
-    const cornerX = A2_MAP_BOUNDS.x + A2_MAP_BOUNDS.width - r.northArrow.width - 14
-    expect(r.northArrow.x).not.toBeCloseTo(cornerX, 0)
+    expect(r.northArrow.x + r.northArrow.width).toBeCloseTo(A2_MAP_BOUNDS.x + A2_MAP_BOUNDS.width - 14, 1)
+    expect(r.northArrow.y).toBeCloseTo(A2_MAP_BOUNDS.y + 14, 1)
+  })
+
+  test('they are not neighbours: far more than the old 12pt apart', () => {
+    const r = plan(sampleMinimalPlan)
+    const gap = r.northArrow.x - (r.scaleBar.x + r.scaleBar.width)
+    expect(gap).toBeGreaterThan(100)
   })
 })
 

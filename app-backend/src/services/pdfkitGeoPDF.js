@@ -5980,6 +5980,12 @@ export function calculateBlockPositions(
       // path for it too: split it into columns that do. Short schedules are left
       // to the engine as before, and a failed seating restores the single column.
       let _forcedSplit = false;
+      // A tall single column that fits a strip is still seated HERE, schedule
+      // first, so the Outside Figure Data table (placed before it by the engine)
+      // yields to it. Leaving it to the engine meant OFD claimed the corner first,
+      // the schedule found "no collision-free slot", and the relaxed fallback put
+      // it on the OFD table. It stays ONE table: never split, never tiled.
+      let _singleOnly = false;
       const _orig = { schedWidth, schedHeight, _schedNumCols, _schedRowsPerCol };
       if (!_schedNeedsSplit) {
         if (_schedSingleColHeight < _contentArea.h * 0.5) return;
@@ -5990,14 +5996,17 @@ export function calculateBlockPositions(
           headerHeight: _SCHED_CHROME, rowHeight: _SCHED_ROW,
           obstacles, bounds: _contentArea,
         });
-        if (_whole) return;                    // fits whole: the engine places it
-        _schedNeedsSplit = true;
-        _forcedSplit = true;
-        _schedNumCols    = 2;
-        _schedRowsPerCol = Math.ceil(schedRows / _schedNumCols);
-        schedHeight = _SCHED_CHROME + _schedRowsPerCol * _SCHED_ROW;
-        schedWidth  = _schedNumCols * _schedSingleColWidth + (_schedNumCols - 1) * _schedTableSpacing;
-        logger.info(`[PDFKit] 📊 Tall single-column schedule (${_schedSingleColHeight.toFixed(0)}pt) fits no whitespace strip — seating it as columns instead`);
+        if (_whole) {
+          _singleOnly = true;                  // fits whole: seat it whole, schedule-first
+        } else {
+          _schedNeedsSplit = true;
+          _forcedSplit = true;
+          _schedNumCols    = 2;
+          _schedRowsPerCol = Math.ceil(schedRows / _schedNumCols);
+          schedHeight = _SCHED_CHROME + _schedRowsPerCol * _SCHED_ROW;
+          schedWidth  = _schedNumCols * _schedSingleColWidth + (_schedNumCols - 1) * _schedTableSpacing;
+          logger.info(`[PDFKit] 📊 Tall single-column schedule (${_schedSingleColHeight.toFixed(0)}pt) fits no whitespace strip — seating it as columns instead`);
+        }
       }
       const _restoreIfForced = () => {
         if (_forcedSplit && !_schedStripTables) {
@@ -6037,8 +6046,8 @@ export function calculateBlockPositions(
         // Narrower columns are allowed if that is what makes the composite fit:
         // 240 rows over 2 columns was 187% of the available height here, the same
         // rows over 3 are 94%. Too many columns simply outgrow the strip's width,
-        // so the search stops itself.
-        maxCols: 6,
+        // so the search stops itself. A schedule that is not being split stays one.
+        maxCols: _singleOnly ? 1 : 6,
       });
       if (_compositeTables) {
         _schedStripTables = _compositeTables;
@@ -6057,6 +6066,8 @@ export function calculateBlockPositions(
         );
         return;
       }
+
+      if (_singleOnly) return;                 // one table, one slot: no tiling
 
       // Bands above/below the figure hold what the side strips cannot. Seat them
       // from the end that meets the side strip carrying the main column, so a
@@ -6150,7 +6161,7 @@ export function calculateBlockPositions(
           _trySeat([...obstacles, r]);
           if (_schedStripTables) {
             _schedOfdReservation = r;
-            logger.info(`[PDFKit] 📊 Outside Figure Data reserved at (${r.x.toFixed(0)},${r.y.toFixed(0)}); schedule stacks beneath it`);
+            logger.info(`[PDFKit] 📊 Outside Figure Data reserved at (${r.x.toFixed(0)},${r.y.toFixed(0)}); schedule seated clear of it`);
             break;
           }
         }
@@ -6497,40 +6508,63 @@ export function calculateBlockPositions(
   // independent from then on: one that cannot stay is placed by the engine on its
   // own, without dragging the other off a perfectly good slot (and without needing
   // a free rect big enough for both).
-  const _furniturePreferred = {
-    name: "scaleBar",
-    x: _titleSlot.x + (titleWidth - _furnitureWidth) / 2,
-    y: _titleSlot.y + titleHeight + MAP_FURNITURE_TITLE_GAP, // shared with titleBandHeight()
-    width: _furnitureWidth,
-    height: _furnitureHeight,
+  // The two have DIFFERENT homes. The scale bar is centred under the title block
+  // (the band reserved for it); the north arrow sits in the top-right corner of
+  // the drawing area, well clear of the bar. They used to share a rect, which put
+  // the arrow 12pt off the end of the bar's labels so the pair read as one item.
+  const _EDGE = EDGE_PADDING;
+  const _preferredSlots = {
+    scaleBar: {
+      name: "scaleBar",
+      x: _titleSlot.x + (titleWidth - scaleBarWidth) / 2,
+      // Centred in the furniture band's height, which titleBandHeight() reserves.
+      y: _titleSlot.y + titleHeight + MAP_FURNITURE_TITLE_GAP + (_furnitureHeight - scaleBarHeight) / 2,
+      width: scaleBarWidth, height: scaleBarHeight,
+    },
+    northArrow: {
+      name: "northArrow",
+      x: mapBounds.x + mapBounds.width - _EDGE - northArrowWidth,
+      y: mapBounds.y + _EDGE,
+      width: northArrowWidth, height: northArrowHeight,
+    },
   };
-  const _preferredSlots = _furnitureSlots(_furniturePreferred);
   const _onFigure = (r) => mapFeatureBounds?.pdfPoints?.length > 0 &&
     rectangleOverlapsPolygon(r, mapFeatureBounds.pdfPoints, 2);
-  const prePlacedScaleBar   = _onFigure(_preferredSlots.scaleBar)   ? null : _preferredSlots.scaleBar;
-  const prePlacedNorthArrow = _onFigure(_preferredSlots.northArrow) ? null : _preferredSlots.northArrow;
-  for (const [name, pre, w, h] of [
-    ["scaleBar",   prePlacedScaleBar,   scaleBarWidth,   scaleBarHeight],
-    ["northArrow", prePlacedNorthArrow, northArrowWidth, northArrowHeight],
-  ]) {
-    if (pre) {
-      logger.info(`[PDFKit] 📌 ${name} pre-placed below title block (${pre.x.toFixed(0)}, ${pre.y.toFixed(0)})`);
-    } else {
-      logger.info(`[PDFKit] 🔄 ${name} slot below the title overlaps the figure — engine-placed on its own`);
-      blockDescriptors.push({ name, width: w, height: h, mandatory: true, preferredZone: _nextZone() });
-    }
+  // True when the rects overlap or sit closer than `gap` -- an arrow butted
+  // against a table is as unreadable as one on it.
+  const _rectsHit = (a, b, gap = 0) =>
+    a.x < b.x + b.width + gap && a.x + a.width + gap > b.x &&
+    a.y < b.y + b.height + gap && a.y + a.height + gap > b.y;
+  const prePlacedScaleBar = _onFigure(_preferredSlots.scaleBar) ? null : _preferredSlots.scaleBar;
+  if (prePlacedScaleBar) {
+    logger.info(`[PDFKit] 📌 scaleBar pre-placed below title block (${prePlacedScaleBar.x.toFixed(0)}, ${prePlacedScaleBar.y.toFixed(0)})`);
+  } else {
+    logger.info(`[PDFKit] 🔄 scaleBar slot below the title overlaps the figure — engine-placed`);
+    blockDescriptors.push({ name: "scaleBar", width: scaleBarWidth, height: scaleBarHeight, mandatory: true, preferredZone: _nextZone() });
   }
 
-  // Seat the schedule in the figure's whitespace now that the pre-placed blocks
-  // are known, so its slots can steer clear of them. Everything the engine
-  // places afterwards is placed AROUND the result. The North arrow is NOT an
-  // obstacle here — it yields to the schedule rather than the other way round.
+  // Seat the schedule in the figure's whitespace now that the title and the bar
+  // are known, so its slots can steer clear of them. Everything the engine places
+  // afterwards is placed AROUND the result. The North arrow is NOT an obstacle
+  // here: it yields to the schedule rather than the other way round, because its
+  // corner is also the top of a side strip a tall schedule wants.
   _seatScheduleInStrips(
-    [prePlacedTitleBlock, prePlacedScaleBar, prePlacedNorthArrow].filter(Boolean)
+    [prePlacedTitleBlock, prePlacedScaleBar].filter(Boolean)
   );
 
-  // The North arrow no longer competes with the schedule for the top-right
-  // corner: it travels with the scale bar, so there is nothing to settle here.
+  // The arrow takes its corner unless that sits on the figure or on what was just
+  // seated (schedule tables, the reserved Outside Figure Data table); then it is
+  // the engine's to place, on its own.
+  const _seated = [...(_schedStripTables ?? []), ...(_schedOfdReservation ? [_schedOfdReservation] : [])];
+  const _arrowSlot = _preferredSlots.northArrow;
+  const prePlacedNorthArrow =
+    (_onFigure(_arrowSlot) || _seated.some((t) => _rectsHit(_arrowSlot, t, 14))) ? null : _arrowSlot;
+  if (prePlacedNorthArrow) {
+    logger.info(`[PDFKit] 📌 northArrow pre-placed in the top-right corner (${_arrowSlot.x.toFixed(0)}, ${_arrowSlot.y.toFixed(0)})`);
+  } else {
+    logger.info(`[PDFKit] 🔄 northArrow corner is taken — engine-placed on its own`);
+    blockDescriptors.push({ name: "northArrow", width: northArrowWidth, height: northArrowHeight, mandatory: true, preferredZone: _nextZone() });
+  }
 
   let { placements: _enginePlacements, unplaceable, needsScaleUp } = placeBlocks({
     mapBounds,

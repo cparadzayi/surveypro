@@ -21,8 +21,14 @@ export function measureFigureWhitespace({ figureBBox, contentArea, fixedBlocks =
 
   const left   = { x: c.x,       y: c.y, w: Math.max(0, f.x - c.x),                   h: c.h };
   const right  = { x: f.x + f.w, y: c.y, w: Math.max(0, (c.x + c.w) - (f.x + f.w)), h: c.h };
-  const bottom = { x: f.x, y: c.y,       w: f.w, h: Math.max(0, f.y - c.y) };
-  const top    = { x: f.x, y: f.y + f.h, w: f.w, h: Math.max(0, (c.y + c.h) - (f.y + f.h)) };
+  // The bands above/below span the figure's width, but a figure inflated by a
+  // clearance can reach past the content area (x=110 against a 156 content edge),
+  // and a block seated at the band origin then sat in the sheet margin. Clip the
+  // horizontal extent to the content area.
+  const bandX = Math.max(c.x, f.x);
+  const bandW = Math.max(0, Math.min(c.x + c.w, f.x + f.w) - bandX);
+  const bottom = { x: bandX, y: c.y,       w: bandW, h: Math.max(0, f.y - c.y) };
+  const top    = { x: bandX, y: f.y + f.h, w: bandW, h: Math.max(0, (c.y + c.h) - (f.y + f.h)) };
 
   // Trim side strips by any reserved block that overlaps them (reserve from the top).
   // A block that sits at the top of a strip reduces the strip's height so it no longer

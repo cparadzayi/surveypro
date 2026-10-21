@@ -1451,6 +1451,9 @@ function renderOutsideFigureVertexLabels(
       let bestDirection = null;
       let bestOffset = maxOffset + 20; // Start with large offset
 
+      // Prefer a spot with the full boundary clearance; relax only if none exists.
+      for (const _buf of [BOUNDARY_BUFFER, 3, 0]) {
+      if (bestDirection) break;
       for (const dir of directions) {
         // Normalize direction
         const len = Math.sqrt(dir.dirX * dir.dirX + dir.dirY * dir.dirY);
@@ -1476,7 +1479,9 @@ function renderOutsideFigureVertexLabels(
           };
 
           if (
-            !isRectOverlappingPolygon(testRect, coordinates, extent, mapBounds)
+            !isRectOverlappingPolygon(testRect, coordinates, extent, mapBounds) &&
+            (_buf === 0 ||
+              isRectClearOfPolygonBoundary(testRect, coordinates, extent, mapBounds, _buf))
           ) {
             // Found valid position in this direction
             if (testOffset < bestOffset) {
@@ -1491,6 +1496,7 @@ function renderOutsideFigureVertexLabels(
             break; // Found valid position in this direction, try next direction
           }
         }
+      }
       }
 
       if (bestDirection) {
@@ -11202,6 +11208,29 @@ async function _generateGeoPDFInner(options, logger) {
   // 5. Edge labels (distance + direction, rotated, with inset support)
   // 6. Map insets (rendered in margins at end)
   // 7. Text overlays (Title Block, Schedule, etc.) - rendered LAST to stay on top
+
+  // The vertex labeller only runs when the figure carries properties.vertices.
+  // When it does not, the figure's beacons fell through to the general beacon
+  // labeller, which knows nothing of the polygon and put M18/M21/M22/M25 inside
+  // it. Name the vertices from the beacons that sit on them so they take the
+  // outside-the-polygon path (and are excluded from the general one below).
+  {
+    const _ofFeat = outsideFigure?.features?.[0];
+    const _ofRing = _ofFeat?.geometry?.type === "Polygon" ? _ofFeat.geometry.coordinates?.[0] : null;
+    if (_ofFeat && _ofRing?.length >= 4 && !_ofFeat.properties?.vertices?.length) {
+      const _ring = _ofRing.slice(0, -1);
+      const _named = _ring.map((c) => {
+        const b = (filteredBeacons?.features || []).find((f) => {
+          const g = f.geometry?.coordinates;
+          return g && f.properties?.name && ((Math.abs(g[0] - c[0]) < 0.6 && Math.abs(g[1] - c[1]) < 0.6) || (Math.abs(g[0] - c[1]) < 0.6 && Math.abs(g[1] - c[0]) < 0.6));
+        });
+        return b ? { name: b.properties.name } : null;
+      });
+      if (_named.every(Boolean)) {
+        _ofFeat.properties = { ...(_ofFeat.properties || {}), vertices: _named };
+      }
+    }
+  }
 
   // Step 1: Render Outside Figure boundary FIRST (as background layer)
   // This includes: red boundary line, beacon circles at vertices, and vertex labels outside polygon

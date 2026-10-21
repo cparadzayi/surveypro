@@ -1303,6 +1303,17 @@ function renderOutsideFigureVertexLabels(
   const maxOffset = 60; // Maximum offset to try (points)
   const offsetStep = 3; // Step size for increasing offset (points)
   const BOUNDARY_BUFFER = 8; // Minimum clearance from polygon boundary (points)
+  // A label must stay inside the map frame, with a little air, so it never
+  // touches or crosses the sheet margin line.
+  const FRAME_INSET = 4;
+  // mapBounds here is the figure box (title band already taken off), not the
+  // frame, so the frame comes from the page.
+  const _frame = calculateMapBounds(doc.page.width, doc.page.height).main;
+  const insideFrame = (r) =>
+    r.x >= _frame.x + FRAME_INSET &&
+    r.y >= _frame.y + FRAME_INSET &&
+    r.x + r.width <= _frame.x + _frame.width - FRAME_INSET &&
+    r.y + r.height <= _frame.y + _frame.height - FRAME_INSET;
 
   logger.info(
     `[PDFKit] 🔧 DEBUG: Actual values - minOffset=${minOffset}, maxOffset=${maxOffset}, BOUNDARY_BUFFER=${BOUNDARY_BUFFER}`
@@ -1409,6 +1420,7 @@ function renderOutsideFigureVertexLabels(
       // Additional check: Ensure minimum distance from polygon boundary
       const hasBufferClearance =
         !overlapsPolygon &&
+        insideFrame(labelRect) &&
         isRectClearOfPolygonBoundary(
           labelRect,
           coordinates,
@@ -1453,7 +1465,7 @@ function renderOutsideFigureVertexLabels(
 
       // Prefer a spot with the full boundary clearance; relax only if none exists.
       for (const _buf of [BOUNDARY_BUFFER, 3, 0]) {
-      if (bestDirection) break;
+      if (bestDirection && (bestDirection.offset <= 30 || _buf === 0)) break;
       for (const dir of directions) {
         // Normalize direction
         const len = Math.sqrt(dir.dirX * dir.dirX + dir.dirY * dir.dirY);
@@ -1480,6 +1492,7 @@ function renderOutsideFigureVertexLabels(
 
           if (
             !isRectOverlappingPolygon(testRect, coordinates, extent, mapBounds) &&
+            insideFrame(testRect) &&
             (_buf === 0 ||
               isRectClearOfPolygonBoundary(testRect, coordinates, extent, mapBounds, _buf))
           ) {

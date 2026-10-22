@@ -137,6 +137,16 @@
             ✓ {{ isDiagramMode ? 'Diagram subject' : 'Subject' }}:
             <strong>{{ selectedDiagramStand ? `Stand ${selectedDiagramStand}` : 'Outside Figure' }}</strong>
           </p>
+          <div v-if="selectedDiagramParcelId" class="mt-2 text-xs">
+            <label class="config-label">Map label rotation: {{ subjectLabelRotation }}°</label>
+            <input type="range" min="0" max="359" step="1" v-model.number="subjectLabelRotation" class="w-full" />
+            <div class="flex gap-2 mt-1">
+              <button type="button" class="config-input" @click="subjectLabelRotation = subjectLabelRotation - 15">⟲ 15°</button>
+              <button type="button" class="config-input" @click="subjectLabelRotation = subjectLabelRotation + 15">⟳ 15°</button>
+              <button type="button" class="config-input" @click="resetSubjectLabel">Reset</button>
+            </div>
+            <p class="mt-1 text-gray-500">Drag the label on the map to move it; click it to select.</p>
+          </div>
         </div>
 
         <!-- Scale (SI 727 Section 32(2) Prescribed) -->
@@ -1857,6 +1867,94 @@ function applyDiagramHighlight(selectedId: string | number | null) {
       isOutsideFig ? 3 : isSelected ? 4 : 2,
     )
   })
+  updateSubjectLabelLayer(selectedId)
+}
+
+/** A visible, interactive name on the map for the selected annotation/diagram
+ *  subject. A maplibre Marker (not a symbol layer) because it must be clickable,
+ *  draggable and rotatable. Its moved position and rotation are remembered per
+ *  subject for the session, so re-selecting the subject restores them. */
+interface SubjectLabelState { lng: number; lat: number; rotation: number }
+const subjectLabelStates = ref<Record<string, SubjectLabelState>>({})
+const subjectLabelSelected = ref(false)
+let subjectLabelMarker: maplibregl.Marker | null = null
+let subjectLabelEl: HTMLElement | null = null
+
+const subjectLabelRotation = computed<number>({
+  get: () => {
+    const id = selectedDiagramParcelId.value
+    return id == null ? 0 : (subjectLabelStates.value[String(id)]?.rotation ?? 0)
+  },
+  set: (deg) => {
+    const id = selectedDiagramParcelId.value
+    const st = id == null ? null : subjectLabelStates.value[String(id)]
+    if (!st) return
+    st.rotation = ((Math.round(Number(deg) || 0) % 360) + 360) % 360
+    subjectLabelMarker?.setRotation(st.rotation)
+  },
+})
+
+function setSubjectLabelSelected(on: boolean) {
+  subjectLabelSelected.value = on
+  if (subjectLabelEl) {
+    subjectLabelEl.style.outline = on ? '2px dashed #1d4ed8' : 'none'
+    subjectLabelEl.style.background = on ? 'rgba(219,234,254,0.9)' : 'rgba(255,255,255,0.8)'
+  }
+}
+
+function resetSubjectLabel() {
+  const id = selectedDiagramParcelId.value
+  if (id == null) return
+  delete subjectLabelStates.value[String(id)]
+  updateSubjectLabelLayer(id)
+}
+
+function updateSubjectLabelLayer(selectedId: string | number | null) {
+  subjectLabelMarker?.remove()
+  subjectLabelMarker = null
+  subjectLabelEl = null
+  subjectLabelSelected.value = false
+  if (!map.value || selectedId == null) return
+  const subj = parcels.value.find((p: any) => String(p.id) === String(selectedId))
+  if (!subj?.geom) return
+  const ring = transformParcelGeometry(subj.geom)?.geometry?.coordinates?.[0] as [number, number][] | undefined
+  if (!ring?.length) return
+  const key = String(selectedId)
+  let st = subjectLabelStates.value[key]
+  if (!st) {
+    const closed = ring.length > 1
+      && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
+    const pts = closed ? ring.slice(0, -1) : ring
+    st = {
+      lng: pts.reduce((t, p) => t + p[0], 0) / pts.length,
+      lat: pts.reduce((t, p) => t + p[1], 0) / pts.length,
+      rotation: 0,
+    }
+    subjectLabelStates.value[key] = st
+  }
+  const isOutsideFig = subj.id === getOutsideFigureParcel()?.id
+  const el = document.createElement('div')
+  el.textContent = isOutsideFig || !subj.stand ? 'Outside Figure' : `Stand ${subj.stand}`
+  el.title = 'Click to select · drag to move · rotate with the slider in the panel'
+  Object.assign(el.style, {
+    font: '700 16px/1.2 system-ui, sans-serif', color: '#1d4ed8', padding: '2px 6px',
+    borderRadius: '4px', cursor: 'grab', whiteSpace: 'nowrap', userSelect: 'none',
+    textShadow: '0 0 3px #fff', background: 'rgba(255,255,255,0.8)',
+  })
+  subjectLabelEl = el
+  el.addEventListener('click', (e) => { e.stopPropagation(); setSubjectLabelSelected(!subjectLabelSelected.value) })
+  const marker = new maplibregl.Marker({
+    element: el, draggable: true, rotation: st.rotation,
+    rotationAlignment: 'map', pitchAlignment: 'map',
+  }).setLngLat([st.lng, st.lat]).addTo(map.value as any)
+  marker.on('dragstart', () => { el.style.cursor = 'grabbing'; setSubjectLabelSelected(true) })
+  marker.on('dragend', () => {
+    el.style.cursor = 'grab'
+    const ll = marker.getLngLat()
+    const cur = subjectLabelStates.value[key]
+    if (cur) { cur.lng = ll.lng; cur.lat = ll.lat }
+  })
+  subjectLabelMarker = marker
 }
 
 /** Clickable vertices on the subject, for connecting data. Drawn as small

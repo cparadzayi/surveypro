@@ -1878,6 +1878,12 @@ interface SubjectLabelState { lng: number; lat: number; rotation: number }
 const subjectLabelStates = ref<Record<string, SubjectLabelState>>({})
 const subjectLabelSelected = ref(false)
 let subjectLabelMarker: maplibregl.Marker | null = null
+let subjectLabelSaveTimer: ReturnType<typeof setTimeout> | null = null
+/** Debounced: the rotation slider fires on every step. */
+function saveSubjectLabelsSoon() {
+  if (subjectLabelSaveTimer) clearTimeout(subjectLabelSaveTimer)
+  subjectLabelSaveTimer = setTimeout(() => { void persistSideAnnotations() }, 600)
+}
 let subjectLabelEl: HTMLElement | null = null
 
 const subjectLabelRotation = computed<number>({
@@ -1891,6 +1897,7 @@ const subjectLabelRotation = computed<number>({
     if (!st) return
     st.rotation = ((Math.round(Number(deg) || 0) % 360) + 360) % 360
     subjectLabelMarker?.setRotation(st.rotation)
+    saveSubjectLabelsSoon()
   },
 })
 
@@ -1907,6 +1914,7 @@ function resetSubjectLabel() {
   if (id == null) return
   delete subjectLabelStates.value[String(id)]
   updateSubjectLabelLayer(id)
+  saveSubjectLabelsSoon()
 }
 
 function updateSubjectLabelLayer(selectedId: string | number | null) {
@@ -1952,7 +1960,7 @@ function updateSubjectLabelLayer(selectedId: string | number | null) {
     el.style.cursor = 'grab'
     const ll = marker.getLngLat()
     const cur = subjectLabelStates.value[key]
-    if (cur) { cur.lng = ll.lng; cur.lat = ll.lat }
+    if (cur) { cur.lng = ll.lng; cur.lat = ll.lat; saveSubjectLabelsSoon() }
   })
   subjectLabelMarker = marker
 }
@@ -2274,6 +2282,7 @@ async function persistSideAnnotations() {
       metadata: {
         sideAnnotations: sideAnnotationsBySubject.value,
         connections: connectionsBySubject.value,
+        subjectLabels: subjectLabelStates.value,
       },
     })
   } catch (e: any) {
@@ -2326,6 +2335,19 @@ async function loadSideAnnotations() {
       }
     }
     connectionsBySubject.value = conns
+    // Moved/rotated subject labels. Same trust rule as above: keep only entries
+    // that are three finite numbers.
+    const savedLabels = ws?.step_data?.['survey-plan']?.subjectLabels
+    const labels: Record<string, SubjectLabelState> = {}
+    if (savedLabels && typeof savedLabels === 'object') {
+      for (const [k, v] of Object.entries(savedLabels as Record<string, any>)) {
+        if (v && [v.lng, v.lat, v.rotation].every(n => Number.isFinite(Number(n)))) {
+          labels[k] = { lng: Number(v.lng), lat: Number(v.lat), rotation: Number(v.rotation) }
+        }
+      }
+    }
+    subjectLabelStates.value = labels
+    updateSubjectLabelLayer(selectedDiagramParcelId.value)
     updateSubjectSidesLayer()
     updateSubjectVerticesLayer()
   } catch (e: any) {

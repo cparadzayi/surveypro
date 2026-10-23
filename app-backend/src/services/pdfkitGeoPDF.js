@@ -16,6 +16,7 @@ import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, t
 import { scheduleHeaderScale, scheduleHeaderBandPt, computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, planScheduleSplit } from "../../../app-shared/block-definitions.js";
 import { scaleBarLayout, scaleBarFrame } from "../../../app-shared/scaleBar.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
+import { fitSuffixLabel } from "./diagram/suffixLabelFit.js";
 import { splitBeaconName, labelParts } from "../../../app-shared/beaconName.js";
 import { floorDevelopedDenominator, resolvePlanSheeting, drawingAreaMm, FIGURE_MARGIN_MM, FIGURE_MAX_FRACTION, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js';
 import { sheetContentMm } from '../../../app-shared/si727SheetSizes.js';
@@ -2895,6 +2896,8 @@ function renderBeacons(
             pos, pdfCoords, displayLabel, doc, suffixFontSize, beaconRadius, collisionDetector
           );
           labelPos = { x: poiResult.x, y: poiResult.y };
+          suffixFontSize = poiResult.fontSize;
+          suffixRotationAngle = poiResult.rotation;
           suffixNeedsLeader = poiResult.needsLeader;
           suffixLeaderPolygon = pdfCoords.map(p => [p.x, p.y]);
         } else {
@@ -2999,6 +3002,8 @@ function renderBeacons(
             pos, pdfCoords, displayLabel, doc, suffixFontSize, beaconRadius, collisionDetector
           );
           labelPos = { x: poiResult2.x, y: poiResult2.y };
+          suffixFontSize = poiResult2.fontSize;
+          suffixRotationAngle = poiResult2.rotation;
           suffixNeedsLeader = poiResult2.needsLeader;
           suffixLeaderPolygon = pdfCoords.map(p => [p.x, p.y]);
 
@@ -3264,7 +3269,8 @@ function renderBeacons(
       const centerY = finalPos.y + verticalOffset + labelHeight / 2;
 
       doc.translate(centerX, centerY);
-      // No rotation — Type 2 labels always render at 0° (east-west)
+      // Horizontal unless the fit stood the letter across a thin strip.
+      if (suffixRotationAngle) doc.rotate(suffixRotationAngle);
       doc
         .fontSize(fontSize)
         .font(fontFamily)
@@ -3301,13 +3307,11 @@ function renderBeacons(
     if (isSuffixLabel) {
       const centerX = finalPos.x + labelWidth / 2;
       const centerY = finalPos.y + verticalOffset + labelHeight / 2;
-      // Labels are always 0° — no rotation needed for AABB
-      collisionDetector.addRegion(
-        centerX - labelWidth / 2,
-        centerY - labelHeight / 2,
-        labelWidth,
-        labelHeight
-      );
+      // Register the axis-aligned extent of the (possibly rotated) box.
+      const rr = (suffixRotationAngle * Math.PI) / 180;
+      const ew = Math.abs(Math.cos(rr)) * labelWidth + Math.abs(Math.sin(rr)) * labelHeight;
+      const eh = Math.abs(Math.sin(rr)) * labelWidth + Math.abs(Math.cos(rr)) * labelHeight;
+      collisionDetector.addRegion(centerX - ew / 2, centerY - eh / 2, ew, eh);
     } else {
       collisionDetector.addRegion(
         finalPos.x,
@@ -3545,96 +3549,27 @@ function calculateCentroidFromPDFCoords(pdfCoords) {
 function placeSuffixLabelPOIDirected(
   beaconPos, parcelCoords, labelText, doc, fontSize, beaconRadius, collisionDetector
 ) {
-  const lw = doc.widthOfString(labelText, { font: 'Helvetica-Bold', size: fontSize });
-  const lh = fontSize * 1.2;
-
-  // Deduplicate closing vertex
-  const n = parcelCoords.length;
-  const last = parcelCoords[n - 1];
-  const firstPt = parcelCoords[0];
-  const isClosed = last && firstPt &&
-    Math.abs(last.x - firstPt.x) < 0.001 && Math.abs(last.y - firstPt.y) < 0.001;
-  const ring = isClosed ? parcelCoords.slice(0, -1) : parcelCoords;
-  const rn = ring.length;
-  const polygon = ring.map(p => [p.x, p.y]);
-
-  // --- Find the closest ring vertex to the beacon ---
-  let beaconIdx = -1;
-  let minDist = Infinity;
-  for (let i = 0; i < rn; i++) {
-    const d = Math.hypot(ring[i].x - beaconPos.x, ring[i].y - beaconPos.y);
-    if (d < minDist) { minDist = d; beaconIdx = i; }
-  }
-
-  // --- Compute interior bisector at that corner ---
-  let intX = 0, intY = 1; // fallback direction
-
-  if (beaconIdx !== -1 && rn >= 3) {
-    const B = ring[beaconIdx];
-    const P = ring[(beaconIdx - 1 + rn) % rn];
-    const N = ring[(beaconIdx + 1) % rn];
-
-    const v1x = P.x - B.x, v1y = P.y - B.y;
-    const v2x = N.x - B.x, v2y = N.y - B.y;
-    const len1 = Math.hypot(v1x, v1y);
-    const len2 = Math.hypot(v2x, v2y);
-
-    if (len1 > 0.001 && len2 > 0.001) {
-      const u1x = v1x / len1, u1y = v1y / len1;
-      const u2x = v2x / len2, u2y = v2y / len2;
-
-      let bx = u1x + u2x, by = u1y + u2y;
-      const bLen = Math.hypot(bx, by);
-
-      if (bLen < 0.001) {
-        // 180° straight edge — use perpendicular
-        bx = -u1y; by = u1x;
-      } else {
-        bx /= bLen; by /= bLen;
-      }
-
-      // Orient TOWARD interior: dot with (centroid − beacon) should be positive
-      const centroid = calculateCentroidFromPDFCoords(ring);
-      const toCentX = centroid.x - B.x;
-      const toCentY = centroid.y - B.y;
-      const dot = bx * toCentX + by * toCentY;
-
-      intX = dot >= 0 ? bx : -bx;
-      intY = dot >= 0 ? by : -by;
-    }
-  }
-
-  // Minimum clearance: beacon circle + half label height + 1pt gap
-  const dMin = beaconRadius + lh / 2 + 1;
-
-  // Candidate check: centre must be inside polygon and collision-free
-  const tryPos = (cx, cy) => {
-    if (!isPointInPolygonSimple([cx, cy], polygon)) return false;
-    if (collisionDetector?.hasCollision(cx - lw / 2, cy - lh / 2, lw, lh, 1)) return false;
-    return true;
+  // Geometry lives in diagram/suffixLabelFit.js so the box-clears-every-edge rule,
+  // the acute-corner push, per-beacon font shrink and strip rotation are shared.
+  const fit = fitSuffixLabel({
+    beaconPos,
+    polygon: parcelCoords,
+    widthAt: (fs) => doc.widthOfString(labelText, { font: 'Helvetica-Bold', size: fs }),
+    fontSize,
+    beaconRadius,
+    collides: collisionDetector
+      ? (r) => collisionDetector.hasCollision(r.x, r.y, r.w, r.h, 1)
+      : null,
+  });
+  const lw = doc.widthOfString(labelText, { font: 'Helvetica-Bold', size: fit.fontSize });
+  const lh = fit.fontSize * 1.2;
+  return {
+    x: fit.cx - lw / 2,
+    y: fit.cy - lh / 2,
+    needsLeader: false,
+    fontSize: fit.fontSize,
+    rotation: fit.rotation,
   };
-
-  // Try increasing distances along interior bisector with small angle perturbations
-  const distances = [dMin, dMin * 1.3, dMin * 1.7, dMin * 2.2, dMin * 3.0, dMin * 4.0];
-  const perturbsDeg = [0, 10, -10, 20, -20, 30, -30, 45, -45];
-
-  for (const dist of distances) {
-    for (const pd of perturbsDeg) {
-      const pRad = pd * Math.PI / 180;
-      const cosP = Math.cos(pRad), sinP = Math.sin(pRad);
-      const dx = intX * cosP - intY * sinP;
-      const dy = intX * sinP + intY * cosP;
-      const cx = beaconPos.x + dx * dist;
-      const cy = beaconPos.y + dy * dist;
-      if (tryPos(cx, cy)) {
-        return { x: cx - lw / 2, y: cy - lh / 2, needsLeader: false };
-      }
-    }
-  }
-
-  // Hard fallback: centroid of the parcel, no leader
-  const centroid = calculateCentroidFromPDFCoords(ring);
-  return { x: centroid.x - lw / 2, y: centroid.y - lh / 2, needsLeader: false };
 }
 
 /**

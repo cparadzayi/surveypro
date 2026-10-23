@@ -68,4 +68,53 @@ describe('fitSuffixLabel', () => {
     expect(boxFitsInside(sq, { x: 0, y: 0 }, 2, 50, 10, 10, 0, { beaconRadius: R })).toBe(false)
     expect(boxFitsInside(sq, { x: 0, y: 0 }, 50, 50, 10, 10, 0, { beaconRadius: R })).toBe(true)
   })
+
+  test('reflex corner (parcel wraps a neighbour): letter stays beside its beacon', () => {
+    // Stand 1423 / 1421 shape: the beacon is the inner corner of an L, interior
+    // angle 270 degrees, so the summed edge vectors point OUT of the parcel.
+    const L = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 40 }, { x: 40, y: 40 },
+      { x: 40, y: 100 }, { x: 0, y: 100 }, { x: 0, y: 0 }]
+    const corner = { x: 40, y: 40 }
+    const fit = base(L, corner)
+    expect(fit.fitted).toBe(true)
+    expect(Math.hypot(fit.cx - corner.x, fit.cy - corner.y)).toBeLessThan(15)
+    expect(inside(L, corner, fit)).toBe(true)
+  })
+
+  describe('two close beacons on one edge (D and E)', () => {
+    // Interior to the right; T above, L below, 40pt apart down a left-hand kink.
+    const ring = [{ x: 20, y: -40 }, { x: 0, y: 0 }, { x: 8, y: 40 }, { x: 60, y: 70 },
+      { x: 200, y: 70 }, { x: 200, y: -40 }, { x: 20, y: -40 }]
+    const T = { x: 0, y: 0 }, L = { x: 8, y: 40 }
+    const dist = (f, b) => Math.hypot(f.cx - b.x, f.cy - b.y)
+    const box = (f) => ({ x: f.cx - widthAt(f.fontSize) / 2, y: f.cy - f.fontSize * 0.6, w: widthAt(f.fontSize), h: f.fontSize * 1.2 })
+    const overlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+
+    test.each([['lower first', true], ['upper first', false]])('each letter is nearer its own beacon (%s)', (_n, lowerFirst) => {
+      const [firstB, firstOther, secondB, secondOther] = lowerFirst ? [L, T, T, L] : [T, L, L, T]
+      const f1 = base(ring, firstB, { neighbours: [firstOther] })
+      const placed = box(f1)
+      const f2 = base(ring, secondB, { neighbours: [secondOther], collides: (r) => overlap(r, placed) })
+      const [fl, ft] = lowerFirst ? [f1, f2] : [f2, f1]
+      expect(dist(ft, T)).toBeLessThan(dist(ft, L))
+      expect(dist(fl, L)).toBeLessThan(dist(fl, T))
+      expect(overlap(box(ft), box(fl))).toBe(false)
+    })
+
+    test('placed lower first, neighbours step aside so neither letter shrinks', () => {
+      // Circles 10pt apart: placed greedily, the lower letter takes the spot the
+      // upper one needs, and the upper one has to shrink to 5.2pt.
+      const tight = [{ x: 25, y: -40 }, { x: 0, y: 0 }, { x: 5, y: 10 }, { x: 40, y: 35 },
+        { x: 200, y: 35 }, { x: 200, y: -40 }]
+      const t = { x: 0, y: 0 }, l = { x: 5, y: 10 }
+      const hit = (r, f) => { const b = box(f); return r.x < b.x + b.w && b.x < r.x + r.w && r.y < b.y + b.h && b.y < r.y + r.h }
+      const greedyL = base(tight, l)
+      const greedyT = base(tight, t, { collides: (r) => hit(r, greedyL) })
+      expect(greedyT.fontSize).toBeLessThan(8) // the failure being fixed
+      const coopL = base(tight, l, { neighbours: [t] })
+      const coopT = base(tight, t, { neighbours: [l], collides: (r) => hit(r, coopL) })
+      expect(coopL.fontSize).toBe(8)
+      expect(coopT.fontSize).toBe(8)
+    })
+  })
 })

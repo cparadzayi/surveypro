@@ -2786,6 +2786,15 @@ function renderBeacons(
     }
   });
 
+  // Other beacons close enough that a suffix letter could be mistaken for theirs.
+  const nearbyBeacons = (name, pos) => {
+    const out = [];
+    beaconPositions.forEach((p, n) => {
+      if (n !== name && Math.hypot(p.x - pos.x, p.y - pos.y) < 45) out.push(p);
+    });
+    return out;
+  };
+
   // Deferred circle buffer: beacon circles are drawn AFTER all labels so they
   // always sit on top of label text and white knockout rectangles.
   // Rendering order: boundary lines (renderParcels) → labels → circles.
@@ -2893,7 +2902,8 @@ function renderBeacons(
 
           // POI-directed placement (replaces edge-following + multi-strategy chain)
           const poiResult = placeSuffixLabelPOIDirected(
-            pos, pdfCoords, displayLabel, doc, suffixFontSize, beaconRadius, collisionDetector
+            pos, pdfCoords, displayLabel, doc, suffixFontSize, beaconRadius, collisionDetector,
+            nearbyBeacons(beaconName, pos)
           );
           labelPos = { x: poiResult.x, y: poiResult.y };
           suffixFontSize = poiResult.fontSize;
@@ -2999,7 +3009,8 @@ function renderBeacons(
 
           // POI-directed placement
           const poiResult2 = placeSuffixLabelPOIDirected(
-            pos, pdfCoords, displayLabel, doc, suffixFontSize, beaconRadius, collisionDetector
+            pos, pdfCoords, displayLabel, doc, suffixFontSize, beaconRadius, collisionDetector,
+            nearbyBeacons(beaconName, pos)
           );
           labelPos = { x: poiResult2.x, y: poiResult2.y };
           suffixFontSize = poiResult2.fontSize;
@@ -3547,7 +3558,7 @@ function calculateCentroidFromPDFCoords(pdfCoords) {
  *  5. Hard fallback: centroid, no leader.
  */
 function placeSuffixLabelPOIDirected(
-  beaconPos, parcelCoords, labelText, doc, fontSize, beaconRadius, collisionDetector
+  beaconPos, parcelCoords, labelText, doc, fontSize, beaconRadius, collisionDetector, neighbours = []
 ) {
   // Geometry lives in diagram/suffixLabelFit.js so the box-clears-every-edge rule,
   // the acute-corner push, per-beacon font shrink and strip rotation are shared.
@@ -3557,6 +3568,7 @@ function placeSuffixLabelPOIDirected(
     widthAt: (fs) => doc.widthOfString(labelText, { font: 'Helvetica-Bold', size: fs }),
     fontSize,
     beaconRadius,
+    neighbours,
     collides: collisionDetector
       ? (r) => collisionDetector.hasCollision(r.x, r.y, r.w, r.h, 1)
       : null,
@@ -4341,7 +4353,9 @@ function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, 
     const wholePortion = (metadata.wholePortion || 'the whole').trim();
     const township = (townshipDescription || (metadata.township || '').trim()).toUpperCase();
     const parentProp = (metadata.parentProperty || '').trim().toUpperCase();
-    const ofTarget = parentProp ? `${township} OF ${parentProp}` : township;
+    // The township is not named in the description; it identifies the parent
+    // property only (the township name appears in the designation instead).
+    const ofTarget = parentProp || township;
 
     if (isMultiSheet) {
       const { sheetNumber, totalSheets } = sheetInfo;
@@ -4741,9 +4755,9 @@ function drawTitleBlock(
       const township = (townshipDescription || (metadata.township || '').trim()).toUpperCase();
 
       // parentProperty: e.g. "Shabani Mine Surface Rights A", in caps
-      // ofTarget: "MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A" (or just township if no parent)
+      // ofTarget: "SHABANI MINE SURFACE RIGHTS A" (the township only if there is no parent property)
       const parentProp = (metadata.parentProperty || '').trim().toUpperCase();
-      const ofTarget = parentProp ? `${township} OF ${parentProp}` : township;
+      const ofTarget = parentProp || township;
 
       if (isMultiSheet) {
         // SI 727 Seventh Schedule (b): inter-sheet description

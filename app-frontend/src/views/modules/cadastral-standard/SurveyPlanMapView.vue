@@ -4581,6 +4581,10 @@ async function generatePlanDocuments() {
     const payload = buildPlanPayload(ctx)
     const docs: PlanDocumentSet = {}
     let usedScale: string | undefined
+    // The sheet the PDF actually rendered on, after any paper-size escalation.
+    let usedSheetSize: string | undefined
+    // Per-sheet scale/paper of a multi-sheet PDF; the DXF sheets follow them.
+    let sheetLayouts: { sheetNumber: number; scale: string; sheetSize: string }[] | undefined
     // Survey-plan DXF exports are now georeferenced ZIPs (DXF + .prj sidecar);
     // the Working Plan's DXF stays a single .dxf from its own A4 renderer.
     let dxfExt: 'zip' | 'dxf' = 'dxf'
@@ -4594,6 +4598,8 @@ async function generatePlanDocuments() {
       }
       docs.pdf = result.blob
       usedScale = result.usedScale || undefined
+      usedSheetSize = result.usedSheetSize || undefined
+      sheetLayouts = result.sheetLayouts || undefined
       if (result.usedScale) pdfFinalScale.value = result.usedScale
 
       if (meta.includesSummary) {
@@ -4672,13 +4678,15 @@ async function generatePlanDocuments() {
       // a standalone georeferenced .gpkg for QGIS use.
       if (exportFormats.gpkg) {
         exportStatus.value = 'Building georeferenced GeoPackage (.gpkg)…'
-        const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: payload.sheetSize || 'SI727_500x400' }
+        const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: usedSheetSize || payload.sheetSize || 'SI727_500x400', sheetLayouts }
         const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { gpkgOnly: true })
         docs.gpkg = blob
         reportDxfWarnings(warningCount, warningsSummary)
       }
     } else if (exportFormats.dxf || exportFormats.gpkg) {
-      const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: payload.sheetSize || 'SI727_500x400' }
+      // The PDF decides scale AND sheet; forward both so the DXF is drawn on the
+      // same paper at the same scale rather than re-deriving its own escalation.
+      const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: usedSheetSize || payload.sheetSize || 'SI727_500x400', sheetLayouts }
       if (exportFormats.dxf && exportFormats.gpkg) {
         exportStatus.value = 'Building georeferenced DXF (DXF + .prj + .gpkg)…'
         const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { includeGpkg: true })

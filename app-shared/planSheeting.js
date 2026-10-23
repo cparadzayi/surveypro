@@ -37,6 +37,24 @@ const MARGIN_LEFT = 50, MARGIN_RIGHT = 150, MARGIN_TOP = 50, MARGIN_BOTTOM = 50;
 export const TITLE_BAND_ESTIMATE_MM = 55;
 
 /**
+ * The finest scale a developed-township General Plan may be drawn at.
+ *
+ * "Cannot be larger than 1:500" is a rule about the SCALE, so the denominator
+ * has a floor: 1:500 is the largest permitted scale and 1:400, 1:250 and so on
+ * are refused. It binds every path that picks a scale -- auto-fit, a declared
+ * scale, and the label-crowding step-down that moves to a finer scale for room --
+ * so each of them goes through floorDevelopedDenominator.
+ */
+export const DEVELOPED_TOWNSHIP_MIN_DENOMINATOR = 500;
+
+/** The denominator to actually use: `d`, raised to the floor for a developed township. */
+export function floorDevelopedDenominator(planType, d) {
+  return planType === 'general-developed' && Number.isFinite(d) && d < DEVELOPED_TOWNSHIP_MIN_DENOMINATOR
+    ? DEVELOPED_TOWNSHIP_MIN_DENOMINATOR
+    : d;
+}
+
+/**
  * Open paper between the figure (polygon, beacon symbols and their vertex
  * letters) and the drawing margin, in millimetres, on the left, right and
  * bottom. The top already has the title band and the furniture gap. Without it
@@ -262,22 +280,27 @@ export function resolvePlanSheeting({
   if (declaredScale) {
     // An explicit scale is a professional decision: honour it and let the
     // SHEET escalate rather than silently correcting the scale to fit.
-    denominators = [declaredScale];
-    basis = 'surveyor-declared scale';
+    denominators = [floorDevelopedDenominator(planType, declaredScale)];
+    basis = floorDevelopedDenominator(planType, declaredScale) === declaredScale
+      ? 'surveyor-declared scale'
+      : `declared 1:${declaredScale} raised to the developed-township limit`;
   } else {
     // Auto-fit. There is deliberately NO plan-type ceiling: the old Reg 32(3)
     // developed-township mandate that forced 1:500 on small-stand townships
     // was removed. Legibility is what bounds the COARSE end (a coarser figure
     // would leave the narrowest stand unlabelled); the finest end is bounded
-    // by the figure fitting the sheet. planType is accepted for API stability
-    // but no longer constrains anything.
-    denominators = SI727_SCALE_LADDER.filter((d) => d <= legibilityMax);
+    // by the figure fitting the sheet. The one plan-type rule left is the
+    // developed-township floor (DEVELOPED_TOWNSHIP_MIN_DENOMINATOR): never finer
+    // than 1:500.
+    denominators = SI727_SCALE_LADDER
+      .filter((d) => d <= legibilityMax)
+      .filter((d) => floorDevelopedDenominator(planType, d) === d);
     basis = 'auto-fitted';
     if (denominators.length === 0) {
       // The narrowest stand cannot be labelled at any prescribed scale. Take
       // the finest available and let the renderer deal with it rather than
       // returning nothing.
-      denominators = [SI727_SCALE_LADDER[0]];
+      denominators = [floorDevelopedDenominator(planType, SI727_SCALE_LADDER[0])];
       basis = 'auto-fitted (below the legibility limit at every prescribed scale)';
     }
   }

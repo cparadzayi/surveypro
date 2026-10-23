@@ -11,6 +11,21 @@ describe('textWidth', () => {
 })
 
 describe('createDxfWriter', () => {
+  test('a layer can carry an exact true colour (group 420) beside its palette fallback', () => {
+    const w = createDxfWriter([{ name: 'ROAD', color: 31, trueColor: [255, 173, 92] }])
+    const text = w.finish({ x: 0, y: 0 }, { x: 1, y: 1 }).toString('utf8')
+    expect(text).toContain('420\n16756060\n')   // 255,173,92 packed as 0xFFAD5C
+    expect(text).toContain(' 62\n31\n')
+  })
+
+  test('addSolidPolygon fills a concave polygon with triangles covering its area', () => {
+    const w = createDxfWriter(LAYERS)
+    // An L shape: needs 4 triangles of fill, not a bowtie.
+    w.addSolidPolygon('A', [[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2]])
+    const text = w.finish({ x: 0, y: 0 }, { x: 2, y: 2 }).toString('utf8')
+    expect(text.match(/\n  0\nSOLID\n/g)).toHaveLength(4)
+  })
+
   test('finish() produces a well-formed DXF with declared layers', () => {
     const w = createDxfWriter(LAYERS)
     const buf = w.finish({ x: -10, y: -10 }, { x: 10, y: 10 })

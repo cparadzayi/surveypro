@@ -4,7 +4,10 @@ import { parcelExtent, pickDiagramScale, makeTransform, beaconRadiusPt } from '.
 import { buildSidesTable, buildFigureRepresents, formatDiagramArea } from './diagram/sidesTable.js'
 import { resolveStatementDesignation, statementDesignation } from './diagram/designation.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
-import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
+import {
+  computeDiagramLayout, pageDimsPt, marginsPt, northArrowGeometryPt, DIAGRAM_FONTS,
+  DEDUCTIONS_NOTE, BINDING_MARGIN_NOTE, FURNITURE_FONT_PT, DEDUCTIONS_GAP_PT, BINDING_NOTE_OFFSET_PT,
+} from './diagram/diagramLayout.js'
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, isRemainderFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
@@ -38,11 +41,14 @@ const CONTIG_LABEL_MARGIN = 5
 const LAYERS = [
   { name: 'BORDER', color: 7 },
   { name: 'FIGURE', color: 7 },
-  { name: 'FIGURE_BAND', color: 3 },
+  // The template's inner-band hatch colour, RGB 94,228,129 (ACI 103 is its palette fallback).
+  { name: 'FIGURE_BAND', color: 103, trueColor: [94, 228, 129] },
   { name: 'FIGURE_LABELS', color: 7 },
   { name: 'BEACONS', color: 7 },
   { name: 'NEIGHBOURS', color: 8 },
-  { name: 'DIAGRAM_ROAD', color: 1 },
+  // The template's road hatch colour, RGB 255,173,92, as the layer's true colour
+  // (ACI 31 is the nearest palette entry, kept as the fallback).
+  { name: 'DIAGRAM_ROAD', color: 31, trueColor: [255, 173, 92] },
   { name: 'ADJOINING', color: 7 },
   { name: 'ADJOINING_SERVITUDE', color: 5 },
   { name: 'TABLE', color: 7 },
@@ -208,6 +214,8 @@ function drawAdjoiningFeaturesDxf(w, ctx, logger) {
       if (q && q.length >= 3) {
         const layer = ann.role === 'road' ? 'DIAGRAM_ROAD' : 'ADJOINING_SERVITUDE'
         const gPts = q.map(([x, y]) => toG({ px: x, py: y }))
+        // A road is a solid band like the template's hatch, not just an outline.
+        if (ann.role === 'road') w.addSolidPolygon(layer, gPts.map((g) => [g.x, g.y]))
         w.addPolylineOutline(layer, gPts, true)
         for (let k = 0; k < q.length; k++) {
           const s = q[k], t = q[(k + 1) % q.length]
@@ -303,7 +311,7 @@ function drawTableDxf(w, layout, table, loLabel, toG, toGLen) {
   const letMidX = cLetX + 21.5
 
   const gT = (x, y) => toG({ px: x, py: y })
-  const H = 7.5, h = 7
+  const H = DIAGRAM_FONTS.tableHead, h = DIAGRAM_FONTS.table
 
   w.addTextC('TABLE', gT(sideMidX, R.y + H).x, gT(sideMidX, R.y + H).y, 'SIDES', toGLen(H))
   w.addTextC('TABLE', gT(metresMidX, R.y + H).x, gT(metresMidX, R.y + H).y, 'METRES', toGLen(H))
@@ -357,43 +365,42 @@ function drawTableDxf(w, layout, table, loLabel, toG, toGLen) {
 function drawBeaconDescriptionDxf(w, layout, groups, toG, toGLen) {
   const R = layout.beaconDesc
   const g0 = toG({ px: R.x, py: R.y + 8 })
-  w.addText('BEACON_DESC', g0.x, g0.y, 'Description of Beacons', toGLen(8))
+  w.addText('BEACON_DESC', g0.x, g0.y, 'Description of Beacons', toGLen(DIAGRAM_FONTS.beacon))
   if (groups.length === 0) {
     const g = toG({ px: R.x, py: R.y + 11 + 8 })
-    w.addText('BEACON_DESC', g.x, g.y, 'All          :', toGLen(8))
+    w.addText('BEACON_DESC', g.x, g.y, 'All          :', toGLen(DIAGRAM_FONTS.beacon))
   } else if (groups.length === 1) {
     const g = toG({ px: R.x, py: R.y + 11 + 8 })
-    w.addText('BEACON_DESC', g.x, g.y, `All          : ${groups[0].description}`, toGLen(8))
+    w.addText('BEACON_DESC', g.x, g.y, `All          : ${groups[0].description}`, toGLen(DIAGRAM_FONTS.beacon))
   } else {
     let y = R.y + 11
     for (const grp of groups) {
       const g = toG({ px: R.x, py: y + 8 })
-      w.addText('BEACON_DESC', g.x, g.y, `${grp.names}  :  ${grp.description}`, toGLen(8))
+      w.addText('BEACON_DESC', g.x, g.y, `${grp.names}  :  ${grp.description}`, toGLen(DIAGRAM_FONTS.beacon))
       y += 11
     }
   }
 }
 
 function drawNorthArrowDxf(w, layout, toG, toGLen) {
-  const R = layout.northArrow
-  const cx = R.x + R.width / 2
-  const shaftTop = toG({ px: cx, py: R.y }), shaftBottom = toG({ px: cx, py: R.y + R.height })
-  w.addLine('NORTH_ARROW', shaftBottom.x, shaftBottom.y, shaftTop.x, shaftTop.y)
-  const headL = toG({ px: cx - 4, py: R.y + 8 }), headTip = toG({ px: cx, py: R.y }), headR = toG({ px: cx + 4, py: R.y + 8 })
-  w.addLine('NORTH_ARROW', headL.x, headL.y, headTip.x, headTip.y)
-  w.addLine('NORTH_ARROW', headTip.x, headTip.y, headR.x, headR.y)
-  const gT = toG({ px: cx - 9, py: R.y + R.height - 14 + 7 })
-  w.addText('NORTH_ARROW', gT.x, gT.y, 'T', toGLen(7))
-  const gN = toG({ px: cx + 4, py: R.y + R.height - 14 + 7 })
-  w.addText('NORTH_ARROW', gN.x, gN.y, 'N', toGLen(7))
+  // The template's north arrow (same geometry as the PDF).
+  const G = northArrowGeometryPt(layout.northArrow)
+  for (const [a, b] of G.segments) {
+    const ga = toG({ px: a[0], py: a[1] }), gb = toG({ px: b[0], py: b[1] })
+    w.addLine('NORTH_ARROW', ga.x, ga.y, gb.x, gb.y)
+  }
+  for (const l of G.labels) {
+    const gl = toG({ px: l.at[0], py: l.at[1] })
+    w.addText('NORTH_ARROW', gl.x, gl.y, l.text, toGLen(G.labelHeightPt))
+  }
 }
 
 function drawApprovedBoxDxf(w, layout, toG, toGLen) {
   const R = layout.approved
   const cx = R.x + R.width / 2
-  const g1 = toG({ px: cx, py: R.y + 5 + 7 }); w.addTextC('APPROVED', g1.x, g1.y, 'Approved', toGLen(7))
-  const g2 = toG({ px: cx, py: R.y + 31 + 7 }); w.addTextC('APPROVED', g2.x, g2.y, 'for Surveyor-General', toGLen(7))
-  const g3 = toG({ px: cx, py: R.y + 55 + 7 }); w.addTextC('APPROVED', g3.x, g3.y, 'Date ....................', toGLen(7))
+  const g1 = toG({ px: cx, py: R.y + 5 + DIAGRAM_FONTS.approved }); w.addTextC('APPROVED', g1.x, g1.y, 'Approved', toGLen(DIAGRAM_FONTS.approved))
+  const g2 = toG({ px: cx, py: R.y + 31 + DIAGRAM_FONTS.approved }); w.addTextC('APPROVED', g2.x, g2.y, 'for Surveyor-General', toGLen(DIAGRAM_FONTS.approved))
+  const g3 = toG({ px: cx, py: R.y + 55 + DIAGRAM_FONTS.approved }); w.addTextC('APPROVED', g3.x, g3.y, 'Date ....................', toGLen(DIAGRAM_FONTS.approved))
 }
 
 function drawScaleBarDxf(w, layout, denom, toG, toGLen) {
@@ -437,20 +444,20 @@ function drawStatementDxf(w, layout, geometry, metadata, toG, toGLen) {
   const desigText = statementDesignation(designation, metadata.parentProperty)
   const surveyDate = metadata.surveyDate ?? metadata.date
 
-  { const g = toG({ px: R.x, py: R.y + 9 }); w.addText('STATEMENT', g.x, g.y, 'The figure', toGLen(9)) }
-  { const g = toG({ px: R.x, py: R.y + 20 }); w.addText('STATEMENT', g.x, g.y, 'represents', toGLen(9)) }
-  { const g = toG({ px: R.x + R.width / 2, py: R.y + 9 }); w.addTextC('STATEMENT', g.x, g.y, seq, toGLen(9)) }
-  { const g = toG({ px: R.x + R.width / 2, py: R.y + 21 }); w.addTextC('STATEMENT', g.x, g.y, area, toGLen(9)) }
-  { const g = toG({ px: R.x + R.width, py: R.y + 21 }); w.addTextR('STATEMENT', g.x, g.y, 'of land called', toGLen(9)) }
+  { const g = toG({ px: R.x, py: R.y + DIAGRAM_FONTS.statement }); w.addText('STATEMENT', g.x, g.y, 'The figure', toGLen(DIAGRAM_FONTS.statement)) }
+  { const g = toG({ px: R.x, py: R.y + 11 + DIAGRAM_FONTS.statement }); w.addText('STATEMENT', g.x, g.y, 'represents', toGLen(DIAGRAM_FONTS.statement)) }
+  { const g = toG({ px: R.x + R.width / 2, py: R.y + DIAGRAM_FONTS.statement }); w.addTextC('STATEMENT', g.x, g.y, seq, toGLen(DIAGRAM_FONTS.statement)) }
+  { const g = toG({ px: R.x + R.width / 2, py: R.y + 12 + DIAGRAM_FONTS.statement }); w.addTextC('STATEMENT', g.x, g.y, area, toGLen(DIAGRAM_FONTS.statement)) }
+  { const g = toG({ px: R.x + R.width, py: R.y + 12 + DIAGRAM_FONTS.statement }); w.addTextR('STATEMENT', g.x, g.y, 'of land called', toGLen(DIAGRAM_FONTS.statement)) }
 
   let desigSize = 11
   while (desigSize > 7.5 && textWidth(desigText, desigSize) > R.width) desigSize -= 0.5
-  { const g = toG({ px: R.x, py: R.y + 30 + desigSize }); w.addText('STATEMENT', g.x, g.y, desigText, toGLen(desigSize)) }
+  { const g = toG({ px: R.x + R.width / 2, py: R.y + 30 + desigSize }); w.addTextC('STATEMENT', g.x, g.y, desigText, toGLen(desigSize)) }
 
-  { const g = toG({ px: R.x, py: R.y + 53 }); w.addText('STATEMENT', g.x, g.y, `situate in the district of ${(metadata.district ?? '').toUpperCase()}.`, toGLen(9)) }
+  { const g = toG({ px: R.x, py: R.y + 44 + DIAGRAM_FONTS.statement }); w.addText('STATEMENT', g.x, g.y, `situate in the district of ${(metadata.district ?? '').toUpperCase()}.`, toGLen(DIAGRAM_FONTS.statement)) }
   const surveyedLine = `Surveyed in ${surveyDate ? new Date(surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`
-  { const g = toG({ px: R.x, py: R.y + 70 }); w.addText('STATEMENT', g.x, g.y, surveyedLine, toGLen(9)) }
-  { const g = toG({ px: R.x + R.width, py: R.y + 90 }); w.addTextR('STATEMENT', g.x, g.y, 'Land Surveyor', toGLen(9)) }
+  { const g = toG({ px: R.x, py: R.y + 61 + DIAGRAM_FONTS.statement }); w.addText('STATEMENT', g.x, g.y, surveyedLine, toGLen(DIAGRAM_FONTS.statement)) }
+  { const g = toG({ px: R.x + R.width, py: R.y + 81 + DIAGRAM_FONTS.statement }); w.addTextR('STATEMENT', g.x, g.y, 'Land Surveyor', toGLen(DIAGRAM_FONTS.statement)) }
 }
 
 // Spread a single line's words across `width` via manual per-word spacing (no native
@@ -471,7 +478,7 @@ function justifiedLineDxf(w, layer, text, x, y, width, height, toG, toGLen) {
 
 function refRowY(top, bottom) {
   const row = (bottom - top) / 4
-  return (i) => top + row * i + (row - 7) / 2 + 7 // +7: DXF baseline vs. PDF top-left
+  return (i) => top + row * i + (row - DIAGRAM_FONTS.grid) / 2 + DIAGRAM_FONTS.grid // +grid font: DXF baseline vs. PDF top-left
 }
 
 function drawDiagramRefCellDxf(w, { xLeft, xRight, top, bottom, pad, line1, no, annexedTo, deedNo }, toG, toGLen) {
@@ -479,11 +486,11 @@ function drawDiagramRefCellDxf(w, { xLeft, xRight, top, bottom, pad, line1, no, 
   const cw = (xRight - xLeft) - 2 * pad
   const y = refRowY(top, bottom)
   const rightPad = 4
-  justifiedLineDxf(w, 'GRID', line1, cx, y(0), cw, 7, toG, toGLen)
-  { const g = toG({ px: cx, py: y(1) }); w.addText('GRID', g.x, g.y, `No. ${no}`, toGLen(7)) }
-  { const g = toG({ px: xRight - rightPad, py: y(1) }); w.addTextR('GRID', g.x, g.y, 'annexed to', toGLen(7)) }
-  if (annexedTo) { const g = toG({ px: cx, py: y(2) }); w.addText('GRID', g.x, g.y, annexedTo, toGLen(7)) }
-  { const g = toG({ px: xLeft + (xRight - xLeft) / 2, py: y(3) }); w.addText('GRID', g.x, g.y, `No. ${deedNo}`, toGLen(7)) }
+  justifiedLineDxf(w, 'GRID', line1, cx, y(0), cw, DIAGRAM_FONTS.grid, toG, toGLen)
+  { const g = toG({ px: cx, py: y(1) }); w.addText('GRID', g.x, g.y, `No. ${no}`, toGLen(DIAGRAM_FONTS.grid)) }
+  { const g = toG({ px: xRight - rightPad, py: y(1) }); w.addTextR('GRID', g.x, g.y, 'annexed to', toGLen(DIAGRAM_FONTS.grid)) }
+  if (annexedTo) { const g = toG({ px: cx, py: y(2) }); w.addText('GRID', g.x, g.y, annexedTo, toGLen(DIAGRAM_FONTS.grid)) }
+  { const g = toG({ px: xLeft + (xRight - xLeft) / 2, py: y(3) }); w.addText('GRID', g.x, g.y, `No. ${deedNo}`, toGLen(DIAGRAM_FONTS.grid)) }
 }
 
 function drawReferenceGridDxf(w, layout, grid, toG, toGLen) {
@@ -497,7 +504,7 @@ function drawReferenceGridDxf(w, layout, grid, toG, toGLen) {
   const COMP_H = 14
   const r3 = bottom - COMP_H
   const r2 = r3 - R.height * 0.25
-  const compCenterY = r3 + (COMP_H - 7) / 2 + 7
+  const compCenterY = r3 + (COMP_H - DIAGRAM_FONTS.grid) / 2 + DIAGRAM_FONTS.grid
 
   const line = (px1, py1, px2, py2) => { const g1 = toG({ px: px1, py: py1 }), g2 = toG({ px: px2, py: py2 }); w.addLine('GRID', g1.x, g1.y, g2.x, g2.y) }
   line(B.x, R.y, B.x + B.width, R.y)
@@ -512,10 +519,10 @@ function drawReferenceGridDxf(w, layout, grid, toG, toGLen) {
   const wL = (x1 - x0) - 2 * pad
   const lY = refRowY(R.y, r2)
   const colMid = x0 + (x1 - x0) / 2
-  { const g = toG({ px: x0 + pad, py: lY(0) }); w.addText('GRID', g.x, g.y, 'This diagram is annexed to', toGLen(7)) }
-  { const g = toG({ px: x0 + pad, py: lY(1) }); w.addText('GRID', g.x, g.y, 'No.', toGLen(7)) }
-  { const g = toG({ px: colMid, py: lY(1) }); w.addText('GRID', g.x, g.y, 'dated', toGLen(7)) }
-  { const g = toG({ px: x0 + wL + pad, py: compCenterY }); w.addTextR('GRID', g.x, g.y, 'Surveyor-General', toGLen(7)) }
+  { const g = toG({ px: x0 + pad, py: lY(0) }); w.addText('GRID', g.x, g.y, 'This diagram is annexed to', toGLen(DIAGRAM_FONTS.grid)) }
+  { const g = toG({ px: x0 + pad, py: lY(1) }); w.addText('GRID', g.x, g.y, 'No.', toGLen(DIAGRAM_FONTS.grid)) }
+  { const g = toG({ px: colMid, py: lY(1) }); w.addText('GRID', g.x, g.y, 'dated', toGLen(DIAGRAM_FONTS.grid)) }
+  { const g = toG({ px: x0 + wL + pad, py: compCenterY }); w.addTextR('GRID', g.x, g.y, 'Surveyor-General', toGLen(DIAGRAM_FONTS.grid)) }
 
   drawDiagramRefCellDxf(w, {
     xLeft: x1, xRight: x2, top: R.y, bottom: r2, pad,
@@ -528,11 +535,11 @@ function drawReferenceGridDxf(w, layout, grid, toG, toGLen) {
     annexedTo: grid.originalTitleAnnexedTo, deedNo: grid.originalTitleDeedNo,
   }, toG, toGLen)
 
-  const fileCenterY = r2 + ((r3 - r2) - 7) / 2 + 7
-  { const g = toG({ px: x1 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `File : ${grid.fileNo}`, toGLen(7)) }
-  { const g = toG({ px: t1 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `G.P. : ${grid.gpNo}`, toGLen(7)) }
-  { const g = toG({ px: t2 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `S.R. : ${grid.srNo}`, toGLen(7)) }
-  { const g = toG({ px: x1 + pad, py: compCenterY }); w.addText('GRID', g.x, g.y, `Compilation : ${grid.compilation}`, toGLen(7)) }
+  const fileCenterY = r2 + ((r3 - r2) - DIAGRAM_FONTS.grid) / 2 + DIAGRAM_FONTS.grid
+  { const g = toG({ px: x1 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `File : ${grid.fileNo}`, toGLen(DIAGRAM_FONTS.grid)) }
+  { const g = toG({ px: t1 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `G.P. : ${grid.gpNo}`, toGLen(DIAGRAM_FONTS.grid)) }
+  { const g = toG({ px: t2 + pad, py: fileCenterY }); w.addText('GRID', g.x, g.y, `S.R. : ${grid.srNo}`, toGLen(DIAGRAM_FONTS.grid)) }
+  { const g = toG({ px: x1 + pad, py: compCenterY }); w.addText('GRID', g.x, g.y, `Compilation : ${grid.compilation}`, toGLen(DIAGRAM_FONTS.grid)) }
 }
 
 export async function generateDiagramDXF(options, logger) {
@@ -610,6 +617,18 @@ export async function generateDiagramDXF(options, logger) {
   const b3 = toG({ px: layout.border.x, py: layout.border.y + layout.border.height })
   w.addPolylineOutline('BORDER', [b0, b1, b2, b3], true)
 
+  // Page furniture from the surveyor's template (same wording as the PDF).
+  {
+    const B = layout.border
+    const h = toGLen(FURNITURE_FONT_PT)
+    const dg = toG({ px: B.x, py: B.y - DEDUCTIONS_GAP_PT })
+    w.addText('BORDER', dg.x, dg.y, DEDUCTIONS_NOTE, h)
+    // Reads upward: starts at the bottom of the run and rotates 90 degrees CCW.
+    const bwPt = BINDING_MARGIN_NOTE.length * FURNITURE_FONT_PT * 0.55
+    const bg = toG({ px: B.x - BINDING_NOTE_OFFSET_PT, py: B.y + B.height / 2 + bwPt / 2 })
+    w.addText('BORDER', bg.x, bg.y, BINDING_MARGIN_NOTE, h, 90)
+  }
+
   // Abutting neighbours: clip to the 10m buffer, faint outline + label.
   const neighbourSegs = []
   const neighbourLabels = []
@@ -663,6 +682,19 @@ export async function generateDiagramDXF(options, logger) {
   w.addPolylineOutline('FIGURE', subjPt.map((pt) => toG(pt)), true)
   for (const ring of inner) {
     w.addPolylineOutline('FIGURE_BAND', ring.map(([x, y]) => toG({ px: x, py: y })), true)
+  }
+  // Fill the band between the boundary and its inward offset, as the template's
+  // solid hatch does: one quad per edge, when the offset kept the vertex count.
+  if (inner.length === 1 && inner[0].length === subjPt.length) {
+    const outerG = subjPt.map((pt) => toG(pt))
+    const innerG = inner[0].map(([x, y]) => toG({ px: x, py: y }))
+    for (let i = 0; i < outerG.length; i++) {
+      const j = (i + 1) % outerG.length
+      const a = [outerG[i].x, outerG[i].y], b = [outerG[j].x, outerG[j].y]
+      const c = [innerG[j].x, innerG[j].y], d = [innerG[i].x, innerG[i].y]
+      w.addSolidTri('FIGURE_BAND', a, b, c)
+      w.addSolidTri('FIGURE_BAND', a, c, d)
+    }
   }
 
   const subjCentroid = centroidPt(subjPt)

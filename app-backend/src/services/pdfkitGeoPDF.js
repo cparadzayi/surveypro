@@ -11,12 +11,13 @@ import {
   GENERAL_PLAN_MARGIN_FOOTER,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
+import { northArrowForPlanMm } from "./diagram/diagramLayout.js";
 import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, tickRungLadder } from "../../../app-shared/tickMarks.js";
 import { scheduleHeaderScale, scheduleHeaderBandPt, computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, planScheduleSplit } from "../../../app-shared/block-definitions.js";
 import { scaleBarLayout, scaleBarFrame } from "../../../app-shared/scaleBar.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { splitBeaconName, labelParts } from "../../../app-shared/beaconName.js";
-import { resolvePlanSheeting, drawingAreaMm, FIGURE_MARGIN_MM, FIGURE_MAX_FRACTION, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js';
+import { floorDevelopedDenominator, resolvePlanSheeting, drawingAreaMm, FIGURE_MARGIN_MM, FIGURE_MAX_FRACTION, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js';
 import { sheetContentMm } from '../../../app-shared/si727SheetSizes.js';
 import { certifyTopologyGate } from './dxfTopology.js';
 import { extractScheduleRow } from './dxfScheduleHelpers.js';
@@ -6718,6 +6719,10 @@ export function calculateBlockPositions(
     prePlacedNorthArrow,
     prePlacedScaleBar,
     ...Object.values(placements),
+    // A schedule seated in the side strips is not one of the engine's placements, so
+    // it was missing here and the stacker, which seats whatever the engine could not
+    // (a tall servitude statement, say), could land a block on top of the schedule.
+    ...(_schedStripTables ?? []),
   ].filter(Boolean);
 
   // All stacker-placed rects so far (for intra-stacker collision avoidance).
@@ -7079,7 +7084,9 @@ export function calculateBlockPositions(
 
   // 6b. Block-to-polygon overlap check (2pt buffer — tight check for actual overlap)
   // Mandatory blocks that overlap the polygon trigger paper-size escalation.
-  const _mandatoryBlockNames = new Set(["outsideFigureData", "scheduleOfAreas", "scaleBar", "northArrow", "surveyStatement"]);
+  // The servitude statement is not placement-mandatory (a clear stacker slot is fine),
+  // but one that ends up ON the figure must buy paper like the rest rather than print there.
+  const _mandatoryBlockNames = new Set(["outsideFigureData", "scheduleOfAreas", "scaleBar", "northArrow", "surveyStatement", "servitudeStatement"]);
   let _polyCollisionOnMandatory = false;
   const _collisionPolyPts = _gatePolyPts;
   if (_collisionPolyPts?.length > 0) {
@@ -10024,6 +10031,10 @@ function drawEndorsementBlock(doc, position) {
  * Draw North Arrow using centrally calculated position
  * @param {Object} position - Centrally calculated collision-free position
  */
+// Plan north arrow: true-north line length and letter height, in paper mm.
+const NORTH_ARROW_LINE_MM = 28;
+const NORTH_ARROW_LETTER_MM = 3;
+
 function drawNorthArrow(doc, bounds, position) {
   // North Arrow bounding box — sourced from the shared config so the renderer
   // and the planner (calculateBlockPositions) can never drift apart.
@@ -10037,91 +10048,22 @@ function drawNorthArrow(doc, bounds, position) {
 
   doc.save();
 
-  // Compass rose centre is at the horizontal middle of the box,
-  // vertically offset so the full rose + "TN" label fits within boxH.
-  // Rose extends mainLength(35) above and below centre; "TN" adds ~15pt below south tip.
-  // Total: 35 + 35 + 15 = 85 → centre at boxY + 35.
-  const centerX = boxX + boxW / 2;
-  const centerY = boxY + 35;
-  const mainLength = 35; // Length of main N-S axis
-  const sideLength = 25; // Length of E-W and diagonal points
-  const innerRadius = 8; // Inner circle radius
-
-  doc.lineWidth(0.75);
-  doc.strokeColor("#000000");
-  doc.fillColor("#000000");
-
-  // Draw 8 triangular points of the compass rose
-  const points = [
-    { angle: 0, length: mainLength, filled: true }, // North (main, filled)
-    { angle: 45, length: sideLength, filled: false }, // NE
-    { angle: 90, length: sideLength, filled: false }, // East
-    { angle: 135, length: sideLength, filled: false }, // SE
-    { angle: 180, length: mainLength, filled: true }, // South (main, filled)
-    { angle: 225, length: sideLength, filled: false }, // SW
-    { angle: 270, length: sideLength, filled: false }, // West
-    { angle: 315, length: sideLength, filled: false }, // NW
-  ];
-
-  points.forEach((point) => {
-    const angleRad = ((point.angle - 90) * Math.PI) / 180; // -90 to make 0° point north
-    const outerX = centerX + Math.cos(angleRad) * point.length;
-    const outerY = centerY + Math.sin(angleRad) * point.length;
-
-    // Calculate perpendicular points for triangle base
-    const perpAngle = angleRad + Math.PI / 2;
-    const baseWidth = point.angle === 0 || point.angle === 180 ? 3 : 2.5;
-    const leftX = centerX + Math.cos(perpAngle) * baseWidth;
-    const leftY = centerY + Math.sin(perpAngle) * baseWidth;
-    const rightX = centerX - Math.cos(perpAngle) * baseWidth;
-    const rightY = centerY - Math.sin(perpAngle) * baseWidth;
-
-    // Draw triangle
-    doc
-      .moveTo(outerX, outerY)
-      .lineTo(leftX, leftY)
-      .lineTo(rightX, rightY)
-      .closePath();
-
-    if (point.filled) {
-      doc.fillAndStroke("#000000", "#000000");
-    } else {
-      doc.stroke();
-    }
-  });
-
-  // Draw center circle
-  doc.circle(centerX, centerY, innerRadius).fillAndStroke("#FFFFFF", "#000000");
-
-  // Draw double lines for main N-S axis
-  const lineOffset = 1.5;
-  // North line (double)
-  doc
-    .moveTo(centerX - lineOffset, centerY - innerRadius)
-    .lineTo(centerX - lineOffset, centerY - mainLength)
-    .stroke();
-  doc
-    .moveTo(centerX + lineOffset, centerY - innerRadius)
-    .lineTo(centerX + lineOffset, centerY - mainLength)
-    .stroke();
-
-  // South line (double)
-  doc
-    .moveTo(centerX - lineOffset, centerY + innerRadius)
-    .lineTo(centerX - lineOffset, centerY + mainLength)
-    .stroke();
-  doc
-    .moveTo(centerX + lineOffset, centerY + innerRadius)
-    .lineTo(centerX + lineOffset, centerY + mainLength)
-    .stroke();
-
-  // Draw "TN" label below the south point
-  doc
-    .fontSize(10)
-    .fillColor("#000000")
-    .font("Helvetica-Bold")
-    .text("T", centerX - 10, centerY + mainLength + 5)
-    .text("N", centerX + 2, centerY + mainLength + 5);
+  // The surveyor's template north arrow (shared with the diagram and working-plan
+  // renderers): a true-north line, a leaning grid-north line ending in a barb, and
+  // "T" / "N" either side of the line. The true-north line is centred vertically in
+  // the reserved box and 28 mm long, so it fills the 85 pt slot the planner reserves.
+  const PT = 72 / 25.4;
+  const arrow = northArrowForPlanMm(NORTH_ARROW_LINE_MM, NORTH_ARROW_LETTER_MM);
+  const ax = boxX + boxW / 2;
+  const ay = boxY + boxH / 2 - (NORTH_ARROW_LINE_MM / 2) * PT;
+  doc.lineWidth(0.75).strokeColor("#000000").fillColor("#000000");
+  for (const [p, q] of arrow.segments) {
+    doc.moveTo(ax + p[0] * PT, ay + p[1] * PT).lineTo(ax + q[0] * PT, ay + q[1] * PT).stroke();
+  }
+  doc.font("Helvetica-Bold").fontSize(arrow.letterMm * PT);
+  for (const l of arrow.labels) {
+    doc.text(l.text, ax + l.at[0] * PT, ay + l.at[1] * PT - arrow.letterMm * PT, { lineBreak: false });
+  }
 
   doc.restore();
 }
@@ -10209,7 +10151,14 @@ function calculateOptimalScale(extent, mapBounds, logger, requestedScale, forceM
   // The scale is resolved and the figure is drawn at exactly this size. There
   // is no plan-type ceiling: the old Reg 32(3) mandate that capped scales at
   // 1:500 (and could push a township into multi-sheet tiling) was removed.
-  return SI727_PRESCRIBED_SCALES[candidateIndex];
+  // The one plan-type rule that remains: a developed township is never drawn
+  // finer than 1:500, however the scale was arrived at (auto-fit, declared,
+  // or a retry).
+  const _picked = SI727_PRESCRIBED_SCALES[candidateIndex];
+  const _floored = floorDevelopedDenominator(planType, _picked.value);
+  return _floored === _picked.value
+    ? _picked
+    : SI727_PRESCRIBED_SCALES.find(s => s.value === _floored) ?? _picked;
 }
 
 /**
@@ -11940,7 +11889,9 @@ async function _generateGeoPDFInner(options, logger) {
       // ── SCALE STEP-DOWN for labels (smaller denominator = longer edges on paper) ──
       const curIdx = SI727_PRESCRIBED_SCALES.findIndex(s => s.value === optimalScale.value);
       const prevIdx = curIdx > 0 ? curIdx - 1 : -1;
-      const prevScale = prevIdx >= 0 ? SI727_PRESCRIBED_SCALES[prevIdx] : null;
+      const _prev = prevIdx >= 0 ? SI727_PRESCRIBED_SCALES[prevIdx] : null;
+      // A developed township may not step finer than 1:500 for label room.
+      const prevScale = _prev && floorDevelopedDenominator(planType, _prev.value) === _prev.value ? _prev : null;
       if (prevScale) {
         logger.warn(
           `[PDFKit] 🏷️ Label crowding detected (${labelCollisions} collisions) at largest paper — ` +
@@ -12873,6 +12824,10 @@ export async function generateSheetedGeoPDF(options, logger) {
     : emptyFC();
 
   const pageBuffers = [];
+  // What each sheet was actually rendered at, after its own paper/scale
+  // escalation. The DXF export of the same plan is handed these so every sheet
+  // is drawn on the same paper at the same scale as its PDF page.
+  const layouts = [];
 
   // ── Key plan (Sheet 0) — skipped entirely for a single-sheet plan: SI 727
   // Seventh Schedule (b) key plans exist to index MULTIPLE sheets. ──
@@ -12882,7 +12837,10 @@ export async function generateSheetedGeoPDF(options, logger) {
     log.info(`[SheetedPDF] Key plan generated from ${orderedSheets.length} sheet rings`);
   }
 
-  for (const sheet of orderedSheets) {
+  const renderSheets = async (scaleArg) => {
+    const pages = [];
+    const sheetLayouts = [];
+    for (const sheet of orderedSheets) {
     const outsideFigure = sheetOutsideFigure(sheet);
     // The plan's own features for this sheet's stands, when the whole-plan
     // collection was supplied -- so the sheet keeps the computed areas, edges
@@ -12903,7 +12861,7 @@ export async function generateSheetedGeoPDF(options, logger) {
       metadata: perSheetMetadata,
       outsideFigureData,
       beaconLabels,
-      scale,
+      scale: scaleArg,
       sheetSize,
       planType,
       // No fullFigureLabel: unlike a rectangular tile (a slice of ONE shared
@@ -12913,9 +12871,28 @@ export async function generateSheetedGeoPDF(options, logger) {
       sheetInfo: sheetSheetInfo(sheet),
     }, log);
 
-    pageBuffers.push(result.pdfBuffer);
+    pages.push(result.pdfBuffer);
+    sheetLayouts.push({ sheetNumber: sheet.sheetNumber, scale: result.scale, sheetSize: result.sheetSize });
     log.info(`[SheetedPDF] Sheet ${sheet.sheetNumber}/${sheet.totalSheets} generated (${result.pdfBuffer.length} bytes)`);
   }
+    return { pages, sheetLayouts };
+  };
+
+  // Every sheet of ONE plan is drawn at ONE scale. A sheet that needed a coarser
+  // scale to keep its blocks clear of each other (a long servitude table, say)
+  // pulls the others with it: re-render all sheets at the coarsest scale any of
+  // them needed, so the sheets read as a set and the DXF -- which is handed
+  // these layouts -- matches the PDF sheet for sheet.
+  let rendered = await renderSheets(scale);
+  for (let pass = 0; pass < 3; pass++) {
+    const denoms = rendered.sheetLayouts.map((l) => parseInt(String(l.scale).split(':')[1], 10)).filter(Number.isFinite);
+    const coarsest = Math.max(...denoms);
+    if (denoms.length < 2 || denoms.every((d) => d === coarsest)) break;
+    log.info(`[SheetedPDF] Sheets resolved to different scales (${rendered.sheetLayouts.map((l) => l.scale).join(', ')}) — re-rendering every sheet at 1:${coarsest}`);
+    rendered = await renderSheets(`1:${coarsest}`);
+  }
+  pageBuffers.push(...rendered.pages);
+  layouts.push(...rendered.sheetLayouts);
 
   const pdf = await _mergePDFBuffers(pageBuffers, log);
 
@@ -12923,7 +12900,7 @@ export async function generateSheetedGeoPDF(options, logger) {
     await writeFile(outputPath, pdf);
   }
 
-  const out = { pdf, pageCount: pageBuffers.length };
+  const out = { pdf, pageCount: pageBuffers.length, layouts };
   if (returnPages) out.pages = pageBuffers;
   return out;
 }

@@ -87,6 +87,12 @@ export interface VectorGeoPDFRequest {
    * sheet (or 400 `cuts-required` if the sheet is multi-sheet-required).
    */
   sheets?: SheetPayload[]
+  /**
+   * What the PDF rendered each sheet at (scale + paper, after its own
+   * escalation), from the PDF response's X-Sheet-Layouts. The DXF export
+   * forwards it so every sheet is drawn at the same scale on the same paper.
+   */
+  sheetLayouts?: Array<{ sheetNumber: number; scale: string; sheetSize: string }>
   // Legacy fields (still accepted for backward compatibility)
   outsideFigure?: GeoJSON.FeatureCollection
   outsideFigureData?: any
@@ -157,6 +163,7 @@ export interface VectorGeoPDFResult {
   suggestedScale: string | null  // e.g. '1:2500' — set when block placement needed a higher scale
   usedScale: string | null        // actual scale used for this render
   usedSheetSize: string | null    // actual sheet size after any A2→A1→A0 escalation
+  sheetLayouts: Array<{ sheetNumber: number; scale: string; sheetSize: string }> | null  // multi-sheet plans only
 }
 
 /**
@@ -182,6 +189,11 @@ export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promis
   const suggestedScale  = response.headers['x-suggested-scale']  ?? null
   const usedScale       = response.headers['x-used-scale']       ?? null
   const usedSheetSize   = response.headers['x-used-sheet-size']  ?? null
+  let sheetLayouts: VectorGeoPDFResult['sheetLayouts'] = null
+  try {
+    const raw = response.headers['x-sheet-layouts']
+    if (raw) sheetLayouts = JSON.parse(raw)
+  } catch { /* absent or malformed: the DXF falls back to its own derivation */ }
 
   console.log('[VectorGeoPDF] ✅ Received PDF blob:', {
     size: `${(response.data.size / 1024).toFixed(2)} KB`,
@@ -201,7 +213,7 @@ export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promis
     throw new Error(e?.message || 'Failed to validate GeoPDF response')
   }
   
-  return { blob: response.data, suggestedScale, usedScale, usedSheetSize }
+  return { blob: response.data, suggestedScale, usedScale, usedSheetSize, sheetLayouts }
 }
 
 /**
@@ -241,6 +253,7 @@ export async function generateDXF(
     // Per-sheet payloads for a multi-part plan (from buildSheetPayloads); the
     // backend emits one DXF per sheet instead of a single ground file.
     sheets: request.sheets,
+    sheetLayouts: request.sheetLayouts,
     // UI-computed beacon-to-parcel assignments. The DXF generator uses these
     // to display suffix-only labels inside their parcels (e.g. "A" instead of
     // "2475A") — matches the PDF's behavior at pdfkitGeoPDF.js:4654-4733.

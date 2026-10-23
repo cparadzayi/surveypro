@@ -525,8 +525,9 @@ describe('generateWorkingPlan — golden', () => {
     const sheet = rays.filter(([, v]) => !v.some(within))
 
     // the same construction, both of them
-    expect(sheet).toHaveLength(8)
-    expect(inset).toHaveLength(8)
+    // (three lines each: true north, the leaning grid-north line, its barb)
+    expect(sheet).toHaveLength(3)
+    expect(inset).toHaveLength(3)
 
     // and the same letters, the inset's inside its frame
     const letters = []

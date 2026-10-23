@@ -44,6 +44,7 @@ await app.register(cors, {
     'X-Used-Scale',
     'X-Suggested-Scale',
     'X-Used-Sheet-Size',
+    'X-Sheet-Layouts',
     'X-Plan-Scale',
     'X-Plan-Grid',
     'X-Plan-Areas'

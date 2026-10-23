@@ -19,6 +19,7 @@ import { DxfDocument } from './dxf-r12.js';
 // consumer. Both are coordinate-space agnostic, so they work in ground units.
 import { contiguousMarks, CONTIG_STUB_MM } from '../diagram/contiguousMarks.js';
 import { edgeStrip } from '../diagram/edgeStrip.js';
+import { NORTH_ARROW_TEMPLATE } from '../diagram/diagramLayout.js';
 import { SI727_SCALE_LADDER } from '../../../../app-shared/si727Scales.js';
 import { crowdedClusters } from './crowdedBeacons.js';
 import { insetCells } from './insetCells.js';
@@ -679,27 +680,25 @@ const crowded = crowdedClusters(
 
   const d = doc.sink;
 
-  /** The meridian arrow -- eight rays about a centre, flanked by its T and N --
-   *  drawn at whatever size is asked for. One symbol, used twice: the sheet
-   *  carries it full size and the inset carries the same arrow small, rather
-   *  than a second symbol that could drift from it. The letters' offset is
-   *  taken from the arrow's own geometry, so they scale with the rays.
+  /** The meridian arrow -- the surveyor's template north arrow (a true-north
+   *  line, a leaning grid-north line ending in a barb) with its T and N either
+   *  side of the line -- drawn at whatever size is asked for. One symbol, used
+   *  twice: the sheet carries it full size and the inset carries the same arrow
+   *  small, rather than a second symbol that could drift from it. The letters'
+   *  offset is taken from the arrow's own geometry, so they scale with it.
    *
-   *  `k` = 1 reproduces the sheet's arrow exactly, which is what keeps the
-   *  reference drawing byte-for-byte unchanged. */
+   *  The template's construction (NORTH_ARROW_TEMPLATE, shared with the diagram
+   *  renderers) is stretched so its true-north line spans exactly what the
+   *  shaft of the old arrow did, from `north` above the centre to `south`
+   *  below it; `k` scales the whole symbol. */
   const drawNorthArrow = (cx, cy, k, letterMm) => {
     const na = L.northArrow;
-    const hw = na.halfWidth * k;
-    const rays = [
-      [90, na.north], [270, na.south], [0, na.side], [180, na.side],
-      [45, na.diagonal], [135, na.diagonal], [225, na.diagonal], [315, na.diagonal],
-    ];
-    for (const [deg, len] of rays) {
-      const a = (deg * Math.PI) / 180;
-      const tip = S(cx + Math.cos(a) * len * k, cy - Math.sin(a) * len * k);
-      const b1 = S(cx - Math.sin(a) * hw, cy - Math.cos(a) * hw);
-      const b2 = S(cx + Math.sin(a) * hw, cy + Math.cos(a) * hw);
-      d.polyline([b1, tip, b2], { layer: 'NORTH-ARROW' });
+    const T = NORTH_ARROW_TEMPLATE;
+    const f = (na.north + na.south) / T.trueNorth[1][1];
+    const apexY = cy - na.north * k;
+    const at = ([dx, dy]) => S(cx + dx * f * k, apexY + dy * f * k);
+    for (const [a, b] of [T.trueNorth, T.gridNorth, T.barb]) {
+      d.polyline([at(a), at(b)], { layer: 'NORTH-ARROW' });
     }
     // The letters sit at a fixed height on the sheet; expressed as an offset
     // from the arrow's own centre they travel with it at any size.

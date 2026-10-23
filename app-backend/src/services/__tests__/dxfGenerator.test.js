@@ -240,18 +240,16 @@ describe('generateDXF — north arrow', () => {
     outsideFigureData: null,
     metadata: {}, scale: '1:500', sheetSize: 'SI727_500x400',
   }
-  test('emits the PDF-style compass rose on NORTH_ARROW layer', () => {
+  test('emits the template north arrow on the NORTH_ARROW layer', () => {
     const { buffer } = generateDXF(opts, fakeLogger)
     const dxf = buffer.toString()
-    // 8 triangular points (3 LINEs each = 24) + 4 double N–S axis lines = 28.
-    expect(entityCount(dxf, 'LINE', 'NORTH_ARROW')).toBe(28)
-    // N and S main points are SOLID-filled.
-    expect(entityCount(dxf, 'SOLID', 'NORTH_ARROW')).toBe(2)
-    // White centre hub circle.
-    expect(entityCount(dxf, 'CIRCLE', 'NORTH_ARROW')).toBe(1)
-    // "TN" (true north) label.
-    expect(entityCount(dxf, 'TEXT', 'NORTH_ARROW')).toBe(1)
-    expect(dxf).toMatch(/\bNORTH_ARROW\b[\s\S]*?\bTN\b/)
+    // True-north line, the leaning grid-north line, and its barb.
+    expect(entityCount(dxf, 'LINE', 'NORTH_ARROW')).toBe(3)
+    // No compass-rose fills or hub any more.
+    expect(entityCount(dxf, 'SOLID', 'NORTH_ARROW')).toBe(0)
+    expect(entityCount(dxf, 'CIRCLE', 'NORTH_ARROW')).toBe(0)
+    // "T" and "N" either side of the true-north line.
+    expect(entityCount(dxf, 'TEXT', 'NORTH_ARROW')).toBe(2)
   })
 })
 

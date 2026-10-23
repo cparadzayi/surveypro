@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals';
-import { resolvePlanSheeting, drawingAreaMm, narrowestStandWidthM, TOPOLOGY_GATED_FRACTION, FIGURE_MARGIN_MM } from '../../../../app-shared/planSheeting.js';
+import { floorDevelopedDenominator, resolvePlanSheeting, drawingAreaMm, narrowestStandWidthM, TOPOLOGY_GATED_FRACTION, FIGURE_MARGIN_MM } from '../../../../app-shared/planSheeting.js';
 
 /** Build a FeatureCollection of `count` square stands of the given area. */
 function stands(count, areaM2) {
@@ -296,5 +296,34 @@ describe('drawingAreaMm — the figure keeps clear of the drawing margins', () =
   test('a figure that exactly filled the old area no longer fits', () => {
     const a = drawingAreaMm('SI727_1000x800', { titleBandMm: 55 });
     expect(a.widthMm).toBeLessThan(800);
+  });
+});
+
+describe('developed-township floor — never finer than 1:500', () => {
+  const small = { extentM: { widthM: 120, heightM: 80 }, parcels: stands(12, 4000) };
+
+  test('auto-fit on a small figure picks nothing finer than 1:500', () => {
+    // Undeveloped, the same figure fits a finer scale; developed it must not.
+    const undeveloped = resolvePlanSheeting({ ...small, planType: 'general-undeveloped' });
+    const developed = resolvePlanSheeting({ ...small, planType: 'general-developed' });
+    expect(Math.min(...undeveloped.candidates.map((c) => c.scaleDenominator))).toBeLessThan(500);
+    expect(Math.min(...developed.candidates.map((c) => c.scaleDenominator))).toBeGreaterThanOrEqual(500);
+  });
+
+  test('a declared finer scale is raised to 1:500', () => {
+    const r = resolvePlanSheeting({ ...small, planType: 'general-developed', declaredScale: 400 });
+    expect(r.candidates.every((c) => c.scaleDenominator === 500)).toBe(true);
+  });
+
+  test('a declared scale at or coarser than 1:500 is honoured', () => {
+    const r = resolvePlanSheeting({ ...small, planType: 'general-developed', declaredScale: 1000 });
+    expect(r.candidates.every((c) => c.scaleDenominator === 1000)).toBe(true);
+  });
+
+  test('the floor applies to developed plans only', () => {
+    expect(floorDevelopedDenominator('general-developed', 400)).toBe(500);
+    expect(floorDevelopedDenominator('general-developed', 750)).toBe(750);
+    expect(floorDevelopedDenominator('general-undeveloped', 400)).toBe(400);
+    expect(floorDevelopedDenominator(null, 250)).toBe(250);
   });
 });

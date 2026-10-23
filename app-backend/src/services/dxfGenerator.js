@@ -25,6 +25,7 @@ import {
   SCHEDULE_OF_AREAS,
   OUTSIDE_FIGURE_DATA,
   SURVEYOR_GENERAL_BOX,
+  SERVITUDE_STATEMENT,
   formatStandRanges,
   computeScheduleColumnWidths,
   layoutScheduleColumnsFixedStandArea,
@@ -42,6 +43,10 @@ import { splitBeaconName, labelParts } from '../../../app-shared/beaconName.js';
  *  are in PDF pts (matching the PDF generator's native unit); the DXF
  *  generator works in paper-mm so it converts at the boundary.
  */
+// Plan north arrow: true-north line length and letter height, in paper mm (as the PDF).
+const NORTH_ARROW_LINE_MM = 28
+const NORTH_ARROW_LETTER_MM = 3
+
 const PT_TO_MM_GEN = 25.4 / 72
 import { findStandLabelPosition, findEdgeLabelPosition } from './dxfLabelPlacer.js'
 import {
@@ -69,15 +74,19 @@ import {
   emitBeaconDescriptions,
   emitStatement,
   emitSGBox,
+  emitServitudeStatement,
+  servitudeBoxHeight,
 } from './dxfBottomZoneEmitter.js'
 import { planSheetLayout } from './sheetLayoutPlanner.js'
+import { northArrowForPlanMm } from './diagram/diagramLayout.js'
+import { titleBandHeight } from './pdfkitGeoPDF.js'
 import { buildPolygonForPlanner, buildPlannerObstacles, chooseFigureAlignX } from './polygonForPlanner.js'
 import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon, lineSegmentsIntersect } from './dxfGeometry.js'
 import { selectTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-shared/tickMarks.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
 import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER } from '../utils/si727Constants.js'
-import { resolvePlanSheeting, FIGURE_MARGIN_MM, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js'
+import { floorDevelopedDenominator, resolvePlanSheeting, FIGURE_MARGIN_MM, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js'
 import { SI727_SCALE_LADDER } from '../../../app-shared/si727Scales.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
 import { endorsementShiftPt } from './marginStack.js'
@@ -206,24 +215,29 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
   if (standNames.length === 0) return []
 
   if (multiSheet) {
-    // The WHOLE plan's count and range, not this sheet's own: the sentence says
-    // what the sheets TOGETHER represent.
-    const totalStandCount = Number.isInteger(sheetInfo?.totalStandCount) && sheetInfo.totalStandCount > 0
-      ? sheetInfo.totalStandCount
-      : standNames.length
-    const standRangeText = (typeof sheetInfo?.standRange === 'string' && sheetInfo.standRange.trim())
-      ? sheetInfo.standRange
-      : formatStandRanges(standNames)
+    // Worded exactly as the PDF words it (pdfkitGeoPDF's figure description), so
+    // the two files of one sheeted plan read the same: THIS sheet's own beacon
+    // sequence as the figure label, the other sheets as lower-case "sheet N", and
+    // THIS sheet's stand count and range. (The payload's figureLabel, otherSheets,
+    // totalStandCount and standRange are deliberately not consulted — the PDF
+    // does not, and the lodged PDF is the reference.)
+    const { sheetNumber, totalSheets } = sheetInfo;
+    const otherNums = Array.from({ length: totalSheets }, (_, i) => i + 1).filter(n => n !== sheetNumber);
+    const otherSheets = otherNums.length === 0
+      ? sheetInfo.otherSheets
+      : otherNums.length === 1
+        ? `sheet ${otherNums[0]}`
+        : otherNums.slice(0, -1).map(n => `sheet ${n}`).join(', ') + ` and sheet ${otherNums[otherNums.length - 1]}`;
 
     const sentence = template
-      .replace('{figureLabel}',     sheetInfo.figureLabel || 'Outside Figure')
-      .replace('{otherSheets}',     sheetInfo.otherSheets)
+      .replace('{figureLabel}',     beaconSequence)
+      .replace('{otherSheets}',     otherSheets)
       .replace('{township}',        township)
-      .replace('{totalStandCount}', String(totalStandCount))
-      .replace('{standRange}',      standRangeText)
+      .replace('{totalStandCount}', String(standNames.length))
+      .replace('{standRange}',      formatStandRanges(standNames))
       .replace('{wholePortion}',    wholePortion)
       .replace('{ofTarget}',        ofTarget)
-      .replace('{district}',        district)
+      .replace('{district}',        district);
 
     return splitToWidth(sentence, maxLineChars)
   }
@@ -951,48 +965,26 @@ export function generateDXF(options, logger) {
   }
 
   /**
-   * Compass-rose North arrow matching the PDF (drawNorthArrow): eight triangular
-   * points (N & S filled main points, E/W + diagonals open), a white centre
-   * circle, double N–S axis lines, and a "TN" (true north) label below the south
-   * tip. Sized in paper-mm so it is scale-independent; `cx, cy` is the rose centre
-   * (DXF y-up, so North points +y). The `sizeM` argument is retained for call-site
-   * compatibility but no longer drives the (now fixed paper-mm) geometry.
+   * The surveyor's template north arrow, matching the PDF (drawNorthArrow): a
+   * true-north line, a leaning grid-north line ending in a barb, and "T" / "N"
+   * either side of the line. Sized in paper-mm so it is scale-independent;
+   * `cx, cy` is the centre of the arrow's reserved box (DXF y-up, so north is
+   * +y) and the true-north line is centred on it. `sizeM` is retained for
+   * call-site compatibility but no longer drives the geometry.
    */
   function addNorthArrow(layer, cx, cy, _sizeM) {
-    const mainLen = mm(12.5)  // PDF mainLength 35pt
-    const sideLen = mm(8.8)   // PDF sideLength 25pt
-    const innerR  = mm(2.8)   // PDF innerRadius 8pt
-    const lineOff = mm(0.55)  // PDF lineOffset 1.5pt
-    const points = [
-      { a: 0,   len: mainLen, fill: true,  bw: mm(1.1) }, // N
-      { a: 45,  len: sideLen, fill: false, bw: mm(0.9) }, // NE
-      { a: 90,  len: sideLen, fill: false, bw: mm(0.9) }, // E
-      { a: 135, len: sideLen, fill: false, bw: mm(0.9) }, // SE
-      { a: 180, len: mainLen, fill: true,  bw: mm(1.1) }, // S
-      { a: 225, len: sideLen, fill: false, bw: mm(0.9) }, // SW
-      { a: 270, len: sideLen, fill: false, bw: mm(0.9) }, // W
-      { a: 315, len: sideLen, fill: false, bw: mm(0.9) }, // NW
-    ]
-    for (const pt of points) {
-      const t = (pt.a * Math.PI) / 180
-      const s = Math.sin(t), c = Math.cos(t)        // dir = (s, c): a=0 → North (+y)
-      const ox = cx + s * pt.len, oy = cy + c * pt.len  // outer tip
-      const lx = cx + c * pt.bw,  ly = cy - s * pt.bw   // base, perpendicular +
-      const rx = cx - c * pt.bw,  ry = cy + s * pt.bw   // base, perpendicular −
-      addLine(layer, ox, oy, lx, ly)
-      addLine(layer, lx, ly, rx, ry)
-      addLine(layer, rx, ry, ox, oy)
-      if (pt.fill) addSolidTri(layer, ox, oy, lx, ly, rx, ry)
+    const arrow = northArrowForPlanMm(NORTH_ARROW_LINE_MM, NORTH_ARROW_LETTER_MM)
+    const ax = cx
+    const ay = cy + mm(NORTH_ARROW_LINE_MM / 2)           // apex, top of the line
+    const pt = ([dx, dy]) => [ax + mm(dx), ay - mm(dy)]    // template y runs DOWN
+    for (const [p, q] of arrow.segments) {
+      const [x1, y1] = pt(p), [x2, y2] = pt(q)
+      addLine(layer, x1, y1, x2, y2)
     }
-    // White centre hub
-    addCircle(layer, cx, cy, innerR)
-    // Double lines along the N–S axis (hub edge → main tip)
-    addLine(layer, cx - lineOff, cy + innerR, cx - lineOff, cy + mainLen)
-    addLine(layer, cx + lineOff, cy + innerR, cx + lineOff, cy + mainLen)
-    addLine(layer, cx - lineOff, cy - innerR, cx - lineOff, cy - mainLen)
-    addLine(layer, cx + lineOff, cy - innerR, cx + lineOff, cy - mainLen)
-    // "TN" (true north) label below the south tip
-    addTextC(layer, cx, cy - mainLen - mm(6), 'TN', mm(3.5), 'BOLD')
+    for (const l of arrow.labels) {
+      const [x, y] = pt(l.at)
+      addText(layer, x, y, l.text, mm(arrow.letterMm), 0, 'BOLD')
+    }
   }
 
   /**
@@ -1550,7 +1542,13 @@ export function generateDXF(options, logger) {
       const f = r[0], l = r[r.length - 1];
       if (f && l && f[0] === l[0] && f[1] === l[1]) r = r.slice(0, -1);
       if (r.length < 3) continue;
-      const ptRing = r.map(([yy, xx]) => { const pt = capeLoToDxfSouthUp(yy, xx); trackPt(pt); return pt; });
+      // Deliberately NOT trackPt'd: a subject's ring can be the whole plan's (a
+      // sheeted plan hands every sheet the same adjoiningSubjects), and the
+      // tracked extent positions the page around the figure. Tracking it dragged
+      // the page off the sheet's own figure — measured: the figure overran the
+      // title band by 69mm with 186mm of empty paper below it. Only the stubs
+      // are drawn, next to the figure that is already tracked.
+      const ptRing = r.map(([yy, xx]) => capeLoToDxfSouthUp(yy, xx));
       emitSubjectAdjoiningFeaturesDxf({
         addLine, addText, ptRing, annotations: anns, geo: _adjGeo,
         servitudeLayer: 'ADJOINING_SERVITUDE', defaultLayer: 'ADJOINING',
@@ -1890,7 +1888,7 @@ export function generateDXF(options, logger) {
   const _sheetLines = formatSheetLabel(sheetInfo).length;
   const _figLines   = formatFigureDescription(metadata, outsideFigureData, surveyedParcels, _titleMaxChars, sheetInfo).length;
   const _videLines  = formatVideLine(_titleMaxChars).length;
-  const titleBandH =
+  const titleBlockH =
       mm(8)                                   // top inset to first baseline
     + hTitle * 1.6                            // GENERAL PLAN
     + hSub * 1.6                              // of
@@ -1901,11 +1899,8 @@ export function generateDXF(options, logger) {
     + _videLines * hBody * 1.6               // Vide line
     + hBody;                                  // clearance gap below the last line
 
-  // Logged in paper mm (titleBandH is ground-metres at 1:S) so a test can read
-  // the actually-computed band without duplicating this formula. Mirrors the
-  // PDF's "Reserved Xpt title band" line — parsed by the parity suite's
-  // title-band-drift guard.
-  logger.info(`[DXF] 📐 Reserved ${(titleBandH * 1000 / S).toFixed(1)}mm title band`);
+  // (The band actually reserved below the title — title plus map furniture, as
+  // the PDF reserves it — is logged once the pt conversion exists, below.)
 
   // ── Hoisted before the page frame is positioned ──
   // The measured Schedule of Areas width plus the 1:S pt conversions. Both feed
@@ -1917,6 +1912,20 @@ export function generateDXF(options, logger) {
   //   So: groundMetres → PDF pt = groundMetres * 1000 / S / (25.4/72)
   const M_TO_PT = 1000 / S / (25.4 / 72);
   const PT_TO_M = 1 / M_TO_PT;
+
+  // The band the figure is fitted below. The PDF reserves the title PLUS the map
+  // furniture (scale bar + north arrow) the planner seats immediately under it,
+  // via titleBandHeight; reserving the title alone put the DXF figure ~40mm
+  // higher on the sheet than the PDF's. Same function, same inputs, so the two
+  // cannot drift. Capped at half the content height as the PDF caps it at half
+  // the figure box.
+  const titleBandH = Math.min(
+    titleBandHeight(titleBlockH * M_TO_PT) * PT_TO_M,
+    contentH / 2,
+  );
+  // Logged in paper mm so the parity suite can read the actually-computed band
+  // without duplicating this formula; mirrors the PDF's "Reserved Xpt title band".
+  logger.info(`[DXF] 📐 Reserved ${(titleBandH * 1000 / S).toFixed(1)}mm title band`);
 
   const dxfScheduleMeasure = buildScheduleMeasurer(
     SCHEDULE_OF_AREAS.singleColumn.headerFontSize, SCHEDULE_OF_AREAS.singleColumn.fontSize);
@@ -1958,7 +1967,11 @@ export function generateDXF(options, logger) {
   const figClearG = mm(FIGURE_MARGIN_MM);
   const contentCX = dxfAlignX === 'left' ? dL - figClearG + contentW / 2 : dCX;   // drawing centered horizontally
   const _naturalCY = (dT + dB) / 2;                   // figure centred in content
-  const _desiredCY = dT - contentH / 2 + titleBandH;  // figure top at cntT − band
+  // The PDF centres the figure in the area BELOW the title band (sizeFigureBox),
+  // not in the whole drawing area, so the figure's top sits that far under the
+  // band. Same rule here; the planner polygon's figureTop below uses it too.
+  const _figTopOffset = titleBandH + Math.max(0, (contentH - titleBandH - figClearG - dH) / 2);
+  const _desiredCY = dT - contentH / 2 + _figTopOffset;  // figure top at cntT − offset
   const _maxCY     = dB + contentH / 2 - figClearG;   // figure bottom a clearance above cntB (don't overrun)
   const contentCY  = Math.min(_maxCY, Math.max(_naturalCY, _desiredCY));
 
@@ -2173,7 +2186,8 @@ export function generateDXF(options, logger) {
     // content bottom.
     figureTop:  (polyH) => Math.min(
       contentHeightPt - polyH - figClearG * M_TO_PT,
-      Math.max((contentHeightPt - polyH) / 2, titleBandH * M_TO_PT),
+      titleBandH * M_TO_PT
+        + Math.max(0, (contentHeightPt - (titleBandH + figClearG) * M_TO_PT - polyH) / 2),
     ),
     insetLeftPt: figClearG * M_TO_PT,
   });
@@ -2223,7 +2237,9 @@ export function generateDXF(options, logger) {
   });
 
   const blockPositions = planSheetLayout({
-    metadata,
+    // The planner gates the servitude statement on metadata.planType (as the PDF's
+    // metadata carries it); the DXF receives the type as an option.
+    metadata: { ...metadata, planType: metadata?.planType ?? planType },
     parcels:           { type: 'FeatureCollection', features: surveyedFeatures },
     outsideFigureData,
     beacons:           beacons || { type: 'FeatureCollection', features: [] },
@@ -2303,7 +2319,10 @@ export function generateDXF(options, logger) {
     // scale; this side deliberately does not copy that.)
     const _labelScaleDeclared = !!options.scale && !(options._scalePinned ?? false);
     const _idx = SI727_SCALE_LADDER.indexOf(S);
-    const _finer = (!_labelScaleDeclared && _idx > 0) ? SI727_SCALE_LADDER[_idx - 1] : null;
+    const _finerCandidate = (!_labelScaleDeclared && _idx > 0) ? SI727_SCALE_LADDER[_idx - 1] : null;
+    // A developed township may not step finer than 1:500 for label room.
+    const _finer = _finerCandidate && floorDevelopedDenominator(planType, _finerCandidate) === _finerCandidate
+      ? _finerCandidate : null;
     if (_finer) {
       logger.warn(
         `[DXF] 🏷️ Label crowding (${_labelCollisions} edge labels unplaceable) at the largest ` +
@@ -2371,6 +2390,14 @@ export function generateDXF(options, logger) {
   const beaconPos    = toDxf(blockPositions.beaconDescription);
   const statementPos = toDxf(blockPositions.surveyStatement);
   const sgPos        = toDxf(blockPositions.sgSignature);
+  // The party-wall servitude statement (General Plans). The shared planner already
+  // reserves it from metadata.servitudeStatement.rows, exactly as it does for the
+  // PDF; the DXF used to ignore that slot, so the table never reached the file.
+  const servitudeRows = Array.isArray(metadata?.servitudeStatement?.rows)
+    ? metadata.servitudeStatement.rows.filter((r) => r && (r.stands || r.boundary))
+    : [];
+  const servitudePos = (blockPositions.servitudeStatement && servitudeRows.length)
+    ? toDxf(blockPositions.servitudeStatement) : null;
 
   // Beacon Description groups: honour caller-supplied beaconGroups, else derive
   // from the beacons via the shared classifier — the same grouping the PDF
@@ -2677,6 +2704,84 @@ export function generateDXF(options, logger) {
     _finalPos[t.label] = { x: p.x, y: p.y, width: t.size.width, height: t.size.height };
   }
 
+  // Party-wall servitude statement. A real plan can carry dozens of party walls,
+  // which makes the one-box statement a very tall, narrow strip that no whitespace
+  // pocket beside the schedule can hold (measured: 45 rows -> 250 x 770 pt), and a
+  // box with nowhere to go used to be emitted on top of the schedule. So try the
+  // box whole first, and when it cannot be seated clear, split its rows into 2, 3,
+  // 4... side-by-side boxes (headed "(cont'd)", as the schedule's sub-tables are)
+  // until every piece finds clear paper.
+  if (servitudePos) {
+    const colsPt = blockPositions.servitudeStatement.columns ?? null;
+    const width = servitudePos.width;
+    const heading = SERVITUDE_STATEMENT.heading;
+    const tryPieces = (k) => {
+      const per = Math.ceil(servitudeRows.length / k);
+      const pieces = [];
+      for (let i = 0; i < servitudeRows.length; i += per) pieces.push(servitudeRows.slice(i, i + per));
+      const trial = _occupied.slice();
+      const seated = [];
+      for (let i = 0; i < pieces.length; i++) {
+        const size = { width, height: servitudeBoxHeight(pieces[i].length, mm) };
+        let at = null;
+        const here = { x: servitudePos.x, y: servitudePos.y - size.height, width: size.width, height: size.height };
+        const planned = i === 0 && k === 1 ? here : null;   // the planner's own slot, whole box only
+        if (planned && !trial.some((o) => _rectsOverlap(planned, o))
+            && !(figurePolygon && figurePolygon.length >= 3 && rectangleOverlapsPolygon(planned, figurePolygon, 0))) {
+          at = { x: servitudePos.x, y: servitudePos.y };
+        } else {
+          const found = findBlockPosition({
+            block: { width: size.width, height: size.height },
+            mapBounds: contentArea, polygon: figurePolygon, placedBlocks: trial,
+            buffer: mm(2), blockSpacing: mm(3), scanStep: mm(5), tableMinWidth: size.width, logger,
+          });
+          if (found) at = { x: found.x, y: found.y + size.height };
+        }
+        if (!at) return null;
+        trial.push({ x: at.x, y: at.y - size.height, width: size.width, height: size.height });
+        seated.push({ at, size, rows: pieces[i] });
+      }
+      return seated;
+    };
+    let seated = null;
+    for (const k of [1, 2, 3, 4, 6]) {
+      if (k > servitudeRows.length) break;
+      seated = tryPieces(k);
+      if (seated) {
+        if (k > 1) logger.info(`[DXF] servitude statement split into ${k} boxes to find clear paper (${servitudeRows.length} rows)`);
+        break;
+      }
+    }
+    if (!seated && _sheetSizeUpAttempt < MAX_SHEET_UP_ATTEMPTS) {
+      // No clear paper at any split: a bigger sheet is the honest answer (the same
+      // one the schedule gets), not a table printed over other blocks.
+      const nextSheet = nextSheetUp(normalizedSheetSize);
+      if (nextSheet) {
+        logger.warn(
+          `[DXF] Servitude statement (${servitudeRows.length} rows) fits no clear paper on ${normalizedSheetSize} — ` +
+          `escalating to ${nextSheet} (attempt ${_sheetSizeUpAttempt + 1}/${MAX_SHEET_UP_ATTEMPTS})`
+        );
+        return generateDXF({
+          ...options,
+          sheetSize: nextSheet,
+          _blockRoomAttempt: _blockRoomAttempt + 1,
+          _sheetSizeUpAttempt: _sheetSizeUpAttempt + 1,
+        }, logger);
+      }
+    }
+    if (!seated) {
+      // Nowhere clear at any split, on the largest sheet: keep the planner slot, flagged, as every other block does.
+      logger.warn('[DXF] servitudeStatement could not be seated clear of the schedule/figure — kept at planner slot');
+      seated = [{ at: { x: servitudePos.x, y: servitudePos.y }, size: { width, height: servitudePos.height }, rows: servitudeRows }];
+    }
+    seated.forEach((s, i) => {
+      emitServitudeStatement(addText, addLine, s.at, s.size, s.rows, colsPt, mm, TB,
+        i === 0 ? heading : `${heading} (cont'd)`);
+      _occupied.push({ x: s.at.x, y: s.at.y - s.size.height, width: s.size.width, height: s.size.height });
+      _finalPos['servitudeStatement' + (i ? i + 1 : '')] = { x: s.at.x, y: s.at.y, width: s.size.width, height: s.size.height };
+    });
+  }
+
   // 3-v7: structured warnings for each surrounding block that overlaps the polygon
   // (checked at the FINAL emitted position) + a signal if a block could not be
   // kept clear of the schedule after the collision-avoidance pass above.
@@ -2936,7 +3041,7 @@ function _sheetedDxfBaseName(metadata, baseName) {
  *   same bytes, for callers that write or attach it.
  */
 export function generateSheetedDXF(options, logger) {
-  const { sheets, metadata = {}, beacons = null, baseName, ...forwarded } = options || {};
+  const { sheets, metadata = {}, beacons = null, baseName, sheetLayouts = null, ...forwarded } = options || {};
   if (!Array.isArray(sheets) || sheets.length === 0) {
     throw new Error('generateSheetedDXF: options.sheets must be a non-empty array of SheetPayload objects');
   }
@@ -2949,9 +3054,17 @@ export function generateSheetedDXF(options, logger) {
 
   return ordered.map((sheet) => {
     const totalSheets = sheet.totalSheets ?? ordered.length;
+    // The scale and paper this sheet's PDF page was rendered at, when the caller
+    // has them: the PDF decides, the DXF follows (per sheet — sheets escalate
+    // independently).
+    const pdfLayout = Array.isArray(sheetLayouts)
+      ? sheetLayouts.find((l) => l?.sheetNumber === sheet.sheetNumber)
+      : null;
     const { buffer, warnings, scale, sheetSize } = generateDXF(
       {
         ...forwarded,
+        ...(pdfLayout?.scale ? { scale: pdfLayout.scale } : {}),
+        ...(pdfLayout?.sheetSize ? { sheetSize: pdfLayout.sheetSize } : {}),
         parcels: sheetParcels(sheet),
         beacons: beacons || { type: 'FeatureCollection', features: [] },
         outsideFigureData: sheetOutsideFigureData(sheet),

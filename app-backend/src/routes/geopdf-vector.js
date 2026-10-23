@@ -250,7 +250,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         }
         const { generateSheetedDXF } = await import('../services/dxfGenerator.js')
         const files = generateSheetedDXF(
-          { sheets, metadata, beacons, projection, scale, sheetSize, orientation, planType, beaconLabels, baseName },
+          { sheets, metadata, beacons, projection, scale, sheetSize, orientation, planType, beaconLabels, baseName, sheetLayouts: request.body.sheetLayouts },
           fastify.log
         )
         const warningCount = files.reduce((sum, f) => sum + (f.warnings?.count || 0), 0)
@@ -689,6 +689,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         // `needsTiling` is permanently false and this route's `tileGrid` is
         // permanently null — gating on it alone silently dropped every cut.
         const sheets = Array.isArray(request.body.sheets) ? request.body.sheets : null
+        let sheetLayouts = null
         const cutDividesFigure = sheets !== null && sheets.length > 1
 
         if (tileGrid || cutDividesFigure) {
@@ -735,6 +736,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
             fastify.log
           )
           finalPdfBuffer = sheetedResult.pdf
+          sheetLayouts = sheetedResult.layouts ?? null
           isMultiSheet = true
         } else {
           finalPdfBuffer = firstPass?.pdfBuffer ?? firstPass
@@ -754,6 +756,13 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         }
         if (isMultiSheet) {
           replyHeaders['X-Sheet-Count'] = String(request.body.sheets.length)
+          // Each sheet's own scale and paper. X-Used-Scale above is the whole-plan
+          // first pass's, which no sheet was drawn at.
+          if (sheetLayouts?.length) {
+            replyHeaders['X-Sheet-Layouts'] = JSON.stringify(sheetLayouts)
+            replyHeaders['X-Used-Scale'] = sheetLayouts[0].scale
+            replyHeaders['X-Used-Sheet-Size'] = sheetLayouts[0].sheetSize
+          }
         }
 
         reply

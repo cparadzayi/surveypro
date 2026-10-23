@@ -76,10 +76,27 @@ describe('generateSheetedDXF', () => {
     expect(ownSheet2).toContain('1687')
     expect(ownSheet1).not.toContain('1687')
     expect(ownSheet2).not.toContain('1686')
-    // ...while the range both represent is on both, as the sentence states it.
-    expect(ownSheet1.join(' ')).toContain('1686 to 1687')
-    expect(ownSheet2.join(' ')).toContain('1686 to 1687')
+    // The sentence states this sheet's own stands, as the PDF's does.
+    expect(ownSheet1.join(' ')).toContain('numbered 1686')
+    expect(ownSheet2.join(' ')).toContain('numbered 1687')
   })
+
+  test('each sheet is drawn at the scale and paper its PDF page was rendered at', () => {
+    // The PDF decides per sheet; headers carry the first pass's, which no sheet
+    // used. sheetLayouts is what each PDF page really got.
+    const out = generateSheetedDXF({
+      sheets: [sheet(1, 2, ['1686']), sheet(2, 2, ['1687'])], metadata,
+      scale: '1:2000', sheetSize: 'SI727_500x400',
+      sheetLayouts: [
+        { sheetNumber: 1, scale: '1:1000', sheetSize: 'SI727_1000x800' },
+        { sheetNumber: 2, scale: '1:500', sheetSize: 'SI727_1000x800' },
+      ],
+    })
+    expect(out[0].scale).toBe('1:1000')
+    expect(out[0].sheetSize).toBe('SI727_1000x800')
+    expect(out[1].scale).toBe('1:500')
+    expect(out[1].sheetSize).toBe('SI727_1000x800')
+  }, 120000)
 
   test('a single sheet gets no SHEET line at all', () => {
     const out = generateSheetedDXF({ sheets: [sheet(1, 1, ['1686'])] })
@@ -125,10 +142,10 @@ describe('generateSheetedDXF', () => {
     const out = generateSheetedDXF({
       sheets: [sheet(1, 2, ['1686']), sheet(2, 2, ['1687'])], metadata,
     })
-    expect(dxfText(out[0].dxf).join(' ')).toContain('together with the figures on Sheet 2')
-    expect(dxfText(out[1].dxf).join(' ')).toContain('together with the figures on Sheet 1')
-    // ...and the whole plan's count and range, not the one stand on the sheet.
-    expect(dxfText(out[0].dxf).join(' ')).toContain('2 stands numbered 1686 to 1687')
+    expect(dxfText(out[0].dxf).join(' ')).toContain('together with the figures on sheet 2')
+    expect(dxfText(out[1].dxf).join(' ')).toContain('together with the figures on sheet 1')
+    // ...and the stand count of the sheet, as the PDF states it.
+    expect(dxfText(out[0].dxf).join(' ')).toContain('1 stands numbered 1686')
   })
 
   test('a single sheet states the plain single-sheet sentence', () => {

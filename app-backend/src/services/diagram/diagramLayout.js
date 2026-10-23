@@ -24,8 +24,76 @@ export const CONTENT_PAD = 6
 // is the arrow's width plus a clear gap; exported so a test can assert the arrow
 // never re-enters the figure rather than hard-coding 52.
 export const ARROW_WIDTH = 40
-export const ARROW_HEIGHT = 50
+export const ARROW_HEIGHT = 106
 export const ARROW_GUTTER = ARROW_WIDTH + 12
+
+// Page furniture from the surveyor's diagram template (lot 1 CORR.dwg): a notice
+// above the neat line, and a vertical note in the binding margin at its left.
+// Shared by the PDF and DXF renderers so the two cannot word it differently.
+// Content font sizes (pt) shared by the PDF and DXF diagrams. Raised one point from
+// 7 / 8 / 9 so the content reads comfortably; every block's row pitch and column
+// width was sized with room for it, so the layout is unchanged.
+export const DIAGRAM_FONTS = { table: 8, tableHead: 8, beacon: 9, approved: 8, statement: 10, grid: 8 }
+
+export const DEDUCTIONS_NOTE = 'DEDUCTIONS FROM THIS DIAGRAM ARE MADE ON THE BACK HEREOF'
+export const BINDING_MARGIN_NOTE = 'BINDING MARGIN NOT TO BE WRITTEN IN'
+export const FURNITURE_FONT_PT = 6.5
+// Baseline gap (pt) between the deductions notice and the neat line's top edge.
+export const DEDUCTIONS_GAP_PT = 4
+// Distance (pt) from the neat line's left edge to the binding note's baseline.
+export const BINDING_NOTE_OFFSET_PT = 6
+
+// The north arrow of the surveyor's template (lot 1 CORR.dwg), in millimetres from
+// its apex, y measured DOWN the page: a long true-north line, a second line that
+// leans from the same apex (the grid-north offset) ending in a short barb, and the
+// "T" and "N" letters flanking the foot of the true-north line, which passes
+// between them. Shared by the PDF and DXF renderers.
+const MM_TO_PT_ARROW = 72 / 25.4
+export const NORTH_ARROW_TEMPLATE = {
+  trueNorth: [[0, 0], [0, 37.44]],
+  gridNorth: [[0, 0], [-2.16, 18.72]],
+  barb: [[-2.16, 18.72], [1.44, 23.76]],
+  // Left edge of each letter; the line at x = 0 runs between them.
+  labels: [{ text: 'T', at: [-3.4, 33.5] }, { text: 'N', at: [1.2, 33.5] }],
+  labelHeightMm: 2.5,
+}
+
+/**
+ * The arrow's line segments and label in absolute page points, apex at the top
+ * centre of `rect`.
+ */
+export function northArrowGeometryPt(rect) {
+  const ax = rect.x + rect.width / 2, ay = rect.y
+  const pt = ([dx, dy]) => [ax + dx * MM_TO_PT_ARROW, ay + dy * MM_TO_PT_ARROW]
+  const T = NORTH_ARROW_TEMPLATE
+  return {
+    segments: [T.trueNorth, T.gridNorth, T.barb].map(([a, b]) => [pt(a), pt(b)]),
+    labels: T.labels.map((l) => ({ text: l.text, at: pt(l.at) })),
+    labelHeightPt: T.labelHeightMm * MM_TO_PT_ARROW,
+  }
+}
+
+/**
+ * The template north arrow sized for a plan sheet: the construction of
+ * NORTH_ARROW_TEMPLATE stretched so its true-north line is `lineMm` long, with
+ * the "T" and "N" letters `letterMm` high. Millimetres from the apex, y DOWN the
+ * page; the true-north line runs along x = 0 and the letters flank it.
+ */
+export function northArrowForPlanMm(lineMm, letterMm) {
+  const T = NORTH_ARROW_TEMPLATE
+  const g = lineMm / T.trueNorth[1][1]
+  const p = ([dx, dy]) => [dx * g, dy * g]
+  return {
+    segments: [T.trueNorth, T.gridNorth, T.barb].map(([a, b]) => [p(a), p(b)]),
+    // Letters sit by the foot of the line, either side of it; `at` is the left edge
+    // of each letter on its baseline. Their gap to the line scales with the letter.
+    labels: [
+      { text: 'T', at: [-(letterMm * 0.95), T.labels[0].at[1] * g] },
+      { text: 'N', at: [letterMm * 0.4, T.labels[1].at[1] * g] },
+    ],
+    letterMm,
+  }
+}
 
 export function pageDimsPt(sheetSize) {
   return PAGE_DIMS_PT[sheetSize] || PAGE_DIMS_PT.A4

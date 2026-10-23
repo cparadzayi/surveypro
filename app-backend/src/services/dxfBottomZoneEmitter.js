@@ -16,6 +16,7 @@ import { findBlockPosition } from './dxfBlockPlacer.js'
 import {
   OUTSIDE_FIGURE_DATA,
   SURVEYOR_GENERAL_BOX,
+  SERVITUDE_STATEMENT,
   edgeDistanceMetres,
   resolveLoSystem,
 } from '../../../app-shared/block-definitions.js'
@@ -233,6 +234,85 @@ export function emitStatement(addText, position, metadata, fonts, layer) {
  * @param {(x:number)=>number} mm
  * @param {string} layer
  */
+/** Height (ground metres) of a servitude box holding `rowCount` rows. */
+export function servitudeBoxHeight(rowCount, mm) {
+  const SV = SERVITUDE_STATEMENT
+  return mm((SV.padTop + SV.headingLineHeight + SV.headingGap + SV.headerHeight + rowCount * SV.rowHeight + SV.padBottom) * PT_TO_MM_GEN)
+}
+
+/**
+ * Emit the General Plan party-wall servitude statement: a bordered box with the
+ * "Party-wall servitudes data" heading, a STAND NUMBER | BOUNDARY header row and
+ * one row per party wall. Mirrors the PDF's drawServitudeStatement line for line
+ * (same chrome from SERVITUDE_STATEMENT, same rules), with y running UP.
+ *
+ * @param {(layer,x,y,text,h,ang?,style?)=>void} addText
+ * @param {(layer,x1,y1,x2,y2)=>void} addLine
+ * @param {{x:number,y:number}} position TOP-left of the box, ground metres
+ * @param {{width:number,height:number}} size the planner's reserved rect, ground metres
+ * @param {Array<{stands?:string,boundary?:string}>} rows
+ * @param {number[]|null} columnsPt the planner's content-fit [stand, boundary] widths in PDF pt
+ * @param {(x:number)=>number} mm
+ * @param {string} layer
+ */
+export function emitServitudeStatement(addText, addLine, position, size, rows, columnsPt, mm, layer, heading = SERVITUDE_STATEMENT.heading) {
+  if (!Array.isArray(rows) || rows.length === 0) return
+  const SV = SERVITUDE_STATEMENT
+  const ptG = (p) => mm(p * PT_TO_MM_GEN)
+
+  const blockW = size.width
+  const colStandPt = Number.isFinite(columnsPt?.[0]) ? columnsPt[0] : null
+  const colBoundPt = Number.isFinite(columnsPt?.[1]) ? columnsPt[1] : null
+  const inset = ptG(SV.tableInset)
+  const colStand = colStandPt != null ? ptG(colStandPt) : (blockW - 2 * inset) / 2
+  const colBound = colBoundPt != null ? ptG(colBoundPt) : blockW - 2 * inset - colStand
+  const tableX = position.x + inset
+  const tableW = colStand + colBound
+  const yTop = position.y
+  const yBot = yTop - size.height
+
+  const headH = ptG(SV.headingFont.size)
+  const hdrH = ptG(SV.headerFont.size)
+  const bodyH = ptG(SV.font.size)
+  const pad = ptG(SV.cellPad)
+
+  // Outer border.
+  addLine(layer, position.x, yTop, position.x + blockW, yTop)
+  addLine(layer, position.x, yBot, position.x + blockW, yBot)
+  addLine(layer, position.x, yTop, position.x, yBot)
+  addLine(layer, position.x + blockW, yTop, position.x + blockW, yBot)
+
+  // Heading, centred over the table.
+  // A continuation heading is longer than the box was sized for: shrink it to fit
+  // rather than let it run over the border.
+  const headFit = Math.min(1, (tableW - 2 * ptG(2)) / (String(heading).length * headH * 0.55))
+  const headHFit = headH * headFit
+  const headW = String(heading).length * headHFit * 0.55
+  addText(layer, tableX + (tableW - headW) / 2, yTop - ptG(SV.padTop) - headH, String(heading), headHFit, 0, 'BOLD')
+
+  // Header row band.
+  const yHeader = yTop - ptG(SV.padTop + SV.headingLineHeight + SV.headingGap)
+  const yHeaderBot = yHeader - ptG(SV.headerHeight)
+  addText(layer, tableX + pad, yHeader - ptG(4) - hdrH, SV.columns[0].label, hdrH, 0, 'BOLD')
+  addText(layer, tableX + colStand + pad, yHeader - ptG(4) - hdrH, SV.columns[1].label, hdrH, 0, 'BOLD')
+
+  // Rules: above and below the header row, and the column divider down to the table bottom.
+  const tableBottom = yBot + ptG(SV.padBottom)
+  addLine(layer, tableX, yHeader, tableX + tableW, yHeader)
+  addLine(layer, tableX, yHeaderBot, tableX + tableW, yHeaderBot)
+  addLine(layer, tableX + colStand, yHeader, tableX + colStand, tableBottom)
+
+  // Data rows.
+  let y = yHeaderBot
+  const rowH = ptG(SV.rowHeight)
+  for (let i = 0; i < rows.length; i++) {
+    addText(layer, tableX + pad, y - ptG(3) - bodyH, String(rows[i].stands ?? ''), bodyH, 0)
+    addText(layer, tableX + colStand + pad, y - ptG(3) - bodyH, String(rows[i].boundary ?? ''), bodyH, 0)
+    if (i < rows.length - 1) addLine(layer, tableX, y - rowH, tableX + tableW, y - rowH)
+    y -= rowH
+  }
+}
+
 export function emitSGBox(addText, addLine, addRect, position, size, fonts, mm, layer) {
   const SG = SURVEYOR_GENERAL_BOX
   const sgBoxTopY = position.y

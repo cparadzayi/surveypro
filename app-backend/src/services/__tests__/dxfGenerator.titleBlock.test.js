@@ -163,20 +163,21 @@ describe('formatFigureDescription', () => {
 
     test('names this sheet and the sheet it is read with', () => {
       const sentence = formatFigureDescription(fullMetadata, ofData, surveyedParcels, 500, twoSheets).join(' ')
-      expect(sentence).toContain('The figure Outside Figure Sheet 1')
-      expect(sentence).toContain('together with the figures on Sheet 2')
-      // The single-sheet sentence's beacon sequence is NOT this one's wording.
-      expect(sentence).not.toContain('The figure A.B.C.D.A represents')
+      // Worded as the PDF words it: this sheet's own beacon sequence, and the
+      // other sheets in lower case.
+      expect(sentence).toContain('The figure A.B.C.D.A which')
+      expect(sentence).toContain('together with the figures on sheet 2')
+      expect(sentence).not.toContain('Outside Figure Sheet 1')
     })
 
-    test('states the WHOLE plan\'s count and range, not this sheet\'s own', () => {
-      // One stand on this sheet, two on the plan: "2 stands" is what the sheets
-      // together represent, and the schedule below states the sheet's own one.
+    test('states THIS sheet\'s own count and range, as the PDF does', () => {
+      // The payload's plan totals (2 stands, 1686 to 1687) are ignored: the PDF's
+      // sentence counts the stands on the sheet it is printed on.
       const oneStand = [{ stand: '123', area_m2: 10000 }]
       const sentence = formatFigureDescription(fullMetadata, ofData, oneStand, 500, twoSheets).join(' ')
-      expect(sentence).toContain('2 stands')
-      expect(sentence).toContain('1686 to 1687')
-      expect(sentence).not.toContain('1 stands')
+      expect(sentence).toContain('1 stands')
+      expect(sentence).toContain('numbered 123')
+      expect(sentence).not.toContain('1686 to 1687')
     })
 
     test('an EMPTY otherSheets uses the single-sheet template, never the multi one', () => {

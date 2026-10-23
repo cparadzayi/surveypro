@@ -113,6 +113,32 @@ export function createDxfWriter(layers) {
     ent += p(13, c[0].toFixed(4)) + p(23, c[1].toFixed(4))
   }
 
+  /** Fill a simple polygon (convex or concave) with SOLID triangles by ear clipping. */
+  function addSolidPolygon(layer, pts) {
+    const n = pts.length
+    if (n < 3) return
+    const area2 = pts.reduce((a, p, i) => { const q = pts[(i + 1) % n]; return a + (p[0] * q[1] - q[0] * p[1]) }, 0)
+    const sgn = area2 >= 0 ? 1 : -1
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    const inside = (p, a, b, c) => cross(a, b, p) * sgn >= 0 && cross(b, c, p) * sgn >= 0 && cross(c, a, p) * sgn >= 0
+    const idx = pts.map((_, i) => i)
+    let guard = n * n
+    while (idx.length > 3 && guard-- > 0) {
+      let clipped = false
+      for (let k = 0; k < idx.length; k++) {
+        const a = pts[idx[(k + idx.length - 1) % idx.length]], b = pts[idx[k]], c = pts[idx[(k + 1) % idx.length]]
+        if (cross(a, b, c) * sgn <= 0) continue
+        if (idx.some((j) => { const pj = pts[j]; return pj !== a && pj !== b && pj !== c && inside(pj, a, b, c) })) continue
+        addSolidTri(layer, a, b, c)
+        idx.splice(k, 1)
+        clipped = true
+        break
+      }
+      if (!clipped) break
+    }
+    if (idx.length === 3) addSolidTri(layer, pts[idx[0]], pts[idx[1]], pts[idx[2]])
+  }
+
   function finish(extMin, extMax) {
     let dxf = ''
     dxf += p(0, 'SECTION')
@@ -154,6 +180,9 @@ export function createDxfWriter(layers) {
       dxf += p(2, layer.name)
       dxf += p(70, '0')
       dxf += p(62, String(layer.color))
+      // Exact RGB for the layer (group 420, packed 0xRRGGBB), with `color` kept as the
+      // nearest-palette fallback for readers that ignore true colour.
+      if (layer.trueColor) dxf += p(420, String((layer.trueColor[0] << 16) + (layer.trueColor[1] << 8) + layer.trueColor[2]))
       dxf += p(6, 'CONTINUOUS')
     }
     dxf += p(0, 'ENDTAB')
@@ -191,6 +220,6 @@ export function createDxfWriter(layers) {
 
   return {
     addLine, addPolylineOutline, addCircle, addText, addTextC, addTextR, addSolidRect,
-    addSolidTri, finish,
+    addSolidTri, addSolidPolygon, finish,
   }
 }

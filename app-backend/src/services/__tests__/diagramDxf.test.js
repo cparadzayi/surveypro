@@ -26,6 +26,13 @@ const options = {
 const logger = { info() {}, warn() {}, error() {} }
 
 describe('generateDiagramDXF', () => {
+  test('carries the template page furniture: deductions notice and binding-margin note', async () => {
+    const r = await generateDiagramDXF(options, logger)
+    const text = r.dxfBuffer.toString('utf8')
+    expect(text).toContain('DEDUCTIONS FROM THIS DIAGRAM ARE MADE ON THE BACK HEREOF')
+    expect(text).toContain('BINDING MARGIN NOT TO BE WRITTEN IN')
+  })
+
   test('returns a valid DXF buffer', async () => {
     const r = await generateDiagramDXF(options, logger)
     expect(Buffer.isBuffer(r.dxfBuffer)).toBe(true)

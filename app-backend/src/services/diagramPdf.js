@@ -4,7 +4,10 @@ import { parcelExtent, pickDiagramScale, makeTransform, beaconRadiusPt } from '.
 import { buildSidesTable, buildFigureRepresents, formatDiagramArea } from './diagram/sidesTable.js'
 import { resolveStatementDesignation, statementDesignation } from './diagram/designation.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
-import { computeDiagramLayout, pageDimsPt, marginsPt } from './diagram/diagramLayout.js'
+import {
+  computeDiagramLayout, pageDimsPt, marginsPt, northArrowGeometryPt, DIAGRAM_FONTS,
+  DEDUCTIONS_NOTE, BINDING_MARGIN_NOTE, FURNITURE_FONT_PT, DEDUCTIONS_GAP_PT, BINDING_NOTE_OFFSET_PT,
+} from './diagram/diagramLayout.js'
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, isRemainderFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
@@ -27,13 +30,15 @@ import { scaleBarLayout, scaleBarFrame } from '../../../app-shared/scaleBar.js'
 
 // SI 727 figure styling.
 const PT_PER_MM = 72 / 25.4
-const FIGURE_GREEN = '#2f9e4f'                 // uniform green inner-border tint (from the sample)
+const FIGURE_GREEN = '#5EE481'                 // inner-border band: the template's hatch colour, RGB 94,228,129 (lot 1 CORR.dwg)
 const INNER_BAND_PT = 1.3 * PT_PER_MM          // ≈ 3.69 pt (~1.3 mm), page-relative band width
-// Adjoining features (SI 727): roads burnt-sienna, servitudes blue, contiguous dashed.
-const BURNT_SIENNA = '#B7410E'
+// Adjoining features (SI 727): roads orange, servitudes blue, contiguous dashed.
+// The road colour is the surveyor's template hatch colour, RGB 255,173,92 (lot 1 CORR.dwg).
+const ROAD_COLOR = '#FFAD5C'
 const SERVITUDE_BLUE = '#1F6FB2'
 const ROAD_STRIP_PT = 1.3 * PT_PER_MM          // nominal, like the inner band
 const STRIP_FILL_OPACITY = 0.6                 // colour must not obscure detail
+const ROAD_FILL_OPACITY = 1                    // the road reads as the template's solid hatch
 const CONTIG_STUB_PT = CONTIG_STUB_MM * PT_PER_MM
 // Perpendicular clearance a contiguous-parcel label keeps from the abutting boundary.
 const CONTIG_LABEL_MARGIN = 5
@@ -114,13 +119,13 @@ function drawTable(doc, layout, table, loLabel) {
   const cMetresX = R.x + 32
   const ctrMetres = { width: 38, align: 'center' }
 
-  doc.save().font('Helvetica-Bold').fontSize(7.5).fillColor('#000')
+  doc.save().font('Helvetica-Bold').fontSize(DIAGRAM_FONTS.tableHead).fillColor('#000')
   doc.text('SIDES', R.x + cSide, R.y, ctrSide)
   doc.text('METRES', cMetresX, R.y, ctrMetres)
   doc.text('DIRECTIONS', cDirX, R.y, ctrDir)
   doc.text('CO-ORDINATES', R.x + cY, R.y, ctrCoord) // centred over Lo NN
   doc.text('DIAGRAM S.G. No.', cSg, R.y)
-  doc.font('Helvetica').fontSize(7)
+  doc.font('Helvetica').fontSize(DIAGRAM_FONTS.table)
   // 'Lo NN' heads the CO-ORDINATES group, between CO-ORDINATES and the Y/X row.
   doc.text(loLabel, R.x + cY, R.y + 10, ctrCoord)
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
@@ -185,8 +190,8 @@ function drawTable(doc, layout, table, loLabel) {
 
 function drawBeaconDescription(doc, layout, groups) {
   const R = layout.beaconDesc
-  doc.save().font('Helvetica-Bold').fontSize(8).text('Description of Beacons', R.x, R.y)
-  doc.font('Helvetica').fontSize(8)
+  doc.save().font('Helvetica-Bold').fontSize(DIAGRAM_FONTS.beacon).text('Description of Beacons', R.x, R.y)
+  doc.font('Helvetica').fontSize(DIAGRAM_FONTS.beacon)
   if (groups.length === 0) {
     doc.text('All          :', R.x, R.y + 11)
   } else if (groups.length === 1) {
@@ -379,8 +384,8 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
       }
       if (q && q.length >= 3) {
         doc.save()
-          .fillColor(ann.role === 'road' ? BURNT_SIENNA : SERVITUDE_BLUE)
-          .fillOpacity(STRIP_FILL_OPACITY)
+          .fillColor(ann.role === 'road' ? ROAD_COLOR : SERVITUDE_BLUE)
+          .fillOpacity(ann.role === 'road' ? ROAD_FILL_OPACITY : STRIP_FILL_OPACITY)
         doc.moveTo(q[0][0], q[0][1])
         for (let k = 1; k < q.length; k++) doc.lineTo(q[k][0], q[k][1])
         doc.closePath().fill()
@@ -483,15 +488,13 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
 }
 
 function drawNorthArrow(doc, layout) {
-  const R = layout.northArrow
-  const cx = R.x + R.width / 2
-  doc.save().lineWidth(1).strokeColor('#000')
-  doc.moveTo(cx, R.y + R.height).lineTo(cx, R.y).stroke()      // shaft
-  doc.moveTo(cx - 4, R.y + 8).lineTo(cx, R.y).lineTo(cx + 4, R.y + 8).stroke() // head
-  // "T" and "N" flank the shaft near its base, so the vertical line passes between them.
-  doc.font('Helvetica').fontSize(7)
-  doc.text('T', cx - 9, R.y + R.height - 14)
-  doc.text('N', cx + 4, R.y + R.height - 14)
+  // The template's north arrow: true-north line, leaning grid-north line with its
+  // barb, and the "T" and "N" either side of the line (see NORTH_ARROW_TEMPLATE).
+  const G = northArrowGeometryPt(layout.northArrow)
+  doc.save().lineWidth(0.8).strokeColor('#000')
+  for (const [a, b] of G.segments) doc.moveTo(a[0], a[1]).lineTo(b[0], b[1]).stroke()
+  doc.font('Helvetica').fontSize(G.labelHeightPt).fillColor('#000')
+  for (const l of G.labels) doc.text(l.text, l.at[0], l.at[1] - G.labelHeightPt, { lineBreak: false })
   doc.restore()
 }
 
@@ -499,7 +502,7 @@ function drawApprovedBox(doc, layout) {
   const R = layout.approved
   // No box outline; contents centred within the approval region.
   const ctr = { width: R.width, align: 'center' }
-  doc.save().font('Helvetica').fontSize(7).fillColor('#000')
+  doc.save().font('Helvetica').fontSize(DIAGRAM_FONTS.approved).fillColor('#000')
   // Wider gaps leave room to sign above "for Surveyor-General" and to enter the date.
   doc.text('Approved', R.x, R.y + 5, ctr)
   doc.text('for Surveyor-General', R.x, R.y + 31, ctr)
@@ -550,7 +553,7 @@ function drawStatement(doc, layout, geometry, metadata) {
   const desigText = statementDesignation(designation, metadata.parentProperty)
   // Survey date arrives as metadata.date from the frontend; accept either key.
   const surveyDate = metadata.surveyDate ?? metadata.date
-  doc.save().font('Helvetica').fontSize(9).fillColor('#000')
+  doc.save().font('Helvetica').fontSize(DIAGRAM_FONTS.statement).fillColor('#000')
   doc.text('The figure', R.x, R.y)
   doc.text('represents', R.x, R.y + 11)
   // Sequence and area figure are centred over the full statement width, which shares
@@ -568,9 +571,9 @@ function drawStatement(doc, layout, geometry, metadata) {
     desigSize -= 0.5
     doc.fontSize(desigSize)
   }
-  doc.text(desigText, R.x, R.y + 30, { width: R.width, lineBreak: false })
+  doc.text(desigText, R.x, R.y + 30, { width: R.width, align: 'center', lineBreak: false })
   // Same 9pt as the "The figure … of land called" block above.
-  doc.font('Helvetica').fontSize(9).text(
+  doc.font('Helvetica').fontSize(DIAGRAM_FONTS.statement).text(
     `situate in the district of ${(metadata.district ?? '').toUpperCase()}.`, R.x, R.y + 44)
   // Extra row above "Surveyed … by me" (below "situate in the district of …") for
   // visual separation.
@@ -601,7 +604,7 @@ function drawJustifiedLine(doc, text, x, y, width) {
 // all three columns so their text lines up row-for-row.
 function refRowY(top, bottom) {
   const row = (bottom - top) / 4                     // even line band over the cell height
-  return (i) => top + row * i + (row - 7) / 2        // centre a ~7pt line in its band
+  return (i) => top + row * i + (row - DIAGRAM_FONTS.grid) / 2        // centre a REF_FONT line in its band
 }
 
 // Render a top-band reference cell (parent diagram / original title diagram) on the
@@ -641,7 +644,7 @@ function drawReferenceGrid(doc, layout, grid) {
   const COMP_H = 14
   const r3 = bottom - COMP_H                  // compilation row top
   const r2 = r3 - H * 0.25                     // File|G.P.|S.R. row top / top band bottom
-  const compCenterY = r3 + (COMP_H - 7) / 2    // vertical centre of a 7pt line in the row
+  const compCenterY = r3 + (COMP_H - DIAGRAM_FONTS.grid) / 2    // vertical centre of a grid-font line in the row
 
   doc.save().lineWidth(0.5).strokeColor('#000')
   // Top border (full width) + the left-column divider (full height).
@@ -656,7 +659,7 @@ function drawReferenceGrid(doc, layout, grid) {
   doc.moveTo(t1, r2).lineTo(t1, r3).stroke()
   doc.moveTo(t2, r2).lineTo(t2, r3).stroke()
 
-  doc.font('Helvetica').fontSize(7).fillColor('#000')
+  doc.font('Helvetica').fontSize(DIAGRAM_FONTS.grid).fillColor('#000')
   const pad = 3
   const wL = (x1 - x0) - 2 * pad
   // Left column — the current diagram's annexation, on the same row grid as the
@@ -686,7 +689,7 @@ function drawReferenceGrid(doc, layout, grid) {
   })
   // File | G.P. | S.R. row: each entry left-justified in its own column cell,
   // vertically centred in the row.
-  const fileCenterY = r2 + ((r3 - r2) - 7) / 2
+  const fileCenterY = r2 + ((r3 - r2) - DIAGRAM_FONTS.grid) / 2
   doc.text(`File : ${grid.fileNo}`, x1 + pad, fileCenterY, { lineBreak: false })
   doc.text(`G.P. : ${grid.gpNo}`, t1 + pad, fileCenterY, { lineBreak: false })
   doc.text(`S.R. : ${grid.srNo}`, t2 + pad, fileCenterY, { lineBreak: false })
@@ -792,6 +795,19 @@ export async function generateDiagramPDF(options, logger) {
   doc.save().lineWidth(1).strokeColor('#000')
   doc.rect(layout.border.x, layout.border.y, layout.border.width, layout.border.height).stroke()
   doc.restore()
+
+  // Page furniture from the surveyor's template: the deductions notice above the
+  // neat line and the binding-margin note, reading upward, at its left.
+  {
+    const B = layout.border
+    doc.save().font('Helvetica').fontSize(FURNITURE_FONT_PT).fillColor('#000000')
+    doc.text(DEDUCTIONS_NOTE, B.x, B.y - DEDUCTIONS_GAP_PT - FURNITURE_FONT_PT, { lineBreak: false })
+    const bw = doc.widthOfString(BINDING_MARGIN_NOTE)
+    const cx = B.x - BINDING_NOTE_OFFSET_PT, cy = B.y + B.height / 2
+    doc.rotate(-90, { origin: [cx, cy] })
+    doc.text(BINDING_MARGIN_NOTE, cx - bw / 2, cy - FURNITURE_FONT_PT, { lineBreak: false })
+    doc.restore()
+  }
 
   // Abutting neighbours: clip to the 10 m buffer, faint outline + label at the
   // clipped strip. The whole-site OUTSIDE FIGURE parcel is excluded; parcels that

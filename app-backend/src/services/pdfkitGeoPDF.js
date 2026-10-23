@@ -3389,12 +3389,21 @@ function renderBeacons(
       doc.save();
       doc.lineWidth(0.5).dash(2, { space: 1.5 }).strokeColor('#000000').circle(cx, cy, ringR).stroke();
       doc.undash();
+      // The tag sits touching its ring, on whichever side is clearest, so the
+      // number can never be read as belonging to a neighbouring ring.
       const tag = `Inset ${inset.number}`;
-      doc.fontSize(7).font('Helvetica-Bold');
-      const tw = doc.widthOfString(tag), th = 8;
-      const spot = collisionDetector.findOptimalPosition(cx + ringR * 0.7, cy - ringR - th, tw, th, mapBounds)
-        || { x: cx + ringR * 0.7, y: cy - ringR - th };
-      doc.fillColor('#000000').text(tag, spot.x, spot.y, { lineBreak: false });
+      doc.fontSize(8).font('Helvetica-Bold');
+      const tw = doc.widthOfString(tag) + 2, th = 9;
+      const sides = [
+        [cx + ringR * 0.75, cy - ringR * 0.75 - th], [cx - ringR * 0.75 - tw, cy - ringR * 0.75 - th],
+        [cx + ringR * 0.75, cy + ringR * 0.75], [cx - ringR * 0.75 - tw, cy + ringR * 0.75],
+        [cx + ringR + 1, cy - th / 2], [cx - ringR - 1 - tw, cy - th / 2],
+        [cx - tw / 2, cy - ringR - th - 1], [cx - tw / 2, cy + ringR + 1],
+      ];
+      const spot = sides.map(([x, y]) => ({ x, y }))
+        .find((p) => !collisionDetector.hasCollision(p.x, p.y, tw, th, 0)) || { x: sides[0][0], y: sides[0][1] };
+      doc.rect(spot.x - 1, spot.y, tw + 1, th).fillColor('#FFFFFF').fill();
+      doc.fillColor('#000000').text(tag, spot.x + 1, spot.y + 1, { lineBreak: false });
       doc.restore();
       collisionDetector.addRegion(spot.x, spot.y, tw, th);
     });
@@ -7307,8 +7316,33 @@ function calculateInsetPositions(
   mapBounds,
   mapFeatureBounds,
   placedBlocks,
-  logger
+  logger,
+  extra = {}
 ) {
+  // extra.obstacles: rects already drawn that the blocks list does not know of
+  // (coordinate crosses); extra.collisionDetector: every label placed so far;
+  // extra.footerReserve: the band along the bottom that carries the footer text.
+  const {
+    obstacles = [], collisionDetector: labelCollisions = null, footerReserve = 0,
+    segments = [], figureRing = [],
+  } = extra;
+  const usableBottom = mapBounds.y + mapBounds.height - footerReserve;
+  const _hitsRect = (r, o, pad) =>
+    r.x < o.x + o.width + pad && o.x < r.x + r.width + pad &&
+    r.y < o.y + o.height + pad && o.y < r.y + r.height + pad;
+  // The geometry as it is actually DRAWN (the planner's figure outline predates
+  // the final scale, so it can sit somewhere else): no boundary line may cross an
+  // inset, and an inset may not sit on the figure itself.
+  const _ringPairs = figureRing.map((p) => [p.x, p.y]);
+  const _onFigure = (r) =>
+    _ringPairs.length >= 3 &&
+    [[r.x, r.y], [r.x + r.width, r.y], [r.x, r.y + r.height], [r.x + r.width, r.y + r.height],
+      [r.x + r.width / 2, r.y + r.height / 2]].some((pt) => isPointInPolygonSimple(pt, _ringPairs));
+  const blockedByExtras = (r) =>
+    obstacles.some((o) => o && [o.x, o.y, o.width, o.height].every(Number.isFinite) && _hitsRect(r, o, 3)) ||
+    (labelCollisions ? labelCollisions.hasCollision(r.x, r.y, r.width, r.height, 2) : false) ||
+    _hitsSegments({ x: r.x - 3, y: r.y - 3, width: r.width + 6, height: r.height + 6 }, segments) ||
+    _onFigure(r);
   const insetDimensions = insetManager.getInsetDimensions();
 
   if (insetDimensions.length === 0) {
@@ -7401,7 +7435,36 @@ function calculateInsetPositions(
 
     let positioned = false;
 
-    for (const candidate of candidates) {
+    // A beacon-cluster inset belongs near its cluster: scan the whole sheet for the
+    // free rectangle nearest to it that clears the figure, every placed block, the
+    // coordinate crosses, the labels and the footer band.
+    const win = inset.insetData?.win;
+    if (win) {
+      const STEP = 10;
+      const spots = [];
+      for (let x = mapBounds.x + SAFE_MARGIN; x + width <= mapBounds.x + mapBounds.width - SAFE_MARGIN; x += STEP) {
+        for (let y = mapBounds.y + SAFE_MARGIN; y + height <= usableBottom - SAFE_MARGIN; y += STEP) {
+          spots.push({ x, y, d: Math.hypot(x + width / 2 - win.cx, y + height / 2 - win.cy) });
+        }
+      }
+      spots.sort((a, b) => a.d - b.d);
+      for (const sp of spots) {
+        const r = { x: sp.x, y: sp.y, width, height };
+        if (r.x < win.cx + win.radius && win.cx - win.radius < r.x + r.width &&
+            r.y < win.cy + win.radius && win.cy - win.radius < r.y + r.height) continue; // not on its own ring
+        if (mapFeatureBounds?.pdfPoints?.length > 0 &&
+            rectangleOverlapsPolygon(r, mapFeatureBounds.pdfPoints, 6)) continue;
+        if (hasBlockToBlockCollision(r, placedBlocks, BLOCK_MIN_SPACING)) continue;
+        if (blockedByExtras(r)) continue;
+        insetPositions[id] = { x: r.x, y: r.y, width, height };
+        placedBlocks.push({ ...r, name: id });
+        logger.info(`[PDFKit] ✅ ${id} placed near its cluster at (x=${r.x.toFixed(1)}, y=${r.y.toFixed(1)}), ${sp.d.toFixed(0)}pt away`);
+        positioned = true;
+        break;
+      }
+    }
+
+    for (const candidate of positioned ? [] : candidates) {
       const testRect = {
         x: candidate.x,
         y: candidate.y,
@@ -7412,7 +7475,7 @@ function calculateInsetPositions(
       // Check if within map bounds
       const withinBounds =
         testRect.y >= mapBounds.y &&
-        testRect.y + testRect.height <= mapBounds.y + mapBounds.height &&
+        testRect.y + testRect.height <= usableBottom &&
         testRect.x >= mapBounds.x &&
         testRect.x + testRect.width <= mapBounds.x + mapBounds.width;
 
@@ -7441,7 +7504,7 @@ function calculateInsetPositions(
         BLOCK_MIN_SPACING
       );
 
-      if (!overlapsPolygon && !overlapsBlock) {
+      if (!overlapsPolygon && !overlapsBlock && !blockedByExtras(testRect)) {
         insetPositions[id] = {
           x: testRect.x,
           y: testRect.y,
@@ -12489,7 +12552,23 @@ async function _generateGeoPDFInner(options, logger) {
     mapBounds,
     blockPositions.mapFeatureBounds,
     placedBlocksCopy,
-    logger
+    logger,
+    {
+      // The crosses are drawn before the insets are seated, so they have to be
+      // named here; the labels likewise. The footer text sits in the bottom band.
+      obstacles: (tickMarks ?? []).map((t) => t?.bounds).filter(Boolean),
+      collisionDetector,
+      footerReserve: 22,
+      // Every boundary as drawn (stands and the figure's own outline).
+      segments: [
+        ..._parcelSegments,
+        ..._topoPolyPts.map((p, i) => {
+          const q = _topoPolyPts[(i + 1) % _topoPolyPts.length];
+          return { x1: p.x, y1: p.y, x2: q.x, y2: q.y };
+        }),
+      ],
+      figureRing: _topoPolyPts,
+    }
   );
 
   insetManager.renderInsetsAtPositions(

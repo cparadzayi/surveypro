@@ -14,9 +14,11 @@
  *  3. A smaller font is allowed per beacon (down to `minScale` of the base), and
  *     is preferred over sitting far from the beacon: each candidate is costed on
  *     distance from the beacon plus a penalty for shrinking.
- *  4. Where two boundary lines run close and parallel (a thin strip), the box is
- *     also tried with its baseline perpendicular to the longer adjacent side,
- *     which lets the letter stand in the strip instead of spanning it.
+ *  4. The letter is HORIZONTAL. Only where a horizontal box cannot clear the
+ *     boundary lines is a minor rotation tried (up to MAX_TILT_DEG either way),
+ *     and each degree costs a little, so the smallest tilt that clears wins. A
+ *     letter is never stood vertical or laid along a diagonal side: horizontal
+ *     reads best in the field.
  *  5. A letter must read as belonging to ITS beacon. Neighbouring beacons are
  *     passed in as `neighbours`; a candidate nearer to somebody else's circle
  *     than to its own is penalised, and a candidate is judged by what it leaves
@@ -58,14 +60,12 @@ function segHitsBox(p, q, hw, hh) {
          clip(-dy, p.y + hh) && clip(dy, hh - p.y)
 }
 
-/** Baseline angle folded to (-90, 90] so text is never upside down. */
-function readable(deg) {
-  let a = ((deg % 360) + 360) % 360
-  if (a > 180) a -= 360
-  if (a > 90) a -= 180
-  if (a <= -90) a += 180
-  return a
-}
+/** Largest tilt from horizontal a beacon letter may take to clear a boundary. */
+export const MAX_TILT_DEG = 20
+const COOP_SLACK = 4
+/** A letter shrunk below this fraction of its base size counts as cramped. */
+const CRAMPED_SCALE = 0.7
+const TILT_STEPS_DEG = [7, 14, MAX_TILT_DEG]
 
 function dedupeRing(polygon) {
   const last = polygon[polygon.length - 1], first = polygon[0]
@@ -106,6 +106,28 @@ export function boxFitsInside(ring, beacon, cx, cy, w, h, rotDeg, {
 }
 
 /**
+ * Last-resort test for a stand too narrow to hold the letter anywhere: the centre
+ * must be inside the parcel and the box clear of the beacon circle, but the box
+ * may touch the boundary. Returns how many of the four corners fall outside the
+ * parcel (so the least-straddling spot can be preferred), or -1 if rejected.
+ */
+function straddle(ring, beacon, cx, cy, w, h, rotDeg, beaconRadius, circleClear) {
+  if (!inRing(cx, cy, ring)) return -1
+  const r = rotDeg * DEG, c = Math.cos(-r), s = Math.sin(-r)
+  const dx = beacon.x - cx, dy = beacon.y - cy
+  const lx = dx * c - dy * s, ly = dx * s + dy * c
+  const nx = Math.max(-w / 2, Math.min(lx, w / 2)), ny = Math.max(-h / 2, Math.min(ly, h / 2))
+  if (Math.hypot(lx - nx, ly - ny) < beaconRadius + circleClear) return -1
+  let out = 0
+  for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const px = cx + Math.cos(r) * sx * w / 2 - Math.sin(r) * sy * h / 2
+    const py = cy + Math.sin(r) * sx * w / 2 + Math.cos(r) * sy * h / 2
+    if (!inRing(px, py, ring)) out++
+  }
+  return out
+}
+
+/**
  * @param {object} o
  * @param {{x:number,y:number}} o.beaconPos
  * @param {Array<{x:number,y:number}>} o.polygon   parcel ring (closing vertex optional)
@@ -115,18 +137,21 @@ export function boxFitsInside(ring, beacon, cx, cy, w, h, rotDeg, {
  * @param {(aabb:{x:number,y:number,w:number,h:number})=>boolean} [o.collides]
  * @param {number} [o.minScale=0.65]                smallest allowed fraction of fontSize
  * @param {number} [o.lineHeight=1.2]               box height as a multiple of fontSize
- * @returns {{cx:number, cy:number, fontSize:number, rotation:number, fitted:boolean}}
+ * @returns {{cx:number, cy:number, fontSize:number, rotation:number, fitted:boolean,
+ *            tier:number, cramped:boolean}}  `cramped` is true when the letter had to be
+ *            shrunk well below its size, or squeezed against / across a boundary: the
+ *            caller can then draw this beacon in an inset instead.
  */
 export function fitSuffixLabel({
   beaconPos, polygon, widthAt, fontSize, beaconRadius,
   collides = null, minScale = 0.65, lineHeight = 1.2,
-  edgeClear = 0.6, circleClear = 0.5, neighbours = [],
+  edgeClear = 0.6, circleClear = 0.5, neighbours = [], relaxed = false, _tier = 0,
 }) {
   const ring = dedupeRing(polygon)
   const rn = ring.length
   const centroid = rn ? centroidOf(ring) : beaconPos
   if (rn < 3) {
-    return { cx: centroid.x, cy: centroid.y, fontSize, rotation: 0, fitted: false }
+    return { cx: centroid.x, cy: centroid.y, fontSize, rotation: 0, fitted: false, tier: 4, cramped: true }
   }
 
   // The ring vertex this beacon sits on, and the two edges meeting there.
@@ -160,14 +185,8 @@ export function fitSuffixLabel({
     iy = sgn * by
   }
 
-  // Baseline angles to try: horizontal, and perpendicular to the longer side.
-  const rotations = [0]
-  if (l1 > 1e-3 || l2 > 1e-3) {
-    const Lng = l1 >= l2 ? P : N
-    const edgeDeg = Math.atan2(Lng.y - B.y, Lng.x - B.x) / DEG
-    const perp = readable(edgeDeg + 90)
-    if (Math.abs(perp) > 1) rotations.push(perp)
-  }
+  // Baseline angles to try: horizontal first, then small tilts either way.
+  const rotations = [0, ...TILT_STEPS_DEG.flatMap((t) => [t, -t])]
 
   const penalty = (cx, cy, ownD) => {
     let pen = 0
@@ -194,7 +213,7 @@ export function fitSuffixLabel({
     const w = widthAt(fs), h = fs * lineHeight
     const shrink = (1 - sc) * 10
     for (const rot of rotations) {
-      const rotCost = rot === 0 ? 0 : 1
+      const rotCost = Math.abs(rot) * 0.08 // 7 deg ~ 0.6, 20 deg ~ 1.6
       const rr = rot * DEG
       const ew = Math.abs(Math.cos(rr)) * w + Math.abs(Math.sin(rr)) * h
       const eh = Math.abs(Math.sin(rr)) * w + Math.abs(Math.cos(rr)) * h
@@ -205,13 +224,17 @@ export function fitSuffixLabel({
         for (let d = dStart; d <= dMax && kept < 2; d += dStep) {
           if (kept === 1 && d < firstD + h) continue
           const cx = beaconPos.x + dx * d, cy = beaconPos.y + dy * d
-          if (!boxFitsInside(ring, beaconPos, cx, cy, w, h, rot, { beaconRadius, edgeClear, circleClear })) continue
+          let straddled = 0
+          if (relaxed) {
+            straddled = straddle(ring, beaconPos, cx, cy, w, h, rot, beaconRadius, circleClear)
+            if (straddled < 0) continue
+          } else if (!boxFitsInside(ring, beaconPos, cx, cy, w, h, rot, { beaconRadius, edgeClear, circleClear })) continue
           const box = { x: cx - ew / 2, y: cy - eh / 2, w: ew, h: eh }
           if (collides && collides(box)) continue
           if (kept === 0) firstD = d
           kept++
           cands.push({
-            cost: d + shrink + rotCost + Math.abs(pd) * 0.03 + penalty(cx, cy, d),
+            cost: d + shrink + rotCost + Math.abs(pd) * 0.03 + penalty(cx, cy, d) + straddled * 1.5,
             cx, cy, fontSize: fs, rotation: rot, fitted: true, box,
           })
         }
@@ -235,8 +258,11 @@ export function fitSuffixLabel({
   if (best && ringNbs.length) {
     const hit = (u, v) => u.x < v.x + v.w && v.x < u.x + u.w && u.y < v.y + v.h && v.y < u.y + u.h
     const picked = []
+    // A letter may give up at most COOP_SLACK of its own cost to help a neighbour:
+    // two letters sharing the tip of a narrow stand must each stay beside their
+    // own beacon, not have one sent up the stand so the other can have the corner.
     for (const c of cands) {
-      if (picked.length >= 6) break
+      if (picked.length >= 6 || c.cost > cands[0].cost + COOP_SLACK) break
       if (picked.every((q) => Math.hypot(q.cx - c.cx, q.cy - c.cy) > c.fontSize * 0.5)) picked.push(c)
     }
     let bestTotal = Infinity
@@ -248,23 +274,49 @@ export function fitSuffixLabel({
           lineHeight, edgeClear, circleClear,
           collides: (r) => hit(r, c.box) || (collides ? collides(r) : false),
         })
-        total += resp.fitted ? resp.cost : 60
+        total += resp.fitted ? resp.cost : 12
       }
       if (total < bestTotal) { bestTotal = total; best = c }
     }
   }
-  if (best) return { cost: best.cost, cx: best.cx, cy: best.cy, fontSize: best.fontSize, rotation: best.rotation, fitted: true }
+  if (best) {
+    return {
+      cost: best.cost, cx: best.cx, cy: best.cy, fontSize: best.fontSize, rotation: best.rotation,
+      fitted: true, tier: _tier, cramped: _tier >= 1 || best.fontSize < fontSize * CRAMPED_SCALE,
+    }
+  }
 
   // Nothing clears at the normal margins: retry tighter and smaller before
   // giving up, so a cramped corner still gets a letter beside its own beacon
   // rather than one dropped at the centroid.
-  if (edgeClear > 0.15) {
+  if (edgeClear > 0.15 && !relaxed) {
     return fitSuffixLabel({
       beaconPos, polygon, widthAt, fontSize, beaconRadius, collides, lineHeight,
       neighbours, minScale: minScale * 0.8, edgeClear: edgeClear * 0.25, circleClear: circleClear * 0.5,
+      _tier: 1,
+    })
+  }
+
+  // A stand narrower than the smallest letter: nothing fits WHOLLY inside. Rather
+  // than drop the letter at the centroid, tens of points from its beacon, keep it
+  // beside the beacon at the smallest size, centre inside the parcel and touching
+  // the boundary as little as possible. If other labels block that too, accept
+  // the overlap with them over losing the letter's place.
+  if (!relaxed) {
+    return fitSuffixLabel({
+      beaconPos, polygon, widthAt, fontSize, beaconRadius, collides, lineHeight,
+      neighbours, minScale: minScale * 0.8, edgeClear: 0, circleClear: circleClear * 0.5, relaxed: true,
+      _tier: 2,
+    })
+  }
+  if (collides) {
+    return fitSuffixLabel({
+      beaconPos, polygon, widthAt, fontSize, beaconRadius, collides: null, lineHeight,
+      neighbours, minScale, edgeClear: 0, circleClear: circleClear * 0.5, relaxed: true,
+      _tier: 3,
     })
   }
 
   // Still nothing: smallest font at the centroid, as before.
-  return { cx: centroid.x, cy: centroid.y, fontSize: fontSize * minScale, rotation: 0, fitted: false }
+  return { cx: centroid.x, cy: centroid.y, fontSize: fontSize * minScale, rotation: 0, fitted: false, tier: 4, cramped: true }
 }

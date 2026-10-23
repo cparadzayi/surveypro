@@ -1,4 +1,5 @@
 import { PT_TO_MM, MM_TO_PT } from './geometry.js';
+import { clusterWindow, renderBeaconClusterInset } from './beaconClusterInset.js';
 
 /**
  * InsetManager - Manages map insets for short edges and complex details
@@ -42,6 +43,43 @@ export class InsetManager {
       reason,
     });
 
+    return inset;
+  }
+
+  /**
+   * An inset magnifying a cluster of crowded beacons so their letters can sit
+   * inside their own stands at full size. `items` are the cluster's cramped
+   * beacons ({pos}); `toPdf(y,x)` is the main plan's own transform.
+   */
+  createBeaconClusterInset({ items, beacons, parcels, mainScale, toPdf, beaconRadius, textColor }) {
+    const INSET_SIZE = 60 * MM_TO_PT;
+    const win = clusterWindow(items, INSET_SIZE - 10, INSET_SIZE - 20);
+    const number = this.nextInsetNumber++;
+    const stands = [...new Set(items.map((i) => i.stand))].sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+    const inset = {
+      kind: 'beacon-cluster',
+      number,
+      win,
+      toPdf,
+      beacons,
+      parcels,
+      stands,
+      beaconRadius,
+      textColor,
+      scale: Math.max(1, Math.round(mainScale / win.mag)),
+      mainScale,
+      position: null,
+      reason: 'beacon-cluster',
+      indicatorText: `Inset ${number}`,
+      // Not a short-edge inset: the layout only needs the shape below.
+      parcel: { properties: { stand: stands.join(', ') } },
+      edge: { length: 0 },
+    };
+    this.insets.push(inset);
+    this.logger.info({
+      msg: `[Insets] Created Inset ${number} (beacon cluster)`,
+      stands, items: items.length, magnification: win.mag.toFixed(1), scale: `1:${inset.scale}`,
+    });
     return inset;
   }
 
@@ -251,6 +289,10 @@ export class InsetManager {
   }
 
   renderInset(doc, inset, width, height, extent, mapBounds) {
+    if (inset.kind === 'beacon-cluster') {
+      renderBeaconClusterInset(doc, inset, width, height);
+      return;
+    }
     const { position, bounds, scale, number, parcel, edge } = inset;
 
     doc.save();

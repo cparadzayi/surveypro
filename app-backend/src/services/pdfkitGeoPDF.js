@@ -76,6 +76,7 @@ import {
   rectanglesOverlap
 } from './pdfkitGeoPDF/geometry.js';
 import { InsetManager } from './pdfkitGeoPDF/insetManager.js';
+import { clusterCramped } from './pdfkitGeoPDF/beaconClusterInset.js';
 
 /**
  * PDFKit-based GeoPDF Generator with SI 727 Compliance
@@ -2650,7 +2651,8 @@ function renderBeacons(
   scale,
   beaconLabels,
   logger,
-  excludeBeaconNames = new Set()
+  excludeBeaconNames = new Set(),
+  insetManager = null
 ) {
   logger.info(
     "[PDFKit] 🔴 CODE CHANGE TEST - If you see this, changes are being picked up"
@@ -2799,6 +2801,7 @@ function renderBeacons(
   // always sit on top of label text and white knockout rectangles.
   // Rendering order: boundary lines (renderParcels) → labels → circles.
   const deferredCircles = [];
+  const crampedItems = [];
 
   beacons.features.forEach((beacon) => {
     const pos = transformCoords(
@@ -2829,6 +2832,7 @@ function renderBeacons(
     let displayLabel, config, labelPos, isInsideLabel;
 
     let suffixRotationAngle = 0;
+    let suffixCramped = false;
     let suffixFontSize = null;
     let suffixLabelParcelCoords = null;
     let suffixNeedsLeader = false;
@@ -2908,6 +2912,7 @@ function renderBeacons(
           labelPos = { x: poiResult.x, y: poiResult.y };
           suffixFontSize = poiResult.fontSize;
           suffixRotationAngle = poiResult.rotation;
+          suffixCramped = poiResult.cramped;
           suffixNeedsLeader = poiResult.needsLeader;
           suffixLeaderPolygon = pdfCoords.map(p => [p.x, p.y]);
         } else {
@@ -3015,6 +3020,7 @@ function renderBeacons(
           labelPos = { x: poiResult2.x, y: poiResult2.y };
           suffixFontSize = poiResult2.fontSize;
           suffixRotationAngle = poiResult2.rotation;
+          suffixCramped = poiResult2.cramped;
           suffixNeedsLeader = poiResult2.needsLeader;
           suffixLeaderPolygon = pdfCoords.map(p => [p.x, p.y]);
 
@@ -3275,6 +3281,21 @@ function renderBeacons(
     let verticalOffset = isSuffixLabel ? 0 : 2.5;
     if (isOutsideFullLabel) verticalOffset = 0;
 
+    // A letter that could only be squeezed in (shrunk well down, or against a
+    // boundary) is not drawn here: its crowded neighbourhood goes to an inset,
+    // where it fits at full size. See beaconClusterInset.js. Drawn later, as it
+    // would have been, if the cluster does not get an inset.
+    const _standOfBeacon = splitBeaconName(beaconName)?.prefix ?? '';
+    if (isSuffixLabel && suffixCramped && insetManager && _standOfBeacon) {
+      doc.restore();
+      crampedItems.push({
+        name: beaconName, stand: _standOfBeacon, pos, rawCoord: beacon.geometry.coordinates,
+        draw: { finalPos, labelWidth, labelHeight, fontSize, fontFamily, color: config.color,
+          text: displayLabel, rotation: suffixRotationAngle },
+      });
+      return;
+    }
+
     if (isSuffixLabel) {
       const centerX = finalPos.x + labelWidth / 2;
       const centerY = finalPos.y + verticalOffset + labelHeight / 2;
@@ -3332,6 +3353,52 @@ function renderBeacons(
       );
     }
   });
+
+  // Cramped beacons: one inset per crowded cluster (a few per sheet at most);
+  // anything beyond that is drawn in place after all.
+  if (crampedItems.length > 0 && insetManager) {
+    const drawSuffix = (it) => {
+      const d = it.draw;
+      const cx = d.finalPos.x + d.labelWidth / 2, cy = d.finalPos.y + d.labelHeight / 2;
+      doc.save();
+      doc.translate(cx, cy);
+      if (d.rotation) doc.rotate(d.rotation);
+      doc.fontSize(d.fontSize).font(d.fontFamily).fillColor(d.color)
+        .text(d.text, -d.labelWidth / 2, -d.labelHeight / 2, { lineBreak: false });
+      doc.restore();
+    };
+    const MAX_BEACON_INSETS = 4;
+    const toPdf = (yy, xx) => transformCoords(yy, xx, extent, mapBounds);
+    const beaconRows = beacons.features.map((b) => {
+      const nm = b.properties.name || b.properties.id || "B";
+      const parts = splitBeaconName(nm);
+      return {
+        name: String(nm), stand: parts?.prefix ?? '', suffix: parts ? labelParts(nm).suffix : '',
+        y: b.geometry.coordinates[0], x: b.geometry.coordinates[1],
+      };
+    });
+    clusterCramped(crampedItems).forEach((cluster, idx) => {
+      if (idx >= MAX_BEACON_INSETS) { cluster.forEach(drawSuffix); return; }
+      const inset = insetManager.createBeaconClusterInset({
+        items: cluster, beacons: beaconRows, parcels: parcels.features,
+        mainScale: scale.value, toPdf, beaconRadius, textColor: labelConfig.insideParcel.color,
+      });
+      // Mark the area on the plan: a dashed ring and the inset's number.
+      const { cx, cy, radius } = inset.win;
+      const ringR = Math.max(8, radius * 0.9);
+      doc.save();
+      doc.lineWidth(0.5).dash(2, { space: 1.5 }).strokeColor('#000000').circle(cx, cy, ringR).stroke();
+      doc.undash();
+      const tag = `Inset ${inset.number}`;
+      doc.fontSize(7).font('Helvetica-Bold');
+      const tw = doc.widthOfString(tag), th = 8;
+      const spot = collisionDetector.findOptimalPosition(cx + ringR * 0.7, cy - ringR - th, tw, th, mapBounds)
+        || { x: cx + ringR * 0.7, y: cy - ringR - th };
+      doc.fillColor('#000000').text(tag, spot.x, spot.y, { lineBreak: false });
+      doc.restore();
+      collisionDetector.addRegion(spot.x, spot.y, tw, th);
+    });
+  }
 
   // Draw all deferred beacon circles on top of labels.
   // White fill knocks out anything underneath; black stroke stays crisp.
@@ -3581,6 +3648,7 @@ function placeSuffixLabelPOIDirected(
     needsLeader: false,
     fontSize: fit.fontSize,
     rotation: fit.rotation,
+    cramped: fit.cramped,
   };
 }
 
@@ -11219,6 +11287,20 @@ async function _generateGeoPDFInner(options, logger) {
   if (_adjoiningSubjects.length > 0) {
     const _ptPerGroundM = (72 / 25.4) * 1000 / (optimalScale?.value || 1000);
     let _drawn = 0;
+    // Every boundary line on the sheet (PDF points), so a road name can find its
+    // far line and keep clear of all of them.
+    const _boundarySegs = [];
+    for (const feat of (filteredParcels ?? parcels)?.features || []) {
+      let ring0 = feat?.geometry?.coordinates?.[0];
+      if (Array.isArray(ring0) && ring0.length === 1 && Array.isArray(ring0[0]) && Array.isArray(ring0[0][0])) ring0 = ring0[0];
+      if (!Array.isArray(ring0) || ring0.length < 2) continue;
+      const pts = ring0.map((c) => {
+        const cc = Array.isArray(c) ? c : [c.y ?? c[1], c.x ?? c[0]];
+        const q = transformCoords(cc[0], cc[1], calculatedExtent, figureBounds);
+        return [q.x, q.y];
+      });
+      for (let i = 0; i + 1 < pts.length; i++) _boundarySegs.push([pts[i], pts[i + 1]]);
+    }
     for (const subj of _adjoiningSubjects) {
       const ring = Array.isArray(subj?.ring) ? subj.ring : null;
       const anns = Array.isArray(subj?.annotations) ? subj.annotations : null;
@@ -11234,7 +11316,7 @@ async function _generateGeoPDFInner(options, logger) {
       );
       drawSubjectAdjoiningFeatures(
         doc,
-        { ptRing, annotations: anns, ptPerGroundM: _ptPerGroundM },
+        { ptRing, annotations: anns, ptPerGroundM: _ptPerGroundM, segments: _boundarySegs },
         logger
       );
       _drawn++;
@@ -11280,7 +11362,8 @@ async function _generateGeoPDFInner(options, logger) {
     optimalScale,
     beaconLabels,
     logger,
-    outsideFigureVertexNames
+    outsideFigureVertexNames,
+    insetManager
   );
 
   // Edge labels are rendered in renderParcels() with topology-aware split labeling

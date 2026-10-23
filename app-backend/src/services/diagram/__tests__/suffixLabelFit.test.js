@@ -1,4 +1,4 @@
-import { fitSuffixLabel, boxFitsInside } from '../suffixLabelFit.js'
+import { fitSuffixLabel, boxFitsInside, MAX_TILT_DEG } from '../suffixLabelFit.js'
 
 const widthAt = (fs) => fs * 0.7
 const R = 2.5
@@ -38,20 +38,13 @@ describe('fitSuffixLabel', () => {
     expect(inside(wedge, { x: 0, y: 0 }, fit)).toBe(true)
   })
 
-  test('thin vertical strip: letter is stood perpendicular to the long side', () => {
-    // 6pt wide, 100pt tall; horizontal 5.6pt-wide text + clearance cannot fit at 8pt.
+  test('thin strip: stays inside, horizontal or only slightly tilted, never stood on end', () => {
+    // 9pt wide, 100pt tall: a horizontal 5.6pt-wide letter fits between the lines.
     const strip = [{ x: 0, y: 0 }, { x: 9, y: 0 }, { x: 9, y: 100 }, { x: 0, y: 100 }, { x: 0, y: 0 }]
     const fit = base(strip, { x: 0, y: 0 })
     expect(fit.fitted).toBe(true)
     expect(inside(strip, { x: 0, y: 0 }, fit)).toBe(true)
-    // baseline perpendicular to the (vertical) long side is horizontal => rotation 0,
-    // so test a diagonal strip where the two differ.
-    const a = 30 * Math.PI / 180
-    const rot = (p) => ({ x: p.x * Math.cos(a) - p.y * Math.sin(a), y: p.x * Math.sin(a) + p.y * Math.cos(a) })
-    const diag = strip.map(rot)
-    const f2 = base(diag, diag[0])
-    expect(f2.fitted).toBe(true)
-    expect(inside(diag, diag[0], f2)).toBe(true)
+    expect(Math.abs(fit.rotation)).toBeLessThanOrEqual(MAX_TILT_DEG)
   })
 
   test('respects the collision callback', () => {
@@ -101,20 +94,73 @@ describe('fitSuffixLabel', () => {
       expect(overlap(box(ft), box(fl))).toBe(false)
     })
 
-    test('placed lower first, neighbours step aside so neither letter shrinks', () => {
-      // Circles 10pt apart: placed greedily, the lower letter takes the spot the
-      // upper one needs, and the upper one has to shrink to 5.2pt.
+    test('placed lower first, cooperating is never worse than placing greedily', () => {
+      // Circles 10pt apart, with letters held within 30 degrees of the axes.
       const tight = [{ x: 25, y: -40 }, { x: 0, y: 0 }, { x: 5, y: 10 }, { x: 40, y: 35 },
         { x: 200, y: 35 }, { x: 200, y: -40 }]
       const t = { x: 0, y: 0 }, l = { x: 5, y: 10 }
       const hit = (r, f) => { const b = box(f); return r.x < b.x + b.w && b.x < r.x + r.w && r.y < b.y + b.h && b.y < r.y + r.h }
       const greedyL = base(tight, l)
       const greedyT = base(tight, t, { collides: (r) => hit(r, greedyL) })
-      expect(greedyT.fontSize).toBeLessThan(8) // the failure being fixed
       const coopL = base(tight, l, { neighbours: [t] })
       const coopT = base(tight, t, { neighbours: [l], collides: (r) => hit(r, coopL) })
-      expect(coopL.fontSize).toBe(8)
-      expect(coopT.fontSize).toBe(8)
+      expect(coopL.fontSize + coopT.fontSize).toBeGreaterThanOrEqual(greedyL.fontSize + greedyT.fontSize - 1e-9)
+      expect(Math.min(coopL.fontSize, coopT.fontSize)).toBeGreaterThanOrEqual(8 * 0.65)
+    })
+  })
+
+  describe('in-parcel letters are horizontal, tilting only slightly and only when needed', () => {
+    test('clear corner: exactly horizontal', () => {
+      const sq = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }, { x: 0, y: 0 }]
+      for (const corner of sq.slice(0, 4)) expect(base(sq, corner).rotation).toBe(0)
+    })
+
+    test('whatever the geometry, the tilt never exceeds the limit', () => {
+      for (const deg of [0, 20, 30, 45, 60, 75, 90, 120]) {
+        const a = deg * Math.PI / 180
+        const rot = (p) => ({ x: p.x * Math.cos(a) - p.y * Math.sin(a), y: p.x * Math.sin(a) + p.y * Math.cos(a) })
+        const strip = [{ x: 0, y: 0 }, { x: 9, y: 0 }, { x: 9, y: 120 }, { x: 0, y: 120 }, { x: 0, y: 0 }].map(rot)
+        for (const corner of strip.slice(0, 4)) {
+          expect(Math.abs(base(strip, corner).rotation)).toBeLessThanOrEqual(MAX_TILT_DEG)
+        }
+      }
+    })
+
+    test('a small tilt is used to clear a boundary when horizontal cannot', () => {
+      // A narrow slot leaning 15 degrees: a horizontal 5.6pt letter is a tight fit,
+      // a letter tilted with the slot clears it at full size.
+      const a = 15 * Math.PI / 180
+      const rot = (p) => ({ x: p.x * Math.cos(a) - p.y * Math.sin(a), y: p.x * Math.sin(a) + p.y * Math.cos(a) })
+      const slot = [{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: 120 }, { x: 0, y: 120 }, { x: 0, y: 0 }].map(rot)
+      const f = base(slot, slot[0])
+      expect(f.fitted).toBe(true)
+      expect(Math.abs(f.rotation)).toBeLessThanOrEqual(MAX_TILT_DEG)
+      expect(inside(slot, slot[0], f)).toBe(true)
+    })
+  })
+
+  describe('stands too narrow to hold the letter (1392A / 1393A / 1398C / 1400C)', () => {
+    // A 3pt-wide, 120pt-long stand: no letter fits wholly inside anywhere.
+    const strip = [{ x: 0, y: 0 }, { x: 3, y: 0 }, { x: 3, y: 120 }, { x: 0, y: 120 }, { x: 0, y: 0 }]
+    const dist = (f, b) => Math.hypot(f.cx - b.x, f.cy - b.y)
+
+    test('letter stays beside its beacon instead of being dropped at the centroid', () => {
+      const b = { x: 0, y: 0 }
+      const f = base(strip, b)
+      expect(dist(f, b)).toBeLessThan(12) // the centroid is 60pt away
+      expect(f.cy).toBeGreaterThan(0)     // up the stand, centre inside it
+      expect(f.cx).toBeGreaterThan(0)
+      expect(f.cx).toBeLessThan(3)
+    })
+
+    test('two beacons at the tip of a narrow stand each keep their letter near them', () => {
+      const tipL = { x: 0, y: 0 }, tipR = { x: 3, y: 0 }
+      const hit = (r, f) => { const w = widthAt(f.fontSize), h = f.fontSize * 1.2
+        return r.x < f.cx + w / 2 && f.cx - w / 2 < r.x + r.w && r.y < f.cy + h / 2 && f.cy - h / 2 < r.y + r.h }
+      const fl = base(strip, tipL, { neighbours: [tipR] })
+      const fr = base(strip, tipR, { neighbours: [tipL], collides: (r) => hit(r, fl) })
+      expect(dist(fl, tipL)).toBeLessThan(15)
+      expect(dist(fr, tipR)).toBeLessThan(25)
     })
   })
 })

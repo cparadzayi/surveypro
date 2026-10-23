@@ -20,7 +20,7 @@ import {
   pointToLineDistance,
 } from './dxfGeometry.js'
 
-const PT_PER_MM = 1 / 0.352778   // ≈ 2.835
+const PT_PER_MM = 72 / 25.4   // ≈ 2.835, as pdfkitGeoPDF.js
 
 /**
  * PDF tier switch for beacon font size in points.
@@ -34,20 +34,20 @@ export function pickBeaconFontSize(scaleValue) {
 }
 
 /**
- * Beacon open-circle radius as a FIXED legible PAPER size (mm). The circle must
- * read clearly at the print scale regardless of the ground scale — matching the
- * SI 727 General Plan convention (see the ideal plan: ~2 mm radius open circles).
- * The previous 1.8-3.0 pt clamp (~0.63-1.06 mm) rendered the circles too small
- * to read. A slight log growth at coarser scales keeps them visible when the
- * figure is small.
+ * Beacon open-circle radius in paper-mm, identical to the PDF's renderBeacons
+ * so a beacon prints the same size from either output:
  *
- *   baseRadiusMM × (1 + 0.15·log10(max(500, scaleValue) / 500)), clamped 1.5-2.4 mm
+ *   0.75 mm × (1 + 0.15·log10(max(500, scaleValue) / 500)), clamped to the
+ *   PDF's 1.8-3.0 pt window (≈0.635-1.058 mm).
+ *
+ * Keep in step with pdfkitGeoPDF.js (renderBeacons and the outside-figure
+ * vertex beacons); the parity test in dxfBeaconPlacer.test.js pins the numbers.
  */
 export function computeBeaconRadius(scaleValue) {
-  const baseRadiusMM = 1.8
+  const baseRadiusMM = 0.75
   const scaleFactor  = 1 + 0.15 * Math.log10(Math.max(500, scaleValue) / 500)
-  const rMM = baseRadiusMM * scaleFactor
-  return Math.max(1.5, Math.min(2.4, rMM))   // paper-mm
+  const rPt = Math.max(1.8, Math.min(3.0, baseRadiusMM * scaleFactor * PT_PER_MM))
+  return rPt / PT_PER_MM   // paper-mm
 }
 
 /**

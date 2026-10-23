@@ -33,25 +33,21 @@ describe('pickBeaconFontSize — PDF tier switch', () => {
   })
 })
 
-describe('computeBeaconRadius — fixed legible paper size', () => {
-  // Beacon radius is now a fixed legible PAPER size (mm), not the old 0.63-1.06 mm
-  // clamp which rendered too small. At scale 500 → baseRadiusMM × 1.0 = 1.8 mm.
-  test('scale 500 → ~1.8 mm', () => {
-    const r = computeBeaconRadius(500)
-    expect(r).toBeGreaterThan(1.79)
-    expect(r).toBeLessThan(1.81)
+describe('computeBeaconRadius — matches the PDF beacon circle', () => {
+  // The PDF radius in points: clamp(0.75mm × scaleFactor × 72/25.4, 1.8, 3.0).
+  const pdfRadiusPt = (scale) => {
+    const f = 1 + 0.15 * Math.log10(Math.max(500, scale) / 500)
+    return Math.max(1.8, Math.min(3.0, 0.75 * f * (72 / 25.4)))
+  }
+  test.each([200, 500, 1000, 2000, 5000, 100000])('scale %i → same size as PDF', (s) => {
+    expect(computeBeaconRadius(s) * (72 / 25.4)).toBeCloseTo(pdfRadiusPt(s), 9)
+  })
+  test('scale 500 → 0.75 mm radius', () => {
+    expect(computeBeaconRadius(500)).toBeCloseTo(0.75, 6)
   })
   test('monotone non-decreasing in scale', () => {
-    const r500  = computeBeaconRadius(500)
-    const r1000 = computeBeaconRadius(1000)
-    const r5000 = computeBeaconRadius(5000)
-    expect(r1000).toBeGreaterThanOrEqual(r500)
-    expect(r5000).toBeGreaterThanOrEqual(r1000)
-  })
-  test('clamped to the 1.5-2.4 mm legible window', () => {
-    const huge = computeBeaconRadius(100000)
-    expect(huge).toBeGreaterThanOrEqual(1.5)
-    expect(huge).toBeLessThanOrEqual(2.4)
+    expect(computeBeaconRadius(1000)).toBeGreaterThanOrEqual(computeBeaconRadius(500))
+    expect(computeBeaconRadius(5000)).toBeGreaterThanOrEqual(computeBeaconRadius(1000))
   })
 })
 

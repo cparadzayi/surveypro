@@ -131,7 +131,7 @@
           <p v-if="!selectedDiagramParcelId" class="mt-1 text-xs text-amber-600">
             👆 {{ isDiagramMode
               ? 'Or click the parcel on the map to choose the diagram subject.'
-              : 'Pick the Outside Figure or a stand, then click its sides to tag roads / servitudes / contiguous neighbours.' }}
+              : 'Pick the Outside Figure (click the space between stands, or use the list) or a stand, then click its sides to tag roads / servitudes / contiguous neighbours.' }}
           </p>
           <p v-else class="mt-1 text-xs text-green-700">
             ✓ {{ isDiagramMode ? 'Diagram subject' : 'Subject' }}:
@@ -1860,11 +1860,11 @@ function applyDiagramHighlight(selectedId: string | number | null) {
     const isSelected = selectedId != null && String(p.id) === String(selectedId)
     map.value!.setPaintProperty(
       layerId, 'line-color',
-      isOutsideFig ? '#ef4444' : isSelected ? '#2563eb' : '#0f172a',
+      isSelected ? '#2563eb' : isOutsideFig ? '#ef4444' : '#0f172a',
     )
     map.value!.setPaintProperty(
       layerId, 'line-width',
-      isOutsideFig ? 3 : isSelected ? 4 : 2,
+      isSelected ? (isOutsideFig ? 5 : 4) : isOutsideFig ? 3 : 2,
     )
   })
   updateSubjectLabelLayer(selectedId)
@@ -2036,16 +2036,40 @@ function updateAnnotationLabelsLayer() {
     const ring = transformParcelGeometry(subj.geom)?.geometry?.coordinates?.[0] as [number, number][] | undefined
     if (!ring) continue
     const byName = new Map(labelled.map(a => [a.side, a]))
+    // Metre-scaled local frame (lng/lat degrees are not isotropic) so a road can be
+    // offset by half its reserve width, away from the subject.
+    const lat0 = ring.reduce((t, q) => t + q[1], 0) / ring.length
+    const lng0 = ring.reduce((t, q) => t + q[0], 0) / ring.length
+    const mx = 111320 * Math.cos(lat0 * Math.PI / 180), my = 111320
+    const toM = (q: [number, number]): [number, number] => [(q[0] - lng0) * mx, (q[1] - lat0) * my]
+    const fromM = (q: [number, number]): [number, number] => [q[0] / mx + lng0, q[1] / my + lat0]
     for (const sd of subjectSides(ring)) {
       const ann = byName.get(sd.side)
       if (!ann) continue
       const text = ann.role === 'road' && ann.widthM && ann.widthM > 0
         ? `${ann.label} ${ann.widthM.toFixed(2).replace('.', ',')}m`
         : String(ann.label)
+      let a = sd.a, b = sd.b
+      let between = 0
+      if (ann.role === 'road' && ann.widthM && ann.widthM > 0) {
+        // A road's name belongs BETWEEN its two reserve lines: run the label along
+        // the centreline, half the width out from this boundary.
+        const A = toM(sd.a), B = toM(sd.b)
+        const ex = B[0] - A[0], ey = B[1] - A[1]
+        const len = Math.hypot(ex, ey) || 1
+        let nx = -ey / len, ny = ex / len
+        const C = toM([lng0, lat0])
+        const midx = (A[0] + B[0]) / 2, midy = (A[1] + B[1]) / 2
+        if (nx * (C[0] - midx) + ny * (C[1] - midy) > 0) { nx = -nx; ny = -ny }
+        const h = ann.widthM / 2
+        a = fromM([A[0] + nx * h, A[1] + ny * h])
+        b = fromM([B[0] + nx * h, B[1] + ny * h])
+        between = 1
+      }
       feats.push({
         type: 'Feature',
-        properties: { text, role: ann.role },
-        geometry: { type: 'LineString', coordinates: [sd.a, sd.b] },
+        properties: { text, role: ann.role, between },
+        geometry: { type: 'LineString', coordinates: [a, b] },
       })
     }
   }
@@ -2060,7 +2084,9 @@ function updateAnnotationLabelsLayer() {
       'text-field': ['get', 'text'],
       'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
       'text-size': ['interpolate', ['linear'], ['zoom'], 12, 9, 16, 12, 20, 15],
-      'text-offset': [0, -0.9],
+      // Roads sit on their own centreline (between the reserve lines); the rest
+      // ride just above their edge.
+      'text-offset': ['case', ['==', ['get', 'between'], 1], ['literal', [0, 0]], ['literal', [0, -0.9]]] as any,
       'text-keep-upright': true,
       'text-allow-overlap': true,
       'text-ignore-placement': true,
@@ -2171,14 +2197,19 @@ function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
       }
     }
   }
-  const outsideFigureId = getOutsideFigureParcel()?.id ?? null
+  // The diagram's subject is a single stand, so the Outside Figure is never picked
+  // there. On a general plan it IS a subject (its perimeter carries the roads,
+  // servitudes and abutting properties), so it stays pickable: it overlaps every
+  // stand, but the smallest-area rule below hands a click inside a stand to that
+  // stand, leaving the Outside Figure for a click in the space no stand covers.
+  const outsideFigureId = isDiagramMode.value ? (getOutsideFigureParcel()?.id ?? null) : null
   const fillLayers = parcels.value
-    .filter((p: any) => outsideFigureId == null || p.id !== outsideFigureId) // never pick the Outside Figure
+    .filter((p: any) => outsideFigureId == null || p.id !== outsideFigureId)
     .map((p: any) => `parcel-${p.id}-fill`)
     .filter((id: string) => map.value!.getLayer(id))
   if (fillLayers.length === 0) return
   const hits = map.value.queryRenderedFeatures(e.point, { layers: fillLayers })
-  // Drop the Outside Figure (defensive) and prefer the smallest overlapping stand.
+  // Drop the Outside Figure (diagram only) and prefer the smallest overlapping parcel.
   const picked = pickDiagramSubjectId(
     hits.map(h => h.layer.id),
     parcels.value,

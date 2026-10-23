@@ -34,7 +34,8 @@
           <label v-if="activeSideEditor.role === 'contiguous'">Abutment
             <select v-model="activeSideEditor.end">
               <option value="from">From terminal ({{ activeSideEditor.side[0] }})</option>
-              <option value="both">Midway (spans side)</option>
+              <option value="both">Whole side (both terminals)</option>
+              <option value="mid">Midway (no terminals)</option>
               <option value="to">To terminal ({{ activeSideEditor.side[1] }})</option>
             </select>
           </label>
@@ -602,7 +603,7 @@ const currentConnections = computed<Connection[]>(() => {
 const activeConnectionEditor = ref<{ fromBeacon: string; letter: string; toBeacon: string } | null>(null)
 const currentSideAnnotations = computed(() => annotationsForSubject(sideAnnotationsBySubject.value, selectedDiagramParcelId.value))
 const activeSideEditor = ref<{ side: string; role: SideRole; label: string; widthM: number | null;
-  destinationFrom: string; destinationTo: string; end: 'from' | 'to' | 'both' } | null>(null)
+  destinationFrom: string; destinationTo: string; end: 'from' | 'to' | 'both' | 'mid' } | null>(null)
 const selectedDiagramStand = computed(() => {
   const p = parcels.value.find((x: any) => String(x.id) === String(selectedDiagramParcelId.value))
   return p?.stand ?? null

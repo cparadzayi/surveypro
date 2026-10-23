@@ -116,7 +116,7 @@ export interface WorkingPlanSpec {
    * de-duplicated the way the NAMES are: each tagged side is a real abutment,
    * and dropping one would understate what adjoins the land.
    */
-  contiguous?: Array<{ from: string; to: string; end?: 'from' | 'to' | 'both' }>
+  contiguous?: Array<{ from: string; to: string; end?: 'from' | 'to' | 'both' | 'mid' }>
   /** Roads and servitudes, lettered along the side they abut. */
   roads?: WorkingPlanRoad[]
   /**
@@ -184,7 +184,7 @@ export interface WorkingPlanSpecContext {
    */
   sideAnnotations?: Record<string, Array<{
     side?: string; role?: string; label?: string; widthM?: number
-    end?: 'from' | 'to' | 'both'
+    end?: 'from' | 'to' | 'both' | 'mid'
     /** Where the road leads at each end of the side (docket item 10). */
     destinationFrom?: string; destinationTo?: string
   }>>

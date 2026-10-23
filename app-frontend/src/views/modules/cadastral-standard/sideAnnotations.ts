@@ -14,9 +14,10 @@ export interface SideAnnotation {
   /** Set on role:'servitude' entries that are a derived mirror of a Servitude record. */
   servitudeId?: string
   /** contiguous only: which terminal(s) the abutment offset sits at.
-   *  'from' = first-letter vertex (A of 'AB'), 'to' = second (B), 'both' = whole side.
+   *  'from' = first-letter vertex (A of 'AB'), 'to' = second (B), 'both' = whole side
+   *  (a stub at each terminal), 'mid' = spans the middle with no terminals (label only).
    *  Absent ⇒ 'both' (back-compat with data saved before this field existed). */
-  end?: 'from' | 'to' | 'both'
+  end?: 'from' | 'to' | 'both' | 'mid'
 }
 
 export interface SubjectSide {

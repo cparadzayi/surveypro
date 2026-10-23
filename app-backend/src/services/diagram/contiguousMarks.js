@@ -5,8 +5,10 @@
  *
  * @param {[number, number]} a  First terminal of the side (the 'from' / first-letter vertex).
  * @param {[number, number]} b  Second terminal (the 'to' / second-letter vertex).
- * @param {'from'|'to'|'both'|undefined} end  Which terminal(s) the neighbour abuts.
+ * @param {'from'|'to'|'both'|'mid'|undefined} end  Which terminal(s) the neighbour abuts.
  *        Absent ⇒ 'both' (spans the side) for back-compat with pre-`end` data.
+ *        'mid' ⇒ the neighbour spans the middle of the side and reaches neither
+ *        terminal: no stubs at all, only the centred label.
  * @param {{from?: boolean, to?: boolean}} [suppress]  Terminals that already carry
  *        a connecting-data ray. A beacon showing both an abutment stub and a
  *        connection would make two different claims with marks a reader cannot
@@ -18,7 +20,8 @@
  * @returns {{stubFrom: boolean, stubTo: boolean, labelAnchor: [number, number]}}
  *
  * The label is ALWAYS anchored at the side midpoint — one centred label per side.
- * `end` only decides which terminal(s) get an outward stub ('both'/'from'/'to').
+ * `end` only decides which terminal(s) get an outward stub ('both'/'from'/'to'),
+ * or none ('mid').
  */
 /**
  * Outward stub length for an abutting neighbour, in paper millimetres.

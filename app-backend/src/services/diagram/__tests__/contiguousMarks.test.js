@@ -29,6 +29,12 @@ describe('contiguousMarks', () => {
     })
   })
 
+  test("mid: spans the middle with NO terminals -- no stubs, label still centred", () => {
+    expect(contiguousMarks(a, b, 'mid')).toEqual({
+      stubFrom: false, stubTo: false, labelAnchor: [50, 0],
+    })
+  })
+
   test("works off-axis (diagonal side): label at the side midpoint", () => {
     // a=(0,0) b=(40,80) -> mid (20,40); the label is centred regardless of end.
     expect(contiguousMarks([0, 0], [40, 80], 'from')).toEqual({

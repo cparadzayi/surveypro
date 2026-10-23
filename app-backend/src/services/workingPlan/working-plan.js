@@ -337,7 +337,7 @@ function distToSegment([px, py], [x1, y1], [x2, y2]) {
  *   names, so the label can be centred on the parcel rather than on the subset
  *   of its sides that happen to be unshared
  * @param {Array}  [spec.remainderBoundary] [{from,to}] remainder sides, drawn dashed
- * @param {Array}  [spec.contiguous] [{ from, to, end:'from'|'to'|'both' }] abutting neighbours
+ * @param {Array}  [spec.contiguous] [{ from, to, end:'from'|'to'|'both'|'mid' }] abutting neighbours
  * @param {Array}  [spec.notes]    [{ text, X, Y, height? }]  e.g. neighbouring stand numbers
  * @param {Array}  spec.title      up to four heading lines
  * @param {number|'auto'} spec.scale

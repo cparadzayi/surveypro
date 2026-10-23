@@ -81,6 +81,17 @@ describe('emitSubjectAdjoiningFeaturesDxf', () => {
     expect(t.x).toBeCloseTo(-4 + 0.35 * t.height, 6) // centreline x=-4
   })
 
+  it("contiguous 'mid': no stub lines at all, only the label", () => {
+    const r = recorder()
+    emitSubjectAdjoiningFeaturesDxf({
+      ...r, ptRing: square, geo, servitudeLayer: 'ADJ_S', defaultLayer: 'ADJ',
+      annotations: [{ side: 'AB', role: 'contiguous', label: 'STAND 86', end: 'mid' }],
+    })
+    expect(r.lines).toHaveLength(0)
+    expect(r.texts).toHaveLength(1)
+    expect(r.texts[0].text).toBe('STAND 86')
+  })
+
   it('servitude: outline quad (4 lines) on the servitude layer + label', () => {
     const r = recorder()
     emitSubjectAdjoiningFeaturesDxf({

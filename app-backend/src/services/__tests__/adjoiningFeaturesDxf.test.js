@@ -43,6 +43,44 @@ describe('emitSubjectAdjoiningFeaturesDxf', () => {
     expect(r.texts[0].rotation).not.toBe(0) // reads along the edge
   })
 
+  it('road with a width: label sits midway between the two reserve lines', () => {
+    const r = recorder()
+    emitSubjectAdjoiningFeaturesDxf({
+      ...r, ptRing: square, geo, servitudeLayer: 'ADJ_S', defaultLayer: 'ADJ',
+      annotations: [{ side: 'AB', role: 'road', label: 'MAIN ROAD', widthM: 12 }],
+    })
+    // Side AB runs up x=0; outward is -x, so the centreline is x=-6. The text
+    // reads up the edge (90 deg) and its body extends toward -x from the baseline,
+    // so the baseline sits just on the +x side of the centreline.
+    const t = r.texts[0]
+    expect(t.rotation).toBe(90)
+    expect(t.x).toBeCloseTo(-6 + 0.35 * t.height, 6)
+    // Centred along the edge (the text is ~half as long as the 10-unit side).
+    expect(t.y).toBeLessThan(5)
+  })
+
+  it('road narrower than the type: the lettering shrinks to fit between the lines', () => {
+    const r = recorder()
+    emitSubjectAdjoiningFeaturesDxf({
+      ...r, ptRing: square, geo, servitudeLayer: 'ADJ_S', defaultLayer: 'ADJ',
+      annotations: [{ side: 'AB', role: 'road', label: 'X', widthM: 1 }],
+    })
+    expect(r.texts[0].height).toBeCloseTo(0.6, 6) // 60% of the 1-unit gap
+  })
+
+  it('road: sits midway to the FAR LINE actually drawn, whatever width was typed', () => {
+    const r = recorder()
+    // Side AB runs up x=0, road outward (-x); the road's far line is drawn at x=-8
+    // although the surveyor typed 12.
+    emitSubjectAdjoiningFeaturesDxf({
+      ...r, ptRing: square, geo, servitudeLayer: 'ADJ_S', defaultLayer: 'ADJ',
+      segments: [[[0, -5], [0, 15]], [[-8, -5], [-8, 15]]],
+      annotations: [{ side: 'AB', role: 'road', label: 'ROAD', widthM: 12 }],
+    })
+    const t = r.texts[0]
+    expect(t.x).toBeCloseTo(-4 + 0.35 * t.height, 6) // centreline x=-4
+  })
+
   it('servitude: outline quad (4 lines) on the servitude layer + label', () => {
     const r = recorder()
     emitSubjectAdjoiningFeaturesDxf({

@@ -15,6 +15,7 @@
  * Lengths are supplied in ground units by the caller (converted from paper points
  * via ptToGround); a servitude's `widthM` is already a real ground width.
  */
+import { fitRoadLabel } from './diagram/roadLabelFit.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
 import { formatSI } from './diagram/numberFormat.js'
 import { sideToEdgeIndex } from './adjoiningFeatures.js'
@@ -40,7 +41,7 @@ function textWidth(text, height) {
  * @param {Object} [logger]
  */
 export function emitSubjectAdjoiningFeaturesDxf({
-  addLine, addText, ptRing, annotations, geo, servitudeLayer, defaultLayer,
+  addLine, addText, ptRing, annotations, geo, servitudeLayer, defaultLayer, segments = [],
 }, logger) {
   if (!Array.isArray(annotations) || annotations.length === 0) return
   if (!Array.isArray(ptRing) || ptRing.length < 3) return
@@ -109,7 +110,28 @@ export function emitSubjectAdjoiningFeaturesDxf({
       if (angleDeg > 90 || angleDeg < -90) angleDeg += 180 // keep text upright
       const aRad = angleDeg * Math.PI / 180
 
-      if (ann.role === 'road' || ann.role === 'servitude') {
+      // A road's name belongs BETWEEN its two reserve lines and must not be struck
+      // through by either: found from the drawn geometry (the typed width is only a
+      // hint), shrunk to fit, and slid along the road past any cross line.
+      const roadFit = ann.role === 'road'
+        ? fitRoadLabel({
+            a, b, normal: [perpX, perpY], segments,
+            widthAt: (fs) => textWidth(labelText, fs),
+            fontMax: textHeight, fontMin: textHeight * 0.5,
+            maxReach: 80,
+            widthHint: ann.widthM > 0 ? ann.widthM : 0,
+          })
+        : null
+      if (roadFit?.ok) {
+        const th = roadFit.fontSize
+        const w = textWidth(labelText, th)
+        // Baseline-left insertion: back along the reading direction by half the
+        // width, and down (away from the text's "up") by ~35% of the height so the
+        // lettering is centred on the road's centreline.
+        const ix = roadFit.cx - Math.cos(aRad) * (w / 2) + Math.sin(aRad) * (th * 0.35)
+        const iy = roadFit.cy - Math.sin(aRad) * (w / 2) - Math.cos(aRad) * (th * 0.35)
+        addText(layer, ix, iy, labelText, th, angleDeg)
+      } else if (ann.role === 'road' || ann.role === 'servitude') {
         // Just outside the boundary (past the strip, if any).
         const stripW = ann.role === 'servitude' && ann.widthM > 0 ? ann.widthM : standoff
         const off = stripW + bandLen

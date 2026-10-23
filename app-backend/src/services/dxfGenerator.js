@@ -1535,6 +1535,17 @@ export function generateDXF(options, logger) {
       standoff:   ptToGround(1.3 * PT_PER_MM, S),
     };
     let _adjDrawn = 0;
+    // Every boundary line (DXF ground metres) so a road name can find its far line
+    // and keep clear of all of them.
+    const _adjSegs = [];
+    for (const feat of parcels?.features || []) {
+      const ring0 = feat?.geometry?.coordinates?.[0];
+      if (!Array.isArray(ring0) || ring0.length < 2) continue;
+      const pts = ring0.map((c) => capeLoToDxfSouthUp(c[0], c[1]));
+      for (let i = 0; i + 1 < pts.length; i++) {
+        _adjSegs.push([[pts[i].x, pts[i].y], [pts[i + 1].x, pts[i + 1].y]]);
+      }
+    }
     for (const subj of metadata.adjoiningSubjects) {
       const ring = Array.isArray(subj?.ring) ? subj.ring : null;
       const anns = Array.isArray(subj?.annotations) ? subj.annotations : null;
@@ -1553,6 +1564,7 @@ export function generateDXF(options, logger) {
       emitSubjectAdjoiningFeaturesDxf({
         addLine, addText, ptRing, annotations: anns, geo: _adjGeo,
         servitudeLayer: 'ADJOINING_SERVITUDE', defaultLayer: 'ADJOINING',
+        segments: _adjSegs,
       }, logger);
       _adjDrawn++;
     }

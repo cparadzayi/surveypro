@@ -21,6 +21,7 @@ import {
   ADJOINING_DASH_ON_MM, ADJOINING_DASH_OFF_MM,
 } from './diagram/contiguousMarks.js'
 import { formatSI } from './diagram/numberFormat.js'
+import { fitRoadLabel } from './diagram/roadLabelFit.js'
 
 const PT_PER_MM = 72 / 25.4
 const SERVITUDE_BLUE = '#1F6FB2'
@@ -62,9 +63,12 @@ export function sideToEdgeIndex(side, n) {
  *        the side letters were assigned against.
  * @param {Array<{side:string,role:string,label?:string,widthM?:number}>} args.annotations
  * @param {number} args.ptPerGroundM  PDF points per ground metre (for servitude width).
+ * @param {Array<[[number,number],[number,number]]>} [args.segments]  Every boundary line
+ *        drawn on the sheet (PDF points), so a road name can sit between its two
+ *        lines and clear of all of them.
  * @param {Object} [logger]
  */
-export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGroundM }, logger) {
+export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGroundM, segments = [] }, logger) {
   if (!Array.isArray(annotations) || annotations.length === 0) return
   if (!Array.isArray(ptRing) || ptRing.length < 3) return
   const n = ptRing.length
@@ -138,7 +142,25 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
       let angleDeg = Math.atan2(ey, ex) * 180 / Math.PI
       if (angleDeg > 90 || angleDeg < -90) angleDeg += 180 // keep text upright
 
-      if (ann.role === 'road' || ann.role === 'servitude') {
+      // A road's name belongs BETWEEN its two reserve lines and must not be struck
+      // through by either. The far line is found from the drawn geometry (the typed
+      // width is only a hint), the lettering shrinks to fit, and the name slides
+      // along the road past any cross line.
+      const roadFit = ann.role === 'road'
+        ? fitRoadLabel({
+            a, b, normal: [perpX, perpY], segments,
+            widthAt: (fs) => doc.fontSize(fs).widthOfString(labelText),
+            fontMax: LABEL_FONT_PT, fontMin: 5,
+            maxReach: 80 * ptPerGroundM,
+            widthHint: ann.widthM > 0 ? ann.widthM * ptPerGroundM : 0,
+          })
+        : null
+      if (roadFit?.ok) {
+        doc.fontSize(roadFit.fontSize)
+        const w = doc.widthOfString(labelText)
+        doc.rotate(angleDeg, { origin: [roadFit.cx, roadFit.cy] })
+        doc.text(labelText, roadFit.cx - w / 2, roadFit.cy - roadFit.fontSize / 2, { lineBreak: false })
+      } else if (ann.role === 'road' || ann.role === 'servitude') {
         // Just outside the boundary (past the strip, if any).
         const stripPt = ann.role === 'servitude' && ann.widthM > 0
           ? ann.widthM * ptPerGroundM

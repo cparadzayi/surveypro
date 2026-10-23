@@ -2018,8 +2018,64 @@ function updateSubjectVerticesLayer() {
   map.value.on('mouseleave', `${srcId}-hit`, () => { if (map.value) map.value.getCanvas().style.cursor = '' })
 }
 
+/** Names of tagged sides (roads, servitudes, contiguous neighbours) drawn on the
+ *  map along their edge, as the diagram and general plan print them. Covers EVERY
+ *  subject that has annotations, not just the one being edited, and is shown
+ *  whether or not the side editor is open. A road carries its reserve width, as
+ *  in the PDF ("Klein Road 20,00m"). */
+function updateAnnotationLabelsLayer() {
+  if (!map.value) return
+  const srcId = 'side-annotation-labels'
+  const feats: any[] = []
+  for (const [subjectId, anns] of Object.entries(sideAnnotationsBySubject.value)) {
+    if (!Array.isArray(anns)) continue
+    const labelled = anns.filter(a => a?.label && String(a.label).trim())
+    if (labelled.length === 0) continue
+    const subj = parcels.value.find((p: any) => String(p.id) === String(subjectId))
+    if (!subj?.geom) continue
+    const ring = transformParcelGeometry(subj.geom)?.geometry?.coordinates?.[0] as [number, number][] | undefined
+    if (!ring) continue
+    const byName = new Map(labelled.map(a => [a.side, a]))
+    for (const sd of subjectSides(ring)) {
+      const ann = byName.get(sd.side)
+      if (!ann) continue
+      const text = ann.role === 'road' && ann.widthM && ann.widthM > 0
+        ? `${ann.label} ${ann.widthM.toFixed(2).replace('.', ',')}m`
+        : String(ann.label)
+      feats.push({
+        type: 'Feature',
+        properties: { text, role: ann.role },
+        geometry: { type: 'LineString', coordinates: [sd.a, sd.b] },
+      })
+    }
+  }
+  const data = { type: 'FeatureCollection', features: feats } as any
+  const existing = map.value.getSource(srcId) as any
+  if (existing) { existing.setData(data); return }
+  map.value.addSource(srcId, { type: 'geojson', data })
+  map.value.addLayer({
+    id: `${srcId}-text`, type: 'symbol', source: srcId,
+    layout: {
+      'symbol-placement': 'line-center',
+      'text-field': ['get', 'text'],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 12, 9, 16, 12, 20, 15],
+      'text-offset': [0, -0.9],
+      'text-keep-upright': true,
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
+    },
+    paint: {
+      'text-color': ['match', ['get', 'role'], 'road', '#8a2f08', 'servitude', '#14507f', '#111111'] as any,
+      'text-halo-color': '#ffffff',
+      'text-halo-width': 1.6,
+    },
+  })
+}
+
 function updateSubjectSidesLayer() {
   if (!map.value) return
+  updateAnnotationLabelsLayer()
   const srcId = 'diagram-subject-sides'
   const feats: any[] = []
   const subj = parcels.value.find((p: any) => String(p.id) === String(selectedDiagramParcelId.value))

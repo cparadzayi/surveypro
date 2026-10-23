@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit'
-import { clusterCramped, clusterWindow, renderBeaconClusterInset, clipToRect, placeStandNumber } from '../beaconClusterInset.js'
+import { clusterCramped, clusterWindow, renderBeaconClusterInset, clipToRect, placeStandNumber, rotatedBoxClear } from '../beaconClusterInset.js'
 import { fitSuffixLabel } from '../../diagram/suffixLabelFit.js'
 
 const it_ = (name, x, y) => ({ name, stand: '1', pos: { x, y } })
@@ -98,5 +98,33 @@ describe('surrounding stands in the inset', () => {
     const w = widthAt(r.fontSize), h = r.fontSize
     const overlap = r.cx - w / 2 < block.x + block.w && block.x < r.cx + w / 2 && r.cy - h / 2 < block.y + block.h && block.y < r.cy + h / 2
     expect(overlap).toBe(false)
+  })
+})
+
+describe('numbers shown in full, tags kept off lines', () => {
+  const widthAt = (fs) => fs * 2.5
+  test('a tall thin sliver gets its number turned to run up the stand, whole and inside', () => {
+    const sliver = [{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 7, y: 80 }, { x: 0, y: 80 }]
+    const r = placeStandNumber(sliver, widthAt, [])
+    expect(r).not.toBeNull()
+    expect(r.rotation).toBe(-90)
+    expect(r.cx - r.ew / 2).toBeGreaterThan(0)
+    expect(r.cx + r.ew / 2).toBeLessThan(7)
+    expect(r.cy - r.eh / 2).toBeGreaterThan(0)
+    expect(r.cy + r.eh / 2).toBeLessThan(80)
+  })
+  test('horizontal is kept whenever it fits', () => {
+    const sq = [{ x: 0, y: 0 }, { x: 60, y: 0 }, { x: 60, y: 60 }, { x: 0, y: 60 }]
+    expect(placeStandNumber(sq, widthAt, []).rotation).toBe(0)
+  })
+  const line = [{ x1: -50, y1: 0, x2: 50, y2: 0 }]
+  test('rotatedBoxClear: a box on the line is blocked, one beside it is clear', () => {
+    expect(rotatedBoxClear(0, 0, 20, 8, 0, line, 1)).toBe(false)
+    expect(rotatedBoxClear(0, 12, 20, 8, 0, line, 1)).toBe(true)
+  })
+  test('rotatedBoxClear: turning a box can take it off a line it would touch', () => {
+    const vertical = [{ x1: 12, y1: -50, x2: 12, y2: 50 }]
+    expect(rotatedBoxClear(0, 0, 30, 6, 0, vertical, 1)).toBe(false)  // 30 wide reaches x=15
+    expect(rotatedBoxClear(0, 0, 30, 6, 90, vertical, 1)).toBe(true)  // 6 wide when turned
   })
 })

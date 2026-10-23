@@ -76,7 +76,7 @@ import {
   rectanglesOverlap
 } from './pdfkitGeoPDF/geometry.js';
 import { InsetManager } from './pdfkitGeoPDF/insetManager.js';
-import { clusterCramped } from './pdfkitGeoPDF/beaconClusterInset.js';
+import { clusterCramped, rotatedBoxClear } from './pdfkitGeoPDF/beaconClusterInset.js';
 
 /**
  * PDFKit-based GeoPDF Generator with SI 727 Compliance
@@ -2652,7 +2652,8 @@ function renderBeacons(
   beaconLabels,
   logger,
   excludeBeaconNames = new Set(),
-  insetManager = null
+  insetManager = null,
+  avoidSegments = []
 ) {
   logger.info(
     "[PDFKit] 🔴 CODE CHANGE TEST - If you see this, changes are being picked up"
@@ -3389,23 +3390,41 @@ function renderBeacons(
       doc.save();
       doc.lineWidth(0.5).dash(2, { space: 1.5 }).strokeColor('#000000').circle(cx, cy, ringR).stroke();
       doc.undash();
-      // The tag sits touching its ring, on whichever side is clearest, so the
-      // number can never be read as belonging to a neighbouring ring.
+      // The tag sits beside its ring, as near as it can get without lying on a
+      // boundary line or on any label already placed (road names included), and
+      // turns when that is the only way to find room. Nearest first; a turn costs
+      // a little, so horizontal wins whenever it is clear.
       const tag = `Inset ${inset.number}`;
       doc.fontSize(8).font('Helvetica-Bold');
-      const tw = doc.widthOfString(tag) + 2, th = 9;
-      const sides = [
-        [cx + ringR * 0.75, cy - ringR * 0.75 - th], [cx - ringR * 0.75 - tw, cy - ringR * 0.75 - th],
-        [cx + ringR * 0.75, cy + ringR * 0.75], [cx - ringR * 0.75 - tw, cy + ringR * 0.75],
-        [cx + ringR + 1, cy - th / 2], [cx - ringR - 1 - tw, cy - th / 2],
-        [cx - tw / 2, cy - ringR - th - 1], [cx - tw / 2, cy + ringR + 1],
-      ];
-      const spot = sides.map(([x, y]) => ({ x, y }))
-        .find((p) => !collisionDetector.hasCollision(p.x, p.y, tw, th, 0)) || { x: sides[0][0], y: sides[0][1] };
-      doc.rect(spot.x - 1, spot.y, tw + 1, th).fillColor('#FFFFFF').fill();
-      doc.fillColor('#000000').text(tag, spot.x + 1, spot.y + 1, { lineBreak: false });
+      const tw = doc.widthOfString(tag), th = 8;
+      const options = [];
+      for (const rot of [0, 30, -30, 60, -60, 90]) {
+        const rr = (rot * Math.PI) / 180;
+        const ew = Math.abs(Math.cos(rr)) * tw + Math.abs(Math.sin(rr)) * th;
+        const eh = Math.abs(Math.sin(rr)) * tw + Math.abs(Math.cos(rr)) * th;
+        for (let a = 0; a < 360; a += 15) {
+          const dx = Math.cos((a * Math.PI) / 180), dy = Math.sin((a * Math.PI) / 180);
+          const reach = (Math.abs(dx) * ew + Math.abs(dy) * eh) / 2;
+          for (const gap of [1.5, 4, 8, 14]) {
+            const d = ringR + gap + reach;
+            options.push({ rot, ew, eh, x: cx + dx * d, y: cy + dy * d, cost: gap + Math.abs(rot) * 0.05 });
+          }
+        }
+      }
+      options.sort((p, q) => p.cost - q.cost);
+      const fits = (o) =>
+        o.x - o.ew / 2 >= mapBounds.x && o.x + o.ew / 2 <= mapBounds.x + mapBounds.width &&
+        o.y - o.eh / 2 >= mapBounds.y && o.y + o.eh / 2 <= mapBounds.y + mapBounds.height &&
+        rotatedBoxClear(o.x, o.y, tw, th, o.rot, avoidSegments, 1) &&
+        !collisionDetector.hasCollision(o.x - o.ew / 2, o.y - o.eh / 2, o.ew, o.eh, 1);
+      const chosen = options.find(fits) || options[0];
+      doc.save();
+      doc.translate(chosen.x, chosen.y);
+      if (chosen.rot) doc.rotate(chosen.rot);
+      doc.fillColor('#000000').text(tag, -tw / 2, -th / 2, { lineBreak: false });
       doc.restore();
-      collisionDetector.addRegion(spot.x, spot.y, tw, th);
+      doc.restore();
+      collisionDetector.addRegion(chosen.x - chosen.ew / 2, chosen.y - chosen.eh / 2, chosen.ew, chosen.eh);
     });
   }
 
@@ -11377,11 +11396,14 @@ async function _generateGeoPDFInner(options, logger) {
       const ptRing = r.map(([yy, xx]) =>
         transformCoords(yy, xx, calculatedExtent, figureBounds)
       );
-      drawSubjectAdjoiningFeatures(
+      const _nameRects = drawSubjectAdjoiningFeatures(
         doc,
         { ptRing, annotations: anns, ptPerGroundM: _ptPerGroundM, segments: _boundarySegs },
         logger
       );
+      // Road, servitude and neighbour names are labels like any other: register
+      // them so nothing placed later (an inset's tag) is drawn across them.
+      for (const r of _nameRects || []) collisionDetector.addRegion(r.x, r.y, r.width, r.height);
       _drawn++;
     }
     logger.info(`[PDFKit] 🛣️  Rendered adjoining features for ${_drawn} subject(s)`);
@@ -11426,7 +11448,25 @@ async function _generateGeoPDFInner(options, logger) {
     beaconLabels,
     logger,
     outsideFigureVertexNames,
-    insetManager
+    insetManager,
+    // Every boundary as drawn -- stands and the figure's outline -- so an inset's
+    // tag on the plan is kept off the lines as well as the labels.
+    (() => {
+      const segs = [];
+      const addRing = (ring) => {
+        if (Array.isArray(ring) && ring.length === 1 && Array.isArray(ring[0]) && Array.isArray(ring[0][0])) ring = ring[0];
+        if (!Array.isArray(ring) || ring.length < 2) return;
+        const pts = ring.map((c) => {
+          const cc = Array.isArray(c) ? c : [c.y ?? c[1], c.x ?? c[0]];
+          const q = transformCoords(cc[0], cc[1], calculatedExtent, figureBounds);
+          return q;
+        });
+        for (let i = 0; i + 1 < pts.length; i++) segs.push({ x1: pts[i].x, y1: pts[i].y, x2: pts[i + 1].x, y2: pts[i + 1].y });
+      };
+      for (const f of filteredParcels?.features || []) addRing(f?.geometry?.coordinates?.[0]);
+      for (const f of outsideFigure?.features || []) addRing(f?.geometry?.coordinates?.[0]);
+      return segs;
+    })()
   );
 
   // Edge labels are rendered in renderParcels() with topology-aware split labeling

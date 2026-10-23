@@ -121,7 +121,8 @@ describe('formatFigureDescription', () => {
     const sentence = lines.join(' ')
     expect(sentence).toContain('The figure A.B.C.D.A represents')
     expect(sentence).toContain('2 stands and public places being a portion')
-    expect(sentence).toContain('of BORROWDALE OF LOT 9 OF BORROWDALE')
+    expect(sentence).toContain('a portion of LOT 9 OF BORROWDALE situate')
+    expect(sentence).not.toContain('BORROWDALE OF LOT 9')
     expect(sentence).toContain('situate in the district of HARARE')
     // Stand numbers/range now live in the title designation line, not this sentence.
     expect(sentence).not.toContain('comprising')
@@ -206,10 +207,11 @@ describe('formatFigureDescription', () => {
     expect(formatFigureDescription(fullMetadata, ofData, [], 500)).toEqual([])
   })
 
-  test('missing township → fallback "THE TOWNSHIP" inside ofTarget', () => {
+  test('missing township → no township in the description either way', () => {
     const m = { ...fullMetadata, township: '' }
     const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
-    expect(sentence).toContain('of THE TOWNSHIP OF LOT 9 OF BORROWDALE')
+    expect(sentence).toContain('a portion of LOT 9 OF BORROWDALE situate')
+    expect(sentence).not.toContain('THE TOWNSHIP')
   })
 
   test('missing district → fallback "THE DISTRICT"', () => {

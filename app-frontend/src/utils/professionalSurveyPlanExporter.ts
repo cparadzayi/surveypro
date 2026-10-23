@@ -621,10 +621,9 @@ function drawTitleBlock(pdf: jsPDF, data: SurveyPlanData, area: any) {
   // Stand range from actual parcel stand numbers (already computed above as dynamicStandList)
   const standRange = formatStandRanges(surveyedStands)
 
-  // "of X" = "of Maglas Township of Shabani Mine Surface Rights A" when parentProperty is set
-  const ofTarget = parentProperty
-    ? `${townshipName} of ${parentProperty}`
-    : townshipName
+  // "of X" names the parent property only ("of Shabani Mine Surface Rights A");
+  // the township appears nowhere in the description unless there is no parent.
+  const ofTarget = parentProperty || townshipName
 
   // Build the full description as a single wrapped block (SI 727 Seventh Schedule (b))
   const standPlural = surveyedStandCount !== 1 ? 's' : ''

@@ -209,7 +209,8 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
   const district = (metadata?.district || 'the district').toUpperCase()
   const parentProperty = (metadata?.parentProperty || '').trim().toUpperCase()
   const wholePortion = (metadata?.wholePortion || '').trim() || 'the whole'
-  const ofTarget = parentProperty ? `${township} OF ${parentProperty}` : township
+  // The township is not named in the description (same rule as the PDF).
+  const ofTarget = parentProperty || township
 
   const standNames = surveyedParcels.map(sp => String(sp?.stand ?? '')).filter(Boolean)
   if (standNames.length === 0) return []

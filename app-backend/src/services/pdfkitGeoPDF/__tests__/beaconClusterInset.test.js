@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit'
-import { clusterCramped, clusterWindow, renderBeaconClusterInset, clipToRect, placeStandNumber, rotatedBoxClear } from '../beaconClusterInset.js'
+import { clusterCramped, clusterWindow, renderBeaconClusterInset, clipToRect, placeStandNumber, rotatedBoxClear, fitIndicatorRing } from '../beaconClusterInset.js'
 import { fitSuffixLabel } from '../../diagram/suffixLabelFit.js'
 
 const it_ = (name, x, y) => ({ name, stand: '1', pos: { x, y } })
@@ -126,5 +126,43 @@ describe('numbers shown in full, tags kept off lines', () => {
     const vertical = [{ x1: 12, y1: -50, x2: 12, y2: 50 }]
     expect(rotatedBoxClear(0, 0, 30, 6, 0, vertical, 1)).toBe(false)  // 30 wide reaches x=15
     expect(rotatedBoxClear(0, 0, 30, 6, 90, vertical, 1)).toBe(true)  // 6 wide when turned
+  })
+})
+
+describe('fitIndicatorRing', () => {
+  const R = 2.1
+  const cluster = [{ x: 0, y: 0 }, { x: 8, y: 0 }]
+  const base = { cx: 4, cy: 0, cluster, beaconRadius: R }
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
+
+  test('encloses every cluster circle whole, with the smallest ring that does', () => {
+    const r = fitIndicatorRing(base)
+    for (const p of cluster) expect(dist({ x: r.cx, y: r.cy }, p) + R).toBeLessThan(r.r)
+    expect(r.r).toBeLessThan(10)
+    expect(r.clear).toBe(true)
+  })
+
+  test('never cuts across another beacon circle: shrinks or grows to miss it', () => {
+    // A neighbour 9pt out would sit right on a minimal ring.
+    const other = { x: 4 + 9, y: 0 }
+    const r = fitIndicatorRing({ ...base, otherBeacons: [other] })
+    const d = dist({ x: r.cx, y: r.cy }, other)
+    expect(d + R <= r.r || d - R >= r.r).toBe(true)
+    expect(r.clear).toBe(true)
+  })
+
+  test('a label is wholly inside or wholly outside the ring, never on it', () => {
+    const label = { x: 8, y: -3, width: 10, height: 6 }
+    const r = fitIndicatorRing({ ...base, rects: [label] })
+    const nx = Math.max(label.x, Math.min(r.cx, label.x + label.width)), ny = Math.max(label.y, Math.min(r.cy, label.y + label.height))
+    const dmin = Math.hypot(nx - r.cx, ny - r.cy)
+    const corners = [[label.x, label.y], [label.x + label.width, label.y], [label.x, label.y + label.height], [label.x + label.width, label.y + label.height]]
+    const dmax = Math.max(...corners.map(([x, y]) => Math.hypot(x - r.cx, y - r.cy)))
+    expect(dmax < r.r || dmin > r.r).toBe(true)
+  })
+
+  test('blocks and bands too big to be labels are not allowed to veto the ring', () => {
+    const band = { x: -500, y: -500, width: 1000, height: 1000 }
+    expect(fitIndicatorRing({ ...base, rects: [band] }).clear).toBe(true)
   })
 })

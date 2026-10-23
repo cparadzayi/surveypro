@@ -88,6 +88,68 @@ export function placeStandNumber(poly, widthAt, obstacles, { sizes = [9, 8, 7, 6
 }
 
 /**
+ * The dashed ring that marks an inset's area on the plan. It must take in every
+ * beacon circle of the cluster whole, and then neither touch nor cut across
+ * anything else: another beacon's circle, or an in-parcel label (stand number,
+ * letter, name). Anything is allowed to sit wholly inside it or wholly outside it,
+ * never on the line. The radius is the smallest that satisfies this; failing that
+ * the centre is nudged a little, and only then does the radius grow.
+ *
+ * @param {object} o
+ * @param {number} o.cx @param {number} o.cy      preferred centre
+ * @param {Array<{x:number,y:number}>} o.cluster  the beacons the ring must enclose
+ * @param {Array<{x:number,y:number}>} o.otherBeacons  circles the ring must not cut
+ * @param {Array<{x:number,y:number,width:number,height:number}>} o.rects  labels
+ * @param {number} o.beaconRadius
+ * @returns {{cx:number, cy:number, r:number, clear:boolean}}
+ */
+export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [], beaconRadius, gap = 1.2, minR = 6 }) {
+  // Only real labels count: a registered region far larger than any label is a
+  // block or a band, and the ring cannot be asked to clear those.
+  const labels = rects.filter((q) => q && q.width <= 120 && q.height <= 60 && q.width * q.height <= 2500);
+  const farthest = (x, y) => Math.max(...cluster.map((p) => Math.hypot(p.x - x, p.y - y)));
+  const rectRange = (x, y, q) => {
+    const nx = Math.max(q.x, Math.min(x, q.x + q.width)), ny = Math.max(q.y, Math.min(y, q.y + q.height));
+    const dmin = Math.hypot(nx - x, ny - y);
+    const dmax = Math.max(
+      Math.hypot(q.x - x, q.y - y), Math.hypot(q.x + q.width - x, q.y - y),
+      Math.hypot(q.x - x, q.y + q.height - y), Math.hypot(q.x + q.width - x, q.y + q.height - y),
+    );
+    return [dmin, dmax];
+  };
+  const okAt = (x, y, r) => {
+    for (const q of otherBeacons) {
+      const d = Math.hypot(q.x - x, q.y - y);
+      if (!(d + beaconRadius + gap <= r || d - beaconRadius - gap >= r)) return false;
+    }
+    for (const q of labels) {
+      const [dmin, dmax] = rectRange(x, y, q);
+      if (!(dmax + gap <= r || dmin - gap >= r)) return false;
+    }
+    return true;
+  };
+  const centres = [[0, 0]];
+  for (const off of [1.5, 3, 5, 8]) {
+    for (let a = 0; a < 360; a += 45) centres.push([Math.cos((a * Math.PI) / 180) * off, Math.sin((a * Math.PI) / 180) * off]);
+  }
+  let best = null;
+  for (const [ox, oy] of centres) {
+    const x = cx + ox, y = cy + oy;
+    const lo = Math.max(minR, farthest(x, y) + beaconRadius + gap + 0.8);
+    const hi = Math.max(lo * 2.5, lo + 30);
+    for (let r = lo; r <= hi; r += 0.5) {
+      if (!okAt(x, y, r)) continue;
+      const cost = r + Math.hypot(ox, oy) * 2;
+      if (!best || cost < best.cost) best = { cx: x, cy: y, r, cost, clear: true };
+      break;
+    }
+  }
+  if (best) return { cx: best.cx, cy: best.cy, r: best.r, clear: true };
+  const lo = Math.max(minR, farthest(cx, cy) + beaconRadius + gap + 0.8);
+  return { cx, cy, r: lo, clear: false };
+}
+
+/**
  * Is a w x h box centred (cx,cy), turned `rotDeg`, clear of every segment
  * ({x1,y1,x2,y2}) by `pad`? Used to seat tags on the plan without crossing lines.
  */

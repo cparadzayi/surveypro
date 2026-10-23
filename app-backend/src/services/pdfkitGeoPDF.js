@@ -76,7 +76,7 @@ import {
   rectanglesOverlap
 } from './pdfkitGeoPDF/geometry.js';
 import { InsetManager } from './pdfkitGeoPDF/insetManager.js';
-import { clusterCramped, rotatedBoxClear } from './pdfkitGeoPDF/beaconClusterInset.js';
+import { clusterCramped, rotatedBoxClear, fitIndicatorRing } from './pdfkitGeoPDF/beaconClusterInset.js';
 
 /**
  * PDFKit-based GeoPDF Generator with SI 727 Compliance
@@ -3385,8 +3385,19 @@ function renderBeacons(
         mainScale: scale.value, toPdf, beaconRadius, textColor: labelConfig.insideParcel.color,
       });
       // Mark the area on the plan: a dashed ring and the inset's number.
-      const { cx, cy, radius } = inset.win;
-      const ringR = Math.max(8, radius * 0.9);
+      // The ring takes in the cluster's own beacon circles and must not touch or
+      // cut across any other circle or any label: its radius (and, a little, its
+      // centre) is fitted to the neighbourhood rather than fixed.
+      const _members = new Set(cluster.map((m) => m.name));
+      const _fit = fitIndicatorRing({
+        cx: inset.win.cx, cy: inset.win.cy,
+        cluster: cluster.map((m) => m.pos),
+        otherBeacons: beaconRows.filter((b) => !_members.has(b.name)).map((b) => toPdf(b.y, b.x)),
+        rects: collisionDetector.occupiedRegions,
+        beaconRadius,
+      });
+      const cx = _fit.cx, cy = _fit.cy, ringR = _fit.r;
+      inset.win.radius = ringR; // the layout keeps the inset box off this ring
       doc.save();
       doc.lineWidth(0.5).dash(2, { space: 1.5 }).strokeColor('#000000').circle(cx, cy, ringR).stroke();
       doc.undash();

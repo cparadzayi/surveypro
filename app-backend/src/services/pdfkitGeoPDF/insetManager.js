@@ -52,33 +52,63 @@ export class InsetManager {
    * beacons ({pos}); `toPdf(y,x)` is the main plan's own transform.
    */
   createBeaconClusterInset({ items, beacons, parcels, mainScale, toPdf, beaconRadius, textColor }) {
+    return this.createBeaconClusterGroupInset({ clusters: [items], beacons, parcels, mainScale, toPdf, beaconRadius, textColor });
+  }
+
+  /**
+   * One inset BLOCK for a group of neighbouring clusters: each cluster keeps its own
+   * magnified window (a window cannot take in two clusters and stay legible -- it
+   * would drop below the magnification a letter needs in a sliver stand), but the
+   * windows are laid out as the cells of one block, 2 across, so the sheet carries
+   * one block and one number ("Inset 3", its cells 3a, 3b, ...) instead of several
+   * scattered boxes. A single cluster is a one-cell block, exactly as before.
+   */
+  createBeaconClusterGroupInset({ clusters, beacons, parcels, mainScale, toPdf, beaconRadius, textColor }) {
     const INSET_SIZE = 60 * MM_TO_PT;
-    const win = clusterWindow(items, INSET_SIZE - 10, INSET_SIZE - 20);
     const number = this.nextInsetNumber++;
-    const stands = [...new Set(items.map((i) => i.stand))].sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+    const cells = clusters.map((items) => {
+      const win = clusterWindow(items, INSET_SIZE - 10, INSET_SIZE - 20);
+      const stands = [...new Set(items.map((i) => i.stand))].sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+      return { items, win, stands, scale: Math.max(1, Math.round(mainScale / win.mag)) };
+    });
+    const cols = cells.length <= 1 ? 1 : 2;
+    const rows = Math.ceil(cells.length / cols);
+    const allStands = [...new Set(cells.flatMap((c) => c.stands))].sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+    // Where the block is placed: near the centre of its clusters, off all of them.
+    let win = cells[0].win;
+    if (cells.length > 1) {
+      const gx = cells.reduce((t, c) => t + c.win.cx, 0) / cells.length;
+      const gy = cells.reduce((t, c) => t + c.win.cy, 0) / cells.length;
+      const radius = Math.max(...cells.map((c) => Math.hypot(c.win.cx - gx, c.win.cy - gy) + c.win.radius));
+      win = { cx: gx, cy: gy, radius, w: 2 * radius, h: 2 * radius, mag: Math.min(...cells.map((c) => c.win.mag)) };
+    }
     const inset = {
       kind: 'beacon-cluster',
       number,
       win,
+      cells,
+      cols,
+      rows,
       toPdf,
       beacons,
       parcels,
-      stands,
+      stands: allStands,
       beaconRadius,
       textColor,
-      scale: Math.max(1, Math.round(mainScale / win.mag)),
+      scale: cells[0].scale,
       mainScale,
       position: null,
       reason: 'beacon-cluster',
       indicatorText: `Inset ${number}`,
       // Not a short-edge inset: the layout only needs the shape below.
-      parcel: { properties: { stand: stands.join(', ') } },
+      parcel: { properties: { stand: allStands.join(', ') } },
       edge: { length: 0 },
     };
     this.insets.push(inset);
     this.logger.info({
-      msg: `[Insets] Created Inset ${number} (beacon cluster)`,
-      stands, items: items.length, magnification: win.mag.toFixed(1), scale: `1:${inset.scale}`,
+      msg: `[Insets] Created Inset ${number} (beacon cluster${cells.length > 1 ? `s, ${cells.length} cells` : ''})`,
+      stands: allStands, items: cells.reduce((t, c) => t + c.items.length, 0),
+      magnification: cells.map((c) => c.win.mag.toFixed(1)).join('/'), scale: `1:${inset.scale}`,
     });
     return inset;
   }
@@ -165,8 +195,8 @@ export class InsetManager {
     const INSET_SIZE = 60 * MM_TO_PT;
     return this.insets.map((inset, index) => ({
       id: `inset${inset.number}`,
-      width: INSET_SIZE,
-      height: INSET_SIZE,
+      width: INSET_SIZE * (inset.cols ?? 1),
+      height: INSET_SIZE * (inset.rows ?? 1),
       insetNumber: inset.number,
       insetData: inset,
     }));
@@ -290,7 +320,19 @@ export class InsetManager {
 
   renderInset(doc, inset, width, height, extent, mapBounds) {
     if (inset.kind === 'beacon-cluster') {
-      renderBeaconClusterInset(doc, inset, width, height);
+      const S = 60 * MM_TO_PT;
+      const cells = inset.cells ?? [{ win: inset.win, stands: inset.stands }];
+      cells.forEach((cell, i) => {
+        // A cell is the single-cluster inset it always was, at its place in the block.
+        const cellInset = {
+          ...inset,
+          number: cells.length > 1 ? `${inset.number}${'abcdefgh'[i]}` : inset.number,
+          win: cell.win,
+          stands: cell.stands,
+          position: { x: inset.position.x + (i % (inset.cols ?? 1)) * S, y: inset.position.y + Math.floor(i / (inset.cols ?? 1)) * S },
+        };
+        renderBeaconClusterInset(doc, cellInset, S, S);
+      });
       return;
     }
     const { position, bounds, scale, number, parcel, edge } = inset;

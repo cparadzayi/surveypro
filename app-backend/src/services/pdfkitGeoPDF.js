@@ -2847,6 +2847,17 @@ function renderBeacons(
   // Rendering order: boundary lines (renderParcels) → labels → circles.
   const deferredCircles = [];
   const crampedItems = [];
+  // Records an in-parcel letter as drawn, and whether a boundary line runs through
+  // its glyph (width x cap height, as turned), for the label gate and the log.
+  const noteLetter = (name, cx, cy, w, fs, rot) => {
+    if (!labelMetrics) return;
+    labelMetrics.lettersDrawn++;
+    // The ink, where it actually is: 0.244 x font size above the box centre (along the
+    // turn), 0.71 x font size tall. (An earlier version assumed the ink was centred
+    // and so under-reported letters near a line.)
+    const th = ((rot || 0) * Math.PI) / 180, k = 0.244 * fs;
+    if (!rotatedBoxClear(cx + k * Math.sin(th), cy - k * Math.cos(th), w, fs * 0.71, rot || 0, avoidSegments, 0)) labelMetrics.lettersOverLines.push(name);
+  };
 
   beacons.features.forEach((beacon) => {
     const pos = transformCoords(
@@ -3344,7 +3355,10 @@ function renderBeacons(
     if (isSuffixLabel) {
       const centerX = finalPos.x + labelWidth / 2;
       const centerY = finalPos.y + verticalOffset + labelHeight / 2;
-      if (labelMetrics) labelMetrics.minSuffixFont = Math.min(labelMetrics.minSuffixFont, fontSize);
+      if (labelMetrics) {
+        labelMetrics.minSuffixFont = Math.min(labelMetrics.minSuffixFont, fontSize);
+        noteLetter(beaconName, centerX, centerY, labelWidth, fontSize, suffixRotationAngle);
+      }
 
       doc.translate(centerX, centerY);
       // Horizontal unless the fit stood the letter across a thin strip.
@@ -3400,13 +3414,15 @@ function renderBeacons(
     }
   });
 
-  // Cramped beacons: one inset per crowded cluster (a few per sheet at most);
-  // anything beyond that is drawn in place after all.
+  // Cramped beacons: one inset per crowded cluster. A letter drawn in place that
+  // cannot clear the lines lies across a boundary, so every cluster gets its
+  // inset; the cap below is only a sanity limit for a plan with no room left.
   if (crampedItems.length > 0 && insetManager) {
     const drawSuffix = (it) => {
       const d = it.draw;
       if (labelMetrics) labelMetrics.minSuffixFont = Math.min(labelMetrics.minSuffixFont, d.fontSize);
       const cx = d.finalPos.x + d.labelWidth / 2, cy = d.finalPos.y + d.labelHeight / 2;
+      if (labelMetrics) noteLetter(it.name, cx, cy, d.labelWidth, d.fontSize, d.rotation);
       doc.save();
       doc.translate(cx, cy);
       if (d.rotation) doc.rotate(d.rotation);
@@ -3414,7 +3430,7 @@ function renderBeacons(
         .text(d.text, -d.labelWidth / 2, -d.labelHeight / 2, { lineBreak: false });
       doc.restore();
     };
-    const MAX_BEACON_INSETS = 12;
+    const MAX_BEACON_INSETS = 30;
     const toPdf = (yy, xx) => transformCoords(yy, xx, extent, mapBounds);
     const beaconRows = beacons.features.map((b) => {
       const nm = b.properties.name || b.properties.id || "B";
@@ -3519,17 +3535,8 @@ function renderBeacons(
       return mine ? mine.ang : null;
     };
     if (labelMetrics) labelMetrics.crampedLetters += crampedItems.length;
-    allClusters.forEach((cluster, idx) => {
-      if (idx >= MAX_BEACON_INSETS) {
-        if (labelMetrics) labelMetrics.crampedInPlace += cluster.length;
-        cluster.forEach(drawSuffix);
-        return;
-      }
-      if (labelMetrics) labelMetrics.insetClusters++;
-      const inset = insetManager.createBeaconClusterInset({
-        items: cluster, beacons: beaconRows, parcels: parcels.features,
-        mainScale: scale.value, toPdf, beaconRadius, textColor: labelConfig.insideParcel.color,
-      });
+    // Marks one cluster on the plan with its inset label (the cell label, e.g. "3a").
+    const placeTag = (cluster, idx, inset, label) => {
       // Mark the cluster on the plan with the inset's number alone, written like
       // a contiguous-parcel label in the open ground (the road) beside the
       // beacon(s) it magnifies: no ring, so the plan carries one small label per
@@ -3538,7 +3545,7 @@ function renderBeacons(
       // label already placed, and it may turn when that is the only way to find
       // room. The nearest such spot to ANY of the cluster's beacons wins; a turn
       // costs a little, so horizontal wins whenever it is clear.
-      const tag = `Inset ${inset.number}`;
+      const tag = `Inset ${label}`;
       doc.fontSize(8).font('Helvetica-Bold');
       const tw = doc.widthOfString(tag), th = 8;
       // The line the cluster's beacons sit on, for the label to run along: of the
@@ -3765,10 +3772,13 @@ function renderBeacons(
         picked = { o, hit: standsHit(o) };
       }
       const chosen = picked.o;
-      logger.info(`[PDFKit] 🏷️ Inset ${inset.number} (${cluster.map((m) => m.name).join('/')}) label: ${chosen.gap}pt from its beacon, ${chosen.fs}pt, ${picked.hit.length === 0 ? 'outside' : allowed(picked.hit) ? 'in its own stand' : 'IN a FOREIGN stand ' + picked.hit.join(',')}, turned ${chosen.rot}° (line ${align}°)`);
+      logger.info(`[PDFKit] 🏷️ Inset ${label} (${cluster.map((m) => m.name).join('/')}) label: ${chosen.gap}pt from its beacon, ${chosen.fs}pt, ${picked.hit.length === 0 ? 'outside' : allowed(picked.hit) ? 'in its own stand' : 'IN a FOREIGN stand ' + picked.hit.join(',')}, turned ${chosen.rot}° (line ${align}°)`);
       if (labelMetrics) {
         labelMetrics.insetLabels.push({
-          number: inset.number, members: cluster.map((m) => m.name), gap: chosen.gap, fontSize: chosen.fs, roadFont, rotation: chosen.rot, align,
+          number: inset.number, label, members: cluster.map((m) => m.name), gap: chosen.gap, fontSize: chosen.fs, roadFont, rotation: chosen.rot, align,
+          // Every road direction at the cluster (a corner can have two); the label
+          // runs along the road when it is within a few degrees of any of them.
+          roadAngles: [align, ...extraAngles],
           // True distance from the label's centre to the nearest beacon it refers to.
           distance: Math.min(...cluster.map((m) => Math.hypot(chosen.x - m.pos.x, chosen.y - m.pos.y))),
           foreignStands: picked.hit.filter((st) => !ownStands.has(st)),
@@ -3782,6 +3792,51 @@ function renderBeacons(
         .text(tag, -chosen.tw / 2, -chosen.th / 2, { lineBreak: false });
       doc.restore();
       collisionDetector.addRegion(chosen.x - chosen.ew / 2, chosen.y - chosen.eh / 2, chosen.ew, chosen.eh);
+    };
+
+    // Neighbouring clusters share ONE inset block: each keeps its own magnified
+    // window (two cannot share a window and stay legible), laid out as the cells
+    // of one block, so the sheet carries a few tidy blocks and one number apiece
+    // ("Inset 3", cells 3a, 3b) rather than a scatter of boxes. A cluster joins a
+    // group when it is within GROUP_REACH_PT of a member; a group holds at most
+    // GROUP_MAX cells (two across, two down).
+    const GROUP_REACH_PT = 150, GROUP_MAX = 4;
+    const taken = new Set();
+    const groups = [];
+    allClusters.forEach((_, i) => {
+      if (taken.has(i)) return;
+      const g = [i];
+      taken.add(i);
+      while (g.length < GROUP_MAX) {
+        let best = -1, bd = GROUP_REACH_PT;
+        clusterInfo.forEach((o, j) => {
+          if (taken.has(j)) return;
+          const d = Math.min(...g.map((k) => Math.hypot(o.cx - clusterInfo[k].cx, o.cy - clusterInfo[k].cy)));
+          if (d <= bd) { bd = d; best = j; }
+        });
+        if (best < 0) break;
+        g.push(best);
+        taken.add(best);
+      }
+      groups.push(g);
+    });
+    groups.forEach((g, gi) => {
+      if (gi >= MAX_BEACON_INSETS) {
+        for (const i of g) {
+          if (labelMetrics) labelMetrics.crampedInPlace += allClusters[i].length;
+          allClusters[i].forEach(drawSuffix);
+        }
+        return;
+      }
+      // West to east, so the cells read in the order the clusters lie on the plan.
+      g.sort((p, q) => clusterInfo[p].cx - clusterInfo[q].cx || clusterInfo[p].cy - clusterInfo[q].cy);
+      if (labelMetrics) { labelMetrics.insetClusters += g.length; labelMetrics.insetBlocks++; }
+      const inset = insetManager.createBeaconClusterGroupInset({
+        clusters: g.map((i) => allClusters[i]), beacons: beaconRows, parcels: parcels.features,
+        mainScale: scale.value, toPdf, beaconRadius, textColor: labelConfig.insideParcel.color,
+      });
+      g.forEach((i, ci) =>
+        placeTag(allClusters[i], i, inset, g.length > 1 ? `${inset.number}${'abcd'[ci]}` : String(inset.number)));
     });
   }
 
@@ -4021,6 +4076,8 @@ function placeSuffixLabelPOIDirected(
     fontSize,
     beaconRadius,
     neighbours,
+    // Fit the letter's real ink, not its whole line box (see INK_HEIGHT).
+    ink: true,
     collides: collisionDetector
       ? (r) => collisionDetector.hasCollision(r.x, r.y, r.w, r.h, 1)
       : null,
@@ -11701,8 +11758,11 @@ async function _generateGeoPDFInner(options, logger) {
     insetLabels: [],         // "Inset N" labels: gap, size, turn, road direction, stands touched
     crampedLetters: 0,       // in-parcel letters that did not fit cleanly
     insetClusters: 0,        // ... of which went to an inset (clusters)
+    insetBlocks: 0,          // inset blocks on the sheet (a block holds up to 4 clusters)
     crampedInPlace: 0,       // ... of which were drawn in place anyway (inset cap reached)
     minSuffixFont: Infinity, // smallest in-parcel letter drawn
+    lettersOverLines: [],    // in-parcel letters drawn with a boundary line through the glyph
+    lettersDrawn: 0,
   };
   // Road names as drawn (centre, turn, fitted lettering size): an inset label is
   // lettered at the size of the nearest one, so it reads as part of that road.

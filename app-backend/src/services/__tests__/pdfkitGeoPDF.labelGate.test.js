@@ -18,6 +18,7 @@ import { sampleUndevelopedSmallStandsPlan } from './fixtures/sampleUndevelopedSm
  *
  * Two kinds of check:
  *  - HARD rules, budget zero: they hold on every plan, always.
+ *      * no in-parcel letter has a boundary line running through it;
  *      * an outside-figure vertex label lies wholly outside the figure;
  *      * no in-parcel letter is drawn below the readability floor (6pt);
  *      * an inset label is never in a stand its beacons do not belong to;
@@ -48,17 +49,21 @@ const summarise = (m) => {
     minLetterFont: m.minSuffixFont,
     cramped: m.crampedLetters,
     insets: m.insetClusters,
+    insetBlocks: m.insetBlocks,                  // boxes on the sheet: neighbouring clusters share one
     lettersInPlaceAfterCap: m.crampedInPlace,
+    lettersOverLines: m.lettersOverLines,
     insetForeign: il.filter((l) => l.foreignStands.length > 0).length,
     insetMinFont: il.length ? Math.min(...il.map((l) => l.fontSize)) : Infinity,
     insetFar: il.filter((l) => l.gap > 12).length,          // not beside its beacon
     insetMaxDist: il.length ? Math.max(...il.map((l) => l.distance)) : 0, // label centre to nearest beacon, pt
-    insetOffRoad: il.filter((l) => Math.abs(l.rotation - l.align) > 10).length, // not along its road
+    // not along a road at its beacons (a corner can have two, any will do)
+    insetOffRoad: il.filter((l) => !(l.roadAngles ?? [l.align]).some((a) => Math.abs(l.rotation - a) <= 10)).length,
     insetInStand: il.filter((l) => !l.outsideAll).length,
   }
 }
 
 function expectHardRules(s) {
+  expect(s.lettersOverLines).toEqual([])
   expect(s.vertexStraddling).toBe(0)
   expect(s.minLetterFont).toBeGreaterThanOrEqual(FLOOR_PT - 1e-9)
   expect(s.insetForeign).toBe(0)
@@ -107,13 +112,20 @@ describe('label gate — surveyed plan (stands 1294–2060, diagonal road)', () 
       expect(summarise(auto.labelMetrics).vertexMaxDist).toBeLessThanOrEqual(30)
     })
 
-    test('inset count and cramped letters do not grow (today: 9 insets, 14 letters)', () => {
+    test('inset count and cramped letters do not grow (today: 5 clusters in 3 blocks, 5 letters)', () => {
       const s = summarise(auto.labelMetrics)
-      expect(s.insets).toBeLessThanOrEqual(9)
-      expect(s.cramped).toBeLessThanOrEqual(14)
+      expect(s.insets).toBeLessThanOrEqual(5)
+      expect(s.insetBlocks).toBeLessThanOrEqual(3)
+      expect(s.cramped).toBeLessThanOrEqual(5)
     })
 
-    test('every inset label sits beside its beacons and along its road (today: 9 of 9, furthest 17pt)', () => {
+    test('neighbouring clusters share a block: never more blocks than clusters, and fewer here', () => {
+      const s = summarise(auto.labelMetrics)
+      expect(s.insetBlocks).toBeLessThanOrEqual(s.insets)
+      expect(s.insetBlocks).toBeLessThan(s.insets)
+    })
+
+    test('every inset label sits beside its beacons and along its road (today: 5 of 5, furthest 17pt)', () => {
       const s = summarise(auto.labelMetrics)
       expect(s.insetFar).toBe(0)
       expect(s.insetOffRoad).toBe(0)
@@ -132,9 +144,10 @@ describe('label gate — surveyed plan (stands 1294–2060, diagonal road)', () 
       expect(f.cramped).toBeLessThanOrEqual(a.cramped)
     })
 
-    test('today: 6 insets, every label beside its beacon (furthest 21pt) and along its road', () => {
+    test('today: no insets at all (every letter fits its own stand), and any label beside its beacon and along its road', () => {
       const s = summarise(fine.labelMetrics)
-      expect(s.insets).toBeLessThanOrEqual(6)
+      expect(s.insets).toBeLessThanOrEqual(0)
+      expect(s.cramped).toBeLessThanOrEqual(0)
       expect(s.insetFar).toBe(0)
       expect(s.insetOffRoad).toBe(0)
       expect(s.insetMaxDist).toBeLessThanOrEqual(25)

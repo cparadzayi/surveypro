@@ -75,11 +75,14 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
   if (!Array.isArray(annotations) || annotations.length === 0) return labelRects
   if (!Array.isArray(ptRing) || ptRing.length < 3) return labelRects
   const n = ptRing.length
-  const noteRect = (cx, cy, w, h, deg) => {
+  // Each label's axis-aligned extent, plus what a later label needs to know about
+  // it: its centre, turn, lettering size (h is the font size) and role. An inset
+  // tag takes the size of the nearest road name, so it fits the same road.
+  const noteRect = (cx, cy, w, h, deg, role) => {
     const r = (deg * Math.PI) / 180
     const ew = Math.abs(Math.cos(r)) * w + Math.abs(Math.sin(r)) * h
     const eh = Math.abs(Math.sin(r)) * w + Math.abs(Math.cos(r)) * h
-    labelRects.push({ x: cx - ew / 2, y: cy - eh / 2, width: ew, height: eh })
+    labelRects.push({ x: cx - ew / 2, y: cy - eh / 2, width: ew, height: eh, cx, cy, angle: deg, fontSize: h, role })
   }
 
   // Subject centroid (vertex mean) — the outward direction reference for strips
@@ -169,7 +172,7 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
         const w = doc.widthOfString(labelText)
         doc.rotate(angleDeg, { origin: [roadFit.cx, roadFit.cy] })
         doc.text(labelText, roadFit.cx - w / 2, roadFit.cy - roadFit.fontSize / 2, { lineBreak: false })
-        noteRect(roadFit.cx, roadFit.cy, w, roadFit.fontSize, angleDeg)
+        noteRect(roadFit.cx, roadFit.cy, w, roadFit.fontSize, angleDeg, 'road')
       } else if (ann.role === 'road' || ann.role === 'servitude') {
         // Just outside the boundary (past the strip, if any).
         const stripPt = ann.role === 'servitude' && ann.widthM > 0
@@ -179,7 +182,7 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
         const lx = mid.x + perpX * off, ly = mid.y + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })
         doc.text(labelText, lx - labelW / 2, ly - LABEL_FONT_PT / 2, { lineBreak: false })
-        noteRect(lx, ly, labelW, LABEL_FONT_PT, angleDeg)
+        noteRect(lx, ly, labelW, LABEL_FONT_PT, angleDeg, ann.role)
       } else {
         // Contiguous: outward label beyond the dashed stub, centred on the abutting
         // extent (whole side, or the tagged half).
@@ -188,7 +191,7 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
         const lx = m.labelAnchor[0] + perpX * off, ly = m.labelAnchor[1] + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })
         doc.text(labelText, lx - labelW / 2, ly - LABEL_FONT_PT / 2, { lineBreak: false })
-        noteRect(lx, ly, labelW, LABEL_FONT_PT, angleDeg)
+        noteRect(lx, ly, labelW, LABEL_FONT_PT, angleDeg, ann.role)
       }
       doc.restore()
     }

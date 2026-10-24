@@ -21,7 +21,9 @@ import { sampleUndevelopedSmallStandsPlan } from './fixtures/sampleUndevelopedSm
  *      * an outside-figure vertex label lies wholly outside the figure;
  *      * no in-parcel letter is drawn below the readability floor (6pt);
  *      * an inset label is never in a stand its beacons do not belong to;
- *      * an inset label is never below the floor.
+ *      * an inset label is never below 5pt, the smallest a road name shrinks to
+ *        (it takes the size of the nearest road name, clamped to 5-8pt, so it fits
+ *        the same narrow road).
  *  - QUALITY budgets, capped at what the surveyed plan achieves TODAY. They only
  *    ever tighten: an improvement passes, a regression fails. When a change makes
  *    the plan genuinely better, lower the number here in the same commit.
@@ -32,6 +34,7 @@ import { sampleUndevelopedSmallStandsPlan } from './fixtures/sampleUndevelopedSm
 
 const quiet = { info() {}, warn() {}, error() {} }
 const FLOOR_PT = 6 // 75% of the 8pt base letter
+const INSET_FLOOR_PT = 5 // an inset label takes the nearest road name's size, 5-8pt
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const survey = JSON.parse(fs.readFileSync(path.join(here, 'fixtures', 'labelGateSurvey.json'), 'utf8'))
@@ -49,6 +52,7 @@ const summarise = (m) => {
     insetForeign: il.filter((l) => l.foreignStands.length > 0).length,
     insetMinFont: il.length ? Math.min(...il.map((l) => l.fontSize)) : Infinity,
     insetFar: il.filter((l) => l.gap > 12).length,          // not beside its beacon
+    insetMaxDist: il.length ? Math.max(...il.map((l) => l.distance)) : 0, // label centre to nearest beacon, pt
     insetOffRoad: il.filter((l) => Math.abs(l.rotation - l.align) > 10).length, // not along its road
     insetInStand: il.filter((l) => !l.outsideAll).length,
   }
@@ -58,7 +62,7 @@ function expectHardRules(s) {
   expect(s.vertexStraddling).toBe(0)
   expect(s.minLetterFont).toBeGreaterThanOrEqual(FLOOR_PT - 1e-9)
   expect(s.insetForeign).toBe(0)
-  expect(s.insetMinFont).toBeGreaterThanOrEqual(FLOOR_PT - 1e-9)
+  expect(s.insetMinFont).toBeGreaterThanOrEqual(INSET_FLOOR_PT - 1e-9)
 }
 
 describe('label gate — hard rules on every sample plan', () => {
@@ -109,11 +113,12 @@ describe('label gate — surveyed plan (stands 1294–2060, diagonal road)', () 
       expect(s.cramped).toBeLessThanOrEqual(14)
     })
 
-    test('inset labels sit beside their beacons and along their road (today: 3 and 3 of 9)', () => {
+    test('every inset label sits beside its beacons and along its road (today: 9 of 9, furthest 17pt)', () => {
       const s = summarise(auto.labelMetrics)
-      expect(s.insetFar).toBeLessThanOrEqual(3)
-      expect(s.insetOffRoad).toBeLessThanOrEqual(3)
-      expect(s.insetInStand).toBeLessThanOrEqual(0)
+      expect(s.insetFar).toBe(0)
+      expect(s.insetOffRoad).toBe(0)
+      expect(s.insetInStand).toBe(0)
+      expect(s.insetMaxDist).toBeLessThanOrEqual(25)
     })
   })
 
@@ -127,11 +132,12 @@ describe('label gate — surveyed plan (stands 1294–2060, diagonal road)', () 
       expect(f.cramped).toBeLessThanOrEqual(a.cramped)
     })
 
-    test('today: 6 insets, every label beside its beacon and along its road', () => {
+    test('today: 6 insets, every label beside its beacon (furthest 21pt) and along its road', () => {
       const s = summarise(fine.labelMetrics)
       expect(s.insets).toBeLessThanOrEqual(6)
       expect(s.insetFar).toBe(0)
       expect(s.insetOffRoad).toBe(0)
+      expect(s.insetMaxDist).toBeLessThanOrEqual(25)
     })
   })
 })

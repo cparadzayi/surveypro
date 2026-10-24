@@ -2696,7 +2696,8 @@ function renderBeacons(
   excludeBeaconNames = new Set(),
   insetManager = null,
   avoidSegments = [],
-  labelMetrics = null
+  labelMetrics = null,
+  roadNameLabels = []
 ) {
   logger.info(
     "[PDFKit] 🔴 CODE CHANGE TEST - If you see this, changes are being picked up"
@@ -3598,7 +3599,48 @@ function renderBeacons(
       // A label may lie inside a stand only if its beacons are in-parcel beacons of
       // THAT stand. Written in a neighbouring stand it reads as that stand's, so
       // the cluster's own stands are the only ones it may overlap.
+      // A road name close by gives the road's direction outright: the label is
+      // oriented to it ("same way as the road label"). Frontage lines between
+      // close beacons can be too short to measure, and a direction borrowed from a
+      // neighbouring cluster can belong to a different road altogether.
+      const ROAD_DIR_REACH_PT = 60;
+      {
+        const ccx = cluster.reduce((a, m) => a + m.pos.x, 0) / cluster.length;
+        const ccy = cluster.reduce((a, m) => a + m.pos.y, 0) / cluster.length;
+        let bd = ROAD_DIR_REACH_PT, ra = null;
+        for (const r of roadNameLabels) {
+          const d = Math.hypot(r.cx - ccx, r.cy - ccy);
+          if (d <= bd) { bd = d; ra = r.angle; }
+        }
+        if (ra !== null) {
+          if (ra > 90) ra -= 180;
+          if (ra <= -90) ra += 180;
+          ra = Math.round(ra * 10) / 10;
+          if (ra !== align) {
+            if (clusterInfo[idx]) clusterInfo[idx].extraAngles = [...(clusterInfo[idx].extraAngles ?? []), align];
+            align = ra;
+          }
+        }
+      }
       const ownStands = new Set(cluster.map((m) => String(m.stand)));
+      // Lettered like the nearest road name (within ROAD_FONT_REACH_PT of the
+      // cluster): its size is the one that fits that road's narrow reserve, so
+      // the tag can sit right at the beacons and reads as part of the road.
+      // Without a road name nearby the size trades off against distance, 8 down to 6.
+      const ROAD_FONT_REACH_PT = 120;
+      let roadFont = null;
+      {
+        const ccx = cluster.reduce((a, m) => a + m.pos.x, 0) / cluster.length;
+        const ccy = cluster.reduce((a, m) => a + m.pos.y, 0) / cluster.length;
+        let bd = ROAD_FONT_REACH_PT;
+        for (const r of roadNameLabels) {
+          const d = Math.hypot(r.cx - ccx, r.cy - ccy);
+          if (d <= bd) { bd = d; roadFont = r.fontSize; }
+        }
+      }
+      // Never above the usual 8pt (it would not fit beside the beacons) nor below 5pt
+      // (the smallest a road name shrinks to and still legible).
+      if (roadFont) roadFont = Math.round(Math.max(5, Math.min(8, roadFont)) * 10) / 10;
       const FONTS = [8, 7, 6.5, 6];
       const FONT_COST_PT = 8; // distance traded for one point of lettering size
       // The road direction first, then the other road directions around (a corridor
@@ -3612,7 +3654,7 @@ function renderBeacons(
         if (extraAngles.includes(rot)) return 3;
         return Math.abs(rot - align) < 9 ? 2 : 10 + Math.abs(rot - align) * 0.1;
       };
-      const build = (fs, gaps) => {
+      const build = (fs, gaps, ref = FONTS[0]) => {
         doc.fontSize(fs).font('Helvetica-Bold');
         const w = doc.widthOfString(tag), h = fs;
         const out = [];
@@ -3623,7 +3665,13 @@ function renderBeacons(
           for (const m of cluster) {
             for (let a = 0; a < 360; a += 15) {
               const dx = Math.cos((a * Math.PI) / 180), dy = Math.sin((a * Math.PI) / 180);
-              const reach = (Math.abs(dx) * ew + Math.abs(dy) * eh) / 2;
+              // How far the label reaches from its centre along this bearing: its
+              // support function on ITS OWN axes. (Using the axis-aligned extent
+              // overstates it badly for a turned label -- 12pt for a 20x7pt label at
+              // 56 degrees where the truth across the road is 3.4pt -- and sets the
+              // label out beyond the road it was meant to sit in.)
+              const ux = Math.cos(rr), uy = Math.sin(rr);
+              const reach = (Math.abs(dx * ux + dy * uy) * w + Math.abs(-dx * uy + dy * ux) * h) / 2;
               for (const gap of gaps) {
                 const d = beaconRadius + gap + reach;
                 out.push({ rot, ew, eh, dx, dy, reach, gap, fs, tw: w, th: h, bx: m.pos.x, by: m.pos.y,
@@ -3633,8 +3681,30 @@ function renderBeacons(
                   // reach, so the labels along one road keep reading as one run.
                   // A smaller label costs FONT_COST_PT per point shrunk, so a 6pt label
                   // beside its beacons beats an 8pt one a stand away.
-                  cost: gap + (FONTS[0] - fs) * FONT_COST_PT
+                  cost: gap + (ref - fs) * FONT_COST_PT
                     + turnCost(rot) });
+              }
+            }
+          }
+        }
+        // A narrow road: positions by bearing and gap are too sparse to find the few
+        // that fit between two lines, so for the road's own directions the label is
+        // also slid ALONG the road at several sideways offsets from each beacon.
+        for (const rot of [...new Set([align, ...extraAngles])]) {
+          const rr = (rot * Math.PI) / 180;
+          const ux = Math.cos(rr), uy = Math.sin(rr), nx = -Math.sin(rr), ny = Math.cos(rr);
+          const ew = Math.abs(ux) * w + Math.abs(uy) * h, eh = Math.abs(uy) * w + Math.abs(ux) * h;
+          for (const m of cluster) {
+            for (let side = 2.5; side <= 10; side += 0.75) {
+              for (const sg of [1, -1]) {
+                for (let along = -36; along <= 36; along += 2) {
+                  // Nearest the label's box comes to the beacon, in the label's own frame.
+                  const gapToCircle = Math.hypot(Math.max(Math.abs(along) - w / 2, 0), Math.max(side - h / 2, 0)) - beaconRadius;
+                  if (gapToCircle < 0.4) continue;
+                  out.push({ rot, ew, eh, gap: Math.round(gapToCircle * 10) / 10, fs, tw: w, th: h, bx: m.pos.x, by: m.pos.y,
+                    x: m.pos.x + ux * along + nx * side * sg, y: m.pos.y + uy * along + ny * side * sg,
+                    cost: gapToCircle + (ref - fs) * FONT_COST_PT + turnCost(rot) });
+                }
               }
             }
           }
@@ -3675,7 +3745,12 @@ function renderBeacons(
       // off through the cost rather than the largest size always winning.
       const allSizes = (gaps) => FONTS.flatMap((fs) => build(fs, gaps)).sort((p, q) => p.cost - q.cost);
       let picked = null;
-      {
+      if (roadFont) {
+        // The road's own size first: beside the beacons if it fits there.
+        const roadNear = build(roadFont, NEAR_GAPS, roadFont).sort((p, q) => p.cost - q.cost);
+        picked = pick(roadNear, true) || pick(roadNear, false);
+      }
+      if (!picked) {
         const near = allSizes(NEAR_GAPS);
         picked = pick(near, true) || pick(near, false);
       }
@@ -3693,7 +3768,7 @@ function renderBeacons(
       logger.info(`[PDFKit] 🏷️ Inset ${inset.number} (${cluster.map((m) => m.name).join('/')}) label: ${chosen.gap}pt from its beacon, ${chosen.fs}pt, ${picked.hit.length === 0 ? 'outside' : allowed(picked.hit) ? 'in its own stand' : 'IN a FOREIGN stand ' + picked.hit.join(',')}, turned ${chosen.rot}° (line ${align}°)`);
       if (labelMetrics) {
         labelMetrics.insetLabels.push({
-          number: inset.number, members: cluster.map((m) => m.name), gap: chosen.gap, fontSize: chosen.fs, rotation: chosen.rot, align,
+          number: inset.number, members: cluster.map((m) => m.name), gap: chosen.gap, fontSize: chosen.fs, roadFont, rotation: chosen.rot, align,
           // True distance from the label's centre to the nearest beacon it refers to.
           distance: Math.min(...cluster.map((m) => Math.hypot(chosen.x - m.pos.x, chosen.y - m.pos.y))),
           foreignStands: picked.hit.filter((st) => !ownStands.has(st)),
@@ -11629,6 +11704,9 @@ async function _generateGeoPDFInner(options, logger) {
     crampedInPlace: 0,       // ... of which were drawn in place anyway (inset cap reached)
     minSuffixFont: Infinity, // smallest in-parcel letter drawn
   };
+  // Road names as drawn (centre, turn, fitted lettering size): an inset label is
+  // lettered at the size of the nearest one, so it reads as part of that road.
+  const roadNameLabels = [];
 
   // Step 1: Render Outside Figure boundary FIRST (as background layer)
   // This includes: red boundary line, beacon circles at vertices, and vertex labels outside polygon
@@ -11741,7 +11819,10 @@ async function _generateGeoPDFInner(options, logger) {
       );
       // Road, servitude and neighbour names are labels like any other: register
       // them so nothing placed later (an inset's tag) is drawn across them.
-      for (const r of _nameRects || []) collisionDetector.addRegion(r.x, r.y, r.width, r.height);
+      for (const r of _nameRects || []) {
+        collisionDetector.addRegion(r.x, r.y, r.width, r.height);
+        if (r.role === 'road') roadNameLabels.push(r);
+      }
       _drawn++;
     }
     logger.info(`[PDFKit] 🛣️  Rendered adjoining features for ${_drawn} subject(s)`);
@@ -11805,7 +11886,8 @@ async function _generateGeoPDFInner(options, logger) {
       for (const f of outsideFigure?.features || []) addRing(f?.geometry?.coordinates?.[0]);
       return segs;
     })(),
-    labelMetrics
+    labelMetrics,
+    roadNameLabels
   );
 
   // Edge labels are rendered in renderParcels() with topology-aware split labeling

@@ -29,7 +29,7 @@ import { bankersRound, roundBearingSouth, degToDMS } from "../utils/zim-geo.js";
 import { TrueGeoPDFGenerator, GeospatialFeature } from "./trueGeoPDF.js";
 import { LayerManager } from "./layerManager.js";
 import { AdaptiveRenderer } from "./adaptiveRenderer.js";
-import { boxesIntersect, isRectWithinBounds } from "../utils/collisionPrimitives.js";
+import { boxesIntersect, isRectWithinBounds, normalizeRect } from "../utils/collisionPrimitives.js";
 import { placeBlocks, EDGE_PADDING } from "./blockPlacementEngine.js";
 import { findPoleOfInaccessibility } from '../utils/labelPlacer.js';
 import { planSheetLayout } from './sheetLayoutPlanner.js';
@@ -76,7 +76,7 @@ import {
   rectanglesOverlap
 } from './pdfkitGeoPDF/geometry.js';
 import { InsetManager } from './pdfkitGeoPDF/insetManager.js';
-import { clusterCramped, rotatedBoxClear, fitIndicatorRing } from './pdfkitGeoPDF/beaconClusterInset.js';
+import { clusterCramped, rotatedBoxClear } from './pdfkitGeoPDF/beaconClusterInset.js';
 
 /**
  * PDFKit-based GeoPDF Generator with SI 727 Compliance
@@ -1141,7 +1141,8 @@ function renderOutsideFigureBoundary(
   extent,
   mapBounds,
   logger,
-  scale = null
+  scale = null,
+  labelMetrics = null
 ) {
   if (
     !outsideFigure ||
@@ -1256,7 +1257,8 @@ function renderOutsideFigureBoundary(
       extent,
       mapBounds,
       logger,
-      scale
+      scale,
+      labelMetrics
     );
   } else {
     logger.info(
@@ -1284,7 +1286,8 @@ function renderOutsideFigureVertexLabels(
   extent,
   mapBounds,
   logger,
-  scale = null
+  scale = null,
+  labelMetrics = null
 ) {
   logger.info(
     `[PDFKit] 🏷️ [TOPOLOGICAL LABELING] Rendering ${vertices.length} vertex beacons and labels for Outside Figure...`
@@ -1305,7 +1308,7 @@ function renderOutsideFigureVertexLabels(
   const minOffset = beaconRadius + 4; // Tight to circle — avoids excessively long leader lines
   const maxOffset = 60; // Maximum offset to try (points)
   const offsetStep = 3; // Step size for increasing offset (points)
-  const BOUNDARY_BUFFER = 8; // Minimum clearance from polygon boundary (points)
+  const BOUNDARY_BUFFER = 3; // Minimum clearance from polygon boundary (points)
   // A label must stay inside the map frame, with a little air, so it never
   // touches or crosses the sheet margin line.
   const FRAME_INSET = 4;
@@ -1321,6 +1324,12 @@ function renderOutsideFigureVertexLabels(
   logger.info(
     `[PDFKit] 🔧 DEBUG: Actual values - minOffset=${minOffset}, maxOffset=${maxOffset}, BOUNDARY_BUFFER=${BOUNDARY_BUFFER}`
   );
+
+  // The figure's outline in PDF space. A label must lie WHOLLY outside it: the
+  // nine-point test below can miss a box that straddles an edge between sample
+  // points, so this one also catches an outline crossing the box.
+  const _figPdf = coordinates.map((c) => transformCoords(c[0], c[1], extent, mapBounds));
+  const straddlesFigure = (r) => rectangleOverlapsPolygon(r, _figPdf, 0.5);
 
   // Calculate polygon centroid to determine outward direction
   let sumY = 0,
@@ -1387,58 +1396,82 @@ function renderOutsideFigureVertexLabels(
     let labelX, labelY, labelRect;
     let currentOffset = minOffset;
     let foundValidPosition = false;
-    let attempts = 0;
-    const maxAttempts = Math.ceil((maxOffset - minOffset) / offsetStep) + 1;
 
-    while (
-      currentOffset <= maxOffset &&
-      !foundValidPosition &&
-      attempts < maxAttempts
-    ) {
-      attempts++;
+    // Distance first, bearing second: the label's NEAR edge starts LABEL_GAP off
+    // the beacon circle, measured along the bearing it is actually placed on, and
+    // each distance is tried straight out and then fanned either way before any
+    // of it is tried further out. The label belongs to one beacon and has to
+    // read as such; it used to be centred a fixed 6pt out and then pushed until
+    // its whole box was BOUNDARY_BUFFER clear of every boundary -- including the
+    // one its own beacon sits on -- which put short names 20pt and more away.
+    const LABEL_GAP = 2.5;
+    // The bearing starts from the LOCAL outside of the corner -- the bisector of
+    // the two edges meeting at this vertex, flipped to whichever side is outside
+    // the figure -- not from the centroid, which on an elongated figure points
+    // along or into the boundary at a vertex part way down a side.
+    let baseAng = Math.atan2(-dirY, dirX); // PDF space: y runs down; centroid fallback
+    {
+      const nRing = coordinates.length > 1 &&
+        coordinates[0][0] === coordinates[coordinates.length - 1][0] &&
+        coordinates[0][1] === coordinates[coordinates.length - 1][1]
+        ? coordinates.length - 1 : coordinates.length;
+      if (nRing >= 3 && index < nRing) {
+        const pc = coordinates[(index - 1 + nRing) % nRing];
+        const nc = coordinates[(index + 1) % nRing];
+        const pp = transformCoords(pc[0], pc[1], extent, mapBounds);
+        const np = transformCoords(nc[0], nc[1], extent, mapBounds);
+        const u1x = pp.x - point.x, u1y = pp.y - point.y;
+        const u2x = np.x - point.x, u2y = np.y - point.y;
+        const l1 = Math.hypot(u1x, u1y), l2 = Math.hypot(u2x, u2y);
+        if (l1 > 1e-6 && l2 > 1e-6) {
+          let bx = u1x / l1 + u2x / l2, by = u1y / l1 + u2y / l2;
+          const bl = Math.hypot(bx, by);
+          if (bl < 1e-3) { bx = -u1y / l1; by = u1x / l1; } else { bx /= bl; by /= bl; }
+          // bx,by points into the corner's wedge. Outside is the other way unless
+          // the wedge is the outside (a reflex corner): probe to find out.
+          const probe = (sx) => isPointInsidePolygonPDF(
+            { x: point.x + sx * bx * 4, y: point.y + sx * by * 4 }, coordinates, extent, mapBounds);
+          const sgn = probe(-1) && !probe(1) ? 1 : -1;
+          baseAng = Math.atan2(sgn * by, sgn * bx);
+        }
+      }
+    }
+    const fan = [0, 22, -22, 45, -45, 70, -70].map((d) => (d * Math.PI) / 180);
+    const maxRing = Math.ceil((maxOffset - minOffset) / 2);
 
-      // Calculate offset in PDF space
-      const offsetY = dirY * currentOffset;
-      const offsetX = dirX * currentOffset;
+    search:
+    for (let ring = 0; ring <= maxRing; ring++) {
+      for (const da of fan) {
+        const ang = baseAng + da;
+        const ux = Math.cos(ang), uy = Math.sin(ang);
+        const reach = (Math.abs(ux) * labelWidth + Math.abs(uy) * labelHeight) / 2;
+        const off = beaconRadius + LABEL_GAP + reach + ring * 2;
 
-      labelX = point.x + offsetX;
-      labelY = point.y - offsetY; // Negative because PDF Y increases downward
+        labelX = point.x + ux * off;
+        labelY = point.y + uy * off;
+        const rect = {
+          x: labelX - labelWidth / 2,
+          y: labelY - labelHeight / 2,
+          width: labelWidth,
+          height: labelHeight,
+        };
 
-      // Define label rectangle (top-left corner and dimensions)
-      labelRect = {
-        x: labelX - labelWidth / 2,
-        y: labelY - labelHeight / 2,
-        width: labelWidth,
-        height: labelHeight,
-      };
-
-      // STRICT CHECK: Label must be completely outside polygon WITH buffer clearance
-      const overlapsPolygon = isRectOverlappingPolygon(
-        labelRect,
-        coordinates,
-        extent,
-        mapBounds
-      );
-
-      // Additional check: Ensure minimum distance from polygon boundary
-      const hasBufferClearance =
-        !overlapsPolygon &&
-        insideFrame(labelRect) &&
-        isRectClearOfPolygonBoundary(
-          labelRect,
-          coordinates,
-          extent,
-          mapBounds,
-          BOUNDARY_BUFFER
-        );
-
-      if (hasBufferClearance) {
-        foundValidPosition = true;
-        logger.info(
-          `[PDFKit] ✅ Vertex ${vertex.name}: positioned at offset ${currentOffset}pt (outside polygon with ${BOUNDARY_BUFFER}pt clearance)`
-        );
-      } else {
-        currentOffset += offsetStep;
+        // Completely outside the polygon, inside the frame, and clear of every
+        // boundary by BOUNDARY_BUFFER.
+        if (
+          !isRectOverlappingPolygon(rect, coordinates, extent, mapBounds) &&
+          !straddlesFigure(rect) &&
+          insideFrame(rect) &&
+          isRectClearOfPolygonBoundary(rect, coordinates, extent, mapBounds, BOUNDARY_BUFFER)
+        ) {
+          labelRect = rect;
+          currentOffset = off;
+          foundValidPosition = true;
+          logger.info(
+            `[PDFKit] ✅ Vertex ${vertex.name}: positioned ${off.toFixed(1)}pt from its beacon (bearing ${Math.round((da * 180) / Math.PI)}° off outward)`
+          );
+          break search;
+        }
       }
     }
 
@@ -1495,6 +1528,7 @@ function renderOutsideFigureVertexLabels(
 
           if (
             !isRectOverlappingPolygon(testRect, coordinates, extent, mapBounds) &&
+            !straddlesFigure(testRect) &&
             insideFrame(testRect) &&
             (_buf === 0 ||
               isRectClearOfPolygonBoundary(testRect, coordinates, extent, mapBounds, _buf))
@@ -1554,6 +1588,14 @@ function renderOutsideFigureVertexLabels(
     }
 
     // Leader lines removed per user request - beacon proximity provides sufficient visual connection
+    if (labelMetrics) {
+      labelMetrics.vertexLabels.push({
+        name: vertex.name,
+        distance: Math.hypot(labelRect.x + labelRect.width / 2 - point.x, labelRect.y + labelRect.height / 2 - point.y),
+        // The final box against the outline, tested in full (edge crossings included).
+        straddlesFigure: straddlesFigure(labelRect) || isRectOverlappingPolygon(labelRect, coordinates, extent, mapBounds),
+      });
+    }
 
     // White rect halo for crisp field contrast
     const _beaHaloPad = Math.max(1.2, Math.min(2.5, fontSize * 0.25));
@@ -2653,7 +2695,8 @@ function renderBeacons(
   logger,
   excludeBeaconNames = new Set(),
   insetManager = null,
-  avoidSegments = []
+  avoidSegments = [],
+  labelMetrics = null
 ) {
   logger.info(
     "[PDFKit] 🔴 CODE CHANGE TEST - If you see this, changes are being picked up"
@@ -3300,6 +3343,7 @@ function renderBeacons(
     if (isSuffixLabel) {
       const centerX = finalPos.x + labelWidth / 2;
       const centerY = finalPos.y + verticalOffset + labelHeight / 2;
+      if (labelMetrics) labelMetrics.minSuffixFont = Math.min(labelMetrics.minSuffixFont, fontSize);
 
       doc.translate(centerX, centerY);
       // Horizontal unless the fit stood the letter across a thin strip.
@@ -3360,6 +3404,7 @@ function renderBeacons(
   if (crampedItems.length > 0 && insetManager) {
     const drawSuffix = (it) => {
       const d = it.draw;
+      if (labelMetrics) labelMetrics.minSuffixFont = Math.min(labelMetrics.minSuffixFont, d.fontSize);
       const cx = d.finalPos.x + d.labelWidth / 2, cy = d.finalPos.y + d.labelHeight / 2;
       doc.save();
       doc.translate(cx, cy);
@@ -3368,7 +3413,7 @@ function renderBeacons(
         .text(d.text, -d.labelWidth / 2, -d.labelHeight / 2, { lineBreak: false });
       doc.restore();
     };
-    const MAX_BEACON_INSETS = 4;
+    const MAX_BEACON_INSETS = 12;
     const toPdf = (yy, xx) => transformCoords(yy, xx, extent, mapBounds);
     const beaconRows = beacons.features.map((b) => {
       const nm = b.properties.name || b.properties.id || "B";
@@ -3378,62 +3423,288 @@ function renderBeacons(
         y: b.geometry.coordinates[0], x: b.geometry.coordinates[1],
       };
     });
-    clusterCramped(crampedItems).forEach((cluster, idx) => {
-      if (idx >= MAX_BEACON_INSETS) { cluster.forEach(drawSuffix); return; }
+    // Stand outlines in PDF space, for keeping inset tags off the stands.
+    const standPolys = [];
+    for (const f of parcels.features) {
+      if (f.properties?.isOutsideFigure) continue;
+      let ring = f.geometry?.coordinates?.[0];
+      if (Array.isArray(ring) && ring.length === 1 && Array.isArray(ring[0]) && Array.isArray(ring[0][0])) ring = ring[0];
+      if (!Array.isArray(ring) || ring.length < 3) continue;
+      standPolys.push({
+        stand: String(f.properties?.stand ?? ''),
+        poly: ring.map((c) => {
+          const cc = Array.isArray(c) ? [c[0], c[1]] : [c.y ?? c[1], c.x ?? c[0]];
+          return toPdf(cc[0], cc[1]);
+        }),
+      });
+    }
+    const inAnyStand = (px, py) => standPolys.some((sp) => isPointInPolygonPDF({ x: px, y: py }, sp.poly));
+    // The road edges a cluster's beacons sit on: boundary segments through one of
+    // them (8pt or longer) with a stand on ONE side only -- a stand's frontage, or
+    // the figure's outline. Longest first; each as {ang, L} with ang in (-90, 90].
+    const frontageCandidates = (cluster) => {
+      const out = [];
+      for (const sg of avoidSegments) {
+        const L = Math.hypot(sg.x2 - sg.x1, sg.y2 - sg.y1);
+        if (L < 8) continue;
+        const onIt = cluster.some((m) => {
+          const t = Math.max(0, Math.min(1, ((m.pos.x - sg.x1) * (sg.x2 - sg.x1) + (m.pos.y - sg.y1) * (sg.y2 - sg.y1)) / (L * L)));
+          return Math.hypot(m.pos.x - (sg.x1 + t * (sg.x2 - sg.x1)), m.pos.y - (sg.y1 + t * (sg.y2 - sg.y1))) < 1.5;
+        });
+        if (!onIt) continue;
+        const mx = (sg.x1 + sg.x2) / 2, my = (sg.y1 + sg.y2) / 2;
+        const nx = -(sg.y2 - sg.y1) / L, ny = (sg.x2 - sg.x1) / L;
+        const front = inAnyStand(mx + nx * 3, my + ny * 3) !== inAnyStand(mx - nx * 3, my - ny * 3);
+        let ang = (Math.atan2(sg.y2 - sg.y1, sg.x2 - sg.x1) * 180) / Math.PI;
+        if (ang > 90) ang -= 180;
+        if (ang <= -90) ang += 180;
+        out.push({ ang: Math.round(ang * 10) / 10, L, front });
+      }
+      return out.sort((p, q) => q.L - p.L);
+    };
+    const primaryOf = (cands) => cands.find((c) => c.front) ?? null;
+    const allClusters = clusterCramped(crampedItems);
+    const clusterInfo = allClusters.map((c) => ({
+      cands: frontageCandidates(c),
+      cx: c.reduce((a, m) => a + m.pos.x, 0) / c.length,
+      cy: c.reduce((a, m) => a + m.pos.y, 0) / c.length,
+    }));
+    // Labels for beacons along the same road read as one run: where a cluster sits
+    // at the meeting of two lines, it takes the one nearest in direction to the
+    // nearest other cluster's, instead of whichever is longer.
+    const alignAngleOf = (ci) => {
+      const me = clusterInfo[ci];
+      const mine = primaryOf(me.cands);
+      // Other directions the label may also take: every road-edge line through the
+      // cluster's beacons and the direction of the nearest runs (filled in below).
+      me.extraAngles = me.cands.filter((c) => c.front).map((c) => c.ang);
+      // The nearest other cluster that has a road edge of its own sets the run's
+      // direction. Any line through THIS cluster's beacons within 10 degrees of it
+      // (the far boundary of the same road included) beats a longer line pointing
+      // elsewhere -- e.g. the figure's outline where it meets the road.
+      let nb = null, nbD = Infinity;
+      clusterInfo.forEach((o, j) => {
+        if (j === ci || !primaryOf(o.cands)) return;
+        const d = Math.hypot(o.cx - me.cx, o.cy - me.cy);
+        if (d < nbD) { nbD = d; nb = o; }
+      });
+      if (nb && nbD <= 600) {
+        const want = primaryOf(nb.cands).ang;
+        let best = null;
+        for (const c of me.cands) {
+          const diff = Math.abs(c.ang - want);
+          if (diff <= 10 && (!best || diff < best.diff - 1e-6 || (Math.abs(diff - best.diff) <= 1e-6 && c.front && !best.c.front))) best = { c, diff };
+        }
+        me.extraAngles.push(want);
+        if (best) return best.c.ang;
+      }
+      // None of its own lines runs with the road. If it nevertheless lies ALONG
+      // another cluster's road line (within RUN_BAND_PT of it, sideways), it is part
+      // of the same run -- the beacons of one road's frontage, or the far side of
+      // it -- and takes that line's direction so the labels read as one run.
+      const RUN_BAND_PT = 70;
+      let run = null;
+      clusterInfo.forEach((o, j) => {
+        const p = j === ci ? null : primaryOf(o.cands);
+        if (!p) return;
+        const r = (p.ang * Math.PI) / 180;
+        const vx = me.cx - o.cx, vy = me.cy - o.cy;
+        const along = Math.abs(vx * Math.cos(r) + vy * Math.sin(r));
+        const across = Math.abs(-vx * Math.sin(r) + vy * Math.cos(r));
+        if (across <= RUN_BAND_PT && along <= 700 && (!run || along < run.along)) run = { along, ang: p.ang };
+        if (across <= RUN_BAND_PT && along <= 700) me.extraAngles.push(p.ang);
+      });
+      if (run) return run.ang;
+      return mine ? mine.ang : null;
+    };
+    if (labelMetrics) labelMetrics.crampedLetters += crampedItems.length;
+    allClusters.forEach((cluster, idx) => {
+      if (idx >= MAX_BEACON_INSETS) {
+        if (labelMetrics) labelMetrics.crampedInPlace += cluster.length;
+        cluster.forEach(drawSuffix);
+        return;
+      }
+      if (labelMetrics) labelMetrics.insetClusters++;
       const inset = insetManager.createBeaconClusterInset({
         items: cluster, beacons: beaconRows, parcels: parcels.features,
         mainScale: scale.value, toPdf, beaconRadius, textColor: labelConfig.insideParcel.color,
       });
-      // Mark the area on the plan: a dashed ring and the inset's number.
-      // The ring takes in the cluster's own beacon circles and must not touch or
-      // cut across any other circle or any label: its radius (and, a little, its
-      // centre) is fitted to the neighbourhood rather than fixed.
-      const _members = new Set(cluster.map((m) => m.name));
-      const _fit = fitIndicatorRing({
-        cx: inset.win.cx, cy: inset.win.cy,
-        cluster: cluster.map((m) => m.pos),
-        otherBeacons: beaconRows.filter((b) => !_members.has(b.name)).map((b) => toPdf(b.y, b.x)),
-        rects: collisionDetector.occupiedRegions,
-        beaconRadius,
-      });
-      const cx = _fit.cx, cy = _fit.cy, ringR = _fit.r;
-      inset.win.radius = ringR; // the layout keeps the inset box off this ring
-      doc.save();
-      doc.lineWidth(0.5).dash(2, { space: 1.5 }).strokeColor('#000000').circle(cx, cy, ringR).stroke();
-      doc.undash();
-      // The tag sits beside its ring, as near as it can get without lying on a
-      // boundary line or on any label already placed (road names included), and
-      // turns when that is the only way to find room. Nearest first; a turn costs
-      // a little, so horizontal wins whenever it is clear.
+      // Mark the cluster on the plan with the inset's number alone, written like
+      // a contiguous-parcel label in the open ground (the road) beside the
+      // beacon(s) it magnifies: no ring, so the plan carries one small label per
+      // inset rather than a drawn shape. It must lie outside every stand (a number
+      // inside a stand reads as that stand's), clear of boundary lines and of every
+      // label already placed, and it may turn when that is the only way to find
+      // room. The nearest such spot to ANY of the cluster's beacons wins; a turn
+      // costs a little, so horizontal wins whenever it is clear.
       const tag = `Inset ${inset.number}`;
       doc.fontSize(8).font('Helvetica-Bold');
       const tw = doc.widthOfString(tag), th = 8;
-      const options = [];
-      for (const rot of [0, 30, -30, 60, -60, 90]) {
-        const rr = (rot * Math.PI) / 180;
-        const ew = Math.abs(Math.cos(rr)) * tw + Math.abs(Math.sin(rr)) * th;
-        const eh = Math.abs(Math.sin(rr)) * tw + Math.abs(Math.cos(rr)) * th;
-        for (let a = 0; a < 360; a += 15) {
-          const dx = Math.cos((a * Math.PI) / 180), dy = Math.sin((a * Math.PI) / 180);
-          const reach = (Math.abs(dx) * ew + Math.abs(dy) * eh) / 2;
-          for (const gap of [1.5, 4, 8, 14]) {
-            const d = ringR + gap + reach;
-            options.push({ rot, ew, eh, x: cx + dx * d, y: cy + dy * d, cost: gap + Math.abs(rot) * 0.05 });
+      // The line the cluster's beacons sit on, for the label to run along: of the
+      // boundary segments passing through any of them (and long enough to read as a
+      // line), the one nearest horizontal. The turn is therefore only ever a few
+      // degrees, so the label still reads left to right; where every line through
+      // the cluster is steeper than ALIGN_MAX_DEG the label stays horizontal.
+      const ALIGN_MAX_DEG = 45;
+      let align = 0;
+      // Beacons spread along a frontage (the stands' road edge) define its direction
+      // better than any one segment does -- a stand's long side lines run square to
+      // the road and would otherwise win. Their principal axis is the road's
+      // direction, whatever its angle: the label runs the way the road label does.
+      let alignedToFrontage = false;
+      // First choice: the road edge the cluster's beacons sit on (see
+      // frontageCandidates / alignAngleOf above).
+      {
+        const pre = alignAngleOf(idx);
+        if (pre !== null) { align = pre; alignedToFrontage = true; }
+      }
+      if (!alignedToFrontage) {
+        const pts = [];
+        for (const m of cluster) if (!pts.some((q) => Math.hypot(q.x - m.pos.x, q.y - m.pos.y) < 1)) pts.push(m.pos);
+        if (pts.length >= 2) {
+          const mx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
+          const my = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+          let sxx = 0, syy = 0, sxy = 0;
+          for (const p of pts) { sxx += (p.x - mx) ** 2; syy += (p.y - my) ** 2; sxy += (p.x - mx) * (p.y - my); }
+          const spread = Math.sqrt(Math.max(sxx, syy) / pts.length);
+          if (spread >= 3) {
+            let ang = (0.5 * Math.atan2(2 * sxy, sxx - syy) * 180) / Math.PI;
+            if (ang > 90) ang -= 180;
+            if (ang <= -90) ang += 180;
+            align = Math.round(ang * 10) / 10;
+            alignedToFrontage = true;
           }
         }
       }
-      options.sort((p, q) => p.cost - q.cost);
+      if (!alignedToFrontage) {
+        let bestAbs = Infinity, bestLen = 0;
+        for (const sg of avoidSegments) {
+          const L = Math.hypot(sg.x2 - sg.x1, sg.y2 - sg.y1);
+          if (L < 8) continue;
+          const onIt = cluster.some((m) => {
+            const t = Math.max(0, Math.min(1, ((m.pos.x - sg.x1) * (sg.x2 - sg.x1) + (m.pos.y - sg.y1) * (sg.y2 - sg.y1)) / (L * L)));
+            return Math.hypot(m.pos.x - (sg.x1 + t * (sg.x2 - sg.x1)), m.pos.y - (sg.y1 + t * (sg.y2 - sg.y1))) < 1.5;
+          });
+          if (!onIt) continue;
+          let ang = (Math.atan2(sg.y2 - sg.y1, sg.x2 - sg.x1) * 180) / Math.PI;
+          if (ang > 90) ang -= 180;
+          if (ang <= -90) ang += 180;
+          const ab = Math.abs(ang);
+          if (ab < bestAbs - 1e-6 || (Math.abs(ab - bestAbs) <= 1e-6 && L > bestLen)) { bestAbs = ab; bestLen = L; align = ang; }
+        }
+        if (Math.abs(align) > ALIGN_MAX_DEG) align = 0;
+        align = Math.round(align * 10) / 10;
+      }
+      // A label may lie inside a stand only if its beacons are in-parcel beacons of
+      // THAT stand. Written in a neighbouring stand it reads as that stand's, so
+      // the cluster's own stands are the only ones it may overlap.
+      const ownStands = new Set(cluster.map((m) => String(m.stand)));
+      const FONTS = [8, 7, 6.5, 6];
+      const FONT_COST_PT = 8; // distance traded for one point of lettering size
+      // The road direction first, then the other road directions around (a corridor
+      // between two roads' edges may run at an angle the primary line does not),
+      // then a few degrees either side and the small turns.
+      const extraAngles = [...new Set((clusterInfo[idx]?.extraAngles ?? []).map((a) => Math.round(a * 10) / 10))].filter((a) => a !== align);
+      const rots = [...new Set([align, ...extraAngles, align + 8, align - 8, 0, 15, -15, 30, -30, 45, -45])];
+      // How far a turn is from a road direction: nothing for the primary one, a little for another.
+      const turnCost = (rot) => {
+        if (rot === align) return 0;
+        if (extraAngles.includes(rot)) return 3;
+        return Math.abs(rot - align) < 9 ? 2 : 10 + Math.abs(rot - align) * 0.1;
+      };
+      const build = (fs, gaps) => {
+        doc.fontSize(fs).font('Helvetica-Bold');
+        const w = doc.widthOfString(tag), h = fs;
+        const out = [];
+        for (const rot of rots) {
+          const rr = (rot * Math.PI) / 180;
+          const ew = Math.abs(Math.cos(rr)) * w + Math.abs(Math.sin(rr)) * h;
+          const eh = Math.abs(Math.sin(rr)) * w + Math.abs(Math.cos(rr)) * h;
+          for (const m of cluster) {
+            for (let a = 0; a < 360; a += 15) {
+              const dx = Math.cos((a * Math.PI) / 180), dy = Math.sin((a * Math.PI) / 180);
+              const reach = (Math.abs(dx) * ew + Math.abs(dy) * eh) / 2;
+              for (const gap of gaps) {
+                const d = beaconRadius + gap + reach;
+                out.push({ rot, ew, eh, dx, dy, reach, gap, fs, tw: w, th: h, bx: m.pos.x, by: m.pos.y,
+                  x: m.pos.x + dx * d, y: m.pos.y + dy * d,
+                  // Along the road costs nothing. A label off its road's direction
+                  // pays enough that it only wins when nothing aligned fits within
+                  // reach, so the labels along one road keep reading as one run.
+                  // A smaller label costs FONT_COST_PT per point shrunk, so a 6pt label
+                  // beside its beacons beats an 8pt one a stand away.
+                  cost: gap + (FONTS[0] - fs) * FONT_COST_PT
+                    + turnCost(rot) });
+              }
+            }
+          }
+        }
+        return out.sort((p, q) => p.cost - q.cost);
+      };
       const fits = (o) =>
         o.x - o.ew / 2 >= mapBounds.x && o.x + o.ew / 2 <= mapBounds.x + mapBounds.width &&
         o.y - o.eh / 2 >= mapBounds.y && o.y + o.eh / 2 <= mapBounds.y + mapBounds.height &&
-        rotatedBoxClear(o.x, o.y, tw, th, o.rot, avoidSegments, 1) &&
+        rotatedBoxClear(o.x, o.y, o.tw, o.th, o.rot, avoidSegments, 1) &&
         !collisionDetector.hasCollision(o.x - o.ew / 2, o.y - o.eh / 2, o.ew, o.eh, 1);
-      const chosen = options.find(fits) || options[0];
+      // fits() has already ruled out any boundary line crossing the label, so it
+      // lies wholly inside one stand or wholly outside them all: its centre says
+      // which. (Testing its axis-aligned extent instead overstates a turned label
+      // badly -- a label at 54 degrees would "overlap" the stands either side of a
+      // narrow road that it actually fits down.)
+      const standsHit = (o) =>
+        standPolys.filter((sp) => isPointInPolygonPDF({ x: o.x, y: o.y }, sp.poly)).map((sp) => sp.stand);
+      const allowed = (hit) => hit.every((st) => ownStands.has(st));
+      // Beside the beacon with no leader line. Each size is tried over the near
+      // gaps first: the nearest clear spot in no foreign stand, preferring one in
+      // no stand at all (within a few points) to one in the cluster's own stand.
+      // The letter shrinks, never below FLOOR, before a spot further out is taken.
+      const NEAR_GAPS = [1.5, 3, 5, 8, 12, 18, 26];
+      const FAR_GAPS = [...NEAR_GAPS, 36, 50, 70];
+      // outsideOnly: the road (or open ground) only. Otherwise the cluster's own
+      // stands are allowed too.
+      const pick = (opts, outsideOnly) => {
+        for (const o of opts) {
+          if (!fits(o)) continue;
+          const hit = standsHit(o);
+          if (outsideOnly ? hit.length === 0 : allowed(hit)) return { o, hit };
+        }
+        return null;
+      };
+      // In the road at any size first; only then in the cluster's own stand.
+      // Every size at once, nearest-and-largest first, so size and distance trade
+      // off through the cost rather than the largest size always winning.
+      const allSizes = (gaps) => FONTS.flatMap((fs) => build(fs, gaps)).sort((p, q) => p.cost - q.cost);
+      let picked = null;
+      {
+        const near = allSizes(NEAR_GAPS);
+        picked = pick(near, true) || pick(near, false);
+      }
+      if (!picked) {
+        const far = allSizes(FAR_GAPS);
+        picked = pick(far, true) || pick(far, false);
+      }
+      if (!picked) {
+        // Nowhere clear of foreign stands at any size: the nearest clear spot, so
+        // the number is never lost.
+        const o = build(FONTS[0], NEAR_GAPS).find(fits) || build(FONTS[0], NEAR_GAPS)[0];
+        picked = { o, hit: standsHit(o) };
+      }
+      const chosen = picked.o;
+      logger.info(`[PDFKit] 🏷️ Inset ${inset.number} (${cluster.map((m) => m.name).join('/')}) label: ${chosen.gap}pt from its beacon, ${chosen.fs}pt, ${picked.hit.length === 0 ? 'outside' : allowed(picked.hit) ? 'in its own stand' : 'IN a FOREIGN stand ' + picked.hit.join(',')}, turned ${chosen.rot}° (line ${align}°)`);
+      if (labelMetrics) {
+        labelMetrics.insetLabels.push({
+          number: inset.number, members: cluster.map((m) => m.name), gap: chosen.gap, fontSize: chosen.fs, rotation: chosen.rot, align,
+          // True distance from the label's centre to the nearest beacon it refers to.
+          distance: Math.min(...cluster.map((m) => Math.hypot(chosen.x - m.pos.x, chosen.y - m.pos.y))),
+          foreignStands: picked.hit.filter((st) => !ownStands.has(st)),
+          outsideAll: picked.hit.length === 0,
+        });
+      }
       doc.save();
       doc.translate(chosen.x, chosen.y);
       if (chosen.rot) doc.rotate(chosen.rot);
-      doc.fillColor('#000000').text(tag, -tw / 2, -th / 2, { lineBreak: false });
-      doc.restore();
+      doc.fontSize(chosen.fs).font('Helvetica-Bold').fillColor('#000000')
+        .text(tag, -chosen.tw / 2, -chosen.th / 2, { lineBreak: false });
       doc.restore();
       collisionDetector.addRegion(chosen.x - chosen.ew / 2, chosen.y - chosen.eh / 2, chosen.ew, chosen.eh);
     });
@@ -10347,6 +10618,23 @@ function selectPageSize(extent, logger, requestedSheetSize, requestedScale) {
 class LabelCollisionDetector {
   constructor() {
     this.occupiedRegions = [];
+    // Uniform grid over occupiedRegions: placement probes hasCollision tens of
+    // thousands of times per beacon, so a linear scan of every placed label is
+    // quadratic in the beacon count. Regions touching a cell boundary share
+    // that cell, so touching still counts as overlap, as in boxesIntersect.
+    this._cell = 32;
+    this._grid = new Map();
+    this._oversize = [];
+  }
+
+  _cellRange(r) {
+    const c = this._cell;
+    return [
+      Math.floor(r.x / c),
+      Math.floor((r.x + r.width) / c),
+      Math.floor(r.y / c),
+      Math.floor((r.y + r.height) / c),
+    ];
   }
 
   /**
@@ -10361,9 +10649,20 @@ class LabelCollisionDetector {
       height: height + spacing * 2,
     };
 
-    return this.occupiedRegions.some((occupied) =>
-      this.regionsOverlap(region, occupied)
-    );
+    for (const occupied of this._oversize) {
+      if (this.regionsOverlap(region, occupied)) return true;
+    }
+    const [x0, x1, y0, y1] = this._cellRange(region);
+    for (let ix = x0; ix <= x1; ix++) {
+      for (let iy = y0; iy <= y1; iy++) {
+        const bucket = this._grid.get(ix * 1048576 + iy);
+        if (!bucket) continue;
+        for (const occupied of bucket) {
+          if (this.regionsOverlap(region, occupied)) return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -10371,12 +10670,28 @@ class LabelCollisionDetector {
    */
   addRegion(x, y, width, height, padding = 2) {
     const spacing = padding;
-    this.occupiedRegions.push({
+    const region = {
       x: x - spacing,
       y: y - spacing,
       width: width + spacing * 2,
       height: height + spacing * 2,
-    });
+    };
+    this.occupiedRegions.push(region);
+
+    const n = normalizeRect(region);
+    const [x0, x1, y0, y1] = this._cellRange(n);
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 256 || !Number.isFinite(x1 + y1 + x0 + y0)) {
+      this._oversize.push(region);
+      return;
+    }
+    for (let ix = x0; ix <= x1; ix++) {
+      for (let iy = y0; iy <= y1; iy++) {
+        const key = ix * 1048576 + iy;
+        const bucket = this._grid.get(key);
+        if (bucket) bucket.push(region);
+        else this._grid.set(key, [region]);
+      }
+    }
   }
 
   /**
@@ -11304,6 +11619,17 @@ async function _generateGeoPDFInner(options, logger) {
     }
   }
 
+  // What the label routines placed, for the label regression gate (and for
+  // anyone asking "how did the labelling do on this plan?").
+  const labelMetrics = {
+    vertexLabels: [],        // outside-figure vertex labels: distance from point, straddles figure
+    insetLabels: [],         // "Inset N" labels: gap, size, turn, road direction, stands touched
+    crampedLetters: 0,       // in-parcel letters that did not fit cleanly
+    insetClusters: 0,        // ... of which went to an inset (clusters)
+    crampedInPlace: 0,       // ... of which were drawn in place anyway (inset cap reached)
+    minSuffixFont: Infinity, // smallest in-parcel letter drawn
+  };
+
   // Step 1: Render Outside Figure boundary FIRST (as background layer)
   // This includes: red boundary line, beacon circles at vertices, and vertex labels outside polygon
   renderOutsideFigureBoundary(
@@ -11312,7 +11638,8 @@ async function _generateGeoPDFInner(options, logger) {
     calculatedExtent,
     figureBounds,
     logger,
-    optimalScale
+    optimalScale,
+    labelMetrics
   );
 
   // Extract Outside Figure vertex names to exclude from beacon rendering (they're already labeled by vertex labels)
@@ -11477,7 +11804,8 @@ async function _generateGeoPDFInner(options, logger) {
       for (const f of filteredParcels?.features || []) addRing(f?.geometry?.coordinates?.[0]);
       for (const f of outsideFigure?.features || []) addRing(f?.geometry?.coordinates?.[0]);
       return segs;
-    })()
+    })(),
+    labelMetrics
   );
 
   // Edge labels are rendered in renderParcels() with topology-aware split labeling
@@ -12738,7 +13066,7 @@ async function _generateGeoPDFInner(options, logger) {
   // DXF so PDF↔DXF stay in lockstep on scale + sheet size + orientation.
   // NOTE: pageSize carries `size: [wPt, hPt]` (no .width/.height fields).
   const _returnedOrientation = pageSize.size?.[0] >= pageSize.size?.[1] ? 'landscape' : 'portrait';
-  return { pdfBuffer, suggestedScale, scale: optimalScale.label, sheetSize: _returnedSheetSize, orientation: _returnedOrientation, tileGrid, warnings };
+  return { pdfBuffer, suggestedScale, scale: optimalScale.label, sheetSize: _returnedSheetSize, orientation: _returnedOrientation, tileGrid, warnings, labelMetrics };
 }
 
 async function _mergePDFBuffers(buffers, logger) {

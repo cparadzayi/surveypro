@@ -34,7 +34,7 @@ describe('fitSuffixLabel', () => {
     const fit = base(wedge, { x: 0, y: 0 })
     expect(fit.fitted).toBe(true)
     expect(fit.fontSize).toBeLessThan(8)
-    expect(fit.fontSize).toBeGreaterThanOrEqual(8 * 0.65)
+    expect(fit.fontSize).toBeGreaterThanOrEqual(8 * 0.75)
     expect(inside(wedge, { x: 0, y: 0 }, fit)).toBe(true)
   })
 
@@ -105,7 +105,7 @@ describe('fitSuffixLabel', () => {
       const coopL = base(tight, l, { neighbours: [t] })
       const coopT = base(tight, t, { neighbours: [l], collides: (r) => hit(r, coopL) })
       expect(coopL.fontSize + coopT.fontSize).toBeGreaterThanOrEqual(greedyL.fontSize + greedyT.fontSize - 1e-9)
-      expect(Math.min(coopL.fontSize, coopT.fontSize)).toBeGreaterThanOrEqual(8 * 0.65)
+      expect(Math.min(coopL.fontSize, coopT.fontSize)).toBeGreaterThanOrEqual(8 * 0.75)
     })
   })
 
@@ -115,15 +115,28 @@ describe('fitSuffixLabel', () => {
       for (const corner of sq.slice(0, 4)) expect(base(sq, corner).rotation).toBe(0)
     })
 
-    test('whatever the geometry, the tilt never exceeds the limit', () => {
+    test('whatever the geometry, the tilt never exceeds the limit unless it had to turn freely', () => {
       for (const deg of [0, 20, 30, 45, 60, 75, 90, 120]) {
         const a = deg * Math.PI / 180
         const rot = (p) => ({ x: p.x * Math.cos(a) - p.y * Math.sin(a), y: p.x * Math.sin(a) + p.y * Math.cos(a) })
         const strip = [{ x: 0, y: 0 }, { x: 9, y: 0 }, { x: 9, y: 120 }, { x: 0, y: 120 }, { x: 0, y: 0 }].map(rot)
         for (const corner of strip.slice(0, 4)) {
-          expect(Math.abs(base(strip, corner).rotation)).toBeLessThanOrEqual(MAX_TILT_DEG)
+          const f = base(strip, corner)
+          if (!f.free) expect(Math.abs(f.rotation)).toBeLessThanOrEqual(MAX_TILT_DEG)
         }
       }
+    })
+
+    test('free rotation is a fallback: a diagonal sliver that no near-horizontal letter clears takes it, still wholly inside', () => {
+      // 4.5pt wide, running at 45 degrees: a horizontal 5.3 x 9.6pt box cannot sit
+      // between the lines, but one turned across the sliver can.
+      const a = 45 * Math.PI / 180
+      const rot = (p) => ({ x: p.x * Math.cos(a) - p.y * Math.sin(a), y: p.x * Math.sin(a) + p.y * Math.cos(a) })
+      const sliver = [{ x: 0, y: 0 }, { x: 6.2, y: 0 }, { x: 6.2, y: 120 }, { x: 0, y: 120 }, { x: 0, y: 0 }].map(rot)
+      const f = base(sliver, sliver[0])
+      expect(f.fitted).toBe(true)
+      expect(inside(sliver, sliver[0], f)).toBe(true)
+      if (f.free) expect(Math.abs(f.rotation)).toBeGreaterThan(MAX_TILT_DEG)
     })
 
     test('a small tilt is used to clear a boundary when horizontal cannot', () => {

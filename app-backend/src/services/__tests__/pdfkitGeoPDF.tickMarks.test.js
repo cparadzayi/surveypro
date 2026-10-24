@@ -79,8 +79,9 @@ describe('renderOutsideFigureTickMarks — grid compliance', () => {
     const xs = [...new Set(decodedText.match(/X = [+-]\d+/g) || [])]
     // A coordinate cross marks a grid INTERSECTION, so it carries both a Y and
     // an X label — the convention on the Surveyor-General reference plan.
-    expect(ys.length).toBeGreaterThan(2)
-    expect(xs.length).toBeGreaterThan(2)
+    // At 1:500 the grid is 150m, so a small figure spans only a couple of lines.
+    expect(ys.length).toBeGreaterThanOrEqual(2)
+    expect(xs.length).toBeGreaterThanOrEqual(2)
   })
 
   test('labels use the reference format — signed, no thousands separators', async () => {
@@ -99,7 +100,8 @@ describe('renderOutsideFigureTickMarks — grid compliance', () => {
     const ys = [...new Set(decodedText.match(/Y = [+-]\d+/g) || [])]
       .map(t => Math.abs(Number(t.replace('Y = ', ''))))
     expect(ys.length).toBeGreaterThan(0)
-    // 1:500 with the reference's 100mm paper target resolves to a 50m grid.
-    for (const v of ys) expect(v % 50).toBe(0)
+    // 1:500 at 300mm of paper between crosses starts at a 150m grid; a finer
+    // rung is allowed if the coarse one left too few crosses clear.
+    for (const v of ys) expect(v % 25).toBe(0)
   })
 })

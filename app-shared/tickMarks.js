@@ -27,33 +27,27 @@
  * entirely, which the reference shows is not the convention.
  */
 
-// Largest "nice" ground-metre interval whose paper spacing stays within a
-// ruler-safe target, so a Surveyor-General can check any adjacent pair with a
-// standard 30cm scale ruler.
+// Largest "nice" ground-metre interval whose paper spacing stays within the
+// target. The surveyor's rule is 300mm of paper between adjacent crosses:
+// 300m at 1:1000, 150m at 1:500 (so 600m at 1:2000, and so on).
 //
-// The 100mm default is measured off the reference plan, not chosen: at 1:1000
-// it lays out a 100m grid, i.e. 100mm of paper between adjacent crosses. A
-// looser target (the old 250mm) picks 200m there and halves the grid density
-// against what the Surveyor-General actually issues.
-const REFERENCE_TARGET_PAPER_MM = 100
-export const GRID_NICE_NUMBERS = [1, 2, 5, 10, 20, 25, 50, 75, 100, 200, 500, 1000, 2000, 5000, 10000]
+// That is the STARTING interval only. selectTickGrid steps finer down the
+// ladder when the coarse grid leaves too few crosses clear of drawn detail,
+// so a small figure still gets its minimum marks.
+const REFERENCE_TARGET_PAPER_MM = 300
+export const GRID_NICE_NUMBERS = [50, 100, 150, 200, 300, 500, 600, 1000, 2000, 5000, 10000]
 
-// The paper-spacing target alone sizes the interval off how much of the SHEET
-// the figure occupies, not off the figure itself. That was harmless while
-// every figure was fit-to-box (it always filled the sheet), but a scale-true
-// figure can be a small fraction of the sheet, and a 100mm-paper-spacing
-// interval measured against the whole page can be coarser than the figure's
-// own extent — e.g. a 300x195m figure at 1:1000 (100m interval) spans it in
-// 3x2 divisions, most of which land on the boundary or a title-block-adjacent
-// corner and have nowhere to go once one is rejected. Capping the interval so
-// the figure's own longest side always gets at least this many divisions
-// keeps the grid tied to the SURVEY, not the sheet.
-const MIN_DIVISIONS_ACROSS_FIGURE = 4
+// Every cross sits on a coordinate that is a whole multiple of this, and the
+// first and last cross on each axis lie within this distance of the figure's
+// extremes (outside them where the lattice allows).
+export const TICK_COORD_MULTIPLE_M = 50
+export const TICK_END_REACH_M = 50
 
-export function chooseTickIntervalMetres(scaleDenominator, targetPaperMm = REFERENCE_TARGET_PAPER_MM, longestExtentM = Infinity) {
-  const paperCap = (targetPaperMm * scaleDenominator) / 1000
-  const divisionCap = longestExtentM / MIN_DIVISIONS_ACROSS_FIGURE
-  const maxIntervalM = Math.min(paperCap, divisionCap)
+// longestExtentM is accepted for call-site compatibility but no longer caps the
+// interval: tying the grid to the figure's size (at least 4 divisions across it)
+// made a 300m survey at 1:1000 lay a 75m grid, against the 300m the rule asks.
+export function chooseTickIntervalMetres(scaleDenominator, targetPaperMm = REFERENCE_TARGET_PAPER_MM, _longestExtentM = Infinity) {
+  const maxIntervalM = (targetPaperMm * scaleDenominator) / 1000
   let chosen = GRID_NICE_NUMBERS[0]
   for (const n of GRID_NICE_NUMBERS) {
     if (n > maxIntervalM) break
@@ -63,25 +57,63 @@ export function chooseTickIntervalMetres(scaleDenominator, targetPaperMm = REFER
 }
 
 /**
+ * Coordinates of one axis' crosses for an EXACT spacing, or null when no run of
+ * crosses at that spacing can satisfy the end rule.
+ *
+ * The rule (the surveyor's): every coordinate is a multiple of 50m; the first
+ * is within 50m of the figure's minimum and the last within 50m of its maximum,
+ * each preferably beyond the extreme (outside the figure) rather than inside it.
+ * Of the two starts that qualify (the multiple of 50 at or below the minimum,
+ * and the next one up) the run that ends nearer to or beyond the maximum wins.
+ */
+export function axisTickValues(min, max, spacingM) {
+  const M = TICK_COORD_MULTIPLE_M, R = TICK_END_REACH_M, eps = 1e-6
+  const s1 = Math.floor(min / M + eps) * M
+  let best = null
+  for (const start of [s1, s1 + M]) {
+    if (start > min + R + eps) continue
+    const n = Math.max(1, Math.ceil((max - R - start) / spacingM - eps))
+    const end = start + n * spacingM
+    if (end > max + R + eps) continue
+    const outside = (start <= min + eps ? 1 : 0) + (end >= max - eps ? 1 : 0)
+    const overshoot = Math.abs(start - min) + Math.abs(end - max)
+    if (best === null || outside > best.outside || (outside === best.outside && overshoot < best.overshoot)) {
+      best = { start, n, outside, overshoot }
+    }
+  }
+  if (best === null) return null
+  const out = []
+  for (let i = 0; i <= best.n; i++) out.push(Math.round((best.start + i * spacingM) * 1e6) / 1e6)
+  return out
+}
+
+/**
  * Grid nodes for an EXACT interval (ground metres), as {y, x} coordinates.
- * The rectangle is snapped OUTWARD to whole multiples of intervalM so it
- * spans the figure — the reference plan carries crosses slightly beyond the
- * parcels on every side. Every intersection inside that rectangle is
- * returned, interior nodes included; deciding which to actually draw is the
- * caller's clearance test, not this function's job.
+ * Each axis follows axisTickValues. Every intersection is returned, interior
+ * nodes included; deciding which to actually draw is the caller's clearance
+ * test, not this function's job.
  *
  * Factored out of computeTickGrid so selectTickGrid can drive the interval
  * directly (see its own comment for why that matters).
  */
 export function gridNodesForInterval(intervalM, { yMin, yMax, xMin, xMax }) {
-  const lo = (v) => Math.floor(v / intervalM) * intervalM
-  const hi = (v) => Math.ceil(v / intervalM) * intervalM
-  const nodes = []
-  for (let y = lo(yMin); y <= hi(yMax) + 1e-6; y += intervalM) {
-    for (let x = lo(xMin); x <= hi(xMax) + 1e-6; x += intervalM) {
-      nodes.push({ y: Math.round(y * 1e6) / 1e6, x: Math.round(x * 1e6) / 1e6 })
+  const ys = axisTickValues(yMin, yMax, intervalM)
+  const xs = axisTickValues(xMin, xMax, intervalM)
+  if (ys === null || xs === null) {
+    // Not reachable through tickRungLadder, which only offers spacings that
+    // satisfy both axes; kept so a direct call still returns a covering grid.
+    const lo = (v) => Math.floor(v / intervalM) * intervalM
+    const hi = (v) => Math.ceil(v / intervalM) * intervalM
+    const nodes = []
+    for (let y = lo(yMin); y <= hi(yMax) + 1e-6; y += intervalM) {
+      for (let x = lo(xMin); x <= hi(xMax) + 1e-6; x += intervalM) {
+        nodes.push({ y: Math.round(y * 1e6) / 1e6, x: Math.round(x * 1e6) / 1e6 })
+      }
     }
+    return nodes
   }
+  const nodes = []
+  for (const y of ys) for (const x of xs) nodes.push({ y, x })
   return nodes
 }
 
@@ -95,8 +127,7 @@ export function gridNodesForInterval(intervalM, { yMin, yMax, xMin, xMax }) {
  * not this function's job.
  */
 export function computeTickGrid({ yMin, yMax, xMin, xMax, scaleDenominator, targetPaperMm = REFERENCE_TARGET_PAPER_MM }) {
-  const longestExtentM = Math.max(yMax - yMin, xMax - xMin)
-  const intervalM = chooseTickIntervalMetres(scaleDenominator, targetPaperMm, longestExtentM)
+  const intervalM = tickRungLadder({ yMin, yMax, xMin, xMax, scaleDenominator, targetPaperMm })[0]
   return { intervalM, nodes: gridNodesForInterval(intervalM, { yMin, yMax, xMin, xMax }) }
 }
 
@@ -173,9 +204,13 @@ export function spansBothAxes(nodes) {
  * this expression would silently diverge the day either rule changes.
  */
 export function tickRungLadder({ yMin, yMax, xMin, xMax, scaleDenominator, targetPaperMm = REFERENCE_TARGET_PAPER_MM }) {
-  const longestExtentM = Math.max(yMax - yMin, xMax - xMin)
-  const startInterval = chooseTickIntervalMetres(scaleDenominator, targetPaperMm, longestExtentM)
-  return GRID_NICE_NUMBERS.filter((n) => n <= startInterval).sort((a, b) => b - a)
+  const startInterval = chooseTickIntervalMetres(scaleDenominator, targetPaperMm)
+  // A spacing is offered only if a run of crosses at that spacing can begin and
+  // end within reach of the figure on BOTH axes (axisTickValues). 50m always can.
+  return GRID_NICE_NUMBERS
+    .filter((n) => n <= startInterval)
+    .filter((n) => axisTickValues(yMin, yMax, n) !== null && axisTickValues(xMin, xMax, n) !== null)
+    .sort((a, b) => b - a)
 }
 
 export function selectTickGrid({
@@ -194,5 +229,5 @@ export function selectTickGrid({
       if (clear.length >= minMarks) return { intervalM, nodes: clear }
     }
   }
-  return bestDiverse ?? best ?? { intervalM: startInterval, nodes: [] }
+  return bestDiverse ?? best ?? { intervalM: rungs[0] ?? TICK_COORD_MULTIPLE_M, nodes: [] }
 }

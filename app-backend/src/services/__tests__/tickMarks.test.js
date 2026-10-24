@@ -1,19 +1,26 @@
 import { describe, test, expect } from '@jest/globals'
-import { chooseTickIntervalMetres, computeTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../../app-shared/tickMarks.js'
+import { chooseTickIntervalMetres, computeTickGrid, axisTickValues, tickRungLadder, formatTickLabel, TICK_GEOMETRY_MM } from '../../../../app-shared/tickMarks.js'
 
 // Every expectation here is measured off the Surveyor-General reference plan
-// (mag1sh1a.dxf, Maglas/Shabani), not chosen: a 100m grid at 1:1000, crosses
-// with 4mm arms and 2.5mm labels, and labels written "X = +2247100".
+// (mag1sh1a.dxf, Maglas/Shabani), not chosen: crosses with 4mm arms and 2.5mm
+// labels, and labels written "X = +2247100". The grid spacing is the surveyor's
+// rule: 300mm of paper between crosses (300m at 1:1000, 150m at 1:500).
 
 describe('chooseTickIntervalMetres', () => {
-  test('1:1000 picks the reference plan\'s own 100m grid', () => {
-    expect(chooseTickIntervalMetres(1000)).toBe(100)
+  test('300m at 1:1000 and 150m at 1:500 (300mm of paper)', () => {
+    expect(chooseTickIntervalMetres(1000)).toBe(300)
+    expect(chooseTickIntervalMetres(500)).toBe(150)
+    expect(chooseTickIntervalMetres(2000)).toBe(600)
   })
 
-  test('paper spacing stays ruler-checkable at every scale', () => {
+  test('the figure size does not shrink the interval', () => {
+    expect(chooseTickIntervalMetres(1000, undefined, 276)).toBe(300)
+  })
+
+  test('paper spacing never exceeds 300mm at any scale', () => {
     for (const scale of [250, 500, 750, 1000, 1500, 2000, 2500, 5000, 10000]) {
       const paperMm = (chooseTickIntervalMetres(scale) * 1000) / scale
-      expect(paperMm).toBeLessThanOrEqual(100)
+      expect(paperMm).toBeLessThanOrEqual(300)
       expect(paperMm).toBeGreaterThan(0)
     }
   })
@@ -44,44 +51,71 @@ describe('computeTickGrid', () => {
     const { intervalM, nodes } = computeTickGrid({
       yMin: 97383, yMax: 97901, xMin: 2247113, xMax: 2247612, scaleDenominator: 1000,
     })
-    expect(intervalM).toBe(100)
+    expect(intervalM).toBe(150)
     const ys = [...new Set(nodes.map(n => n.y))].sort((a, b) => a - b)
     const xs = [...new Set(nodes.map(n => n.x))].sort((a, b) => a - b)
-    // Outward: 97383 -> 97300 below, 97901 -> 98000 above.
-    expect(ys[0]).toBe(97300)
-    expect(ys[ys.length - 1]).toBe(98000)
-    expect(xs[0]).toBe(2247100)
-    expect(xs[xs.length - 1]).toBe(2247700)
+    // 300m would end 88m past the X maximum, so the next spacing down is used.
+    // Y starts outside (97383 -> 97350) and ends outside (97901 -> 97950); X
+    // cannot do both at 150m, so it starts and ends 37m / 12m inside.
+    expect(ys[0]).toBe(97350)
+    expect(ys[ys.length - 1]).toBe(97950)
+    expect(xs[0]).toBe(2247150)
+    expect(xs[xs.length - 1]).toBe(2247600)
   })
 
   test('returns every intersection, interior nodes included', () => {
     // The reference carries crosses inside the figure, so the grid must offer
     // interior nodes; which ones get drawn is the renderer's clearance test.
     //
-    // This 200x200 extent is small enough that the division-cap rule (at least
-    // MIN_DIVISIONS_ACROSS_FIGURE=4 divisions across the figure's longest side)
-    // now binds ahead of the 100mm paper-spacing target: 200/4=50 < the
-    // paper-target's 100, so the interval is 50, not 100 -- a 5x5 grid, not
-    // 3x3. Before that rule existed the interval depended only on how much of
-    // the SHEET the figure occupied, which is what let a small, scale-true
-    // figure's declared-scale grid collapse to a handful of corner-only nodes
-    // (the defect the division cap fixes).
     const { intervalM, nodes } = computeTickGrid({
-      yMin: 0, yMax: 200, xMin: 0, xMax: 200, scaleDenominator: 1000,
+      yMin: 0, yMax: 600, xMin: 0, xMax: 600, scaleDenominator: 1000,
     })
-    expect(intervalM).toBe(50)
-    expect(nodes).toHaveLength(25)   // 5 x 5, not just the 4 perimeter-only corners
-    expect(nodes).toContainEqual({ y: 100, x: 100 })  // an interior node
+    expect(intervalM).toBe(300)
+    expect(nodes).toHaveLength(9)   // 3 x 3, not just the 8 perimeter nodes
+    expect(nodes).toContainEqual({ y: 300, x: 300 })  // an interior node
   })
 
-  test('every node is a whole multiple of the interval', () => {
+  test('every coordinate is a whole multiple of 50m, evenly spaced by the interval', () => {
     const { intervalM, nodes } = computeTickGrid({
       yMin: 97368.92, yMax: 97720.42, xMin: 2247108.72, xMax: 2247428.84, scaleDenominator: 1000,
     })
     for (const n of nodes) {
-      expect(n.y % intervalM).toBeCloseTo(0, 6)
-      expect(n.x % intervalM).toBeCloseTo(0, 6)
+      expect(n.y % 50).toBeCloseTo(0, 6)
+      expect(n.x % 50).toBeCloseTo(0, 6)
     }
+    const ys = [...new Set(nodes.map(n => n.y))].sort((a, b) => a - b)
+    for (let i = 1; i < ys.length; i++) expect(ys[i] - ys[i - 1]).toBe(intervalM)
+  })
+})
+
+describe('axisTickValues — the end rule', () => {
+  test('starts within 50m of the minimum and ends within 50m of the maximum', () => {
+    for (const [min, max] of [[97183, 97420], [97383, 97901], [2247113, 2247612], [100, 130], [-340, 910]]) {
+      for (const spacing of [50, 100, 150, 200, 300, 600]) {
+        const v = axisTickValues(min, max, spacing)
+        if (v === null) continue
+        expect(Math.abs(v[0] - min)).toBeLessThanOrEqual(50)
+        expect(Math.abs(v[v.length - 1] - max)).toBeLessThanOrEqual(50)
+        for (const c of v) expect(c % 50).toBeCloseTo(0, 6)
+      }
+    }
+  })
+
+  test('prefers a cross beyond the extreme (outside the figure) to one inside it', () => {
+    // 97383 -> 97350 (outside), not 97400 (inside); 97901 -> 97950, not 97900.
+    expect(axisTickValues(97383, 97901, 300)).toEqual([97350, 97650, 97950])
+  })
+
+  test('is null when the spacing cannot end within reach of the maximum', () => {
+    // From 2247100 or 2247150, 300m steps land 88m / 150m past 2247612.
+    expect(axisTickValues(2247113, 2247612, 300)).toBeNull()
+  })
+
+  test('the ladder offers only spacings both axes can satisfy, and 50m always is', () => {
+    const rungs = tickRungLadder({ yMin: 97383, yMax: 97901, xMin: 2247113, xMax: 2247612, scaleDenominator: 1000 })
+    expect(rungs[0]).toBe(150)
+    expect(rungs).not.toContain(300)
+    expect(rungs[rungs.length - 1]).toBe(50)
   })
 })
 

@@ -81,6 +81,17 @@ const TILT_STEPS_DEG = [7, 14, MAX_TILT_DEG]
  */
 const FREE_STEPS_DEG = [30, 45, 60, 75, 90]
 
+/**
+ * The ink of a bold capital, measured by rendering one: pdfkit's text() puts it at
+ * the TOP of the line box it is drawn from, not the middle. It is 0.71 x the font
+ * size tall and centred 0.244 x the font size ABOVE the box centre, so a fit that
+ * clears the whole 1.2 x line box wastes 40% of a letter's height and clears the
+ * wrong area. In `ink` mode the fit works on the real ink box and gives back the
+ * draw centre that puts the ink there.
+ */
+export const INK_HEIGHT = 0.78   // 0.71 ink plus a margin for round caps (C, D, G)
+export const INK_UP = 0.244
+
 function dedupeRing(polygon) {
   const last = polygon[polygon.length - 1], first = polygon[0]
   const closed = last && first &&
@@ -172,6 +183,7 @@ export function fitSuffixLabel({
   beaconPos, polygon, widthAt, fontSize, beaconRadius,
   collides = null, minScale = MIN_SCALE, lineHeight = 1.2,
   edgeClear = 0.6, circleClear = 0.5, neighbours = [], relaxed = false, _tier = 0, freeRot = false,
+  ink = false,
 }) {
   const ring = dedupeRing(polygon)
   const rn = ring.length
@@ -246,7 +258,7 @@ export function fitSuffixLabel({
   }
   for (const sc of scales) {
     const fs = fontSize * sc
-    const w = widthAt(fs), h = fs * lineHeight
+    const w = widthAt(fs), h = fs * (ink ? INK_HEIGHT : lineHeight)
     const shrink = (1 - sc) * 10
     for (const rot of rotations) {
       const rotCost = Math.abs(rot) * 0.08 // 7 deg ~ 0.6, 20 deg ~ 1.6
@@ -286,7 +298,7 @@ export function fitSuffixLabel({
   if (!best && !freeRot && !relaxed && _tier === 0) {
     const turned = fitSuffixLabel({
       beaconPos, polygon, widthAt, fontSize, beaconRadius, collides, minScale, lineHeight,
-      edgeClear, circleClear, neighbours, freeRot: true,
+      edgeClear, circleClear, neighbours, freeRot: true, ink,
     })
     if (turned.fitted) return turned
   }
@@ -318,7 +330,7 @@ export function fitSuffixLabel({
       for (const nb of ringNbs) {
         const resp = fitSuffixLabel({
           beaconPos: nb, polygon: ring, widthAt, fontSize, beaconRadius, minScale,
-          lineHeight, edgeClear, circleClear,
+          lineHeight, edgeClear, circleClear, ink,
           collides: (r) => hit(r, c.box) || (collides ? collides(r) : false),
         })
         total += resp.fitted ? resp.cost : 12
@@ -327,8 +339,12 @@ export function fitSuffixLabel({
     }
   }
   if (best) {
+    // The search placed the INK; the caller draws a line box, so hand back the box
+    // centre that puts the ink there (the ink sits INK_UP above it, along the turn).
+    const th = best.rotation * DEG, k = ink ? INK_UP * best.fontSize : 0
     return {
-      cost: best.cost, cx: best.cx, cy: best.cy, fontSize: best.fontSize, rotation: best.rotation,
+      cost: best.cost, cx: best.cx - k * Math.sin(th), cy: best.cy + k * Math.cos(th),
+      inkCx: best.cx, inkCy: best.cy, fontSize: best.fontSize, rotation: best.rotation,
       fitted: true, tier: _tier, free: freeRot, cramped: _tier >= 1 || best.fontSize < fontSize * CRAMPED_SCALE - 1e-9,
     }
   }
@@ -338,7 +354,7 @@ export function fitSuffixLabel({
   // rather than one dropped at the centroid.
   if (edgeClear > 0.15 && !relaxed) {
     return fitSuffixLabel({
-      beaconPos, polygon, widthAt, fontSize, beaconRadius, collides, lineHeight,
+      beaconPos, polygon, widthAt, fontSize, beaconRadius, collides, lineHeight, ink,
       neighbours, minScale, edgeClear: edgeClear * 0.25, circleClear: circleClear * 0.5,
       _tier: 1,
     })
@@ -351,14 +367,14 @@ export function fitSuffixLabel({
   // the overlap with them over losing the letter's place.
   if (!relaxed) {
     return fitSuffixLabel({
-      beaconPos, polygon, widthAt, fontSize, beaconRadius, collides, lineHeight,
+      beaconPos, polygon, widthAt, fontSize, beaconRadius, collides, lineHeight, ink,
       neighbours, minScale, edgeClear: 0, circleClear: circleClear * 0.5, relaxed: true,
       _tier: 2,
     })
   }
   if (collides) {
     return fitSuffixLabel({
-      beaconPos, polygon, widthAt, fontSize, beaconRadius, collides: null, lineHeight,
+      beaconPos, polygon, widthAt, fontSize, beaconRadius, collides: null, lineHeight, ink,
       neighbours, minScale, edgeClear: 0, circleClear: circleClear * 0.5, relaxed: true,
       _tier: 3,
     })

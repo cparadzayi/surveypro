@@ -1,4 +1,4 @@
-import { fitSuffixLabel, boxFitsInside, MAX_TILT_DEG } from '../suffixLabelFit.js'
+import { fitSuffixLabel, boxFitsInside, MAX_TILT_DEG, INK_HEIGHT, INK_UP } from '../suffixLabelFit.js'
 
 const widthAt = (fs) => fs * 0.7
 const R = 2.5
@@ -175,5 +175,56 @@ describe('fitSuffixLabel', () => {
       expect(dist(fl, tipL)).toBeLessThan(15)
       expect(dist(fr, tipR)).toBeLessThan(25)
     })
+  })
+})
+
+describe('ink mode: fit the real ink of the letter, not its whole line box', () => {
+  // pdfkit draws a capital at the TOP of its 1.2 x line box: the ink is 0.71 x the font
+  // size tall and centred 0.244 x the font size above the box centre. In ink mode the
+  // fit clears that, and hands back the box centre that puts the ink there.
+  const baseInk = (polygon, beaconPos, extra = {}) => base(polygon, beaconPos, { ink: true, ...extra })
+  const insideInk = (polygon, beaconPos, fit) =>
+    boxFitsInside(polygon.slice(0, -1), beaconPos, fit.inkCx, fit.inkCy,
+      widthAt(fit.fontSize), fit.fontSize * INK_HEIGHT, fit.rotation, { beaconRadius: R })
+
+  test('the ink box is inside the parcel and the returned draw centre is the ink centre moved INK_UP', () => {
+    const sq = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }, { x: 0, y: 0 }]
+    const fit = baseInk(sq, { x: 0, y: 0 })
+    expect(fit.fitted).toBe(true)
+    expect(insideInk(sq, { x: 0, y: 0 }, fit)).toBe(true)
+    expect(fit.rotation).toBe(0)
+    expect(fit.cx).toBeCloseTo(fit.inkCx, 6)
+    expect(fit.cy - fit.inkCy).toBeCloseTo(INK_UP * fit.fontSize, 6)
+  })
+
+  test('the draw centre follows the turn: moved INK_UP along the own down axis of the letter', () => {
+    const a = 45 * Math.PI / 180
+    const rot = (p) => ({ x: p.x * Math.cos(a) - p.y * Math.sin(a), y: p.x * Math.sin(a) + p.y * Math.cos(a) })
+    const sliver = [{ x: 0, y: 0 }, { x: 5.6, y: 0 }, { x: 5.6, y: 120 }, { x: 0, y: 120 }, { x: 0, y: 0 }].map(rot)
+    const fit = baseInk(sliver, sliver[0])
+    const th = fit.rotation * Math.PI / 180, k = INK_UP * fit.fontSize
+    expect(fit.cx - fit.inkCx).toBeCloseTo(-k * Math.sin(th), 6)
+    expect(fit.cy - fit.inkCy).toBeCloseTo(k * Math.cos(th), 6)
+  })
+
+  test('a letter stays horizontal in a low strip where the line box would force it to turn', () => {
+    // 100pt long, 6.5pt high: a horizontal letter needs its height + 2 x 0.6 clearance
+    // across the strip -- 8.4 for the 7.2pt line box (too much), 5.9 for the 4.7pt ink.
+    const strip = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 6.5 }, { x: 0, y: 6.5 }, { x: 0, y: 0 }]
+    const corner = { x: 0, y: 0 }
+    const line = base(strip, corner, { fontSize: 6 })
+    const inkFit = baseInk(strip, corner, { fontSize: 6 })
+    expect(inkFit.fitted).toBe(true)
+    expect(inkFit.rotation).toBe(0)
+    expect(inkFit.cramped).toBe(false)
+    expect(Math.abs(line.rotation) > 0 || line.cramped).toBe(true)
+  })
+
+  test('never claims a spot the ink does not fit: wherever it lands the ink is wholly inside', () => {
+    for (const w of [5.5, 6.5, 8, 12]) {
+      const strip = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: w }, { x: 0, y: w }, { x: 0, y: 0 }]
+      const fit = baseInk(strip, { x: 0, y: 0 }, { fontSize: 6 })
+      if (fit.fitted && fit.tier === 0) expect(insideInk(strip, { x: 0, y: 0 }, fit)).toBe(true)
+    }
   })
 })

@@ -250,6 +250,10 @@ node --experimental-vm-modules node_modules/jest/bin/jest.js src/routes
 
 Fixing the Maglas slowdown is a real performance bug in the DXF/PDF path and worth its own ticket — it is not a test-config problem.
 
+### Label regression gate
+
+`generateGeoPDF()` returns `labelMetrics` (outside-figure vertex labels, inset labels, cramped letters, smallest letter drawn), and `app-backend/src/services/__tests__/pdfkitGeoPDF.labelGate.test.js` turns the surveyor's label rules into counts: **hard rules** with a budget of zero (an outside-figure label wholly outside the figure; no in-parcel letter or inset label under the 6pt floor; no inset label in a stand its beacons do not belong to) and **quality budgets** capped at what the surveyed plan achieves today (insets, labels beside their beacon, labels along their road). Budgets only tighten: when a labelling change genuinely improves the plan, lower the number in the same commit. It takes about 4.5 minutes (the surveyed plan is generated twice), so run it when touching `suffixLabelFit.js`, the inset code or the vertex-label code: `node --experimental-vm-modules node_modules/jest/bin/jest.js labelGate` from `app-backend`. The plan comes from `fixtures/labelGateSurvey.json` via `helpers/buildSurveyPlan.js`, which also builds an ad-hoc probe request. Declared scales are strings (`"1:500"`), not objects: an object is silently ignored.
+
 ### Dead routes — verified against the live database
 
 These are **pre-existing functional breaks**, not security findings — they cannot execute at all. Both were auth-gated first (defence in depth, no current effect), then **unmounted** via `UNMOUNTED_ROUTES` in `src/server.js`, with the files kept on disk. They were left mounted only as a historical accident of the auto-loader; each call cost a Postgres round-trip to return a 500 whose body was the Postgres error text, and that text named columns and schemas to anyone who could reach the endpoint. Both now return a plain 404. The same set is mirrored in `enable-full-logging.js`, which duplicates the registration logic.

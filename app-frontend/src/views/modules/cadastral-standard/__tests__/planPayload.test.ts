@@ -1,4 +1,4 @@
-import { buildPlanPayload, beaconsForParcel, composePlanBaseName, resolveSubjectDesignation, validateGenerateRequest, resolveScaleAndSheet, type PlanPayloadContext } from '../planPayload'
+import { buildPlanPayload, beaconsForParcel, composePlanBaseName, composeScaleTag, scaleDenominator, resolveSubjectDesignation, validateGenerateRequest, resolveScaleAndSheet, type PlanPayloadContext } from '../planPayload'
 
 const parcelA: GeoJSON.Feature = {
   type: 'Feature',
@@ -88,6 +88,35 @@ describe('composePlanBaseName', () => {
     expect(base.length).toBeLessThanOrEqual('general-developed'.length + 1 + 60)
     expect(base.startsWith('general-developed-STANDS_2283')).toBe(true)
     expect(base.endsWith('_')).toBe(false)
+  })
+})
+
+describe('scaleDenominator / composeScaleTag', () => {
+  it('reads a denominator from every form a renderer reports it in', () => {
+    for (const v of ['1:600', '1 : 600', ' 1:600 ', 600, '600']) expect(scaleDenominator(v)).toBe(600)
+  })
+  it('does not mistake non-scales for one', () => {
+    for (const v of ['auto', '', null, undefined, 0, -5, 'abc', '1:', '1:0', NaN]) expect(scaleDenominator(v)).toBeNull()
+  })
+  it('names one scale, with no colon (not legal in a Windows file name)', () => {
+    expect(composeScaleTag(['1:600'])).toBe('_1-600')
+    expect(composeScaleTag(['1:600', '1:600', 600])).toBe('_1-600')
+    expect(composeScaleTag(['1:600'])).not.toContain(':')
+  })
+  it('names both scales when the sheets differ, finest first, never claiming one for all', () => {
+    expect(composeScaleTag(['1:600', '1:500', '1:600'])).toBe('_1-500_1-600')
+  })
+  it('names the range for three or more', () => {
+    expect(composeScaleTag(['1:1000', '1:500', '1:750'])).toBe('_1-500_to_1-1000')
+  })
+  it('is empty when no scale is known, so a file is never named for a scale it was not drawn at', () => {
+    expect(composeScaleTag([undefined, 'auto', null])).toBe('')
+    expect(composeScaleTag([])).toBe('')
+  })
+  it('keeps the whole file name inside the summary / extension conventions other code relies on', () => {
+    const name = `${composePlanBaseName('general-developed', 'MAGLAS', 7)}${composeScaleTag(['1:600'])}-summary.pdf`
+    expect(name).toBe('general-developed-MAGLAS_1-600-summary.pdf')
+    expect(/-summary\.pdf$/i.test(name)).toBe(true)
   })
 })
 

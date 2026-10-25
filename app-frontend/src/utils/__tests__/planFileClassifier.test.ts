@@ -11,6 +11,17 @@ const f = (name: string, pageCount?: number): ManifestFile =>
     : { name, relDir: 'output/general-plans', pageCount };
 
 describe('classifyPlanFile', () => {
+  it('classifies a scale-tagged name exactly as it does an untagged one', () => {
+    // File names carry the scale ("_1-600", "_1-500_1-600") after the designation and before
+    // "-summary"; the role must still come from the ending alone.
+    for (const base of ['general-developed-MAGLAS_1-600', 'general-developed-MAGLAS_1-500_1-600', 'general-developed-MAGLAS_1-500_to_1-1000']) {
+      expect(classifyPlanFile(f(base + '.pdf', 2), 'general')).toEqual({ role: 'sheet', sheets: 2 });
+      expect(classifyPlanFile(f(base + '-summary.pdf', 1), 'general')).toEqual({ role: 'summary', sheets: 0 });
+      expect(classifyPlanFile(f(base + '.dxf'), 'general')).toEqual({ role: 'cad', sheets: 0 });
+    }
+    expect(classifyPlanFile(f('diagram-STAND_207_1-500.pdf'), 'diagram')).toEqual({ role: 'sheet', sheets: 1 });
+  });
+
   it('reads a general plan PDF sheet count from its page count', () => {
     expect(classifyPlanFile(f('general-undeveloped-MAGLAS.pdf', 3), 'general')).toEqual({
       role: 'sheet',

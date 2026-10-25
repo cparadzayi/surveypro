@@ -104,7 +104,8 @@ export function buildPlanPayload(ctx: PlanPayloadContext): VectorGeoPDFRequest {
 // Cap the designation part of a plan filename. A general plan covering many stands
 // yields a designation of 150+ chars, which pushes the full output path past
 // Windows' 260-char MAX_PATH and breaks save/open. 60 keeps the filename short while
-// staying recognisable; the whole designation still lives inside the PDF.
+// staying recognisable; the whole designation still lives inside the PDF. (The scale
+// tag added after it is at most 16 characters.)
 export const PLAN_BASENAME_DESIGNATION_MAX = 60
 
 export function composePlanBaseName(
@@ -118,6 +119,33 @@ export function composePlanBaseName(
     ? safe.slice(0, PLAN_BASENAME_DESIGNATION_MAX).replace(/[_.-]+$/, '')
     : safe
   return `${planType}-${capped}`
+}
+
+/**
+ * The scale denominator in whatever form a renderer reported it: "1:600", "1 : 600",
+ * 600 or "600". Anything else ("auto", empty, nonsense) is not a scale.
+ */
+export function scaleDenominator(scale: unknown): number | null {
+  if (typeof scale === 'number') return Number.isFinite(scale) && scale > 0 ? Math.round(scale) : null
+  if (typeof scale !== 'string') return null
+  const m = scale.trim().match(/^(?:1\s*:\s*)?(\d+(?:\.\d+)?)$/)
+  const n = m ? Number(m[1]) : NaN
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null
+}
+
+/**
+ * The scale part of a plan's file name, placed after the designation and before any
+ * "-summary" ending: "_1-600" ("1:600" is not a legal Windows file name). A plan whose
+ * sheets are drawn at different scales names the finest and the coarsest ("_1-500_1-600",
+ * or "_1-500_to_1-1000" for three or more), so the name never claims one scale for sheets
+ * drawn at another. Empty when no scale is known (a DXF-only export left on "auto").
+ */
+export function composeScaleTag(scales: unknown[]): string {
+  const dens = [...new Set(scales.map(scaleDenominator).filter((d): d is number => d !== null))].sort((a, b) => a - b)
+  if (dens.length === 0) return ''
+  if (dens.length === 1) return `_1-${dens[0]}`
+  if (dens.length === 2) return `_1-${dens[0]}_1-${dens[1]}`
+  return `_1-${dens[0]}_to_1-${dens[dens.length - 1]}`
 }
 
 /**

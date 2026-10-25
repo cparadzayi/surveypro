@@ -449,7 +449,7 @@ import { planTypeOutputSubdir } from '@/utils/project-directory'
 import { saveWithOverwritePrompt } from '@/services/workflowProductStorage'
 import { getPlanTypeMeta } from './planTypes'
 import {
-  buildPlanPayload, composePlanBaseName, resolveSubjectDesignation, validateGenerateRequest,
+  buildPlanPayload, composePlanBaseName, composeScaleTag, resolveSubjectDesignation, validateGenerateRequest,
   resolveScaleAndSheet,
   type PlanPayloadContext, type PlanDocumentSet,
 } from './planPayload'
@@ -4673,6 +4673,8 @@ async function generatePlanDocuments() {
     let usedSheetSize: string | undefined
     // Per-sheet scale/paper of a multi-sheet PDF; the DXF sheets follow them.
     let sheetLayouts: { sheetNumber: number; scale: string; sheetSize: string }[] | undefined
+    // The Working Plan's own renderer reports its scale as a denominator.
+    let workingPlanScale: number | undefined
     // Survey-plan DXF exports are now georeferenced ZIPs (DXF + .prj sidecar);
     // the Working Plan's DXF stays a single .dxf from its own A4 renderer.
     let dxfExt: 'zip' | 'dxf' = 'dxf'
@@ -4728,6 +4730,7 @@ async function generatePlanDocuments() {
       const { blob, scale, gridInterval } = await generateWorkingPlanDXF(workingPlanSpec)
       docs.dxf = blob
       dxfExt = 'dxf'
+      workingPlanScale = scale || undefined
       if (scale) console.log(`[PlanDocs] Working plan drawn at 1:${scale}`)
       if (gridInterval) {
         console.log(`[PlanDocs] Working plan grid: ${gridInterval.ticks} cross${gridInterval.ticks === 1 ? '' : 'es'} at ${gridInterval.e} m interval`)
@@ -4803,6 +4806,15 @@ async function generatePlanDocuments() {
       ? resolveSubjectDesignation(subjectParcel?.designation, subjectParcel?.stand, props.projectInfo.designation)
       : props.projectInfo.designation
     const baseName = composePlanBaseName(config.value.planType, planDesignation, props.projectId)
+    // The scale(s) the plan was actually drawn at, in the file name: a multi-sheet plan
+    // names each sheet's scale (the whole-plan scale of the first pass is not drawn),
+    // a single-sheet plan the scale the PDF reported, and a DXF-only export whatever
+    // was requested (nothing when that is still "auto").
+    const scaleTag = composeScaleTag(
+      sheetLayouts?.length
+        ? sheetLayouts.map((l) => l.scale)
+        : [usedScale ?? workingPlanScale ?? payload.scale],
+    )
     const workingDirectory = (props.projectInfo as any).workingDirectory
     if (!workingDirectory) {
       alert('Set the project working directory (Project Setup) before generating plans.')
@@ -4824,7 +4836,7 @@ async function generatePlanDocuments() {
       exportStatus.value = `Saving ${kind.toUpperCase()}…`
       const ext = kind === 'dxf' ? dxfExt : kind === 'gpkg' ? 'gpkg' : 'pdf'
       const suffix = kind === 'summary' ? '-summary' : ''
-      const fileName = `${baseName}${suffix}.${ext}`
+      const fileName = `${baseName}${scaleTag}${suffix}.${ext}`
       const res = await saveWithOverwritePrompt({ workingDirectory, subdir, fileName, blob }, confirmOverwrite)
       if (res.success) saved.push(fileName)
       else if (res.skipped) skipped.push(fileName)

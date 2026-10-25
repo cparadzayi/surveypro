@@ -2859,6 +2859,107 @@ function renderBeacons(
     if (!rotatedBoxClear(cx + k * Math.sin(th), cy - k * Math.cos(th), w, fs * 0.71, rot || 0, avoidSegments, 0)) labelMetrics.lettersOverLines.push(name);
   };
 
+  // Crowded corners: letters placed one by one leave the last beacon of a cluster
+  // whatever spot the others left (1310A, 16pt out beside two neighbours' letters,
+  // 7.7pt alone). Placed in file order OR most-constrained-first made no real
+  // difference, so each cluster of 2..JOINT_MAX_CLUSTER beacons is solved at once:
+  // the combination of spots, no two overlapping, with the least total squared
+  // cost (squared, so one letter is not sent far to spare the rest). The chosen
+  // spots are reserved in the collision registry before any beacon is drawn.
+  const jointSuffixPlacements = new Map();
+  const priorFont = doc._font, priorFontSize = doc._fontSize;
+  {
+    const JOINT_LINK_PT = 22, JOINT_MAX_CLUSTER = 5, JOINT_K = 10, JOINT_PAD = 1;
+    const scaleBearingFont = scale.value <= 500 ? 6 : scale.value <= 1000 ? 6.5 : scale.value <= 2000 ? 7 : 7.5;
+    // The same inputs the beacon loop gives placeSuffixLabelPOIDirected.
+    const inputsOf = (beacon) => {
+      const name = beacon.properties.name || beacon.properties.id || 'B';
+      const pos = beaconPositions.get(name);
+      const ui = beaconLabelMap.get(name);
+      let parcel = null, text = null;
+      if (ui) {
+        if (ui.isInsideParcel && ui.displayInParcel) {
+          parcel = parcels.features.find((f) => (f.properties && f.properties.id == ui.displayInParcel) || f.id == ui.displayInParcel);
+          text = ui.text;
+        }
+      } else {
+        const parts = splitBeaconName(name);
+        if (parts) {
+          parcel = parcels.features.find((f) => f.properties.stand?.toString() === parts.prefix && !f.properties.isOutsideFigure);
+          text = labelParts(name).suffix;
+        }
+      }
+      if (!parcel || !text || !pos) return null;
+      let r0 = parcel.geometry.coordinates[0];
+      if (Array.isArray(r0) && r0.length === 1 && Array.isArray(r0[0]) && Array.isArray(r0[0][0])) r0 = r0[0];
+      const ring = r0.map((c) => {
+        const q = Array.isArray(c) ? [c[0], c[1]] : [c.y ?? c[1], c.x ?? c[0]];
+        return transformCoords(q[0], q[1], extent, mapBounds);
+      });
+      const geom = analyzeParcelGeometry(ring, doc);
+      return { name, pos, ring, text, fontSize: Math.max(8, Math.max(geom.edgeFontSize, scaleBearingFont) * 0.95) };
+    };
+    const members = beacons.features.map(inputsOf).filter(Boolean);
+    // Connected groups of letters' beacons within JOINT_LINK_PT of each other.
+    const seen = new Set();
+    for (const m of members) {
+      if (seen.has(m.name)) continue;
+      const group = [m];
+      seen.add(m.name);
+      for (let gi = 0; gi < group.length; gi++) {
+        for (const o of members) {
+          if (seen.has(o.name) || Math.hypot(o.pos.x - group[gi].pos.x, o.pos.y - group[gi].pos.y) >= JOINT_LINK_PT) continue;
+          seen.add(o.name);
+          group.push(o);
+        }
+      }
+      if (group.length < 2 || group.length > JOINT_MAX_CLUSTER) continue;
+      // The candidate spots of each member, tested against what is already on the sheet.
+      const options = group.map((g) => fitSuffixLabel({
+        beaconPos: g.pos, polygon: g.ring, fontSize: g.fontSize, beaconRadius, ink: true, pull: false,
+        topK: JOINT_K, neighbours: nearbyBeacons(g.name, g.pos),
+        widthAt: (fs) => { doc.font('Helvetica-Bold').fontSize(fs); return doc.widthOfString(g.text); },
+        collides: (r) => collisionDetector.hasCollision(r.x, r.y, r.w, r.h, 1),
+      }));
+      if (options.some((o) => !o.fitted || o.tier !== 0 || !o.alternatives)) continue;
+      const alts = options.map((o) => o.alternatives);
+      const overlap = (a, b) => a.x < b.x + b.w + JOINT_PAD && b.x < a.x + a.w + JOINT_PAD && a.y < b.y + b.h + JOINT_PAD && b.y < a.y + a.h + JOINT_PAD;
+      // A letter over a neighbour's circle reads as that neighbour's.
+      const overCircle = (box, g) => {
+        const nx = Math.max(box.x, Math.min(g.pos.x, box.x + box.w)), ny = Math.max(box.y, Math.min(g.pos.y, box.y + box.h));
+        return Math.hypot(g.pos.x - nx, g.pos.y - ny) < beaconRadius + 0.6;
+      };
+      const order = group.map((_, i) => i).sort((a, b) => alts[a].length - alts[b].length);
+      const pick = new Array(group.length);
+      let bestPick = null, bestTotal = Infinity;
+      const dfs = (k, total) => {
+        if (total >= bestTotal) return;
+        if (k === order.length) { bestTotal = total; bestPick = pick.slice(); return; }
+        const i = order[k];
+        for (const c of alts[i]) {
+          if (group.some((g, j) => j !== i && overCircle(c.box, g))) continue;
+          if (order.slice(0, k).some((j) => overlap(c.box, pick[j].box))) continue;
+          pick[i] = c;
+          dfs(k + 1, total + c.cost * c.cost);
+        }
+      };
+      dfs(0, 0);
+      if (!bestPick) continue;
+      group.forEach((g, i) => {
+        const placed = suffixPlacementFromFit(bestPick[i], g.text, doc, true);
+        jointSuffixPlacements.set(g.name, placed);
+        // Reserved as the beacon loop would register it (the line box, as turned).
+        const rr = (placed.rotation * Math.PI) / 180;
+        const lw = doc.widthOfString(g.text), lh = placed.fontSize * 1.2;
+        const ew = Math.abs(Math.cos(rr)) * lw + Math.abs(Math.sin(rr)) * lh, eh = Math.abs(Math.sin(rr)) * lw + Math.abs(Math.cos(rr)) * lh;
+        collisionDetector.addRegion(bestPick[i].cx - ew / 2, bestPick[i].cy - eh / 2, ew, eh);
+      });
+    }
+  }
+  // The beacon loop measures in the font the document was left in: leave it as found.
+  doc._font = priorFont;
+  doc._fontSize = priorFontSize;
+
   beacons.features.forEach((beacon) => {
     const pos = transformCoords(
       beacon.geometry.coordinates[0],
@@ -2959,7 +3060,7 @@ function renderBeacons(
           suffixLabelParcelCoords = pdfCoords;
 
           // POI-directed placement (replaces edge-following + multi-strategy chain)
-          const poiResult = placeSuffixLabelPOIDirected(
+          const poiResult = jointSuffixPlacements.get(beaconName) ?? placeSuffixLabelPOIDirected(
             pos, pdfCoords, displayLabel, doc, suffixFontSize, beaconRadius, collisionDetector,
             nearbyBeacons(beaconName, pos)
           );
@@ -3065,7 +3166,7 @@ function renderBeacons(
           suffixLabelParcelCoords = pdfCoords;
 
           // POI-directed placement
-          const poiResult2 = placeSuffixLabelPOIDirected(
+          const poiResult2 = jointSuffixPlacements.get(beaconName) ?? placeSuffixLabelPOIDirected(
             pos, pdfCoords, displayLabel, doc, suffixFontSize, beaconRadius, collisionDetector,
             nearbyBeacons(beaconName, pos)
           );
@@ -3162,6 +3263,7 @@ function renderBeacons(
 
     const fontFamily = isSuffixLabel ? "Helvetica-Bold" : config.font.family;
 
+    if (isSuffixLabel && jointSuffixPlacements.has(beaconName)) doc.font(fontFamily).fontSize(fontSize);
     const labelWidth = doc.widthOfString(displayLabel, {
       font: fontFamily,
       size: fontSize,
@@ -4063,6 +4165,14 @@ function placeSuffixLabelPOIDirected(
       ? (r) => collisionDetector.hasCollision(r.x, r.y, r.w, r.h, 1)
       : null,
   });
+  return suffixPlacementFromFit(fit, labelText, doc);
+}
+
+/** A fit as the placement the beacon loop draws: the line box's top-left, size and turn. */
+function suffixPlacementFromFit(fit, labelText, doc, exact = false) {
+  // widthOfString ignores a font/size option and measures in whatever the document
+  // last set, so a placement made ahead of the beacon loop sets them itself.
+  if (exact) doc.font('Helvetica-Bold').fontSize(fit.fontSize);
   const lw = doc.widthOfString(labelText, { font: 'Helvetica-Bold', size: fit.fontSize });
   const lh = fit.fontSize * 1.2;
   return {

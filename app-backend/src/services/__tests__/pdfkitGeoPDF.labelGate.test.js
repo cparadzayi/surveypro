@@ -112,25 +112,24 @@ describe('label gate — surveyed plan (stands 1294–2060, diagonal road)', () 
       expect(summarise(auto.labelMetrics).vertexMaxDist).toBeLessThanOrEqual(30)
     })
 
-    test('inset count and cramped letters do not grow (today: 5 clusters in 3 blocks, 5 letters)', () => {
+    test('inset count and cramped letters do not grow (today: 2 clusters in 2 blocks, 2 letters; was 5 / 3 / 5 before crowded corners were placed jointly)', () => {
       const s = summarise(auto.labelMetrics)
-      expect(s.insets).toBeLessThanOrEqual(5)
-      expect(s.insetBlocks).toBeLessThanOrEqual(3)
-      expect(s.cramped).toBeLessThanOrEqual(5)
+      expect(s.insets).toBeLessThanOrEqual(2)
+      expect(s.insetBlocks).toBeLessThanOrEqual(2)
+      expect(s.cramped).toBeLessThanOrEqual(2)
     })
 
-    test('neighbouring clusters share a block: never more blocks than clusters, and fewer here', () => {
+    test('neighbouring clusters share a block: never more blocks than clusters', () => {
       const s = summarise(auto.labelMetrics)
       expect(s.insetBlocks).toBeLessThanOrEqual(s.insets)
-      expect(s.insetBlocks).toBeLessThan(s.insets)
     })
 
-    test('every inset label sits beside its beacons and along its road (today: 5 of 5, furthest 17pt)', () => {
+    test('every inset label sits beside its beacons and along its road (today: 2 of 2, furthest 14pt)', () => {
       const s = summarise(auto.labelMetrics)
       expect(s.insetFar).toBe(0)
       expect(s.insetOffRoad).toBe(0)
       expect(s.insetInStand).toBe(0)
-      expect(s.insetMaxDist).toBeLessThanOrEqual(25)
+      expect(s.insetMaxDist).toBeLessThanOrEqual(17)
     })
   })
 

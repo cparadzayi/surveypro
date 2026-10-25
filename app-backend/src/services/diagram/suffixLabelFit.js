@@ -83,6 +83,8 @@ const CIRCLE_CLEAR_FLOOR = 0.7
 const FAR_LETTERS = 1.6
 const PULL_EDGE_FRACTION = 0.4
 const PULL_MIN_GAIN = 3
+/** Alternatives for joint placement must differ by this many font sizes. */
+const ALT_SEPARATION = 0.35
 /** An acute corner needs its letter deep in the stand to clear both lines; pulling it in there would touch them. */
 const PULL_MIN_OPENING_DEG = 60
 const BELOW_MIN_DEG = 100
@@ -202,7 +204,7 @@ export function fitSuffixLabel({
   beaconPos, polygon, widthAt, fontSize, beaconRadius,
   collides = null, minScale = MIN_SCALE, lineHeight = 1.2,
   edgeClear = 0.6, circleClear = 0.8, neighbours = [], relaxed = false, _tier = 0, freeRot = false,
-  ink = false, pull = true,
+  ink = false, pull = true, topK = 0,
 }) {
   const ring = dedupeRing(polygon)
   const rn = ring.length
@@ -340,7 +342,7 @@ export function fitSuffixLabel({
   if (!best && !freeRot && !relaxed && _tier === 0) {
     const turned = fitSuffixLabel({
       beaconPos, polygon, widthAt, fontSize, beaconRadius, collides, minScale, lineHeight,
-      edgeClear, circleClear, neighbours, freeRot: true, ink,
+      edgeClear, circleClear, neighbours, freeRot: true, ink, topK,
     })
     if (turned.fitted) return turned
   }
@@ -397,12 +399,25 @@ export function fitSuffixLabel({
   if (best) {
     // The search placed the INK; the caller draws a line box, so hand back the box
     // centre that puts the ink there (the ink sits INK_UP above it, along the turn).
-    const th = best.rotation * DEG, k = ink ? INK_UP * best.fontSize : 0
-    return {
-      cost: best.cost, cx: best.cx - k * Math.sin(th), cy: best.cy + k * Math.cos(th),
-      inkCx: best.cx, inkCy: best.cy, fontSize: best.fontSize, rotation: best.rotation,
-      fitted: true, tier: _tier, free: freeRot, cramped: _tier >= 1 || best.fontSize < fontSize * CRAMPED_SCALE - 1e-9,
+    const shaped = (c) => {
+      const th = c.rotation * DEG, k = ink ? INK_UP * c.fontSize : 0
+      return {
+        cost: c.cost, cx: c.cx - k * Math.sin(th), cy: c.cy + k * Math.cos(th),
+        inkCx: c.cx, inkCy: c.cy, fontSize: c.fontSize, rotation: c.rotation, box: c.box,
+        fitted: true, tier: _tier, free: freeRot, cramped: _tier >= 1 || c.fontSize < fontSize * CRAMPED_SCALE - 1e-9,
+      }
     }
+    const out = shaped(best)
+    // The next-best distinct spots, for a caller that places several letters jointly.
+    if (topK > 0 && _tier === 0 && !relaxed) {
+      const alts = [best]
+      for (const c of cands) {
+        if (alts.length >= topK) break
+        if (alts.every((q) => Math.hypot(q.cx - c.cx, q.cy - c.cy) > c.fontSize * ALT_SEPARATION)) alts.push(c)
+      }
+      out.alternatives = alts.map(shaped)
+    }
+    return out
   }
 
   // Nothing clears at the normal margins: retry tighter and smaller before

@@ -72,6 +72,25 @@ const COOP_SLACK = 4
 const MIN_SCALE = 0.75
 /** A letter shrunk below this fraction of its base size counts as cramped. */
 const CRAMPED_SCALE = MIN_SCALE
+/**
+ * Least clear gap between a letter's box and the beacon circle, however far the
+ * margins are relaxed. The circle is stroked, so its ink reaches past the radius;
+ * a smaller gap reads as the letter nudging the circle.
+ */
+const CIRCLE_CLEAR_FLOOR = 0.7
+/** Corner opening above which a letter may sit straight below its beacon, and the cost it gains for it. */
+/** A letter this many font sizes (plus the circle radius) from its beacon is far, and is pulled in if it can be. */
+const FAR_LETTERS = 1.6
+const PULL_EDGE_FRACTION = 0.4
+const PULL_MIN_GAIN = 3
+/** An acute corner needs its letter deep in the stand to clear both lines; pulling it in there would touch them. */
+const PULL_MIN_OPENING_DEG = 60
+const BELOW_MIN_DEG = 100
+const BELOW_COST = -1.5
+/** Near-right corners (this opening up to BELOW_MIN_DEG) take it too when the bisector leans left. */
+const NEAR_RIGHT_MIN_DEG = 80
+/** A left-leaning near-right corner is asked for below, so it earns more than an obtuse one. */
+const NEAR_RIGHT_COST = -5
 const TILT_STEPS_DEG = [7, 14, MAX_TILT_DEG]
 /**
  * Beyond MAX_TILT_DEG only as a fallback: where nothing clears with the letter
@@ -182,8 +201,8 @@ function straddle(ring, beacon, cx, cy, w, h, rotDeg, beaconRadius, circleClear)
 export function fitSuffixLabel({
   beaconPos, polygon, widthAt, fontSize, beaconRadius,
   collides = null, minScale = MIN_SCALE, lineHeight = 1.2,
-  edgeClear = 0.6, circleClear = 0.5, neighbours = [], relaxed = false, _tier = 0, freeRot = false,
-  ink = false,
+  edgeClear = 0.6, circleClear = 0.8, neighbours = [], relaxed = false, _tier = 0, freeRot = false,
+  ink = false, pull = true,
 }) {
   const ring = dedupeRing(polygon)
   const rn = ring.length
@@ -240,6 +259,30 @@ export function fitSuffixLabel({
   // A reflex corner has up to ~270 deg of interior, so the fan goes wide enough
   // to reach either side of it; the 0.03/deg cost keeps the narrow rays preferred.
   const perturbs = [0, 8, -8, 16, -16, 26, -26, 40, -40, 60, -60, 80, -80, 105, -105, 130, -130]
+  const rays = perturbs.map((pd) => {
+    const a = pd * DEG, ca = Math.cos(a), sa = Math.sin(a)
+    return { dx: ix * ca - iy * sa, dy: ix * sa + iy * ca, cost: Math.abs(pd) * 0.03 }
+  })
+  // At an obtuse corner the room below the circle reads best: a horizontal letter
+  // straight under its beacon, the same way down the run. Offered as one more ray,
+  // with a small bonus over the bisector, only where it points into the parcel
+  // (PDF y-down, so "below" is +y). Every spot on it faces the same clearance and
+  // collision tests, so it wins only where it fits.
+  let openingDeg = 180
+  if (l1 > 1e-3 && l2 > 1e-3) {
+    const cosOpen = ((P.x - B.x) * (N.x - B.x) + (P.y - B.y) * (N.y - B.y)) / (l1 * l2)
+    const opening = Math.acos(Math.max(-1, Math.min(1, cosOpen))) / DEG
+    openingDeg = opening
+    const eps = Math.max(0.3, Math.min(l1, l2) * 0.05)
+    // Convex only: the interior bisector then runs along the sum of the edge directions.
+    const convex = ix * ((P.x - B.x) / l1 + (N.x - B.x) / l2) + iy * ((P.y - B.y) / l1 + (N.y - B.y) / l2) > 0
+    // A near-right corner whose bisector leans left would put the letter beside
+    // the circle on its left; straight below reads better there too.
+    const belowOk = opening > BELOW_MIN_DEG || (opening >= NEAR_RIGHT_MIN_DEG && ix < -0.1)
+    if (convex && belowOk && opening < 180 && inRing(B.x, B.y + eps, ring)) {
+      rays.push({ dx: 0, dy: 1, cost: opening > BELOW_MIN_DEG ? BELOW_COST : NEAR_RIGHT_COST })
+    }
+  }
   const dStart = beaconRadius + 0.8
   const dStep = 0.4
   const dMax = beaconRadius + fontSize * lineHeight * 4
@@ -265,9 +308,8 @@ export function fitSuffixLabel({
       const rr = rot * DEG
       const ew = Math.abs(Math.cos(rr)) * w + Math.abs(Math.sin(rr)) * h
       const eh = Math.abs(Math.sin(rr)) * w + Math.abs(Math.cos(rr)) * h
-      for (const pd of perturbs) {
-        const a = pd * DEG, ca = Math.cos(a), sa = Math.sin(a)
-        const dx = ix * ca - iy * sa, dy = ix * sa + iy * ca
+      for (const ray of rays) {
+        const dx = ray.dx, dy = ray.dy
         let kept = 0, firstD = 0
         for (let d = dStart; d <= dMax && kept < 2; d += dStep) {
           if (kept === 1 && d < firstD + h) continue
@@ -283,7 +325,7 @@ export function fitSuffixLabel({
           if (kept === 0) firstD = d
           kept++
           cands.push({
-            cost: d + shrink + rotCost + Math.abs(pd) * 0.03 + penalty(cx, cy, d) + straddled * 1.5,
+            cost: d + shrink + rotCost + ray.cost + penalty(cx, cy, d) + straddled * 1.5,
             cx, cy, fontSize: fs, rotation: rot, fitted: true, box,
           })
         }
@@ -330,12 +372,26 @@ export function fitSuffixLabel({
       for (const nb of ringNbs) {
         const resp = fitSuffixLabel({
           beaconPos: nb, polygon: ring, widthAt, fontSize, beaconRadius, minScale,
-          lineHeight, edgeClear, circleClear, ink,
+          lineHeight, edgeClear, circleClear, ink, pull: false,
           collides: (r) => hit(r, c.box) || (collides ? collides(r) : false),
         })
         total += resp.fitted ? resp.cost : 12
       }
       if (total < bestTotal) { bestTotal = total; best = c }
+    }
+  }
+  // A letter that only fits well away from its beacon reads as belonging to a
+  // neighbour. Before accepting it, look again with the boundary margin slackened
+  // (the letter may then turn freely too); take that spot only if it is clearly
+  // nearer, still full size, and the circle gap is unchanged.
+  if (best && pull && !relaxed && _tier === 0 && openingDeg >= PULL_MIN_OPENING_DEG) {
+    const away = (c) => Math.hypot(c.cx - beaconPos.x, c.cy - beaconPos.y)
+    if (away(best) > beaconRadius + fontSize * FAR_LETTERS) {
+      const near = fitSuffixLabel({
+        beaconPos, polygon, widthAt, fontSize, beaconRadius, collides, minScale, lineHeight,
+        edgeClear: edgeClear * PULL_EDGE_FRACTION, circleClear, neighbours, freeRot: true, ink, pull: false,
+      })
+      if (near.fitted && !near.cramped && away({ cx: near.inkCx, cy: near.inkCy }) < away(best) - PULL_MIN_GAIN) return near
     }
   }
   if (best) {
@@ -355,7 +411,7 @@ export function fitSuffixLabel({
   if (edgeClear > 0.15 && !relaxed) {
     return fitSuffixLabel({
       beaconPos, polygon, widthAt, fontSize, beaconRadius, collides, lineHeight, ink,
-      neighbours, minScale, edgeClear: edgeClear * 0.25, circleClear: circleClear * 0.5,
+      neighbours, minScale, edgeClear: edgeClear * 0.25, circleClear: Math.max(circleClear * 0.5, CIRCLE_CLEAR_FLOOR),
       _tier: 1,
     })
   }
@@ -368,14 +424,14 @@ export function fitSuffixLabel({
   if (!relaxed) {
     return fitSuffixLabel({
       beaconPos, polygon, widthAt, fontSize, beaconRadius, collides, lineHeight, ink,
-      neighbours, minScale, edgeClear: 0, circleClear: circleClear * 0.5, relaxed: true,
+      neighbours, minScale, edgeClear: 0, circleClear: Math.max(circleClear * 0.5, CIRCLE_CLEAR_FLOOR), relaxed: true,
       _tier: 2,
     })
   }
   if (collides) {
     return fitSuffixLabel({
       beaconPos, polygon, widthAt, fontSize, beaconRadius, collides: null, lineHeight, ink,
-      neighbours, minScale, edgeClear: 0, circleClear: circleClear * 0.5, relaxed: true,
+      neighbours, minScale, edgeClear: 0, circleClear: Math.max(circleClear * 0.5, CIRCLE_CLEAR_FLOOR), relaxed: true,
       _tier: 3,
     })
   }

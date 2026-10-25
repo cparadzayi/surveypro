@@ -2891,8 +2891,6 @@ function renderBeacons(
     let suffixCramped = false;
     let suffixFontSize = null;
     let suffixLabelParcelCoords = null;
-    let suffixNeedsLeader = false;
-    let suffixLeaderPolygon = null;
 
     let fullOutsidePolygons = null;
     let fullOutsideForced = false;
@@ -2969,8 +2967,6 @@ function renderBeacons(
           suffixFontSize = poiResult.fontSize;
           suffixRotationAngle = poiResult.rotation;
           suffixCramped = poiResult.cramped;
-          suffixNeedsLeader = poiResult.needsLeader;
-          suffixLeaderPolygon = pdfCoords.map(p => [p.x, p.y]);
         } else {
           logger.error(
             `[PDFKit] ❌ Could not find parcel ${uiLabel.displayInParcel} for beacon "${beaconName}"`
@@ -3077,8 +3073,6 @@ function renderBeacons(
           suffixFontSize = poiResult2.fontSize;
           suffixRotationAngle = poiResult2.rotation;
           suffixCramped = poiResult2.cramped;
-          suffixNeedsLeader = poiResult2.needsLeader;
-          suffixLeaderPolygon = pdfCoords.map(p => [p.x, p.y]);
 
           suffixInsideCount++;
         } else {
@@ -3380,19 +3374,6 @@ function renderBeacons(
         });
     }
     doc.restore();
-
-    // Draw leader line if label was displaced far from its corner
-    if (isSuffixLabel && suffixNeedsLeader && suffixLeaderPolygon) {
-      drawBeaconLeaderLine(
-        doc,
-        finalPos,
-        labelWidth,
-        labelHeight,
-        pos,          // beacon centre
-        beaconRadius,
-        suffixLeaderPolygon
-      );
-    }
 
     // Register ALL beacon labels with collision detector
     // This ensures distance/bearing labels and parcel labels avoid beacon labels
@@ -4046,7 +4027,7 @@ function calculateCentroidFromPDFCoords(pdfCoords) {
  * @param {number} fontSize
  * @param {number} beaconRadius
  * @param {object|null} collisionDetector
- * @returns {{x:number, y:number, needsLeader:boolean}}
+ * @returns {{x:number, y:number, fontSize:number, rotation:number, cramped:boolean}}
  */
 /**
  * Place a beacon suffix label inside the parcel, pushed inward from the
@@ -4087,115 +4068,12 @@ function placeSuffixLabelPOIDirected(
   return {
     x: fit.cx - lw / 2,
     y: fit.cy - lh / 2,
-    needsLeader: false,
     fontSize: fit.fontSize,
     rotation: fit.rotation,
     cramped: fit.cramped,
   };
 }
 
-/**
- * Draw an adaptive bent leader line from a displaced suffix label to its beacon.
- * - Solid line at 75% of parcel boundary weight (0.8pt × 0.75 = 0.6pt)
- * - Arrowhead pointing at beacon, tip stopping 1pt short of circle edge
- * - Horizontal stub from label edge, then up to 2 bends, then diagonal to beacon
- * - No visual markers at bend nodes
- *
- * @param {object} doc            - PDFKit document
- * @param {{x:number,y:number}} labelPos    - Top-left of label bounding box
- * @param {number} labelWidth
- * @param {number} labelHeight
- * @param {{x:number,y:number}} beaconPos   - Centre of beacon circle
- * @param {number} beaconRadius
- * @param {Array<[number,number]>} polygon  - [[x,y]] parcel ring for path containment
- */
-function drawBeaconLeaderLine(
-  doc, labelPos, labelWidth, labelHeight, beaconPos, beaconRadius, polygon
-) {
-  const LEADER_WEIGHT = 0.8 * 0.75;   // 75% of 0.8pt boundary weight = 0.6pt
-  const ARROW_LEN    = LEADER_WEIGHT * 5;
-  const ARROW_HALF_W = LEADER_WEIGHT * 2;
-  const STUB_LEN     = labelHeight;    // horizontal stub length = 1× label height
-
-  // Label centre
-  const lCx = labelPos.x + labelWidth / 2;
-  const lCy = labelPos.y + labelHeight / 2;
-
-  // Stub: horizontal, toward beacon
-  const stubDir = beaconPos.x >= lCx ? 1 : -1;
-  const stubX = stubDir > 0 ? labelPos.x + labelWidth + STUB_LEN : labelPos.x - STUB_LEN;
-  const stubY = lCy;
-
-  // Arrowhead tip: 1pt outside beacon circle on the line from stub to beacon
-  const toBeaconAngle = Math.atan2(beaconPos.y - stubY, beaconPos.x - stubX);
-  const tipX = beaconPos.x - (beaconRadius + 1) * Math.cos(toBeaconAngle);
-  const tipY = beaconPos.y - (beaconRadius + 1) * Math.sin(toBeaconAngle);
-
-  // --- Choose bend point ---
-  // Try single bend: vertical from stub, then diagonal to tip.
-  let bend1 = null;
-  for (const t of [0.5, 0.35, 0.65, 0.2, 0.8]) {
-    const bx = stubX;
-    const by = stubY + t * (tipY - stubY);
-    const m1x = (stubX + bx) / 2, m1y = (stubY + by) / 2;
-    const m2x = (bx + tipX) / 2, m2y = (by + tipY) / 2;
-    if (isPointInPolygonSimple([m1x, m1y], polygon) && isPointInPolygonSimple([m2x, m2y], polygon)) {
-      bend1 = { x: bx, y: by };
-      break;
-    }
-  }
-
-  // If no single-bend path found, try 2 bends (Z-path)
-  let bend2 = null;
-  if (!bend1) {
-    for (const t1 of [0.4, 0.6, 0.3, 0.7]) {
-      for (const t2 of [0.7, 0.5, 0.9]) {
-        const b1x = stubX, b1y = stubY + t1 * (tipY - stubY);
-        const b2x = stubX + t2 * (tipX - stubX), b2y = b1y;
-        const m1x = (stubX + b1x) / 2, m1y = (stubY + b1y) / 2;
-        const m2x = (b1x + b2x) / 2, m2y = (b1y + b2y) / 2;
-        const m3x = (b2x + tipX) / 2, m3y = (b2y + tipY) / 2;
-        if (
-          isPointInPolygonSimple([m1x, m1y], polygon) &&
-          isPointInPolygonSimple([m2x, m2y], polygon) &&
-          isPointInPolygonSimple([m3x, m3y], polygon)
-        ) {
-          bend1 = { x: b1x, y: b1y };
-          bend2 = { x: b2x, y: b2y };
-          break;
-        }
-      }
-      if (bend1 && bend2) break;
-    }
-  }
-
-  // Final fallback: straight stub → tip, ignore containment
-  if (!bend1) {
-    bend1 = { x: stubX, y: (stubY + tipY) / 2 };
-  }
-
-  // Draw line
-  doc.save();
-  doc.lineWidth(LEADER_WEIGHT).strokeColor('#000000');
-  doc.moveTo(stubX, stubY);
-  doc.lineTo(bend1.x, bend1.y);
-  if (bend2) doc.lineTo(bend2.x, bend2.y);
-  doc.lineTo(tipX, tipY);
-  doc.stroke();
-
-  // Filled arrowhead triangle
-  const perpX = -Math.sin(toBeaconAngle);
-  const perpY =  Math.cos(toBeaconAngle);
-  const baseX = tipX - ARROW_LEN * Math.cos(toBeaconAngle);
-  const baseY = tipY - ARROW_LEN * Math.sin(toBeaconAngle);
-  doc.moveTo(tipX, tipY)
-    .lineTo(baseX + perpX * ARROW_HALF_W, baseY + perpY * ARROW_HALF_W)
-    .lineTo(baseX - perpX * ARROW_HALF_W, baseY - perpY * ARROW_HALF_W)
-    .closePath()
-    .fillColor('#000000').fill();
-
-  doc.restore();
-}
 
 function tryBeaconLabelPlacement(
   beaconPos,

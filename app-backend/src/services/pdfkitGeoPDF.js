@@ -76,7 +76,7 @@ import {
   rectanglesOverlap
 } from './pdfkitGeoPDF/geometry.js';
 import { InsetManager } from './pdfkitGeoPDF/insetManager.js';
-import { clusterCramped, rotatedBoxClear } from './pdfkitGeoPDF/beaconClusterInset.js';
+import { clusterCramped, rotatedBoxClear, fitIndicatorRing } from './pdfkitGeoPDF/beaconClusterInset.js';
 
 /**
  * PDFKit-based GeoPDF Generator with SI 727 Compliance
@@ -3801,7 +3801,34 @@ function renderBeacons(
         }
         return out.sort((p, q) => p.cost - q.cost);
       };
+      // The dashed ring that marks the inset's area on the plan. It takes in the
+      // cluster's own beacon circles and neither touches nor cuts across any other
+      // circle or label. The tag goes wholly inside it when there is open ground
+      // there (the ring then grows a little to make room), else beside it, but
+      // never across the line.
+      const _members = new Set(cluster.map((m) => m.name));
+      const _xs = cluster.map((m) => m.pos.x), _ys = cluster.map((m) => m.pos.y);
+      const ringArgs = {
+        cx: (Math.min(..._xs) + Math.max(..._xs)) / 2, cy: (Math.min(..._ys) + Math.max(..._ys)) / 2,
+        cluster: cluster.map((m) => m.pos),
+        otherBeacons: beaconRows.filter((b) => !_members.has(b.name)).map((b) => toPdf(b.y, b.x)),
+        rects: collisionDetector.occupiedRegions,
+        beaconRadius,
+      };
+      const ringBase = fitIndicatorRing(ringArgs);
+      let ring = null; // set only while looking for a spot wholly inside a ring
+      let insideOnly = false;
+      const ringOk = (o) => {
+        if (!ring) return true;
+        const x0 = o.x - o.ew / 2, x1 = o.x + o.ew / 2, y0 = o.y - o.eh / 2, y1 = o.y + o.eh / 2;
+        const nx = Math.max(x0, Math.min(ring.cx, x1)), ny = Math.max(y0, Math.min(ring.cy, y1));
+        const dmin = Math.hypot(nx - ring.cx, ny - ring.cy);
+        const dmax = Math.max(Math.hypot(x0 - ring.cx, y0 - ring.cy), Math.hypot(x1 - ring.cx, y0 - ring.cy), Math.hypot(x0 - ring.cx, y1 - ring.cy), Math.hypot(x1 - ring.cx, y1 - ring.cy));
+        const inside = dmax <= ring.r - 0.8;
+        return insideOnly ? inside : (inside || dmin >= ring.r + 0.8);
+      };
       const fits = (o) =>
+        ringOk(o) &&
         o.x - o.ew / 2 >= mapBounds.x && o.x + o.ew / 2 <= mapBounds.x + mapBounds.width &&
         o.y - o.eh / 2 >= mapBounds.y && o.y + o.eh / 2 <= mapBounds.y + mapBounds.height &&
         rotatedBoxClear(o.x, o.y, o.tw, o.th, o.rot, avoidSegments, 1) &&
@@ -3835,7 +3862,22 @@ function renderBeacons(
       // off through the cost rather than the largest size always winning.
       const allSizes = (gaps) => FONTS.flatMap((fs) => build(fs, gaps)).sort((p, q) => p.cost - q.cost);
       let picked = null;
-      if (roadFont) {
+      // Inside the ring first, on open ground, growing the ring a little at a time.
+      for (const extra of [0, 3, 6, 10, 14, 18]) {
+        const cand = extra === 0 ? ringBase : fitIndicatorRing({ ...ringArgs, minR: ringBase.r + extra });
+        if (!cand.clear) continue;
+        ring = cand;
+        insideOnly = true;
+        // Only if the tag still sits beside the beacons it marks: a big ring that
+        // lets the tag drift away from them defeats the point of marking the spot.
+        const inRing = pick(allSizes(NEAR_GAPS), true);
+        if (inRing && inRing.o.gap <= 12) { picked = inRing; break; }
+      }
+      insideOnly = false;
+      // Otherwise the tag is placed as usual and the ring is fitted round it afterwards.
+      const insideRing = picked ? ring : null;
+      ring = null;
+      if (!picked && roadFont) {
         // The road's own size first: beside the beacons if it fits there.
         const roadNear = build(roadFont, NEAR_GAPS, roadFont).sort((p, q) => p.cost - q.cost);
         picked = pick(roadNear, true) || pick(roadNear, false);
@@ -3875,6 +3917,16 @@ function renderBeacons(
         .text(tag, -chosen.tw / 2, -chosen.th / 2, { lineBreak: false });
       doc.restore();
       collisionDetector.addRegion(chosen.x - chosen.ew / 2, chosen.y - chosen.eh / 2, chosen.ew, chosen.eh);
+      // The ring, now that the tag is down (a tag beside it is a label it must not cut).
+      let drawRing = insideRing ?? fitIndicatorRing({ ...ringArgs, rects: collisionDetector.occupiedRegions });
+      // Hemmed in by neighbouring circles: a snug ring round the cluster's own circles alone.
+      if (!drawRing.clear) {
+        const snug = fitIndicatorRing({ ...ringArgs, rects: collisionDetector.occupiedRegions, gap: 0.4, minR: beaconRadius + 1.3 });
+        if (snug.clear) drawRing = snug;
+      }
+      doc.save();
+      doc.lineWidth(0.5).dash(2, { space: 1.5 }).strokeColor('#000000').circle(drawRing.cx, drawRing.cy, drawRing.r).stroke();
+      doc.restore();
     };
 
     // Neighbouring clusters share ONE inset block: each keeps its own magnified

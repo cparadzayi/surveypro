@@ -287,10 +287,21 @@ export function buildPartyWallStatementRows(
     if (adjoiningStand && !stands.includes(adjoiningStand)) stands.push(adjoiningStand)
     if (stands.length === 0) continue
 
-    const boundary = beaconBoundary(s)
+    // The row's stands read in ascending order, and so does its boundary: the beacon of
+    // the first stand is named first (1401, 1402 -> 1401A – 1402C, however it was recorded).
+    // Both beacons on one stand are in letter order already (beaconBoundary).
+    const orderedStands = [...stands].sort(compareStands)
+    let boundary = beaconBoundary(s)
+    if (s.fromBeacon && s.toBeacon) {
+      const fromStand = splitBeaconName(String(s.fromBeacon))?.prefix
+      const toStand = splitBeaconName(String(s.toBeacon))?.prefix
+      const fromAt = fromStand === undefined ? -1 : orderedStands.indexOf(fromStand)
+      const toAt = toStand === undefined ? -1 : orderedStands.indexOf(toStand)
+      if (fromAt >= 0 && toAt >= 0 && fromAt > toAt) boundary = `${s.toBeacon} – ${s.fromBeacon}`
+    }
     // The same wall recorded from the reciprocal stand reverses the beacon
     // order ("2833A - 2833B" vs "2833B - 2833A"); sort the pair so both
-    // collapse onto one row, while the DISPLAY keeps the recorded direction.
+    // collapse onto one row, while the DISPLAY follows the stand order above.
     const boundaryKey = s.fromBeacon && s.toBeacon
       ? [String(s.fromBeacon), String(s.toBeacon)].sort().join('|')
       : (s.side || '')

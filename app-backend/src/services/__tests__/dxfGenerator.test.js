@@ -562,7 +562,7 @@ describe('generateDXF — title block (PDF-matched, SI 727)', () => {
 
   test('whole-portion / parent property / district appear via the figure-description sentence', () => {
     const dxf = generateDXF(opts, fakeLogger).buffer.toString()
-    expect(dxf).toMatch(/being a portion of SHABANI MINE SURFACE RIGHTS A/)
+    expect(dxf).toMatch(/being portions of SHABANI MINE SURFACE RIGHTS A/)
     expect(dxf).toMatch(/situate in the district of HARARE/)
   })
 })

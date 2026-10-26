@@ -33,6 +33,7 @@ import {
   edgeDistanceMetres,
   classifyBeaconGroups,
   resolveLoSystem,
+  figurePortionWording,
 } from '../../../app-shared/block-definitions.js'
 import { scaleBarLayout } from '../../../app-shared/scaleBar.js';
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
@@ -208,7 +209,7 @@ export function formatFigureDescription(metadata, outsideFigureData, surveyedPar
   const township = (metadata?.township || 'the township').toUpperCase()
   const district = (metadata?.district || 'the district').toUpperCase()
   const parentProperty = (metadata?.parentProperty || '').trim().toUpperCase()
-  const wholePortion = (metadata?.wholePortion || '').trim() || 'the whole'
+  const wholePortion = figurePortionWording(metadata?.wholePortion) || 'the whole'
   // The township is not named in the description (same rule as the PDF).
   const ofTarget = parentProperty || township
 

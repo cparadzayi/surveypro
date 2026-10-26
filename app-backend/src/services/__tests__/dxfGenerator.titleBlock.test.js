@@ -4,7 +4,7 @@
  */
 import { describe, test, expect } from '@jest/globals'
 import { splitToWidth, formatSheetLabel, formatVideLine, formatFigureDescription, formatPlanDesignation } from '../dxfGenerator.js'
-import { TITLE_BLOCK } from '../../../../app-shared/block-definitions.js'
+import { TITLE_BLOCK, figurePortionWording } from '../../../../app-shared/block-definitions.js'
 
 describe('splitToWidth', () => {
   test('empty input returns []', () => {
@@ -120,8 +120,8 @@ describe('formatFigureDescription', () => {
     const lines = formatFigureDescription(fullMetadata, ofData, surveyedParcels, 500)
     const sentence = lines.join(' ')
     expect(sentence).toContain('The figure A.B.C.D.A represents')
-    expect(sentence).toContain('2 stands and public places being a portion')
-    expect(sentence).toContain('a portion of LOT 9 OF BORROWDALE situate')
+    expect(sentence).toContain('2 stands and public places being portions')
+    expect(sentence).toContain('portions of LOT 9 OF BORROWDALE situate')
     expect(sentence).not.toContain('BORROWDALE OF LOT 9')
     expect(sentence).toContain('situate in the district of HARARE')
     // Stand numbers/range now live in the title designation line, not this sentence.
@@ -210,7 +210,7 @@ describe('formatFigureDescription', () => {
   test('missing township → no township in the description either way', () => {
     const m = { ...fullMetadata, township: '' }
     const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
-    expect(sentence).toContain('a portion of LOT 9 OF BORROWDALE situate')
+    expect(sentence).toContain('portions of LOT 9 OF BORROWDALE situate')
     expect(sentence).not.toContain('THE TOWNSHIP')
   })
 
@@ -223,7 +223,7 @@ describe('formatFigureDescription', () => {
   test('missing parentProperty → ofTarget collapses to township only', () => {
     const m = { ...fullMetadata, parentProperty: '' }
     const sentence = formatFigureDescription(m, ofData, surveyedParcels, 500).join(' ')
-    expect(sentence).toContain('a portion of BORROWDALE')
+    expect(sentence).toContain('portions of BORROWDALE')
     expect(sentence).not.toContain('of BORROWDALE of')
   })
 
@@ -333,4 +333,9 @@ describe('formatPlanDesignation', () => {
       [{ stand: 'REM', area_m2: 100 }],
     )).toBe('STANDS 1686 - 1925 MAGLAS TOWNSHIP')
   })
+})
+
+describe('figurePortionWording', () => {
+  test.each([['a portion', 'portions'], ['A portion', 'portions'], ['  a portion ', 'portions'], ['the whole', 'the whole'], ['the remainder', 'the remainder'], ['', '']])(
+    '%j → %j', (input, expected) => expect(figurePortionWording(input)).toBe(expected))
 })

@@ -826,3 +826,13 @@ export default {
   formatBearing,
   getAdaptiveLabelSize
 }
+
+/**
+ * The wording of the figure description's "being <whole|remainder|portion>" clause.
+ * A figure may take in several portions of the parent, so the project's "a portion"
+ * reads "portions" in the heading; "the whole" and "the remainder" are unchanged.
+ */
+export function figurePortionWording(wholePortion) {
+  const v = (wholePortion || '').trim()
+  return /^a portion$/i.test(v) ? 'portions' : v
+}

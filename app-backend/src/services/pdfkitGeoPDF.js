@@ -13,7 +13,7 @@ import {
 import BLOCKS from "../../../app-shared/block-definitions.js";
 import { northArrowForPlanMm } from "./diagram/diagramLayout.js";
 import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, tickRungLadder } from "../../../app-shared/tickMarks.js";
-import { scheduleHeaderScale, scheduleHeaderBandPt, computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, planScheduleSplit } from "../../../app-shared/block-definitions.js";
+import { figurePortionWording, scheduleHeaderScale, scheduleHeaderBandPt, computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, planScheduleSplit } from "../../../app-shared/block-definitions.js";
 import { scaleBarLayout, scaleBarFrame } from "../../../app-shared/scaleBar.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { fitSuffixLabel } from "./diagram/suffixLabelFit.js";
@@ -4910,7 +4910,7 @@ function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, 
         : (sortedFallback[0] ?? standCount).toString();
     }
 
-    const wholePortion = (metadata.wholePortion || 'the whole').trim();
+    const wholePortion = figurePortionWording(metadata.wholePortion || 'the whole');
     const township = (townshipDescription || (metadata.township || '').trim()).toUpperCase();
     const parentProp = (metadata.parentProperty || '').trim().toUpperCase();
     // The township is not named in the description; it identifies the parent
@@ -5309,7 +5309,7 @@ function drawTitleBlock(
       }
 
       // wholePortion: from metadata (set in Project Setup), default "the whole"
-      const wholePortion = (metadata.wholePortion || 'the whole').trim();
+      const wholePortion = figurePortionWording(metadata.wholePortion || 'the whole');
 
       // Immediate township name (already stripped of " of ..." suffix), in caps
       const township = (townshipDescription || (metadata.township || '').trim()).toUpperCase();

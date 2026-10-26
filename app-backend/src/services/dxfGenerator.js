@@ -34,6 +34,7 @@ import {
   classifyBeaconGroups,
   resolveLoSystem,
   figurePortionWording,
+  figureVideText,
 } from '../../../app-shared/block-definitions.js'
 import { scaleBarLayout } from '../../../app-shared/scaleBar.js';
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
@@ -159,10 +160,9 @@ export function formatSheetLabel(sheetInfo) {
  * template is missing from the shared module (configuration bug â€”
  * the PDF would fail the same way).
  */
-export function formatVideLine(maxLineChars) {
-  const template = TITLE_BLOCK?.vide?.template
-  if (!template) throw new Error('TITLE_BLOCK.vide.template missing from app-shared/block-definitions.js')
-  return splitToWidth(template, maxLineChars)
+export function formatVideLine(maxLineChars, metadata = null) {
+  if (!TITLE_BLOCK?.vide?.template) throw new Error('TITLE_BLOCK.vide.template missing from app-shared/block-definitions.js')
+  return splitToWidth(figureVideText(metadata), maxLineChars)
 }
 
 /**
@@ -1901,7 +1901,7 @@ export function generateDXF(options, logger) {
     ? splitToWidth(formatPlanDesignation(metadata, surveyedParcels), _desigMaxChars).length : 0;
   const _sheetLines = formatSheetLabel(sheetInfo).length;
   const _figLines   = formatFigureDescription(metadata, outsideFigureData, surveyedParcels, _titleMaxChars, sheetInfo).length;
-  const _videLines  = formatVideLine(_titleMaxChars).length;
+  const _videLines  = formatVideLine(_titleMaxChars, metadata).length;
   const titleBlockH =
       mm(8)                                   // top inset to first baseline
     + hTitle * 1.6                            // GENERAL PLAN
@@ -2087,7 +2087,7 @@ export function generateDXF(options, logger) {
   }
 
   // (b.iii) Vide diagram line â€” always emitted.
-  for (const line of formatVideLine(titleMaxLineChars)) {
+  for (const line of formatVideLine(titleMaxLineChars, metadata)) {
     ty -= hBody * 1.6
     addTextC(TB, txC, ty, line, hBody)
   }

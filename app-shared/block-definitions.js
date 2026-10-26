@@ -836,3 +836,17 @@ export function figurePortionWording(wholePortion) {
   const v = (wholePortion || '').trim()
   return /^a portion$/i.test(v) ? 'portions' : v
 }
+
+/**
+ * The Vide line of the figure description (SI 727 Seventh Schedule (b)):
+ * "Vide diagram S.G. No. <immediate parent diagram> annexed to <type of deed or
+ * title> No. <deed / certificate no.>", from Project Setup's Immediate Parent
+ * Diagram block. A value not yet entered keeps its dotted blank for the Surveyor-
+ * General's office to fill, so with nothing entered this is TITLE_BLOCK.vide.template.
+ */
+export function figureVideText(metadata) {
+  const dots = '........................'
+  const pick = (v) => (v == null ? '' : String(v)).trim() || dots
+  const m = metadata || {}
+  return `Vide diagram S.G. No. ${pick(m.parentDiagramNo)} annexed to ${pick(m.parentDiagramAnnexedTo)} No. ${pick(m.deedOfTransferNo)}`
+}

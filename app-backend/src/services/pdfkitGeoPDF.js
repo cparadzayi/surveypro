@@ -13,7 +13,7 @@ import {
 import BLOCKS from "../../../app-shared/block-definitions.js";
 import { northArrowForPlanMm } from "./diagram/diagramLayout.js";
 import { selectTickGrid, formatTickLabel, spansBothAxes, gridNodesForInterval, tickRungLadder } from "../../../app-shared/tickMarks.js";
-import { figurePortionWording, scheduleHeaderScale, scheduleHeaderBandPt, computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, planScheduleSplit } from "../../../app-shared/block-definitions.js";
+import { figurePortionWording, figureVideText, scheduleHeaderScale, scheduleHeaderBandPt, computeScheduleColumnWidths, layoutScheduleColumnsFixedStandArea, SCHEDULE_TARGET_WIDTH_PT, edgeDistanceMetres, classifyBeaconGroups, resolveLoSystem, planScheduleSplit } from "../../../app-shared/block-definitions.js";
 import { scaleBarLayout, scaleBarFrame } from "../../../app-shared/scaleBar.js";
 import { SHEET_ORDER, MAX_SHEET_UP_ATTEMPTS, nextSheetUp } from '../../../app-shared/sheetEscalation.js';
 import { fitSuffixLabel } from "./diagram/suffixLabelFit.js";
@@ -4945,7 +4945,7 @@ function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, 
         .replace('{ofTarget}',       ofTarget)
         .replace('{district}',       district);
     }
-    videText = config.vide.template;
+    videText = figureVideText(metadata);
   }
 
   return { designation, sheetText, figureText, videText, hasFigure, isMultiSheet };
@@ -5378,7 +5378,7 @@ function drawTitleBlock(
       doc
         .fontSize(config.vide.font.size)
         .font(config.vide.font.family)
-        .text(config.vide.template, safeLeftX, videY, {
+        .text(figureVideText(metadata), safeLeftX, videY, {
           width: actualTextWidth,
           align: config.vide.alignment,
           lineGap: config.vide.lineGap,

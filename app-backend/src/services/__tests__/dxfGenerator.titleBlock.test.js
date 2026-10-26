@@ -4,7 +4,7 @@
  */
 import { describe, test, expect } from '@jest/globals'
 import { splitToWidth, formatSheetLabel, formatVideLine, formatFigureDescription, formatPlanDesignation } from '../dxfGenerator.js'
-import { TITLE_BLOCK, figurePortionWording } from '../../../../app-shared/block-definitions.js'
+import { TITLE_BLOCK, figurePortionWording, figureVideText } from '../../../../app-shared/block-definitions.js'
 
 describe('splitToWidth', () => {
   test('empty input returns []', () => {
@@ -87,6 +87,11 @@ describe('formatVideLine', () => {
     const lines = formatVideLine(30)
     expect(lines.length).toBeGreaterThan(1)
     for (const line of lines) expect(line.length).toBeLessThanOrEqual(30)
+  })
+
+  test('fills the three blanks from the Immediate Parent Diagram block of Project Setup', () => {
+    const lines = formatVideLine(200, { parentDiagramNo: '8057/77', parentDiagramAnnexedTo: 'Deed of Transfer', deedOfTransferNo: '1234/2001' })
+    expect(lines.join(' ')).toBe('Vide diagram S.G. No. 8057/77 annexed to Deed of Transfer No. 1234/2001')
   })
 
   test('output contains the literal "Vide diagram S.G. No." opening', () => {
@@ -338,4 +343,20 @@ describe('formatPlanDesignation', () => {
 describe('figurePortionWording', () => {
   test.each([['a portion', 'portions'], ['A portion', 'portions'], ['  a portion ', 'portions'], ['the whole', 'the whole'], ['the remainder', 'the remainder'], ['', '']])(
     '%j → %j', (input, expected) => expect(figurePortionWording(input)).toBe(expected))
+})
+
+describe('figureVideText', () => {
+  const dots = '........................'
+  test('nothing entered: the template with its three dotted blanks', () => {
+    expect(figureVideText(null)).toBe(TITLE_BLOCK.vide.template)
+    expect(figureVideText({})).toBe(TITLE_BLOCK.vide.template)
+  })
+  test('every value entered', () => {
+    expect(figureVideText({ parentDiagramNo: 'A 12/1950', parentDiagramAnnexedTo: 'Certificate of Registered Title', deedOfTransferNo: '77/2010' }))
+      .toBe('Vide diagram S.G. No. A 12/1950 annexed to Certificate of Registered Title No. 77/2010')
+  })
+  test('a value not entered keeps its own dotted blank; whitespace-only counts as not entered', () => {
+    expect(figureVideText({ parentDiagramNo: '8057/77', parentDiagramAnnexedTo: '   ', deedOfTransferNo: '' }))
+      .toBe('Vide diagram S.G. No. 8057/77 annexed to ' + dots + ' No. ' + dots)
+  })
 })

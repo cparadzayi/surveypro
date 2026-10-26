@@ -3934,8 +3934,27 @@ function renderBeacons(
           drawRing = soft.clear ? soft : strict;
         }
       }
+      // Wherever the ring would run across a label (a road name above all, which sits
+      // along the road the beacons are on) it lifts off the label: a gap in the dashes,
+      // never a line through the lettering.
+      const RING_LABEL_PAD_PT = 1;
+      const ringLabels = [
+        ...collisionDetector.occupiedRegions.map(normalizeRect).filter((q) => q.width <= 120 && q.height <= 60 && q.width * q.height <= 2500),
+        ...roadNameLabels.map(normalizeRect),
+      ];
+      const onLabel = (x, y) => ringLabels.some((q) =>
+        x >= q.x - RING_LABEL_PAD_PT && x <= q.x + q.width + RING_LABEL_PAD_PT && y >= q.y - RING_LABEL_PAD_PT && y <= q.y + q.height + RING_LABEL_PAD_PT);
+      const STEP_DEG = 2;
       doc.save();
-      doc.lineWidth(0.5).dash(2, { space: 1.5 }).strokeColor('#000000').circle(drawRing.cx, drawRing.cy, drawRing.r).stroke();
+      doc.lineWidth(0.5).dash(2, { space: 1.5 }).strokeColor('#000000');
+      let pen = false;
+      for (let deg = 0; deg <= 360; deg += STEP_DEG) {
+        const t = (deg * Math.PI) / 180;
+        const x = drawRing.cx + Math.cos(t) * drawRing.r, y = drawRing.cy + Math.sin(t) * drawRing.r;
+        if (onLabel(x, y)) { if (pen) { doc.stroke(); pen = false; } continue; }
+        if (pen) doc.lineTo(x, y); else { doc.moveTo(x, y); pen = true; }
+      }
+      if (pen) doc.stroke();
       doc.restore();
     };
 

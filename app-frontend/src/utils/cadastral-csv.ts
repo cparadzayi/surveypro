@@ -19,6 +19,7 @@ import { isCalculatedPoint } from './calculatedPoint';
 
 import { capeLoToWGS84, type CapeLoPoint } from './coordinateTransform';
 import { normalizeBeaconName, findCaseFoldDuplicates } from '../../../app-shared/beaconName';
+import { placedBeaconDescription } from '../../../app-shared/placedBeaconDescription';
 /**
  * CSV Import and Validation Utilities for Cadastral Standard Module
  * Handles parsing, validation, and processing of cadastral coordinate CSV files
@@ -303,7 +304,7 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
           x: (!isNaN(rawX) ? rawX.toFixed(2) : '')
         },
         status: (record['status'] || '') as any,
-        description: record['description'] || '',
+        description: placedBeaconDescription(record['status'], record['description'] || '') as string,
         surveyDate: parsedDate,
         includeInFieldBook: !isCalculated,  // Keep them off the observation pages -- the field book prints them in its own CALCULATED POINTS block
         includeInCoordinateList: true       // Include all points in coordinate list

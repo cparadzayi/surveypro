@@ -1,4 +1,5 @@
 import db from '../config/db.js'
+import { placedBeaconDescription } from '../../../app-shared/placedBeaconDescription.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
 import { normalizeBeaconName } from '../../../app-shared/beaconName.js'
 import { normalizeBatchPoints } from '../utils/beaconNameDoors.js'
@@ -77,7 +78,7 @@ export default {
        (project_id, name, geom, elevation, description, status, survey_date, surveyor)
        VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), ${finalSrid}), $5, $6, $7, $8, $9)
        RETURNING *`,
-      [projectId, name, y, x, elevation, description, status || null, surveyDate, surveyor]
+      [projectId, name, y, x, elevation, placedBeaconDescription(status, description), status || null, surveyDate, surveyor]
     )
     
     console.log('[CoordinatePoint] ✅ Stored in project CRS:', {
@@ -142,7 +143,7 @@ export default {
           // ST_MakePoint(Westing, Southing) in project's native CRS
           // Store directly in project's SRID (NOT transformed to Lo 31)
           values.push(`($${paramIndex}, $${paramIndex+1}, ST_SetSRID(ST_MakePoint($${paramIndex+2}, $${paramIndex+3}), ${srid}), $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7})`)
-          params.push(projectId, pt.name, pt.y, pt.x, pt.elevation || null, pt.description || null, pt.status || null, pt.surveyDate || null)
+          params.push(projectId, pt.name, pt.y, pt.x, pt.elevation || null, placedBeaconDescription(pt.status, pt.description) || null, pt.status || null, pt.surveyDate || null)
           paramIndex += 8
         }
 

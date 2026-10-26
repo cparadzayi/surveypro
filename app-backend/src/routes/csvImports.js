@@ -8,6 +8,7 @@ import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js';
 import { getCapeLoSRID } from '../utils/capeLoSRID.js';
 import { normalizeMergeNames, BeaconNameCaseError } from '../utils/beaconNameDoors.js';
 import { resolveDuplicateGroups } from '../../../app-shared/si727Tolerances.js';
+import { placedBeaconDescription } from '../../../app-shared/placedBeaconDescription.js';
 
 export default async function csvImportRoutes(fastify, options) {
   const db = fastify.pg;
@@ -614,7 +615,7 @@ export default async function csvImportRoutes(fastify, options) {
            (project_id, name, geom, status, description, import_id)
            VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), $8), $5, $6, $7)
            RETURNING id`,
-          [project_id, newPt.id, newPt.y, newPt.x, newPt.status, newPt.description, import_id, srid]
+          [project_id, newPt.id, newPt.y, newPt.x, newPt.status, placedBeaconDescription(newPt.status, newPt.description), import_id, srid]
         );
 
         // Record history

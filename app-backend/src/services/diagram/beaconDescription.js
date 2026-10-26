@@ -8,7 +8,7 @@ function inferDescription(name) {
   const n = String(name || '')
   if (/^M\d+/i.test(n)) return 'Not beaconed'
   if (/^[A-Z]\d+$/i.test(n) || /^[A-Z]{2,}$/i.test(n)) return '50mm Iron Pipe in Concrete'
-  return '12mm iron peg in concrete'
+  return '12mm iron peg'
 }
 
 /**

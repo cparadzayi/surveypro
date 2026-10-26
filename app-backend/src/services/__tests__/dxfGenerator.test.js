@@ -478,7 +478,7 @@ describe('generateDXF — beacon description block', () => {
   test('derives the block from beacons when no beaconGroups are supplied (PDF parity)', () => {
     // No beaconGroups: the block must still emit, classified from the beacons —
     // it used to be silently dropped. REMA/SCENIC/SLE → 50mm Iron Pipe; the
-    // numeric-suffix beacons roll up as "Others : 12mm iron peg in concrete".
+    // numeric-suffix beacons roll up as "Others : 12mm iron peg".
     const { buffer } = generateDXF({
       parcels: { features: [] },
       beacons: { features: [
@@ -496,7 +496,7 @@ describe('generateDXF — beacon description block', () => {
     const dxf = buffer.toString()
     expect(dxf).toMatch(/DESCRIPTION OF BEACONS\b/)
     expect(dxf).toMatch(/REMA, SCENIC, SLE : 50mm Iron Pipe in Concrete/)
-    expect(dxf).toMatch(/Others : 12mm iron peg in concrete/)
+    expect(dxf).toMatch(/Others : 12mm iron peg(?! in concrete)/)
   })
 })
 

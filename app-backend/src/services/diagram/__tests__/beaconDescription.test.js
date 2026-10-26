@@ -39,11 +39,11 @@ describe('buildBeaconDescription', () => {
 
   test('infers the description from the name when none is provided', () => {
     const beacons = fc([
-      beacon('84A', 2144000, -85000),   // default → 12mm iron peg in concrete
+      beacon('84A', 2144000, -85000),   // default → 12mm iron peg
       beacon('B1', 2144060, -85000),    // [A-Z]\d → 50mm Iron Pipe in Concrete
     ])
     expect(buildBeaconDescription(geometry, beacons)).toEqual([
-      { names: 'A', description: '12mm iron peg in concrete' },
+      { names: 'A', description: '12mm iron peg' },
       { names: 'B', description: '50mm Iron Pipe in Concrete' },
     ])
   })

@@ -500,7 +500,7 @@ export function edgeDistanceMetres(edge) {
 // truth so the PDF, DXF and UI render identical groupings. Classification is by
 // name pattern: M-series → "Not beaconed"; single-letter+digits or all-letter
 // codes (P2, ZE, REMA) → "50mm Iron Pipe in Concrete"; everything else → "12mm
-// iron peg in concrete". The most common type is rolled up as "Others".
+// iron peg". The most common type is rolled up as "Others".
 // Returns an ordered array of { points, description } where `points` is the
 // comma-joined sorted beacon names (or the literal "Others"); "Not beaconed"
 // sorts first, "Others" last, the rest alphabetically by description.
@@ -515,14 +515,14 @@ export function classifyBeaconGroups(beacons) {
     let type
     if (/^M\d+/i.test(name)) type = 'Not beaconed'
     else if (/^[A-Z]\d+$/i.test(name) || /^[A-Z]{2,}$/i.test(name)) type = '50mm Iron Pipe in Concrete'
-    else type = '12mm iron peg in concrete'
+    else type = '12mm iron peg'
     if (!typeGroups.has(type)) typeGroups.set(type, [])
     typeGroups.get(type).push(name)
   }
 
   // Most common type becomes "Others".
   const byCount = [...typeGroups.entries()].sort((a, b) => b[1].length - a[1].length)
-  const mostCommon = byCount[0]?.[0] || '12mm iron peg in concrete'
+  const mostCommon = byCount[0]?.[0] || '12mm iron peg'
 
   const groups = {}
   typeGroups.forEach((names, type) => { if (type !== mostCommon) groups[type] = names })

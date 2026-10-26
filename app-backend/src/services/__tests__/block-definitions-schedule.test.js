@@ -363,14 +363,14 @@ describe('classifyBeaconGroups — SI 727 beacon description grouping', () => {
     const groups = classifyBeaconGroups(beaconsFC('REMA', 'SCENIC', 'SLE', '96C', '101B', '100B', '102C', '97Z'))
     expect(groups).toEqual([
       { points: 'REMA, SCENIC, SLE', description: '50mm Iron Pipe in Concrete' },
-      { points: 'Others', description: '12mm iron peg in concrete' },
+      { points: 'Others', description: '12mm iron peg' },
     ])
   })
 
   test('"Not beaconed" (M-series) sorts first, "Others" last', () => {
     const groups = classifyBeaconGroups(beaconsFC('M5', 'M6', 'REMA', 'SCENIC', '12A', '13B', '14C'))
     expect(groups.map(g => g.description)).toEqual([
-      'Not beaconed', '50mm Iron Pipe in Concrete', '12mm iron peg in concrete',
+      'Not beaconed', '50mm Iron Pipe in Concrete', '12mm iron peg',
     ])
     expect(groups[0].points).toBe('M5, M6')
     expect(groups[groups.length - 1].points).toBe('Others')
@@ -389,7 +389,7 @@ describe('classifyBeaconGroups — SI 727 beacon description grouping', () => {
     ] }
     expect(classifyBeaconGroups(fc)).toEqual([
       { points: 'REMA, SCENIC, SLE', description: '50mm Iron Pipe in Concrete' },
-      { points: 'Others', description: '12mm iron peg in concrete' },
+      { points: 'Others', description: '12mm iron peg' },
     ])
   })
 })

@@ -81,8 +81,8 @@ export function generateCSVTemplate(): string {
   const sampleRows = [
     ['P2', '97538.004', '2247107.872', 'F', '50mm Iron Pipe in Concrete', '1/10/2025'],
     ['ZA', '96271.080', '2247869.919', 'F', '50mm Iron Pipe in Concrete', '1/10/2025'],
-    ['2283A', '97057.022', '2247854.388', 'P', '12mm iron peg in concrete', '1/10/2025'],
-    ['2283L', '96831.600', '2248046.047', 'P', '12mm iron peg in concrete', '1/10/2025']
+    ['2283A', '97057.022', '2247854.388', 'P', '12mm iron peg', '1/10/2025'],
+    ['2283L', '96831.600', '2248046.047', 'P', '12mm iron peg', '1/10/2025']
   ];
   
   const csvLines = [

@@ -6024,10 +6024,10 @@ function formatBeaconDescriptionGroups(points: any[]): Array<{ points: string; d
   // Example from template:
   // M5, M6, M7, M8, M9 : Not beaconed
   // ZE, ZD             : 50mm Iron Pipe in Concrete
-  // Others             : 12mm iron peg in concrete
+  // Others             : 12mm iron peg
   
   if (!points || points.length === 0) {
-    return [{ points: 'All', description: '12mm iron peg in concrete' }]
+    return [{ points: 'All', description: '12mm iron peg' }]
   }
   
   console.log('[BeaconDescription] 📊 Analyzing beacons from database...')
@@ -6054,7 +6054,7 @@ function formatBeaconDescriptionGroups(points: any[]): Array<{ points: string; d
       beaconType = '50mm Iron Pipe in Concrete'
     } else {
       // 2283A, 2283L, N1, etc. = Standard concrete beacons (default)
-      beaconType = '12mm iron peg in concrete'
+      beaconType = '12mm iron peg'
     }
     
     if (!beaconTypeGroups.has(beaconType)) {
@@ -6074,7 +6074,7 @@ function formatBeaconDescriptionGroups(points: any[]): Array<{ points: string; d
   })
   
   // Find the most common type (this becomes "Others")
-  const mostCommonType = sortedTypes[0]?.[0] || '12mm iron peg in concrete'
+  const mostCommonType = sortedTypes[0]?.[0] || '12mm iron peg'
   const mostCommonCount = sortedTypes[0]?.[1].length || 0
   
   console.log(`[BeaconDescription] 🎯 Most common type: "${mostCommonType}" (${mostCommonCount} beacons)`)

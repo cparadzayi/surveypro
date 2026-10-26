@@ -173,6 +173,20 @@ describe('buildPartyWallStatementRows', () => {
     expect(row('30', '40')).toBe('99, 100')
   })
 
+  it('lists the rows by their first stand, ascending, whatever order the walls were recorded in', () => {
+    const forParcel = (id: string) => ({ a: '1', b: '5', c: '2', d: '3', e: '6', f: '4', g: '1', h: '2', i: '87', j: '1720' } as Record<string, string>)[id]
+    const wall = (subjectId: string, adjoiningSubjectId: string, boundary: string) =>
+      pw({ subjectId, adjoiningSubjectId, adjoiningStand: undefined, fromBeacon: boundary + 'A', toBeacon: boundary + 'B' })
+    const rows = buildPartyWallStatementRows([
+      wall('e', 'f', '6'),   // 4, 6
+      wall('a', 'b', '1'),   // 1, 5
+      wall('i', 'j', '87'),  // 87, 1720
+      wall('c', 'd', '2'),   // 2, 3
+      wall('g', 'h', '1x'),  // 1, 2  (shares stand 1: the second stand breaks the tie)
+    ], forParcel)
+    expect(rows.map((r) => r.stands)).toEqual(['1, 2', '1, 5', '2, 3', '4, 6', '87, 1720'])
+  })
+
   it('resolves the adjoining stand from the reciprocal parcel id (shared-pattern capture)', () => {
     const rows = buildPartyWallStatementRows([
       pw({ adjoiningSubjectId: '20', fromBeacon: '2833A', toBeacon: '2833B' }),

@@ -283,6 +283,13 @@ export function buildPartyWallStatementRows(
     seen.add(key)
     rows.push({ stands: [...stands].sort(compareStands).join(', '), boundary })
   }
-  return rows
+  // The statement runs down the page by its first stand: 1340, 1342, 1355 ... whatever
+  // order the walls were recorded in. A tie (one stand with two walls) goes by the second
+  // stand, then the boundary, so the order never depends on the records' order.
+  const part = (r: PartyWallStatementRow, i: number) => r.stands.split(', ')[i] ?? ''
+  return rows.sort((a, b) =>
+    compareStands(part(a, 0), part(b, 0)) ||
+    compareStands(part(a, 1), part(b, 1)) ||
+    a.boundary.localeCompare(b.boundary))
 }
 

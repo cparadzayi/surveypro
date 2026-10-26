@@ -3918,11 +3918,21 @@ function renderBeacons(
       doc.restore();
       collisionDetector.addRegion(chosen.x - chosen.ew / 2, chosen.y - chosen.eh / 2, chosen.ew, chosen.eh);
       // The ring, now that the tag is down (a tag beside it is a label it must not cut).
-      let drawRing = insideRing ?? fitIndicatorRing({ ...ringArgs, rects: collisionDetector.occupiedRegions });
-      // Hemmed in by neighbouring circles: a snug ring round the cluster's own circles alone.
-      if (!drawRing.clear) {
-        const snug = fitIndicatorRing({ ...ringArgs, rects: collisionDetector.occupiedRegions, gap: 0.4, minR: beaconRadius + 1.3 });
-        if (snug.clear) drawRing = snug;
+      // A ring with room round the beacons, not one hugging them: at least RING_MARGIN_PT
+      // beyond the cluster's circles. It must not cut an in-parcel letter or label; a
+      // neighbour's beacon circle is spared if that can be had too, else it is cut
+      // (a cut circle reads better than a cut letter).
+      let drawRing = insideRing;
+      if (!drawRing) {
+        const RING_MARGIN_PT = 6;
+        const enclose = Math.max(...cluster.map((m) => Math.hypot(m.pos.x - ringArgs.cx, m.pos.y - ringArgs.cy))) + beaconRadius + 2;
+        const args = { ...ringArgs, rects: collisionDetector.occupiedRegions, minR: enclose + RING_MARGIN_PT };
+        const strict = fitIndicatorRing(args);
+        drawRing = strict.clear ? strict : null;
+        if (!drawRing) {
+          const soft = fitIndicatorRing({ ...args, softBeacons: true });
+          drawRing = soft.clear ? soft : strict;
+        }
       }
       doc.save();
       doc.lineWidth(0.5).dash(2, { space: 1.5 }).strokeColor('#000000').circle(drawRing.cx, drawRing.cy, drawRing.r).stroke();

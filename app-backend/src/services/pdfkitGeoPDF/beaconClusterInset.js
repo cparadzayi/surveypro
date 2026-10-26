@@ -101,9 +101,10 @@ export function placeStandNumber(poly, widthAt, obstacles, { sizes = [9, 8, 7, 6
  * @param {Array<{x:number,y:number}>} o.otherBeacons  circles the ring must not cut
  * @param {Array<{x:number,y:number,width:number,height:number}>} o.rects  labels
  * @param {number} o.beaconRadius
+ * @param {boolean} [o.softBeacons] clear of labels only: other circles may be cut
  * @returns {{cx:number, cy:number, r:number, clear:boolean}}
  */
-export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [], beaconRadius, gap = 1.2, minR = 6 }) {
+export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [], beaconRadius, gap = 1.2, minR = 6, softBeacons = false }) {
   // Only real labels count: a registered region far larger than any label is a
   // block or a band, and the ring cannot be asked to clear those.
   const labels = rects.filter((q) => q && q.width <= 120 && q.height <= 60 && q.width * q.height <= 2500);
@@ -118,7 +119,8 @@ export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [
     return [dmin, dmax];
   };
   const okAt = (x, y, r) => {
-    for (const q of otherBeacons) {
+    // softBeacons: only labels must be clear; another beacon's circle may be cut.
+    for (const q of softBeacons ? [] : otherBeacons) {
       const d = Math.hypot(q.x - x, q.y - y);
       if (!(d + beaconRadius + gap <= r || d - beaconRadius - gap >= r)) return false;
     }

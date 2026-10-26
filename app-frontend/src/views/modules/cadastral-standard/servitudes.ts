@@ -1,5 +1,6 @@
 import type { SideAnnotation, SubjectSide } from './sideAnnotations'
 import { resolveBeaconNameForPoint } from '@/utils/beaconNameMatch'
+import { splitBeaconName } from '../../../../../app-shared/beaconName'
 
 export type ServitudeType =
   | 'party-wall' | 'right-of-way' | 'sewer' | 'water' | 'electricity'
@@ -86,9 +87,24 @@ export function parcelHasServitude(list: Servitude[], parcelId: string | number)
     || list.some((x) => x.beneficiarySubjectId === pid)
 }
 
+/**
+ * A wall along one stand's own boundary is written in letter order, whichever way it
+ * was recorded: 1388B – 1388A reads 1388A – 1388B. A wall between beacons of different
+ * stands (1869D – 1356B) keeps the direction it was recorded in.
+ */
+function sameStandInLetterOrder(from: string, to: string): [string, string] {
+  const a = splitBeaconName(from)
+  const b = splitBeaconName(to)
+  if (a && b && a.prefix === b.prefix && a.suffix.toUpperCase() > b.suffix.toUpperCase()) return [to, from]
+  return [from, to]
+}
+
 /** Display boundary for a servitude: the beacon pair when named, else the raw letter side. */
 export function beaconBoundary(s: Servitude): string {
-  if (s.fromBeacon && s.toBeacon) return `${s.fromBeacon} – ${s.toBeacon}`
+  if (s.fromBeacon && s.toBeacon) {
+    const [from, to] = sameStandInLetterOrder(String(s.fromBeacon), String(s.toBeacon))
+    return `${from} – ${to}`
+  }
   return s.side || ''
 }
 

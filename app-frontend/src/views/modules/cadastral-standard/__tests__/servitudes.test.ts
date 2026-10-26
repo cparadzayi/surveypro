@@ -194,6 +194,16 @@ describe('buildPartyWallStatementRows', () => {
     expect(rows).toEqual([{ stands: '2469, 2833', boundary: '2833A – 2833B' }])
   })
 
+  it('writes a wall along one stand\'s own beacons in letter order, and keeps the direction between stands', () => {
+    const forParcel = (id: string) => ({ a: '1387', b: '1388', c: '1869', d: '1356' } as Record<string, string>)[id]
+    const row = (subjectId: string, adjoiningSubjectId: string, fromBeacon: string, toBeacon: string) =>
+      buildPartyWallStatementRows([pw({ subjectId, adjoiningSubjectId, adjoiningStand: undefined, fromBeacon, toBeacon })], forParcel)[0].boundary
+    expect(row('a', 'b', '1388B', '1388A')).toBe('1388A – 1388B')   // recorded B to A
+    expect(row('a', 'b', '1388A', '1388B')).toBe('1388A – 1388B')   // already in order
+    expect(row('c', 'd', '1869D', '1356B')).toBe('1869D – 1356B')   // different stands: as recorded
+    expect(row('d', 'c', '1356B', '1869D')).toBe('1356B – 1869D')
+  })
+
   it('falls back to the side letter when no beacon pair exists', () => {
     expect(buildPartyWallStatementRows([pw({ side: 'BC' })], standForParcel))
       .toEqual([{ stands: '2469, 2833', boundary: 'BC' }])

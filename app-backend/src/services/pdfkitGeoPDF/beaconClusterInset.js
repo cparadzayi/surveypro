@@ -102,9 +102,12 @@ export function placeStandNumber(poly, widthAt, obstacles, { sizes = [9, 8, 7, 6
  * @param {Array<{x:number,y:number,width:number,height:number}>} o.rects  labels
  * @param {number} o.beaconRadius
  * @param {boolean} [o.softBeacons] clear of labels only: other circles may be cut
+ * @param {number} [o.reach] how far past the smallest radius the ring may grow (default 30pt)
+ * @param {number[]} [o.offsets] distances the centre may be nudged by (default 1.5-8pt)
+ * @param {boolean} [o.leastCut] when no ring is clear, return the full ring that cuts the least
  * @returns {{cx:number, cy:number, r:number, clear:boolean}}
  */
-export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [], beaconRadius, gap = 1.2, minR = 6, softBeacons = false }) {
+export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [], beaconRadius, gap = 1.2, minR = 6, softBeacons = false, reach = 30, offsets = [1.5, 3, 5, 8], leastCut = false }) {
   // Only real labels count: a registered region far larger than any label is a
   // block or a band, and the ring cannot be asked to clear those.
   const labels = rects.filter((q) => q && q.width <= 120 && q.height <= 60 && q.width * q.height <= 2500);
@@ -130,15 +133,28 @@ export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [
     }
     return true;
   };
+  // How much a ring at (x, y, r) would cut: a label counts 3, another beacon's circle 1.
+  const cutsAt = (x, y, r) => {
+    let n = 0;
+    for (const q of otherBeacons) {
+      const d = Math.hypot(q.x - x, q.y - y);
+      if (!(d + beaconRadius + gap <= r || d - beaconRadius - gap >= r)) n += 1;
+    }
+    for (const q of labels) {
+      const [dmin, dmax] = rectRange(x, y, q);
+      if (!(dmax + gap <= r || dmin - gap >= r)) n += 3;
+    }
+    return n;
+  };
   const centres = [[0, 0]];
-  for (const off of [1.5, 3, 5, 8]) {
+  for (const off of offsets) {
     for (let a = 0; a < 360; a += 45) centres.push([Math.cos((a * Math.PI) / 180) * off, Math.sin((a * Math.PI) / 180) * off]);
   }
   let best = null;
   for (const [ox, oy] of centres) {
     const x = cx + ox, y = cy + oy;
     const lo = Math.max(minR, farthest(x, y) + beaconRadius + gap + 0.8);
-    const hi = Math.max(lo * 2.5, lo + 30);
+    const hi = Math.max(lo * 2.5, lo + reach);
     for (let r = lo; r <= hi; r += 0.5) {
       if (!okAt(x, y, r)) continue;
       const cost = r + Math.hypot(ox, oy) * 2;
@@ -147,6 +163,20 @@ export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [
     }
   }
   if (best) return { cx: best.cx, cy: best.cy, r: best.r, clear: true };
+  if (leastCut) {
+    // No clear ring exists: the full ring that cuts the least, labels weighing most.
+    let worst = null;
+    for (const [ox, oy] of centres) {
+      const x = cx + ox, y = cy + oy;
+      const lo = Math.max(minR, farthest(x, y) + beaconRadius + gap + 0.8);
+      for (let r = lo; r <= Math.max(lo * 2.5, lo + reach); r += 0.5) {
+        const cuts = cutsAt(x, y, r);
+        const cost = cuts * 100 + r + Math.hypot(ox, oy) * 2;
+        if (!worst || cost < worst.cost) worst = { cx: x, cy: y, r, cost, cuts };
+      }
+    }
+    if (worst) return { cx: worst.cx, cy: worst.cy, r: worst.r, clear: false, cuts: worst.cuts };
+  }
   const lo = Math.max(minR, farthest(cx, cy) + beaconRadius + gap + 0.8);
   return { cx, cy, r: lo, clear: false };
 }

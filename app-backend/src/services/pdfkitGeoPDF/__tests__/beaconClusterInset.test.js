@@ -161,6 +161,27 @@ describe('fitIndicatorRing', () => {
     expect(dmax < r.r || dmin > r.r).toBe(true)
   })
 
+  test('reach: a long label row that every near ring would cut is cleared by growing past it', () => {
+    // 60pt long, straddling every radius from 8 to 68 along +x: nothing within the default reach is clear.
+    const row = { x: 8, y: -3, width: 60, height: 6 }
+    expect(fitIndicatorRing({ ...base, rects: [row] }).clear).toBe(false)
+    const r = fitIndicatorRing({ ...base, rects: [row], reach: 90 })
+    expect(r.clear).toBe(true)
+    expect(r.r).toBeGreaterThan(40) // well past the default reach
+  })
+
+  test('leastCut: with no clear ring, a full ring that cuts the fewest labels, a label costing more than a circle', () => {
+    // Labels all round at every radius, and a neighbour circle: nothing is clear.
+    const wall = [-1, 1].flatMap((sx) => [-1, 1].map((sy) => ({ x: 4 + sx * 40 - 30, y: sy * 40 - 3, width: 60, height: 6 })))
+    const rects = [{ x: -60, y: -3, width: 120, height: 6 }, { x: -3, y: -60, width: 6, height: 120 }, ...wall]
+    const none = fitIndicatorRing({ ...base, rects, otherBeacons: [{ x: 4, y: 9 }] })
+    expect(none.clear).toBe(false)
+    const least = fitIndicatorRing({ ...base, rects, otherBeacons: [{ x: 4, y: 9 }], leastCut: true })
+    expect(least.clear).toBe(false)
+    expect(least.r).toBeGreaterThan(0)
+    expect(Number.isFinite(least.cuts)).toBe(true)
+  })
+
   test('blocks and bands too big to be labels are not allowed to veto the ring', () => {
     const band = { x: -500, y: -500, width: 1000, height: 1000 }
     expect(fitIndicatorRing({ ...base, rects: [band] }).clear).toBe(true)

@@ -3818,8 +3818,9 @@ function renderBeacons(
       const ringBase = fitIndicatorRing(ringArgs);
       let ring = null; // set only while looking for a spot wholly inside a ring
       let insideOnly = false;
-      const ringOk = (o) => {
-        if (!ring) return true;
+      const ringOk = (o, testRing = ring) => {
+        if (!testRing) return true;
+        const ring = testRing;
         const x0 = o.x - o.ew / 2, x1 = o.x + o.ew / 2, y0 = o.y - o.eh / 2, y1 = o.y + o.eh / 2;
         const nx = Math.max(x0, Math.min(ring.cx, x1)), ny = Math.max(y0, Math.min(ring.cy, y1));
         const dmin = Math.hypot(nx - ring.cx, ny - ring.cy);
@@ -3877,18 +3878,62 @@ function renderBeacons(
       // Otherwise the tag is placed as usual and the ring is fitted round it afterwards.
       const insideRing = picked ? ring : null;
       ring = null;
-      if (!picked && roadFont) {
-        // The road's own size first: beside the beacons if it fits there.
-        const roadNear = build(roadFont, NEAR_GAPS, roadFont).sort((p, q) => p.cost - q.cost);
-        picked = pick(roadNear, true) || pick(roadNear, false);
-      }
-      if (!picked) {
-        const near = allSizes(NEAR_GAPS);
-        picked = pick(near, true) || pick(near, false);
-      }
-      if (!picked) {
-        const far = allSizes(FAR_GAPS);
-        picked = pick(far, true) || pick(far, false);
+      // The spot for the tag: the road's own size beside the beacons, then any size
+      // near, then further out.
+      const pickSpot = () => {
+        let got = null;
+        if (roadFont) {
+          const roadNear = build(roadFont, NEAR_GAPS, roadFont).sort((p, q) => p.cost - q.cost);
+          got = pick(roadNear, true) || pick(roadNear, false);
+        }
+        if (!got) {
+          const near = allSizes(NEAR_GAPS);
+          got = pick(near, true) || pick(near, false);
+        }
+        if (!got) {
+          const far = allSizes(FAR_GAPS);
+          got = pick(far, true) || pick(far, false);
+        }
+        return got;
+      };
+      if (!picked) picked = pickSpot();
+      // The ring, fitted BEFORE the tag is registered so the tag is never what holds it
+      // back from clearing a stand letter: if the tag then lies across the ring, it is
+      // the tag that moves (to a spot wholly inside or outside the ring).
+      // A ring with room round the beacons, not one hugging them: at least RING_MARGIN_PT
+      // beyond the cluster's circles. It must not cut an in-parcel letter or label; a
+      // neighbour's beacon circle is spared if that can be had too, else it is cut
+      // (a cut circle reads better than a cut letter).
+      const fitRing = (extraRects = []) => {
+        const RING_MARGIN_PT = 6;
+        const enclose = Math.max(...cluster.map((m) => Math.hypot(m.pos.x - ringArgs.cx, m.pos.y - ringArgs.cy))) + beaconRadius + 2;
+        const args = { ...ringArgs, rects: [...collisionDetector.occupiedRegions, ...extraRects], minR: enclose + RING_MARGIN_PT };
+        // A full circle is wanted, so look further before giving up on a clear one: first
+        // as is, then sparing no beacon circles, then letting the ring grow well past the
+        // cluster (a road name beside it is then wholly inside) and its centre drift.
+        const WIDE = { reach: 70, offsets: [1.5, 3, 5, 8, 12, 16] };
+        for (const extra of [{}, { softBeacons: true }, WIDE, { ...WIDE, softBeacons: true }]) {
+          const fit = fitIndicatorRing({ ...args, ...extra });
+          if (fit.clear) return fit;
+        }
+        // Still none: the full ring that cuts the least (never a broken one).
+        return fitIndicatorRing({ ...args, ...WIDE, softBeacons: true, leastCut: true });
+      };
+      let drawRing = insideRing ?? fitRing();
+      if (!insideRing && picked && !ringOk(picked.o, drawRing)) {
+        // The tag lies across the ring. Move the tag to a spot wholly inside or outside it,
+        // but only to one as good as the tag's own rules (beside its beacons, in the open,
+        // along the road): else the tag stays and the ring is fitted round it instead.
+        ring = drawRing;
+        const again = pickSpot();
+        ring = null;
+        const alongRoad = (o) => [align, ...extraAngles].some((a) => Math.abs(o.rot - a) <= 10);
+        if (again && again.o.gap <= 12 && again.hit.length === 0 && alongRoad(again.o)) {
+          picked = again;
+        } else {
+          const t = picked.o;
+          drawRing = fitRing([{ x: t.x - t.ew / 2, y: t.y - t.eh / 2, width: t.ew, height: t.eh }]);
+        }
       }
       if (!picked) {
         // Nowhere clear of foreign stands at any size: the nearest clear spot, so
@@ -3917,27 +3962,7 @@ function renderBeacons(
         .text(tag, -chosen.tw / 2, -chosen.th / 2, { lineBreak: false });
       doc.restore();
       collisionDetector.addRegion(chosen.x - chosen.ew / 2, chosen.y - chosen.eh / 2, chosen.ew, chosen.eh);
-      // The ring, now that the tag is down (a tag beside it is a label it must not cut).
-      // A ring with room round the beacons, not one hugging them: at least RING_MARGIN_PT
-      // beyond the cluster's circles. It must not cut an in-parcel letter or label; a
-      // neighbour's beacon circle is spared if that can be had too, else it is cut
-      // (a cut circle reads better than a cut letter).
-      let drawRing = insideRing;
-      if (!drawRing) {
-        const RING_MARGIN_PT = 6;
-        const enclose = Math.max(...cluster.map((m) => Math.hypot(m.pos.x - ringArgs.cx, m.pos.y - ringArgs.cy))) + beaconRadius + 2;
-        const args = { ...ringArgs, rects: collisionDetector.occupiedRegions, minR: enclose + RING_MARGIN_PT };
-        // A full circle is wanted, so look further before giving up on a clear one: first
-        // as is, then sparing no beacon circles, then letting the ring grow well past the
-        // cluster (a road name beside it is then wholly inside) and its centre drift.
-        const WIDE = { reach: 70, offsets: [1.5, 3, 5, 8, 12, 16] };
-        for (const extra of [{}, { softBeacons: true }, WIDE, { ...WIDE, softBeacons: true }]) {
-          const fit = fitIndicatorRing({ ...args, ...extra });
-          if (fit.clear) { drawRing = fit; break; }
-        }
-        // Still none: the full ring that cuts the least (never a broken one).
-        if (!drawRing) drawRing = fitIndicatorRing({ ...args, ...WIDE, softBeacons: true, leastCut: true });
-      }
+      // The ring (fitted above, before the tag was registered).
       doc.save();
       doc.lineWidth(0.5).dash(2, { space: 1.5 }).strokeColor('#000000').circle(drawRing.cx, drawRing.cy, drawRing.r).stroke();
       doc.restore();

@@ -40,14 +40,14 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 
 ### 1. Protect work and build trust
 
-- [~] Replace the 187 `alert()` calls with a toast / inline-banner / dialog layer. Messages such as "Check console for details" send a surveyor to developer tools, and "Your work is still in memory but not persisted" is a persistent warning that needs a Retry, not a dismissible pop-up. **Layer built 27 Oct 2026** (`composables/useNotifications.ts`, `components/ui/NotificationHost.vue`, mounted once in `App.vue`; `utils/errorMessage.ts` turns "Network Error" and friends into plain language). **Plan generation migrated** (its fail-fast alerts, the overwrite question, the result and the failure). About 180 `alert()` calls and 21 `confirm()` calls remain, mostly in `MapLibreAreaView` (55), `CadastralStandardView` (43) and the Areas views; migrate file by file, starting with the persistent "not saved" warnings.
-- [~] Sessions fail silently: a 401 or the 4-hour idle timeout logs the user out and returns them to the landing page with no explanation. **Fixed 27 Oct 2026:** the sign-in page now says "Your session has expired. Sign in again to continue." (`auth.sessionNotice`; a wrong password is not reported as an expired session). Still open: an unsaved-changes guard, and a "server not reachable" state beyond the error text.
+- [~] Replace the 187 `alert()` calls with a toast / inline-banner / dialog layer. Messages such as "Check console for details" send a surveyor to developer tools, and "Your work is still in memory but not persisted" is a persistent warning that needs a Retry, not a dismissible pop-up. **Layer built 27 Oct 2026** (`composables/useNotifications.ts`, `components/ui/NotificationHost.vue`, mounted once in `App.vue`; `utils/errorMessage.ts` turns "Network Error" and friends into plain language; `notifyFailure(title, error)` is the one-line form for a catch block). **Migrated:** plan generation, and (second pass, 28 Oct) every alert that sent the user to the console or reported a failed save: 27 calls in 10 files, including the auto-save failure in `MapLibreAreaView`, which is now a persistent "Parcel not saved" error with a working **Retry save**. About 150 `alert()` calls and 21 `confirm()` calls remain (mostly the success and validation messages in `MapLibreAreaView` and `CadastralStandardView`, and the Areas views); migrate file by file.
+- [x] Sessions fail silently: a 401 or the 4-hour idle timeout logged the user out and returned them to the landing page with no explanation. **Fixed 27 Oct 2026:** the sign-in page says "Your session has expired. Sign in again to continue." (`auth.sessionNotice`; a wrong password is not reported as an expired session). **Unsaved-changes guard added 28 Oct 2026** (`composables/useUnsavedWork.ts`): a screen registers while it holds unsaved input, and leaving asks first through the workflow step changes (ribbon jumps, Previous/Next), the router, and the browser's own prompt on closing or reloading the tab. It is wired into the project-setup form only so far, and marks by the user's own input events, never by comparing values. Still open: wire it into other forms (record composition, parcel editing), and a "server not reachable" state beyond the error text.
 - [x] The working-directory requirement was checked only after the PDF, DXF and summary had all been built. **Fixed 27 Oct 2026:** `validateOutputLocation` in `planPayload.ts`, called at the top of `generatePlanDocuments`.
 
 ### 2. Plan generation
 
 - [x] Generator warnings were invisible: the PDF renderer's warnings (for example "some blocks may overlap the figure") never left the backend, and DXF warnings went to `console.warn` only. **Fixed 27 Oct 2026:** the backend sends them in an `X-Plan-Warnings` header (single-sheet and per sheet for multi-sheet plans; `utils/planWarnings.js`), the DXF counts become sentences, and both appear in the result notice, which stays up until dismissed.
-- [~] Replace the result `alert()` with a result panel. **Done in part, 27 Oct 2026:** a notice lists the files saved, files kept, parcels not drawn and the warnings. Still open: Open / Show in folder / Preview actions, and the scale and sheet used.
+- [~] Replace the result `alert()` with a result panel. **Done in part:** a notice lists the files saved, files kept, parcels not drawn and the warnings, with a **Copy folder path** action (28 Oct 2026; a browser page cannot open a folder). Still open: Preview, and the scale and sheet used.
 - [ ] Progress and cancel for generation (it can take minutes; only button text shows status).
 - [x] Scale dropdown was not in numeric order (1:1000-1:7500, then 1:100-1:750). **Fixed 27 Oct 2026:** now 1:100-1:750, 1:1000-1:7500, then 1:10000 up.
 - [ ] "Generate General Plan" and "Download Complete Survey Record" are equal-weight buttons; make the plan the primary action. Remember the PDF/DXF/GPKG choices; say what GPKG is.
@@ -55,7 +55,7 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 
 ### 3. Orientation in the 14-step workflow
 
-- [~] No overall progress ("5 of 14"); step state is shown by colour alone. **Progress count added 27 Oct 2026** under "All Steps" ("5 of 14 steps complete. ..."). Step state is still colour only.
+- [x] No overall progress ("5 of 14"); step state is shown by colour alone. **Progress count added 27 Oct 2026** under "All Steps". **Non-colour step state added 28 Oct 2026:** a tick on completed steps, a spoken status for every step ("completed", "current step", "not started"), `aria-current="step"` on the current one, and the status in the tooltip.
 - [x] Ribbon note said "Locks clear automatically as prerequisites complete", contradicting `cadastralWorkflow.ts` (steps are deliberately not gated). **Fixed 27 Oct 2026:** now "Open any step at any time; each one reports what it still needs."
 - [ ] Where a step has nothing to work on, say which earlier step supplies the data and link to it.
 - [ ] Show the project name persistently in the workflow.
@@ -107,7 +107,14 @@ Done 27 October 2026 in `app-frontend/src`: the five items marked `[x]` above.
 - `composables/useWorkflowRibbon.ts`: `workflowProgressNote`.
 - `vitest.config.ts` now has the Vue plugin so components can be mounted in tests.
 
+## Third round, 28 October 2026
+
+- `notifyFailure` helper, and 27 console-referring or save-failure alerts converted across 10 files (`DocumentPreviewPanel`, `AreaComputationView`, `CadastralStandardView`, `ControlPointSelectionView`, `DSGCertificateView`, `MapLibreAreaView`, `ReportOnSurveyView`, `SurveyPlanMapView`, `SurveyPlanViewNew`, `Areas2View`). The parcel auto-save failure now offers Retry save.
+- `composables/useUnsavedWork.ts` and its wiring (project setup, workflow step changes, router).
+- Step tiles carry a tick, a spoken status and `aria-current` (`RibbonButton`, `useWorkflowRibbon`).
+- "Copy folder path" on the plan result notice (`outputFolderPath`); notice actions can keep the notice open (`keepOpen`).
+
 ## Suggested order for the rest
 
-- **Next:** migrate the remaining `alert()` / `confirm()` calls file by file (the "not persisted" warnings first), an unsaved-changes guard, Open / Show in folder / Preview on the result notice, and a non-colour cue for step state.
+- **Next:** the remaining `alert()` / `confirm()` calls, file by file; wire the unsaved-work guard into the other forms; Preview on the result notice; project name shown persistently in the workflow; then the accessibility pass (labels, ribbon keyboard handling, dialogs).
 - **Later:** the accessibility pass and splitting the three giant views.

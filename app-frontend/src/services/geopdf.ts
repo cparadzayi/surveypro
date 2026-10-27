@@ -176,7 +176,10 @@ export interface VectorGeoPDFResult {
  * Returns { blob, suggestedScale, usedScale } — suggestedScale is non-null when
  * the backend recommends retrying at a higher scale for better block placement.
  */
-export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promise<VectorGeoPDFResult> {
+export async function generateVectorGeoPDF(
+  request: VectorGeoPDFRequest,
+  options: { signal?: AbortSignal } = {},
+): Promise<VectorGeoPDFResult> {
   console.log('[VectorGeoPDF] 📤 Sending request:', {
     parcelCount: request.parcels.features.length,
     beaconCount: request.beacons.features.length,
@@ -187,7 +190,8 @@ export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promis
   
   const response = await api.post('/geopdf/vector', request, {
     responseType: 'blob',
-    timeout: 600000 // 10 minute timeout — large projects (500+ beacons) take 3-5 min on A0
+    timeout: 600000, // 10 minute timeout — large projects (500+ beacons) take 3-5 min on A0
+    signal: options.signal,
   })
   
   const suggestedScale  = response.headers['x-suggested-scale']  ?? null
@@ -234,7 +238,7 @@ export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promis
  */
 export async function generateDXF(
   request: VectorGeoPDFRequest,
-  options: { includeGpkg?: boolean; gpkgOnly?: boolean } = {},
+  options: { includeGpkg?: boolean; gpkgOnly?: boolean; signal?: AbortSignal } = {},
 ): Promise<{
   blob: Blob
   warningCount: number
@@ -276,6 +280,7 @@ export async function generateDXF(
     // on a developed township at A0 + 1:500 scale) take 30-60s for the DXF
     // schedule placer to evaluate tens of thousands of candidate positions.
     timeout: 300000,
+    signal: options.signal,
   })
 
   const warningCount = parseInt(response.headers['x-dxf-warning-count'] || '0', 10) || 0

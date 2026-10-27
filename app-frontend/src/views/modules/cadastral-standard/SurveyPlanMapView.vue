@@ -343,8 +343,10 @@
             <button @click="generatePlanDocuments" :disabled="isExporting"
                     class="btn-export btn-geopdf" style="width: 100%; font-size: 16px; padding: 16px;">
               <span v-if="!isExporting">📋 Generate {{ planTypeLabel }}</span>
-              <span v-else>⏳ {{ exportStatus || 'Generating…' }}</span>
+              <span v-else>⏳ {{ exportStatus || 'Generating…' }} <span v-if="elapsedLabel" data-testid="generation-elapsed">({{ elapsedLabel }})</span></span>
             </button>
+            <button v-if="generationAbort" type="button" @click="cancelGeneration" data-testid="cancel-generation"
+                    class="btn-export" style="width: 100%; padding: 10px;">✕ Cancel generation</button>
             <button @click="generateComprehensivePDF" :disabled="isExporting"
                     class="btn-export btn-professional" style="width: 100%; font-size: 16px; padding: 16px;">
               <span v-if="!isExporting">📚 Download Complete Survey Record</span>
@@ -454,7 +456,7 @@ import {
   resolveScaleAndSheet,
   type PlanPayloadContext, type PlanDocumentSet,
 } from './planPayload'
-import { describeDxfWarnings, describeGenerationOutcome, outputFolderPath } from './planOutcome'
+import { describeDxfWarnings, describeGenerationOutcome, formatElapsed, isCancelled, outputFolderPath } from './planOutcome'
 import { confirmDialog, notify, notifyError, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { describeError } from '@/utils/errorMessage'
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
@@ -530,6 +532,23 @@ const coordinatePoints = ref<any[]>([])
 const projectControlPoints = ref<Array<{ name: string; X: number; Y: number; monuName: string }>>([])
 const isExporting = ref(false)
 const exportStatus = ref('')
+// Plan generation can take minutes: show how long it has been going and let the user stop it.
+const generationAbort = ref<AbortController | null>(null)
+const elapsedLabel = ref('')
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
+function startElapsed() {
+  const t0 = Date.now()
+  elapsedLabel.value = formatElapsed(0)
+  elapsedTimer = setInterval(() => { elapsedLabel.value = formatElapsed(Date.now() - t0) }, 1000)
+}
+function stopElapsed() {
+  if (elapsedTimer) clearInterval(elapsedTimer)
+  elapsedTimer = null
+  elapsedLabel.value = ''
+}
+function cancelGeneration() {
+  generationAbort.value?.abort()
+}
 const pdfFinalScale = ref<string | null>(null)
 const showPaperSizeOptions = ref(false)
 const isPanelCollapsed = ref(false)
@@ -4680,6 +4699,9 @@ async function generatePlanDocuments() {
 
   isExporting.value = true
   exportStatus.value = 'Loading project data…'
+  const abort = new AbortController()
+  generationAbort.value = abort
+  startElapsed()
   try {
     await loadData()
     // Party-wall servitude statement data rides the workflow's 'servitudes'
@@ -4703,10 +4725,10 @@ async function generatePlanDocuments() {
 
     if (exportFormats.pdf) {
       exportStatus.value = 'Computing areas & rendering PDF…'
-      let result = await generateVectorGeoPDF(payload)
+      let result = await generateVectorGeoPDF(payload, { signal: abort.signal })
       if (result.suggestedScale) {
         exportStatus.value = `Re-rendering PDF at suggested scale ${result.suggestedScale}…`
-        result = await generateVectorGeoPDF({ ...payload, scale: result.suggestedScale })
+        result = await generateVectorGeoPDF({ ...payload, scale: result.suggestedScale }, { signal: abort.signal })
       }
       docs.pdf = result.blob
       generationWarnings.push(...(result.warnings ?? []))
@@ -4795,7 +4817,7 @@ async function generatePlanDocuments() {
       if (exportFormats.gpkg) {
         exportStatus.value = 'Building georeferenced GeoPackage (.gpkg)…'
         const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: usedSheetSize || payload.sheetSize || 'SI727_500x400', sheetLayouts }
-        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { gpkgOnly: true })
+        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { gpkgOnly: true, signal: abort.signal })
         docs.gpkg = blob
         reportDxfWarnings(warningCount, warningsSummary)
       }
@@ -4805,19 +4827,19 @@ async function generatePlanDocuments() {
       const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: usedSheetSize || payload.sheetSize || 'SI727_500x400', sheetLayouts }
       if (exportFormats.dxf && exportFormats.gpkg) {
         exportStatus.value = 'Building georeferenced DXF (DXF + .prj + .gpkg)…'
-        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { includeGpkg: true })
+        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { includeGpkg: true, signal: abort.signal })
         docs.dxf = blob
         dxfExt = 'zip'
         reportDxfWarnings(warningCount, warningsSummary)
       } else if (exportFormats.dxf) {
         exportStatus.value = 'Building georeferenced DXF (DXF + .prj)…'
-        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { includeGpkg: false })
+        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { includeGpkg: false, signal: abort.signal })
         docs.dxf = blob
         dxfExt = 'zip'
         reportDxfWarnings(warningCount, warningsSummary)
       } else if (exportFormats.gpkg) {
         exportStatus.value = 'Building georeferenced GeoPackage (.gpkg)…'
-        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { gpkgOnly: true })
+        const { blob, warningCount, warningsSummary } = await generateDXF(dxfPayload, { gpkgOnly: true, signal: abort.signal })
         docs.gpkg = blob
         reportDxfWarnings(warningCount, warningsSummary)
       }
@@ -4854,6 +4876,8 @@ async function generatePlanDocuments() {
       if (ok) overwriteAll = true
       return ok
     }
+    // Cancelled while rendering: stop here, so nothing is written to the project folder.
+    if (abort.signal.aborted) throw new DOMException('Generation cancelled', 'AbortError')
     const saved: string[] = []
     const skipped: string[] = []
     for (const kind of ['pdf', 'dxf', 'gpkg', 'summary'] as const) {
@@ -4878,10 +4902,16 @@ async function generatePlanDocuments() {
     })
     emit('export-complete', { format: config.value.planType, filename: saved[0] || '' })
   } catch (error: any) {
+    if (isCancelled(error)) {
+      notifyWarning('Nothing was saved. Generate again when you are ready.', { title: 'Generation cancelled' })
+      return
+    }
     console.error('[PlanDocs] Generation failed:', error)
     const d = describeError(error, 'The plan could not be generated.')
     notifyError(d.message, { title: 'Generation failed', details: d.technical ? [d.technical] : [] })
   } finally {
+    stopElapsed()
+    generationAbort.value = null
     isExporting.value = false
     exportStatus.value = ''
   }
@@ -6586,6 +6616,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   console.log('[SurveyPlanMap] 🔚 Component unmounting')
+  // Leaving the screen mid-generation stops the request and its timer.
+  generationAbort.value?.abort()
+  stopElapsed()
   if (map.value) {
     map.value.remove()
   }

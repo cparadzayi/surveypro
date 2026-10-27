@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeDxfWarnings, describeGenerationOutcome, outputFolderPath } from '../planOutcome'
+import { describeDxfWarnings, describeGenerationOutcome, formatElapsed, isCancelled, outputFolderPath } from '../planOutcome'
 import { parseWarningsHeader } from '../../../../utils/planWarnings'
 
 const base = { subdir: 'general-plans', saved: [], skipped: [], notDrawn: [], warnings: [] }
@@ -86,5 +86,26 @@ describe('parseWarningsHeader', () => {
   it('reads anything else as "no warnings" rather than failing the generation', () => {
     for (const v of [undefined, null, '', '   ', 'not json', '{"a":1}', '42', 7]) expect(parseWarningsHeader(v)).toEqual([])
     expect(parseWarningsHeader(JSON.stringify(['ok', '', 5, null]))).toEqual(['ok'])
+  })
+})
+
+describe('formatElapsed', () => {
+  it('reads as a stopwatch', () => {
+    expect(formatElapsed(0)).toBe('0:00')
+    expect(formatElapsed(7_400)).toBe('0:07')
+    expect(formatElapsed(139_000)).toBe('2:19')
+    expect(formatElapsed(3_725_000)).toBe('1:02:05')
+  })
+  it('never goes negative', () => expect(formatElapsed(-500)).toBe('0:00'))
+})
+
+describe('isCancelled', () => {
+  it('recognises axios, DOM and fetch cancellations, and nothing else', () => {
+    expect(isCancelled({ code: 'ERR_CANCELED' })).toBe(true)
+    expect(isCancelled({ name: 'CanceledError' })).toBe(true)
+    expect(isCancelled(new DOMException('x', 'AbortError'))).toBe(true)
+    expect(isCancelled(new Error('Network Error'))).toBe(false)
+    expect(isCancelled({ code: 'ECONNABORTED' })).toBe(false) // a timeout is a failure, not a cancel
+    expect(isCancelled(null)).toBe(false)
   })
 })

@@ -8,6 +8,21 @@
  * is dismissed, so a known fault is not missed.
  */
 
+/** "0:07", "2:19", "1:02:05": time elapsed, for a button that would otherwise just say "Generating…". */
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = String(total % 60).padStart(2, '0')
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
+}
+
+/** True when a request failed because the user cancelled it (axios, fetch and DOM spellings). */
+export function isCancelled(error: unknown): boolean {
+  const e = error as { code?: string; name?: string } | null
+  return !!e && (e.code === 'ERR_CANCELED' || e.name === 'CanceledError' || e.name === 'AbortError')
+}
+
 export interface GenerationOutcome {
   /** Folder under output/ the files went to, e.g. "general-plans". */
   subdir: string

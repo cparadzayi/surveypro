@@ -1,6 +1,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useModulesStore } from '../stores/modules'
+import { useSignOut } from './useSignOut'
 import { useProjectContext } from '../stores/projectContext'
 import { group, type RibbonTab } from '../components/ribbon/types'
 
@@ -14,6 +15,7 @@ import { group, type RibbonTab } from '../components/ribbon/types'
  */
 export function useGlobalRibbon() {
   const router = useRouter()
+  const signOut = useSignOut()
   const route = useRoute()
   const modules = useModulesStore()
   const { currentProject, hasProject } = useProjectContext()
@@ -50,6 +52,17 @@ export function useGlobalRibbon() {
             icon: '🧭',
             label: 'All Modules',
             title: 'Browse every module available to you',
+          },
+        ]),
+        // Also in the page header, but the header scrolls out of reach on wide or zoomed pages;
+        // this one is always under the user's eye on the Home tab.
+        group('Account', [
+          {
+            id: 'sign-out',
+            icon: '🚪',
+            label: 'Sign out',
+            title: 'Sign out of SurveyPro',
+            tone: 'danger',
           },
         ]),
       ],
@@ -141,6 +154,7 @@ export function useGlobalRibbon() {
     }
 
     switch (id) {
+      case 'sign-out': return signOut()
       case 'go-dashboard': return router.push('/dashboard')
       case 'go-modules': return router.push('/modules/lite')
       case 'open-projects': return router.push('/modules/settings/projects')

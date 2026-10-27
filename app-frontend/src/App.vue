@@ -142,6 +142,7 @@
 
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
+import { useSignOut } from './composables/useSignOut'
 import { storeToRefs } from 'pinia'
 import { ref, watch } from 'vue'
 import { useAuthStore } from './stores/auth'
@@ -168,10 +169,7 @@ watch(() => globalRibbon.currentModuleSlug.value, slug => {
   if (slug) globalInitialTab.value = 'modules'
 }, { immediate: true })
 
-function handleLogout() {
-  auth.logout()
-  window.location.href = '/landing'
-}
+const handleLogout = useSignOut()
 
 // Nav state
 const navOpen = ref(false)

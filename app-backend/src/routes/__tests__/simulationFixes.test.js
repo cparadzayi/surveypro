@@ -11,11 +11,13 @@ const mockUser = { findByEmail: jest.fn(), verifyPassword: jest.fn(), create: je
 const mockProfile = { findByUserId: jest.fn() }
 const mockPoints = { findByProject: jest.fn(), batchCreate: jest.fn() }
 const mockProject = { create: jest.fn(), findById: jest.fn() }
+const mockParcel = { create: jest.fn(), update: jest.fn() }
 
 jest.unstable_mockModule('../../models/user.js', () => ({ default: mockUser }))
 jest.unstable_mockModule('../../models/SurveyorProfile.js', () => ({ default: mockProfile }))
 jest.unstable_mockModule('../../config/db.js', () => ({ default: { query: jest.fn() }, createSurveyorSchema: jest.fn() }))
 jest.unstable_mockModule('../../models/coordinatePoint.js', () => ({ default: mockPoints }))
+jest.unstable_mockModule('../../models/landParcel.js', () => ({ default: mockParcel }))
 jest.unstable_mockModule('../../models/SurveyProject.js', () => ({ default: mockProject }))
 jest.unstable_mockModule('../../utils/projectDirectories.js', () => ({ createProjectDirectories: jest.fn(), deleteProjectDirectory: jest.fn() }))
 
@@ -27,6 +29,7 @@ jest.unstable_mockModule('../../utils/schemaAuth.js', () => ({
 
 const { default: authRoutes } = await import('../auth.js')
 const { default: coordinatePointRoutes } = await import('../coordinatePoints.js')
+const { default: landParcelRoutes } = await import('../landParcels.js')
 const { default: surveyProjectRoutes } = await import('../survey-projects.js')
 const { loginThrottle } = await import('../../utils/loginThrottle.js')
 
@@ -154,5 +157,41 @@ describe('survey projects (findings 2 and 5)', () => {
     const r = await create(app, 'fresh')
     expect(r.statusCode).toBeLessThan(300)
     expect(mockProject.create).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('parcel boundaries (finding 6)', () => {
+  beforeEach(() => { mockParcel.create.mockReset(); mockParcel.update.mockReset() })
+  const ring = [[54000, 2146000], [54180, 2146000], [54180, 2146111], [54000, 2146111], [54000, 2146000]]
+  const good = { type: 'Polygon', coordinates: [ring] }
+  const bad = { type: 'Polygon', coordinates: [[[0, 0], [1, 1]]] }
+
+  test('a degenerate polygon is a 400 that says why, and is never stored', async () => {
+    const r = await build(landParcelRoutes).inject({ method: 'POST', url: '/land-parcels', payload: { project_id: '1', stand: '1', geom: bad } })
+    expect(r.statusCode).toBe(400)
+    expect(r.json().error).toMatch(/outer ring needs at least 3 distinct corners/)
+    expect(mockParcel.create).not.toHaveBeenCalled()
+  })
+
+  test('a proper polygon is stored', async () => {
+    mockParcel.create.mockResolvedValue({ id: 1, stand: '1' })
+    const r = await build(landParcelRoutes).inject({ method: 'POST', url: '/land-parcels', payload: { project_id: '1', stand: '1', geom: good } })
+    expect(r.statusCode).toBe(200)
+    expect(mockParcel.create).toHaveBeenCalledTimes(1)
+  })
+
+  test('in a batch only the bad parcel is refused', async () => {
+    mockParcel.create.mockResolvedValue({ id: 2, stand: 'ok' })
+    const r = await build(landParcelRoutes).inject({ method: 'POST', url: '/land-parcels/batch', payload: { project_id: '1', parcels: [{ stand: 'bad', geom: bad }, { stand: 'ok', geom: good }] } })
+    expect(mockParcel.create).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(r.json())).toMatch(/bad/)
+  })
+
+  test('an edit that swaps in a bad boundary is refused; an edit without one is not checked', async () => {
+    mockParcel.update.mockResolvedValue({ id: 1 })
+    const app = build(landParcelRoutes)
+    expect((await app.inject({ method: 'PUT', url: '/land-parcels/1', payload: { geom: bad } })).statusCode).toBe(400)
+    expect(mockParcel.update).not.toHaveBeenCalled()
+    expect((await app.inject({ method: 'PUT', url: '/land-parcels/1', payload: { owner: 'A. Moyo' } })).statusCode).toBe(200)
   })
 })

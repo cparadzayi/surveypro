@@ -56,7 +56,7 @@ diagram suites). `npm test` runs the whole suite the same way.
 - **Database:** `app-backend/src/config/db.js` — PostgreSQL pool with schema isolation logic
 - **Multi-tenancy:** Each surveyor gets an isolated PostgreSQL schema (e.g., `surveyor_john_doe`). All queries must `SET search_path = surveyor_xxx, public` before executing. Never query without schema context on protected routes.
 - **Route auto-loading:** Adding a new `.js` file to `src/routes/` registers it automatically — no explicit imports needed.
-- **Authentication is mandatory.** `server.js` decorates `app.authenticate` *before* loading routes, and every route in `src/routes/` must set `preHandler: [app.authenticate]` (add `authenticateWithSchema` too for tenant-scoped data). This is enforced at boot: Fastify throws "preHandler hook should be a function" if the decorator is missing, so a plugin can never be mounted unauthenticated by accident. Only `health.js` (load-balancer probe), `testRoute.js`, and `auth/register` + `auth/login` are intentionally open.
+- **Authentication is mandatory.** `server.js` decorates `app.authenticate` *before* loading routes, and every route in `src/routes/` must set `preHandler: [app.authenticate]` (add `authenticateWithSchema` too for tenant-scoped data). This is enforced at boot: Fastify throws "preHandler hook should be a function" if the decorator is missing, so a plugin can never be mounted unauthenticated by accident. Only `health.js` (load-balancer probe) and `auth/register` + `auth/login` are intentionally open (`testRoute.js` and `diagnostic.js` are scaffolding and are unmounted via `UNMOUNTED_ROUTES`).
   - A token requirement is *not* tenant isolation. Several plugins (notably `parcels.js`, `area-parcels.js`, `surveyors.js`, `historicalSurveyPoints.js`, `documents.js`) still take `:projectId` / `:id` at face value and use the global pool, so any authenticated user can read or mutate another surveyor's data. See "Known gaps" below.
   - In tests, register route plugins through `src/routes/__tests__/helpers/buildApp.js`, which supplies the decorator.
 
@@ -157,7 +157,7 @@ Migrations live in `app-backend/migrations/` as numbered SQL files, applied with
 
 Authorization is layered, and the layers are **not** interchangeable. Picking the wrong one is how the IDORs below got in.
 
-1. **`app.authenticate`** — valid JWT or 401. Required on every route. Only `health.js` (load-balancer probe), `testRoute.js` (scaffold), and `auth/register` + `auth/login` are exempt.
+1. **`app.authenticate`** — valid JWT or 401. Required on every route. Only `health.js` (load-balancer probe) and `auth/register` + `auth/login` are exempt.
 2. **`authenticateWithSchema`** — resolves the caller's `surveyor_profiles` row and sets `request.db` to a pool whose `search_path` is `<their schema>, public`. Sets `request.db = null` when the caller has no profile, or a profile with no `schema_name`.
 3. **`requireSchema`** — 400 when `request.db` is null. **This is the layer that makes a request fail closed.** Without it, a handler reading `request.db || <global pool>` silently continues on the shared pool, where `search_path` is `"$user", public`.
 4. **`requireAdmin`** — 403 unless `request.surveyorProfile.role === 'admin'`.

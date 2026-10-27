@@ -130,7 +130,10 @@ app.log.info(`📂 Found ${routeFiles.length} route files: ${routeFiles.join(', 
  * means declaring that model canonical and rewiring the cadastral view -- so it
  * is tracked in CLAUDE.md rather than done here.
  */
-const UNMOUNTED_ROUTES = new Set(['parcels.js', 'area-parcels.js'])
+// testRoute.js and diagnostic.js are development scaffolding that nothing calls (no frontend
+// reference): the first answered anyone without signing in, the second reported internal module
+// status to any signed-in user. A production API has no use for either, so they are not mounted.
+const UNMOUNTED_ROUTES = new Set(['parcels.js', 'area-parcels.js', 'testRoute.js', 'diagnostic.js'])
 
 for (const file of routeFiles) {
   // Checked before the import so a dead module is never even evaluated.

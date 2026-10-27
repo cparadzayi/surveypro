@@ -1,6 +1,13 @@
 import LandParcel from '../models/landParcel.js'
 import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
 import db from '../config/db.js'
+import { describeGeometryProblems } from '../utils/requestChecks.js'
+
+// 400 body for a boundary that cannot be a parcel; null when it is usable.
+const badBoundary = (geom) => {
+  const problems = describeGeometryProblems(geom)
+  return problems.length ? { ok: false, error: `The parcel boundary cannot be saved: ${problems.join('; ')}.`, problems } : null
+}
 
 export default async function landParcelRoutes(app) {
   // List land parcels by project (with optional status filter)
@@ -136,6 +143,8 @@ export default async function landParcelRoutes(app) {
           error: 'Geometry is required (geom or geometry field)' 
         })
       }
+      const invalid = badBoundary(geom)
+      if (invalid) return reply.code(400).send(invalid)
       
       const parcel = await LandParcel.create(dbConnection, {
         projectId: data.project_id,
@@ -224,6 +233,8 @@ export default async function landParcelRoutes(app) {
       
       for (const parcelData of parcels) {
         try {
+          const invalid = badBoundary(parcelData.geom)
+          if (invalid) { errors.push({ stand: parcelData.stand, error: invalid.error }); continue }
           const parcel = await LandParcel.create(dbConnection, {
             projectId: project_id,
             stand: parcelData.stand,
@@ -290,6 +301,10 @@ export default async function landParcelRoutes(app) {
     const { id } = request.params
     const data = request.body
     const dbConnection = request.db
+    if (data.geom !== undefined) {
+      const invalid = badBoundary(data.geom)
+      if (invalid) return reply.code(400).send(invalid)
+    }
     try {
       const parcel = await LandParcel.update(dbConnection, id, {
         stand: data.stand,

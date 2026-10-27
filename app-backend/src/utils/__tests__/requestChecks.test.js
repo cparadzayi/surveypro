@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals'
-import { describePointProblems, isRowId, toFinite } from '../requestChecks.js'
+import { describeGeometryProblems, describePointProblems, isRowId, toFinite } from '../requestChecks.js'
 import { NameLock, nameKey } from '../projectNameLock.js'
 
 describe('isRowId', () => {
@@ -57,5 +57,51 @@ describe('NameLock', () => {
 
   test('names compare without case or edge spaces', () => {
     expect(nameKey('  Maglas 1686 ')).toBe(nameKey('maglas 1686'))
+  })
+})
+
+describe('coordinate range', () => {
+  test('a coordinate beyond any projected system is a problem, an ordinary Lo coordinate is not', () => {
+    expect(describePointProblems([{ name: 'F2', y: 9e9, x: -9e9 }])).toEqual([
+      'Row 1 (F2): Y is beyond 10 million metres, which cannot be a survey position',
+      'Row 1 (F2): X is beyond 10 million metres, which cannot be a survey position',
+    ])
+    expect(describePointProblems([{ name: 'OK', y: -103573.21, x: 2248259.159 }])).toEqual([])
+  })
+})
+
+describe('describeGeometryProblems', () => {
+  const ring = [[54000, 2146000], [54180, 2146000], [54180, 2146111], [54000, 2146111], [54000, 2146000]]
+
+  test.each([
+    ['a closed Polygon', { type: 'Polygon', coordinates: [ring] }],
+    ['a Feature wrapping one', { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] } }],
+    ['a MultiPolygon', { type: 'MultiPolygon', coordinates: [[ring], [ring]] }],
+    ['a Polygon with a closed hole', { type: 'Polygon', coordinates: [ring, [[54010, 2146010], [54020, 2146010], [54020, 2146020], [54010, 2146010]]] }],
+  ])('%s is fine', (_, g) => expect(describeGeometryProblems(g)).toEqual([]))
+
+  test('the two-point polygon the simulation stored', () => {
+    expect(describeGeometryProblems({ type: 'Polygon', coordinates: [[[0, 0], [1, 1]]] })[0]).toMatch(/outer ring needs at least 3 distinct corners/)
+  })
+
+  test('an unclosed ring', () => {
+    expect(describeGeometryProblems({ type: 'Polygon', coordinates: [ring.slice(0, 4)] })).toEqual(['the outer ring is not closed (it must end where it starts)'])
+  })
+
+  test('points that are not numbers, and positions off the map', () => {
+    const text = [['a', 'b'], [1, 1], [2, 2], ['a', 'b']]
+    expect(describeGeometryProblems({ type: 'Polygon', coordinates: [text] })).toEqual(['the outer ring has a point that is not a pair of numbers'])
+    const far = [[0, 0], [9e9, 0], [9e9, 9e9], [0, 0]]
+    expect(describeGeometryProblems({ type: 'Polygon', coordinates: [far] })[0]).toMatch(/beyond 10 million metres/)
+  })
+
+  test('names which part of a MultiPolygon is wrong', () => {
+    expect(describeGeometryProblems({ type: 'MultiPolygon', coordinates: [[ring], [[[0, 0]]]] })[0]).toMatch(/outer ring \(part 2\)/)
+  })
+
+  test('missing, wrong type, empty', () => {
+    expect(describeGeometryProblems(null)).toEqual(['the boundary is missing'])
+    expect(describeGeometryProblems({ type: 'Point', coordinates: [1, 2] })[0]).toMatch(/must be a Polygon, not Point/)
+    expect(describeGeometryProblems({ type: 'Polygon', coordinates: [] })).toEqual(['the boundary has no rings'])
   })
 })

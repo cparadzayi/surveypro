@@ -54,4 +54,9 @@ Each fix has tests (`utils/__tests__/{loginThrottle,httpErrors,requestChecks}.te
 
 Correction: the UI note about the sign-in labels was wrong. The labels are tied to their fields (`input.labels` confirms it); the accessibility tree I read listed the label and the field separately. Nothing to fix there.
 
-Still open: 6 (implausible geometry accepted), 7 (60 simultaneous list calls take ~1.8 s), 9 (`/api/test`, `/diagnostic`), and the technician-project dashboard question.
+### Second batch: findings 6 and 9
+
+6. **Implausible geometry:** coordinate rows beyond 10 million metres (the largest any projected coordinate can be) are a 400 naming the row; parcel boundaries must be a closed Polygon/MultiPolygon with at least 4 numeric points per ring, checked on create, batch and edit (`describeGeometryProblems`). The limits are deliberately loose. Checked against the dev database first: all 975 stored parcels and 3,311 stored points pass, so no real workflow is refused.
+9. **Scaffolding routes:** `testRoute.js` and `diagnostic.js` are unmounted (`UNMOUNTED_ROUTES`); both now answer 404. Nothing in the frontend called either. CLAUDE.md no longer lists `testRoute` as an open route.
+
+Still open: 7 (60 simultaneous list calls take ~1.8 s), the technician-project dashboard question, and the in-process limits of the sign-in throttle and duplicate-name guard.

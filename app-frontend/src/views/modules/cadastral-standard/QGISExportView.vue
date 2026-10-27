@@ -214,7 +214,7 @@
     </div>
 
     <!-- QGIS Project Manager Modal -->
-    <div v-if="showProjectManager" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+    <div v-if="showProjectManager" v-dialog="{ label: 'QGIS project manager', onClose: () => (showProjectManager = false) }" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div class="bg-white rounded-lg shadow-2xl max-w-6xl w-full my-8">
         <div class="px-6 py-4 border-b flex items-center justify-between bg-gradient-to-r from-green-600 to-emerald-600">
           <h3 class="text-xl font-bold text-white flex items-center gap-2">

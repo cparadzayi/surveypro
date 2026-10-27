@@ -90,7 +90,7 @@
         </div>
 
         <!-- Summary Modal -->
-        <div v-if="showSummaryModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div v-if="showSummaryModal" v-dialog="{ label: 'Test summary', onClose: () => (showSummaryModal = false) }" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div class="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6">
             <div class="flex justify-between items-start mb-4">
               <h3 class="text-xl font-bold">Test Summary</h3>

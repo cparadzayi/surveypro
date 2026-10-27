@@ -384,7 +384,7 @@
     </template>
 
     <!-- QGIS Connection Modal -->
-    <div v-if="showQGISModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div v-if="showQGISModal" v-dialog="{ label: 'QGIS connection and workflow', onClose: () => (showQGISModal = false) }" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div class="px-6 py-4 border-b flex items-center justify-between">
           <h3 class="text-lg font-semibold">QGIS Connection & Workflow</h3>

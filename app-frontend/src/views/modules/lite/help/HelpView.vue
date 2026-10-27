@@ -40,7 +40,7 @@
       </ul>
     </section>
     <!-- Getting Started Modal -->
-    <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center">
+    <div v-if="showModal" v-dialog="{ label: 'Getting started', onClose: closeModal }" class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/40" @click="closeModal" aria-hidden="true"></div>
       <div class="relative bg-white rounded-lg shadow-lg w-[95vw] max-w-lg p-4">
         <div class="flex items-start justify-between">

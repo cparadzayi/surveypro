@@ -85,6 +85,7 @@
     <Transition name="modal">
       <div
         v-if="modalRow"
+        v-dialog="{ label: 'Rename point', onClose: cancelModal }"
         class="fixed inset-0 flex items-center justify-center"
         style="z-index: 99999;"
         @click.self="cancelModal"

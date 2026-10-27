@@ -581,6 +581,7 @@
     <Transition name="map-rename-modal">
       <div
         v-if="parcelRenameModal"
+        v-dialog="{ label: 'Rename parcel' }"
         class="fixed inset-0 flex items-center justify-center"
         style="z-index: 99999;"
         @click.self="parcelRenameModal = null"
@@ -638,6 +639,7 @@
     <Transition name="map-rename-modal">
       <div
         v-if="beaconModal"
+        v-dialog="{ label: 'Beacon' }"
         class="fixed inset-0 flex items-center justify-center"
         style="z-index: 99999;"
         @click.self="beaconModal = null"
@@ -742,6 +744,7 @@
     <Transition name="map-rename-modal">
       <div
         v-if="mapRenameModal"
+        v-dialog="{ label: 'Rename on map' }"
         class="fixed inset-0 flex items-center justify-center"
         style="z-index: 99999;"
         @click.self="closeMapRenameModal"
@@ -880,6 +883,7 @@
       <Transition name="modal">
         <div
           v-if="affectedParcelsConfirm"
+          v-dialog="{ label: 'Parcels affected by this change' }"
           class="fixed inset-0 flex items-center justify-center"
           style="z-index: 999999;"
           tabindex="-1"
@@ -930,6 +934,7 @@
       <Transition name="modal">
         <div
           v-if="repairConfirm"
+          v-dialog="{ label: 'Confirm repair' }"
           class="fixed inset-0 flex items-center justify-center"
           style="z-index: 999999;"
           tabindex="-1"

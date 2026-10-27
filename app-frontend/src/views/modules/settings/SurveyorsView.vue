@@ -98,7 +98,7 @@
     </div>
 
     <!-- Add/Edit Modal -->
-    <div v-if="showAddModal || editingsurveyor" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div v-if="showAddModal || editingsurveyor" v-dialog="{ label: editingsurveyor ? 'Edit surveyor' : 'Add new surveyor', onClose: closeModal }" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
         <h2 class="text-xl font-bold text-gray-900 mb-4">
           {{ editingsurveyor ? 'Edit Surveyor' : 'Add New Surveyor' }}
@@ -188,7 +188,7 @@
     </div>
 
     <!-- Delete Confirmation Modal -->
-    <div v-if="deletingSurveyor" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div v-if="deletingSurveyor" v-dialog="{ label: 'Confirm delete', onClose: () => (deletingSurveyor = null) }" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-lg p-6 max-w-sm w-full">
         <h3 class="text-lg font-bold text-gray-900 mb-2">Confirm Delete</h3>
         <p class="text-gray-600 mb-6">

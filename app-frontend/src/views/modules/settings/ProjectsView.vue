@@ -107,7 +107,7 @@
     </div>
 
     <!-- Add/Edit Modal -->
-    <div v-if="showAddModal || editingProject" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div v-if="showAddModal || editingProject" v-dialog="{ label: editingProject ? 'Edit project' : 'Add new project', onClose: closeModal }" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-xl font-bold text-gray-900">
@@ -255,7 +255,7 @@
     </div>
 
     <!-- Delete/Archive Confirmation Modal -->
-    <div v-if="deletingProject" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div v-if="deletingProject" v-dialog="{ label: 'Remove project', onClose: () => (deletingProject = null) }" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-lg p-6 max-w-md w-full">
         <div class="flex items-center gap-3 mb-4">
           <div :class="deleteMode === 'permanent' ? 'text-4xl' : 'text-3xl'">

@@ -1,5 +1,5 @@
 <template>
-  <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+  <div v-if="isOpen" v-dialog="{ label: 'Coordinate list', onClose: handleCancel }" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
     <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 animate-scale-in">
       <!-- Header -->
       <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 rounded-t-xl">

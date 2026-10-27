@@ -72,7 +72,7 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 
 - [ ] Label association across forms (27 of 297 use `for=`).
 - [x] Ribbon: `role="tab"` with no arrow-key handling and no tab panel. **Done 28 Oct 2026:** one tab stop, arrows/Home/End, `tabpanel` labelled by the tab.
-- [ ] Modals without `role="dialog"` / focus handling (8 of 12 files).
+- [x] Modals without `role="dialog"` / focus handling. **Done 28 Oct 2026:** a `v-dialog` directive (`directives/dialog.ts`, registered in `main.ts`) gives an overlay `role="dialog"`, `aria-modal`, a name, focus on open, Tab kept inside, Escape to close and focus returned afterwards. Applied to 20 overlays in 13 files; checked live on the Add Project dialog. Overlays that already handled Escape themselves (five in `MapLibreAreaView`) got the role and name only.
 - [ ] More live regions for status and errors.
 - [ ] Text under 12px and `text-gray-400` text colour.
 - [ ] Emoji used as icons (about 3,300 template lines): noisy for screen readers and rendered differently per platform.

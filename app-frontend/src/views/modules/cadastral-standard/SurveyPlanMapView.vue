@@ -9,7 +9,7 @@
       
       <div ref="mapContainer" class="map-canvas"></div>
 
-      <div v-if="activeSideEditor" class="side-modal-backdrop" @click.self="activeSideEditor = null">
+      <div v-if="activeSideEditor" v-dialog="{ label: 'Classify side', onClose: () => (activeSideEditor = null) }" class="side-modal-backdrop" @click.self="activeSideEditor = null">
         <div class="side-modal">
           <div class="side-modal-title">Classify side {{ activeSideEditor.side }}</div>
           <label>Role
@@ -51,7 +51,7 @@
            survey being subdivided. Distance and bearing are COMPUTED from the
            two coordinates, never typed, so they cannot disagree with the
            coordinate list. -->
-      <div v-if="activeConnectionEditor" class="side-modal-backdrop" @click.self="activeConnectionEditor = null">
+      <div v-if="activeConnectionEditor" v-dialog="{ label: 'Edit connection', onClose: () => (activeConnectionEditor = null) }" class="side-modal-backdrop" @click.self="activeConnectionEditor = null">
         <div class="side-modal">
           <div class="side-modal-title">
             Connection from {{ activeConnectionEditor.letter }} ({{ activeConnectionEditor.fromBeacon }})

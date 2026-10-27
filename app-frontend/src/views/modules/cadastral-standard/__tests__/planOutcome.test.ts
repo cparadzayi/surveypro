@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeDxfWarnings, describeGenerationOutcome } from '../planOutcome'
+import { describeDxfWarnings, describeGenerationOutcome, outputFolderPath } from '../planOutcome'
 import { parseWarningsHeader } from '../../../../utils/planWarnings'
 
 const base = { subdir: 'general-plans', saved: [], skipped: [], notDrawn: [], warnings: [] }
@@ -45,6 +45,20 @@ describe('describeGenerationOutcome', () => {
     expect(kept.message).toMatch(/already exists.*kept/)
     expect(kept.kind).toBe('warning')
     expect(describeGenerationOutcome(base).message).toMatch(/no files were written/i)
+  })
+})
+
+describe('outputFolderPath', () => {
+  it('keeps a Windows path a Windows path', () => {
+    expect(outputFolderPath('C:\\Users\\Dr Paradzayi\\Documents\\SurveyPro\\maglas1686', 'general-plans'))
+      .toBe('C:\\Users\\Dr Paradzayi\\Documents\\SurveyPro\\maglas1686\\output\\general-plans')
+  })
+  it('keeps a forward-slash path forward-slashed', () => {
+    expect(outputFolderPath('/home/s/maglas', 'diagrams')).toBe('/home/s/maglas/output/diagrams')
+  })
+  it('does not double a trailing separator, or pad whitespace', () => {
+    expect(outputFolderPath('  C:\\Surveys\\P1\\ ', 'general-plans')).toBe('C:\\Surveys\\P1\\output\\general-plans')
+    expect(outputFolderPath('/a/b/', 'x')).toBe('/a/b/output/x')
   })
 })
 

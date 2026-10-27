@@ -454,8 +454,8 @@ import {
   resolveScaleAndSheet,
   type PlanPayloadContext, type PlanDocumentSet,
 } from './planPayload'
-import { describeDxfWarnings, describeGenerationOutcome } from './planOutcome'
-import { confirmDialog, notify, notifyError, notifyWarning } from '@/composables/useNotifications'
+import { describeDxfWarnings, describeGenerationOutcome, outputFolderPath } from './planOutcome'
+import { confirmDialog, notify, notifyError, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { describeError } from '@/utils/errorMessage'
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
 import { pickDiagramSubjectId } from './diagramSubjectPick'
@@ -4606,6 +4606,16 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
   }
 }
 
+/** Copies text to the clipboard and says so; says what to do instead when the browser will not allow it. */
+async function copyText(text: string, what: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    notifySuccess(`${what} copied.`, { details: [text] })
+  } catch {
+    notifyWarning('Your browser did not allow copying. Select the text below and copy it yourself.', { details: [text] })
+  }
+}
+
 async function generatePlanDocuments() {
   const meta = getPlanTypeMeta(config.value.planType)
   const v = validateGenerateRequest(meta, selectedDiagramParcelId.value, parcels.value.length, exportFormats)
@@ -4861,7 +4871,11 @@ async function generatePlanDocuments() {
     const outcome = describeGenerationOutcome({
       subdir, saved, skipped, notDrawn: workingPlanSkipped, warnings: generationWarnings,
     })
-    notify({ kind: outcome.kind, title: outcome.title, message: outcome.message, details: outcome.details, sticky: outcome.sticky })
+    notify({
+      kind: outcome.kind, title: outcome.title, message: outcome.message, details: outcome.details, sticky: outcome.sticky,
+      // A browser page cannot open a folder, but it can hand over the path to paste into Explorer.
+      actions: saved.length ? [{ label: 'Copy folder path', run: () => { void copyText(outputFolderPath(workingDirectory, subdir), 'Folder path') }, keepOpen: true }] : [],
+    })
     emit('export-complete', { format: config.value.planType, filename: saved[0] || '' })
   } catch (error: any) {
     console.error('[PlanDocs] Generation failed:', error)
@@ -5525,7 +5539,7 @@ async function exportGeoPDF() {
     console.error('[SurveyPlanMap] STDOUT:', stdout)
     console.error('[SurveyPlanMap] Stack:', stack)
     
-    alert(`Failed to generate GeoPDF: ${errorMsg}\n\nCheck console for details.`)
+    notifyError(errorMsg, { title: 'Failed to generate GeoPDF' })
   } finally {
     isExporting.value = false
   }

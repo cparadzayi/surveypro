@@ -57,6 +57,18 @@ export function describeGenerationOutcome(o: GenerationOutcome): OutcomeNotice {
   }
 }
 
+/**
+ * Where the files went, as a path the surveyor can paste into Explorer: the project's working
+ * directory, then output, then the plan folder. It joins with whichever separator the working
+ * directory already uses, so a Windows path stays a Windows path.
+ */
+export function outputFolderPath(workingDirectory: string, subdir: string): string {
+  const BACKSLASH = String.fromCharCode(92)
+  const base = workingDirectory.trim().replace(/[\\/]+$/, '')
+  const sep = base.includes(BACKSLASH) && !base.includes('/') ? BACKSLASH : '/'
+  return [base, 'output', subdir].join(sep)
+}
+
 /** The DXF generator's warning counts, as plain sentences. */
 export function describeDxfWarnings(summary: Record<string, number | boolean> | null | undefined): string[] {
   if (!summary) return []

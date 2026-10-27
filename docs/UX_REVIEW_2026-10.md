@@ -51,14 +51,14 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 - [ ] Progress and cancel for generation (it can take minutes; only button text shows status).
 - [x] Scale dropdown was not in numeric order (1:1000-1:7500, then 1:100-1:750). **Fixed 27 Oct 2026:** now 1:100-1:750, 1:1000-1:7500, then 1:10000 up.
 - [ ] "Generate General Plan" and "Download Complete Survey Record" are equal-weight buttons; make the plan the primary action. Remember the PDF/DXF/GPKG choices; say what GPKG is.
-- [ ] Associate the 12 `config-label`s in the plan panel with their controls.
+- [~] Associate the 12 `config-label`s in the plan panel with their controls. **5 done 28 Oct 2026** (plan type, rotation, scale, surveyor name, licence number); the rest label groups or custom inputs (date, parcel picker, layers).
 
 ### 3. Orientation in the 14-step workflow
 
 - [x] No overall progress ("5 of 14"); step state is shown by colour alone. **Progress count added 27 Oct 2026** under "All Steps". **Non-colour step state added 28 Oct 2026:** a tick on completed steps, a spoken status for every step ("completed", "current step", "not started"), `aria-current="step"` on the current one, and the status in the tooltip.
 - [x] Ribbon note said "Locks clear automatically as prerequisites complete", contradicting `cadastralWorkflow.ts` (steps are deliberately not gated). **Fixed 27 Oct 2026:** now "Open any step at any time; each one reports what it still needs."
 - [ ] Where a step has nothing to work on, say which earlier step supplies the data and link to it.
-- [ ] Show the project name persistently in the workflow.
+- [x] Show the project name persistently in the workflow. **Done 28 Oct 2026:** the ribbon shows it before the tabs (`contextLabel`).
 
 ### 4. Dashboard
 
@@ -71,7 +71,7 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 ### 5. Accessibility
 
 - [ ] Label association across forms (27 of 297 use `for=`).
-- [ ] Ribbon: `role="tab"` with no arrow-key handling and no tab panel.
+- [x] Ribbon: `role="tab"` with no arrow-key handling and no tab panel. **Done 28 Oct 2026:** one tab stop, arrows/Home/End, `tabpanel` labelled by the tab.
 - [ ] Modals without `role="dialog"` / focus handling (8 of 12 files).
 - [ ] More live regions for status and errors.
 - [ ] Text under 12px and `text-gray-400` text colour.
@@ -122,3 +122,9 @@ Done 27 October 2026 in `app-frontend/src`: the five items marked `[x]` above.
 
 - **Next:** the remaining `alert()` / `confirm()` calls, file by file; wire the unsaved-work guard into the other forms; Preview on the result notice; project name shown persistently in the workflow; then the accessibility pass (labels, ribbon keyboard handling, dialogs).
 - **Later:** the accessibility pass and splitting the three giant views.
+
+## Fifth round, 28 October 2026
+
+- Another 20 `alert()` calls converted (17 error catches now use `notifyFailure`). About 21 multi-line alerts and 21 `confirm()` calls remain.
+- `Ribbon.vue`: project name shown before the tabs, arrow-key/Home/End tab navigation, `tabpanel` wiring (tested in `Ribbon.test.ts`).
+- `SurveyPlanMapView.vue`: five plan-panel labels tied to their controls.

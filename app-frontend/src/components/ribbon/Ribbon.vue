@@ -1,20 +1,26 @@
 <template>
   <div v-if="tabs.length" class="rbn-root" :class="{ 'rbn-collapsed': collapsed }">
     <!-- ── Tab strip ─────────────────────────────────────────────────────── -->
-    <div class="rbn-tabs" role="tablist">
+    <div class="rbn-tabs">
+      <span v-if="contextLabel" class="rbn-context" data-testid="ribbon-context" :title="contextLabel">{{ contextLabel }}</span>
+      <div class="rbn-tablist" role="tablist" aria-label="Workflow commands" @keydown="onTabKeydown">
       <button
         v-for="tab in tabs"
+        :id="`rbn-tab-${tab.id}`"
         :key="tab.id"
         type="button"
         role="tab"
         class="rbn-tab"
         :class="{ 'rbn-tab-active': activeTab === tab.id }"
         :aria-selected="activeTab === tab.id"
+        :aria-controls="collapsed ? undefined : 'rbn-panel'"
+        :tabindex="activeTab === tab.id ? 0 : -1"
         @click="activeTab = tab.id"
       >
         <span v-if="tab.icon" class="rbn-tab-icon" aria-hidden="true">{{ tab.icon }}</span>
         <span>{{ tab.label }}</span>
       </button>
+      </div>
 
       <div class="flex-1 min-w-2"></div>
 
@@ -41,7 +47,13 @@
     </div>
 
     <!-- ── Body ──────────────────────────────────────────────────────────── -->
-    <div v-if="!collapsed" class="rbn-body">
+    <div
+      v-if="!collapsed"
+      id="rbn-panel"
+      class="rbn-body"
+      role="tabpanel"
+      :aria-labelledby="active ? `rbn-tab-${active.id}` : undefined"
+    >
       <div v-if="!activeGroups.length" class="rbn-empty">
         Nothing to do in this tab right now.
       </div>
@@ -71,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import RibbonButton from './RibbonButton.vue'
 import { isSeparator, type RibbonItem, type RibbonTab } from './types'
 
@@ -86,7 +98,9 @@ const props = withDefaults(defineProps<{
   initialTab?: string
   /** Collapsed shows only the tab strip — the AutoCAD/CAD "minimise ribbon" mode. */
   collapsed?: boolean
-}>(), { initialTab: '', collapsed: false })
+  /** Always-visible text before the tabs, e.g. the project being worked on. */
+  contextLabel?: string
+}>(), { initialTab: '', collapsed: false, contextLabel: '' })
 
 const emit = defineEmits<{
   (e: 'action', id: string): void
@@ -125,6 +139,22 @@ function keyFor(item: RibbonItem, i: number): string {
   return isSeparator(item) ? `sep-${i}` : item.id
 }
 
+/** Arrow keys, Home and End move between tabs and select the one reached (automatic activation). */
+function onTabKeydown(e: KeyboardEvent) {
+  const keys = ['ArrowRight', 'ArrowLeft', 'Home', 'End']
+  if (!keys.includes(e.key) || !tabs.value.length) return
+  e.preventDefault()
+  const ids = tabs.value.map(t => t.id)
+  const at = Math.max(0, ids.indexOf(activeTab.value))
+  const next = e.key === 'Home' ? 0
+    : e.key === 'End' ? ids.length - 1
+    : e.key === 'ArrowRight' ? (at + 1) % ids.length
+    : (at - 1 + ids.length) % ids.length
+  activeTab.value = ids[next]
+  const root = (e.currentTarget as HTMLElement | null)
+  nextTick(() => root?.querySelector<HTMLElement>(`#rbn-tab-${CSS.escape(ids[next])}`)?.focus())
+}
+
 watch(collapsed, v => emit('update:collapsed', v))
 
 // Parent may change collapsed from outside (e.g. another control); track it.
@@ -157,6 +187,20 @@ watch(tabs, list => {
   overflow-x: auto;
   scrollbar-width: thin;
 }
+
+.rbn-tablist { display: flex; align-items: flex-end; gap: 2px; }
+.rbn-context {
+  align-self: center;
+  max-width: 16rem;
+  margin: 0 8px 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #111827;
+}
+.rbn-tab:focus-visible { outline: 2px solid #4f46e5; outline-offset: -2px; }
 
 .rbn-tab {
   display: flex;

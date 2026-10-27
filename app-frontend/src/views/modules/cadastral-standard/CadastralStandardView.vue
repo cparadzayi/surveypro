@@ -13,6 +13,7 @@
     <Ribbon
       :tabs="workflowRibbonTabs"
       initial-tab="step"
+      :context-label="selectedProject?.name || ''"
       class="border-b border-gray-200"
       @action="runWorkflowRibbonAction"
     />

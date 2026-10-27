@@ -106,8 +106,8 @@
       <div class="config-content">
         <!-- Plan Type -->
         <div class="config-group">
-          <label class="config-label">Plan Type</label>
-          <select v-model="config.planType" class="config-input">
+          <label class="config-label" for="plan-type">Plan Type</label>
+          <select id="plan-type" v-model="config.planType" class="config-input">
             <option
               v-for="opt in planTypeOptions"
               :key="opt.value"
@@ -139,8 +139,8 @@
             <strong>{{ selectedDiagramStand ? `Stand ${selectedDiagramStand}` : 'Outside Figure' }}</strong>
           </p>
           <div v-if="selectedDiagramParcelId" class="mt-2 text-xs">
-            <label class="config-label">Map label rotation: {{ subjectLabelRotation }}°</label>
-            <input type="range" min="0" max="359" step="1" v-model.number="subjectLabelRotation" class="w-full" />
+            <label class="config-label" for="subject-label-rotation">Map label rotation: {{ subjectLabelRotation }}°</label>
+            <input id="subject-label-rotation" type="range" min="0" max="359" step="1" v-model.number="subjectLabelRotation" class="w-full" />
             <div class="flex gap-2 mt-1">
               <button type="button" class="config-input" @click="subjectLabelRotation = subjectLabelRotation - 15">⟲ 15°</button>
               <button type="button" class="config-input" @click="subjectLabelRotation = subjectLabelRotation + 15">⟳ 15°</button>
@@ -152,8 +152,8 @@
 
         <!-- Scale (SI 727 Section 32(2) Prescribed) -->
         <div class="config-group">
-          <label class="config-label">Scale (SI 727 §32(2))</label>
-          <select v-model="config.scale" @change="updateScale" class="config-input">
+          <label class="config-label" for="plan-scale">Scale (SI 727 §32(2))</label>
+          <select id="plan-scale" v-model="config.scale" @change="updateScale" class="config-input">
             <option value="auto">Auto (Recommended)</option>
             <!-- In numeric order: 1:100 to 1:750, then 1:1000 to 1:7500, then 1:10000 up. -->
             <optgroup label="Detailed (÷10)">
@@ -230,13 +230,13 @@
 
         <!-- Surveyor Info -->
         <div class="config-group">
-          <label class="config-label">Surveyor Name</label>
-          <input v-model="config.surveyorName" type="text" class="config-input" />
+          <label class="config-label" for="plan-surveyor-name">Surveyor Name</label>
+          <input id="plan-surveyor-name" v-model="config.surveyorName" type="text" class="config-input" />
         </div>
 
         <div class="config-group">
-          <label class="config-label">License Number</label>
-          <input v-model="config.licenseNumber" type="text" class="config-input" />
+          <label class="config-label" for="plan-license-number">License Number</label>
+          <input id="plan-license-number" v-model="config.licenseNumber" type="text" class="config-input" />
         </div>
 
         <div class="config-group">

@@ -1,4 +1,4 @@
-import { buildPlanPayload, beaconsForParcel, composePlanBaseName, composeScaleTag, scaleDenominator, resolveSubjectDesignation, validateGenerateRequest, resolveScaleAndSheet, type PlanPayloadContext } from '../planPayload'
+import { buildPlanPayload, beaconsForParcel, composePlanBaseName, composeScaleTag, scaleDenominator, validateOutputLocation, resolveSubjectDesignation, validateGenerateRequest, resolveScaleAndSheet, type PlanPayloadContext } from '../planPayload'
 
 const parcelA: GeoJSON.Feature = {
   type: 'Feature',
@@ -117,6 +117,19 @@ describe('scaleDenominator / composeScaleTag', () => {
     const name = `${composePlanBaseName('general-developed', 'MAGLAS', 7)}${composeScaleTag(['1:600'])}-summary.pdf`
     expect(name).toBe('general-developed-MAGLAS_1-600-summary.pdf')
     expect(/-summary\.pdf$/i.test(name)).toBe(true)
+  })
+})
+
+describe('validateOutputLocation', () => {
+  it('accepts a working directory and returns it trimmed', () => {
+    expect(validateOutputLocation('  C:\Surveys\Maglas  ')).toEqual({ ok: true, workingDirectory: 'C:\Surveys\Maglas' })
+  })
+  it('refuses a missing, blank or non-string directory, saying where to set it', () => {
+    for (const v of [undefined, null, '', '   ', 0, {}]) {
+      const r = validateOutputLocation(v)
+      expect(r.ok).toBe(false)
+      if (!r.ok) expect(r.error).toMatch(/working directory.*Project Setup/i)
+    }
   })
 })
 

@@ -215,6 +215,22 @@ export interface GenerateFormats {
   gpkg?: boolean
 }
 
+/**
+ * Plans are saved into the project's working directory, so generation cannot succeed
+ * without one. Checked up front, with the other fail-fast requests, because a missing
+ * folder used to be discovered only once the save loop was reached -- after the PDF,
+ * DXF and summary had all been built -- and the finished documents were discarded.
+ */
+export function validateOutputLocation(
+  workingDirectory: unknown,
+): { ok: true; workingDirectory: string } | { ok: false; error: string } {
+  const dir = typeof workingDirectory === 'string' ? workingDirectory.trim() : ''
+  if (!dir) {
+    return { ok: false, error: 'Set the project working directory (Project Setup) before generating plans.' }
+  }
+  return { ok: true, workingDirectory: dir }
+}
+
 export function validateGenerateRequest(
   meta: { subjectMode: SubjectMode },
   subjectParcelId: unknown,

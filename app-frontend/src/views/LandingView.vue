@@ -95,7 +95,22 @@
             </button>
 
             <div class="text-center text-sm text-gray-600">
-              <a href="#" class="text-indigo-600 hover:text-indigo-700 hover:underline">Forgot password?</a>
+              <!-- There is no self-service reset yet: say so, rather than a link that goes nowhere. -->
+              <button
+                type="button"
+                class="text-indigo-600 hover:text-indigo-700 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
+                :aria-expanded="showResetHelp"
+                aria-controls="reset-help"
+                @click="showResetHelp = !showResetHelp"
+              >Forgot password?</button>
+              <p
+                v-if="showResetHelp"
+                id="reset-help"
+                role="status"
+                class="mt-2 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3"
+              >
+                Password reset by email isn't available yet. Ask your SurveyPro administrator to reset it for you.
+              </p>
             </div>
           </form>
 
@@ -219,6 +234,7 @@ const auth = useAuthStore()
 const router = useRouter()
 
 const activeTab = ref<'login' | 'register'>('login')
+const showResetHelp = ref(false)
 
 const loginForm = ref({
   email: '',

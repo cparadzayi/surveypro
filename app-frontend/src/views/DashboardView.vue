@@ -34,8 +34,13 @@
         <div
           v-for="project in projects"
           :key="project.id"
-          class="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-lg hover:border-indigo-300 transition-all cursor-pointer group"
+          role="button"
+          tabindex="0"
+          :aria-label="`Open project ${project.name}`"
+          class="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-lg hover:border-indigo-300 transition-all cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
           @click="selectProject(project)"
+          @keydown.enter.prevent="selectProject(project)"
+          @keydown.space.prevent="selectProject(project)"
         >
           <div class="flex items-start justify-between mb-3">
             <div class="flex-1">

@@ -155,18 +155,7 @@
           <label class="config-label">Scale (SI 727 §32(2))</label>
           <select v-model="config.scale" @change="updateScale" class="config-input">
             <option value="auto">Auto (Recommended)</option>
-            <optgroup label="Base Scales (×1)">
-              <option value="1:1000">1:1000</option>
-              <option value="1:1250">1:1250</option>
-              <option value="1:1500">1:1500</option>
-              <option value="1:2000">1:2000</option>
-              <option value="1:2500">1:2500</option>
-              <option value="1:3000">1:3000</option>
-              <option value="1:4000">1:4000</option>
-              <option value="1:5000">1:5000</option>
-              <option value="1:6000">1:6000</option>
-              <option value="1:7500">1:7500</option>
-            </optgroup>
+            <!-- In numeric order: 1:100 to 1:750, then 1:1000 to 1:7500, then 1:10000 up. -->
             <optgroup label="Detailed (÷10)">
               <option value="1:100">1:100</option>
               <option value="1:125">1:125</option>
@@ -178,6 +167,18 @@
               <option value="1:500">1:500</option>
               <option value="1:600">1:600</option>
               <option value="1:750">1:750</option>
+            </optgroup>
+            <optgroup label="Base Scales (×1)">
+              <option value="1:1000">1:1000</option>
+              <option value="1:1250">1:1250</option>
+              <option value="1:1500">1:1500</option>
+              <option value="1:2000">1:2000</option>
+              <option value="1:2500">1:2500</option>
+              <option value="1:3000">1:3000</option>
+              <option value="1:4000">1:4000</option>
+              <option value="1:5000">1:5000</option>
+              <option value="1:6000">1:6000</option>
+              <option value="1:7500">1:7500</option>
             </optgroup>
             <optgroup label="Regional (×10)">
               <option value="1:10000">1:10000</option>
@@ -449,7 +450,7 @@ import { planTypeOutputSubdir } from '@/utils/project-directory'
 import { saveWithOverwritePrompt } from '@/services/workflowProductStorage'
 import { getPlanTypeMeta } from './planTypes'
 import {
-  buildPlanPayload, composePlanBaseName, composeScaleTag, resolveSubjectDesignation, validateGenerateRequest,
+  buildPlanPayload, composePlanBaseName, composeScaleTag, resolveSubjectDesignation, validateGenerateRequest, validateOutputLocation,
   resolveScaleAndSheet,
   type PlanPayloadContext, type PlanDocumentSet,
 } from './planPayload'
@@ -4607,6 +4608,12 @@ async function generatePlanDocuments() {
   const v = validateGenerateRequest(meta, selectedDiagramParcelId.value, parcels.value.length, exportFormats)
   if (!v.ok) { alert(v.error); return }
 
+  // The plans are saved into the working directory: check it HERE, before any
+  // generation work, not once the finished documents are waiting to be saved.
+  const outputLocation = validateOutputLocation((props.projectInfo as any).workingDirectory)
+  if (!outputLocation.ok) { alert(outputLocation.error); return }
+  const workingDirectory = outputLocation.workingDirectory
+
   // General Plans are built around the Outside Figure (the remainder-of-parent
   // figure). Diagram and Working Plan legitimately don't need one. Fail fast
   // with a clear message for the general-plan types, mirroring the old export.
@@ -4815,11 +4822,6 @@ async function generatePlanDocuments() {
         ? sheetLayouts.map((l) => l.scale)
         : [usedScale ?? workingPlanScale ?? payload.scale],
     )
-    const workingDirectory = (props.projectInfo as any).workingDirectory
-    if (!workingDirectory) {
-      alert('Set the project working directory (Project Setup) before generating plans.')
-      return
-    }
     const subdir = planTypeOutputSubdir(config.value.planType)
     let overwriteAll = false
     const confirmOverwrite = async (name: string): Promise<boolean> => {

@@ -88,7 +88,7 @@ export function useWorkflowRibbon(opts: {
         icon: current?.icon ?? '📋',
         groups: [
           group('Current Step', actionItems, current?.description ?? ''),
-          group('All Steps', stepItems.value, 'Locks clear automatically as prerequisites complete.'),
+          group('All Steps', stepItems.value, 'Open any step at any time; each one reports what it still needs.'),
         ],
         trailing: [
           {

@@ -610,6 +610,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '../../../services/api'
 import { toDateInputFormat } from '@/utils/dateFormat'
@@ -991,7 +992,7 @@ const unsaved = useUnsavedWork('project-setup', 'Project setup details')
 async function completeSetup() {
   // Validate all required fields
   if (!isFormValid.value) {
-    alert('Please fill in all required fields')
+    notifyWarning('Please fill in all required fields')
     return
   }
   

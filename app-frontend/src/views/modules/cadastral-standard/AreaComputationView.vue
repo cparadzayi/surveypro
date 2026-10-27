@@ -332,7 +332,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyError, notifyFailure, notifySuccess } from '@/composables/useNotifications'
+import { notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, onMounted, inject, nextTick, watch } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -831,7 +831,7 @@ function cancelDrawing() {
 
 async function handlePolygonComplete(points: L.LatLng[]) {
   if (points.length < 3) {
-    alert('Minimum 3 points required.');
+    notifyWarning('Minimum 3 points required.')
     return;
   }
   
@@ -839,7 +839,7 @@ async function handlePolygonComplete(points: L.LatLng[]) {
   const matched = findMatchingPoints(points, coordinatePoints.value, 50);
   
   if (matched.length < 3) {
-    alert('Could not match enough survey points. Please click closer to the points.');
+    notifyError('Could not match enough survey points. Please click closer to the points.')
     return;
   }
   
@@ -999,7 +999,7 @@ function getClosureClass(parcel: any): string {
 // Export functions
 async function saveAllParcels() {
   if (!workflowState?.projectInfo?.projectId) {
-    alert('No project selected. Please select a project first.');
+    notifyWarning('No project selected. Please select a project first.')
     return;
   }
   
@@ -1032,7 +1032,7 @@ async function saveAllParcels() {
 
 async function exportReport() {
   if (!workflowState?.projectInfo) {
-    alert('No project information available.');
+    notifyWarning('No project information available.')
     return;
   }
   
@@ -1061,7 +1061,7 @@ async function exportReport() {
     link.click();
     URL.revokeObjectURL(url);
     
-    alert('PDF report generated successfully!');
+    notifySuccess('PDF report generated successfully!')
   } catch (error) {
     console.error('Error generating PDF:', error);
     alert('Failed to generate PDF: ' + (error as Error).message);

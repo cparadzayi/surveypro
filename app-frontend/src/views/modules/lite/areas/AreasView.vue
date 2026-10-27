@@ -435,6 +435,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyError, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, onMounted } from 'vue'
 import proj4 from 'proj4'
 import { 
@@ -508,7 +509,7 @@ onMounted(async () => {
     }
   } catch (err) {
     console.error('Failed to load initial data:', err)
-    alert('Failed to load surveyors and projects')
+    notifyError('Failed to load surveyors and projects')
   }
 })
 
@@ -579,7 +580,7 @@ async function loadParcels() {
     console.log('🏘️ Loaded land parcels:', landParcels.value.length, landParcels.value)
   } catch (err) {
     console.error('❌ Failed to load parcels:', err)
-    alert('Failed to load land parcels')
+    notifyError('Failed to load land parcels')
   } finally {
     loading.value = false
   }
@@ -603,14 +604,14 @@ function removeCoordinatePoint(index: number) {
 async function exportToDatabase() {
   if (!selectedProjectId.value) return
   if (coordinatePoints.value.length === 0) {
-    alert('No coordinate points to export')
+    notifyWarning('No coordinate points to export')
     return
   }
 
   // Validate
   const invalid = coordinatePoints.value.filter(pt => !pt.name || pt.y === 0 || pt.x === 0)
   if (invalid.length > 0) {
-    alert('Please fill in all coordinate point names and values')
+    notifyWarning('Please fill in all coordinate point names and values')
     return
   }
 
@@ -620,13 +621,13 @@ async function exportToDatabase() {
     const conflicts = result.conflicts?.length
       ? `\n\n⚠️ ${result.conflicts.length} conflicting duplicate beacon(s) kept as _dupl (first observation keeps the name) — correct them on the map.`
       : ''
-    alert(`Successfully exported ${result.count} coordinate points to database${conflicts}`)
+    notifySuccess(`Successfully exported ${result.count} coordinate points to database${conflicts}`)
   } catch (err: any) {
     console.error('Export failed:', err)
     if (err.response?.status === 409) {
-      alert('⚠️ Coordinate points already exist in database.\n\nThese points were loaded from the database and are already saved.\n\nTo add new points, use the "+ Add Point" button.')
+      notifySuccess('Coordinate points already exist in database.\n\nThese points were loaded from the database and are already saved.\n\nTo add new points, use the "+ Add Point" button.')
     } else {
-      alert(`Export failed: ${err.response?.data?.error || err.message}`)
+      notifyError(`Export failed: ${err.response?.data?.error || err.message}`)
     }
   } finally {
     exporting.value = false
@@ -655,13 +656,13 @@ async function computeAllAreas() {
     await loadParcels()
     
     if (result.failure_count > 0) {
-      alert(`Computation complete: ${result.success_count} succeeded, ${result.failure_count} failed`)
+      notifyError(`Computation complete: ${result.success_count} succeeded, ${result.failure_count} failed`)
     } else {
-      alert(`All ${result.success_count} parcels computed successfully!`)
+      notifySuccess(`All ${result.success_count} parcels computed successfully!`)
     }
   } catch (err: any) {
     console.error('Computation failed:', err)
-    alert(`Computation failed: ${err.response?.data?.error || err.message}`)
+    notifyError(`Computation failed: ${err.response?.data?.error || err.message}`)
   } finally {
     computing.value = false
   }
@@ -673,7 +674,7 @@ async function loadDBConnection() {
     dbConnection.value = await getDBConnectionInfo()
   } catch (err) {
     console.error('Failed to load DB connection:', err)
-    alert('Failed to load database connection info')
+    notifyError('Failed to load database connection info')
   }
 }
 
@@ -681,7 +682,7 @@ async function loadDBConnection() {
 function copyConnectionString() {
   if (!dbConnection.value) return
   navigator.clipboard.writeText(dbConnection.value.qgis_uri)
-  alert('Connection string copied to clipboard!')
+  notifySuccess('Connection string copied to clipboard!')
 }
 
 // Closure error styling
@@ -790,7 +791,7 @@ async function loadParcelDetails(parcelId: number) {
     }
   } catch (err) {
     console.error('Failed to load parcel details:', err)
-    alert('Failed to compute parcel details')
+    notifyError('Failed to compute parcel details')
   }
 }
 
@@ -833,14 +834,14 @@ const projectCentralMeridian = computed(() => {
 function viewAllOnGoogleMaps() {
   const cm = projectCentralMeridian.value
   if (!cm) {
-    alert('Project central meridian (Lo zone) is not set. Please update the project settings.')
+    notifyWarning('Project central meridian (Lo zone) is not set. Please update the project settings.')
     return
   }
   const validPoints = coordinatePoints.value
     .map(pt => loToWGS84(pt.y, pt.x, cm))
     .filter((p): p is { lat: number; lng: number } => p !== null)
   if (validPoints.length === 0) {
-    alert('No valid points to display.')
+    notifyWarning('No valid points to display.')
     return
   }
   // Centre on average position
@@ -859,12 +860,12 @@ function viewAllOnGoogleMaps() {
 function viewPointOnGoogleMaps(pt: { name: string; y: number; x: number }) {
   const cm = projectCentralMeridian.value
   if (!cm) {
-    alert('Project central meridian (Lo zone) is not set.')
+    notifyWarning('Project central meridian (Lo zone) is not set.')
     return
   }
   const wgs = loToWGS84(pt.y, pt.x, cm)
   if (!wgs) {
-    alert('Could not convert coordinates.')
+    notifyError('Could not convert coordinates.')
     return
   }
   const url = `https://maps.google.com/maps?q=${wgs.lat.toFixed(7)},${wgs.lng.toFixed(7)}&z=19`

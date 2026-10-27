@@ -397,6 +397,7 @@
   </ModuleScaffold>
 </template>
 <script setup lang="ts">
+import { notifyError, notifyWarning } from '@/composables/useNotifications'
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import ModuleScaffold from '../../../../components/scaffold/ModuleScaffold.vue'
 import { group, btn, type RibbonTab } from '../../../../components/ribbon/types'
@@ -775,7 +776,7 @@ function formatAreaAllUnits(areaM2: number): string {
 // Close and save polygon
 function closePolygon() {
   if (drawingPoints.value.length < 3) {
-    alert('Polygon must have at least 3 vertices')
+    notifyWarning('Polygon must have at least 3 vertices')
     return
   }
 
@@ -989,7 +990,7 @@ function togglePolygonEdit(index: number) {
 function removePolygonVertex(polyIndex: number, vertexIndex: number) {
   const polygon = polygons.value[polyIndex]
   if (polygon.length <= 3) {
-    alert('Polygon must have at least 3 vertices')
+    notifyWarning('Polygon must have at least 3 vertices')
     return
   }
   
@@ -1116,7 +1117,7 @@ async function handleFileUpload(event: Event) {
     fitToBounds()
   } catch (error) {
     console.error('Error loading CSV:', error)
-    alert(`Error loading CSV: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    notifyError(`Error loading CSV: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 

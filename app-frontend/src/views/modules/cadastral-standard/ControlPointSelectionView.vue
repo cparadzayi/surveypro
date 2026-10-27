@@ -251,7 +251,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyFailure } from '@/composables/useNotifications'
+import { notifyError, notifyFailure, notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, onMounted, watch } from 'vue'
 import ControlPointSelector from '@/components/ControlPointSelector.vue'
 import ControlPointMapView from '@/components/cadastral/ControlPointMapView.vue'
@@ -648,7 +648,7 @@ function autoSelectNearbyPoints() {
     }, 5000)
   } else {
     console.log(`[ControlPointSelection] ⚠️ No control points found within ${RADIUS_KM}km radius`)
-    alert(`No control points found within ${RADIUS_KM}km of your survey center.\n\nTry increasing the search radius or select points manually.`)
+    notifyWarning(`No control points found within ${RADIUS_KM}km of your survey center.\n\nTry increasing the search radius or select points manually.`)
   }
 }
 
@@ -721,7 +721,7 @@ const skipForNow = () => {
 
 const saveAndContinue = async () => {
   if (!canProceed.value) {
-    alert('Please select a central meridian and at least 3 control points.')
+    notifyWarning('Please select a central meridian and at least 3 control points.')
     return
   }
 
@@ -768,7 +768,7 @@ const saveAndContinue = async () => {
         console.log('[ControlPointSelection] ✅ Control points saved to database')
       } else {
         console.error('[ControlPointSelection] ❌ Failed to save control points to database')
-        alert('Warning: Control points saved to workflow but failed to update project record. Please try again.')
+        notifyError('Warning: Control points saved to workflow but failed to update project record. Please try again.')
         return
       }
     }

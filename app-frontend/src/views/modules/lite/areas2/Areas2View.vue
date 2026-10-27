@@ -293,7 +293,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyFailure } from '@/composables/useNotifications'
+import { notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, defineAsyncComponent, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import LayerSelect from '../../../../components/inputs/LayerSelect.vue'
 import { areaCompute } from '../../../../services/compute'
@@ -470,7 +470,7 @@ function addSelected() {
   // Validate geometry
   if (!f.geometry?.coordinates || f.geometry.coordinates.length < 2) {
     console.error('Invalid feature geometry:', f)
-    alert('Invalid point geometry')
+    notifyWarning('Invalid point geometry')
     return
   }
   
@@ -954,7 +954,7 @@ function handleCsvImport(event: Event) {
       const rows = text.split(/\r?\n/).filter(row => row.trim() !== '')
       
       if (rows.length < 2) {
-        alert('CSV file must have a header and at least one data row')
+        notifyWarning('CSV file must have a header and at least one data row')
         return
       }
       
@@ -967,7 +967,7 @@ function handleCsvImport(event: Event) {
       const xIdx = header.findIndex(h => h === 'x' || h.includes('southing'))
       
       if (pointIdx === -1 || yIdx === -1 || xIdx === -1) {
-        alert('CSV must have Point, Y, and X columns')
+        notifyWarning('CSV must have Point, Y, and X columns')
         return
       }
       
@@ -987,10 +987,10 @@ function handleCsvImport(event: Event) {
       }
       
       if (imported > 0) {
-        alert(`✅ Successfully imported ${imported} points`)
+        notifySuccess(`Successfully imported ${imported} points`)
         void recomputeIfReady()
       } else {
-        alert('⚠️ No valid points found in CSV')
+        notifyWarning('No valid points found in CSV')
       }
     } catch (error) {
       console.error('CSV import error:', error)
@@ -1209,7 +1209,7 @@ async function doCompute() {
     result.value = await areaCompute(payload)
     
     if (result.value?.error) {
-      alert(`Computation error: ${result.value.error}`)
+      notifyError(`Computation error: ${result.value.error}`)
       return
     }
     
@@ -1220,7 +1220,7 @@ async function doCompute() {
     }
   } catch (error) {
     console.error('Area computation failed:', error)
-    alert(`Failed to compute area: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    notifyError(`Failed to compute area: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 </script>

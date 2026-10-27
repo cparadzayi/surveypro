@@ -262,6 +262,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyError } from '@/composables/useNotifications'
 import { ref, computed, onMounted, watch } from 'vue';
 import api from '../../services/api';
 import DateInputDDMMYYYY from '../DateInputDDMMYYYY.vue';
@@ -417,7 +418,7 @@ async function handleCreateProject() {
     emit('project-created', newProject);
   } catch (error: any) {
     console.error('Failed to create project:', error);
-    alert(`Failed to create project: ${error.response?.data?.error || error.message}`);
+    notifyError(`Failed to create project: ${error.response?.data?.error || error.message}`)
   } finally {
     isCreating.value = false;
   }

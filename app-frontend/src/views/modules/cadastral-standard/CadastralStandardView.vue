@@ -1322,7 +1322,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyFailure } from '@/composables/useNotifications'
+import { notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, reactive, provide, toRaw, markRaw, watch } from 'vue';
 import { confirmDiscardUnsaved, markSaved } from '@/composables/useUnsavedWork';
 import api from '../../../services/api';
@@ -2475,10 +2475,10 @@ async function handleReimportChoice(choice: 'use-previous' | 'append' | 'smart-m
         // If workflow state has imported points, we're good
         if (workflowState.importedPoints && workflowState.importedPoints.length > 0) {
           console.log(`[CSV Re-import] ✅ Loaded ${workflowState.importedPoints.length} points from previous import`);
-          alert(`Using previous CSV import with ${workflowState.importedPoints.length} points.`);
+          notifyWarning(`Using previous CSV import with ${workflowState.importedPoints.length} points.`)
         } else {
           console.warn('[CSV Re-import] ⚠️ No points found in workflow state');
-          alert('Previous import found but no points loaded. You may need to re-import the CSV.');
+          notifyWarning('Previous import found but no points loaded. You may need to re-import the CSV.')
         }
         break;
         
@@ -2764,7 +2764,7 @@ async function handleMergeProceed(partialParcelActions: Record<number, 'delete' 
       hasProjectId: !!selectedProjectId.value,
       hasAnalysis: !!analysis
     });
-    alert('Error: Missing merge data');
+    notifyError('Error: Missing merge data')
     return;
   }
   
@@ -2884,7 +2884,7 @@ function handleMergeAnalysisClose() {
 function handleMergeAnalysisViewDetails() {
   console.log('[CSV Merge] View details:', mergeAnalysisDialog.value.analysis);
   // Could open a detailed view modal here
-  alert('Detailed analysis view coming soon!');
+  notifyWarning('Detailed analysis view coming soon!')
 }
 
 async function resetImportStep() {
@@ -2921,7 +2921,7 @@ async function resetImportStep() {
     // Reload from database to sync
     await reloadWorkflowState();
     
-    alert('✅ Import CSV step has been reset. You can now import a fresh CSV file.');
+    notifySuccess('Import CSV step has been reset. You can now import a fresh CSV file.')
     
   } catch (error) {
     console.error('❌ Failed to reset step:', error);
@@ -2993,7 +2993,7 @@ async function exportAllDocuments() {
     }
     
     if (documents.length === 0) {
-      alert('No documents available to export. Please generate documents first.');
+      notifyWarning('No documents available to export. Please generate documents first.')
       return;
     }
     
@@ -3008,9 +3008,9 @@ async function exportAllDocuments() {
     console.log('✅ ZIP export complete!');
     
     if (workingDirectory) {
-      alert(`Successfully saved ZIP archive to:\n${savedPath}\n\nContains ${documents.length} documents.`);
+      notifySuccess(`Successfully saved ZIP archive to:\n${savedPath}\n\nContains ${documents.length} documents.`)
     } else {
-      alert(`Successfully created ZIP archive with ${documents.length} documents!\nDownloaded to your Downloads folder.`);
+      notifySuccess(`Successfully created ZIP archive with ${documents.length} documents!\nDownloaded to your Downloads folder.`)
     }
     
   } catch (error) {
@@ -3040,7 +3040,7 @@ async function handleFileChange(event: Event) {
       console.log(`[CSV Import] - workflowState.projectInfo.centralMeridian: ${workflowState.projectInfo.centralMeridian}`);
       
       if (!loZone) {
-        alert('Error: No Lo zone selected. Please go back to Project Setup and select a Lo zone.');
+        notifyError('Error: No Lo zone selected. Please go back to Project Setup and select a Lo zone.')
         return;
       }
       
@@ -3298,7 +3298,7 @@ async function generateFieldBook() {
     // Validate we have points
     if (!workflowState.importedPoints || workflowState.importedPoints.length === 0) {
       console.error('[generateFieldBook] No imported points available');
-      alert('No points available. Please import CSV data first.');
+      notifyWarning('No points available. Please import CSV data first.')
       return;
     }
     
@@ -3435,7 +3435,7 @@ function handleStepAction(step: WorkflowStep, action: any) {
             if (canGenerateCalculations.value) {
               generateCalculationsPart1();
             } else {
-              alert('Please complete the Field Book step first and fill in surveyor information.');
+              notifySuccess('Please complete the Field Book step first and fill in surveyor information.')
             }
             break;
             
@@ -3444,7 +3444,7 @@ function handleStepAction(step: WorkflowStep, action: any) {
             if (canGenerateCoordinateList.value) {
               generateCoordinateList();
             } else {
-              alert('Please complete Calculations Part 1 first. The Coordinate List requires adjusted coordinates.');
+              notifySuccess('Please complete Calculations Part 1 first. The Coordinate List requires adjusted coordinates.')
             }
             break;
             
@@ -3533,7 +3533,7 @@ function handleStepAction(step: WorkflowStep, action: any) {
                   await generateCalculationsPart1();
                 } else {
                   console.warn('❌ Cannot regenerate Calculations Part 1: prerequisites not met');
-                  alert('Cannot regenerate Calculations Part 1. Please ensure Field Book is completed and surveyor information is filled.');
+                  notifyError('Cannot regenerate Calculations Part 1. Please ensure Field Book is completed and surveyor information is filled.')
                 }
                 break;
               case 'coordinate_list':
@@ -3543,7 +3543,7 @@ function handleStepAction(step: WorkflowStep, action: any) {
                   await generateCoordinateList();
                 } else {
                   console.warn('❌ Cannot regenerate Coordinate List: adjusted coordinates not available');
-                  alert('Cannot regenerate Coordinate List. Please complete Calculations Part 1 first.');
+                  notifyError('Cannot regenerate Coordinate List. Please complete Calculations Part 1 first.')
                 }
                 break;
               default:
@@ -3551,7 +3551,7 @@ function handleStepAction(step: WorkflowStep, action: any) {
             }
           } catch (error) {
             console.error('❌ Error in edit action handler:', error);
-            alert(`Error regenerating ${step.label}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            notifyError(`Error regenerating ${step.label}: ${error instanceof Error ? error.message : 'Unknown error'}`)
           }
         })();
       }
@@ -3666,7 +3666,7 @@ function buildStandaloneFieldBook() {
 async function viewFieldBook() {
   const points = workflowState.documents.fieldBook?.points;
   if (!points || points.length === 0) {
-    alert('No field book data available to preview.');
+    notifyWarning('No field book data available to preview.')
     return;
   }
 
@@ -3696,7 +3696,7 @@ async function viewFieldBook() {
 async function downloadFieldBook() {
   const points = workflowState.documents.fieldBook?.points;
   if (!points || points.length === 0) {
-    alert('No field book data available to download.');
+    notifyWarning('No field book data available to download.')
     return;
   }
   try {
@@ -3723,7 +3723,7 @@ async function downloadFieldBook() {
 
 async function viewCalculationsPart1() {
   if (!workflowState.documents.calculationsPart1?.pdf || !pdfBlobStorage.calculationsPart1) {
-    alert('No Calculations Part 1 PDF available to preview.');
+    notifyWarning('No Calculations Part 1 PDF available to preview.')
     return;
   }
   
@@ -3733,7 +3733,7 @@ async function viewCalculationsPart1() {
     console.log('[viewCalculationsPart1] PDF type:', typeof pdfBlob, 'instanceof Blob:', pdfBlob instanceof Blob);
     
     if (!(pdfBlob instanceof Blob)) {
-      alert('Invalid PDF data. Please regenerate the Calculations Part 1.');
+      notifyWarning('Invalid PDF data. Please regenerate the Calculations Part 1.')
       return;
     }
     
@@ -3753,7 +3753,7 @@ async function viewCalculationsPart1() {
 
 async function downloadCalculationsPart1() {
   if (!workflowState.documents.calculationsPart1?.pdf || !pdfBlobStorage.calculationsPart1) {
-    alert('No Calculations Part 1 PDF available to download.');
+    notifyWarning('No Calculations Part 1 PDF available to download.')
     return;
   }
   try {
@@ -3775,7 +3775,7 @@ async function downloadCalculationsPart1() {
 
 async function viewCoordinateList() {
   if (!workflowState.documents.coordinateList?.pdf || !pdfBlobStorage.coordinateList) {
-    alert('No Coordinate List PDF available to preview.');
+    notifyWarning('No Coordinate List PDF available to preview.')
     return;
   }
   
@@ -3787,7 +3787,7 @@ async function viewCoordinateList() {
     console.log('[viewCoordinateList] PDF size:', pdfBlob?.size);
     
     if (!(pdfBlob instanceof Blob)) {
-      alert('Invalid PDF data. Please regenerate the Coordinate List.');
+      notifyWarning('Invalid PDF data. Please regenerate the Coordinate List.')
       return;
     }
     
@@ -3807,7 +3807,7 @@ async function viewCoordinateList() {
 
 async function downloadCoordinateList() {
   if (!workflowState.documents.coordinateList?.pdf || !pdfBlobStorage.coordinateList) {
-    alert('No Coordinate List PDF available to download.');
+    notifyWarning('No Coordinate List PDF available to download.')
     return;
   }
   try {
@@ -3829,7 +3829,7 @@ async function downloadCoordinateList() {
 
 function downloadCoordinateListCSV() {
   if (!workflowState.adjustedCoordinates || workflowState.adjustedCoordinates.length === 0) {
-    alert('No coordinate data available to export.');
+    notifyWarning('No coordinate data available to export.')
     return;
   }
   
@@ -3893,7 +3893,7 @@ async function generateCoordinateList() {
     // Check if project is selected
     if (!selectedProject.value) {
       console.warn('⚠️ Please select a project first!');
-      alert('Please select a project before generating the Coordinate List.');
+      notifyWarning('Please select a project before generating the Coordinate List.')
       isGenerating.value = false;
       return;
     }

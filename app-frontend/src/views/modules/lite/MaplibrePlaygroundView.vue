@@ -80,6 +80,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyError } from '@/composables/useNotifications'
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import ModuleScaffold from '../../../components/scaffold/ModuleScaffold.vue'
 import maplibregl from 'maplibre-gl'
@@ -302,7 +303,7 @@ async function handleFileUpload(event: Event) {
     displayPointsOnMap()
   } catch (error) {
     console.error('Error loading CSV:', error)
-    alert(`Error loading CSV: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    notifyError(`Error loading CSV: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 

@@ -2162,7 +2162,7 @@ function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
       const beacon = String(vHits[0].properties?.beacon ?? '')
       const letter = String(vHits[0].properties?.letter ?? '')
       if (!beacon) {
-        alert(`Corner ${letter || '?'} has no coordinated beacon, so it cannot carry connecting data. Import or compute its coordinate first.`)
+        notifyError(`Corner ${letter || '?'} has no coordinated beacon, so it cannot carry connecting data. Import or compute its coordinate first.`)
         return
       }
       const cur = currentConnections.value.find(c => c.fromBeacon === beacon)
@@ -5322,7 +5322,7 @@ async function generateComprehensivePDF() {
     
   } catch (error: any) {
     console.error('[ComprehensivePDF] ❌ Complete Survey Record generation failed:', error)
-    alert(`Complete Survey Record generation failed: ${error.message}`)
+    notifyError(`Complete Survey Record generation failed: ${error.message}`)
   } finally {
     isExporting.value = false
   }
@@ -5509,7 +5509,7 @@ async function exportGeoPDF() {
     downloadBlob(pdfBlob, filename)
     
     console.log('[SurveyPlanMap] ✅ GeoPDF export complete')
-    alert('GeoPDF generated! Open in Adobe Reader and click the map to see coordinates.')
+    notifySuccess('GeoPDF generated! Open in Adobe Reader and click the map to see coordinates.')
     emit('export-complete', { format: 'geopdf', filename })
     
   } catch (error: any) {
@@ -5600,7 +5600,7 @@ async function exportToPDF() {
     emit('export-complete', { format: 'pdf', filename })
   } catch (error) {
     console.error('[SurveyPlanMap] ❌ PDF export error:', error)
-    alert(`Failed to export PDF: ${error.message}`)
+    notifyError(`Failed to export PDF: ${error.message}`)
   } finally {
     isExporting.value = false
   }
@@ -5629,7 +5629,7 @@ async function exportToPNG() {
     })
   } catch (error) {
     console.error('PNG export error:', error)
-    alert('Failed to export PNG')
+    notifyError('Failed to export PNG')
   } finally {
     isExporting.value = false
   }
@@ -5726,7 +5726,7 @@ async function exportSurveyPlanSummary() {
     
   } catch (error: any) {
     console.error('[SurveyPlanMap] ❌ Summary PDF export failed:', error)
-    alert(`Failed to generate summary PDF: ${error?.message || 'Unknown error'}`)
+    notifyError(`Failed to generate summary PDF: ${error?.message || 'Unknown error'}`)
   } finally {
     isExporting.value = false
   }

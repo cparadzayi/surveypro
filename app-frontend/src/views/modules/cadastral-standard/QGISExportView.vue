@@ -242,6 +242,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyError, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, onMounted, inject } from 'vue'
 import { batchCreateCoordinatePoints, listCoordinatePoints, listLandParcels, getQGISConnectionInfo, updateLandParcelsProject, calculateParcelAreas, type QGISConnectionInfo } from '@/services/spatial'
 import QGISProjectManager from '@/components/QGISProjectManager.vue'
@@ -324,12 +325,12 @@ async function exportToPostGIS() {
   const projectId = workflowState?.selectedProject?.id || workflowState?.projectInfo?.projectId
   
   if (!projectId) {
-    alert('No project selected. Please select a project in Step 1 (CSV Import) before exporting coordinates.')
+    notifyWarning('No project selected. Please select a project in Step 1 (CSV Import) before exporting coordinates.')
     return
   }
 
   if (coordinateList.value.length === 0) {
-    alert('No coordinate points to export')
+    notifyWarning('No coordinate points to export')
     return
   }
 
@@ -386,7 +387,7 @@ async function loadDBConnection() {
     dbConnection.value = await getQGISConnectionInfo(projectId)
   } catch (err) {
     console.error('Failed to load DB connection:', err)
-    alert('Failed to load database connection information')
+    notifyError('Failed to load database connection information')
   }
 }
 
@@ -398,7 +399,7 @@ function copyConnectionString() {
   const connString = `postgresql://${conn.username}@${conn.host}:${conn.port}/${conn.database}`
   
   navigator.clipboard.writeText(connString).then(() => {
-    alert('Connection string copied to clipboard!')
+    notifySuccess('Connection string copied to clipboard!')
   })
 }
 
@@ -407,7 +408,7 @@ async function refreshParcels() {
   const projectId = workflowState?.selectedProject?.id || workflowState?.projectInfo?.projectId
   
   if (!projectId) {
-    alert('No project selected')
+    notifyWarning('No project selected')
     return
   }
   
@@ -470,12 +471,12 @@ async function generateMetadata() {
   const projectId = workflowState?.selectedProject?.id || workflowState?.projectInfo?.projectId
   
   if (!projectId) {
-    alert('No project selected')
+    notifyWarning('No project selected')
     return
   }
   
   if (parcelCount.value === 0) {
-    alert('No parcels found. Please digitize parcels in QGIS first.')
+    notifyWarning('No parcels found. Please digitize parcels in QGIS first.')
     return
   }
   
@@ -528,7 +529,7 @@ async function generateMetadata() {
 // Continue to next step in workflow
 function continueToNextStep() {
   if (parcelCount.value === 0) {
-    alert('Please digitize and refresh land parcels before continuing.')
+    notifyWarning('Please digitize and refresh land parcels before continuing.')
     return
   }
   

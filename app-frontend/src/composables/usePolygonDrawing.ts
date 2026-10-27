@@ -3,6 +3,7 @@
  * Provides QGIS-like polygon digitization experience
  */
 
+import { notifyWarning } from '@/composables/useNotifications'
 import { ref, type Ref } from 'vue';
 import L from 'leaflet';
 
@@ -91,7 +92,7 @@ export function usePolygonDrawing(options: UsePolygonDrawingOptions) {
    */
   function finishDrawing(): L.LatLng[] | null {
     if (!map.value || drawingPoints.value.length < 3) {
-      alert('Minimum 3 points required to create a polygon.');
+      notifyWarning('Minimum 3 points required to create a polygon.')
       return null;
     }
     

@@ -293,6 +293,7 @@ function statusBadgeClass(status: string): string {
   return STATUS_CLASSES[statusKey(status)] ?? 'bg-gray-100 text-gray-800'
 }
 
+import { notifyWarning } from '@/composables/useNotifications'
 import { ref, computed } from 'vue';
 
 import { validateAndParseCSV, generateCSVTemplate } from '../../utils/cadastral-csv';
@@ -365,7 +366,7 @@ async function handleDrop(event: DragEvent) {
     if (droppedFile.type === 'text/csv' || droppedFile.name.toLowerCase().endsWith('.csv')) {
       await processFile(droppedFile);
     } else {
-      alert('Please upload a CSV file only.');
+      notifyWarning('Please upload a CSV file only.')
     }
   }
 }

@@ -491,7 +491,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyFailure } from '@/composables/useNotifications'
+import { notifyFailure, notifySuccess } from '@/composables/useNotifications'
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import api from '../../../services/api'
 import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow'
@@ -720,7 +720,7 @@ const saveDraft = async () => {
   workflowState.reportOnSurvey = { ...reportData.value }
   await saveStepData('report-on-survey', { report_data: workflowState.reportOnSurvey })
   console.log('[ReportOnSurvey] Draft saved')
-  alert('✅ Draft saved successfully!')
+  notifySuccess('Draft saved successfully!')
 }
 
 // Go back to previous step
@@ -774,7 +774,7 @@ async function autofillTrigNamesFromControlPoints(): Promise<void> {
 
 const generateReport = async () => {
   if (!isFormValid.value) {
-    alert('Please complete all required fields before generating the report.')
+    notifySuccess('Please complete all required fields before generating the report.')
     return
   }
   
@@ -832,7 +832,7 @@ const generateReport = async () => {
     const previewFileName = `${reportData.value.srNumber || 'Report'}_ReportOnSurvey.pdf`
     emit('preview-report', { blob: pdf, pageCount, fileName: previewFileName })
     
-    alert(`✅ Report on Survey generated successfully! (${pageCount} pages)`)
+    notifySuccess(`Report on Survey generated successfully! (${pageCount} pages)`)
     
     // Move to next step
     workflowState.currentStep = 'dsg-certificate'
@@ -886,7 +886,7 @@ const buildReportPdf = async () => {
 // advancing the workflow.
 const previewReport = async () => {
   if (!isFormValid.value) {
-    alert('Please complete all required fields before previewing the report.')
+    notifySuccess('Please complete all required fields before previewing the report.')
     return
   }
   

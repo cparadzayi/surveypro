@@ -975,7 +975,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyError, notifyFailure, notifySuccess } from '@/composables/useNotifications'
+import { notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { describeError } from '@/utils/errorMessage'
 import { ref, onMounted, onBeforeUnmount, inject, computed, watch, nextTick } from 'vue';
 import maplibregl from 'maplibre-gl';
@@ -1873,7 +1873,7 @@ async function handlePointRename(payload: { oldName: string; newName: string }) 
 async function repairParcelBeaconNames() {
   const projectId = workflowState?.projectInfo?.projectId;
   if (!projectId) {
-    alert('No project loaded. Please select a project first.');
+    notifyWarning('No project loaded. Please select a project first.')
     return;
   }
 
@@ -1885,11 +1885,11 @@ async function repairParcelBeaconNames() {
     ]);
 
     if (dbParcels.length === 0) {
-      alert('No saved parcels found in the database for this project.');
+      notifySuccess('No saved parcels found in the database for this project.')
       return;
     }
     if (dbPoints.length === 0) {
-      alert('No coordinate points found in the database. Cannot re-match beacon names.');
+      notifyError('No coordinate points found in the database. Cannot re-match beacon names.')
       return;
     }
 
@@ -1897,7 +1897,7 @@ async function repairParcelBeaconNames() {
     const summary = plan.summary;
 
     if (!summary.hasWork) {
-      alert('No beacon name changes needed — every parcel already matches its nearest coordinate point.');
+      notifyWarning('No beacon name changes needed — every parcel already matches its nearest coordinate point.')
       return;
     }
     await showRepairConfirm(summary, formatSummary(summary)); // reject → return, nothing written
@@ -1956,7 +1956,7 @@ async function repairParcelBeaconNames() {
     console.log('[RepairBeacons]', describeRepairResult(outcome));
   } catch (e: any) {
     console.error('[RepairBeacons] ❌ Error:', e);
-    alert(`Repair failed: ${e?.message || 'Unknown error'}`);
+    notifyError(`Repair failed: ${e?.message || 'Unknown error'}`)
   } finally {
     isRecomputing.value = false;
   }
@@ -4298,7 +4298,7 @@ function addSurveyPoints(wgs84Points: any[]) {
             await deletePanelHandler(props.id as string);
           } catch (err: any) {
             if (err?.message === 'cancelled') return;
-            alert(`Failed to delete beacon "${props.id}": ${err?.response?.data?.error || err?.message || 'Unknown error'}`);
+            notifyError(`Failed to delete beacon "${props.id}": ${err?.response?.data?.error || err?.message || 'Unknown error'}`)
           }
         });
       }
@@ -4726,7 +4726,7 @@ function startSplitting() {
   if (isDrawing.value) cancelDrawing();
   exitVertexDragMode();
   if (splitFigureRing.value.length < 3) {
-    alert('No Outside Figure parcel to split. Designate a parcel as "Outside Figure" first.');
+    notifyWarning('No Outside Figure parcel to split. Designate a parcel as "Outside Figure" first.')
     return;
   }
   isSplitting.value = true;
@@ -4939,7 +4939,7 @@ function handlePointClick(point: any) {
   const isDuplicate = selectedPoints.value.some(p => p.id === point.id);
   if (isDuplicate) {
     console.warn('[MapLibre] ⚠️ Point already selected:', point.id);
-    alert(`Point ${point.id} is already selected!\n\nCadastral survey regulation: Each vertex must be unique.`);
+    notifyWarning(`Point ${point.id} is already selected!\n\nCadastral survey regulation: Each vertex must be unique.`)
     return;
   }
   
@@ -4949,7 +4949,7 @@ function handlePointClick(point: any) {
   const isInsertingMidSequence = isEditingVertices.value && insertAfterIndex.value !== null;
   if (!isInsertingMidSequence && wouldCreateIntersection(point)) {
     console.warn('[MapLibre] ⚠️ Would create crossing polygon');
-    alert(`Cannot add point ${point.id} - it would create a self-intersecting polygon!\n\nCadastral survey regulation: Parcel boundaries must not cross themselves.`);
+    notifyError(`Cannot add point ${point.id} - it would create a self-intersecting polygon!\n\nCadastral survey regulation: Parcel boundaries must not cross themselves.`)
     return;
   }
   
@@ -5031,7 +5031,7 @@ function suggestNextDesignation(): string {
  */
 async function completePolygon() {
   if (selectedPoints.value.length < 3) {
-    alert('Minimum 3 points required to create a polygon.');
+    notifyWarning('Minimum 3 points required to create a polygon.')
     return;
   }
 
@@ -5695,14 +5695,14 @@ async function refreshParcelsFromDatabase() {
 function startEditingVertices(designation: string) {
   const dbParcel = savedParcels.value.get(designation);
   if (!dbParcel) {
-    alert(`Cannot edit vertices: parcel "${designation}" not found.`);
+    notifyError(`Cannot edit vertices: parcel "${designation}" not found.`)
     return;
   }
 
   // Resolve DB id
   const dbId = dbParcel.id ?? existingParcelIds.value.get(designation) ?? null;
   if (!dbId) {
-    alert(`Cannot edit vertices: parcel "${designation}" has no database ID.`);
+    notifyError(`Cannot edit vertices: parcel "${designation}" has no database ID.`)
     return;
   }
 
@@ -5713,7 +5713,7 @@ function startEditingVertices(designation: string) {
   const memParcel = parcels.value.find(p => p.designation === designation);
   let startPoints: any[] = memParcel?.points?.length ? memParcel.points : (dbParcel.metadata?.cape_lo_points ?? []);
   if (startPoints.length === 0) {
-    alert(`Cannot edit vertices: no vertex data found for "${designation}". Try refreshing first.`);
+    notifyError(`Cannot edit vertices: no vertex data found for "${designation}". Try refreshing first.`)
     return;
   }
 
@@ -5783,7 +5783,7 @@ function removeVertexByIndex(idx: number) {
  */
 async function commitVertexEdit() {
   if (selectedPoints.value.length < 3) {
-    alert('A parcel needs at least 3 vertices.');
+    notifyWarning('A parcel needs at least 3 vertices.')
     return;
   }
 
@@ -6575,7 +6575,7 @@ async function commitVertexDrag() {
   try {
     const affected = await findAffectedParcels(draggedName);
     if (affected.length === 0) {
-      alert(`Beacon "${draggedName}" is not listed by any saved parcel, so there is nothing to update.`);
+      notifyWarning(`Beacon "${draggedName}" is not listed by any saved parcel, so there is nothing to update.`)
       return;
     }
 
@@ -6627,7 +6627,7 @@ async function commitVertexDrag() {
     }
   } catch (err: any) {
     console.error('[VertexDrag] ❌ Failed to commit the drag:', err);
-    alert(`Failed to move the vertex: ${err?.response?.data?.error || err?.message || 'Unknown error'}`);
+    notifyError(`Failed to move the vertex: ${err?.response?.data?.error || err?.message || 'Unknown error'}`)
   } finally {
     isComputing.value = false;
     renderSelectedVertices();
@@ -6975,7 +6975,7 @@ async function regenerateCalculationsPart1WithAreas() {
     
     // Use coordinatePoints that are already loaded in this component
     if (coordinatePoints.value.length === 0) {
-      alert('No coordinate points found. Please ensure coordinates are loaded from Calculations Part 1.');
+      notifyWarning('No coordinate points found. Please ensure coordinates are loaded from Calculations Part 1.')
       return;
     }
     
@@ -7040,7 +7040,7 @@ async function regenerateCalculationsPart1WithAreas() {
  */
 async function saveAllParcels() {
   if (!workflowState?.projectInfo?.projectId) {
-    alert('No project selected. Please select a project first.');
+    notifyWarning('No project selected. Please select a project first.')
     return;
   }
   
@@ -7050,7 +7050,7 @@ async function saveAllParcels() {
     .map(p => p.id);
   
   if (draftParcelIds.length === 0) {
-    alert('No draft parcels to finalize. All parcels are already finalized.');
+    notifyWarning('No draft parcels to finalize. All parcels are already finalized.')
     return;
   }
   
@@ -7083,12 +7083,12 @@ async function saveAllParcels() {
     if (shouldRegeneratePDF) {
       await regenerateCalculationsPart1WithAreas();
     } else {
-      alert(`✅ Parcels finalized successfully!\n\nYou can regenerate the PDF later from the workflow.`);
+      notifySuccess(`Parcels finalized successfully!\n\nYou can regenerate the PDF later from the workflow.`)
     }
     
   } catch (error) {
     console.error('[MapLibre] ❌ Failed to finalize parcels:', error);
-    alert('Failed to finalize parcels. Please try again.');
+    notifyError('Failed to finalize parcels. Please try again.')
   } finally {
     isSaving.value = false;
   }
@@ -7128,11 +7128,11 @@ async function deleteSavedParcel(dbParcel: any) {
     // Refresh map display
     await refreshParcelsFromDatabase();
     
-    alert(`✅ Parcel "${designation}" deleted successfully`);
+    notifySuccess(`Parcel "${designation}" deleted successfully`)
     
   } catch (error: any) {
     console.error('[MapLibre] ❌ Failed to delete parcel:', error);
-    alert(`Failed to delete parcel: ${error.message || 'Unknown error'}`);
+    notifyError(`Failed to delete parcel: ${error.message || 'Unknown error'}`)
   }
 }
 
@@ -7266,7 +7266,7 @@ async function deleteParcelConfirm(parcel: Parcel) {
     
   } catch (error: any) {
     console.error('[MapLibre] ❌ Failed to delete parcel:', error);
-    alert(`Failed to delete parcel ${parcel.designation}.\n\nError: ${error?.response?.data?.error || error.message || 'Unknown error'}`);
+    notifyError(`Failed to delete parcel ${parcel.designation}.\n\nError: ${error?.response?.data?.error || error.message || 'Unknown error'}`)
   }
 }
 
@@ -7348,7 +7348,7 @@ async function exportAreaConsistencyPDF() {
   
   try {
     if (!projectId) {
-      alert('No project selected. Please select a project first.');
+      notifyWarning('No project selected. Please select a project first.')
       return;
     }
     
@@ -7363,7 +7363,7 @@ async function exportAreaConsistencyPDF() {
     
   } catch (error) {
     console.error('[MapLibre] ❌ Error loading parcels from database:', error);
-    alert('Failed to load parcels from database. Please try again.');
+    notifyError('Failed to load parcels from database. Please try again.')
     return;
   }
   
@@ -7463,7 +7463,7 @@ async function exportAreaConsistencyPDF() {
   console.log('[MapLibre] 📊 Final parcels array:', computedParcels.map(p => p.designation).join(', '));
   
   if (computedParcels.length === 0) {
-    alert('No computed parcels found. Please wait for area computation to complete or load parcels from database.');
+    notifySuccess('No computed parcels found. Please wait for area computation to complete or load parcels from database.')
     return;
   }
   
@@ -7841,7 +7841,7 @@ async function exportAreaConsistencyPDF() {
   
   // Check if we have coordinate points
   if (coordinatePoints.value.length === 0) {
-    alert('No coordinate points found. Please ensure Calculations Part 1 was completed first.');
+    notifySuccess('No coordinate points found. Please ensure Calculations Part 1 was completed first.')
     return;
   }
   
@@ -8223,7 +8223,7 @@ async function generateComprehensivePDF(
     
     if (!result.success) {
       if (result.error?.includes('No parcels')) {
-        alert('No parcels to include in PDF.\n\nPlease digitize at least one parcel first.');
+        notifyWarning('No parcels to include in PDF.\n\nPlease digitize at least one parcel first.')
         console.log('[MapLibre] ℹ️ No parcels available - skipping PDF generation');
         return;
       }
@@ -8413,7 +8413,7 @@ function downloadMergedPDF(pdfBytes: Uint8Array, projectName: string) {
   URL.revokeObjectURL(url);
   
   console.log('[MapLibre] ✅ Downloaded:', link.download);
-  alert(`✅ Downloaded to your Downloads folder:\n\n${link.download}`);
+  notifySuccess(`Downloaded to your Downloads folder:\n\n${link.download}`)
 }
 
 /**
@@ -8423,7 +8423,7 @@ async function saveMergedPDFToProject(pdfBytes: Uint8Array, projectName: string)
   const workingDirectory = workflowState?.value?.projectInfo?.workingDirectory;
   
   if (!workingDirectory) {
-    alert('❌ No working directory set. Please download instead.');
+    notifyError('No working directory set. Please download instead.')
     downloadMergedPDF(pdfBytes, projectName);
     return;
   }

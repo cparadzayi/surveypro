@@ -287,7 +287,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyFailure } from '@/composables/useNotifications'
+import { notifyFailure, notifySuccess } from '@/composables/useNotifications'
 import { ref, computed, onMounted, watch } from 'vue'
 import { toDateInputFormat } from '@/utils/dateFormat'
 import DateInputDDMMYYYY from '@/components/DateInputDDMMYYYY.vue'
@@ -619,7 +619,7 @@ async function generateCertificate() {
     }
     
     console.log(`✅ DSG Certificate generated successfully! (${pageCount} page)`)
-    alert(`✅ DSG Certificate generated successfully!`)
+    notifySuccess(`DSG Certificate generated successfully!`)
     
     // Mark workflow as complete
     console.log('🎉 Cadastral workflow complete!')

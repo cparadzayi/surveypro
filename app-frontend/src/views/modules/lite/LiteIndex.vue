@@ -74,6 +74,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import { notifyInfo } from '@/composables/useNotifications'
 import { computed, ref } from 'vue'
 import { useModulesStore } from '../../../stores/modules'
 
@@ -125,6 +126,6 @@ if (!favorites.value.length) {
 }
 
 // Utilities placeholders
-function openCalculator() { alert('Calculator coming soon') }
-function openConverter() { alert('Unit converter coming soon') }
+function openCalculator() { notifyInfo('Calculator coming soon') }
+function openConverter() { notifyInfo('Unit converter coming soon') }
 </script>

@@ -610,7 +610,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyWarning } from '@/composables/useNotifications'
+import { notifyFailure, notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '../../../services/api'
 import { toDateInputFormat } from '@/utils/dateFormat'
@@ -1049,7 +1049,7 @@ async function completeSetup() {
     })
   } catch (error) {
     console.error('[ProjectSetup] Error completing setup:', error)
-    alert('Error creating project: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    notifyFailure('Error creating project', error)
   }
 }
 

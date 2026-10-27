@@ -6204,7 +6204,7 @@ async function recomputeAllParcels({
   restrictToDesignations?: Set<string>;
 } = {}) {
   if (savedParcels.value.size === 0) {
-    if (!skipConfirm) alert('No parcels to recompute. Please draw and save parcels first.');
+    if (!skipConfirm) notifyWarning('No parcels to recompute. Please draw and save parcels first.');
     return;
   }
 

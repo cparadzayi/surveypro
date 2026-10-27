@@ -994,7 +994,7 @@ function handleCsvImport(event: Event) {
       }
     } catch (error) {
       console.error('CSV import error:', error)
-      alert('Error importing CSV: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      notifyFailure('Error importing CSV', error)
     }
   }
   
@@ -1192,7 +1192,7 @@ async function autoComputeArea() {
 // Manual compute (with alerts and saving)
 async function doCompute() {
   const pts = collectPoints()
-  if (pts.length < 3) { alert('Select at least 3 valid points'); return }
+  if (pts.length < 3) { notifyWarning('Select at least 3 valid points'); return }
   
   try {
     const payload: any = {

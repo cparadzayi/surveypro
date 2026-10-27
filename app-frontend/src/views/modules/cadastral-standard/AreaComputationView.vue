@@ -1064,7 +1064,7 @@ async function exportReport() {
     notifySuccess('PDF report generated successfully!')
   } catch (error) {
     console.error('Error generating PDF:', error);
-    alert('Failed to generate PDF: ' + (error as Error).message);
+    notifyFailure('Failed to generate PDF', error);
   }
 }
 </script>

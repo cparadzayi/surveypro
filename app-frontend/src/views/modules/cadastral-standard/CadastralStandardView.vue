@@ -2558,7 +2558,7 @@ async function handleReimportChoice(choice: 'use-previous' | 'append' | 'smart-m
     }
   } catch (error) {
     console.error('[CSV Re-import] Error handling choice:', error);
-    alert('Error processing CSV re-import: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error processing CSV re-import', error);
     // Clear pending data on error
     pendingCSVData.value = null;
   }
@@ -2864,7 +2864,7 @@ alert(`✅ Merge completed successfully!\n\n` +
     
   } catch (error) {
     console.error('[CSV Merge] Merge execution failed:', error);
-    alert('Error executing merge: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error executing merge', error);
   } finally {
     pendingCSVData.value = null;
     mergeAnalysisDialog.value.analysis = null;
@@ -2925,7 +2925,7 @@ async function resetImportStep() {
     
   } catch (error) {
     console.error('❌ Failed to reset step:', error);
-    alert('Error resetting step: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error resetting step', error);
   }
 }
 
@@ -3015,7 +3015,7 @@ async function exportAllDocuments() {
     
   } catch (error) {
     console.error('❌ Batch export failed:', error);
-    alert('Failed to export documents: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Failed to export documents', error);
   } finally {
     isExporting.value = false;
   }
@@ -3099,7 +3099,7 @@ async function handleFileChange(event: Event) {
       
     } catch (error) {
       console.error('Error processing file:', error);
-      alert('Error reading file: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      notifyFailure('Error reading file', error);
     }
   }
 }
@@ -3349,7 +3349,7 @@ async function generateFieldBook() {
     
   } catch (error) {
     console.error('[generateFieldBook] Error:', error);
-    alert('Error generating field book: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error generating field book', error);
   } finally {
     isGenerating.value = false;
     console.log('[generateFieldBook] isGenerating set to false');
@@ -3689,7 +3689,7 @@ async function viewFieldBook() {
     };
   } catch (error) {
     console.error('Error viewing field book:', error);
-    alert('Error generating PDF preview: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error generating PDF preview', error);
   }
 }
 
@@ -3717,7 +3717,7 @@ async function downloadFieldBook() {
     console.log('Field book PDF download initiated:', fileName);
   } catch (error) {
     console.error('Error downloading field book:', error);
-    alert('Error downloading PDF: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error downloading PDF', error);
   }
 }
 
@@ -3747,7 +3747,7 @@ async function viewCalculationsPart1() {
     };
   } catch (error) {
     console.error('Error viewing Calculations Part 1:', error);
-    alert('Error generating PDF preview: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error generating PDF preview', error);
   }
 }
 
@@ -3769,7 +3769,7 @@ async function downloadCalculationsPart1() {
     console.log('Calculations Part 1 PDF download initiated:', fileName);
   } catch (error) {
     console.error('Error downloading Calculations Part 1:', error);
-    alert('Error downloading PDF: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error downloading PDF', error);
   }
 }
 
@@ -3801,7 +3801,7 @@ async function viewCoordinateList() {
     };
   } catch (error) {
     console.error('Error viewing Coordinate List:', error);
-    alert('Error opening PDF preview: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error opening PDF preview', error);
   }
 }
 
@@ -3823,7 +3823,7 @@ async function downloadCoordinateList() {
     console.log('Coordinate List PDF download initiated:', fileName);
   } catch (error) {
     console.error('Error downloading Coordinate List:', error);
-    alert('Error downloading PDF: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error downloading PDF', error);
   }
 }
 
@@ -3875,7 +3875,7 @@ function downloadCoordinateListCSV() {
     console.log('Coordinate List CSV download initiated:', fileName);
   } catch (error) {
     console.error('Error downloading Coordinate List CSV:', error);
-    alert('Error downloading CSV: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error downloading CSV', error);
   }
 }
 
@@ -4097,7 +4097,7 @@ async function generateCoordinateList() {
     
   } catch (error) {
     console.error('Error generating Coordinate List:', error);
-    alert('Error generating Coordinate List: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    notifyFailure('Error generating Coordinate List', error);
   } finally {
     isGenerating.value = false;
   }

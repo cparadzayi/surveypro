@@ -6,7 +6,7 @@
     <!-- Main Column -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- Header (only show when authenticated) -->
-      <header v-if="isAuthed" class="bg-white border-b p-4 flex items-center gap-4 sticky top-0 z-20">
+      <header v-if="isAuthed" class="bg-white border-b p-4 flex items-center gap-4 sticky top-0 z-40">
         <button
           class="md:hidden p-2 rounded hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           @click="toggleNav"
@@ -119,15 +119,15 @@
       <!-- Global ribbon: available on every screen, so navigation, project
            context and help never depend on where the user happens to be.
            Collapsible, like the QGIS/ArcGIS ribbon minimise control. -->
-      <Ribbon
-        v-if="isAuthed"
-        :tabs="globalRibbonTabs"
-        :initial-tab="globalInitialTab"
-        :collapsed="ribbonCollapsed"
-        class="sticky top-14 z-20"
-        @action="globalRibbon.run"
-        @update:collapsed="ribbonCollapsed = $event"
-      />
+      <div v-if="isAuthed" class="sticky top-14 z-30">
+        <Ribbon
+          :tabs="globalRibbonTabs"
+          :initial-tab="globalInitialTab"
+          :collapsed="ribbonCollapsed"
+          @action="globalRibbon.run"
+          @update:collapsed="ribbonCollapsed = $event"
+        />
+      </div>
 
       <main :class="isAuthed ? 'flex-1 p-4 sm:p-6' : 'flex-1'">
         <RouterView />

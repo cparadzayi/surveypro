@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useModulesStore } from '../stores/modules';
+import { confirmDiscardUnsaved, hasUnsavedWork } from '../composables/useUnsavedWork';
 
 // Dynamic module and submenu components are resolved by loader SFCs under views/modules.
 
@@ -63,6 +64,12 @@ router.beforeEach(async (to, from) => {
     await auth.restoreSession();
   }
   
+  // Leaving a screen that holds unsaved input: ask first. Not when the session is gone (a forced
+  // sign-out cannot be declined) or when only the query/hash changes.
+  if (auth.isAuthed && from.path !== to.path && hasUnsavedWork()) {
+    if (!(await confirmDiscardUnsaved())) return false;
+  }
+
   // Update activity on every navigation if authenticated
   if (auth.isAuthed) {
     auth.updateActivity();

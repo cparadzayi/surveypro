@@ -8,7 +8,9 @@
         Complete one-time setup - all information will auto-populate throughout the workflow.
       </p>
 
-      <form @submit.prevent="completeSetup" class="space-y-6">
+      <!-- @input / @change fire for the user's own edits only, never for values loaded in code,
+           so a form that fills itself in is not reported as "unsaved". -->
+      <form @submit.prevent="completeSetup" class="space-y-6" @input="unsaved.mark()" @change="unsaved.mark()">
         <!-- SECTION 0: Surveyor & Project Selection -->
         <div class="border-b border-gray-200 pb-6">
           <h2 class="text-lg font-semibold text-gray-900 mb-4">
@@ -611,6 +613,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '../../../services/api'
 import { toDateInputFormat } from '@/utils/dateFormat'
+import { useUnsavedWork } from '@/composables/useUnsavedWork'
 import DateInputDDMMYYYY from '@/components/DateInputDDMMYYYY.vue'
 import WorkingDirectorySelector from '../../../components/cadastral/WorkingDirectorySelector.vue'
 import { useAuthStore } from '../../../stores/auth'
@@ -980,6 +983,10 @@ async function loadProjects() {
     projects.value = [] // Ensure it's always an array
   }
 }
+
+// Unsaved until the parent has saved the setup (it clears this on success, and it clears itself
+// if the surveyor leaves the step).
+const unsaved = useUnsavedWork('project-setup', 'Project setup details')
 
 async function completeSetup() {
   // Validate all required fields

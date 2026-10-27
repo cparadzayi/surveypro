@@ -1322,7 +1322,9 @@
 </template>
 
 <script setup lang="ts">
+import { notifyFailure } from '@/composables/useNotifications'
 import { ref, computed, reactive, provide, toRaw, markRaw, watch } from 'vue';
+import { confirmDiscardUnsaved, markSaved } from '@/composables/useUnsavedWork';
 import api from '../../../services/api';
 // import CadastralCSVImport from '../../../components/cadastral/CadastralCSVImport.vue';
 import type { CadastralWorkflowState, CadastralPoint } from '../../../types/cadastral';
@@ -2304,13 +2306,16 @@ async function handleProjectSetupComplete(setupData: {
       console.log('[Workflow] ✅ Projects reloaded with updated data');
     } catch (error) {
       console.error('[Workflow] ❌ Failed to save project setup:', error);
-      alert('Failed to save project setup. Please try again.');
+      notifyFailure('Failed to save project setup', error);
       return;
     }
   } else {
     console.warn('[Workflow] ⚠️ No project ID - project setup not saved to database');
   }
   
+  // Saved: the setup is no longer unsaved input.
+  markSaved('project-setup');
+
   // Move to next step (CSV Import - skip control point selection)
   workflowState.currentStep = 'csv-import';
   
@@ -3368,8 +3373,11 @@ const workflowRibbon = useWorkflowRibbon({
 // composable object is not unwrapped).
 const workflowRibbonTabs = workflowRibbon.tabs
 
-function runWorkflowRibbonAction(id: string) {
+async function runWorkflowRibbonAction(id: string) {
   const parsed = workflowRibbon.parse(id)
+  // Moving to another step with unsaved input on this one: ask first.
+  const leavingStep = (parsed.kind === 'step' && parsed.dbKey !== workflowState.currentStep) || id === 'wf-prev' || id === 'wf-next'
+  if (leavingStep && !(await confirmDiscardUnsaved())) return
   switch (parsed.kind) {
     case 'step': {
       const step = Object.values(CADASTRAL_STEPS).find(s => s.dbKey === parsed.dbKey)

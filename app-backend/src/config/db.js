@@ -1,17 +1,11 @@
 import pg from 'pg'
 import { config } from 'dotenv'
+import { buildPoolOptions } from './poolOptions.js'
 
 config()
 
 // Create a connection pool
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20, // Maximum number of clients
-  idleTimeoutMillis: 30000,
-  // Per-attempt handshake budget. The startup probe below retries, so this does
-  // not need to cover the whole cold-start module load — just one handshake.
-  connectionTimeoutMillis: 10000,
-})
+const pool = new pg.Pool(buildPoolOptions())
 
 // Verify the database is reachable before serving traffic.
 //

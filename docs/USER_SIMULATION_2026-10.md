@@ -60,3 +60,13 @@ Correction: the UI note about the sign-in labels was wrong. The labels are tied 
 9. **Scaffolding routes:** `testRoute.js` and `diagnostic.js` are unmounted (`UNMOUNTED_ROUTES`); both now answer 404. Nothing in the frontend called either. CLAUDE.md no longer lists `testRoute` as an open route.
 
 Still open: 7 (60 simultaneous list calls take ~1.8 s), the technician-project dashboard question, and the in-process limits of the sign-in throttle and duplicate-name guard.
+
+### Third batch: finding 7 (load)
+
+Measured with a throwaway account: one list call takes about 13 ms. The 1.8 s median under 60 simultaneous calls was mostly **connection set-up, not queries**: the database pool dropped idle connections after 30 s, so the first burst after a pause opened up to 20 new Postgres connections (20 simultaneous calls took 1.2 s cold, 0.1 s warm). Changes:
+
+- `config/poolOptions.js`: idle connections now live 10 minutes (`DB_IDLE_TIMEOUT_MS` overrides), with `allowExitOnIdle` so scripts and tests still exit. After 35 s idle, a 20-wide burst went from **1235 ms to 110 ms** median.
+- `utils/projectControlPoints.js`: the project list and "recent projects" fetched each project's control points in a separate transaction (1 + N per page); now one query.
+- `schemaAuth.js`: the 500 body no longer includes `details`/`stack`.
+
+Not changed: the first burst right after a server restart still takes about 1.4 s (the pool is empty); a start-up warm-up of 5 connections made no measurable difference and was dropped.

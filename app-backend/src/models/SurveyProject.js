@@ -1,4 +1,5 @@
 import db from '../config/db.js'
+import { attachControlPoints } from '../utils/projectControlPoints.js'
 
 class SurveyProject {
   /**
@@ -72,20 +73,7 @@ class SurveyProject {
     const result = await dbConnection.query(query)
     const projects = result.rows
     
-    // Fetch control points for each project
-    for (const project of projects) {
-      const controlPointsResult = await dbConnection.query(
-        `SELECT cp.id, cp.monu_num, cp.monu_name, pcp.point_order
-         FROM project_control_points pcp
-         JOIN public.zim_control_points cp ON pcp.control_point_id = cp.id
-         WHERE pcp.project_id = $1
-         ORDER BY pcp.point_order`,
-        [project.id]
-      )
-      
-      project.control_points = controlPointsResult.rows
-      project.control_point_ids = controlPointsResult.rows.map(cp => cp.id)
-    }
+    await attachControlPoints(dbConnection, projects)
     
     // Single summary line
     const summary = projects.map(p => `${p.name}(Lo${p.central_meridian || '?'},${p.control_point_ids?.length || 0}cp)`).join(', ')
@@ -276,20 +264,7 @@ class SurveyProject {
     const result = await dbConnection.query(query, [limit])
     const projects = result.rows
     
-    // Fetch control points for each project
-    for (const project of projects) {
-      const controlPointsResult = await dbConnection.query(
-        `SELECT cp.id, cp.monu_num, cp.monu_name, pcp.point_order
-         FROM project_control_points pcp
-         JOIN public.zim_control_points cp ON pcp.control_point_id = cp.id
-         WHERE pcp.project_id = $1
-         ORDER BY pcp.point_order`,
-        [project.id]
-      )
-      
-      project.control_points = controlPointsResult.rows
-      project.control_point_ids = controlPointsResult.rows.map(cp => cp.id)
-    }
+    await attachControlPoints(dbConnection, projects)
     
     return projects
   }

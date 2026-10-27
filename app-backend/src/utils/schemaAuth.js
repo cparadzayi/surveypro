@@ -52,7 +52,7 @@ export async function authenticateWithSchema(request, reply) {
   } catch (error) {
     console.error('[Schema Auth] ❌ EXCEPTION:', error.message)
     request.log.error('Schema authentication error:', error)
-    return reply.code(500).send({ error: 'Authentication error', details: error.message, stack: error.stack })
+    return reply.code(500).send({ error: 'Authentication error' })
   }
 }
 

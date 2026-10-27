@@ -1,5 +1,6 @@
 import api from './api'
 import type { SheetPayload } from '../utils/sheetPayloads'
+import { parseWarningsHeader } from '../utils/planWarnings'
 
 export interface GeoPDFRequest {
   mapImage: string // base64 encoded PNG
@@ -164,7 +165,10 @@ export interface VectorGeoPDFResult {
   usedScale: string | null        // actual scale used for this render
   usedSheetSize: string | null    // actual sheet size after any A2→A1→A0 escalation
   sheetLayouts: Array<{ sheetNumber: number; scale: string; sheetSize: string }> | null  // multi-sheet plans only
+  /** What the renderer warned about, in plain sentences (blocks over the figure, ...). Empty when none. */
+  warnings: string[]
 }
+
 
 /**
  * Generate TRUE Vector GeoPDF from GeoJSON
@@ -189,6 +193,7 @@ export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promis
   const suggestedScale  = response.headers['x-suggested-scale']  ?? null
   const usedScale       = response.headers['x-used-scale']       ?? null
   const usedSheetSize   = response.headers['x-used-sheet-size']  ?? null
+  const warnings = parseWarningsHeader(response.headers['x-plan-warnings'])
   let sheetLayouts: VectorGeoPDFResult['sheetLayouts'] = null
   try {
     const raw = response.headers['x-sheet-layouts']
@@ -213,7 +218,7 @@ export async function generateVectorGeoPDF(request: VectorGeoPDFRequest): Promis
     throw new Error(e?.message || 'Failed to validate GeoPDF response')
   }
   
-  return { blob: response.data, suggestedScale, usedScale, usedSheetSize, sheetLayouts }
+  return { blob: response.data, suggestedScale, usedScale, usedSheetSize, sheetLayouts, warnings }
 }
 
 /**

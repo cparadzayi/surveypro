@@ -454,6 +454,9 @@ import {
   resolveScaleAndSheet,
   type PlanPayloadContext, type PlanDocumentSet,
 } from './planPayload'
+import { describeDxfWarnings, describeGenerationOutcome } from './planOutcome'
+import { confirmDialog, notify, notifyError, notifyWarning } from '@/composables/useNotifications'
+import { describeError } from '@/utils/errorMessage'
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
 import { pickDiagramSubjectId } from './diagramSubjectPick'
 import { paperSizeOptionsFor } from './paperSizeOptions'
@@ -4606,12 +4609,12 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
 async function generatePlanDocuments() {
   const meta = getPlanTypeMeta(config.value.planType)
   const v = validateGenerateRequest(meta, selectedDiagramParcelId.value, parcels.value.length, exportFormats)
-  if (!v.ok) { alert(v.error); return }
+  if (!v.ok) { notifyWarning(v.error ?? 'Check the plan settings and try again.', { title: "Can't generate yet" }); return }
 
   // The plans are saved into the working directory: check it HERE, before any
   // generation work, not once the finished documents are waiting to be saved.
   const outputLocation = validateOutputLocation((props.projectInfo as any).workingDirectory)
-  if (!outputLocation.ok) { alert(outputLocation.error); return }
+  if (!outputLocation.ok) { notifyWarning(outputLocation.error, { title: "Can't generate yet" }); return }
   const workingDirectory = outputLocation.workingDirectory
 
   // General Plans are built around the Outside Figure (the remainder-of-parent
@@ -4621,7 +4624,7 @@ async function generatePlanDocuments() {
     config.value.planType === 'general-undeveloped' ||
     config.value.planType === 'general-developed'
   if (requiresOutsideFigure && !outsideFigureData.value) {
-    alert('Outside Figure data required. Designate a parcel as "Outside Figure" and run Compute Area & Consistency before generating a General Plan.')
+    notifyWarning('Designate a parcel as "Outside Figure" and run Compute Area & Consistency before generating a General Plan.', { title: "Can't generate yet: Outside Figure data required" })
     return
   }
 
@@ -4658,7 +4661,7 @@ async function generatePlanDocuments() {
       // this replaces sent a surveyor to recompute areas that were already
       // correct, when the real cause was a coordinate list cleared by an
       // import reset and never re-imported.
-      alert(workingPlanEmptyReason(built))
+      notifyWarning(workingPlanEmptyReason(built), { title: "Can't draw the Working Plan" })
       return
     }
     workingPlanSpec = built.spec
@@ -4675,6 +4678,8 @@ async function generatePlanDocuments() {
     const ctx = await gatherPlanContext()
     const payload = buildPlanPayload(ctx)
     const docs: PlanDocumentSet = {}
+    // Plain sentences from the PDF and DXF generators, shown with the result.
+    const generationWarnings: string[] = []
     let usedScale: string | undefined
     // The sheet the PDF actually rendered on, after any paper-size escalation.
     let usedSheetSize: string | undefined
@@ -4694,6 +4699,7 @@ async function generatePlanDocuments() {
         result = await generateVectorGeoPDF({ ...payload, scale: result.suggestedScale })
       }
       docs.pdf = result.blob
+      generationWarnings.push(...(result.warnings ?? []))
       usedScale = result.usedScale || undefined
       usedSheetSize = result.usedSheetSize || undefined
       sheetLayouts = result.sheetLayouts || undefined
@@ -4767,6 +4773,8 @@ async function generatePlanDocuments() {
         if (warningsSummary.priorDiagramsTruncated) parts.push(`${warningsSummary.priorDiagramsTruncated} prior diagram(s) truncated`)
         if (warningsSummary.scaleFallback) parts.push('scale fell back to 1:500')
         if (parts.length) console.warn('[PlanDocs] DXF warnings:', parts.join(', '))
+        // ...and tell the surveyor, not only the console.
+        generationWarnings.push(...describeDxfWarnings(warningsSummary))
       }
     }
 
@@ -4826,7 +4834,13 @@ async function generatePlanDocuments() {
     let overwriteAll = false
     const confirmOverwrite = async (name: string): Promise<boolean> => {
       if (overwriteAll) return true
-      const ok = window.confirm(`"${name}" already exists in output/${subdir}. Overwrite it (and any other existing files in this plan)?`)
+      const ok = await confirmDialog({
+        title: 'Overwrite existing plan?',
+        message: `"${name}" already exists in output/${subdir}.\n\nOverwrite it, and any other existing files in this plan?`,
+        confirmLabel: 'Overwrite',
+        cancelLabel: 'Keep existing',
+        tone: 'danger',
+      })
       if (ok) overwriteAll = true
       return ok
     }
@@ -4844,16 +4858,15 @@ async function generatePlanDocuments() {
       else if (res.skipped) skipped.push(fileName)
       else throw new Error(res.error || `Failed to save ${fileName}`)
     }
-    const summaryMsg = `Saved to output/${subdir}/:\n${saved.join('\n') || '(none)'}` +
-      (skipped.length ? `\n\nKept existing (not overwritten):\n${skipped.join('\n')}` : '') +
-      (workingPlanSkipped.length
-        ? `\n\nNot drawn (no named boundary points):\n${workingPlanSkipped.join('\n')}`
-        : '')
-    alert(summaryMsg)
+    const outcome = describeGenerationOutcome({
+      subdir, saved, skipped, notDrawn: workingPlanSkipped, warnings: generationWarnings,
+    })
+    notify({ kind: outcome.kind, title: outcome.title, message: outcome.message, details: outcome.details, sticky: outcome.sticky })
     emit('export-complete', { format: config.value.planType, filename: saved[0] || '' })
   } catch (error: any) {
     console.error('[PlanDocs] Generation failed:', error)
-    alert(`Generation failed: ${error.message}`)
+    const d = describeError(error, 'The plan could not be generated.')
+    notifyError(d.message, { title: 'Generation failed', details: d.technical ? [d.technical] : [] })
   } finally {
     isExporting.value = false
     exportStatus.value = ''

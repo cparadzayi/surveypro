@@ -293,6 +293,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyFailure } from '@/composables/useNotifications'
 import { ref, computed, defineAsyncComponent, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import LayerSelect from '../../../../components/inputs/LayerSelect.vue'
 import { areaCompute } from '../../../../services/compute'
@@ -1141,7 +1142,7 @@ async function saveParcelToDatabase(parcelData: any) {
     return parcel
   } catch (err: any) {
     console.error('❌ [Areas2View] Failed to save parcel:', err)
-    alert(`Failed to save parcel: ${err.message || 'Unknown error'}`)
+    notifyFailure('Failed to save parcel', err)
     return null
   }
 }

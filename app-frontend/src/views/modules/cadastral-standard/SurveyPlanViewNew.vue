@@ -148,6 +148,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyFailure } from '@/composables/useNotifications'
 import { ref, computed, onMounted } from 'vue'
 import SurveyDiagramView from './SurveyDiagramView.vue'
 import WorkingPlanView from './WorkingPlanView.vue'
@@ -223,7 +224,7 @@ async function saveComposition() {
     )
   } catch (error) {
     console.error('[RecordComposition] Failed to save:', error)
-    alert('Could not save the record composition. Please try again.')
+    notifyFailure('Could not save the record composition', error)
   } finally {
     confirming.value = false
   }

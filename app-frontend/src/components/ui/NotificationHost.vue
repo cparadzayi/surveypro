@@ -105,7 +105,7 @@ function runAction(id: number, a: NoticeAction) {
   try {
     a.run()
   } finally {
-    dismissNotice(id)
+    if (!a.keepOpen) dismissNotice(id)
   }
 }
 

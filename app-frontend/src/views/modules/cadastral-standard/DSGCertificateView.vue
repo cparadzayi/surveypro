@@ -287,6 +287,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyFailure } from '@/composables/useNotifications'
 import { ref, computed, onMounted, watch } from 'vue'
 import { toDateInputFormat } from '@/utils/dateFormat'
 import DateInputDDMMYYYY from '@/components/DateInputDDMMYYYY.vue'
@@ -569,7 +570,7 @@ async function previewCertificate() {
     await previewPDF(certificateData.value)
   } catch (error) {
     console.error('Error previewing certificate:', error)
-    alert('Error previewing certificate. Please check the console.')
+    notifyFailure('Could not preview the certificate', error)
   }
 }
 
@@ -625,7 +626,7 @@ async function generateCertificate() {
     
   } catch (error) {
     console.error('Error generating certificate:', error)
-    alert('Error generating certificate. Please check the console.')
+    notifyFailure('Could not generate the certificate', error)
   } finally {
     isGenerating.value = false
   }

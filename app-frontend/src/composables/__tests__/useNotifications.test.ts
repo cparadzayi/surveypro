@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   answerConfirm, clearNotices, confirmDialog, confirmQueue, dismissNotice, MAX_NOTICES,
-  notices, notify, notifyError, notifyInfo, notifySuccess, notifyWarning,
+  notices, notify, notifyError, notifyFailure, notifyInfo, notifySuccess, notifyWarning,
 } from '../useNotifications'
 
 beforeEach(() => { vi.useFakeTimers(); clearNotices(); confirmQueue.value = [] })
@@ -69,6 +69,29 @@ describe('notify', () => {
     expect(notices.value.length).toBeLessThanOrEqual(MAX_NOTICES)
     expect(notices.value.some((n) => n.message === 'keep me')).toBe(true)
     expect(notices.value.at(-1)?.message).toBe(`info ${MAX_NOTICES + 2}`)
+  })
+})
+
+describe('notifyFailure', () => {
+  it('titles the failure, explains it in plain language, and keeps the raw text as a detail', () => {
+    notifyFailure('Failed to save parcels', { isAxiosError: true, message: 'Network Error', code: 'ERR_NETWORK' })
+    expect(notices.value[0]).toMatchObject({ kind: 'error', title: 'Failed to save parcels', sticky: true })
+    expect(notices.value[0].message).toMatch(/can't reach the surveypro server/i)
+    expect(notices.value[0].details).toEqual(['Network Error'])
+  })
+
+  it('uses the own message of an ordinary error, and adds no detail', () => {
+    notifyFailure('Could not preview', new Error('No coordinates loaded'))
+    expect(notices.value[0].message).toBe('No coordinates loaded')
+    expect(notices.value[0].details).toEqual([])
+  })
+
+  it('falls back when there is nothing to say, and passes actions through', () => {
+    const run = vi.fn()
+    notifyFailure('Parcel not saved', undefined, 'The save did not complete.', { actions: [{ label: 'Retry save', run }] })
+    expect(notices.value[0].message).toBe('The save did not complete.')
+    notices.value[0].actions[0].run()
+    expect(run).toHaveBeenCalled()
   })
 })
 

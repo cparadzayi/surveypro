@@ -251,6 +251,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyFailure } from '@/composables/useNotifications'
 import { ref, computed, onMounted, watch } from 'vue'
 import ControlPointSelector from '@/components/ControlPointSelector.vue'
 import ControlPointMapView from '@/components/cadastral/ControlPointMapView.vue'
@@ -787,7 +788,7 @@ const saveAndContinue = async () => {
     
   } catch (error) {
     console.error('[ControlPointSelection] Error saving:', error)
-    alert('Failed to save control points. Please try again.')
+    notifyFailure('Failed to save control points', error)
   }
 }
 </script>

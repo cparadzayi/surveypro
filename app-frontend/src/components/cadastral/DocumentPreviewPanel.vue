@@ -86,6 +86,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyError, notifyFailure } from '@/composables/useNotifications'
 import { ref, watch } from 'vue'
 import { saveDocument } from '../../services/documentStorage'
 import type { SaveDocumentOptions } from '../../services/documentStorage'
@@ -213,11 +214,11 @@ async function saveToProject() {
       savedPath.value = result.filePath
       emit('saved', result.filePath)
     } else {
-      alert(`Failed to save document: ${result.error}`)
+      notifyError(result.error || 'The document could not be saved.', { title: 'Failed to save document' })
     }
   } catch (error) {
     console.error('Error saving document:', error)
-    alert('Failed to save document')
+    notifyFailure('Failed to save document', error)
   } finally {
     isSaving.value = false
   }

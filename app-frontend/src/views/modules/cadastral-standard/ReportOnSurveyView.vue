@@ -491,6 +491,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyFailure } from '@/composables/useNotifications'
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import api from '../../../services/api'
 import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow'
@@ -838,7 +839,7 @@ const generateReport = async () => {
     
   } catch (error) {
     console.error('[ReportOnSurvey] Error generating report:', error)
-    alert('❌ Error generating report. Please check the console for details.')
+    notifyFailure('Could not generate the report', error)
   } finally {
     isGenerating.value = false
   }
@@ -900,7 +901,7 @@ const previewReport = async () => {
     emit('preview-report', { blob: pdf, pageCount, fileName })
   } catch (error) {
     console.error('[ReportOnSurvey] Error previewing report:', error)
-    alert('❌ Error generating report preview. Please check the console for details.')
+    notifyFailure('Could not preview the report', error)
   } finally {
     isGenerating.value = false
   }

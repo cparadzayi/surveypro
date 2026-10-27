@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { describeError } from '../utils/errorMessage'
 
 /**
  * One place for telling the user something: toasts for results and problems, and a
@@ -19,6 +20,8 @@ export type NoticeKind = 'info' | 'success' | 'warning' | 'error'
 export interface NoticeAction {
   label: string
   run: () => void
+  /** Leave the notice up after the action runs (e.g. "Copy path"). By default it is dismissed. */
+  keepOpen?: boolean
 }
 
 export interface Notice {
@@ -114,6 +117,18 @@ export const notifySuccess = (message: string, o: ShortcutOptions = {}) => notif
 export const notifyWarning = (message: string, o: ShortcutOptions = {}) => notify({ ...o, message, kind: 'warning' })
 export const notifyError = (message: string, o: ShortcutOptions = {}) => notify({ ...o, message, kind: 'error' })
 
+/**
+ * Reports a failed operation: the title says WHAT failed, the message says why in plain
+ * language (see describeError), and the raw text rides along as a detail so nothing a
+ * developer needs is lost. Stays until dismissed, like any error.
+ *
+ *   } catch (error) { notifyFailure('Failed to save parcels', error) }
+ */
+export function notifyFailure(title: string, error: unknown, fallback?: string, o: ShortcutOptions = {}): number {
+  const d = describeError(error, fallback)
+  return notifyError(d.message, { ...o, title, details: [...(o.details ?? []), ...(d.technical ? [d.technical] : [])] })
+}
+
 // ── Confirm dialog ──────────────────────────────────────────────────────────────
 
 export interface ConfirmOptions {
@@ -169,6 +184,7 @@ export function useNotifications() {
     notifySuccess,
     notifyWarning,
     notifyError,
+    notifyFailure,
     dismissNotice,
     clearNotices,
     confirmDialog,

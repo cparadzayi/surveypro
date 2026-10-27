@@ -57,6 +57,16 @@ describe('toasts', () => {
     expect(toasts()).toHaveLength(0)
   })
 
+  it('leaves the notice up after an action that asks to', async () => {
+    const run = vi.fn()
+    notifySuccess('Saved', { details: ['a.pdf'], actions: [{ label: 'Copy folder path', run, keepOpen: true }] })
+    await nextTick()
+    Array.from(root.querySelectorAll('button')).find((b) => b.textContent === 'Copy folder path')!.click()
+    await nextTick()
+    expect(run).toHaveBeenCalledOnce()
+    expect(toasts()).toHaveLength(1)
+  })
+
   it('runs an action and then dismisses the notice', async () => {
     const run = vi.fn()
     notifyWarning('Kept existing', { actions: [{ label: 'Show files', run }] })

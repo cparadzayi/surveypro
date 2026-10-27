@@ -975,6 +975,8 @@
 </template>
 
 <script setup lang="ts">
+import { notifyError, notifyFailure, notifySuccess } from '@/composables/useNotifications'
+import { describeError } from '@/utils/errorMessage'
 import { ref, onMounted, onBeforeUnmount, inject, computed, watch, nextTick } from 'vue';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -3714,7 +3716,7 @@ async function initializeMapOnce() {
 
   } catch (error) {
     console.error('[MapLibre] ❌ Error initializing map:', error);
-    alert('Failed to initialize map. Check console for details.');
+    notifyFailure('Failed to initialize the map', error);
     isLoading.value = false;
   }
 }
@@ -5232,7 +5234,7 @@ async function finalizePolygon(designation: string) {
     
   } catch (error) {
     console.error('[MapLibre] ❌ Error computing area:', error);
-    alert('Failed to compute area. Check console for details.');
+    notifyFailure('Failed to compute the area', error);
     
     // Remove failed parcel
     parcels.value.splice(parcelIndex, 1);
@@ -5854,7 +5856,7 @@ async function commitVertexEdit() {
 
   } catch (err: any) {
     console.error('[VertexEdit] ❌ Failed to commit vertex edit:', err);
-    alert(`Failed to save vertex edit: ${err?.response?.data?.error || err?.message || 'Unknown error'}`);
+    notifyFailure('Failed to save the vertex edit', err);
   } finally {
     isComputing.value = false;
   }
@@ -6033,14 +6035,14 @@ async function autoSaveParcel(parcel: Parcel, closureError: number) {
     // Show user-friendly error
     if (error.response?.status === 409) {
       const detail = error.response?.data?.details || error.response?.data?.message;
-      alert(`Failed to save: Parcel ${parcel.designation} already exists in database${detail ? `\n\n${detail}` : ''}`);
+      notifyError(`Parcel ${parcel.designation} already exists in the database.`, { title: 'Parcel not saved', details: detail ? [String(detail)] : [] });
     } else if (error.response?.status) {
       // Non-409 failure: surface the real reason (e.g. 404 → parcel was deleted)
       const detail = error.response?.data?.details || error.response?.data?.error || error.response?.data?.message;
       const detailText = detail || `HTTP ${error.response.status}`;
-      alert(`Failed to auto-save parcel. Your work is still in memory but not persisted.\n\n${detailText}`);
+      notifyError(`Your changes are on screen but are NOT saved: ${detailText}`, { title: 'Parcel not saved', actions: [{ label: 'Retry save', run: () => { void autoSaveParcel(parcel, closureError) } }] });
     } else {
-      alert(`Failed to auto-save parcel. Your work is still in memory but not persisted.\n\n${error.message || 'Network error'}`);
+      notifyError(`Your changes are on screen but are NOT saved: ${describeError(error, 'the save did not complete').message}`, { title: 'Parcel not saved', actions: [{ label: 'Retry save', run: () => { void autoSaveParcel(parcel, closureError) } }] });
     }
   } finally {
     isSaving.value = false;
@@ -6302,7 +6304,7 @@ async function recomputeAllParcels({
     
   } catch (error) {
     console.error('[MapLibre] ❌ Recomputation failed:', error);
-    alert('Failed to recompute parcels. Check console for details.');
+    notifyFailure('Failed to recompute the parcels', error);
   } finally {
     isRecomputing.value = false;
   }
@@ -7024,12 +7026,12 @@ async function regenerateCalculationsPart1WithAreas() {
     URL.revokeObjectURL(url);
     
     console.log('[MapLibre] ✅ Calculations Part 1 PDF regenerated successfully');
-    alert(`✅ Calculations Part 1 PDF regenerated!\n\nFilename: ${filename}\n\nNote: Area computation results will be added in a future update.`);
+    notifySuccess(`Calculations Part 1 PDF regenerated: ${filename}`, { details: ['Area computation results will be added in a future update.'] });
     
   } catch (error: any) {
     console.error('[MapLibre] ❌ Failed to regenerate Calculations Part 1:', error);
     console.error('[MapLibre] Error details:', error.message, error.stack);
-    alert(`Failed to regenerate Calculations Part 1 PDF.\n\nError: ${error.message || 'Unknown error'}\n\nPlease check the console for details.`);
+    notifyFailure('Failed to regenerate Calculations Part 1', error);
   }
 }
 
@@ -8139,7 +8141,7 @@ async function exportAreaConsistencyPDF() {
     
   } catch (error: any) {
     console.error('[MapLibre] ❌ Error generating comprehensive document:', error);
-    alert(`Failed to generate PDF.\n\nError: ${error.message || 'Unknown error'}\n\nPlease check the console for details.`);
+    notifyFailure('Failed to generate the PDF', error);
   }
 }
 
@@ -8390,7 +8392,7 @@ async function generatePDF(computedParcels: Parcel[], calculationsPart1PDF?: Fil
     }
   } catch (error) {
     console.error('[MapLibre] ❌ Error generating PDF:', error);
-    alert('Failed to generate PDF. Check console for details.');
+    notifyFailure('Failed to generate the PDF', error);
   }
 }
 
@@ -8443,7 +8445,7 @@ async function saveMergedPDFToProject(pdfBytes: Uint8Array, projectName: string)
     });
     
     console.log('[MapLibre] ✅ Auto-save completed');
-    alert(`✅ Merged PDF saved to project!\n\nCheck console for full path.`);
+    notifySuccess('Merged PDF saved to the project.');
   } catch (error: any) {
     console.error('[MapLibre] ❌ Error saving PDF to project:', error);
     const fallback = confirm(
@@ -8572,7 +8574,7 @@ onMounted(async () => {
     
     // Show detailed error to user
     const errorMsg = error.message || 'Unknown error';
-    alert(`Failed to initialize Parcel Digitization & Areas view.\n\nError: ${errorMsg}\n\nPlease check browser console (F12) for details.`);
+    notifyFailure('Failed to initialize Parcel Digitization & Areas', error);
   }
 });
 

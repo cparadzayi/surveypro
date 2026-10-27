@@ -332,6 +332,7 @@
 </template>
 
 <script setup lang="ts">
+import { notifyError, notifyFailure, notifySuccess } from '@/composables/useNotifications'
 import { ref, computed, onMounted, inject, nextTick, watch } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -1015,17 +1016,17 @@ async function saveAllParcels() {
     const result = await batchCreateLandParcels(workflowState.projectInfo.projectId, parcelData);
     
     if (result.created > 0) {
-      alert(`Successfully saved ${result.created} parcel(s) to database!${result.failed > 0 ? `\n${result.failed} failed.` : ''}`);
+      notifySuccess(`Saved ${result.created} parcel(s) to the database.`, { details: result.failed > 0 ? [`${result.failed} could not be saved.`] : [] });
       
       // Mark parcels as saved
       parcels.value.forEach(p => p.saved = true);
     } else {
-      alert('Failed to save parcels. Please check console for errors.');
+      notifyError('The parcels could not be saved.', { title: 'Failed to save parcels', details: Array.isArray(result.errors) ? (result.errors as any[]).slice(0, 8).map((e: any) => (typeof e === 'string' ? e : (e?.error || e?.message || JSON.stringify(e)))) : [] });
       console.error('Save errors:', result.errors);
     }
   } catch (error) {
     console.error('Error saving parcels:', error);
-    alert('Failed to save parcels: ' + (error as Error).message);
+    notifyFailure('Failed to save parcels', error);
   }
 }
 

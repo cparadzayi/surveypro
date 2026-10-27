@@ -483,7 +483,7 @@ export default async function landParcelRoutes(app) {
           results.push({ stand: parcel.stand || `Parcel ${parcel.id}`, area: calculation.area, success: true });
         } catch (error) {
           console.error(`❌ Error processing parcel ${parcel.stand || parcel.id}: ${error.message}`);
-          errorList.push({ stand: parcel.stand || `Parcel ${parcel.id}`, error: error.message, stack: error.stack });
+          errorList.push({ stand: parcel.stand || `Parcel ${parcel.id}`, error: error.message });
           results.push({ stand: parcel.stand || `Parcel ${parcel.id}`, success: false, error: error.message });
         }
       }
@@ -527,8 +527,7 @@ export default async function landParcelRoutes(app) {
       console.error('❌ Fatal error in area calculation:', error)
       return reply.status(500).send({
         ok: false,
-        error: error.message,
-        stack: error.stack
+        error: error.message
       })
     }
   })

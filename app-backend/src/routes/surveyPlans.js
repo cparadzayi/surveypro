@@ -137,8 +137,7 @@ export default async function surveyPlanRoutes(app) {
       return reply.code(500).send({
         ok: false,
         error: 'Failed to generate General Plan',
-        details: error.message,
-        stack: error.stack
+        details: error.message
       })
     }
   })

@@ -122,7 +122,8 @@ export const useAuthStore = defineStore('auth', {
         console.log('🔐 Token stored in localStorage');
         await this.fetchProfile();
       } catch (e: any) {
-        this.error = e.response?.data?.error || e.message;
+        // 'message' carries the sentence for a person (e.g. the sign-in wait); 'error' is the label.
+        this.error = e.response?.data?.message || e.response?.data?.error || e.message;
       } finally {
         this.loading = false;
       }

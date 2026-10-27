@@ -7,6 +7,7 @@ import { config } from 'dotenv'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { dirname, join } from 'path'
 import pool from './config/db.js'
+import { BODY_LIMIT_BYTES, installErrorHandling } from './utils/httpErrors.js'
 
 // Load environment variables
 config()
@@ -19,6 +20,7 @@ if (!process.env.NODE_ENV) {
 
 // Create Fastify instance
 const app = Fastify({
+  bodyLimit: BODY_LIMIT_BYTES,
   logger: {
     // Never write credentials to disk. A committed log file previously
     // contained 31 copies of a signed JWT in an Authorization header.
@@ -178,34 +180,9 @@ for (const file of routeFiles) {
   }
 }
 
-// Error handler
-app.setErrorHandler((error, request, reply) => {
-  app.log.error(error)
-  
-  // Handle validation errors
-  if (error.validation) {
-    return reply.code(400).send({
-      error: 'Validation Failed',
-      messages: error.validation
-    })
-  }
-
-  // Handle database errors
-  if (error.code === '23505') { // Unique violation
-    return reply.code(409).send({
-      error: 'Conflict',
-      message: 'Resource already exists'
-    })
-  }
-
-  // Default error
-  reply.code(500).send({
-    error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'production' 
-      ? 'An error occurred'
-      : error.message
-  })
-})
+// Error handler: 4xx for what the caller got wrong, a bare 500 otherwise, and no diagnostics
+// (stack, stderr, stdout) in any error body. See utils/httpErrors.js.
+installErrorHandling(app)
 
 // Start server
 const start = async () => {

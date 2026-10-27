@@ -67,6 +67,15 @@ describe('X-Plan-Warnings', () => {
     ])
   })
 
+  test('a request that does not name a render engine uses PDFKit, not the legacy ogr2ogr path', async () => {
+    // The ogr2ogr path breaks on GDAL 3.13 (QGIS 4) and the app never asks for it.
+    mockGenerateGeoPDF.mockResolvedValue(render({}))
+    const { renderEngine, ...withoutEngine } = payload
+    const res = await buildApp().inject({ method: 'POST', url: '/vector', payload: withoutEngine })
+    expect(res.statusCode).toBe(200)
+    expect(mockGenerateGeoPDF).toHaveBeenCalledTimes(1)
+  })
+
   test('sends no header when there is nothing to warn about', async () => {
     mockGenerateGeoPDF.mockResolvedValue(render({}))
     const res = await buildApp().inject({ method: 'POST', url: '/vector', payload })

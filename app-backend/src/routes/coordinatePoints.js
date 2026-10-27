@@ -1,5 +1,6 @@
 import CoordinatePoint from '../models/coordinatePoint.js'
 import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
+import { describePointProblems, isRowId } from '../utils/requestChecks.js'
 import { renameByName, applyNameNormalization } from '../utils/beaconNameDoors.js'
 
 export default async function coordinatePointRoutes(app) {
@@ -17,6 +18,7 @@ export default async function coordinatePointRoutes(app) {
     }
   }, async (request, reply) => {
     const { project_id } = request.query
+    if (!isRowId(project_id)) return reply.code(400).send({ ok: false, error: 'project_id must be a project number' })
     const db = request.db
     const points = await CoordinatePoint.findByProject(db, project_id)
     return { ok: true, data: points }
@@ -87,6 +89,12 @@ export default async function coordinatePointRoutes(app) {
         console.error('[Batch Insert] ❌ No points provided');
         return reply.code(400).send({ ok: false, error: 'No points provided' })
       }
+      if (!isRowId(project_id)) return reply.code(400).send({ ok: false, error: 'project_id must be a project number' })
+      // Say which rows are wrong before touching the database, instead of a 500 from Postgres.
+      const problems = describePointProblems(points)
+      if (problems.length) {
+        return reply.code(400).send({ ok: false, error: `${problems.length} row(s) cannot be imported: ${problems.slice(0, 5).join('; ')}`, problems })
+      }
       
       // Log sample points
       console.log('[Batch Insert] 📊 Sample points (first 3):');
@@ -117,7 +125,7 @@ export default async function coordinatePointRoutes(app) {
       if (error.statusCode) {
         return reply.code(error.statusCode).send({ ok: false, error: error.message })
       }
-      return reply.code(500).send({ ok: false, error: error.message, stack: error.stack })
+      return reply.code(500).send({ ok: false, error: 'Failed to save coordinate points' })
     }
   })
 

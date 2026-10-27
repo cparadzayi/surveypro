@@ -1,4 +1,5 @@
 import User from '../models/user.js'
+import { loginThrottle } from '../utils/loginThrottle.js'
 import SurveyorProfile from '../models/SurveyorProfile.js'
 import db, { createSurveyorSchema } from '../config/db.js'
 
@@ -134,16 +135,28 @@ export default async function authRoutes(app) {
   }, async (request, reply) => {
     const { email, password } = request.body
 
+    // A client that keeps getting the password wrong is made to wait, whatever it sends next.
+    const wait = loginThrottle.retryAfterSeconds(email, request.ip)
+    if (wait > 0) {
+      return reply
+        .code(429)
+        .header('Retry-After', String(wait))
+        .send({ error: 'Too many attempts', message: `Too many failed sign-in attempts. Try again in ${Math.ceil(wait / 60)} minute(s).` })
+    }
+
     try {
       const user = await User.findByEmail(email)
       if (!user) {
+        loginThrottle.recordFailure(email, request.ip)
         return reply.code(401).send({ error: 'Invalid credentials' })
       }
 
       const valid = await User.verifyPassword(password, user.password_hash)
       if (!valid) {
+        loginThrottle.recordFailure(email, request.ip)
         return reply.code(401).send({ error: 'Invalid credentials' })
       }
+      loginThrottle.recordSuccess(email)
 
       const token = app.jwt.sign({ 
         sub: user.id, 

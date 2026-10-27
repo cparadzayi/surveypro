@@ -394,7 +394,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         outsideFigureData,
         beaconLabels,
         projectId,
-        renderEngine = 'gdal',
+        renderEngine = 'pdfkit',
         scale,
         sheetSize,
         planType = null,  // SI 727 plan type — 'general-developed' enforces 1:500 ceiling

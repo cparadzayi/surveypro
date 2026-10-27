@@ -2,9 +2,19 @@ import SurveyProject from '../models/SurveyProject.js'
 import SurveyorProfile from '../models/SurveyorProfile.js'
 import { createProjectDirectories, deleteProjectDirectory } from '../utils/projectDirectories.js'
 import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
+import { isRowId } from '../utils/requestChecks.js'
+import { nameKey, projectNameLock } from '../utils/projectNameLock.js'
 import { applyStepReset, canFinalize, canonicalStep } from '../utils/workflowReset.js'
 
 export default async function surveyProjectRoutes(fastify, options) {
+  // A project id that is not a number is the caller's mistake (400), not a database failure (500).
+  fastify.addHook('preValidation', async (request, reply) => {
+    const id = request.params?.id
+    if (id !== undefined && !isRowId(id)) {
+      return reply.code(400).send({ ok: false, error: 'Invalid project id' })
+    }
+  })
+
   // Get recent survey projects (last 5, sorted by last_used)
   fastify.get('/recent', {
     preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
@@ -178,20 +188,37 @@ export default async function surveyProjectRoutes(fastify, options) {
       // behave. All four are persisted moments later by the project-setup
       // flow's SurveyProject.update() call, whose allowedColumns already
       // includes them.
-      const project = await SurveyProject.create(db, {
-        name,
-        surveyorId: profileId,
-        projectId,
-        clientName,
-        district,
-        surveyType,
-        surveyDate,
-        instruments,
-        designation,
-        workingDirectory,
-        centralMeridian,
-        controlPointIds
+      // One project per name for this surveyor. A double click sends two identical requests at
+      // once; the lock lets one through and the existence check refuses the other (and any later
+      // repeat). Archived projects do not count: their names are free again.
+      const created = await projectNameLock.run(`${profileId}|${nameKey(name)}`, async () => {
+        const taken = await db.query(
+          "SELECT 1 FROM survey_projects WHERE status = 'active' AND lower(btrim(name)) = $1 LIMIT 1",
+          [nameKey(name)]
+        )
+        if (taken.rows.length) return null
+        return SurveyProject.create(db, {
+          name,
+          surveyorId: profileId,
+          projectId,
+          clientName,
+          district,
+          surveyType,
+          surveyDate,
+          instruments,
+          designation,
+          workingDirectory,
+          centralMeridian,
+          controlPointIds
+        })
       })
+      if (created.busy || !created.value) {
+        return reply.code(409).send({
+          ok: false,
+          error: `A project named "${String(name).trim()}" already exists. Open it from the dashboard, or choose a different name.`
+        })
+      }
+      const project = created.value
 
       // Create project directory structure if working directory is provided
       if (workingDirectory) {

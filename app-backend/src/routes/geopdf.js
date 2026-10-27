@@ -226,10 +226,7 @@ export default async function geoPDFRoutes(fastify, options) {
       
       return reply.code(500).send({
         error: 'Failed to generate GeoPDF',
-        message: error.message,
-        stderr: error.stderr,
-        stdout: error.stdout,
-        stack: error.stack
+        message: error.message
       })
     }
   })

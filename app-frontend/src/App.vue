@@ -134,6 +134,9 @@
       </main>
       <footer v-if="isAuthed" class="text-center text-xs text-gray-500 py-4">&copy; {{ new Date().getFullYear() }} SurveyPro</footer>
     </div>
+
+    <!-- Toasts and the confirm dialog, for every screen (signed in or not). -->
+    <NotificationHost />
   </div>
 </template>
 
@@ -147,6 +150,7 @@ import { useGlobalRibbon } from './composables/useGlobalRibbon'
 import SideNav from './components/SideNav.vue'
 // @ts-ignore - SFC default export provided via shim
 import Ribbon from './components/ribbon/Ribbon.vue'
+import NotificationHost from './components/ui/NotificationHost.vue'
 
 const auth = useAuthStore()
 const { isAuthed, isSurveyor, currentSurveyor } = storeToRefs(auth)

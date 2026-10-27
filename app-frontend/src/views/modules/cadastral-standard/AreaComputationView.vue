@@ -332,7 +332,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
+import { confirmDialog, notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, onMounted, inject, nextTick, watch } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -948,8 +948,8 @@ function zoomToParcel(index: number) {
   });
 }
 
-function clearAll() {
-  if (!confirm('Delete all parcels?')) return;
+async function clearAll() {
+  if (!await confirmDialog({ title: 'Delete all parcels?', message: 'Every parcel drawn on this map will be removed.', confirmLabel: 'Delete all', tone: 'danger' })) return;
   clearAllParcels(mapRef.value || undefined);
 }
 

@@ -145,6 +145,7 @@
 </template>
 
 <script lang="ts">
+import { confirmDialog } from '@/composables/useNotifications'
 import { inject, computed, ref, nextTick, watch } from 'vue';
 import { useSurveyLookupStore } from '../../../stores/surveyLookup';
 import { renameCoordinatePoint, deleteCoordinatePointByName, listLandParcels, updateLandParcel } from '../../../services/spatial';
@@ -214,7 +215,7 @@ export default {
     const deleteError = ref('');
 
     async function deletePoint(pointId: string) {
-      if (!confirm(`Delete point "${pointId}"? This cannot be undone.`)) return;
+      if (!await confirmDialog({ title: `Delete point "${pointId}"?`, message: 'This cannot be undone.', confirmLabel: 'Delete', tone: 'danger' })) return;
       deletingId.value = pointId;
       deleteError.value = '';
       try {

@@ -1323,7 +1323,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
+import { confirmDialog, notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, reactive, provide, toRaw, markRaw, watch } from 'vue';
 import { confirmDiscardUnsaved, markSaved } from '@/composables/useUnsavedWork';
 import api from '../../../services/api';
@@ -3578,14 +3578,22 @@ function handleStepAction(step: WorkflowStep, action: any) {
 }
 
 // Step reset handlers
-function handleResetFieldBook() {
-  if (confirm('Reset Field Book? This will clear the generated field book document. You can regenerate it anytime.')) {
+async function handleResetFieldBook() {
+  if (await confirmDialog({
+    title: 'Reset Field Book?',
+    message: 'This will clear the generated field book document. You can regenerate it anytime.',
+    confirmLabel: 'Reset', tone: 'danger',
+  })) {
     resetFieldBook();
   }
 }
 
-function handleResetCalculationsPart1() {
-  if (confirm('Reset Calculations Part 1? This will clear the calculations document and adjusted coordinates. The Coordinate List will also need to be regenerated.')) {
+async function handleResetCalculationsPart1() {
+  if (await confirmDialog({
+    title: 'Reset Calculations Part 1?',
+    message: 'This will clear the calculations document and adjusted coordinates. The Coordinate List will also need to be regenerated.',
+    confirmLabel: 'Reset', tone: 'danger',
+  })) {
     resetCalculationsPart1();
     // Also reset dependent steps
     resetCoordinateList();
@@ -3593,14 +3601,22 @@ function handleResetCalculationsPart1() {
   }
 }
 
-function handleResetCoordinateList() {
-  if (confirm('Reset Coordinate List? This will clear the generated coordinate list document. You can regenerate it anytime.')) {
+async function handleResetCoordinateList() {
+  if (await confirmDialog({
+    title: 'Reset Coordinate List?',
+    message: 'This will clear the generated coordinate list document. You can regenerate it anytime.',
+    confirmLabel: 'Reset', tone: 'danger',
+  })) {
     resetCoordinateList();
   }
 }
 
-function handleResetAreaComputation() {
-  if (confirm('Reset Parcel Digitization & Areas? This will clear all parcel definitions and area computations.')) {
+async function handleResetAreaComputation() {
+  if (await confirmDialog({
+    title: 'Reset Parcel Digitization & Areas?',
+    message: 'This will clear all parcel definitions and area computations.',
+    confirmLabel: 'Reset', tone: 'danger',
+  })) {
     resetAreaComputation();
   }
 }

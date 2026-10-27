@@ -975,7 +975,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
+import { confirmDialog, notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { describeError } from '@/utils/errorMessage'
 import { ref, onMounted, onBeforeUnmount, inject, computed, watch, nextTick } from 'vue';
 import maplibregl from 'maplibre-gl';
@@ -7916,7 +7916,7 @@ async function exportAreaConsistencyPDF() {
       // say exactly the same thing. See lodgementDocuments.buildLodgementWarnings.
       const warnings = buildLodgementWarnings(missingDocs, verification, unknownSheetPlans);
       if (warnings.length) {
-        const proceed = window.confirm(`⚠ ${warnings.join('\n\n')}\n\nGenerate anyway?`);
+        const proceed = await confirmDialog({ title: 'Generate anyway?', message: warnings.join('\n\n'), confirmLabel: 'Generate anyway' });
         if (!proceed) {
           console.log('[MapLibre] Comprehensive record generation cancelled by user (document check)');
           return;

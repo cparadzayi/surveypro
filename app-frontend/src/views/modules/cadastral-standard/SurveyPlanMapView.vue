@@ -4964,7 +4964,7 @@ async function generateComprehensivePDF() {
       // say exactly the same thing. See lodgementDocuments.buildLodgementWarnings.
       const warnings = buildLodgementWarnings(missingDocs, verification, unknownSheetPlans)
       if (warnings.length) {
-        const proceed = window.confirm(`⚠ ${warnings.join('\n\n')}\n\nGenerate anyway?`)
+        const proceed = await confirmDialog({ title: 'Generate anyway?', message: warnings.join('\n\n'), confirmLabel: 'Generate anyway' })
         if (!proceed) {
           console.log('[ComprehensivePDF] Generation cancelled by user (document check)')
           return

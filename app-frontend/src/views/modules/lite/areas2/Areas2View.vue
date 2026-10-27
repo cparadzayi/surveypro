@@ -293,7 +293,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
+import { confirmDialog, notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, defineAsyncComponent, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import LayerSelect from '../../../../components/inputs/LayerSelect.vue'
 import { areaCompute } from '../../../../services/compute'
@@ -426,7 +426,7 @@ function recomputeIfReady() {
 }
 
 function removePoint(i: number) { points.value.splice(i, 1); void recomputeIfReady() }
-function clearPoints() { if (points.value.length) { if (confirm('Clear all points?')) { points.value = []; result.value = null } } }
+async function clearPoints() { if (points.value.length) { if (await confirmDialog({ title: 'Clear all points?', message: 'Every point entered will be removed.', confirmLabel: 'Clear', tone: 'danger' })) { points.value = []; result.value = null } } }
 
 function coordFmt(v: number) { return Number(v).toFixed(2) }
 function displayName(f: Feature) {

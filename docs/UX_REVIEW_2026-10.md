@@ -125,6 +125,10 @@ Done 27 October 2026 in `app-frontend/src`: the five items marked `[x]` above.
 
 ## Fifth round, 28 October 2026
 
-- Another 20 `alert()` calls converted (17 error catches now use `notifyFailure`). About 21 multi-line alerts and 21 `confirm()` calls remain.
+- Another 20 `alert()` calls converted (17 error catches now use `notifyFailure`). About 21 multi-line alerts remain.
 - `Ribbon.vue`: project name shown before the tabs, arrow-key/Home/End tab navigation, `tabpanel` wiring (tested in `Ribbon.test.ts`).
 - `SurveyPlanMapView.vue`: five plan-panel labels tied to their controls.
+
+## Sixth round, 28 October 2026
+
+- 10 native `confirm()` calls now use `confirmDialog`: the four step resets, delete-all-parcels, delete-point, clear-points, and both "Generate anyway?" lodgement checks. 11 remain, mostly in `MapLibreAreaView` (and two in `CadastralStandardView`, `Areas2View`, `DocumentPreviewPanel`) where the answer feeds longer logic.

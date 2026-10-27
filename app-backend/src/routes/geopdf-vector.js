@@ -13,6 +13,7 @@ import { prjForDxf } from '../utils/crsDefinitions.js'
 import { dxfToGeoreferencedGpkg, getOGR2OGRCommand, getGDALVersion } from '../utils/dxfGpkg.js'
 import { chooseSheeting } from '../services/chooseSheeting.js'
 import { zipSync } from 'fflate'
+import { warningHints, encodeWarningsHeader } from '../utils/planWarnings.js'
 
 const execAsync = promisify(exec)
 const execFileAsync = promisify(execFile)
@@ -690,6 +691,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         // permanently null — gating on it alone silently dropped every cut.
         const sheets = Array.isArray(request.body.sheets) ? request.body.sheets : null
         let sheetLayouts = null
+        let sheetedWarnings = []
         const cutDividesFigure = sheets !== null && sheets.length > 1
 
         if (tileGrid || cutDividesFigure) {
@@ -736,6 +738,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
             fastify.log
           )
           finalPdfBuffer = sheetedResult.pdf
+          sheetedWarnings = sheetedResult.warnings ?? []
           sheetLayouts = sheetedResult.layouts ?? null
           isMultiSheet = true
         } else {
@@ -750,6 +753,13 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           'X-Used-Scale':      usedScale,
           'X-Used-Sheet-Size': usedSheetSize,
         }
+        // What the renderer warned about (blocks overlapping the figure, tick marks over a
+        // block, ...), in plain sentences, so the surveyor is told about a known fault
+        // instead of finding it on the printed plan.
+        const planWarningsHeader = encodeWarningsHeader(
+          isMultiSheet ? sheetedWarnings : warningHints(firstPass?.warnings),
+        )
+        if (planWarningsHeader) replyHeaders['X-Plan-Warnings'] = planWarningsHeader
         if (suggestedScale) {
           replyHeaders['X-Suggested-Scale'] = suggestedScale
           fastify.log.warn(`[GeoPDF] 📏 Suggested scale for next render: ${suggestedScale}`)

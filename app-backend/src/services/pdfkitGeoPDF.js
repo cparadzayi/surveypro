@@ -32,6 +32,7 @@ import { AdaptiveRenderer } from "./adaptiveRenderer.js";
 import { boxesIntersect, isRectWithinBounds, normalizeRect } from "../utils/collisionPrimitives.js";
 import { placeBlocks, EDGE_PADDING } from "./blockPlacementEngine.js";
 import { findPoleOfInaccessibility } from '../utils/labelPlacer.js';
+import { warningHints } from '../utils/planWarnings.js';
 import { planSheetLayout } from './sheetLayoutPlanner.js';
 import { findBlockPosition } from './dxfBlockPlacer.js';
 import { drawSubjectAdjoiningFeatures } from './adjoiningFeatures.js';
@@ -13551,6 +13552,8 @@ export async function generateSheetedGeoPDF(options, logger) {
   const renderSheets = async (scaleArg) => {
     const pages = [];
     const sheetLayouts = [];
+    // What each sheet's render warned about, so the caller can tell the surveyor.
+    const sheetWarnings = [];
     for (const sheet of orderedSheets) {
     const outsideFigure = sheetOutsideFigure(sheet);
     // The plan's own features for this sheet's stands, when the whole-plan
@@ -13584,9 +13587,10 @@ export async function generateSheetedGeoPDF(options, logger) {
 
     pages.push(result.pdfBuffer);
     sheetLayouts.push({ sheetNumber: sheet.sheetNumber, scale: result.scale, sheetSize: result.sheetSize });
+    sheetWarnings.push(...warningHints(result.warnings, `Sheet ${sheet.sheetNumber}: `));
     log.info(`[SheetedPDF] Sheet ${sheet.sheetNumber}/${sheet.totalSheets} generated (${result.pdfBuffer.length} bytes)`);
   }
-    return { pages, sheetLayouts };
+    return { pages, sheetLayouts, warnings: sheetWarnings };
   };
 
   // Every sheet of ONE plan is drawn at ONE scale. A sheet that needed a coarser
@@ -13611,7 +13615,7 @@ export async function generateSheetedGeoPDF(options, logger) {
     await writeFile(outputPath, pdf);
   }
 
-  const out = { pdf, pageCount: pageBuffers.length, layouts };
+  const out = { pdf, pageCount: pageBuffers.length, layouts, warnings: rendered.warnings };
   if (returnPages) out.pages = pageBuffers;
   return out;
 }

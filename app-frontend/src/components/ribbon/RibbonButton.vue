@@ -4,6 +4,7 @@
     :disabled="disabled"
     :title="title || label"
     :aria-pressed="active ? 'true' : 'false'"
+    :aria-current="current ? 'step' : undefined"
     class="rb-btn"
     :class="[
       large ? 'rb-btn-lg' : 'rb-btn-sm',
@@ -15,6 +16,8 @@
     <span class="rb-icon" aria-hidden="true">{{ icon }}</span>
     <span class="rb-label">{{ label }}</span>
     <span v-if="badge !== null && badge !== undefined" class="rb-badge">{{ badge }}</span>
+    <!-- Said aloud, not just shown: colour and a tick are no help to a screen reader. -->
+    <span v-if="status" class="sr-only">, {{ status }}</span>
   </button>
 </template>
 
@@ -35,6 +38,10 @@ const props = withDefaults(defineProps<{
   large?: boolean
   badge?: string | number | null
   tone?: RibbonTone
+  /** Spoken after the label ("completed", "current step"), for tiles whose state is otherwise only colour. */
+  status?: string
+  /** The current step of a sequence (aria-current="step"). */
+  current?: boolean
 }>(), {
   title: '',
   disabled: false,
@@ -42,6 +49,8 @@ const props = withDefaults(defineProps<{
   large: true,
   badge: null,
   tone: 'default',
+  status: '',
+  current: false,
 })
 
 const TONE_CLASS: Record<RibbonTone, string> = {

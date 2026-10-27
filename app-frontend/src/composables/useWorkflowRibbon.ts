@@ -7,6 +7,11 @@ import {
 } from '../config/cadastralWorkflow'
 import { group, sep, type RibbonItem, type RibbonTab, type RibbonTone } from '../components/ribbon/types'
 
+/** A step's state in words. The current step is reported as current even if it was completed before. */
+export function workflowStepStatus(completed: boolean, active: boolean): string {
+  return active ? 'current step' : completed ? 'completed' : 'not started'
+}
+
 /**
  * The line under "All Steps": how far the project is, then how the steps may be used.
  * Progress is counted from the steps that actually exist, so a stale id in a saved
@@ -59,13 +64,19 @@ export function useWorkflowRibbon(opts: {
         const completed = opts.completedStepIds().includes(step.id)
         const active = opts.currentStep() === step.dbKey
 
+        const status = workflowStepStatus(completed, active)
         return {
           id: `wf-step:${step.dbKey}`,
           icon: step.icon,
           label: step.label.replace(' & Digitization', '').replace(' Assessment', ''),
-          title: step.description,
+          title: `${step.description} (${status})`,
           tone: statusTone(completed, active),
           active,
+          // Status that does not depend on colour: a tick on a completed step, and the
+          // state said aloud for everyone else.
+          badge: completed ? '✓' : null,
+          status,
+          current: active,
         }
       }),
   )

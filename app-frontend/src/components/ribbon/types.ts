@@ -35,6 +35,10 @@ export interface RibbonButton {
   large?: boolean
   /** Small pill beside the caption, for counts or a spinner. */
   badge?: string | number | null
+  /** Spoken after the label, for tiles whose state is otherwise only colour. */
+  status?: string
+  /** The current step of a sequence (aria-current="step"). */
+  current?: boolean
   tone?: RibbonTone
   /**
    * Hide entirely when false. Prefer this over `disabled` for commands that are

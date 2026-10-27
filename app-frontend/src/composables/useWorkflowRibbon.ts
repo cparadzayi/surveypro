@@ -8,6 +8,17 @@ import {
 import { group, sep, type RibbonItem, type RibbonTab, type RibbonTone } from '../components/ribbon/types'
 
 /**
+ * The line under "All Steps": how far the project is, then how the steps may be used.
+ * Progress is counted from the steps that actually exist, so a stale id in a saved
+ * project can never push it past the total.
+ */
+export function workflowProgressNote(completedIds: string[], knownIds: string[]): string {
+  const known = new Set(knownIds)
+  const done = new Set(completedIds.filter((id) => known.has(id))).size
+  return `${done} of ${known.size} steps complete. Open any step at any time; each one reports what it still needs.`
+}
+
+/**
  * Builds the workflow ribbon for the Cadastral Standard module — the QGIS-style
  * command surface for the 14-step production workflow.
  *
@@ -88,7 +99,7 @@ export function useWorkflowRibbon(opts: {
         icon: current?.icon ?? '📋',
         groups: [
           group('Current Step', actionItems, current?.description ?? ''),
-          group('All Steps', stepItems.value, 'Open any step at any time; each one reports what it still needs.'),
+          group('All Steps', stepItems.value, workflowProgressNote(opts.completedStepIds(), Object.keys(CADASTRAL_STEPS))),
         ],
         trailing: [
           {

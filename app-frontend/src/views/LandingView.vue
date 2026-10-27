@@ -42,6 +42,19 @@
         <div class="p-8">
           <!-- Login Form -->
           <form v-if="activeTab === 'login'" @submit.prevent="handleLogin" class="space-y-5">
+            <div
+              v-if="auth.sessionNotice"
+              role="status"
+              class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900 flex items-start gap-2"
+            >
+              <span class="flex-1">{{ auth.sessionNotice }}</span>
+              <button
+                type="button"
+                class="leading-none opacity-70 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 rounded"
+                aria-label="Dismiss"
+                @click="auth.dismissSessionNotice()"
+              ><span aria-hidden="true">&times;</span></button>
+            </div>
             <div>
               <label for="login-email" class="block text-sm font-medium text-gray-700 mb-1.5">
                 Email Address

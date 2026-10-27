@@ -36,6 +36,7 @@ interface UserProfile {
 interface Credentials { email: string; password: string }
 
 const SESSION_TIMEOUT_MS = 4 * 60 * 60 * 1000 // 4 hours
+export const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Sign in again to continue.'
 const LAST_ACTIVITY_KEY = 'lastActivity'
 
 export const useAuthStore = defineStore('auth', {
@@ -44,6 +45,9 @@ export const useAuthStore = defineStore('auth', {
     profile: null as UserProfile | null,
     loading: false,
     error: '' as string | null,
+    // Set when the user was signed out against their will (session timeout, or the server
+    // refusing their token); the sign-in page shows it so a sudden logout is explained.
+    sessionNotice: '' as string,
     lastActivity: parseInt(localStorage.getItem(LAST_ACTIVITY_KEY) || '0'),
   }),
   getters: {
@@ -111,6 +115,7 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true;
       try {
         const { data } = await api.post<{ token: string }>('/auth/login', { email, password });
+        this.sessionNotice = '';
         console.log('🔐 Login response received, token length:', data.token?.length || 0);
         this.token = data.token;
         localStorage.setItem('token', this.token);
@@ -146,7 +151,7 @@ export const useAuthStore = defineStore('auth', {
         console.error('Failed to fetch profile:', e);
         // If fetch fails due to auth, logout
         if (e.response?.status === 401) {
-          this.logout();
+          this.logout('expired');
         }
       }
     },
@@ -163,7 +168,7 @@ export const useAuthStore = defineStore('auth', {
       const timeSinceActivity = Date.now() - lastActivity;
       if (timeSinceActivity > SESSION_TIMEOUT_MS) {
         console.log('⏱️ Session expired, logging out');
-        this.logout();
+        this.logout('expired');
         return false;
       }
       
@@ -191,7 +196,11 @@ export const useAuthStore = defineStore('auth', {
       this.lastActivity = now;
       localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
     },
-    logout() {
+    dismissSessionNotice() {
+      this.sessionNotice = '';
+    },
+    /** `reason: 'expired'` records that the user did not choose to leave (see sessionNotice). */
+    logout(reason?: 'expired') {
       // Clear the cached project selection too. It used to survive logout, so
       // the next user of a shared browser was dropped into the previous
       // surveyor's project (parcels, coordinates and generated plans included).
@@ -211,6 +220,7 @@ export const useAuthStore = defineStore('auth', {
       localStorage.removeItem('userProfile');
       localStorage.removeItem('surveyorProfile'); // Legacy key
       localStorage.removeItem(LAST_ACTIVITY_KEY);
+      this.sessionNotice = reason === 'expired' ? SESSION_EXPIRED_MESSAGE : '';
       console.log('✅ Logged out successfully');
     }
   }

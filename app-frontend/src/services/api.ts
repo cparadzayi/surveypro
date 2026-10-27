@@ -31,7 +31,9 @@ api.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status === 401) {
       const auth = useAuthStore();
-      auth.logout();
+      // Only a signed-in user was signed OUT; a 401 on the sign-in form itself (wrong
+      // password) is not an expired session and needs no notice.
+      auth.logout(auth.token ? 'expired' : undefined);
       // Previously logout() ran but nothing navigated, leaving the user on a
       // view whose every subsequent request 401s with no login screen.
       // Imported lazily: a static `import router` here would be circular

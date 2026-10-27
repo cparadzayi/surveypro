@@ -1952,7 +1952,7 @@ async function repairParcelBeaconNames() {
       refresh: () => { refreshParcelsFromDatabase(); },
     });
 
-    alert(describeRepairResult(outcome));
+    notifySuccess(describeRepairResult(outcome), { title: 'Beacon repair finished' });
     console.log('[RepairBeacons]', describeRepairResult(outcome));
   } catch (e: any) {
     console.error('[RepairBeacons] ❌ Error:', e);
@@ -4466,15 +4466,15 @@ function startDrawing() {
   if (isSplitting.value) cancelSplit();
   // Check if we have coordinate points to digitize
   if (coordinatePoints.value.length === 0) {
-    alert(
-      '⚠️ No Coordinate Points Available\n\n' +
-      'Cannot start digitizing - no survey points found.\n\n' +
-      'Please ensure:\n' +
-      '1. You have completed Calculations Part 1 (coordinate adjustments)\n' +
-      '2. The workflow state contains adjusted coordinates\n' +
-      '3. You are accessing this step through the normal workflow\n\n' +
-      'If you just refreshed the page, the workflow data may have been lost.'
-    );
+    notifyError('Cannot start digitizing: no survey points were found.', {
+      title: 'No coordinate points available',
+      details: [
+        'Complete Calculations Part 1 (coordinate adjustments) first.',
+        'The workflow state must contain adjusted coordinates.',
+        'Open this step through the normal workflow.',
+        'If you just refreshed the page, the workflow data may have been lost.',
+      ],
+    });
     console.error('[MapLibre] ❌ Cannot start drawing - no coordinate points available');
     console.log('[MapLibre] Workflow state:', workflowState);
     console.log('[MapLibre] Adjusted coordinates:', workflowState?.adjustedCoordinates?.length || 0);
@@ -5295,11 +5295,10 @@ async function loadParcelsFromDatabase() {
       console.warn('[MapLibre] 💡 To get proper beacon names, complete Calculations Part 1 first');
       
       // Show user warning
-      setTimeout(() => {
-        alert('⚠️ Coordinate Points Not Available\n\n' +
-              'Parcels will load with generic vertex names (P1, P2, etc.) instead of actual beacon names.\n\n' +
-              'To get proper beacon names in PDF exports, please complete Calculations Part 1 first.');
-      }, 1000);
+      notifyWarning('Parcels will load with generic vertex names (P1, P2, ...) instead of beacon names. Complete Calculations Part 1 first to get proper names in PDF exports.', {
+        title: 'Coordinate points not available',
+        sticky: true,
+      });
     }
     
     const skippedParcelsNoPoints: string[] = [];
@@ -5692,7 +5691,7 @@ async function refreshParcelsFromDatabase() {
  * drag-to-snap (exitVertexDragMode below), and `isDrawing` keeps it out for the
  * duration — the two editors never run at the same time.
  */
-function startEditingVertices(designation: string) {
+async function startEditingVertices(designation: string) {
   const dbParcel = savedParcels.value.get(designation);
   if (!dbParcel) {
     notifyError(`Cannot edit vertices: parcel "${designation}" not found.`)
@@ -5725,7 +5724,7 @@ function startEditingVertices(designation: string) {
   if (isDrawing.value) {
     if (
       selectedPoints.value.length > 0 &&
-      !confirm('A parcel sketch is in progress.\n\nEditing vertices will discard it. Continue?')
+      !(await confirmDialog({ title: 'Discard the parcel sketch?', message: 'A parcel sketch is in progress. Editing vertices will discard it.', confirmLabel: 'Discard and edit', tone: 'danger' }))
     ) {
       return;
     }
@@ -5942,7 +5941,7 @@ async function autoSaveParcel(parcel: Parcel, closureError: number) {
         
         // Format and show detailed error message
         const errorMessage = formatValidationMessage(validation);
-        alert(errorMessage);
+        notifyError(errorMessage, { title: 'Parcel not saved' });
         
         // Don't save - validation failed
         isSaving.value = false;
@@ -6209,11 +6208,12 @@ async function recomputeAllParcels({
   }
 
   if (!skipConfirm) {
-    const confirmed = confirm(
-      `Recompute ${savedParcels.value.size} parcel(s) with latest backend code?\n\n` +
-      `This will update all parcels with banker's rounding for directions and other improvements.\n\n` +
-      `This action cannot be undone.`
-    );
+    const confirmed = await confirmDialog({
+      title: `Recompute ${savedParcels.value.size} parcel(s)?`,
+      message: "This updates all parcels with the latest backend code, including banker's rounding for directions. This cannot be undone.",
+      confirmLabel: 'Recompute',
+      tone: 'danger',
+    });
     if (!confirmed) return;
   }
 
@@ -6294,12 +6294,9 @@ async function recomputeAllParcels({
     await refreshParcelsFromDatabase();
     
     if (!skipConfirm) {
-      alert(
-        `Recomputation complete!\n\n` +
-        `✅ Success: ${successCount} parcel(s)\n` +
-        `❌ Errors: ${errorCount} parcel(s)\n\n` +
-        `Please regenerate your PDFs to see the updated directions with banker's rounding.`
-      );
+      const report = { title: 'Recomputation complete', details: [`Succeeded: ${successCount} parcel(s)`, `Failed: ${errorCount} parcel(s)`] };
+      if (errorCount > 0) notifyWarning("Some parcels were not recomputed. Regenerate your PDFs to see updated directions for the rest.", { ...report, sticky: true });
+      else notifySuccess("Regenerate your PDFs to see the updated directions with banker's rounding.", report);
     }
     
   } catch (error) {
@@ -6586,20 +6583,19 @@ async function commitVertexDrag() {
     );
 
     if (plan.blockers.length > 0) {
-      alert(
-        `Cannot move "${draggedName}" to "${candidate.id}".\n\n` +
-        plan.blockers.map(b => `  • ${b.designation} — ${b.reason}`).join('\n') +
-        `\n\nNothing has been written.`
-      );
+      notifyError('Nothing has been written.', {
+        title: `Cannot move "${draggedName}" to "${candidate.id}"`,
+        details: plan.blockers.map(b => `${b.designation} — ${b.reason}`),
+      });
       return;
     }
     if (plan.writes.length === 0) return;   // dropped on itself: silent no-op
 
     if (substitutionWouldCross(points, index, candidate)) {
-      alert(
-        `Cannot move "${draggedName}" to "${candidate.id}" — the parcel boundary would cross itself.\n\n` +
-        `Cadastral survey regulation: parcel boundaries must not cross themselves.`
-      );
+      notifyError('Cadastral survey regulation: parcel boundaries must not cross themselves.', {
+        title: `Cannot move "${draggedName}" to "${candidate.id}"`,
+        details: ['The parcel boundary would cross itself.'],
+      });
       return;
     }
 
@@ -6621,7 +6617,7 @@ async function commitVertexDrag() {
 
     const problem = describeCascadeOutcome(outcome);
     if (problem) {
-      alert(problem);
+      notifyError(problem, { title: 'Vertex not moved' });
     } else {
       console.log(`[VertexDrag] ✅ "${draggedName}" → "${candidate.id}" in ${outcome.written.length} parcel(s): ${outcome.written.join(', ')}`);
     }
@@ -7073,12 +7069,12 @@ async function saveAllParcels() {
     console.log(`[MapLibre] ✅ Finalized ${finalizedParcels.length} parcels`);
     
     // Step 2: Regenerate Calculations Part 1 with area computation results
-    const shouldRegeneratePDF = confirm(
-      `✅ Successfully finalized ${finalizedParcels.length} parcel(s)!\n\n` +
-      `Would you like to regenerate Calculations Part 1 PDF with area computation results?\n\n` +
-      `✅ Click OK to regenerate PDF with areas section\n` +
-      `❌ Click Cancel to skip PDF generation`
-    );
+    const shouldRegeneratePDF = await confirmDialog({
+      title: `Finalized ${finalizedParcels.length} parcel(s)`,
+      message: 'Regenerate Calculations Part 1 with the area computation results?',
+      confirmLabel: 'Regenerate PDF',
+      cancelLabel: 'Skip',
+    });
     
     if (shouldRegeneratePDF) {
       await regenerateCalculationsPart1WithAreas();
@@ -7101,15 +7097,17 @@ async function deleteSavedParcel(dbParcel: any) {
   const designation = dbParcel.designation || dbParcel.stand;
   
   // Confirmation dialog
-  const confirmed = confirm(
-    `⚠️ Delete Parcel from Database?\n\n` +
-    `Designation: ${designation}\n` +
-    `Status: ${dbParcel.status}\n` +
-    `Area: ${(dbParcel.area_m2 || 0).toFixed(2)} m²\n\n` +
-    `This will permanently delete the parcel from the database.\n` +
-    `This action cannot be undone.\n\n` +
-    `Click OK to delete, or Cancel to keep the parcel.`
-  );
+  const confirmed = await confirmDialog({
+    title: 'Delete parcel from the database?',
+    message:
+      `Designation: ${designation}\n` +
+      `Status: ${dbParcel.status}\n` +
+      `Area: ${(dbParcel.area_m2 || 0).toFixed(2)} m²\n\n` +
+      'This permanently deletes the parcel and cannot be undone.',
+    confirmLabel: 'Delete parcel',
+    cancelLabel: 'Keep parcel',
+    tone: 'danger',
+  });
   
   if (!confirmed) {
     console.log('[MapLibre] 🚫 Delete cancelled by user');
@@ -7190,14 +7188,17 @@ async function deleteParcelConfirm(parcel: Parcel) {
   const found = findSavedParcelByDesignation(parcel.designation);
   
   // Confirmation dialog
-  const confirmed = confirm(
-    `⚠️ Delete Parcel?\n\n` +
-    `Designation: ${parcel.designation}\n` +
-    `Area: ${parcel.areaResult ? formatArea(parcel.areaResult.area) : 'N/A'}\n` +
-    (found?.parcel?.id ? `Database ID: ${found.parcel.id}\n` : ``) +
-    `\nThis action cannot be undone.\n\n` +
-    `Click OK to delete, or Cancel to keep the parcel.`
-  );
+  const confirmed = await confirmDialog({
+    title: 'Delete parcel?',
+    message:
+      `Designation: ${parcel.designation}\n` +
+      `Area: ${parcel.areaResult ? formatArea(parcel.areaResult.area) : 'N/A'}\n` +
+      (found?.parcel?.id ? `Database ID: ${found.parcel.id}\n` : ``) +
+      '\nThis cannot be undone.',
+    confirmLabel: 'Delete parcel',
+    cancelLabel: 'Keep parcel',
+    tone: 'danger',
+  });
   
   if (!confirmed) {
     console.log('[MapLibre] 🚫 Delete cancelled by user');
@@ -8233,28 +8234,28 @@ async function generateComprehensivePDF(
     // Handle success
     if (result.filePath) {
       console.log('[MapLibre] ✅ Saved to:', result.filePath);
-      alert(
-        `✅ Comprehensive PDF Generated!\n\n` +
-        `Total parcels in PDF: ${computedParcels.length}\n` +
-        `  • New parcels: ${newParcels.length}\n` +
-        `  • Existing parcels: ${existingParcels}\n` +
-        (result.dispensationBlob ? `  • Dispensation Certificate included\n` : '') +
-        (result.dsgBlob ? `  • DSG Certificate (1/96) included\n` : '') + `\n` +
-        `File: Comprehensive_Latest.pdf\n` +
-        `Location: ${result.filePath}\n\n` +
-        `Note: This PDF contains ALL parcels and overwrites the previous version.`
-      );
+      notifySuccess(`Saved as Comprehensive_Latest.pdf in ${result.filePath}. It contains all parcels and replaces the previous version.`, {
+        title: 'Comprehensive PDF generated',
+        details: [
+          `Total parcels in PDF: ${computedParcels.length}`,
+          `New parcels: ${newParcels.length}`,
+          `Existing parcels: ${existingParcels}`,
+          ...(result.dispensationBlob ? ['Dispensation Certificate included'] : []),
+          ...(result.dsgBlob ? ['DSG Certificate (1/96) included'] : []),
+        ],
+        sticky: true,
+      });
     } else if (result.pdfBlob) {
       // Download fallback
       console.warn('[MapLibre] ⚠️ Downloading PDF instead');
       downloadPdfBlob(result.pdfBlob, 'Comprehensive_Latest.pdf');
       
       if (result.error) {
-        alert(
-          `⚠️ PDF generated but failed to save to project folder.\n\n` +
-          `Error: ${result.error}\n\n` +
-          `PDF has been downloaded instead.`
-        );
+        notifyWarning('The PDF has been downloaded instead.', {
+          title: 'PDF generated but not saved to the project folder',
+          details: [String(result.error)],
+          sticky: true,
+        });
       }
     }
     
@@ -8371,12 +8372,12 @@ async function generatePDF(computedParcels: Parcel[], calculationsPart1PDF?: Fil
     
     // If merged PDF bytes returned, ask user what to do with it
     if (result && calculationsPart1PDF) {
-      const action = confirm(
-        '✅ Merged PDF generated successfully!\n\n' +
-        'Choose how to proceed:\n\n' +
-        '✅ Click OK to DOWNLOAD the merged PDF\n' +
-        '❌ Click Cancel to SAVE to project folder'
-      );
+      const action = await confirmDialog({
+        title: 'Merged PDF generated',
+        message: 'Download it, or save it to the project folder?',
+        confirmLabel: 'Download',
+        cancelLabel: 'Save to project folder',
+      });
       
       if (action) {
         // Download to user's downloads folder
@@ -8448,10 +8449,12 @@ async function saveMergedPDFToProject(pdfBytes: Uint8Array, projectName: string)
     notifySuccess('Merged PDF saved to the project.');
   } catch (error: any) {
     console.error('[MapLibre] ❌ Error saving PDF to project:', error);
-    const fallback = confirm(
-      '❌ Failed to save to project folder.\n\n' +
-      'Would you like to download instead?'
-    );
+    const fallback = await confirmDialog({
+      title: 'Could not save to the project folder',
+      message: 'Download the PDF instead?',
+      confirmLabel: 'Download',
+      cancelLabel: 'No',
+    });
     if (fallback) {
       downloadMergedPDF(pdfBytes, projectName);
     }

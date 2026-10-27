@@ -575,14 +575,11 @@ function autoSelectNearbyPoints() {
       // Never silently drop these: "4 selected" when the report named 5 leaves
       // the surveyor with no way to know which one to add by hand.
       console.warn('[ControlPointSelection] ⚠️ Calibration control not in the registry:', fromCalibration.unmatched.join(', '))
-      alert(
-        `Selected ${fromCalibration.matched.length} control point(s) from the site calibration report.
-
-` +
-        `These were named in the report but are not in the control registry — add them manually:
-` +
-        fromCalibration.unmatched.join(', ')
-      )
+      notifyWarning('These were named in the report but are not in the control registry. Add them manually.', {
+        title: `Selected ${fromCalibration.matched.length} control point(s) from the site calibration report`,
+        details: [fromCalibration.unmatched.join(', ')],
+        sticky: true,
+      })
     } else {
       showSuccessMessage.value = true
       setTimeout(() => { showSuccessMessage.value = false }, 5000)

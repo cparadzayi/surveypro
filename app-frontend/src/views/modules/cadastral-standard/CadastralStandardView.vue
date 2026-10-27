@@ -2502,7 +2502,7 @@ async function handleReimportChoice(choice: 'use-previous' | 'append' | 'smart-m
           const healNote = await selfHealBeaconNamesAfterImport();
           if (healNote) {
             console.log('[CSV Re-import] ⭐ Beacon-name self-heal:', healNote);
-            setTimeout(() => alert(`CSV append complete.\n\n${healNote}`), 0);
+            notifySuccess(healNote, { title: 'CSV append complete' });
           }
         }
         break;
@@ -2535,15 +2535,17 @@ async function handleReimportChoice(choice: 'use-previous' | 'append' | 'smart-m
         
       case 'complete-replace':
         // Confirm and delete all
-        const confirmed = confirm(
-          '⚠️ WARNING: Complete Replacement\n\n' +
-          'This will permanently delete:\n' +
-          `• All ${reimportDialog.value.existingImport?.point_count || 0} coordinate points\n` +
-          `• All ${reimportDialog.value.existingImport?.parcel_count || 0} land parcels\n` +
-          '• All generated documents\n\n' +
-          'This action CANNOT be undone!\n\n' +
-          'Are you absolutely sure you want to continue?'
-        );
+        const confirmed = await confirmDialog({
+          title: 'Replace everything with this file?',
+          message:
+            'This will permanently delete:\n' +
+            `• All ${reimportDialog.value.existingImport?.point_count || 0} coordinate points\n` +
+            `• All ${reimportDialog.value.existingImport?.parcel_count || 0} land parcels\n` +
+            '• All generated documents\n\n' +
+            'This action cannot be undone.',
+          confirmLabel: 'Delete and replace',
+          tone: 'danger',
+        });
         
         if (confirmed && pendingCSVData.value) {
           console.log('[CSV Re-import] Complete replacement confirmed');
@@ -2855,13 +2857,21 @@ const conflicts = result.data.conflicts || [];
         }`
       : '';
 
-alert(`✅ Merge completed successfully!\n\n` +
-      `• Matched points: ${result.data.matched_count}\n` +
-      `• New points: ${result.data.new_count}\n` +
-      `• Orphaned parcels: ${result.data.orphaned_parcels}` +
-      conflictNote +
-      (healNote ? `\n\n${healNote}` : '') +
-      (snapNote ? `\n\n${snapNote}` : ''));
+{
+      const notes = [conflictNote.trim(), healNote, snapNote].filter(Boolean) as string[]
+      const body = {
+        title: 'Merge completed',
+        details: [
+          `Matched points: ${result.data.matched_count}`,
+          `New points: ${result.data.new_count}`,
+          `Orphaned parcels: ${result.data.orphaned_parcels}`,
+          ...notes,
+        ],
+        sticky: notes.length > 0,
+      }
+      if (conflicts.length > 0) notifyWarning('Some duplicate beacons need your attention.', body)
+      else notifySuccess('The new coordinates are merged into the project.', body)
+    }
     
   } catch (error) {
     console.error('[CSV Merge] Merge execution failed:', error);
@@ -2891,15 +2901,18 @@ function handleMergeAnalysisViewDetails() {
 async function resetImportStep() {
   if (!selectedProjectId.value) return;
   
-  const confirmed = confirm(
-    'Are you sure you want to reset the Import CSV step? This will:\n' +
-    '• Clear all imported coordinate data\n' +
-    '• Discard the Field Book, Calculations, Coordinate List and Areas, ' +
-    'since they were computed from those coordinates\n' +
-    '• Return the workflow to the import step\n\n' +
-    'Your site calibration is kept — it is attached separately.\n\n' +
-    'This action cannot be undone.'
-  );
+  const confirmed = await confirmDialog({
+    title: 'Reset the Import CSV step?',
+    message:
+      '• Clear all imported coordinate data\n' +
+      '• Discard the Field Book, Calculations, Coordinate List and Areas, ' +
+      'since they were computed from those coordinates\n' +
+      '• Return the workflow to the import step\n\n' +
+      'Your site calibration is kept — it is attached separately.\n\n' +
+      'This action cannot be undone.',
+    confirmLabel: 'Reset import',
+    tone: 'danger',
+  });
   
   if (!confirmed) return;
   
@@ -3052,7 +3065,7 @@ async function handleFileChange(event: Event) {
       if (!validationResult.isValid || validationResult.preview.length === 0) {
         // Show validation errors
         const errorMessages = validationResult.errors.map(e => `Row ${e.row}: ${e.message}`).join('\n');
-        alert('CSV validation failed:\n' + errorMessages);
+        notifyError('The file was not imported.', { title: 'CSV validation failed', details: errorMessages.split('\n') });
         return;
       }
       

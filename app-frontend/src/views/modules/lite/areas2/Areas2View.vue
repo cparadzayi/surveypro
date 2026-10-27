@@ -1110,7 +1110,7 @@ async function saveParcelToDatabase(parcelData: any) {
         warningMessage += `• Adjust polygon boundaries to avoid overlaps\n`
         warningMessage += `• Check if this parcel already exists\n`
         
-        alert(warningMessage)
+        notifyError(warningMessage, { title: 'Parcel not saved' })
         return null
       }
       
@@ -1118,7 +1118,7 @@ async function saveParcelToDatabase(parcelData: any) {
       warningMessage += `\n⚠️ Do you want to save anyway?\n`
       warningMessage += `(Not recommended - may cause data inconsistency)`
       
-      if (!confirm(warningMessage)) {
+      if (!(await confirmDialog({ title: 'Save despite duplicate warnings?', message: warningMessage, confirmLabel: 'Save anyway', cancelLabel: 'Do not save', tone: 'danger' }))) {
         console.log('📌 [Areas2View] User cancelled save due to duplicate warnings')
         return null
       }

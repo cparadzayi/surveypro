@@ -125,10 +125,15 @@ Done 27 October 2026 in `app-frontend/src`: the five items marked `[x]` above.
 
 ## Fifth round, 28 October 2026
 
-- Another 20 `alert()` calls converted (17 error catches now use `notifyFailure`). About 21 multi-line alerts remain.
+- Another 20 `alert()` calls converted (17 error catches now use `notifyFailure`). **All native `alert()` and `confirm()` calls are now gone from the app (seventh pass, 28 Oct).**
 - `Ribbon.vue`: project name shown before the tabs, arrow-key/Home/End tab navigation, `tabpanel` wiring (tested in `Ribbon.test.ts`).
 - `SurveyPlanMapView.vue`: five plan-panel labels tied to their controls.
 
 ## Sixth round, 28 October 2026
 
 - 10 native `confirm()` calls now use `confirmDialog`: the four step resets, delete-all-parcels, delete-point, clear-points, and both "Generate anyway?" lodgement checks. 11 remain, mostly in `MapLibreAreaView` (and two in `CadastralStandardView`, `Areas2View`, `DocumentPreviewPanel`) where the answer feeds longer logic.
+
+## Seventh round, 28 October 2026
+
+- The last 21 multi-line `alert()` and 11 `confirm()` calls are converted (`MapLibreAreaView`, `CadastralStandardView`, `ControlPointSelectionView`, `SurveyPlanMapView`, `DocumentPreviewPanel`, `Areas2View`, `useAreaConsistencyPDF`). Results are toasts with the facts as a list (sticky when they need action); every question is a `confirmDialog` with a button named for what it does ("Delete parcel", "Overwrite", "Download") and a red, Cancel-first dialog when the act is destructive. `grep` finds no `alert(` or `confirm(` outside the notification layer.
+- Behaviour to know: in the two-way "merged PDF" question, Cancel/Escape now means "Save to project folder" (named on the button); `startEditingVertices` is async because it can now wait for an answer.

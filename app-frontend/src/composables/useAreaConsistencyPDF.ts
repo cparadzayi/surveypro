@@ -11,6 +11,7 @@
  * @version 2024-12-30-v2 - Fixed page breaks and beacon names
  */
 
+import { notifyWarning } from './useNotifications'
 import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
 import type { AreaComputeResponse } from '../services/compute';
@@ -653,15 +654,11 @@ export async function generateAreaConsistencyPDF(
     // Notify user about skipped parcels
     if (skippedParcels.length > 0) {
       console.warn('[PDF] ⚠️ Skipped parcels without point data:', skippedParcels);
-      setTimeout(() => {
-        alert(
-          `⚠️ PDF Generated with Warnings\n\n` +
-          `${skippedParcels.length} parcel(s) were skipped due to missing point data:\n` +
-          `${skippedParcels.join(', ')}\n\n` +
-          `These parcels were saved before the Cape Lo points fix.\n` +
-          `To include them in the PDF, please delete and re-digitize them.`
-        );
-      }, 500);
+      notifyWarning('These parcels were saved before the Cape Lo points fix. To include them, delete and re-digitize them.', {
+        title: 'PDF generated, but parcels were skipped',
+        details: [`${skippedParcels.length} parcel(s) have no point data: ${skippedParcels.join(', ')}`],
+        sticky: true,
+      });
     }
   }
 }

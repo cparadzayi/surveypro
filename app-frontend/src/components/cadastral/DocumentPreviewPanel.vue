@@ -86,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { notifyError, notifyFailure } from '@/composables/useNotifications'
+import { confirmDialog, notifyError, notifyFailure } from '@/composables/useNotifications'
 import { ref, watch } from 'vue'
 import { saveDocument } from '../../services/documentStorage'
 import type { SaveDocumentOptions } from '../../services/documentStorage'
@@ -198,7 +198,7 @@ async function saveToProject() {
     // User-initiated save: if the file already exists, ask before clobbering it
     // (rather than silently overwriting or hard-failing on the 409 gate).
     if (!result.success && result.code === 'EXISTS') {
-      if (!confirm(`"${props.fileName}" already exists in the project. Overwrite it?`)) {
+      if (!(await confirmDialog({ title: 'Overwrite existing file?', message: `"${props.fileName}" already exists in the project. Overwrite it?`, confirmLabel: 'Overwrite', tone: 'danger' }))) {
         return
       }
       result = await saveDocument({

@@ -5271,14 +5271,11 @@ async function generateComprehensivePDF() {
       if (finalResult.dsgBlob) {
         contentsLines.push(`• DSG Certificate (1/96)`)
       }
-      alert(
-        `✅ Complete Survey Record Generated!\n\n` +
-        `Document: Comprehensive_Latest.pdf\n` +
-        `Location: ${finalResult.filePath}\n\n` +
-        `This document contains:\n` +
-        `${contentsLines.join('\n')}\n\n` +
-        `The document provides a complete survey record.`
-      )
+      notifySuccess(`Saved as Comprehensive_Latest.pdf in ${finalResult.filePath}`, {
+        title: 'Complete survey record generated',
+        details: contentsLines.map((l: string) => l.replace(/^•\s*/, '')),
+        sticky: true,
+      })
     } else if (finalResult.pdfBlob) {
       console.log('[ComprehensivePDF] 📥 Downloading PDF...')
       const url = URL.createObjectURL(finalResult.pdfBlob)

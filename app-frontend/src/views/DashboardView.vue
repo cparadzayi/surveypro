@@ -77,7 +77,7 @@
       </div>
 
       <!-- Empty State -->
-      <div v-else class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
+      <div v-else-if="canUseCadastral" class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
         <div class="text-5xl mb-4">📁</div>
         <h3 class="text-lg font-semibold text-gray-900 mb-2">No Projects Yet</h3>
         <p class="text-gray-600 mb-4">Start the Cadastral Standard workflow to create your first project</p>
@@ -88,6 +88,11 @@
           <span class="text-xl">🚀</span>
           Start Cadastral Workflow
         </router-link>
+      </div>
+      <div v-else class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
+        <div class="text-5xl mb-4">📁</div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">No Projects Yet</h3>
+        <p class="text-gray-600">Projects are created in the Cadastral workflow, which your account type cannot open. Use the modules below, or ask a registered surveyor to set a project up for you.</p>
       </div>
     </section>
 
@@ -113,6 +118,7 @@ import { useModulesStore } from '../stores/modules'
 import { useProjectSelectionStore } from '../stores/projectSelection'
 import { useSurveyors } from '../composables/useSurveyors'
 import { formatDateDDMMYYYY } from '../utils/dateFormat'
+import { notifyInfo } from '../composables/useNotifications'
 // @ts-ignore - SFC default export provided via shim
 import ModuleCard from '../components/ModuleCard.vue'
 
@@ -123,6 +129,8 @@ const projectSelectionStore = useProjectSelectionStore()
 const { surveyProjects: projects, loading: loadingProjects, fetchSurveyProjects } = useSurveyors()
 
 const modules = computed(() => modulesStore.accessibleModules)
+// The cadastral workflow is limited by account type; a technician or student has no way into it.
+const canUseCadastral = computed(() => modules.value.some(m => m.slug === 'cadastral-standard'))
 
 async function loadProjects() {
   console.log('📊 Loading projects - Token:', auth.token ? '✅' : '❌', 'Surveyor:', auth.isSurveyor ? '✅' : '❌')
@@ -139,10 +147,13 @@ function selectProject(project: any) {
   console.log('✅ [Dashboard] Project saved to store and localStorage')
   
   // Navigate to the most relevant module based on survey type
-  if (project.survey_type?.toLowerCase().includes('cadastral')) {
+  if (project.survey_type?.toLowerCase().includes('cadastral') && canUseCadastral.value) {
     console.log('🚀 [Dashboard] Navigating to Cadastral workflow...')
     router.push('/modules/cadastral-standard/workflow')
   } else {
+    if (project.survey_type?.toLowerCase().includes('cadastral')) {
+      notifyInfo('Your account type does not include the Cadastral workflow, so this project opened in Lite.', { title: project.name })
+    }
     console.log('🚀 [Dashboard] Navigating to Lite module...')
     router.push('/modules/lite')
   }

@@ -137,3 +137,11 @@ Done 27 October 2026 in `app-frontend/src`: the five items marked `[x]` above.
 
 - The last 21 multi-line `alert()` and 11 `confirm()` calls are converted (`MapLibreAreaView`, `CadastralStandardView`, `ControlPointSelectionView`, `SurveyPlanMapView`, `DocumentPreviewPanel`, `Areas2View`, `useAreaConsistencyPDF`). Results are toasts with the facts as a list (sticky when they need action); every question is a `confirmDialog` with a button named for what it does ("Delete parcel", "Overwrite", "Download") and a red, Cancel-first dialog when the act is destructive. `grep` finds no `alert(` or `confirm(` outside the notification layer.
 - Behaviour to know: in the two-way "merged PDF" question, Cancel/Escape now means "Save to project folder" (named on the button); `startEditingVertices` is async because it can now wait for an answer.
+
+## Eighth round, 28 October 2026
+
+- **Plan result notice:** says what the plan was drawn at ("Drawn at 1:600 on a 1000 × 800 mm sheet", or "on 4 sheets") and has a **Preview PDF** action that opens the generated file in the browser's viewer (`describeSheet`, `openPdfPreview`). A blocked pop-up is reported, not silent.
+- **Plan-panel labels:** all 12 are now tied to their control or to the group they head.
+- **Unsaved-work guard:** also on the servitude editor (marked by typing, cleared on save or cancel), so changing step or leaving the page asks first.
+- **Project name:** the global ribbon names the selected project on every screen, not only in the cadastral workflow (checked live in the Lite module).
+- **Technician dashboard:** a project that needs the cadastral workflow opens in Lite with a notice when the account type cannot use that workflow; the "Start Cadastral Workflow" button is replaced by an explanation. The empty state was not seen live (the stubbed session never finished loading projects).

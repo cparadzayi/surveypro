@@ -52,6 +52,7 @@ const NORTH_ARROW_LETTER_MM = 3
 const PT_TO_MM_GEN = 25.4 / 72
 import { findStandLabelPosition, findEdgeLabelPosition } from './dxfLabelPlacer.js'
 import { fitDxfSuffixLetter } from './dxfLetterFit.js'
+import { placeFigureVertexName, vertexIndexAt } from './dxfOutsideLabel.js'
 import {
   tryTightFullBeaconLabelPosition,
   calculateFullBeaconLabelOutsideOnEdge,
@@ -1791,6 +1792,18 @@ export function generateDXF(options, logger) {
       const cxk = labelPos.x + Math.cos(th) * drawWidth / 2 - Math.sin(th) * drawCap / 2;
       const cyk = labelPos.y + Math.sin(th) * drawWidth / 2 + Math.cos(th) * drawCap / 2;
       inkBox = { x: cxk - ex / 2, y: cyk - ey / 2, width: ex, height: ey };
+    } else if (ofPolygon && vertexIndexAt(ofPolygon, pt) >= 0) {
+      // A corner of the outside figure: the name goes wholly outside the figure, beside its own
+      // beacon, by the PDF's rule (renderOutsideFigureVertexLabels).
+      const gap = ptToGround(1, S);
+      const spot = placeFigureVertexName({
+        ring: ofPolygon, index: vertexIndexAt(ofPolygon, pt), text: labelText,
+        capHeight: beaconLabelHeight, beaconRadius, scaleDenominator: S,
+        collides: (r) => registry.hasCollision(r, gap),
+      });
+      labelPos = { x: spot.x, y: spot.y };
+      drawWidth = spot.width;
+      inkBox = { x: spot.cx - spot.width / 2, y: spot.cy - beaconLabelHeight / 2, width: spot.width, height: beaconLabelHeight };
     } else {
       const incident = incidentParcelsByBeacon.get(name) || [];
       const padding  = mmToGround(0.8, S);

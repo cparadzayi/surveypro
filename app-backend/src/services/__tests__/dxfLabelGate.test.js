@@ -26,12 +26,15 @@ const survey = JSON.parse(fs.readFileSync(path.join(here, 'fixtures', 'labelGate
 //   Phase 0 baseline, 28 Oct 2026: 36 letters over lines, 3 in a foreign stand, 5 figure names over the
 //   figure, furthest letter 8.8 m from its beacon.
 //   Phase 1 (letters through the PDF's shared fit): letters are now at zero on every rule.
+//   Phase 2 (figure-corner names by the PDF's outside-vertex rule): names wholly outside the figure (5 -> 0),
+//   at 19 pt from their beacons, inside the PDF's 30 pt bound.
 const BUDGET = {
   lettersOverLines: 0,
   lettersNotInOwnStand: 0,
   lettersInForeignStand: 0,
   crampedLetters: 0,             // nothing needs an inset at this scale
-  figureNamesOverFigure: 5,      // target 0 (Phase 2)
+  figureNamesOverFigure: 0,      // was 5 of 5 before Phase 2
+  figureNamesMaxDistPt: 30,      // paper points, name centre to its beacon: the PDF's own bound
   lettersMaxDist: 3.4,           // metres, letter centre to its beacon (was 8.8)
 }
 const FLOOR_PT = 4.3 // cap height of the PDF's 6 pt floor (0.71 x 6)
@@ -65,8 +68,12 @@ describe('DXF label gate: surveyed plan', () => {
     expect(s.lettersInForeignStand.length).toBeLessThanOrEqual(BUDGET.lettersInForeignStand)
   })
 
-  test('outside-figure beacon names over the figure do not grow (target 0, Phase 2)', () => {
-    expect(s.figureNamesOverFigure.length).toBeLessThanOrEqual(BUDGET.figureNamesOverFigure)
+  test('every outside-figure beacon name lies wholly outside the figure', () => {
+    expect(s.figureNamesOverFigure).toEqual([])
+  })
+
+  test('outside-figure names stay beside their beacons (<= 30 pt, as in the PDF)', () => {
+    expect(s.figureNamesMaxDistPt).toBeLessThanOrEqual(BUDGET.figureNamesMaxDistPt)
   })
 
   test('no letter is so squeezed that the PDF would send it to an inset', () => {

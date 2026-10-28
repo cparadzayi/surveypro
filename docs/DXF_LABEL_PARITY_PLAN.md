@@ -89,3 +89,18 @@ Each phase ends green and can be shipped on its own. Phases 1–2 change no page
 ## 6. Suggested order and size
 
 Phase 0 → 1 → 2 as one piece of work (about 2.5 days, no layout change). Decide on Phase 3 after seeing the Phase 0 baseline and the Phase 1–2 results.
+
+## 7. Progress (28 October 2026)
+
+| Phase | Result | Commit |
+|---|---|---|
+| 0 Measure | `generateDXF` returns `labelMetrics`; `dxfLabelMetrics.js` counts the rules; `dxfLabelGate.test.js` guards them. Baseline on the surveyed plan: **36 of 357 letters over a boundary line, 3 in a foreign stand, 5 of 5 figure-corner names over the figure, furthest letter 8.8 m from its beacon.** | `8804684` |
+| 1 In-stand letters | Letters go through the PDF's shared `suffixLabelFit` (wrapper `dxfLetterFit.js` converts ground metres, y up, to the fit's points, y down, and back). **Letters over lines 36 → 0, foreign stand 3 → 0, furthest letter 8.8 m → 3.3 m, none cramped.** | `9cfdf47` |
+| 2 Outside labels | Figure-corner names by the PDF's outside-vertex rule (`dxfOutsideLabel.js`): **over the figure 5 → 0**, 19 pt from their beacons (the PDF's bound is 30 pt). | this commit |
+
+**Baseline decision for Phase 3 (insets).** At the DXF's own scale (1:500 for this plan) the shared fit places **all 357 letters at full tier, none cramped**, so nothing would go to an inset in the DXF here. The PDF needed 2 insets because it chose 1:600 for the same plan. Insets in the DXF would only matter on a plan the DXF has to draw at a coarser scale than 1:500; that is a reason to defer Phase 3 rather than build it now.
+
+**Notes and limits**
+- The checks use the placer's own box model for the text (width = characters × cap height × 0.55). They hold with glyphs 15 % wider than that model and start to fail at 30 % wider (25 letters), so a wide capital such as M or W in a CAD font is the margin to watch.
+- The outside-vertex search is a **copy** of the PDF's (`renderOutsideFigureVertexLabels`), not a shared module: extracting the PDF's inline version was left out to keep the PDF untouched. The two should be unified if either changes.
+- `dxfGenerator.snapshot.test.js` was already failing before this work (its stored entity lists predate the scale-derived tick grid and other changes; the same 442-line diff appears at the Phase 0 commit). It was left alone: refreshing it means reviewing ~8,000 lines. This work changes no entity on its three fixtures except the four figure-corner names A-D in Phase 2.

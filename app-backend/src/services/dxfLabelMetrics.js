@@ -98,6 +98,7 @@ export function summariseDxfLabels(m) {
     lettersMaxDistOverRadius: m.beaconRadius ? lettersMaxDist / m.beaconRadius : 0,
     figureNamesOverFigure,
     figureNamesMaxDist,
+    figureNamesMaxDistPt: groundToPt(figureNamesMaxDist, S),
     otherNamesOverLines,
   }
 }

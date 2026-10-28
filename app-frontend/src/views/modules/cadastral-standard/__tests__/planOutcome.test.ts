@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeDxfWarnings, describeGenerationOutcome, formatElapsed, isCancelled, outputFolderPath } from '../planOutcome'
+import { describeDxfWarnings, describeGenerationOutcome, describeSheet, formatElapsed, isCancelled, outputFolderPath } from '../planOutcome'
 import { parseWarningsHeader } from '../../../../utils/planWarnings'
 
 const base = { subdir: 'general-plans', saved: [], skipped: [], notDrawn: [], warnings: [] }
@@ -107,5 +107,30 @@ describe('isCancelled', () => {
     expect(isCancelled(new Error('Network Error'))).toBe(false)
     expect(isCancelled({ code: 'ECONNABORTED' })).toBe(false) // a timeout is a failure, not a cancel
     expect(isCancelled(null)).toBe(false)
+  })
+})
+
+describe('what the plan was drawn at', () => {
+  it('says the scale and sheet the renderer actually used', () => {
+    const n = describeGenerationOutcome({ ...base, saved: ['a.pdf'], scale: '1:600', sheet: 'SI727_1000x800' })
+    expect(n.message).toBe('Saved 1 file to output/general-plans/. Drawn at 1:600 on a 1000 × 800 mm sheet.')
+  })
+  it('counts sheets for a multi-sheet plan instead of naming one', () => {
+    const n = describeGenerationOutcome({ ...base, saved: ['a.pdf'], scale: '1:750', sheet: 'SI727_1000x800', sheetCount: 4 })
+    expect(n.message).toContain('Drawn at 1:750 on 4 sheets.')
+  })
+  it('stays as before when the scale is unknown (a DXF-only run)', () => {
+    expect(describeGenerationOutcome({ ...base, saved: ['a.dxf'] }).message).toBe('Saved 1 file to output/general-plans/.')
+  })
+  it('does not claim a drawing when nothing was saved', () => {
+    expect(describeGenerationOutcome({ ...base, skipped: ['a.pdf'], scale: '1:600' }).message).not.toMatch(/Drawn/)
+  })
+})
+
+describe('describeSheet', () => {
+  it('turns a sheet code into millimetres, and leaves other text alone', () => {
+    expect(describeSheet('SI727_1000x800')).toBe('1000 × 800 mm')
+    expect(describeSheet('SI727_500x400')).toBe('500 × 400 mm')
+    expect(describeSheet('A1')).toBe('A1')
   })
 })

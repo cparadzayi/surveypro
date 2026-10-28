@@ -33,6 +33,26 @@ export interface GenerationOutcome {
   notDrawn: string[]
   /** Plain sentences from the PDF and DXF generators. */
   warnings: string[]
+  /** What the PDF was actually drawn at, e.g. "1:600", when known (it may differ from what was asked for). */
+  scale?: string
+  /** The sheet code the renderer used, e.g. "SI727_1000x800". */
+  sheet?: string
+  /** Number of sheets in a multi-sheet plan. */
+  sheetCount?: number
+}
+
+/** "SI727_1000x800" reads as "1000 × 800 mm"; anything else is shown as given. */
+export function describeSheet(code: string): string {
+  const m = /(\d{3,4})x(\d{3,4})$/i.exec(code)
+  return m ? `${m[1]} × ${m[2]} mm` : code
+}
+
+function describeDrawing(o: GenerationOutcome): string {
+  const parts: string[] = []
+  if (o.scale) parts.push(`at ${o.scale}`)
+  if (o.sheetCount && o.sheetCount > 1) parts.push(`on ${o.sheetCount} sheets`)
+  else if (o.sheet) parts.push(`on a ${describeSheet(o.sheet)} sheet`)
+  return parts.length ? ` Drawn ${parts.join(' ')}.` : ''
 }
 
 export interface OutcomeNotice {
@@ -50,7 +70,7 @@ export function describeGenerationOutcome(o: GenerationOutcome): OutcomeNotice {
   const title = o.saved.length > 0 ? 'Plan generated' : 'Nothing new was saved'
   const message =
     o.saved.length > 0
-      ? `Saved ${o.saved.length} ${o.saved.length === 1 ? 'file' : 'files'} to output/${o.subdir}/.`
+      ? `Saved ${o.saved.length} ${o.saved.length === 1 ? 'file' : 'files'} to output/${o.subdir}/.${describeDrawing(o)}`
       : o.skipped.length > 0
         ? `Every file already exists in output/${o.subdir}/ and was kept.`
         : `No files were written to output/${o.subdir}/.`

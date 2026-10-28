@@ -4626,6 +4626,14 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
 }
 
 /** Copies text to the clipboard and says so; says what to do instead when the browser will not allow it. */
+function openPdfPreview(blob: Blob) {
+  const url = URL.createObjectURL(blob)
+  const tab = window.open(url, '_blank', 'noopener')
+  if (!tab) notifyWarning('Allow pop-ups for this site to preview the PDF, or open the saved file from the project folder.', { title: 'Preview blocked' })
+  // The tab has loaded it long before this; release the memory afterwards.
+  setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000)
+}
+
 async function copyText(text: string, what: string) {
   try {
     await navigator.clipboard.writeText(text)
@@ -4894,11 +4902,17 @@ async function generatePlanDocuments() {
     }
     const outcome = describeGenerationOutcome({
       subdir, saved, skipped, notDrawn: workingPlanSkipped, warnings: generationWarnings,
+      scale: usedScale, sheet: usedSheetSize, sheetCount: sheetLayouts?.length,
     })
+    const previewBlob = docs.pdf instanceof Blob && saved.some((n) => n.toLowerCase().endsWith('.pdf')) ? docs.pdf : null
     notify({
       kind: outcome.kind, title: outcome.title, message: outcome.message, details: outcome.details, sticky: outcome.sticky,
-      // A browser page cannot open a folder, but it can hand over the path to paste into Explorer.
-      actions: saved.length ? [{ label: 'Copy folder path', run: () => { void copyText(outputFolderPath(workingDirectory, subdir), 'Folder path') }, keepOpen: true }] : [],
+      actions: saved.length ? [
+        // Opens the PDF just made in the browser's own viewer, so it can be checked before it is sent anywhere.
+        ...(previewBlob ? [{ label: 'Preview PDF', run: () => { openPdfPreview(previewBlob) }, keepOpen: true }] : []),
+        // A browser page cannot open a folder, but it can hand over the path to paste into Explorer.
+        { label: 'Copy folder path', run: () => { void copyText(outputFolderPath(workingDirectory, subdir), 'Folder path') }, keepOpen: true },
+      ] : [],
     })
     emit('export-complete', { format: config.value.planType, filename: saved[0] || '' })
   } catch (error: any) {

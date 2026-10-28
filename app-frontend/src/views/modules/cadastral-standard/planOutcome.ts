@@ -105,14 +105,33 @@ export function outputFolderPath(workingDirectory: string, subdir: string): stri
 }
 
 /** The DXF generator's warning counts, as plain sentences. */
-export function describeDxfWarnings(summary: Record<string, number | boolean> | null | undefined): string[] {
-  if (!summary) return []
+type DxfWarningSummary = Record<string, number | boolean | null>
+
+/** A multi-sheet DXF sends one summary per sheet: add the counts, keep any flag that is set. */
+function mergeDxfSummaries(list: DxfWarningSummary[]): DxfWarningSummary {
+  const out: DxfWarningSummary = {}
+  for (const s of list) {
+    if (!s || typeof s !== 'object') continue
+    for (const [k, v] of Object.entries(s)) {
+      if (typeof v === 'number') out[k] = (typeof out[k] === 'number' ? (out[k] as number) : 0) + v
+      else if (v === true) out[k] = true
+    }
+  }
+  return out
+}
+
+export function describeDxfWarnings(input: DxfWarningSummary | DxfWarningSummary[] | null | undefined): string[] {
+  if (!input) return []
+  const summary = Array.isArray(input) ? mergeDxfSummaries(input) : input
   const out: string[] = []
   const n = (k: string) => (typeof summary[k] === 'number' ? (summary[k] as number) : 0)
   if (n('beacons')) out.push(`${n('beacons')} beacon(s) were left out of the DXF.`)
   if (n('parcels')) out.push(`${n('parcels')} parcel(s) were left out of the DXF.`)
   if (n('beaconDescTruncated')) out.push(`${n('beaconDescTruncated')} beacon description(s) were shortened to fit.`)
   if (n('priorDiagramsTruncated')) out.push(`${n('priorDiagramsTruncated')} prior diagram reference(s) were shortened to fit.`)
+  if (n('crampedLetters')) {
+    out.push(`${n('crampedLetters')} beacon letter(s) are too close together to fit at this scale and are drawn at the smallest size, so they may touch a boundary line. Use a finer scale, or the PDF, which magnifies them in insets.`)
+  }
   if (summary.scaleFallback) out.push('The DXF scale fell back to 1:500.')
   return out
 }

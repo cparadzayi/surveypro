@@ -134,3 +134,30 @@ describe('describeSheet', () => {
     expect(describeSheet('A1')).toBe('A1')
   })
 })
+
+describe('describeDxfWarnings: cramped letters', () => {
+  it('says plainly what happened and what to do about it', () => {
+    const [line] = describeDxfWarnings({ crampedLetters: 11 })
+    expect(line).toContain('11 beacon letter(s) are too close together to fit at this scale')
+    expect(line).toContain('may touch a boundary line')
+    expect(line).toContain('finer scale')
+    expect(line).toContain('insets')
+  })
+
+  it('says nothing for zero', () => {
+    expect(describeDxfWarnings({ crampedLetters: 0 })).toEqual([])
+  })
+
+  it('adds the counts of a multi-sheet DXF (one summary per sheet) into one sentence', () => {
+    const out = describeDxfWarnings([{ crampedLetters: 4, beacons: 1 }, { crampedLetters: 7 }, { crampedLetters: 0, scaleFallback: true }])
+    expect(out).toContain('1 beacon(s) were left out of the DXF.')
+    expect(out.filter((l) => l.includes('too close together'))).toHaveLength(1)
+    expect(out.find((l) => l.includes('too close together'))).toContain('11 beacon letter(s)')
+    expect(out).toContain('The DXF scale fell back to 1:500.')
+  })
+
+  it('copes with an empty list and with a null entry', () => {
+    expect(describeDxfWarnings([])).toEqual([])
+    expect(describeDxfWarnings([null as any, { crampedLetters: 2 }])[0]).toContain('2 beacon letter(s)')
+  })
+})

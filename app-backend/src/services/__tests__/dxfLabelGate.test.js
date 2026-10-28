@@ -39,10 +39,14 @@ const BUDGET = {
 }
 const FLOOR_PT = 4.3 // cap height of the PDF's 6 pt floor (0.71 x 6)
 
+// Generated once and shared by the first and last describe blocks: each generation is several seconds.
+let auto
+
 describe('DXF label gate: surveyed plan', () => {
   let s
   beforeAll(() => {
     const r = generateDXF({ ...buildSurveyPlan(survey), projection: 'EPSG:22291' }, quiet)
+    auto = r
     expect(r.labelMetrics).toBeDefined()
     s = summariseDxfLabels(r.labelMetrics)
   }, 120000)
@@ -86,5 +90,57 @@ describe('DXF label gate: surveyed plan', () => {
 
   test('beacon names at shared corners are not over a boundary line', () => {
     expect(s.otherNamesOverLines).toEqual([])
+  })
+})
+
+// A coarser scale than the DXF chooses for this plan. The PDF magnifies the letters that no longer
+// fit in insets; the DXF has none yet (docs/DXF_LABEL_PARITY_PLAN.md, section 8), so what it owes the
+// surveyor at these scales is the TRUTH: the letters it could not seat are counted and reported.
+// Budgets are what the DXF does today at 1:1000 and only tighten; the day insets exist, the
+// over-lines and cramped numbers go to 0 as at 1:500.
+const BUDGET_1000 = {
+  crampedLetters: 11,
+  lettersOverLines: 10,
+}
+
+describe('DXF label gate: the same plan at a declared 1:1000', () => {
+  let r, s
+  beforeAll(() => {
+    r = generateDXF({ ...buildSurveyPlan(survey, { scale: 1000 }), projection: 'EPSG:22291' }, quiet)
+    s = summariseDxfLabels(r.labelMetrics)
+  }, 120000)
+
+  test('is drawn at the declared scale', () => {
+    expect(r.scale).toBe('1:1000')
+  })
+
+  test('letters in a wrong stand never happen, whatever the scale', () => {
+    expect(s.lettersNotInOwnStand).toEqual([])
+    expect(s.lettersInForeignStand).toEqual([])
+    expect(s.figureNamesOverFigure).toEqual([])
+    expect(s.minLetterCapPt).toBeGreaterThanOrEqual(FLOOR_PT)
+  })
+
+  test('cramped letters and letters over lines do not grow (target 0 with insets)', () => {
+    expect(s.crampedLetters).toBeLessThanOrEqual(BUDGET_1000.crampedLetters)
+    expect(s.lettersOverLines.length).toBeLessThanOrEqual(BUDGET_1000.lettersOverLines)
+  })
+
+  test('every letter that is over a line is one the generator reported as cramped', () => {
+    const cramped = new Set(r.labelMetrics.labels.filter((l) => l.inside && l.cramped).map((l) => l.name))
+    for (const name of s.lettersOverLines) expect(cramped.has(name)).toBe(true)
+  })
+
+  test('the cramped letters are reported in the DXF warnings, with the right count', () => {
+    expect(s.crampedLetters).toBeGreaterThan(0)
+    expect(r.warnings.summary.crampedLetters).toBe(s.crampedLetters)
+    expect(r.warnings.count).toBeGreaterThanOrEqual(s.crampedLetters)
+  })
+})
+
+describe('DXF label gate: no warning when nothing is cramped', () => {
+  test('at the chosen 1:500 the summary says 0 and adds nothing to the count', () => {
+    expect(auto.warnings.summary.crampedLetters).toBe(0)
+    expect(auto.warnings.count).toBe(0)
   })
 })

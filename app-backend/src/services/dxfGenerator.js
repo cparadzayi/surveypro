@@ -573,6 +573,7 @@ export function generateDXF(options, logger) {
       priorDiagramsTruncated: 0,
       nonAscii: false,
       scheduleOverflow: null,
+      crampedLetters: 0,
     },
   }
   /**
@@ -1853,6 +1854,16 @@ export function generateDXF(options, logger) {
   }
 
   // ── Deferred-circle z-order: emit beacon symbols AFTER all labels ──────────
+  // Letters the shared fit could only seat squeezed or shrunk well below size. The PDF magnifies
+  // these in insets; the DXF has none (docs/DXF_LABEL_PARITY_PLAN.md, section 8), so the letter is
+  // drawn at the smallest size and may touch a boundary line. Say so, rather than leave it to be
+  // found on the printed plan: it reaches the result notice through X-DXF-Warnings.
+  const crampedCount = labelRecords.filter((l) => l.inside && l.cramped).length;
+  if (crampedCount > 0) {
+    warn('crampedLetters', crampedCount);
+    logger.warn(`[DXF] ${crampedCount} beacon letter(s) too cramped to fit at 1:${S}; drawn at the smallest size (the PDF would magnify them in insets)`);
+  }
+
   for (const c of deferredCircles) {
     addBeaconSymbol('BEACONS', c.x, c.y, c.type, c.diameter);
   }

@@ -100,6 +100,8 @@ Phase 0 → 1 → 2 as one piece of work (about 2.5 days, no layout change). Dec
 
 **Baseline decision for Phase 3 (insets).** At the DXF's own scale (1:500 for this plan) the shared fit places **all 357 letters at full tier, none cramped**, so nothing would go to an inset in the DXF here. The PDF needed 2 insets because it chose 1:600 for the same plan. Insets in the DXF would only matter on a plan the DXF has to draw at a coarser scale than 1:500; that is a reason to defer Phase 3 rather than build it now.
 
+| 3-lite Say so | The DXF counts the letters the shared fit could not seat (`crampedLetters` in its warnings) and the result notice says so in a plain sentence; a 1:1000 case joins the DXF gate. At 1:1000 on the surveyed plan: 11 cramped, 10 over a line, none in a wrong stand. Full insets stay deferred. | this commit |
+
 **Notes and limits**
 - The checks use the placer's own box model for the text (width = characters × cap height × 0.55). They hold with glyphs 15 % wider than that model and start to fail at 30 % wider (25 letters), so a wide capital such as M or W in a CAD font is the margin to watch.
 - The outside-vertex search is a **copy** of the PDF's (`renderOutsideFigureVertexLabels`), not a shared module: extracting the PDF's inline version was left out to keep the PDF untouched. The two should be unified if either changes.

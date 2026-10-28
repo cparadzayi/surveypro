@@ -123,6 +123,7 @@
         <Ribbon
           :tabs="globalRibbonTabs"
           :initial-tab="globalInitialTab"
+          :context-label="selectedProjectName"
           :collapsed="ribbonCollapsed"
           @action="globalRibbon.run"
           @update:collapsed="ribbonCollapsed = $event"
@@ -143,6 +144,7 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
 import { useSignOut } from './composables/useSignOut'
+import { useProjectSelectionStore } from './stores/projectSelection'
 import { storeToRefs } from 'pinia'
 import { ref, watch } from 'vue'
 import { useAuthStore } from './stores/auth'
@@ -155,6 +157,8 @@ import NotificationHost from './components/ui/NotificationHost.vue'
 
 const auth = useAuthStore()
 const { isAuthed, isSurveyor, currentSurveyor } = storeToRefs(auth)
+// The project being worked on, named in the ribbon on every screen (not only the cadastral workflow).
+const { selectedProjectName } = storeToRefs(useProjectSelectionStore())
 
 const globalRibbon = useGlobalRibbon()
 // Top-level ref bindings are what templates auto-unwrap; a nested computed on a

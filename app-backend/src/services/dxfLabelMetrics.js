@@ -92,6 +92,8 @@ export function summariseDxfLabels(m) {
     lettersNotInOwnStand,
     lettersInForeignStand,
     minLetterCapPt: letters.length ? Math.min(...letters.map((l) => groundToPt(l.capHeight, S))) : Infinity,
+    // Letters the shared fit could only place squeezed or shrunk well below size: in the PDF these go to an inset.
+    crampedLetters: letters.filter((l) => l.cramped).length,
     lettersMaxDist,
     lettersMaxDistOverRadius: m.beaconRadius ? lettersMaxDist / m.beaconRadius : 0,
     figureNamesOverFigure,

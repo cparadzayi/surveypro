@@ -22,13 +22,17 @@ const quiet = { info() {}, warn() {}, error() {} }
 const here = path.dirname(fileURLToPath(import.meta.url))
 const survey = JSON.parse(fs.readFileSync(path.join(here, 'fixtures', 'labelGateSurvey.json'), 'utf8'))
 
-// Phase 0 baseline, measured 28 October 2026 on the surveyed plan (357 letters, 8 beacon names).
+// History (surveyed plan: 357 letters, 8 beacon names, drawn at 1:500).
+//   Phase 0 baseline, 28 Oct 2026: 36 letters over lines, 3 in a foreign stand, 5 figure names over the
+//   figure, furthest letter 8.8 m from its beacon.
+//   Phase 1 (letters through the PDF's shared fit): letters are now at zero on every rule.
 const BUDGET = {
-  lettersOverLines: 36,          // target 0
-  lettersNotInOwnStand: 3,       // target 0
-  lettersInForeignStand: 3,      // target 0
-  figureNamesOverFigure: 5,      // target 0
-  lettersMaxDist: 8.8,           // metres, letter centre to its beacon; the PDF keeps letters beside the circle
+  lettersOverLines: 0,
+  lettersNotInOwnStand: 0,
+  lettersInForeignStand: 0,
+  crampedLetters: 0,             // nothing needs an inset at this scale
+  figureNamesOverFigure: 5,      // target 0 (Phase 2)
+  lettersMaxDist: 3.4,           // metres, letter centre to its beacon (was 8.8)
 }
 const FLOOR_PT = 4.3 // cap height of the PDF's 6 pt floor (0.71 x 6)
 
@@ -49,20 +53,24 @@ describe('DXF label gate: surveyed plan', () => {
     expect(s.minLetterCapPt).toBeGreaterThanOrEqual(FLOOR_PT)
   })
 
-  test('letters over boundary lines do not grow (target 0)', () => {
+  test('no letter is over a boundary line', () => {
     expect(s.lettersOverLines.length).toBeLessThanOrEqual(BUDGET.lettersOverLines)
   })
 
-  test('letters outside their own stand do not grow (target 0)', () => {
+  test('every letter is inside its own stand', () => {
     expect(s.lettersNotInOwnStand.length).toBeLessThanOrEqual(BUDGET.lettersNotInOwnStand)
   })
 
-  test('letters in a foreign stand do not grow (target 0)', () => {
+  test('no letter is in a foreign stand', () => {
     expect(s.lettersInForeignStand.length).toBeLessThanOrEqual(BUDGET.lettersInForeignStand)
   })
 
-  test('outside-figure beacon names over the figure do not grow (target 0)', () => {
+  test('outside-figure beacon names over the figure do not grow (target 0, Phase 2)', () => {
     expect(s.figureNamesOverFigure.length).toBeLessThanOrEqual(BUDGET.figureNamesOverFigure)
+  })
+
+  test('no letter is so squeezed that the PDF would send it to an inset', () => {
+    expect(s.crampedLetters).toBeLessThanOrEqual(BUDGET.crampedLetters)
   })
 
   test('letters stay near their beacons', () => {

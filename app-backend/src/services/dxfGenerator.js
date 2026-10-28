@@ -51,8 +51,8 @@ const NORTH_ARROW_LETTER_MM = 3
 
 const PT_TO_MM_GEN = 25.4 / 72
 import { findStandLabelPosition, findEdgeLabelPosition } from './dxfLabelPlacer.js'
+import { fitDxfSuffixLetter } from './dxfLetterFit.js'
 import {
-  placeSuffixLabelPOIDirected,
   tryTightFullBeaconLabelPosition,
   calculateFullBeaconLabelOutsideOnEdge,
   pickBeaconFontSize,
@@ -1770,12 +1770,27 @@ export function generateDXF(options, logger) {
     const labelHeightG = beaconLabelHeight * 1.2;
 
     let labelPos;
+    // What is actually emitted (a letter may be smaller, and turned, so these can differ from the defaults).
+    let drawCap = beaconLabelHeight, drawWidth = labelWidth, drawRot = 0, inkBox = null, letterFit = null;
     if (decision.isInsideParcel && decision.polygon) {
-      labelPos = placeSuffixLabelPOIDirected({
-        beaconPos: pt, polygon: decision.polygon,
-        labelWidth, labelHeight: labelHeightG,
-        beaconRadius, registry,
+      // The same fit the PDF uses (diagram/suffixLabelFit.js): the whole letter clear of every
+      // boundary line, beside its own beacon, smaller or slightly turned only where it must be.
+      const gap = ptToGround(1, S);
+      letterFit = fitDxfSuffixLetter({
+        beaconPos: pt, polygon: decision.polygon, text: labelText,
+        capHeight: beaconLabelHeight, beaconRadius, scaleDenominator: S,
+        neighbours: [...beaconPositions].filter(([n]) => n !== name).map(([, p]) => p),
+        collides: (r) => registry.hasCollision(r, gap),
       });
+      labelPos = { x: letterFit.x, y: letterFit.y };
+      drawCap = letterFit.capHeight; drawWidth = letterFit.width; drawRot = letterFit.rot;
+      // The ink box's axis-aligned extent, for the next label's collision test.
+      const th = (drawRot * Math.PI) / 180;
+      const ex = Math.abs(Math.cos(th)) * drawWidth + Math.abs(Math.sin(th)) * drawCap;
+      const ey = Math.abs(Math.sin(th)) * drawWidth + Math.abs(Math.cos(th)) * drawCap;
+      const cxk = labelPos.x + Math.cos(th) * drawWidth / 2 - Math.sin(th) * drawCap / 2;
+      const cyk = labelPos.y + Math.sin(th) * drawWidth / 2 + Math.cos(th) * drawCap / 2;
+      inkBox = { x: cxk - ex / 2, y: cyk - ey / 2, width: ex, height: ey };
     } else {
       const incident = incidentParcelsByBeacon.get(name) || [];
       const padding  = mmToGround(0.8, S);
@@ -1795,15 +1810,16 @@ export function generateDXF(options, logger) {
         };
     }
 
-    registry.add({ x: labelPos.x, y: labelPos.y, width: labelWidth, height: labelHeightG });
-    addText('BEACON_LABELS', labelPos.x, labelPos.y, labelText, beaconLabelHeight);
+    registry.add(inkBox || { x: labelPos.x, y: labelPos.y, width: labelWidth, height: labelHeightG });
+    addText('BEACON_LABELS', labelPos.x, labelPos.y, labelText, drawCap, drawRot);
     labelRecords.push({
       name, text: labelText,
       inside: !!(decision.isInsideParcel && decision.polygon),
       standKey: decision.isInsideParcel && decision.polygon ? standKeyOf(decision.polygon) : null,
       // TEXT is inserted at its baseline-left point; its ink is capHeight tall and width wide, turned rot.
-      x: labelPos.x, y: labelPos.y, width: labelWidth, capHeight: beaconLabelHeight, rot: 0,
+      x: labelPos.x, y: labelPos.y, width: drawWidth, capHeight: drawCap, rot: drawRot,
       beacon: { x: pt.x, y: pt.y }, onFigure: nearFigureVertex(pt),
+      cramped: letterFit ? letterFit.cramped : false, tier: letterFit ? letterFit.tier : null,
     });
 
     // 2026-06-06: leader-line emission removed by user request. The placer

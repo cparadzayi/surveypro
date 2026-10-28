@@ -61,14 +61,14 @@
           <span class="font-mono text-xs font-semibold text-gray-800 truncate w-full text-center">
             {{ row.currentName }}
           </span>
-          <span class="text-gray-400 text-xs truncate w-full text-center">
+          <span class="text-gray-500 text-xs truncate w-full text-center">
             {{ row.y }}, {{ row.x }}
           </span>
           <span v-if="row.status === 'TRIG'" class="text-red-500 text-xs font-semibold">🔒 TRIG</span>
           <span v-else-if="row.saved" class="text-green-600 text-xs font-semibold">✓ saved</span>
           <span v-else class="text-blue-400 text-xs">✏️ edit</span>
         </button>
-        <div v-if="filteredRows.length === 0" class="col-span-full py-4 text-center text-gray-400 text-xs">
+        <div v-if="filteredRows.length === 0" class="col-span-full py-4 text-center text-gray-500 text-xs">
           No points match your search.
         </div>
       </div>
@@ -109,7 +109,7 @@
             ]">{{ modalRow.status || 'P' }}</div>
             <div>
               <p class="font-mono text-xs text-gray-500">Original: {{ modalRow.originalName }}</p>
-              <p class="text-[11px] text-gray-400">Edit any field and click Save</p>
+              <p class="text-xs text-gray-500">Edit any field and click Save</p>
             </div>
           </div>
 

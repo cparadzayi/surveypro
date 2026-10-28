@@ -157,7 +157,7 @@
           <label class="block text-sm">
             <span class="text-xs text-gray-600">Beacons qty (override)</span>
             <input v-model.number="beaconsOverrideQty" :disabled="!beaconsOverrideEnabled" type="number" min="0" class="border rounded w-full px-2 py-1" />
-            <div class="text-[11px] text-gray-500 mt-0.5">Effective: {{ effectiveBeaconsQty }}</div>
+            <div class="text-xs text-gray-500 mt-0.5">Effective: {{ effectiveBeaconsQty }}</div>
           </label>
           <label class="block text-sm">
             <span class="text-xs text-gray-600">Beacon rate</span>

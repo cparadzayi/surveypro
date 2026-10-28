@@ -14,7 +14,7 @@
         <li v-for="fav in favorites" :key="fav.slug">
           <RouterLink :to="`/modules/lite/${fav.slug}`" :class="['block p-3 rounded border bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs', borderClass, hoverClass]">
             <div class="flex items-center gap-2 font-medium"><span class="text-base" aria-hidden="true">{{ fav.icon || '⭐' }}</span>{{ fav.title }}</div>
-            <div v-if="fav.description" class="mt-0.5 text-[10px] text-gray-500 line-clamp-2">{{ fav.description }}</div>
+            <div v-if="fav.description" class="mt-0.5 text-xs text-gray-500 line-clamp-2">{{ fav.description }}</div>
           </RouterLink>
         </li>
       </ul>
@@ -24,7 +24,7 @@
     <section v-for="section in sections" :key="section.slug" class="space-y-2">
       <div class="flex items-baseline justify-between">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ section.title }}</h3>
-        <p v-if="section.description" class="text-[11px] text-gray-500">{{ section.description }}</p>
+        <p v-if="section.description" class="text-xs text-gray-500">{{ section.description }}</p>
       </div>
       <ul class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         <li v-for="item in section.items" :key="item.slug">
@@ -32,16 +32,16 @@
             <RouterLink :to="`/modules/lite/${item.slug}`" :class="['block p-3 rounded border bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs', borderClass, hoverClass]">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2 font-medium"><span class="text-base" aria-hidden="true">{{ item.icon || '•' }}</span>{{ item.title }}</div>
-                <button class="text-[10px] text-indigo-600 hover:underline" @click.prevent="toggleFav(item)">{{ isFav(item) ? 'Unpin' : 'Pin' }}</button>
+                <button class="text-xs text-indigo-600 hover:underline" @click.prevent="toggleFav(item)">{{ isFav(item) ? 'Unpin' : 'Pin' }}</button>
               </div>
-              <div class="mt-0.5 text-[10px] text-gray-500 line-clamp-2" v-if="item.description">{{ item.description }}</div>
+              <div class="mt-0.5 text-xs text-gray-500 line-clamp-2" v-if="item.description">{{ item.description }}</div>
               <span v-if="item.badge" class="inline-block mt-1 px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[10px]">{{ item.badge }}</span>
             </RouterLink>
           </template>
           <template v-else>
             <div class="block p-3 rounded border bg-white shadow-sm text-xs opacity-60 cursor-not-allowed">
               <div class="flex items-center gap-2 font-medium"><span class="text-base" aria-hidden="true">{{ item.icon || '•' }}</span>{{ item.title }}</div>
-              <div class="mt-0.5 text-[10px] text-gray-500 line-clamp-2" v-if="item.description">{{ item.description }}</div>
+              <div class="mt-0.5 text-xs text-gray-500 line-clamp-2" v-if="item.description">{{ item.description }}</div>
               <span v-if="item.badge" class="inline-block mt-1 px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 text-[10px]">{{ item.badge }}</span>
               <span class="inline-block mt-1 px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[10px]">Disabled</span>
             </div>
@@ -57,7 +57,7 @@
         <li v-for="s in submenus" :key="s.slug">
           <RouterLink :to="`/modules/lite/${s.slug}`" :class="['block p-3 rounded border bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs', borderClass, hoverClass]">
             <div class="font-medium">{{ s.title }}</div>
-            <div class="mt-0.5 text-[10px] text-gray-500 line-clamp-2" v-if="s.description">{{ s.description }}</div>
+            <div class="mt-0.5 text-xs text-gray-500 line-clamp-2" v-if="s.description">{{ s.description }}</div>
             <span v-if="s.badge" class="inline-block mt-1 px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[10px]">{{ s.badge }}</span>
             <span v-if="s.disabled" class="inline-block mt-1 px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 text-[10px]">Disabled</span>
           </RouterLink>

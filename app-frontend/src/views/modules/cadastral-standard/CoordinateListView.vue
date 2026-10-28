@@ -85,7 +85,7 @@
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
           <tr v-if="filteredCoordinateList.length === 0">
-            <td class="px-4 py-6 text-center text-gray-400" colspan="10">
+            <td class="px-4 py-6 text-center text-gray-500" colspan="10">
               <span v-if="searchQuery">No points match "{{ searchQuery }}".</span>
               <span v-else>No coordinates to display. Please import or generate points in previous steps.</span>
             </td>
@@ -108,7 +108,7 @@
                   @keydown.escape.prevent="cancelRename"
                   @blur="commitRename(point.id)"
                 />
-                <span v-if="renameSaving" class="text-xs text-gray-400">saving…</span>
+                <span v-if="renameSaving" class="text-xs text-gray-500">saving…</span>
               </div>
               <button
                 v-else-if="!point.isAdopted"

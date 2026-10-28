@@ -30,7 +30,7 @@
               placeholder="Beacon/Name" />
           </label>
           <button type="button" class="rounded border px-3 py-1 text-sm bg-slate-600 text-white disabled:opacity-50" :disabled="!selectedSuggestion" @click="useSelected">Use point</button>
-          <span class="text-[11px] text-gray-500" v-if="loadingSearch">Searching…</span>
+          <span class="text-xs text-gray-500" v-if="loadingSearch">Searching…</span>
         </div>
         <ul v-if="suggestions.length" class="border rounded max-h-40 overflow-auto text-sm">
           <li

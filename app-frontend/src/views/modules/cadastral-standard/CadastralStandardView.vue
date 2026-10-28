@@ -40,7 +40,7 @@
       <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden max-h-[85vh] flex flex-col">
         <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h3 class="text-xl font-semibold text-gray-900">📖 CSV Format Guide</h3>
-          <button @click="showFormatGuide = false" class="text-gray-400 hover:text-gray-600">
+          <button @click="showFormatGuide = false" class="text-gray-500 hover:text-gray-600">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -747,7 +747,7 @@
                       >
                         {{ point.status === 'F' ? 'Found' : point.status === 'P' ? 'Peg' : point.status || '' }}
                       </span>
-                      <span v-else class="text-gray-400 text-xs">-</span>
+                      <span v-else class="text-gray-500 text-xs">-</span>
                     </td>
                     <td class="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" :title="point.description">
                       {{ point.description }}

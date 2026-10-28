@@ -92,7 +92,7 @@
                 : 'border-gray-200 hover:border-blue-300'"
           >
             <span class="font-medium">{{ sideLabel(s) }}</span>
-            <span v-if="sideBeaconPair(s)" class="ml-1 text-[10px] text-gray-400">{{ s.side }}</span>
+            <span v-if="sideBeaconPair(s)" class="ml-1 text-xs text-gray-500">{{ s.side }}</span>
             <span v-if="servitudeSideSet.has(s.side)" class="ml-1 text-xs">●</span>
           </button>
         </div>
@@ -175,7 +175,7 @@
           <p v-if="resolvedBeacons" class="text-xs text-gray-500">
             Beacons: {{ resolvedBeacons.fromBeacon }} – {{ resolvedBeacons.toBeacon }}
           </p>
-          <p v-else class="text-xs text-gray-400">
+          <p v-else class="text-xs text-gray-500">
             No named beacons resolved for this side — the certificate will reference side {{ selectedSide }} directly.
           </p>
 

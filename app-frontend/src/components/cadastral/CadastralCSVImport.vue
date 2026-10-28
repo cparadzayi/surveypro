@@ -84,7 +84,7 @@
           
           <button
             @click="clearFile"
-            class="text-gray-400 hover:text-gray-600 transition-colors text-lg"
+            class="text-gray-500 hover:text-gray-600 transition-colors text-lg"
           >
             ✕
           </button>
@@ -203,7 +203,7 @@
                     >
                       {{ statusLabel(point.status) }}
                     </span>
-                    <span v-else class="text-gray-400 text-xs">-</span>
+                    <span v-else class="text-gray-500 text-xs">-</span>
                   </td>
                   <td class="px-4 py-2 text-sm text-gray-600 max-w-xs truncate" :title="point.description">
                     {{ point.description }}

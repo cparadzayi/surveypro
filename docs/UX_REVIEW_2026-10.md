@@ -74,7 +74,7 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 - [x] Ribbon: `role="tab"` with no arrow-key handling and no tab panel. **Done 28 Oct 2026:** one tab stop, arrows/Home/End, `tabpanel` labelled by the tab.
 - [x] Modals without `role="dialog"` / focus handling. **Done 28 Oct 2026:** a `v-dialog` directive (`directives/dialog.ts`, registered in `main.ts`) gives an overlay `role="dialog"`, `aria-modal`, a name, focus on open, Tab kept inside, Escape to close and focus returned afterwards. Applied to 20 overlays in 13 files; checked live on the Add Project dialog. Overlays that already handled Escape themselves (five in `MapLibreAreaView`) got the role and name only.
 - [ ] More live regions for status and errors.
-- [ ] Text under 12px and `text-gray-400` text colour.
+- [~] Text under 12px and `text-gray-400` text colour. **Done in part 28 Oct 2026:** 35 uses of `text-gray-400` (hints, icon buttons, placeholders in tables; 2.5:1 on white) are now `text-gray-500` (4.8:1), and 57 pieces of 9-11px text that were not pill badges are now 12px (`text-xs`) across 29 files. Left alone: disabled controls, text on the dark QGIS panel, decorative glyphs, and 29 badge-style labels still under 12px. The result was not reviewed screen by screen; a pass over the Compare and Servitudes screens is the most likely place to find a cramped layout.
 - [ ] Emoji used as icons (about 3,300 template lines): noisy for screen readers and rendered differently per platform.
 
 ### 6. Consistency and maintainability
@@ -149,3 +149,7 @@ Done 27 October 2026 in `app-frontend/src`: the five items marked `[x]` above.
 ## Ninth round, 28 October 2026
 
 - **Dashboard:** with more than three projects, a search box (name, client, district, type; every word must match) and a sort menu (recently opened, name with numbers in numeric order, newest first). Cards show "Last opened", and opening a project now records that. Checked live with four stubbed projects.
+
+## Tenth round, 28 October 2026
+
+- **Contrast and size:** see the accessibility item above (35 colour changes, 57 size changes, 29 files).

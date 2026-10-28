@@ -381,7 +381,7 @@
               <button
                 v-if="parcelSearchQuery"
                 @click="clearParcelSearch"
-                class="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 px-1 text-sm leading-none"
+                class="absolute right-1 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 px-1 text-sm leading-none"
                 title="Clear search"
               >✕</button>
             </div>
@@ -699,7 +699,7 @@
               class="text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-md px-2 py-1"
             >📍 {{ beaconModal.captured }}</p>
             <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">Description <span class="text-gray-400">(optional)</span></label>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Description <span class="text-gray-500">(optional)</span></label>
               <input
                 v-model="beaconModal.description"
                 type="text"
@@ -823,14 +823,14 @@
               <div class="flex gap-3">
                 <!-- Existing point (conflicting) -->
                 <div class="flex-1 rounded-lg border-2 border-amber-300 bg-amber-50 p-3">
-                  <p class="text-[10px] font-semibold text-amber-600 uppercase tracking-wide mb-1.5">Existing</p>
+                  <p class="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1.5">Existing</p>
                   <div class="flex items-center gap-2 mb-2">
                     <div class="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center font-bold text-amber-700 text-xs flex-shrink-0">
                       {{ mapRenameModal.conflictPoint.status || 'P' }}
                     </div>
                     <p class="font-mono font-bold text-gray-900 text-sm">{{ mapRenameModal.conflictPoint.id }}</p>
                   </div>
-                  <p class="text-[11px] text-gray-500 font-mono leading-tight">
+                  <p class="text-xs text-gray-500 font-mono leading-tight">
                     <template v-if="mapRenameModal.conflictPoint.x || mapRenameModal.conflictPoint.y">
                       Y: {{ mapRenameModal.conflictPoint.y.toFixed(3) }}<br>
                       X: {{ mapRenameModal.conflictPoint.x.toFixed(3) }}
@@ -840,14 +840,14 @@
                 </div>
                 <!-- This point (being renamed) -->
                 <div class="flex-1 rounded-lg border-2 border-blue-300 bg-blue-50 p-3">
-                  <p class="text-[10px] font-semibold text-blue-600 uppercase tracking-wide mb-1.5">This point</p>
+                  <p class="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1.5">This point</p>
                   <div class="flex items-center gap-2 mb-2">
                     <div class="w-8 h-8 rounded-full bg-blue-200 flex items-center justify-center font-bold text-blue-700 text-xs flex-shrink-0">
                       {{ mapRenameModal.status || 'P' }}
                     </div>
                     <p class="font-mono font-bold text-gray-900 text-sm">{{ mapRenameModal.pointId }}</p>
                   </div>
-                  <p class="text-[11px] text-gray-500 leading-tight">{{ mapRenameModal.lngLat }}</p>
+                  <p class="text-xs text-gray-500 leading-tight">{{ mapRenameModal.lngLat }}</p>
                 </div>
               </div>
             </div>

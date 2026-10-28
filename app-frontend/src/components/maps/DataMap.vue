@@ -739,9 +739,9 @@ async function performDraw() {
               <div class="font-bold ${isComputed ? 'text-green-700' : 'text-yellow-700'}">${parcel.stand || 'Unknown Stand'}</div>
               ${statusBadge}
             </div>
-            ${parcel.area_sqm ? `<div class="font-medium text-green-600">Area: ${(parcel.area_sqm / 10000).toFixed(4)} ha</div>` : '<div class="text-yellow-600 text-[10px]">⚠️ Area not computed yet</div>'}
+            ${parcel.area_sqm ? `<div class="font-medium text-green-600">Area: ${(parcel.area_sqm / 10000).toFixed(4)} ha</div>` : '<div class="text-yellow-600 text-xs">⚠️ Area not computed yet</div>'}
             ${parcel.owner ? `<div class="text-gray-600">Owner: ${parcel.owner}</div>` : ''}
-            ${parcel.notes ? `<div class="text-gray-500 text-[10px] mt-1">${parcel.notes}</div>` : ''}
+            ${parcel.notes ? `<div class="text-gray-500 text-xs mt-1">${parcel.notes}</div>` : ''}
           </div>
         `
         parcelPoly.bindPopup(popupContent)

@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-4">
-    <nav class="text-[11px] text-gray-500 flex items-center gap-1" aria-label="Breadcrumb">
+    <nav class="text-xs text-gray-500 flex items-center gap-1" aria-label="Breadcrumb">
       <span v-for="(bc,i) in breadcrumbs" :key="i" class="flex items-center gap-1">
         <RouterLink v-if="bc.to" :to="bc.to" class="hover:text-indigo-600">{{ bc.label }}</RouterLink>
         <span v-else>{{ bc.label }}</span>

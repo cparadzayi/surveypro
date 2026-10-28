@@ -26,9 +26,9 @@
         :class="['input w-20', invalid ? 'border-red-500' : '']"
         aria-label="Seconds" />
     <span class="text-xs">″</span>
-    <span class="text-[11px] text-gray-500">(D:M:S, min/sec &lt; 60; 0°=S)</span>
+    <span class="text-xs text-gray-500">(D:M:S, min/sec &lt; 60; 0°=S)</span>
     </div>
-    <div v-if="invalid" class="text-[11px] text-red-600 mt-0.5">Invalid DMS: 0 ≤ D &lt; 360, 0 ≤ M,S &lt; 60</div>
+    <div v-if="invalid" class="text-xs text-red-600 mt-0.5">Invalid DMS: 0 ≤ D &lt; 360, 0 ≤ M,S &lt; 60</div>
   </div>
 </template>
 <script setup lang="ts">

@@ -357,13 +357,13 @@
                   </td>
                   <td class="px-4 py-3 text-right font-mono">
                     <span v-if="result.area">{{ result.area.display }} {{ result.area.unit }}</span>
-                    <span v-else class="text-gray-400">-</span>
+                    <span v-else class="text-gray-500">-</span>
                   </td>
                   <td class="px-4 py-3 text-right font-mono">
                     <span v-if="result.closure_error_m !== undefined" :class="closureErrorClass(result.closure_error_m)">
                       {{ result.closure_error_m.toFixed(3) }} m
                     </span>
-                    <span v-else class="text-gray-400">-</span>
+                    <span v-else class="text-gray-500">-</span>
                   </td>
                   <td class="px-4 py-3 text-sm text-gray-600">
                     <span v-if="result.vertex_names">{{ result.vertex_names.join(', ') }}</span>
@@ -388,7 +388,7 @@
       <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div class="px-6 py-4 border-b flex items-center justify-between">
           <h3 class="text-lg font-semibold">QGIS Connection & Workflow</h3>
-          <button @click="showQGISModal = false" class="text-gray-400 hover:text-gray-600">
+          <button @click="showQGISModal = false" class="text-gray-500 hover:text-gray-600">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
             </svg>

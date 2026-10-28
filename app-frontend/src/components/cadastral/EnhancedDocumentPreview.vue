@@ -173,7 +173,7 @@
               'border-gray-200 hover:border-gray-400': page !== currentPage
             }"
           >
-            <div class="aspect-[8.5/11] bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+            <div class="aspect-[8.5/11] bg-gray-100 flex items-center justify-center text-gray-500 text-xs">
               Page {{ page }}
             </div>
             <div

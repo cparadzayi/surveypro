@@ -123,7 +123,7 @@
     <section aria-labelledby="modules-heading" class="space-y-3">
       <div class="flex items-center justify-between">
         <h3 id="modules-heading" class="text-sm font-semibold uppercase tracking-wide text-gray-700">Quick Access</h3>
-        <span class="text-[10px] text-gray-400">Tap a module to open</span>
+        <span class="text-xs text-gray-500">Tap a module to open</span>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         <ModuleCard v-for="m in modules.slice(0, 4)" :key="m.slug" :module="m" />

@@ -13,7 +13,7 @@
     <div class="flex-1 overflow-y-auto px-3 py-4 space-y-6">
       <!-- Modules list -->
       <div>
-        <h3 class="px-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Modules</h3>
+        <h3 class="px-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Modules</h3>
         <ul class="mt-2 space-y-1">
           <li v-for="m in modules" :key="m.slug">
             <button
@@ -36,7 +36,7 @@
       <template v-if="activeModule">
         <!-- Favorites -->
         <div v-if="favorites.length">
-          <h3 class="px-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Favorites</h3>
+          <h3 class="px-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Favorites</h3>
           <ul class="mt-2 space-y-1">
             <li v-for="f in favorites" :key="f.slug">
               <div class="w-full flex items-center justify-between">
@@ -47,7 +47,7 @@
                 >
                   <span class="truncate flex items-center gap-2"><span aria-hidden="true">{{ f.icon || '•' }}</span>{{ f.title }}</span>
                 </button>
-                <button type="button" class="text-[10px] text-indigo-600 hover:underline ml-2 px-1 py-0.5" @click="toggleFav(f)">Unpin</button>
+                <button type="button" class="text-xs text-indigo-600 hover:underline ml-2 px-1 py-0.5" @click="toggleFav(f)">Unpin</button>
               </div>
             </li>
           </ul>
@@ -55,7 +55,7 @@
 
         <!-- Sections -->
         <div v-for="section in sections" :key="section.slug">
-          <h3 class="px-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ section.title }}</h3>
+          <h3 class="px-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{{ section.title }}</h3>
           <ul class="mt-2 space-y-1">
             <li v-for="item in section.items" :key="item.slug">
               <button
@@ -70,7 +70,7 @@
                 <span class="truncate flex items-center gap-2"><span aria-hidden="true">{{ item.icon || '•' }}</span>{{ item.title }}</span>
                 <span class="flex items-center gap-2">
                   <span v-if="item.badge" class="text-[10px] px-1 py-0.5 rounded bg-indigo-100 text-indigo-700">{{ item.badge }}</span>
-                  <button v-if="!item.disabled" type="button" class="text-[10px] text-indigo-600 hover:underline" @click.stop="toggleFav({ slug: item.slug, title: item.title, icon: item.icon })">{{ isFav(item.slug) ? 'Unpin' : 'Pin' }}</button>
+                  <button v-if="!item.disabled" type="button" class="text-xs text-indigo-600 hover:underline" @click.stop="toggleFav({ slug: item.slug, title: item.title, icon: item.icon })">{{ isFav(item.slug) ? 'Unpin' : 'Pin' }}</button>
                 </span>
               </button>
             </li>
@@ -78,7 +78,7 @@
         </div>
       </template>
     </div>
-    <div class="p-3 border-t text-[10px] text-gray-400">
+    <div class="p-3 border-t text-xs text-gray-500">
       <div class="flex items-center justify-between">
         <span>v0.1 • Modules preview</span>
         <a

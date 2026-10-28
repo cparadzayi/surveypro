@@ -187,7 +187,7 @@
                 class="flex items-center justify-between w-full text-left text-sm font-medium text-gray-700 hover:text-gray-900"
               >
                 <span>⚙️ Advanced Configuration</span>
-                <span class="text-gray-400">{{ showAdvanced ? '▼' : '▶' }}</span>
+                <span class="text-gray-500">{{ showAdvanced ? '▼' : '▶' }}</span>
               </button>
 
               <div v-if="showAdvanced" class="mt-4 space-y-4">

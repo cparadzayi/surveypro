@@ -22,7 +22,7 @@
       </select>
       <input v-if="srChoice==='custom'" v-model.number="srCustom" type="number" class="border rounded px-1 py-0.5 w-24" placeholder="SRID" />
       <button class="px-2 py-0.5 bg-emerald-600 text-white rounded disabled:opacity-50" :disabled="!canApplySrid" @click="applySrid">Apply</button>
-      <span v-if="srStatus" class="text-[11px] ml-1" :class="srStatusOk ? 'text-emerald-600' : 'text-red-600'">{{ srStatus }}</span>
+      <span v-if="srStatus" class="text-xs ml-1" :class="srStatusOk ? 'text-emerald-600' : 'text-red-600'">{{ srStatus }}</span>
     </div>
   </div>
 </template>

@@ -14,7 +14,7 @@
 
         <!-- Comparison check selector: three independent SI 727 comparison methods -->
         <div class="px-4 py-3 border-b border-gray-100">
-          <label class="block text-[11px] text-gray-500 mb-1.5">Comparison check — select one</label>
+          <label class="block text-xs text-gray-500 mb-1.5">Comparison check — select one</label>
           <div class="flex flex-wrap gap-2">
             <button
               v-for="m in CHECK_METHODS"
@@ -29,13 +29,13 @@
               ]"
             >{{ m.label }}</button>
           </div>
-          <p class="text-[10px] text-gray-400 mt-1.5">{{ checkMethodHint }}</p>
+          <p class="text-xs text-gray-500 mt-1.5">{{ checkMethodHint }}</p>
         </div>
 
         <div class="flex flex-wrap gap-4 items-end px-4 py-3">
 
           <div>
-            <label class="block text-[11px] text-gray-500 mb-1">SI 727 class</label>
+            <label class="block text-xs text-gray-500 mb-1">SI 727 class</label>
             <select
               :value="surveyClass"
               @change="store.setSurveyClass($event.target.value)"
@@ -45,14 +45,14 @@
               <option value="B">Class B</option>
               <option value="C">Class C</option>
             </select>
-            <p class="text-[10px] text-gray-400 mt-0.5">
+            <p class="text-xs text-gray-500 mt-0.5">
               <template v-if="checkMethod === 'coords'">→ co-ordinate limit ±{{ posLimit.toFixed(4) }} m (95% 2-D)</template>
               <template v-else-if="checkMethod === 'edges'">→ Second Schedule paras 7(1) &amp; 8</template>
             </p>
           </div>
 
           <div v-if="checkMethod === 'wtest'">
-            <label class="block text-[11px] text-gray-500 mb-1">A priori σ₀ (metres)</label>
+            <label class="block text-xs text-gray-500 mb-1">A priori σ₀ (metres)</label>
             <input
               type="number" step="0.001" min="0.001"
               :value="sigma0"
@@ -60,11 +60,11 @@
               class="w-28 px-2 py-1.5 border border-gray-300 rounded text-sm
                      focus:outline-none focus:ring-1 focus:ring-[#1a3a5c]"
             />
-            <p class="text-[10px] text-gray-400 mt-0.5">{{ sigma0Note }}</p>
+            <p class="text-xs text-gray-500 mt-0.5">{{ sigma0Note }}</p>
           </div>
 
           <div v-if="checkMethod === 'wtest'">
-            <label class="block text-[11px] text-gray-500 mb-1">Confidence level</label>
+            <label class="block text-xs text-gray-500 mb-1">Confidence level</label>
             <select
               :value="critW"
               @change="critW = parseFloat($event.target.value)"
@@ -135,14 +135,14 @@
 
         <!-- CSV format hint + import status -->
         <div class="px-4 pb-3 -mt-1 space-y-1">
-          <p class="text-[10px] text-gray-400">
+          <p class="text-xs text-gray-500">
             CSV columns:
             <code class="bg-gray-100 px-1 rounded">Beacon, Hist_Y, Hist_X, Survey_Y, Survey_X</code>
             — Cape Lo <b>Y = Westing</b>, <b>X = Southing</b>. Download the template for a worked example, then replace the rows with your data.
           </p>
           <p
             v-if="importMsg"
-            class="text-[11px]"
+            class="text-xs"
             :class="importMsg.ok ? 'text-green-600' : 'text-red-600'"
           >
             {{ importMsg.ok ? '✓' : '⚠' }} {{ importMsg.text }}
@@ -151,7 +151,7 @@
 
         <!-- Examination details (for the SG report header) -->
         <div class="px-4 pb-3 border-t border-gray-100 pt-3">
-          <div class="text-[11px] font-medium text-[#1a3a5c] mb-2">Examination details (for PDF report)</div>
+          <div class="text-xs font-medium text-[#1a3a5c] mb-2">Examination details (for PDF report)</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             <input v-model="surveyorName" placeholder="Surveyor name"
                    class="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1a3a5c]" />
@@ -169,7 +169,7 @@
       <div class="bg-white rounded-lg border border-gray-200">
         <div class="px-4 py-2.5 border-b border-gray-200 flex justify-between items-center">
           <span class="text-xs font-medium text-[#1a3a5c]">Input data</span>
-          <span class="text-[10px] text-gray-400">Minimum 3 beacons required</span>
+          <span class="text-xs text-gray-500">Minimum 3 beacons required</span>
         </div>
         <div class="overflow-x-auto">
           <table class="min-w-full text-xs">
@@ -256,7 +256,7 @@
           </table>
         </div>
         <!-- Colour legend per Section 67(5) -->
-        <div class="flex flex-wrap gap-4 px-4 py-2 text-[10px] text-gray-500 border-t border-gray-100">
+        <div class="flex flex-wrap gap-4 px-4 py-2 text-xs text-gray-500 border-t border-gray-100">
           <span><b class="text-gray-900">■ BLACK</b> — original (historical) data</span>
           <span><b class="text-red-600">■ RED</b> — survey data</span>
           <span><b class="text-blue-700">■ BLUE</b> — computed / other data (not green)</span>
@@ -399,7 +399,7 @@
                     >{{ p.finalStatus || '—' }}</span>
                     <span
                       v-if="p.finalStatus === 'REJECT' && p.rejIter !== null"
-                      class="text-[9px] text-gray-400 ml-1"
+                      class="text-xs text-gray-500 ml-1"
                     >{{ p.rejSource === 'danish' ? 'pre-filter' : 'iter ' + p.rejIter }}</span>
                   </td>
                 </tr>
@@ -407,7 +407,7 @@
             </table>
           </div>
 
-          <div class="flex flex-wrap gap-4 mt-3 text-[10px] text-gray-500">
+          <div class="flex flex-wrap gap-4 mt-3 text-xs text-gray-500">
             <span><b class="text-gray-900">BLACK</b>: Original (historical) data</span>
             <span><b class="text-red-600">RED</b>: Survey data</span>
             <span><b class="text-blue-700">BLUE</b>: Computed data (not green — Sec. 67(5))</span>
@@ -434,9 +434,9 @@
               :key="param.label"
               class="bg-gray-50 rounded-lg p-3 border-l-2 border-[#1a3a5c]"
             >
-              <div class="text-[10px] text-gray-500 mb-1">{{ param.label }}</div>
+              <div class="text-xs text-gray-500 mb-1">{{ param.label }}</div>
               <div class="text-sm font-medium text-blue-800 break-all">{{ param.value }}</div>
-              <div class="text-[10px] text-gray-400 mt-1">{{ param.note }}</div>
+              <div class="text-xs text-gray-500 mt-1">{{ param.note }}</div>
             </div>
           </div>
           <div class="mt-4 bg-blue-50 rounded-lg p-3 text-xs text-blue-800 leading-relaxed">
@@ -445,7 +445,7 @@
             &nbsp;|&nbsp;
             X<sub>survey</sub> = T<sub>X</sub> + b·Y<sub>hist</sub> + a·X<sub>hist</sub>
             <br><span class="mt-1 block">{{ transformInterpretation }}</span>
-            <span class="mt-1 block text-[11px] text-blue-600">
+            <span class="mt-1 block text-xs text-blue-600">
               Translation is reported at the network centroid (Y<sub>c</sub> = {{ result?.adj?.params ? f3(result.adj.params.yc) : '—' }}, X<sub>c</sub> = {{ result?.adj?.params ? f3(result.adj.params.xc) : '—' }}).
             </span>
           </div>
@@ -464,7 +464,7 @@
                   :key="s.label"
                   class="bg-gray-50 rounded-lg p-2.5"
                 >
-                  <div class="text-[10px] text-gray-500">{{ s.label }}</div>
+                  <div class="text-xs text-gray-500">{{ s.label }}</div>
                   <div class="text-sm font-medium text-blue-800 mt-1">{{ s.value }}</div>
                 </div>
               </div>
@@ -516,7 +516,7 @@
                     <td class="px-2 py-1.5 text-right">{{ entry.n }}</td>
                     <td class="px-2 py-1.5 text-right">{{ entry.s0.toFixed(5) }}</td>
                     <td class="px-2 py-1.5 text-right">{{ entry.chi2.toFixed(4) }}</td>
-                    <td class="px-2 py-1.5 text-right text-gray-400">
+                    <td class="px-2 py-1.5 text-right text-gray-500">
                       [{{ entry.chi2L.toFixed(2) }}, {{ entry.chi2U.toFixed(2) }}]
                     </td>
                   </tr>
@@ -612,7 +612,7 @@
           <p v-if="rejectedNames.length" class="mt-2 text-xs text-red-600 font-medium">
             Rejected: {{ rejectedNames.join(', ') }}
           </p>
-          <p class="mt-1 text-[10px] text-gray-400">
+          <p class="mt-1 text-xs text-gray-500">
             Arrow lengths are scaled for visualisation only — they do not represent true distances.
           </p>
         </div>
@@ -632,7 +632,7 @@
               {{ result.edges.summary.networkSwingSec != null ? (result.edges.summary.networkSwingSec >= 0 ? '+' : '') + result.edges.summary.networkSwingSec.toFixed(1) + '″' : '—' }}
               (weighted to the longest rays)
             </div>
-            <div v-if="result.edges.summary.networkSwingWarn" class="mb-2 text-[11px] text-amber-700">
+            <div v-if="result.edges.summary.networkSwingWarn" class="mb-2 text-xs text-amber-700">
               ⚠ Network swung by ω̂ relative to the historical datum — orientation offset beyond the
               class positional budget at the median ray ({{ result.edges.summary.networkSwingSec.toFixed(1) }}″ vs
               allow {{ (result.edges.summary.posLimit * 206265 / result.edges.summary.lmed).toFixed(1) }}″). Not a per-beacon finding.
@@ -677,7 +677,7 @@
                 </tbody>
               </table>
             </div>
-            <p class="text-[10px] text-gray-400 mt-2">
+            <p class="text-xs text-gray-500 mt-2">
               Distance tolerance = factor·√(0.075f + 0.00015f²), f = shorter line (Second Schedule para 7(5) Limits of Error).
               Directions are judged on the swing principle: Δdir = raw (Survey − Hist) swing in seconds; the check removes the
               network swing ω̂ (length-weighted median — the longest rays set it) and compares each line's residual Δdir − ω̂ to the
@@ -725,7 +725,7 @@
               </tbody>
             </table>
           </div>
-          <p class="text-[10px] text-gray-400 mt-2">
+          <p class="text-xs text-gray-500 mt-2">
             LOO = leave-one-out cross-validation: each beacon predicted from a fit that excludes it — an independent,
             out-of-sample accuracy check (no held-out points needed).
           </p>

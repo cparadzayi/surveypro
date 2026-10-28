@@ -22,7 +22,7 @@
           </div>
           <button
             @click="$emit('close')"
-            class="text-gray-400 hover:text-gray-600 transition-colors"
+            class="text-gray-500 hover:text-gray-600 transition-colors"
             title="Close (Esc)"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -80,7 +80,7 @@
             </div>
             
             <!-- Click hint -->
-            <div class="flex-shrink-0 ml-2 text-gray-400">
+            <div class="flex-shrink-0 ml-2 text-gray-500">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
               </svg>

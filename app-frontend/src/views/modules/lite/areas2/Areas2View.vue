@@ -133,11 +133,11 @@
               </td>
               <td class="p-2">
                 <input v-model="p.yText" @blur="normalize(i,'y')" :class="['border rounded px-2 py-1 w-40', isValidY(i) ? 'border-gray-300' : 'border-red-500']" placeholder="e.g. 123,45" @focus="focusedRow=i" />
-                <div v-if="!isValidY(i)" class="text-[10px] text-red-600 mt-0.5">Enter a number or D:M:S (min/sec &lt; 60)</div>
+                <div v-if="!isValidY(i)" class="text-xs text-red-600 mt-0.5">Enter a number or D:M:S (min/sec &lt; 60)</div>
               </td>
               <td class="p-2">
                 <input v-model="p.xText" @blur="normalize(i,'x')" :class="['border rounded px-2 py-1 w-40', isValidX(i) ? 'border-gray-300' : 'border-red-500']" placeholder="e.g. 678:12:30 or 678,12" @focus="focusedRow=i" />
-                <div v-if="!isValidX(i)" class="text-[10px] text-red-600 mt-0.5">Enter a number or D:M:S (min/sec &lt; 60)</div>
+                <div v-if="!isValidX(i)" class="text-xs text-red-600 mt-0.5">Enter a number or D:M:S (min/sec &lt; 60)</div>
               </td>
               <td class="p-2"><button class="text-red-600" @click="removePoint(i)">Remove</button></td>
             </tr>

@@ -63,8 +63,8 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 ### 4. Dashboard
 
 - [x] Project cards were `div`s with click handlers, unreachable by keyboard. **Fixed 27 Oct 2026:** `role="button"`, `tabindex="0"`, Enter/Space, focus ring, accessible name.
-- [ ] Show progress and last activity on a card (current step, plans generated, last edited).
-- [ ] A way to create a project when projects already exist; search, sort, archive.
+- [~] Show progress and last activity on a card. **Last activity done 28 Oct 2026:** the card says "Last opened <date>" (opening a project now records it through `POST /survey-projects/:id/touch`, which nothing called before). Current step and plans generated are not shown.
+- [~] A way to create a project when projects already exist; search, sort, archive. **Search and sort done 28 Oct 2026** (shown once there are more than 3 projects; `utils/projectList.ts`). Creating another project and archiving from the dashboard are still open.
 - [ ] "Quick Access" shows only the first four modules (`modules.slice(0, 4)`).
 - [x] "Forgot password?" was a dead `href="#"` link. There is no reset flow in the backend or frontend. **Fixed 27 Oct 2026:** it now says reset by email is not available yet and to ask the administrator. A real reset flow is still open.
 
@@ -145,3 +145,7 @@ Done 27 October 2026 in `app-frontend/src`: the five items marked `[x]` above.
 - **Unsaved-work guard:** also on the servitude editor (marked by typing, cleared on save or cancel), so changing step or leaving the page asks first.
 - **Project name:** the global ribbon names the selected project on every screen, not only in the cadastral workflow (checked live in the Lite module).
 - **Technician dashboard:** a project that needs the cadastral workflow opens in Lite with a notice when the account type cannot use that workflow; the "Start Cadastral Workflow" button is replaced by an explanation. The empty state was not seen live (the stubbed session never finished loading projects).
+
+## Ninth round, 28 October 2026
+
+- **Dashboard:** with more than three projects, a search box (name, client, district, type; every word must match) and a sort menu (recently opened, name with numbers in numeric order, newest first). Cards show "Last opened", and opening a project now records that. Checked live with four stubbed projects.

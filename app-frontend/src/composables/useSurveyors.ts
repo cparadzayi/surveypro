@@ -52,6 +52,8 @@ export interface SurveyProject {
     point_order: number
   }>
   status: string
+  /** When the project was last opened (set by POST /survey-projects/:id/touch); null if never. */
+  last_used?: string | null
   created_at: string
   updated_at: string
 }

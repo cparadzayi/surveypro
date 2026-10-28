@@ -30,9 +30,30 @@
       </div>
 
       <!-- Projects Grid -->
-      <div v-else-if="projects.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <template v-else-if="projects.length > 0">
+      <!-- Find and order projects once there are enough to need it -->
+      <div v-if="projects.length > 3" class="flex flex-col sm:flex-row gap-3" role="search">
+        <div class="flex-1">
+          <label for="project-search" class="sr-only">Search projects</label>
+          <input
+            id="project-search"
+            v-model="projectQuery"
+            type="search"
+            placeholder="Search by name, client, district or type…"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          />
+        </div>
+        <div>
+          <label for="project-sort" class="sr-only">Sort projects</label>
+          <select id="project-sort" v-model="projectSort" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option v-for="(label, key) in PROJECT_SORT_LABELS" :key="key" :value="key">{{ label }}</option>
+          </select>
+        </div>
+      </div>
+      <p v-if="visibleProjects.length === 0" class="text-sm text-gray-600" role="status">No project matches “{{ projectQuery }}”.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div
-          v-for="project in projects"
+          v-for="project in visibleProjects"
           :key="project.id"
           role="button"
           tabindex="0"
@@ -67,7 +88,8 @@
 
           <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
             <span class="text-xs text-gray-500">
-              Created {{ formatDateDDMMYYYY(new Date(project.created_at)) }}
+              <template v-if="project.last_used">Last opened {{ formatDateDDMMYYYY(new Date(project.last_used)) }}</template>
+              <template v-else>Created {{ formatDateDDMMYYYY(new Date(project.created_at)) }}</template>
             </span>
             <span class="text-indigo-600 group-hover:text-indigo-700 text-sm font-medium">
               Open →
@@ -75,6 +97,7 @@
           </div>
         </div>
       </div>
+      </template>
 
       <!-- Empty State -->
       <div v-else-if="canUseCadastral" class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
@@ -119,6 +142,8 @@ import { useProjectSelectionStore } from '../stores/projectSelection'
 import { useSurveyors } from '../composables/useSurveyors'
 import { formatDateDDMMYYYY } from '../utils/dateFormat'
 import { notifyInfo } from '../composables/useNotifications'
+import api from '../services/api'
+import { filterAndSortProjects, PROJECT_SORT_LABELS, type ProjectSort } from '../utils/projectList'
 // @ts-ignore - SFC default export provided via shim
 import ModuleCard from '../components/ModuleCard.vue'
 
@@ -129,6 +154,9 @@ const projectSelectionStore = useProjectSelectionStore()
 const { surveyProjects: projects, loading: loadingProjects, fetchSurveyProjects } = useSurveyors()
 
 const modules = computed(() => modulesStore.accessibleModules)
+const projectQuery = ref('')
+const projectSort = ref<ProjectSort>('recent')
+const visibleProjects = computed(() => filterAndSortProjects([...projects.value], projectQuery.value, projectSort.value))
 // The cadastral workflow is limited by account type; a technician or student has no way into it.
 const canUseCadastral = computed(() => modules.value.some(m => m.slug === 'cadastral-standard'))
 
@@ -143,6 +171,8 @@ function selectProject(project: any) {
   
   // ✅ NEW: Use Pinia store for centralized state management
   projectSelectionStore.selectProject(project)
+  // Remember that it was opened, so "Recently opened" and "Last opened" mean something. Best effort.
+  void api.post(`/survey-projects/${project.id}/touch`).catch(() => {})
   
   console.log('✅ [Dashboard] Project saved to store and localStorage')
   

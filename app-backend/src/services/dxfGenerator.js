@@ -1713,6 +1713,14 @@ export function generateDXF(options, logger) {
 
   const registry = createCollisionRegistry();
   const deferredCircles = [];
+  // What the beacon loop placed, so the label rules can be MEASURED (dxfLabelMetrics.js, the DXF
+  // label gate) the way the PDF reports labelMetrics. Positions are DXF ground metres (y up).
+  const labelRecords = [];
+  const standKeyOf = (poly) => {
+    for (const [k, p] of parcelByStand) if (p === poly) return k;
+    return null;
+  };
+  const nearFigureVertex = (p) => !!ofPolygon && ofPolygon.some(v => Math.hypot(v.x - p.x, v.y - p.y) < 0.6);
   // 2026-06-06: leader-line emission suppressed by user request. Beacon
   // labels keep their leader-aware placements (POI, tight-outside,
   // edge-anchored) — the placer's geometry isn't affected — but no LINE
@@ -1789,6 +1797,14 @@ export function generateDXF(options, logger) {
 
     registry.add({ x: labelPos.x, y: labelPos.y, width: labelWidth, height: labelHeightG });
     addText('BEACON_LABELS', labelPos.x, labelPos.y, labelText, beaconLabelHeight);
+    labelRecords.push({
+      name, text: labelText,
+      inside: !!(decision.isInsideParcel && decision.polygon),
+      standKey: decision.isInsideParcel && decision.polygon ? standKeyOf(decision.polygon) : null,
+      // TEXT is inserted at its baseline-left point; its ink is capHeight tall and width wide, turned rot.
+      x: labelPos.x, y: labelPos.y, width: labelWidth, capHeight: beaconLabelHeight, rot: 0,
+      beacon: { x: pt.x, y: pt.y }, onFigure: nearFigureVertex(pt),
+    });
 
     // 2026-06-06: leader-line emission removed by user request. The placer
     // still uses leader-aware geometry to position labels (POI-directed,
@@ -2996,6 +3012,14 @@ export function generateDXF(options, logger) {
     warnings,
     scale: `1:${S}`,
     sheetSize: normalizedSheetSize,
+    // The beacon labels as placed, with the stands and figure they were placed against.
+    labelMetrics: {
+      scaleDenominator: S,
+      beaconRadius,
+      labels: labelRecords,
+      parcels: [...parcelByStand].map(([stand, ring]) => ({ stand, ring })),
+      figure: ofPolygon,
+    },
   };
 }
 

@@ -175,7 +175,7 @@
         <div class="py-12">
           <div class="max-w-2xl mx-auto">
             <div class="text-center mb-8">
-              <div class="text-6xl mb-6">📋</div>
+              <div aria-hidden="true" class="text-6xl mb-6">📋</div>
               <h2 class="text-2xl font-bold text-gray-900 mb-4">
                 {{ workflowState.importedPoints.length > 0 ? 'Coordinates Imported' : 'Import Survey Coordinates' }}
               </h2>
@@ -193,7 +193,7 @@
             <!-- ⭐ NEW: Selected Project Info (Read-only) -->
             <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6 mb-6">
               <div class="flex items-start gap-4">
-                <div class="text-4xl">📁</div>
+                <div aria-hidden="true" class="text-4xl">📁</div>
                 <div class="flex-1">
                   <h3 class="text-lg font-semibold text-gray-900 mb-3">Selected Project</h3>
                   <div class="grid grid-cols-2 gap-4">
@@ -251,7 +251,7 @@
             <!-- Central Meridian Info (Read-only from setup) -->
             <div class="bg-green-50 border border-green-300 rounded-lg p-4 mb-6">
               <div class="flex items-start gap-3">
-                <span class="text-2xl">🌐</span>
+                <span aria-hidden="true" class="text-2xl">🌐</span>
                 <div class="flex-1">
                   <h4 class="text-sm font-semibold text-green-900 mb-1">
                     Coordinate System
@@ -851,7 +851,7 @@
             <div class="border border-gray-200 rounded-lg p-4">
               <div class="flex items-center justify-between">
                 <div class="flex items-center">
-                  <div class="text-2xl mr-3">📖</div>
+                  <div aria-hidden="true" class="text-2xl mr-3">📖</div>
                   <div>
                     <h3 class="text-lg font-medium text-gray-900">Electronic Field Book</h3>
                     <p class="text-sm text-gray-600">
@@ -1085,7 +1085,7 @@
             <div class="border border-gray-200 rounded-lg p-4">
               <div class="flex items-center justify-between">
                 <div class="flex items-center">
-                  <div class="text-2xl mr-3">🧮</div>
+                  <div aria-hidden="true" class="text-2xl mr-3">🧮</div>
                   <div>
                     <h3 class="text-lg font-medium text-gray-900">Calculations Part 1</h3>
                     <p class="text-sm text-gray-600">
@@ -1177,7 +1177,7 @@
             <div class="border border-gray-200 rounded-lg p-4">
               <div class="flex items-center justify-between">
                 <div class="flex items-center">
-                  <div class="text-2xl mr-3">📋</div>
+                  <div aria-hidden="true" class="text-2xl mr-3">📋</div>
                   <div>
                     <h3 class="text-lg font-medium text-gray-900">Coordinate List</h3>
                     <p class="text-sm text-gray-600">
@@ -1271,7 +1271,7 @@
       <!-- Other steps (under development) -->
       <div v-show="workflowState.currentStep !== 'csv-import' && workflowState.currentStep !== 'site-calibration' && workflowState.currentStep !== 'field-book' && workflowState.currentStep !== 'calculations-part1' && workflowState.currentStep !== 'coordinate-list' && workflowState.currentStep !== 'qgis-export' && workflowState.currentStep !== 'area-computation' && workflowState.currentStep !== 'servitudes' && workflowState.currentStep !== 'survey-plan' && workflowState.currentStep !== 'report-on-survey' && workflowState.currentStep !== 'dsg-certificate'" class="bg-white shadow rounded-lg p-6">
         <div class="text-center py-12">
-          <div class="text-4xl mb-4">🚧</div>
+          <div aria-hidden="true" class="text-4xl mb-4">🚧</div>
           <h2 class="text-xl font-semibold text-gray-900 mb-2">
             {{ getStepDisplayName(workflowState.currentStep) }}
           </h2>

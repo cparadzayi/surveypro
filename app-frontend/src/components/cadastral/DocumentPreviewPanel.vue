@@ -8,7 +8,7 @@
     <!-- Header -->
     <div class="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-200">
       <div class="flex items-center gap-3 min-w-0">
-        <span class="text-2xl">📄</span>
+        <span aria-hidden="true" class="text-2xl">📄</span>
         <div class="min-w-0">
           <h2 class="text-lg font-semibold text-gray-900 truncate">{{ title }}</h2>
           <p v-if="subtitle" class="text-sm text-gray-600 truncate">{{ subtitle }}</p>

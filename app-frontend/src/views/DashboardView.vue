@@ -73,15 +73,15 @@
           
           <div class="space-y-1.5 text-sm">
             <div v-if="project.district" class="flex items-center gap-2 text-gray-600">
-              <span>📍</span>
+              <span aria-hidden="true">📍</span>
               <span>{{ project.district }}</span>
             </div>
             <div v-if="project.survey_type" class="flex items-center gap-2 text-gray-600">
-              <span>🔧</span>
+              <span aria-hidden="true">🔧</span>
               <span>{{ project.survey_type }}</span>
             </div>
             <div v-if="project.survey_date" class="flex items-center gap-2 text-gray-600">
-              <span>📅</span>
+              <span aria-hidden="true">📅</span>
               <span>{{ formatDateDDMMYYYY(new Date(project.survey_date)) }}</span>
             </div>
           </div>
@@ -118,19 +118,19 @@
 
       <!-- Empty State -->
       <div v-else-if="canUseCadastral" class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-        <div class="text-5xl mb-4">📁</div>
+        <div aria-hidden="true" class="text-5xl mb-4">📁</div>
         <h3 class="text-lg font-semibold text-gray-900 mb-2">No Projects Yet</h3>
         <p class="text-gray-600 mb-4">Start the Cadastral Standard workflow to create your first project</p>
         <router-link
           to="/modules/cadastral-standard/workflow"
           class="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors inline-flex items-center gap-2 font-medium shadow-sm"
         >
-          <span class="text-xl">🚀</span>
+          <span aria-hidden="true" class="text-xl">🚀</span>
           Start Cadastral Workflow
         </router-link>
       </div>
       <div v-else class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-        <div class="text-5xl mb-4">📁</div>
+        <div aria-hidden="true" class="text-5xl mb-4">📁</div>
         <h3 class="text-lg font-semibold text-gray-900 mb-2">No Projects Yet</h3>
         <p class="text-gray-600">Projects are created in the Cadastral workflow, which your account type cannot open. Use the modules below, or ask a registered surveyor to set a project up for you.</p>
       </div>

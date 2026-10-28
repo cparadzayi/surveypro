@@ -93,7 +93,7 @@
           >
             <span class="font-medium">{{ sideLabel(s) }}</span>
             <span v-if="sideBeaconPair(s)" class="ml-1 text-xs text-gray-500">{{ s.side }}</span>
-            <span v-if="servitudeSideSet.has(s.side)" class="ml-1 text-xs">●</span>
+            <span aria-hidden="true" v-if="servitudeSideSet.has(s.side)" class="ml-1 text-xs">●</span>
           </button>
         </div>
 

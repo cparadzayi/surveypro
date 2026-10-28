@@ -31,8 +31,8 @@
             :disabled="isRunning"
             class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold flex items-center gap-2"
           >
-            <span v-if="isRunning">⏳</span>
-            <span v-else>🚀</span>
+            <span aria-hidden="true" v-if="isRunning">⏳</span>
+            <span aria-hidden="true" v-else>🚀</span>
             {{ isRunning ? 'Running Test...' : 'Run Automated Test' }}
           </button>
         </div>

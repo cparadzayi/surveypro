@@ -32,7 +32,7 @@
 
     <!-- Empty State -->
     <div v-else-if="surveyors.length === 0" class="text-center py-12 bg-gray-50 rounded-lg">
-      <div class="text-6xl mb-4">👤</div>
+      <div aria-hidden="true" class="text-6xl mb-4">👤</div>
       <h3 class="text-lg font-semibold text-gray-900 mb-2">No Surveyors Yet</h3>
       <p class="text-gray-600 mb-6">
         {{ isAdmin ? 'Add your first surveyor to get started' : 'No surveyor profile is linked to your account yet' }}

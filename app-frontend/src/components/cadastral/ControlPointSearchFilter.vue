@@ -135,7 +135,7 @@
       <div class="max-h-96 overflow-y-auto">
         <!-- Empty State -->
         <div v-if="filteredPoints.length === 0 && !isLoading" class="p-8 text-center">
-          <div class="text-4xl mb-2">🔍</div>
+          <div aria-hidden="true" class="text-4xl mb-2">🔍</div>
           <p class="text-gray-600 mb-1">No control points found</p>
           <p class="text-sm text-gray-500">Try adjusting your search or filters</p>
         </div>

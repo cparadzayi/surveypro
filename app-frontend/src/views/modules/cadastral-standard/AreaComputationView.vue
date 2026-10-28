@@ -77,7 +77,7 @@
             <p class="text-gray-600 text-sm font-medium">Survey Points</p>
             <p class="text-3xl font-bold text-blue-600">{{ coordinatePoints.length }}</p>
           </div>
-          <div class="text-blue-500 text-4xl">📍</div>
+          <div aria-hidden="true" class="text-blue-500 text-4xl">📍</div>
         </div>
       </div>
       
@@ -87,7 +87,7 @@
             <p class="text-gray-600 text-sm font-medium">Defined Parcels</p>
             <p class="text-3xl font-bold text-green-600">{{ totalParcels }}</p>
           </div>
-          <div class="text-green-500 text-4xl">🏠</div>
+          <div aria-hidden="true" class="text-green-500 text-4xl">🏠</div>
         </div>
       </div>
       
@@ -97,7 +97,7 @@
             <p class="text-gray-600 text-sm font-medium">Total Area</p>
             <p class="text-xl font-bold text-purple-600">{{ formatTotalArea }}</p>
           </div>
-          <div class="text-purple-500 text-4xl">📏</div>
+          <div aria-hidden="true" class="text-purple-500 text-4xl">📏</div>
         </div>
       </div>
       
@@ -107,7 +107,7 @@
             <p class="text-gray-600 text-sm font-medium">Projection</p>
             <p class="text-xl font-bold text-orange-600">Lo {{ centralMeridian }}°</p>
           </div>
-          <div class="text-orange-500 text-4xl">🌍</div>
+          <div aria-hidden="true" class="text-orange-500 text-4xl">🌍</div>
         </div>
       </div>
     </div>
@@ -319,7 +319,7 @@
 
     <!-- Empty State -->
     <div v-else class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-      <div class="text-gray-400 text-6xl mb-4">📐</div>
+      <div aria-hidden="true" class="text-gray-400 text-6xl mb-4">📐</div>
       <h3 class="text-xl font-semibold text-gray-700 mb-2">No Parcels Defined Yet</h3>
       <p class="text-gray-600 mb-6">Start by drawing polygons on the map or using the Quick Parcel Builder.</p>
       <button

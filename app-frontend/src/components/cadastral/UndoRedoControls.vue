@@ -8,7 +8,7 @@
         class="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
         title="Undo last action (Ctrl+Z)"
       >
-        <span class="text-lg">↶</span>
+        <span aria-hidden="true" class="text-lg">↶</span>
         <span>Undo</span>
       </button>
       
@@ -18,12 +18,12 @@
         class="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
         title="Redo undone action (Ctrl+Y)"
       >
-        <span class="text-lg">↷</span>
+        <span aria-hidden="true" class="text-lg">↷</span>
         <span>Redo</span>
       </button>
       
       <div v-if="historySize > 0" class="text-sm text-gray-500 ml-2 flex items-center gap-1">
-        <span>📝</span>
+        <span aria-hidden="true">📝</span>
         <span>{{ historySize }} {{ historySize === 1 ? 'action' : 'actions' }}</span>
       </div>
 

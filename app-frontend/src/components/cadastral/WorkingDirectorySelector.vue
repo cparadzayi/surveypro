@@ -15,7 +15,7 @@
           title="Use recommended default path"
         >
           <div class="flex items-center justify-center gap-2">
-            <span class="text-lg">✨</span>
+            <span aria-hidden="true" class="text-lg">✨</span>
             <span>Use Recommended Path</span>
           </div>
         </button>
@@ -27,7 +27,7 @@
           :class="{ 'bg-gray-100 border-gray-300': showCustomPath }"
         >
           <div class="flex items-center justify-center gap-2">
-            <span class="text-lg">✏️</span>
+            <span aria-hidden="true" class="text-lg">✏️</span>
             <span>{{ showCustomPath ? 'Hide' : 'Custom Path' }}</span>
           </div>
         </button>
@@ -51,7 +51,7 @@
         </div>
         
         <div class="text-xs text-gray-500 flex items-start gap-1">
-          <span>💡</span>
+          <span aria-hidden="true">💡</span>
           <span>Tip: Use forward slashes (/) or backslashes (\\) for paths. Relative paths start from your user folder.</span>
         </div>
       </div>
@@ -83,7 +83,7 @@
         type="button"
         class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
       >
-        <span class="transform transition-transform" :class="{ 'rotate-90': showDetails }">▶</span>
+        <span aria-hidden="true" class="transform transition-transform" :class="{ 'rotate-90': showDetails }">▶</span>
         <span>{{ showDetails ? 'Hide' : 'Show' }} folder structure & guidelines</span>
       </button>
       
@@ -91,7 +91,7 @@
         <!-- Directory Structure Preview -->
         <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
           <div class="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-            <span>📋</span>
+            <span aria-hidden="true">📋</span>
             <span>Folder Structure</span>
           </div>
           <pre class="text-xs text-gray-600 font-mono whitespace-pre overflow-x-auto">{{ structurePreview }}</pre>
@@ -101,7 +101,7 @@
         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div class="text-sm text-blue-800">
             <div class="font-semibold mb-2 flex items-center gap-2">
-              <span>💡</span>
+              <span aria-hidden="true">💡</span>
               <span>How to use this directory</span>
             </div>
             <ul class="space-y-2 text-xs">

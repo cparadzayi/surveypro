@@ -48,7 +48,7 @@
           :title="familyAllowed('diagram') ? '' : blockedReason"
           @click="selectPlanType('diagram')"
         >
-          <div class="plan-type-icon">📐</div>
+          <div aria-hidden="true" class="plan-type-icon">📐</div>
           <h3 class="plan-type-title">Survey Diagram</h3>
           <p class="plan-type-description">
             Detailed technical diagram showing survey measurements, beacons, and traverse lines.
@@ -63,7 +63,7 @@
 
         <!-- Working Plan -->
         <div class="plan-type-card" @click="selectPlanType('working-plan')">
-          <div class="plan-type-icon">🗺️</div>
+          <div aria-hidden="true" class="plan-type-icon">🗺️</div>
           <h3 class="plan-type-title">Working Plan</h3>
           <p class="plan-type-description">
             Preliminary plan for field work and office calculations.
@@ -82,7 +82,7 @@
           :title="familyAllowed('general') ? '' : blockedReason"
           @click="selectPlanType('township-general-plan')"
         >
-          <div class="plan-type-icon">🏘️</div>
+          <div aria-hidden="true" class="plan-type-icon">🏘️</div>
           <h3 class="plan-type-title">Township General Plan</h3>
           <p class="plan-type-description">
             SI 727 compliant general plan for township portions — developed or undeveloped.

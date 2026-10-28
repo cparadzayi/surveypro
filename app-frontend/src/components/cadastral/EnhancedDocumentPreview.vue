@@ -80,7 +80,7 @@
             />
             <div v-else class="flex items-center justify-center p-12">
               <div class="text-center">
-                <div class="text-6xl mb-4">📄</div>
+                <div aria-hidden="true" class="text-6xl mb-4">📄</div>
                 <p class="text-gray-600">Loading document...</p>
               </div>
             </div>
@@ -131,7 +131,7 @@
               @click="print"
               class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors flex items-center gap-2"
             >
-              <span>🖨️</span>
+              <span aria-hidden="true">🖨️</span>
               <span>Print</span>
             </button>
             
@@ -139,7 +139,7 @@
               @click="download"
               class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
-              <span>📥</span>
+              <span aria-hidden="true">📥</span>
               <span>Download</span>
             </button>
             
@@ -149,8 +149,8 @@
               :disabled="isSaving"
               class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
             >
-              <span v-if="isSaving">⏳</span>
-              <span v-else>💾</span>
+              <span aria-hidden="true" v-if="isSaving">⏳</span>
+              <span aria-hidden="true" v-else>💾</span>
               <span>{{ isSaving ? 'Saving...' : 'Save to Project' }}</span>
             </button>
           </div>

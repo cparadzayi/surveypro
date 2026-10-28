@@ -16,7 +16,7 @@
       <div class="sticky top-0 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-2 border-b border-gray-200">
         <div class="flex items-center justify-between">
           <div class="flex items-center">
-            <span class="text-lg">💡</span>
+            <span aria-hidden="true" class="text-lg">💡</span>
             <span class="ml-2 text-sm font-medium text-gray-900">Smart Suggestions</span>
             <span class="ml-2 text-xs text-gray-500">({{ suggestions.length }})</span>
           </div>

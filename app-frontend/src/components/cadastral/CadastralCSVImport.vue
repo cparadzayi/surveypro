@@ -36,7 +36,7 @@
         @drop="handleDrop"
       >
         <div v-if="!file" class="text-center">
-          <div class="mx-auto h-12 w-12 text-gray-400 flex items-center justify-center text-2xl">☁️</div>
+          <div aria-hidden="true" class="mx-auto h-12 w-12 text-gray-400 flex items-center justify-center text-2xl">☁️</div>
           <div class="mt-4 space-y-3">
             <!-- Primary Upload Button -->
             <div>
@@ -75,7 +75,7 @@
 
         <div v-else class="flex items-center justify-between">
           <div class="flex items-center">
-            <div class="h-8 w-8 text-blue-500 mr-3 flex items-center justify-center text-xl">📄</div>
+            <div aria-hidden="true" class="h-8 w-8 text-blue-500 mr-3 flex items-center justify-center text-xl">📄</div>
             <div>
               <p class="text-sm font-medium text-gray-900">{{ file.name }}</p>
               <p class="text-xs text-gray-500">{{ formatFileSize(file.size) }}</p>

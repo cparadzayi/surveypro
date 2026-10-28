@@ -110,7 +110,7 @@
            surveyor who lands here sees what to do next instead of a modal. -->
       <div v-else-if="mapError" class="absolute inset-0 bg-gray-50 flex items-center justify-center z-40 p-8">
         <div class="max-w-md text-center">
-          <div class="text-4xl mb-3">🗺️</div>
+          <div aria-hidden="true" class="text-4xl mb-3">🗺️</div>
           <h3 class="text-lg font-semibold text-gray-900 mb-2">No survey points to display</h3>
           <p class="text-sm text-gray-600 mb-4">{{ mapError }}</p>
           <p class="text-xs text-gray-500">
@@ -161,7 +161,7 @@
       >
         <div class="bg-gradient-to-r from-red-600 to-red-700 text-white px-3 py-1.5 rounded-t-lg flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="text-sm">🔺</span>
+            <span aria-hidden="true" class="text-sm">🔺</span>
             <h3 class="font-semibold text-xs">Control Points & Trig Beacons</h3>
           </div>
           <button 
@@ -448,7 +448,7 @@
 
           <!-- Nothing digitized yet -->
           <div v-else class="text-center py-8 px-3">
-            <div class="text-3xl mb-2">🗺️</div>
+            <div aria-hidden="true" class="text-3xl mb-2">🗺️</div>
             <p class="text-sm font-medium text-gray-700">No parcels yet</p>
             <p class="text-xs text-gray-500 mt-1">
               Press <strong>✏️ Draw Parcel</strong> in the ribbon, then click the pegs on the map to trace the boundary.
@@ -460,7 +460,7 @@
         <!-- ── Vertices tab (only meaningful while editing) ────────── -->
         <div v-else-if="dockTab === 'vertices'" class="p-3">
           <div v-if="!isEditingVertices" class="text-center py-8 px-3">
-            <div class="text-3xl mb-2">🔺</div>
+            <div aria-hidden="true" class="text-3xl mb-2">🔺</div>
             <p class="text-sm font-medium text-gray-700">No parcel being edited</p>
             <p class="text-xs text-gray-500 mt-1">
               Press 🔺 on a parcel in the Parcels tab to edit its vertices.
@@ -522,7 +522,7 @@
                 class="flex-1 px-3 py-2 bg-green-600 text-white rounded-md text-xs font-medium transition-colors hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Save vertex changes"
               >
-                <span v-if="isComputing" class="inline-block animate-spin mr-1">⏳</span>
+                <span aria-hidden="true" v-if="isComputing" class="inline-block animate-spin mr-1">⏳</span>
                 💾 Save ({{ selectedPoints.length }} pts)
               </button>
               <button

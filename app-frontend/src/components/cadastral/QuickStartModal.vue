@@ -11,7 +11,7 @@
         <!-- Header -->
         <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
           <h3 class="text-xl font-bold text-white flex items-center gap-2">
-            <span>🚀</span>
+            <span aria-hidden="true">🚀</span>
             <span>Quick Start - Cadastral Project</span>
           </h3>
           <p class="text-blue-100 text-sm mt-1">Select an existing project or create a new one</p>
@@ -56,7 +56,7 @@
             </div>
 
             <div v-else-if="recentProjects.length === 0" class="text-center py-8">
-              <div class="text-6xl mb-4">📂</div>
+              <div aria-hidden="true" class="text-6xl mb-4">📂</div>
               <h4 class="text-lg font-semibold text-gray-900 mb-2">No Projects Yet</h4>
               <p class="text-gray-600 mb-4">Create your first cadastral project to get started</p>
               <button
@@ -252,7 +252,7 @@
             }"
             class="px-6 py-2 rounded-md text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors flex items-center gap-2"
           >
-            <span v-if="isCreating" class="animate-spin">⏳</span>
+            <span aria-hidden="true" v-if="isCreating" class="animate-spin">⏳</span>
             <span>{{ isCreating ? 'Creating...' : 'Create & Continue →' }}</span>
           </button>
         </div>

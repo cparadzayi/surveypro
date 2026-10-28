@@ -29,7 +29,7 @@
           class="mt-2 p-3 rounded-md bg-white bg-opacity-50 border border-current border-opacity-20"
         >
           <div class="flex items-start gap-2">
-            <span class="text-lg flex-shrink-0">💡</span>
+            <span aria-hidden="true" class="text-lg flex-shrink-0">💡</span>
             <div class="flex-1">
               <strong class="text-sm font-semibold">Suggestion:</strong>
               <p class="text-sm mt-1">{{ error.suggestion }}</p>
@@ -44,9 +44,9 @@
             target="_blank"
             class="inline-flex items-center gap-1 text-sm font-medium hover:underline"
           >
-            <span>📖</span>
+            <span aria-hidden="true">📖</span>
             <span>Learn more</span>
-            <span>→</span>
+            <span aria-hidden="true">→</span>
           </a>
         </div>
 

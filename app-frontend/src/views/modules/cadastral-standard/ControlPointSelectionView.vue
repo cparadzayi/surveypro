@@ -185,7 +185,7 @@
               class="px-6 py-3 bg-amber-100 text-amber-800 border-2 border-amber-300 rounded-md hover:bg-amber-200 transition-colors font-medium flex items-center gap-2"
               title="Skip and select control points later"
             >
-              <span>⏭️</span>
+              <span aria-hidden="true">⏭️</span>
               <span>Skip for Now</span>
             </button>
             
@@ -201,7 +201,7 @@
               class="px-6 py-3 text-white rounded-md transition-colors font-medium flex items-center gap-2"
             >
               <span>{{ isStepComplete ? 'Update & Continue' : 'Save & Continue' }}</span>
-              <span>→</span>
+              <span aria-hidden="true">→</span>
             </button>
           </div>
         </div>

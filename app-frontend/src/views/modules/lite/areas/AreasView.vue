@@ -230,8 +230,8 @@
                 <tr v-for="parcel in landParcels" :key="parcel.id" class="hover:bg-gray-50 cursor-pointer" @click="toggleParcelDetails(parcel.id)">
                   <td class="px-4 py-3 font-medium">
                     <div class="flex items-center gap-2">
-                      <span v-if="expandedParcelId === parcel.id">▼</span>
-                      <span v-else>▶</span>
+                      <span aria-hidden="true" v-if="expandedParcelId === parcel.id">▼</span>
+                      <span aria-hidden="true" v-else>▶</span>
                       {{ parcel.stand }}
                     </div>
                   </td>

@@ -54,6 +54,8 @@ export interface SurveyProject {
   status: string
   /** When the project was last opened (set by POST /survey-projects/:id/touch); null if never. */
   last_used?: string | null
+  /** Saved workflow progress ({ completed_steps: [...], ... }); null/absent for a project not started. */
+  workflow_state?: unknown
   created_at: string
   updated_at: string
 }

@@ -63,7 +63,7 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 ### 4. Dashboard
 
 - [x] Project cards were `div`s with click handlers, unreachable by keyboard. **Fixed 27 Oct 2026:** `role="button"`, `tabindex="0"`, Enter/Space, focus ring, accessible name.
-- [~] Show progress and last activity on a card. **Last activity done 28 Oct 2026:** the card says "Last opened <date>" (opening a project now records it through `POST /survey-projects/:id/touch`, which nothing called before). Current step and plans generated are not shown.
+- [~] Show progress and last activity on a card. **Last activity done 28 Oct 2026:** the card says "Last opened <date>" (opening a project now records it through `POST /survey-projects/:id/touch`, which nothing called before). **Progress added later the same day:** each card shows a progress bar and "3 of 14 steps done · Next: Site Calibration" (`utils/projectProgress.ts`, from the project's saved workflow state, including the older underscore step names). Plans generated is not shown.
 - [~] A way to create a project when projects already exist; search, sort, archive. **Search and sort done 28 Oct 2026** (shown once there are more than 3 projects; `utils/projectList.ts`). Creating another project and archiving from the dashboard are still open.
 - [ ] "Quick Access" shows only the first four modules (`modules.slice(0, 4)`).
 - [x] "Forgot password?" was a dead `href="#"` link. There is no reset flow in the backend or frontend. **Fixed 27 Oct 2026:** it now says reset by email is not available yet and to ask the administrator. A real reset flow is still open.

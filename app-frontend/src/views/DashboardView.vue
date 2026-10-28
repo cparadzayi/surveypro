@@ -86,6 +86,23 @@
             </div>
           </div>
 
+          <!-- How far through the workflow: a bar for the eye, words for everyone -->
+          <div class="mt-3" data-testid="project-progress">
+            <div
+              class="h-1.5 rounded-full bg-gray-100 overflow-hidden"
+              role="progressbar"
+              :aria-valuenow="progressOf(project).done"
+              aria-valuemin="0"
+              :aria-valuemax="progressOf(project).total"
+              :aria-label="`Workflow progress for ${project.name}`"
+            >
+              <div class="h-full bg-indigo-500" :style="{ width: (progressOf(project).done / progressOf(project).total * 100) + '%' }"></div>
+            </div>
+            <p class="mt-1 text-xs text-gray-600">
+              {{ progressOf(project).done }} of {{ progressOf(project).total }} steps done<template v-if="progressOf(project).next"> · Next: {{ progressOf(project).next }}</template><template v-else> · Complete</template>
+            </p>
+          </div>
+
           <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
             <span class="text-xs text-gray-500">
               <template v-if="project.last_used">Last opened {{ formatDateDDMMYYYY(new Date(project.last_used)) }}</template>
@@ -143,6 +160,7 @@ import { useSurveyors } from '../composables/useSurveyors'
 import { formatDateDDMMYYYY } from '../utils/dateFormat'
 import { notifyInfo } from '../composables/useNotifications'
 import api from '../services/api'
+import { projectProgress } from '../utils/projectProgress'
 import { filterAndSortProjects, PROJECT_SORT_LABELS, type ProjectSort } from '../utils/projectList'
 // @ts-ignore - SFC default export provided via shim
 import ModuleCard from '../components/ModuleCard.vue'
@@ -154,6 +172,7 @@ const projectSelectionStore = useProjectSelectionStore()
 const { surveyProjects: projects, loading: loadingProjects, fetchSurveyProjects } = useSurveyors()
 
 const modules = computed(() => modulesStore.accessibleModules)
+const progressOf = (p: { workflow_state?: unknown }) => projectProgress(p.workflow_state)
 const projectQuery = ref('')
 const projectSort = ref<ProjectSort>('recent')
 const visibleProjects = computed(() => filterAndSortProjects([...projects.value], projectQuery.value, projectSort.value))

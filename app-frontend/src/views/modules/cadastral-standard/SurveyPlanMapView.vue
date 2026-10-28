@@ -121,8 +121,8 @@
             This record is configured as {{ compositionLabel }}.
           </p>
         </div>
-        <div v-if="isSideAnnotationMode" class="config-group diagram-subject-hint">
-          <label class="config-label">{{ isDiagramMode ? 'Diagram subject' : 'Annotation subject' }}</label>
+        <div v-if="isSideAnnotationMode" class="config-group diagram-subject-hint" role="group" aria-labelledby="cfg-subject-label">
+          <span class="config-label" id="cfg-subject-label">{{ isDiagramMode ? 'Diagram subject' : 'Annotation subject' }}</span>
           <ParcelSelect
             :options="diagramSubjectOptions"
             v-model="selectedDiagramParcelId"
@@ -206,8 +206,8 @@
         </div>
 
         <!-- Sheet Size (SI 727 Compliant) -->
-        <div class="config-group">
-          <label class="config-label">Sheet Size (SI 727)</label>
+        <div class="config-group" role="group" aria-labelledby="cfg-sheet-label">
+          <span class="config-label" id="cfg-sheet-label">Sheet Size (SI 727)</span>
           <div class="paper-size-display">
             <span class="font-semibold text-indigo-600">{{ recommendedSheetSize }}</span>
             <span class="text-gray-600 ml-2" v-if="intelligentPreview">
@@ -218,7 +218,7 @@
             </button>
           </div>
           <div v-if="showPaperSizeOptions" class="mt-2">
-            <select v-model="config.sheetSize" @change="onSheetSizeChange" class="config-input">
+            <select v-model="config.sheetSize" @change="onSheetSizeChange" class="config-input" aria-label="Sheet size">
               <option
                 v-for="opt in paperSizeOptionsFor(config.planType)"
                 :key="opt.value"
@@ -240,13 +240,13 @@
         </div>
 
         <div class="config-group">
-          <label class="config-label">Survey Date</label>
-          <DateInputDDMMYYYY v-model="config.surveyDate" class="config-input" />
+          <label class="config-label" for="plan-survey-date">Survey Date</label>
+          <DateInputDDMMYYYY id="plan-survey-date" v-model="config.surveyDate" class="config-input" />
         </div>
 
         <!-- Map Layers -->
-        <div class="config-group">
-          <label class="config-label">Map Layers</label>
+        <div class="config-group" role="group" aria-labelledby="cfg-layers-label">
+          <span class="config-label" id="cfg-layers-label">Map Layers</span>
           <div class="layer-controls-sidebar">
             <label class="layer-sidebar-item">
               <input type="checkbox" v-model="showParcels" @change="toggleParcelsVisibility">
@@ -280,8 +280,8 @@
         </div>
 
         <!-- Outside Figure Data Panel -->
-        <div class="config-group" v-if="outsideFigureData">
-          <label class="config-label">Outside Figure Data</label>
+        <div class="config-group" v-if="outsideFigureData" role="group" aria-labelledby="cfg-ofd-label">
+          <span class="config-label" id="cfg-ofd-label">Outside Figure Data</span>
 
 
           <!-- Coordinate system label -->
@@ -323,15 +323,15 @@
             </table>
           </div>
         </div>
-        <div class="config-group" v-else-if="config.showOutsideFigure">
-          <label class="config-label">Outside Figure Data</label>
+        <div class="config-group" v-else-if="config.showOutsideFigure" role="group" aria-labelledby="cfg-ofd-empty-label">
+          <span class="config-label" id="cfg-ofd-empty-label">Outside Figure Data</span>
           <p class="ofd-no-data">No outside figure parcel found. Designate a parcel as "Outside Figure" and run Compute Area &amp; Consistency.</p>
         </div>
 
         <!-- Export Buttons -->
-        <div class="config-group export-section">
+        <div class="config-group export-section" role="group" aria-labelledby="cfg-export-label">
           <div class="export-header">
-            <label class="config-label">📤 Export Documents</label>
+            <span class="config-label" id="cfg-export-label">📤 Export Documents</span>
             <span class="text-xs text-gray-500">SI 727 Compliant Survey Documents</span>
           </div>
           <div class="export-buttons" style="display: flex; flex-direction: column; gap: 12px;">

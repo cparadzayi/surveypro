@@ -51,7 +51,7 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 - [~] Progress and cancel for generation. **Done 28 Oct 2026:** the button shows a running clock beside the stage text, and a **Cancel generation** button stops the PDF/DXF/GeoPackage requests and saves nothing (`formatElapsed`, `isCancelled`, `signal` on `generateVectorGeoPDF`/`generateDXF`). Limits: the server cannot report percentage progress (one request, one answer), and it finishes the render it already started after you cancel; the Complete Survey Record button is not covered yet.
 - [x] Scale dropdown was not in numeric order (1:1000-1:7500, then 1:100-1:750). **Fixed 27 Oct 2026:** now 1:100-1:750, 1:1000-1:7500, then 1:10000 up.
 - [ ] "Generate General Plan" and "Download Complete Survey Record" are equal-weight buttons; make the plan the primary action. Remember the PDF/DXF/GPKG choices; say what GPKG is.
-- [~] Associate the 12 `config-label`s in the plan panel with their controls. **5 done 28 Oct 2026** (plan type, rotation, scale, surveyor name, licence number); the rest label groups or custom inputs (date, parcel picker, layers).
+- [x] Associate the 12 `config-label`s in the plan panel with their controls. **Done 28 Oct 2026:** single-control labels use `for`/`id`; the labels that head a group (subject, sheet size, layers, outside-figure data, export) are spans naming a `role="group"`. **5 done 28 Oct 2026** (plan type, rotation, scale, surveyor name, licence number); the rest label groups or custom inputs (date, parcel picker, layers).
 
 ### 3. Orientation in the 14-step workflow
 

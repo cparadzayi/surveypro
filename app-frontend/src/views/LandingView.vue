@@ -122,7 +122,7 @@
                 role="status"
                 class="mt-2 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3"
               >
-                Password reset by email isn't available yet. Ask your SurveyPro administrator to reset it for you.
+                Ask your SurveyPro administrator for a password reset link, then open it in this browser. The link works once and lasts an hour.
               </p>
             </div>
           </form>

@@ -66,7 +66,7 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 - [~] Show progress and last activity on a card. **Last activity done 28 Oct 2026:** the card says "Last opened <date>" (opening a project now records it through `POST /survey-projects/:id/touch`, which nothing called before). **Progress added later the same day:** each card shows a progress bar and "3 of 14 steps done · Next: Site Calibration" (`utils/projectProgress.ts`, from the project's saved workflow state, including the older underscore step names). Plans generated is not shown.
 - [~] A way to create a project when projects already exist; search, sort, archive. **Search and sort done 28 Oct 2026** (shown once there are more than 3 projects; `utils/projectList.ts`). Creating another project and archiving from the dashboard are still open.
 - [ ] "Quick Access" shows only the first four modules (`modules.slice(0, 4)`).
-- [x] "Forgot password?" was a dead `href="#"` link. There is no reset flow in the backend or frontend. **Fixed 27 Oct 2026:** it now says reset by email is not available yet and to ask the administrator. A real reset flow is still open.
+- [x] "Forgot password?" was a dead `href="#"` link. There is no reset flow in the backend or frontend. **Fixed 27 Oct 2026:** it now says reset by email is not available yet and to ask the administrator. **Real reset flow added 28 Oct 2026, without e-mail:** see the sixteenth round.
 
 ### 5. Accessibility
 
@@ -75,7 +75,7 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 - [x] Modals without `role="dialog"` / focus handling. **Done 28 Oct 2026:** a `v-dialog` directive (`directives/dialog.ts`, registered in `main.ts`) gives an overlay `role="dialog"`, `aria-modal`, a name, focus on open, Tab kept inside, Escape to close and focus returned afterwards. Applied to 20 overlays in 13 files; checked live on the Add Project dialog. Overlays that already handled Escape themselves (five in `MapLibreAreaView`) got the role and name only.
 - [ ] More live regions for status and errors.
 - [~] Text under 12px and `text-gray-400` text colour. **Done in part 28 Oct 2026:** 35 uses of `text-gray-400` (hints, icon buttons, placeholders in tables; 2.5:1 on white) are now `text-gray-500` (4.8:1), and 57 pieces of 9-11px text that were not pill badges are now 12px (`text-xs`) across 29 files. Left alone: disabled controls, text on the dark QGIS panel, decorative glyphs, and 29 badge-style labels still under 12px. The result was not reviewed screen by screen; a pass over the Compare and Servitudes screens is the most likely place to find a cramped layout.
-- [ ] Emoji used as icons (about 3,300 template lines): noisy for screen readers and rendered differently per platform.
+- [~] Emoji used as icons (about 3,300 template lines): noisy for screen readers and rendered differently per platform. **Done in part 28 Oct 2026:** 65 standalone decorative emoji that sit beside real text (card and button icons, empty-state pictures) are now `aria-hidden`, found through the template AST so each edit is exact. Left alone on purpose: status emoji (warning, success, failure) whose spoken name may be the only cue; emoji that are the whole content of a control (hiding them would remove its name); and emoji inside running text or headings. The rest need a per-screen decision.
 
 ### 6. Consistency and maintainability
 
@@ -173,3 +173,14 @@ Done 27 October 2026 in `app-frontend/src`: the five items marked `[x]` above.
 ## Fourteenth round, 28 October 2026
 
 - **Production console noise:** `vite build` now drops `console.log`, `console.debug` and `console.info` (esbuild `pure`). Measured on real builds: 1,535 `console.log` strings in the bundle, now 2; `console.warn` (264) and `console.error` (269) untouched. The two that remain are calls with arguments that must still be evaluated.
+
+## Fifteenth round, 28 October 2026
+
+- **Decorative emoji:** 65 pictograph-only elements next to readable text are now `aria-hidden="true"` across 23 files, so a screen reader says "Document Preview" and not "page facing up, Document Preview". Applied by a script that reads each template's AST (so it cannot match inside strings or comments) and refuses status emoji and icon-only controls. Type-check and all 1524 frontend tests unchanged.
+
+## Sixteenth round, 28 October 2026
+
+- **Password reset.** The app cannot send e-mail, so an administrator issues the link. On the Surveyors screen the 🔑 button makes a one-hour, single-use link (`POST /surveyors/:id/password-reset`, admin only) and shows it with a **Copy link** action. The surveyor opens it, types a new password twice on `/reset-password`, and can sign in. The address bar is cleared of the token as soon as the page has read it.
+- **How it is kept safe:** the token is 256 random bits and only its SHA-256 is stored (migration 107, `password_reset_tokens`); a link works once, expires, and making a new one retires the old ones; using one retires every other open link for that person; the lookup is `FOR UPDATE` so two people cannot both win; a too-short password is refused *before* the link is touched so a typo does not burn it; a bad link is one plain 400 that does not say whether it was wrong, used or expired; repeated bad links from one address get 429; a successful reset also clears the sign-in lockout the person may have triggered while trying to remember. The token is kept out of the logs and the response is `no-store`.
+- **Checked:** unit and route tests (`passwordReset.test.js`, `passwordReset.routes.test.js`, `ResetPasswordView.test.ts`, `passwordResetLink.test.ts`); 15 end-to-end checks against the running backend (non-admin and anonymous refused, only a hash stored, expiry about an hour, a second link retires the first, single use, expired refused, lockout cleared); and the real page in the browser, from the issued link to a working sign-in with the new password and a refused old one. Test accounts were removed afterwards.
+- **Not covered:** the admin's 🔑 button and Copy link action were not clicked in the browser (they need a signed-in administrator); the API behind them was exercised end to end.

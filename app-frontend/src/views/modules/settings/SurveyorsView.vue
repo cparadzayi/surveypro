@@ -67,6 +67,14 @@
               ✏️
             </button>
             <button
+              @click="issueResetLink(surveyor)"
+              class="p-2 text-amber-600 hover:bg-amber-50 rounded-md transition-colors"
+              title="Make a password reset link"
+              aria-label="Make a password reset link"
+            >
+              <span aria-hidden="true">🔑</span>
+            </button>
+            <button
               @click="confirmDelete(surveyor)"
               class="p-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
               title="Delete"
@@ -219,6 +227,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useSurveyors, type Surveyor } from '../../../composables/useSurveyors'
 import { useAuthStore } from '../../../stores/auth'
+import api from '../../../services/api'
+import { notifyFailure, notifySuccess } from '../../../composables/useNotifications'
+import { describeTimeLeft, resetLink } from '../../../utils/passwordResetLink'
 
 const { surveyors, loading, error, fetchSurveyors, createSurveyor, updateSurveyor, deleteSurveyor } = useSurveyors()
 
@@ -257,6 +268,22 @@ const closeModal = () => {
   showAddModal.value = false
   editingsurveyor.value = null
   resetForm()
+}
+
+// The app cannot send e-mail, so the administrator makes a one-hour, single-use link and passes it on.
+const issueResetLink = async (surveyor: Surveyor) => {
+  try {
+    const { data } = await api.post(`/surveyors/${surveyor.id}/password-reset`, {})
+    const link = resetLink(window.location.origin, data.resetPath)
+    notifySuccess(`Send this link to ${surveyor.name}. It works once and expires ${describeTimeLeft(data.expiresAt)}.`, {
+      title: `Reset link for ${surveyor.name}`,
+      details: [link],
+      sticky: true,
+      actions: [{ label: 'Copy link', keepOpen: true, run: () => { void navigator.clipboard?.writeText(link) } }],
+    })
+  } catch (error) {
+    notifyFailure('Could not make a reset link', error)
+  }
 }
 
 const editSurveyor = (surveyor: Surveyor) => {

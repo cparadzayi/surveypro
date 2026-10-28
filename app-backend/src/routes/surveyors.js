@@ -1,5 +1,8 @@
 import SurveyorProfile from '../models/SurveyorProfile.js'
 import { authenticateWithSchema, requireAdmin } from '../utils/schemaAuth.js'
+import db from '../config/db.js'
+import { createResetToken } from '../utils/passwordReset.js'
+import { isRowId } from '../utils/requestChecks.js'
 
 /**
  * Surveyor profile routes.
@@ -150,6 +153,35 @@ export default async function surveyorRoutes(fastify, options) {
     } catch (error) {
       fastify.log.error(error)
       return reply.code(500).send({ ok: false, error: 'Failed to update surveyor' })
+    }
+  })
+
+  // Issue a one-hour, single-use password reset link for a surveyor — admin only. The app cannot send
+  // e-mail, so the administrator passes the link on. The token is shown once here and never stored
+  // in the clear (only its hash is), and is deliberately kept out of the logs.
+  fastify.post('/surveyors/:id/password-reset', adminOnly, async (request, reply) => {
+    try {
+      const { id } = request.params
+      if (!isRowId(id)) return reply.code(400).send({ ok: false, error: 'Invalid surveyor id' })
+
+      const surveyor = await SurveyorProfile.findById(id)
+      if (!surveyor) {
+        return reply.code(404).send({ ok: false, error: 'Surveyor not found' })
+      }
+      if (!surveyor.user_id) {
+        return reply.code(409).send({ ok: false, error: 'This surveyor has no sign-in account to reset' })
+      }
+
+      const { token, expiresAt } = await createResetToken(db, {
+        userId: surveyor.user_id,
+        createdBy: request.user?.sub ?? null,
+      })
+      fastify.log.info(`[password-reset] link issued for surveyor ${surveyor.id} by user ${request.user?.sub}`)
+      reply.header('Cache-Control', 'no-store')
+      return { ok: true, token, expiresAt, resetPath: `/reset-password?token=${token}`, name: surveyor.name }
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.code(500).send({ ok: false, error: 'Failed to create a reset link' })
     }
   })
 

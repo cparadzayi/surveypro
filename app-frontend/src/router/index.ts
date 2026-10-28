@@ -9,6 +9,7 @@ import { confirmDiscardUnsaved, hasUnsavedWork } from '../composables/useUnsaved
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/landing' },
   { path: '/landing', component: () => import('../views/LandingView.vue'), meta: { public: true } },
+  { path: '/reset-password', component: () => import('../views/ResetPasswordView.vue'), meta: { public: true } }, // set a new password from an administrator's link
   { path: '/launch', component: () => import('../views/LaunchView.vue'), meta: { public: true } }, // a job opened from the council system (VunGIS)
   { path: '/login', redirect: '/landing' }, // Legacy redirect
   { path: '/register', redirect: '/landing' }, // Legacy redirect

@@ -1,5 +1,10 @@
 import User from '../models/user.js'
-import { loginThrottle } from '../utils/loginThrottle.js'
+import { loginThrottle, LoginThrottle } from '../utils/loginThrottle.js'
+import { consumeResetToken, MIN_PASSWORD_LENGTH } from '../utils/passwordReset.js'
+
+// Guessing reset links: a token is 256 random bits, so this is belt and braces, but a client that
+// keeps sending bad ones is still told to stop. Per address only (the account key is never reached).
+const resetThrottle = new LoginThrottle({ perAccount: 1_000_000, perAddress: 10 })
 import SurveyorProfile from '../models/SurveyorProfile.js'
 import db, { createSurveyorSchema } from '../config/db.js'
 
@@ -168,6 +173,36 @@ export default async function authRoutes(app) {
       app.log.error(err)
       throw err
     }
+  })
+
+  // Set a new password with a link an administrator issued (POST /surveyors/:id/password-reset).
+  // Public by necessity: the person has no password to sign in with.
+  app.post('/auth/password-reset', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['token', 'password'],
+        properties: {
+          token: { type: 'string', maxLength: 200 },
+          password: { type: 'string', minLength: MIN_PASSWORD_LENGTH, maxLength: 200 }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const wait = resetThrottle.retryAfterSeconds('reset', request.ip)
+    if (wait > 0) {
+      return reply.code(429).header('Retry-After', String(wait)).send({ error: 'Too many attempts', message: 'Too many attempts. Try again in a few minutes.' })
+    }
+    const { token, password } = request.body
+    const result = await consumeResetToken(db, { token, password })
+    if (!result.ok) {
+      resetThrottle.recordFailure('reset', request.ip)
+      return reply.code(400).send({ error: 'Invalid link', message: 'This reset link is invalid or has expired. Ask your administrator for a new one.' })
+    }
+    // The person may have been locked out by the sign-in throttle while trying to remember it.
+    loginThrottle.recordSuccess(result.email)
+    reply.header('Cache-Control', 'no-store')
+    return { ok: true }
   })
 
   // Current user

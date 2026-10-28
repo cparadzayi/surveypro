@@ -104,3 +104,77 @@ Phase 0 → 1 → 2 as one piece of work (about 2.5 days, no layout change). Dec
 - The checks use the placer's own box model for the text (width = characters × cap height × 0.55). They hold with glyphs 15 % wider than that model and start to fail at 30 % wider (25 letters), so a wide capital such as M or W in a CAD font is the margin to watch.
 - The outside-vertex search is a **copy** of the PDF's (`renderOutsideFigureVertexLabels`), not a shared module: extracting the PDF's inline version was left out to keep the PDF untouched. The two should be unified if either changes.
 - `dxfGenerator.snapshot.test.js` was already failing before this work (its stored entity lists predate the scale-derived tick grid and other changes; the same 442-line diff appears at the Phase 0 commit). It was left alone: refreshing it means reviewing ~8,000 lines. This work changes no entity on its three fixtures except the four figure-corner names A-D in Phase 2.
+
+## 8. Phase 3 in detail: insets in the DXF
+
+Written after Phases 0-2, from measurement and from reading the PDF inset code (`renderBeacons`, about lines 3500-4030 of `pdfkitGeoPDF.js`, `insetManager.js`, `beaconClusterInset.js`) and the DXF's block machinery (`dxfBlockPlacer.js`, and the bottom-zone placement in `dxfGenerator.js`, about lines 2640-2800).
+
+### 8.1 When would the DXF actually need insets? (measured)
+
+The surveyed plan (357 stand letters) through the DXF at different scales. "Cramped" means the shared fit could not seat the letter at full or near-full size without it touching a boundary line; in the PDF these go to insets.
+
+| DXF scale | cramped letters | letters still over a line |
+|---|---|---|
+| 1:500 (what the DXF chooses for this plan) | 0 | 0 |
+| 1:800 | 0 | 0 |
+| 1:1000 | 11 | 10 |
+| 1:1500 | 4 | 4 |
+| 1:2000 | 14 | 12 |
+
+The other four sample plans contain no stand letters at all, so they say nothing either way.
+
+So the DXF needs insets only when a plan is drawn at 1:1000 or coarser **and** has narrow stands. That happens when a surveyor declares a coarse scale, or the sheet cannot hold a finer one. At that point the DXF breaks the "no letter over a line" rule today, and nothing tells the surveyor.
+
+### 8.2 A cheap step that comes first, whatever is decided: say so ("Phase 3-lite", about half a day)
+
+Count the cramped letters in `generateDXF` and put one plain sentence in the warnings the route already sends (`X-Plan-Warnings`, shown in the result notice). For example: "12 beacon letters are too close together to fit at 1:2000 and are drawn at the smallest size, touching a boundary line. Use a finer scale, or the PDF, which magnifies them in insets." Add the count to the DXF gate at 1:1000. No layout change, no PDF change, and the surveyor is no longer surprised.
+
+### 8.3 What a full DXF inset needs
+
+Four separable pieces, with the PDF code each corresponds to and how reusable it is.
+
+| # | Piece | PDF source | Reuse |
+|---|---|---|---|
+| a | Which letters go to insets, grouped into clusters and then blocks | `clusterCramped` (pure); the grouping into blocks (`GROUP_REACH_PT` 150, `GROUP_MAX` 4, cap 30) is inline in `renderBeacons` | cluster step reusable as is; block grouping is about 25 lines to copy |
+| b | The window each cluster magnifies, its scale and number | `clusterWindow` (pure); numbering in `InsetManager` | reusable as is (in paper points) |
+| c | The "Inset N" tag on the plan, beside the beacon in the open ground, turned to the road, never in a foreign stand | `placeTag` (about 300 lines: frontage direction, alignment to neighbouring clusters, nearest road name's size and angle, stand avoidance) | tied to PDF state (`doc.widthOfString`, `avoidSegments`, road-name notes); needs porting or extracting |
+| d | The block itself on the sheet: border, "Inset N: Not To Scale", the magnified boundary lines clipped to the cell, beacon circles, letters placed by the shared fit, stand numbers (`placeStandNumber`, pure), north arrow | `renderBeaconClusterInset` and the composite cells in `insetManager` (PDFKit drawing calls) | geometry helpers reusable; the drawing is PDFKit-only, so a DXF emitter is new |
+
+Things that are different in a DXF and must be handled, not copied:
+
+- **No clipping.** The PDF clips the magnified drawing to the cell with `doc.clip()`. DXF has none, so every boundary segment must be clipped to the cell rectangle by hand (Liang-Barsky on each segment; a polygon clip would draw a false edge along the cell border).
+- **Placement and room.** The PDF finds spots for inset boxes in the map area itself. The DXF page is planned in layers: the sheet and scale are resolved first, then the schedule, then the small bottom-zone blocks are relocated into leftover whitespace by `findBlockPosition`. Inset blocks (60 mm square per cell, 2 across, so up to 120 x 120 mm) would join that relocation pass. They are bigger than any current small block, so the block-room budget would need to know about them, or a plan could escalate to a larger sheet late. The existing escalation path handles the schedule; it would need to count insets too.
+- **Letters moved off the plan.** In the PDF a cramped letter is not drawn on the main plan: the tag marks the cluster and the letter appears in the cell. The DXF would do the same, which changes the label records the gate reads.
+- **Numbering and sheets.** Insets are numbered per drawing. With one DXF per sheet (`generateSheetedDXF`) numbering restarts in each file, as it does per page in the PDF.
+- **Layer.** Everything goes on its own layer (`INSETS`, plus the tag on `BEACON_LABELS`) so a CAD user can switch it off.
+
+### 8.4 Two ways to build it
+
+**Option A: a DXF planner that reuses the pure helpers and duplicates the inline logic (recommended if insets are wanted).** A new `dxfInsetPlanner.js` holds blocks (a) and (b) and a simplified tag placement (c); a `dxfInsetEmitter.js` draws (d). `renderBeacons` is not touched, so the PDF cannot regress. A parity test renders the surveyed plan through both at the same declared scale (1:600 and 1:1000) and requires the same clusters, the same blocks and the same numbers. About 4-5 days.
+
+**Option B: extract a shared planner from `renderBeacons` first, then use it from both.** Better long term (one rule, no copy), but `renderBeacons` is about 1,400 lines of interleaved decision and drawing, and the extraction must be a no-behaviour-change refactor guarded by the PDF label gate (4.5 minutes per run). About 7-9 days, with the PDF as the thing at risk.
+
+Either way the PDF label gate and the DXF label gate both run before every commit.
+
+### 8.5 Order of work for Option A
+
+1. **8.2 (Phase 3-lite):** the warning and the 1:1000 gate. Ship alone.
+2. **Planner:** clusters, blocks, numbers, windows (pure, unit-tested against the PDF's `clusterCramped` and `clusterWindow` on the same input).
+3. **Tags:** "Inset N" placement outside every stand, clear of lines and labels, along the nearest road, with the 6 pt floor and the road-name size rule; gate rules copied from the PDF gate (not in a foreign stand, at least 5 pt, beside its beacon).
+4. **Emitter:** the cell drawing with hand clipping, letters through `fitDxfSuffixLetter`, stand numbers through `placeStandNumber`; checked by parsing the DXF back (entities inside the cell rectangle, nothing outside it).
+5. **Placement:** blocks join the bottom-zone relocation; the room budget and sheet escalation learn about them; a plan with no room warns "plan too dense for insets" instead of overlapping the figure.
+6. **Parity test and gate budgets at 1:1000, 1:1500, 1:2000** (hard rules at zero, as in the PDF).
+
+### 8.6 Risks specific to Phase 3
+
+- **Sheet growth:** blocks up to 120 x 120 mm can push a plan to the next sheet size. Mitigation: measure on the 1:1000 and 1:2000 runs of the surveyed plan before wiring placement.
+- **Tag placement is the subtlest part.** It has the most surveyor feedback behind it in the PDF (not in a foreign stand, along the road name, no leader, at the road name's size). A simplified copy will look slightly different from the PDF's; the parity test checks which cluster gets which number, not pixel positions.
+- **The dashed ring.** The PDF still draws a dashed ring round each inset cluster (restored in the user's own commits after the "no ring" instruction). The DXF can follow either rule; see the decision below.
+- **Viewer differences** for the magnified text (width factor 0.55): same margin as Phase 1.
+
+### 8.7 Decision needed
+
+1. **Do 8.2 now?** Recommended in all cases: half a day, no downside.
+2. **Full DXF insets?** My recommendation is not yet. The DXF only needs them at 1:1000 or coarser on a dense plan, and 8.2 makes that visible. Build them (Option A) if surveyors are actually exporting DXFs at those scales.
+3. **If yes: A or B?** A, unless you want the PDF's inset code unified in the same effort.
+4. **Ring or no ring in the DXF insets**, and **a separate layer** for the blocks (recommended).

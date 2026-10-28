@@ -98,7 +98,7 @@
         </div>
 
         <!-- Editor -->
-        <div v-if="selectedSide" class="border-t border-gray-200 pt-4 space-y-4">
+        <div v-if="selectedSide" class="border-t border-gray-200 pt-4 space-y-4" @input="unsaved.mark()" @change="unsaved.mark()">
           <h4 class="text-sm font-semibold text-gray-900">
             {{ editingId ? 'Edit' : 'New' }} servitude — {{ selectedSideBeaconLabel || selectedSide }}
           </h4>
@@ -326,6 +326,7 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { capeLoArrayToWGS84, capeLoToWGS84, calculateWGS84Bounds, type CapeLoPoint } from '@/utils/coordinateTransform'
 import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
+import { useUnsavedWork } from '@/composables/useUnsavedWork'
 import DateInputDDMMYYYY from '@/components/DateInputDDMMYYYY.vue'
 import { listCoordinatePoints } from '@/services/spatial'
 import { loadBaseMapParcels, computeBaseMapStandLabels, computeBaseMapBeaconLabels } from '@/utils/surveyParcels'
@@ -876,7 +877,12 @@ function existingServitudeForSide(list: Servitude[], side: string): Servitude | 
   ) ?? null
 }
 
+// What the surveyor has typed into the servitude editor and not yet saved. Marked by their own
+// input events (never by comparing values), cleared when the form is reset after a save or cancel.
+const unsaved = useUnsavedWork('servitude', 'A servitude you are editing')
+
 function resetForm() {
+  unsaved.clear()
   form.value = {
     type: 'party-wall',
     typeLabelOther: '',

@@ -196,6 +196,10 @@ export interface CoordinateListDocument {
     surveyorName: string;
     dateGenerated: Date;
     coordinateSystem: string;
+    /** Pages in the generated PDF (set when the list is generated from the workflow). */
+    pageCount?: number;
+    /** Where the PDF was saved, when it was saved to the project folder. */
+    savedFilePath?: string;
   };
   
   points: Array<{
@@ -212,6 +216,9 @@ export interface CoordinateListDocument {
     totalPoints: number;
     fixedPoints: number;
     pegPoints: number;
+    /** Page range of the list inside the survey record. */
+    startingPage?: number;
+    endingPage?: number;
   };
 }
 

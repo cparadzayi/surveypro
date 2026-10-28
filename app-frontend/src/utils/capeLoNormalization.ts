@@ -67,17 +67,8 @@ export function normalizeGeoJSONPoint(
   // normalizeCapeLoCoordinates expects (y=Westing, x=Southing).
   const [southing, westing] = coordinates
   const normalized = normalizeCapeLoCoordinates(westing, southing, extent)
-  
-  // Debug first call
-  if (!(normalizeGeoJSONPoint as any)._debugged) {
-    console.log('[normalizeGeoJSONPoint] DEBUG:', {
-      input: { y, x },
-      extent,
-      output: { x: normalized.x, y: normalized.y }
-    });
-    (normalizeGeoJSONPoint as any)._debugged = true;
-  }
-  
+  // (A one-off debug log here named `y` and `x`, which are not in scope: the very first call threw
+  // a ReferenceError. Removed rather than repaired; the function is pure and needs no logging.)
   return [normalized.x, normalized.y]
 }
 

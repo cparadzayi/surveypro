@@ -4078,6 +4078,8 @@ async function generateCoordinateList() {
       })),
       summary: {
         totalPoints: adjustedCoordinates.length,
+        fixedPoints: adjustedCoordinates.filter(c => c.status === 'F').length,
+        pegPoints: adjustedCoordinates.filter(c => c.status === 'P').length,
         startingPage: 100,
         endingPage: 100 + result.pageCount - 1
       }

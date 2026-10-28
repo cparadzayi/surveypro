@@ -184,3 +184,13 @@ Done 27 October 2026 in `app-frontend/src`: the five items marked `[x]` above.
 - **How it is kept safe:** the token is 256 random bits and only its SHA-256 is stored (migration 107, `password_reset_tokens`); a link works once, expires, and making a new one retires the old ones; using one retires every other open link for that person; the lookup is `FOR UPDATE` so two people cannot both win; a too-short password is refused *before* the link is touched so a typo does not burn it; a bad link is one plain 400 that does not say whether it was wrong, used or expired; repeated bad links from one address get 429; a successful reset also clears the sign-in lockout the person may have triggered while trying to remember. The token is kept out of the logs and the response is `no-store`.
 - **Checked:** unit and route tests (`passwordReset.test.js`, `passwordReset.routes.test.js`, `ResetPasswordView.test.ts`, `passwordResetLink.test.ts`); 15 end-to-end checks against the running backend (non-admin and anonymous refused, only a hash stored, expiry about an hour, a second link retires the first, single use, expired refused, lockout cleared); and the real page in the browser, from the issued link to a working sign-in with the new password and a refused old one. Test accounts were removed afterwards.
 - **Not covered:** the admin's 🔑 button and Copy link action were not clicked in the browser (they need a signed-in administrator); the API behind them was exercised end to end.
+
+## Seventeenth round, 28 October 2026
+
+- **Looking for real bugs inside the type-error baseline.** Of the 296 errors, most are library typing (Leaflet/MapLibre refs, implicit `any`, untyped shared `.js`), but a handful were genuine. Fixed:
+  - `capeLoNormalization.ts`: a one-off debug log inside `normalizeGeoJSONPoint` named `y` and `x`, which do not exist there, so the **first call threw a ReferenceError**. The log is removed and the function is tested.
+  - The Coordinate List document stored in the workflow carried a page range and the saved file path that its type did not declare; the types now declare them, and its summary now includes the fixed/peg counts the type requires (they were left out).
+  - The CSV import's error result lacked two summary fields its type requires.
+  - `subjectParcelId` (which the backend reads for diagrams) was missing from the request type.
+  Type errors 296 → 287.
+- **Looked at and left alone:** `CalculationsPart1.vue` and `CalculationsPart1View.vue` pass an object to `URL.createObjectURL` and would throw, but nothing imports either file (dead code). `MapLibreAreaView` passes the Complete Survey Record a narrower beacon-label shape than the area section declares, but that section never reads the labels, so nothing is lost.

@@ -50,6 +50,8 @@ export interface VectorGeoPDFRequest {
     firm?: string
     licenseNumber?: string
     priorDiagrams?: string[]
+    /** Diagram: id of the parcel that is the subject (the renderer reads this from metadata). */
+    subjectParcelId?: string
     // Diagram: side annotations for the single subject figure.
     sideAnnotations?: Array<{ side: string; role: string; label?: string; widthM?: number }>
     // General plans: road/servitude/contiguous annotations per tagged subject

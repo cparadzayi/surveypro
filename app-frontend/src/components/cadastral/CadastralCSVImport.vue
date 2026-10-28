@@ -405,7 +405,7 @@ async function processFile(selectedFile: File) {
       }],
       warnings: [],
       preview: [],
-      summary: { totalPoints: 0, fixedPoints: 0, pegPoints: 0, otherPoints: 0 }
+      summary: { totalPoints: 0, fixedPoints: 0, pegPoints: 0, otherPoints: 0, calculatedPoints: 0, fieldBookPoints: 0 }
     };
   } finally {
     isProcessing.value = false;

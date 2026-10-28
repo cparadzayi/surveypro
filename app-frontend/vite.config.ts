@@ -2,8 +2,14 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'path';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [vue()],
+  esbuild: {
+    // The app logs a great deal while it works (1,600+ console.log calls), which is useful in
+    // development and noise, and a small information leak, in a shipped build. In production,
+    // log/debug/info calls are removed; warn and error stay, because those are real signals.
+    pure: mode === 'production' ? ['console.log', 'console.debug', 'console.info'] : [],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -58,4 +64,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

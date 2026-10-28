@@ -81,7 +81,7 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 
 - [ ] Use the shared `EmptyState` / `ErrorNotice` / `LoadingSpinner` instead of hand-rolled copies.
 - [ ] Colour tokens (CSS variables) in place of 484 hex values; remove inline `style=` blocks.
-- [ ] Remove the 1,676 `console.log` calls from production paths.
+- [~] Remove the 1,676 `console.log` calls from production paths. **Shipped build cleaned 28 Oct 2026:** `vite.config.ts` removes `console.log/debug/info` calls when building for production (1,535 `console.log` in the bundle before, 2 after; `warn` and `error` are kept; bundle 2.3% smaller). Development is unchanged. The calls are still in the source; deleting them there is a per-file judgement and not done.
 - [ ] Split the three giant views.
 
 ### 7. Copy to check
@@ -169,3 +169,7 @@ Done 27 October 2026 in `app-frontend/src`: the five items marked `[x]` above.
 
 - **Cancel for "Download Complete Survey Record".** The run has about ten client-side stages and writes parcel marks to the database after it saves the file, so a cancel that could strike anywhere would leave a saved file with unmarked parcels. Instead it is cooperative: `generateComprehensiveLatestPDF` asks `shouldCancel` before each slow stage and once more immediately before the first write, and stops with `cancelled: true` and nothing saved. After that point the run is finished, not stopped: the button turns into "Saving — almost done" (`onSaveStart`). The stages themselves cannot be interrupted, so a cancel takes effect at the next boundary, not at once. Covered by `comprehensivePdfCancel.test.ts`, including "a cancel that arrives as saving begins is ignored, so the file and the parcel marks stay together". The button shares the plan's elapsed clock.
 - **A bug found on the way:** `SurveyPlanMapView` passed the DSG certificate to the record builder as `dsgCertificate`, but the builder reads `dsg`, so the DSG Certificate (1/96) was **never appended** to a Complete Survey Record made from the Survey Plan screen (the Area Computation screen passed it correctly). Fixed; type errors 297 → 296.
+
+## Fourteenth round, 28 October 2026
+
+- **Production console noise:** `vite build` now drops `console.log`, `console.debug` and `console.info` (esbuild `pure`). Measured on real builds: 1,535 `console.log` strings in the bundle, now 2; `console.warn` (264) and `console.error` (269) untouched. The two that remain are calls with arguments that must still be evaluated.

@@ -105,7 +105,7 @@ Phase 0 → 1 → 2 as one piece of work (about 2.5 days, no layout change). Dec
 **Notes and limits**
 - The checks use the placer's own box model for the text (width = characters × cap height × 0.55). They hold with glyphs 15 % wider than that model and start to fail at 30 % wider (25 letters), so a wide capital such as M or W in a CAD font is the margin to watch.
 - The outside-vertex search is a **copy** of the PDF's (`renderOutsideFigureVertexLabels`), not a shared module: extracting the PDF's inline version was left out to keep the PDF untouched. The two should be unified if either changes.
-- `dxfGenerator.snapshot.test.js` was already failing before this work (its stored entity lists predate the scale-derived tick grid and other changes; the same 442-line diff appears at the Phase 0 commit). It was left alone: refreshing it means reviewing ~8,000 lines. This work changes no entity on its three fixtures except the four figure-corner names A-D in Phase 2.
+- `dxfGenerator.snapshot.test.js` had been failing before this work (the same 442-line diff appears at the Phase 0 commit). It was refreshed afterwards, once a layer-by-layer comparison of old and new output explained every difference (see the commit message); this work changes no entity on its three fixtures except the four figure-corner names A-D in Phase 2.
 
 ## 8. Phase 3 in detail: insets in the DXF
 

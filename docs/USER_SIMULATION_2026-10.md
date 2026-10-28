@@ -70,3 +70,9 @@ Measured with a throwaway account: one list call takes about 13 ms. The 1.8 s me
 - `schemaAuth.js`: the 500 body no longer includes `details`/`stack`.
 
 Not changed: the first burst right after a server restart still takes about 1.4 s (the pool is empty); a start-up warm-up of 5 connections made no measurable difference and was dropped.
+
+### Fourth batch: the database-level guarantee
+
+Migration `106_unique_active_project_name_per_schema.do.sql` adds a unique index on `lower(btrim(name)) WHERE status = 'active'` to every surveyor schema, through a helper function, and patches the **live** `create_surveyor_schema()` so new surveyors get it (the patch inserts one `PERFORM` after the adopted-beacons one and refuses loudly if that anchor has moved, rather than copying a function body other branches have also changed). A schema whose active projects already repeat a name is skipped with a NOTICE naming the repeats; nothing is renamed or archived. Checked on the dev database: all three schemas protected (none held duplicates); a newly created schema is born with the index; case and edge-space variants are refused; an archived copy, a different name and re-using a name after archiving are allowed; a schema with duplicates is skipped untouched and the helper succeeds once they are archived; re-running is harmless. `POST /survey-projects` turns the index's `23505` into the same 409 as the in-process check, and its 500 no longer repeats the database error.
+
+The migration number is 106 because 105 is the highest file on disk. `migrate:status` on this database still reports 5 modified and 4 missing older migrations (096-100, 101-104) from other branches; that is pre-existing and unrelated.

@@ -246,10 +246,17 @@ export default async function surveyProjectRoutes(fastify, options) {
       console.error(`Stack:`, error.stack)
       console.error(`Full error:`, error)
       fastify.log.error(error)
+      // The database's unique index on active project names (migration 106) is the last line of
+      // defence: a second server process, or a script, gets here instead of the in-process check.
+      if (error.code === '23505') {
+        return reply.code(409).send({
+          ok: false,
+          error: `A project named "${String(request.body?.name ?? '').trim()}" already exists. Open it from the dashboard, or choose a different name.`
+        })
+      }
       return reply.code(500).send({ 
         ok: false, 
-        error: 'Failed to create survey project',
-        details: error.message 
+        error: 'Failed to create survey project'
       })
     }
   })

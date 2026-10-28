@@ -150,6 +150,23 @@ describe('survey projects (findings 2 and 5)', () => {
     expect(mockProject.create).not.toHaveBeenCalled()
   })
 
+  test('the database index catching a duplicate the in-process check missed is also a 409, with no database text', async () => {
+    dbQuery.mockResolvedValue({ rows: [] })
+    mockProject.create.mockRejectedValue(Object.assign(new Error('duplicate key value violates unique constraint "uq_survey_projects_active_name"'), { code: '23505' }))
+    const r = await create(build(surveyProjectRoutes, { prefix: '/survey-projects' }), 'Maglas')
+    expect(r.statusCode).toBe(409)
+    expect(r.json().error).toMatch(/already exists/)
+    expect(r.body).not.toMatch(/uq_survey|violates/)
+  })
+
+  test('a failed create is a plain 500 that does not repeat the database error', async () => {
+    dbQuery.mockResolvedValue({ rows: [] })
+    mockProject.create.mockRejectedValue(new Error('relation "survey_projects" does not exist'))
+    const r = await create(build(surveyProjectRoutes, { prefix: '/survey-projects' }), 'X')
+    expect(r.statusCode).toBe(500)
+    expect(r.body).not.toMatch(/relation|does not exist/)
+  })
+
   test('a fresh name is created', async () => {
     dbQuery.mockResolvedValue({ rows: [] })
     mockProject.create.mockResolvedValue({ id: 9, name: 'fresh' })

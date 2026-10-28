@@ -1,5 +1,5 @@
 <template>
-  <div class="dsg-certificate-view">
+  <div class="dsg-certificate-view" @input="unsaved.mark()" @change="unsaved.mark()">
     <!-- Header -->
     <div class="bg-white border-b border-gray-200 px-6 py-4">
       <div class="flex items-center justify-between">
@@ -292,6 +292,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { toDateInputFormat } from '@/utils/dateFormat'
 import DateInputDDMMYYYY from '@/components/DateInputDDMMYYYY.vue'
 import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
+import { useUnsavedWork } from '@/composables/useUnsavedWork'
 import SmartSuggestionDropdown from '@/components/SmartSuggestionDropdown.vue'
 import {
   getSurveyOfSuggestions,
@@ -308,6 +309,8 @@ import { useRecordComposition } from '@/composables/useRecordComposition'
 import { certificationStatementsForComposition, composeCertificateSurveyOf } from '@/data/dsgCertificatePatterns'
 
 const { workflowState, projectId, saveStepData } = useCadastralWorkflow()
+// Typed into the certificate and not yet saved to the project (generating the certificate saves it).
+const unsaved = useUnsavedWork('dsg-certificate', 'DSG certificate text')
 
 // Certificate data
 const certificateData = ref({
@@ -584,6 +587,7 @@ async function generateCertificate() {
     // Comprehensive_Latest record can rebuild this exact certificate later
     // (same pattern as the dispensation certificate / servitudes).
     await saveStepData('dsg-certificate', { certificate_data: { ...certificateData.value } })
+    unsaved.clear()
     
     // Store in workflow state
     workflowState.documents.dsgCertificate = blob

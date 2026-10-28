@@ -107,7 +107,7 @@
             <h4 class="text-sm font-semibold text-blue-900 mb-2">💡 Tips</h4>
             <ul class="text-sm text-blue-800 space-y-1 list-disc list-inside">
               <li>Use the "Download CSV Template" button for a pre-formatted file</li>
-              <li>Coordinates should be in Cape Lo system (will be auto-converted to WGS84)</li>
+              <li>Coordinates should be in the Cape Lo system (Y westing, X southing). They are stored as they are; WGS84 is used only to draw the map.</li>
               <li>Ensure no extra spaces or special characters</li>
               <li>Save your file with UTF-8 encoding</li>
               <li>Maximum file size: 5MB</li>

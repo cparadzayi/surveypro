@@ -1,5 +1,5 @@
 <template>
-  <div class="report-on-survey-view">
+  <div class="report-on-survey-view" @input="unsaved.mark()" @change="unsaved.mark()">
     <!-- Header -->
     <div class="bg-white border-b border-gray-200 px-6 py-4">
       <h2 class="text-2xl font-bold text-gray-900">Report on Survey</h2>
@@ -495,6 +495,7 @@ import { notifyFailure, notifySuccess } from '@/composables/useNotifications'
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import api from '../../../services/api'
 import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow'
+import { useUnsavedWork } from '@/composables/useUnsavedWork'
 import { useSmartSuggestions } from '../../../composables/useSmartSuggestions'
 import SmartSuggestionDropdown from '../../../components/SmartSuggestionDropdown.vue'
 import type { ReportOnSurveyData } from '../../../types/cadastral'
@@ -503,6 +504,8 @@ import { displayTrigName } from '../../../../../app-shared/trigName'
 import { purposeReferenceFieldLabel } from '../../../utils/reportPurpose'
 
 const { workflowState, saveStepData } = useCadastralWorkflow()
+// Typed into the report and not yet saved to the project (Save Draft and Generate both save it).
+const unsaved = useUnsavedWork('report-on-survey', 'Report on Survey text')
 
 // Emit the generated report so the parent can open it in the in-app preview
 // modal — the Report on Survey preview must show the report, not the DSG
@@ -719,6 +722,7 @@ function handleKeyDown(event: KeyboardEvent, field: string) {
 const saveDraft = async () => {
   workflowState.reportOnSurvey = { ...reportData.value }
   await saveStepData('report-on-survey', { report_data: workflowState.reportOnSurvey })
+  unsaved.clear()
   console.log('[ReportOnSurvey] Draft saved')
   notifySuccess('Draft saved successfully!')
 }
@@ -786,6 +790,7 @@ const generateReport = async () => {
     // Save to workflow state (and persist for the collated document)
     workflowState.reportOnSurvey = { ...reportData.value }
     await saveStepData('report-on-survey', { report_data: workflowState.reportOnSurvey })
+    unsaved.clear()
 
     console.log('[ReportOnSurvey] Generating PDF...', reportData.value, 'Format:', reportFormat.value)
 

@@ -86,7 +86,7 @@ Reviewed 27 October 2026. Scope: the Vue frontend (`app-frontend`), 133 componen
 
 ### 7. Copy to check
 
-- [ ] The CSV format guide says coordinates "will be auto-converted to WGS84". Stored geometry stays in the Lo system; the conversion is for display only. Reword so it is not misleading.
+- [x] The CSV format guide said coordinates "will be auto-converted to WGS84". **Reworded 28 Oct 2026:** stored as they are (Y westing, X southing); WGS84 is used only to draw the map.
 
 ## Quick wins completed
 
@@ -153,3 +153,19 @@ Done 27 October 2026 in `app-frontend/src`: the five items marked `[x]` above.
 ## Tenth round, 28 October 2026
 
 - **Contrast and size:** see the accessibility item above (35 colour changes, 57 size changes, 29 files).
+
+## Eleventh round, 28 October 2026
+
+- The unsaved-work guard now also covers the **Report on Survey** (cleared by Save Draft or Generate) and the **DSG certificate** (cleared when the certificate is generated, which is what saves it).
+- The CSV format guide wording is corrected.
+- Looked at the Beacon Comparison screen after the contrast pass: hints and the configuration panel read cleanly at 12px. Servitudes was not opened (it needs a project with parcels).
+
+## Twelfth round, 28 October 2026
+
+- **Dashboard progress:** every project card shows how many of the 14 workflow steps are done and which comes next, with a labelled progress bar. Covered by `projectProgress.test.ts` and a component test of the dashboard cards (`DashboardView.progress.test.ts`, which also covers search and sort).
+- **First decided against, then done at the user's request (thirteenth round, below):** a cancel for the Complete Survey Record and a database unique index on project names.
+
+## Thirteenth round, 28 October 2026
+
+- **Cancel for "Download Complete Survey Record".** The run has about ten client-side stages and writes parcel marks to the database after it saves the file, so a cancel that could strike anywhere would leave a saved file with unmarked parcels. Instead it is cooperative: `generateComprehensiveLatestPDF` asks `shouldCancel` before each slow stage and once more immediately before the first write, and stops with `cancelled: true` and nothing saved. After that point the run is finished, not stopped: the button turns into "Saving — almost done" (`onSaveStart`). The stages themselves cannot be interrupted, so a cancel takes effect at the next boundary, not at once. Covered by `comprehensivePdfCancel.test.ts`, including "a cancel that arrives as saving begins is ignored, so the file and the parcel marks stay together". The button shares the plan's elapsed clock.
+- **A bug found on the way:** `SurveyPlanMapView` passed the DSG certificate to the record builder as `dsgCertificate`, but the builder reads `dsg`, so the DSG Certificate (1/96) was **never appended** to a Complete Survey Record made from the Survey Plan screen (the Area Computation screen passed it correctly). Fixed; type errors 297 → 296.

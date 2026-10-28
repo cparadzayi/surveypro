@@ -46,10 +46,20 @@ export interface ComprehensivePDFOptions {
   dispensation?: DispensationInput
   /** DSG Certificate (1/96), appended after the dispensation; omit to skip it */
   dsg?: DSGCertificateData
+  /**
+   * Asked before each slow stage and once more just before anything is written. Returning true stops
+   * the run with `cancelled: true` and nothing saved. After the save has started it is not asked again:
+   * a half-written record (file saved, parcels not marked) is worse than a finished one.
+   */
+  shouldCancel?: () => boolean
+  /** Called once, just before the first write, so a UI can stop offering Cancel. */
+  onSaveStart?: () => void
 }
 
 export interface ComprehensivePDFResult {
   success: boolean
+  /** True when the user cancelled before anything was saved. */
+  cancelled?: boolean
   filePath?: string
   error?: string
   pdfBlob?: Blob
@@ -175,8 +185,12 @@ export async function generateComprehensiveLatestPDF(
     reportData,
     narrativeOptions,
     dispensation,
-    dsg
+    dsg,
+    shouldCancel,
+    onSaveStart
   } = options
+  const cancelResult: ComprehensivePDFResult = { success: false, cancelled: true }
+  const stopRequested = () => shouldCancel?.() === true
 
   try {
     console.log('[ComprehensivePDF] 📄 Generating Comprehensive_Latest PDF...')
@@ -193,6 +207,7 @@ export async function generateComprehensiveLatestPDF(
     // Load coordinate points for spatial matching of beacon names
     console.log('[ComprehensivePDF] 📍 Loading coordinate points for project:', projectId)
     const coordinatePoints = await listCoordinatePoints(projectId)
+    if (stopRequested()) return cancelResult
     console.log(`[ComprehensivePDF] 📍 Loaded ${coordinatePoints.length} coordinate points for beacon name matching`)
 
     // Use the existing PDF generation composable to create Area & Consistency section
@@ -209,6 +224,7 @@ export async function generateComprehensiveLatestPDF(
       coordinatePoints  // Pass coordinate points for spatial matching
     )
 
+    if (stopRequested()) return cancelResult
     if (!areaResult) {
       return {
         success: false,
@@ -237,6 +253,10 @@ export async function generateComprehensiveLatestPDF(
     const dsgBlob = withDSG.dsgBlob
 
     console.log('[ComprehensivePDF] ✅ PDF generated successfully')
+
+    // The last point at which stopping leaves everything as it was.
+    if (stopRequested()) return cancelResult
+    onSaveStart?.()
 
     // Create blob
     const blob = new Blob([finalMergedBytes as any], { type: 'application/pdf' })

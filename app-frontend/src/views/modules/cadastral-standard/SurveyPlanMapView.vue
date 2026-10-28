@@ -345,12 +345,12 @@
               <span v-if="!isExporting">📋 Generate {{ planTypeLabel }}</span>
               <span v-else>⏳ {{ exportStatus || 'Generating…' }} <span v-if="elapsedLabel" data-testid="generation-elapsed">({{ elapsedLabel }})</span></span>
             </button>
-            <button v-if="generationAbort" type="button" @click="cancelGeneration" data-testid="cancel-generation"
-                    class="btn-export" style="width: 100%; padding: 10px;">✕ Cancel generation</button>
+            <button v-if="generationAbort" type="button" @click="cancelGeneration" data-testid="cancel-generation" :disabled="savingStarted"
+                    class="btn-export" style="width: 100%; padding: 10px;">{{ savingStarted ? 'Saving — almost done' : '✕ Cancel generation' }}</button>
             <button @click="generateComprehensivePDF" :disabled="isExporting"
                     class="btn-export btn-professional" style="width: 100%; font-size: 16px; padding: 16px;">
               <span v-if="!isExporting">📚 Download Complete Survey Record</span>
-              <span v-else>⏳ Generating…</span>
+              <span v-else>⏳ Generating… <span v-if="elapsedLabel">({{ elapsedLabel }})</span></span>
             </button>
           </div>
         </div>
@@ -534,6 +534,8 @@ const isExporting = ref(false)
 const exportStatus = ref('')
 // Plan generation can take minutes: show how long it has been going and let the user stop it.
 const generationAbort = ref<AbortController | null>(null)
+// True once a Complete Survey Record run has begun writing: from then on it is finished, not stopped.
+const savingStarted = ref(false)
 const elapsedLabel = ref('')
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 function startElapsed() {
@@ -547,6 +549,7 @@ function stopElapsed() {
   elapsedLabel.value = ''
 }
 function cancelGeneration() {
+  if (savingStarted.value) return
   generationAbort.value?.abort()
 }
 const pdfFinalScale = ref<string | null>(null)
@@ -4938,6 +4941,12 @@ async function generatePlanDocuments() {
 async function generateComprehensivePDF() {
   console.log('[ComprehensivePDF] 📚 Starting Complete Survey Record generation...')
   isExporting.value = true
+  const abort = new AbortController()
+  generationAbort.value = abort
+  savingStarted.value = false
+  startElapsed()
+  // Stops at the next stage boundary; the stages themselves cannot be interrupted.
+  const stopIfCancelled = () => { if (abort.signal.aborted) throw new DOMException('Generation cancelled', 'AbortError') }
   
   try {
     // Load workflow state to get ALL survey points
@@ -5201,6 +5210,7 @@ async function generateComprehensivePDF() {
       `[ComprehensivePDF] 📌 Adopted beacons: projectId=${adoptedProjectId ?? 'NONE'}, rows=${adoptedBeacons.length}`,
     );
 
+    stopIfCancelled()
     const result = await generator.generateWithTwoPass({
       projectInfo: coverPageInfo,
       surveyorInfo: surveyorInfo,
@@ -5252,6 +5262,7 @@ async function generateComprehensivePDF() {
 
     // Dispatch the DSG Certificate (1/96) section from the persisted DSG
     // Certificate stage (certificate text saved when the certificate was generated).
+    stopIfCancelled()
     const dsgCertificate = dsgCertificateFromWorkflow(workflowState?.step_data)
     if (dsgCertificate) {
       console.log('[ComprehensivePDF] 📄 DSG Certificate (1/96) included')
@@ -5283,9 +5294,15 @@ async function generateComprehensivePDF() {
       reportData,
       narrativeOptions,
       dispensation,
-      dsgCertificate
+      dsg: dsgCertificate,
+      shouldCancel: () => abort.signal.aborted,
+      onSaveStart: () => { savingStarted.value = true }
     })
 
+    if (finalResult.cancelled) {
+      notifyWarning('Nothing was saved. Generate again when you are ready.', { title: 'Generation cancelled' })
+      return
+    }
     if (!finalResult.success) {
       throw new Error(finalResult.error || 'PDF generation failed')
     }
@@ -5362,9 +5379,16 @@ async function generateComprehensivePDF() {
     console.log('[ComprehensivePDF] ✅ Complete Survey Record generation complete')
     
   } catch (error: any) {
+    if (isCancelled(error)) {
+      notifyWarning('Nothing was saved. Generate again when you are ready.', { title: 'Generation cancelled' })
+      return
+    }
     console.error('[ComprehensivePDF] ❌ Complete Survey Record generation failed:', error)
     notifyError(`Complete Survey Record generation failed: ${error.message}`)
   } finally {
+    stopElapsed()
+    generationAbort.value = null
+    savingStarted.value = false
     isExporting.value = false
   }
 }

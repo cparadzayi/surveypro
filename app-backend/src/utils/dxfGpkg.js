@@ -11,6 +11,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { northUpWktForDxf } from './crsDefinitions.js'
 import { findGdalTool, qgisProjDir } from './gdalDiscovery.js'
+import { cancelledError, throwIfCancelled } from './cancellation.js'
 
 const execAsync = promisify(exec)
 const execFileAsync = promisify(execFile)
@@ -53,8 +54,12 @@ export async function getGDALVersion(cmd) {
  *
  * Returns the .gpkg buffer, or null when ogr2ogr is unavailable or the
  * conversion fails (callers fall back to DXF + .prj only).
+ *
+ * `signal` (an AbortSignal): when the client has gone away ogr2ogr is killed and this throws
+ * GenerationCancelled, rather than degrading to null -- nobody is left to receive the fallback.
  */
-export async function dxfToGeoreferencedGpkg(dxfBuffer, projection, logger) {
+export async function dxfToGeoreferencedGpkg(dxfBuffer, projection, logger, signal) {
+  throwIfCancelled(signal)
   const ogrCmd = await getOGR2OGRCommand()
   if (!ogrCmd || !dxfBuffer || dxfBuffer.length === 0) return null
 
@@ -89,6 +94,7 @@ export async function dxfToGeoreferencedGpkg(dxfBuffer, projection, logger) {
         // A wedged or pathologically slow ogr2ogr must never hang a surveyplan
         // export: the route degrades to DXF + .prj on timeout instead.
         timeout: 60_000,
+        signal,
       }
     )
     if (stderr && !stderr.includes('Warning')) logger?.warn?.(`[DXF] ogr2ogr gpkg stderr: ${stderr.substring(0, 1000)}`)
@@ -97,6 +103,7 @@ export async function dxfToGeoreferencedGpkg(dxfBuffer, projection, logger) {
     logger?.info?.(`[DXF] ✅ georeferenced GeoPackage created (${gpkg.length} bytes)`)
     return gpkg
   } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError' || err?.code === 'ABORT_ERR') throw cancelledError()
     logger?.warn?.(`[DXF] ⚠️ GeoPackage conversion skipped: ${(err?.message || err?.code || 'unknown error').substring(0, 300)}${err?.killed ? ' (killed after timeout)' : ''}`)
     return null
   } finally {

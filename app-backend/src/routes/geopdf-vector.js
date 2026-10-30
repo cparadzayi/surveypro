@@ -14,6 +14,7 @@ import { dxfToGeoreferencedGpkg, getOGR2OGRCommand, getGDALVersion } from '../ut
 import { chooseSheeting } from '../services/chooseSheeting.js'
 import { zipSync } from 'fflate'
 import { warningHints, encodeWarningsHeader } from '../utils/planWarnings.js'
+import { abortOnClientGone, isCancelled, yieldOrCancel } from '../utils/cancellation.js'
 
 const execAsync = promisify(exec)
 const execFileAsync = promisify(execFile)
@@ -26,13 +27,13 @@ const __dirname = path.dirname(__filename)
  * self-georeferencing .gpkg that QGIS places on true Zimbabwe ground without
  * any manual CRS step.
  */
-async function zipDxfWithPrj(dxfBuffer, projection, baseName, logger, includeGpkg = true) {
+async function zipDxfWithPrj(dxfBuffer, projection, baseName, logger, includeGpkg = true, signal = undefined) {
   const entries = {
     [`${baseName}.dxf`]: new Uint8Array(dxfBuffer),
     [`${baseName}.prj`]: new Uint8Array(Buffer.from(prjForDxf(projection) || '', 'utf8')),
   }
   if (includeGpkg) {
-    const gpkg = await dxfToGeoreferencedGpkg(dxfBuffer, projection, logger)
+    const gpkg = await dxfToGeoreferencedGpkg(dxfBuffer, projection, logger, signal)
     if (gpkg) entries[`${baseName}.gpkg`] = new Uint8Array(gpkg)
   }
   return Buffer.from(zipSync(entries, { level: 9 }))
@@ -53,12 +54,12 @@ async function zipDxfWithPrj(dxfBuffer, projection, baseName, logger, includeGpk
  * `<sheet>.prj` beside `<sheet>.dxf` and no other — 2N files, every one of them
  * the same three lines.
  */
-async function zipSheetedDxfWithPrj(files, projection, planBaseName, logger, includeGpkg = true) {
+async function zipSheetedDxfWithPrj(files, projection, planBaseName, logger, includeGpkg = true, signal = undefined) {
   const entries = {}
   for (const file of files) {
     entries[file.filename] = new Uint8Array(file.buffer)
     if (includeGpkg) {
-      const gpkg = await dxfToGeoreferencedGpkg(file.buffer, projection, logger)
+      const gpkg = await dxfToGeoreferencedGpkg(file.buffer, projection, logger, signal)
       if (gpkg) entries[file.filename.replace(/\.dxf$/, '.gpkg')] = new Uint8Array(gpkg)
     }
   }
@@ -160,6 +161,8 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
   fastify.post('/dxf', {
     preHandler: [fastify.authenticate, authenticateWithSchema, requireSchema]
   }, async (request, reply) => {
+    // If the client goes away (Cancel, closed tab) ogr2ogr is killed and no further step starts.
+    const clientGone = abortOnClientGone(reply)
     try {
       fastify.log.info('[DXF] DXF generation started')
 
@@ -204,7 +207,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         const ts = Date.now()
 
         if (gpkgOnly) {
-          const gpkg = await dxfToGeoreferencedGpkg(diagram.dxfBuffer, projection, fastify.log)
+          const gpkg = await dxfToGeoreferencedGpkg(diagram.dxfBuffer, projection, fastify.log, clientGone.signal)
           if (!gpkg) {
             return reply.code(500).send({ error: 'GeoPackage generation failed', message: 'ogr2ogr did not produce a .gpkg (see server logs).' })
           }
@@ -220,7 +223,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
 
         let dxfPayload = diagram.dxfBuffer
         if (zip) {
-          dxfPayload = await zipDxfWithPrj(diagram.dxfBuffer, projection, `diagram-${ts}`, fastify.log, includeGpkg)
+          dxfPayload = await zipDxfWithPrj(diagram.dxfBuffer, projection, `diagram-${ts}`, fastify.log, includeGpkg, clientGone.signal)
         }
         reply
           .type(zip ? 'application/zip' : 'application/dxf')
@@ -250,10 +253,14 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           return reply.code(400).send({ error: 'sheets was given but empty' })
         }
         const { generateSheetedDXF } = await import('../services/dxfGenerator.js')
+        await yieldOrCancel(clientGone.signal)
         const files = generateSheetedDXF(
           { sheets, metadata, beacons, projection, scale, sheetSize, orientation, planType, beaconLabels, baseName, sheetLayouts: request.body.sheetLayouts },
           fastify.log
         )
+        // The sheets were drawn in one synchronous stretch: give the loop a turn so a closed connection
+        // is seen before the (slower) GeoPackage step starts.
+        await yieldOrCancel(clientGone.signal)
         const warningCount = files.reduce((sum, f) => sum + (f.warnings?.count || 0), 0)
         const warningSummary = files.map((f) => f.warnings?.summary).filter(Boolean)
         const sheetedHeaders = {
@@ -288,7 +295,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
 
         if (zip) {
           const planBase = files[0].filename.replace(/-sheet-\d+-of-\d+\.dxf$/, '').replace(/\.dxf$/, '')
-          const archive = await zipSheetedDxfWithPrj(files, projection, planBase, fastify.log, includeGpkg)
+          const archive = await zipSheetedDxfWithPrj(files, projection, planBase, fastify.log, includeGpkg, clientGone.signal)
           return reply
             .type('application/zip')
             .headers({
@@ -309,15 +316,19 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
 
       const { generateDXF } = await import('../services/dxfGenerator.js')
 
+      await yieldOrCancel(clientGone.signal)
       const { buffer, warnings } = generateDXF(
         { parcels, beacons, outsideFigureData, metadata, projection, scale, sheetSize, orientation, planType, beaconLabels, beaconGroups: request.body.beaconGroups },
         fastify.log
       )
 
+      // Drawn in one synchronous stretch: give the loop a turn so a closed connection is seen before
+      // the (slower) GeoPackage step starts.
+      await yieldOrCancel(clientGone.signal)
       const ts = Date.now()
 
       if (gpkgOnly) {
-        const gpkg = await dxfToGeoreferencedGpkg(buffer, projection, fastify.log)
+        const gpkg = await dxfToGeoreferencedGpkg(buffer, projection, fastify.log, clientGone.signal)
         if (!gpkg) {
           return reply.code(500).send({ error: 'GeoPackage generation failed', message: 'ogr2ogr did not produce a .gpkg (see server logs).' })
         }
@@ -333,7 +344,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
       }
 
       if (zip) {
-        const dxfPayload = await zipDxfWithPrj(buffer, projection, `survey-plan-${ts}`, fastify.log, includeGpkg)
+        const dxfPayload = await zipDxfWithPrj(buffer, projection, `survey-plan-${ts}`, fastify.log, includeGpkg, clientGone.signal)
         reply
           .type('application/zip')
           .header('Content-Disposition', `attachment; filename="survey-plan-${ts}.zip"`)
@@ -356,6 +367,10 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
       reply.send(buffer)
 
     } catch (error) {
+      if (isCancelled(error)) {
+        fastify.log.info('[DXF] Client disconnected; DXF generation cancelled')
+        return reply.code(499).send()   // the socket is closed; this only settles the handler
+      }
       fastify.log.error('[DXF] Generation failed:', error)
       reply.code(500).send({ error: 'DXF generation failed', message: error.message })
     }
@@ -376,8 +391,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
 
     // The renderer yields between beacons; if the client has gone (Cancel, closed tab) before the PDF
     // was sent, this signal stops it instead of letting it run on, unseen, for minutes.
-    const clientGone = new AbortController()
-    reply.raw.on('close', () => { if (!reply.raw.writableFinished) clientGone.abort() })
+    const clientGone = abortOnClientGone(reply)
     
     let vectorPdfCreated = false
     
@@ -884,7 +898,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
 
     } catch (error) {
       // The client went away and the render stopped on purpose: nobody is left to answer.
-      if (error?.name === 'GenerationCancelled') {
+      if (isCancelled(error)) {
         fastify.log.info('[GeoPDF] Client disconnected; vector GeoPDF generation cancelled')
         return reply.code(499).send()   // the socket is closed; this only settles the handler
       }

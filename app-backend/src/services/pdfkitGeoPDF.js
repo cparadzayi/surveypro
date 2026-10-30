@@ -1,5 +1,6 @@
 // FORCE RELOAD: 2026-02-25-21:24 - re-enable retry + relaxed stacker scan - CACHE BUST
 import { writeFile, unlink, mkdir } from "fs/promises";
+import { GENERATION_CANCELLED, yieldOrCancel } from '../utils/cancellation.js';
 import { createWriteStream } from "fs";
 import { PassThrough } from "stream";
 import PDFDocument from "pdfkit";
@@ -10968,23 +10969,9 @@ class LabelCollisionDetector {
  * Main GeoPDF generation function
  * MODIFIED: 2025-12-30 20:00 - File loading confirmed, investigating parcel rendering
  */
-/**
- * A render is one long synchronous stretch, so the event loop never runs inside it and a client that
- * has gone away (Cancel, a closed tab) is never noticed: the server would grind on to the end for
- * nobody. Between beacons and inset groups the render hands the loop a turn, which lets the
- * connection's 'close' event fire, then stops if `signal` (an AbortSignal) has been aborted.
- * Without a signal it costs nothing.
- */
-export const GENERATION_CANCELLED = 'GenerationCancelled';
-async function yieldOrCancel(signal) {
-  if (!signal) return;
-  await new Promise((resolve) => setImmediate(resolve));
-  if (signal.aborted) {
-    const e = new Error('Generation cancelled: the client went away');
-    e.name = GENERATION_CANCELLED;
-    throw e;
-  }
-}
+// A render is one long synchronous stretch: between beacons and inset groups it hands the event loop a
+// turn (yieldOrCancel) so a client that has gone away is noticed and the render stops. See utils/cancellation.js.
+export { GENERATION_CANCELLED };
 
 export async function generateGeoPDF(options, logger) {
   try {

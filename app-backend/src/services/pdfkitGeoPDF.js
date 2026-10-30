@@ -1,6 +1,7 @@
 // FORCE RELOAD: 2026-02-25-21:24 - re-enable retry + relaxed stacker scan - CACHE BUST
 import { writeFile, unlink, mkdir } from "fs/promises";
 import { GENERATION_CANCELLED, yieldOrCancel } from '../utils/cancellation.js';
+import { insetTagCandidates } from './pdfkitGeoPDF/insetTagCandidates.js';
 import { createWriteStream } from "fs";
 import { PassThrough } from "stream";
 import PDFDocument from "pdfkit";
@@ -3870,7 +3871,16 @@ async function renderBeacons(
       // In the road at any size first; only then in the cluster's own stand.
       // Every size at once, nearest-and-largest first, so size and distance trade
       // off through the cost rather than the largest size always winning.
-      const allSizes = (gaps) => FONTS.flatMap((fs) => build(fs, gaps)).sort((p, q) => p.cost - q.cost);
+      // Candidates in the order to try them (cheapest first, ties in generation order), made one at a
+      // time as pick() asks for them: the first that fits is usually within the first few hundred of
+      // millions, so nothing needs building or sorting up front. See pdfkitGeoPDF/insetTagCandidates.js,
+      // whose test checks the sequence equals the one build() + sort used to give.
+      const tagWidthAt = (fs) => { doc.fontSize(fs).font('Helvetica-Bold'); return doc.widthOfString(tag); };
+      const candidatesFor = (fonts, gaps, ref) => insetTagCandidates({
+        fonts, gaps, ref, anchors, rots, alongRots: [...new Set([align, ...extraAngles])],
+        widthAt: tagWidthAt, beaconRadius, turnCost, fontCostPt: FONT_COST_PT,
+      });
+      const allSizes = (gaps) => candidatesFor(FONTS, gaps, FONTS[0]);
       let picked = null;
       // Inside the ring first, on open ground, growing the ring a little at a time.
       for (const extra of [0, 3, 6, 10, 14, 18]) {
@@ -3892,7 +3902,7 @@ async function renderBeacons(
       const pickSpot = () => {
         let got = null;
         if (roadFont) {
-          const roadNear = build(roadFont, NEAR_GAPS, roadFont).sort((p, q) => p.cost - q.cost);
+          const roadNear = candidatesFor([roadFont], NEAR_GAPS, roadFont);
           got = pick(roadNear, true) || pick(roadNear, false);
         }
         if (!got) {

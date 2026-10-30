@@ -641,10 +641,38 @@ describe('dxfGenerator integration — corner crosses clamp to the drawing area'
     // so the two counts are equal and both even. (The intermediate border-tick
     // model labelled each grid line once, making text exactly half of lines —
     // that invariant belonged to border ticks and no longer applies.)
-    expect(lineCount).toBeGreaterThan(8) // a real grid, not just the 4 extremes
+    //
+    // How many crosses: the grid is scale-derived (app-shared/tickMarks.js) and a cross is drawn only
+    // where it clears the drawn detail. This fixture's one stand IS the figure, so every grid node on
+    // its boundary is blocked, and at each interval tried (100 m, 50 m) only two nodes in a single row
+    // are clear. No interval gives three marks reaching both axes, so selectTickGrid returns the most
+    // it found: two crosses. (The original assertion, more than 8 lines, predates clearing detail and
+    // counted crosses sitting on the boundary itself.) What this test owns is the structure of
+    // whatever is emitted: the lines and texts pair up, two LINEs and two labels per cross.
+    expect(lineCount).toBeGreaterThanOrEqual(4)   // at least two crosses
     expect(lineCount % 2).toBe(0)
     expect(textCount).toBe(lineCount)
+    expect(gridCrossCentres(dxf).length).toBe(lineCount / 2)
   })
+
+  // Centres of the GRID layer's crosses: the midpoint of each horizontal axis LINE.
+  function gridCrossCentres(dxf) {
+    const lines = dxf.split(/\r?\n/)
+    const out = []
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() !== 'LINE') continue
+      const g = {}
+      for (let j = i + 1; j < Math.min(i + 40, lines.length); j += 2) {
+        const c = lines[j].trim()
+        if (c === '0') break
+        g[c] = (lines[j + 1] || '').trim()
+      }
+      if (g['8'] !== 'GRID') continue
+      const x1 = parseFloat(g['10']), y1 = parseFloat(g['20']), x2 = parseFloat(g['11']), y2 = parseFloat(g['21'])
+      if (Math.abs(y1 - y2) < 1e-9) out.push({ x: (x1 + x2) / 2, y: y1 })
+    }
+    return out
+  }
 })
 
 describe('dxfGenerator integration — OFD Metres accepts `metres` payloads', () => {

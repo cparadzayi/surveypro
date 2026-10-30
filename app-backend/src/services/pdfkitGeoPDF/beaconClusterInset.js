@@ -123,36 +123,44 @@ export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [
   };
   const labels = rects.filter((q) => q && q.width <= 120 && q.height <= 60 && q.width * q.height <= 2500 && nearRect(q));
   otherBeacons = otherBeacons.filter((q) => Math.hypot(q.x - cx, q.y - cy) - maxOff - beaconRadius - gap < hiMax);
-  // Does a ring at (x, y, r) cut label q: neither wholly outside it nor wholly around it? The farthest
-  // corner is the one with the larger offset on each axis, so no array or four hypots per label.
-  const cutsLabel = (x, y, r, q) => {
-    const nx = Math.max(q.x, Math.min(x, q.x + q.width)), ny = Math.max(q.y, Math.min(y, q.y + q.height));
-    const dmin = Math.hypot(nx - x, ny - y);
-    const dmax = Math.hypot(Math.max(Math.abs(q.x - x), Math.abs(q.x + q.width - x)), Math.max(Math.abs(q.y - y), Math.abs(q.y + q.height - y)));
-    return !(dmax + gap <= r || dmin - gap >= r);
-  };
-  const okAt = (x, y, r) => {
-    // softBeacons: only labels must be clear; another beacon's circle may be cut.
-    if (!softBeacons) {
+  // A ring of radius r about (x, y) is clear of a label when it lies wholly outside it (r <= dmin - gap) or
+  // wholly around it (r >= dmax + gap), and of another beacon's circle likewise: so each label and circle
+  // BLOCKS an open interval of radii, (a, b). They are measured once per ring centre; after that, whether a
+  // radius is clear (or how many it cuts) is a lookup, not a pass over every label, for each of the
+  // hundreds of radii tried. The same floating-point expressions as the per-radius test it replaces.
+  const intervalsAt = (x, y, withBeacons) => {
+    const a = [], b = [], w = [];
+    const add = (lo, hi, weight) => { if (lo < hi) { a.push(lo); b.push(hi); w.push(weight); } };
+    if (withBeacons) {
       for (const q of otherBeacons) {
         const d = Math.hypot(q.x - x, q.y - y);
-        if (!(d + beaconRadius + gap <= r || d - beaconRadius - gap >= r)) return false;
+        add(d - beaconRadius - gap, d + beaconRadius + gap, 1);
       }
     }
-    for (const q of labels) if (cutsLabel(x, y, r, q)) return false;
-    return true;
-  };
-  // How much a ring at (x, y, r) would cut: a label counts 3, another beacon's circle 1.
-  // `stopAbove`: the count only ever grows, so once it passes this the caller has a better ring
-  // already and the exact total no longer matters; the partial count returned then is still above it.
-  const cutsAt = (x, y, r, stopAbove = Infinity) => {
-    let n = 0;
-    for (const q of otherBeacons) {
-      const d = Math.hypot(q.x - x, q.y - y);
-      if (!(d + beaconRadius + gap <= r || d - beaconRadius - gap >= r)) { n += 1; if (n > stopAbove) return n; }
+    for (const q of labels) {
+      const nx = Math.max(q.x, Math.min(x, q.x + q.width)), ny = Math.max(q.y, Math.min(y, q.y + q.height));
+      const dmin = Math.hypot(nx - x, ny - y);
+      const dmax = Math.hypot(Math.max(Math.abs(q.x - x), Math.abs(q.x + q.width - x)), Math.max(Math.abs(q.y - y), Math.abs(q.y + q.height - y)));
+      add(dmin - gap, dmax + gap, 3);
     }
-    for (const q of labels) if (cutsLabel(x, y, r, q)) { n += 3; if (n > stopAbove) return n; }
-    return n;
+    return { a, b, w };
+  };
+  // The first radius from lo (stepping 0.5, up to hi) that no interval blocks, or null.
+  const firstClearR = (x, y, lo, hi) => {
+    // softBeacons: only labels must be clear; another beacon's circle may be cut.
+    const { a, b } = intervalsAt(x, y, !softBeacons);
+    const order = a.map((_, i) => i).sort((p, q) => a[p] - a[q]);
+    const merged = [];
+    for (const i of order) {
+      const last = merged[merged.length - 1];
+      if (last && a[i] < last.b) { if (b[i] > last.b) last.b = b[i]; } else merged.push({ a: a[i], b: b[i] });
+    }
+    let j = 0;
+    for (let r = lo; r <= hi; r += 0.5) {
+      while (j < merged.length && merged[j].b <= r) j++;
+      if (!(j < merged.length && merged[j].a < r)) return r;
+    }
+    return null;
   };
   const centres = [[0, 0]];
   for (const off of offsets) {
@@ -163,25 +171,29 @@ export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [
     const x = cx + ox, y = cy + oy;
     const lo = Math.max(minR, farthest(x, y) + beaconRadius + gap + 0.8);
     const hi = Math.max(lo * 2.5, lo + reach);
-    for (let r = lo; r <= hi; r += 0.5) {
-      if (!okAt(x, y, r)) continue;
-      const cost = r + Math.hypot(ox, oy) * 2;
-      if (!best || cost < best.cost) best = { cx: x, cy: y, r, cost, clear: true };
-      break;
-    }
+    const r = firstClearR(x, y, lo, hi);
+    if (r === null) continue;
+    const cost = r + Math.hypot(ox, oy) * 2;
+    if (!best || cost < best.cost) best = { cx: x, cy: y, r, cost, clear: true };
   }
   if (best) return { cx: best.cx, cy: best.cy, r: best.r, clear: true };
   if (leastCut) {
-    // No clear ring exists: the full ring that cuts the least, labels weighing most.
+    // No clear ring exists: the full ring that cuts the least, labels weighing most (a label counts 3,
+    // another beacon's circle 1 -- circles counted whether or not softBeacons spares them above).
     let worst = null;
     for (const [ox, oy] of centres) {
       const x = cx + ox, y = cy + oy;
       const lo = Math.max(minR, farthest(x, y) + beaconRadius + gap + 0.8);
+      const off2 = Math.hypot(ox, oy) * 2;
+      // How many weighted intervals contain r: those that start before it, less those already over.
+      const { a, b, w } = intervalsAt(x, y, true);
+      const byStart = a.map((_, i) => i).sort((p, q) => a[p] - a[q]);
+      const byEnd = b.map((_, i) => i).sort((p, q) => b[p] - b[q]);
+      let ps = 0, pe = 0, started = 0, ended = 0;
       for (let r = lo; r <= Math.max(lo * 2.5, lo + reach); r += 0.5) {
-        const off2 = Math.hypot(ox, oy) * 2;
-        // A ring needs cuts * 100 + r + off2 < worst.cost to replace the best so far, so any count
-        // past (worst.cost - r - off2) / 100 loses and need not be finished.
-        const cuts = cutsAt(x, y, r, worst ? (worst.cost - r - off2) / 100 : Infinity);
+        while (ps < byStart.length && a[byStart[ps]] < r) started += w[byStart[ps++]];
+        while (pe < byEnd.length && b[byEnd[pe]] <= r) ended += w[byEnd[pe++]];
+        const cuts = started - ended;
         const cost = cuts * 100 + r + off2;
         if (!worst || cost < worst.cost) worst = { cx: x, cy: y, r, cost, cuts };
       }

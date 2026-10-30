@@ -1,47 +1,28 @@
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import { writeFile, unlink, mkdir, readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { findGdalTool, qgisProjDir } from '../utils/gdalDiscovery.js'
+import { creationArgs, driverSupport, gdalVersion, locateTool, runGdal, toolFile } from '../utils/gdalRunner.js'
 
-const execAsync = promisify(exec)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Both tools are located by scanning the QGIS/OSGeo install directories rather
-// than by a pinned version list — see utils/gdalDiscovery.js. This host has
-// QGIS 3.44.15 and the old list named 3.44.3, so /geopdf/check answered
+// Tools are located by scanning the QGIS/OSGeo install directories rather than by a pinned version list
+// (utils/gdalDiscovery.js) and run through utils/gdalRunner.js: argv arrays, the install's own PROJ data,
+// and creation options taken from what the installed driver lists. Nothing here depends on which GDAL it is.
+// This host once had QGIS 3.44.15 while the old list named 3.44.3, and /geopdf/check answered
 // `{"available": false}` while GDAL sat on disk.
-
-// Cache the GDAL path on first lookup
-let cachedGDALPath = null
-
-async function getGDALCommand() {
-  if (cachedGDALPath === null) {
-    cachedGDALPath = await findGdalTool('gdal_translate')
-  }
-  return cachedGDALPath || 'gdal_translate' // Fallback to PATH
-}
-
-let cachedOGR2OGRPath = null
-
-async function getOGR2OGRCommand() {
-  if (cachedOGR2OGRPath === null) {
-    cachedOGR2OGRPath = await findGdalTool('ogr2ogr')
-  }
-  return cachedOGR2OGRPath || 'ogr2ogr' // Fallback to PATH
-}
+const getGDALCommand = () => locateTool('gdal_translate')
+const getOGR2OGRCommand = () => locateTool('ogr2ogr')
 
 /**
  * GeoPDF Generation Routes
  * Creates vector GeoPDFs from GeoJSON using GDAL/OGR
  */
 export default async function geoPDFRoutes(fastify, options) {
-  // /geopdf/generate shells out via execAsync with values taken from the
-  // request. That was reachable anonymously -- remote command execution with no
-  // credential. A token is now required.
+  // /geopdf/generate runs GDAL with values taken from the request. It used to build shell strings from
+  // them (and was reachable anonymously: remote command execution with no credential). A token is now
+  // required, and the values go to GDAL as single arguments through utils/gdalRunner.js, never a shell.
   const auth = { preHandler: [fastify.authenticate] }
 
   
@@ -52,20 +33,21 @@ export default async function geoPDFRoutes(fastify, options) {
     try {
       const gdalCommand = await getGDALCommand()
       const ogrCommand = await getOGR2OGRCommand()
-      
+
       if (!gdalCommand && !ogrCommand) {
         throw new Error('GDAL/OGR not found in any common location')
       }
-      
-      const { stdout } = await execAsync(`${gdalCommand || ogrCommand} --version`)
-      
-      fastify.log.info(`[GeoPDF] ✅ GDAL found: ${gdalCommand}`)
-      fastify.log.info(`[GeoPDF] Version: ${stdout.trim()}`)
-      
+
+      const version = await gdalVersion(gdalCommand || ogrCommand)
+      if (!version) throw new Error('GDAL was found but did not report a version')
+
+      fastify.log.info(`[GeoPDF] ✅ GDAL found: ${gdalCommand || ogrCommand}`)
+      fastify.log.info(`[GeoPDF] Version: ${version.text}`)
+
       return {
         available: true,
-        version: stdout.trim(),
-        path: gdalCommand,
+        version: version.text,
+        path: gdalCommand || ogrCommand,
         message: 'GDAL is available'
       }
     } catch (error) {
@@ -108,6 +90,14 @@ export default async function geoPDFRoutes(fastify, options) {
           error: 'Missing required fields: mapImage, extent, projection'
         })
       }
+      // Values go to GDAL as single arguments (never through a shell), but they should still be what they claim.
+      if (!/^[A-Za-z]+:\d+$/.test(String(projection))) {
+        return reply.code(400).send({ error: 'projection must look like EPSG:22291' })
+      }
+      const bounds = [extent.minX, extent.maxY, extent.maxX, extent.minY].map(Number)
+      if (!bounds.every(Number.isFinite)) {
+        return reply.code(400).send({ error: 'extent must have numeric minX, minY, maxX and maxY' })
+      }
 
       // Generate unique filenames
       const timestamp = Date.now()
@@ -128,77 +118,55 @@ export default async function geoPDFRoutes(fastify, options) {
       // Build GDAL command for georeferencing
       // Using ISO 32000 encoding for Adobe Reader compatibility
       const gdalCmd = await getGDALCommand()
-      
+
       if (!gdalCmd) {
         throw new Error('GDAL command not found')
       }
-      
+      const pdfDriver = await driverSupport(gdalCmd, 'PDF')
+      if (!pdfDriver?.write) {
+        throw new Error('This GDAL build cannot write PDF')
+      }
+
       // GDAL PDF driver doesn't support raster images well
       // Solution: Create GeoTIFF first, then convert to PDF
       const tempTiff = path.join(tempDir, `temp-${timestamp}.tif`)
-      
+
       // Step 1: Create GeoTIFF with georeferencing
-      // Note: gdalCmd is already quoted, don't add extra quotes
-      const tiffCommand = [
-        gdalCmd,
-        `-of GTiff`,
-        `-a_srs ${projection}`,
-        `-a_ullr ${extent.minX} ${extent.maxY} ${extent.maxX} ${extent.minY}`,
-        `"${inputPng}"`,
-        `"${tempTiff}"`
-      ].join(' ')
-      
-      // Step 2: Convert GeoTIFF to GeoPDF
-      const pdfCommand = [
-        gdalCmd,
-        `-of PDF`,
-        `-co GEO_ENCODING=ISO32000`,
-        `-co DPI=300`,
-        `-co AUTHOR="${metadata?.surveyorName || 'SurveyPro'}"`,
-        `-co TITLE="${metadata?.title || 'Survey Plan'}"`,
-        `-co SUBJECT="${metadata?.designation || 'Cadastral Survey'}"`,
-        `-co CREATOR="SurveyPro v1.0"`,
-        `"${tempTiff}"`,
-        `"${outputPdf}"`
-      ].join(' ')
+      const tiffArgs = ['-of', 'GTiff', '-a_srs', projection, '-a_ullr', ...bounds, inputPng, tempTiff]
 
-      fastify.log.info('[GeoPDF] 🔧 Running GDAL command...')
-      fastify.log.info(`[GeoPDF] Command: ${tiffCommand}`)
-      fastify.log.info(`[GeoPDF] Command: ${pdfCommand}`)
+      // Step 2: Convert GeoTIFF to GeoPDF. The options are the ones this GDAL's PDF driver lists (an option
+      // it does not know is dropped, not passed to be warned about); ISO 32000 encoding is for Adobe Reader.
+      const { args: pdfOptions, dropped } = await creationArgs(gdalCmd, 'PDF', {
+        GEO_ENCODING: 'ISO32000',
+        DPI: 300,
+        AUTHOR: metadata?.surveyorName || 'SurveyPro',
+        TITLE: metadata?.title || 'Survey Plan',
+        SUBJECT: metadata?.designation || 'Cadastral Survey',
+        CREATOR: 'SurveyPro v1.0',
+      }, { tool: 'raster' })
+      if (dropped.length) fastify.log.info(`[GeoPDF] GDAL PDF driver has no option(s): ${dropped.join(', ')}`)
+      const pdfArgs = ['-of', 'PDF', ...pdfOptions, tempTiff, outputPdf]
+
+      fastify.log.info('[GeoPDF] 🔧 Running GDAL...')
+      fastify.log.info(`[GeoPDF] ${toolFile(gdalCmd)} ${JSON.stringify(tiffArgs)}`)
+      fastify.log.info(`[GeoPDF] ${toolFile(gdalCmd)} ${JSON.stringify(pdfArgs)}`)
       fastify.log.info(`[GeoPDF] Extent: ${JSON.stringify(extent)}`)
-
-      // Set PROJ_LIB to use QGIS's PROJ data instead of PostgreSQL's
-      const projLib = qgisProjDir(gdalCmd)
-
-      const env = { ...process.env }
-      if (projLib) {
-        env.PROJ_LIB = projLib
-        fastify.log.info(`[GeoPDF] 📍 Setting PROJ_LIB: ${projLib}`)
-      }
 
       // Execute Step 1: Create GeoTIFF
       fastify.log.info('[GeoPDF] Step 1: Creating GeoTIFF...')
-      const { stdout: stdout1, stderr: stderr1 } = await execAsync(tiffCommand, { 
-        shell: true,
-        maxBuffer: 10 * 1024 * 1024,
-        env
-      })
-      
-      if (stderr1 && !stderr1.includes('Warning')) {
-        fastify.log.warn('[GeoPDF] GeoTIFF stderr:', stderr1)
+      const { stderr: stderr1 } = await runGdal(gdalCmd, tiffArgs)
+
+      if (stderr1 && !/warning/i.test(stderr1)) {
+        fastify.log.warn(`[GeoPDF] GeoTIFF stderr: ${stderr1}`)
       }
       fastify.log.info('[GeoPDF] ✅ GeoTIFF created')
-      
+
       // Execute Step 2: Convert to GeoPDF
       fastify.log.info('[GeoPDF] Step 2: Converting to GeoPDF...')
-      const { stdout: stdout2, stderr: stderr2 } = await execAsync(pdfCommand, { 
-        shell: true,
-        maxBuffer: 10 * 1024 * 1024,
-        env
-      })
-      
-      if (stderr2 && !stderr2.includes('Warning')) {
-        fastify.log.warn('[GeoPDF] PDF stderr:', stderr2)
+      const { stderr: stderr2 } = await runGdal(gdalCmd, pdfArgs)
+
+      if (stderr2 && !/warning/i.test(stderr2)) {
+        fastify.log.warn(`[GeoPDF] PDF stderr: ${stderr2}`)
       }
 
       fastify.log.info(`[GeoPDF] ✅ GeoPDF generated: ${outputPdf}`)
@@ -237,18 +205,16 @@ export default async function geoPDFRoutes(fastify, options) {
   fastify.get('/geopdf/info', auth, async (request, reply) => {
     try {
       const gdalCmd = await getGDALCommand()
-      
-      // Check GDAL version
-      const { stdout: gdalVersion } = await execAsync(`${gdalCmd} --version`).catch(() => ({ stdout: 'Not installed' }))
-      
-      // Check supported formats
-      const { stdout: formats } = await execAsync(`${gdalCmd} --formats`).catch(() => ({ stdout: '' }))
-      const pdfSupported = formats.includes('PDF')
+
+      // The version line for display, and what this build can actually write (asked of GDAL, not assumed)
+      const version = gdalCmd ? await gdalVersion(gdalCmd) : null
+      const pdf = gdalCmd ? await driverSupport(gdalCmd, 'PDF') : null
+      const pdfSupported = !!pdf?.write
 
       return {
         gdal: {
-          version: gdalVersion.trim(),
-          installed: !gdalVersion.includes('Not installed')
+          version: version?.text ?? 'Not installed',
+          installed: !!version
         },
         formats: {
           pdf: pdfSupported,

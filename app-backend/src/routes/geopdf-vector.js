@@ -1,6 +1,4 @@
 // Vector GeoPDF Generation Routes
-import { exec, execFile } from 'child_process'
-import { promisify } from 'util'
 import { writeFile, unlink, mkdir, readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
@@ -11,13 +9,12 @@ import { authenticateWithSchema, requireSchema } from '../utils/schemaAuth.js'
 import { getCapeLoSRID } from '../utils/capeLoSRID.js'
 import { prjForDxf } from '../utils/crsDefinitions.js'
 import { dxfToGeoreferencedGpkg, getOGR2OGRCommand, getGDALVersion } from '../utils/dxfGpkg.js'
+import { creationArgs, creationOptions, driverSupport, gdalVersion, runGdal, vrtOf } from '../utils/gdalRunner.js'
 import { chooseSheeting } from '../services/chooseSheeting.js'
 import { zipSync } from 'fflate'
 import { warningHints, encodeWarningsHeader } from '../utils/planWarnings.js'
-import { abortOnClientGone, isCancelled, yieldOrCancel } from '../utils/cancellation.js'
+import { abortOnClientGone, cancelledError, isCancelled, yieldOrCancel } from '../utils/cancellation.js'
 
-const execAsync = promisify(exec)
-const execFileAsync = promisify(execFile)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -124,12 +121,19 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
     try {
       const ogrCmd = await getOGR2OGRCommand()
       
+      // What this GDAL can do is asked of it (its driver list and the PDF driver's option list), not
+      // inferred from a version number or from the install path.
+      const pdf = ogrCmd ? await driverSupport(ogrCmd, 'PDF') : null
+      const gpkg = ogrCmd ? await driverSupport(ogrCmd, 'GPKG') : null
+      const geoEncoding = ogrCmd && pdf?.write ? (await creationOptions(ogrCmd, 'PDF')).dataset.has('GEO_ENCODING') : false
+      const version = ogrCmd ? await gdalVersion(ogrCmd) : null
+
       const capabilities = {
         features: {
           gdalVector: {
             description: 'GDAL/ogr2ogr Vector Generation',
-            supported: !!ogrCmd,
-            capabilities: ogrCmd ? ['OGC GeoPDF', 'ISO 32000', 'Vector layers', 'Georeferencing'] : []
+            supported: !!pdf?.write,
+            capabilities: pdf?.write ? ['OGC GeoPDF', 'ISO 32000', 'Vector layers', 'Georeferencing'] : []
           },
           trueGeoPDF: {
             description: 'Custom True GeoPDF Generation',
@@ -138,11 +142,17 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           },
           georeferencing: {
             description: 'GDAL Georeferencing',
-            supported: !!ogrCmd && ogrCmd.includes('gdal'),
-            capabilities: ogrCmd ? ['EPSG:22291', 'Cape Lo support', 'ISO 32000 encoding'] : []
+            supported: geoEncoding,
+            capabilities: geoEncoding ? ['EPSG:22291', 'Cape Lo support', 'ISO 32000 encoding'] : []
+          },
+          geopackage: {
+            description: 'GeoPackage (georeferenced DXF companion)',
+            supported: !!gpkg?.write,
+            capabilities: gpkg?.write ? ['.gpkg alongside the DXF'] : []
           }
         },
         gdalVersion: ogrCmd ? await getGDALVersion(ogrCmd) : null,
+        gdal: version ? { major: version.major, minor: version.minor, patch: version.patch } : null,
         ogrCommand: ogrCmd
       }
 
@@ -804,97 +814,88 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         return
       }
       
-      // Generate unique filenames
+      // GDAL engine. Every file is written under this request's own names and removed in the finally below.
+      if (!/^[A-Za-z]+:\d+$/.test(String(projection))) {
+        return reply.code(400).send({ error: 'projection must look like EPSG:22291 for the gdal render engine' })
+      }
       const timestamp = Date.now()
       const parcelsGeoJSON = path.join(tempDir, `parcels-${timestamp}.geojson`)
       const beaconsGeoJSON = path.join(tempDir, `beacons-${timestamp}.geojson`)
       const annotationsGeoJSON = annotations ? path.join(tempDir, `annotations-${timestamp}.geojson`) : null
+      const layersVrt = path.join(tempDir, `vector-${timestamp}.vrt`)
       const outputPdf = path.join(tempDir, `vector-geopdf-${timestamp}.pdf`)
-      
-      // Track temp files for cleanup
-      const tempFiles = [parcelsGeoJSON, beaconsGeoJSON, outputPdf]
-      
-      // Write parcels to GeoJSON file
-      const parcelsForGdal = swapYxToXyFeatureCollection(parcelsWithComputedData)
-      await writeFile(parcelsGeoJSON, JSON.stringify(parcelsForGdal, null, 2))
-      
-      // Write beacons to GeoJSON file
-      const beaconsForGdal = swapYxToXyFeatureCollection(beacons)
-      await writeFile(beaconsGeoJSON, JSON.stringify(beaconsForGdal, null, 2))
-      
-      // Write annotations to GeoJSON file if provided
-      if (annotationsGeoJSON) {
-        const annotationsForGdal = swapYxToXyFeatureCollection(annotations)
-        await writeFile(annotationsGeoJSON, JSON.stringify(annotationsForGdal, null, 2))
-      }
+      const tempFiles = [parcelsGeoJSON, beaconsGeoJSON, annotationsGeoJSON, layersVrt, outputPdf].filter(Boolean)
 
-      // STEP 1: Use GDAL/ogr2ogr with Acrobat Reader compatibility settings
       try {
-        // Get ogr2ogr command
+        // Write parcels, beacons and (when given) annotations to GeoJSON files
+        const layers = [
+          { name: 'parcels', file: parcelsGeoJSON, data: swapYxToXyFeatureCollection(parcelsWithComputedData) },
+          { name: 'beacons', file: beaconsGeoJSON, data: swapYxToXyFeatureCollection(beacons) },
+          ...(annotationsGeoJSON ? [{ name: 'annotations', file: annotationsGeoJSON, data: swapYxToXyFeatureCollection(annotations) }] : []),
+        ]
+        for (const l of layers) await writeFile(l.file, JSON.stringify(l.data))
+
         const ogrCmd = await getOGR2OGRCommand()
         if (!ogrCmd) {
           throw new Error('ogr2ogr command not found. Install QGIS or GDAL.')
         }
-
-        // Create initial PDF with parcels
-        const qgisOgrPath = ogrCmd.includes('QGIS') ? (ogrCmd.match(/"([^"]+)"/)?.[1] || ogrCmd.replaceAll('"', '')) : null
-        const projLib = qgisOgrPath ? path.join(path.dirname(qgisOgrPath), '..', 'share', 'proj') : null
-        const env = { ...process.env }
-        if (projLib && existsSync(projLib)) {
-          env.PROJ_LIB = projLib
-          fastify.log.info(`[GeoPDF] 📍 Setting PROJ_LIB: ${projLib}`)
+        const pdfDriver = await driverSupport(ogrCmd, 'PDF')
+        if (!pdfDriver?.write) {
+          throw new Error('This GDAL build cannot write PDF (ogr2ogr has no PDF driver with write support).')
         }
 
-        // ogr2ogr syntax: ogr2ogr [options] dst_datasource src_datasource
-        const parcelsCommand = `${ogrCmd} -f PDF -lco GEOREFERENCE=true -lco GEO_ENCODING=ISO32000 -lco COMPATIBILITY=ACROBAT_9 -s_srs ${projection} -a_srs ${projection} "${outputPdf}" "${parcelsGeoJSON}"`
-        const { stdout: parcelsStdout, stderr: parcelsStderr } = await execAsync(parcelsCommand, {
-          shell: true,
-          maxBuffer: 10 * 1024 * 1024,
-          env
-        })
-        if (parcelsStderr && !parcelsStderr.includes('Warning')) {
-          fastify.log.warn(`[GeoPDF] ogr2ogr parcels stderr: ${parcelsStderr.substring(0, 2000)}`)
+        // The PDF driver makes its layers when the file is created and cannot add one to a file that
+        // already exists ("Layer ... cannot be created by the output driver"), so the layers cannot be
+        // appended one ogr2ogr call at a time. A VRT presents them as one datasource: one call writes all.
+        await writeFile(layersVrt, vrtOf(layers.map((l) => ({ name: l.name, file: l.file }))))
+
+        // Creation options come from what THIS GDAL's PDF driver lists (and the right kind: a dataset option
+        // is -dsco, not -lco); one it does not know is dropped and logged instead of being warned about.
+        const { args: creation, dropped } = await creationArgs(ogrCmd, 'PDF', { GEO_ENCODING: 'ISO32000' })
+        if (dropped.length) fastify.log.info(`[GeoPDF] GDAL PDF driver has no option(s): ${dropped.join(', ')}`)
+
+        const { stderr } = await runGdal(ogrCmd,
+          ['-f', 'PDF', ...creation, '-s_srs', projection, '-a_srs', projection, outputPdf, layersVrt],
+          { signal: clientGone.signal, timeout: 120_000 })
+        if (stderr && !/warning/i.test(stderr)) {
+          fastify.log.warn(`[GeoPDF] ogr2ogr stderr: ${stderr.substring(0, 2000)}`)
         }
-        
-        // Add beacons as points layer
-        const beaconsCommand = `${ogrCmd} -f PDF -update -append -lco GEOREFERENCE=true -lco GEO_ENCODING=ISO32000 -lco COMPATIBILITY=ACROBAT_9 -s_srs ${projection} -a_srs ${projection} "${outputPdf}" "${beaconsGeoJSON}"`
-        const { stdout: beaconsStdout, stderr: beaconsStderr } = await execAsync(beaconsCommand, {
-          shell: true,
-          maxBuffer: 10 * 1024 * 1024,
-          env
-        })
-        if (beaconsStderr && !beaconsStderr.includes('Warning')) {
-          fastify.log.warn(`[GeoPDF] ogr2ogr beacons stderr: ${beaconsStderr.substring(0, 2000)}`)
-        }
-        
         vectorPdfCreated = true
-        fastify.log.info('[GeoPDF] ✅ GDAL vector PDF created successfully (Acrobat Reader compatible)')
-      
+        fastify.log.info('[GeoPDF] GDAL vector PDF created successfully')
+
+        if (!existsSync(outputPdf)) {
+          return reply.code(500).send({
+            error: 'Failed to generate vector GeoPDF',
+            message: 'ogr2ogr did not produce an output PDF. Check server logs for GDAL errors.'
+          })
+        }
+
+        const pdfBuffer = await readFile(outputPdf)
+        reply
+          .type('application/pdf')
+          .header('Content-Disposition', `attachment; filename="survey-plan-vector-geo-${timestamp}.pdf"`)
+          .send(pdfBuffer)
+        return
       } catch (ogrError) {
-        fastify.log.error({
-          msg: '[GeoPDF] ❌ GDAL vector generation failed',
-          error: ogrError?.message,
-          stack: ogrError?.stack,
-          stderr: ogrError?.stderr,
-          stdout: ogrError?.stdout
-        })
+        // A client that went away kills ogr2ogr (an AbortError) and is answered by the outer handler;
+        // anything else is a GDAL failure.
+        if (clientGone.signal.aborted || ogrError?.name === 'AbortError') throw cancelledError()
+        if (!isCancelled(ogrError)) {
+          fastify.log.error({
+            msg: '[GeoPDF] GDAL vector generation failed',
+            error: ogrError?.message,
+            stderr: ogrError?.stderr,
+            stdout: ogrError?.stdout
+          })
+          return reply.code(500).send({
+            error: 'Failed to generate vector GeoPDF',
+            message: 'ogr2ogr did not produce an output PDF. Check server logs for GDAL errors.'
+          })
+        }
+        throw ogrError
+      } finally {
+        await Promise.all(tempFiles.map((file) => unlink(file).catch(() => {})))
       }
-      
-      if (!vectorPdfCreated || !existsSync(outputPdf)) {
-        return reply.code(500).send({
-          error: 'Failed to generate vector GeoPDF',
-          message: 'ogr2ogr did not produce an output PDF. Check server logs for GDAL errors.'
-        })
-      }
-
-      // Read final PDF
-      const pdfBuffer = await readFile(outputPdf)
-
-      // Send PDF as response
-      reply
-        .type('application/pdf')
-        .header('Content-Disposition', `attachment; filename="survey-plan-vector-geo-${timestamp}.pdf"`)
-        .send(pdfBuffer)
 
     } catch (error) {
       // The client went away and the render stopped on purpose: nobody is left to answer.

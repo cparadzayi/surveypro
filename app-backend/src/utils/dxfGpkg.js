@@ -3,35 +3,28 @@
 // routes/geopdf-vector.js so route unit tests can mock the ogr2ogr call and
 // stay hermetic — the mocked route suite must never spawn real GDAL processes
 // (Jest's 5s default timeout becomes a false alarm under full-suite load).
-import { exec, execFile } from 'child_process'
-import { promisify } from 'util'
 import { writeFile, unlink, mkdir, readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { northUpWktForDxf } from './crsDefinitions.js'
-import { findGdalTool, qgisProjDir } from './gdalDiscovery.js'
 import { cancelledError, throwIfCancelled } from './cancellation.js'
+import { gdalVersion, locateTool, runGdal } from './gdalRunner.js'
 
-const execAsync = promisify(exec)
-const execFileAsync = promisify(execFile)
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-let cachedOGR2OGRPath = null
-
+// The tool is found by scanning (utils/gdalDiscovery.js) and run through utils/gdalRunner.js, which passes
+// arguments as an argv array and takes its environment from the install the tool came from: nothing here
+// depends on which GDAL it is. Returns the discovery result (a bare name on PATH, a quoted absolute path
+// otherwise), or null when no GDAL is installed.
 export async function getOGR2OGRCommand() {
-  if (cachedOGR2OGRPath === null) {
-    // Discovered by directory scan, not a pinned QGIS version -- see
-    // utils/gdalDiscovery.js for why the version list was removed.
-    cachedOGR2OGRPath = await findGdalTool('ogr2ogr')
-  }
-  return cachedOGR2OGRPath || 'ogr2ogr'
+  return locateTool('ogr2ogr')
 }
 
+/** The tool's own version line ("GDAL 3.13.3 ..."), for display; never branched on. */
 export async function getGDALVersion(cmd) {
-  const { stdout } = await execAsync(`${cmd} --version`).catch(() => ({ stdout: null }))
-  return stdout?.trim() || null
+  return (await gdalVersion(cmd))?.text || null
 }
 
 /**
@@ -70,27 +63,17 @@ export async function dxfToGeoreferencedGpkg(dxfBuffer, projection, logger, sign
   const srcDxf = path.join(tempDir, `gpkg-src-${ts}.dxf`)
   const outGpkg = path.join(tempDir, `gpkg-out-${ts}.gpkg`)
 
-  // Use QGIS's own PROJ database — the system PATH may resolve a PostGIS
-  // proj.db with an incompatible DATABASE.LAYOUT.VERSION (breaks SRS parsing).
-  const env = { ...process.env }
-  const projLib = qgisProjDir(ogrCmd)
-  if (projLib) {
-    env.PROJ_LIB = projLib
-    env.PROJ_DATA = projLib
-  }
-
   try {
     await writeFile(srcDxf, dxfBuffer)
     const northUpWkt = northUpWktForDxf(projection)
     if (!northUpWkt) return null
-    // execFile, not exec/shell: the WKT contains double quotes that cmd.exe
-    // would mangle, and the argv array sidesteps all quoting entirely.
-    const { stderr } = await execFileAsync(
-      ogrCmd.replaceAll('"', ''),
+    // An argv array, not a shell string: the WKT contains double quotes that cmd.exe would mangle.
+    // runGdal also runs it with the install's own PROJ database (the system PATH may resolve a PostGIS
+    // proj.db with an incompatible DATABASE.LAYOUT.VERSION, which breaks SRS parsing).
+    const { stderr } = await runGdal(
+      ogrCmd,
       ['-f', 'GPKG', outGpkg, srcDxf, '-a_srs', northUpWkt],
       {
-        maxBuffer: 10 * 1024 * 1024,
-        env,
         // A wedged or pathologically slow ogr2ogr must never hang a surveyplan
         // export: the route degrades to DXF + .prj on timeout instead.
         timeout: 60_000,

@@ -17,6 +17,10 @@ const routes: RouteRecordRaw[] = [
   { path: '/dashboard', component: () => import('../views/DashboardView.vue'), meta: { requiresAuth: true } },
   { path: '/map', component: () => import('../views/MapView.vue') },
   { path: '/test-project', component: () => import('../views/TestProjectRunner.vue'), meta: { requiresAuth: true } },
+  // Dev server only: open the Working Plan for a project directly, to exercise plan generation without the workflow.
+  ...(import.meta.env.DEV
+    ? [{ path: '/dev/plan/:projectId', component: () => import('../views/DevPlanHarness.vue'), meta: { requiresAuth: true } }]
+    : []),
 
   // Cadastral (Standard) is a single-surface module: the workflow IS the
   // interface, reached directly. Declared before the generic ':module' route so

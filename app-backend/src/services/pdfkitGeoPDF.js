@@ -2684,7 +2684,7 @@ function drawClippedConstraintCircle(doc, beaconPos, radius, parcelCoords) {
  * - If beacon is not in beaconLabels: show full name outside parcel, horizontally
  * @param {Set<string>} excludeBeaconNames - Set of beacon names to exclude (e.g., Outside Figure vertices already labeled)
  */
-function renderBeacons(
+async function renderBeacons(
   doc,
   beacons,
   parcels,
@@ -2698,7 +2698,8 @@ function renderBeacons(
   insetManager = null,
   avoidSegments = [],
   labelMetrics = null,
-  roadNameLabels = []
+  roadNameLabels = [],
+  abortSignal = null
 ) {
   logger.info(
     "[PDFKit] 🔴 CODE CHANGE TEST - If you see this, changes are being picked up"
@@ -2961,7 +2962,10 @@ function renderBeacons(
   doc._font = priorFont;
   doc._fontSize = priorFontSize;
 
-  beacons.features.forEach((beacon) => {
+  // Each pass of this loop is the unchanged callback; the loop only lets the event loop run between beacons.
+  for (const beacon of beacons.features) {
+    await yieldOrCancel(abortSignal);
+    ((beacon) => {
     const pos = transformCoords(
       beacon.geometry.coordinates[0],
       beacon.geometry.coordinates[1],
@@ -3496,7 +3500,8 @@ function renderBeacons(
         labelHeight
       );
     }
-  });
+    })(beacon);
+  }
 
   // Cramped beacons: one inset per crowded cluster. A letter drawn in place that
   // cannot clear the lines lies across a boundary, so every cluster gets its
@@ -3995,7 +4000,9 @@ function renderBeacons(
       }
       groups.push(g);
     });
-    groups.forEach((g, gi) => {
+    for (const [gi, g] of groups.entries()) {
+      await yieldOrCancel(abortSignal);
+      ((g, gi) => {
       if (gi >= MAX_BEACON_INSETS) {
         for (const i of g) {
           if (labelMetrics) labelMetrics.crampedInPlace += allClusters[i].length;
@@ -4012,7 +4019,8 @@ function renderBeacons(
       });
       g.forEach((i, ci) =>
         placeTag(allClusters[i], i, inset, g.length > 1 ? `${inset.number}${'abcd'[ci]}` : String(inset.number)));
-    });
+      })(g, gi);
+    }
   }
 
   // Draw all deferred beacon circles on top of labels.
@@ -10960,10 +10968,29 @@ class LabelCollisionDetector {
  * Main GeoPDF generation function
  * MODIFIED: 2025-12-30 20:00 - File loading confirmed, investigating parcel rendering
  */
+/**
+ * A render is one long synchronous stretch, so the event loop never runs inside it and a client that
+ * has gone away (Cancel, a closed tab) is never noticed: the server would grind on to the end for
+ * nobody. Between beacons and inset groups the render hands the loop a turn, which lets the
+ * connection's 'close' event fire, then stops if `signal` (an AbortSignal) has been aborted.
+ * Without a signal it costs nothing.
+ */
+export const GENERATION_CANCELLED = 'GenerationCancelled';
+async function yieldOrCancel(signal) {
+  if (!signal) return;
+  await new Promise((resolve) => setImmediate(resolve));
+  if (signal.aborted) {
+    const e = new Error('Generation cancelled: the client went away');
+    e.name = GENERATION_CANCELLED;
+    throw e;
+  }
+}
+
 export async function generateGeoPDF(options, logger) {
   try {
     return await _generateGeoPDFInner(options, logger);
   } catch (topErr) {
+    if (topErr?.name === GENERATION_CANCELLED) throw topErr;
     console.error(`TOP-LEVEL-ERROR: ${topErr?.message}\nSTACK: ${topErr?.stack?.slice(0, 1000)}`);
     throw topErr;
   }
@@ -11996,7 +12023,7 @@ async function _generateGeoPDFInner(options, logger) {
       outsideFigureVertexNames?.size || 0
     } entries`
   );
-  renderBeacons(
+  await renderBeacons(
     doc,
     filteredBeacons,
     filteredParcels,
@@ -12027,7 +12054,8 @@ async function _generateGeoPDFInner(options, logger) {
       return segs;
     })(),
     labelMetrics,
-    roadNameLabels
+    roadNameLabels,
+    options.signal
   );
 
   // Edge labels are rendered in renderParcels() with topology-aware split labeling
@@ -13567,6 +13595,7 @@ export async function generateSheetedGeoPDF(options, logger) {
     const perSheetMetadata = sheetMetadata(metadata, sheet, orderedSheets);
 
     const result = await _generateGeoPDFInner({
+      signal: options?.signal,
       parcels,
       beacons: beaconsFC,
       annotations: annotationsFC,

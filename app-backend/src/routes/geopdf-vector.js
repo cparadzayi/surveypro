@@ -373,6 +373,11 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
     console.log('========================================')
     
     const tempDir = path.join(__dirname, '../../temp/geopdf')
+
+    // The renderer yields between beacons; if the client has gone (Cancel, closed tab) before the PDF
+    // was sent, this signal stops it instead of letting it run on, unseen, for minutes.
+    const clientGone = new AbortController()
+    reply.raw.on('close', () => { if (!reply.raw.writableFinished) clientGone.abort() })
     
     let vectorPdfCreated = false
     
@@ -649,6 +654,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         // First-pass render — detects whether multi-sheet is required
         const firstPass = await generatePDFKitGeoPDF(
           {
+            signal: clientGone.signal,
             parcels: parcelsWithComputedData,
             beacons,
             annotations,
@@ -718,6 +724,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
           fastify.log.warn(`[GeoPDF] 🗺️ SI 727 Reg 32(3): multi-sheet plan — ${sheets.length} sheets from the surveyor's cuts`)
           const sheetedResult = await generateSheetedGeoPDF(
             {
+              signal: clientGone.signal,
               sheets,
               metadata,
               beacons,
@@ -876,6 +883,11 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         .send(pdfBuffer)
 
     } catch (error) {
+      // The client went away and the render stopped on purpose: nobody is left to answer.
+      if (error?.name === 'GenerationCancelled') {
+        fastify.log.info('[GeoPDF] Client disconnected; vector GeoPDF generation cancelled')
+        return reply.code(499).send()   // the socket is closed; this only settles the handler
+      }
       // Structured error logging
       fastify.log.error({
         msg: 'Error generating vector GeoPDF',

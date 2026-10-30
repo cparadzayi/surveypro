@@ -10846,9 +10846,28 @@ function selectPageSize(extent, logger, requestedSheetSize, requestedScale) {
 }
 
 /**
+ * A rectangle's edges as boxesIntersect() sees them: the same arithmetic as its normalisation (a missing
+ * or non-finite field counts as 0 / no extent; a negative extent is flipped), in the same order, so that
+ * boundsOverlap() answers exactly what boxesIntersect(a, b, 0) did.
+ */
+function rectBounds(r) {
+  const x1 = Number.isFinite(r?.x) ? r.x : 0;
+  const y1 = Number.isFinite(r?.y) ? r.y : 0;
+  const x2 = Number.isFinite(r?.width) ? x1 + r.width : x1;
+  const y2 = Number.isFinite(r?.height) ? y1 + r.height : y1;
+  const l = Math.min(x1, x2), t = Math.min(y1, y2);
+  return { l, t, r: l + (Math.max(x1, x2) - l), b: t + (Math.max(y1, y2) - t) };
+}
+
+/** Touching counts as overlapping, as in boxesIntersect with no spacing. */
+function boundsOverlap(a, b) {
+  return !(a.r + 0 < b.l || b.r + 0 < a.l || a.b + 0 < b.t || b.b + 0 < a.t);
+}
+
+/**
  * Collision detection for labels
  */
-class LabelCollisionDetector {
+export class LabelCollisionDetector {
   constructor() {
     this.occupiedRegions = [];
     // Uniform grid over occupiedRegions: placement probes hasCollision tens of
@@ -10881,9 +10900,13 @@ class LabelCollisionDetector {
       width: width + spacing * 2,
       height: height + spacing * 2,
     };
+    // Placement probes this millions of times. The registered regions' bounds are worked out once, when
+    // they are added (see addRegion), and the probe's once here, so each comparison is four additions
+    // and compares rather than two copied-and-normalised rectangles per pair.
+    const p = rectBounds(region);
 
     for (const occupied of this._oversize) {
-      if (this.regionsOverlap(region, occupied)) return true;
+      if (boundsOverlap(p, occupied)) return true;
     }
     const [x0, x1, y0, y1] = this._cellRange(region);
     for (let ix = x0; ix <= x1; ix++) {
@@ -10891,7 +10914,7 @@ class LabelCollisionDetector {
         const bucket = this._grid.get(ix * 1048576 + iy);
         if (!bucket) continue;
         for (const occupied of bucket) {
-          if (this.regionsOverlap(region, occupied)) return true;
+          if (boundsOverlap(p, occupied)) return true;
         }
       }
     }
@@ -10913,16 +10936,19 @@ class LabelCollisionDetector {
 
     const n = normalizeRect(region);
     const [x0, x1, y0, y1] = this._cellRange(n);
+    // The grid and the oversize list hold the regions' precomputed bounds, not the regions: the only
+    // question ever asked of them is whether a probe overlaps.
+    const bounds = rectBounds(region);
     if ((x1 - x0 + 1) * (y1 - y0 + 1) > 256 || !Number.isFinite(x1 + y1 + x0 + y0)) {
-      this._oversize.push(region);
+      this._oversize.push(bounds);
       return;
     }
     for (let ix = x0; ix <= x1; ix++) {
       for (let iy = y0; iy <= y1; iy++) {
         const key = ix * 1048576 + iy;
         const bucket = this._grid.get(key);
-        if (bucket) bucket.push(region);
-        else this._grid.set(key, [region]);
+        if (bucket) bucket.push(bounds);
+        else this._grid.set(key, [bounds]);
       }
     }
   }

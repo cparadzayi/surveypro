@@ -3751,6 +3751,7 @@ async function renderBeacons(
         if (extraAngles.includes(rot)) return 3;
         return Math.abs(rot - align) < 9 ? 2 : 10 + Math.abs(rot - align) * 0.1;
       };
+      const anchors = tagAnchorMembers(cluster);
       const build = (fs, gaps, ref = FONTS[0]) => {
         doc.fontSize(fs).font('Helvetica-Bold');
         const w = doc.widthOfString(tag), h = fs;
@@ -3759,7 +3760,7 @@ async function renderBeacons(
           const rr = (rot * Math.PI) / 180;
           const ew = Math.abs(Math.cos(rr)) * w + Math.abs(Math.sin(rr)) * h;
           const eh = Math.abs(Math.sin(rr)) * w + Math.abs(Math.cos(rr)) * h;
-          for (const m of cluster) {
+          for (const m of anchors) {
             for (let a = 0; a < 360; a += 15) {
               const dx = Math.cos((a * Math.PI) / 180), dy = Math.sin((a * Math.PI) / 180);
               // How far the label reaches from its centre along this bearing: its
@@ -3791,7 +3792,7 @@ async function renderBeacons(
           const rr = (rot * Math.PI) / 180;
           const ux = Math.cos(rr), uy = Math.sin(rr), nx = -Math.sin(rr), ny = Math.cos(rr);
           const ew = Math.abs(ux) * w + Math.abs(uy) * h, eh = Math.abs(uy) * w + Math.abs(ux) * h;
-          for (const m of cluster) {
+          for (const m of anchors) {
             for (let side = 2.5; side <= 10; side += 0.75) {
               for (const sg of [1, -1]) {
                 for (let along = -36; along <= 36; along += 2) {
@@ -10969,6 +10970,37 @@ class LabelCollisionDetector {
  * Main GeoPDF generation function
  * MODIFIED: 2025-12-30 20:00 - File loading confirmed, investigating parcel rendering
  */
+/**
+ * The beacons a cluster's inset tag is tried beside. A tag is tried at many bearings, gaps, sizes and
+ * turns around EACH of them, so the candidates grow with the cluster; on a plan drawn small enough that
+ * 100+ beacons form one cluster that is millions of candidate objects built several times over (the
+ * heap reached 4 GB and the server died). Beside a beacon in the middle of the cluster the tag is
+ * always inside the cluster's own stands, never in the open ground it is looking for, so only the
+ * beacons on the cluster's outline (its convex hull) are used once there are more than `limit` distinct
+ * positions. A cluster of `limit` or fewer is returned as is.
+ */
+export function tagAnchorMembers(cluster, limit = 24) {
+  const byPos = new Map()
+  for (const m of cluster) {
+    const k = Math.round(m.pos.x * 100) + ',' + Math.round(m.pos.y * 100)
+    if (!byPos.has(k)) byPos.set(k, m)
+  }
+  const pts = [...byPos.values()]
+  if (pts.length <= limit) return cluster
+  const sorted = pts.sort((a, b) => a.pos.x - b.pos.x || a.pos.y - b.pos.y)
+  const cross = (o, a, b) => (a.pos.x - o.pos.x) * (b.pos.y - o.pos.y) - (a.pos.y - o.pos.y) * (b.pos.x - o.pos.x)
+  const half = (list) => {
+    const h = []
+    for (const p of list) {
+      while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], p) <= 0) h.pop()
+      h.push(p)
+    }
+    h.pop()
+    return h
+  }
+  return [...half(sorted), ...half([...sorted].reverse())]
+}
+
 // A render is one long synchronous stretch: between beacons and inset groups it hands the event loop a
 // turn (yieldOrCancel) so a client that has gone away is noticed and the render stops. See utils/cancellation.js.
 export { GENERATION_CANCELLED };

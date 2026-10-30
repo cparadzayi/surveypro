@@ -34,15 +34,25 @@ export function normalizeRect(rect) {
  * spacing=0 preserves strict overlap/touch semantics.
  */
 export function boxesIntersect(box1, box2, spacing = 0) {
-  const a = normalizeRect(box1);
-  const b = normalizeRect(box2);
+  // Same arithmetic as normalizeRect(), without allocating (and object-spreading) two rects per
+  // call: this runs millions of times when labels are placed on a dense plan.
+  const ax1 = Number.isFinite(box1?.x) ? box1.x : 0;
+  const ay1 = Number.isFinite(box1?.y) ? box1.y : 0;
+  const ax2 = Number.isFinite(box1?.width) ? ax1 + box1.width : ax1;
+  const ay2 = Number.isFinite(box1?.height) ? ay1 + box1.height : ay1;
+  const bx1 = Number.isFinite(box2?.x) ? box2.x : 0;
+  const by1 = Number.isFinite(box2?.y) ? box2.y : 0;
+  const bx2 = Number.isFinite(box2?.width) ? bx1 + box2.width : bx1;
+  const by2 = Number.isFinite(box2?.height) ? by1 + box2.height : by1;
+  const aMinX = Math.min(ax1, ax2), aMinY = Math.min(ay1, ay2);
+  const bMinX = Math.min(bx1, bx2), bMinY = Math.min(by1, by2);
   const s = normalizeSpacing(spacing);
 
   return !(
-    a.x + a.width + s < b.x ||
-    b.x + b.width + s < a.x ||
-    a.y + a.height + s < b.y ||
-    b.y + b.height + s < a.y
+    aMinX + (Math.max(ax1, ax2) - aMinX) + s < bMinX ||
+    bMinX + (Math.max(bx1, bx2) - bMinX) + s < aMinX ||
+    aMinY + (Math.max(ay1, ay2) - aMinY) + s < bMinY ||
+    bMinY + (Math.max(by1, by2) - bMinY) + s < aMinY
   );
 }
 

@@ -110,40 +110,48 @@ export function placeStandNumber(poly, widthAt, obstacles, { sizes = [9, 8, 7, 6
 export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [], beaconRadius, gap = 1.2, minR = 6, softBeacons = false, reach = 30, offsets = [1.5, 3, 5, 8], leastCut = false }) {
   // Only real labels count: a registered region far larger than any label is a
   // block or a band, and the ring cannot be asked to clear those.
-  const labels = rects.filter((q) => q && q.width <= 120 && q.height <= 60 && q.width * q.height <= 2500);
   const farthest = (x, y) => Math.max(...cluster.map((p) => Math.hypot(p.x - x, p.y - y)));
-  const rectRange = (x, y, q) => {
+  // No ring tried below can be larger than hiMax or centred further than maxOff from (cx, cy), so a
+  // label or circle beyond that reach is never cut: dropping it changes no answer, and on a dense
+  // plan (hundreds of beacons and labels, tried for every cluster) it is most of the work.
+  const maxOff = Math.max(0, ...offsets);
+  const loMax = Math.max(minR, farthest(cx, cy) + maxOff + beaconRadius + gap + 0.8);
+  const hiMax = Math.max(loMax * 2.5, loMax + reach);
+  const nearRect = (q) => {
+    const nx = Math.max(q.x, Math.min(cx, q.x + q.width)), ny = Math.max(q.y, Math.min(cy, q.y + q.height));
+    return Math.hypot(nx - cx, ny - cy) - maxOff - gap < hiMax;
+  };
+  const labels = rects.filter((q) => q && q.width <= 120 && q.height <= 60 && q.width * q.height <= 2500 && nearRect(q));
+  otherBeacons = otherBeacons.filter((q) => Math.hypot(q.x - cx, q.y - cy) - maxOff - beaconRadius - gap < hiMax);
+  // Does a ring at (x, y, r) cut label q: neither wholly outside it nor wholly around it? The farthest
+  // corner is the one with the larger offset on each axis, so no array or four hypots per label.
+  const cutsLabel = (x, y, r, q) => {
     const nx = Math.max(q.x, Math.min(x, q.x + q.width)), ny = Math.max(q.y, Math.min(y, q.y + q.height));
     const dmin = Math.hypot(nx - x, ny - y);
-    const dmax = Math.max(
-      Math.hypot(q.x - x, q.y - y), Math.hypot(q.x + q.width - x, q.y - y),
-      Math.hypot(q.x - x, q.y + q.height - y), Math.hypot(q.x + q.width - x, q.y + q.height - y),
-    );
-    return [dmin, dmax];
+    const dmax = Math.hypot(Math.max(Math.abs(q.x - x), Math.abs(q.x + q.width - x)), Math.max(Math.abs(q.y - y), Math.abs(q.y + q.height - y)));
+    return !(dmax + gap <= r || dmin - gap >= r);
   };
   const okAt = (x, y, r) => {
     // softBeacons: only labels must be clear; another beacon's circle may be cut.
-    for (const q of softBeacons ? [] : otherBeacons) {
-      const d = Math.hypot(q.x - x, q.y - y);
-      if (!(d + beaconRadius + gap <= r || d - beaconRadius - gap >= r)) return false;
+    if (!softBeacons) {
+      for (const q of otherBeacons) {
+        const d = Math.hypot(q.x - x, q.y - y);
+        if (!(d + beaconRadius + gap <= r || d - beaconRadius - gap >= r)) return false;
+      }
     }
-    for (const q of labels) {
-      const [dmin, dmax] = rectRange(x, y, q);
-      if (!(dmax + gap <= r || dmin - gap >= r)) return false;
-    }
+    for (const q of labels) if (cutsLabel(x, y, r, q)) return false;
     return true;
   };
   // How much a ring at (x, y, r) would cut: a label counts 3, another beacon's circle 1.
-  const cutsAt = (x, y, r) => {
+  // `stopAbove`: the count only ever grows, so once it passes this the caller has a better ring
+  // already and the exact total no longer matters; the partial count returned then is still above it.
+  const cutsAt = (x, y, r, stopAbove = Infinity) => {
     let n = 0;
     for (const q of otherBeacons) {
       const d = Math.hypot(q.x - x, q.y - y);
-      if (!(d + beaconRadius + gap <= r || d - beaconRadius - gap >= r)) n += 1;
+      if (!(d + beaconRadius + gap <= r || d - beaconRadius - gap >= r)) { n += 1; if (n > stopAbove) return n; }
     }
-    for (const q of labels) {
-      const [dmin, dmax] = rectRange(x, y, q);
-      if (!(dmax + gap <= r || dmin - gap >= r)) n += 3;
-    }
+    for (const q of labels) if (cutsLabel(x, y, r, q)) { n += 3; if (n > stopAbove) return n; }
     return n;
   };
   const centres = [[0, 0]];
@@ -170,8 +178,11 @@ export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [
       const x = cx + ox, y = cy + oy;
       const lo = Math.max(minR, farthest(x, y) + beaconRadius + gap + 0.8);
       for (let r = lo; r <= Math.max(lo * 2.5, lo + reach); r += 0.5) {
-        const cuts = cutsAt(x, y, r);
-        const cost = cuts * 100 + r + Math.hypot(ox, oy) * 2;
+        const off2 = Math.hypot(ox, oy) * 2;
+        // A ring needs cuts * 100 + r + off2 < worst.cost to replace the best so far, so any count
+        // past (worst.cost - r - off2) / 100 loses and need not be finished.
+        const cuts = cutsAt(x, y, r, worst ? (worst.cost - r - off2) / 100 : Infinity);
+        const cost = cuts * 100 + r + off2;
         if (!worst || cost < worst.cost) worst = { cx: x, cy: y, r, cost, cuts };
       }
     }
@@ -181,6 +192,46 @@ export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [
   return { cx, cy, r: lo, clear: false };
 }
 
+// The same segment list is asked about thousands of times (every candidate spot of every cluster), so
+// it is binned once into a grid of CELL-point squares and each query reads only the squares its box
+// reaches. A segment is filed under every square its bounding box covers; one covering more than
+// MAX_CELLS (a long line across the plan) is kept in `long` and checked every time, so no segment
+// that could touch the box is ever missed. Rebuilt if the array's length changes.
+const CELL = 40, MAX_CELLS = 64;
+const segmentGrids = new WeakMap();
+const cellKey = (ix, iy) => (ix + 32768) * 65536 + (iy + 32768);
+function gridFor(segments) {
+  let g = segmentGrids.get(segments);
+  if (g && g.n === segments.length) return g;
+  const cells = new Map(), long = [];
+  segments.forEach((sg, i) => {
+    const x0 = Math.floor(Math.min(sg.x1, sg.x2) / CELL), x1 = Math.floor(Math.max(sg.x1, sg.x2) / CELL);
+    const y0 = Math.floor(Math.min(sg.y1, sg.y2) / CELL), y1 = Math.floor(Math.max(sg.y1, sg.y2) / CELL);
+    if (!Number.isFinite(x0 + x1 + y0 + y1) || (x1 - x0 + 1) * (y1 - y0 + 1) > MAX_CELLS) { long.push(i); return; }
+    for (let ix = x0; ix <= x1; ix++) for (let iy = y0; iy <= y1; iy++) {
+      const k = cellKey(ix, iy);
+      const list = cells.get(k);
+      if (list) list.push(i); else cells.set(k, [i]);
+    }
+  });
+  g = { n: segments.length, cells, long, seen: new Int32Array(segments.length), stamp: 0 };
+  segmentGrids.set(segments, g);
+  return g;
+}
+function* segmentsNear(segments, cx, cy, reach) {
+  if (segments.length < 64) { yield* segments; return; }
+  const g = gridFor(segments);
+  const stamp = ++g.stamp;
+  for (const i of g.long) { g.seen[i] = stamp; yield segments[i]; }
+  const x0 = Math.floor((cx - reach) / CELL), x1 = Math.floor((cx + reach) / CELL);
+  const y0 = Math.floor((cy - reach) / CELL), y1 = Math.floor((cy + reach) / CELL);
+  for (let ix = x0; ix <= x1; ix++) for (let iy = y0; iy <= y1; iy++) {
+    const list = g.cells.get(cellKey(ix, iy));
+    if (!list) continue;
+    for (const i of list) if (g.seen[i] !== stamp) { g.seen[i] = stamp; yield segments[i]; }
+  }
+}
+
 /**
  * Is a w x h box centred (cx,cy), turned `rotDeg`, clear of every segment
  * ({x1,y1,x2,y2}) by `pad`? Used to seat tags on the plan without crossing lines.
@@ -188,7 +239,12 @@ export function fitIndicatorRing({ cx, cy, cluster, otherBeacons = [], rects = [
 export function rotatedBoxClear(cx, cy, w, h, rotDeg, segments, pad = 1) {
   const r = (rotDeg * Math.PI) / 180, c = Math.cos(-r), s = Math.sin(-r);
   const hw = w / 2 + pad, hh = h / 2 + pad;
-  for (const sg of segments) {
+  // The box lies within `reach` of its centre however it is turned, so a segment wholly beyond that
+  // square cannot touch it (this skips nearly every segment on a plan of hundreds of lines).
+  const reach = Math.hypot(hw, hh);
+  for (const sg of segmentsNear(segments, cx, cy, reach)) {
+    if ((sg.x1 < cx - reach && sg.x2 < cx - reach) || (sg.x1 > cx + reach && sg.x2 > cx + reach) ||
+        (sg.y1 < cy - reach && sg.y2 < cy - reach) || (sg.y1 > cy + reach && sg.y2 > cy + reach)) continue;
     const ax = sg.x1 - cx, ay = sg.y1 - cy, bx = sg.x2 - cx, by = sg.y2 - cy;
     const p = [ax * c - ay * s, ax * s + ay * c], q = [bx * c - by * s, bx * s + by * c];
     let t0 = 0, t1 = 1;

@@ -187,3 +187,63 @@ describe('fitIndicatorRing', () => {
     expect(fitIndicatorRing({ ...base, rects: [band] }).clear).toBe(true)
   })
 })
+
+// A dense plan hands these functions hundreds of circles, labels and lines, nearly all of them far
+// from the ring or box in question. They are skipped without testing; skipping must change nothing.
+describe('far-away obstacles are skipped without changing the answer', () => {
+  const cluster = [{ x: 100, y: 100 }, { x: 108, y: 103 }]
+  const near = {
+    cluster, cx: 104, cy: 101.5, beaconRadius: 2.5,
+    otherBeacons: [{ x: 125, y: 100 }],
+    rects: [{ x: 112, y: 90, width: 30, height: 8 }],
+  }
+  const far = {
+    ...near,
+    otherBeacons: [...near.otherBeacons, ...Array.from({ length: 300 }, (_, i) => ({ x: 600 + i * 7, y: -400 + (i % 9) * 11 }))],
+    rects: [...near.rects, ...Array.from({ length: 300 }, (_, i) => ({ x: -900 + i * 9, y: 700 + (i % 5) * 13, width: 24, height: 6 }))],
+  }
+  test.each([
+    ['default', {}],
+    ['soft beacons', { softBeacons: true }],
+    ['wide reach', { reach: 70, offsets: [1.5, 3, 5, 8, 12, 16] }],
+    ['least cut', { leastCut: true, minR: 40 }],
+  ])('fitIndicatorRing, %s: same ring with 600 distant obstacles added', (_n, extra) => {
+    expect(fitIndicatorRing({ ...far, ...extra })).toEqual(fitIndicatorRing({ ...near, ...extra }))
+  })
+
+  test('rotatedBoxClear: same verdict with distant lines added, for a clear box and a blocked one', () => {
+    const lines = [{ x1: 0, y1: 10, x2: 40, y2: 10 }]
+    const distant = Array.from({ length: 500 }, (_, i) => ({ x1: 500 + i, y1: 500, x2: 520 + i, y2: 540 }))
+    for (const [cx, cy] of [[20, 10], [20, 40]]) {
+      for (const rot of [0, 35, 90]) {
+        expect(rotatedBoxClear(cx, cy, 12, 4, rot, [...lines, ...distant])).toBe(rotatedBoxClear(cx, cy, 12, 4, rot, lines))
+      }
+    }
+  })
+
+  test('rotatedBoxClear: a long line passing a box whose ends are both far away still blocks it', () => {
+    expect(rotatedBoxClear(50, 50, 10, 4, 0, [{ x1: -1000, y1: 50, x2: 1000, y2: 50 }])).toBe(false)
+  })
+})
+
+describe('rotatedBoxClear with a large segment list (gridded) agrees with testing every segment', () => {
+  // The reference is the same call on a short list, one segment at a time, which never uses the grid.
+  test('random boxes against 400 short lines plus long and diagonal ones', () => {
+    let seed = 7
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296)
+    const segs = Array.from({ length: 400 }, () => {
+      const x = rnd() * 800 - 100, y = rnd() * 600 - 100
+      return { x1: x, y1: y, x2: x + rnd() * 60 - 30, y2: y + rnd() * 60 - 30 }
+    })
+    segs.push({ x1: -50, y1: -50, x2: 750, y2: 500 }, { x1: 300, y1: -80, x2: 310, y2: 600 }, { x1: -80, y1: 250, x2: 800, y2: 255 })
+    let blocked = 0
+    for (let i = 0; i < 600; i++) {
+      const cx = rnd() * 800 - 100, cy = rnd() * 600 - 100, w = 4 + rnd() * 40, h = 2 + rnd() * 10, rot = rnd() * 180
+      const brute = segs.every((sg) => rotatedBoxClear(cx, cy, w, h, rot, [sg], 1))
+      if (!brute) blocked++
+      expect(rotatedBoxClear(cx, cy, w, h, rot, segs, 1)).toBe(brute)
+    }
+    expect(blocked).toBeGreaterThan(50)   // the comparison saw blocked and clear boxes alike
+    expect(blocked).toBeLessThan(550)
+  })
+})

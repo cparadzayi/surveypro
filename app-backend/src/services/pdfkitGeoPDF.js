@@ -2906,6 +2906,7 @@ async function renderBeacons(
     // Connected groups of letters' beacons within JOINT_LINK_PT of each other.
     const seen = new Set();
     for (const m of members) {
+      await yieldOrCancel(abortSignal);
       if (seen.has(m.name)) continue;
       const group = [m];
       seen.add(m.name);

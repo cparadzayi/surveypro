@@ -17,7 +17,11 @@ const p = (code, value) => String(code).padStart(3) + '\n' + value + '\n'
 /** '#rrggbb' -> the packed integer group 420 holds. */
 const packRgb = (hex) => parseInt(String(hex).replace('#', ''), 16)
 
-export function createDxfWriterR2000(layers) {
+/**
+ * @param {{name:string,color:number}[]} layers
+ * @param {{ styles?: string[] }} [opts]  text style names the drawing uses (the first is the default)
+ */
+export function createDxfWriterR2000(layers, { styles = ['Standard'] } = {}) {
   let next = 0x30 // handles below are reserved for the fixed structure
   const handle = () => (next++).toString(16).toUpperCase()
   const H = { // fixed handles of the structure the entities hang from
@@ -69,8 +73,15 @@ export function createDxfWriterR2000(layers) {
     ent += p(10, f4(x)) + p(20, f4(y)) + p(30, '0.0') + p(40, f4(height)) + p(1, String(text))
     if (rotationDeg) ent += p(50, f4(rotationDeg))
     ent += p(41, o.widthFactor != null ? f4(o.widthFactor) : '1.0')
+    if (o.style) ent += p(7, o.style)
     if (align !== 'left') ent += p(72, align === 'center' ? '1' : '2') + p(11, f4(x)) + p(21, f4(y)) + p(31, '0.0')
     ent += p(100, 'AcDbText')
+  }
+
+  /** A SOLID (filled quad; a triangle repeats its last corner), in the 1-2-4-3 order a SOLID is stored in. */
+  function addSolid(layer, pts, o = {}) {
+    ent += head('SOLID', layer, o) + p(100, 'AcDbTrace')
+    pts.forEach((q, i) => { ent += p(10 + i, f4(q[0])) + p(20 + i, f4(q[1])) + p(30 + i, '0.0') })
   }
 
   /** A solid fill of one or more rings; several rings under the even-odd rule are a band with holes. */
@@ -149,8 +160,8 @@ export function createDxfWriterR2000(layers) {
     d += table('LAYER', H.layerTable, allLayers.length, allLayers.map((l) => rec('LAYER', handle(), H.layerTable, 'AcDbLayerTableRecord',
       p(2, l.name) + p(70, '0') + p(62, String(l.color)) + p(6, 'Continuous') + p(390, H.plotStyleNormal))).join(''))
 
-    d += table('STYLE', H.styleTable, 1, rec('STYLE', handle(), H.styleTable, 'AcDbTextStyleTableRecord',
-      p(2, 'Standard') + p(70, '0') + p(40, '0.0') + p(41, '1.0') + p(50, '0.0') + p(71, '0') + p(42, '2.5') + p(3, 'txt') + p(4, '')))
+    d += table('STYLE', H.styleTable, styles.length, styles.map((name) => rec('STYLE', handle(), H.styleTable, 'AcDbTextStyleTableRecord',
+      p(2, name) + p(70, '0') + p(40, '0.0') + p(41, '0.55') + p(50, '0.0') + p(71, '0') + p(42, '2.5') + p(3, 'txt') + p(4, ''))).join(''))
     d += table('VIEW', H.viewTable, 0, '')
     d += table('UCS', H.ucsTable, 0, '')
     d += table('APPID', H.appidTable, 1, rec('APPID', handle(), H.appidTable, 'AcDbRegAppTableRecord', p(2, 'ACAD') + p(70, '0')))
@@ -184,5 +195,5 @@ export function createDxfWriterR2000(layers) {
     return Buffer.from(d, 'utf8')
   }
 
-  return { addLine, addPolyline, addCircle, addText, addFill, addDisc, dashed, finish }
+  return { addLine, addPolyline, addCircle, addText, addSolid, addFill, addDisc, dashed, finish }
 }

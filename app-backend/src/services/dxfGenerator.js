@@ -95,6 +95,7 @@ import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js
 import { endorsementShiftPt } from './marginStack.js'
 import { roundBearingSouth } from '../utils/zim-geo.js'
 import { emitSubjectAdjoiningFeaturesDxf } from './adjoiningFeaturesDxf.js'
+import { r12EntitiesToR2000 } from './dxfR12ToR2000.js'
 import {
   sheetParcels,
   sheetOutsideFigureData,
@@ -624,6 +625,10 @@ export function generateDXF(options, logger) {
     // general plans omit internal stand edge labels; per-stand survey diagrams
     // carry that detail instead). Outside-figure edge labels are unaffected.
     planType = null,
+    // File version. 'r2000' (default) writes AutoCAD Release 2000 -- handles, owners, a view that opens on
+    // the sheet, accepted by AutoCAD; 'r12' the Release 12 text the generator builds. Tests of WHAT is
+    // drawn read the Release 12 text and set SURVEYPRO_DXF_DEFAULT_VERSION=r12 (see jest.setup.js).
+    dxfVersion = process.env.SURVEYPRO_DXF_DEFAULT_VERSION || 'r2000',
     // UI-supplied beacon label decisions. Same shape as PDF's `beaconLabels`:
     // [{ beaconName, text, isInsideParcel, displayInParcel, labelType }].
     // labelType 'suffix' / 'full' / 'suppressed'. When present, drives display
@@ -3055,7 +3060,9 @@ export function generateDXF(options, logger) {
   // Resolved sheeting, mirroring the PDF's { scale, sheetSize } return so the
   // route can report X-Used-Scale / X-Used-Sheet-Size for DXF too.
   return {
-    buffer: Buffer.from(dxf, 'utf8'),
+    buffer: dxfVersion === 'r12'
+      ? Buffer.from(dxf, 'utf8')
+      : r12EntitiesToR2000(ent, layers, { min: eMin, max: eMax }),
     warnings,
     scale: `1:${S}`,
     sheetSize: normalizedSheetSize,

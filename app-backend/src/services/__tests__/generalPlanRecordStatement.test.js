@@ -21,7 +21,8 @@ describe('General Plan survey-record-number footer (DXF)', () => {
     // Bottom-margin footer fields
     expect(dxf).toContain('COMPILATION')
     expect(dxf).toContain('S.R.')
-    expect(dxf).toContain('B...')
+    // the left field is the Surveyor-General's series for the sheet it landed on (BCT / BCG / BDG), left blank
+    expect(dxf).toMatch(/B(CT|CG|DG) \.{3,}/)
   })
 
   test('renders on a general-undeveloped plan', () => {

@@ -1,5 +1,5 @@
 <template>
-  <div class="survey-plan-map-container" :class="{ 'panel-collapsed': isPanelCollapsed }">
+  <div ref="planRoot" class="survey-plan-map-container" :class="{ 'panel-collapsed': isPanelCollapsed }" :style="planHeight ? { '--plan-h': planHeight } : undefined">
     <!-- Map Canvas (now first in DOM = left column) -->
     <div ref="mapCanvasContainer" class="map-canvas-container">
       <!-- Expand Panel Button (shown when collapsed) -->
@@ -8,44 +8,6 @@
       </button>
       
       <div ref="mapContainer" class="map-canvas"></div>
-
-      <div v-if="activeSideEditor" v-dialog="{ label: 'Classify side', onClose: () => (activeSideEditor = null) }" class="side-modal-backdrop" @click.self="activeSideEditor = null">
-        <div class="side-modal">
-          <div class="side-modal-title">Classify side {{ activeSideEditor.side }}</div>
-          <label>Role
-            <select v-model="activeSideEditor.role">
-              <option value="contiguous">Contiguous parcel</option>
-              <option value="road">Road</option>
-              <option value="servitude">Servitude</option>
-            </select>
-          </label>
-          <label>Label
-            <input v-model="activeSideEditor.label" type="text" placeholder="e.g. STAND 86 … / Klein Road" />
-          </label>
-          <label v-if="activeSideEditor.role === 'servitude' || activeSideEditor.role === 'road'">Width (m)
-            <input v-model.number="activeSideEditor.widthM" type="number" min="0" step="0.1" />
-          </label>
-          <label v-if="activeSideEditor.role === 'road'">Leads to (from {{ activeSideEditor.side[0] }})
-            <input v-model="activeSideEditor.destinationFrom" type="text" placeholder="e.g. Gwelo" />
-          </label>
-          <label v-if="activeSideEditor.role === 'road'">Leads to (from {{ activeSideEditor.side[1] }})
-            <input v-model="activeSideEditor.destinationTo" type="text" placeholder="e.g. Gweru" />
-          </label>
-          <label v-if="activeSideEditor.role === 'contiguous'">Abutment
-            <select v-model="activeSideEditor.end">
-              <option value="from">From terminal ({{ activeSideEditor.side[0] }})</option>
-              <option value="both">Whole side (both terminals)</option>
-              <option value="mid">Midway (no terminals)</option>
-              <option value="to">To terminal ({{ activeSideEditor.side[1] }})</option>
-            </select>
-          </label>
-          <div class="side-modal-actions">
-            <button type="button" class="btn-primary" @click="saveSideEditor">Save</button>
-            <button type="button" @click="clearSideEditor">Clear</button>
-            <button type="button" @click="activeSideEditor = null">Cancel</button>
-          </div>
-        </div>
-      </div>
 
       <!-- Connecting data: the tie from this beacon to a parent beacon of the
            survey being subdivided. Distance and bearing are COMPUTED from the
@@ -97,13 +59,34 @@
     <!-- Configuration Panel (now on the right) -->
     <div v-if="!isPanelCollapsed" class="config-panel">
       <div class="config-header">
-        <h3 class="text-lg font-semibold text-gray-900">Survey Plan Configuration</h3>
+        <h3 class="config-title">Plan Configuration</h3>
         <button @click="isPanelCollapsed = true" class="collapse-btn" title="Hide panel to maximize map">
           ▶
         </button>
       </div>
-      
+
+      <!-- Tabs: each holds one screenful, so nothing needs hunting for by scrolling. -->
+      <div class="config-tabs" role="tablist" aria-label="Plan configuration sections" @keydown="onConfigTabKeydown">
+        <button
+          v-for="t in configTabs"
+          :id="`cfg-tab-${t.id}`"
+          :key="t.id"
+          type="button"
+          role="tab"
+          class="config-tab"
+          :class="{ 'config-tab-active': configTab === t.id }"
+          :aria-selected="configTab === t.id"
+          :aria-controls="`cfg-panel-${t.id}`"
+          :tabindex="configTab === t.id ? 0 : -1"
+          @click="configTab = t.id"
+        >
+          <span aria-hidden="true">{{ t.icon }}</span>
+          <span>{{ t.label }}</span>
+        </button>
+      </div>
+
       <div class="config-content">
+        <div id="cfg-panel-plan" v-show="configTab === 'plan'" role="tabpanel" aria-labelledby="cfg-tab-plan">
         <!-- Plan Type -->
         <div class="config-group">
           <label class="config-label" for="plan-type">Plan Type</label>
@@ -121,8 +104,9 @@
             This record is configured as {{ compositionLabel }}.
           </p>
         </div>
-        <div v-if="isSideAnnotationMode" class="config-group diagram-subject-hint" role="group" aria-labelledby="cfg-subject-label">
-          <span class="config-label" id="cfg-subject-label">{{ isDiagramMode ? 'Diagram subject' : 'Annotation subject' }}</span>
+        <!-- Diagram only: the diagram's subject is a plan choice. Tagging lives in Boundaries & Abutters. -->
+        <div v-if="isDiagramMode" class="config-group diagram-subject-hint" role="group" aria-labelledby="cfg-subject-label">
+          <span class="config-label" id="cfg-subject-label">Diagram subject</span>
           <ParcelSelect
             :options="diagramSubjectOptions"
             v-model="selectedDiagramParcelId"
@@ -130,13 +114,10 @@
             @select="onDiagramSubjectPicked"
           />
           <p v-if="!selectedDiagramParcelId" class="mt-1 text-xs text-amber-600">
-            👆 {{ isDiagramMode
-              ? 'Or click the parcel on the map to choose the diagram subject.'
-              : 'Pick the Outside Figure (click the space between stands, or use the list) or a stand, then click its sides to tag roads / servitudes / contiguous neighbours.' }}
+            👆 Or click the parcel on the map to choose the diagram subject.
           </p>
           <p v-else class="mt-1 text-xs text-green-700">
-            ✓ {{ isDiagramMode ? 'Diagram subject' : 'Subject' }}:
-            <strong>{{ selectedDiagramStand ? `Stand ${selectedDiagramStand}` : 'Outside Figure' }}</strong>
+            ✓ Diagram subject: <strong>{{ selectedSubjectName }}</strong>
           </p>
           <div v-if="selectedDiagramParcelId" class="mt-2 text-xs">
             <label class="config-label" for="subject-label-rotation">Map label rotation: {{ subjectLabelRotation }}°</label>
@@ -148,6 +129,21 @@
             </div>
             <p class="mt-1 text-gray-500">Drag the label on the map to move it; click it to select.</p>
           </div>
+        </div>
+
+        <!-- Boundaries & Abutters, read-only: the tags this plan prints. -->
+        <div v-if="isSideAnnotationMode" class="config-group boundaries-summary" role="group" aria-labelledby="cfg-boundaries-label">
+          <span class="config-label" id="cfg-boundaries-label">Boundaries: {{ boundarySummary.tagged }} of {{ boundarySummary.total }} subjects tagged</span>
+          <ul v-if="boundarySummary.rows.some(r => r.total > 0)" class="boundaries-list">
+            <li v-for="r in boundarySummary.rows.filter(r => r.total > 0)" :key="r.id">
+              <strong>{{ r.label }}</strong>:
+              <span v-if="r.roads">{{ r.roads }} road{{ r.roads > 1 ? 's' : '' }}</span><span v-if="r.roads && (r.servitudes || r.neighbours)">, </span>
+              <span v-if="r.servitudes">{{ r.servitudes }} servitude{{ r.servitudes > 1 ? 's' : '' }}</span><span v-if="r.servitudes && r.neighbours">, </span>
+              <span v-if="r.neighbours">{{ r.neighbours }} neighbour{{ r.neighbours > 1 ? 's' : '' }}</span>
+            </li>
+          </ul>
+          <p v-else class="text-xs text-amber-600 mt-1">No roads, servitudes or neighbours are tagged yet.</p>
+          <button type="button" class="config-input mt-1" @click="editInBoundaries">Edit in Boundaries &amp; Abutters</button>
         </div>
 
         <!-- Scale (SI 727 Section 32(2) Prescribed) -->
@@ -200,9 +196,6 @@
             ⚠ Preview unavailable ({{ previewError }}) — the plan will still generate;
             scale and sheet are chosen by the server.
           </div>
-          <div class="mt-1 text-xs text-gray-500">
-            Per SI 727 §32(2): Base scales or ×/÷ by 10ⁿ
-          </div>
         </div>
 
         <!-- Sheet Size (SI 727 Compliant) -->
@@ -228,22 +221,57 @@
           </div>
         </div>
 
+        </div>
+
+        <div id="cfg-panel-title" v-show="configTab === 'title'" role="tabpanel" aria-labelledby="cfg-tab-title">
         <!-- Surveyor Info -->
         <div class="config-group">
           <label class="config-label" for="plan-surveyor-name">Surveyor Name</label>
-          <input id="plan-surveyor-name" v-model="config.surveyorName" type="text" class="config-input" />
+          <input id="plan-surveyor-name" v-model="config.surveyorName" type="text" class="config-input" readonly />
         </div>
 
         <div class="config-group">
           <label class="config-label" for="plan-license-number">License Number</label>
-          <input id="plan-license-number" v-model="config.licenseNumber" type="text" class="config-input" />
+          <input id="plan-license-number" v-model="config.licenseNumber" type="text" class="config-input" readonly />
         </div>
 
         <div class="config-group">
           <label class="config-label" for="plan-survey-date">Survey Date</label>
-          <DateInputDDMMYYYY id="plan-survey-date" v-model="config.surveyDate" class="config-input" />
+          <DateInputDDMMYYYY id="plan-survey-date" v-model="config.surveyDate" class="config-input" disabled />
+          <p class="text-xs text-gray-500 mt-1">Surveyor and survey date come from your profile and Project Setup, so they are entered once.
+            <button type="button" class="underline text-blue-700" @click="editInSetup">Edit in Project Setup</button></p>
         </div>
 
+        <!-- Numbers the Surveyor-General gives after preliminary examination -->
+        <div class="config-group" role="group" aria-labelledby="cfg-sg-numbers-label">
+          <span class="config-label" id="cfg-sg-numbers-label">Surveyor-General numbers</span>
+          <p class="text-xs text-gray-500 mb-1">Enter these once the office has examined the survey. They print on the diagrams (and are saved with the project).</p>
+          <div v-for="f in OFFICE_NUMBER_FIELDS" :key="f.key" class="mb-1">
+            <label class="text-xs" :for="`plan-sg-${f.key}`">{{ f.label }}</label>
+            <input :id="`plan-sg-${f.key}`" v-model="officeNumbers[f.key]" type="text" class="config-input"
+              :placeholder="f.placeholder" @change="saveOfficeNumbers" />
+          </div>
+          <!-- General Plan: the office gives each SHEET its own number, after the code for its paper size. -->
+          <template v-if="isGeneralPlanMode">
+            <div v-for="r in gpSheetRows" :key="r.n" class="mb-1">
+              <label class="text-xs" :for="`plan-sg-gp-sheet-${r.n}`">
+                {{ gpSheetRows.length > 1 ? `${r.label} — S.G. number` : 'General Plan S.G. number' }}
+              </label>
+              <input :id="`plan-sg-gp-sheet-${r.n}`" :value="gpSheetNumbers[String(r.n)] ?? ''" type="text" class="config-input"
+                placeholder="e.g. 123/2026" @input="setGpSheetNumber(r.n, ($event.target as HTMLInputElement).value)" />
+            </div>
+            <p class="text-xs text-gray-500">Only the number: the plan prints it after BCT, BCG or BDG, chosen from the sheet size it ends up on.</p>
+          </template>
+          <div v-if="isDiagramMode" class="mb-1">
+            <label class="text-xs" for="plan-sg-diagram-no">Diagram S.G. No. <span v-if="selectedDiagramParcelId">({{ selectedSubjectName }})</span></label>
+            <input id="plan-sg-diagram-no" v-model="currentDiagramSgNo" type="text" class="config-input"
+              :disabled="!selectedDiagramParcelId" :placeholder="selectedDiagramParcelId ? 'e.g. 466/2026' : 'Pick the diagram subject first'" />
+          </div>
+        </div>
+
+        </div>
+
+        <div id="cfg-panel-layers" v-show="configTab === 'layers'" role="tabpanel" aria-labelledby="cfg-tab-layers">
         <!-- Map Layers -->
         <div class="config-group" role="group" aria-labelledby="cfg-layers-label">
           <span class="config-label" id="cfg-layers-label">Map Layers</span>
@@ -328,33 +356,30 @@
           <p class="ofd-no-data">No outside figure parcel found. Designate a parcel as "Outside Figure" and run Compute Area &amp; Consistency.</p>
         </div>
 
-        <!-- Export Buttons -->
-        <div class="config-group export-section" role="group" aria-labelledby="cfg-export-label">
-          <div class="export-header">
-            <span class="config-label" id="cfg-export-label">📤 Export Documents</span>
-            <span class="text-xs text-gray-500">SI 727 Compliant Survey Documents</span>
-          </div>
-          <div class="export-buttons" style="display: flex; flex-direction: column; gap: 12px;">
-            <div class="format-toggles" style="display: flex; gap: 16px; font-size: 14px;">
-              <label><input type="checkbox" v-model="exportFormats.pdf" /> PDF</label>
-              <label><input type="checkbox" v-model="exportFormats.dxf" /> DXF</label>
-              <label><input type="checkbox" v-model="exportFormats.gpkg" /> GPKG</label>
-            </div>
-            <button @click="generatePlanDocuments" :disabled="isExporting"
-                    class="btn-export btn-geopdf" style="width: 100%; font-size: 16px; padding: 16px;">
-              <span v-if="!isExporting">📋 Generate {{ planTypeLabel }}</span>
-              <span v-else>⏳ {{ exportStatus || 'Generating…' }} <span v-if="elapsedLabel" data-testid="generation-elapsed">({{ elapsedLabel }})</span></span>
-            </button>
-            <button v-if="generationAbort" type="button" @click="cancelGeneration" data-testid="cancel-generation" :disabled="savingStarted"
-                    class="btn-export" style="width: 100%; padding: 10px;">{{ savingStarted ? 'Saving — almost done' : '✕ Cancel generation' }}</button>
-            <button @click="generateComprehensivePDF" :disabled="isExporting"
-                    class="btn-export btn-professional" style="width: 100%; font-size: 16px; padding: 16px;">
-              <span v-if="!isExporting">📚 Download Complete Survey Record</span>
-              <span v-else>⏳ Generating… <span v-if="elapsedLabel">({{ elapsedLabel }})</span></span>
-            </button>
-          </div>
         </div>
-        <div v-if="geoPDFStatus" class="mt-2 text-xs" :class="geoPDFStatus.available ? 'text-green-600' : 'text-amber-600'">
+      </div>
+
+      <!-- Pinned footer: the commands that finish the job never scroll out of reach. -->
+      <div class="config-footer" role="group" aria-label="Export documents">
+        <div class="format-toggles">
+          <span class="format-caption">Export</span>
+          <label><input type="checkbox" v-model="exportFormats.pdf" /> PDF</label>
+          <label><input type="checkbox" v-model="exportFormats.dxf" /> DXF</label>
+          <label><input type="checkbox" v-model="exportFormats.gpkg" /> GPKG</label>
+        </div>
+        <button @click="generatePlanDocuments" :disabled="isExporting" :title="`Generate ${planTypeLabel}`"
+                class="btn-export btn-geopdf footer-primary">
+          <span v-if="!isExporting">📋 Generate Plan</span>
+          <span v-else>⏳ {{ exportStatus || 'Generating…' }} <span v-if="elapsedLabel" data-testid="generation-elapsed">({{ elapsedLabel }})</span></span>
+        </button>
+        <button v-if="generationAbort" type="button" @click="cancelGeneration" data-testid="cancel-generation" :disabled="savingStarted"
+                class="btn-export footer-secondary">{{ savingStarted ? 'Saving — almost done' : '✕ Cancel generation' }}</button>
+        <button @click="generateComprehensivePDF" :disabled="isExporting"
+                class="btn-export btn-professional footer-secondary">
+          <span v-if="!isExporting">📚 Complete Survey Record</span>
+          <span v-else>⏳ Generating… <span v-if="elapsedLabel">({{ elapsedLabel }})</span></span>
+        </button>
+        <div v-if="geoPDFStatus" class="footer-status" :class="geoPDFStatus.available ? 'text-green-600' : 'text-amber-600'">
           {{ geoPDFStatus.message }}
         </div>
       </div>
@@ -431,8 +456,7 @@ import { generateSurveyPlanSummaryPDF, type SurveyPlanSummaryData } from '@/util
 import { CalculationsPart1Generator, type SurveyPoint } from '@/utils/calculations-part1'
 import { ComprehensiveDocumentGenerator, type ComprehensiveDocumentData } from '@/utils/comprehensive-document'
 import { siteCalibrationFrom } from '@/utils/siteCalibration'
-import { readCuts } from '@/utils/cutStorage'
-import { buildSheetPayloads, type StandInput, type SheetPayload } from '@/utils/sheetPayloads'
+import type { SheetPayload } from '@/utils/sheetPayloads'
 import { generateCalibrationReportPDF } from '@/utils/calibration-pdf'
 import type { CoverPageInfo } from '@/utils/cover-page'
 import { listCoordinatePoints, updateLandParcel } from '@/services/spatial'
@@ -460,12 +484,22 @@ import { describeDxfWarnings, describeGenerationOutcome, formatElapsed, isCancel
 import { confirmDialog, notify, notifyError, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { describeError } from '@/utils/errorMessage'
 import { diagramReferenceMetadata } from './diagramReferenceMetadata'
-import { pickDiagramSubjectId } from './diagramSubjectPick'
+import { upsertSubjectSidesLayer, resolveSubjectClick } from './subjectMapLayers'
+import { summariseBoundaries } from './boundaryTagging'
+import {
+  OFFICE_NUMBER_FIELDS, officeNumbersFrom, changedOfficeNumbers, hydrateDiagramSgNumbers,
+  withDiagramSgNumber, officeNumbersMetadata, printedGpCodes, reconcileSheetCodes, reloadOfficeNumbers, type OfficeNumbers,
+} from './sgNumbers'
+import { useSurveyors } from '@/composables/useSurveyors'
+import { gpOfficeCode } from '../../../../../app-shared/si727SheetSizes.js'
+import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
+import { deriveStoredSheets as deriveStoredSheetsFor, findOutsideFigureParcel, outsideFigureCapeLoRing } from './storedSheets'
+import { buildSheetSubjects, adjoiningSubjectsFor, type SheetSubject } from './sheetSubjects'
 import { paperSizeOptionsFor } from './paperSizeOptions'
 import { planTypeOptionsFor, normalizePlanTypeSelection } from './planTypeOptions'
 import { useRecordComposition } from '@/composables/useRecordComposition'
 import { describeComposition } from '@/utils/recordComposition'
-import { subjectSides, upsertAnnotation, removeAnnotation, annotationsForSubject, withSubjectAnnotations, hydrateAnnotationsMap, fractionAlongSide, endFromFraction, type SideAnnotation, type SideRole } from './sideAnnotations'
+import { subjectSides, annotationsForSubject, hydrateAnnotationsMap, type SideAnnotation } from './sideAnnotations'
 import { hydrateServitudes, buildPartyWallStatementRows, type PartyWallStatementRow } from './servitudes'
 import type { PartyWallRow } from '@/utils/fieldBookPagination'
 import { makeConnection, upsertConnection, removeConnection, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type LoPoint } from './connections'
@@ -555,6 +589,27 @@ function cancelGeneration() {
 const pdfFinalScale = ref<string | null>(null)
 const showPaperSizeOptions = ref(false)
 const isPanelCollapsed = ref(false)
+
+// Side-panel tabs. The tab shows what the user is configuring; export lives in the pinned footer.
+type ConfigTab = 'plan' | 'title' | 'layers'
+const configTabs: { id: ConfigTab; label: string; icon: string }[] = [
+  { id: 'plan', label: 'Plan', icon: '📐' },
+  { id: 'title', label: 'Title Block', icon: '🖋️' },
+  { id: 'layers', label: 'Layers', icon: '🗺️' },
+]
+const configTab = ref<ConfigTab>('plan')
+function onConfigTabKeydown(e: KeyboardEvent) {
+  if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return
+  e.preventDefault()
+  const ids = configTabs.map(t => t.id)
+  const at = ids.indexOf(configTab.value)
+  const next = e.key === 'Home' ? 0
+    : e.key === 'End' ? ids.length - 1
+    : e.key === 'ArrowRight' ? (at + 1) % ids.length
+    : (at - 1 + ids.length) % ids.length
+  configTab.value = ids[next]
+  nextTick(() => document.getElementById(`cfg-tab-${ids[next]}`)?.focus())
+}
 // GeoPDF status
 const geoPDFAvailable = ref(false)
 const geoPDFStatus = ref<{ available: boolean; message: string } | null>(null)
@@ -628,21 +683,136 @@ const currentConnections = computed<Connection[]>(() => {
 })
 const activeConnectionEditor = ref<{ fromBeacon: string; letter: string; toBeacon: string } | null>(null)
 const currentSideAnnotations = computed(() => annotationsForSubject(sideAnnotationsBySubject.value, selectedDiagramParcelId.value))
-const activeSideEditor = ref<{ side: string; role: SideRole; label: string; widthM: number | null;
-  destinationFrom: string; destinationTo: string; end: 'from' | 'to' | 'both' | 'mid' } | null>(null)
 const selectedDiagramStand = computed(() => {
   const p = parcels.value.find((x: any) => String(x.id) === String(selectedDiagramParcelId.value))
   return p?.stand ?? null
 })
+// "Outside Figure" or "Outside Figure Sheet 2" when the selected subject is one sheet's figure.
+const selectedSubjectName = computed(() => {
+  if (selectedDiagramStand.value) return `Stand ${selectedDiagramStand.value}`
+  return sheetSubjects.value.find(s => s.id === String(selectedDiagramParcelId.value))?.label ?? 'Outside Figure'
+})
 
+// The diagram's subject is a single stand, so the Outside Figure is excluded. (General plans
+// have no subject here: roads, servitudes and neighbours are tagged in Boundaries & Abutters.)
 const diagramSubjectOptions = computed(() =>
-  // Diagram: the subject is a single stand, so the Outside Figure is excluded.
-  // General plans annotate roads/servitudes/contiguous neighbours on the Outside
-  // Figure perimeter AND (optionally) individual stands, so the Outside Figure is
-  // a selectable subject there.
   buildParcelOptions(parcels.value, {
     excludeId: isDiagramMode.value ? (getOutsideFigureParcel()?.id ?? null) : null,
   }))
+
+// Read-only view of the tags, over every subject Boundaries & Abutters offers.
+const cadastralWorkflow = useCadastralWorkflow()
+const boundarySummary = computed(() => {
+  const of = getOutsideFigureParcel()
+  const split = sheetSubjects.value.length > 0
+  const subjects: Array<{ id: string | number; label: string }> = parcels.value
+    .filter((p: any) => !(split && of && p.id === of.id))
+    .map((p: any) => ({ id: p.id, label: p.id === of?.id ? 'Outside Figure' : (p.stand ? `Stand ${p.stand}` : (p.designation || `#${p.id}`)) }))
+  for (const s of sheetSubjects.value) subjects.push({ id: s.id, label: s.label })
+  return summariseBoundaries(sideAnnotationsBySubject.value, subjects)
+})
+// ---- Surveyor-General numbers ------------------------------------------------
+const { updateSurveyProject } = useSurveyors()
+const officeNumbers = ref<OfficeNumbers>(officeNumbersFrom(null))
+let savedOfficeNumbers: OfficeNumbers = officeNumbersFrom(null)
+const diagramSgNumbers = ref<Record<string, string>>({})
+// General Plan: the number the office gave each sheet, by sheet number.
+const gpSheetNumbers = ref<Record<string, string>>({})
+const gpSheetRows = computed(() =>
+  sheetSubjects.value.length > 0
+    ? sheetSubjects.value.map(s => ({ n: s.sheetNumber, label: s.label }))
+    : [{ n: 1, label: 'General Plan' }])
+// The series (BCT small, BCG medium, BDG large) each number was first printed under, by sheet number.
+const gpSheetCodes = ref<Record<string, string>>({})
+function setGpSheetNumber(n: number, v: string) {
+  gpSheetNumbers.value = withDiagramSgNumber(gpSheetNumbers.value, n, v)
+  // A new number is a new issue: forget the series the old one was printed under.
+  { const { [String(n)]: _gone, ...rest } = gpSheetCodes.value; gpSheetCodes.value = rest }
+  saveDiagramNumbersSoon()
+}
+
+function loadOfficeNumbers() {
+  // The project record (props.projectInfo) is the source; the workflow copy only fills a blank.
+  const fromRecord = officeNumbersFrom(props.projectInfo as any)
+  const fromWorkflow = officeNumbersFrom(cadastralWorkflow.workflowState?.projectInfo as any)
+  const incoming = {} as OfficeNumbers
+  for (const f of OFFICE_NUMBER_FIELDS) incoming[f.key] = fromRecord[f.key] || fromWorkflow[f.key]
+  const r = reloadOfficeNumbers(officeNumbers.value, savedOfficeNumbers, incoming)
+  officeNumbers.value = r.local
+  savedOfficeNumbers = r.saved
+}
+watch(() => props.projectInfo, loadOfficeNumbers, { immediate: true, deep: true })
+
+// The Lo zone follows the project. config is built once at mount, and the project record can arrive
+// AFTER that (the list loads asynchronously), which left the zone at its fallback of 31: a Lo 29 job
+// then went out with a Lo 31 projection (a wrong .prj beside the DXF, and a mis-placed map).
+watch(() => (props.projectInfo as any)?.centralMeridian, (cm) => {
+  const n = Number(cm)
+  if (Number.isFinite(n) && n > 0 && config.value.centralMeridian !== n) config.value.centralMeridian = n as any
+}, { immediate: true })
+
+async function saveOfficeNumbers() {
+  const changed = changedOfficeNumbers(savedOfficeNumbers, officeNumbers.value)
+  if (Object.keys(changed).length === 0) return
+  try {
+    const ok = await updateSurveyProject(props.projectId, changed)
+    if (!ok) throw new Error('The project record was not updated')
+    Object.assign(cadastralWorkflow.workflowState.projectInfo as any, changed)
+    savedOfficeNumbers = { ...savedOfficeNumbers, ...changed }
+    notifySuccess('Surveyor-General numbers saved.')
+  } catch (e: any) {
+    notifyWarning(e?.message ?? 'Could not save the numbers; they will still print on this plan.', { title: 'Not saved' })
+  }
+}
+
+/** This diagram's S.G. number (saved per diagram, in the survey-plan step). */
+const currentDiagramSgNo = computed<string>({
+  get: () => (selectedDiagramParcelId.value == null ? '' : (diagramSgNumbers.value[String(selectedDiagramParcelId.value)] ?? '')),
+  set: (v) => {
+    if (selectedDiagramParcelId.value == null) return
+    diagramSgNumbers.value = withDiagramSgNumber(diagramSgNumbers.value, selectedDiagramParcelId.value, v)
+    saveDiagramNumbersSoon()
+  },
+})
+let diagramNumbersTimer: ReturnType<typeof setTimeout> | null = null
+function saveDiagramNumbersSoon() {
+  if (diagramNumbersTimer) clearTimeout(diagramNumbersTimer)
+  diagramNumbersTimer = setTimeout(() => { void persistSideAnnotations() }, 600)
+}
+
+// The workspace takes exactly the screen that is left below whatever sits above it (the ribbon, the
+// plan bar), whatever that is -- a fixed "100vh minus 11rem" guessed at it and pushed the map below the fold.
+const planRoot = ref<HTMLElement | null>(null)
+const planHeight = ref('')
+function fitPlanHeight() {
+  const el = planRoot.value
+  if (!el) return
+  const top = el.getBoundingClientRect().top + window.scrollY
+  planHeight.value = `${Math.max(480, Math.round(window.innerHeight - top - 12))}px`
+  nextTick(() => map.value?.resize())
+}
+let planHeightObserver: ResizeObserver | null = null
+onMounted(() => {
+  nextTick(fitPlanHeight)
+  window.addEventListener('resize', fitPlanHeight)
+  // The ribbon collapsing / expanding changes the page above the workspace.
+  if (typeof ResizeObserver !== 'undefined') {
+    planHeightObserver = new ResizeObserver(() => fitPlanHeight())
+    planHeightObserver.observe(document.body)
+  }
+})
+onUnmounted(() => {
+  window.removeEventListener('resize', fitPlanHeight)
+  planHeightObserver?.disconnect()
+})
+
+function editInSetup() {
+  cadastralWorkflow.workflowState.currentStep = 'project-setup'
+}
+
+function editInBoundaries() {
+  cadastralWorkflow.workflowState.currentStep = 'servitudes'
+}
 
 function onDiagramSubjectPicked(option: { id: string | number }) {
   applyDiagramHighlight(option.id)
@@ -651,7 +821,7 @@ function onDiagramSubjectPicked(option: { id: string | number }) {
 
 function zoomToParcel(id: string | number) {
   if (!map.value) return
-  const parcel = parcels.value.find((p: any) => String(p.id) === String(id))
+  const parcel = findSubjectParcel(id)
   if (!parcel?.geom) return
   const feature = transformParcelGeometry(parcel.geom)
   const ring = feature?.geometry?.coordinates?.[0] as [number, number][] | undefined
@@ -685,6 +855,21 @@ const isGeneralPlanMode = computed(() =>
 // the Diagram and the General Plans. On general plans the tagged sides drive the
 // same road/servitude/contiguous rendering (roads label-only, no burnt-sienna).
 const isSideAnnotationMode = computed(() => isDiagramMode.value || isGeneralPlanMode.value)
+
+// When a stored cut splits the outside figure, each sheet's part is its own annotation
+// subject (see sheetSubjects.ts). Empty on a single-sheet plan, so nothing changes there.
+const sheetSubjects = computed<SheetSubject[]>(() => {
+  if (!isGeneralPlanMode.value) return []
+  const sheets = deriveStoredSheets()
+  return buildSheetSubjects(getOutsideFigureParcel()?.id ?? null, sheets)
+})
+/** A parcel, or a sheet's figure shaped like one (id + geom), by subject id. */
+function findSubjectParcel(id: string | number | null | undefined): any | null {
+  if (id == null) return null
+  const sheet = sheetSubjects.value.find(s => s.id === String(id))
+  if (sheet) return { id: sheet.id, geom: { type: 'Polygon', coordinates: [sheet.ring] }, stand: null, designation: sheet.label, isSheetFigure: true }
+  return parcels.value.find((p: any) => String(p.id) === String(id)) ?? null
+}
 const exportFormats = reactive({ pdf: true, dxf: true, gpkg: true })
 const planTypeLabel = computed(() => getPlanTypeMeta(config.value.planType).label)
 
@@ -1950,7 +2135,7 @@ function updateSubjectLabelLayer(selectedId: string | number | null) {
   subjectLabelEl = null
   subjectLabelSelected.value = false
   if (!map.value || selectedId == null) return
-  const subj = parcels.value.find((p: any) => String(p.id) === String(selectedId))
+  const subj = findSubjectParcel(selectedId)
   if (!subj?.geom) return
   const ring = transformParcelGeometry(subj.geom)?.geometry?.coordinates?.[0] as [number, number][] | undefined
   if (!ring?.length) return
@@ -1969,7 +2154,7 @@ function updateSubjectLabelLayer(selectedId: string | number | null) {
   }
   const isOutsideFig = subj.id === getOutsideFigureParcel()?.id
   const el = document.createElement('div')
-  el.textContent = isOutsideFig || !subj.stand ? 'Outside Figure' : `Stand ${subj.stand}`
+  el.textContent = subj.isSheetFigure ? subj.designation : isOutsideFig || !subj.stand ? 'Outside Figure' : `Stand ${subj.stand}`
   el.title = 'Click to select · drag to move · rotate with the slider in the panel'
   Object.assign(el.style, {
     font: '700 16px/1.2 system-ui, sans-serif', color: '#1d4ed8', padding: '2px 6px',
@@ -2000,7 +2185,7 @@ function updateSubjectVerticesLayer() {
   if (!map.value) return
   const srcId = 'diagram-subject-vertices'
   const feats: any[] = []
-  const subj = parcels.value.find((p: any) => String(p.id) === String(selectedDiagramParcelId.value))
+  const subj = findSubjectParcel(selectedDiagramParcelId.value)
   if (isSideAnnotationMode.value && subj?.geom) {
     const tf = transformParcelGeometry(subj.geom)
     const ring = tf?.geometry?.coordinates?.[0] as [number, number][] | undefined
@@ -2056,9 +2241,10 @@ function updateAnnotationLabelsLayer() {
   const feats: any[] = []
   for (const [subjectId, anns] of Object.entries(sideAnnotationsBySubject.value)) {
     if (!Array.isArray(anns)) continue
+    if (sheetSubjects.value.length > 0 && String(subjectId) === String(getOutsideFigureParcel()?.id)) continue
     const labelled = anns.filter(a => a?.label && String(a.label).trim())
     if (labelled.length === 0) continue
-    const subj = parcels.value.find((p: any) => String(p.id) === String(subjectId))
+    const subj = findSubjectParcel(subjectId)
     if (!subj?.geom) continue
     const ring = transformParcelGeometry(subj.geom)?.geometry?.coordinates?.[0] as [number, number][] | undefined
     if (!ring) continue
@@ -2129,56 +2315,19 @@ function updateAnnotationLabelsLayer() {
 function updateSubjectSidesLayer() {
   if (!map.value) return
   updateAnnotationLabelsLayer()
-  const srcId = 'diagram-subject-sides'
-  const feats: any[] = []
-  const subj = parcels.value.find((p: any) => String(p.id) === String(selectedDiagramParcelId.value))
-  if (isSideAnnotationMode.value && subj?.geom) {
-    const tf = transformParcelGeometry(subj.geom)
-    const ring = tf?.geometry?.coordinates?.[0] as [number, number][] | undefined
-    if (ring) {
-      const roleBySide = new Map(currentSideAnnotations.value.map(a => [a.side, a.role]))
-      for (const s of subjectSides(ring)) {
-        feats.push({
-          type: 'Feature',
-          properties: { side: s.side, role: roleBySide.get(s.side) ?? '' },
-          geometry: { type: 'LineString', coordinates: [s.a, s.b] },
-        })
-      }
-    }
-  }
-  const data = { type: 'FeatureCollection', features: feats } as any
-  const existing = map.value.getSource(srcId) as any
-  if (existing) { existing.setData(data); return }
-  map.value.addSource(srcId, { type: 'geojson', data })
-  const colour = ['match', ['get', 'role'], 'road', '#B7410E', 'servitude', '#1F6FB2', 'contiguous', '#000000', '#9aa0a6'] as any
-  // Solid layer for road/servitude.
-  map.value.addLayer({
-    id: `${srcId}-solid`, type: 'line', source: srcId,
-    filter: ['any', ['==', ['get', 'role'], 'road'], ['==', ['get', 'role'], 'servitude']] as any,
-    paint: { 'line-color': colour, 'line-width': 4 },
-  })
-  // Dashed layer for contiguous + unannotated (dasharray is not data-driven, so a
-  // separate fixed-dash layer).
-  map.value.addLayer({
-    id: `${srcId}-dashed`, type: 'line', source: srcId,
-    filter: ['!', ['any', ['==', ['get', 'role'], 'road'], ['==', ['get', 'role'], 'servitude']]] as any,
-    paint: { 'line-color': colour, 'line-width': 4, 'line-dasharray': [2, 2] },
-  })
-  // Wide transparent hit line: easy click target + hover cursor.
-  map.value.addLayer({
-    id: `${srcId}-hit`, type: 'line', source: srcId,
-    paint: { 'line-color': '#000000', 'line-opacity': 0, 'line-width': 14 },
-  })
-  map.value.on('mouseenter', `${srcId}-hit`, () => { if (map.value) map.value.getCanvas().style.cursor = 'pointer' })
-  map.value.on('mouseleave', `${srcId}-hit`, () => { if (map.value) map.value.getCanvas().style.cursor = '' })
+  const subj = findSubjectParcel(selectedDiagramParcelId.value)
+  const ring = isSideAnnotationMode.value && subj?.geom
+    ? (transformParcelGeometry(subj.geom)?.geometry?.coordinates?.[0] as [number, number][] | undefined) ?? null
+    : null
+  upsertSubjectSidesLayer(map.value as any, { srcId: 'diagram-subject-sides', servitudeColour: '#1F6FB2', interactive: false }, ring, currentSideAnnotations.value)
 }
 
 function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
-  if (!map.value || !isSideAnnotationMode.value) return
-  // A vertex sits ON the ends of two sides, so it must be tested FIRST or a
-  // click meant for a beacon would always be caught by a side.
+  // Only the Diagram picks a subject on this screen; tagging sides is done in Boundaries & Abutters.
+  if (!map.value || !isDiagramMode.value) return
+  // A vertex sits ON the ends of two sides, so it must be tested FIRST.
   const vertexLayer = 'diagram-subject-vertices-hit'
-  if (isDiagramMode.value && map.value.getLayer(vertexLayer)) {
+  if (map.value.getLayer(vertexLayer)) {
     const vHits = map.value.queryRenderedFeatures(e.point, { layers: [vertexLayer] })
     if (vHits.length) {
       const beacon = String(vHits[0].properties?.beacon ?? '')
@@ -2192,97 +2341,25 @@ function onMapClickSelectParcel(e: maplibregl.MapMouseEvent) {
       return
     }
   }
-  // Side classification takes priority over re-selecting the subject.
-  const hitLayer = 'diagram-subject-sides-hit'
-  if (map.value.getLayer(hitLayer)) {
-    const sideHits = map.value.queryRenderedFeatures(e.point, { layers: [hitLayer] })
-    if (sideHits.length) {
-      const side = String(sideHits[0].properties?.side ?? '')
-      if (side) {
-        // Which terminal(s)? Project the click onto the side in SCREEN space (metric-accurate
-        // for short sides) to get a fraction from the 'from' terminal, then classify.
-        const coords = (sideHits[0].geometry as any)?.coordinates as [number, number][] | undefined
-        let end: 'from' | 'to' | 'both' = 'both'
-        if (coords && coords.length >= 2) {
-          const pa = map.value!.project(coords[0] as any)
-          const pb = map.value!.project(coords[1] as any)
-          end = endFromFraction(fractionAlongSide([pa.x, pa.y], [pb.x, pb.y], [e.point.x, e.point.y]))
-        }
-        // One annotation per side. Editing an existing contiguous entry shows its stored
-        // abutment; a fresh tag takes the abutment implied by where you clicked.
-        const cur = currentSideAnnotations.value.find(a => a.side === side)
-        activeSideEditor.value = {
-          side,
-          role: cur?.role ?? 'contiguous',
-          label: cur?.label ?? '',
-          widthM: cur?.widthM ?? null,
-          destinationFrom: cur?.destinationFrom ?? '',
-          destinationTo: cur?.destinationTo ?? '',
-          end: cur?.role === 'contiguous' ? (cur.end ?? 'both') : end,
-        }
-        return
-      }
-    }
-  }
-  // The diagram's subject is a single stand, so the Outside Figure is never picked
-  // there. On a general plan it IS a subject (its perimeter carries the roads,
-  // servitudes and abutting properties), so it stays pickable: it overlaps every
-  // stand, but the smallest-area rule below hands a click inside a stand to that
-  // stand, leaving the Outside Figure for a click in the space no stand covers.
-  const outsideFigureId = isDiagramMode.value ? (getOutsideFigureParcel()?.id ?? null) : null
-  const fillLayers = parcels.value
-    .filter((p: any) => outsideFigureId == null || p.id !== outsideFigureId)
-    .map((p: any) => `parcel-${p.id}-fill`)
-    .filter((id: string) => map.value!.getLayer(id))
-  if (fillLayers.length === 0) return
-  const hits = map.value.queryRenderedFeatures(e.point, { layers: fillLayers })
-  // Drop the Outside Figure (diagram only) and prefer the smallest overlapping parcel.
-  const picked = pickDiagramSubjectId(
-    hits.map(h => h.layer.id),
-    parcels.value,
-    outsideFigureId,
-  )
-  if (picked == null) return
-  selectedDiagramParcelId.value = picked
+  const hit = resolveSubjectClick({
+    map: map.value as any,
+    point: e.point,
+    lngLat: e.lngLat,
+    sidesHitLayer: 'diagram-subject-sides-hit',
+    parcels: parcels.value,
+    excludeFigureId: getOutsideFigureParcel()?.id ?? null,
+    sheetRings: [],
+  })
+  if (!hit || hit.subjectId == null) return
+  selectedDiagramParcelId.value = hit.subjectId
   applyDiagramHighlight(selectedDiagramParcelId.value)
-}
-
-function saveSideEditor() {
-  const ed = activeSideEditor.value
-  if (!ed || selectedDiagramParcelId.value == null) return
-  const ann: SideAnnotation = {
-    side: ed.side,
-    role: ed.role,
-    label: ed.label?.trim() || undefined,
-    widthM: (ed.role === 'servitude' || ed.role === 'road') && ed.widthM != null ? ed.widthM : undefined,
-    destinationFrom: ed.role === 'road' ? (ed.destinationFrom?.trim() || undefined) : undefined,
-    destinationTo: ed.role === 'road' ? (ed.destinationTo?.trim() || undefined) : undefined,
-    end: ed.role === 'contiguous' ? ed.end : undefined,
-  }
-  const list = upsertAnnotation(currentSideAnnotations.value, ann)
-  sideAnnotationsBySubject.value = withSubjectAnnotations(sideAnnotationsBySubject.value, selectedDiagramParcelId.value, list)
-  activeSideEditor.value = null
-  updateSubjectSidesLayer()
-  updateSubjectVerticesLayer()
-  persistSideAnnotations()
-}
-
-function clearSideEditor() {
-  const ed = activeSideEditor.value
-  if (!ed || selectedDiagramParcelId.value == null) return
-  const list = removeAnnotation(currentSideAnnotations.value, ed.side)
-  sideAnnotationsBySubject.value = withSubjectAnnotations(sideAnnotationsBySubject.value, selectedDiagramParcelId.value, list)
-  activeSideEditor.value = null
-  updateSubjectSidesLayer()
-  updateSubjectVerticesLayer()
-  persistSideAnnotations()
 }
 
 /** The subject's Cape Lo outer ring ([Y, X] pairs), or null. Works for any
  *  parcel including the Outside Figure. Vertex order matches subjectSides() so the
  *  side letters resolve to the same edges on the backend. */
 function capeLoRingForSubject(subjectId: string | number): [number, number][] | null {
-  const p = parcels.value.find((x: any) => String(x.id) === String(subjectId))
+  const p = findSubjectParcel(subjectId)
   const ring = p?.geom?.coordinates?.[0]
   return Array.isArray(ring) && ring.length >= 3 ? (ring as [number, number][]) : null
 }
@@ -2377,15 +2454,11 @@ function clearConnectionEditor() {
 
 /** One entry per tagged subject: its Cape Lo ring + its side annotations. Drives
  *  the general-plan road/servitude/contiguous rendering in the PDF and DXF. */
-function buildAdjoiningSubjects(): Array<{ subjectId: string; ring: [number, number][]; annotations: SideAnnotation[] }> {
-  const out: Array<{ subjectId: string; ring: [number, number][]; annotations: SideAnnotation[] }> = []
-  for (const [subjectId, annotations] of Object.entries(sideAnnotationsBySubject.value)) {
-    if (!Array.isArray(annotations) || annotations.length === 0) continue
-    const ring = capeLoRingForSubject(subjectId)
-    if (!ring) continue
-    out.push({ subjectId, ring, annotations })
-  }
-  return out
+function buildAdjoiningSubjects() {
+  return adjoiningSubjectsFor(sideAnnotationsBySubject.value, capeLoRingForSubject, {
+    outsideFigureId: getOutsideFigureParcel()?.id ?? null,
+    sheetSubjects: sheetSubjects.value,
+  })
 }
 
 async function persistSideAnnotations() {
@@ -2394,9 +2467,13 @@ async function persistSideAnnotations() {
       step: 'survey-plan',
       action: 'update',
       metadata: {
-        sideAnnotations: sideAnnotationsBySubject.value,
+        // sideAnnotations are deliberately NOT written from here: Boundaries & Abutters is
+        // their only writer, and this screen's copy can be stale.
         connections: connectionsBySubject.value,
         subjectLabels: subjectLabelStates.value,
+        diagramSgNumbers: diagramSgNumbers.value,
+        gpSheetNumbers: gpSheetNumbers.value,
+        gpSheetCodes: gpSheetCodes.value,
       },
     })
   } catch (e: any) {
@@ -2451,6 +2528,9 @@ async function loadSideAnnotations() {
     connectionsBySubject.value = conns
     // Moved/rotated subject labels. Same trust rule as above: keep only entries
     // that are three finite numbers.
+    diagramSgNumbers.value = hydrateDiagramSgNumbers(ws?.step_data?.['survey-plan']?.diagramSgNumbers)
+    gpSheetNumbers.value = hydrateDiagramSgNumbers(ws?.step_data?.['survey-plan']?.gpSheetNumbers)
+    gpSheetCodes.value = hydrateDiagramSgNumbers(ws?.step_data?.['survey-plan']?.gpSheetCodes)
     const savedLabels = ws?.step_data?.['survey-plan']?.subjectLabels
     const labels: Record<string, SubjectLabelState> = {}
     if (savedLabels && typeof savedLabels === 'object') {
@@ -2763,18 +2843,7 @@ function getOutsideFigureParcel(): any | null {
     return _outsideFigureCache.result
   }
   
-  const outsideFigureParcel = parcels.value.find(p =>
-    p.designation?.toLowerCase().includes('outside figure') ||
-    p.designation?.toLowerCase().includes('outside_figure') ||
-    p.designation?.toLowerCase().includes('outsidefigure') ||
-    p.stand?.toLowerCase().includes('outside figure') ||
-    p.stand?.toLowerCase().includes('outside_figure') ||
-    p.stand?.toLowerCase() === 'of' ||
-    p.description?.toLowerCase().includes('outside figure') ||
-    p.metadata?.isOutsideFigure === true ||
-    p.metadata?.is_outside_figure === true ||
-    p.is_outside_figure === true
-  )
+  const outsideFigureParcel = findOutsideFigureParcel(parcels.value)
   
   const result = outsideFigureParcel || null
   _outsideFigureCache = { parcelsLen: parcels.value.length, result }
@@ -2838,25 +2907,7 @@ const isPointInRing = (point: [number, number], ring: [number, number][]): boole
 }
 
 function getOutsideFigureCapeLoRing(): Array<{ x: number; y: number; id?: string }> | null {
-  const outsideFigureParcel = getOutsideFigureParcel()
-  const points = outsideFigureParcel?.metadata?.cape_lo_points
-  if (!points || !Array.isArray(points) || points.length < 3) return null
-
-  const ring = points
-    // The point's own name rides along (the figure's vertices are real, named
-    // beacons: M9, 2473A, 2283L ...). Dropping it here is what made a sheet's
-    // outside-figure table fall back to generated letters.
-    .map((p: any) => ({ x: Number(p.x), y: Number(p.y), id: p.id != null ? String(p.id) : undefined }))
-    .filter((p: any) => Number.isFinite(p.x) && Number.isFinite(p.y))
-
-  if (ring.length < 3) return null
-
-  const first = ring[0]
-  const last = ring[ring.length - 1]
-  if (first.x !== last.x || first.y !== last.y) {
-    ring.push({ x: first.x, y: first.y, id: first.id })
-  }
-  return ring
+  return outsideFigureCapeLoRing(getOutsideFigureParcel())
 }
 
 function isPointNearRing(
@@ -4453,6 +4504,24 @@ function generateBeaconLabelsForPDF() {
 
 // ---- Plan-type-driven generation orchestrator (Task 7) ----
 
+/** The sheets a stored cut divides the outside figure into (undefined: one sheet).
+*  Shared by plan generation and the annotation-subject picker so both see the same parts. */
+function deriveStoredSheets(): SheetPayload[] | undefined {
+  const isOutsideFigurePlan = config.value.planType === 'general-undeveloped' || config.value.planType === 'general-developed'
+  if (!isOutsideFigurePlan) return undefined
+  return deriveStoredSheetsFor({
+    outsideFigureParcel: getOutsideFigureParcel(),
+    outsideFigureRing: getOutsideFigureCapeLoRing(),
+    parcels: parcels.value,
+    // The servitude rows this plan already states, so each sheet can state the ones
+    // for the stands ON it. Omitting these blanked the servitude statement per sheet.
+    servitudeRows: servitudeStatementRows.value,
+    // The plan's existing point names, so a generated cut point (C1, C2, ...) cannot
+    // collide with a beacon that already holds that name.
+    takenNames: coordinatePoints.value.map((p: { name?: string }) => p?.name).filter(Boolean) as string[],
+  })
+}
+
 async function gatherPlanContext(): Promise<PlanPayloadContext> {
   const parcelsGeoJSON = await exportParcelsAsGeoJSON()
   const beaconsGeoJSON = exportBeaconsAsGeoJSON()
@@ -4492,6 +4561,10 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
     wholePortion: props.projectInfo.wholePortion || 'the whole',
     priorDiagrams: props.projectInfo.priorDiagrams || [],
     ...diagramReferenceMetadata(props.projectInfo as any),
+    // What the SG's office gave after examination, as entered on this screen (these win over
+    // the project-setup copies, which are the same fields saved a moment ago).
+    ...officeNumbersMetadata(officeNumbers.value, diagramSgNumbers.value, selectedDiagramParcelId.value),
+    gpSheetNumbers: gpSheetNumbers.value,
     sideAnnotations: currentSideAnnotations.value,
     // Connecting data for the subject on THIS sheet only: a connection belongs
     // to one figure's beacon, and a sister diagram has its own.
@@ -4536,76 +4609,7 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
   const orientation: 'landscape' | 'portrait' =
     _sheet ? (_sheet.width > _sheet.height ? 'landscape' : 'portrait') : 'landscape'
 
-  // A stored cut (drawn in the MapLibre area view, persisted as the Outside
-  // Figure parcel's metadata) turns the plan into one payload per sheet. Same
-  // inputs as the drawer's preview -- the figure ring + stands from the DB
-  // parcel metadata, the cut's raw vertices -- so sheets reflect exactly what
-  // the surveyor validated. On failure (figure changed since the cut was
-  // drawn), sheets stays undefined and the plan renders single-sheet: the cut
-  // is the surveyor's to redraw, not a renderer's to second-guess.
-  let sheets: SheetPayload[] | undefined
-  const isOutsideFigurePlan =
-    config.value.planType === 'general-undeveloped' || config.value.planType === 'general-developed'
-  const outsideFigureParcel = isOutsideFigurePlan ? getOutsideFigureParcel() : null
-  const outsideFigureRing = isOutsideFigurePlan ? getOutsideFigureCapeLoRing() : null
-  const storedCuts = outsideFigureParcel ? readCuts(outsideFigureParcel.metadata) : []
-  if (outsideFigureParcel && outsideFigureRing && storedCuts.length > 0) {
-    const ring = outsideFigureRing.map(p => ({ y: p.y, x: p.x, id: p.id }))
-    const stands: StandInput[] = []
-    for (const p of parcels.value) {
-      if (p.id === outsideFigureParcel.id) continue
-      const pts = ((p.metadata?.cape_lo_points as any[]) || [])
-        .map((pt: any) => ({ y: Number(pt.y), x: Number(pt.x) }))
-        .filter((pt: any) => Number.isFinite(pt.y) && Number.isFinite(pt.x))
-      if (pts.length < 3) continue
-      // The SAME property set the single-sheet exporter puts on a parcel
-      // (exportParcelsAsGeoJSON). sheetParcels spreads these into the GeoJSON
-      // the renderers read, and the schedule of areas draws its Area column
-      // from `area_m2` -- so handing it name+ring alone produced a schedule
-      // with the stand numbers and no areas on any of the sheets. Kept as an
-      // explicit literal so the two paths cannot drift.
-      stands.push({
-        name: p.designation || p.stand || String(p.id),
-        ring: pts,
-        stand: p.stand,
-        area_m2: p.area_m2,
-        area_ha: Number.isFinite(Number(p.area_m2)) ? (Number(p.area_m2) / 10000).toFixed(4) : undefined,
-        description: p.description || '',
-        id: p.id,
-        isOutsideFigure: false,
-      })
-    }
-    // A stored cut is an ENHANCEMENT: it splits this plan into sheets, and if
-    // deriving those sheets goes wrong for any reason the surveyor must still get
-    // a plan. `built.ok` handles a cut that no longer splits cleanly; this try
-    // handles anything else, so a fault in the optional cut path degrades to the
-    // single-sheet plan rather than failing generation outright.
-    try {
-      const built = buildSheetPayloads({
-        ring,
-        polylines: storedCuts.map(c => c.vertices),
-        stands,
-        // The servitude rows this plan already states, so each sheet can state the
-        // ones for the stands ON it. Omitting these is what blanked the servitude
-        // statement on every sheet: no per-sheet rows arrived, and the renderer
-        // was handed nothing to print.
-        servitudeRows: servitudeStatementRows.value,
-        // The plan's existing point names, so a generated cut point (C1, C2, ...)
-        // cannot collide with a beacon that already holds that name. Read from
-        // the coordinate-point registry, which is what `loadCoordinatePoints`
-        // filled: the beacon label builders keep their own private `beaconMap`,
-        // local to those functions and not visible here.
-        takenNames: coordinatePoints.value.map((p: { name?: string }) => p?.name).filter(Boolean) as string[],
-      })
-      if (built.ok) {
-        sheets = built.sheets
-      } else {
-        console.warn('[SurveyPlanMap] ⚠️ Stored cut no longer splits cleanly; rendering as one sheet:', built.error)
-      }
-    } catch (err: any) {
-      console.warn('[SurveyPlanMap] ⚠️ Could not derive sheets from the stored cut; rendering as one sheet:', err?.message ?? err)
-    }
-  }
+  const sheets = deriveStoredSheets()
 
   return {
     planType: config.value.planType as any,
@@ -4647,6 +4651,8 @@ async function copyText(text: string, what: string) {
 }
 
 async function generatePlanDocuments() {
+  // Tags are edited in Boundaries & Abutters: take the saved ones, not what was loaded at mount.
+  await loadSideAnnotations()
   const meta = getPlanTypeMeta(config.value.planType)
   const v = validateGenerateRequest(meta, selectedDiagramParcelId.value, parcels.value.length, exportFormats)
   if (!v.ok) { notifyWarning(v.error ?? 'Check the plan settings and try again.', { title: "Can't generate yet" }); return }
@@ -4907,6 +4913,22 @@ async function generatePlanDocuments() {
       subdir, saved, skipped, notDrawn: workingPlanSkipped, warnings: generationWarnings,
       scale: usedScale, sheet: usedSheetSize, sheetCount: sheetLayouts?.length,
     })
+    // General Plans: say which series each sheet printed under, and warn when a number was issued
+    // under another (its sheet moved to a different size since).
+    if (isGeneralPlanMode.value) {
+      const report = reconcileSheetCodes(gpSheetNumbers.value, gpSheetCodes.value,
+        printedGpCodes(sheetLayouts, usedSheetSize, gpOfficeCode))
+      outcome.details = [...(outcome.details ?? []), ...report.lines]
+      if (JSON.stringify(report.recorded) !== JSON.stringify(gpSheetCodes.value)) {
+        gpSheetCodes.value = report.recorded
+        void persistSideAnnotations()
+      }
+      if (report.mismatches.length) {
+        notifyWarning(report.mismatches
+          .map(m => `Sheet ${m.sheet}'s number was issued as ${m.was} but the plan now prints it as ${m.now}.`).join(' ')
+          + " Confirm the number with the Surveyor-General's office.", { title: 'Check the General Plan number' })
+      }
+    }
     const previewBlob = docs.pdf instanceof Blob && saved.some((n) => n.toLowerCase().endsWith('.pdf')) ? docs.pdf : null
     notify({
       kind: outcome.kind, title: outcome.title, message: outcome.message, details: outcome.details, sticky: outcome.sticky,
@@ -6578,9 +6600,11 @@ watch(() => config.value.planType, () => {
   applyDiagramHighlight(selectedDiagramParcelId.value)
 })
 
+// The stored cut (or the tags) changed: redraw the read-only tag labels.
+watch(sheetSubjects, () => { updateSubjectSidesLayer() })
+
 // Reset side annotations whenever the diagram subject changes
 watch(selectedDiagramParcelId, () => {
-  activeSideEditor.value = null
   updateSubjectSidesLayer()
   updateSubjectVerticesLayer()
 })
@@ -6666,9 +6690,10 @@ onUnmounted(() => {
 <style scoped>
 .survey-plan-map-container {
   display: grid;
-  grid-template-columns: 1fr 300px;
-  grid-template-rows: 1fr auto;
-  height: calc(100vh - 200px);
+  grid-template-columns: 1fr 340px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  /* Fill the viewport under the (compact) header and ribbon instead of overflowing it. */
+  height: var(--plan-h, max(30rem, calc(100vh - 11rem)));
   gap: 1rem;
   transition: grid-template-columns 0.3s ease;
 }
@@ -6678,20 +6703,86 @@ onUnmounted(() => {
   gap: 0;
 }
 
+/* A dock, not a page: header, tabs and footer stay put; only the tab body scrolls (and rarely needs to). */
 .config-panel {
   background: white;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .config-header {
-  padding: 1rem;
+  padding: 0.4rem 0.6rem 0.4rem 0.9rem;
   border-bottom: 1px solid #e5e7eb;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
+
+.config-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #374151;
+}
+
+.config-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 4px 0;
+  background: #e5e7eb;
+  border-bottom: 1px solid #d1d5db;
+  flex-shrink: 0;
+}
+
+.config-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px 5px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #4b5563;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 0.375rem 0.375rem 0 0;
+  white-space: nowrap;
+  margin-bottom: -1px;
+}
+.config-tab:hover { background: #f3f4f6; color: #111827; }
+.config-tab:focus-visible { outline: 2px solid #4f46e5; outline-offset: -2px; }
+.config-tab-active {
+  background: #ffffff;
+  border-color: #d1d5db;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.config-footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px 8px;
+  background: #f9fafb;
+  border-top: 1px solid #d1d5db;
+  box-shadow: 0 -2px 6px rgba(0,0,0,0.05);
+}
+.format-toggles { display: flex; align-items: center; gap: 12px; font-size: 0.8rem; }
+.format-caption { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #6b7280; }
+.config-footer .btn-export { margin: 0; line-height: 1.2; }
+.footer-primary { width: 100%; font-size: 0.9rem; padding: 0.45rem; white-space: nowrap; }
+.footer-secondary { width: 100%; font-size: 0.75rem; padding: 0.3rem; white-space: nowrap; }
+.footer-status { font-size: 0.65rem; line-height: 1.2; }
+.config-header .collapse-btn { padding: 0.15rem 0.5rem; font-size: 0.8rem; }
 
 .collapse-btn {
   background: #f3f4f6;
@@ -6737,24 +6828,27 @@ onUnmounted(() => {
 }
 
 .config-content {
-  padding: 1rem;
+  padding: 0.75rem 0.9rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .config-group {
-  margin-bottom: 1rem;
+  margin-bottom: 0.55rem;
 }
 
 .config-label {
   display: block;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 500;
   color: #374151;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.15rem;
 }
 
 .config-input {
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.3rem 0.5rem;
   border: 1px solid #d1d5db;
   border-radius: 4px;
   font-size: 0.875rem;
@@ -7419,6 +7513,7 @@ onUnmounted(() => {
   font-size: 13px;
 }
 .side-modal-title { font-weight: 600; font-size: 14px; }
+.boundaries-list { margin: 4px 0; padding-left: 16px; font-size: 12px; list-style: disc; }
 .conn-measure { display: flex; gap: 18px; font-size: 13px; padding: 6px 0; }
 .conn-measure div { display: flex; flex-direction: column; }
 .conn-measure span { color: #6b7280; font-size: 11px; }

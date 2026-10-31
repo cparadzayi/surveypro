@@ -11,7 +11,7 @@ export const WORKFLOW_STEPS: { id: string; label: string }[] = [
   { id: 'coordinate-list', label: 'Coordinate List' },
   { id: 'qgis-export', label: 'QGIS Export' },
   { id: 'area-computation', label: 'Parcel Digitization & Areas' },
-  { id: 'servitudes', label: 'Servitudes & Dispensation' },
+  { id: 'servitudes', label: 'Boundaries & Abutters' },
   { id: 'survey-plan', label: 'Survey Plan' },
   { id: 'report-on-survey', label: 'Report on Survey' },
   { id: 'dsg-certificate', label: 'DSG Certificate' },

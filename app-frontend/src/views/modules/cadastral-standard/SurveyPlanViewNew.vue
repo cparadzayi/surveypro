@@ -1,12 +1,12 @@
 <template>
   <div class="survey-plan-view-new">
-    <div class="header-section">
+    <div v-if="!selectedPlanType" class="header-section">
       <h2 class="text-2xl font-bold text-gray-900">Survey Plan Generation</h2>
       <p class="text-gray-600 mt-1">Select the type of survey plan to generate</p>
     </div>
 
     <!-- Record Composition: what this record encloses. Drives the letter and the cards below. -->
-    <div v-if="projectId" class="composition-banner" :class="{ 'is-confirmed': isConfirmed }">
+    <div v-if="projectId && (!selectedPlanType || !isConfirmed)" class="composition-banner" :class="{ 'is-confirmed': isConfirmed }">
       <template v-if="isConfirmed">
         <span class="composition-summary">
           📋 Record composition: <strong>{{ compositionLabel }}</strong>
@@ -100,11 +100,16 @@
 
     <!-- Selected Plan Type Component -->
     <div v-else class="plan-type-content">
-      <!-- Back Button -->
-      <div class="back-button-section">
-        <button class="btn btn-secondary" @click="selectedPlanType = null">
-          ← Back to Plan Type Selection
-        </button>
+      <!-- One slim bar for what used to be four stacked cards: where you are, the record's composition,
+           and the way on. The plan's own workspace gets the rest of the screen. -->
+      <div class="plan-bar" role="toolbar" aria-label="Survey plan">
+        <button class="plan-bar-back" @click="selectedPlanType = null" title="Back to the plan types">← Plan types</button>
+        <h2 class="plan-bar-title">{{ selectedPlanLabel }}</h2>
+        <span v-if="projectId && isConfirmed" class="plan-bar-chip" title="What this survey record encloses">
+          📋 {{ compositionLabel }}
+          <button class="plan-bar-link" @click="reopenComposition">Change</button>
+        </span>
+        <button class="plan-bar-next" @click="continueToNextStep">Continue to Report on Survey →</button>
       </div>
 
       <!-- Survey Diagram -->
@@ -134,15 +139,6 @@
         @export-complete="handleExportComplete"
       />
 
-      <!-- Navigation -->
-      <div class="navigation-section">
-        <button 
-          class="btn btn-success btn-lg"
-          @click="continueToNextStep"
-        >
-          Continue to Report on Survey →
-        </button>
-      </div>
     </div>
   </div>
 </template>
@@ -168,12 +164,17 @@ const emit = defineEmits(['plan-generated', 'continue'])
 
 // Plan type selection
 const selectedPlanType = ref<string | null>(null)
+const selectedPlanLabel = computed(() => ({
+  diagram: 'Survey Diagram',
+  'working-plan': 'Working Plan',
+  'township-general-plan': 'Township General Plan',
+} as Record<string, string>)[selectedPlanType.value ?? ''] ?? 'Survey Plan')
 
 // Get logged-in surveyor from auth store
 const authStore = useAuthStore()
 
 // Get project data from useSurveyors composable
-const { surveyProjects } = useSurveyors()
+const { surveyProjects, fetchSurveyProjects } = useSurveyors()
 
 const { compositionFor, parcelCountFor, loadComposition, confirmComposition } = useRecordComposition()
 
@@ -303,6 +304,12 @@ onMounted(async () => {
   console.log('  Project ID:', props.projectId)
   console.log('  👤 Logged-in Surveyor:', authStore.currentSurveyor)
   console.log('  📋 Project Info:', projectInfo.value)
+  // The project record is the source of the plan's reference numbers (File, S.R., G.P., Compilation), the Lo
+  // zone and the designation. The shared list is filled by the Dashboard, so a page reload straight onto this
+  // step leaves it empty: load it here rather than print blanks (or a Lo 31 fallback) for a Lo 29 job.
+  if (props.projectId && !surveyProjects.value.some(p => p.id === props.projectId)) {
+    await fetchSurveyProjects()
+  }
   await initComposition()
 })
 </script>
@@ -311,8 +318,8 @@ onMounted(async () => {
 .survey-plan-view-new {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  padding: 1.5rem;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem 0.75rem;
 }
 
 .header-section {
@@ -437,15 +444,35 @@ onMounted(async () => {
 .plan-type-content {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 0.6rem;
 }
 
-.back-button-section {
-  background: white;
-  padding: 1rem 1.5rem;
+.plan-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.35rem 0.75rem;
+  background: #fff;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
+.plan-bar-title { font-size: 1rem; font-weight: 700; color: #111827; }
+.plan-bar-back, .plan-bar-next {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  color: #374151;
+  cursor: pointer;
+}
+.plan-bar-back:hover { background: #f3f4f6; }
+.plan-bar-next { margin-left: auto; color: #fff; background: #16a34a; border-color: #16a34a; font-weight: 600; }
+.plan-bar-next:hover { background: #15803d; }
+.plan-bar-chip { font-size: 0.78rem; color: #4b5563; background: #f3f4f6; border-radius: 999px; padding: 0.15rem 0.6rem; }
+.plan-bar-link { margin-left: 0.4rem; color: #2563eb; text-decoration: underline; background: none; border: 0; cursor: pointer; font-size: inherit; }
+
 
 .composition-banner {
   display: flex;

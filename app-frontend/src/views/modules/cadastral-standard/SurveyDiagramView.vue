@@ -1,10 +1,5 @@
 <template>
   <div class="survey-diagram-view">
-    <div class="plan-header">
-      <h3 class="text-xl font-bold text-gray-900">Survey Diagram</h3>
-      <p class="text-gray-600 mt-1">Technical diagram with measurements and traverse lines</p>
-    </div>
-
     <!-- Use SurveyPlanMapView with diagram configuration -->
     <SurveyPlanMapView 
       v-if="projectId"

@@ -1,10 +1,5 @@
 <template>
   <div class="working-plan-view">
-    <div class="plan-header">
-      <h3 class="text-xl font-bold text-gray-900">Working Plan</h3>
-      <p class="text-gray-600 mt-1">Preliminary plan for field work and calculations</p>
-    </div>
-
     <!-- Use SurveyPlanMapView with working plan configuration -->
     <SurveyPlanMapView 
       v-if="projectId"

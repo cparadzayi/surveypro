@@ -586,11 +586,12 @@
                 id="district"
                 v-model="workflowState.projectInfo.district"
                 type="text"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                readonly
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-600"
                 placeholder="e.g., GWELO"
               />
               <p v-if="selectedProjectId" class="mt-1 text-sm text-gray-500">
-                ℹ️ Auto-filled from selected project district
+                ℹ️ From Project Setup
               </p>
             </div>
 
@@ -602,7 +603,8 @@
                 id="assistedBy"
                 v-model="workflowState.surveyorInfo.assistedBy"
                 type="text"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                readonly
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-600"
                 placeholder="e.g., R. T. Mapamula"
               />
             </div>
@@ -615,7 +617,8 @@
                 id="instrumentDescription"
                 v-model="workflowState.surveyorInfo.instrumentDescription"
                 type="text"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                readonly
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-600"
                 placeholder="e.g., Trimble R6GNSS Set"
               />
             </div>
@@ -628,7 +631,8 @@
                 id="instrumentBaseSerial"
                 v-model="workflowState.surveyorInfo.instrumentBaseSerial"
                 type="text"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                readonly
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-600"
                 placeholder="e.g., 5016424521"
               />
             </div>
@@ -641,17 +645,20 @@
                 id="instrumentRoverSerial"
                 v-model="workflowState.surveyorInfo.instrumentRoverSerial"
                 type="text"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                readonly
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-600"
                 placeholder="e.g., 5146476624"
               />
             </div>
 
             <!-- Working Directory Selector -->
             <div class="lg:col-span-2">
-              <WorkingDirectorySelector
-                v-model="workflowState.projectInfo.workingDirectory"
-                :project-name="workflowState.surveyorInfo.surveyOf || 'Project'"
-                :district="workflowState.projectInfo.district || ''"
+              <label class="block text-sm font-medium text-gray-700 mb-2">Working Directory</label>
+              <input
+                :value="workflowState.projectInfo.workingDirectory"
+                type="text"
+                readonly
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-600"
               />
             </div>
           </div>
@@ -1350,7 +1357,6 @@ import Areas2View from '../lite/areas2/Areas2View.vue';
 import ProjectSetupView from './ProjectSetupView.vue';
 import ControlPointSelectionView from './ControlPointSelectionView.vue';
 import FoundBeaconsView from './FoundBeaconsView.vue';
-import WorkingDirectorySelector from '../../../components/cadastral/WorkingDirectorySelector.vue';
 import DocumentPreviewPanel from '../../../components/cadastral/DocumentPreviewPanel.vue';
 import Ribbon from '../../../components/ribbon/Ribbon.vue';
 import { useWorkflowRibbon } from '../../../composables/useWorkflowRibbon';
@@ -2059,10 +2065,6 @@ async function handleProjectSetupComplete(setupData: {
   originalTitleDiagramNo?: string;
   originalTitleAnnexedTo?: string;
   originalTitleDeedNo?: string;
-  srNo?: string;
-  fileNo?: string;
-  gpNo?: string;
-  compilation?: string;
   district: string;
   surveyDate: string;
   surveyOf: string;
@@ -2072,7 +2074,6 @@ async function handleProjectSetupComplete(setupData: {
   instrumentBaseSerial: string;
   instrumentRoverSerial: string;
   loZone: number;
-  datum: string;
   workingDirectory: string;
   wholePortion: string;
 }) {
@@ -2205,10 +2206,6 @@ async function handleProjectSetupComplete(setupData: {
   workflowState.projectInfo.originalTitleDiagramNo = setupData.originalTitleDiagramNo;
   workflowState.projectInfo.originalTitleAnnexedTo = setupData.originalTitleAnnexedTo;
   workflowState.projectInfo.originalTitleDeedNo = setupData.originalTitleDeedNo;
-  workflowState.projectInfo.srNo = setupData.srNo;
-  workflowState.projectInfo.fileNo = setupData.fileNo;
-  workflowState.projectInfo.gpNo = setupData.gpNo;
-  workflowState.projectInfo.compilation = setupData.compilation;
   workflowState.projectInfo.workingDirectory = setupData.workingDirectory;
   workflowState.projectInfo.wholePortion = setupData.wholePortion;
   workflowState.projectInfo.centralMeridian = setupData.loZone;
@@ -2246,10 +2243,6 @@ async function handleProjectSetupComplete(setupData: {
         originalTitleDiagramNo: setupData.originalTitleDiagramNo,
         originalTitleAnnexedTo: setupData.originalTitleAnnexedTo,
         originalTitleDeedNo: setupData.originalTitleDeedNo,
-        srNo: setupData.srNo,
-        fileNo: setupData.fileNo,
-        gpNo: setupData.gpNo,
-        compilation: setupData.compilation,
         district: setupData.district,
         surveyDate: setupData.surveyDate,
         designation: setupData.surveyOf,
@@ -2260,7 +2253,6 @@ async function handleProjectSetupComplete(setupData: {
         instrumentRoverSerial: setupData.instrumentRoverSerial,
         workingDirectory: setupData.workingDirectory,
         centralMeridian: setupData.loZone,
-        datum: setupData.datum,
         wholePortion: setupData.wholePortion
       });
       
@@ -2286,8 +2278,7 @@ async function handleProjectSetupComplete(setupData: {
         instrumentDescription: setupData.instrumentDescription,
         instrumentBaseSerial: setupData.instrumentBaseSerial,
         instrumentRoverSerial: setupData.instrumentRoverSerial,
-        lo_zone: setupData.loZone,
-        datum: setupData.datum
+        lo_zone: setupData.loZone
       });
       
       console.log('[Workflow] ✅ Project setup saved to database');

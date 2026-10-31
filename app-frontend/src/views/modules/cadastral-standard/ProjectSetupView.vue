@@ -323,50 +323,7 @@
               />
             </div>
 
-            <!-- S.R. / File / G.P. -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">
-                S.R. No.
-              </label>
-              <input
-                v-model="setupData.srNo"
-                type="text"
-                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g. 118/2023"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">
-                File No.
-              </label>
-              <input
-                v-model="setupData.fileNo"
-                type="text"
-                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g. 8/2916"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">
-                G.P. No.
-              </label>
-              <input
-                v-model="setupData.gpNo"
-                type="text"
-                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">
-                Compilation
-              </label>
-              <input
-                v-model="setupData.compilation"
-                type="text"
-                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g. J. Moyo"
-              />
-            </div>
+            <!-- The File, S.R., G.P. and Compilation numbers are given by the Surveyor-General after examination: they are entered once, on the Survey Plan screen. -->
 
             <!-- District -->
             <div>
@@ -510,25 +467,6 @@
                 Select based on project location
               </p>
             </div>
-            
-            <!-- Datum -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">
-                Datum *
-              </label>
-              <select
-                v-model="setupData.datum"
-                required
-                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="cape">Cape Datum (Modified Clarke 1880) - Recommended</option>
-                <option value="hartebeesthoek94">Hartebeesthoek94 (WGS84)</option>
-                <option value="wgs84">WGS84</option>
-              </select>
-              <p class="mt-1 text-sm text-gray-500">
-                Cape Datum is Zimbabwe's standard for cadastral surveys
-              </p>
-            </div>
           </div>
         </div>
 
@@ -638,10 +576,6 @@ const emit = defineEmits<{
     originalTitleDiagramNo?: string
     originalTitleAnnexedTo?: string
     originalTitleDeedNo?: string
-    srNo?: string
-    fileNo?: string
-    gpNo?: string
-    compilation?: string
     district: string
     surveyDate: string
     /** Composed from Township + Parent Property ("BRACKENHURST TOWNSHIP OF STAND 87 …").
@@ -653,7 +587,6 @@ const emit = defineEmits<{
     instrumentBaseSerial: string
     instrumentRoverSerial: string
     loZone: number
-    datum: string
     workingDirectory: string
     wholePortion: string
   }]
@@ -679,10 +612,6 @@ const setupData = ref({
   originalTitleDiagramNo: '',
   originalTitleAnnexedTo: '',
   originalTitleDeedNo: '',
-  srNo: '',
-  fileNo: '',
-  gpNo: '',
-  compilation: '',
   surveyDate: '',
   surveyOf: '',
   instruments: '',
@@ -691,7 +620,6 @@ const setupData = ref({
   instrumentBaseSerial: '',
   instrumentRoverSerial: '',
   loZone: null as number | null,
-  datum: 'cape',
   workingDirectory: '',
   wholePortion: 'the whole'
 })
@@ -823,10 +751,6 @@ function onProjectChange() {
     parentDeedTypeIsOther.value = false
     originalTitleDeedTypeIsOther.value = false
     setupData.value.originalTitleDeedNo = project.original_title_deed_no || ''
-    setupData.value.srNo = project.sr_no || ''
-    setupData.value.fileNo = project.file_no || ''
-    setupData.value.gpNo = project.gp_no || ''
-    setupData.value.compilation = project.compilation || ''
     setupData.value.district = project.district || ''
     setupData.value.wholePortion = project.whole_portion || 'the whole'
     setupData.value.surveyDate = formatDateForInput(project.survey_date)
@@ -839,7 +763,6 @@ function onProjectChange() {
 
     // Coordinate System
     setupData.value.loZone = project.central_meridian || null
-    setupData.value.datum = project.datum || 'cape'
     setupData.value.workingDirectory = project.working_directory || ''
     
     console.log('[ProjectSetup] ✅ Auto-populated all fields:')
@@ -1030,10 +953,6 @@ async function completeSetup() {
       originalTitleDiagramNo: setupData.value.originalTitleDiagramNo || undefined,
       originalTitleAnnexedTo: setupData.value.originalTitleAnnexedTo || undefined,
       originalTitleDeedNo: setupData.value.originalTitleDeedNo || undefined,
-      srNo: setupData.value.srNo || undefined,
-      fileNo: setupData.value.fileNo || undefined,
-      gpNo: setupData.value.gpNo || undefined,
-      compilation: setupData.value.compilation || undefined,
       district: setupData.value.district,
       surveyDate: setupData.value.surveyDate,
       surveyOf: composedSurveyOf.value || setupData.value.surveyOf,
@@ -1043,7 +962,6 @@ async function completeSetup() {
       instrumentBaseSerial: setupData.value.instrumentBaseSerial,
       instrumentRoverSerial: setupData.value.instrumentRoverSerial,
       loZone: setupData.value.loZone!,
-      datum: setupData.value.datum,
       workingDirectory: setupData.value.workingDirectory,
       wholePortion: setupData.value.wholePortion
     })

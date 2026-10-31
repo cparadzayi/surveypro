@@ -143,8 +143,8 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
   servitudes: {
     id: 'servitudes',
     order: 10,
-    label: 'Servitudes & Dispensation',
-    description: 'Identify boundary servitudes and generate dispensation certificates',
+    label: 'Boundaries & Abutters',
+    description: 'Tag roads, servitudes and contiguous neighbours on every boundary; generate dispensation certificates',
     icon: '⚖️',
     dbKey: 'servitudes',
     canEdit: true,

@@ -1,5 +1,5 @@
 <template>
-  <div v-if="tabs.length" class="rbn-root" :class="{ 'rbn-collapsed': collapsed }">
+  <div v-if="tabs.length" ref="rootEl" class="rbn-root" :class="{ 'rbn-collapsed': collapsed, 'rbn-peeking': collapsed && peek }">
     <!-- ── Tab strip ─────────────────────────────────────────────────────── -->
     <div class="rbn-tabs">
       <span v-if="contextLabel" class="rbn-context" data-testid="ribbon-context" :title="contextLabel">{{ contextLabel }}</span>
@@ -15,7 +15,7 @@
         :aria-selected="activeTab === tab.id"
         :aria-controls="collapsed ? undefined : 'rbn-panel'"
         :tabindex="activeTab === tab.id ? 0 : -1"
-        @click="activeTab = tab.id"
+        @click="onTabClick(tab.id)"
       >
         <span v-if="tab.icon" class="rbn-tab-icon" aria-hidden="true">{{ tab.icon }}</span>
         <span>{{ tab.label }}</span>
@@ -48,9 +48,10 @@
 
     <!-- ── Body ──────────────────────────────────────────────────────────── -->
     <div
-      v-if="!collapsed"
+      v-if="!collapsed || peek"
       id="rbn-panel"
       class="rbn-body"
+      :class="{ 'rbn-body-peek': collapsed }"
       role="tabpanel"
       :aria-labelledby="active ? `rbn-tab-${active.id}` : undefined"
     >
@@ -65,7 +66,7 @@
             <RibbonButton
               v-else
               v-bind="item"
-              @click="$emit('action', item.id)"
+              @click="onAction(item.id)"
             />
           </template>
         </div>
@@ -75,15 +76,14 @@
     </div>
 
     <!-- Collapsed ribbon hides the body; the map underneath grows taller. -->
-    <div v-else class="rbn-collapsed-hint">
-      {{ active?.groups[0]?.items.filter(i => !isSeparator(i)).length || 0 }} commands —
-      expand to reach them
+    <div v-if="collapsed && !peek" class="rbn-collapsed-hint">
+      Click a tab to open its commands, or expand the ribbon (⤢) to keep them showing
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import RibbonButton from './RibbonButton.vue'
 import { isSeparator, type RibbonItem, type RibbonTab } from './types'
 
@@ -155,7 +155,44 @@ function onTabKeydown(e: KeyboardEvent) {
   nextTick(() => root?.querySelector<HTMLElement>(`#rbn-tab-${CSS.escape(ids[next])}`)?.focus())
 }
 
-watch(collapsed, v => emit('update:collapsed', v))
+// Collapsed ribbons behave like a menu bar: a tab click drops its commands down over
+// the page (the "peek"), and a command, Escape or a click elsewhere puts them away again.
+const rootEl = ref<HTMLElement | null>(null)
+const peek = ref(false)
+
+function onTabClick(id: string) {
+  const same = activeTab.value === id
+  activeTab.value = id
+  if (collapsed.value) peek.value = same ? !peek.value : true
+}
+
+function onAction(id: string) {
+  emit('action', id)
+  peek.value = false
+}
+
+function closePeek(e: Event) {
+  if (e instanceof KeyboardEvent ? e.key === 'Escape' : !rootEl.value?.contains(e.target as Node)) peek.value = false
+}
+
+watch(peek, open => {
+  if (open) {
+    document.addEventListener('mousedown', closePeek)
+    document.addEventListener('keydown', closePeek)
+  } else {
+    document.removeEventListener('mousedown', closePeek)
+    document.removeEventListener('keydown', closePeek)
+  }
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', closePeek)
+  document.removeEventListener('keydown', closePeek)
+})
+
+watch(collapsed, v => {
+  peek.value = false
+  emit('update:collapsed', v)
+})
 
 // Parent may change collapsed from outside (e.g. another control); track it.
 watch(() => props.collapsed, v => { if (v !== collapsed.value) collapsed.value = v })
@@ -327,4 +364,15 @@ watch(tabs, list => {
 
 /* Collapsed: tab strip plus the one-line hint, flush against the content below. */
 .rbn-collapsed .rbn-tabs { border-bottom: none; }
+
+/* Peek: the body floats over the page instead of pushing it down. */
+.rbn-peeking .rbn-tabs { border-bottom: 1px solid #d1d5db; }
+.rbn-body-peek {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  border-bottom: 1px solid #d1d5db;
+  box-shadow: 0 8px 16px rgb(0 0 0 / 0.14);
+}
 </style>

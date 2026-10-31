@@ -49,4 +49,41 @@ describe('Ribbon', () => {
     press('Home'); await nextTick()
     expect(tabEls()[0].getAttribute('aria-selected')).toBe('true')
   })
+
+  describe('collapsed (menu-bar mode)', () => {
+    const body = () => root.querySelector('.rbn-body')
+    const click = (el: Element) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    it('shows no commands until a tab is clicked, then drops them down', async () => {
+      mount({ collapsed: true })
+      expect(body()).toBeNull()
+      click(tabEls()[1]); await nextTick()
+      expect(body()?.classList.contains('rbn-body-peek')).toBe(true)
+      expect(body()?.textContent).toContain('Cmd b')
+    })
+    it('closes the peek when the same tab is clicked again', async () => {
+      mount({ collapsed: true })
+      click(tabEls()[0]); await nextTick()
+      click(tabEls()[0]); await nextTick()
+      expect(body()).toBeNull()
+    })
+    it('closes on Escape, on an outside click, and after a command is run', async () => {
+      mount({ collapsed: true })
+      click(tabEls()[0]); await nextTick()
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); await nextTick()
+      expect(body()).toBeNull()
+
+      click(tabEls()[0]); await nextTick()
+      document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await nextTick()
+      expect(body()).toBeNull()
+
+      click(tabEls()[0]); await nextTick()
+      click(root.querySelector('.rb-btn')!); await nextTick()
+      expect(body()).toBeNull()
+    })
+    it('does not float the body when the ribbon is expanded', async () => {
+      mount()
+      expect(body()?.classList.contains('rbn-body-peek')).toBe(false)
+    })
+  })
 })

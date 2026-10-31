@@ -6,7 +6,7 @@
     <!-- Main Column -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- Header (only show when authenticated) -->
-      <header v-if="isAuthed" class="bg-white border-b p-4 flex items-center gap-4 sticky top-0 z-40">
+      <header v-if="isAuthed" class="bg-white border-b h-11 px-4 flex items-center gap-4 sticky top-0 z-40">
         <button
           class="md:hidden p-2 rounded hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           @click="toggleNav"
@@ -119,7 +119,7 @@
       <!-- Global ribbon: available on every screen, so navigation, project
            context and help never depend on where the user happens to be.
            Collapsible, like the QGIS/ArcGIS ribbon minimise control. -->
-      <div v-if="isAuthed" class="sticky top-14 z-30">
+      <div v-if="isAuthed" class="sticky top-11 z-30">
         <Ribbon
           :tabs="globalRibbonTabs"
           :initial-tab="globalInitialTab"
@@ -168,7 +168,16 @@ const globalRibbonTabs = globalRibbon.tabs
 // Ribbon state. Open the Modules tab when the user is already inside a module,
 // otherwise start on Home — it makes the bar feel like it belongs to the screen.
 const globalInitialTab = ref('home')
-const ribbonCollapsed = ref(false)
+// Collapsed by default, like a QGIS menu bar: the commands are one click away (the tab
+// peeks open) and the map gets the height. The choice is remembered per browser.
+const RIBBON_KEY = 'surveypro.globalRibbonCollapsed'
+function readRibbonCollapsed(): boolean {
+  try { return localStorage.getItem(RIBBON_KEY) !== '0' } catch { return true }
+}
+const ribbonCollapsed = ref(readRibbonCollapsed())
+watch(ribbonCollapsed, v => {
+  try { localStorage.setItem(RIBBON_KEY, v ? '1' : '0') } catch { /* private window: just don't remember */ }
+})
 watch(() => globalRibbon.currentModuleSlug.value, slug => {
   if (slug) globalInitialTab.value = 'modules'
 }, { immediate: true })

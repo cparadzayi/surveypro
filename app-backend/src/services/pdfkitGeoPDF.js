@@ -1,4 +1,5 @@
 // FORCE RELOAD: 2026-02-25-21:24 - re-enable retry + relaxed stacker scan - CACHE BUST
+import { recordPdfOps } from "./diagram/pdfOps.js";
 import { writeFile, unlink, mkdir } from "fs/promises";
 import { GENERATION_CANCELLED, yieldOrCancel } from '../utils/cancellation.js';
 import { insetTagCandidates } from './pdfkitGeoPDF/insetTagCandidates.js';
@@ -11495,7 +11496,7 @@ async function _generateGeoPDFInner(options, logger) {
   }
 
   // Create PDF document
-  const doc = new PDFDocument({
+  const pdfDoc = new PDFDocument({
     size: pageSize.size,
     layout: "portrait",
     margin: 0,
@@ -11510,6 +11511,11 @@ async function _generateGeoPDFInner(options, logger) {
       CreationDate: new Date(),
     },
   });
+
+  // Tests/DXF ask for the drawing as page-space operations; the recorder forwards every call, so the PDF is unchanged.
+  const _recorder = options.recordOps ? recordPdfOps(pdfDoc) : null;
+  const doc = _recorder ? _recorder.doc : pdfDoc;
+  if (!_recorder) pdfDoc.layer = function () { return this; };
 
   // Add georeferencing metadata
   addGeoreferencingMetadata(doc, projection, calculatedExtent);
@@ -11874,6 +11880,7 @@ async function _generateGeoPDFInner(options, logger) {
   const collisionDetector = new LabelCollisionDetector();
 
   // Draw main map border
+  doc.layer('MARGIN_GUIDES');
   drawMapBorder(doc, mapBounds);
 
   // Draw figure boundary (optional visual guide - can be removed for production)
@@ -11935,6 +11942,7 @@ async function _generateGeoPDFInner(options, logger) {
 
   // Step 1: Render Outside Figure boundary FIRST (as background layer)
   // This includes: red boundary line, beacon circles at vertices, and vertex labels outside polygon
+  doc.layer('OUTSIDE_FIGURE');
   renderOutsideFigureBoundary(
     doc,
     outsideFigure,
@@ -11978,6 +11986,7 @@ async function _generateGeoPDFInner(options, logger) {
     filteredParcels.features.length > 0
   ) {
     // eslint-disable-next-line no-var
+  doc.layer('PARCELS');
     var parcelRenderResult = renderParcels(
       doc,
       filteredParcels,
@@ -12081,6 +12090,7 @@ async function _generateGeoPDFInner(options, logger) {
       outsideFigureVertexNames?.size || 0
     } entries`
   );
+  doc.layer('BEACONS');
   await renderBeacons(
     doc,
     filteredBeacons,
@@ -13051,6 +13061,7 @@ async function _generateGeoPDFInner(options, logger) {
   );
   logger.info("[PDFKit] 🔧 BuildTag: stand-whitespace-v2");
 
+  doc.layer('TITLE_BLOCK');
   drawTitleBlock(
     doc,
     metadata,
@@ -13061,6 +13072,7 @@ async function _generateGeoPDFInner(options, logger) {
     filteredParcels,
     sheetInfo  // SI 727 Seventh Schedule (b) multi-sheet info
   );
+  doc.layer('TITLE_BLOCK');
   drawScheduleOfAreas(
     doc,
     filteredParcels,
@@ -13078,6 +13090,7 @@ async function _generateGeoPDFInner(options, logger) {
     optimalScale.value,
     _scheduleColumnWidthsPt,   // 3-v7: caller-provided widths from planner
   );
+  doc.layer('TITLE_BLOCK');
   drawOutsideFigureData(
     doc,
     outsideFigureData,
@@ -13086,12 +13099,14 @@ async function _generateGeoPDFInner(options, logger) {
     filteredBeacons,
     logger
   );
+  doc.layer('TITLE_BLOCK');
   drawBeaconDescription(
     doc,
     filteredBeacons,
     mapBounds,
     blockPositions.beaconDescription
   );
+  doc.layer('SCALE_BAR');
   drawScaleBar(
     doc,
     calculatedExtent,
@@ -13100,15 +13115,19 @@ async function _generateGeoPDFInner(options, logger) {
     blockPositions.scaleBar,
     figureBounds
   );
+  doc.layer('TITLE_BLOCK');
   drawSurveyStatement(doc, metadata, mapBounds, blockPositions.surveyStatement);
   // General Plans with party-wall servitudes: the servitude statement table,
   // placed by the same collision-free planner as every other block.
   if (Array.isArray(metadata?.servitudeStatement?.rows) && blockPositions.servitudeStatement) {
     drawServitudeStatement(doc, metadata, mapBounds, blockPositions.servitudeStatement);
   }
+  doc.layer('NORTH_ARROW');
   drawNorthArrow(doc, mapBounds, blockPositions.northArrow);
+  doc.layer('TITLE_BLOCK');
   drawSurveyorGeneralSignature(doc, mapBounds, blockPositions.sgSignature);
 
+  doc.layer('TITLE_BLOCK');
   drawEndorsementBlock(doc, blockPositions.endorsement);
 
   // General-plan footer: the SI 727 survey-record-number statement, centred near
@@ -13173,6 +13192,7 @@ async function _generateGeoPDFInner(options, logger) {
   // Step 5c: Render tick marks AFTER all blocks are drawn.
   // blockPositions now contains the actual rendered bounds for all blocks,
   // so tick mark label collision checks correctly avoid every table.
+  doc.layer('GRID');
   const tickMarks = renderOutsideFigureTickMarks(
     doc,
     outsideFigure,
@@ -13265,6 +13285,7 @@ async function _generateGeoPDFInner(options, logger) {
     }
   );
 
+  doc.layer('INSETS');
   insetManager.renderInsetsAtPositions(
     doc,
     insetPositions,
@@ -13381,7 +13402,13 @@ async function _generateGeoPDFInner(options, logger) {
   // DXF so PDF↔DXF stay in lockstep on scale + sheet size + orientation.
   // NOTE: pageSize carries `size: [wPt, hPt]` (no .width/.height fields).
   const _returnedOrientation = pageSize.size?.[0] >= pageSize.size?.[1] ? 'landscape' : 'portrait';
-  return { pdfBuffer, suggestedScale, scale: optimalScale.label, sheetSize: _returnedSheetSize, orientation: _returnedOrientation, tileGrid, warnings, labelMetrics };
+  let ground;
+  if (_recorder) {
+    const a = transformCoords(calculatedExtent.minY, calculatedExtent.minX, calculatedExtent, figureBounds);
+    const b = transformCoords(calculatedExtent.maxY, calculatedExtent.maxX, calculatedExtent, figureBounds);
+    ground = { a, b, extent: calculatedExtent, page: { width: pageWidth, height: pageHeight }, denom: optimalScale.denominator ?? null };
+  }
+  return { pdfBuffer, suggestedScale, scale: optimalScale.label, sheetSize: _returnedSheetSize, orientation: _returnedOrientation, tileGrid, warnings, labelMetrics, ...(_recorder ? { ops: _recorder.ops, ground } : {}) };
 }
 
 async function _mergePDFBuffers(buffers, logger) {

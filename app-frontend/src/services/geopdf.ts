@@ -247,6 +247,19 @@ export async function generateDXF(
   warningsSummary: Record<string, number | boolean> | null
 }> {
   const { includeGpkg = true, gpkgOnly = false } = options
+  // A single-sheet General Plan's DXF is the PDF's own drawing: ask the PDF route for it, with the very
+  // request the PDF was made from, so both are made of the same inputs. A plan cut into several sheets
+  // still goes to /geopdf/dxf, which writes one file per sheet.
+  if (!(Array.isArray(request.sheets) && request.sheets.length > 1) && request.planType !== 'diagram') {
+    const replica = await api.post('/geopdf/vector', {
+      ...request,
+      dxf: true,
+      zip: !gpkgOnly,
+      includeGpkg: gpkgOnly ? false : includeGpkg,
+      gpkgOnly,
+    }, { responseType: 'blob', timeout: 600000, signal: options.signal })
+    return { blob: replica.data, warningCount: 0, warningsSummary: null }
+  }
   const response = await api.post('/geopdf/dxf', {
     parcels: request.parcels,
     beacons: request.beacons,

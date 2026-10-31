@@ -23,7 +23,7 @@ New-Item -ItemType Directory -Force $Work | Out-Null
 $log = Join-Path $Work 'log.txt'
 Remove-Item $log -ErrorAction SilentlyContinue
 if (Test-Path $Dwg) { Remove-Item $Dwg }
-$logLisp = $log -replace '\', '/'
+$logLisp = $log.Replace([string][char]92, '/')
 $lines = @(
   "(defun L (s / f) (setq f (open `"$logLisp`" `"a`")) (write-line s f) (close f))",
   '(setvar "FILEDIA" 0)',

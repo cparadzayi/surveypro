@@ -10,6 +10,7 @@ import { getCapeLoSRID } from '../utils/capeLoSRID.js'
 import { prjForDxf } from '../utils/crsDefinitions.js'
 import { dxfToGeoreferencedGpkg, getOGR2OGRCommand, getGDALVersion } from '../utils/dxfGpkg.js'
 import { creationArgs, creationOptions, driverSupport, gdalVersion, runGdal, vrtOf } from '../utils/gdalRunner.js'
+import { dxfFromRecordedPlan } from '../services/generalPlanDxf.js'
 import { chooseSheeting } from '../services/chooseSheeting.js'
 import { zipSync } from 'fflate'
 import { warningHints, encodeWarningsHeader } from '../utils/planWarnings.js'
@@ -696,7 +697,9 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
             trueGeoPDF,
             interactive,
             enableLayers,
-            enableMeasurements
+            enableMeasurements,
+            // dxf: true asks for this same render as a DXF (see below)
+            recordOps: request.body.dxf === true
           },
           fastify.log
         )
@@ -705,6 +708,26 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
         const usedScale       = firstPass?.scale ?? scale
         const usedSheetSize   = firstPass?.sheetSize ?? sheetSize ?? null
         const tileGrid        = firstPass?.tileGrid ?? null
+
+        // The DXF of a General Plan is the PDF's own drawing: the render above, recorded, written out in
+        // ground coordinates. It goes through everything the PDF went through (computed areas, outside
+        // figure, side annotations), so the two cannot differ in what they hold.
+        if (request.body.dxf === true && firstPass?.ops) {
+          const { dxfBuffer } = dxfFromRecordedPlan(firstPass, request.body.dxfVersion)
+          const { zip = true, includeGpkg = true, gpkgOnly = false } = request.body
+          const ts = Date.now()
+          const dxfHeaders = { 'X-Used-Scale': usedScale, 'X-Used-Sheet-Size': usedSheetSize }
+          if (gpkgOnly) {
+            const gpkg = await dxfToGeoreferencedGpkg(dxfBuffer, projection, fastify.log, clientGone.signal)
+            if (!gpkg) return reply.code(500).send({ error: 'GeoPackage generation failed', message: 'ogr2ogr did not produce a .gpkg (see server logs).' })
+            return reply.type('application/geopackage+sqlite3').headers({ ...dxfHeaders, 'Content-Disposition': `attachment; filename="survey-plan-${ts}.gpkg"` }).send(gpkg)
+          }
+          if (zip) {
+            const payload = await zipDxfWithPrj(dxfBuffer, projection, `survey-plan-${ts}`, fastify.log, includeGpkg, clientGone.signal)
+            return reply.type('application/zip').headers({ ...dxfHeaders, 'Content-Disposition': `attachment; filename="survey-plan-${ts}.zip"` }).send(payload)
+          }
+          return reply.type('application/dxf').headers({ ...dxfHeaders, 'Content-Disposition': `attachment; filename="survey-plan-${ts}.dxf"` }).send(dxfBuffer)
+        }
 
         let finalPdfBuffer
         let isMultiSheet = false

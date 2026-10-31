@@ -42,11 +42,11 @@ const norm360 = (a) => ((a % 360) + 360) % 360
  * @param {{ perPt: number, figCenterPx: number, figCenterPy: number, center: {x:number,y:number} }} ground
  * @returns {{ dxfBuffer: Buffer, stats: object }}
  */
-export function opsToDxf(ops, ground, { version = 'r12' } = {}) {
-  const w = version === 'r2000' ? createDxfWriterR2000(DIAGRAM_LAYERS) : createDxfWriter(DIAGRAM_LAYERS)
+export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS } = {}) {
+  const w = version === 'r2000' ? createDxfWriterR2000(layers) : createDxfWriter(layers)
   // Release 12 takes the palette index; Release 2000 and later take the exact RGB too.
   const colorOf = (hex) => ({ aci: nearestAci(hex), rgb: hex })
-  const known = new Set(DIAGRAM_LAYERS.map((l) => l.name))
+  const known = new Set(layers.map((l) => l.name))
   const layerOf = (op) => (known.has(op.layer) ? op.layer : '0')
   const g = (x, y) => ({
     x: ground.center.x + (x - ground.figCenterPx) * ground.perPt,

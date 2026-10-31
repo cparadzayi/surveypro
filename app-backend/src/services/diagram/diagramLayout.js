@@ -14,7 +14,7 @@ const PAGE_DIMS_PT = {
 }
 
 // Fixed band heights (pt); the figure fills whatever remains.
-const BAND = { table: 150, header: 66, scaleBar: 34, statement: 92, refGrid: 100 }
+const BAND = { table: 153, header: 66, scaleBar: 34, statement: 92, refGrid: 100 }
 
 // Inset (pt) between the neat-line border and the content bands, so text/labels
 // never touch the border/margins.
@@ -33,7 +33,19 @@ export const ARROW_GUTTER = ARROW_WIDTH + 12
 // Content font sizes (pt) shared by the PDF and DXF diagrams. Raised one point from
 // 7 / 8 / 9 so the content reads comfortably; every block's row pitch and column
 // width was sized with room for it, so the layout is unchanged.
-export const DIAGRAM_FONTS = { table: 8, tableHead: 8, beacon: 9, approved: 8, statement: 10, grid: 8 }
+// The Surveyor-General asked for a larger font in the co-ordinate table and the
+// description of beacons (8/9 pt was read as too small): the table is now 10 pt (headings 9 pt bold, the widest that still clears the METRES column), the same
+// size as the statement block.
+export const DIAGRAM_FONTS = { table: 10, tableHead: 9, beacon: 10, approved: 8, statement: 10, grid: 8 }
+
+// Vertical rhythm of the ruled table, points below its top. The three header rows and
+// the Constants row moved down 1-3 pt with the larger type so the lines do not touch;
+// both renderers read these, so the PDF and the DXF cannot drift.
+export const TABLE_GEOM = { lo: 11, sub: 21, sep: 31, first: 33, pitch: 11, closing: 9 }
+/** The ruled table's bottom Y for a given data-row count. */
+export function tableBottomY(tableY, rowCount) {
+  return tableY + TABLE_GEOM.first + TABLE_GEOM.closing + rowCount * TABLE_GEOM.pitch
+}
 
 export const DEDUCTIONS_NOTE = 'DEDUCTIONS FROM THIS DIAGRAM ARE MADE ON THE BACK HEREOF'
 export const BINDING_MARGIN_NOTE = 'BINDING MARGIN NOT TO BE WRITTEN IN'

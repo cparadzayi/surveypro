@@ -1,6 +1,7 @@
 import { describe, test, expect } from '@jest/globals'
 import {
   DIAGRAM_MARGINS_MM, CONTENT_PAD, ARROW_GUTTER, pageDimsPt, marginsPt, computeDiagramLayout,
+  DIAGRAM_FONTS, TABLE_GEOM, tableBottomY,
 } from '../diagramLayout.js'
 
 const MM = 72 / 25.4
@@ -63,7 +64,7 @@ describe('computeDiagramLayout', () => {
   })
 
   test('figure flexes = padded content height minus fixed bands', () => {
-    const fixed = 150 + 66 + 34 + 92 + 100
+    const fixed = 153 + 66 + 34 + 92 + 100
     expect(L.figure.height).toBeCloseTo(L.border.height - 2 * CONTENT_PAD - fixed, 3)
   })
 
@@ -99,5 +100,22 @@ describe('computeDiagramLayout', () => {
 
   test('DIAGRAM_MARGINS_MM is 35 left / 15 others', () => {
     expect(DIAGRAM_MARGINS_MM).toEqual({ left: 35, top: 15, right: 15, bottom: 15 })
+  })
+})
+
+// The SG asked for a larger table font. The type is bigger, so the rhythm moved with it:
+// a data row must hold its text, and the ruled table must fit its band for a long table.
+describe('larger table font (SG comment: increase font)', () => {
+  test('table and beacon text are 10 pt, no smaller than the statement block', () => {
+    expect(DIAGRAM_FONTS.table).toBeGreaterThanOrEqual(10)
+    expect(DIAGRAM_FONTS.beacon).toBeGreaterThanOrEqual(10)
+  })
+  test('a data row is taller than its text, and header rows clear each other', () => {
+    expect(TABLE_GEOM.pitch).toBeGreaterThan(DIAGRAM_FONTS.table)
+    expect(TABLE_GEOM.sub - TABLE_GEOM.lo).toBeGreaterThanOrEqual(DIAGRAM_FONTS.table)
+    expect(TABLE_GEOM.first).toBeGreaterThan(TABLE_GEOM.sep)
+  })
+  test('a ten-row table still fits the table band', () => {
+    expect(tableBottomY(0, 10)).toBeLessThanOrEqual(153)
   })
 })

@@ -11,6 +11,7 @@ import {
   SI727_MARGINS,
   GENERAL_PLAN_RECORD_STATEMENT,
   GENERAL_PLAN_MARGIN_FOOTER,
+  generalPlanMarginFooter,
 } from "../utils/si727Constants.js";
 import BLOCKS from "../../../app-shared/block-definitions.js";
 import { northArrowForPlanMm } from "./diagram/diagramLayout.js";
@@ -48,6 +49,7 @@ import {
   sheetOutsideFigureData,
   sheetMetadata,
   sheetSheetInfo,
+  gpSheetNoFor,
 } from './sheetPayloadGeometry.js';
 
 /**
@@ -13125,9 +13127,16 @@ async function _generateGeoPDFInner(options, logger) {
       // Bottom-margin footer line, BELOW the drawing-space bottom edge: three
       // fill-in fields spread left / centre / right across the drawing width.
       const _fy = mapBounds.y + mapBounds.height + 8;
-      doc.text(GENERAL_PLAN_MARGIN_FOOTER.left,   mapBounds.x, _fy, { width: mapBounds.width, align: 'left',   lineBreak: false });
-      doc.text(GENERAL_PLAN_MARGIN_FOOTER.center, mapBounds.x, _fy, { width: mapBounds.width, align: 'center', lineBreak: false });
-      doc.text(GENERAL_PLAN_MARGIN_FOOTER.right,  mapBounds.x, _fy, { width: mapBounds.width, align: 'right',  lineBreak: false });
+      // The Surveyor-General's numbers, once entered: BCT / BCG / BDG by this sheet's paper size.
+      const _foot = generalPlanMarginFooter({
+        sheetName: pageSize.code,
+        gpSheetNo: gpSheetNoFor(metadata, sheetInfo?.sheetNumber),
+        srNo: metadata?.srNo,
+        compilation: metadata?.compilation,
+      });
+      doc.text(_foot.left,   mapBounds.x, _fy, { width: mapBounds.width, align: 'left',   lineBreak: false });
+      doc.text(_foot.center, mapBounds.x, _fy, { width: mapBounds.width, align: 'center', lineBreak: false });
+      doc.text(_foot.right,  mapBounds.x, _fy, { width: mapBounds.width, align: 'right',  lineBreak: false });
       doc.restore();
       logger.info('[PDFKit] 🧾 General-plan survey-record-number statement + margin footer rendered');
     }

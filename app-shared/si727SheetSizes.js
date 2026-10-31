@@ -38,3 +38,22 @@ export function sheetContentMm(name) {
   if (!size) return null;
   return { width: size.width - 200, height: size.height - 100 };
 }
+
+/**
+ * The Surveyor-General's reference series of a General Plan, by prescribed sheet size:
+ * BCT for the smallest, BCG for the medium, BDG for the largest. The office gives the
+ * number after preliminary examination and it is written after this code at the foot of
+ * the sheet. (Per the surveyor's reading of the prescribed sizes; the smallest and
+ * largest codes are not in the sample drawing, only BCG is.)
+ */
+export const GP_OFFICE_CODES = {
+  SI727_500x400: 'BCT',
+  SI727_800x500: 'BCG',
+  SI727_1000x800: 'BDG',
+};
+
+/** The code for a sheet size name ('SI727_800x500' or 'SI727 800x500'), or '' when unknown. */
+export function gpOfficeCode(sheetName) {
+  if (typeof sheetName !== 'string') return '';
+  return GP_OFFICE_CODES[sheetName.trim().replace(/\s+/g, '_')] || '';
+}

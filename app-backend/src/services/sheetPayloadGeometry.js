@@ -197,6 +197,28 @@ export function sheetOutsideFigureData(sheet) {
  * than erasing it.
  */
 export function sheetMetadata(metadata, sheet, sheets = null) {
+  return withSheetAdjoining(sheetServitudeMetadata(metadata, sheet, sheets), sheet);
+}
+
+/**
+ * An outside-figure subject tagged on one sheet carries that sheet's number: its
+ * ring is that sheet's own part, so its side letters mean nothing on another
+ * sheet's figure and drawing it there would put sheet 1's abutters on sheet 2.
+ * Subjects with no `sheetNumber` (stands, a single-sheet figure) go to every sheet,
+ * as before.
+ */
+function withSheetAdjoining(metadata, sheet) {
+  if (!Array.isArray(metadata?.adjoiningSubjects)) return metadata;
+  const n = sheet?.sheetNumber;
+  return {
+    ...metadata,
+    adjoiningSubjects: metadata.adjoiningSubjects.filter(
+      (s) => s?.sheetNumber == null || s.sheetNumber === n,
+    ),
+  };
+}
+
+function sheetServitudeMetadata(metadata, sheet, sheets = null) {
   const own = Array.isArray(sheet?.servitudeRows) ? sheet.servitudeRows : null;
   if (own && own.length > 0) {
     return { ...(metadata || {}), servitudeStatement: { rows: own } };
@@ -241,4 +263,15 @@ export function sheetSheetInfo(sheet) {
     standRange: sheet?.standRange,
     totalStandCount: sheet?.totalStandCount,
   };
+}
+
+/**
+ * The number the Surveyor-General gave THIS sheet (written after its BCT / BCG / BDG code).
+ * `metadata.gpSheetNumbers` is keyed by sheet number; a single-sheet plan is sheet 1.
+ */
+export function gpSheetNoFor(metadata, sheetNumber) {
+  const map = metadata?.gpSheetNumbers;
+  if (!map || typeof map !== 'object') return '';
+  const v = map[String(sheetNumber ?? 1)];
+  return v == null ? '' : String(v).trim();
 }

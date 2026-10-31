@@ -653,6 +653,8 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
 
         if (planType === 'diagram') {
           fastify.log.info('[GeoPDF] 📐 Diagram plan type → single-stand Diagram renderer')
+          // The office numbers the diagram prints; logged so a blank cell can be told apart from a number that never arrived.
+          fastify.log.info({ fileNo: metadata?.fileNo, srNo: metadata?.srNo, gpNo: metadata?.gpNo, compilation: metadata?.compilation, diagramSgNo: metadata?.diagramSgNo }, '[GeoPDF] Diagram office numbers received')
           const { generateDiagramPDF } = await import('../services/diagramPdf.js')
           const diagram = await generateDiagramPDF(
             { parcels: parcelsWithComputedData, beacons, metadata, projection,

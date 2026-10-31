@@ -88,7 +88,7 @@ import { buildScheduleMeasurer } from './scheduleMeasurer.js'
 import { rectangleOverlapsPolygon, lineSegmentsIntersect } from './dxfGeometry.js'
 import { selectTickGrid, formatTickLabel, TICK_GEOMETRY_MM } from '../../../app-shared/tickMarks.js'
 import { findBlockPosition } from './dxfBlockPlacer.js'
-import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER } from '../utils/si727Constants.js'
+import { selectFigureScale, GENERAL_PLAN_RECORD_STATEMENT, GENERAL_PLAN_MARGIN_FOOTER, generalPlanMarginFooter } from '../utils/si727Constants.js'
 import { floorDevelopedDenominator, resolvePlanSheeting, FIGURE_MARGIN_MM, blockRoomFraction, TOPOLOGY_GATED_FRACTION } from '../../../app-shared/planSheeting.js'
 import { SI727_SCALE_LADDER } from '../../../app-shared/si727Scales.js'
 import { balanceScheduleTables, shouldAdoptResplit } from './scheduleStrategy.js'
@@ -100,6 +100,7 @@ import {
   sheetOutsideFigureData,
   sheetMetadata,
   sheetSheetInfo,
+  gpSheetNoFor,
 } from './sheetPayloadGeometry.js'
 
 // Re-export schedule helpers extracted to dxfScheduleHelpers.js during 3-v2.
@@ -2096,10 +2097,16 @@ export function generateDXF(options, logger) {
     // y). Three fill-in fields: left at cntL, centred, right-aligned at cntR.
     const _fh = ptToGround(9, S)
     const _fy = cntB - _fh - ptToGround(4, S)
-    const _rt = GENERAL_PLAN_MARGIN_FOOTER.right
-    addText(TB, cntL, _fy, GENERAL_PLAN_MARGIN_FOOTER.left, _fh, 0)                       // left-justified
-    addTextC(TB, (cntL + cntR) / 2, _fy, GENERAL_PLAN_MARGIN_FOOTER.center, _fh)          // centred
-    addText(TB, cntR - _rt.length * _fh * 0.55, _fy, _rt, _fh, 0)                         // right-justified (0.55 = STYLE width factor)
+    const _foot = generalPlanMarginFooter({
+      sheetName: normalizedSheetSize,
+      gpSheetNo: gpSheetNoFor(metadata, sheetInfo?.sheetNumber),
+      srNo: metadata?.srNo,
+      compilation: metadata?.compilation,
+    })
+    const _rt = _foot.right
+    addText(TB, cntL, _fy, _foot.left, _fh, 0)                       // left-justified
+    addTextC(TB, (cntL + cntR) / 2, _fy, _foot.center, _fh)          // centred
+    addText(TB, cntR - _rt.length * _fh * 0.55, _fy, _rt, _fh, 0)    // right-justified (0.55 = STYLE width factor)
   }
 
   // â”€â”€ A) TITLE ZONE (within top margin area, centered in content) â”€â”€

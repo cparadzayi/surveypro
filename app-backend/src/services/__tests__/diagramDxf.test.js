@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals'
-import { generateDiagramDXF } from '../diagramDxf.js'
+import { generateDiagramDXFr12 as generateDiagramDXF } from './dxfTestHelpers.js'
 import { entitiesOnLayer } from './dxfParse.js'
 import { scaleBarLayout } from '../../../../app-shared/scaleBar.js'
 
@@ -62,7 +62,8 @@ describe('generateDiagramDXF', () => {
     const r = await generateDiagramDXF(options, logger)
     const text = r.dxfBuffer.toString('utf8')
     expect(text).toContain('BORDER')
-    expect((text.match(/\bLINE\b/g) || []).length).toBeGreaterThanOrEqual(4)
+    // The neat line is one closed polyline (it carries a line weight): four sides.
+    expect(entitiesOnLayer(text, 'BORDER').filter((e) => e.type === 'LINE').length).toBeGreaterThanOrEqual(4)
   })
 
   test('draws the subject figure: boundary, beacons, vertex letters', async () => {
@@ -271,5 +272,30 @@ describe('generateDiagramDXF', () => {
     expect(text.startsWith('  0\nSECTION\n')).toBe(true)
     expect(text.trim().endsWith('0\nEOF')).toBe(true)
     expect(r.dxfBuffer.length).toBeGreaterThan(2000)
+  })
+})
+
+// The Surveyor-General gives the diagram number after preliminary examination; the
+// surveyor enters it afterwards and the diagram prints it in the S.G. No. column.
+describe('Diagram S.G. No. and the office reference numbers', () => {
+  const withMeta = (extra) => ({ ...options, metadata: { ...options.metadata, ...extra } })
+
+  test('prints the diagram S.G. number when one has been entered', async () => {
+    const r = await generateDiagramDXF(withMeta({ diagramSgNo: '466/2026' }), logger)
+    expect(r.dxfBuffer.toString('utf8')).toContain('466/2026')
+  })
+
+  test('prints nothing in its place until it is entered', async () => {
+    const r = await generateDiagramDXF(withMeta({ diagramSgNo: '   ' }), logger)
+    expect(r.dxfBuffer.toString('utf8')).not.toMatch(/\d{3}\/2026/)
+  })
+
+  test('File, S.R., G.P. and Compilation numbers print in the reference grid', async () => {
+    const r = await generateDiagramDXF(withMeta({ fileNo: 'B/2917', srNo: '188/2026', gpNo: '44/2026', compilation: 'QJ9454' }), logger)
+    const t = r.dxfBuffer.toString('utf8')
+    expect(t).toContain('File : B/2917')
+    expect(t).toContain('S.R. : 188/2026')
+    expect(t).toContain('G.P. : 44/2026')
+    expect(t).toContain('Compilation : QJ9454')
   })
 })

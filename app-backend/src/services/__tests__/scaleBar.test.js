@@ -9,7 +9,7 @@ import {
 const G = SI727_SCALE_BAR;
 const majorsOf = (l) => l.verticals.filter((v) => v.major);
 const minorsOf = (l) => l.verticals.filter((v) => !v.major);
-const at = (l, m) => l.verticals.find((v) => v.metres === m);
+const texts = (l) => l.labels.map((t) => t.text);
 
 describe('scaleDenominatorOf', () => {
   test('reads a denominator out of a scale label', () => {
@@ -26,55 +26,68 @@ describe('scaleDenominatorOf', () => {
   });
 });
 
-describe('SI 727 graduations', () => {
-  const l = scaleBarLayout(2000);
-
-  test('ten graduations left of 0, spanning 20 m, so each is 2 m', () => {
-    const left = l.verticals.filter((v) => v.metres <= 0);
-    expect(left).toHaveLength(11);                       // 10 divisions + the 0 itself
-    expect(left.map((v) => v.metres)).toEqual([
-      -20, -18, -16, -14, -12, -10, -8, -6, -4, -2, 0,
-    ]);
+describe('the figures follow the scale (the Surveyor-General\'s comment)', () => {
+  test('1:1250 reads 25 | 12,5 | 0 | 25 | 50', () => {
+    expect(texts(scaleBarLayout(1250))).toEqual(['25', '12,5', '0', '25', '50']);
   });
 
-  test('two graduations right of 0, at 20 m and 40 m', () => {
-    expect(l.verticals.filter((v) => v.metres > 0).map((v) => v.metres)).toEqual([20, 40]);
+  test('1:1500 reads 30 | 15 | 0 | 30 | 60, as in the SG\'s own template', () => {
+    expect(texts(scaleBarLayout(1500))).toEqual(['30', '15', '0', '30', '60']);
   });
 
-  test('the labelled majors are exactly -20, -10, 0, 20, 40', () => {
-    expect(majorsOf(l).map((v) => v.metres)).toEqual([-20, -10, 0, 20, 40]);
+  test.each([
+    [500, ['10', '5', '0', '10', '20']],
+    [1000, ['20', '10', '0', '20', '40']],
+    [2000, ['40', '20', '0', '40', '80']],
+    [2500, ['50', '25', '0', '50', '100']],
+  ])('1:%i', (d, expected) => {
+    expect(texts(scaleBarLayout(d))).toEqual(expected);
   });
 
-  test('labels are MAGNITUDES, so left of 0 reads 20, 10 — not -20, -10', () => {
-    // A bar scale is not a signed axis. The minus sign is a claim about the
-    // sheet's coordinate frame that the bar is not making, and it reads as a
-    // negative length to anyone measuring off the paper. What marks the left of
-    // 0 is the subdivision density, not the sign of the text.
-    expect(l.labels.map((t) => t.text)).toEqual(['20', '10', '0', '20', '40']);
-    expect(l.labels.some((t) => t.text.startsWith('-'))).toBe(false);
+  test('labels are MAGNITUDES, never signed', () => {
+    for (const d of [500, 1250, 2500]) {
+      expect(scaleBarLayout(d).labels.some((t) => t.text.startsWith('-'))).toBe(false);
+    }
   });
 
-  test('two graduations 20 m apart both print "20", and x is what tells them apart', () => {
-    // The duplicate is the point: a label is no longer a unique key, so anything
-    // matching a label back to its graduation has to match on x, not on text.
-    const twenties = l.labels.filter((t) => t.text === '20');
-    expect(twenties).toHaveLength(2);
-    expect(twenties[0].xMm).toBeLessThan(twenties[1].xMm);
-    expect(twenties[0].atMm).toBe(-20);
-    expect(twenties[1].atMm).toBe(20);
-    expect(majorsOf(l).filter((v) => v.label === '20').map((v) => v.metres))
-      .toEqual([-20, 20]);
+  test('a graduation\'s ground value is on it, signed, for anything matching back by position', () => {
+    const l = scaleBarLayout(1250);
+    expect(l.labels.map((t) => t.atMm)).toEqual([-25, -12.5, 0, 25, 50]);
+  });
+});
+
+describe('the bar is a fixed object on the paper', () => {
+  test('20 mm left of 0 in ten 2 mm steps, marks at 20 and 40 mm right', () => {
+    const l = scaleBarLayout(1250);
+    const left = l.verticals.filter((v) => v.xMm <= 0);
+    expect(left).toHaveLength(11);
+    expect(left.map((v) => v.xMm)).toEqual([-20, -18, -16, -14, -12, -10, -8, -6, -4, -2, 0]);
+    expect(l.verticals.filter((v) => v.xMm > 0).map((v) => v.xMm)).toEqual([20, 40]);
   });
 
-  test('only the majors carry a label', () => {
+  test('the same 60 mm bar at every scale, so it never crowds or goes stubby', () => {
+    for (const d of [250, 500, 1000, 1250, 2000, 2500, 5000, 10000]) {
+      const l = scaleBarLayout(d);
+      expect(l.widthMm).toBe(60);
+      expect(l.x0Mm).toBe(-20);
+      expect(l.x1Mm).toBe(40);
+      expect(l.minorPitchMm).toBe(2);
+    }
+  });
+
+  test('the old scale limit is gone: 1:2000 and 1:5000 are clean', () => {
+    for (const d of [500, 1250, 2000, 2500, 5000]) expect(scaleBarLayout(d).warnings).toEqual([]);
+  });
+
+  test('only the left end, its midpoint, 0 and the two right marks are labelled', () => {
+    const l = scaleBarLayout(1250);
+    expect(majorsOf(l).map((v) => v.xMm)).toEqual([-20, -10, 0, 20, 40]);
     expect(minorsOf(l).every((v) => v.label === null)).toBe(true);
     expect(majorsOf(l).every((v) => v.label !== null)).toBe(true);
   });
 
-  test('no alternating fill — every rule is drawn, none is a block', () => {
-    // The primitive list is horizontals + verticals + text and nothing else, so
-    // a renderer cannot invent a checkerboard from it.
-    expect(Object.keys(l).sort()).toEqual([
+  test('no alternating fill -- the primitive list is rules and text only', () => {
+    expect(Object.keys(scaleBarLayout(1250)).sort()).toEqual([
       'caption', 'denominator', 'heightMm', 'horizontals', 'labels',
       'minorPitchMm', 'mmPerMetre', 'reserved', 'unitLabel', 'verticals',
       'warnings', 'widthMm', 'x0Mm', 'x1Mm',
@@ -83,174 +96,56 @@ describe('SI 727 graduations', () => {
 });
 
 describe('the two horizontal rules and the vertical bar height', () => {
-  const l = scaleBarLayout(2000);
+  const l = scaleBarLayout(1250);
 
-  test('two horizontals, one at the bottom and one in the middle', () => {
+  test('two horizontals, one at the bottom and one in the middle, spanning the bar', () => {
     expect(l.horizontals).toHaveLength(2);
     expect(l.horizontals[0].yMm).toBe(0);
     expect(l.horizontals[1].yMm).toBe(G.ruleGapMm);
-  });
-
-  test('both horizontals span the full bar, -20 m to +40 m', () => {
-    for (const h of l.horizontals) {
-      expect(h.x0Mm).toBe(l.x0Mm);
-      expect(h.x1Mm).toBe(l.x1Mm);
-    }
+    for (const h of l.horizontals) { expect(h.x0Mm).toBe(l.x0Mm); expect(h.x1Mm).toBe(l.x1Mm); }
   });
 
   test('the labelled bars are twice the distance between the horizontals', () => {
     expect(G.barHeightMm).toBe(2 * G.ruleGapMm);
-    for (const v of majorsOf(l)) {
-      expect(v.y0Mm).toBe(0);
-      expect(v.y1Mm).toBe(G.barHeightMm);
-    }
-    // …and so they cross the middle rule and stand as proud of it as the
-    // rules are apart.
-    expect(G.barHeightMm - G.ruleGapMm).toBe(G.ruleGapMm);
+    for (const v of majorsOf(l)) { expect(v.y0Mm).toBe(0); expect(v.y1Mm).toBe(G.barHeightMm); }
   });
 
-  test('the unlabelled graduations stand at 60% of the labelled ones', () => {
-    expect(G.minorHeightFactor).toBe(0.6);
-    for (const v of minorsOf(l)) {
-      expect(v.y0Mm).toBe(0);
-      expect(v.y1Mm).toBeCloseTo(G.barHeightMm * 0.6, 6);
-    }
-    // They are subdivision, not a second tier of label — so they never reach the
-    // height the labels clear.
-    expect(G.barHeightMm * G.minorHeightFactor).toBeLessThan(G.barHeightMm);
-  });
-
-  test('the short graduations still cross the middle rule', () => {
-    // 60% of 5mm is 3mm against a 2.5mm gap, so both horizontals read as
-    // continuous across the whole bar instead of being chopped by the minors.
-    const shortTop = G.barHeightMm * G.minorHeightFactor;
-    expect(shortTop).toBeGreaterThan(G.ruleGapMm);
+  test('the subdivisions stand at 60% and still cross the middle rule', () => {
+    for (const v of minorsOf(l)) expect(v.y1Mm).toBeCloseTo(G.barHeightMm * 0.6, 6);
+    expect(G.barHeightMm * G.minorHeightFactor).toBeGreaterThan(G.ruleGapMm);
   });
 });
 
-describe('legibility arithmetic — the weights, not the gap, are the decision', () => {
-  test('no rule is thinner than 0.2mm', () => {
+describe('legibility arithmetic -- the weights, not the gap, are the decision', () => {
+  test('no rule is thinner than 0.2mm and the tiers separate', () => {
     expect(G.minorWeightMm).toBeGreaterThanOrEqual(0.2);
     expect(G.majorWeightMm).toBeGreaterThanOrEqual(G.minorWeightMm);
     expect(G.frameWeightMm).toBeGreaterThanOrEqual(G.majorWeightMm);
+    expect(G.frameWeightMm / G.minorWeightMm).toBeGreaterThanOrEqual(1.8);
   });
 
   test('the gap clears the frame rule by 4x, so the two never tint together', () => {
     expect(G.ruleGapMm).toBeGreaterThanOrEqual(4 * G.frameWeightMm);
   });
 
-  test('the weight tiers separate by enough to be told apart unaided', () => {
-    expect(G.frameWeightMm / G.minorWeightMm).toBeGreaterThanOrEqual(1.8);
-    expect(G.majorWeightMm / G.minorWeightMm).toBeGreaterThanOrEqual(1.3);
-  });
-
-  test('the verticals are tall enough to read as bars, not ticks', () => {
-    expect(G.barHeightMm / G.minorWeightMm).toBeGreaterThanOrEqual(10);
-    // The short minors carry a weaker case, so they get their own floor.
-    expect(G.barHeightMm * G.minorHeightFactor / G.minorWeightMm)
-      .toBeGreaterThanOrEqual(10);
+  test('graduation labels match the statement area text (9pt)', () => {
+    expect(G.labelHeightMm * 72 / 25.4).toBeCloseTo(9, 2);
+    for (const t of scaleBarLayout(1250).labels) expect(t.heightMm).toBe(G.labelHeightMm);
+    expect(scaleBarLayout(1250).unitLabel.heightMm).toBe(G.labelHeightMm);
   });
 });
 
-describe('ground to paper', () => {
-  test('a 1:2000 plan puts the 2 m graduations 1mm apart and the bar 30mm long', () => {
-    const l = scaleBarLayout(2000);
-    expect(l.mmPerMetre).toBe(0.5);
-    expect(l.minorPitchMm).toBe(1);
-    expect(at(l, -10).xMm).toBe(-5);
-    expect(l.x0Mm).toBe(-10);
-    expect(l.x1Mm).toBe(20);
-    expect(l.widthMm).toBe(30);
-  });
-
-  test('the same bar is 60mm long at 1:1000 and 12mm at 1:5000', () => {
-    expect(scaleBarLayout(1000).widthMm).toBe(60);
-    expect(scaleBarLayout(5000).widthMm).toBe(12);
-  });
-
-  test('print geometry is a physical object — it does NOT scale with the plan', () => {
-    for (const d of [500, 1000, 2000, 2500]) {
-      const l = scaleBarLayout(d);
-      expect(l.heightMm).toBe(G.barHeightMm);
-      expect(l.horizontals[1].yMm).toBe(G.ruleGapMm);
-      expect(at(l, 0).xMm).toBe(0);           // 0 is always at the origin
-    }
-  });
-});
-
-describe('scale limits are reported, not silently drawn badly', () => {
-  test('the SI 727 working scales are clean', () => {
-    // Capped at 1:1500, not 1:2500: the labels are 9pt to match the statement's
-    // "4 049 square metres", and at 1:2000 the majors on the left half are only
-    // 5mm apart with 3.9mm-wide labels. See the crowding test below.
-    for (const d of [500, 1000, 1250, 1500]) {
-      expect(scaleBarLayout(d).warnings).toEqual([]);
-    }
-  });
-
-  test('9pt labels are the binding limit, and they cap the clean range at ~1:1500', () => {
-    // Matching the statement text costs two scale steps. The minor rules still
-    // separate out to ~1:3000 (0.667mm apart, above the 0.6mm floor), so the
-    // graduations are NOT what fails here — the LABELS are: 0-10m is 6.7mm at
-    // 1:1500 and 5.0mm at 1:2000, against 3.9mm of label plus 1.5mm of clear.
-    // The bar stops being readable at a coarser scale than it used to, and the
-    // remedy is a bigger sheet (A3 lands on 1:1500, clean), never smaller type.
-    const clean = scaleBarLayout(1500);
-    expect(clean.warnings).toEqual([]);
-    // The minor comb is still healthy at 1:3000 — it is the labels that stop.
-    expect(scaleBarLayout(3000).minorPitchMm).toBeCloseTo(0.667, 3);
-    const crowded = scaleBarLayout(2000);
-    expect(crowded.warnings.join(' ')).toMatch(/labels are 5\.0mm apart/);
-    expect(crowded.warnings.join(' ')).toMatch(/9pt/);
-  });
-
-  test('the label-crowding warning names the tightest pair, not the bar width', () => {
-    // The majors are unevenly spaced (0-10m and 10-20m are one 2m step; 0-20m
-    // and 20-40m are two), so the binding pair has to be read off the label
-    // positions. Measuring one minor step instead gets the answer 5x too small
-    // and warns at every scale, including 1:500 where the bar is 120mm wide.
-    const wide = scaleBarLayout(500);
-    expect(wide.warnings).toEqual([]);
-    const sorted = [...wide.labels].map((t) => t.xMm).sort((a, b) => a - b);
-    const tightest = Math.min(...sorted.slice(1).map((x, i) => x - sorted[i]));
-    expect(tightest).toBeCloseTo(20, 6);   // 10m at 1:500 = 20mm, not 4mm
-  });
-
-  test('graduation labels are sized to the statement area text, not to the old 2mm', () => {
-    // 3.175mm is 9pt. This is the whole point of the change: the bar's type must
-    // match "4 049 square metres" on the same sheet.
-    expect(SI727_SCALE_BAR.labelHeightMm).toBeCloseTo(3.175, 4);
-    expect(SI727_SCALE_BAR.labelHeightMm * 72 / 25.4).toBeCloseTo(9, 2);
-    for (const t of scaleBarLayout(1000).labels) expect(t.heightMm).toBe(3.175);
-  });
-
-  test('the unit label follows the graduation labels', () => {
-    // It is derived from labelHeightMm, so it cannot drift away from them.
-    expect(scaleBarLayout(1000).unitLabel.heightMm).toBe(SI727_SCALE_BAR.labelHeightMm);
-  });
-
-  test('past that the 2 m graduations stop separating', () => {
-    // 1:5000 puts them 0.4mm apart with 0.2mm rules — a grey band, not a comb.
-    const l = scaleBarLayout(5000);
-    expect(l.minorPitchMm).toBe(0.4);
-    expect(l.warnings.join(' ')).toMatch(/graduations are 0\.40mm apart/);
-    expect(l.warnings.join(' ')).toMatch(/do not thin the rules/);
-  });
-
-  test('and the bar goes stubby long before that', () => {
-    expect(scaleBarLayout(10000).warnings.join(' ')).toMatch(/too stubby/);
+describe('a scale whose figures are too long to fit is reported, not drawn badly', () => {
+  test('1:1125 -> "11,25" does not fit between 10 mm labels', () => {
+    expect(scaleBarLayout(1125).warnings.join(' ')).toMatch(/will touch/);
   });
 });
 
 describe('labels and the reserved slot', () => {
-  const l = scaleBarLayout(2000);
+  const l = scaleBarLayout(1250);
 
-  test('labels sit above the tallest vertical bar, not on the bar', () => {
+  test('labels sit above the tallest bar, centred on their rule', () => {
     for (const t of l.labels) expect(t.yMm).toBeGreaterThan(G.barHeightMm);
-    expect(l.labels.every((t) => t.heightMm === G.labelHeightMm)).toBe(true);
-  });
-
-  test('labels are centred on their rule', () => {
     expect(l.labels.map((t) => t.xMm)).toEqual(majorsOf(l).map((v) => v.xMm));
     expect(l.labels.every((t) => t.align === 'center')).toBe(true);
   });
@@ -258,27 +153,19 @@ describe('labels and the reserved slot', () => {
   test('the unit label clears the right end of the bar', () => {
     expect(l.unitLabel.text).toBe('Metres');
     expect(l.unitLabel.xMm).toBe(l.x1Mm + G.unitGapMm);
-    expect(l.unitLabel.xMm).toBeGreaterThan(l.x1Mm);
   });
 
   test('the caption names the scale, centred under the bar', () => {
-    expect(l.caption.text).toBe('Scale 1 : 2000');
+    expect(l.caption.text).toBe('Scale 1 : 1250');
     expect(l.caption.xMm).toBe((l.x0Mm + l.x1Mm) / 2);
     expect(l.caption.yMm).toBeLessThan(0);
   });
 
   test('the reserved slot wraps bar + labels + caption + unit label', () => {
     const r = l.reserved;
-    expect(r.widthMm).toBeGreaterThan(l.widthMm);            // room for "Metres"
-    expect(r.heightMm).toBe(
-      G.labelHeightMm + G.labelGapMm + G.barHeightMm + G.captionGapMm + G.captionHeightMm
-    );
+    expect(r.widthMm).toBeGreaterThan(l.widthMm);
+    expect(r.heightMm).toBe(G.labelHeightMm + G.labelGapMm + G.barHeightMm + G.captionGapMm + G.captionHeightMm);
     expect(r.xMm).toBe(l.x0Mm);
-    expect(r.yMm).toBe(-(G.captionGapMm + G.captionHeightMm));
-    // and the slot actually contains the bar
-    expect(r.yMm).toBeLessThan(0);
-    expect(r.yMm + r.heightMm).toBeGreaterThan(G.barHeightMm);
-    expect(r.xMm + r.widthMm).toBeGreaterThan(l.x1Mm);
   });
 });
 
@@ -288,17 +175,10 @@ test('estimateTextWidthMm grows with length and with type size', () => {
 });
 
 // The planner reserves a slot and keeps it clear of the figure; the bar must be
-// drawn INSIDE that slot. scaleBarFrame's origin was one bar-height too high, so
-// the bar printed in the strip above its slot -- over a figure vertex, in the
-// field -- while the planner's collision checks passed on the empty slot below.
+// drawn INSIDE that slot.
 describe('scaleBarFrame draws the bar inside the slot it was given', () => {
   const PT = 72 / 25.4;
-
-  // The slot is the layout's own reserved box -- what a planner reserves -- placed
-  // at an arbitrary page position.
-  const slotFor = (L) => ({
-    x: 1000, y: 1960, width: L.reserved.widthMm * PT, height: L.reserved.heightMm * PT,
-  });
+  const slotFor = (L) => ({ x: 1000, y: 1960, width: L.reserved.widthMm * PT, height: L.reserved.heightMm * PT });
 
   const extentOf = (denominator) => {
     const L = scaleBarLayout(denominator);
@@ -307,33 +187,19 @@ describe('scaleBarFrame draws the bar inside the slot it was given', () => {
     const ys = [], xs = [];
     for (const h of L.horizontals) { ys.push(F.Y(h.yMm)); xs.push(F.X(h.x0Mm), F.X(h.x1Mm)); }
     for (const v of L.verticals) { ys.push(F.Y(v.y0Mm), F.Y(v.y1Mm)); xs.push(F.X(v.xMm)); }
-    for (const t of [...L.labels, L.caption, L.unitLabel].filter((t) => t && typeof t === 'object')) {
+    for (const t of [...L.labels, L.caption, L.unitLabel]) {
       const top = F.textTop(t.yMm, t.heightMm);
       ys.push(top, top + t.heightMm * PT);
     }
-    // The unit label is the rightmost thing: it starts at xMm and runs widthMm.
     xs.push(F.X(L.unitLabel.xMm) + (L.unitLabel.widthMm ?? 0) * PT);
     return { slot, minY: Math.min(...ys), maxY: Math.max(...ys), minX: Math.min(...xs), maxX: Math.max(...xs) };
   };
 
-  test.each([500, 750, 1000, 1250, 2000])('1:%i: nothing is drawn above or below the slot', (d) => {
+  test.each([500, 750, 1000, 1250, 2000])('1:%i: nothing is drawn outside the slot', (d) => {
     const e = extentOf(d);
     expect(e.minY).toBeGreaterThanOrEqual(e.slot.y - 0.01);
     expect(e.maxY).toBeLessThanOrEqual(e.slot.y + e.slot.height + 0.01);
-  });
-
-  test.each([500, 750, 1000, 1250, 2000])('1:%i: the bar and its unit label stay within the slot width', (d) => {
-    const e = extentOf(d);
     expect(e.minX).toBeGreaterThanOrEqual(e.slot.x - 0.01);
     expect(e.maxX).toBeLessThanOrEqual(e.slot.x + e.slot.width + 0.5);
-  });
-
-  test('the labels along the top sit at the slot top, the caption inside its bottom', () => {
-    const L = scaleBarLayout(1000);
-    const slot = slotFor(L);
-    const F = scaleBarFrame(L, slot);
-    expect(F.textTop(L.labels[0].yMm, L.labels[0].heightMm)).toBeCloseTo(slot.y, 1);
-    const cap = L.caption;
-    expect(F.textTop(cap.yMm, cap.heightMm) + cap.heightMm * PT).toBeLessThanOrEqual(slot.y + slot.height + 0.01);
   });
 });

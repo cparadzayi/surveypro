@@ -1,5 +1,6 @@
+import { expandPolylines } from './dxfParse.js'
 import { describe, test, expect } from '@jest/globals'
-import { generateDiagramDXF } from '../diagramDxf.js'
+import { generateDiagramDXFr12 as generateDiagramDXF } from './dxfTestHelpers.js'
 import { generateDiagramPDF } from '../diagramPdf.js'
 
 /**
@@ -47,7 +48,7 @@ const logger = { info() {}, warn() {}, error() {} }
 
 /** Entities of one kind on one layer, as [x,y] pairs, from an R12 DXF. */
 function entities(dxf, kind, layer) {
-  const lines = dxf.split('\n').map((l) => l.trim())
+  const lines = expandPolylines(dxf).split('\n').map((l) => l.trim())
   const out = []
   for (let i = 0; i < lines.length - 1; i++) {
     if (lines[i] !== '0' || lines[i + 1] !== kind) continue

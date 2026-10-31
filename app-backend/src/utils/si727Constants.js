@@ -7,6 +7,7 @@
 // of truth in app-shared/si727SheetSizes.js, re-exported here under the
 // same name so every existing importer of SI727_SHEET_SIZES is unaffected.
 export { SI727_GENERAL_PLAN_SHEET_SIZES as SI727_SHEET_SIZES } from '../../../app-shared/si727SheetSizes.js'
+import { gpOfficeCode } from '../../../app-shared/si727SheetSizes.js'
 
 // Fixed footer statement required on every General Plan, centred near the bottom
 // margin. The trailing blank is where the Surveyor-General's survey record number
@@ -21,6 +22,25 @@ export const GENERAL_PLAN_MARGIN_FOOTER = {
   left: 'B...',
   center: 'S.R.',
   right: 'COMPILATION .......',
+}
+
+/**
+ * The footer's three fields for ONE sheet. The left field is the Surveyor-General's
+ * reference for that sheet's paper size (BCT / BCG / BDG) followed by the number the
+ * office gave it; the centre is the survey record (S.R.) number; the right the
+ * compilation reference. Each stays a blank to be filled in by hand until its number
+ * is entered, exactly as the fixed text always was.
+ *
+ * @param {{ sheetName?: string, gpSheetNo?: string, srNo?: string, compilation?: string }} o
+ */
+export function generalPlanMarginFooter({ sheetName, gpSheetNo, srNo, compilation } = {}) {
+  const v = (x) => (x == null ? '' : String(x).trim());
+  const code = gpOfficeCode(sheetName) || GENERAL_PLAN_MARGIN_FOOTER.left;
+  return {
+    left: v(gpSheetNo) ? `${code} ${v(gpSheetNo)}` : (gpOfficeCode(sheetName) ? `${code} .......` : GENERAL_PLAN_MARGIN_FOOTER.left),
+    center: v(srNo) ? `S.R. ${v(srNo)}` : GENERAL_PLAN_MARGIN_FOOTER.center,
+    right: v(compilation) ? `COMPILATION ${v(compilation)}` : GENERAL_PLAN_MARGIN_FOOTER.right,
+  };
 }
 
 // Regulation 63 - Margins

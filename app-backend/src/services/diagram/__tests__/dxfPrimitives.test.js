@@ -11,11 +11,11 @@ describe('textWidth', () => {
 })
 
 describe('createDxfWriter', () => {
-  test('a layer can carry an exact true colour (group 420) beside its palette fallback', () => {
+  test('a layer carries its palette colour; true colour (group 420) is not written, it is not Release 12', () => {
     const w = createDxfWriter([{ name: 'ROAD', color: 31, trueColor: [255, 173, 92] }])
     const text = w.finish({ x: 0, y: 0 }, { x: 1, y: 1 }).toString('utf8')
-    expect(text).toContain('420\n16756060\n')   // 255,173,92 packed as 0xFFAD5C
     expect(text).toContain(' 62\n31\n')
+    expect(text).not.toContain('420\n')
   })
 
   test('addSolidPolygon fills a concave polygon with triangles covering its area', () => {

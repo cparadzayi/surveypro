@@ -6,9 +6,10 @@ import { resolveStatementDesignation, statementDesignation } from './diagram/des
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import {
   computeDiagramLayout, pageDimsPt, marginsPt, northArrowGeometryPt, DIAGRAM_FONTS,
-  DEDUCTIONS_NOTE, BINDING_MARGIN_NOTE, FURNITURE_FONT_PT, DEDUCTIONS_GAP_PT, BINDING_NOTE_OFFSET_PT,
+  DEDUCTIONS_NOTE, BINDING_MARGIN_NOTE, TABLE_GEOM, tableBottomY, FURNITURE_FONT_PT, DEDUCTIONS_GAP_PT, BINDING_NOTE_OFFSET_PT,
 } from './diagram/diagramLayout.js'
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
+import { recordPdfOps } from './diagram/pdfOps.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, isRemainderFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
@@ -73,11 +74,9 @@ function centroidPt(ptRing) {
 // The ruled table's actual bottom Y for a given data-row count. Mirrors drawTable's
 // internal layout (Constants row at tableY+30, +11 per data row, +9 for the closing
 // box rule), so other content can be anchored below a short table.
-function tableBottomY(tableY, rowCount) {
-  return tableY + 39 + rowCount * 11
-}
 
-function drawTable(doc, layout, table, loLabel) {
+
+function drawTable(doc, layout, table, loLabel, diagramSgNo = '') {
   const { constRow, coordinateRows, sideRows } = table
   const R = layout.table
   // Fixed column x-offsets from R.x. The beacon "Const." names live in the
@@ -125,28 +124,34 @@ function drawTable(doc, layout, table, loLabel) {
   doc.text('DIRECTIONS', cDirX, R.y, ctrDir)
   doc.text('CO-ORDINATES', R.x + cY, R.y, ctrCoord) // centred over Lo NN
   doc.text('DIAGRAM S.G. No.', cSg, R.y)
+  // The number the Surveyor-General's office gives after preliminary examination, entered
+  // by the surveyor once known; blank until then (the office writes it in by hand).
+  if (diagramSgNo) {
+    doc.font('Helvetica-Bold').fontSize(DIAGRAM_FONTS.table + 1)
+    doc.text(diagramSgNo, cSg, R.y + TABLE_GEOM.lo + 1, { width: layout.sgNoBox.width - 6, lineBreak: false })
+  }
   doc.font('Helvetica').fontSize(DIAGRAM_FONTS.table)
   // 'Lo NN' heads the CO-ORDINATES group, between CO-ORDINATES and the Y/X row.
-  doc.text(loLabel, R.x + cY, R.y + 10, ctrCoord)
+  doc.text(loLabel, R.x + cY, R.y + TABLE_GEOM.lo, ctrCoord)
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
   // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica and render as
   // garbage; °, ' and " are all in the font.
-  doc.text('°', xDeg, R.y + 19, oDeg)
-  doc.text('\'', xMin, R.y + 19, oMin)
-  doc.text('"', xSec, R.y + 19, oSec)
+  doc.text('°', xDeg, R.y + TABLE_GEOM.sub, oDeg)
+  doc.text('\'', xMin, R.y + TABLE_GEOM.sub, oMin)
+  doc.text('"', xSec, R.y + TABLE_GEOM.sub, oSec)
   // Coordinate sub-headers: Y  Metres  X.
-  doc.text('Y', R.x + cY, R.y + 19, ctrY)
-  doc.text('Metres', R.x + cY, R.y + 19, ctrCoord)
-  doc.text('X', R.x + cX, R.y + 19, ctrX)
+  doc.text('Y', R.x + cY, R.y + TABLE_GEOM.sub, ctrY)
+  doc.text('Metres', R.x + cY, R.y + TABLE_GEOM.sub, ctrCoord)
+  doc.text('X', R.x + cX, R.y + TABLE_GEOM.sub, ctrX)
 
   // Constants row + coordinate/side rows. The "Const." label and beacon names
   // are in the rightmost (SG No.) column.
-  let ry = R.y + 30
+  let ry = R.y + TABLE_GEOM.first
   doc.text(constRow.y, R.x + cY, ry, ctrY)
   doc.text(constRow.x, R.x + cX, ry, ctrX)
   doc.text('Constants', cSg, ry)
   for (let i = 0; i < rows; i++) {
-    ry += 11
+    ry += TABLE_GEOM.pitch
     if (sideRows[i]) {
       doc.text(sideRows[i].side, R.x + cSide, ry, ctrSide)
       doc.text(sideRows[i].metres, cMetresX, ry, ctrMetres)
@@ -168,7 +173,7 @@ function drawTable(doc, layout, table, loLabel) {
   // and the header/data rule spans the full width to the left/right neat-lines.
   const B = layout.border
   const boxB = tableBottomY(R.y, rows)
-  const hSep = R.y + 28 // header/data separator (below the three header rows)
+  const hSep = R.y + TABLE_GEOM.sep // header/data separator (below the three header rows)
   // Group dividers, full height (the SIDES|METRES split is data-rows-only, below).
   const verticals = [R.x + 70, R.x + 150, R.x + 193, layout.sgNoBox.x - 4]
   doc.lineWidth(0.5).strokeColor('#000')
@@ -227,6 +232,7 @@ function remainderCentroidPt(neighbours, tf) {
  * beacon lies so far from that parent beacon, that way.
  */
 function drawConnections(doc, ctx) {
+  doc.layer('ADJOINING')
   const { marks, tf, labelObstacles, boxToSegs, remainderPt, denom } = ctx
   if (!marks?.length) return
   const ptPerMm = PT_PER_MM
@@ -337,6 +343,7 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
       if (s === ann.side) { i = k; break }
     }
     if (i < 0) { logger?.warn?.(`[Diagram] adjoining: side ${ann.side} not found`); continue }
+    doc.layer(ann.role === 'road' ? 'DIAGRAM_ROAD' : ann.role === 'servitude' ? 'ADJOINING_SERVITUDE' : 'ADJOINING')
 
     const p1 = subjPt[i]
     const p2 = subjPt[(i + 1) % n]
@@ -788,10 +795,17 @@ export async function generateDiagramPDF(options, logger) {
     )
   }
 
-  const doc = new PDFDocument({ size: [dims.width, dims.height], margin: 0 })
-  const bufferPromise = docToBuffer(doc)
+  const pdfDoc = new PDFDocument({ size: [dims.width, dims.height], margin: 0 })
+  const bufferPromise = docToBuffer(pdfDoc)
+  // Tests (and only tests) ask for the drawing as page-space operations, to hold the DXF to it.
+  const recorder = options.recordOps ? recordPdfOps(pdfDoc) : null
+  const doc = recorder ? recorder.doc : pdfDoc
+  // Names the part of the diagram being drawn (the DXF puts each part on its own layer). A no-op
+  // on a plain PDF document, which has no layers.
+  if (!recorder) pdfDoc.layer = function () { return this }
 
   // Neat-line border (35mm left, 15mm other margins); content sits inside it.
+  doc.layer('BORDER')
   doc.save().lineWidth(1).strokeColor('#000')
   doc.rect(layout.border.x, layout.border.y, layout.border.width, layout.border.height).stroke()
   doc.restore()
@@ -812,6 +826,7 @@ export async function generateDiagramPDF(options, logger) {
   // Abutting neighbours: clip to the 10 m buffer, faint outline + label at the
   // clipped strip. The whole-site OUTSIDE FIGURE parcel is excluded; parcels that
   // don't reach the buffer clip to nothing and are omitted.
+  doc.layer('NEIGHBOURS')
   doc.font('Helvetica').fontSize(7).fillColor('#555555')
   const neighbourSegs = [] // drawn neighbour line segments (pt) — labels avoid these
   const neighbourLabels = [] // { anchor, text } drawn after the subject, placed outward
@@ -866,6 +881,7 @@ export async function generateDiagramPDF(options, logger) {
   // Green inner figure-border band: fill the ring between the boundary and an
   // inward offset (even-odd rule) so only a ~1.3 mm band inside the edge is tinted.
   const inner = offsetPolygonPt(subjPt.map((p) => [p.px, p.py]), -INNER_BAND_PT)
+  doc.layer('FIGURE_BAND')
   if (inner.length) {
     doc.save().fillColor(FIGURE_GREEN)
     doc.moveTo(subjPt[0].px, subjPt[0].py)
@@ -880,6 +896,7 @@ export async function generateDiagramPDF(options, logger) {
     doc.restore()
   }
   // Continuous, well-defined black boundary on top of the band.
+  doc.layer('FIGURE')
   drawRing(doc, subjPt, { color: '#000000', width: 1.2 })
   // Vertex letters placed OUTSIDE the figure, clear of the beacon circle, and not
   // overriding the subject or adjoining-property lines. (No edge-distance labels.)
@@ -915,6 +932,7 @@ export async function generateDiagramPDF(options, logger) {
   // fill knocks out the lines inside, so edges (incl. road/servitude strips) appear
   // clipped at the circle edge (the developed-plan technique). Page-relative → visible.
   const beaconR = beaconRadiusPt(denom)
+  doc.layer('BEACONS')
   for (const p of subjPt) {
     doc.save()
       .circle(p.px, p.py, beaconR)
@@ -925,6 +943,7 @@ export async function generateDiagramPDF(options, logger) {
     doc.restore()
   }
 
+  doc.layer('FIGURE_LABELS')
   geometry.vertices.forEach((v, i) => {
     const p = subjPt[i]
     const labelW = doc.widthOfString(v.letter)
@@ -937,6 +956,7 @@ export async function generateDiagramPDF(options, logger) {
 
   // Neighbour stand labels: same outward (away from the subject centroid),
   // line-avoiding placement, clear of the drawn lines AND the vertex labels.
+  doc.layer('NEIGHBOURS')
   doc.font('Helvetica').fontSize(7).fillColor('#555555')
   for (const nl of neighbourLabels) {
     const labelW = doc.widthOfString(nl.text)
@@ -951,15 +971,31 @@ export async function generateDiagramPDF(options, logger) {
   const loLabel = resolveLoSystem(null, metadata, options.projection)
   // Table + blocks + figure positions were reflowed above (see "Reflow the mid-page
   // blocks"); here we just render into them.
-  drawTable(doc, layout, sidesTable, loLabel)
+  doc.layer('TABLE')
+  drawTable(doc, layout, sidesTable, loLabel, String(metadata.diagramSgNo ?? '').trim())
+  doc.layer('BEACON_DESC')
   drawBeaconDescription(doc, layout, beaconGroups)
+  doc.layer('NORTH_ARROW')
   drawNorthArrow(doc, layout)
+  doc.layer('APPROVED')
   drawApprovedBox(doc, layout)
+  doc.layer('SCALE_BAR')
   drawScaleBar(doc, layout, denom)
+  doc.layer('STATEMENT')
   drawStatement(doc, layout, geometry, metadata)
+  doc.layer('GRID')
   drawReferenceGrid(doc, layout, buildReferenceGrid(metadata))
 
   doc.end()
   const pdfBuffer = await bufferPromise
-  return { pdfBuffer, scale: label, sheetSize }
+  // Page points -> Cape Lo ground metres for the DXF, which is drawn in ground coordinates: the page is
+  // centred on the figure box, scaled by the plan scale, and y turns over (page y is down, ground y up).
+  const ground = {
+    perPt: denom * 0.000352778,
+    figCenterPx: layout.figure.x + layout.figure.width / 2,
+    figCenterPy: layout.figure.y + layout.figure.height / 2,
+    center: { x: -(extent.minY + extent.maxY) / 2, y: -(extent.minX + extent.maxX) / 2 },
+    page: { width: dims.width, height: dims.height },
+  }
+  return { pdfBuffer, scale: label, sheetSize, ground, ...(recorder ? { ops: recorder.ops } : {}) }
 }

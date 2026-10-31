@@ -178,6 +178,28 @@ describe('selectSheetFeatures', () => {
   })
 })
 
+describe('sheetMetadata adjoining subjects', () => {
+  const plan = {
+    adjoiningSubjects: [
+      { subjectId: 'stand', annotations: [] },
+      { subjectId: 'of#sheet1', sheetNumber: 1, annotations: [] },
+      { subjectId: 'of#sheet2', sheetNumber: 2, annotations: [] },
+    ],
+  }
+  test('a sheet gets its own figure\'s subject and the untagged-sheet ones, not another sheet\'s', () => {
+    const ids = (n) => sheetMetadata(plan, { sheetNumber: n }).adjoiningSubjects.map((s) => s.subjectId)
+    expect(ids(1)).toEqual(['stand', 'of#sheet1'])
+    expect(ids(2)).toEqual(['stand', 'of#sheet2'])
+  })
+  test('does not mutate the shared metadata', () => {
+    sheetMetadata(plan, { sheetNumber: 1 })
+    expect(plan.adjoiningSubjects).toHaveLength(3)
+  })
+  test('metadata without adjoiningSubjects is untouched', () => {
+    expect(sheetMetadata({}, { sheetNumber: 1 }).adjoiningSubjects).toBeUndefined()
+  })
+})
+
 describe('sheetMetadata', () => {
   const plan = { servitudeStatement: { rows: [{ stands: '1686', width: 3 }] }, other: 'kept' }
 

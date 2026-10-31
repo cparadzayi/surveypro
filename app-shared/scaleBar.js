@@ -3,59 +3,44 @@
  *
  * Every renderer (plan PDF, plan DXF, diagram PDF, diagram DXF, frontend
  * preview) walks the primitive list `scaleBarLayout()` returns instead of
- * deriving its own geometry. They used to each work it out, and they disagreed:
- * three segments right of zero on the plans, five subdivisions left on the
- * diagrams, one row on some and two on others, 0.7mm rules against a 2mm gap on
- * the PDF, and a `40 * 2.835 * metersPerPoint` unit mix in between.
+ * deriving its own geometry.
  *
- * THE BAR (SI 727)
- *   Two horizontal rules — one at the bottom, one in the middle. Ten
- *   graduations to the left of 0, spanning 20 m, so each is 2 m. Two
- *   graduations to the right of 0, at 20 m and 40 m. Vertical bars at
- *   -20, -10, 0, 20 and 40, each standing twice the distance between the
- *   horizontal rules, so they cross the middle rule and stand as proud of it as
- *   the two rules are apart; the unlabelled 2 m ones stand at 60% of that, as
- *   subdivision. No alternating fill: graduations are rules, not blocks. Labels
- *   sit above the bar, and carry MAGNITUDES — they read 20, 10, 0, 20, 40, not
- *   -20, -10, 0, 20, 40.
+ * THE BAR is a fixed object on the PAPER and its figures follow the scale (this
+ * is the Surveyor-General's own template, "lot 1 CORR.dwg", and their written
+ * comment that the units must relate to the scale):
+ *   - 20 mm to the left of 0, in ten 2 mm subdivisions;
+ *   - labelled marks 20 mm and 40 mm to the right of 0;
+ *   - each label is the GROUND distance that paper length stands for, so a plan
+ *     at 1:1250 reads  25 | 12,5 | 0 | 25 | 50  and one at 1:1500 reads
+ *     30 | 15 | 0 | 30 | 60 (the template itself shows 30 0 30 60 at 1:1500);
+ *   - labels are magnitudes, never signed.
+ *   Two horizontal rules (bottom and middle); the labelled bars stand twice the
+ *   rule gap, the unlabelled subdivisions 60% of that.
  *
- * WHY THESE PRINT SIZES
- *   The bar's print geometry is a physical object on paper and does NOT scale
- *   with the drawing — only the ground graduations do, and SI 727 pins those.
- *   So the numbers below are chosen for how they print, and the only thing that
- *   changes with the plan scale is how far apart the rules land. Three
- *   constraints set the weights:
+ * WHY PAPER-FIXED
+ *   The previous bar fixed the GROUND graduations (20 m / 40 m) and let its paper
+ *   length follow the scale, so every plan carried the same figures whatever its
+ *   scale, and the bar became unreadable beyond about 1:1500 as its labels ran
+ *   into each other. A bar of constant length on paper has no such limit, and its
+ *   figures tell the reader the scale at a glance. It is also the usual
+ *   cartographic practice: choose a convenient length on paper, label it with the
+ *   ground distance it represents, and subdivide the extension left of zero.
  *
- *   1. A rule has to be wide enough to reproduce as a LINE rather than a tint.
- *      0.2 mm is the practical floor for a graduation tick and holds up on a
- *      decent plot; it is the first thing a photocopy degrades, so it is the
- *      tier to revisit if these ever get faxed.
- *   2. Two parallel rules closer than about 4x the heavier weight merge into one
- *      grey band. At a 0.4mm frame that floors the gap at 1.6mm; 2.5mm leaves
- *      generous headroom, which is why the gap is comfortably not 2mm.
- *   3. The tiers have to separate by weight alone, so frame : major : minor is
- *      0.4 : 0.3 : 0.2 — a 2:1 spread across the pair, the usual hierarchy.
- *
- *   The consequence worth knowing: the ten 2 m graduations, not the gap, are what
- *   limit the plan scale. Their pitch is 2000/denominator mm, and a minor rule
- *   needs about 3x its own width of clear paper either side to read as separate
- *   lines — 0.6mm of pitch at this weight. Past about 1:3000 they stop
- *   separating. The remedy is a SHORTER BAR SPAN, never a thinner rule —
- *   `scaleBarLayout` reports it rather than silently thinning.
+ *   The weights are chosen for how a bar prints: frame : major : minor is
+ *   0.4 : 0.3 : 0.2 mm (a rule under 0.2 mm is the first thing a photocopy
+ *   loses) and the rule gap is at least 4x the frame weight, so two parallel rules
+ *   never merge into a grey band.
  */
 
 export const SI727_SCALE_BAR = {
-  // ---- SI 727 ground graduations -----------------------------------------
-  minorStepMetres: 2,               // 10 graduations over 20 m
-  leftSpanMetres: 20,
-  rightMarksMetres: [20, 40],       // no subdivisions right of 0
-  majorMarksMetres: [-20, -10, 0, 20, 40],
-  // A bar scale's labels are MAGNITUDES, not signed distances: left of 0 the
-  // labels read 20, 10, 0, 20, 40. The minus sign would be a claim about the
-  // sheet's coordinate frame that the bar is not making, and it reads as a
-  // negative length to anyone measuring off the paper. What distinguishes the
-  // left of 0 from the right is the graduation density — ten minor rules to the
-  // left, none to the right — never the sign of the text.
+  // ---- graduations, millimetres ON THE PAPER -------------------------------
+  leftSpanMm: 20,                   // 0 to the left end
+  minorDivisions: 10,               // ten subdivisions, so each is 2 mm
+  rightMarksMm: [20, 40],           // labelled marks right of 0
+  // The left end, its midpoint and 0 are labelled; the other graduations subdivide.
+  labelMidLeft: true,
+  // Labels are MAGNITUDES, not signed distances: what marks the left of 0 is the
+  // graduation density (ten rules to the left, none to the right), not a minus sign.
   unsignedLabels: true,
   unitLabel: 'Metres',
   caption: (denominator) => `Scale 1 : ${denominator}`,
@@ -121,41 +106,45 @@ export function scaleBarLayout(scale) {
   const denominator = scaleDenominatorOf(scale);
   const G = SI727_SCALE_BAR;
   const mmPerMetre = 1000 / denominator;
-  const xOf = (metres) => metres * mmPerMetre;
+  // Ground metres a paper length stands for, free of float noise (1:1250 x 20 mm = 25).
+  const groundOf = (mm) => Math.round((mm * denominator / 1000) * 1e6) / 1e6;
+  // "12,5" -- SI 727 uses the decimal comma.
+  const fmt = (m) => String(Math.abs(m)).replace('.', ',');
+  const labelFor = (m) => (G.unsignedLabels ? fmt(m) : fmt(m));
 
-  const majors = new Set(G.majorMarksMetres);
-  // Bar-scale labels are magnitudes, so -20 and +20 both print as "20". Which
-  // side of 0 a graduation sits on is carried by `metres` and by the
-  // subdivision density, never by the text.
-  const labelFor = (m) => (G.unsignedLabels ? String(Math.abs(m)) : String(m));
+  const stepMm = G.leftSpanMm / G.minorDivisions;
+  const midIdx = G.minorDivisions / 2;
   const verticals = [];
-  for (let m = 0; m >= -G.leftSpanMetres; m -= G.minorStepMetres) {
-    const major = majors.has(m);
+  for (let i = 0; i <= G.minorDivisions; i++) {
+    const xMm = -G.leftSpanMm + i * stepMm;
+    const major = i === 0 || i === G.minorDivisions || (G.labelMidLeft && i === midIdx);
+    const metres = i === G.minorDivisions ? 0 : -groundOf(Math.abs(xMm));
     verticals.push({
-      metres: m,
-      xMm: xOf(m),
+      metres,
+      xMm,
       major,
       weightMm: major ? G.majorWeightMm : G.minorWeightMm,
       y0Mm: 0,
       y1Mm: major ? G.barHeightMm : G.barHeightMm * G.minorHeightFactor,
-      label: major ? labelFor(m) : null,
+      label: major ? labelFor(metres) : null,
     });
   }
-  for (const m of G.rightMarksMetres) {
+  for (const xMm of G.rightMarksMm) {
+    const metres = groundOf(xMm);
     verticals.push({
-      metres: m,
-      xMm: xOf(m),
+      metres,
+      xMm,
       major: true,
       weightMm: G.majorWeightMm,
       y0Mm: 0,
       y1Mm: G.barHeightMm,
-      label: labelFor(m),
+      label: labelFor(metres),
     });
   }
-  verticals.sort((a, b) => a.metres - b.metres);
+  verticals.sort((a, b) => a.xMm - b.xMm);
 
-  const x0Mm = xOf(-G.leftSpanMetres);
-  const x1Mm = xOf(G.rightMarksMetres[G.rightMarksMetres.length - 1]);
+  const x0Mm = -G.leftSpanMm;
+  const x1Mm = G.rightMarksMm[G.rightMarksMm.length - 1];
   const widthMm = x1Mm - x0Mm;
 
   const horizontals = [
@@ -202,12 +191,13 @@ export function scaleBarLayout(scale) {
   };
 
   const warnings = [];
-  const minorPitchMm = G.minorStepMetres * mmPerMetre;
+  // The subdivisions are a fixed paper distance now, so this can only trip if the
+  // constants are edited -- kept as the guard for exactly that edit.
+  const minorPitchMm = stepMm;
   if (minorPitchMm < G.minMinorPitchMm) {
     warnings.push(
-      `1:${denominator}: the ${G.minorStepMetres} m graduations are ` +
-      `${minorPitchMm.toFixed(2)}mm apart, under the ${G.minMinorPitchMm}mm the ` +
-      `${G.minorWeightMm}mm rules need to stay separate. Shorten the bar span; do ` +
+      `the ${minorPitchMm.toFixed(2)}mm graduations are under the ${G.minMinorPitchMm}mm ` +
+      `the ${G.minorWeightMm}mm rules need to stay separate. Shorten the bar span; do ` +
       `not thin the rules.`
     );
   }
@@ -217,12 +207,9 @@ export function scaleBarLayout(scale) {
       `too stubby to read as a bar. Use a smaller denominator.`
     );
   }
-  // Label crowding, measured on the ACTUAL label positions rather than on a
-  // multiplier worked out by hand. The majors are not evenly spaced — 0 to 10 m
-  // and 10 to 20 m are one minor step each, 0 to 20 m and 20 to 40 m are two —
-  // so the pair that decides legibility is the tightest pair that exists, and the
-  // only reliable way to find it is to read the labels' own x values. Deriving it
-  // from `minorStepMetres` instead gets it wrong by a factor of five.
+  // Label crowding, measured on the ACTUAL label positions. The majors are not evenly
+  // spaced (the left end, its midpoint and 0 are 10 mm apart, 0 to 20 and 20 to 40 are
+  // 20 mm), so the tightest pair is read off the labels' own x values.
   const sortedLabels = [...labels].sort((a, b) => a.xMm - b.xMm);
   const minLabelGapMm = sortedLabels.length < 2
     ? Infinity
@@ -234,7 +221,8 @@ export function scaleBarLayout(scale) {
     warnings.push(
       `1:${denominator}: the tightest graduation labels are ${minLabelGapMm.toFixed(1)}mm ` +
       `apart at ${G.labelHeightMm}mm (9pt) but are ${widestLabelMm.toFixed(1)}mm wide, so ` +
-      `they will touch. Use a smaller denominator.`
+      `they will touch. The figures are the ground length of 20 mm of paper at this scale; ` +
+      `choose a scale that gives shorter figures.`
     );
   }
 

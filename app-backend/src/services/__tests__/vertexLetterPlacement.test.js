@@ -1,5 +1,6 @@
+import { expandPolylines } from './dxfParse.js'
 import { describe, test, expect } from '@jest/globals'
-import { generateDiagramDXF } from '../diagramDxf.js'
+import { generateDiagramDXFr12 as generateDiagramDXF } from './dxfTestHelpers.js'
 
 /**
  * Where the vertex letters land. A letter names ONE corner, so it has to sit
@@ -56,7 +57,7 @@ const sheet = (sideAnnotations) => ({
 
 /** Entities of one kind, as raw group-code maps. */
 function entities(dxf, kind, layerRe) {
-  const lines = dxf.split('\n').map((l) => l.trim())
+  const lines = expandPolylines(dxf).split('\n').map((l) => l.trim())
   const out = []
   for (let i = 0; i < lines.length - 1; i++) {
     if (lines[i] !== '0' || lines[i + 1] !== kind) continue
@@ -81,8 +82,11 @@ async function sheetGeometry(annotations) {
     })
   const circles = entities(dxf, 'CIRCLE', /^BEACONS$/)
     .map((d) => ({ x: +d['10'][0], y: +d['20'][0], r: +d['40'][0] }))
-  const bands = entities(dxf, 'LINE', /DIAGRAM_ROAD|ADJOINING_SERVITUDE/)
-    .map((d) => [[+d['10'][0], +d['20'][0]], [+d['11'][0], +d['21'][0]]])
+  // The shading is what the PDF fills: each filled piece is a SOLID, so its edges are the band's edges.
+  const bands = entities(dxf, 'SOLID', /DIAGRAM_ROAD|ADJOINING_SERVITUDE/).flatMap((d) => {
+    const c = ['10', '11', '13', '12'].map((k, i) => [+d[k][0], +d[String(20 + Number(k) - 10)][0]])
+    return c.map((q, i) => [q, c[(i + 1) % 4]])
+  })
   return { letters, circles, bands }
 }
 

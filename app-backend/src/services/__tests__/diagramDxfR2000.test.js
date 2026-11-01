@@ -38,6 +38,16 @@ beforeAll(async () => {
 }, 60000)
 
 describe('the diagram DXF is Release 2000', () => {
+  test('the sheet is a white fill on its own PAPER layer, drawn first', () => {
+    const hatch = ps.findIndex(([c, v]) => c === '0' && v === 'HATCH')
+    expect(hatch).toBeGreaterThan(-1)
+    const block = ps.slice(hatch, hatch + 12)
+    expect(block.some(([c, v]) => c === '8' && v === 'PAPER')).toBe(true)
+    expect(block.some(([c, v]) => c === '420' && v === String(0xffffff))).toBe(true)
+    const firstDrawn = ps.findIndex(([c, v]) => c === '0' && ['TEXT', 'LWPOLYLINE', 'HATCH', 'CIRCLE'].includes(v))
+    expect(firstDrawn).toBe(hatch)
+  })
+
   test('declares AC1015 and has every section a Release 2000 file needs', () => {
     expect(text).toContain('AC1015')
     for (const sec of ['HEADER', 'CLASSES', 'TABLES', 'BLOCKS', 'ENTITIES', 'OBJECTS']) {

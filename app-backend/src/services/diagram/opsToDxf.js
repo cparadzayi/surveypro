@@ -16,6 +16,7 @@ import { createDxfWriterR2000 } from './dxfWriterR2000.js'
 export const CAP_HEIGHT = 0.718
 
 export const DIAGRAM_LAYERS = [
+  { name: 'PAPER', color: 255 },
   { name: 'SHEET_EDGE', color: 8 },
   { name: 'BORDER', color: 7 },
   { name: 'FIGURE', color: 7 },
@@ -65,6 +66,9 @@ export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS
   // The paper's edge, which the PDF has by being a page and a DXF has no page to be: drawn so the
   // margins (the neat line's distance from each edge) can be read, and measured, in CAD.
   const sheet = ground.page ? [[0, 0], [ground.page.width, 0], [ground.page.width, ground.page.height], [0, ground.page.height]].map(([x, y]) => g(x, y)) : null
+  // A PAPER layer, where the plan has one, takes a white fill of the whole sheet under everything else,
+  // so the plan reads on white whatever the CAD screen's own background is set to.
+  if (sheet && known.has('PAPER')) w.addFill('PAPER', [sheet.map((q) => [q.x, q.y])], 'nonzero', { aci: 255, rgb: '#ffffff' })
   if (sheet) w.addPolyline('SHEET_EDGE', sheet, { closed: true, color: { aci: 8, rgb: '#808080' } })
 
   for (const op of ops) {

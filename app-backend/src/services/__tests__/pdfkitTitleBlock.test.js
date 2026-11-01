@@ -66,7 +66,7 @@ describe('title block: SHEET N never overprints the designation', () => {
   test('a designation that fits on one line keeps SHEET N directly beneath it', async () => {
     const items = await sheetOne(SHORT)
     const sheetLabel = items.find((i) => i.text === 'SHEET 1')
-    const desig = items.find((i) => /^STANDS/.test(i.text))
+    const desig = items.find((i) => /^Stands/.test(i.text))
     expect(desig).toBeDefined()
     expect(desig.y - sheetLabel.y).toBeGreaterThanOrEqual(13)
     expect(desig.y - sheetLabel.y).toBeLessThan(30)        // not pushed down by a phantom wrap

@@ -67,6 +67,7 @@ import {
  * columns instead of spilling into the short top/bottom bands.
  */
 const SCHEDULE_MAX_HEIGHT_FRACTION = 1.0;
+import { placeCase } from '../utils/placeCase.js';
 import {
   PT_TO_MM, MM_TO_PT,
   calculateCentroid, isPointInPolygon, pointDistance, pointToLineDistance,
@@ -4916,7 +4917,7 @@ export function getStandsInsideOutsideFigure(parcels, outsideFigureData) {
 function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, logger = null) {
   const config = BLOCKS.TITLE_BLOCK;
   const isMultiSheet = !!(sheetInfo && sheetInfo.totalSheets > 1);
-  const district = (metadata.district || "").toUpperCase();
+  const district = placeCase(metadata.district);
 
   // ── Designation: "Stands 16 - 18 Maglas Township of Shabani Mine" ──
   // The full township phrase (including the "of <parent>" clause) is kept in
@@ -4935,11 +4936,11 @@ function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, 
   let designation;
   if (dynamicStandList) {
     designation = designationTownship
-      ? `Stands ${dynamicStandList} ${designationTownship}`.toUpperCase()
-      : `Stands ${dynamicStandList}`.toUpperCase();
+      ? placeCase(`Stands ${dynamicStandList} ${designationTownship}`)
+      : placeCase(`Stands ${dynamicStandList}`);
   } else {
     const rawDesig = (metadata.designation || "").trim();
-    designation = (rawDesig || designationTownship).trim().toUpperCase();
+    designation = placeCase(rawDesig || designationTownship);
   }
 
   const sheetText = isMultiSheet ? `SHEET ${sheetInfo.sheetNumber}` : "";
@@ -4965,8 +4966,8 @@ function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, 
     }
 
     const wholePortion = figurePortionWording(metadata.wholePortion || 'the whole');
-    const township = (townshipDescription || (metadata.township || '').trim()).toUpperCase();
-    const parentProp = (metadata.parentProperty || '').trim().toUpperCase();
+    const township = placeCase(townshipDescription || (metadata.township || '').trim());
+    const parentProp = placeCase(metadata.parentProperty);
     // The township is not named in the description; it identifies the parent
     // property only (the township name appears in the designation instead).
     const ofTarget = parentProp || township;
@@ -5014,7 +5015,7 @@ function calculateTitleBlockWidth(
   parcels = null
 ) {
   const config = BLOCKS.TITLE_BLOCK;
-  const district = (metadata.district || "").toUpperCase();
+  const district = placeCase(metadata.district);
 
   // Dynamic designation from parcels inside Outside Figure (mirrors drawTitleBlock logic)
   const standsInsideW = getStandsInsideOutsideFigure(parcels, outsideFigureData);
@@ -5022,8 +5023,8 @@ function calculateTitleBlockWidth(
   const rawSurveyOfW = (metadata.surveyOf || metadata.township || "").trim();
   const townshipDescW = rawSurveyOfW.replace(/^Stands?\s+[\d,\s\-–]+/i, "").trim();
   const designation = dynamicStandListW
-    ? (townshipDescW ? `Stands ${dynamicStandListW} ${townshipDescW}` : `Stands ${dynamicStandListW}`).toUpperCase()
-    : (metadata.designation || "").toUpperCase();
+    ? placeCase(townshipDescW ? `Stands ${dynamicStandListW} ${townshipDescW}` : `Stands ${dynamicStandListW}`)
+    : placeCase(metadata.designation);
 
   doc.save();
 
@@ -5244,7 +5245,7 @@ function drawTitleBlock(
     });
 
   // Survey of (designation), (District) District
-  const district = (metadata.district || "").toUpperCase();
+  const district = placeCase(metadata.district);
 
   // Build dynamic designation from stands inside the Outside Figure polygon.
   // Combines dynamic stand numbers with the immediate township name only (no "of ..." suffix).
@@ -5267,12 +5268,12 @@ function drawTitleBlock(
   let designation;
   if (dynamicStandList) {
     designation = townshipDescription
-      ? `Stands ${dynamicStandList} ${townshipDescription}`.toUpperCase()
-      : `Stands ${dynamicStandList}`.toUpperCase();
+      ? placeCase(`Stands ${dynamicStandList} ${townshipDescription}`)
+      : placeCase(`Stands ${dynamicStandList}`);
   } else {
     // Fallback: use the full user-supplied designation as-is (also strip " of ..." suffix)
     const rawDesig = (metadata.designation || "").trim();
-    designation = rawDesig.replace(/\s+of\s+.+$/i, "").trim().toUpperCase();
+    designation = placeCase(rawDesig.replace(/\s+of\s+.+$/i, ""));
   }
 
   if (logger) {
@@ -13469,8 +13470,8 @@ async function _generateKeyPlanSheetFromRings(sheets, metadata, logger) {
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
 
-  const township = (metadata?.surveyOf || metadata?.township || metadata?.title || 'Township').toUpperCase();
-  const district = (metadata?.district || '').toUpperCase();
+  const township = placeCase(metadata?.surveyOf || metadata?.township || metadata?.title || 'Township');
+  const district = placeCase(metadata?.district);
   const totalSheets = sheets.length;
 
   // ── Outer border ──
@@ -13488,7 +13489,7 @@ async function _generateKeyPlanSheetFromRings(sheets, metadata, logger) {
   doc.fontSize(9).font('Helvetica-Oblique')
     .text('of', titleX, titleY + 12 * MM_TO_PT, { width: titleW, align: 'center' });
   doc.fontSize(11).font('Helvetica-Bold')
-    .text(`${township}${district ? ', ' + district + ' DISTRICT' : ''}`, titleX, titleY + 17 * MM_TO_PT, { width: titleW, align: 'center' });
+    .text(`${township}${district ? ', ' + district + ' District' : ''}`, titleX, titleY + 17 * MM_TO_PT, { width: titleW, align: 'center' });
   doc.fontSize(10).font('Helvetica-Bold')
     .text('KEY PLAN', titleX, titleY + 24 * MM_TO_PT, { width: titleW, align: 'center' });
 

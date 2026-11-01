@@ -9,6 +9,7 @@ import { generateGeoPDF } from './pdfkitGeoPDF.js'
 import { opsToDxf } from './diagram/opsToDxf.js'
 
 export const GENERAL_PLAN_LAYERS = [
+  { name: 'PAPER', color: 255 },
   { name: 'SHEET_EDGE', color: 8 },
   { name: 'MARGIN_GUIDES', color: 8 },
   { name: 'OUTSIDE_FIGURE', color: 1 },

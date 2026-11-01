@@ -207,7 +207,7 @@ describe('generateDiagramDXF', () => {
     expect(text).toContain('The figure')
     expect(text).toContain('represents')
     expect(text).toContain('of land called')
-    expect(text).toContain('STAND 302 BRACKENHURST')
+    expect(text).toContain('Stand 302 Brackenhurst')
     expect(text).toContain('Land Surveyor')
   })
 

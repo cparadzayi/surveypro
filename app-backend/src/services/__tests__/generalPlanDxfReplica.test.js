@@ -47,6 +47,16 @@ describe('the General Plan DXF replicates the General Plan PDF', () => {
     expect(used.has('SHEET_EDGE')).toBe(true)
   })
 
+  test('the sheet is a white fill on its own PAPER layer, ahead of everything else', () => {
+    const hatch = ps.findIndex(([c, v]) => c === '0' && v === 'HATCH')
+    expect(hatch).toBeGreaterThan(-1)
+    const block = ps.slice(hatch, hatch + 12)
+    expect(block.some(([c, v]) => c === '8' && v === 'PAPER')).toBe(true)
+    expect(block.some(([c, v]) => c === '420' && v === String(0xffffff))).toBe(true)
+    const firstDrawn = ps.findIndex(([c, v], i) => c === '0' && ['TEXT', 'LWPOLYLINE', 'HATCH', 'CIRCLE'].includes(v) && i > 0)
+    expect(firstDrawn).toBe(hatch)
+  })
+
   test('the plan scale is the PDF\'s: a point of paper is scale x 0.352778 mm of ground', () => {
     const denom = Number(String(render.scale).split(':')[1])
     const perPt = render.ground.a.x - render.ground.b.x

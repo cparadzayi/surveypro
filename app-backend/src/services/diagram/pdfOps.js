@@ -217,15 +217,37 @@ export function recordPdfOps(doc) {
           const size = st.size
           const o = opts ?? {}
           const baselineY = y + (target._font?.ascender ?? 718) / 1000 * size
-          const w = target.widthOfString(String(str), o)
-          let leftX = x
-          if (o.width != null && o.align === 'center') leftX = x + (o.width - w) / 2
-          else if (o.width != null && o.align === 'right') leftX = x + o.width - w
-          const [px, py] = pt(leftX, baselineY)
-          record({
-            type: 'text', text: String(str), x: px, y: py, size: size * scaleOf(), font: st.font,
-            color: st.fill, rotation: rotation(), width: w * scaleOf(),
-            box: { x, w: o.width ?? null, align: o.align ?? 'left' },
+          // PDFKit breaks a string at its newlines and, given a width, at word gaps. Record one
+          // op per printed line so the DXF wraps where the PDF does instead of running on.
+          const wrapTo = o.lineBreak === false ? null : o.width
+          const lines = []
+          for (const para of String(str).split(/\r?\n/)) {
+            if (wrapTo == null || target.widthOfString(para, o) <= wrapTo) { lines.push(para); continue }
+            let cur = ''
+            for (const word of para.split(' ')) {
+              const trial = cur ? `${cur} ${word}` : word
+              if (cur && target.widthOfString(trial, o) > wrapTo) { lines.push(cur); cur = word } else cur = trial
+            }
+            lines.push(cur)
+          }
+          const step = target.currentLineHeight(true) + (o.lineGap ?? target._lineGap ?? 0)
+          lines.forEach((line, i) => {
+            if (!line.trim() && lines.length > 1) return
+            const w = target.widthOfString(line, o)
+            let leftX = x
+            if (o.width != null && o.align === 'center') leftX = x + (o.width - w) / 2
+            else if (o.width != null && o.align === 'right') leftX = x + o.width - w
+            const [px, py] = pt(leftX, baselineY + i * step)
+            record({
+              type: 'text', text: line, x: px, y: py, size: size * scaleOf(), font: st.font,
+              color: st.fill, rotation: rotation(), width: w * scaleOf(),
+              box: { x, w: o.width ?? null, align: o.align ?? 'left' },
+            })
+            if (o.underline && line.trim()) {
+              const uy = baselineY + i * step + size * 0.12
+              const [ax, ay] = pt(leftX, uy), [bx, by] = pt(leftX + w, uy)
+              record({ type: 'stroke', pts: [[ax, ay], [bx, by]], closed: false, width: Math.max(0.4, size * 0.05) * scaleOf(), color: st.fill, dash: null })
+            }
           })
           target.text(str, x, y, opts)
           return proxy

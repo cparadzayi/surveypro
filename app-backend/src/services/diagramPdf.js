@@ -3,6 +3,7 @@ import { deriveSubjectGeometry } from './diagram/subjectGeometry.js'
 import { parcelExtent, pickDiagramScale, makeTransform, beaconRadiusPt } from './diagram/diagramScale.js'
 import { buildSidesTable, buildFigureRepresents, formatDiagramArea } from './diagram/sidesTable.js'
 import { resolveStatementDesignation, statementDesignation } from './diagram/designation.js'
+import { placeCase } from '../utils/placeCase.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import {
   computeDiagramLayout, pageDimsPt, marginsPt, northArrowGeometryPt, DIAGRAM_FONTS,
@@ -557,7 +558,7 @@ function drawStatement(doc, layout, geometry, metadata) {
   const designation = resolveStatementDesignation(geometry.designation, geometry.stand, metadata.designation)
   // The parent clause is appended by statementDesignation, which drops any
   // duplicate "… of <parent>" already present in the designation.
-  const desigText = statementDesignation(designation, metadata.parentProperty)
+  const desigText = placeCase(statementDesignation(designation, metadata.parentProperty))
   // Survey date arrives as metadata.date from the frontend; accept either key.
   const surveyDate = metadata.surveyDate ?? metadata.date
   doc.save().font('Helvetica').fontSize(DIAGRAM_FONTS.statement).fillColor('#000')
@@ -579,9 +580,14 @@ function drawStatement(doc, layout, geometry, metadata) {
     doc.fontSize(desigSize)
   }
   doc.text(desigText, R.x, R.y + 30, { width: R.width, align: 'center', lineBreak: false })
+  // The designation is underlined, as the surveyor writes it.
+  const desigW = doc.widthOfString(desigText)
+  const uy = R.y + 30 + desigSize * 0.92
+  doc.lineWidth(0.6).strokeColor('#000')
+    .moveTo(R.x + (R.width - desigW) / 2, uy).lineTo(R.x + (R.width + desigW) / 2, uy).stroke()
   // Same 9pt as the "The figure … of land called" block above.
   doc.font('Helvetica').fontSize(DIAGRAM_FONTS.statement).text(
-    `situate in the district of ${(metadata.district ?? '').toUpperCase()}.`, R.x, R.y + 44)
+    `situate in the district of ${placeCase(metadata.district)}.`, R.x, R.y + 44)
   // Extra row above "Surveyed … by me" (below "situate in the district of …") for
   // visual separation.
   doc.text(`Surveyed in ${surveyDate ? new Date(surveyDate).toLocaleString('en', { month: 'long', year: 'numeric' }) : ''} by me`, R.x, R.y + 61)

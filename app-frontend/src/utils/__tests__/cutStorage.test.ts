@@ -49,3 +49,14 @@ describe('writeCuts', () => {
     expect(JSON.stringify(stored)).not.toMatch(/sheetNumber|parts|letter|Outside Figure/);
   });
 });
+describe('cut point names', () => {
+  const vertices = [{ y: 1, x: 2 }, { y: 3, x: 4 }];
+  it('round-trips the surveyor names with the cut', () => {
+    const cuts = [{ vertices, pointNames: [{ y: 1, x: 2, name: 'W1' }] }];
+    expect(readCuts(writeCuts({}, cuts))).toEqual(cuts);
+  });
+  it('drops malformed or blank names without dropping the cut', () => {
+    const read = readCuts({ figureCuts: [{ vertices, pointNames: [{ y: 1, x: 2, name: '  ' }, { y: 'a', x: 2, name: 'Q' }, 7] }] });
+    expect(read).toEqual([{ vertices }]);
+  });
+});

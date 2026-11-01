@@ -142,6 +142,43 @@
         📐 Stored cut divides the figure into {{ storedSheetCount ?? 2 }} sheet{{ storedSheetCount === 1 ? '' : 's' }}.
       </div>
 
+      <!-- Names for the points the stored cut creates -->
+      <div
+        v-if="showCutNames && !isSplitting"
+        class="absolute top-16 left-1/2 -translate-x-1/2 z-40 w-[22rem] bg-white rounded-lg shadow-xl border border-indigo-200 p-3 text-sm"
+      >
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="font-semibold text-indigo-700">🏷️ Name the cut points</h3>
+          <button class="text-gray-500 hover:text-gray-800" title="Close without saving" @click="showCutNames = false">✕</button>
+        </div>
+        <p class="text-xs text-gray-500 mb-2">These points are on more than one sheet. Each sheet's table shows the name given here.</p>
+        <div v-for="(d, i) in cutNameDrafts" :key="i" class="flex items-center gap-2 mb-1.5">
+          <input
+            v-model="d.name"
+            maxlength="12"
+            :disabled="d.existing"
+            :title="d.existing ? 'The cut lands on this existing point, so it keeps its name' : ''"
+            class="w-24 border border-gray-300 rounded px-2 py-1 font-medium uppercase disabled:bg-gray-100 disabled:text-gray-600"
+            :aria-label="'Name of cut point ' + (i + 1)"
+          />
+          <span class="flex-1 text-xs text-gray-500">
+            <template v-if="d.existing">existing point</template>
+            <template v-else>Y {{ d.y.toFixed(2) }} · X {{ d.x.toFixed(2) }}</template>
+          </span>
+          <button v-if="!d.existing && d.auto" class="text-xs text-gray-500 hover:text-gray-800" title="Back to the automatic name" @click="resetCutName(i)">Reset</button>
+          <button class="text-xs text-red-600 hover:text-red-800" title="Delete this point from the cut" @click="deleteCutPoint(i)">Delete</button>
+        </div>
+        <p v-if="cutNameProblem" class="text-xs text-red-600 mb-2">{{ cutNameProblem }}</p>
+        <div class="flex justify-end gap-2 mt-2">
+          <button class="px-3 py-1 rounded border border-gray-300 text-gray-700" @click="showCutNames = false">Cancel</button>
+          <button
+            class="px-3 py-1 rounded bg-indigo-600 text-white disabled:opacity-50"
+            :disabled="!!cutNameProblem"
+            @click="saveCutNames"
+          >Update</button>
+        </div>
+      </div>
+
       <!-- Focus-mode escape hatch: the only chrome left when the map is bare -->
       <button
         v-if="focusMode"
@@ -1111,6 +1148,7 @@ function runRibbonAction(id: string) {
     }
     case 'start-splitting': return startSplitting();
     case 'delete-cut': return deleteStoredCut();
+    case 'name-cut-points': return openCutNames();
     case 'add-beacon': return openAddBeaconModal();
     case 'pick-point': return startPickPoint();
 
@@ -2454,6 +2492,8 @@ const storedSheets = computed(() => {
   return buildSheetPayloads({
     ring: splitFigureRing.value,
     polylines: storedCutsArray.value.map(c => c.vertices),
+    cutPointNames: storedCutsArray.value.flatMap(c => c.pointNames ?? []),
+    knownPoints: splitSnapCandidates.value.map((c: any) => ({ y: c.y, x: c.x, id: String(c.id) })),
     stands: splitStands.value,
   });
 });
@@ -4716,6 +4756,117 @@ function clearStoredCutPaint() {
   if (storedLines) storedLines.setData({ type: 'FeatureCollection', features: [] });
 }
 
+// ── Naming the points a cut creates ───────────────────────────────────────────
+// A cut's points (where it meets the outside figure, and any bend in it) are named C1, C2, ... unless the
+// surveyor names them. The names are stored with the cut, by coordinate, and the sheets are re-derived
+// from them, so a name appears on every sheet the point is on.
+const showCutNames = ref(false);
+const cutNameDrafts = ref<Array<{ y: number; x: number; name: string; existing: boolean; auto: string }>>([]);
+
+/** The points the stored cut(s) create, with the names they carry now. */
+const cutPointRows = computed(() => {
+  const built = storedSheets.value;
+  if (!built || !built.ok) return [];
+  return built.sheets[0]?.newPoints ?? [];
+});
+
+const cutNameProblem = computed(() => {
+  const seen = new Set<string>();
+  const taken = new Set(splitFigureRing.value.map((p: any) => String(p.id ?? p.name ?? '').trim().toUpperCase()).filter(Boolean));
+  for (const d of cutNameDrafts.value) {
+    if (d.existing) continue;
+    const n = d.name.trim().toUpperCase();
+    if (!n) return 'Every point needs a name.';
+    if (n.length > 12) return 'Names are at most 12 characters.';
+    if (seen.has(n)) return `"${d.name.trim()}" is used twice.`;
+    if (taken.has(n)) return `"${d.name.trim()}" is already a beacon of the figure.`;
+    seen.add(n);
+  }
+  return '';
+});
+
+/** Give a point back its automatic name. */
+function resetCutName(i: number) {
+  const d = cutNameDrafts.value[i];
+  if (d && !d.existing) d.name = d.auto || d.name;
+}
+
+/**
+ * Delete a cut point. A bend in a cut is removed from the line (the cut must still divide the figure
+ * cleanly); an end of a cut is where it meets the figure, so deleting it deletes that cut.
+ */
+async function deleteCutPoint(i: number) {
+  const d = cutNameDrafts.value[i];
+  if (!d) return;
+  const near = (v: { y: number; x: number }) => Math.abs(v.y - d.y) < 0.005 && Math.abs(v.x - d.x) < 0.005;
+  const idx = storedCutsArray.value.findIndex(c => c.vertices.some(near));
+  if (idx < 0) return;
+  const cut = storedCutsArray.value[idx];
+  const at = cut.vertices.findIndex(near);
+  const isEnd = at === 0 || at === cut.vertices.length - 1;
+  let next: StoredCut[];
+  if (isEnd) {
+    const ok = await confirmDialog({
+      title: 'Delete this cut?',
+      message: `${d.name} is where the cut meets the figure, so deleting it removes the whole cut.`,
+      confirmLabel: 'Delete cut',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    next = storedCutsArray.value.filter((_, k) => k !== idx);
+  } else {
+    const vertices = cut.vertices.filter((_, k) => k !== at);
+    const outcome = splitFigureMultiple({
+      ring: splitFigureRing.value,
+      polylines: storedCutsArray.value.map((c, k) => (k === idx ? vertices : c.vertices)),
+      stands: splitStands.value,
+    });
+    if (!outcome.ok) {
+      notifyWarning(`Removing ${d.name} would leave a cut that does not divide the figure cleanly (${outcome.error}).`);
+      return;
+    }
+    next = storedCutsArray.value.map((c, k) => (k === idx
+      ? { vertices, pointNames: (c.pointNames ?? []).filter(n => !near(n)) }
+      : c));
+  }
+  storedCutsArray.value = next;
+  storedCut.value = next[next.length - 1] ?? null;
+  await saveStoredCut(storedCut.value);
+  paintStoredCut();
+  if (next.length === 0) { showCutNames.value = false; return; }
+  openCutNames();
+}
+
+function openCutNames() {
+  if (cutPointRows.value.length === 0) return;
+  const saved = storedCutsArray.value.flatMap(c => c.pointNames ?? []);
+  cutNameDrafts.value = cutPointRows.value.map(p => ({
+    y: p.y, x: p.x, name: p.name, existing: p.existing === true,
+    // the automatic C-number it holds now, if the surveyor has named none
+    auto: saved.some(n => Math.abs(n.y - p.y) < 0.005 && Math.abs(n.x - p.x) < 0.005) ? '' : p.name,
+  }));
+  showCutNames.value = true;
+}
+
+async function saveCutNames() {
+  if (cutNameProblem.value) return;
+  const near = (a: { y: number; x: number }, b: { y: number; x: number }) => Math.abs(a.y - b.y) < 0.005 && Math.abs(a.x - b.x) < 0.005;
+  // A point that took an existing point's name carries none of its own; one left as its automatic
+  // C-number stays automatic (so it is not frozen at today's number).
+  const names = cutNameDrafts.value
+    .filter(d => !d.existing && d.name.trim() !== '' && d.name.trim() !== d.auto)
+    .map(d => ({ y: d.y, x: d.x, name: d.name.trim() }));
+  // Each name rides with the cut that has that point as a vertex (the last cut when none does).
+  storedCutsArray.value = storedCutsArray.value.map((c, i, all) => ({
+    vertices: c.vertices,
+    pointNames: names.filter(n => c.vertices.some(v => near(v, n)) || (i === all.length - 1 && !all.some(o => o.vertices.some(v => near(v, n))))),
+  }));
+  storedCut.value = storedCutsArray.value[storedCutsArray.value.length - 1] ?? null;
+  showCutNames.value = false;
+  await saveStoredCut(storedCut.value);
+  paintStoredCut();
+}
+
 /** Remove the stored cut: clears the Overlay so the plan renders one sheet again. */
 async function deleteStoredCut() {
   if (!storedCut.value) return;
@@ -4830,6 +4981,8 @@ async function finishSplit() {
   await saveStoredCut(newCut);
   paintStoredCut();
   console.log('[MapLibre] ✂️ Split-figure finished and persisted');
+  // Offer the names straight away: the points are what the sheets are tied together by.
+  openCutNames();
 }
 
 /** Escape / Cancel: clear the draft AND leave the mode, so parcel digitising returns. */

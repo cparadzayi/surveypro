@@ -90,7 +90,8 @@ export interface SheetPayload {
   standRange: string
   /** The WHOLE plan's stand count -- identical on every sheet. */
   totalStandCount: number
-  newPoints: Array<{ y: number; x: number; name: string; status: string }>
+  /** `existing` is true when the cut landed on a point that already had a name and took it. */
+  newPoints: Array<{ y: number; x: number; name: string; status: string; existing?: boolean }>
 }
 
 export interface BuildSheetPayloadsInput {
@@ -114,6 +115,16 @@ export interface BuildSheetPayloadsInput {
   servitudeRows?: PartyWallStatementRow[]
   /** Names already in use on the plan, so a created point avoids them. */
   takenNames?: string[]
+  /**
+   * Names the surveyor gave to the points the cut creates, by coordinate. A created point with an entry
+   * takes it (unless it repeats a name already on the plan); the others are named C1, C2, ... around them.
+   */
+  cutPointNames?: Array<{ y: number; x: number; name: string }>
+  /**
+   * Points that already exist on the plan (coordinate points, stand beacons). A point the cut creates ON one
+   * of them IS that point: it takes its name, which the surveyor cannot override.
+   */
+  knownPoints?: Array<{ y: number; x: number; id: string }>
   tolerance?: number
 }
 
@@ -230,7 +241,31 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
   const augmentedTaken = [...takenNames]
   const ringNames = (openRing(input.ring) || []).map((p) => p.name ?? p.id).filter((n): n is string => !!n)
   augmentedTaken.push(...ringNames)
-  const namedNewPoints = nameCutPoints(split.newPoints, augmentedTaken)
+  // The surveyor's own names first (a blank, or one already on the plan, is ignored), then the automatic
+  // ones for the rest, which step around them.
+  const chosen = new Map<number, string>()
+  const existing = new Set<number>()
+  const usedUpper = new Set(augmentedTaken.map((n) => String(n ?? '').trim().toUpperCase()).filter(Boolean))
+  split.newPoints.forEach((p: LoPoint, i: number) => {
+    const known = (input.knownPoints ?? []).find((k) => Math.abs(k.y - p.y) < 0.005 && Math.abs(k.x - p.x) < 0.005)
+    if (known?.id) {
+      chosen.set(i, String(known.id))
+      existing.add(i)
+      usedUpper.add(String(known.id).trim().toUpperCase())
+      return
+    }
+    const hit = (input.cutPointNames ?? []).find((n) => Math.abs(n.y - p.y) < 0.005 && Math.abs(n.x - p.x) < 0.005)
+    const name = hit?.name?.trim()
+    if (!name || usedUpper.has(name.toUpperCase())) return
+    usedUpper.add(name.toUpperCase())
+    chosen.set(i, name)
+  })
+  const unnamed = split.newPoints.filter((_: LoPoint, i: number) => !chosen.has(i))
+  const auto = nameCutPoints(unnamed, [...usedUpper])
+  let nextAuto = 0
+  const namedNewPoints = split.newPoints.map((p: LoPoint, i: number) => chosen.has(i)
+    ? { y: p.y, x: p.x, name: chosen.get(i)!, status: '-', ...(existing.has(i) ? { existing: true } : {}) }
+    : auto[nextAuto++])
 
   // Build a map from RAW split.newPoints objects to their assigned names
   const namesMap = new Map<LoPoint, string>()

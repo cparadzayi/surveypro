@@ -5,6 +5,7 @@
  */
 import { buildSheetPayloads, type StandInput, type SheetPayload } from '@/utils/sheetPayloads'
 import { readCuts } from '@/utils/cutStorage'
+import { buildSnapIndex } from './vertexSnap'
 import type { PartyWallStatementRow } from '@/utils/servitudeStatement'
 
 export interface StoredSheetsInput {
@@ -16,6 +17,16 @@ export interface StoredSheetsInput {
   servitudeRows?: PartyWallStatementRow[]
   /** Names already in use, so a point the cut creates avoids them. */
   takenNames?: string[]
+  /** The project's coordinate points, so a cut point landing on one takes its name. */
+  coordinatePoints?: any[]
+}
+
+/** Every named point a cut may have landed on: coordinate points and the stands' own beacons. */
+export function knownPointsFor(parcels: any[], coordinatePoints: any[] = []): Array<{ y: number; x: number; id: string }> {
+  const shaped = parcels
+    .map((p: any) => ({ id: p.id, designation: p.designation || p.stand, points: (p.metadata?.cape_lo_points as any[]) || [] }))
+    .filter((p) => p.points.length >= 3)
+  return buildSnapIndex(coordinatePoints, shaped).candidates.map((c: any) => ({ y: c.y, x: c.x, id: String(c.id) }))
 }
 
 /** undefined when there is no stored cut, or it no longer splits cleanly (the plan
@@ -51,6 +62,8 @@ export function deriveStoredSheets(input: StoredSheetsInput): SheetPayload[] | u
     const built = buildSheetPayloads({
       ring,
       polylines: storedCuts.map(c => c.vertices),
+      cutPointNames: storedCuts.flatMap(c => c.pointNames ?? []),
+      knownPoints: knownPointsFor(input.parcels, input.coordinatePoints),
       stands,
       servitudeRows: input.servitudeRows,
       takenNames: input.takenNames,

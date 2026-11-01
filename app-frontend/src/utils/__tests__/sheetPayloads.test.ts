@@ -218,3 +218,46 @@ describe('buildSheetPayloads', () => {
     expect(sliced.stands).toEqual(['1690']);
   });
 });
+
+describe('surveyor-named cut points', () => {
+  it('a created point takes the name the surveyor gave it; the others stay automatic', () => {
+    const out = buildSheetPayloads({ ...input(), cutPointNames: [{ y: 50, x: 0, name: 'W1' }] });
+    if (!out.ok) throw new Error('expected ok');
+    const names = out.sheets[0].newPoints.map((p) => p.name);
+    expect(names).toContain('W1');
+    expect(names).toContain('C1');
+    // both sheets describe the same physical point alike
+    expect(out.sheets[1].newPoints.map((p) => p.name)).toEqual(names);
+  });
+
+  it('the name shows as the point id in the outside-figure table', () => {
+    const out = buildSheetPayloads({ ...input(), cutPointNames: [{ y: 50, x: 0, name: 'W1' }] });
+    if (!out.ok) throw new Error('expected ok');
+    const ids = out.sheets.flatMap((s) => s.vertices.map((v) => v.pointId));
+    expect(ids).toContain('W1');
+  });
+
+  it('a blank name, or one already on the plan, is ignored', () => {
+    const out = buildSheetPayloads({ ...input(), cutPointNames: [{ y: 50, x: 0, name: '  ' }, { y: 50, x: 100, name: 'sd1' }] });
+    if (!out.ok) throw new Error('expected ok');
+    const names = out.sheets[0].newPoints.map((p) => p.name);
+    expect(names).not.toContain('sd1');
+    expect(names.every((n) => /^C[0-9]+$/.test(n))).toBe(true);
+  });
+
+  it('a cut point that lands on an existing point takes its name, and a surveyor name cannot override it', () => {
+    const out = buildSheetPayloads({
+      ...input(),
+      knownPoints: [{ y: 50, x: 0, id: '1683B' }],
+      cutPointNames: [{ y: 50, x: 0, name: 'ZZ' }],
+    });
+    if (!out.ok) throw new Error('expected ok');
+    const pts = out.sheets[0].newPoints;
+    const snapped = pts.find((p) => p.name === '1683B');
+    expect(snapped?.existing).toBe(true);
+    expect(pts.map((p) => p.name)).not.toContain('ZZ');
+    // the other end is still automatic, and the sheets agree
+    expect(pts.filter((p) => !p.existing).map((p) => p.name)).toEqual(['C1']);
+    expect(out.sheets[1].newPoints.map((p) => p.name)).toEqual(pts.map((p) => p.name));
+  });
+});

@@ -4524,6 +4524,8 @@ function deriveStoredSheets(): SheetPayload[] | undefined {
     // The plan's existing point names, so a generated cut point (C1, C2, ...) cannot
     // collide with a beacon that already holds that name.
     takenNames: coordinatePoints.value.map((p: { name?: string }) => p?.name).filter(Boolean) as string[],
+    // A cut point that landed on an existing point is that point and takes its name.
+    coordinatePoints: coordinatePoints.value,
   })
 }
 

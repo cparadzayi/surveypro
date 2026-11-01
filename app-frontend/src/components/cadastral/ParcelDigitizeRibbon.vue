@@ -118,6 +118,13 @@ const digitizeGroups = computed(() => {
       disabled: props.digitizingLocked,
     },
     {
+      id: 'name-cut-points',
+      icon: '🏷️',
+      label: 'Name Cut Points',
+      title: 'Give names to the points where the cut meets the figure, so every sheet shows them',
+      when: props.hasStoredCut && !props.isSplitting && !props.isDrawing,
+    },
+    {
       id: 'delete-cut',
       icon: '🗑️',
       label: 'Remove Cut',

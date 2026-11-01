@@ -5367,11 +5367,11 @@ function drawTitleBlock(
       const wholePortion = figurePortionWording(metadata.wholePortion || 'the whole');
 
       // Immediate township name (already stripped of " of ..." suffix), in caps
-      const township = (townshipDescription || (metadata.township || '').trim()).toUpperCase();
+      const township = placeCase(townshipDescription || (metadata.township || '').trim());
 
       // parentProperty: e.g. "Shabani Mine Surface Rights A", in caps
       // ofTarget: "SHABANI MINE SURFACE RIGHTS A" (the township only if there is no parent property)
-      const parentProp = (metadata.parentProperty || '').trim().toUpperCase();
+      const parentProp = placeCase(metadata.parentProperty);
       const ofTarget = parentProp || township;
 
       if (isMultiSheet) {

@@ -1,5 +1,24 @@
+/** The surveyor's name for a point the cut creates, held with the point's own coordinates. */
+export interface CutPointName {
+  y: number
+  x: number
+  name: string
+}
+
 export interface StoredCut {
   vertices: Array<{ y: number; x: number }>
+  /**
+   * Names the surveyor gave to points of this cut (where it meets the figure, or a bend in it). Keyed by
+   * coordinate rather than index: the coordinates are rounded once when the cut is drawn, so they identify
+   * the point however the sheets are re-derived. A point with no entry takes the automatic C1, C2, ...
+   */
+  pointNames?: CutPointName[]
+}
+
+function isCutPointName(n: unknown): n is CutPointName {
+  if (typeof n !== 'object' || n === null) return false
+  const v = n as { y?: unknown; x?: unknown; name?: unknown }
+  return isFiniteLoPoint(n) && typeof v.name === 'string' && v.name.trim() !== ''
 }
 
 function isFiniteLoPoint(p: unknown): p is { y: number; x: number } {
@@ -33,7 +52,11 @@ export function readCuts(projectMetadata: unknown): StoredCut[] {
   if (typeof projectMetadata !== 'object' || projectMetadata === null) return []
   const figureCuts = (projectMetadata as { figureCuts?: unknown }).figureCuts
   if (!Array.isArray(figureCuts)) return []
-  return figureCuts.filter(isStoredCut)
+  return figureCuts.filter(isStoredCut).map((c) => {
+    const names = (c as { pointNames?: unknown }).pointNames
+    const valid = Array.isArray(names) ? names.filter(isCutPointName).map((n) => ({ y: n.y, x: n.x, name: n.name.trim() })) : []
+    return valid.length > 0 ? { vertices: c.vertices, pointNames: valid } : { vertices: c.vertices }
+  })
 }
 
 export function writeCuts(projectMetadata: object, cuts: StoredCut[]): object {

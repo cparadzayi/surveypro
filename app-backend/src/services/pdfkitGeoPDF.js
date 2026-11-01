@@ -13638,6 +13638,7 @@ export async function generateSheetedGeoPDF(options, logger) {
     planType = undefined,
     outputPath = null,
     returnPages = false,
+    recordOps = false, // Also return each sheet's drawing as page-space operations (for the DXF)
   } = options || {};
 
   if (!Array.isArray(sheets) || sheets.length === 0) {
@@ -13674,6 +13675,7 @@ export async function generateSheetedGeoPDF(options, logger) {
     const sheetLayouts = [];
     // What each sheet's render warned about, so the caller can tell the surveyor.
     const sheetWarnings = [];
+    const records = [];
     for (const sheet of orderedSheets) {
     const outsideFigure = sheetOutsideFigure(sheet);
     // The plan's own features for this sheet's stands, when the whole-plan
@@ -13704,14 +13706,16 @@ export async function generateSheetedGeoPDF(options, logger) {
       // so the title block's beacon sequence must come from THIS sheet's own
       // vertices, which is what omitting fullFigureLabel already falls back to.
       sheetInfo: sheetSheetInfo(sheet),
+      recordOps,
     }, log);
 
     pages.push(result.pdfBuffer);
+    if (recordOps) records.push({ sheetNumber: sheet.sheetNumber, totalSheets: sheet.totalSheets, ops: result.ops, ground: result.ground, scale: result.scale, sheetSize: result.sheetSize });
     sheetLayouts.push({ sheetNumber: sheet.sheetNumber, scale: result.scale, sheetSize: result.sheetSize });
     sheetWarnings.push(...warningHints(result.warnings, `Sheet ${sheet.sheetNumber}: `));
     log.info(`[SheetedPDF] Sheet ${sheet.sheetNumber}/${sheet.totalSheets} generated (${result.pdfBuffer.length} bytes)`);
   }
-    return { pages, sheetLayouts, warnings: sheetWarnings };
+    return { pages, sheetLayouts, warnings: sheetWarnings, records };
   };
 
   // Every sheet of ONE plan is drawn at ONE scale. A sheet that needed a coarser
@@ -13737,6 +13741,7 @@ export async function generateSheetedGeoPDF(options, logger) {
   }
 
   const out = { pdf, pageCount: pageBuffers.length, layouts, warnings: rendered.warnings };
+  if (recordOps) out.records = rendered.records;
   if (returnPages) out.pages = pageBuffers;
   return out;
 }

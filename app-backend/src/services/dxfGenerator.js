@@ -3103,7 +3103,7 @@ const _silentDxfLogger = { info: () => {}, warn: () => {}, error: () => {} };
  * named here lands in the project's output folder under the name the surveyor's
  * other artefacts already use.
  */
-function _sheetedDxfBaseName(metadata, baseName) {
+export function _sheetedDxfBaseName(metadata, baseName) {
   if (typeof baseName === 'string' && baseName.trim()) return baseName.trim();
   const source = metadata?.designation || metadata?.surveyOf || metadata?.township || 'survey-plan';
   return String(source).replace(/[^\w.-]+/g, '_').slice(0, 60) || 'survey-plan';

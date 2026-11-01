@@ -699,7 +699,7 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
             enableLayers,
             enableMeasurements,
             // dxf: true asks for this same render as a DXF (see below)
-            recordOps: request.body.dxf === true
+            recordOps: request.body.dxf === true && !(Array.isArray(request.body.sheets) && request.body.sheets.length > 1)
           },
           fastify.log
         )
@@ -790,9 +790,30 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
               parcels: parcelsWithComputedData,
               beaconLabels,
               annotations,
+              recordOps: request.body.dxf === true,
             },
             fastify.log
           )
+          if (request.body.dxf === true && sheetedResult.records) {
+            // One DXF per sheet, each the PDF page's own drawing, named as the sheeted DXF always was.
+            const { _sheetedDxfBaseName } = await import('../services/dxfGenerator.js')
+            const stem = _sheetedDxfBaseName(metadata, request.body.baseName)
+            const files = sheetedResult.records.map((rec) => ({
+              filename: `${stem}-sheet-${rec.sheetNumber}-of-${rec.totalSheets ?? sheetedResult.records.length}.dxf`,
+              buffer: dxfFromRecordedPlan(rec, request.body.dxfVersion).dxfBuffer,
+            }))
+            const { includeGpkg = true, gpkgOnly = false } = request.body
+            if (gpkgOnly) {
+              return reply.code(400).send({ error: 'gpkgOnly is not available for a multi-sheet DXF', message: `${sheetedResult.records.length} sheets cannot be one GeoPackage.` })
+            }
+            const archive = await zipSheetedDxfWithPrj(files, projection, stem, fastify.log, includeGpkg, clientGone.signal)
+            return reply.type('application/zip').headers({
+              'X-Sheet-Count': String(files.length),
+              'X-Used-Scale': sheetedResult.layouts?.[0]?.scale ?? usedScale,
+              'X-Used-Sheet-Size': sheetedResult.layouts?.[0]?.sheetSize ?? usedSheetSize,
+              'Content-Disposition': `attachment; filename="${stem}-${files.length}-sheets.zip"`,
+            }).send(archive)
+          }
           finalPdfBuffer = sheetedResult.pdf
           sheetedWarnings = sheetedResult.warnings ?? []
           sheetLayouts = sheetedResult.layouts ?? null

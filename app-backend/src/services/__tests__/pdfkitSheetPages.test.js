@@ -140,6 +140,17 @@ describe('generateSheetedGeoPDF', () => {
     expect(pageText[2]).not.toContain('1686')
   })
 
+  test('recordOps returns each sheet drawing, which becomes that sheet DXF', async () => {
+    const { records } = await generateSheetedGeoPDF({ sheets: payloads(), metadata: {}, recordOps: true })
+    expect(records.map((r) => r.sheetNumber)).toEqual([1, 2])
+    const { dxfFromRecordedPlan } = await import('../generalPlanDxf.js')
+    const texts = records.map((r) => r.ops.filter((o) => o.type === 'text' && o.text.trim()).map((o) => o.text).join(' '))
+    expect(texts[0]).toContain('1686')
+    expect(texts[0]).not.toContain('1687')
+    expect(texts[1]).toContain('1687')
+    for (const r of records) expect(dxfFromRecordedPlan(r).dxfBuffer.toString('utf8')).toContain('AC1015')
+  })
+
   test('a single-sheet plan gets no SHEET chrome and no key plan', async () => {
     const one = [{ ...payloads()[0], sheetNumber: 1, totalSheets: 1, figureLabel: 'Outside Figure', otherSheets: '' }]
     const { pageCount, pdf } = await generateSheetedGeoPDF({ sheets: one, metadata: {} })

@@ -4137,9 +4137,30 @@ function onSurveyorChange() {
   }
 }
 
+// The project the workflow fields were last filled from.
+let workflowFilledFromProjectId: number | null = null;
+
+/**
+ * The workflow state is one shared object that loading MERGES into, and onProjectChange only writes a
+ * field when the new project has a value. So a field the new project leaves blank kept the PREVIOUS
+ * project's value. Blank the project-specific ones before filling from the new record.
+ */
+function clearProjectSpecificWorkflowFields() {
+  const s = workflowState.surveyorInfo;
+  s.surveyDate = ''; s.surveyOf = ''; s.instruments = ''; s.assistedBy = '';
+  s.instrumentDescription = ''; s.instrumentBaseSerial = ''; s.instrumentRoverSerial = '';
+  const p = workflowState.projectInfo as any;
+  p.name = ''; p.district = ''; p.surveyType = ''; p.workingDirectory = '';
+  p.centralMeridian = undefined; p.controlPointIds = [];
+}
+
 function onProjectChange() {
   const project = surveyProjects.value.find(p => p.id === selectedProjectId.value);
   if (project) {
+    if (workflowFilledFromProjectId !== null && workflowFilledFromProjectId !== project.id) {
+      clearProjectSpecificWorkflowFields();
+    }
+    workflowFilledFromProjectId = project.id;
     // Save project to localStorage for persistence across page refreshes
     localStorage.setItem('selectedProject', JSON.stringify(project));
     console.log(`💾 Saved project to localStorage: ${project.name}`);

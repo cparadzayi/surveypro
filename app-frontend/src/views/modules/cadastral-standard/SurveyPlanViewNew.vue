@@ -145,7 +145,7 @@
 
 <script setup lang="ts">
 import { notifyFailure } from '@/composables/useNotifications'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import SurveyDiagramView from './SurveyDiagramView.vue'
 import WorkingPlanView from './WorkingPlanView.vue'
 import SurveyPlanMapView from './SurveyPlanMapView.vue'
@@ -205,10 +205,14 @@ function selectPlanType(type: string) {
 }
 
 async function initComposition() {
-  if (!props.projectId) return
-  const loaded = await loadComposition(props.projectId, props.workflowState)
+  const id = props.projectId
+  if (!id) return
+  const loaded = await loadComposition(id, props.workflowState)
+  // The project may have been switched while this was loading: a late answer for the old project
+  // must not overwrite the new one's.
+  if (props.projectId !== id) return
   composition.value = loaded
-  parcelCountForHint.value = parcelCountFor(props.projectId)
+  parcelCountForHint.value = parcelCountFor(id)
   draftDiagrams.value = loaded?.includesDiagrams ?? false
   draftGeneralPlans.value = loaded?.includesGeneralPlans ?? false
 }
@@ -242,6 +246,20 @@ function reopenComposition() {
   draftGeneralPlans.value = composition.value?.includesGeneralPlans ?? false
   composition.value = composition.value ? { ...composition.value, source: 'inferred' } : null
 }
+
+// The composition above is a copy taken for one project, and this page is not remounted when the
+// project changes under it (the id is rewritten in place by the project picker, and the saved step
+// may be this one). Without this the banner and the plan-type cards kept the OLD project's record
+// composition. Drop the copy at once, then load the new project's.
+watch(() => props.projectId, (id, previous) => {
+  if (id === previous) return
+  composition.value = id ? compositionFor(id) : null
+  parcelCountForHint.value = null
+  draftDiagrams.value = false
+  draftGeneralPlans.value = false
+  selectedPlanType.value = null
+  void initComposition()
+})
 
 // Find the current project from the projects list
 const currentProject = computed(() => {

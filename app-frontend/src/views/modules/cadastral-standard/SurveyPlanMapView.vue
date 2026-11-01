@@ -842,6 +842,11 @@ const recordComposition = computed(() => (props.projectId ? compositionFor(props
 const planTypeOptions = computed(() => planTypeOptionsFor(recordComposition.value))
 const compositionLabel = computed(() => describeComposition(recordComposition.value).label)
 
+// A different project has its own composition: warm the cache for it (onMounted only did the first).
+watch(() => props.projectId, (id, previous) => {
+  if (id && id !== previous) void loadComposition(id, props.workflowState)
+})
+
 // Follow the composition: a selection that has just become illegal must move off the
 // disabled option immediately, not at the next mount.
 watch(recordComposition, (composition) => {

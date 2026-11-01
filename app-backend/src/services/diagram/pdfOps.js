@@ -41,6 +41,70 @@ function parseColor(c) {
   return '#000000'
 }
 
+/** A polyline cut to an axis-aligned rectangle (Liang-Barsky per segment): the pieces that remain, joined where they meet. */
+function clipPolyline(pts, closed, r) {
+  const src = closed ? [...pts, pts[0]] : pts
+  const pieces = []
+  let run = null
+  for (let i = 0; i + 1 < src.length; i++) {
+    const [x0, y0] = src[i], [x1, y1] = src[i + 1]
+    const dx = x1 - x0, dy = y1 - y0
+    let t0 = 0, t1 = 1
+    for (const [p, q] of [[-dx, x0 - r.x0], [dx, r.x1 - x0], [-dy, y0 - r.y0], [dy, r.y1 - y0]]) {
+      if (p === 0) { if (q < 0) { t0 = 2; break } } else {
+        const t = q / p
+        if (p < 0) { if (t > t1) { t0 = 2; break } if (t > t0) t0 = t } else { if (t < t0) { t0 = 2; break } if (t < t1) t1 = t }
+      }
+    }
+    if (t0 > t1) { run = null; continue }
+    const a = [x0 + t0 * dx, y0 + t0 * dy], b = [x0 + t1 * dx, y0 + t1 * dy]
+    if (run && t0 === 0) run.push(b)
+    else { run = [a, b]; pieces.push(run) }
+    if (t1 < 1) run = null
+  }
+  return pieces
+}
+
+/** A ring cut to a rectangle (Sutherland-Hodgman). */
+function clipRing(ring, r) {
+  const edges = [
+    [(p) => p[0] >= r.x0, (a, b) => [r.x0, a[1] + (b[1] - a[1]) * (r.x0 - a[0]) / (b[0] - a[0])]],
+    [(p) => p[0] <= r.x1, (a, b) => [r.x1, a[1] + (b[1] - a[1]) * (r.x1 - a[0]) / (b[0] - a[0])]],
+    [(p) => p[1] >= r.y0, (a, b) => [a[0] + (b[0] - a[0]) * (r.y0 - a[1]) / (b[1] - a[1]), r.y0]],
+    [(p) => p[1] <= r.y1, (a, b) => [a[0] + (b[0] - a[0]) * (r.y1 - a[1]) / (b[1] - a[1]), r.y1]],
+  ]
+  let out = ring
+  for (const [inside, cross] of edges) {
+    const inp = out
+    out = []
+    for (let i = 0; i < inp.length; i++) {
+      const a = inp[i], b = inp[(i + 1) % inp.length]
+      if (inside(b)) { if (!inside(a)) out.push(cross(a, b)); out.push(b) } else if (inside(a)) out.push(cross(a, b))
+    }
+    if (!out.length) break
+  }
+  return out
+}
+
+/** What of a recorded operation shows inside a clip rectangle: the same operation cut to it, or nothing. */
+function clipOp(op, r) {
+  const inside = (x, y) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1
+  if (op.type === 'text') {
+    const a = op.rotation * Math.PI / 180
+    return inside(op.x + Math.cos(a) * op.width / 2, op.y + Math.sin(a) * op.width / 2) ? [op] : []
+  }
+  if (op.type === 'circle' || op.type === 'discFill') return inside(op.cx, op.cy) ? [op] : []
+  if (op.type === 'fill') {
+    const rings = op.rings.map((g) => clipRing(g, r)).filter((g) => g.length >= 3)
+    return rings.length ? [{ ...op, rings }] : []
+  }
+  if (op.type === 'stroke') {
+    if (op.pts.every((p) => inside(p[0], p[1]))) return [op]
+    return clipPolyline(op.pts, op.closed, r).map((pts) => ({ ...op, pts, closed: false }))
+  }
+  return [op]
+}
+
 /**
  * @param {import('pdfkit')} doc
  * @returns {{ doc: any, ops: object[] }}
@@ -57,7 +121,9 @@ export function recordPdfOps(doc) {
   const rotation = () => Math.atan2(st.ctm[1], st.ctm[0]) * 180 / Math.PI // y-down, clockwise positive
   const scaleOf = () => Math.hypot(st.ctm[0], st.ctm[1])
 
-  const record = (op) => ops.push({ layer, ...op })
+  const record = (op) => {
+    for (const o of st.clip ? clipOp(op, st.clip) : [op]) ops.push({ layer, ...o })
+  }
   const emitPath = ({ stroke, fill, rule }) => {
     if (fill) {
       // One fill covers every subpath of the path together (that is how an even-odd ring with a
@@ -94,6 +160,16 @@ export function recordPdfOps(doc) {
         y = oy - (ox * sin + oy * cos)
       }
       st.ctm = mul([cos, sin, -sin, cos, x, y], st.ctm)
+    },
+    clip() {
+      // The path's bounding box becomes the clip (every clip here is a rectangle), narrowed by any clip already in force.
+      const all = path.flatMap((sp) => sp.pts)
+      if (all.length) {
+        const r = { x0: Math.min(...all.map((p) => p[0])), y0: Math.min(...all.map((p) => p[1])), x1: Math.max(...all.map((p) => p[0])), y1: Math.max(...all.map((p) => p[1])) }
+        const c = st.clip
+        st.clip = c ? { x0: Math.max(c.x0, r.x0), y0: Math.max(c.y0, r.y0), x1: Math.min(c.x1, r.x1), y1: Math.min(c.y1, r.y1) } : r
+      }
+      path = []
     },
     lineWidth(w) { st.lw = w },
     strokeColor(c) { st.stroke = parseColor(c) },

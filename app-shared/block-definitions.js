@@ -504,6 +504,16 @@ export function edgeDistanceMetres(edge) {
 // Returns an ordered array of { points, description } where `points` is the
 // comma-joined sorted beacon names (or the literal "Others"); "Not beaconed"
 // sorts first, "Others" last, the rest alphabetically by description.
+// A position with nothing in the ground: one flagged as such (the points a figure cut creates, which the
+// plan sets `notBeaconed` on, whatever name they carry), or a calculated point (status C, or a description
+// that says "not beaconed"). Calculated and not beaconed are the same thing.
+export function isNotBeaconedProperties(p) {
+  if (p?.notBeaconed === true) return true
+  const status = String(p?.status ?? '').trim().toLowerCase()
+  const desc = String(p?.description ?? '').toLowerCase()
+  return status === 'c' || status === 'calc' || status.includes('calculated') || desc.includes('not beaconed')
+}
+
 export function classifyBeaconGroups(beacons) {
   const features = beacons?.features || []
   if (!features.length) return []
@@ -513,7 +523,7 @@ export function classifyBeaconGroups(beacons) {
     const p = b?.properties || {}
     const name = p.name || p.id || p.pointId || p.beacon_name || 'BP'
     let type
-    if (/^M\d+/i.test(name)) type = 'Not beaconed'
+    if (isNotBeaconedProperties(p) || /^M\d+/i.test(name)) type = 'Not beaconed'
     else if (/^[A-Z]\d+$/i.test(name) || /^[A-Z]{2,}$/i.test(name)) type = '50mm Iron Pipe in Concrete'
     else type = '12mm iron peg'
     if (!typeGroups.has(type)) typeGroups.set(type, [])

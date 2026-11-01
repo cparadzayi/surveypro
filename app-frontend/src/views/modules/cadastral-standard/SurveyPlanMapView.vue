@@ -951,12 +951,20 @@ const beaconDescriptionGroups = computed(() => {
  * CP1). Those are positions with nothing in the ground, so they are described as not beaconed.
  */
 function beaconDescriptionPoints(): any[] {
-  const cutPoints = (deriveStoredSheets()?.[0]?.newPoints ?? [])
-    .filter(p => !p.existing)
-    .map(p => ({ name: p.name, y: p.y, x: p.x, notBeaconed: true }))
-  // The cut's points are normally in the coordinate points already (kept there as calculated points).
+  const cutPoints = cutPointsOfStoredCut()
+  const cutNames = new Set(cutPoints.map(p => p.name))
+  // A point the cut landed on keeps its own row, now flagged; the cut's other points are normally in the
+  // coordinate points already (kept there as calculated points) and are added when they are not.
   const have = new Set(coordinatePoints.value.map((p: any) => String(p?.name ?? '')))
-  return [...coordinatePoints.value, ...cutPoints.filter(p => !have.has(String(p.name)))]
+  return [
+    ...coordinatePoints.value.map((p: any) => (cutNames.has(String(p?.name)) ? { ...p, notBeaconed: true } : p)),
+    ...cutPoints.filter(p => !have.has(p.name)).map(p => ({ ...p, notBeaconed: true })),
+  ]
+}
+
+/** Every point the stored cut creates, snapped to an existing name or not. */
+function cutPointsOfStoredCut(): Array<{ name: string; y: number; x: number }> {
+  return (deriveStoredSheets()?.[0]?.newPoints ?? []).map(p => ({ name: p.name, y: p.y, x: p.x }))
 }
 
 // SI 727 recommended sheet size
@@ -4135,6 +4143,22 @@ function exportBeaconsAsGeoJSON(): GeoJSON.FeatureCollection {
     })
   })
   
+  // The points a stored cut creates, snapped to existing names or not, are positions with nothing in the
+  // ground: flag them so the beacon description lists them as not beaconed, and carry any the project
+  // does not hold yet (a cut stored before its points were kept as calculated points).
+  for (const cp of cutPointsOfStoredCut()) {
+    const have = features.find(f => f.properties?.name === cp.name)
+    if (have) {
+      have.properties!.notBeaconed = true
+    } else {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [cp.y, cp.x] },
+        properties: { name: cp.name, type: 'beacon', description: 'Not Beaconed', status: 'C', notBeaconed: true, y: cp.y, x: cp.x },
+      })
+    }
+  }
+
   console.log(`[SurveyPlanMap] ✅ Exported ${features.length} land parcel beacon features`)
   console.log(`[SurveyPlanMap] 🎯 Matched ${seenNames.size} unique beacon names to parcel vertices`)
   if (duplicates.length > 0) {
@@ -4692,7 +4716,7 @@ async function generatePlanDocuments() {
     config.value.planType === 'general-undeveloped' ||
     config.value.planType === 'general-developed'
   if (requiresOutsideFigure && !outsideFigureData.value) {
-    notifyWarning('Designate a parcel as "Outside Figure" and run Compute Area & Consistency before generating a General Plan.', { title: "Can't generate yet: Outside Figure data required" })
+    notifyWarning(outsideFigureMissingReason(), { title: "Can't generate yet: Outside Figure data required" })
     return
   }
 
@@ -6323,6 +6347,37 @@ function decimalToDMS(decimal: number | undefined, distance: number = 0): string
   return `${degrees}°${minutes.toString().padStart(2, '0')}'${seconds.toString().padStart(2, '0')}"`
 }
 
+/**
+ * Why there is no Outside Figure data, said precisely: the message used to be the same whether the
+ * project had no Outside Figure, its parcels or coordinate points had not loaded, or the figure had not
+ * been computed, and only the first is something the surveyor can fix by designating a parcel.
+ */
+function outsideFigureMissingReason(): string {
+  const project = props.projectId ? `project ${props.projectId}` : 'no project'
+  if (!props.projectId) return 'No project is open on this page. Reopen the plan from the project.'
+  if (parcels.value.length === 0) {
+    return `No parcels are loaded for ${project}. Reload the page; if it persists, the parcels did not load (see the console).`
+  }
+  if (!coordinatePoints.value || coordinatePoints.value.length === 0) {
+    return `No coordinate points are loaded for ${project}. Reload the page; if it persists, the points did not load (see the console).`
+  }
+  const figure = parcels.value.find((p: any) =>
+    p.designation?.toLowerCase().includes('outside figure') ||
+    p.stand?.toLowerCase().includes('outside figure') ||
+    p.metadata?.isOutsideFigure === true)
+  if (!figure) {
+    return `None of the ${parcels.value.length} parcels of ${project} is designated "Outside Figure". Designate one, then run Compute Area & Consistency.`
+  }
+  const edges = figure.metadata?.residuals?.edges?.length ?? 0
+  const ring = figure.geom?.coordinates?.[0]?.length
+  const verts = ring ? ring - 1 : 0
+  const detail = `stored sides: ${edges}, outline vertices: ${verts}, geometry: ${figure.geom ? 'present' : 'missing'}`
+  if (edges > 0 && verts > 0 && edges !== verts) {
+    return `The Outside Figure of ${project} is out of date (${detail}). Run Compute Area & Consistency again, then generate the General Plan.`
+  }
+  return `The Outside Figure of ${project} could not be read (${detail}). Run Compute Area & Consistency, then generate the General Plan.`
+}
+
 // ⭐ Outside Figure Data - Computed property for traverse table
 // ⭐ SINGLE SOURCE OF TRUTH: Uses metadata.residuals.edges from Area/Consistency computation
 // This ensures Vue, PDF, and Area/Consistency all show IDENTICAL data
@@ -6491,9 +6546,9 @@ const outsideFigureData = computed(() => {
         console.log(`[SurveyPlanMap] 🧭 Computed direction for ${fromName}-${toName}: ${direction}`)
       }
       
-      // Get coordinates for the "to" point (end of edge)
-      const toY = edge.to?.y ?? 0
-      const toX = edge.to?.x ?? 0
+      // The row names its START point, so it carries that point's own coordinates
+      const fromY = edge.from?.y ?? 0
+      const fromX = edge.from?.x ?? 0
       
       const side = `${fromName}-${toName}`
       

@@ -367,6 +367,21 @@ describe('classifyBeaconGroups — SI 727 beacon description grouping', () => {
     ])
   })
 
+  test('flagged and calculated points are "Not beaconed" whatever their names', () => {
+    const fc = {
+      type: 'FeatureCollection',
+      features: [
+        ...['12A', '13B', '14C', '15D'].map((name) => ({ properties: { name } })),
+        { properties: { name: 'CP1', notBeaconed: true } },           // a cut point that landed on CP1
+        { properties: { name: 'CP3', status: 'C', description: 'Not Beaconed - figure cut' } },
+        { properties: { name: 'C7', description: 'Not Beaconed' } },
+      ],
+    }
+    const groups = classifyBeaconGroups(fc)
+    expect(groups[0].description).toBe('Not beaconed')
+    expect(groups[0].points.split(', ').sort()).toEqual(['C7', 'CP1', 'CP3'])
+  })
+
   test('"Not beaconed" (M-series) sorts first, "Others" last', () => {
     const groups = classifyBeaconGroups(beaconsFC('M5', 'M6', 'REMA', 'SCENIC', '12A', '13B', '14C'))
     expect(groups.map(g => g.description)).toEqual([

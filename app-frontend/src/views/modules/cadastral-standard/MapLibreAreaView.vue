@@ -1030,7 +1030,7 @@ import { newDraft, addVertex, undoVertex, clearDraft, type CutDraft } from '../.
 import { readCuts, writeCuts, type StoredCut } from '../../../utils/cutStorage';
 import { buildSheetPayloads } from '../../../utils/sheetPayloads';
 import { shoelaceAreaYX } from '../../../utils/registryGeometry';
-import { splitFigure, splitFigureMultiple } from '../../../../../app-shared/figureSplit';
+import { splitFigure, splitFigureMultiple, resolveEndpointToward } from '../../../../../app-shared/figureSplit';
 import { areaCompute, type AreaComputeResponse } from '../../../services/compute';
 import { asBaseMapParcel, parcelFromBaseRecord } from '../../../utils/surveyParcels';
 import { useAreaCompliance, type AreaType, type Parcel } from '../../../composables/useAreaCompliance';
@@ -3203,6 +3203,25 @@ async function initializeMapOnce() {
       }
     });
 
+    map.addLayer({
+      id: 'cut-vertices-label',
+      type: 'symbol',
+      source: 'cut-vertices',
+      layout: {
+        'text-field': ['coalesce', ['get', 'name'], ''],
+        'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+        'text-size': 13,
+        'text-offset': [0, -1.1],
+        'text-anchor': 'bottom',
+        'text-allow-overlap': true
+      },
+      paint: {
+        'text-color': '#4c1d95',
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 2
+      }
+    });
+
     map.addSource('cut-line', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] }
@@ -3425,7 +3444,7 @@ async function initializeMapOnce() {
     // vertex markers -- those must stay topmost because they are dragged. The
     // order of the moves is what keeps the stack's own order sensible: rubber
     // band, cut line, its vertices, then the sheet labels on top of them.
-    for (const id of ['cut-rubber-path', 'cut-line-path', 'cut-vertices-circle', 'split-sheet-labels-symbol', 'cut-snap-preview-circle']) {
+    for (const id of ['cut-rubber-path', 'cut-line-path', 'cut-vertices-circle', 'cut-vertices-label', 'split-sheet-labels-symbol', 'cut-snap-preview-circle']) {
       map.moveLayer(id, 'vertices-circle');
     }
 
@@ -4689,7 +4708,29 @@ function paintStoredCut() {
         : { type: 'FeatureCollection', features: [] }
     );
   }
+  paintStoredCutPoints();
   paintStoredSheetLabels();
+}
+
+/**
+ * The points the stored cut creates, each with its name, as dots and labels on the map. The draft's own dots
+ * stay in the source after a cut is finished, and showed a cut that had since been edited or deleted: this
+ * replaces them with what the stored cut now derives.
+ */
+function paintStoredCutPoints() {
+  if (!cutVerticesSource || isSplitting.value) return;
+  const rows = cutPointRows.value;
+  const wgs84 = rows.length
+    ? capeLoArrayToWGS84(rows.map((p, k) => ({ id: String(k), y: p.y, x: p.x })), splitLoZone())
+    : [];
+  cutVerticesSource.setData({
+    type: 'FeatureCollection',
+    features: wgs84.map((w, k) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [w.lng, w.lat] },
+      properties: { name: rows[k].name, snapped: rows[k].existing === true },
+    })),
+  });
 }
 
 /** Paint the cut's parts: each part as its own coloured region, with its sheet
@@ -4756,6 +4797,72 @@ function clearStoredCutPaint() {
   if (storedLines) storedLines.setData({ type: 'FeatureCollection', features: [] });
 }
 
+// ── The cut's points as calculated points ─────────────────────────────────────
+// A point a cut creates (where it meets the figure, a bend in it) has a position and nothing in the ground:
+// a calculated, not-beaconed point. It is kept with the project's calculated points (coordinate_points and
+// the workflow's adjusted coordinates, status C), so the Coordinate List, the Calculations and the beacon
+// descriptions state it the way they state any other. The ones this adds are recognised by their
+// description, so a changed or deleted cut takes exactly its own points away again.
+const CUT_POINT_DESCRIPTION = 'Not Beaconed - figure cut';
+const isCutPointEntry = (p: any) => String(p?.description ?? '').startsWith(CUT_POINT_DESCRIPTION);
+
+async function syncCutPointsToCalculations() {
+  const projectId = workflowState?.projectInfo?.projectId;
+  if (!projectId) return;
+  const desired = storedCutsArray.value.length === 0
+    ? []
+    : cutPointRows.value.filter(p => p.existing !== true);
+  const current: any[] = Array.isArray(workflowState.adjustedCoordinates) ? workflowState.adjustedCoordinates : [];
+  const managed = current.filter(isCutPointEntry);
+  const nameOf = (p: any) => String(p.pointId ?? p.id ?? p.name ?? '');
+  const same = (a: any, b: any) => normalizeBeaconName(nameOf(a)) === normalizeBeaconName(String(b.name))
+    && Math.abs(Number(a.y) - b.y) < 0.005 && Math.abs(Number(a.x) - b.x) < 0.005;
+
+  const toRemove = managed.filter(m => !desired.some(d => same(m, d)));
+  const toAdd = desired.filter(d => !managed.some(m => same(m, d)));
+  if (toRemove.length === 0 && toAdd.length === 0) return;
+
+  // Names that belong to something else are not ours to overwrite.
+  const taken = new Set(current.filter(p => !isCutPointEntry(p)).map(p => normalizeBeaconName(nameOf(p))));
+  const addable = toAdd.filter(d => {
+    if (taken.has(normalizeBeaconName(d.name))) {
+      console.warn(`[CutPoints] "${d.name}" is already a point of the project; not added as a calculated point`);
+      return false;
+    }
+    return true;
+  });
+
+  for (const m of toRemove) {
+    try { await deleteCoordinatePointByName(projectId, nameOf(m)); }
+    catch (err: any) { console.warn(`[CutPoints] "${nameOf(m)}" not deleted from coordinate_points:`, err?.response?.status ?? err?.message); }
+  }
+  for (const d of addable) {
+    try {
+      await createCoordinatePoint({ project_id: projectId, name: d.name, y: d.y, x: d.x, status: 'C', description: CUT_POINT_DESCRIPTION });
+    } catch (err: any) { console.warn(`[CutPoints] "${d.name}" not saved to coordinate_points:`, err?.response?.data?.error ?? err?.message); }
+  }
+
+  workflowState.adjustedCoordinates = [
+    ...current.filter(p => !toRemove.includes(p)),
+    ...addable.map(d => ({ id: d.name, pointId: d.name, name: d.name, y: d.y, x: d.x, status: 'C', description: CUT_POINT_DESCRIPTION })),
+  ];
+  try {
+    await api.patch(`/survey-projects/${projectId}/workflow`, {
+      step: 'calculations-part1',
+      action: 'update',
+      metadata: {
+        adjusted_coordinates: workflowState.adjustedCoordinates,
+        cut_points_synced: new Date().toISOString(),
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (e) {
+    console.warn('[CutPoints] Could not persist the calculated cut points to the workflow state:', e);
+  }
+  handleRenameComplete([]);
+  console.log(`[CutPoints] Calculated points: +${addable.length} -${toRemove.length}`);
+}
+
 // ── Naming the points a cut creates ───────────────────────────────────────────
 // A cut's points (where it meets the outside figure, and any bend in it) are named C1, C2, ... unless the
 // surveyor names them. The names are stored with the cut, by coordinate, and the sheets are re-derived
@@ -4792,23 +4899,45 @@ function resetCutName(i: number) {
 }
 
 /**
- * Delete a cut point. A bend in a cut is removed from the line (the cut must still divide the figure
- * cleanly); an end of a cut is where it meets the figure, so deleting it deletes that cut.
+ * Delete a cut point. A bend in the cut is removed from the line. A point where the cut meets the figure
+ * retracts the cut one vertex: the cut then runs on to the figure from the vertex before it, which makes a
+ * NEW point on the boundary (named automatically, and offered for naming). Either way the cut must still
+ * divide the figure cleanly. A cut of only two vertices has nothing to retract to, so deleting an end of
+ * it deletes the cut.
  */
 async function deleteCutPoint(i: number) {
   const d = cutNameDrafts.value[i];
   if (!d) return;
   const near = (v: { y: number; x: number }) => Math.abs(v.y - d.y) < 0.005 && Math.abs(v.x - d.x) < 0.005;
-  const idx = storedCutsArray.value.findIndex(c => c.vertices.some(near));
-  if (idx < 0) return;
+  const ring = splitFigureRing.value;
+  // Where a cut's end really lands on the figure: the stored end vertex is resolved onto the boundary when
+  // the sheets are derived, so the point shown here need not equal the stored vertex.
+  const landing = (c: StoredCut, atStart: boolean) => {
+    const n = c.vertices.length;
+    const p = atStart ? c.vertices[0] : c.vertices[n - 1];
+    const toward = atStart ? c.vertices[1] : c.vertices[n - 2];
+    return resolveEndpointToward(ring, p, toward).point;
+  };
+  let idx = -1;
+  let at = -1;
+  storedCutsArray.value.forEach((c, k) => {
+    if (idx >= 0) return;
+    const exact = c.vertices.findIndex(near);
+    if (exact >= 0) { idx = k; at = exact; return; }
+    if (near(landing(c, true))) { idx = k; at = 0; return; }
+    if (near(landing(c, false))) { idx = k; at = c.vertices.length - 1; }
+  });
+  if (idx < 0) {
+    notifyWarning(`Could not find ${d.name} in the stored cut.`);
+    return;
+  }
   const cut = storedCutsArray.value[idx];
-  const at = cut.vertices.findIndex(near);
   const isEnd = at === 0 || at === cut.vertices.length - 1;
   let next: StoredCut[];
-  if (isEnd) {
+  if (isEnd && cut.vertices.length <= 2) {
     const ok = await confirmDialog({
       title: 'Delete this cut?',
-      message: `${d.name} is where the cut meets the figure, so deleting it removes the whole cut.`,
+      message: `${d.name} is where the cut meets the figure and the cut has no other point to retract to, so deleting it removes the whole cut.`,
       confirmLabel: 'Delete cut',
       tone: 'danger',
     });
@@ -4817,7 +4946,7 @@ async function deleteCutPoint(i: number) {
   } else {
     const vertices = cut.vertices.filter((_, k) => k !== at);
     const outcome = splitFigureMultiple({
-      ring: splitFigureRing.value,
+      ring,
       polylines: storedCutsArray.value.map((c, k) => (k === idx ? vertices : c.vertices)),
       stands: splitStands.value,
     });
@@ -4833,6 +4962,7 @@ async function deleteCutPoint(i: number) {
   storedCut.value = next[next.length - 1] ?? null;
   await saveStoredCut(storedCut.value);
   paintStoredCut();
+  await syncCutPointsToCalculations();
   if (next.length === 0) { showCutNames.value = false; return; }
   openCutNames();
 }
@@ -4865,6 +4995,7 @@ async function saveCutNames() {
   showCutNames.value = false;
   await saveStoredCut(storedCut.value);
   paintStoredCut();
+  await syncCutPointsToCalculations();
 }
 
 /** Remove the stored cut: clears the Overlay so the plan renders one sheet again. */
@@ -4874,6 +5005,7 @@ async function deleteStoredCut() {
   storedCutsArray.value = [];
   await saveStoredCut(null);
   paintStoredCut();
+  await syncCutPointsToCalculations();
   console.log('[MapLibre] ✂️ Stored cut deleted');
 }
 
@@ -4980,6 +5112,7 @@ async function finishSplit() {
   storedCut.value = newCut;
   await saveStoredCut(newCut);
   paintStoredCut();
+  await syncCutPointsToCalculations();
   console.log('[MapLibre] ✂️ Split-figure finished and persisted');
   // Offer the names straight away: the points are what the sheets are tied together by.
   openCutNames();
@@ -5748,7 +5881,9 @@ async function loadParcelsFromDatabase() {
       console.log(`[MapLibre] ✂️ Restored ${storedCutsArray.value.length} stored cut(s) from Outside Figure metadata`);
     }
     paintStoredCut();
-    
+    // A cut stored before its points were kept as calculated points gets them now (a no-op when they are there).
+    if (restored.length > 0) void nextTick().then(() => syncCutPointsToCalculations());
+
   } catch (error) {
     console.error('[MapLibre] ❌ Failed to load parcels from database:', error);
   }

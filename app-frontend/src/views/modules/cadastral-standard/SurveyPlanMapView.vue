@@ -493,6 +493,7 @@ import {
 import { useSurveyors } from '@/composables/useSurveyors'
 import { gpOfficeCode } from '../../../../../app-shared/si727SheetSizes.js'
 import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
+import { isCalculatedPoint } from '@/utils/calculatedPoint'
 import { deriveStoredSheets as deriveStoredSheetsFor, findOutsideFigureParcel, outsideFigureCapeLoRing } from './storedSheets'
 import { buildSheetSubjects, adjoiningSubjectsFor, type SheetSubject } from './sheetSubjects'
 import { paperSizeOptionsFor } from './paperSizeOptions'
@@ -941,8 +942,22 @@ const extentInfo = computed(() => {
 
 // Computed beacon description groups to prevent infinite loop
 const beaconDescriptionGroups = computed(() => {
-  return formatBeaconDescriptionGroups(coordinatePoints.value)
+  return formatBeaconDescriptionGroups(beaconDescriptionPoints())
 })
+
+/**
+ * The points the beacon descriptions classify: the project's coordinate points, plus the points a stored
+ * cut creates that are not already named points (a cut point that landed on CP1 is CP1, described as
+ * CP1). Those are positions with nothing in the ground, so they are described as not beaconed.
+ */
+function beaconDescriptionPoints(): any[] {
+  const cutPoints = (deriveStoredSheets()?.[0]?.newPoints ?? [])
+    .filter(p => !p.existing)
+    .map(p => ({ name: p.name, y: p.y, x: p.x, notBeaconed: true }))
+  // The cut's points are normally in the coordinate points already (kept there as calculated points).
+  const have = new Set(coordinatePoints.value.map((p: any) => String(p?.name ?? '')))
+  return [...coordinatePoints.value, ...cutPoints.filter(p => !have.has(String(p.name)))]
+}
 
 // SI 727 recommended sheet size
 const recommendedSheetSize = computed(() => {
@@ -4778,7 +4793,7 @@ async function generatePlanDocuments() {
               id: p.id, stand: p.stand, area_m2: registryAreas.value[p.id] ?? (p.area_m2 || 0), description: p.description,
             })),
             outsideFigureData: outsideFigureData.value || undefined,
-            beaconGroups: formatBeaconDescriptionGroups(coordinatePoints.value),
+            beaconGroups: formatBeaconDescriptionGroups(beaconDescriptionPoints()),
             scale: usedScale || intelligentPreview.value?.scale?.label || config.value.scale || '1:1000',
             sheetSize: result.usedSheetSize || intelligentPreview.value?.sheetSize || 'SI727_1000x800',
             orientation: 'landscape',
@@ -6169,7 +6184,10 @@ function formatBeaconDescriptionGroups(points: any[]): Array<{ points: string; d
     // Single letter + number (P2, Z1, etc.) or multi-letter codes (ZE, ZD) = Special markers
     // Numeric with letter suffix (2283A, 2284B) = Standard concrete beacons
     
-    if (name.match(/^M\d+/i)) {
+    if (point.notBeaconed === true || isCalculatedPoint(point)) {
+      // A point a figure cut creates: a position, not a beacon
+      beaconType = 'Not beaconed'
+    } else if (name.match(/^M\d+/i)) {
       // M5, M6, M7, M8, M9 = Not beaconed
       beaconType = 'Not beaconed'
     } else if (name.match(/^[A-Z]\d+$/i) || name.match(/^[A-Z]{2,}$/i)) {
@@ -6486,8 +6504,8 @@ const outsideFigureData = computed(() => {
         distance,
         direction,
         pointId: fromName,
-        y: toY,
-        x: toX
+        y: fromY,
+        x: fromX
       }
     })
     
@@ -6577,8 +6595,8 @@ const outsideFigureData = computed(() => {
       distance,
       direction,
       pointId: fromName,
-      y: toY,
-      x: toX
+      y: fromY,
+      x: fromX
     }
   })
   

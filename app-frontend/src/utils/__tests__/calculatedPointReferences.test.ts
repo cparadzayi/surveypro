@@ -90,7 +90,7 @@ describe('a calculated point in the CO-ORDINATE LIST', () => {
 
     // fieldBookPage is "-" on this row -- nothing has paginated the field book
     // for it -- so the F. B cell falls back to "-" rather than inventing one.
-    expect(cells).toEqual(['116', 'C1', '+3.30', '+4.40', 'CALCULATED', '-', '-']);
+    expect(cells).toEqual(['116', 'C1', '+3.30', '+4.40', 'Not Beaconed', '-', '-']);
   });
 
   it('cites the field book page of its CALCULATED POINTS block in F. B', async () => {
@@ -102,7 +102,7 @@ describe('a calculated point in the CO-ORDINATE LIST', () => {
       'C1',
     );
 
-    expect(cells).toEqual(['116', 'C1', '+3.30', '+4.40', 'CALCULATED', '-', 'E12']);
+    expect(cells).toEqual(['116', 'C1', '+3.30', '+4.40', 'Not Beaconed', '-', 'E12']);
   });
 
   it('still cites the Calculations page it was derived on', async () => {

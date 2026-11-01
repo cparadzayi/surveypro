@@ -247,7 +247,8 @@ export function buildSheetPayloads(input: BuildSheetPayloadsInput): BuildSheetPa
   const existing = new Set<number>()
   const usedUpper = new Set(augmentedTaken.map((n) => String(n ?? '').trim().toUpperCase()).filter(Boolean))
   split.newPoints.forEach((p: LoPoint, i: number) => {
-    const known = (input.knownPoints ?? []).find((k) => Math.abs(k.y - p.y) < 0.005 && Math.abs(k.x - p.x) < 0.005)
+    // Within 1 cm: the cut's own point is rounded to 2 dp and a surveyed point may carry 3.
+    const known = (input.knownPoints ?? []).find((k) => Math.hypot(k.y - p.y, k.x - p.x) < 0.01)
     if (known?.id) {
       chosen.set(i, String(known.id))
       existing.add(i)

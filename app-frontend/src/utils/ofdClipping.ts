@@ -92,8 +92,8 @@ export function buildEdgeTable(verts: OfdVertex[]): {
       direction: toDMS(bearingDeg(from, to)),
       pointId: from.pointId,
       fromType: from.type,
-      y: to.y,
-      x: to.x,
+      y: from.y,
+      x: from.x,
     }
   })
 

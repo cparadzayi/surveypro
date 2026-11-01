@@ -26,7 +26,9 @@ export function knownPointsFor(parcels: any[], coordinatePoints: any[] = []): Ar
   const shaped = parcels
     .map((p: any) => ({ id: p.id, designation: p.designation || p.stand, points: (p.metadata?.cape_lo_points as any[]) || [] }))
     .filter((p) => p.points.length >= 3)
-  return buildSnapIndex(coordinatePoints, shaped).candidates.map((c: any) => ({ y: c.y, x: c.x, id: String(c.id) }))
+  // A coordinate point is named `name`; the snap index reads `id`.
+  const named = coordinatePoints.map((p: any) => ({ ...p, id: p?.id ?? p?.name }))
+  return buildSnapIndex(named, shaped).candidates.map((c: any) => ({ y: c.y, x: c.x, id: String(c.id) }))
 }
 
 /** undefined when there is no stored cut, or it no longer splits cleanly (the plan

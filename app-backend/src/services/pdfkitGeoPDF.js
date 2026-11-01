@@ -10034,8 +10034,8 @@ function drawOutsideFigureData(
     // Cape Lo 31 convention: Y = Westing (~97K), X = Southing (~2.2M)
     // Frontend sends edge.y = Westing, edge.x = Southing (correct property names)
     // Display in table: Y column = Westing, X column = Southing
-    const edgeY = edge.to?.y ?? edge.y; // Y column shows Westing values (~97K)
-    const edgeX = edge.to?.x ?? edge.x; // X column shows Southing values (~2.2M)
+    const edgeY = edge.from?.y ?? edge.y; // Y column shows Westing values (~97K)
+    const edgeX = edge.from?.x ?? edge.x; // X column shows Southing values (~2.2M)
 
     // Priority 1: Use edge.pointId from frontend (already matched to coordinate points)
     if (edge.pointId) {

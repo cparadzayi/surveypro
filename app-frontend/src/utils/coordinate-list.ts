@@ -184,6 +184,14 @@ function isCalculatedRow(
 }
 
 /**
+ * A calculated point is headed CALCULATED POINTS in the list and its description reads "Not Beaconed", the
+ * same words as the plan's beacon descriptions, whatever longer wording the stored description carries.
+ */
+export function displayDescription(point: Pick<AdjustedCoordinate, 'status' | 'description'>): string {
+  return isCalculatedRow(point) ? 'Not Beaconed' : (point.description || '')
+}
+
+/**
  * The F/P and F. B cells for one row.
  *
  * Both answer whether the position was observed in the field, and the F/P
@@ -914,7 +922,7 @@ export class CoordinateListGenerator {
       // its nominal edge.
       const descLimit = COL.fpRight - COL.description - 5;
       pdf.text(
-        fitToWidth(pdf, point.description, descLimit),
+        fitToWidth(pdf, displayDescription(point), descLimit),
         this.options.marginLeft + COL.description,
         yPos,
       );

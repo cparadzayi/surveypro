@@ -70,7 +70,7 @@
             />
           </template>
         </div>
-        <p v-if="g.note" class="rbn-note">{{ g.note }}</p>
+        <p v-if="g.note" class="rbn-note" :title="g.note">{{ g.note }}</p>
         <p class="rbn-group-label">{{ g.label }}</p>
       </div>
     </div>
@@ -338,6 +338,7 @@ watch(tabs, list => {
 
 .rbn-group-label {
   margin-top: 2px;
+  white-space: nowrap;
   font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -349,6 +350,12 @@ watch(tabs, list => {
 .rbn-note {
   max-width: 16rem;
   margin: 2px 0 0;
+  /* A long note is clamped to two lines (its full text is the tooltip) so one group cannot make the whole ribbon tall. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   font-size: 0.6rem;
   line-height: 1.25;
   color: #6b7280;

@@ -6,7 +6,7 @@
     <!-- Main Column -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- Header (only show when authenticated) -->
-      <header v-if="isAuthed" class="bg-white border-b h-11 px-4 flex items-center gap-4 sticky top-0 z-40">
+      <header v-if="isAuthed" ref="headerEl" class="bg-white border-b min-h-11 px-4 flex items-center gap-4 sticky top-0 z-40">
         <button
           class="md:hidden p-2 rounded hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           @click="toggleNav"
@@ -119,7 +119,7 @@
       <!-- Global ribbon: available on every screen, so navigation, project
            context and help never depend on where the user happens to be.
            Collapsible, like the QGIS/ArcGIS ribbon minimise control. -->
-      <div v-if="isAuthed" class="sticky top-11 z-30">
+      <div v-if="isAuthed" class="sticky z-30" :style="{ top: headerHeight + 'px' }">
         <Ribbon
           :tabs="globalRibbonTabs"
           :initial-tab="globalInitialTab"
@@ -146,7 +146,7 @@ import { RouterLink, RouterView } from 'vue-router'
 import { useSignOut } from './composables/useSignOut'
 import { useProjectSelectionStore } from './stores/projectSelection'
 import { storeToRefs } from 'pinia'
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { useAuthStore } from './stores/auth'
 import { useGlobalRibbon } from './composables/useGlobalRibbon'
 // @ts-ignore - SFC default export provided via shim
@@ -185,6 +185,25 @@ watch(() => globalRibbon.currentModuleSlug.value, slug => {
 const handleLogout = useSignOut()
 
 // Nav state
+// The ribbon sticks directly under the header, so it needs the header's real height: a fixed offset
+// left the ribbon's tab strip and the top of its buttons hidden behind a header taller than that
+// (larger text, a zoomed page, a wrapped nav).
+const headerEl = ref<HTMLElement | null>(null)
+const headerHeight = ref(44)
+let headerWatch: ResizeObserver | null = null
+watch(headerEl, el => {
+  headerWatch?.disconnect()
+  headerWatch = null
+  if (!el) return
+  const measure = () => { headerHeight.value = Math.ceil(el.getBoundingClientRect().height) }
+  measure()
+  if (typeof ResizeObserver !== 'undefined') {
+    headerWatch = new ResizeObserver(measure)
+    headerWatch.observe(el)
+  }
+})
+onBeforeUnmount(() => headerWatch?.disconnect())
+
 const navOpen = ref(false)
 function toggleNav() { navOpen.value = !navOpen.value }
 

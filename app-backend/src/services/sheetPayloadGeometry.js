@@ -210,12 +210,31 @@ export function sheetMetadata(metadata, sheet, sheets = null) {
 function withSheetAdjoining(metadata, sheet) {
   if (!Array.isArray(metadata?.adjoiningSubjects)) return metadata;
   const n = sheet?.sheetNumber;
+  const sheetRing = closeLoRing(sheet?.ring).map((p) => [p.y, p.x]);
   return {
     ...metadata,
-    adjoiningSubjects: metadata.adjoiningSubjects.filter(
-      (s) => s?.sheetNumber == null || s.sheetNumber === n,
-    ),
+    adjoiningSubjects: metadata.adjoiningSubjects.filter((s) => {
+      if (s?.sheetNumber != null) return s.sheetNumber === n;
+      // A subject with no sheet number (a stand) belongs to the sheet whose figure holds it: a road or
+      // abutter tagged on a stand of sheet 2 must not be drawn on sheet 1. Without a ring to judge by,
+      // the subject goes to every sheet, as before.
+      return sheetRing.length < 4 || ringCentroidInside(s?.ring, sheetRing);
+    }),
   };
+}
+
+/** Is the vertex mean of an open [Y, X] ring inside the closed [Y, X] polygon (even-odd)? */
+function ringCentroidInside(ring, polygon) {
+  if (!Array.isArray(ring) || ring.length === 0) return true;
+  const cy = ring.reduce((a, p) => a + p[0], 0) / ring.length;
+  const cx = ring.reduce((a, p) => a + p[1], 0) / ring.length;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [yi, xi] = polygon[i];
+    const [yj, xj] = polygon[j];
+    if ((xi > cx) !== (xj > cx) && cy < ((yj - yi) * (cx - xi)) / (xj - xi) + yi) inside = !inside;
+  }
+  return inside;
 }
 
 function sheetServitudeMetadata(metadata, sheet, sheets = null) {

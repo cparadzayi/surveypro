@@ -191,6 +191,19 @@ describe('sheetMetadata adjoining subjects', () => {
     expect(ids(1)).toEqual(['stand', 'of#sheet1'])
     expect(ids(2)).toEqual(['stand', 'of#sheet2'])
   })
+  test('a stand\'s roads are drawn only on the sheet whose figure holds the stand', () => {
+    const square = (y0, x0) => [[y0, x0], [y0 + 10, x0], [y0 + 10, x0 + 10], [y0, x0 + 10]]
+    const ringOf = (y0) => [{ y: y0, x: 0 }, { y: y0 + 100, x: 0 }, { y: y0 + 100, x: 100 }, { y: y0, x: 100 }]
+    const two = {
+      adjoiningSubjects: [
+        { subjectId: 'standOnOne', ring: square(20, 20), annotations: [{ side: 'AB', role: 'road' }] },
+        { subjectId: 'standOnTwo', ring: square(220, 20), annotations: [{ side: 'AB', role: 'road' }] },
+      ],
+    }
+    const ids = (n, y0) => sheetMetadata(two, { sheetNumber: n, ring: ringOf(y0) }).adjoiningSubjects.map((s) => s.subjectId)
+    expect(ids(1, 0)).toEqual(['standOnOne'])
+    expect(ids(2, 200)).toEqual(['standOnTwo'])
+  })
   test('does not mutate the shared metadata', () => {
     sheetMetadata(plan, { sheetNumber: 1 })
     expect(plan.adjoiningSubjects).toHaveLength(3)

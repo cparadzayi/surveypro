@@ -57,6 +57,18 @@ describe('the General Plan DXF replicates the General Plan PDF', () => {
     expect(firstDrawn).toBe(hatch)
   })
 
+  test('text is set in the PDF own faces: Arial regular, bold and italic styles, one per PDF font', () => {
+    const styles = new Map()
+    ps.forEach(([c, v], i) => { if (c === '0' && v === 'STYLE') { const name = ps.slice(i, i + 14).find(([k]) => k === '2')?.[1]; const file = ps.slice(i, i + 14).find(([k]) => k === '3')?.[1]; styles.set(name, file) } })
+    expect(styles.get('PDF_Helvetica')).toBe('arial.ttf')
+    expect(styles.get('PDF_Helvetica_Bold')).toBe('arialbd.ttf')
+    expect(styles.get('PDF_Helvetica_Oblique')).toBe('ariali.ttf')
+    const used = new Set(ps.filter(([c], i) => c === '7' && ps[i - 1]).map(([, v]) => v))
+    for (const fnt of new Set(render.ops.filter((o) => o.type === 'text').map((o) => o.font))) {
+      expect(used.has('PDF_' + fnt.replace('-', '_'))).toBe(true)
+    }
+  })
+
   test('the plan scale is the PDF\'s: a point of paper is scale x 0.352778 mm of ground', () => {
     const denom = Number(String(render.scale).split(':')[1])
     const perPt = render.ground.a.x - render.ground.b.x

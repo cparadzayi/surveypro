@@ -15,6 +15,14 @@ import { createDxfWriterR2000 } from './dxfWriterR2000.js'
  *  height, a PDF font size is the em. */
 export const CAP_HEIGHT = 0.718
 
+/** The PDF's four Helvetica faces and the Arial faces that carry them in the DXF (same letter widths). */
+export const PDF_FONT_STYLES = {
+  'Helvetica': { name: 'PDF_Helvetica', file: 'arial.ttf', face: 'Arial' },
+  'Helvetica-Bold': { name: 'PDF_Helvetica_Bold', file: 'arialbd.ttf', face: 'Arial', bold: true },
+  'Helvetica-Oblique': { name: 'PDF_Helvetica_Oblique', file: 'ariali.ttf', face: 'Arial', italic: true },
+  'Helvetica-BoldOblique': { name: 'PDF_Helvetica_BoldOblique', file: 'arialbi.ttf', face: 'Arial', bold: true, italic: true },
+}
+
 export const DIAGRAM_LAYERS = [
   { name: 'PAPER', color: 255 },
   { name: 'SHEET_EDGE', color: 8 },
@@ -44,7 +52,8 @@ const norm360 = (a) => ((a % 360) + 360) % 360
  * @returns {{ dxfBuffer: Buffer, stats: object }}
  */
 export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS } = {}) {
-  const w = version === 'r2000' ? createDxfWriterR2000(layers) : createDxfWriter(layers)
+  const r2000 = version === 'r2000'
+  const w = r2000 ? createDxfWriterR2000(layers, { styles: ['Standard', ...Object.values(PDF_FONT_STYLES)] }) : createDxfWriter(layers)
   // Release 12 takes the palette index; Release 2000 and later take the exact RGB too.
   const colorOf = (hex) => ({ aci: nearestAci(hex), rgb: hex })
   const known = new Set(layers.map((l) => l.name))
@@ -75,8 +84,12 @@ export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS
     const layer = layerOf(op)
     if (op.type === 'text') {
       if (!op.text.trim()) continue
+      // Release 2000 text is set in the PDF's own face: AutoCAD sizes a TrueType face by its capital
+      // height (measured), and Arial's letters are Helvetica's, so the width factor is 1 and the line is
+      // as long as the PDF's. Release 12 has no faces: the stroke font is squeezed to the PDF's width.
+      const face = r2000 ? (PDF_FONT_STYLES[op.font] ?? PDF_FONT_STYLES.Helvetica) : null
       const h = op.size * CAP_HEIGHT
-      const factor = op.width / (op.text.length * h)
+      const factor = face ? 1 : op.width / (op.text.length * h)
       const r = op.rotation * Math.PI / 180
       const align = op.box?.align === 'center' || op.box?.align === 'right' ? op.box.align : 'left'
       // The recorded x,y is the START of the baseline; a centred / right-aligned string is anchored
@@ -84,7 +97,7 @@ export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS
       const along = align === 'center' ? op.width / 2 : align === 'right' ? op.width : 0
       const a = g(op.x + Math.cos(r) * along, op.y + Math.sin(r) * along)
       w.addText(layer, a.x, a.y, op.text, len(h), norm360(-op.rotation), {
-        align, widthFactor: factor, color: colorOf(op.color),
+        align, widthFactor: factor, color: colorOf(op.color), ...(face ? { style: face.name } : {}),
       })
       stats.text++
     } else if (op.type === 'stroke') {

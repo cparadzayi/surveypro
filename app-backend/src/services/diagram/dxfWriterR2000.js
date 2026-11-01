@@ -160,8 +160,18 @@ export function createDxfWriterR2000(layers, { styles = ['Standard'] } = {}) {
     d += table('LAYER', H.layerTable, allLayers.length, allLayers.map((l) => rec('LAYER', handle(), H.layerTable, 'AcDbLayerTableRecord',
       p(2, l.name) + p(70, '0') + p(62, String(l.color)) + p(6, 'Continuous') + p(390, H.plotStyleNormal))).join(''))
 
-    d += table('STYLE', H.styleTable, styles.length, styles.map((name) => rec('STYLE', handle(), H.styleTable, 'AcDbTextStyleTableRecord',
-      p(2, name) + p(70, '0') + p(40, '0.0') + p(41, '0.55') + p(50, '0.0') + p(71, '0') + p(42, '2.5') + p(3, 'txt') + p(4, ''))).join(''))
+    // A style is a name (the stroke font txt) or { name, file, face, bold, italic }: a TrueType face, which
+    // is how the plan's own Helvetica is carried (Arial has the same letter widths).
+    d += table('STYLE', H.styleTable, styles.length, styles.map((st) => {
+      if (typeof st === 'string') {
+        return rec('STYLE', handle(), H.styleTable, 'AcDbTextStyleTableRecord',
+          p(2, st) + p(70, '0') + p(40, '0.0') + p(41, '0.55') + p(50, '0.0') + p(71, '0') + p(42, '2.5') + p(3, 'txt') + p(4, ''))
+      }
+      const flags = (st.bold ? 0x2000000 : 0) | (st.italic ? 0x1000000 : 0)
+      return rec('STYLE', handle(), H.styleTable, 'AcDbTextStyleTableRecord',
+        p(2, st.name) + p(70, '0') + p(40, '0.0') + p(41, '1.0') + p(50, '0.0') + p(71, '0') + p(42, '2.5') + p(3, st.file) + p(4, '') +
+        p(1001, 'ACAD') + p(1000, st.face) + p(1071, String(flags)))
+    }).join(''))
     d += table('VIEW', H.viewTable, 0, '')
     d += table('UCS', H.ucsTable, 0, '')
     d += table('APPID', H.appidTable, 1, rec('APPID', handle(), H.appidTable, 'AcDbRegAppTableRecord', p(2, 'ACAD') + p(70, '0')))

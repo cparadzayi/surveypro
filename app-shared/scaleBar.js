@@ -37,8 +37,10 @@ export const SI727_SCALE_BAR = {
   leftSpanMm: 20,                   // 0 to the left end
   minorDivisions: 10,               // ten subdivisions, so each is 2 mm
   rightMarksMm: [20, 40],           // labelled marks right of 0
-  // The left end, its midpoint and 0 are labelled; the other graduations subdivide.
-  labelMidLeft: true,
+  // The left end and 0 are labelled; the midpoint stands as tall as a labelled mark but carries no
+  // figure (the surveyor's practice), and the other graduations subdivide.
+  midLeftMark: true,
+  labelMidLeft: false,
   // Labels are MAGNITUDES, not signed distances: what marks the left of 0 is the
   // graduation density (ten rules to the left, none to the right), not a minus sign.
   unsignedLabels: true,
@@ -117,7 +119,7 @@ export function scaleBarLayout(scale) {
   const verticals = [];
   for (let i = 0; i <= G.minorDivisions; i++) {
     const xMm = -G.leftSpanMm + i * stepMm;
-    const major = i === 0 || i === G.minorDivisions || (G.labelMidLeft && i === midIdx);
+    const major = i === 0 || i === G.minorDivisions || (G.midLeftMark && i === midIdx);
     const metres = i === G.minorDivisions ? 0 : -groundOf(Math.abs(xMm));
     verticals.push({
       metres,
@@ -126,7 +128,7 @@ export function scaleBarLayout(scale) {
       weightMm: major ? G.majorWeightMm : G.minorWeightMm,
       y0Mm: 0,
       y1Mm: major ? G.barHeightMm : G.barHeightMm * G.minorHeightFactor,
-      label: major ? labelFor(metres) : null,
+      label: major && (i !== midIdx || G.labelMidLeft) ? labelFor(metres) : null,
     });
   }
   for (const xMm of G.rightMarksMm) {

@@ -27,19 +27,19 @@ describe('scaleDenominatorOf', () => {
 });
 
 describe('the figures follow the scale (the Surveyor-General\'s comment)', () => {
-  test('1:1250 reads 25 | 12,5 | 0 | 25 | 50', () => {
-    expect(texts(scaleBarLayout(1250))).toEqual(['25', '12,5', '0', '25', '50']);
+  test('1:1250 reads 25 | 0 | 25 | 50 (the midpoint is a mark with no figure)', () => {
+    expect(texts(scaleBarLayout(1250))).toEqual(['25', '0', '25', '50']);
   });
 
-  test('1:1500 reads 30 | 15 | 0 | 30 | 60, as in the SG\'s own template', () => {
-    expect(texts(scaleBarLayout(1500))).toEqual(['30', '15', '0', '30', '60']);
+  test('1:1500 reads 30 | 0 | 30 | 60, as in the SG\'s own template', () => {
+    expect(texts(scaleBarLayout(1500))).toEqual(['30', '0', '30', '60']);
   });
 
   test.each([
-    [500, ['10', '5', '0', '10', '20']],
-    [1000, ['20', '10', '0', '20', '40']],
-    [2000, ['40', '20', '0', '40', '80']],
-    [2500, ['50', '25', '0', '50', '100']],
+    [500, ['10', '0', '10', '20']],
+    [1000, ['20', '0', '20', '40']],
+    [2000, ['40', '0', '40', '80']],
+    [2500, ['50', '0', '50', '100']],
   ])('1:%i', (d, expected) => {
     expect(texts(scaleBarLayout(d))).toEqual(expected);
   });
@@ -52,7 +52,7 @@ describe('the figures follow the scale (the Surveyor-General\'s comment)', () =>
 
   test('a graduation\'s ground value is on it, signed, for anything matching back by position', () => {
     const l = scaleBarLayout(1250);
-    expect(l.labels.map((t) => t.atMm)).toEqual([-25, -12.5, 0, 25, 50]);
+    expect(l.labels.map((t) => t.atMm)).toEqual([-25, 0, 25, 50]);
   });
 });
 
@@ -79,11 +79,12 @@ describe('the bar is a fixed object on the paper', () => {
     for (const d of [500, 1250, 2000, 2500, 5000]) expect(scaleBarLayout(d).warnings).toEqual([]);
   });
 
-  test('only the left end, its midpoint, 0 and the two right marks are labelled', () => {
+  test('the left end, 0 and the two right marks are labelled; the midpoint is a tall mark with no figure', () => {
     const l = scaleBarLayout(1250);
     expect(majorsOf(l).map((v) => v.xMm)).toEqual([-20, -10, 0, 20, 40]);
     expect(minorsOf(l).every((v) => v.label === null)).toBe(true);
-    expect(majorsOf(l).every((v) => v.label !== null)).toBe(true);
+    expect(majorsOf(l).filter((v) => v.label === null).map((v) => v.xMm)).toEqual([-10]);
+    expect(l.labels.map((t) => t.xMm)).toEqual([-20, 0, 20, 40]);
   });
 
   test('no alternating fill -- the primitive list is rules and text only', () => {
@@ -136,8 +137,8 @@ describe('legibility arithmetic -- the weights, not the gap, are the decision', 
 });
 
 describe('a scale whose figures are too long to fit is reported, not drawn badly', () => {
-  test('1:1125 -> "11,25" does not fit between 10 mm labels', () => {
-    expect(scaleBarLayout(1125).warnings.join(' ')).toMatch(/will touch/);
+  test('a scale whose figures run to 11 characters does not fit between the labels', () => {
+    expect(scaleBarLayout(1234567.891).warnings.join(' ')).toMatch(/will touch/);
   });
 });
 
@@ -146,7 +147,7 @@ describe('labels and the reserved slot', () => {
 
   test('labels sit above the tallest bar, centred on their rule', () => {
     for (const t of l.labels) expect(t.yMm).toBeGreaterThan(G.barHeightMm);
-    expect(l.labels.map((t) => t.xMm)).toEqual(majorsOf(l).map((v) => v.xMm));
+    expect(l.labels.map((t) => t.xMm)).toEqual(majorsOf(l).filter((v) => v.label !== null).map((v) => v.xMm));
     expect(l.labels.every((t) => t.align === 'center')).toBe(true);
   });
 

@@ -190,14 +190,14 @@ describe('generateDiagramDXF', () => {
     // The five labelled majors, in order left to right, as MAGNITUDES: the bar
     // prints 20 twice, once each side of 0, and never a minus sign.
     const labels = ents.filter((e) => e.type === 'TEXT').map((e) => e.text)
-    expect(labels).toEqual(expect.arrayContaining(['20', '10', '0', '40']))
+    expect(labels).toEqual(expect.arrayContaining(['20', '0', '40']))
     expect(labels).toContain('Metres')
     expect(labels.filter((l) => /^-/.test(l))).toEqual([])
     // "20" twice — the density of the ten minor rules to the left of 0 is what
     // marks that side, not the sign of the number.
     expect(labels.filter((l) => l === '20')).toHaveLength(2)
     // …and the layout they came from is the shared one, unsigned.
-    expect(L.labels.map((t) => t.text)).toEqual(['20', '10', '0', '20', '40'])
+    expect(L.labels.map((t) => t.text)).toEqual(['20', '0', '20', '40'])
   })
 
   test('renders the statement block', async () => {

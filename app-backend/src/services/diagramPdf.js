@@ -572,7 +572,7 @@ function drawStatement(doc, layout, geometry, metadata) {
   doc.text('of land called', R.x, R.y + 12, { width: R.width, align: 'right' })
   // Designation dominates at 11pt, but must stay on ONE row: shrink to fit R.width
   // (down to a 7.5pt floor) so a long name never wraps into the "situate" line below.
-  doc.font('Helvetica-Bold')
+  doc.font('Helvetica')
   let desigSize = 11
   doc.fontSize(desigSize)
   while (desigSize > 7.5 && doc.widthOfString(desigText) > R.width) {
@@ -583,7 +583,7 @@ function drawStatement(doc, layout, geometry, metadata) {
   // The designation is underlined, as the surveyor writes it.
   const desigW = doc.widthOfString(desigText)
   const uy = R.y + 30 + desigSize * 0.92
-  doc.lineWidth(0.6).strokeColor('#000')
+  doc.lineWidth(0.5).strokeColor('#000')
     .moveTo(R.x + (R.width - desigW) / 2, uy).lineTo(R.x + (R.width + desigW) / 2, uy).stroke()
   // Same 9pt as the "The figure … of land called" block above.
   doc.font('Helvetica').fontSize(DIAGRAM_FONTS.statement).text(

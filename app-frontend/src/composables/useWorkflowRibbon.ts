@@ -109,7 +109,8 @@ export function useWorkflowRibbon(opts: {
         label: 'Step',
         icon: current?.icon ?? '📋',
         groups: [
-          group('Current Step', actionItems, current?.description ?? ''),
+          // Nothing to do beyond what the step tiles do: no group, rather than an empty one.
+          ...(actionItems.length > 0 ? [group('Current Step', actionItems, current?.description ?? '')] : []),
           group('All Steps', stepItems.value, workflowProgressNote(opts.completedStepIds(), Object.keys(CADASTRAL_STEPS))),
         ],
         trailing: [

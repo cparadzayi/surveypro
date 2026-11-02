@@ -75,8 +75,25 @@ describe('db key mapping', () => {
 })
 
 describe('step actions', () => {
-  it('offers Start on a step with no data', () => {
-    expect(getStepActions('site_calibration', []).map(a => a.action)).toContain('start')
+  it('offers Start, labelled with what it does, on a step that does something when started', () => {
+    const start = getStepActions('field_book', []).find(a => a.action === 'start')
+    expect(start?.label).toBe('Generate Field Book')
+  })
+
+  it('names the action each start button runs, so the view has one handler per button', () => {
+    const named = steps.filter(s => s.start).map(s => [s.id, s.start!.action])
+    expect(named).toEqual([
+      ['import_csv', 'choose-csv'],
+      ['field_book', 'generate-field-book'],
+      ['calculations_part1', 'generate-calculations'],
+      ['coordinate_list', 'generate-coordinate-list'],
+    ])
+  })
+
+  it('offers no Start on a step whose start only opens it, nor View on a finished one', () => {
+    expect(getStepActions('site_calibration', []).map(a => a.action)).not.toContain('start')
+    expect(getStepActions('survey_plan', []).map(a => a.action)).not.toContain('start')
+    expect(getStepActions('field_book', ['field_book']).map(a => a.action)).not.toContain('view')
   })
 
   it('offers Proceed to the next step once it is done', () => {

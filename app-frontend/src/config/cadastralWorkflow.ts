@@ -23,7 +23,21 @@ export interface WorkflowStep {
   canEdit: boolean
   generatesDocument: boolean
   isFinal?: boolean
+  /**
+   * What starting this step does beyond opening it: the button's label and the action it runs. Only
+   * steps that DO something on start have one: opening the step is the step tile's job, and a "Start"
+   * button that only opens the step you are already on is a second button for the same thing. The
+   * action is named here and run by the view, whose handler table is typed on StartAction, so a step
+   * cannot have a button without a handler or a handler without a button.
+   */
+  start?: { label: string; action: StartAction }
 }
+
+export type StartAction =
+  | 'choose-csv'
+  | 'generate-field-book'
+  | 'generate-calculations'
+  | 'generate-coordinate-list'
 
 export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
   project_setup: {
@@ -45,7 +59,8 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     icon: '📥',
     dbKey: 'csv-import',
     canEdit: true,
-    generatesDocument: false
+    generatesDocument: false,
+    start: { label: 'Choose CSV file', action: 'choose-csv' }
   },
   
   site_calibration: {
@@ -82,7 +97,8 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     icon: '📖',
     dbKey: 'field-book',
     canEdit: true,
-    generatesDocument: true
+    generatesDocument: true,
+    start: { label: 'Generate Field Book', action: 'generate-field-book' }
   },
   
   calculations_part1: {
@@ -93,7 +109,8 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     icon: '🧮',
     dbKey: 'calculations-part1',
     canEdit: true,
-    generatesDocument: true
+    generatesDocument: true,
+    start: { label: 'Generate Calculations', action: 'generate-calculations' }
   },
   
   found_beacons: {
@@ -115,7 +132,8 @@ export const CADASTRAL_STEPS: Record<string, WorkflowStep> = {
     icon: '📋',
     dbKey: 'coordinate-list',
     canEdit: true,
-    generatesDocument: true
+    generatesDocument: true,
+    start: { label: 'Generate Coordinate List', action: 'generate-coordinate-list' }
   },
   
   qgis_export: {
@@ -244,24 +262,19 @@ export function getStepActions(
   const actions: StepAction[] = []
   
   if (!isCompleted) {
-    // Step not started
-    actions.push({
-      type: 'primary',
-      label: `Start ${step.label}`,
-      action: 'start',
-      icon: '▶️',
-      variant: 'success'
-    })
+    // Step not started. Offered only where starting does something beyond opening the step; opening
+    // it is the step tile's job.
+    if (step.start) {
+      actions.push({
+        type: 'primary',
+        label: step.start.label,
+        action: 'start',
+        icon: '▶️',
+        variant: 'success'
+      })
+    }
   } else {
-    // Step completed
-    actions.push({
-      type: 'primary',
-      label: 'View',
-      action: 'view',
-      icon: '👁️',
-      variant: 'default'
-    })
-    
+    // Step completed. There is no "View": these actions belong to the current step, which is open.
     if (step.canEdit) {
       actions.push({
         type: 'secondary',

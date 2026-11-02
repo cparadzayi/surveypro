@@ -1398,7 +1398,8 @@ import {
   getNextStep,
   getWorkflowSteps,
   CADASTRAL_STEPS,
-  type WorkflowStep
+  type WorkflowStep,
+  type StartAction
 } from '../../../config/cadastralWorkflow';
 
 
@@ -3413,6 +3414,27 @@ function handleStepClick(step: WorkflowStep) {
   setCurrentStep(step.dbKey);
 }
 
+const startActionHandlers: Record<StartAction, () => void> = {
+  // Trigger file picker for CSV import
+  'choose-csv': () => triggerFileInput(),
+  // Auto-generate field book
+  'generate-field-book': () => generateFieldBook(),
+  'generate-calculations': () => {
+    if (canGenerateCalculations.value) {
+      generateCalculationsPart1();
+    } else {
+      notifySuccess('Please complete the Field Book step first and fill in surveyor information.')
+    }
+  },
+  'generate-coordinate-list': () => {
+    if (canGenerateCoordinateList.value) {
+      generateCoordinateList();
+    } else {
+      notifySuccess('Please complete Calculations Part 1 first. The Coordinate List requires adjusted coordinates.')
+    }
+  },
+}
+
 function handleStepAction(step: WorkflowStep, action: any) {
   console.log('Step action:', step.label, action.action);
   
@@ -3422,42 +3444,10 @@ function handleStepAction(step: WorkflowStep, action: any) {
       workflowState.currentStep = step.dbKey as any;
       setCurrentStep(step.dbKey);
       
-      // Auto-trigger actions for different steps
+      // Run what starting this step does, if anything (see WorkflowStep.start). The table is typed on
+      // StartAction: a step cannot name an action without a handler here.
       setTimeout(() => {
-        switch (step.id) {
-          case 'import_csv':
-            // Trigger file picker for CSV import
-            triggerFileInput();
-            break;
-            
-          case 'field_book':
-            // Auto-generate field book
-            generateFieldBook();
-            break;
-            
-          case 'calculations_part1':
-            // Auto-generate calculations part 1
-            if (canGenerateCalculations.value) {
-              generateCalculationsPart1();
-            } else {
-              notifySuccess('Please complete the Field Book step first and fill in surveyor information.')
-            }
-            break;
-            
-          case 'coordinate_list':
-            // Auto-generate coordinate list
-            if (canGenerateCoordinateList.value) {
-              generateCoordinateList();
-            } else {
-              notifySuccess('Please complete Calculations Part 1 first. The Coordinate List requires adjusted coordinates.')
-            }
-            break;
-            
-          // Other steps can be added here as needed
-          // case 'calculations_part2':
-          // case 'report_on_survey':
-          // case 'dsg_certificate':
-        }
+        if (step.start) startActionHandlers[step.start.action]();
       }, 100);
       break;
       

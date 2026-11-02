@@ -597,9 +597,12 @@ const authStore = useAuthStore()
 const projectSelectionStore = useProjectSelectionStore()
 
 // State
-const setupData = ref({
-  surveyorId: null as number | null,
-  projectId: null as number | null,
+/**
+ * Every field that describes ONE project, blank. A new project starts from this, so none of the
+ * previous project's details (township, parent property, instruments, working directory, ...) are
+ * carried into it; the surveyor and the project selection are not project details and are kept apart.
+ */
+const blankProjectDetails = () => ({
   district: '',
   surveyType: '',
   township: '',
@@ -622,6 +625,12 @@ const setupData = ref({
   loZone: null as number | null,
   workingDirectory: '',
   wholePortion: 'the whole'
+})
+
+const setupData = ref({
+  surveyorId: null as number | null,
+  projectId: null as number | null,
+  ...blankProjectDetails(),
 })
 
 const surveyors = ref<any[]>([])
@@ -818,6 +827,12 @@ function addProjectToDropdown() {
     is_temporary: true
   } as any)
   
+  // A new project starts blank: the details of the project that was open are not its own. Selecting
+  // it programmatically does not fire the dropdown's change handler, so they must be cleared here.
+  Object.assign(setupData.value, blankProjectDetails())
+  parentDeedTypeIsOther.value = false
+  originalTitleDeedTypeIsOther.value = false
+
   // Auto-select the new project
   setupData.value.projectId = tempId as any
   

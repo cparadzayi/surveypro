@@ -140,9 +140,9 @@ describe('surveyOfTitle', () => {
 });
 
 describe('composeSurveySource', () => {
-  it('composes "TOWNSHIP OF PARENT" from the structured fields', () => {
+  it('composes "Township of Parent" from the structured fields', () => {
     expect(composeSurveySource('Brackenhurst Township', 'Stand 87 Brackenhurst Township'))
-      .toBe('Brackenhurst Township OF Stand 87 Brackenhurst Township');
+      .toBe('Brackenhurst Township of Stand 87 Brackenhurst Township');
   });
   it('yields just the township when there is no parent (whole-township survey)', () => {
     expect(composeSurveySource('Brackenhurst Township', '')).toBe('Brackenhurst Township');
@@ -150,7 +150,7 @@ describe('composeSurveySource', () => {
   });
   it('collapses stray whitespace from both fields', () => {
     expect(composeSurveySource('  Brackenhurst   Township ', '  Stand  87  Brackenhurst  Township '))
-      .toBe('Brackenhurst Township OF Stand 87 Brackenhurst Township');
+      .toBe('Brackenhurst Township of Stand 87 Brackenhurst Township');
   });
   it('returns empty string when no township is provided', () => {
     expect(composeSurveySource('', 'Stand 87 Brackenhurst Township')).toBe('');

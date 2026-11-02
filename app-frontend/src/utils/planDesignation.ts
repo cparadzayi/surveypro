@@ -1,3 +1,4 @@
+import { placeCase } from '../../../app-shared/placeCase';
 /**
  * Builds the lodgement cover-letter subject. Unlike the general-plan title
  * wording (which clips the " of ..." clause) this keeps the full township
@@ -65,7 +66,7 @@ export function buildPlanDesignation(standNames: string[], surveyOf: string): st
 
 /**
  * Compose the township phrase from the structured project fields — e.g.
- * "BRACKENHURST TOWNSHIP OF STAND 87 BRACKENHURST TOWNSHIP". Stand ranges are
+ * "Brackenhurst Township of Stand 87 Brackenhurst Township". Stand ranges are
  * deliberately absent: the sheet builders rebuild them from the surveyed
  * parcels. An empty township yields '' so callers can fall back to the stored
  * designation/surveyOf for legacy projects; an empty parent yields just the
@@ -75,7 +76,8 @@ export function composeSurveySource(township: string, parentProperty?: string): 
   const t = String(township || '').trim().replace(/\s+/g, ' ');
   const p = String(parentProperty || '').trim().replace(/\s+/g, ' ');
   if (!t) return '';
-  return p ? `${t} OF ${p}` : t;
+  // Title case, joining words lower: "Brackenhurst Township of Stand 87 Brackenhurst Township".
+  return placeCase(p ? `${t} of ${p}` : t);
 }
 
 /** Build the designation subject from the structured fields: "STANDS <range> <TOWNSHIP> OF <PARENT>". */

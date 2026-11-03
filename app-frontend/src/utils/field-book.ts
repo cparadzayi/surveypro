@@ -9,7 +9,7 @@ import { bankersRound } from './cadastral-precision';
 import type { SiteCalibration } from './siteCalibration';
 import { renderCalibrationContent } from './calibration-pdf';
 import { formatSurveyDate, formatSurveyMonthYear } from './surveyDate';
-import { paginateFieldBook, computePartyWallPaginate, FIELD_BOOK_POINTS_PER_PAGE, type PartyWallRow } from './fieldBookPagination';
+import { paginateFieldBook, computePartyWallPaginate, FIELD_BOOK_POINTS_PER_PAGE, FIELD_BOOK_LAYOUT, type PartyWallRow } from './fieldBookPagination';
 import { isCalculatedPoint } from './calculatedPoint';
 
 export interface FieldBookPoint {
@@ -382,22 +382,21 @@ export class FieldBookGenerator {
     metadata: FieldBookMetadata
   ): void {
     const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const maxYPosition = pageHeight - 30;
-    const rowHeight = 7;
+    const maxYPosition = FIELD_BOOK_LAYOUT.bottomY;
+    const rowHeight = FIELD_BOOK_LAYOUT.rowHeight;
     
     // Page header
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(16);
-    pdf.text('ELECTRONIC FIELD BOOK', this.options.marginLeft, 25);
+    pdf.text('ELECTRONIC FIELD BOOK', this.options.marginLeft, FIELD_BOOK_LAYOUT.titleY);
     
     // Page number (E1, E2, etc.)
     const pageLabel = `E${pageNumber}`;
     const pageLabelWidth = pdf.getTextWidth(pageLabel);
-    pdf.text(pageLabel, pageWidth - this.options.marginRight - pageLabelWidth, 25);
+    pdf.text(pageLabel, pageWidth - this.options.marginRight - pageLabelWidth, FIELD_BOOK_LAYOUT.titleY);
     
     // Table header
-    let yPosition = 45;
+    let yPosition: number = FIELD_BOOK_LAYOUT.headerY;
     pdf.setFontSize(11);
     pdf.setFont('helvetica', 'bold');
     
@@ -416,9 +415,9 @@ export class FieldBookGenerator {
     pdf.text('Date', col5, yPosition);
     pdf.text('Description', col6, yPosition);
     
-    yPosition += 3;
+    yPosition += 2.5;
     pdf.line(this.options.marginLeft, yPosition, pageWidth - this.options.marginRight, yPosition);
-    yPosition += 10;
+    yPosition += FIELD_BOOK_LAYOUT.firstRowOffset - 2.5;
     
     // Table content
     pdf.setFont('helvetica', 'normal');
@@ -476,7 +475,7 @@ export class FieldBookGenerator {
       
       for (let i = currentRowCount; i < targetRowCount; i++) {
         pdf.setLineWidth(0.1);
-        pdf.line(col1, yPosition + 3, pageWidth - this.options.marginRight, yPosition + 3);
+        pdf.line(col1, yPosition + 1.5, pageWidth - this.options.marginRight, yPosition + 1.5);
         yPosition += rowHeight;
       }
       
@@ -501,9 +500,8 @@ export class FieldBookGenerator {
     isFirstPage: boolean,
   ): void {
     const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const maxYPosition = pageHeight - 30;
-    const rowHeight = 7;
+    const maxYPosition = FIELD_BOOK_LAYOUT.bottomY;
+    const rowHeight = FIELD_BOOK_LAYOUT.rowHeight;
 
     const col1 = this.options.marginLeft; // Point ID
     const col2 = col1 + 18;               // Y
@@ -513,17 +511,17 @@ export class FieldBookGenerator {
     // Masthead + E-number, matching the point pages.
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(16);
-    pdf.text('ELECTRONIC FIELD BOOK', this.options.marginLeft, 25);
+    pdf.text('ELECTRONIC FIELD BOOK', this.options.marginLeft, FIELD_BOOK_LAYOUT.titleY);
     const pageLabel = `E${pageNumber}`;
     const pageLabelWidth = pdf.getTextWidth(pageLabel);
-    pdf.text(pageLabel, pageWidth - this.options.marginRight - pageLabelWidth, 25);
+    pdf.text(pageLabel, pageWidth - this.options.marginRight - pageLabelWidth, FIELD_BOOK_LAYOUT.titleY);
 
-    let yPosition = isFirstPage ? 45 : 35;
+    let yPosition: number = FIELD_BOOK_LAYOUT.headerY;
     if (isFirstPage) {
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(11);
       pdf.text('CALCULATED POINTS', col1, yPosition);
-      yPosition += 7;
+      yPosition += FIELD_BOOK_LAYOUT.rowHeight;
     }
 
     pdf.setFont('helvetica', 'bold');
@@ -532,9 +530,9 @@ export class FieldBookGenerator {
     pdf.text('Y', col2, yPosition);
     pdf.text('X', col3, yPosition);
     pdf.text('Description', col4, yPosition);
-    yPosition += 3;
+    yPosition += 2.5;
     pdf.line(this.options.marginLeft, yPosition, pageWidth - this.options.marginRight, yPosition);
-    yPosition += 7;
+    yPosition += FIELD_BOOK_LAYOUT.firstRowOffset - 2.5;
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(10);
@@ -563,9 +561,8 @@ export class FieldBookGenerator {
     isFirstPage: boolean,
   ): void {
     const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const maxYPosition = pageHeight - 30;
-    const rowHeight = 7;
+    const maxYPosition = FIELD_BOOK_LAYOUT.bottomY;
+    const rowHeight = FIELD_BOOK_LAYOUT.rowHeight;
 
     const col1 = this.options.marginLeft;
     const col2 = col1 + 60;
@@ -573,27 +570,27 @@ export class FieldBookGenerator {
     // Masthead + E-number, matching the point pages.
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(16);
-    pdf.text('ELECTRONIC FIELD BOOK', this.options.marginLeft, 25);
+    pdf.text('ELECTRONIC FIELD BOOK', this.options.marginLeft, FIELD_BOOK_LAYOUT.titleY);
     const pageLabel = `E${pageNumber}`;
     const pageLabelWidth = pdf.getTextWidth(pageLabel);
-    pdf.text(pageLabel, pageWidth - this.options.marginRight - pageLabelWidth, 25);
+    pdf.text(pageLabel, pageWidth - this.options.marginRight - pageLabelWidth, FIELD_BOOK_LAYOUT.titleY);
 
     // "The first row should be 'Party-wall servitudes'".
-    let yPosition = isFirstPage ? 45 : 35;
+    let yPosition: number = FIELD_BOOK_LAYOUT.headerY;
     if (isFirstPage) {
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(11);
       pdf.text('Party-wall servitudes', col1, yPosition);
-      yPosition += 7;
+      yPosition += FIELD_BOOK_LAYOUT.rowHeight;
     }
 
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(10);
     pdf.text('STANDS', col1, yPosition);
     pdf.text('BOUNDARY', col2, yPosition);
-    yPosition += 3;
+    yPosition += 2.5;
     pdf.line(col1, yPosition, pageWidth - this.options.marginRight, yPosition);
-    yPosition += 7;
+    yPosition += FIELD_BOOK_LAYOUT.firstRowOffset - 2.5;
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(10);

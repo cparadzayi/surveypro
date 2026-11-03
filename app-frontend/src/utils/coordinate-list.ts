@@ -231,6 +231,13 @@ export function fpAndFieldBookCells(
   };
 }
 
+/**
+ * Data rows are drawn at this pitch (10 pt text is 3.5 mm tall). The bottom margin is 12 mm: with the form's
+ * masthead and table header unchanged, a page carries about 40 rows where 6 mm rows and a 20 mm margin carried 32.
+ * Page numbers come from rendering, so this moves every later page reference consistently.
+ */
+const COORDINATE_ROW_HEIGHT = 5;
+
 export class CoordinateListGenerator {
   private currentPage = 100; // Starting page for Coordinate List
   private surveyorInfo!: SurveyorInfo; // Store surveyor info for use in page headers
@@ -242,7 +249,7 @@ export class CoordinateListGenerator {
     marginLeft: 15,
     marginRight: 15,
     marginTop: 20,
-    marginBottom: 20
+    marginBottom: 12
   }
   
   /**
@@ -735,7 +742,7 @@ export class CoordinateListGenerator {
    * Add section header with line break
    */
   private addSectionHeader(pdf: jsPDF, sectionName: string, currentY: number): number {
-    const rowHeight = 6;
+    const rowHeight = COORDINATE_ROW_HEIGHT;
     const headerHeight = 10;
     
     console.log(`[CoordinateList] 📋 Adding section header: "${sectionName}" at Y=${currentY}`);
@@ -865,7 +872,7 @@ export class CoordinateListGenerator {
   ): { renderedCount: number; endY: number; needsNewPage: boolean } {
     let yPos = startY;
     const maxY = pdf.internal.pageSize.getHeight() - this.options.marginBottom;
-    const rowHeight = 6;
+    const rowHeight = COORDINATE_ROW_HEIGHT;
     let renderedCount = 0;
     
     // Table rows
@@ -1000,7 +1007,7 @@ export class CoordinateListGenerator {
    */
   calculatePageCount(adjustedCoordinates: AdjustedCoordinate[]): number {
     const groupedPoints = this.groupPointsByType(adjustedCoordinates);
-    const pointsPerPage = 35;
+    const pointsPerPage = 40;
     
     let totalPages = 1; // Cover page
     

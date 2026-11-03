@@ -16,18 +16,19 @@ import { describe, it, expect } from 'vitest'
 import { FieldBookGenerator, type FieldBookPoint } from '../field-book'
 import { FIELD_BOOK_POINTS_PER_PAGE } from '../fieldBookPagination'
 
-/** P1..P27 on the first page, then P1 (re-observed), P28, P29 on the second. */
+/** A full first page of P1..Pn, then P1 (re-observed) and two new points on the second. */
 const duplicateIds = () => {
   const page1Ids = Array.from({ length: FIELD_BOOK_POINTS_PER_PAGE }, (_, i) => `P${i + 1}`)
-  const page2Ids = ['P1', 'P28', 'P29']
+  const n = FIELD_BOOK_POINTS_PER_PAGE
+  const page2Ids = ['P1', `P${n + 1}`, `P${n + 2}`]
   return [...page1Ids, ...page2Ids]
 }
 
 describe('field book pages with a re-observed beacon', () => {
   it('labels each page from its own position, not a by-id lookup', async () => {
-    // Page 1 holds P1..P27 (P1's first observation). Page 2 re-observes P1 as
+    // Page 1 holds a full page (P1's first observation). Page 2 re-observes P1 as
     // its very first point -- pointPageMap['P1'] ends up 'E2' because the map
-    // keeps only the last write, but the physical PAGE that renders P1..P27
+    // keeps only the last write, but the physical PAGE that renders page 1
     // must still say E1.
     const ids = duplicateIds()
 

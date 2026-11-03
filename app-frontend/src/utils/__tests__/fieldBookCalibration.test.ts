@@ -6,11 +6,12 @@ import { describe, it, expect } from 'vitest'
 import sampleXml from './fixtures/siteCalibrationReport.xml?raw'
 import { FieldBookGenerator, type FieldBookPoint, type FieldBookMetadata } from '../field-book'
 import { parseSiteCalibration } from '../siteCalibration'
+import { FIELD_BOOK_POINTS_PER_PAGE } from '../fieldBookPagination'
 
 const metadata: FieldBookMetadata = { surveyorName: 'A. Surveyor' }
 
-/** 30 points — enough to span two pages at 27 per page. */
-const points: FieldBookPoint[] = Array.from({ length: 30 }, (_, i) => ({
+/** A full page and three more: two pages. */
+const points: FieldBookPoint[] = Array.from({ length: FIELD_BOOK_POINTS_PER_PAGE + 3 }, (_, i) => ({
   id: `P${i + 1}`,
   y: 97538.004 + i,
   x: 2247107.872 + i,
@@ -26,7 +27,7 @@ describe('field book with a site calibration', () => {
     const gen2 = new FieldBookGenerator()
     const withCal = await gen2.generateFieldBookPDF(points, metadata, parseSiteCalibration(sampleXml))
 
-    expect(withoutCal.pageCount).toBe(3)          // cover + ceil(30 / 27)
+    expect(withoutCal.pageCount).toBe(3)          // cover + two pages of points
     expect(withCal.pageCount).toBe(4)             // + the calibration page
   })
 
@@ -42,8 +43,8 @@ describe('field book with a site calibration', () => {
     expect(withoutCal.pointPageMap['P1']).toBe('E1')
     expect(withCal.pointPageMap['P1']).toBe('E2')
 
-    expect(withoutCal.pointPageMap['P30']).toBe('E2')
-    expect(withCal.pointPageMap['P30']).toBe('E3')
+    expect(withoutCal.pointPageMap[`P${points.length}`]).toBe('E2')
+    expect(withCal.pointPageMap[`P${points.length}`]).toBe('E3')
   })
 
   it('is byte-for-byte unchanged when no calibration is supplied', async () => {

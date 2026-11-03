@@ -15,10 +15,11 @@ const points = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ id: `P${i + 1}` }));
 
 const noCover = { hasCover: false };
+const N = FIELD_BOOK_POINTS_PER_PAGE;
 
 describe('paginateFieldBook', () => {
-  it('fits exactly 27 points on a page', () => {
-    expect(FIELD_BOOK_POINTS_PER_PAGE).toBe(27);
+  it('fits 45 points on a page: the grid in FIELD_BOOK_LAYOUT, less a block heading', () => {
+    expect(FIELD_BOOK_POINTS_PER_PAGE).toBe(45);
   });
 
   describe('without a site calibration', () => {
@@ -33,20 +34,20 @@ describe('paginateFieldBook', () => {
 
     it('keeps a full page of points on E1', () => {
       const { pointPageMap, ePageCount } = paginateFieldBook(
-        points(27), { hasCalibration: false, ...noCover },
+        points(N), { hasCalibration: false, ...noCover },
       );
 
-      expect(pointPageMap.P27).toBe('E1');
+      expect(pointPageMap[`P${N}`]).toBe('E1');
       expect(ePageCount).toBe(1);
     });
 
-    it('spills the 28th point onto E2', () => {
+    it('spills the point after a full page onto E2', () => {
       const { pointPageMap, ePageCount } = paginateFieldBook(
-        points(28), { hasCalibration: false, ...noCover },
+        points(N + 1), { hasCalibration: false, ...noCover },
       );
 
-      expect(pointPageMap.P27).toBe('E1');
-      expect(pointPageMap.P28).toBe('E2');
+      expect(pointPageMap[`P${N}`]).toBe('E1');
+      expect(pointPageMap[`P${N + 1}`]).toBe('E2');
       expect(ePageCount).toBe(2);
     });
   });
@@ -61,21 +62,21 @@ describe('paginateFieldBook', () => {
       expect(pointPageMap.P1).toBe('E2');
     });
 
-    it('spills the 28th point onto E3, one further than without', () => {
+    it('spills the point after a full page onto E3, one further than without', () => {
       const { pointPageMap, ePageCount } = paginateFieldBook(
-        points(28), { hasCalibration: true, ...noCover },
+        points(N + 1), { hasCalibration: true, ...noCover },
       );
 
-      expect(pointPageMap.P27).toBe('E2');
-      expect(pointPageMap.P28).toBe('E3');
+      expect(pointPageMap[`P${N}`]).toBe('E2');
+      expect(pointPageMap[`P${N + 1}`]).toBe('E3');
       expect(ePageCount).toBe(3);
     });
   });
 
   describe('the cover', () => {
     it('adds a physical page without moving any point', () => {
-      const withoutCover = paginateFieldBook(points(30), { hasCalibration: true, hasCover: false });
-      const withCover = paginateFieldBook(points(30), { hasCalibration: true, hasCover: true });
+      const withoutCover = paginateFieldBook(points(N + 3), { hasCalibration: true, hasCover: false });
+      const withCover = paginateFieldBook(points(N + 3), { hasCalibration: true, hasCover: true });
 
       expect(withCover.pointPageMap).toEqual(withoutCover.pointPageMap);
       expect(withCover.calibrationPage).toBe(withoutCover.calibrationPage);
@@ -95,7 +96,7 @@ describe('paginateFieldBook', () => {
       // The observations keep every page they had: a computed point joins no
       // observation list, so it cannot shift a single E-number before it.
       expect(pointPageMap.P5).toBe('E1');
-      // Both calculated points share one block page -- 27 per page, the same
+      // Both calculated points share one block page -- a full page, the same
       // grid -- which follows the observations in the E-series.
       expect(pointPageMap.C1).toBe('E2');
       expect(pointPageMap.C2).toBe('E2');
@@ -126,11 +127,11 @@ describe('paginateFieldBook', () => {
 
     it('leaves a survey with no calculated points exactly where it was', () => {
       const plain = paginateFieldBook(
-        points(27),
+        points(N),
         { hasCalibration: true, hasCover: false, partyWalls: [{ stands: 'S', boundary: 'A-B' }] },
       );
       const emptyBlock = paginateFieldBook(
-        points(27),
+        points(N),
         { hasCalibration: true, hasCover: false, calculated: [], partyWalls: [{ stands: 'S', boundary: 'A-B' }] },
       );
 

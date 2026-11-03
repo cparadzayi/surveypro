@@ -19,7 +19,7 @@ import { setActivePinia, createPinia } from 'pinia';
 import * as XLSX from 'xlsx';
 // @ts-expect-error — ?raw has no ambient type declaration in this project
 import sampleXml from './fixtures/siteCalibrationReport.xml?raw';
-import { paginateFieldBook } from '../fieldBookPagination';
+import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE as N } from '../fieldBookPagination';
 import { FieldBookGenerator } from '../field-book';
 import { CalculationsPart1Generator } from '../calculations-part1';
 import { parseSiteCalibration } from '../siteCalibration';
@@ -37,7 +37,7 @@ describe('every consumer agrees on a point E-number', () => {
 
   // 30 points crosses the 27-per-page boundary, so a consumer using a different
   // page size disagrees here even though it would match on a short survey.
-  const ids = Array.from({ length: 30 }, (_, i) => `P${i + 1}`);
+  const ids = Array.from({ length: N + 3 }, (_, i) => `P${i + 1}`);
 
   it('renderer, Calculations and page allocation produce the same map', async () => {
     const fieldBookPoints = ids.map((id, i) => ({
@@ -100,7 +100,7 @@ describe('every consumer agrees on a point E-number when a calibration is presen
 
   // 30 points crosses the 27-per-page boundary, so this covers the shift on both
   // the first and the second point page (E2 and E3).
-  const ids = Array.from({ length: 30 }, (_, i) => `P${i + 1}`);
+  const ids = Array.from({ length: N + 3 }, (_, i) => `P${i + 1}`);
 
   const fieldBookPoints = ids.map((id, i) => ({
     id, y: i, x: i, status: 'P', description: 'iron peg', surveyDate: '2026-01-01',
@@ -116,8 +116,8 @@ describe('every consumer agrees on a point E-number when a calibration is presen
 
     // E1 is the calibration report; the observations begin on E2.
     expect(rendered.pointPageMap['P1']).toBe('E2');
-    expect(rendered.pointPageMap['P27']).toBe('E2');
-    expect(rendered.pointPageMap['P28']).toBe('E3');
+    expect(rendered.pointPageMap[`P${N}`]).toBe('E2');
+    expect(rendered.pointPageMap[`P${N + 1}`]).toBe('E3');
   });
 
   it('makes Calculations cite the same pages the rendered book prints', async () => {
@@ -158,7 +158,7 @@ describe('every consumer agrees on a point E-number when a calibration is presen
   });
 
   it('offsets the Excel Field Book sheet by the calibration page too', async () => {
-    const testPoints = Array.from({ length: 30 }, (_, i) => ({
+    const testPoints = Array.from({ length: N + 3 }, (_, i) => ({
       id: `P${i + 1}`,
       original: { y: 100 + i, x: 200 + i },
       fieldBook: { y: (100 + i).toFixed(3), x: (200 + i).toFixed(3) },
@@ -225,7 +225,7 @@ describe('the workflow Excel export agrees with the shared module', () => {
     })) as any;
 
   it('the Field Book sheet agrees with the shared module past the 27-per-page boundary', async () => {
-    const testPoints = points(30);
+    const testPoints = points(N + 3);
     const workflowState = {
       surveyorInfo: {
         landSurveyor: 'C. Paradzayi', licenseNumber: 'PLS 1', firm: '', address: '',

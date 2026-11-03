@@ -19,8 +19,30 @@
  * does. Pass `Boolean(calibration)` from anything that renders a field book.
  */
 
-/** Rows that fit on one field book page: A4 portrait less margins and header. */
-export const FIELD_BOOK_POINTS_PER_PAGE = 27;
+/**
+ * The field book page grid, in mm. The renderer draws from these and the capacities below are derived from
+ * them, so a row can never be promised a place the renderer will not draw (it stops at `bottomY` and a
+ * row past it would silently vanish). Narrow margins and 5.5 mm rows put 44 points on a page where 7 mm
+ * rows under a 25 mm masthead held 27; the text stays 10 pt.
+ */
+export const FIELD_BOOK_LAYOUT = {
+  titleY: 15,          // masthead and E-number baseline
+  headerY: 27,         // column header baseline
+  firstRowOffset: 7,   // header baseline to the first row's baseline (rule at +2.5)
+  rowHeight: 5.5,
+  bottomY: 282,        // lowest baseline a row may have: 15 mm above the foot of an A4 page
+  headingRows: 1,      // a block's heading row ("Party-wall servitudes", "CALCULATED POINTS")
+} as const;
+
+/** Rows a page can hold: the first row's baseline to the last that still clears `bottomY`, less any heading. */
+function rowsThatFit(headingRows: number): number {
+  const { headerY, firstRowOffset, rowHeight, bottomY } = FIELD_BOOK_LAYOUT;
+  const firstRow = headerY + firstRowOffset + headingRows * rowHeight;
+  return Math.floor((bottomY - firstRow) / rowHeight) + 1;
+}
+
+/** Rows that fit on one field book page, with a block heading on it (the tightest page there is). */
+export const FIELD_BOOK_POINTS_PER_PAGE = rowsThatFit(FIELD_BOOK_LAYOUT.headingRows);
 
 /** One party-wall servitude row: the stands bound by the wall and its beacon-pair boundary. */
 export interface PartyWallRow {
@@ -29,7 +51,7 @@ export interface PartyWallRow {
 }
 
 /** Row-slots on a field-book party-wall page: the heading, header and data rows share one grid. */
-export const PARTY_WALL_ROWS_PER_PAGE = 30;
+export const PARTY_WALL_ROWS_PER_PAGE = FIELD_BOOK_POINTS_PER_PAGE;
 /** Heading + column-header rows, consumed only on the FIRST party-wall page. */
 export const PARTY_WALL_HEADER_ROWS = 2;
 

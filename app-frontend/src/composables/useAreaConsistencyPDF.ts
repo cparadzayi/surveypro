@@ -256,6 +256,33 @@ function prepareTraverseData(
 }
 
 /**
+ * Page layout, shared by the table drawing and the parcel-fit arithmetic so the two cannot disagree (the
+ * fit once assumed 5 mm rows while the table drew 6 mm, so a parcel judged to fit was split across pages).
+ *
+ * Narrow margins and tight spacing: this section is a long run of small tables, and every millimetre
+ * of slack between parcels is paid for in pages. The text stays 10 pt.
+ */
+const TABLE_WIDTH = 188;   // the column widths below, summed: 11 mm either side on A4
+
+const LAYOUT = {
+  topMargin: 10,
+  bottomMargin: 15,        // clear of the page number the merge stamps near the foot
+  rowHeight: 5,            // 10 pt text is 3.5 mm; the baseline sits 3.7 mm down the row
+  textBaseline: 3.7,
+  headerHeight: 6,
+  headerBaseline: 4.2,
+  parcelTitleHeight: 6,
+  spacingAfterTable: 2,
+  areaResultHeight: 5,
+  interParcelSpacing: 3,
+};
+
+/** Left edge of the table, which the parcel title and area line align to. */
+function tableLeftX(doc: jsPDF): number {
+  return (doc.internal.pageSize.getWidth() - TABLE_WIDTH) / 2;
+}
+
+/**
  * Draw table header
  */
 function drawTableHeader(doc: jsPDF, startY: number): number {
@@ -274,7 +301,7 @@ function drawTableHeader(doc: jsPDF, startY: number): number {
   
   // Header background (compact)
   doc.setFillColor(41, 128, 185); // Blue
-  doc.rect(startX, startY, Object.values(colWidths).reduce((a, b) => a + b, 0), 7, 'F');  // Reduced from 8
+  doc.rect(startX, startY, Object.values(colWidths).reduce((a, b) => a + b, 0), LAYOUT.headerHeight, 'F');
   
   // Header text (compact)
   doc.setFontSize(10);
@@ -282,27 +309,27 @@ function drawTableHeader(doc: jsPDF, startY: number): number {
   doc.setFont('helvetica', 'bold');
   
   let currentX = startX + 2;
-  doc.text('Beacon Name', currentX, startY + 4.5);  // Adjusted for 7mm height
+  doc.text('Beacon Name', currentX, startY + LAYOUT.headerBaseline);  // Adjusted for 7mm height
   currentX += colWidths.beacon;
   
-  doc.text('Y', currentX, startY + 4.5);
+  doc.text('Y', currentX, startY + LAYOUT.headerBaseline);
   currentX += colWidths.y;
   
-  doc.text('X', currentX, startY + 4.5);
+  doc.text('X', currentX, startY + LAYOUT.headerBaseline);
   currentX += colWidths.x;
   
-  doc.text('Distance (m)', currentX, startY + 4.5);
+  doc.text('Distance (m)', currentX, startY + LAYOUT.headerBaseline);
   currentX += colWidths.distance;
   
-  doc.text('Direction (° \' ")', currentX, startY + 4.5);
+  doc.text('Direction (° \' ")', currentX, startY + LAYOUT.headerBaseline);
   currentX += colWidths.direction;
   
-  doc.text('dy', currentX, startY + 4.5);
+  doc.text('dy', currentX, startY + LAYOUT.headerBaseline);
   currentX += colWidths.dy;
   
-  doc.text('dx', currentX, startY + 4.5);
+  doc.text('dx', currentX, startY + LAYOUT.headerBaseline);
   
-  return startY + 7;  // Reduced from 8
+  return startY + LAYOUT.headerHeight;
 }
 
 /**
@@ -311,8 +338,7 @@ function drawTableHeader(doc: jsPDF, startY: number): number {
 function drawTableRows(doc: jsPDF, rows: TraverseRow[], startY: number): number {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const bottomMargin = 20; // 20mm bottom margin
-  const topMargin = 20; // 20mm top margin for continuation pages
+  const { bottomMargin, topMargin } = LAYOUT;
   const maxY = pageHeight - bottomMargin;
   
   const colWidths = {
@@ -326,10 +352,7 @@ function drawTableRows(doc: jsPDF, rows: TraverseRow[], startY: number): number 
   };
   
   const startX = (pageWidth - Object.values(colWidths).reduce((a, b) => a + b, 0)) / 2;
-  // 6mm, not 5: cell borders are drawn at this pitch, and 10pt text in a 5mm
-  // row touches them.
-  const rowHeight = 6;
-  const headerHeight = 7;
+  const rowHeight = LAYOUT.rowHeight;
   let currentY = startY;
   
   doc.setFontSize(10);
@@ -370,7 +393,7 @@ function drawTableRows(doc: jsPDF, rows: TraverseRow[], startY: number): number 
     
     // Draw cell values
     currentX = startX + 2;
-    const textY = currentY + 3.5;  // Adjusted for 5mm row height
+    const textY = currentY + LAYOUT.textBaseline;
     
     // Beacon name - ensure it's a string
     const beaconNameStr = String(row.beaconName || '');
@@ -482,8 +505,7 @@ export async function generateAreaConsistencyPDF(
   
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const topMargin = 20;
-  const bottomMargin = 20;
+  const { topMargin, bottomMargin } = LAYOUT;
   let currentY = topMargin;
   let isFirstPage = true;
   
@@ -492,12 +514,12 @@ export async function generateAreaConsistencyPDF(
   doc.setFont('helvetica', 'bold');
   doc.text('AREA AND CONSISTENCY', pageWidth / 2, currentY, { align: 'center' });
   
-  currentY += 10;
+  currentY += 6;
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.text(`Generated: ${formatDateDDMMYYYY(new Date())}`, pageWidth / 2, currentY, { align: 'center' });
   
-  currentY += 12;
+  currentY += 7;
   
   // Track skipped parcels for user notification
   const skippedParcels: string[] = [];
@@ -515,14 +537,9 @@ export async function generateAreaConsistencyPDF(
     }
     
     // Compact spacing for efficient page usage
-    const parcelTitleHeight = 8;  // Reduced from 10
-    const tableHeaderHeight = 7;  // Reduced from 8
-    const rowHeight = 5;          // Reduced from 6
+    const { parcelTitleHeight, headerHeight: tableHeaderHeight, rowHeight, spacingAfterTable,
+      areaResultHeight, interParcelSpacing } = LAYOUT;
     const tableRowsHeight = traverseData.length * rowHeight;
-    const spacingAfterTable = 4;  // Reduced from 8
-    const areaResultHeight = 7;   // Reduced from 10
-    const spacingAfterParcel = 8; // Spacing after area result
-    const interParcelSpacing = 5; // Spacing between parcels on same page
     
     // Calculate TOTAL height needed for this entire parcel block
     const totalParcelHeight = parcelTitleHeight + tableHeaderHeight + tableRowsHeight + 
@@ -553,7 +570,7 @@ export async function generateAreaConsistencyPDF(
     doc.setFontSize(11);  // Reduced from 12
     doc.setFont('helvetica', 'bold');
     const safeCurrentY = typeof currentY === 'number' && !isNaN(currentY) ? currentY : topMargin;
-    doc.text(`Stand/Erf: ${parcel.designation}`, 20, safeCurrentY);
+    doc.text(`Stand/Erf: ${parcel.designation}`, tableLeftX(doc), safeCurrentY);
     currentY = safeCurrentY;
     
     currentY += parcelTitleHeight;
@@ -604,7 +621,7 @@ export async function generateAreaConsistencyPDF(
     
     // Ensure areaText is a valid string and coordinates are valid numbers
     const safeAreaText = String(areaText || 'Area: N/A');
-    const safeX = 20;
+    const safeX = tableLeftX(doc);
     const safeY = typeof currentY === 'number' && !isNaN(currentY) ? currentY : topMargin;
     doc.text(safeAreaText, safeX, safeY);
     
@@ -613,8 +630,6 @@ export async function generateAreaConsistencyPDF(
     
     // Closure quality data is computed but not displayed in PDF
     // (Available in backend response for programmatic use if needed)
-    
-    currentY += spacingAfterParcel;
   });
   
   // Handle PDF output and page numbering

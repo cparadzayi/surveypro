@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useCadastralWorkflow } from '../../composables/useCadastralWorkflow';
 import { useSurveyLookupStore } from '../../stores/surveyLookup';
-import { paginateFieldBook } from '../fieldBookPagination';
+import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE as N } from '../fieldBookPagination';
 import type { CadastralPoint } from '../../types/cadastral';
 
 const points = (n: number): CadastralPoint[] =>
@@ -33,9 +33,9 @@ describe('useCadastralWorkflow buildFieldBook — pagination parity', () => {
     setActivePinia(createPinia());
   });
 
-  it('agrees with the shared module across the 27-point boundary (30 points)', () => {
+  it('agrees with the shared module across the page boundary', () => {
     const { setImportedPoints, buildFieldBook, workflowState } = useCadastralWorkflow();
-    const testPoints = points(30);
+    const testPoints = points(N + 3);
 
     setImportedPoints(testPoints);
     buildFieldBook();
@@ -49,11 +49,11 @@ describe('useCadastralWorkflow buildFieldBook — pagination parity', () => {
     // Past the 27th point, a page size that has drifted from the shared
     // module would disagree with paginateFieldBook.
     expect(lookupStore.fieldBookPageLookup).toEqual(expected);
-    expect(lookupStore.fieldBookPageLookup.P27).toBe('E1');
-    expect(lookupStore.fieldBookPageLookup.P28).toBe('E2');
+    expect(lookupStore.fieldBookPageLookup[`P${N}`]).toBe('E1');
+    expect(lookupStore.fieldBookPageLookup[`P${N + 1}`]).toBe('E2');
 
     // The document's own points carry the same page numbers.
-    expect(workflowState.documents.fieldBook?.points[27].pageNumber).toBe(2);
+    expect(workflowState.documents.fieldBook?.points[N].pageNumber).toBe(2);
 
     // metadata.pageCount reaches the live field book PDF's cover page ("Page
     // Count: N") and the preview modal subtitle ("N pages") verbatim — it must

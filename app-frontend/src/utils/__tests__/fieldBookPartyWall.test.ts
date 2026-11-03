@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { computePartyWallPaginate, paginateFieldBook } from '../fieldBookPagination';
+import { computePartyWallPaginate, paginateFieldBook, PARTY_WALL_ROWS_PER_PAGE as R } from '../fieldBookPagination';
 import { FieldBookGenerator } from '../field-book';
 import { CalculationsPart1Generator } from '../calculations-part1';
 import { TwoPassDocumentGenerator } from '../TwoPassDocumentGenerator';
@@ -71,22 +71,22 @@ describe('computePartyWallPaginate', () => {
     expect(computePartyWallPaginate(0)).toEqual([]);
   });
 
-  it('sits 28 rows on the first page (2 rows go to heading + header)', () => {
-    expect(computePartyWallPaginate(28)).toEqual([Array.from({ length: 28 }, (_, i) => i)]);
+  it('sits R - 2 rows on the first page (2 rows go to heading + header)', () => {
+    expect(computePartyWallPaginate(R - 2)).toEqual([Array.from({ length: R - 2 }, (_, i) => i)]);
   });
 
-  it('spills the 29th row onto a second page', () => {
-    expect(computePartyWallPaginate(29)).toEqual([
-      Array.from({ length: 28 }, (_, i) => i),
-      [28],
+  it('spills the row after a full first page onto a second page', () => {
+    expect(computePartyWallPaginate(R - 1)).toEqual([
+      Array.from({ length: R - 2 }, (_, i) => i),
+      [R - 2],
     ]);
   });
 
-  it('fills 30 rows per continuation page', () => {
-    const pages = computePartyWallPaginate(58);
+  it('fills R rows per continuation page', () => {
+    const pages = computePartyWallPaginate(2 * R - 2);
     expect(pages).toHaveLength(2);
-    expect(pages[0]).toHaveLength(28);
-    expect(pages[1]).toHaveLength(30);
+    expect(pages[0]).toHaveLength(R - 2);
+    expect(pages[1]).toHaveLength(R);
   });
 });
 
@@ -158,7 +158,7 @@ describe('the field book party-wall section', () => {
   });
 
   it('paginates a long list across continuation pages without repeating the heading', async () => {
-    const manyWalls = Array.from({ length: 30 }, (_, i) => ({
+    const manyWalls = Array.from({ length: R }, (_, i) => ({
       stands: `Stand ${i + 1}`,
       boundary: `B${i}-B${i + 1}`,
     }));
@@ -167,9 +167,9 @@ describe('the field book party-wall section', () => {
 
     expect(pageCount).toBe(4); // cover, E1 points, E2-E3 party walls
     expect(partyWallPageMap[0]).toBe('E2');
-    expect(partyWallPageMap[27]).toBe('E2');
-    expect(partyWallPageMap[28]).toBe('E3');
-    expect(partyWallPageMap[29]).toBe('E3');
+    expect(partyWallPageMap[R - 3]).toBe('E2');
+    expect(partyWallPageMap[R - 2]).toBe('E3');
+    expect(partyWallPageMap[R - 1]).toBe('E3');
 
     const streams = pageStreams(pdf);
     const wallPages = streams.filter(s => s.includes('(BOUNDARY)'));
@@ -178,7 +178,7 @@ describe('the field book party-wall section', () => {
     // The continuation page repeats the column header but not the heading.
     expect(wallPages[1]).not.toContain('(Party-wall servitudes)');
     expect(wallPages[1]).toContain('(STANDS)');
-    expect(wallPages[1]).toContain('(Stand 30)');
+    expect(wallPages[1]).toContain(`(Stand ${R})`);
   });
 });
 

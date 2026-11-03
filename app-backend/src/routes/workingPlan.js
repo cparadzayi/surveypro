@@ -1,4 +1,5 @@
 import { generateWorkingPlan } from '../services/workingPlan/working-plan.js'
+import { workingPlanPdf } from '../services/workingPlan/working-plan-pdf.js'
 
 // SI 727 Fifth Schedule conventional signs the renderer can draw. This MUST
 // track workingPlanSpec.ts's WorkingPlanSymbol: the adapter emits these names
@@ -73,6 +74,40 @@ function validateWorkingPlanSpec(spec) {
  * same arrangement as POST /api/geopdf/dxf next door.
  */
 export default async function workingPlanRoutes(fastify) {
+  /** Failures a caller can fix are 400s; the rest are 500s. Shared by the DXF and PDF routes. */
+  const fail = (reply, error, what) => {
+    // error may not be a real Error (a thrown string/object leaves .message undefined), which would
+    // silently miss the regex below -- coerce first so that can't happen.
+    const message = String(error?.message ?? error)
+    // The generator raises exactly one caller-fixable error: a ring naming a beacon that is not in the
+    // beacon list. Keep the beacon's name intact so the surveyor knows which point to correct.
+    if (/unknown beacon/.test(message)) {
+      return reply.code(400).send({ error: 'Unknown beacon', message })
+    }
+    fastify.log.error(`[WorkingPlan] ${what} generation failed:`, error)
+    return reply.code(500).send({ error: 'Working plan generation failed', message })
+  }
+
+  /** The same sheet as the DXF, as an A4 PDF drawn from the same shapes. */
+  fastify.post('/pdf', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const spec = request.body
+    const problem = validateWorkingPlanSpec(spec)
+    if (problem) {
+      return reply.code(400).send({ error: 'Invalid working plan spec', message: problem })
+    }
+    try {
+      const out = generateWorkingPlan(spec)
+      const pdf = await workingPlanPdf(out.model)
+      return reply
+        .type('application/pdf')
+        .header('Content-Disposition', `attachment; filename="working-plan-${Date.now()}.pdf"`)
+        .header('X-Plan-Scale', String(out.scale))
+        .send(pdf)
+    } catch (error) {
+      return fail(reply, error, 'PDF')
+    }
+  })
+
   fastify.post('/dxf', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const spec = request.body
 

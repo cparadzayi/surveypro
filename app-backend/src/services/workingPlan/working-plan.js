@@ -2270,8 +2270,12 @@ const crowded = crowdedClusters(
 
   // sheetSize is reported so the caller can tell the surveyor -- and the plot
   // dialog -- which paper this was drawn for.
-  return {
+  const out = {
     dxf: doc.toString(), scale, gridInterval, gridTicks: placed, areas,
     sheetSize: 'A4', orientation, sheetWidthMm: sheet.width, sheetHeightMm: sheet.height,
   };
+  // What the PDF is drawn from: the same shapes the DXF holds, and the transform that puts them on the
+  // sheet. Not enumerable, so it never leaks into a serialised result.
+  Object.defineProperty(out, 'model', { value: { doc, originE, originN, scale, sheet } });
+  return out;
 }

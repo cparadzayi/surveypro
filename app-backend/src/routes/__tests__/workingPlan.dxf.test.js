@@ -15,6 +15,11 @@ jest.unstable_mockModule('../../services/workingPlan/working-plan.js', () => ({
   generateWorkingPlan: mockGenerateWorkingPlan,
 }))
 
+// The PDF drawing has its own tests; here only the route's contract.
+jest.unstable_mockModule('../../services/workingPlan/working-plan-pdf.js', () => ({
+  workingPlanPdf: jest.fn(async () => Buffer.from('%PDF-1.3 %%EOF')),
+}))
+
 const { default: workingPlanRoutes } = await import('../workingPlan.js')
 
 function buildApp() {
@@ -130,6 +135,16 @@ describe('POST /working-plan/dxf', () => {
       method: 'POST', url: '/dxf', payload: { ...validSpec, sheetSize: 'A4' },
     })
     expect(res.statusCode).toBe(200)
+  })
+
+  test('POST /pdf answers the same sheet as a PDF, and refuses what /dxf refuses', async () => {
+    const ok = await buildApp().inject({ method: 'POST', url: '/pdf', payload: validSpec })
+    expect(ok.statusCode).toBe(200)
+    expect(ok.headers['content-type']).toContain('application/pdf')
+    expect(ok.rawPayload.subarray(0, 5).toString()).toBe('%PDF-')
+    expect(ok.headers['x-plan-scale']).toBeTruthy()
+    const bad = await buildApp().inject({ method: 'POST', url: '/pdf', payload: { title: ['x'] } })
+    expect(bad.statusCode).toBe(400)
   })
 
   test('accepts either way up of the A4 sheet, and refuses any other', async () => {

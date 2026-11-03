@@ -21,6 +21,8 @@ export class DxfDocument {
     this.styles = [];
     this.blocks = [];
     this.entities = [];
+    /** The same drawing as structured shapes, for renderers that are not DXF (the PDF). */
+    this.ops = [];
   }
 
   addLinetype(name, descr, pattern) {
@@ -40,15 +42,15 @@ export class DxfDocument {
   }
 
   addBlock(name, build) {
-    const b = { name, entities: [] };
-    const proxy = new EntitySink(b.entities);
+    const b = { name, entities: [], ops: [] };
+    const proxy = new EntitySink(b.entities, b.ops);
     build(proxy);
     this.blocks.push(b);
     return this;
   }
 
   get sink() {
-    return new EntitySink(this.entities);
+    return new EntitySink(this.entities, this.ops);
   }
 
   toString() {
@@ -132,11 +134,12 @@ export class DxfDocument {
 }
 
 class EntitySink {
-  constructor(target) { this.t = target; }
+  constructor(target, ops = []) { this.t = target; this.ops = ops; }
 
   _push(tags) { this.t.push(tags.map(String)); }
 
   line([x1, y1], [x2, y2], { layer = '0', linetype } = {}) {
+    this.ops.push({ t: 'line', a: [x1, y1], b: [x2, y2], layer, linetype });
     const t = [0, 'LINE', 8, layer];
     if (linetype) t.push(6, linetype);
     t.push(10, f(x1), 20, f(y1), 30, f(0), 11, f(x2), 21, f(y2), 31, f(0));
@@ -145,6 +148,7 @@ class EntitySink {
   }
 
   polyline(points, { layer = '0', closed = false, linetype } = {}) {
+    this.ops.push({ t: 'polyline', points: points.map(([x, y]) => [x, y]), layer, closed, linetype });
     const t = [0, 'POLYLINE', 8, layer];
     if (linetype) t.push(6, linetype);
     t.push(66, 1, 70, closed ? 1 : 0,
@@ -158,6 +162,7 @@ class EntitySink {
   }
 
   circle([x, y], r, { layer = '0' } = {}) {
+    this.ops.push({ t: 'circle', c: [x, y], r, layer });
     this._push([0, 'CIRCLE', 8, layer, 10, f(x), 20, f(y), 30, f(0), 40, f(r)]);
     return this;
   }
@@ -169,6 +174,7 @@ class EntitySink {
 
   /** Filled triangle / quad (R12 SOLID takes 4 corners in Z order). */
   solid(pts, { layer = '0' } = {}) {
+    this.ops.push({ t: 'solid', pts: pts.map(([x, y]) => [x, y]), layer });
     const p = pts.length === 3 ? [pts[0], pts[1], pts[2], pts[2]] : pts;
     // SOLID corner order is 1,2,4,3 - not a simple ring
     const [a, b, c, d] = [p[0], p[1], p[3], p[2]];
@@ -189,6 +195,7 @@ class EntitySink {
     layer = '0', style = 'STANDARD', rotation = 0,
     align = 'left', widthFactor = 1,
   } = {}) {
+    this.ops.push({ t: 'text', str, at: [x, y], height, layer, style, rotation, align, widthFactor });
     const hcode = { left: 0, center: 1, right: 2 }[align];
     const t = [0, 'TEXT', 8, layer, 7, style,
       10, f(x), 20, f(y), 30, f(0),
@@ -201,6 +208,7 @@ class EntitySink {
   }
 
   insert(blockName, [x, y], { layer = '0', rotation = 0, scale = 1 } = {}) {
+    this.ops.push({ t: 'insert', block: blockName, at: [x, y], layer, rotation, scale });
     this._push([0, 'INSERT', 8, layer, 2, blockName,
       10, f(x), 20, f(y), 30, f(0),
       41, f(scale), 42, f(scale), 43, f(scale), 50, f(rotation)]);

@@ -50,9 +50,18 @@ async function decodeWorkingPlanError(error: any): Promise<unknown> {
  * read back out of the body without parsing it.
  */
 export async function generateWorkingPlanDXF(spec: WorkingPlanSpec): Promise<WorkingPlanDXFResult> {
+  return postWorkingPlan('dxf', spec)
+}
+
+/** The same A4 sheet as a PDF, drawn by the backend from the shapes the DXF is made of. */
+export async function generateWorkingPlanPDF(spec: WorkingPlanSpec): Promise<WorkingPlanDXFResult> {
+  return postWorkingPlan('pdf', spec)
+}
+
+async function postWorkingPlan(format: 'dxf' | 'pdf', spec: WorkingPlanSpec): Promise<WorkingPlanDXFResult> {
   let response
   try {
-    response = await api.post('/working-plan/dxf', spec, {
+    response = await api.post(`/working-plan/${format}`, spec, {
       responseType: 'blob',
       timeout: 120000,
     })

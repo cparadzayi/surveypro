@@ -373,10 +373,7 @@
       <div class="config-footer" role="group" aria-label="Export documents">
         <div class="format-toggles">
           <span class="format-caption">Export</span>
-          <label :title="config.planType === 'working-plan' ? 'A Working Plan is drawn as an A4 DXF; the PDF renderer lays out a General Plan, so it is not offered.' : ''"
-            :class="{ 'opacity-50': config.planType === 'working-plan' }">
-            <input type="checkbox" v-model="exportFormats.pdf" :disabled="config.planType === 'working-plan'" /> PDF
-          </label>
+          <label><input type="checkbox" v-model="exportFormats.pdf" /> PDF</label>
           <label><input type="checkbox" v-model="exportFormats.dxf" /> DXF</label>
           <label><input type="checkbox" v-model="exportFormats.gpkg" /> GPKG</label>
         </div>
@@ -475,7 +472,7 @@ import type { CoverPageInfo } from '@/utils/cover-page'
 import { listCoordinatePoints, updateLandParcel } from '@/services/spatial'
 import { listAdoptedBeacons } from '@/services/adoptedBeacons'
 import { saveDocument } from '@/services/documentStorage'
-import { generateWorkingPlanDXF } from '@/services/workingPlan'
+import { generateWorkingPlanDXF, generateWorkingPlanPDF } from '@/services/workingPlan'
 import { buildWorkingPlanSpec, workingPlanEmptyReason, controlPointsForInset, selectedControlPointIds } from './workingPlanSpec'
 import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
 import { dispensationFromWorkflow } from '@/composables/useDispensationCertificate'
@@ -893,17 +890,7 @@ function findSubjectParcel(id: string | number | null | undefined): any | null {
   return parcels.value.find((p: any) => String(p.id) === String(id)) ?? null
 }
 const exportFormats = reactive({ pdf: true, dxf: true, gpkg: true })
-// A Working Plan's own renderer draws the A4 sheet, as a DXF. The PDF renderer is the General Plan's: on a
-// Working Plan it produced a General Plan on an SI 727 sheet, so the PDF is switched off (and the DXF on)
-// while a Working Plan is the plan type, and back on when the surveyor goes back to another type.
-watch(() => config.value.planType, (type, previous) => {
-  if (type === 'working-plan') {
-    exportFormats.pdf = false
-    exportFormats.dxf = true
-  } else if (previous === 'working-plan') {
-    exportFormats.pdf = true
-  }
-}, { immediate: true })
+
 const planTypeLabel = computed(() => getPlanTypeMeta(config.value.planType).label)
 
 function normalizeCapeLoYX(y: number, x: number): [number, number] {
@@ -4756,7 +4743,7 @@ async function generatePlanDocuments() {
   // the sheet that actually gets drawn can never disagree.
   let workingPlanSpec: ReturnType<typeof buildWorkingPlanSpec>['spec'] | null = null
   let workingPlanSkipped: string[] = []
-  if (exportFormats.dxf && config.value.planType === 'working-plan') {
+  if ((exportFormats.dxf || exportFormats.pdf) && config.value.planType === 'working-plan') {
     const built = buildWorkingPlanSpec({
       beacons: exportBeaconsAsGeoJSON(),
       parcels: await workingPlanParcels(),
@@ -4855,6 +4842,15 @@ async function generatePlanDocuments() {
           console.warn('[PlanDocs] Summary PDF failed (plan still generated):', summaryErr?.message)
         }
       }
+    }
+
+    if (exportFormats.pdf && config.value.planType === 'working-plan' && workingPlanSpec) {
+      // The Working Plan's PDF is the backend's A4 drawing of the same sheet the DXF holds, not the
+      // General Plan renderer's SI 727 layout.
+      exportStatus.value = 'Rendering Working Plan PDF…'
+      const { blob, scale } = await generateWorkingPlanPDF(workingPlanSpec)
+      docs.pdf = blob
+      workingPlanScale = scale || undefined
     }
 
     if (exportFormats.dxf && config.value.planType === 'working-plan' && workingPlanSpec) {

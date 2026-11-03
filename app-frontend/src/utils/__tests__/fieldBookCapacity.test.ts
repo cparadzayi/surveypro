@@ -38,3 +38,13 @@ describe('field book page capacity', () => {
     expect(out).not.toContain(`(Wall${R - 1})`)
   })
 })
+
+describe('party-wall grid', () => {
+  it('puts the last row of every page, first or continuation, above the bottom of the grid', async () => {
+    const { partyWallGrid } = await import('../fieldBookPagination')
+    const { rowHeight, bottomY } = FIELD_BOOK_LAYOUT
+    // the first page gives two row-slots to the heading and column header
+    expect(partyWallGrid(true).firstRowY + (R - 3) * rowHeight).toBeLessThanOrEqual(bottomY)
+    expect(partyWallGrid(false).firstRowY + (R - 1) * rowHeight).toBeLessThanOrEqual(bottomY)
+  })
+})

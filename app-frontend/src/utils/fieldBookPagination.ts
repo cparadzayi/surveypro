@@ -41,6 +41,19 @@ function rowsThatFit(headingRows: number): number {
   return Math.floor((bottomY - firstRow) / rowHeight) + 1;
 }
 
+/**
+ * Baselines, in mm, of one page of the party-wall table, for the field book and the Calculations mirror of it.
+ * Both draw from here, so the rows computePartyWallPaginate puts on a page are rows the page has room for
+ * (the Calculations table once drew them at 7 mm from y = 60 and a 45-row page ran off the sheet).
+ */
+export function partyWallGrid(isFirstPage: boolean): { headingY: number | null; headerY: number; ruleY: number; firstRowY: number } {
+  const { headerY: top, rowHeight } = FIELD_BOOK_LAYOUT;
+  const headingY = isFirstPage ? top : null;
+  const headerY = isFirstPage ? top + rowHeight : top;
+  const ruleY = headerY + 2.5;
+  return { headingY, headerY, ruleY, firstRowY: ruleY + (FIELD_BOOK_LAYOUT.firstRowOffset - 2.5) };
+}
+
 /** Rows that fit on one field book page, with a block heading on it (the tightest page there is). */
 export const FIELD_BOOK_POINTS_PER_PAGE = rowsThatFit(FIELD_BOOK_LAYOUT.headingRows);
 

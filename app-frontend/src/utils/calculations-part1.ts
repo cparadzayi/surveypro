@@ -3,7 +3,7 @@ import { useSurveyLookupStore } from '../stores/surveyLookup'
 import type { AdjustedCoordinate, CalculationsPart1Result } from '../types/adjusted-coordinates'
 import { VirtualPDFMeasurer } from './VirtualPDFMeasurer'
 import type { CalculationsMeasurement } from '../types/document-measurements'
-import { paginateFieldBook, computePartyWallPaginate, type PartyWallRow } from './fieldBookPagination'
+import { paginateFieldBook, computePartyWallPaginate, partyWallGrid, FIELD_BOOK_LAYOUT, type PartyWallRow } from './fieldBookPagination'
 import { isCalculatedPoint } from './calculatedPoint'
 import { formatDateDDMMYYYY } from './dateFormat'
 
@@ -973,23 +973,21 @@ export class CalculationsPart1Generator {
 
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(14);
-      pdf.text('CALCULATIONS', this.options.marginLeft, 25);
+      pdf.text('CALCULATIONS', this.options.marginLeft, FIELD_BOOK_LAYOUT.titleY);
 
-      let yPosition = pageIndex === 0 ? 40 : 34;
-      if (pageIndex === 0) {
+      const grid = partyWallGrid(pageIndex === 0);
+      if (grid.headingY !== null) {
         // The first row of the table is the section heading.
         pdf.setFontSize(11);
-        pdf.text('Party-wall servitudes', this.options.marginLeft, yPosition);
-        yPosition += 8;
+        pdf.text('Party-wall servitudes', this.options.marginLeft, grid.headingY);
       }
 
       pdf.setFontSize(9);
-      pdf.text('STANDS', col1, yPosition);
-      pdf.text('BOUNDARY', col2, yPosition);
-      pdf.text('F/B', col3, yPosition);
-      yPosition += 4;
-      pdf.line(col1, yPosition, col1 + 160, yPosition);
-      yPosition += 8;
+      pdf.text('STANDS', col1, grid.headerY);
+      pdf.text('BOUNDARY', col2, grid.headerY);
+      pdf.text('F/B', col3, grid.headerY);
+      pdf.line(col1, grid.ruleY, col1 + 160, grid.ruleY);
+      let yPosition = grid.firstRowY;
 
       pdf.setFont('helvetica', 'normal');
       for (const dataRow of rowIndices) {
@@ -997,7 +995,7 @@ export class CalculationsPart1Generator {
         pdf.text(row.stands || '-', col1, yPosition);
         pdf.text(row.boundary || '-', col2, yPosition);
         pdf.text(partyWallPageMap[dataRow] || '-', col3, yPosition);
-        yPosition += 7;
+        yPosition += FIELD_BOOK_LAYOUT.rowHeight;
       }
 
       this.currentPage++;

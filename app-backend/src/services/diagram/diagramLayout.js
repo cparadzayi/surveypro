@@ -41,6 +41,13 @@ export const ARROW_GUTTER = ARROW_WIDTH + 12
 // so the drawing and its writing read as one.
 export const DIAGRAM_FONTS = { table: 10, tableHead: 9, beacon: 10, approved: 10, statement: 10, grid: 8, label: 10 }
 
+// The Surveyor-General's approval block: the baseline of each line, points below the block's top. The gap
+// between "Approved" and "for Surveyor-General" is where the Surveyor-General signs (about 34 pt clear), and
+// the one after it is the date line. Both the renderer and the reflow that makes room for the block read
+// these, so the block is as tall as it is drawn.
+export const APPROVED_ROWS = { approved: 5, surveyorGeneral: 49, date: 67 }
+export const APPROVED_CONTENT_H = 80
+
 // Vertical rhythm of the ruled table, points below its top. The three header rows and
 // the Constants row moved down 1-3 pt with the larger type so the lines do not touch;
 // both renderers read these, so the PDF and the DXF cannot drift.

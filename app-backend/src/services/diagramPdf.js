@@ -7,7 +7,7 @@ import { placeCase } from '../utils/placeCase.js'
 import { buildReferenceGrid } from './diagram/referenceGrid.js'
 import {
   computeDiagramLayout, pageDimsPt, marginsPt, northArrowGeometryPt, DIAGRAM_FONTS,
-  DEDUCTIONS_NOTE, BINDING_MARGIN_NOTE, TABLE_GEOM, tableBottomY, FURNITURE_FONT_PT, DEDUCTIONS_GAP_PT, BINDING_NOTE_OFFSET_PT,
+  DEDUCTIONS_NOTE, BINDING_MARGIN_NOTE, TABLE_GEOM, tableBottomY, FURNITURE_FONT_PT, DEDUCTIONS_GAP_PT, BINDING_NOTE_OFFSET_PT, APPROVED_ROWS, APPROVED_CONTENT_H,
 } from './diagram/diagramLayout.js'
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
 import { recordPdfOps } from './diagram/pdfOps.js'
@@ -512,9 +512,9 @@ function drawApprovedBox(doc, layout) {
   const ctr = { width: R.width, align: 'center' }
   doc.save().font('Helvetica').fontSize(DIAGRAM_FONTS.approved).fillColor('#000')
   // Wider gaps leave room to sign above "for Surveyor-General" and to enter the date.
-  doc.text('Approved', R.x, R.y + 5, ctr)
-  doc.text('for Surveyor-General', R.x, R.y + 31, ctr)
-  doc.text('Date ....................', R.x, R.y + 55, ctr)
+  doc.text('Approved', R.x, R.y + APPROVED_ROWS.approved, ctr)
+  doc.text('for Surveyor-General', R.x, R.y + APPROVED_ROWS.surveyorGeneral, ctr)
+  doc.text('Date ....................', R.x, R.y + APPROVED_ROWS.date, ctr)
   doc.restore()
 }
 
@@ -752,9 +752,9 @@ export async function generateDiagramPDF(options, logger) {
   const BEACON_DESC_GAP = 8
   layout.beaconDesc = { ...layout.beaconDesc, y: tableBottom + BEACON_DESC_GAP }
   layout.approved = { ...layout.approved, y: tableBottom + BEACON_DESC_GAP }
-  // Visual bottom of the two blocks: the Approval text runs to ~63 pt (three rows),
-  // the beacon list to a heading + one row per description group; take the lower.
-  const approvalContentH = 63
+  // Visual bottom of the two blocks: the Approval text runs to APPROVED_CONTENT_H (three rows with the
+  // signature gap), the beacon list to a heading + one row per description group; take the lower.
+  const approvalContentH = APPROVED_CONTENT_H
   const beaconContentH = 11 + Math.max(1, beaconGroups.length) * 11
   const blocksBottom = tableBottom + BEACON_DESC_GAP + Math.max(approvalContentH, beaconContentH)
   // Region for the figure + scale bar group: below the blocks, above the statement.

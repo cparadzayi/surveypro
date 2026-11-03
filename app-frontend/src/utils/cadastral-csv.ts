@@ -172,9 +172,14 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
       return '';
     };
     
+    let emptyRows = 0;
     for (let i = 1; i < rows.length; i++) {
       const row = parseCSVRow(rows[i]);
       if (row.length === 0 || (row.length === 1 && row[0].trim() === '')) continue;
+      // A row of nothing but separators (",,,,,", which a spreadsheet leaves below the data) is not a point.
+      // It used to become a nameless point at Y=0, X=0, which sat on the map 19 degrees from the survey and
+      // dragged its centre there.
+      if (row.every(cell => cell.trim() === '')) { emptyRows++; continue; }
       const record: any = {};
       header.forEach((h, idx) => {
         record[h] = idx < row.length ? row[idx].trim() : '';
@@ -341,6 +346,15 @@ result.preview.push(point);
       if (point.includeInFieldBook) {
         result.summary.fieldBookPoints++;
       }
+    }
+
+    if (emptyRows > 0) {
+      result.warnings.push({
+        row: 0,
+        field: 'file',
+        message: `${emptyRows} empty row${emptyRows === 1 ? '' : 's'} ignored`,
+        suggestion: 'Rows with no values were left below the data; they are not points.'
+      });
     }
 
     // Case-fold pair rejection (decision 15): two distinct raw ids that normalise

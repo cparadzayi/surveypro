@@ -1623,6 +1623,51 @@ const crowded = crowdedClusters(
   /* ---- beacons and their names */
 
 
+  /* ---- abutting properties
+   *
+   * A found or placed beacon states which properties abut it. They are read off the drawing itself: the
+   * parcels (and the remainder) whose ring the beacon is on, each with the true bearing from the beacon
+   * toward the parcel's middle. A beacon on no drawn ring (88X2 of Brackenhurst stands off the figure, a
+   * mark of the neighbouring stand 88) names its stand by its own name: the leading digits of a beacon
+   * name are the stand it belongs to. Reference marks and control points abut nothing and say nothing.
+   */
+  const ABUT_SYMBOLS = new Set(['placed', 'peg', 'found', 'foundNotAdopted', 'ws', 'wsu']);
+  const abutShapes = [
+    ...(spec.parcels ?? []).map((p) => ({ label: p.label, ring: p.ring ?? [] })),
+    ...(spec.remainderLabel && (spec.remainderRing ?? []).length >= 3
+      ? [{ label: spec.remainderLabel, ring: spec.remainderRing }] : []),
+  ].map((p) => {
+    const pts = p.ring.filter((n) => byName.has(n)).map((n) => [G(n).e, G(n).n]);
+    return { ...p, mid: pts.length >= 3 ? centroid(pts) : null };
+  });
+  const onAnyRing = (name) => abutShapes.some((p) => p.ring.includes(name));
+  /** [{ label, bearing? }] -- bearing in radians, ground axes (east 0, north +pi/2). */
+  const abuttersOf = (b) => {
+    const on = abutShapes.filter((p) => p.ring.includes(b.name) && p.label);
+    if (on.length) {
+      return on.map((p) => ({
+        label: String(p.label).trim(),
+        ...(p.mid ? { bearing: Math.atan2(p.mid[1] - b.n, p.mid[0] - b.e) } : {}),
+      }));
+    }
+    // Off every ring: a splay point such as 88X2 abuts its stand (the digits of its name) and the
+    // roads whose line it stands on.
+    const out = [];
+    const stand = /^(\d+)[A-Za-z]/.exec(b.name);
+    if (stand) out.push({ label: stand[1] });
+    for (const rd of spec.roads ?? []) {
+      if ((rd.part ?? 'name') !== 'name' || !byName.has(rd.from) || !byName.has(rd.to)) continue;
+      const p = G(rd.from), q = G(rd.to);
+      const dx = q.e - p.e, dy = q.n - p.n, len2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((b.e - p.e) * dx + (b.n - p.n) * dy) / len2));
+      if (Math.hypot(b.e - (p.e + t * dx), b.n - (p.n + t * dy)) <= 1.0) {
+        const label = String(rd.name).replace(/\s+[\d.]+\s*m$/i, '').trim();
+        if (label && !out.some((o) => o.label === label)) out.push({ label });
+      }
+    }
+    return out;
+  };
+
   for (const b of figureBeacons()) {
     const block = {
       placed: 'BCN_PLACED', peg: 'BCN_PLACED',
@@ -1680,6 +1725,21 @@ const crowded = crowdedClusters(
     occupied.push(chosen.rect);
     d.text(b.name, [b.e + P[0], b.n + P[1]], h,
       { layer: 'BEACON-TEXT', style: 'ARIAL', align: P[2] });
+
+    // A found or placed beacon off every drawn ring has no neighbours lettered around it, so its
+    // abutting property is lettered beside it, as a stand number is.
+    if (ABUT_SYMBOLS.has(b.symbol ?? 'placed') && !onAnyRing(b.name)) {
+      const text = abuttersOf(b).map((a) => a.label).filter((t) => t && t !== b.name).join(', ');
+      if (text) {
+        const ah = mm(L.text.adjoining);
+        const spots = [];
+        for (const k of [1.4, 2.0, 2.8, 3.8]) for (const t of tries) spots.push(namePlace(b, t, k));
+        const at = bestOf(spots, (c) => textRect(text, b.e + c[0], b.n + c[1], ah, c[2]));
+        occupied.push(at.rect);
+        d.text(text, [b.e + at.choice[0], b.n + at.choice[1]], ah,
+          { layer: 'PARCEL-TEXT', style: 'ARIAL', align: at.choice[2] });
+      }
+    }
 
     // The monument's own name, centred below its sign where the reservation
     // already held the ground. It is fixed -- no compass search -- because it
@@ -1915,6 +1975,34 @@ const crowded = crowdedClusters(
       if (b.cpName) {
         d.text(b.cpName, [at[0], at[1] - down - mm(0.5) - h], h,
           { layer: 'INSET', style: 'ARIAL', align: 'center' });
+      }
+
+      // The abutting properties of a found or placed beacon, each lettered on the side of the sign
+      // it lies toward (its true bearing), turned aside in steps until clear of the name and of its
+      // fellows. A detail's marks are spread, but their bearings to the parcels are the real ones.
+      if (ABUT_SYMBOLS.has(b.symbol ?? 'peg')) {
+        const taken = [textRect(b.name, at[0], at[1] + up + mm(0.5), h, 'center')];
+        if (b.cpName) taken.push(textRect(b.cpName, at[0], at[1] - down - mm(0.5) - h, h, 'center'));
+        const clear = (r) => !taken.some((o) => r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]);
+        const reach = iRing + mm(1.1);
+        const turns = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6];
+        for (const a of abuttersOf(b)) {
+          if (!a.label || a.label === b.name) continue;
+          const base = a.bearing ?? -Math.PI / 2;   // no bearing: beneath the sign
+          let drawn = null;
+          for (const turn of turns) {
+            const ang = base + turn * (Math.PI / 6);
+            const cx = Math.cos(ang), cy = Math.sin(ang);
+            const align = cx > 0.35 ? 'left' : cx < -0.35 ? 'right' : 'center';
+            const px = at[0] + cx * reach, py = at[1] + cy * reach;
+            const y = cy < -0.35 ? py - h : cy > 0.35 ? py : py - h / 2;   // baseline
+            const r = textRect(a.label, px, y, h, align);
+            if (clear(r)) { drawn = { px, y, align, r }; break; }
+            drawn ??= { px, y, align, r };   // nothing clear: the first choice, rather than none
+          }
+          taken.push(drawn.r);
+          d.text(a.label, [drawn.px, drawn.y], h, { layer: 'INSET', style: 'ARIAL', align: drawn.align });
+        }
       }
     };
 

@@ -1,0 +1,70 @@
+import { describe, test, expect } from '@jest/globals'
+import { generateWorkingPlan } from '../working-plan.js'
+import { brackenhurstSpec } from './fixtures/brackenhurstSpec.js'
+
+/** Text entities of a layer, in order. */
+function textsOn(dxf, layer) {
+  const L = dxf.split('\n').map((l) => l.trim())
+  const out = []
+  for (let i = 0; i < L.length - 1; i++) {
+    if (L[i] !== '0' || L[i + 1] !== 'TEXT') continue
+    let lay = null, txt = null
+    for (let j = i + 2; j < L.length - 1 && L[j] !== '0'; j += 2) {
+      if (L[j] === '8') lay = L[j + 1]
+      if (L[j] === '1') txt = L[j + 1]
+    }
+    if (lay === layer) out.push(txt)
+  }
+  return out
+}
+
+const withSymbols = (symbols) => ({
+  ...brackenhurstSpec,
+  beacons: brackenhurstSpec.beacons.map((b) => (symbols[b.name] ? { ...b, symbol: symbols[b.name] } : b)),
+})
+
+describe('abutting properties', () => {
+  test('a found beacon on no ring names its stand from its own name (88X2 -> 88)', () => {
+    const before = textsOn(generateWorkingPlan(brackenhurstSpec).dxf, 'PARCEL-TEXT').filter((t) => t === '88').length
+    const after = textsOn(generateWorkingPlan(withSymbols({ '88X2': 'found' })).dxf, 'PARCEL-TEXT').filter((t) => t === '88').length
+    expect(after).toBe(before + 1)
+  })
+
+  test('a reference mark states no abutter', () => {
+    const rm = textsOn(generateWorkingPlan(withSymbols({ '88X2': 'rm' })).dxf, 'PARCEL-TEXT')
+    const found = textsOn(generateWorkingPlan(withSymbols({ '88X2': 'found' })).dxf, 'PARCEL-TEXT')
+    expect(found.length).toBe(rm.length + 1)
+  })
+
+  test('the site beacon in the inset letters its three properties', () => {
+    const sd5 = brackenhurstSpec.beacons.find((b) => b.name === 'SD5')
+    const spec = { ...brackenhurstSpec, inset: { ...brackenhurstSpec.inset,
+      beacons: [...brackenhurstSpec.inset.beacons, { name: 'SD5', X: sd5.X, Y: sd5.Y, symbol: 'peg' }] } }
+    const inset = textsOn(generateWorkingPlan(spec).dxf, 'INSET')
+    for (const label of ['405', '404', 'Rem./']) expect(inset).toContain(label)
+  })
+})
+
+describe('a splay point abuts its stand and the roads it stands on', () => {
+  test('88X2 on the Main Road line is lettered with its stand and that road', () => {
+    const a = brackenhurstSpec.beacons.find((b) => b.name === 'SD1')
+    const z = brackenhurstSpec.beacons.find((b) => b.name === '87CR')
+    const splay = { name: '88X2', X: (a.X + z.X) / 2, Y: (a.Y + z.Y) / 2, symbol: 'peg', label: 'N' }
+    const spec = { ...brackenhurstSpec, beacons: [...brackenhurstSpec.beacons.filter((b) => b.name !== '88X2'), splay] }
+    expect(textsOn(generateWorkingPlan(spec).dxf, 'PARCEL-TEXT')).toContain('88, Main Road')
+  })
+
+  test('a width or destination label is not an abutter', () => {
+    const a = brackenhurstSpec.beacons.find((b) => b.name === 'SD1')
+    const z = brackenhurstSpec.beacons.find((b) => b.name === '87CR')
+    const splay = { name: '88X2', X: (a.X + z.X) / 2, Y: (a.Y + z.Y) / 2, symbol: 'peg', label: 'N' }
+    const spec = {
+      ...brackenhurstSpec,
+      beacons: [...brackenhurstSpec.beacons.filter((b) => b.name !== '88X2'), splay],
+      roads: [...brackenhurstSpec.roads, { name: '20m', from: 'SD1', to: '87CR', part: 'width' }],
+    }
+    const t = textsOn(generateWorkingPlan(spec).dxf, 'PARCEL-TEXT')
+    expect(t).toContain('88, Main Road')
+    expect(t.some((x) => x.includes('20m'))).toBe(false)
+  })
+})

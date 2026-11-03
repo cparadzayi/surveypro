@@ -80,6 +80,9 @@ export interface WorkingPlanRoad {
   name: string
   from: string
   to: string
+  /** What this label is: the feature's own name (the only one a beacon is said to abut), its
+   *  width, or where it leads. Absent means the name. */
+  part?: 'name' | 'width' | 'dest'
 }
 
 export interface WorkingPlanInsetBeacon {
@@ -1087,7 +1090,9 @@ export function buildWorkingPlanSpec(
     notes.filter(n => !namesThisSheet(n.text)), n => n.text)
     .map(({ text, X, Y }) => ({ text, X, Y }))
   const finalRoads: WorkingPlanRoad[] = longestPerName(roads, r => r.key)
-    .map(({ name, from, to }) => ({ name, from, to }))
+    .map(({ name, from, to, key }) => ({
+      name, from, to, part: key.split(':')[0] as 'name' | 'width' | 'dest',
+    }))
 
   const srNumber = srNumberFrom(ctx.projectInfo)
 

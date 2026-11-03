@@ -3520,6 +3520,14 @@ async function runWorkflowRibbonAction(id: string) {
 // Phase 2: Workflow Dashboard Handlers
 function handleStepClick(step: WorkflowStep) {
   console.log('Step clicked:', step.label);
+  // Every step after Project Setup works on a project's parcels, coordinates and control points, all
+  // fetched by project id. With none selected they open empty and look like lost data.
+  if (step.dbKey !== 'project-setup' && !selectedProject.value) {
+    notifyWarning('Select a project in Project Setup first.')
+    workflowState.currentStep = 'project-setup' as any
+    setCurrentStep('project-setup')
+    return
+  }
   // Navigate to step
   workflowState.currentStep = step.dbKey as any;
   setCurrentStep(step.dbKey);

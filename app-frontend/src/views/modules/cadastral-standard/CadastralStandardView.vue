@@ -467,6 +467,29 @@
               </div>
             </dl>
           </div>
+
+          <!-- Navigation: the step was the only one with no way forward but the ribbon's Next. The
+               calibration is optional, so this saves whatever is loaded (or its absence) and moves on. -->
+          <div class="flex justify-between pt-6 mt-6 border-t border-gray-200">
+            <button
+              @click="workflowState.currentStep = 'csv-import'"
+              class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              ← Back to Import
+            </button>
+            <div class="flex flex-col items-end">
+              <button
+                @click="saveCalibrationAndContinue"
+                :disabled="isSavingCalibrationStep"
+                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {{ isSavingCalibrationStep ? 'Saving…' : 'Save & Continue to Control Point Selection →' }}
+              </button>
+              <p v-if="!workflowState.documents.siteCalibration" class="mt-1 text-xs text-gray-500">
+                No calibration loaded: this step is optional and will be recorded as skipped.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1385,7 +1408,7 @@ import { buildBeaconRepairPlan, runBeaconRepair, describeRepairResult, renameWor
 import { planCoordinateRefresh, refreshWorkflowCoordinateCopies } from './parcelSnapshotRefresh';
 import { areaCompute } from '../../../services/compute';
 import { useParcelsStore } from '../../../stores/parcels';
-import { parseCalibrationReport } from '../../../utils/siteCalibration';
+import { parseCalibrationReport, planCalibrationSelection, MIN_CONTROL_POINTS } from '../../../utils/siteCalibration';
 import { generateCalibrationReportPDF } from '../../../utils/calibration-pdf';
 import CSVReimportDialog from '../../../components/cadastral/CSVReimportDialog.vue';
 import MergeAnalysisDialog from '../../../components/cadastral/MergeAnalysisDialog.vue';
@@ -3187,6 +3210,94 @@ async function persistCalibrationReport(
 function clearSiteCalibration() {
   setSiteCalibration(null);
   calibrationError.value = '';
+}
+
+const isSavingCalibrationStep = ref(false);
+
+/**
+ * Select, and save, the control points the loaded calibration names. Needs the project's Lo zone (the
+ * registry is fetched per zone). Never blocks the step: whatever cannot be done is said, and the surveyor
+ * carries on to Control Point Selection, where the selection can be corrected.
+ */
+async function applyCalibrationControlSelection() {
+  const calibration = workflowState.documents.siteCalibration;
+  const meridian = workflowState.projectInfo.centralMeridian;
+  if (!calibration || !calibration.pairs?.length) return;
+  if (!meridian) {
+    notifyWarning('Set the project\'s Lo zone to select the control points from the calibration.');
+    return;
+  }
+  try {
+    const response = await api.get('/control-points', { params: { gauss_lo: meridian, limit: 5000 } });
+    const registry = Array.isArray(response.data?.data) ? response.data.data : [];
+    const current = workflowState.projectInfo.controlPointIds ?? [];
+    const plan = planCalibrationSelection(calibration, registry, current);
+
+    if (plan.ids.length === 0) {
+      notifyWarning('None of the points in the site calibration is in the control registry for this Lo zone. Select the control points by hand.', {
+        title: 'No control points selected from the calibration',
+        details: plan.unmatched,
+        sticky: true,
+      });
+      return;
+    }
+    if (plan.replacesExisting) {
+      const replace = await confirmDialog({
+        title: 'Replace the selected control points?',
+        message: `${current.length} control point${current.length === 1 ? ' is' : 's are'} selected. The site calibration names ${plan.ids.length} (${plan.matched.join(', ')}). Select those instead?`,
+        confirmLabel: 'Use the calibration',
+        cancelLabel: 'Keep my selection',
+      });
+      if (!replace) return;
+    }
+
+    workflowState.projectInfo.controlPointIds = [...plan.ids];
+    await saveStepData('control-point-selection', { central_meridian: meridian, control_point_ids: plan.ids });
+    const projectId = workflowState.projectInfo.projectId;
+    if (projectId) {
+      const saved = await updateSurveyProject(projectId, { controlPoints: { meridian, points: plan.ids } });
+      if (!saved) notifyWarning('The control points were selected but the project record could not be updated.');
+    }
+
+    if (plan.unmatched.length > 0) {
+      notifyWarning('These were named in the report but are not in the control registry. Add them manually.', {
+        title: `Selected ${plan.matched.length} control point${plan.matched.length === 1 ? '' : 's'} from the site calibration`,
+        details: plan.unmatched,
+        sticky: true,
+      });
+    } else if (plan.belowMinimum) {
+      notifyWarning(`The calibration names ${plan.ids.length}; Control Point Selection needs at least ${MIN_CONTROL_POINTS} to be completed. Add more there.`);
+    } else {
+      notifySuccess(`Selected ${plan.ids.length} control points from the site calibration: ${plan.matched.join(', ')}`);
+    }
+  } catch (err) {
+    console.error('❌ Could not select the control points from the calibration:', err);
+    notifyWarning('Could not select the control points from the calibration. Select them in the next step.');
+  }
+}
+
+/**
+ * Close the Site Calibration step and go on to Control Point Selection. The calibration itself is
+ * already persisted the moment it is loaded (setSiteCalibration); this records the step as done, so the
+ * ribbon ticks it, with the same data under the same key, whether or not a report was attached (the
+ * step is optional).
+ */
+async function saveCalibrationAndContinue() {
+  if (isSavingCalibrationStep.value) return;
+  isSavingCalibrationStep.value = true;
+  try {
+    workflowState.currentStep = 'site-calibration';
+    await completeCurrentStep({ site_calibration: workflowState.documents.siteCalibration ?? null });
+    // The calibration names the control the survey was tied to: select it now, so the selection is saved
+    // (and every document uses it) whether or not the surveyor opens the next step to confirm.
+    await applyCalibrationControlSelection();
+    workflowState.currentStep = 'control-point-selection';
+  } catch (err) {
+    console.error('❌ Failed to save the site calibration step:', err);
+    notifyFailure('Could not save the site calibration step', err);
+  } finally {
+    isSavingCalibrationStep.value = false;
+  }
 }
 
 function readFileContent(file: File): Promise<string> {

@@ -417,3 +417,39 @@ export function matchCalibrationControlPoints(
 
   return { ids, matched, unmatched }
 }
+
+/** The control points the minimum selection needs before Control Point Selection can be completed. */
+export const MIN_CONTROL_POINTS = 3
+
+export interface CalibrationSelectionPlan {
+  /** Registry ids the calibration names, in the report's order. */
+  ids: number[]
+  matched: string[]
+  /** Named in the report but absent from the registry: the surveyor has to add these by hand. */
+  unmatched: string[]
+  /** There is a selection already and it is not the calibration's: replacing it needs the surveyor's word. */
+  replacesExisting: boolean
+  /** The calibration alone leaves fewer than the minimum, so the step cannot be completed from it. */
+  belowMinimum: boolean
+}
+
+/**
+ * What loading a calibration should do to the control point selection: select exactly the control the
+ * report names. Pure, so the rule is testable apart from the screen that applies it.
+ */
+export function planCalibrationSelection(
+  calibration: { pairs?: Array<{ pointId?: string }> } | null | undefined,
+  registry: Array<{ id: number; monu_num?: string | null }>,
+  currentIds: number[] = [],
+): CalibrationSelectionPlan {
+  const { ids, matched, unmatched } = matchCalibrationControlPoints(calibration, registry)
+  const current = new Set(currentIds)
+  const same = ids.length === current.size && ids.every((id) => current.has(id))
+  return {
+    ids,
+    matched,
+    unmatched,
+    replacesExisting: current.size > 0 && ids.length > 0 && !same,
+    belowMinimum: ids.length > 0 && ids.length < MIN_CONTROL_POINTS,
+  }
+}

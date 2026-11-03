@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchCalibrationControlPoints } from '../siteCalibration'
+import { matchCalibrationControlPoints, planCalibrationSelection } from '../siteCalibration'
 
 /**
  * When a GNSS site calibration has been imported, the control points it names
@@ -64,5 +64,30 @@ describe('matchCalibrationControlPoints', () => {
     const r = matchCalibrationControlPoints(cal(['', '  ', '50/T']), registry)
     expect(r.ids).toEqual([14])
     expect(r.unmatched).toEqual([])
+  })
+})
+
+describe('planCalibrationSelection', () => {
+  it('selects the control the report names and leaves nothing to confirm on a fresh project', () => {
+    const p = planCalibrationSelection(cal(['170/P', '176/P', '49/T', '50/T']), registry, [])
+    expect(p.ids).toEqual([11, 12, 13, 14])
+    expect(p.replacesExisting).toBe(false)
+    expect(p.belowMinimum).toBe(false)
+  })
+
+  it('asks before replacing a different selection, not before restating the same one', () => {
+    expect(planCalibrationSelection(cal(['49/T', '50/T', '170/P']), registry, [15, 11]).replacesExisting).toBe(true)
+    expect(planCalibrationSelection(cal(['49/T', '50/T', '170/P']), registry, [14, 13, 11]).replacesExisting).toBe(false)
+  })
+
+  it('says when the report leaves fewer control points than the step needs', () => {
+    expect(planCalibrationSelection(cal(['49/T', '50/T']), registry, []).belowMinimum).toBe(true)
+  })
+
+  it('selects nothing, and replaces nothing, when no named point is in the registry', () => {
+    const p = planCalibrationSelection(cal(['999/T']), registry, [11, 12, 13])
+    expect(p.ids).toEqual([])
+    expect(p.unmatched).toEqual(['999/T'])
+    expect(p.replacesExisting).toBe(false)
   })
 })

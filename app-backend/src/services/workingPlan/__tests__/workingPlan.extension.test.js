@@ -201,18 +201,19 @@ describe('generateWorkingPlan — the divided figure', () => {
   test('does not split when the outlier buys no finer rung', () => {
     // A survey large enough that its own rung is coarser than the 1:2500 floor,
     // so the ladder is genuinely engaged and the rung can be won or lost. This
-    // ring is 340 m wide: on its own that needs 1:3000, and the mark 50 m east
+    // ring is 320 m wide: on its own that needs 1:3000, and the mark 50 m east
     // of it -- past the 34 m padded band, so a real outlier -- stretches the
-    // easting to 390 m, which still needs 1:3000. The outlier buys no finer
+    // easting to 370 m, which still needs 1:3000. (320 and 370 are sized to the drawing panel inside
+    // the printable margin; the panel was taller before the neat line moved in.) The outlier buys no finer
     // rung, so there is nothing to buy and the figure is not reorganised.
     const tall = {
       scale: 'auto',
       beacons: [
         { name: 'A', X: 2144000, Y: -85400, symbol: 'peg', label: 'auto' },
-        { name: 'B', X: 2144000, Y: -85740, symbol: 'peg', label: 'auto' },
-        { name: 'C', X: 2144030, Y: -85740, symbol: 'peg', label: 'auto' },
+        { name: 'B', X: 2144000, Y: -85720, symbol: 'peg', label: 'auto' },
+        { name: 'C', X: 2144030, Y: -85720, symbol: 'peg', label: 'auto' },
         { name: 'D', X: 2144030, Y: -85400, symbol: 'peg', label: 'auto' },
-        { name: 'R1', X: 2144030, Y: -85790, symbol: 'rm', label: 'E' },
+        { name: 'R1', X: 2144030, Y: -85770, symbol: 'rm', label: 'E' },
       ],
       parcels: [{ label: '404', ring: ['A', 'B', 'C', 'D'] }],
       title: ['WORKING PLAN OF', 'Stand 404'],

@@ -132,6 +132,16 @@ describe('POST /working-plan/dxf', () => {
     expect(res.statusCode).toBe(200)
   })
 
+  test('accepts either way up of the A4 sheet, and refuses any other', async () => {
+    for (const orientation of ['landscape', 'portrait']) {
+      const ok = await buildApp().inject({ method: 'POST', url: '/dxf', payload: { ...validSpec, orientation } })
+      expect(ok.statusCode).toBe(200)
+    }
+    const bad = await buildApp().inject({ method: 'POST', url: '/dxf', payload: { ...validSpec, orientation: 'diagonal' } })
+    expect(bad.statusCode).toBe(400)
+    expect(bad.json().message).toMatch(/landscape or portrait/)
+  })
+
   test('turns an unknown beacon into a 400 that still names the beacon', async () => {
     // A ring naming a beacon that is not in the list is the surveyor's data
     // problem, and they can only fix it if the name survives to the UI.

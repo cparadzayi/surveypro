@@ -57,6 +57,10 @@ function validateWorkingPlanSpec(spec) {
   if (spec.sheetSize != null && spec.sheetSize !== 'A4') {
     return `sheetSize "${spec.sheetSize}" is not available -- a working plan is drawn on A4, and the scale escalates through the SI 727 prescribed scales instead`
   }
+  // Landscape is the default; portrait is the other way up of the same A4 sheet.
+  if (spec.orientation != null && spec.orientation !== 'landscape' && spec.orientation !== 'portrait') {
+    return `orientation "${spec.orientation}" is not available -- a working plan is drawn on A4, landscape or portrait`
+  }
   return null
 }
 

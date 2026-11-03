@@ -29,16 +29,29 @@ import { isReferenceMarkName } from '../../../../app-shared/beaconName.js';
 /* ------------------------------------------------------------------ layout */
 
 /**
- * The working plan's paper: ISO A4 landscape, in millimetres.
+ * The working plan's paper: ISO A4, in millimetres, landscape by default and portrait on request.
  *
  * One size, deliberately. A working plan is a field document and A4 is what a
  * surveyor carries and prints; when a figure will not fit, SI 727 Reg 32(2)
  * says the SCALE moves, not the paper. Reported in the result so a plot dialog
  * can set true size without the operator scaling by hand.
  */
-export const SHEET = { width: 297, height: 210 };
+export const SHEET_LANDSCAPE = { width: 297, height: 210 };
+export const SHEET_PORTRAIT = { width: 210, height: 297 };
+export const SHEET = SHEET_LANDSCAPE;
 
-export const LAYOUT = {
+/**
+ * The neat line stands this far inside the paper's edge. The measured sheet drew it 0.5 mm in, where a
+ * desktop printer, which cannot print the last few millimetres, cuts it off. 8 mm clears every common
+ * A4 printer's unprintable band (about 4-6 mm) and leaves the border whole on the plot.
+ */
+export const PRINT_MARGIN_MM = 8;
+
+/**
+ * The design measured off a Surveyor-General working plan, on the full landscape sheet with its neat line
+ * at 0.5 mm. It is the source the two real layouts below are made from, never used directly.
+ */
+const MEASURED_LANDSCAPE = {
   border: { x0: 0.5, y0: 0.5, x1: 296.5, y1: 209.5 },
 
   // region the surveyed figure is centred in (mm from sheet top-left)
@@ -176,6 +189,98 @@ export const LAYOUT = {
 
   lineweight: 18,           // 0.18 mm, matching the source plot
 };
+
+/**
+ * The landscape sheet with the neat line at PRINT_MARGIN_MM. Every POSITION and extent on the measured
+ * design (panel, title block, north arrow, approval box, certificate, inset, Survey Record number) is
+ * mapped from the measured neat line onto the printable one; lettering, symbols and line weights are not
+ * touched, so the sheet keeps its ISO sizes and gives up only the white space between the blocks.
+ */
+function landscapeLayout(margin = PRINT_MARGIN_MM) {
+  const B = MEASURED_LANDSCAPE;
+  const sx = (SHEET_LANDSCAPE.width - 2 * margin) / (B.border.x1 - B.border.x0);
+  const sy = (SHEET_LANDSCAPE.height - 2 * margin) / (B.border.y1 - B.border.y0);
+  const fx = (x) => margin + (x - B.border.x0) * sx;
+  const fy = (y) => margin + (y - B.border.y0) * sy;
+  const rect = (r) => ({ x0: fx(r.x0), y0: fy(r.y0), x1: fx(r.x1), y1: fy(r.y1) });
+  const A = B.approval;
+  return {
+    ...B,
+    border: { x0: margin, y0: margin, x1: SHEET_LANDSCAPE.width - margin, y1: SHEET_LANDSCAPE.height - margin },
+    panel: rect(B.panel),
+    title: { cx: fx(B.title.cx), baselines: B.title.baselines.map(fy), scaleBaseline: fy(B.title.scaleBaseline) },
+    northArrow: { ...B.northArrow, cx: fx(B.northArrow.cx), cy: fy(B.northArrow.cy) },
+    approval: {
+      box: rect(A.box),
+      approvedBaseline: fy(A.approvedBaseline),
+      leader1: { y: fy(A.leader1.y), x0: fx(A.leader1.x0), x1: fx(A.leader1.x1) },
+      forBaseline: fy(A.forBaseline),
+      dateBaseline: fy(A.dateBaseline), dateX: fx(A.dateX),
+      leader2: { y: fy(A.leader2.y), x0: fx(A.leader2.x0), x1: fx(A.leader2.x1) },
+    },
+    certificate: {
+      line1: { x: fx(B.certificate.line1.x), baseline: fy(B.certificate.line1.baseline) },
+      line2: { x: fx(B.certificate.line2.x), baseline: fy(B.certificate.line2.baseline) },
+    },
+    inset: { ...B.inset, box: rect(B.inset.box) },
+    srNumber: { cx: fx(B.srNumber.cx), baseline: fy(B.srNumber.baseline) },
+  };
+}
+
+/**
+ * The portrait sheet. The same blocks, arranged for a tall page: the title across the top with the north
+ * arrow at its right, the drawing panel beneath it, then the certificate, and a foot of locality inset
+ * (left) and approval box (right) with the Survey Record number below them. Block sizes are the measured
+ * ones (the approval box keeps its 63.76 x 33.53 mm and its internal spacing); only where they stand
+ * changes. The inset is narrower (120 mm) because the approval box shares its row.
+ */
+function portraitLayout(margin = PRINT_MARGIN_MM) {
+  const B = MEASURED_LANDSCAPE;
+  const W = SHEET_PORTRAIT.width, H = SHEET_PORTRAIT.height;
+  const A = B.approval;
+  const boxW = A.box.x1 - A.box.x0, boxH = A.box.y1 - A.box.y0;
+  const right = W - margin - 2;                 // blocks stand 2 mm inside the neat line
+  const left = margin + 4;
+  const footBottom = H - margin - 10;
+  const ax = right - boxW, ay = footBottom - boxH;
+  const dx = ax - A.box.x0, dy = ay - A.box.y0;
+  const certLeft = left;
+  return {
+    ...B,
+    border: { x0: margin, y0: margin, x1: W - margin, y1: H - margin },
+    // The figure's own stubs (roads, abutments) reach a few millimetres past its beacons, so the panel
+    // stands well clear of the title block above it.
+    // Inset from the neat line by more than the blocks are: the grid labels at the side crosses reach
+    // past the panel's edges. Measured on the reference plan at 1:2000, this gives five grid crosses with
+    // every label inside the neat line; any narrower and the side crosses are lost.
+    panel: { x0: left + 4, y0: 72, x1: right - 6, y1: 190 },
+    title: { cx: W / 2, baselines: [20, 30, 40, 50], scaleBaseline: 59 },
+    northArrow: { ...B.northArrow, cx: right - 12, cy: 30 },
+    approval: {
+      box: { x0: ax, y0: ay, x1: ax + boxW, y1: ay + boxH },
+      approvedBaseline: A.approvedBaseline + dy,
+      leader1: { y: A.leader1.y + dy, x0: A.leader1.x0 + dx, x1: A.leader1.x1 + dx },
+      forBaseline: A.forBaseline + dy,
+      dateBaseline: A.dateBaseline + dy, dateX: A.dateX + dx,
+      leader2: { y: A.leader2.y + dy, x0: A.leader2.x0 + dx, x1: A.leader2.x1 + dx },
+    },
+    certificate: {
+      line1: { x: certLeft, baseline: 197 },
+      line2: { x: certLeft + (B.certificate.line2.x - B.certificate.line1.x), baseline: 205.5 },
+    },
+    inset: { ...B.inset, box: { x0: left, y0: 212, x1: ax - 4, y1: footBottom } },
+    srNumber: { cx: W / 2, baseline: H - margin - 3.5 },
+  };
+}
+
+/** The sheet and layout for an orientation; anything but 'portrait' is landscape. */
+export function layoutFor(orientation) {
+  return orientation === 'portrait'
+    ? { orientation: 'portrait', sheet: SHEET_PORTRAIT, layout: portraitLayout() }
+    : { orientation: 'landscape', sheet: SHEET_LANDSCAPE, layout: landscapeLayout() };
+}
+
+export const LAYOUT = landscapeLayout();
 
 /** Source plot pattern: 4.92 pt on / 3.00 pt off; leader dots 1.32 pt @ 2.59 pt. */
 const PT = 25.4 / 72;
@@ -377,7 +482,7 @@ function symbolClearance(symbol) {
 }
 
 export function generateWorkingPlan(spec) {
-  const L = LAYOUT;
+  const { orientation, sheet, layout: L } = layoutFor(spec.orientation);
   const byName = new Map(spec.beacons.map((b) => {
     // The name is authoritative for a reference mark: RM16 with no description
     // or status still plots as the circle-with-a-cross, not as a peg.
@@ -2079,6 +2184,6 @@ const crowded = crowdedClusters(
   // dialog -- which paper this was drawn for.
   return {
     dxf: doc.toString(), scale, gridInterval, gridTicks: placed, areas,
-    sheetSize: 'A4', sheetWidthMm: SHEET.width, sheetHeightMm: SHEET.height,
+    sheetSize: 'A4', orientation, sheetWidthMm: sheet.width, sheetHeightMm: sheet.height,
   };
 }

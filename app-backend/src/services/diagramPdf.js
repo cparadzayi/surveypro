@@ -128,7 +128,7 @@ function drawTable(doc, layout, table, loLabel, diagramSgNo = '') {
   // The number the Surveyor-General's office gives after preliminary examination, entered
   // by the surveyor once known; blank until then (the office writes it in by hand).
   if (diagramSgNo) {
-    doc.font('Helvetica-Bold').fontSize(DIAGRAM_FONTS.table + 1)
+    doc.font('Helvetica').fontSize(DIAGRAM_FONTS.table + 1)
     doc.text(diagramSgNo, cSg, R.y + TABLE_GEOM.lo + 1, { width: layout.sgNoBox.width - 6, lineBreak: false })
   }
   doc.font('Helvetica').fontSize(DIAGRAM_FONTS.table)
@@ -276,7 +276,7 @@ function drawConnections(doc, ctx) {
     // the land the connection is measured across, and a figure of the sheet's
     // own is not what the reader should find there. Absent a remainder, the
     // side it always used.
-    const fs = 7
+    const fs = DIAGRAM_FONTS.label
     const text = `${formatSI(m.distanceM, 2)}m`
     doc.save().font('Helvetica').fontSize(fs).fillColor('#000000')
     const tw = doc.widthOfString(text)
@@ -297,16 +297,16 @@ function drawConnections(doc, ctx) {
     doc.restore()
 
     // The far end's letter, just beyond the tip.
-    doc.save().font('Helvetica').fontSize(8).fillColor('#000000')
+    doc.save().font('Helvetica').fontSize(DIAGRAM_FONTS.label).fillColor('#000000')
     const lw = doc.widthOfString(m.letter)
     const tipOut = 5
     const tx = g.tip[0] + g.dir[0] * tipOut, ty = g.tip[1] + g.dir[1] * tipOut
-    doc.text(m.letter, tx - lw / 2, ty - 4, { lineBreak: false })
+    doc.text(m.letter, tx - lw / 2, ty - DIAGRAM_FONTS.label / 2, { lineBreak: false })
     doc.restore()
 
     // Vertex letters keep off the ray and off the letter at its end.
     labelObstacles.push([{ px: g.tail[0], py: g.tail[1] }, { px: g.tip[0], py: g.tip[1] }])
-    labelObstacles.push(...boxToSegs({ x: tx - lw / 2, y: ty - 4, w: lw, h: 8 }))
+    labelObstacles.push(...boxToSegs({ x: tx - lw / 2, y: ty - DIAGRAM_FONTS.label / 2, w: lw, h: DIAGRAM_FONTS.label }))
   }
 }
 
@@ -446,7 +446,7 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
     // Label the feature. Roads read ALONG the edge (rotated), just outside the strip;
     // servitude/contiguous keep the horizontal outward label (avoiding drawn lines).
     if (ann.label) {
-      doc.save().font('Helvetica').fontSize(7).fillColor('#000000')
+      doc.save().font('Helvetica').fontSize(DIAGRAM_FONTS.label).fillColor('#000000')
       const labelText = ann.role === 'road' && ann.widthM > 0
         ? `${ann.label} ${formatSI(ann.widthM, 2)}m`
         : ann.label
@@ -465,13 +465,13 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         const off = stripPt + vertexBandPt
         const lx = mid.px + perpX * off, ly = mid.py + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })
-        doc.text(labelText, lx - labelW / 2, ly - 3.5, { lineBreak: false })
+        doc.text(labelText, lx - labelW / 2, ly - DIAGRAM_FONTS.label / 2, { lineBreak: false })
       } else {
         // Centre the neighbour label on the abutting extent (whole side, or the tagged
         // half) rather than always the side midpoint.
         const m = contiguousMarks(a, b, ann.end)
         const anchor = { px: m.labelAnchor[0], py: m.labelAnchor[1] }
-        const labelH = 7
+        const labelH = DIAGRAM_FONTS.label
         // Stand the label a CONSISTENT perpendicular margin off the boundary, whatever the
         // digit count. placeVertexLabel centres the box at (beaconR + gap + half) along the
         // outward normal; the box reaches back toward the line by `extent` (its half-size
@@ -525,11 +525,13 @@ function drawScaleBar(doc, layout, denom) {
   // the majors labelled above. The diagram used to draw its own bar — five
   // subdivisions left of 0, 4pt tall, 0.75pt rules — which read nothing like the
   // plan's.
-  const L = scaleBarLayout(denom)
+  // Its figures, unit and caption are set at the statement's size, like the rest of the diagram's writing.
+  const textMm = DIAGRAM_FONTS.statement * 25.4 / 72
+  const L = scaleBarLayout(denom, { labelHeightMm: textMm, captionHeightMm: textMm })
   for (const w of L.warnings) console.warn(`[scale bar] ${w}`)
   const { X, Y, textTop, pt } = scaleBarFrame(L, R)
 
-  doc.save().strokeColor('#000').fillColor('#000').font('Helvetica-Bold')
+  doc.save().strokeColor('#000').fillColor('#000').font('Helvetica')
   for (const h of L.horizontals) {
     doc.lineWidth(pt(h.weightMm)).moveTo(X(h.x0Mm), Y(h.yMm)).lineTo(X(h.x1Mm), Y(h.yMm)).stroke()
   }
@@ -833,7 +835,7 @@ export async function generateDiagramPDF(options, logger) {
   // clipped strip. The whole-site OUTSIDE FIGURE parcel is excluded; parcels that
   // don't reach the buffer clip to nothing and are omitted.
   doc.layer('NEIGHBOURS')
-  doc.font('Helvetica').fontSize(7).fillColor('#555555')
+  doc.font('Helvetica').fontSize(DIAGRAM_FONTS.label).fillColor('#555555')
   const neighbourSegs = [] // drawn neighbour line segments (pt) — labels avoid these
   const neighbourLabels = [] // { anchor, text } drawn after the subject, placed outward
   // Resolved before ANY of this is drawn. A connection decides two things
@@ -906,7 +908,7 @@ export async function generateDiagramPDF(options, logger) {
   drawRing(doc, subjPt, { color: '#000000', width: 1.2 })
   // Vertex letters placed OUTSIDE the figure, clear of the beacon circle, and not
   // overriding the subject or adjoining-property lines. (No edge-distance labels.)
-  doc.fillColor('#000000').fontSize(8)
+  doc.fillColor('#000000').fontSize(DIAGRAM_FONTS.label)
   const subjCentroid = centroidPt(subjPt)
   const subjSegs = subjPt.map((p, i) => [p, subjPt[(i + 1) % subjPt.length]])
   // Already-placed label boxes become obstacles too, so labels don't collide with
@@ -954,23 +956,23 @@ export async function generateDiagramPDF(options, logger) {
     const p = subjPt[i]
     const labelW = doc.widthOfString(v.letter)
     const pos = placeVertexLabel(p, subjCentroid, {
-      beaconR, labelW, labelH: 8, gap: 2, segments: subjSegs.concat(neighbourSegs, labelObstacles),
+      beaconR, labelW, labelH: DIAGRAM_FONTS.label, gap: 2, segments: subjSegs.concat(neighbourSegs, labelObstacles),
     })
     doc.text(v.letter, pos.x, pos.y)
-    labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 8 }))
+    labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: DIAGRAM_FONTS.label }))
   })
 
   // Neighbour stand labels: same outward (away from the subject centroid),
   // line-avoiding placement, clear of the drawn lines AND the vertex labels.
   doc.layer('NEIGHBOURS')
-  doc.font('Helvetica').fontSize(7).fillColor('#555555')
+  doc.font('Helvetica').fontSize(DIAGRAM_FONTS.label).fillColor('#555555')
   for (const nl of neighbourLabels) {
     const labelW = doc.widthOfString(nl.text)
     const pos = placeVertexLabel(nl.anchor, subjCentroid, {
-      beaconR: 0, gap: 1, labelW, labelH: 7, segments: subjSegs.concat(neighbourSegs, labelObstacles),
+      beaconR: 0, gap: 1, labelW, labelH: DIAGRAM_FONTS.label, segments: subjSegs.concat(neighbourSegs, labelObstacles),
     })
     doc.text(nl.text, pos.x, pos.y)
-    labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: 7 }))
+    labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: DIAGRAM_FONTS.label }))
   }
 
   // resolveLoSystem already returns the full "Lo NN" label.

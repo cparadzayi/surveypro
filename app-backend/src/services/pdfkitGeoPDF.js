@@ -5613,7 +5613,7 @@ function drawScaleBar(doc, extent, mapBounds, scale, position, figureBounds) {
   }
 
   // --- Graduation labels, above the bar, centred on their rule ---
-  doc.font('Helvetica-Bold');
+  doc.font('Helvetica');
   for (const t of L.labels) {
     doc.fontSize(pt(t.heightMm));
     const w = doc.widthOfString(t.text);

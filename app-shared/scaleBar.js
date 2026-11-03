@@ -104,9 +104,11 @@ export function scaleDenominatorOf(scale) {
  * Origin: x = 0 sits on the 0 graduation, y = 0 on the BOTTOM rule, y increases
  * upward. Renderers that draw downward flip y.
  */
-export function scaleBarLayout(scale) {
+export function scaleBarLayout(scale, overrides = {}) {
   const denominator = scaleDenominatorOf(scale);
-  const G = SI727_SCALE_BAR;
+  // A renderer may set the text (graduation figures, unit, caption) at its own size: the diagram sets it
+  // at its statement's, the General Plan keeps the 9pt of its area figures.
+  const G = { ...SI727_SCALE_BAR, ...overrides };
   const mmPerMetre = 1000 / denominator;
   // Ground metres a paper length stands for, free of float noise (1:1250 x 20 mm = 25).
   const groundOf = (mm) => Math.round((mm * denominator / 1000) * 1e6) / 1e6;

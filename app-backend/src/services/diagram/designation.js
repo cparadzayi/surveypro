@@ -3,7 +3,8 @@
  * carries a full designation (letters present, e.g. "STAND 405 BRACKENHURST
  * TOWNSHIP") use it as-is. Otherwise the parcel is a bare stand number ("405"):
  * build "STAND <n> <locality>" by reusing the locality suffix from the project
- * designation ("STANDS 403-405 BRACKENHURST TOWNSHIP" → "BRACKENHURST TOWNSHIP").
+ * designation ("STANDS 403-405 BRACKENHURST TOWNSHIP" → "BRACKENHURST TOWNSHIP"), or the township of a
+ * "<Township> of <Parent>" project ("Brackenhurst Township of Stand 87 …" → "Brackenhurst Township").
  */
 export function resolveStatementDesignation(subjectName, subjectStand, projectDesignation) {
   const name = subjectName == null ? '' : String(subjectName).trim()
@@ -18,6 +19,13 @@ export function resolveStatementDesignation(subjectName, subjectStand, projectDe
   // "STAND(S) <numbers>"), swapping in this parcel's single stand.
   const m = proj.match(/^STANDS?\b[\s\d,.–—-]+(.*)$/i)
   if (m && m[1].trim()) return `STAND ${stand} ${m[1].trim()}`
+  // A project written as "<Township> of <Parent>" (or a bare township) names the township the stand is in:
+  // "Brackenhurst Township of Stand 87 Brackenhurst Township" -> "STAND 403 Brackenhurst Township". The parent
+  // clause is attached by statementDesignation, so only the township is taken here.
+  const township = proj.replace(/\s+of\s+.+$/i, '').trim()
+  if (township && !/^STANDS?\b/i.test(township) && (township !== proj || /\btownship\b/i.test(township))) {
+    return `STAND ${stand} ${township}`
+  }
   return `STAND ${stand}`
 }
 

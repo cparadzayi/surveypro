@@ -64,14 +64,14 @@ describe('computeDiagramLayout', () => {
   })
 
   test('figure flexes = padded content height minus fixed bands', () => {
-    const fixed = 153 + 66 + 34 + 92 + 100
+    const fixed = 153 + 66 + 42 + 92 + 100
     expect(L.figure.height).toBeCloseTo(L.border.height - 2 * CONTENT_PAD - fixed, 3)
   })
 
   test('bands stack top-to-bottom without gaps or overlap', () => {
     expect(L.figure.y).toBeCloseTo(L.table.y + L.table.height + 66, 3) // header band = 66
     expect(L.scaleBar.y).toBeCloseTo(L.figure.y + L.figure.height, 3)
-    expect(L.statement.y).toBeCloseTo(L.scaleBar.y + 34, 3)
+    expect(L.statement.y).toBeCloseTo(L.scaleBar.y + 42, 3)
     expect(L.refGrid.y).toBeCloseTo(L.statement.y + 92, 3)
     // last band bottom sits within the content box (inside the border)
     expect(L.refGrid.y + L.refGrid.height).toBeLessThanOrEqual(L.border.y + L.border.height + 0.01)

@@ -23,6 +23,18 @@ describe('resolveStatementDesignation', () => {
     expect(resolveStatementDesignation('405', '405', 'Some Farm 12')).toBe('STAND 405')
   })
 
+  test('takes the township from a "<Township> of <Parent>" project', () => {
+    const project = 'Brackenhurst Township of Stand 87 Brackenhurst Township'
+    expect(resolveStatementDesignation('403', '403', project)).toBe('STAND 403 Brackenhurst Township')
+    // with the parent clause attached by the statement, as the diagram prints it
+    expect(statementDesignation(resolveStatementDesignation('403', '403', project), 'Stand 87 Brackenhurst Township'))
+      .toBe('STAND 403 Brackenhurst Township OF STAND 87 BRACKENHURST TOWNSHIP')
+  })
+
+  test('takes a bare township project as the locality too', () => {
+    expect(resolveStatementDesignation('405', '405', 'Brackenhurst Township')).toBe('STAND 405 Brackenhurst Township')
+  })
+
   test('falls back to the project designation when there is no stand', () => {
     expect(resolveStatementDesignation(null, null, 'STANDS 403-405 BRACKENHURST TOWNSHIP'))
       .toBe('STANDS 403-405 BRACKENHURST TOWNSHIP')

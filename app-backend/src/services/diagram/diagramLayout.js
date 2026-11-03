@@ -14,7 +14,7 @@ const PAGE_DIMS_PT = {
 }
 
 // Fixed band heights (pt); the figure fills whatever remains.
-const BAND = { table: 153, header: 66, scaleBar: 34, statement: 92, refGrid: 100 }
+const BAND = { table: 153, header: 66, scaleBar: 42, statement: 92, refGrid: 100 }
 
 // Inset (pt) between the neat-line border and the content bands, so text/labels
 // never touch the border/margins.
@@ -36,7 +36,10 @@ export const ARROW_GUTTER = ARROW_WIDTH + 12
 // The Surveyor-General asked for a larger font in the co-ordinate table and the
 // description of beacons (8/9 pt was read as too small): the table is now 10 pt (headings 9 pt bold, the widest that still clears the METRES column), the same
 // size as the statement block.
-export const DIAGRAM_FONTS = { table: 10, tableHead: 9, beacon: 10, approved: 8, statement: 10, grid: 8 }
+// `label` is the text ON the figure: vertex letters, the connection distances and letters, and the
+// abutting roads, servitudes and neighbours. It is the statement's size (the "4 047 square metres" line)
+// so the drawing and its writing read as one.
+export const DIAGRAM_FONTS = { table: 10, tableHead: 9, beacon: 10, approved: 10, statement: 10, grid: 8, label: 10 }
 
 // Vertical rhythm of the ruled table, points below its top. The three header rows and
 // the Constants row moved down 1-3 pt with the larger type so the lines do not touch;

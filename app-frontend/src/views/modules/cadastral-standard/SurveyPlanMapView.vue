@@ -198,8 +198,18 @@
           </div>
         </div>
 
+        <!-- A working plan is always A4: the only choice is which way up -->
+        <div v-if="config.planType === 'working-plan'" class="config-group" role="group" aria-labelledby="cfg-wp-sheet-label">
+          <span class="config-label" id="cfg-wp-sheet-label">Sheet (A4)</span>
+          <select v-model="config.orientation" class="config-input" aria-label="Sheet orientation">
+            <option value="landscape">Landscape (297 × 210 mm)</option>
+            <option value="portrait">Portrait (210 × 297 mm)</option>
+          </select>
+          <p class="text-xs text-gray-500 mt-1">The scale moves, not the paper, when the figure will not fit.</p>
+        </div>
+
         <!-- Sheet Size (SI 727 Compliant) -->
-        <div class="config-group" role="group" aria-labelledby="cfg-sheet-label">
+        <div v-else class="config-group" role="group" aria-labelledby="cfg-sheet-label">
           <span class="config-label" id="cfg-sheet-label">Sheet Size (SI 727)</span>
           <div class="paper-size-display">
             <span class="font-semibold text-indigo-600">{{ recommendedSheetSize }}</span>
@@ -363,7 +373,10 @@
       <div class="config-footer" role="group" aria-label="Export documents">
         <div class="format-toggles">
           <span class="format-caption">Export</span>
-          <label><input type="checkbox" v-model="exportFormats.pdf" /> PDF</label>
+          <label :title="config.planType === 'working-plan' ? 'A Working Plan is drawn as an A4 DXF; the PDF renderer lays out a General Plan, so it is not offered.' : ''"
+            :class="{ 'opacity-50': config.planType === 'working-plan' }">
+            <input type="checkbox" v-model="exportFormats.pdf" :disabled="config.planType === 'working-plan'" /> PDF
+          </label>
           <label><input type="checkbox" v-model="exportFormats.dxf" /> DXF</label>
           <label><input type="checkbox" v-model="exportFormats.gpkg" /> GPKG</label>
         </div>
@@ -629,6 +642,9 @@ const config = ref({
   planType: (props.projectInfo as any)?.planType || 'general-undeveloped',  // Accept from parent component
   scale: 'auto', // Auto-select optimal SI 727 scale
   sheetSize: 'auto' as 'auto' | 'SI727_500x400' | 'SI727_800x500' | 'SI727_1000x800' | 'A4' | 'A3',
+  // A working plan's A4 sheet: usually landscape, portrait for a tall figure. Other plans take their
+  // orientation from the sheet they are laid out on.
+  orientation: 'landscape' as 'landscape' | 'portrait',
   surveyorName: props.projectInfo.surveyorName || '',
   licenseNumber: props.projectInfo.licenseNumber || '',
   surveyDate: toDateInputFormat(props.projectInfo.surveyDate) || toDateInputFormat(new Date()),
@@ -877,6 +893,17 @@ function findSubjectParcel(id: string | number | null | undefined): any | null {
   return parcels.value.find((p: any) => String(p.id) === String(id)) ?? null
 }
 const exportFormats = reactive({ pdf: true, dxf: true, gpkg: true })
+// A Working Plan's own renderer draws the A4 sheet, as a DXF. The PDF renderer is the General Plan's: on a
+// Working Plan it produced a General Plan on an SI 727 sheet, so the PDF is switched off (and the DXF on)
+// while a Working Plan is the plan type, and back on when the surveyor goes back to another type.
+watch(() => config.value.planType, (type, previous) => {
+  if (type === 'working-plan') {
+    exportFormats.pdf = false
+    exportFormats.dxf = true
+  } else if (previous === 'working-plan') {
+    exportFormats.pdf = true
+  }
+}, { immediate: true })
 const planTypeLabel = computed(() => getPlanTypeMeta(config.value.planType).label)
 
 function normalizeCapeLoYX(y: number, x: number): [number, number] {
@@ -4786,7 +4813,7 @@ async function generatePlanDocuments() {
     // the Working Plan's DXF stays a single .dxf from its own A4 renderer.
     let dxfExt: 'zip' | 'dxf' = 'dxf'
 
-    if (exportFormats.pdf) {
+    if (exportFormats.pdf && config.value.planType !== 'working-plan') {
       exportStatus.value = 'Computing areas & rendering PDF…'
       let result = await generateVectorGeoPDF(payload, { signal: abort.signal })
       if (result.suggestedScale) {

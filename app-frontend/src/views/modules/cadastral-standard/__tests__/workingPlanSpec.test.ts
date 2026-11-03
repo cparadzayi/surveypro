@@ -172,6 +172,15 @@ it('builds up to four heading lines', () => {
   })
 })
 
+describe('buildWorkingPlanSpec orientation', () => {
+  it('is landscape unless the surveyor chose portrait', () => {
+    expect(buildWorkingPlanSpec(ctx()).spec.orientation).toBe('landscape')
+    expect(buildWorkingPlanSpec(ctx({ config: { orientation: 'portrait' } })).spec.orientation).toBe('portrait')
+    expect(buildWorkingPlanSpec(ctx({ config: { orientation: 'landscape' } })).spec.orientation).toBe('landscape')
+    expect(buildWorkingPlanSpec(ctx({ config: { orientation: 'sideways' } })).spec.orientation).toBe('landscape')
+  })
+})
+
 describe('buildWorkingPlanSpec', () => {
   it('maps the ring to beacon names in order', () => {
     const { spec } = buildWorkingPlanSpec(ctx())

@@ -101,6 +101,8 @@ export interface WorkingPlanInset {
 
 export interface WorkingPlanSpec {
   scale: 'auto'
+  /** The A4 sheet's way up. A working plan is usually landscape; portrait suits a tall figure. */
+  orientation: 'landscape' | 'portrait'
   beacons: WorkingPlanBeacon[]
   parcels: WorkingPlanParcel[]
   title: string[]
@@ -1094,6 +1096,7 @@ export function buildWorkingPlanSpec(
   return {
     spec: {
       scale: 'auto',
+      orientation: ctx.config?.orientation === 'portrait' ? 'portrait' : 'landscape',
       beacons,
       parcels,
       title: workingPlanTitle(ctx.projectInfo, parcels.map(p => p.label)),

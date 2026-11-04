@@ -93,6 +93,24 @@ export function stepsInvalidatedBy(step) {
 }
 
 /**
+ * What the surveyor decided, as opposed to what was computed.
+ *
+ * The Boundaries & Abutters tags (a road, a neighbour, a servitude on each side of a stand), the
+ * connections drawn to the figure and the servitude records are judgements about the ground. They are
+ * keyed to a parcel and a side letter or a beacon pair, not to a coordinate, and they take hours to
+ * enter. A re-import of the coordinates leaves the parcels where they were, so these survive an
+ * upstream reset: the steps themselves still go back to "not complete" and must be confirmed again,
+ * but the work is not thrown away. Resetting one of these steps directly still clears it, which is
+ * what asking to reset it means.
+ *
+ * step -> the keys of its step_data that are kept (null keeps the whole record).
+ */
+const SURVEYOR_AUTHORED = {
+  'survey-plan': ['sideAnnotations', 'connections'],
+  'servitudes': null,
+}
+
+/**
  * Apply a reset to a workflow_state object in place.
  *
  * Clearing `step_data` and `completed_steps` together is the whole point: a
@@ -106,6 +124,19 @@ export function stepsInvalidatedBy(step) {
 export function applyStepReset(workflowState, step) {
   const invalidated = new Set(stepsInvalidatedBy(step).map(canonicalStep))
 
+  // Taken before the clearing below and put back after it, unless the reset names that very step.
+  const kept = {}
+  for (const [key, fields] of Object.entries(SURVEYOR_AUTHORED)) {
+    if (key === canonicalStep(step)) continue
+    const data = workflowState.step_data?.[key]
+    if (!data || typeof data !== 'object') continue
+    const picked = fields === null
+      ? { ...data }
+      : Object.fromEntries(fields.filter((f) => data[f] !== undefined).map((f) => [f, data[f]]))
+    delete picked.completed_at
+    if (Object.keys(picked).length > 0) kept[key] = picked
+  }
+
   // Matched against canonical names, so a legacy `import_csv` in completed_steps
   // is dropped by a `csv-import` reset and vice versa.
   const before = workflowState.completed_steps || []
@@ -115,6 +146,10 @@ export function applyStepReset(workflowState, step) {
     for (const key of Object.keys(workflowState.step_data)) {
       if (invalidated.has(canonicalStep(key))) delete workflowState.step_data[key]
     }
+  }
+
+  for (const [key, data] of Object.entries(kept)) {
+    workflowState.step_data[key] = data
   }
 
   // Document references point at PDFs rendered from the invalidated steps. The

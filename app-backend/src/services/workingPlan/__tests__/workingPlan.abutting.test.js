@@ -68,3 +68,30 @@ describe('a splay point abuts its stand and the roads it stands on', () => {
     expect(t.some((x) => x.includes('20m'))).toBe(false)
   })
 })
+
+describe('abutters around an inset sign do not overlap', () => {
+  test('405, 404 and Rem./ around SD5 are drawn clear of each other and of the name', () => {
+    const sd5 = brackenhurstSpec.beacons.find((b) => b.name === 'SD5')
+    const spec = {
+      ...brackenhurstSpec,
+      remainderLabel: 'Rem./',
+      inset: { ...brackenhurstSpec.inset,
+        beacons: [{ name: 'SD5', X: sd5.X, Y: sd5.Y, symbol: 'peg' }] },
+    }
+    const ops = generateWorkingPlan(spec).model.doc.ops.filter((o) => o.t === 'text' && o.layer === 'INSET')
+    const boxes = ['SD5', '405', '404', 'Rem./'].map((s) => {
+      const o = ops.find((t) => t.str === s)
+      expect(o).toBeDefined()
+      const w = 0.55 * o.height * o.str.length * 1.1   // Arial's digits run to about 0.56 of the height
+      const x0 = o.align === 'center' ? o.at[0] - w / 2 : o.align === 'right' ? o.at[0] - w : o.at[0]
+      return [x0, o.at[1], x0 + w, o.at[1] + o.height]
+    })
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const [a, b] = [boxes[i], boxes[j]]
+        const overlap = a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1]
+        expect([i, j, overlap]).toEqual([i, j, false])
+      }
+    }
+  })
+})

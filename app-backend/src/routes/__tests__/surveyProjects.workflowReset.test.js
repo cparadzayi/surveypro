@@ -157,6 +157,31 @@ describe('applyStepReset', () => {
     expect(state.step_data['field-book']).toBeUndefined()
   })
 
+  test('a csv-import reset keeps the side tags, connections and servitudes, but not the steps being complete', () => {
+    const state = fullyCompleteState()
+    const tags = { 1080: [{ side: 'DE', role: 'road', label: 'Klein Road', widthM: 25.19 }] }
+    state.step_data['survey-plan'] = {
+      sideAnnotations: tags, connections: { 1080: [{ id: 'c1' }] }, completed_at: 'x', pdf_path: 'old.pdf',
+    }
+    state.step_data['servitudes'] = { servitudes: [{ id: 's1' }], completed_at: 'y' }
+
+    applyStepReset(state, 'csv-import')
+
+    expect(state.step_data['survey-plan']).toEqual({ sideAnnotations: tags, connections: { 1080: [{ id: 'c1' }] } })
+    expect(state.step_data['servitudes']).toEqual({ servitudes: [{ id: 's1' }] })
+    expect(state.completed_steps).not.toContain('survey-plan')
+    expect(state.completed_steps).not.toContain('servitudes')
+  })
+
+  test('resetting the survey-plan step itself still clears its tags', () => {
+    const state = fullyCompleteState()
+    state.step_data['survey-plan'] = { sideAnnotations: { 1: [{ side: 'AB', role: 'contiguous', label: '88' }] } }
+
+    applyStepReset(state, 'survey-plan')
+
+    expect(state.step_data['survey-plan']).toBeUndefined()
+  })
+
   test('reports the cleared steps and tolerates a half-built workflow_state', () => {
     expect(applyStepReset({}, 'csv-import')).toContain('csv-import')
     // No completed_steps / step_data keys at all: a project that has never been

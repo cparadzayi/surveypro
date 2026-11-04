@@ -1981,24 +1981,31 @@ const crowded = crowdedClusters(
       // it lies toward (its true bearing), turned aside in steps until clear of the name and of its
       // fellows. A detail's marks are spread, but their bearings to the parcels are the real ones.
       if (ABUT_SYMBOLS.has(b.symbol ?? 'peg')) {
-        const taken = [textRect(b.name, at[0], at[1] + up + mm(0.5), h, 'center')];
-        if (b.cpName) taken.push(textRect(b.cpName, at[0], at[1] - down - mm(0.5) - h, h, 'center'));
+        // textRect's width is 0.63 of the height a character, which is a little short of Arial's digits
+        // and capitals; the fit therefore measures a longer string than is drawn, so two labels that
+        // measure as touching are never drawn overlapping.
+        const roomFor = (str, x, y, align) => textRect('W'.repeat(Math.ceil(str.length * 1.3) + 1), x, y, h, align);
+        const taken = [roomFor(b.name, at[0], at[1] + up + mm(0.5), 'center')];
+        if (b.cpName) taken.push(roomFor(b.cpName, at[0], at[1] - down - mm(0.5) - h, 'center'));
         const clear = (r) => !taken.some((o) => r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]);
         const reach = iRing + mm(1.1);
         const turns = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6];
+        const radii = [1, 1.8, 2.6];   // the nearest ring first, a wider one when every side of it is taken
         for (const a of abuttersOf(b)) {
           if (!a.label || a.label === b.name) continue;
           const base = a.bearing ?? -Math.PI / 2;   // no bearing: beneath the sign
           let drawn = null;
-          for (const turn of turns) {
-            const ang = base + turn * (Math.PI / 6);
-            const cx = Math.cos(ang), cy = Math.sin(ang);
-            const align = cx > 0.35 ? 'left' : cx < -0.35 ? 'right' : 'center';
-            const px = at[0] + cx * reach, py = at[1] + cy * reach;
-            const y = cy < -0.35 ? py - h : cy > 0.35 ? py : py - h / 2;   // baseline
-            const r = textRect(a.label, px, y, h, align);
-            if (clear(r)) { drawn = { px, y, align, r }; break; }
-            drawn ??= { px, y, align, r };   // nothing clear: the first choice, rather than none
+          search: for (const ring of radii) {
+            for (const turn of turns) {
+              const ang = base + turn * (Math.PI / 6);
+              const cx = Math.cos(ang), cy = Math.sin(ang);
+              const align = cx > 0.35 ? 'left' : cx < -0.35 ? 'right' : 'center';
+              const px = at[0] + cx * reach * ring, py = at[1] + cy * reach * ring;
+              const y = cy < -0.35 ? py - h : cy > 0.35 ? py : py - h / 2;   // baseline
+              const r = roomFor(a.label, px, y, align);
+              if (clear(r)) { drawn = { px, y, align, r }; break search; }
+              drawn ??= { px, y, align, r };   // nothing clear: the first choice, rather than none
+            }
           }
           taken.push(drawn.r);
           d.text(a.label, [drawn.px, drawn.y], h, { layer: 'INSET', style: 'ARIAL', align: drawn.align });

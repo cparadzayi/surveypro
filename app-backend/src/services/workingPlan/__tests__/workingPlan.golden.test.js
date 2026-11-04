@@ -90,7 +90,10 @@ describe('generateWorkingPlan — golden', () => {
     // These had been measured off a source plot and carried its noise: SIX
     // body sizes inside 0,08 mm (2,99 / 3,00 / 3,03 / 3,06 / 3,07 / 3,07),
     // which is not a hierarchy, it is six attempts at one size.
-    const ISO = [1.8, 2.5, 3.5, 5, 7]
+    // 3,0 is the one deliberate step off the ladder: the surveyor chose it (4 Nov 2026) for everything read
+    // off the drawing, because 3,5 crowded the corner of the Brackenhurst figure at 1:2500 and 2,5 was too
+    // small beside the 3,5 of the approval box. It sits between two rungs on purpose and is the only one.
+    const ISO = [1.8, 2.5, 3.0, 3.5, 5, 7]
     const T = LAYOUT.text
     const used = [T.adjoining, T.beacon, T.grid, T.insetLabel, T.parcel, T.road,
       T.scale, T.approval, T.certificate, T.insetTitle, T.title,
@@ -100,15 +103,22 @@ describe('generateWorkingPlan — golden', () => {
     }
     // three ranks, no more -- every extra one is a distinction a reader has to
     // work out and the draughtsman did not mean
-    expect(new Set(used.map((h) => h.toFixed(2))).size).toBe(3)
+    // (the 3,0 is a fourth, and the only one added)
+    expect(new Set(used.map((h) => h.toFixed(2))).size).toBe(4)
+    expect(used.filter((h) => h === 3.0).length).toBeGreaterThan(0)
   })
 
-  test('letters everything read off the drawing at one size', () => {
-    // A beacon name, a stand number and an abutting property's name are read
-    // together off the same drawing. A reader should not have to work out why
-    // one of them is smaller than the others.
+  test('letters everything read off the drawing at one size, the coordinate grid excepted', () => {
+    // A beacon name, a stand number, an abutting property's name, a road and an inset label are read
+    // together off the same drawing (3,0 mm, between the grid and the approval box). A reader
+    // should not have to work out why one of them is smaller than the others. The grid's figures are a
+    // reference framework, not something read off the drawing, and stay at 2,5 mm: at 3,5 the crosses
+    // could not find room and the sheet lost its coordinate framework.
     const T = LAYOUT.text
-    expect([T.parcel, T.adjoining, T.grid, T.insetLabel]).toEqual([T.beacon, T.beacon, T.beacon, T.beacon])
+    expect([T.parcel, T.adjoining, T.insetLabel, T.road]).toEqual([T.beacon, T.beacon, T.beacon, T.beacon])
+    expect(T.beacon).toBe(3.0)
+    expect(T.grid).toBeLessThan(T.beacon)
+    expect(T.beacon).toBeLessThan(T.approval)
   })
 
   test('letters that size big enough to read at arm’s length', () => {

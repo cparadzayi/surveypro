@@ -101,7 +101,7 @@ const MEASURED_LANDSCAPE = {
     // "Inset (not to scale)" caption at the top left.
     north: { dxFromRight: 12.0, dyFromTop: 12.0, scale: 0.30, letterMm: 1.6 },
     // The wedge diagram that shows the parcels meeting at a found or placed beacon: its radius, in mm.
-    abutDetailRadius: 8.5,
+    abutDetailRadius: 9.5,
   },
 
   // Area statement: the free column between the scale line, the approval box
@@ -141,8 +141,8 @@ const MEASURED_LANDSCAPE = {
    * the legibility floor.
    */
   text: {
-    beacon: 2.5, parcel: 2.5, adjoining: 2.5, grid: 2.5, insetLabel: 2.5,
-    road: 2.5,
+    beacon: 3.0, parcel: 3.0, adjoining: 3.0, grid: 2.5, insetLabel: 3.0,
+    road: 3.0,
     // title dropped one ISO rung (3,5 -> 2,5) so the identification lines make
     // room for the sheet it names; the heading alone stays the document size.
     scale: 3.5, approval: 3.5, certificate: 3.5, title: 2.5,
@@ -369,6 +369,11 @@ const MIN_GRID_TICKS = 4;
  * framework has to surround the drawing, not sit beside it.
  */
 const GRID_QUADRANTS = ['LT', 'RT', 'LB', 'RB'];
+
+/** What a grid figure's width is estimated from, as a multiple of the text height a character. 0.63 ran a
+ *  millimetre or two short of Arial's capitals and digits, so two crosses' figures that measured as touching
+ *  were drawn over each other; this leaves them clear. */
+const GRID_CHAR_EM = 0.63;
 
 /**
  * Room left around the figure when the scale is chosen automatically, as a
@@ -1227,11 +1232,11 @@ const crowded = crowdedClusters(
    *  the pair actually occupy. Shared by the lattice walk below and by the
    *  fallback that guarantees a cross when the figure leaves the walk nothing,
    *  so the two can never disagree about what a readable cross needs. */
-  const gw = mm(L.gridLabel.xDx + 0.63 * L.text.grid * 13);
+  const gw = mm(L.gridLabel.xDx + GRID_CHAR_EM * L.text.grid * 13);
   const drop = mm(L.gridLabel.yStartDy + 12);
   const near = arm + mm(2);
   const labH = mm(L.text.grid);
-  const yLabelReach = (e) => 0.63 * labH * `Y = ${(-e).toFixed(0)}`.length;
+  const yLabelReach = (e) => GRID_CHAR_EM * labH * `Y = ${(-e).toFixed(0)}`.length;
   const guard = (e, n, side) => {
     const flipX = side.startsWith('left') ? -1 : 1;
     const gx = flipX > 0 ? e + gw : e - gw;
@@ -1247,10 +1252,13 @@ const crowded = crowdedClusters(
 
   /** Where an interval's ticks would go. Reads `occupied` but never adds to it,
    *  so an interval can be tried and abandoned; only the chosen one is drawn. */
-  const layGrid = (gi) => {
+  const layGrid = (gi, gap = 2.5) => {
     const out = [];
+    // Two crosses' figures are kept a couple of millimetres apart: the width above is an estimate, and
+    // an estimate that ends exactly where the next figure begins prints one over the other.
+    const apart = mm(gap);
     const clashes = (r) => hits(r) || out.some(({ rect: o }) =>
-      r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]);
+      r[0] < o[2] + apart && r[2] > o[0] - apart && r[1] < o[3] && r[3] > o[1]);
     // Corner-most candidates are tried FIRST. The lattice used to be walked in
     // order and taken greedily, so the row nearest the start filled up and its
     // ticks blocked the rest: on a three-by-three lattice that put three of
@@ -1395,7 +1403,13 @@ const crowded = crowdedClusters(
     for (let k = GRID_INTERVALS.indexOf(pick()); k >= 0; k--) {
       const cand = GRID_INTERVALS[k];
       if ((cand / scale) * 1000 < MIN_TICK_SPACING_MM) break;
-      const t = layGrid(cand);
+      // Figures kept clear of each other first; a dense sheet that cannot find its four crosses that way
+      // takes the ones that touch rather than lose a reference.
+      let t = layGrid(cand);
+      if (t.length < MIN_GRID_TICKS) {
+        const tight = layGrid(cand, 0);
+        if (tight.length > t.length) t = tight;
+      }
       if (!best || better(t, best.ticks)) best = { gi: cand, ticks: t };
       if (satisfies(t) && t.length >= MIN_GRID_TICKS) break;
     }
@@ -2020,7 +2034,7 @@ const crowded = crowdedClusters(
           // The label sits in its wedge, on the bisector; a narrow wedge takes it further out.
           const mid = w.start + w.span / 2;
           const r = R * (w.span < 1.0 ? 0.68 : 0.58);
-          d.text(w.label, [at[0] + Math.cos(mid) * r, at[1] + Math.sin(mid) * r - h / 2], h * 0.7,
+          d.text(w.label, [at[0] + Math.cos(mid) * r, at[1] + Math.sin(mid) * r - h / 2], h * 0.62,
             { layer: 'INSET', style: 'ARIAL', align: 'center' });
         }
       }

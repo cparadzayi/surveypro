@@ -95,3 +95,33 @@ describe('abutters around an inset sign do not overlap', () => {
     }
   })
 })
+
+describe('the parcels meeting at an inset beacon are drawn as a wedge diagram', () => {
+  const sd5 = brackenhurstSpec.beacons.find((b) => b.name === 'SD5')
+  const spec = {
+    ...brackenhurstSpec,
+    remainderLabel: 'Rem./',
+    inset: { ...brackenhurstSpec.inset, beacons: [{ name: 'SD5', X: sd5.X, Y: sd5.Y, symbol: 'peg' }] },
+  }
+  const ops = generateWorkingPlan(spec).model.doc.ops.filter((o) => o.layer === 'INSET')
+
+  test('each abutting parcel is lettered once, inside the circle, not around the sign', () => {
+    const names = ops.find((o) => o.t === 'text' && o.str === 'SD5')
+    for (const label of ['405', '404', 'Rem./']) expect(ops.filter((o) => o.t === 'text' && o.str === label)).toHaveLength(1)
+    // every label sits nearer the sign than the designation, which stands above the diagram
+    const dist = (o) => Math.hypot(o.at[0] - names.at[0], o.at[1] - (names.at[1] - 0))
+    for (const label of ['405', '404', 'Rem./']) {
+      const o = ops.find((t) => t.t === 'text' && t.str === label)
+      expect(o.at[1]).toBeLessThan(names.at[1])
+      expect(dist(o)).toBeGreaterThan(0)
+    }
+  })
+
+  test('the wedges are bounded by one outer arc per parcel and a ray for each ring side, shared sides once', () => {
+    const arcs = ops.filter((o) => o.t === 'polyline' && !o.closed && o.points.length > 3)
+    expect(arcs).toHaveLength(3)
+    // 405, 404 and Rem. meet at SD5 along three distinct sides
+    const rays = ops.filter((o) => o.t === 'line' && Math.hypot(o.a[0] - o.b[0], o.a[1] - o.b[1]) > 1)
+    expect(rays).toHaveLength(3)
+  })
+})

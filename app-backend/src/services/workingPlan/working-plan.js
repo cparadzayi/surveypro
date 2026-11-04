@@ -100,6 +100,8 @@ const MEASURED_LANDSCAPE = {
     // so retuning the meridian arrow retunes both. Top right, clear of the
     // "Inset (not to scale)" caption at the top left.
     north: { dxFromRight: 12.0, dyFromTop: 12.0, scale: 0.30, letterMm: 1.6 },
+    // The wedge diagram that shows the parcels meeting at a found or placed beacon: its radius, in mm.
+    abutDetailRadius: 8.5,
   },
 
   // Area statement: the free column between the scale line, the approval box
@@ -1641,6 +1643,31 @@ const crowded = crowdedClusters(
     return { ...p, mid: pts.length >= 3 ? centroid(pts) : null };
   });
   const onAnyRing = (name) => abutShapes.some((p) => p.ring.includes(name));
+  /**
+   * The parcels meeting at a beacon, each as the wedge it fills round it: the bearings of the two ring
+   * sides that leave the beacon, and the label. Which of the two arcs between those bearings is the
+   * parcel's own is the one the parcel's middle lies in. Empty when the beacon is on no ring, or a
+   * parcel cannot say where its middle is.
+   */
+  const wedgesOf = (b) => {
+    const TAU = Math.PI * 2;
+    const norm = (a) => ((a % TAU) + TAU) % TAU;
+    const out = [];
+    for (const p of abutShapes) {
+      const names = p.ring.filter((n, i) => !(i === p.ring.length - 1 && n === p.ring[0]));
+      const i = names.indexOf(b.name);
+      if (i < 0 || !p.label || !p.mid || names.length < 3) continue;
+      const prev = names[(i + names.length - 1) % names.length], next = names[(i + 1) % names.length];
+      if (!byName.has(prev) || !byName.has(next)) continue;
+      const bearing = (n) => Math.atan2(G(n).n - b.n, G(n).e - b.e);
+      const a1 = bearing(prev), a2 = bearing(next), ac = Math.atan2(p.mid[1] - b.n, p.mid[0] - b.e);
+      const ccw = norm(a2 - a1);                       // the span from a1 round to a2, counter-clockwise
+      const start = norm(ac - a1) <= ccw ? a1 : a2;    // the parcel's own side is the span holding its middle
+      const span = norm(ac - a1) <= ccw ? ccw : TAU - ccw;
+      out.push({ label: String(p.label).trim(), start, span });
+    }
+    return out;
+  };
   /** [{ label, bearing? }] -- bearing in radians, ground axes (east 0, north +pi/2). */
   const abuttersOf = (b) => {
     const on = abutShapes.filter((p) => p.ring.includes(b.name) && p.label);
@@ -1968,8 +1995,38 @@ const crowded = crowdedClusters(
         if (b.symbol === 'rm') return iSym * 1.2;
         return iRing;
       })();
-      // Designation ABOVE the symbol.
-      d.text(b.name, [at[0], at[1] + up + mm(0.5)], h,
+      // A found or placed beacon is shown with the parcels that meet at it, as a small wedge diagram
+      // round its sign (the abutting properties, each in the part of the circle it fills) in place of
+      // loose labels that said the same thing around the sign and read as stray stand numbers. The
+      // designation then sits above the diagram instead of above the sign.
+      const wedges = ABUT_SYMBOLS.has(b.symbol ?? 'peg') ? wedgesOf(b) : [];
+      const R = mm(L.inset.abutDetailRadius);
+      if (wedges.length) {
+        const seen = new Set();
+        const ray = (ang) => {
+          const key = Math.round(((ang % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) * 1000);
+          if (seen.has(key)) return;
+          seen.add(key);
+          d.line([at[0] + Math.cos(ang) * iRing, at[1] + Math.sin(ang) * iRing],
+            [at[0] + Math.cos(ang) * R, at[1] + Math.sin(ang) * R], { layer: 'INSET' });
+        };
+        for (const w of wedges) {
+          ray(w.start); ray(w.start + w.span);
+          const steps = Math.max(4, Math.ceil(w.span / (Math.PI / 18)));
+          d.polyline(Array.from({ length: steps + 1 }, (_, i) => {
+            const a = w.start + (w.span * i) / steps;
+            return [at[0] + Math.cos(a) * R, at[1] + Math.sin(a) * R];
+          }), { layer: 'INSET' });
+          // The label sits in its wedge, on the bisector; a narrow wedge takes it further out.
+          const mid = w.start + w.span / 2;
+          const r = R * (w.span < 1.0 ? 0.68 : 0.58);
+          d.text(w.label, [at[0] + Math.cos(mid) * r, at[1] + Math.sin(mid) * r - h / 2], h * 0.7,
+            { layer: 'INSET', style: 'ARIAL', align: 'center' });
+        }
+      }
+      // Designation ABOVE the symbol (above the wedge diagram when there is one).
+      const nameRise = wedges.length ? R : up;
+      d.text(b.name, [at[0], at[1] + nameRise + mm(0.5)], h,
         { layer: 'INSET', style: 'ARIAL', align: 'center' });
       // Monument name BELOW the symbol (control points only).
       if (b.cpName) {
@@ -1980,12 +2037,12 @@ const crowded = crowdedClusters(
       // The abutting properties of a found or placed beacon, each lettered on the side of the sign
       // it lies toward (its true bearing), turned aside in steps until clear of the name and of its
       // fellows. A detail's marks are spread, but their bearings to the parcels are the real ones.
-      if (ABUT_SYMBOLS.has(b.symbol ?? 'peg')) {
+      if (ABUT_SYMBOLS.has(b.symbol ?? 'peg') && wedges.length === 0) {
         // textRect's width is 0.63 of the height a character, which is a little short of Arial's digits
         // and capitals; the fit therefore measures a longer string than is drawn, so two labels that
         // measure as touching are never drawn overlapping.
         const roomFor = (str, x, y, align) => textRect('W'.repeat(Math.ceil(str.length * 1.3) + 1), x, y, h, align);
-        const taken = [roomFor(b.name, at[0], at[1] + up + mm(0.5), 'center')];
+        const taken = [roomFor(b.name, at[0], at[1] + nameRise + mm(0.5), 'center')];
         if (b.cpName) taken.push(roomFor(b.cpName, at[0], at[1] - down - mm(0.5) - h, 'center'));
         const clear = (r) => !taken.some((o) => r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]);
         const reach = iRing + mm(1.1);

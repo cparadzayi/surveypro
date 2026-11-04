@@ -1816,15 +1816,15 @@ const crowded = crowdedClusters(
   if (spec.certificate) {
     const ch = mm(L.text.certificate);
     d.text(spec.certificate.line1, S(L.certificate.line1.x, L.certificate.line1.baseline),
-      ch, { layer: 'TITLE', style: 'ARIAL-BOLD' });
+      ch, { layer: 'TITLE', style: 'ARIAL' });
     d.text(spec.certificate.line2, S(L.certificate.line2.x, L.certificate.line2.baseline),
-      ch, { layer: 'TITLE', style: 'ARIAL-BOLD' });
+      ch, { layer: 'TITLE', style: 'ARIAL' });
   }
 
   /* ---- Survey Record number (examination docket, Working Plan item 21) */
   if (spec.srNumber) {
     d.text(spec.srNumber, S(L.srNumber.cx, L.srNumber.baseline), mm(L.text.scale),
-      { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
+      { layer: 'TITLE', style: 'ARIAL', align: 'center' });
   }
 
   /* ---- insets ------------------------------------------------------------

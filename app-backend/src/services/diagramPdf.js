@@ -405,12 +405,18 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
           }
           return best ?? stubTip
         }
+        const alongRoad = (corner, tip, axis) => {
+          const v = [tip[0] - corner[0], tip[1] - corner[1]]
+          return (v[0] * axis[0] + v[1] * axis[1]) / (Math.hypot(v[0], v[1]) || 1) > 0.98 // within ~11°
+        }
         const inner = []
         if (!roadSides.has(flankA)) {
           if (contiguousSides.has(flankA)) {
             const prev = subjPt[(i - 1 + n) % n]
             const stubTip = edgeStrip([prev.px, prev.py], a, CONTIG_STUB_PT, cen)[2]
-            inner.push(offshootTip(a, stubTip)) // bend to the end of the offshoot
+            // Past the corner only where the offshoot carries on along the road's own line; a
+            // neighbour that meets it at an angle ends the road AT the beacon, not in a sideways kink.
+            if (alongRoad(a, stubTip, [-ax[0], -ax[1]])) inner.push(offshootTip(a, stubTip))
           } else {
             // Untagged flank: the neighbour's boundary is still drawn there if it abuts, so the
             // band still runs to its end; else straight past A by the nominal stub.
@@ -423,7 +429,7 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
           if (contiguousSides.has(flankB)) {
             const next = subjPt[(last + 2) % n]
             const stubTip = edgeStrip(bEnd, [next.px, next.py], CONTIG_STUB_PT, cen)[3]
-            inner.push(offshootTip(bEnd, stubTip)) // bend to the end of the offshoot
+            if (alongRoad(bEnd, stubTip, axEnd)) inner.push(offshootTip(bEnd, stubTip))
           } else {
             inner.push(offshootTip(bEnd, [bEnd[0] + axEnd[0] * CONTIG_STUB_PT, bEnd[1] + axEnd[1] * CONTIG_STUB_PT]))
           }

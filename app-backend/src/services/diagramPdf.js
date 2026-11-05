@@ -395,7 +395,9 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
             const stubTip = edgeStrip([prev.px, prev.py], a, CONTIG_STUB_PT, cen)[2]
             inner.push(offshootTip(a, stubTip)) // bend to the end of the offshoot
           } else {
-            inner.push([a[0] - ax[0] * CONTIG_STUB_PT, a[1] - ax[1] * CONTIG_STUB_PT]) // straight past A
+            // Untagged flank: the neighbour's boundary is still drawn there if it abuts, so the
+            // band still runs to its end; else straight past A by the nominal stub.
+            inner.push(offshootTip(a, [a[0] - ax[0] * CONTIG_STUB_PT, a[1] - ax[1] * CONTIG_STUB_PT]))
           }
         }
         inner.push(a, b)
@@ -405,7 +407,7 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
             const stubTip = edgeStrip(b, [next.px, next.py], CONTIG_STUB_PT, cen)[3]
             inner.push(offshootTip(b, stubTip)) // bend to the end of the offshoot
           } else {
-            inner.push([b[0] + ax[0] * CONTIG_STUB_PT, b[1] + ax[1] * CONTIG_STUB_PT]) // straight past B
+            inner.push(offshootTip(b, [b[0] + ax[0] * CONTIG_STUB_PT, b[1] + ax[1] * CONTIG_STUB_PT]))
           }
         }
         q = roadBandRibbon(inner, ROAD_STRIP_PT, cen)

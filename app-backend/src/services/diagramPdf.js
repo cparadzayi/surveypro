@@ -334,6 +334,11 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
     annotations.filter((x) => x && x.role === 'contiguous' && x.side).map((x) => x.side))
   const roadSides = new Set(
     annotations.filter((x) => x && x.role === 'road' && x.side).map((x) => x.side))
+  // The same road sides as subject edge indices, for walking a run of consecutive road sides.
+  const roadIdx = new Set()
+  for (let k = 0; k < n; k++) {
+    if (roadSides.has(geometry.vertices[k].letter + geometry.vertices[(k + 1) % n].letter)) roadIdx.add(k)
+  }
 
   for (const ann of annotations) {
     if (!ann || !ann.side || !ann.role) continue
@@ -366,10 +371,22 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         // run flush along a contiguous offshoot if one is drawn there (align, no divergence),
         // otherwise extending straight along the road axis so the road reads as continuing
         // beyond the parcel. At a road↔road corner (L-junction) it just meets its neighbour.
-        const flankA = geometry.vertices[(i - 1 + n) % n].letter + geometry.vertices[i].letter
-        const flankB = geometry.vertices[(i + 1) % n].letter + geometry.vertices[(i + 2) % n].letter
+        // Consecutive road sides are ONE ribbon with mitred joins. Drawn side by side each ended
+        // square at the shared beacon, which left a wedge of white on the outside of every bend.
+        // Only the first side of a run draws it; the rest are covered by it.
+        const prevIdx = (i - 1 + n) % n
+        const continuesRun = roadIdx.has(prevIdx) && roadIdx.size < n
+        const chain = [i]
+        while (roadIdx.has((chain[chain.length - 1] + 1) % n) && chain.length < n) chain.push((chain[chain.length - 1] + 1) % n)
+        const last = chain[chain.length - 1]
+        const flankA = geometry.vertices[prevIdx].letter + geometry.vertices[i].letter
+        const flankB = geometry.vertices[(last + 1) % n].letter + geometry.vertices[(last + 2) % n].letter
+        const bEnd = [subjPt[(last + 1) % n].px, subjPt[(last + 1) % n].py]
+        const aLast = [subjPt[last].px, subjPt[last].py]
         const axLen = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
-        const ax = [(b[0] - a[0]) / axLen, (b[1] - a[1]) / axLen] // unit A→B (road axis)
+        const ax = [(b[0] - a[0]) / axLen, (b[1] - a[1]) / axLen] // unit A→B of the run's first side
+        const axEndLen = Math.hypot(bEnd[0] - aLast[0], bEnd[1] - aLast[1]) || 1
+        const axEnd = [(bEnd[0] - aLast[0]) / axEndLen, (bEnd[1] - aLast[1]) / axEndLen] // unit of its last side
         // The band runs out to the end of the neighbour's boundary edge that leaves the corner
         // (drawn dashed to the 10 m buffer), not just to the nominal stub length: the colour must
         // cover exactly the extent of the offshoot it abuts. Falls back to the stub tip when the
@@ -400,17 +417,18 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
             inner.push(offshootTip(a, [a[0] - ax[0] * CONTIG_STUB_PT, a[1] - ax[1] * CONTIG_STUB_PT]))
           }
         }
-        inner.push(a, b)
+        for (const k of chain) inner.push([subjPt[k].px, subjPt[k].py])
+        inner.push(bEnd)
         if (!roadSides.has(flankB)) {
           if (contiguousSides.has(flankB)) {
-            const next = subjPt[(i + 2) % n]
-            const stubTip = edgeStrip(b, [next.px, next.py], CONTIG_STUB_PT, cen)[3]
-            inner.push(offshootTip(b, stubTip)) // bend to the end of the offshoot
+            const next = subjPt[(last + 2) % n]
+            const stubTip = edgeStrip(bEnd, [next.px, next.py], CONTIG_STUB_PT, cen)[3]
+            inner.push(offshootTip(bEnd, stubTip)) // bend to the end of the offshoot
           } else {
-            inner.push(offshootTip(b, [b[0] + ax[0] * CONTIG_STUB_PT, b[1] + ax[1] * CONTIG_STUB_PT]))
+            inner.push(offshootTip(bEnd, [bEnd[0] + axEnd[0] * CONTIG_STUB_PT, bEnd[1] + axEnd[1] * CONTIG_STUB_PT]))
           }
         }
-        q = roadBandRibbon(inner, ROAD_STRIP_PT, cen)
+        q = continuesRun ? null : roadBandRibbon(inner, ROAD_STRIP_PT, cen)
       }
       if (q && q.length >= 3) {
         doc.save()

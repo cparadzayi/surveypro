@@ -318,7 +318,7 @@ function drawConnections(doc, ctx) {
 function drawAdjoiningFeatures(doc, ctx, logger) {
   const {
     annotations, geometry, subjPt, subjCentroid, subjSegs, neighbourSegs,
-    denom, labelObstacles, boxToSegs, connected,
+    denom, labelObstacles, boxToSegs, connected, bounds,
   } = ctx
   if (!Array.isArray(annotations) || annotations.length === 0) return
   const n = geometry.vertices.length
@@ -509,8 +509,32 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
           beaconR: 0, gap, labelW, labelH,
           segments: subjSegs.concat(neighbourSegs, labelObstacles),
         })
-        doc.text(labelText, pos.x, pos.y)
-        labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: labelH }))
+        // A long name on a short or end-on side can run past the figure area into the margin or
+        // over the neat line. Then it is set ALONG the boundary instead, upright, on the outward
+        // side, like a road name: a rotated label's length lies out along the side, not across the sheet.
+        const fits = !bounds || (pos.x >= bounds.x && pos.x + labelW <= bounds.x + bounds.width
+          && pos.y >= bounds.y && pos.y + labelH <= bounds.y + bounds.height)
+        if (fits) {
+          doc.text(labelText, pos.x, pos.y)
+          labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: labelH }))
+        } else {
+          const ex = b[0] - a[0], ey = b[1] - a[1]
+          const len = Math.hypot(ex, ey) || 1
+          let perpX = -ey / len, perpY = ex / len
+          if (perpX * (subjCentroid.px - anchor.px) + perpY * (subjCentroid.py - anchor.py) > 0) { perpX = -perpX; perpY = -perpY }
+          let angleDeg = Math.atan2(ey, ex) * 180 / Math.PI
+          if (angleDeg > 90 || angleDeg < -90) angleDeg += 180
+          const off = vertexBandPt + labelH / 2
+          const lx = anchor.px + perpX * off, ly = anchor.py + perpY * off
+          doc.rotate(angleDeg, { origin: [lx, ly] })
+          doc.text(labelText, lx - labelW / 2, ly - labelH / 2, { lineBreak: false })
+          // The rotated box as obstacle segments, so vertex letters keep clear of it.
+          const th = angleDeg * Math.PI / 180, c = Math.cos(th), s = Math.sin(th)
+          const corner = (dx, dy) => ({ px: lx + dx * c - dy * s, py: ly + dx * s + dy * c })
+          const q = [corner(-labelW / 2, -labelH / 2), corner(labelW / 2, -labelH / 2),
+            corner(labelW / 2, labelH / 2), corner(-labelW / 2, labelH / 2)]
+          for (let k = 0; k < 4; k++) labelObstacles.push([q[k], q[(k + 1) % 4]])
+        }
       }
       doc.restore()
     }
@@ -950,7 +974,7 @@ export async function generateDiagramPDF(options, logger) {
   drawAdjoiningFeatures(doc, {
     annotations: metadata.sideAnnotations,
     geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs,
-    connected,
+    connected, bounds: layout.figure,
   }, logger)
 
   drawConnections(doc, {

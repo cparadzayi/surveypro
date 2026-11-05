@@ -12,6 +12,7 @@ import {
 import { offsetPolygonPt } from './diagram/offsetPolygon.js'
 import { recordPdfOps } from './diagram/pdfOps.js'
 import { bufferRing, clipRingToPolygon, ringExtent, isOutsideFigureFeature, isRemainderFeature, neighbourBoundaryEdges } from './diagram/neighbourBuffer.js'
+import { sharpVertices, insetDenominator, planDetailInset } from './diagram/detailInset.js'
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
 import {
@@ -565,6 +566,82 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
   }
 }
 
+/**
+ * Detail insets for the figure's sharp corners (interior angle under 30 degrees) where two or more
+ * neighbours meet at the beacon: at the sheet's scale their names, the vertex letter and the stubs all
+ * land on top of each other. The corner is redrawn magnified in a circle in free space, ringed on the
+ * figure and joined to it by a dashed leader, with the neighbours named inside it.
+ *
+ * Planned BEFORE the main figure's letters are placed (the layout is in diagram/detailInset.js): the
+ * ring, leader and circle go into `labelObstacles`, so the vertex letters and neighbour names set after
+ * them keep clear of the inset instead of being drawn over it. Returns the plans, to paint later, and
+ * the neighbours the insets name, whose labels the caller leaves off the main figure.
+ */
+function planDetailInsets(doc, ctx) {
+  const { subjPt, neighbours, tf, denom, geometry, subjSegs, neighbourSegs, labelObstacles, bounds } = ctx
+  const plans = [], taken = new Set()
+  const insetDenom = insetDenominator(denom)
+  const ring = subjPt.map((p) => [p.px, p.py])
+  if (!insetDenom || !sharpVertices(ring).length) return { plans, taken }
+
+  const fs = DIAGRAM_FONTS.label
+  doc.font('Helvetica').fontSize(fs)
+  const nbs = (neighbours ?? [])
+    .filter((nb) => !isOutsideFigureFeature(nb))
+    .map((nb) => ({
+      key: nb,
+      stand: isRemainderFeature(nb) ? '' : String(nb?.properties?.stand ?? nb?.properties?.designation ?? ''),
+      ring: (nb?.geometry?.coordinates?.[0] ?? []).map((q) => { const t = tf(q); return [t.px, t.py] }),
+    }))
+    .filter((x) => x.ring.length >= 3)
+  const asSeg = ([a, b]) => [[a.px, a.py], [b.px, b.py]]
+  const letters = geometry.vertices.map((v) => v.letter)
+
+  for (const i of sharpVertices(ring)) {
+    const plan = planDetailInset({
+      ring, i, nbs, denom, insetDenom, bounds, fs, letters, number: plans.length + 1,
+      obstacles: [...subjSegs, ...neighbourSegs, ...labelObstacles].map(asSeg),
+      widthOf: (t) => doc.widthOfString(t),
+    })
+    if (!plan) continue
+    labelObstacles.push(...plan.blocks.map(([a, b]) => [{ px: a[0], py: a[1] }, { px: b[0], py: b[1] }]))
+    plans.push(plan)
+    for (const nb of plan.taken) taken.add(nb)
+  }
+  return { plans, taken }
+}
+
+/** Paints the planned insets: the circle with what is in it, the ring on the figure, the leader, the title. */
+function paintDetailInsets(doc, plans) {
+  const fs = DIAGRAM_FONTS.label
+  for (const pl of plans) {
+    doc.layer('DETAIL_INSET')
+    doc.save().fillColor('#FFFFFF').circle(pl.c[0], pl.c[1], pl.R).fill().restore()
+    const strokeAll = (segs) => { for (const [a, b] of segs) doc.moveTo(a[0], a[1]).lineTo(b[0], b[1]) }
+    doc.save().dash(3, { space: 2 }).lineWidth(0.8).strokeColor('#000000')
+    strokeAll(pl.nbSegs)
+    doc.stroke().undash().restore()
+    doc.save().lineWidth(1.2).strokeColor('#000000')
+    strokeAll(pl.subjSegs)
+    doc.stroke().restore()
+    doc.save().lineWidth(0.8).strokeColor('#000000').fillColor('#FFFFFF')
+    for (const q of pl.beacons) doc.circle(q[0], q[1], pl.beaconR).fillAndStroke()
+    doc.restore()
+    doc.font('Helvetica').fontSize(fs)
+    for (const l of pl.labels) {
+      doc.fillColor(l.kind === 'name' ? '#555555' : '#000000').text(l.text, l.x, l.y, { lineBreak: false })
+    }
+    doc.save().lineWidth(1).strokeColor('#000000').circle(pl.c[0], pl.c[1], pl.R).stroke().restore()
+    doc.save().dash(2, { space: 1.5 }).lineWidth(0.6).strokeColor('#000000')
+      .circle(pl.f[0], pl.f[1], pl.ringR).stroke()
+      .moveTo(pl.leader[0][0], pl.leader[0][1]).lineTo(pl.leader[1][0], pl.leader[1][1]).stroke()
+      .undash().restore()
+    doc.fillColor('#000000')
+    doc.text(pl.title, pl.titleBox.x, pl.titleBox.y, { lineBreak: false })
+    doc.text(pl.caption, pl.captionBox.x, pl.captionBox.y, { lineBreak: false })
+  }
+}
+
 function drawNorthArrow(doc, layout) {
   // The template's north arrow: true-north line, leaning grid-north line with its
   // barb, and the "T" and "N" either side of the line (see NORTH_ARROW_TEMPLATE).
@@ -949,7 +1026,7 @@ export async function generateDiagramPDF(options, logger) {
         ? '' : (nb.properties?.stand ?? nb.properties?.designation ?? '')
       if (stand) {
         // Defer drawing: placed outward, line-avoiding, once all segments are known.
-        neighbourLabels.push({ anchor: centroidPt(strips[0].map((p) => tf(p))), text: String(stand) })
+        neighbourLabels.push({ anchor: centroidPt(strips[0].map((p) => tf(p))), text: String(stand), nb })
       }
     }
   }
@@ -1021,6 +1098,12 @@ export async function generateDiagramPDF(options, logger) {
     doc.restore()
   }
 
+  // A sharp corner where neighbours meet is magnified in a detail inset, which names those neighbours
+  // itself. Planned now so that the letters and names set below keep clear of its ring and leader.
+  const detailInsets = planDetailInsets(doc, {
+    subjPt, neighbours, tf, denom, geometry, subjSegs, neighbourSegs, labelObstacles, bounds: layout.figure,
+  })
+
   doc.layer('FIGURE_LABELS')
   geometry.vertices.forEach((v, i) => {
     const p = subjPt[i]
@@ -1032,11 +1115,14 @@ export async function generateDiagramPDF(options, logger) {
     labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: DIAGRAM_FONTS.label }))
   })
 
+  paintDetailInsets(doc, detailInsets.plans)
+
   // Neighbour stand labels: same outward (away from the subject centroid),
   // line-avoiding placement, clear of the drawn lines AND the vertex labels.
   doc.layer('NEIGHBOURS')
   doc.font('Helvetica').fontSize(DIAGRAM_FONTS.label).fillColor('#555555')
   for (const nl of neighbourLabels) {
+    if (detailInsets.taken.has(nl.nb)) continue
     const labelW = doc.widthOfString(nl.text)
     const pos = placeVertexLabel(nl.anchor, subjCentroid, {
       beaconR: 0, gap: 1, labelW, labelH: DIAGRAM_FONTS.label, segments: subjSegs.concat(neighbourSegs, labelObstacles),

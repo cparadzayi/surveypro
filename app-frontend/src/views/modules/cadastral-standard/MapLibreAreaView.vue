@@ -3629,6 +3629,7 @@ async function initializeMapOnce() {
     // ========== END DRAWING LAYERS ==========
 
     // Render any parcels that were loaded from database before map initialization
+    let fittedToParcels = false;
     if (savedParcels.value.size > 0) {
       try {
         console.log(`[MapLibre] 🎨 Rendering ${savedParcels.value.size} loaded parcels on map...`);
@@ -3735,6 +3736,7 @@ async function initializeMapOnce() {
         
         // Fit map to parcels if they exist
         if (features.length > 0) {
+          fittedToParcels = true;
           setTimeout(() => {
             console.log('[MapLibre] 🎯 Fitting map to parcels...');
             const bounds = features.reduce((acc, feature) => {
@@ -3770,11 +3772,15 @@ async function initializeMapOnce() {
       console.log('[MapLibre] No saved parcels to render');
     }
 
-    // Fit to bounds with delay to ensure points are rendered
-    setTimeout(() => {
-      console.log('[MapLibre] Fitting to points...');
-      fitToPoints();
-    }, 500);
+    // Fit to bounds with delay to ensure points are rendered. Skipped when the view was just fitted to
+    // the parcels: both timers fire together, and the later fit to the points won, so a project with a
+    // lone control point (or points far from the parcels) opened on the points with the parcels off screen.
+    if (!fittedToParcels) {
+      setTimeout(() => {
+        console.log('[MapLibre] Fitting to points...');
+        fitToPoints();
+      }, 500);
+    }
 
     isLoading.value = false;
 
@@ -8846,7 +8852,16 @@ onMounted(async () => {
     // Initialize map (critical - must succeed)
     console.log('[MapLibre] 🗺️ Initializing map...');
     await initializeMap();
-    
+
+    // The late-points watcher can build the map while the parcels above are still loading, and the map
+    // draws only the parcels that are loaded at the moment it is built ("No saved parcels to render"),
+    // so they were then in memory and in the database but never on the map. Draw them now if it missed them.
+    const drawnOnMap = (parcelsSource as any)?._data?.features?.length ?? 0;
+    if (map && parcelsSource && savedParcels.value.size > 0 && drawnOnMap === 0) {
+      console.log('[MapLibre] 🔁 Map was built before the parcels loaded - drawing them now');
+      await refreshParcelsFromDatabase();
+    }
+
     // Initialize inset map if visible and has trig beacons
     if (showTrigInset.value && trigBeacons.value.length > 0) {
       console.log('[MapLibre] 🗺️ Initializing inset map...');

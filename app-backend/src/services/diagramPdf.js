@@ -370,11 +370,30 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         const flankB = geometry.vertices[(i + 1) % n].letter + geometry.vertices[(i + 2) % n].letter
         const axLen = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
         const ax = [(b[0] - a[0]) / axLen, (b[1] - a[1]) / axLen] // unit A→B (road axis)
+        // The band runs out to the end of the neighbour's boundary edge that leaves the corner
+        // (drawn dashed to the 10 m buffer), not just to the nominal stub length: the colour must
+        // cover exactly the extent of the offshoot it abuts. Falls back to the stub tip when the
+        // neighbour's edge is not drawn there.
+        const offshootTip = (corner, stubTip) => {
+          const tol = COINCIDENT_TOL_MM * PT_PER_MM
+          const want = [stubTip[0] - corner[0], stubTip[1] - corner[1]]
+          let best = null, bestDot = 0
+          for (const [p, q] of neighbourSegs) {
+            for (const [from, to] of [[p, q], [q, p]]) {
+              if (Math.hypot(from.px - corner[0], from.py - corner[1]) > tol) continue
+              const d = [to.px - corner[0], to.py - corner[1]]
+              const dot = (d[0] * want[0] + d[1] * want[1]) / ((Math.hypot(d[0], d[1]) * Math.hypot(want[0], want[1])) || 1)
+              if (dot > 0.9 && dot > bestDot) { best = [to.px, to.py]; bestDot = dot }
+            }
+          }
+          return best ?? stubTip
+        }
         const inner = []
         if (!roadSides.has(flankA)) {
           if (contiguousSides.has(flankA)) {
             const prev = subjPt[(i - 1 + n) % n]
-            inner.push(edgeStrip([prev.px, prev.py], a, CONTIG_STUB_PT, cen)[2]) // bend to offshoot tip
+            const stubTip = edgeStrip([prev.px, prev.py], a, CONTIG_STUB_PT, cen)[2]
+            inner.push(offshootTip(a, stubTip)) // bend to the end of the offshoot
           } else {
             inner.push([a[0] - ax[0] * CONTIG_STUB_PT, a[1] - ax[1] * CONTIG_STUB_PT]) // straight past A
           }
@@ -383,7 +402,8 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         if (!roadSides.has(flankB)) {
           if (contiguousSides.has(flankB)) {
             const next = subjPt[(i + 2) % n]
-            inner.push(edgeStrip(b, [next.px, next.py], CONTIG_STUB_PT, cen)[3]) // bend to offshoot tip
+            const stubTip = edgeStrip(b, [next.px, next.py], CONTIG_STUB_PT, cen)[3]
+            inner.push(offshootTip(b, stubTip)) // bend to the end of the offshoot
           } else {
             inner.push([b[0] + ax[0] * CONTIG_STUB_PT, b[1] + ax[1] * CONTIG_STUB_PT]) // straight past B
           }

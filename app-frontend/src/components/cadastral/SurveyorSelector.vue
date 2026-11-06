@@ -56,100 +56,16 @@
       </div>
     </div>
 
-    <!-- Add Surveyor Modal -->
-    <div v-if="showAddModal" v-dialog="{ label: 'Add new surveyor', onClose: closeAddModal }" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <h2 class="text-xl font-bold text-gray-900 mb-4">Add New Surveyor</h2>
-        
-        <form @submit.prevent="handleAddSurveyor" class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-            <input
-              v-model="newSurveyor.name"
-              type="text"
-              required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter surveyor name"
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">License Number *</label>
-            <input
-              v-model="newSurveyor.license_number"
-              type="text"
-              required
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter license number"
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Firm</label>
-            <input
-              v-model="newSurveyor.firm"
-              type="text"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter firm name"
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-            <input
-              v-model="newSurveyor.phone"
-              type="tel"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter phone number"
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              v-model="newSurveyor.email"
-              type="email"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter email"
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
-            <textarea
-              v-model="newSurveyor.address"
-              rows="3"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter address"
-            ></textarea>
-          </div>
-
-          <div class="flex gap-2 pt-2">
-            <button
-              type="submit"
-              :disabled="loading"
-              class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
-            >
-              {{ loading ? 'Adding...' : 'Add Surveyor' }}
-            </button>
-            <button
-              type="button"
-              @click="closeAddModal"
-              class="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-400 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <!-- Add Surveyor: creates the account and shows the administrator a set-password link -->
+    <AddSurveyorModal v-if="showAddModal" @close="showAddModal = false" @created="onSurveyorCreated" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useSurveyors, type Surveyor } from '../../composables/useSurveyors'
+import { useSurveyors, type Surveyor, type CreatedSurveyor } from '../../composables/useSurveyors'
 import { useAuthStore } from '../../stores/auth'
+import AddSurveyorModal from './AddSurveyorModal.vue'
 
 const props = defineProps<{
   modelValue?: number | null
@@ -162,19 +78,10 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
-const { surveyors, surveyorOptions, loading, error, fetchSurveyors, createSurveyor } = useSurveyors()
+const { surveyors, surveyorOptions, loading, error, fetchSurveyors } = useSurveyors()
 
 const selectedSurveyorId = ref<number | string>(props.modelValue || '')
 const showAddModal = ref(false)
-const newSurveyor = ref({
-  name: '',
-  license_number: '',
-  firm: '',
-  phone: '',
-  email: '',
-  address: ''
-})
-
 const selectedSurveyor = computed(() => {
   if (!selectedSurveyorId.value) return null
   return surveyors.value.find(s => s.id === Number(selectedSurveyorId.value)) || null
@@ -199,25 +106,10 @@ const autoSelectCurrentSurveyor = () => {
   }
 }
 
-const handleAddSurveyor = async () => {
-  const surveyor = await createSurveyor(newSurveyor.value)
-  if (surveyor) {
-    selectedSurveyorId.value = surveyor.id
-    onSurveyorChange()
-    closeAddModal()
-  }
-}
-
-const closeAddModal = () => {
+const onSurveyorCreated = ({ surveyor }: CreatedSurveyor) => {
+  selectedSurveyorId.value = surveyor.id
+  onSurveyorChange()
   showAddModal.value = false
-  newSurveyor.value = {
-    name: '',
-    license_number: '',
-    firm: '',
-    phone: '',
-    email: '',
-    address: ''
-  }
 }
 
 watch(() => props.modelValue, (newVal) => {

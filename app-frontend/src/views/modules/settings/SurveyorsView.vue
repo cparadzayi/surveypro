@@ -105,12 +105,13 @@
       </div>
     </div>
 
-    <!-- Add/Edit Modal -->
-    <div v-if="showAddModal || editingsurveyor" v-dialog="{ label: editingsurveyor ? 'Edit surveyor' : 'Add new surveyor', onClose: closeModal }" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <!-- Add: creates the account and gives the administrator a set-password link -->
+    <AddSurveyorModal v-if="showAddModal" @close="closeModal" @created="closeModal" />
+
+    <!-- Edit Modal -->
+    <div v-if="editingsurveyor" v-dialog="{ label: 'Edit surveyor', onClose: closeModal }" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <h2 class="text-xl font-bold text-gray-900 mb-4">
-          {{ editingsurveyor ? 'Edit Surveyor' : 'Add New Surveyor' }}
-        </h2>
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Edit Surveyor</h2>
         
         <form @submit.prevent="handleSubmit" class="space-y-4">
           <div>
@@ -157,11 +158,12 @@
 
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <!-- The sign-in address belongs to the account, not the profile: it is not changed here. -->
             <input
               v-model="formData.email"
               type="email"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-              placeholder="surveyor@example.com"
+              readonly
+              class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-600"
             />
           </div>
 
@@ -181,7 +183,7 @@
               :disabled="loading"
               class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
             >
-              {{ loading ? 'Saving...' : (editingsurveyor ? 'Update' : 'Add Surveyor') }}
+              {{ loading ? 'Saving...' : 'Update' }}
             </button>
             <button
               type="button"
@@ -230,8 +232,9 @@ import { useAuthStore } from '../../../stores/auth'
 import api from '../../../services/api'
 import { notifyFailure, notifySuccess } from '../../../composables/useNotifications'
 import { describeTimeLeft, resetLink } from '../../../utils/passwordResetLink'
+import AddSurveyorModal from '../../../components/cadastral/AddSurveyorModal.vue'
 
-const { surveyors, loading, error, fetchSurveyors, createSurveyor, updateSurveyor, deleteSurveyor } = useSurveyors()
+const { surveyors, loading, error, fetchSurveyors, updateSurveyor, deleteSurveyor } = useSurveyors()
 
 const authStore = useAuthStore()
 
@@ -303,16 +306,10 @@ const confirmDelete = (surveyor: Surveyor) => {
 }
 
 const handleSubmit = async () => {
-  if (editingsurveyor.value) {
-    const success = await updateSurveyor(editingsurveyor.value.id, formData.value)
-    if (success) {
-      closeModal()
-    }
-  } else {
-    const success = await createSurveyor(formData.value)
-    if (success) {
-      closeModal()
-    }
+  if (!editingsurveyor.value) return
+  const success = await updateSurveyor(editingsurveyor.value.id, formData.value)
+  if (success) {
+    closeModal()
   }
 }
 

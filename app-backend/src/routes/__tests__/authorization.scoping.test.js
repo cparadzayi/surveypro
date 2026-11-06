@@ -43,6 +43,7 @@ jest.unstable_mockModule('../../models/SurveyorProfile.js', () => ({
 }))
 jest.unstable_mockModule('../../config/db.js', () => ({
   default: { query: jest.fn() },
+  createSurveyorSchema: jest.fn(), // surveyors.js imports it for the admin "add surveyor" route
   getSurveyorPool: jest.fn(() => ({ query: jest.fn(), connect: jest.fn() })),
 }))
 jest.unstable_mockModule('../../models/project.js', () => ({

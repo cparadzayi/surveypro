@@ -29,6 +29,27 @@ export interface Surveyor {
   updated_at: string
 }
 
+export type SurveyorType = 'registered' | 'in_training' | 'technician' | 'student'
+
+/** What an administrator supplies to add a surveyor (the field names the server takes). */
+export interface NewSurveyor {
+  name: string
+  email: string
+  surveyorType: SurveyorType
+  licenseNumber?: string
+  registrationNumber?: string
+  studentNumber?: string
+  firm?: string
+  address?: string
+  phone?: string
+  institution?: string
+}
+
+/** A one-time link for the new surveyor to set their password. */
+export interface SetPasswordLink { token: string; expiresAt: string; resetPath: string }
+
+export interface CreatedSurveyor { surveyor: Surveyor; setPassword: SetPasswordLink | null }
+
 export interface SurveyProject {
   id: number
   name: string
@@ -95,29 +116,28 @@ export function useSurveyors() {
     return null
   }
 
-  const createSurveyor = async (data: Partial<Surveyor>): Promise<Surveyor | null> => {
+  /**
+   * Adds a surveyor (an administrator only): the server makes the sign-in account, the profile and the
+   * surveyor's own schema, and returns a one-time link for them to set their password. `setPassword` is
+   * null when the account was made but the link could not be (issue one from the surveyor's card).
+   *
+   * Throws an Error whose message says what went wrong (a duplicate e-mail, a missing field...). It does
+   * not use the shared `error`, which the surveyors page shows in place of its list: a refused form
+   * should be reported on the form.
+   */
+  const createSurveyor = async (data: NewSurveyor): Promise<CreatedSurveyor> => {
     loading.value = true
-    error.value = null
     try {
-      const response = await api.post('/surveyors', {
-        name: data.name,
-        licenseNumber: data.license_number,
-        firm: data.firm,
-        address: data.address,
-        phone: data.phone,
-        email: data.email
-      })
-      if (response.data.ok) {
-        surveyors.value.push(response.data.surveyor)
-        return response.data.surveyor
-      }
+      const response = await api.post('/surveyors', data)
+      if (!response.data.ok) throw new Error('Failed to create surveyor')
+      surveyors.value.push(response.data.surveyor)
+      return { surveyor: response.data.surveyor, setPassword: response.data.setPassword ?? null }
     } catch (err: any) {
-      error.value = describeApiError(err, 'Failed to create surveyor')
       console.error('Error creating surveyor:', err?.response?.data ?? err)
+      throw new Error(err?.response ? describeApiError(err, 'Failed to create surveyor') : (err?.message || 'Failed to create surveyor'))
     } finally {
       loading.value = false
     }
-    return null
   }
 
   const updateSurveyor = async (id: number, data: Partial<Surveyor>): Promise<Surveyor | null> => {

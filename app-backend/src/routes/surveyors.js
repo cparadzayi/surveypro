@@ -1,7 +1,9 @@
 import SurveyorProfile from '../models/SurveyorProfile.js'
 import { authenticateWithSchema, requireAdmin } from '../utils/schemaAuth.js'
-import db from '../config/db.js'
+import User from '../models/user.js'
+import db, { createSurveyorSchema } from '../config/db.js'
 import { createResetToken } from '../utils/passwordReset.js'
+import { cleanNewSurveyor, createSurveyorAccount } from '../utils/surveyorAccount.js'
 import { isRowId } from '../utils/requestChecks.js'
 
 /**
@@ -103,30 +105,43 @@ export default async function surveyorRoutes(fastify, options) {
     }
   })
 
-  // Create new surveyor — admin only, and still a stub.
+  // Add a surveyor — admin only. Makes the sign-in account, the profile and the surveyor's own database
+  // schema, and returns a one-hour, single-use link for them to set their password (the app cannot send
+  // e-mail, so the administrator passes the link on, as with a password reset). Until it is used nobody
+  // can sign in to the account: it is made with a password no one knows.
   fastify.post('/surveyors', adminOnly, async (request, reply) => {
+    const { values, error } = cleanNewSurveyor(request.body)
+    if (error) return reply.code(400).send({ ok: false, error })
     try {
-      const { licenseNumber } = request.body
-
-      // Check if license number already exists (if provided)
-      if (licenseNumber) {
-        const existing = await SurveyorProfile.findByLicense(licenseNumber)
-        if (existing) {
-          return reply.code(409).send({
-            ok: false,
-            error: 'A surveyor with this license number already exists'
-          })
-        }
+      const result = await createSurveyorAccount(
+        { User, SurveyorProfile, createSurveyorSchema, db, createResetToken, log: fastify.log },
+        values,
+        { createdBy: request.user?.sub ?? null }
+      )
+      if (result.status === 'email_taken') {
+        return reply.code(409).send({ ok: false, error: 'That e-mail address already has an account' })
+      }
+      if (result.status === 'license_taken') {
+        return reply.code(409).send({ ok: false, error: 'A surveyor with this license number already exists' })
       }
 
-      // This endpoint is a backwards-compatibility stub. New surveyors are
-      // created by /auth/register + /surveyor-profiles.
-      return reply.code(501).send({
-        ok: false,
-        error: 'Please use the registration flow to create new surveyors'
+      fastify.log.info(`[surveyors] ${request.user?.sub} added surveyor ${result.profile.id}`)
+      reply.header('Cache-Control', 'no-store')
+      const { reset } = result
+      return reply.code(201).send({
+        ok: true,
+        surveyor: format({ ...result.profile, email: result.user.email }),
+        // The token is shown once here and only its hash is stored; it is kept out of the logs.
+        setPassword: reset
+          ? { token: reset.token, expiresAt: reset.expiresAt, resetPath: `/reset-password?token=${reset.token}` }
+          : null,
       })
-    } catch (error) {
-      fastify.log.error(error)
+    } catch (err) {
+      // A concurrent request for the same address loses at the unique index, not at the check above.
+      if (err?.code === '23505') {
+        return reply.code(409).send({ ok: false, error: 'That e-mail address or license number is already in use' })
+      }
+      fastify.log.error(err)
       return reply.code(500).send({ ok: false, error: 'Failed to create surveyor' })
     }
   })

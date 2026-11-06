@@ -209,6 +209,8 @@ UPDATE surveyor_profiles SET role = 'admin'
 
 Current state of this database: `cparadzayi@gmail.com` (profile 3, schema `surveyor_surveyor_cparadzayi`) is the admin; `demo@example.com` (profile 1, schema `surveyor_surveyor_demo`) is still `'surveyor'` and is correctly refused by `requireAdmin`. Note that `supervisor_id` is NULL on **both** rows, so `findVisibleTo` resolves to self-only for every user regardless of role — the hierarchy is a data gap, not a code one.
 
+An administrator adds a surveyor with `POST /surveyors` (Settings > Surveyors > Add Surveyor). It used to be a stub that always answered 501 "use the registration flow", which the screen never reflected. It now makes the sign-in account (with a password nobody knows), the profile and the surveyor's own schema (`utils/surveyorAccount.js`), and returns a one-hour, single-use set-password link for the administrator to pass on, since the app cannot send e-mail. If the profile or schema step fails, what was made is removed again, so a failure cannot leave a half-made account blocking the address. The new profile's role is always `surveyor`; the body has no role field. `SurveyorSelector.vue` is not mounted by any view (only the docs plan it) but shares the same `AddSurveyorModal.vue`.
+
 `GET /auth/me` returns `profile.role`; `stores/auth.ts` exposes it as `isAdmin`. The frontend only *hides* buttons — the API enforces independently, so hiding them is UX, not the control.
 
 ## Known gaps (deliberately not fixed)

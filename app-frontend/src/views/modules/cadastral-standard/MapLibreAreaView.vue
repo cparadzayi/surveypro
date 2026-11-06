@@ -1019,6 +1019,7 @@
 <script setup lang="ts">
 import { confirmDialog, notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { describeError } from '@/utils/errorMessage'
+import { loadCoverLetterhead } from '@/utils/letterheadInfo'
 import { ref, onMounted, onBeforeUnmount, inject, computed, watch, nextTick } from 'vue';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -8226,13 +8227,8 @@ async function exportAreaConsistencyPDF() {
 
     // Cover page information
     const coverPageInfo = {
-      firmName: 'C PARADZAYI LAND SURVEYORS',
-      firmSubtitle: 'Cadastral, Engineering, Topographic & Mining Surveyors',
-      phone: '+263 774 003 137',
-      whatsapp: '+263 717 845 599',
-      email: 'cparadzayi@gmail.com',
-      website: 'www.mataranyika.com',
-      address: '6322 Hwari Matongo Street, Southview, Gweru, Zimbabwe',
+      // The firm's own letterhead (name, tagline, contact details, logo), from Settings > Firm & letterhead.
+      ...(await loadCoverLetterhead()),
       date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
       projectTitle: surveyorInfo.projectTitle,
       surveyorName: surveyorInfo.name,

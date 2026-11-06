@@ -29,6 +29,17 @@
             Manage survey projects and link them to surveyors
           </p>
         </router-link>
+
+        <router-link
+          to="/modules/settings/letterhead"
+          class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-8 text-center"
+        >
+          <div aria-hidden="true" class="text-5xl mb-3">🏢</div>
+          <h3 class="text-lg font-semibold text-gray-900 mb-2">Firm &amp; letterhead</h3>
+          <p class="text-sm text-gray-600">
+            Your firm name, contact details and logo for cover letters
+          </p>
+        </router-link>
       </div>
     </div>
   </div>

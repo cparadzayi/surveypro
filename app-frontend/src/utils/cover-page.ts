@@ -24,7 +24,9 @@ export interface CoverPageInfo {
   email?: string;
   website?: string;
   address?: string;
-  
+  /** The firm's logo (a PNG data URL with its pixel size), drawn at the left of the header. */
+  logo?: { dataUrl: string; width: number; height: number };
+
   // Letter Information
   date?: string;
   
@@ -68,6 +70,29 @@ export class CoverPageGenerator {
     return new Blob([pdf.output('blob')], { type: 'application/pdf' });
   }
   
+  /** Tallest the logo is drawn, mm, and the widest (a wide logo is scaled down to this). */
+  private readonly logoMaxHeight = 22;
+  private readonly logoMaxWidth = 40;
+
+  /**
+   * Draws the logo at the left margin, its top just above the firm name's cap height so the two read as one
+   * line. Returns the y of its bottom edge, or null when there is no logo (or it cannot be drawn: a bad
+   * image must not stop the letter from being produced).
+   */
+  private drawLogo(pdf: jsPDF, logo: CoverPageInfo['logo'], nameBaselineY: number): number | null {
+    if (!logo || !(logo.width > 0) || !(logo.height > 0)) return null;
+    const scale = Math.min(this.logoMaxHeight / logo.height, this.logoMaxWidth / logo.width);
+    const w = logo.width * scale, h = logo.height * scale;
+    const top = nameBaselineY - 6; // the 16 pt name's cap height is about 4 mm, so this sits a touch above it
+    try {
+      pdf.addImage(logo.dataUrl, 'PNG', this.marginLeft, top, w, h);
+    } catch (error) {
+      console.warn('[CoverPage] could not draw the logo', error);
+      return null;
+    }
+    return top + h;
+  }
+
   /**
    * Generate formal letter page (Page 1)
    */
@@ -77,13 +102,16 @@ export class CoverPageGenerator {
     
     // Firm Header (if provided)
     if (info.firmName) {
+      // The logo stands at the left, level with the firm name; the contact lines start below it.
+      const logoBottom = this.drawLogo(pdf, info.logo, yPosition);
+
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(16);
       pdf.setTextColor(0, 128, 0); // Green
       const firmNameWidth = pdf.getTextWidth(info.firmName);
       pdf.text(info.firmName, (pageWidth - firmNameWidth) / 2, yPosition);
       yPosition += 8;
-      
+
       if (info.firmSubtitle) {
         pdf.setFontSize(11);
         pdf.setTextColor(0, 0, 255); // Blue
@@ -91,7 +119,8 @@ export class CoverPageGenerator {
         pdf.text(info.firmSubtitle, (pageWidth - subtitleWidth) / 2, yPosition);
         yPosition += 6;
       }
-      
+      if (logoBottom !== null) yPosition = Math.max(yPosition, logoBottom + 3);
+
       // Contact Information
       pdf.setFontSize(9);
       pdf.setTextColor(0, 0, 0);

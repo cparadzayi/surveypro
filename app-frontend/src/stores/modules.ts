@@ -271,7 +271,8 @@ export const useModulesStore = defineStore('modules', {
         icon: '⚙️',
         submenus: [
           { slug: 'surveyors', title: 'Surveyors', description: 'Manage surveyor profiles and licenses', icon: '👤', badge: 'New' },
-          { slug: 'projects', title: 'Projects', description: 'Manage survey projects', icon: '📁', badge: 'New' }
+          { slug: 'projects', title: 'Projects', description: 'Manage survey projects', icon: '📁', badge: 'New' },
+          { slug: 'letterhead', title: 'Firm & letterhead', description: 'Your firm name, contact details and logo for cover letters', icon: '🏢', badge: 'New' }
         ]
       }
     ] as SurveyModule[]

@@ -469,6 +469,7 @@ import { siteCalibrationFrom } from '@/utils/siteCalibration'
 import type { SheetPayload } from '@/utils/sheetPayloads'
 import { generateCalibrationReportPDF } from '@/utils/calibration-pdf'
 import type { CoverPageInfo } from '@/utils/cover-page'
+import { loadCoverLetterhead } from '@/utils/letterheadInfo'
 import { listCoordinatePoints, updateLandParcel } from '@/services/spatial'
 import { listAdoptedBeacons } from '@/services/adoptedBeacons'
 import { saveDocument } from '@/services/documentStorage'
@@ -5134,12 +5135,8 @@ async function generateComprehensivePDF() {
       || ''
 
     const coverPageInfo: CoverPageInfo = {
-      firmName: 'C PARADZAYI LAND SURVEYORS',
-      firmSubtitle: 'Cadastral, Engineering, Topographic & Mining Surveyors',
-      phone: '+263 774 003 137',
-      email: 'cparadzayi@gmail.com',
-      website: 'www.mataranyika.com',
-      address: '6322 Hwari Matongo Street, Southview, Gweru, Zimbabwe',
+      // The firm's own letterhead (name, tagline, contact details, logo), from Settings > Firm & letterhead.
+      ...(await loadCoverLetterhead()),
       date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
       projectTitle: projectName,
       surveyorName: surveyorName,

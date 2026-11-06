@@ -25,6 +25,23 @@ export const INSET_SCALE_LADDER = [
 ];
 
 /**
+ * Round scales a measured inset (the trig/locality map) may be drawn at, finest first. Every inset is a map to
+ * a stated scale now, so the renderer takes the finest of these at which the map fits its cell. It reaches
+ * down to 1:500 so a survey whose control is a few hundred metres off is not shrunk to a stamp.
+ */
+export const MEASURED_INSET_SCALES = [
+  500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000, 7500, 10000, 12500, 15000, 20000, 25000, 30000,
+  40000, 50000, 60000, 75000, 100000, 125000, 150000, 200000, 250000, 300000, 400000, 500000, 600000,
+  750000, 1000000, 1250000, 1500000, 2000000, 3000000, 4000000,
+];
+
+/**
+ * Round scales a DETAIL inset (an enlargement of marks that plot on top of each other on the figure) may be
+ * drawn at. Marks tens of millimetres apart on the ground need an enlargement of 1:1 to 1:250.
+ */
+export const DETAIL_INSET_SCALES = [1, 1.5, 2, 2.5, 4, 5, 7.5, 10, 15, 20, 25, 40, 50, 75, 100, 150, 200, 250];
+
+/**
  * Margin left around the content, as a multiplier on the span that must fit.
  * Without it the outermost station sits hard against the frame, and its name --
  * drawn centred, above the mark -- crosses it.

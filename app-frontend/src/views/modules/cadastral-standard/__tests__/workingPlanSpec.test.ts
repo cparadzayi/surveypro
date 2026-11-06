@@ -10,6 +10,8 @@ insetSymbolFor,
   controlPointsForInset,
   selectedControlPointIds,
   controlKey,
+  officialControlSymbol,
+  outlyingControl,
 } from '../workingPlanSpec'
 
 /** Beacons as exportBeaconsAsGeoJSON emits them: coordinates are [Y, X]. */
@@ -34,6 +36,9 @@ const coordinateList = beaconFC([
   { name: 'RM16', y: -85623.81, x: 2144100.66, description: 'Reference mark' },
   { name: '49/T', y: -88454.0, x: 2146860.0, description: 'Trig beacon' },
 ])
+
+/** The same list without its trig beacon: a survey that states no control anywhere. */
+const listWithoutControl = beaconFC(coordinateList.features.map(f => f.properties as any).filter(p => p.name !== '49/T'))
 
 const parcel = (stand: string, ids: string[]) => ({
   stand,
@@ -212,7 +217,18 @@ describe('buildWorkingPlanSpec', () => {
     // vertices alone, so the extra points cannot shrink the figure.
     const { spec } = buildWorkingPlanSpec(ctx())
     const names = spec.beacons.map(b => b.name)
-    expect(names).toEqual(expect.arrayContaining(['SD4', 'SD5', 'SD6', 'SD3', 'RM16', '49/T']))
+    expect(names).toEqual(expect.arrayContaining(['SD4', 'SD5', 'SD6', 'SD3', 'RM16']))
+  })
+
+  it('carries a trig beacon listed beyond the survey in the trig inset, not on the sheet', () => {
+    // 49/T is 3.8 km from the stands. Official control is part of the trig network: it goes where the
+    // Surveyor General looks for it, with its own sign, and does not stretch or clutter the figure.
+    const { spec } = buildWorkingPlanSpec(ctx())
+    expect(spec.beacons.map(b => b.name)).not.toContain('49/T')
+    const inset = spec.inset!.beacons
+    expect(inset.find(b => b.name === '49/T')).toMatchObject({ symbol: 'trig' })
+    // ...with the survey itself marked in the same inset, so the reader can see where the job lies
+    expect(inset.length).toBeGreaterThanOrEqual(2)
   })
 
   it('still emits each point once when it is both a ring vertex and in the list', () => {
@@ -580,7 +596,7 @@ describe('the locality inset from selected control points', () => {
   })
 
   it('still has no inset when the survey states no control at all', () => {
-    expect(buildWorkingPlanSpec(ctx({ controlPoints: [] })).spec.inset).toBeUndefined()
+    expect(buildWorkingPlanSpec(ctx({ beacons: listWithoutControl, controlPoints: [] })).spec.inset).toBeUndefined()
   })
 })
 
@@ -607,8 +623,8 @@ describe('buildWorkingPlanSpec — locality inset', () => {
   it('omits the inset entirely when no calibration was imported', () => {
     // An empty inset box would be worse than none: it asserts there was no
     // control, rather than that we do not know what it was.
-    expect(buildWorkingPlanSpec(ctx()).spec.inset).toBeUndefined()
-    expect(buildWorkingPlanSpec(ctx({ calibration: { pairs: [] } })).spec.inset).toBeUndefined()
+    expect(buildWorkingPlanSpec(ctx({ beacons: listWithoutControl })).spec.inset).toBeUndefined()
+    expect(buildWorkingPlanSpec(ctx({ beacons: listWithoutControl, calibration: { pairs: [] } })).spec.inset).toBeUndefined()
   })
 
   it('carries every control point from the calibration report', () => {
@@ -1733,5 +1749,62 @@ describe('buildWorkingPlanSpec — control point names', () => {
       expect(trig?.symbol).toBe('trig')
       expect(trig?.cpName).toBe('Mnyami')
     }
+  })
+})
+
+describe('official control in the survey’s own coordinate list', () => {
+  it('is recognised by its designation', () => {
+    expect(officialControlSymbol('170/P')).toBe('trig')
+    expect(officialControlSymbol('333/s')).toBe('trig')
+    expect(officialControlSymbol('TSM5168')).toBe('trig')
+    expect(officialControlSymbol('6091/V')).toBe('ocp')
+    for (const n of ['SD5', 'DB', 'RM16', 'BASE', '1344A', '87D', '', null, undefined]) expect(officialControlSymbol(n as any)).toBeUndefined()
+  })
+
+  it('beaconSymbol: a station coded only found or placed is still control by its name', () => {
+    expect(beaconSymbol('12mm iron peg', 'F', '6091/V')).toBe('ocp')
+    expect(beaconSymbol('', 'P', '170/P')).toBe('trig')
+    expect(beaconSymbol('', undefined, '6091/V')).toBe('ocp')
+    // a plain boundary beacon is not promoted, whatever its status
+    expect(beaconSymbol('12mm iron peg and cairn', 'F', 'DB')).toBe('found')
+  })
+
+  it('beaconSymbol: a status that names a kind still decides', () => {
+    expect(beaconSymbol('', 'RM', '6091/V')).toBe('rm')
+    expect(beaconSymbol('', 'WS', '170/P')).toBe('ws')
+    expect(beaconSymbol('', 'OCP', '170/P')).toBe('ocp')
+  })
+
+  it('outlyingControl: only control beyond the survey’s band, never a ring beacon, never a boundary beacon', () => {
+    const b = (name: string, symbol: any, X: number, Y: number) => ({ name, X, Y, symbol, label: 'auto' as const })
+    // ring 100 x 100 m; the band is 30 m (a tenth is 10, so the 30 m floor applies)
+    const ring = new Set(['A', 'B'])
+    const beacons = [
+      b('A', 'placed', 0, 0), b('B', 'placed', -100, -100),   // Y/X negative: ground e = -Y, n = -X
+      b('NEAR/T', 'trig', -20, -20),                           // inside the band: stays
+      b('FAR/T', 'trig', 5000, 5000),                          // far: moves
+      b('DB', 'found', 5000, 5000),                            // far but only a boundary beacon: stays
+      b('6091/V', 'ocp', 5000, 5000),                          // far official control: moves
+    ]
+    expect(outlyingControl(beacons as any, ring).map(x => x.name)).toEqual(['FAR/T', '6091/V'])
+    expect(outlyingControl(beacons as any, new Set())).toEqual([])
+  })
+
+  it('moves a far 6091/V coded as an ordinary found point into the trig inset, and leaves DB on the sheet', () => {
+    const list = beaconFC([
+      ...coordinateList.features.map(f => f.properties as any).filter(p => p.name !== '49/T'),
+      { name: '6091/V', y: -90000, x: 2150000, description: 'Official control point' },
+      { name: 'DB', y: -85500, x: 2146000, description: '12mm iron peg and cairn' },
+    ])
+    const { spec } = buildWorkingPlanSpec(ctx({ beacons: list }))
+    const sheet = spec.beacons.map(b => b.name)
+    expect(sheet).not.toContain('6091/V')
+    expect(sheet).toContain('DB')
+    expect(spec.inset!.beacons.find(b => b.name === '6091/V')).toMatchObject({ symbol: 'ocp' })
+  })
+
+  it('draws the inset when official control is listed even if none was selected or calibrated', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({ controlPoints: [], calibration: undefined }))
+    expect(spec.inset!.beacons.map(b => b.name)).toContain('49/T')
   })
 })

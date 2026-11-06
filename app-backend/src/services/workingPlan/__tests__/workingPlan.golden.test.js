@@ -1219,11 +1219,11 @@ describe('generateWorkingPlan — golden', () => {
     expect(ey).toBeGreaterThan(Math.min(...by))
     expect(ey).toBeLessThan(Math.max(...by))
 
-    // one map and no second "extension" frame: the trig sketch, named as the
-    // sketch it is. There is no outlying-marks map on this sheet, because
-    // nothing was given up to need one.
-    expect(dxf).toContain('INSET 1 (NOT TO SCALE)')
-    expect(dxf).not.toMatch(/INSET \d+ \(1:\d+\)/)
+    // one map and no second "extension" frame: the trig map, to a stated scale.
+    // There is no outlying-marks map on this sheet, because nothing was given
+    // up to need one.
+    expect(dxf).toMatch(/INSET 1 \(1:\d+\)/)
+    expect(dxf).not.toMatch(/INSET 2/)
     expect(dxf).not.toContain('EXTENSION')
     expect(dxf).not.toContain('NATIONAL CONTROL OBSERVED')
 

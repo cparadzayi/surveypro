@@ -97,7 +97,11 @@ export interface WorkingPlanInsetBeacon {
 }
 
 export interface WorkingPlanInset {
-  /** Explicit denominator: the module takes a number here, never 'auto'. */
+  /**
+   * A hint only. The renderer draws the trig inset as a map to the finest round scale at which its stations,
+   * their names, the caption and the north arrow fit the cell without touching, and states that scale in the
+   * caption; it no longer takes the scale from here.
+   */
   scale: number
   beacons: WorkingPlanInsetBeacon[]
 }
@@ -316,8 +320,50 @@ export function controlPointsForInset(
   return out
 }
 
-export function insetSymbolFor(pointId: string | null | undefined): 'trig' | 'rm' {
-  return /\/[PSTQ]$/i.test(String(pointId ?? '').trim()) ? 'trig' : 'rm'
+/**
+ * The sign of an official control point recognised by its DESIGNATION in the survey's own coordinate list,
+ * or undefined when the name is not one. A point is official control by what it is, not by how it was
+ * coded: a station typed into the CSV as a plain found beacon ("6091/V", status F) is still control.
+ *
+ *   170/P  49/T  333/S  88/Q   Primary, Secondary, Tertiary, Quaternary stations: trig beacons
+ *   TSM5168                    Town Survey Mark: a trig beacon / TSM, the same sign (as the Co-ordinate List counts it)
+ *   6091/V                     the V series: an official control point (the inverted triangle)
+ *
+ * An explicit status of TRIG, OCP, RM, WS or WSU still decides first; see beaconSymbol.
+ */
+export function officialControlSymbol(name: string | null | undefined): 'trig' | 'ocp' | undefined {
+  const n = String(name ?? '').trim().toUpperCase()
+  if (/^\d+\/[PSTQ]$/.test(n) || /^TSM\d+$/.test(n)) return 'trig'
+  if (/^\d+\/V$/.test(n)) return 'ocp'
+  return undefined
+}
+
+export function insetSymbolFor(pointId: string | null | undefined): 'trig' | 'ocp' | 'rm' {
+  const id = String(pointId ?? '').trim()
+  if (/\/V$/i.test(id)) return 'ocp'
+  return /\/[PSTQ]$/i.test(id) ? 'trig' : 'rm'
+}
+
+/**
+ * The official control points the survey lists that stand BEYOND its own ground.
+ *
+ * Control is part of the trig network and belongs in the trig inset, where the surveyor general looks for
+ * it; left among the survey's marks it was either lost off the figure or set in the outlying-marks map
+ * with the survey's own far beacons, which is a measured map of the survey and not of the network. One
+ * inside the survey's band stays on the figure, where it is a mark of the job. The band is the
+ * renderer's own (a tenth of the figure's size, between 30 and 150 m), so a mark counts as outlying
+ * here exactly when the renderer would set it aside. A beacon a parcel is built from never leaves.
+ */
+export function outlyingControl(beacons: WorkingPlanBeacon[], ringNames: Set<string>): WorkingPlanBeacon[] {
+  const ring = beacons.filter(b => ringNames.has(b.name))
+  if (ring.length === 0) return []
+  // Ground east/north, matching the renderer: e = -Y, n = -X.
+  const e = ring.map(b => -b.Y), n = ring.map(b => -b.X)
+  const e0 = Math.min(...e), e1 = Math.max(...e), n0 = Math.min(...n), n1 = Math.max(...n)
+  const pad = Math.min(150, Math.max(30, Math.max(e1 - e0, n1 - n0) * 0.10))
+  return beacons.filter(b =>
+    (b.symbol === 'trig' || b.symbol === 'ocp') && !ringNames.has(b.name)
+    && (-b.Y < e0 - pad || -b.Y > e1 + pad || -b.X < n0 - pad || -b.X > n1 + pad))
 }
 
 function insetScaleFor(points: Array<{ X: number; Y: number }>): number {
@@ -339,12 +385,13 @@ function buildInset(
   calibration: WorkingPlanSpecContext['calibration'],
   controlPoints: WorkingPlanSpecContext['controlPoints'],
   figure: WorkingPlanBeacon[],
+  outlying: WorkingPlanBeacon[] = [],
 ): WorkingPlanInset | undefined {
   const control: WorkingPlanInsetBeacon[] = []
-  const add = (name: string, X: number, Y: number, cpName?: string) => {
+  const add = (name: string, X: number, Y: number, cpName?: string, symbol?: WorkingPlanSymbol) => {
     if (!name || !Number.isFinite(X) || !Number.isFinite(Y)) return
     if (control.some(c => c.name === name)) return
-    const beacon: WorkingPlanInsetBeacon = { name, X, Y, symbol: insetSymbolFor(name) }
+    const beacon: WorkingPlanInsetBeacon = { name, X, Y, symbol: symbol ?? insetSymbolFor(name) }
     if (cpName) beacon.cpName = cpName
     control.push(beacon)
   }
@@ -383,6 +430,8 @@ function buildInset(
   for (const cp of controlPoints ?? []) {
     add(String(cp?.name ?? '').trim(), Number(cp?.X), Number(cp?.Y), nameByKey.get(controlKey(cp?.name)))
   }
+  // Official control the survey itself lists beyond its own ground, with the sign it is drawn with.
+  for (const b of outlying) add(b.name, b.X, b.Y, b.cpName, b.symbol)
   if (control.length === 0 || figure.length === 0) return undefined
 
   // A real station inside the site, drawn with its own conventional sign --
@@ -473,6 +522,12 @@ export function beaconSymbol(
   if (isReferenceMarkName(name)) return 'rm'
   // An explicit status beats the description: RM15 is a reference mark because
   // the surveyor coded it RM, not because of what the notes happen to say.
+  // A status that names a KIND decides (RM, WS, WSU, TRIG, OCP). One that says only found or placed does
+  // not: a station typed in as found is still official control if its designation says so.
+  if (!parseBeaconStatus(status).kind) {
+    const official = officialControlSymbol(name)
+    if (official) return official
+  }
   const fromStatus = statusSymbol(status)
   if (fromStatus) return fromStatus
 
@@ -1096,13 +1151,16 @@ export function buildWorkingPlanSpec(
 
   const srNumber = srNumberFrom(ctx.projectInfo)
 
-  const inset = buildInset(ctx.calibration, ctx.controlPoints, figureBeacons)
+  // Official control standing beyond the survey belongs in the trig inset, not on the figure's sheet.
+  const outlying = outlyingControl(beacons, seen)
+  const onSheet = outlying.length > 0 ? beacons.filter(b => !outlying.includes(b)) : beacons
+  const inset = buildInset(ctx.calibration, ctx.controlPoints, figureBeacons, outlying)
 
   return {
     spec: {
       scale: 'auto',
       orientation: ctx.config?.orientation === 'portrait' ? 'portrait' : 'landscape',
-      beacons,
+      beacons: onSheet,
       parcels,
       title: workingPlanTitle(ctx.projectInfo, parcels.map(p => p.label)),
       certificate: certificateFrom(ctx.config),

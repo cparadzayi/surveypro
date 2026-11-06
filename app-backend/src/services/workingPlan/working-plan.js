@@ -23,7 +23,8 @@ import { NORTH_ARROW_TEMPLATE } from '../diagram/diagramLayout.js';
 import { SI727_SCALE_LADDER } from '../../../../app-shared/si727Scales.js';
 import { crowdedClusters } from './crowdedBeacons.js';
 import { insetCells } from './insetCells.js';
-import { insetScaleToFit } from '../../../../app-shared/insetScales.js';
+import { layoutMeasured } from './localityLayout.js';
+import { MEASURED_INSET_SCALES, DETAIL_INSET_SCALES } from '../../../../app-shared/insetScales.js';
 import { isReferenceMarkName } from '../../../../app-shared/beaconName.js';
 
 /* ------------------------------------------------------------------ layout */
@@ -1875,32 +1876,65 @@ const crowded = crowdedClusters(
   // The TRIG INSET: the control the survey was observed from. It is a
   // requirement of the Surveyor General that a sheet which uses trig beacons
   // carries them, so when any are given the inset is drawn (a locality diagram
-  // is the only place they fit on a working plan). It is the conventional
-  // sketch: positions true to their relative bearings but not to any scale,
-  // which is what its caption says.
+  // is the only place they fit on a working plan). It is a MAP to a stated
+  // scale, the finest round one at which it fits its cell: positions are the
+  // ground's own. The far marks the divided figure set aside stand in it too,
+  // beside the control, rather than in a map of their own -- a mark that far
+  // from the survey belongs with the network it is measured against.
+  //
+  // Not every far mark goes there, only those whose distance from the survey would flatten the outlying-
+  // marks map: the map shows the survey's footprint and its far marks at one scale, so a mark far enough
+  // away to push that scale a rung coarser (DB of Scenic, 700 m from a survey 300 m across, took the map
+  // from 1:5000 to 1:12500) belongs on the trig map instead, with the network it is measured against. The
+  // rule is the figure's own: a mark is set aside when keeping it costs the map a prescribed scale.
+  const surveyCentre = { e: (surveyEnv.e0 + surveyEnv.e1) / 2, n: (surveyEnv.n0 + surveyEnv.n1) / 2 };
+  const envOfMarks = (marks) => ({
+    eMin: Math.min(surveyEnv.e0, ...marks.map((b) => b.e)),
+    eMax: Math.max(surveyEnv.e1, ...marks.map((b) => b.e)),
+    nMin: Math.min(surveyEnv.n0, ...marks.map((b) => b.n)),
+    nMax: Math.max(surveyEnv.n1, ...marks.map((b) => b.n)),
+  });
+  const mapScaleWith = (marks) => {
+    const E = envOfMarks(marks);
+    const need = Math.max((E.eMax - E.eMin) / (L.inset.box.x1 - L.inset.box.x0),
+      (E.nMax - E.nMin) / (L.inset.box.y1 - L.inset.box.y0)) * 1000 * FIGURE_BREATHING;
+    return STANDARD_SCALES.find((s) => s >= need) ?? STANDARD_SCALES.at(-1);
+  };
+  // ...and only one well clear of the survey: at the trig map's scale a mark within a footprint's width or
+  // two of the survey would stand on top of the survey's own marker there, and is better where it is.
+  const surveySpan = Math.max(surveyEnv.e1 - surveyEnv.e0, surveyEnv.n1 - surveyEnv.n0);
+  const clearOfSurvey = (b) => Math.hypot(
+    Math.max(surveyEnv.e0 - b.e, 0, b.e - surveyEnv.e1),
+    Math.max(surveyEnv.n0 - b.n, 0, b.n - surveyEnv.n1)) >= 1.5 * surveySpan;
+  const promoted = [];
+  let outlying = [...farMarks];
   if (spec.inset) {
+    while (outlying.length > 0) {
+      const farthest = outlying.reduce((m, b) => (Math.hypot(b.e - surveyCentre.e, b.n - surveyCentre.n)
+        > Math.hypot(m.e - surveyCentre.e, m.n - surveyCentre.n) ? b : m));
+      const rest = outlying.filter((b) => b !== farthest);
+      if (!clearOfSurvey(farthest)) break;
+      if (STANDARD_SCALES.indexOf(mapScaleWith(outlying)) <= STANDARD_SCALES.indexOf(mapScaleWith(rest))) break;
+      promoted.push(farthest);
+      outlying = rest;
+    }
     insets.push({
       kind: 'locality',
-      scale: spec.inset.scale,
-      beacons: (spec.inset.beacons ?? []).map((b) => ({ ...b, ...loToGround(b) })),
+      beacons: [
+        ...(spec.inset.beacons ?? []).map((b) => ({ ...b, ...loToGround(b) })),
+        ...promoted,
+      ],
     });
   }
-  // The OUTLYING MARKS inset: the survey's footprint with the far marks the
-  // divided figure set aside, at a scale that shows both -- a measured map,
-  // captioned with its scale, framed close around its marks rather than
-  // sprawled across the cell.
-  if (farMarks.length) {
-    const es = farMarks.map((b) => b.e), ns = farMarks.map((b) => b.n);
+  // The OUTLYING MARKS inset: the survey's footprint with the far marks the divided figure set aside, at a
+  // scale that shows both -- a measured map, captioned with its scale, framed close around its marks rather
+  // than sprawled across the cell. Those promoted to the trig map are not here.
+  if (outlying.length) {
     insets.push({
       kind: 'merged',
-      far: farMarks,
+      far: outlying,
       surveyEnv,
-      env: {
-        eMin: Math.min(surveyEnv.e0, ...es),
-        eMax: Math.max(surveyEnv.e1, ...es),
-        nMin: Math.min(surveyEnv.n0, ...ns),
-        nMax: Math.max(surveyEnv.n1, ...ns),
-      },
+      env: envOfMarks(outlying),
     });
   }
   for (const cluster of crowded) {
@@ -1919,16 +1953,9 @@ const crowded = crowdedClusters(
         { layer: 'INSET', closed: true });
     }
 
-    // A DETAIL is schematic enough to say so: the members of a crowded pair
-    // are spread to be read, so no distance in one is exact, and here the
-    // regulation's own caption applies -- "Inset (not to scale)". The OTHER
-    // two insets caption themselves: the trig inset as the conventional sketch,
-    // the merged map with the measured scale it was actually drawn at.
-    if (ins.kind === 'detail') {
-      const caption = 'INSET ' + number + ' (NOT TO SCALE)';
-      d.text(caption, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
-        { layer: 'INSET', style: 'ARIAL-BOLD' });
-    }
+    // Every inset captions itself in its own branch below, with the scale it was drawn at: the trig map and
+    // the outlying-marks map always, and a detail whenever its marks can be told apart at some round scale.
+    // Only marks recorded at one identical position cannot be, and that detail says so.
 
     const iSym = mm(1.0);
     // Every round sign in an inset is drawn at this radius, so it is the
@@ -2093,6 +2120,44 @@ const crowded = crowdedClusters(
     const nn = L.inset.north;
     drawNorthArrow(B.x1 - nn.dxFromRight, B.y0 + nn.dyFromTop, nn.scale, nn.letterMm);
 
+    // Where nothing may be drawn in this cell: the caption at the top left and the north arrow at the top right.
+    // A station fitted to the cell knew neither, so one near the top of a tall layout ended up under them (333/S
+    // of Scenic), and a name near the edge crossed the frame. The caption is measured at its longest, a
+    // seven-digit scale, so the reservation holds whatever scale is chosen.
+    const widest = 'INSET ' + number + ' (1:2000000)';
+    const tH = L.text.insetTitle;
+    const na = L.northArrow;
+    const ncx = B.x1 - nn.dxFromRight, ncy = B.y0 + nn.dyFromTop;
+    const reserved = [
+      { x0: B.x0 + 4, y0: B.y0 + 6 - tH * 1.1, x1: B.x0 + 5 + 0.63 * tH * widest.length + 1, y1: B.y0 + 6 + tH * 0.3 },
+      { x0: ncx - 3, y0: ncy - 7.2, x1: ncx + 3.5, y1: ncy + na.south * nn.scale + 0.6 },
+    ];
+    // Each station's box on the sheet, in paper millimetres: its sign, its designation above, its monument
+    // name below and, where it has one, its wedge diagram or the properties lettered round it.
+    const lh = L.text.insetLabel;
+    const strW = (str) => 0.63 * lh * String(str).length * 1.15;
+    const ringMm = 0.85;
+    const kSign = (ringMm * 2) / L.symbol.foundOuterDia;
+    const reachUp = (b) => (b.symbol === 'trig' ? L.symbol.trigH * kSign * 0.62
+      : b.symbol === 'ocp' ? L.symbol.trigH * kSign * 0.38 : b.symbol === 'rm' ? 1.2 : ringMm);
+    const reachDown = (b) => (b.symbol === 'ocp' ? L.symbol.trigH * kSign * 0.62
+      : b.symbol === 'trig' ? L.symbol.trigH * kSign * 0.38 : b.symbol === 'rm' ? 1.2 : ringMm);
+    const extOf = (b) => {
+      const abuts = ABUT_SYMBOLS.has(b.symbol ?? 'peg');
+      const wedge = abuts && wedgesOf(b).length > 0;
+      const R = L.inset.abutDetailRadius;
+      let u = (wedge ? R : reachUp(b)) + 0.5 + lh;
+      let dn = reachDown(b) + (b.cpName ? 0.5 + lh * 1.15 : 0);
+      let half = Math.max(strW(b.name) / 2, b.cpName ? strW(b.cpName) / 2 : 0, 1.2);
+      if (wedge) { dn = Math.max(dn, R); half = Math.max(half, R); }
+      else if (abuts) { u += 6; dn += 6; half += 6; }
+      return { l: half, r: half, u, d: dn };
+    };
+    const centreOf = (bs) => ({
+      e: (Math.min(...bs.map((b) => b.e)) + Math.max(...bs.map((b) => b.e))) / 2,
+      n: (Math.min(...bs.map((b) => b.n)) + Math.max(...bs.map((b) => b.n))) / 2,
+    });
+
     if (ins.kind === 'merged') {
       // THE OUTLYING MARKS. One measured map for the figure and the marks the
       // divided figure set apart from it, at a scale that shows both -- no
@@ -2102,11 +2167,25 @@ const crowded = crowdedClusters(
       // the map is allowed to sit small and low in its space instead of
       // stretching to cover ground that holds nothing.
       const E = ins.env;
-      const cx = (B.x0 + B.x1) / 2, cy = (B.y0 + B.y1) / 2;
       const need = Math.max((E.eMax - E.eMin) / (B.x1 - B.x0),
         (E.nMax - E.nMin) / (B.y1 - B.y0)) * 1000 * FIGURE_BREATHING;
-      const F = STANDARD_SCALES.find((s) => s >= need) ?? STANDARD_SCALES.at(-1);
       const ec = { e: (E.eMin + E.eMax) / 2, n: (E.nMin + E.nMax) / 2 };
+      // The scale is the first prescribed one at which the map fits its cell -- as always -- and then the
+      // first at which no far mark's inscription touches the caption, the north arrow, the frame or another
+      // mark either; the footprint's corners must stay in the cell too. Where the first fits cleanly the map
+      // is drawn exactly as before.
+      const fitScales = STANDARD_SCALES.filter((s) => s >= need);
+      const corner = (e, n) => ({ e, n, ext: { l: 0, r: 0, u: 0, d: 0 } });
+      const fit = layoutMeasured({
+        beacons: [
+          ...ins.far.map((b) => ({ e: b.e, n: b.n, ext: extOf(b) })),
+          corner(ins.surveyEnv.e0, ins.surveyEnv.n0), corner(ins.surveyEnv.e1, ins.surveyEnv.n0),
+          corner(ins.surveyEnv.e1, ins.surveyEnv.n1), corner(ins.surveyEnv.e0, ins.surveyEnv.n1),
+        ],
+        cell: B, reserved, ic: ec, scales: fitScales.length ? fitScales : [STANDARD_SCALES.at(-1)],
+      });
+      const F = fit.denominator;
+      const cx = fit.cx, cy = fit.cy;
       // Sheet-millimetre position of a ground point inside the cell...
       const P = (e, n) => [cx + ((e - ec.e) / F) * 1000, cy - ((n - ec.n) / F) * 1000];
       const I = (e, n) => S(P(e, n)[0], P(e, n)[1]);
@@ -2164,74 +2243,87 @@ const crowded = crowdedClusters(
     }
 
     if (ins.kind === 'locality') {
-      // THE TRIGS THE SURVEY WAS OBSERVED FROM. The Surveyor General's one
-      // requirement of a working plan that uses control: they are carried here,
-      // on the conventional locality sketch -- positions true to their bearings
-      // one from another, but not to any scale, and the caption says so.
+      // THE TRIGS THE SURVEY WAS OBSERVED FROM, with the far marks. The Surveyor General's one requirement
+      // of a working plan that uses control is that it carries them, here, on a map to a stated scale:
+      // every position is the ground's own at 1:D, D the finest round scale at which the stations, their
+      // inscriptions and the caption and north arrow all fit the cell without touching.
       const ib = ins.beacons;
-      const eMin = Math.min(...ib.map((b) => b.e)), eMax = Math.max(...ib.map((b) => b.e));
-      const nMin = Math.min(...ib.map((b) => b.n)), nMax = Math.max(...ib.map((b) => b.n));
-      const ic = { e: (eMin + eMax) / 2, n: (nMin + nMax) / 2 };
-
-      // The spec's scale was chosen against the sheet's WHOLE inset box. Once
-      // that box is shared, this cell is smaller, and drawing the same content
-      // unchanged pushed the outer stations clean out of the frame and over the
-      // figure -- RM7 ended up 24 mm to the left of its own cell. Refit to the
-      // cell actually given, and keep whichever scale is coarser so a full-width
-      // cell still draws exactly what it always drew. The refit decides only
-      // the drawing; the caption stays NOT TO SCALE because that is what the
-      // drawing is.
-      const iScale = Math.max(
-        Number(ins.scale) || 0,
-        insetScaleToFit(eMax - eMin, nMax - nMin, B.x1 - B.x0, B.y1 - B.y0),
-      );
-      const lcx = (B.x0 + B.x1) / 2, lcy = (B.y0 + B.y1) / 2;
-      const I = (e, n) => S(lcx + ((e - ic.e) / iScale) * 1000,
-        lcy - ((n - ic.n) / iScale) * 1000);
+      const ic = centreOf(ib);
+      const fit = layoutMeasured({
+        beacons: ib.map((b) => ({ e: b.e, n: b.n, ext: extOf(b) })),
+        cell: B, reserved, ic, scales: MEASURED_INSET_SCALES,
+      });
+      const D = fit.denominator;
+      const I = (e, n) => S(fit.cx + ((e - ic.e) / D) * 1000, fit.cy - ((n - ic.n) / D) * 1000);
       for (const b of ib) {
         const at = I(b.e, b.n);
         drawSign(at, b.symbol);
         letter(at, b);
       }
-      d.text(`INSET ${number} (NOT TO SCALE)`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
+      d.text(`INSET ${number} (1:${D})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
         { layer: 'INSET', style: 'ARIAL-BOLD' });
       return;
     }
 
-    // A detail. The members are within millimetres of each other on the ground,
-    // and for an exactly coincident pair no enlargement separates them at all,
-    // so they are spread around their true position at a fixed spacing rather
-    // than drawn to any scale. A leader ties each back to the one spot they all
-    // occupy, which is the fact the reader needs.
-    const dcx = (B.x0 + B.x1) / 2, dcy = (B.y0 + B.y1) / 2;
-    const spread = Math.min(B.x1 - B.x0, B.y1 - B.y0) * 0.26;
-    const centre = S(dcx, dcy);
+    // A DETAIL: an enlargement of marks that plot on top of each other on the figure, drawn to a stated
+    // scale like every other inset. Marks a few centimetres apart on the ground (87D and 87D New of
+    // Brackenhurst are 0.061 m apart) are 12 mm apart at 1:5, which separates them with room to letter
+    // each: so the scale is the largest round one at which the closest pair is at least 12 mm apart and
+    // every mark's inscription fits the cell clear of the others. Marks recorded at one identical position
+    // cannot be separated at any scale; those, and only those, fall back to an even fan, captioned so.
     const gcE = ins.beacons.reduce((t, b) => t + b.e, 0) / ins.beacons.length;
     const gcN = ins.beacons.reduce((t, b) => t + b.n, 0) / ins.beacons.length;
+    let dmin = Infinity;
+    for (let i = 0; i < ins.beacons.length; i++) {
+      for (let j = i + 1; j < ins.beacons.length; j++) {
+        dmin = Math.min(dmin, Math.hypot(ins.beacons[i].e - ins.beacons[j].e, ins.beacons[i].n - ins.beacons[j].n));
+      }
+    }
+    const MIN_SEPARATION_MM = 12;
+    let scaled = null;
+    if (dmin > 1e-9 && Number.isFinite(dmin)) {
+      const usable = DETAIL_INSET_SCALES.filter((D) => (dmin * 1000) / D >= MIN_SEPARATION_MM);
+      if (usable.length) {
+        const ic = centreOf(ins.beacons);
+        const fit = layoutMeasured({
+          beacons: ins.beacons.map((b) => ({ e: b.e, n: b.n, ext: extOf(b) })),
+          cell: B, reserved, ic, scales: usable,
+        });
+        if (fit.fits) scaled = { D: fit.denominator, cx: fit.cx, cy: fit.cy, ic };
+      }
+    }
 
-    // Each member is pushed out along the TRUE bearing it bears from the group's
-    // centre, all at one radius. Only the distances are invented, which is what
-    // the caption says, and it is what lets the inset carry a north point at
-    // all: spread by an arbitrary angle, the arrow would be a lie.
-    //
-    // Beacons recorded at the identical position have no bearing to preserve,
-    // so those fall back to an even fan -- there is nothing else to honour.
-    const bearings = ins.beacons.map((b) => Math.atan2(b.n - gcN, b.e - gcE));
-    const degenerate = ins.beacons.every(
-      (b) => Math.hypot(b.e - gcE, b.n - gcN) < 1e-9,
-    );
-
-    ins.beacons.forEach((b, k) => {
-      const ang = degenerate
-        ? -Math.PI / 2 + (k * 2 * Math.PI) / ins.beacons.length
-        : bearings[k];
-      // The sheet is drawn south-up, so a ground bearing's northing component
-      // moves UP the page: subtract it, exactly as toSheet does.
-      const at = S(dcx + spread * Math.cos(ang), dcy - spread * Math.sin(ang));
-      d.line(centre, at, { layer: 'INSET' });
-      drawSign(at, b.symbol ?? 'peg');
-      letter(at, b);
-    });
+    if (scaled) {
+      for (const b of ins.beacons) {
+        const at = S(scaled.cx + ((b.e - scaled.ic.e) / scaled.D) * 1000,
+          scaled.cy - ((b.n - scaled.ic.n) / scaled.D) * 1000);
+        drawSign(at, b.symbol ?? 'peg');
+        letter(at, b);
+      }
+      d.text(`INSET ${number} (1:${scaled.D})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
+        { layer: 'INSET', style: 'ARIAL-BOLD' });
+    } else {
+      // Identical positions: nothing to measure. They are fanned out round the one spot they all occupy, a
+      // leader tying each back to it, and the regulation's own caption applies: "Inset (not to scale)".
+      const dcx = (B.x0 + B.x1) / 2, dcy = (B.y0 + B.y1) / 2;
+      const spread = Math.min(B.x1 - B.x0, B.y1 - B.y0) * 0.26;
+      const centre = S(dcx, dcy);
+      const bearings = ins.beacons.map((b) => Math.atan2(b.n - gcN, b.e - gcE));
+      const degenerate = ins.beacons.every((b) => Math.hypot(b.e - gcE, b.n - gcN) < 1e-9);
+      ins.beacons.forEach((b, k) => {
+        const ang = degenerate
+          ? -Math.PI / 2 + (k * 2 * Math.PI) / ins.beacons.length
+          : bearings[k];
+        // The sheet is drawn south-up, so a ground bearing's northing component
+        // moves UP the page: subtract it, exactly as toSheet does.
+        const at = S(dcx + spread * Math.cos(ang), dcy - spread * Math.sin(ang));
+        d.line(centre, at, { layer: 'INSET' });
+        drawSign(at, b.symbol ?? 'peg');
+        letter(at, b);
+      });
+      d.text('INSET ' + number + ' (NOT TO SCALE)', S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
+        { layer: 'INSET', style: 'ARIAL-BOLD' });
+    }
 
     // And on the figure itself: a leader arrow drives straight at the spot the
     // detail enlarges, lettered with the inset's number at its tail. Without it

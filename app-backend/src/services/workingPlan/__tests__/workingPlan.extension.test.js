@@ -285,13 +285,10 @@ describe('generateWorkingPlan — the divided figure', () => {
     expect(texts(out.dxf, 'BEACON-TEXT')).toContain('R2')
   })
 
-  test('carries control the map cannot hold on the trig sketch, not a note', () => {
-    // A trig ten kilometres out cannot map beside a survey a few hundred
-    // metres wide without flattening the survey to a dot, so the merged map
-    // holds the marks that measure with it and the control that far out is
-    // carried on the conventional locality sketch -- DRAWN as a trig, at the
-    // schematic positions one from another, never promised at any scale and
-    // never reduced to a footnote of coordinates the reader must convert.
+  test('carries the control, and the far marks that would flatten the survey map, on the trig map to a stated scale', () => {
+    // A trig ten kilometres out is carried on the locality map, plotted at a true scale; so is a far mark
+    // whose distance would push the outlying-marks map a prescribed scale coarser. The marks that can share
+    // the survey's own map keep it. Never a footnote of coordinates the reader must convert.
     const spec = {
       ...survey(farMarks()),
       inset: { scale: 250000, beacons: [
@@ -303,12 +300,47 @@ describe('generateWorkingPlan — the divided figure', () => {
     // T1 (kilometres out) is DRAWN on the locality sketch, with F1 beside it.
     expect(texts(out.dxf, 'INSET')).toContain('T1')
     expect(texts(out.dxf, 'INSET')).toContain('F1')
-    expect(out.dxf).toContain('INSET 1 (NOT TO SCALE)')
+    expect(out.dxf).toMatch(/INSET 1 \(1:\d+\)/)
     expect(out.dxf).not.toContain('NATIONAL CONTROL OBSERVED')
     expect(out.dxf).not.toMatch(/T1\s+N/)
-    // The far marks keep their measured map, numbered after the sketch.
-    expect(out.dxf).toContain('INSET 2 (1:7500)')
+    // Both far marks are drawn, each on a map to a stated scale. The one whose distance would flatten the
+    // outlying-marks map stands on the trig map beside the control; the nearer keeps the measured map.
+    expect(texts(out.dxf, 'INSET')).toEqual(expect.arrayContaining(['R1', 'R2']))
+    expect(out.dxf).toMatch(/INSET 2 \(1:\d+\)/)
+    expect(out.dxf).not.toContain('NOT TO SCALE')
     expect(out.dxf).not.toContain('EXTENSION')
+  })
+
+  test('promotes a far mark to the trig map when it would flatten the survey map, and keeps the near one', () => {
+    // N1 stands 120 m from a 100 m survey; DB stands 1.1 km away. Holding DB the survey's own map would be
+    // 1:10000, a stamp; without it the map is 1:2000. DB is far from the cluster, so it goes on the trig
+    // map beside the control it is measured against; N1 stays with the survey.
+    const marks = [
+      { name: 'N1', X: 2144100, Y: -85820, symbol: 'rm', label: 'N' },
+      { name: 'DB', X: 2144100, Y: -86800, symbol: 'found', label: 'N' },
+    ]
+    const spec = {
+      ...survey(marks),
+      inset: { scale: 250000, beacons: [
+        { name: 'T1', X: 2160000, Y: -88000, symbol: 'trig' },
+        { name: 'F1', X: 2144050, Y: -85650, symbol: 'found' },
+      ] },
+    }
+    const t = texts(generateWorkingPlan(spec).dxf, 'INSET')
+    const cap1 = t.findIndex((s) => /^INSET 1 \(1:\d+\)$/.test(s))
+    const cap2 = t.findIndex((s) => /^INSET 2 \(1:\d+\)$/.test(s))
+    expect(cap1).toBeGreaterThan(-1)
+    expect(cap2).toBeGreaterThan(cap1)
+    // an inset's own marks are lettered before its caption: DB with the trig map, N1 with the survey's
+    expect(t.indexOf('DB')).toBeLessThan(cap1)
+    expect(t.indexOf('N1')).toBeGreaterThan(cap1)
+    expect(t.indexOf('N1')).toBeLessThan(cap2)
+  })
+
+  test('promotes nothing when there is no trig map to take it: the far marks keep the one measured map', () => {
+    const none = generateWorkingPlan(survey(farMarks()))
+    expect(none.dxf).toContain('INSET 1 (1:4000)')
+    expect(texts(none.dxf, 'INSET')).toEqual(expect.arrayContaining(['R1', 'R2']))
   })
 
   test('keeps every mark inside the sheet when it splits', () => {

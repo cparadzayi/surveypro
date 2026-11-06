@@ -7,12 +7,15 @@
  * spot. A reader cannot tell there are two beacons there, let alone which is
  * which, so the pair gets an inset of its own.
  *
- * Insets are numbered in one sequence. The locality diagram is INSET 1 when
- * there is one; details follow. With no locality diagram the details start at 1,
- * because a sheet should not begin at INSET 2. The locality sketch is drawn
- * NOT TO SCALE: the trigs a survey was observed from can lie kilometres away,
- * and their conventional signs are placed schematically, not at plotted
- * positions.
+ * Insets are numbered in one sequence. The locality map is INSET 1 when there is
+ * one; details follow. With no locality map the details start at 1, because a
+ * sheet should not begin at INSET 2.
+ *
+ * Every inset is a MAP to a stated scale: the locality map at the finest round
+ * scale at which its stations fit (1:500 000 for a spread of kilometres), and a
+ * detail at the largest enlargement that separates its marks (1:1.5 for two
+ * beacons 6 cm apart). Only marks recorded at one identical position cannot be
+ * separated at any scale, and that detail alone is captioned NOT TO SCALE.
  */
 
 import { describe, test, expect } from '@jest/globals'
@@ -29,6 +32,17 @@ function texts(dxf) {
   return out
 }
 
+/** The caption of the inset numbered n, or undefined. */
+const captionOf = (t, n) => t.find((s) => s.startsWith(`INSET ${n} (`))
+
+/** The fixture with a second beacon exactly on top of 87DR: no scale can separate them. */
+function withCoincidentPair() {
+  const spec = structuredClone(brackenhurstSpec)
+  const twin = spec.beacons.find((b) => b.name === '87DR')
+  spec.beacons.push({ ...twin, name: '87DNew' })
+  return spec
+}
+
 /** The fixture with a second beacon almost exactly on top of 87DR. */
 function withCrowdedPair() {
   const spec = structuredClone(brackenhurstSpec)
@@ -41,21 +55,32 @@ describe('the sheet without crowding', () => {
   test('numbers the locality diagram INSET 1', () => {
     const t = texts(generateWorkingPlan(brackenhurstSpec).dxf)
 
-    expect(t).toContain('INSET 1 (NOT TO SCALE)')
-    expect(t.filter((s) => s.startsWith('INSET '))).toEqual(['INSET 1 (NOT TO SCALE)'])
+    expect(t.filter((s) => s.startsWith('INSET '))).toHaveLength(1)
+    expect(captionOf(t, 1)).toMatch(/^INSET 1 \(1:\d+\)$/)
   })
 
-  test('carries the control marks as a sketch, not a measured drawing', () => {
-    // The locality shows the control the survey was observed from. The sheet
-    // is scaled to the survey; a trig ten kilometres away cannot be plotted at
-    // that scale, so its conventional sign is placed schematically where the
-    // reader can find it -- never at a stated scale, which would promise
-    // positions it does not hold. Only the DETAILS once shared the ethical
-    // caption warning, and they keep it for the same reason.
-    const t = texts(generateWorkingPlan(brackenhurstSpec).dxf)
+  test('draws the control marks to the scale its caption states', () => {
+    // The locality shows the control the survey was observed from, plotted at a true scale: the finest
+    // round one at which the stations and their names fit the cell. Measured off the drawing, the distance
+    // between two stations on the sheet is their ground distance divided by that scale.
+    const out = generateWorkingPlan(brackenhurstSpec)
+    const D = +captionOf(texts(out.dxf), 1).match(/1:(\d+)\)/)[1]
+    expect(D).toBeGreaterThanOrEqual(100000)
 
-    expect(t).toContain('INSET 1 (NOT TO SCALE)')
-    expect(t.some((s) => /^INSET 1 \(1:/.test(s))).toBe(false)
+    const at = (name) => out.model.doc.ops.find((o) => o.t === 'text' && o.layer === 'INSET' && o.str === name).at
+    const station = (name) => brackenhurstSpec.inset.beacons.find((b) => b.name === name)
+    const a = station('49/T'), b = station('176/T')
+    const eastGround = (-b.Y) - (-a.Y), northGround = (-b.X) - (-a.X)
+    // DXF units are ground metres at the SHEET'S scale, so sheet mm = units * 1000 / out.scale.
+    const east = ((at('176/T')[0] - at('49/T')[0]) * 1000) / out.scale
+    const north = ((at('176/T')[1] - at('49/T')[1]) * 1000) / out.scale
+    expect(east).toBeCloseTo((eastGround * 1000) / D, 3)
+    expect(north).toBeCloseTo((northGround * 1000) / D, 3)
+  })
+
+  test('never says NOT TO SCALE on a sheet whose marks can be separated', () => {
+    expect(generateWorkingPlan(brackenhurstSpec).dxf).not.toContain('NOT TO SCALE')
+    expect(generateWorkingPlan(withCrowdedPair()).dxf).not.toContain('NOT TO SCALE')
   })
 })
 
@@ -63,12 +88,43 @@ describe('the sheet with two beacons in one spot', () => {
   test('adds a second inset for the pair', () => {
     const t = texts(generateWorkingPlan(withCrowdedPair()).dxf)
 
-    expect(t).toContain('INSET 1 (NOT TO SCALE)')
+    expect(captionOf(t, 1)).toMatch(/^INSET 1 \(1:\d+\)$/)
     expect(t.some((s) => s.startsWith('INSET 2'))).toBe(true)
   })
 
-  test('marks the detail as not to scale, because it is spread to be read', () => {
+  test('draws the detail to a stated scale', () => {
     const t = texts(generateWorkingPlan(withCrowdedPair()).dxf)
+
+    expect(captionOf(t, 2)).toMatch(/^INSET 2 \(1:[\d.]+\)$/)
+    expect(t).not.toContain('INSET 2 (NOT TO SCALE)')
+  })
+
+  test('puts the two members at their true bearing and distance from each other at that scale', () => {
+    const out = generateWorkingPlan(withCrowdedPair())
+    const D = +captionOf(texts(out.dxf), 2).match(/1:([\d.]+)\)/)[1]
+    // The beacons' signs are the closed 24-sided rings drawn on the INSET layer; the detail's two are the
+    // closest pair of ring centres.
+    const rings = polylineVertices(out.dxf)
+      .filter((p) => p.layer === 'INSET' && p.closed && p.verts.length === 24)
+      .map((p) => [p.verts.reduce((t, v) => t + v[0], 0) / 24, p.verts.reduce((t, v) => t + v[1], 0) / 24])
+    // 87DNew is 0.04 m further in X and in Y than 87DR: that is 0.04 m WEST and 0.04 m SOUTH of it, so
+    // 0.0566 m on a bearing of 45 degrees. Some pair of signs on the sheet must stand exactly that far apart
+    // at the stated scale (in sheet millimetres), the south-west one lower down and to the left.
+    const want = (Math.hypot(0.04, 0.04) * 1000) / D
+    const found = []
+    for (let i = 0; i < rings.length; i++) {
+      for (let j = 0; j < rings.length; j++) {
+        if (i === j) continue
+        const dx = ((rings[j][0] - rings[i][0]) * 1000) / out.scale, dy = ((rings[j][1] - rings[i][1]) * 1000) / out.scale
+        if (Math.abs(Math.hypot(dx, dy) - want) < 0.01 && dx > 0 && dy > 0 && Math.abs(dx - dy) < 0.01) found.push([i, j])
+      }
+    }
+    expect(found.length).toBeGreaterThanOrEqual(1)
+  })
+
+  test('marks a detail whose beacons share one exact position as not to scale', () => {
+    // Nothing separates them at any scale, so they are fanned out to be read and the caption says so.
+    const t = texts(generateWorkingPlan(withCoincidentPair()).dxf)
 
     expect(t).toContain('INSET 2 (NOT TO SCALE)')
   })
@@ -94,7 +150,7 @@ describe('the sheet with two beacons in one spot', () => {
     const again = generateWorkingPlan(brackenhurstSpec).dxf
 
     expect(plain).toBe(again)
-    expect(texts(plain)).toContain('INSET 1 (NOT TO SCALE)')
+    expect(captionOf(texts(plain), 1)).toMatch(/^INSET 1 \(1:\d+\)$/)
   })
 })
 
@@ -264,7 +320,8 @@ describe('the detail inset', () => {
   test('marks no centre, only leaders from the members', () => {
     // A cross at the middle read as a third mark. The leaders already say the
     // members share one position, and nothing but those leaders leaves it.
-    const lines = entities(generateWorkingPlan(withCrowdedPair()).dxf)
+    // (Only a pair at one exact position is fanned out; a separable pair is drawn to scale, with no leaders.)
+    const lines = entities(generateWorkingPlan(withCoincidentPair()).dxf)
       .filter((e) => e.type === 'LINE' && e.g['8'] === 'INSET')
     const perStart = lines.reduce((m, l) => {
       const s = `${+l.g['10']},${+l.g['20']}`
@@ -279,12 +336,7 @@ describe('the detail inset', () => {
     expect(shared[0][1]).toBe(2)
   })
 
-  test('keeps each member on the bearing it truly bears from the crowd', () => {
-    // The inset spreads its members to be read, but only the DISTANCES are
-    // invented: each mark sits along the TRUE bearing of its beacon from the
-    // group's centre, so the reader sees the same pattern of north/south and
-    // east/west that the ground carries. Spread by an arbitrary angle, the
-    // detail's north point would be a lie.
+  test('a separable pair has no leaders at all: it is a map, not a fan', () => {
     const lines = entities(generateWorkingPlan(withCrowdedPair()).dxf)
       .filter((e) => e.type === 'LINE' && e.g['8'] === 'INSET')
     const perStart = lines.reduce((m, l) => {
@@ -292,19 +344,7 @@ describe('the detail inset', () => {
       m[s] = (m[s] ?? 0) + 1
       return m
     }, {})
-    const centre = Object.entries(perStart).find(([, n]) => n > 1)[0]
-    const ours = lines.filter((l) => `${+l.g['10']},${+l.g['20']}` === centre)
-    const deg = (v) => (Math.atan2(v[1], v[0]) * 180 / Math.PI + 360) % 360
-    const drawn = ours.map((l) => deg([
-      +l.g['11'] - +l.g['10'], +l.g['21'] - +l.g['20'],
-    ])).sort((a, b) => a - b)
-
-    // The fixture's twin lies 0.04 in X and 0.04 in Y from 87DR: easting = -Y
-    // and northing = -X put the new mark WEST and SOUTH, so the pair's true
-    // bearings from the group centre are NE (45) and SW (225).
-    expect(drawn).toHaveLength(2)
-    expect(drawn[0]).toBeCloseTo(45, 3)
-    expect(drawn[1]).toBeCloseTo(225, 3)
+    expect(Object.values(perStart).filter((n) => n > 1)).toEqual([])
   })
 })
 
@@ -411,7 +451,7 @@ describe('a sheet with no locality diagram', () => {
 
     const t = texts(generateWorkingPlan(spec).dxf)
 
-    expect(t).toContain('INSET 1 (NOT TO SCALE)')
+    expect(captionOf(t, 1)).toMatch(/^INSET 1 \(1:[\d.]+\)$/)
     expect(t.some((s) => s.startsWith('INSET 2'))).toBe(false)
   })
 })

@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import { LODGEMENT_DOCUMENTS, type LodgementDocumentStatus } from './lodgementDocuments';
+import { drawContactItem, contactItemWidth } from './contactIcons';
 import {
   rowBlockHeight,
   rowNeedsPageBreak,
@@ -101,22 +102,22 @@ export class CoverPageGenerator {
         let contactY = yPosition;
         
         if (info.phone) {
-          pdf.text(`📞 ${info.phone}`, this.marginLeft, contactY);
+          drawContactItem(pdf, 'phone', info.phone, this.marginLeft, contactY);
         }
         if (info.email) {
-          pdf.text(`📧 ${info.email}`, pageWidth - this.marginRight - pdf.getTextWidth(`📧 ${info.email}`), contactY);
+          drawContactItem(pdf, 'email', info.email, pageWidth - this.marginRight - contactItemWidth(pdf, info.email), contactY);
         }
         yPosition += 5;
       }
-      
+
       if (info.address || info.website) {
         let contactY = yPosition;
-        
+
         if (info.address) {
-          pdf.text(`📍 ${info.address}`, this.marginLeft, contactY);
+          drawContactItem(pdf, 'address', info.address, this.marginLeft, contactY);
         }
         if (info.website) {
-          pdf.text(`🌐 ${info.website}`, pageWidth - this.marginRight - pdf.getTextWidth(`🌐 ${info.website}`), contactY);
+          drawContactItem(pdf, 'website', info.website, pageWidth - this.marginRight - contactItemWidth(pdf, info.website), contactY);
         }
         yPosition += 8;
       }

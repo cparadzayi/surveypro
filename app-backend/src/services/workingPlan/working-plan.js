@@ -24,6 +24,7 @@ import { SI727_SCALE_LADDER } from '../../../../app-shared/si727Scales.js';
 import { crowdedClusters } from './crowdedBeacons.js';
 import { insetCells } from './insetCells.js';
 import { layoutMeasured } from './localityLayout.js';
+import { placeInsetTicks } from './insetTicks.js';
 import { clipSegmentToCircle, pointInPolygon, pointSegmentDistance } from '../diagram/detailInset.js';
 import { MEASURED_INSET_SCALES, DETAIL_INSET_SCALES } from '../../../../app-shared/insetScales.js';
 import { isReferenceMarkName } from '../../../../app-shared/beaconName.js';
@@ -1448,11 +1449,12 @@ const crowded = crowdedClusters(
   const gridInterval = { e: gi, n: gi };
   const placed = ticks.length;
   const gh = mm(L.text.grid);
-  for (const { e, n, rect, side } of ticks) {
-    occupied.push(rect);
+  // One labelled coordinate cross: the main grid's ticks and every scaled inset's tick are drawn by this.
+  // (e, n) is the cross's place in drawing units; X and Y are the figures it is lettered with (the
+  // survey's own, X = -n and Y = -e on the ground); `side` is the quadrant its figures read into.
+  const drawGridTick = (e, n, Xlo, Ylo, side) => {
     d.line([e - arm, n], [e + arm, n], { layer: 'GRID' });
     d.line([e, n - arm], [e, n + arm], { layer: 'GRID' });
-    const Xlo = -n, Ylo = -e;
     // Mirrored about the cross into whichever quadrant had room: the same
     // offsets reflected, with the easting set right-aligned when it reads
     // leftward so it still ends at the cross rather than starting there.
@@ -1469,7 +1471,18 @@ const crowded = crowdedClusters(
     d.text(`Y = ${Ylo.toFixed(0)}`,
       [e + flipX * mm(L.gridLabel.yDx), yStart], gh,
       { layer: 'GRID-TEXT', style: 'ARIAL', rotation: -90 });
+  };
+  for (const { e, n, rect, side } of ticks) {
+    occupied.push(rect);
+    drawGridTick(e, n, -n, -e, side);
   }
+  // Ticks drawn in insets, by inset number: every scaled inset carries one.
+  const insetTicks = {};
+  const TICK_GEOMETRY = {
+    arm: L.symbol.gridArm / 2 + 2,   // paper mm, like the rest of the geometry
+    labelW: L.gridLabel.xDx + 0.63 * L.text.grid * 13,
+    drop: L.gridLabel.yStartDy + 0.63 * L.text.grid * 13,   // the Y figure runs this far below the cross
+  };
 
 
   /* ---- contiguous neighbours: outward stubs at the terminals they abut,
@@ -2193,6 +2206,24 @@ const crowded = crowdedClusters(
       n: (Math.min(...bs.map((b) => b.n)) + Math.max(...bs.map((b) => b.n))) / 2,
     });
 
+    // The box a station occupies on the sheet, from its ground place through the inset's own mapping.
+    const stationBox = (T, b, plain = false) => {
+      const [x, y] = T(b.e, b.n), x_ = extOf(b, plain);
+      return { x0: x - x_.l, y0: y - x_.u, x1: x + x_.r, y1: y + x_.d };
+    };
+    // Every scaled inset carries at least one labelled tick: a cross at a round coordinate, lettered as the
+    // main grid's are. `T` maps ground to sheet mm in this inset, `Tinv` back; `obstacles` is what the inset
+    // has drawn, so the tick finds clear ground. Returns the placement (its box lets a hugging frame include it).
+    const placeTick = (T, Tinv, D, obstacles) => {
+      const r = placeInsetTicks({ cell: B, reserved, obstacles, D, T, Tinv, geometry: TICK_GEOMETRY });
+      for (const t of r.ticks) {
+        const at = S(t.x, t.y);
+        drawGridTick(at[0], at[1], t.X, t.Y, t.side);
+      }
+      insetTicks[number] = (insetTicks[number] ?? 0) + r.ticks.length;
+      return r;
+    };
+
     if (ins.kind === 'merged') {
       // THE OUTLYING MARKS. One measured map for the figure and the marks the
       // divided figure set apart from it, at a scale that shows both -- no
@@ -2266,10 +2297,19 @@ const crowded = crowdedClusters(
       ];
       const xs = plotted.map((p) => p[0]), ys = plotted.map((p) => p[1]);
       const pad = { side: mm(4), top: mm(6), bottom: mm(4) };
-      const fx0 = Math.max(B.x0, Math.min(...xs) - pad.side);
-      const fx1 = Math.min(B.x1, Math.max(...xs) + pad.side);
+      // The tick goes on clear ground in the cell: not on the footprint (the survey is drawn in it) nor on a
+      // far mark's inscription. The frame then takes it in, so it is inside the map.
+      const mergedTick = placeTick(
+        P, (x, y) => [ec.e + ((x - cx) * F) / 1000, ec.n - ((y - cy) * F) / 1000], F,
+        [
+          ...ins.far.map((b) => stationBox(P, b)),
+          { x0: Math.min(...xs) - 1, y0: Math.min(...ys) - 1, x1: Math.max(...xs) + 1, y1: Math.max(...ys) + 1 },
+        ]);
+      const tb = mergedTick.ticks[0].box;
+      const fx0 = Math.max(B.x0, Math.min(...xs, tb.x0) - pad.side);
+      const fx1 = Math.min(B.x1, Math.max(...xs, tb.x1) + pad.side);
       const fy0 = Math.max(B.y0, Math.min(...ys) - pad.top);
-      const fy1 = Math.min(B.y1, Math.max(...ys) + pad.bottom);
+      const fy1 = Math.min(B.y1, Math.max(...ys, tb.y1) + pad.bottom);
       d.polyline([S(fx0, fy0), S(fx1, fy0), S(fx1, fy1), S(fx0, fy1)],
         { layer: 'INSET', closed: true });
       d.text(`INSET ${number} (1:${F})`, S(fx0 + 3, fy0 + 4), mm(L.text.insetTitle),
@@ -2336,6 +2376,15 @@ const crowded = crowdedClusters(
       }
       d.text(`INSET ${number} (1:${D})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
         { layer: 'INSET', style: 'ARIAL-BOLD' });
+      // The circle is a disc, not its bounding square: strips of it, so the corners of the cell stay usable.
+      const discs = [];
+      for (let k = 0; k < 12; k++) {
+        const y0 = c0[1] - Rm + (2 * Rm * k) / 12, y1 = y0 + (2 * Rm) / 12;
+        const half = Math.sqrt(Math.max(0, Rm * Rm - Math.min((y0 - c0[1]) ** 2, (y1 - c0[1]) ** 2))) + 0.5;
+        discs.push({ x0: c0[0] - half, y0, x1: c0[0] + half, y1 });
+      }
+      discs.push({ x0: c0[0] - 0.63 * L.text.insetLabel * b.name.length, y0: c0[1] + Rm, x1: c0[0] + 0.63 * L.text.insetLabel * b.name.length, y1: c0[1] + Rm + 1.2 + 1.3 * L.text.insetLabel });
+      placeTick(T, (x, y) => [b.e + ((x - c0[0]) * D) / 1000, b.n - ((y - c0[1]) * D) / 1000], D, discs);
       return;
     }
 
@@ -2359,6 +2408,9 @@ const crowded = crowdedClusters(
       }
       d.text(`INSET ${number} (1:${D})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
         { layer: 'INSET', style: 'ARIAL-BOLD' });
+      const Tl = (e, n) => [fit.cx + ((e - ic.e) / D) * 1000, fit.cy - ((n - ic.n) / D) * 1000];
+      placeTick(Tl, (x, y) => [ic.e + ((x - fit.cx) * D) / 1000, ic.n - ((y - fit.cy) * D) / 1000], D,
+        ib.map((b) => stationBox(Tl, b, true)));
       return;
     }
 
@@ -2399,6 +2451,9 @@ const crowded = crowdedClusters(
       }
       d.text(`INSET ${number} (1:${scaled.D})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
         { layer: 'INSET', style: 'ARIAL-BOLD' });
+      const Td = (e, n) => [scaled.cx + ((e - scaled.ic.e) / scaled.D) * 1000, scaled.cy - ((n - scaled.ic.n) / scaled.D) * 1000];
+      placeTick(Td, (x, y) => [scaled.ic.e + ((x - scaled.cx) * scaled.D) / 1000, scaled.ic.n - ((y - scaled.cy) * scaled.D) / 1000],
+        scaled.D, ins.beacons.map((b) => stationBox(Td, b)));
     } else {
       // Identical positions: nothing to measure. They are fanned out round the one spot they all occupy, a
       // leader tying each back to it, and the regulation's own caption applies: "Inset (not to scale)".
@@ -2538,7 +2593,7 @@ const crowded = crowdedClusters(
   // sheetSize is reported so the caller can tell the surveyor -- and the plot
   // dialog -- which paper this was drawn for.
   const out = {
-    dxf: doc.toString(), scale, gridInterval, gridTicks: placed, areas,
+    dxf: doc.toString(), scale, gridInterval, gridTicks: placed, insetTicks, areas,
     sheetSize: 'A4', orientation, sheetWidthMm: sheet.width, sheetHeightMm: sheet.height,
   };
   // What the PDF is drawn from: the same shapes the DXF holds, and the transform that puts them on the

@@ -207,7 +207,7 @@ describe('generateWorkingPlan — the divided figure', () => {
     // the printable margin; the panel was taller before the neat line moved in.) The outlier buys no finer
     // rung, so there is nothing to buy and the figure is not reorganised.
     const tall = {
-      scale: 'auto',
+      scale: 'auto', sheetSize: 'A4',
       beacons: [
         { name: 'A', X: 2144000, Y: -85400, symbol: 'peg', label: 'auto' },
         { name: 'B', X: 2144000, Y: -85720, symbol: 'peg', label: 'auto' },
@@ -254,7 +254,7 @@ describe('generateWorkingPlan — the divided figure', () => {
     // -- removing it leaves a ring that does not close -- so the whole figure
     // stays together at the scale that genuine extent demands.
     const long = {
-      scale: 'auto',
+      scale: 'auto', sheetSize: 'A4',
       beacons: [
         { name: 'A', X: 2144000, Y: -85700, symbol: 'peg', label: 'auto' },
         { name: 'B', X: 2144000, Y: -85600, symbol: 'peg', label: 'auto' },

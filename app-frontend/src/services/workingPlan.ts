@@ -5,6 +5,10 @@ export interface WorkingPlanDXFResult {
   blob: Blob
   /** Scale denominator the module chose, e.g. 2000 for 1:2000. */
   scale: number | null
+  /** The paper it was drawn on: A3 only when that is what lets the plan be plotted at 1:2500. */
+  sheet: 'A4' | 'A3' | null
+  /** Why the plan went up to A3, in the surveyor's terms; absent on A4. */
+  escalation: string | null
   gridInterval: { e: number; n: number; ticks: number } | null
   /** Areas from the PLOTTED coordinates — a cross-check, never the SI 727 area. */
   areas: Record<string, number> | null
@@ -75,6 +79,8 @@ async function postWorkingPlan(format: 'dxf' | 'pdf', spec: WorkingPlanSpec): Pr
   return {
     blob: response.data as Blob,
     scale: Number.isFinite(scaleRaw) && headers['x-plan-scale'] ? scaleRaw : null,
+    sheet: headers['x-plan-sheet'] === 'A3' ? 'A3' : headers['x-plan-sheet'] === 'A4' ? 'A4' : null,
+    escalation: headers['x-plan-escalation'] ? decodeURIComponent(headers['x-plan-escalation']) : null,
     gridInterval: parseJsonHeader<{ e: number; n: number; ticks: number }>(headers['x-plan-grid']),
     areas: parseJsonHeader<Record<string, number>>(headers['x-plan-areas']),
   }

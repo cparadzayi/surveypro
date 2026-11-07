@@ -4857,9 +4857,10 @@ async function generatePlanDocuments() {
       // The Working Plan's PDF is the backend's A4 drawing of the same sheet the DXF holds, not the
       // General Plan renderer's SI 727 layout.
       exportStatus.value = 'Rendering Working Plan PDF…'
-      const { blob, scale } = await generateWorkingPlanPDF(workingPlanSpec)
+      const { blob, scale, escalation } = await generateWorkingPlanPDF(workingPlanSpec)
       docs.pdf = blob
       workingPlanScale = scale || undefined
+      if (escalation && !generationWarnings.includes(escalation)) generationWarnings.push(escalation)
     }
 
     if (exportFormats.dxf && config.value.planType === 'working-plan' && workingPlanSpec) {
@@ -4867,10 +4868,11 @@ async function generatePlanDocuments() {
       // plan. Built (above, before any generation work) from the final
       // coordinate list and each parcel's named ring, so no proximity matching
       // is involved.
-      const { blob, scale, gridInterval } = await generateWorkingPlanDXF(workingPlanSpec)
+      const { blob, scale, gridInterval, escalation } = await generateWorkingPlanDXF(workingPlanSpec)
       docs.dxf = blob
       dxfExt = 'dxf'
       workingPlanScale = scale || undefined
+      if (escalation && !generationWarnings.includes(escalation)) generationWarnings.push(escalation)
       if (scale) console.log(`[PlanDocs] Working plan drawn at 1:${scale}`)
       if (gridInterval) {
         console.log(`[PlanDocs] Working plan grid: ${gridInterval.ticks} cross${gridInterval.ticks === 1 ? '' : 'es'} at ${gridInterval.e} m interval`)

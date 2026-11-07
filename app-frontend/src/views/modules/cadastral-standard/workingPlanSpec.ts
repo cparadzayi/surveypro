@@ -120,6 +120,11 @@ export interface WorkingPlanPartyWall {
 export type WorkingPlanKind = 'general' | 'diagrams'
 
 export interface WorkingPlanSpec {
+  /**
+   * The paper. Left out, the renderer chooses: A4, and A3 only when a figure that does not fit 1:2500 on A4
+   * does on A3, so the plan can still be plotted at 1:2500.
+   */
+  sheetSize?: 'A4' | 'A3'
   /** Absent means 'diagrams', the original sheet. */
   kind?: WorkingPlanKind
   /** The party-wall servitude table of a General Plan's working plan. */

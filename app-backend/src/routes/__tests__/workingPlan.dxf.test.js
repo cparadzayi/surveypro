@@ -118,23 +118,36 @@ describe('POST /working-plan/dxf', () => {
     expect(res.json().message).toMatch(/symbol/)
   })
 
-  test('answers a request for other paper instead of ignoring it', async () => {
-    // A working plan is A4. Dropping the field silently would have the caller
-    // believe it was honoured; the answer -- that the SCALE escalates instead
-    // -- is the part they need.
+  test('answers a request for paper it does not draw on instead of ignoring it', async () => {
+    // A working plan is A4 or A3. Dropping the field silently would have the caller believe it was
+    // honoured; the answer -- which paper IS available -- is the part they need.
     const res = await buildApp().inject({
-      method: 'POST', url: '/dxf', payload: { ...validSpec, sheetSize: 'A3' },
+      method: 'POST', url: '/dxf', payload: { ...validSpec, sheetSize: 'A5' },
     })
     expect(res.statusCode).toBe(400)
-    expect(res.json().message).toMatch(/A4/)
-    expect(res.json().message).toMatch(/scale/i)
+    expect(res.json().message).toMatch(/A4 or A3/)
   })
 
-  test('accepts A4, the only paper a working plan is drawn on', async () => {
-    const res = await buildApp().inject({
-      method: 'POST', url: '/dxf', payload: { ...validSpec, sheetSize: 'A4' },
-    })
-    expect(res.statusCode).toBe(200)
+  test('accepts A4 and A3, passing the chosen sheet on to the generator', async () => {
+    for (const size of ['A4', 'A3']) {
+      mockGenerateWorkingPlan.mockClear()
+      const res = await buildApp().inject({
+        method: 'POST', url: '/dxf', payload: { ...validSpec, sheetSize: size },
+      })
+      expect(res.statusCode).toBe(200)
+      expect(mockGenerateWorkingPlan.mock.calls[0][0].sheetSize).toBe(size)
+    }
+  })
+
+  test('says which sheet it drew, and why when it went up to A3', async () => {
+    const reason = 'The figure does not fit at 1:2500 on A4 (it would be 1:3000), so the plan is drawn on A3.'
+    mockGenerateWorkingPlan.mockImplementationOnce(() => ({
+      dxf: 'EOF', scale: 2500, sheetSize: 'A3', gridInterval: { e: 100, n: 100 }, gridTicks: 4, areas: {},
+      escalation: { reason },
+    }))
+    const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: validSpec })
+    expect(res.headers['x-plan-sheet']).toBe('A3')
+    expect(decodeURIComponent(res.headers['x-plan-escalation'])).toBe(reason)
   })
 
   test('POST /pdf answers the same sheet as a PDF, and refuses what /dxf refuses', async () => {

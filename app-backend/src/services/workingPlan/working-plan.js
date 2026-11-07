@@ -44,6 +44,18 @@ export const SHEET_PORTRAIT = { width: 210, height: 297 };
 export const SHEET = SHEET_LANDSCAPE;
 
 /**
+ * The paper sizes a working plan may be drawn on. A4 is the field document and the default; A3 is the
+ * escalation for a figure that cannot be plotted at the prescribed 1:2500 on A4 (see generateWorkingPlan).
+ * Lettering, symbols and line weights keep their ISO sizes on either, so an A3 plot is still true size and
+ * only the room between the blocks, and the figure's panel, grow.
+ */
+export const PAPER = {
+  A4: { landscape: { width: 297, height: 210 }, portrait: { width: 210, height: 297 } },
+  A3: { landscape: { width: 420, height: 297 }, portrait: { width: 297, height: 420 } },
+};
+const paper = (size, orientation) => PAPER[size === 'A3' ? 'A3' : 'A4'][orientation === 'portrait' ? 'portrait' : 'landscape'];
+
+/**
  * The neat line stands this far inside the paper's edge. The measured sheet drew it 0.5 mm in, where a
  * desktop printer, which cannot print the last few millimetres, cuts it off. 8 mm clears every common
  * A4 printer's unprintable band (about 4-6 mm) and leaves the border whole on the plot.
@@ -204,17 +216,17 @@ const MEASURED_LANDSCAPE = {
  * mapped from the measured neat line onto the printable one; lettering, symbols and line weights are not
  * touched, so the sheet keeps its ISO sizes and gives up only the white space between the blocks.
  */
-function landscapeLayout(margin = PRINT_MARGIN_MM) {
+function landscapeLayout(margin = PRINT_MARGIN_MM, sheet = SHEET_LANDSCAPE) {
   const B = MEASURED_LANDSCAPE;
-  const sx = (SHEET_LANDSCAPE.width - 2 * margin) / (B.border.x1 - B.border.x0);
-  const sy = (SHEET_LANDSCAPE.height - 2 * margin) / (B.border.y1 - B.border.y0);
+  const sx = (sheet.width - 2 * margin) / (B.border.x1 - B.border.x0);
+  const sy = (sheet.height - 2 * margin) / (B.border.y1 - B.border.y0);
   const fx = (x) => margin + (x - B.border.x0) * sx;
   const fy = (y) => margin + (y - B.border.y0) * sy;
   const rect = (r) => ({ x0: fx(r.x0), y0: fy(r.y0), x1: fx(r.x1), y1: fy(r.y1) });
   const A = B.approval;
   return {
     ...B,
-    border: { x0: margin, y0: margin, x1: SHEET_LANDSCAPE.width - margin, y1: SHEET_LANDSCAPE.height - margin },
+    border: { x0: margin, y0: margin, x1: sheet.width - margin, y1: sheet.height - margin },
     panel: rect(B.panel),
     title: { cx: fx(B.title.cx), baselines: B.title.baselines.map(fy), scaleBaseline: fy(B.title.scaleBaseline) },
     northArrow: { ...B.northArrow, cx: fx(B.northArrow.cx), cy: fy(B.northArrow.cy) },
@@ -242,9 +254,9 @@ function landscapeLayout(margin = PRINT_MARGIN_MM) {
  * ones (the approval box keeps its 63.76 x 33.53 mm and its internal spacing); only where they stand
  * changes. The inset is narrower (120 mm) because the approval box shares its row.
  */
-function portraitLayout(margin = PRINT_MARGIN_MM) {
+function portraitLayout(margin = PRINT_MARGIN_MM, sheet = SHEET_PORTRAIT) {
   const B = MEASURED_LANDSCAPE;
-  const W = SHEET_PORTRAIT.width, H = SHEET_PORTRAIT.height;
+  const W = sheet.width, H = sheet.height;
   const A = B.approval;
   const boxW = A.box.x1 - A.box.x0, boxH = A.box.y1 - A.box.y0;
   const right = W - margin - 2;                 // blocks stand 2 mm inside the neat line
@@ -261,7 +273,7 @@ function portraitLayout(margin = PRINT_MARGIN_MM) {
     // Inset from the neat line by more than the blocks are: the grid labels at the side crosses reach
     // past the panel's edges. Measured on the reference plan at 1:2000, this gives five grid crosses with
     // every label inside the neat line; any narrower and the side crosses are lost.
-    panel: { x0: left + 4, y0: 72, x1: right - 6, y1: 190 },
+    panel: { x0: left + 4, y0: 72, x1: right - 6, y1: H - 107 },
     title: { cx: W / 2, baselines: [20, 30, 40, 50], scaleBaseline: 59 },
     northArrow: { ...B.northArrow, cx: right - 12, cy: 30, refCy: B.northArrow.cy },
     approval: {
@@ -273,10 +285,10 @@ function portraitLayout(margin = PRINT_MARGIN_MM) {
       leader2: { y: A.leader2.y + dy, x0: A.leader2.x0 + dx, x1: A.leader2.x1 + dx },
     },
     certificate: {
-      line1: { x: certLeft, baseline: 197 },
-      line2: { x: certLeft + (B.certificate.line2.x - B.certificate.line1.x), baseline: 205.5 },
+      line1: { x: certLeft, baseline: H - 100 },
+      line2: { x: certLeft + (B.certificate.line2.x - B.certificate.line1.x), baseline: H - 91.5 },
     },
-    inset: { ...B.inset, box: { x0: left, y0: 212, x1: ax - 4, y1: footBottom } },
+    inset: { ...B.inset, box: { x0: left, y0: H - 85, x1: ax - 4, y1: footBottom } },
     srNumber: { cx: W / 2, baseline: H - margin - 3.5 },
   };
 }
@@ -306,9 +318,9 @@ export function partyTableShape(rows, availH) {
  * edge; the locality inset and the north arrow sit beside it under the title; the figure (the outside figure
  * alone, not its stands) fills the lower right, with the certificate beneath it.
  */
-function generalPortraitLayout(rows, margin = PRINT_MARGIN_MM) {
+function generalPortraitLayout(rows, margin = PRINT_MARGIN_MM, sheet = SHEET_PORTRAIT) {
   const B = MEASURED_LANDSCAPE;
-  const W = SHEET_PORTRAIT.width, H = SHEET_PORTRAIT.height;
+  const W = sheet.width, H = sheet.height;
   const A = B.approval;
   const boxW = A.box.x1 - A.box.x0, boxH = A.box.y1 - A.box.y0;
   const right = W - margin - 2, left = margin + 4;
@@ -348,12 +360,17 @@ function generalPortraitLayout(rows, margin = PRINT_MARGIN_MM) {
  * General Plan's arrangement (always portrait), with `opts.rows` party-wall rows to carry.
  */
 export function layoutFor(orientation, opts = {}) {
+  const size = opts.size === 'A3' ? 'A3' : 'A4';
   if (opts.general) {
-    return { orientation: 'portrait', sheet: SHEET_PORTRAIT, layout: generalPortraitLayout(opts.rows ?? 0) };
+    const sheet = paper(size, 'portrait');
+    return { orientation: 'portrait', size, sheet, layout: generalPortraitLayout(opts.rows ?? 0, PRINT_MARGIN_MM, sheet) };
   }
-  return orientation === 'portrait'
-    ? { orientation: 'portrait', sheet: SHEET_PORTRAIT, layout: portraitLayout() }
-    : { orientation: 'landscape', sheet: SHEET_LANDSCAPE, layout: landscapeLayout() };
+  if (orientation === 'portrait') {
+    const sheet = paper(size, 'portrait');
+    return { orientation: 'portrait', size, sheet, layout: portraitLayout(PRINT_MARGIN_MM, sheet) };
+  }
+  const sheet = paper(size, 'landscape');
+  return { orientation: 'landscape', size, sheet, layout: landscapeLayout(PRINT_MARGIN_MM, sheet) };
 }
 
 export const LAYOUT = landscapeLayout();
@@ -614,12 +631,12 @@ export function wrapAtCommas(text, max) {
   return lines.length ? lines : [String(text)];
 }
 
-export function generateWorkingPlan(spec) {
+function renderWorkingPlan(spec) {
   // A General Plan's working plan draws the outside figure and a party-wall table; a diagrams-only survey's
   // draws its stands. `spec.kind` says which; absent means the stands (the original sheet).
   const general = spec.kind === 'general';
   const partyRows = general ? (spec.partyWalls ?? []) : [];
-  const { orientation, sheet, layout: L } = layoutFor(spec.orientation, general ? { general: true, rows: partyRows.length } : {});
+  const { orientation, size, sheet, layout: L } = layoutFor(spec.orientation, { size: spec.sheetSize, ...(general ? { general: true, rows: partyRows.length } : {}) });
   const byName = new Map(spec.beacons.map((b) => {
     // The name is authoritative for a reference mark: RM16 with no description
     // or status still plots as the circle-with-a-cross, not as a peg.
@@ -2482,6 +2499,8 @@ const crowded = crowdedClusters(
         [
           ...ins.far.map((b) => stationBox(P, b)),
           { x0: Math.min(...xs) - 1, y0: Math.min(...ys) - 1, x1: Math.max(...xs) + 1, y1: Math.max(...ys) + 1 },
+          // The frame's head holds the caption, so nothing but the map may stand above the footprint.
+          { x0: B.x0, y0: B.y0, x1: B.x1, y1: Math.min(...ys) },
         ]);
       const tb = mergedTick.ticks[0].box;
       const fx0 = Math.max(B.x0, Math.min(...xs, tb.x0) - pad.side);
@@ -2770,10 +2789,43 @@ const crowded = crowdedClusters(
   // dialog -- which paper this was drawn for.
   const out = {
     dxf: doc.toString(), scale, gridInterval, gridTicks: placed, insetTicks, areas, kind: general ? 'general' : 'diagrams', partyWallRows: partyRows.length,
-    sheetSize: 'A4', orientation, sheetWidthMm: sheet.width, sheetHeightMm: sheet.height,
+    sheetSize: size, orientation, sheetWidthMm: sheet.width, sheetHeightMm: sheet.height,
   };
   // What the PDF is drawn from: the same shapes the DXF holds, and the transform that puts them on the
   // sheet. Not enumerable, so it never leaks into a serialised result.
   Object.defineProperty(out, 'model', { value: { doc, originE, originN, scale, sheet } });
   return out;
+}
+
+/**
+ * Which paper, then the sheet. A working plan is an A4 field document, and 1:2500 is the scale that discharges
+ * the compilation-plot requirement (PREFERRED_SCALE). When the figure does not fit at 1:2500 on A4 the scale
+ * would move to the next prescribed rung and the plan would need a separate plot; the sensible answer is the
+ * next paper up, so the plan can still be plotted at 1:2500. So the sheet is chosen with the scale:
+ *
+ *   - A4 if the figure fits at 1:2500 (or finer is not wanted: 1:2500 is the floor), else
+ *   - A3, the same way up, if it fits at 1:2500 there, else
+ *   - whichever of the two draws it at the finer scale (A3, by its size), never a coarser one for being bigger.
+ *
+ * Left alone: a spec that names its paper (`sheetSize` 'A4' or 'A3') or fixes its scale is the surveyor's own
+ * instruction, and the way up is theirs too: it is never flipped to fit. The result says what was chosen
+ * (`sheetSize`) and, when it went up, why (`escalation`), so the plot dialog and the surveyor can be told.
+ */
+export function generateWorkingPlan(spec) {
+  const named = spec.sheetSize === 'A3' || spec.sheetSize === 'A4';
+  const fixedScale = spec.scale != null && spec.scale !== 'auto';
+  if (named || fixedScale) return renderWorkingPlan({ ...spec, sheetSize: named ? spec.sheetSize : 'A4' });
+
+  const onA4 = renderWorkingPlan({ ...spec, sheetSize: 'A4' });
+  if (onA4.scale <= PREFERRED_SCALE) return onA4;
+  const onA3 = renderWorkingPlan({ ...spec, sheetSize: 'A3' });
+  if (onA3.scale >= onA4.scale) return onA4;          // the bigger sheet buys nothing: keep the field size
+  onA3.escalation = {
+    from: 'A4', to: 'A3', a4Scale: onA4.scale, scale: onA3.scale,
+    reached: onA3.scale <= PREFERRED_SCALE,
+    reason: onA3.scale <= PREFERRED_SCALE
+      ? `The figure does not fit at 1:${PREFERRED_SCALE} on A4 (it would be 1:${onA4.scale}), so the plan is drawn on A3 and can be plotted at 1:${PREFERRED_SCALE}.`
+      : `The figure does not fit at 1:${PREFERRED_SCALE} on A4 (1:${onA4.scale}) or on A3, so it is drawn on A3 at 1:${onA3.scale}, the finest scale the larger sheet allows.`,
+  };
+  return onA3;
 }

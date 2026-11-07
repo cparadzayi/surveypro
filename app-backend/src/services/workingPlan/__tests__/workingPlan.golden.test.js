@@ -1466,7 +1466,7 @@ describe('generateWorkingPlan — golden', () => {
       // coarser than the law allows, off a list nobody meant as law.
       const B = (name, X, Y) => ({ name, X, Y, symbol: 'placed', label: 'auto' })
       const at = (m) => generateWorkingPlan({
-        scale: 'auto',
+        scale: 'auto', sheetSize: 'A4',
         beacons: [B('Q1', 2144000, -85700), B('Q2', 2144000 + m, -85700),
           B('Q3', 2144000 + m, -85700 + m), B('Q4', 2144000, -85700 + m)],
         parcels: [{ label: '404', ring: ['Q1', 'Q2', 'Q3', 'Q4'] }],
@@ -1499,7 +1499,7 @@ describe('generateWorkingPlan — golden', () => {
       const B = (name, X, Y) => ({ name, X, Y, symbol: 'placed', label: 'auto' })
       const m = 350                                  // 350 m across a 146 mm panel
       const r = generateWorkingPlan({
-        scale: 'auto',
+        scale: 'auto', sheetSize: 'A4',
         beacons: [B('Q1', 2144000, -85700), B('Q2', 2144000 + m, -85700),
           B('Q3', 2144000 + m, -85700 + m), B('Q4', 2144000, -85700 + m)],
         parcels: [{ label: '404', ring: ['Q1', 'Q2', 'Q3', 'Q4'] }],

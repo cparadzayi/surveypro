@@ -52,11 +52,11 @@ function validateWorkingPlanSpec(spec) {
     }
   }
 
-  // A working plan is A4. Asking for other paper is answered, not ignored: a
-  // silently dropped sheetSize would have the caller believe it was honoured,
-  // and the answer -- that SI 727 moves the SCALE instead -- is the useful part.
-  if (spec.sheetSize != null && spec.sheetSize !== 'A4') {
-    return `sheetSize "${spec.sheetSize}" is not available -- a working plan is drawn on A4, and the scale escalates through the SI 727 prescribed scales instead`
+  // A working plan is drawn on A4 or A3. Left out, the renderer chooses: A4, and A3 only when that is what
+  // lets the plan be plotted at the prescribed 1:2500. Any other paper is answered, not ignored: a silently
+  // dropped sheetSize would have the caller believe it was honoured.
+  if (spec.sheetSize != null && spec.sheetSize !== 'A4' && spec.sheetSize !== 'A3') {
+    return `sheetSize "${spec.sheetSize}" is not available -- a working plan is drawn on A4 or A3 (leave it out and the sheet is chosen so the plan can be plotted at 1:2500)`
   }
   // Landscape is the default; portrait is the other way up of the same A4 sheet.
   if (spec.orientation != null && spec.orientation !== 'landscape' && spec.orientation !== 'portrait') {
@@ -102,6 +102,8 @@ export default async function workingPlanRoutes(fastify) {
         .type('application/pdf')
         .header('Content-Disposition', `attachment; filename="working-plan-${Date.now()}.pdf"`)
         .header('X-Plan-Scale', String(out.scale))
+        .header('X-Plan-Sheet', out.sheetSize)
+        .header('X-Plan-Escalation', out.escalation ? encodeURIComponent(out.escalation.reason) : '')
         .send(pdf)
     } catch (error) {
       return fail(reply, error, 'PDF')
@@ -122,6 +124,8 @@ export default async function workingPlanRoutes(fastify) {
         .type('application/dxf')
         .header('Content-Disposition', `attachment; filename="working-plan-${Date.now()}.dxf"`)
         .header('X-Plan-Scale', String(out.scale))
+        .header('X-Plan-Sheet', out.sheetSize)
+        .header('X-Plan-Escalation', out.escalation ? encodeURIComponent(out.escalation.reason) : '')
         .header('X-Plan-Grid', JSON.stringify({ ...out.gridInterval, ticks: out.gridTicks }))
         .header('X-Plan-Areas', JSON.stringify(out.areas))
         .send(Buffer.from(out.dxf, 'latin1'))   // matches $DWGCODEPAGE ANSI_1252

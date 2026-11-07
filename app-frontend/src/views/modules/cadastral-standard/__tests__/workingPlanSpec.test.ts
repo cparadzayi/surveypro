@@ -1808,3 +1808,62 @@ describe('official control in the survey’s own coordinate list', () => {
     expect(spec.inset!.beacons.map(b => b.name)).toContain('49/T')
   })
 })
+
+describe('buildWorkingPlanSpec for a record that encloses General Plans', () => {
+  const list = beaconFC([
+    { name: 'M1', y: -100, x: 2000100 }, { name: 'M2', y: -400, x: 2000100 },
+    { name: 'M3', y: -400, x: 2000400 }, { name: 'M4', y: -100, x: 2000400 },
+    { name: 'A1', y: -150, x: 2000150 }, { name: 'A2', y: -200, x: 2000150 },
+    { name: 'A3', y: -200, x: 2000200 }, { name: 'B1', y: -250, x: 2000250 },
+    { name: 'B2', y: -300, x: 2000250 }, { name: 'B3', y: -300, x: 2000300 },
+    { name: 'RM1', y: -50, x: 2000050, description: 'Reference mark' },
+  ])
+  const parcels = [
+    parcel('101', ['A1', 'A2', 'A3']),
+    parcel('102', ['B1', 'B2', 'B3']),
+    { ...parcel('Outside Figure', ['M1', 'M2', 'M3', 'M4']), id: 9, designation: 'Outside Figure' },
+  ]
+  const general = (extra: Record<string, any> = {}) => buildWorkingPlanSpec({
+    beacons: list, parcels, projectInfo: { designation: 'Stands 101-102 Maglas Township' },
+    config: { surveyorName: 'A. Surveyor' }, outsideFigureId: 9, kind: 'general',
+    partyWalls: [{ stands: '101, 102', boundary: '101A – 102B' }], ...extra,
+  } as any)
+
+  it('draws the outside figure as the one parcel, labelled with the stands it holds', () => {
+    const { spec } = general()
+    expect(spec.kind).toBe('general')
+    expect(spec.parcels).toEqual([{ label: 'STANDS 101 - 102', ring: ['M1', 'M2', 'M3', 'M4'] }])
+  })
+
+  it('leaves the stands, and their corners, off the sheet; keeps the other marks', () => {
+    const { spec } = general()
+    const names = spec.beacons.map(b => b.name)
+    expect(names).toEqual(expect.arrayContaining(['M1', 'M2', 'M3', 'M4', 'RM1']))
+    for (const n of ['A1', 'A2', 'A3', 'B1', 'B2', 'B3']) expect(names).not.toContain(n)
+  })
+
+  it('is portrait, carries the party-wall rows, and has no remainder', () => {
+    const { spec } = general({ config: { orientation: 'landscape' } })
+    expect(spec.orientation).toBe('portrait')
+    expect(spec.partyWalls).toEqual([{ stands: '101, 102', boundary: '101A – 102B' }])
+    expect(spec.remainderRing).toBeUndefined()
+    expect(spec.remainderLabel).toBeUndefined()
+  })
+
+  it('names the stands in the title, not the outside figure', () => {
+    expect(general().spec.title.join(' ')).toMatch(/101/)
+  })
+
+  it('a record of diagrams only still draws its stands and has no table', () => {
+    const { spec } = buildWorkingPlanSpec({ ...ctx(), kind: 'diagrams' } as any)
+    expect(spec.kind).toBeUndefined()
+    expect(spec.partyWalls).toBeUndefined()
+    expect(spec.parcels.map(p => p.label)).toEqual(['404'])
+  })
+
+  it('says what is missing when there is no outside figure', () => {
+    const r = buildWorkingPlanSpec({ ...ctx(), kind: 'general' } as any)
+    expect(r.spec.parcels).toHaveLength(0)
+    expect(workingPlanEmptyReason(r)).toMatch(/Outside Figure/)
+  })
+})

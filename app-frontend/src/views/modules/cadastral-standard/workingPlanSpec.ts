@@ -3,7 +3,7 @@ import { parseBeaconStatus } from '@/utils/beaconStatus'
 import { insetScaleToFit } from '../../../../../app-shared/insetScales'
 import { isReferenceMarkName } from '../../../../../app-shared/beaconName'
 import { displayTrigName } from '../../../../../app-shared/trigName'
-import { designationPhrase } from '@/utils/planDesignation'
+import { designationPhrase, formatStandRanges } from '@/utils/planDesignation'
 import { isRemainderParcel } from '@/utils/designationParcels'
 /**
  * Builds the Working Plan module's `spec` from what SurveyPlanMapView already
@@ -106,7 +106,24 @@ export interface WorkingPlanInset {
   beacons: WorkingPlanInsetBeacon[]
 }
 
+/** The party-wall servitude statement's rows: the stands a wall joins and its beacon-pair boundary. */
+export interface WorkingPlanPartyWall {
+  stands: string
+  boundary: string
+}
+
+/**
+ * Which working plan this is. A survey that encloses General Plans gets the General Plan's working plan: the
+ * outside figure alone, one label naming every stand it holds, and the party-wall servitude table. A survey
+ * of diagrams only keeps the original sheet, which draws each stand.
+ */
+export type WorkingPlanKind = 'general' | 'diagrams'
+
 export interface WorkingPlanSpec {
+  /** Absent means 'diagrams', the original sheet. */
+  kind?: WorkingPlanKind
+  /** The party-wall servitude table of a General Plan's working plan. */
+  partyWalls?: WorkingPlanPartyWall[]
   scale: 'auto'
   /** The A4 sheet's way up. A working plan is usually landscape; portrait suits a tall figure. */
   orientation: 'landscape' | 'portrait'
@@ -157,6 +174,10 @@ export interface WorkingPlanSpecResult {
 }
 
 export interface WorkingPlanSpecContext {
+  /** 'general' when the record encloses General Plans; anything else draws the stands. */
+  kind?: WorkingPlanKind
+  /** The party-wall statement rows (buildPartyWallStatementRows), carried on a General Plan's working plan. */
+  partyWalls?: WorkingPlanPartyWall[]
   /** From exportBeaconsAsGeoJSON() — point coordinates are [Y, X] in Cape Lo. */
   beacons: GeoJSON.FeatureCollection
   /** parcels.value, each carrying metadata.cape_lo_points. */
@@ -986,6 +1007,12 @@ export function buildWorkingPlanSpec(
   let remainderLabel: string | null = null
   const used: string[] = []
   const seen = new Set<string>()
+  // A General Plan's working plan draws the outside figure and not the stands inside it. The stands' own
+  // corners are still in the coordinate list, so they are remembered and kept off the sheet.
+  const general = ctx.kind === 'general'
+  const standNames: string[] = []
+  const standRingNames = new Set<string>()
+  let generalRing: string[] | null = null
 
   // Every drawn ring, so a label can be kept out of ALL of them, and the same
   // rings by beacon NAME so a side shared with another parcel can be spotted.
@@ -1009,6 +1036,7 @@ export function buildWorkingPlanSpec(
       // Not drawn as a stand, but it IS the remaining extent and its area is
       // the whole point of the check.
       const ofRing = ringNames(p)
+      if (general && ofRing.length >= MIN_RING && ofRing.every(n => byName.has(n))) generalRing = ofRing
       if (ofRing.length && ofRing.every(n => byName.has(n))) {
         remainderRing = ofRing
         // Its SIDES are annotated like any other parcel's, and its boundary is
@@ -1051,6 +1079,11 @@ export function buildWorkingPlanSpec(
       }
       continue
     }
+    if (general) {
+      standNames.push(label)
+      for (const n of ring) standRingNames.add(n)
+      continue
+    }
     for (const n of ring) {
       if (!seen.has(n)) { seen.add(n); used.push(n) }
     }
@@ -1074,7 +1107,12 @@ export function buildWorkingPlanSpec(
   // renderer takes the figure extent from ring vertices alone, so these extra
   // points cannot shrink the figure. Ring vertices come first so the drawing
   // order stays stable as the coordinate list grows.
-  const emitted = [...used, ...[...byName.keys()].filter(n => !seen.has(n))]
+  if (general && generalRing) {
+    for (const n of generalRing) if (!seen.has(n)) { seen.add(n); used.push(n) }
+    const ranges = formatStandRanges(standNames)
+    parcels.push({ label: ranges ? `${standNames.length === 1 ? 'STAND' : 'STANDS'} ${ranges}` : 'STANDS', ring: generalRing })
+  }
+  const emitted = [...used, ...[...byName.keys()].filter(n => !seen.has(n) && !(general && standRingNames.has(n)))]
   const controlNames = new Map<string, string>()
   for (const cp of ctx.controlPoints ?? []) {
     const num = controlKey(cp?.name)
@@ -1159,10 +1197,12 @@ export function buildWorkingPlanSpec(
   return {
     spec: {
       scale: 'auto',
-      orientation: ctx.config?.orientation === 'portrait' ? 'portrait' : 'landscape',
+      ...(general ? { kind: 'general' as const, partyWalls: (ctx.partyWalls ?? []).map(r => ({ stands: r.stands, boundary: r.boundary })) } : {}),
+      // The General Plan's sheet is always portrait: the party-wall table runs down it.
+      orientation: general || ctx.config?.orientation === 'portrait' ? 'portrait' : 'landscape',
       beacons: onSheet,
       parcels,
-      title: workingPlanTitle(ctx.projectInfo, parcels.map(p => p.label)),
+      title: workingPlanTitle(ctx.projectInfo, general ? standNames : parcels.map(p => p.label)),
       certificate: certificateFrom(ctx.config),
       approvalBox: true,
       // Omitted, not empty: an empty inset box would assert there was no
@@ -1171,9 +1211,9 @@ export function buildWorkingPlanSpec(
       ...(finalNotes.length > 0 ? { notes: finalNotes } : {}),
       ...(finalRoads.length > 0 ? { roads: finalRoads } : {}),
       ...(contiguous.length > 0 ? { contiguous } : {}),
-      ...(remainderBoundary.length > 0 ? { remainderBoundary } : {}),
-      ...(remainderLabel ? { remainderLabel } : {}),
-      ...(remainderRing && remainderRing.length >= 3 ? { remainderRing } : {}),
+      ...(!general && remainderBoundary.length > 0 ? { remainderBoundary } : {}),
+      ...(!general && remainderLabel ? { remainderLabel } : {}),
+      ...(!general && remainderRing && remainderRing.length >= 3 ? { remainderRing } : {}),
       ...(srNumber ? { srNumber } : {}),
     },
     skippedParcels,
@@ -1196,6 +1236,9 @@ const MAX_NAMED_BEACONS = 8
  */
 export function workingPlanEmptyReason(result: WorkingPlanSpecResult): string {
   const { beaconCount, missingBeacons, parcelsWithoutNamedRing, skippedParcels } = result
+  if (result.spec.kind === 'general' && result.spec.parcels.length === 0 && beaconCount > 0) {
+    return "This record encloses General Plans, so the Working Plan draws the Outside Figure, and the project has no Outside Figure with named boundary points. Digitise it, or run Compute Area & Consistency, and try again."
+  }
 
   if (beaconCount === 0) {
     return 'The coordinate list for this project is empty, so no boundary point can be '

@@ -263,7 +263,7 @@ function portraitLayout(margin = PRINT_MARGIN_MM) {
     // every label inside the neat line; any narrower and the side crosses are lost.
     panel: { x0: left + 4, y0: 72, x1: right - 6, y1: 190 },
     title: { cx: W / 2, baselines: [20, 30, 40, 50], scaleBaseline: 59 },
-    northArrow: { ...B.northArrow, cx: right - 12, cy: 30 },
+    northArrow: { ...B.northArrow, cx: right - 12, cy: 30, refCy: B.northArrow.cy },
     approval: {
       box: { x0: ax, y0: ay, x1: ax + boxW, y1: ay + boxH },
       approvedBaseline: A.approvedBaseline + dy,
@@ -281,8 +281,76 @@ function portraitLayout(margin = PRINT_MARGIN_MM) {
   };
 }
 
-/** The sheet and layout for an orientation; anything but 'portrait' is landscape. */
-export function layoutFor(orientation) {
+/** The party-wall table: one block is this wide, a body row this tall (shrunk to PARTY_ROW_MIN_MM to fit). */
+export const PARTY_COL_MM = 43;
+const PARTY_ROW_MM = 4.0, PARTY_ROW_MIN_MM = 2.8, PARTY_HEAD_MM = 11;
+
+/**
+ * How the party-wall table is cut to the height it has: the row pitch, how many rows a block holds and how
+ * many blocks side by side. The table is as roomy as the sample plan's (4 mm a row) while its rows fit, then
+ * tightens, and only then takes another block: a plan with 120 walls is a wide table, not an unreadable one.
+ */
+export function partyTableShape(rows, availH) {
+  const body = availH - PARTY_HEAD_MM - 4.5;   // the head, and the padding above the first row and below the last
+  const perBlock = (pitch) => Math.max(1, Math.floor(body / pitch));
+  let pitch = PARTY_ROW_MM;
+  if (rows > perBlock(pitch)) pitch = Math.max(PARTY_ROW_MIN_MM, body / rows);
+  const per = perBlock(pitch);
+  const blocks = Math.max(1, Math.ceil(rows / per));
+  return { pitch, perBlock: per, blocks };
+}
+
+/**
+ * The General Plan's working plan: a portrait sheet arranged as the Surveyor General's sample is. The title
+ * runs across the top with the approval box at its right; the party-wall servitude table stands down the left
+ * edge; the locality inset and the north arrow sit beside it under the title; the figure (the outside figure
+ * alone, not its stands) fills the lower right, with the certificate beneath it.
+ */
+function generalPortraitLayout(rows, margin = PRINT_MARGIN_MM) {
+  const B = MEASURED_LANDSCAPE;
+  const W = SHEET_PORTRAIT.width, H = SHEET_PORTRAIT.height;
+  const A = B.approval;
+  const boxW = A.box.x1 - A.box.x0, boxH = A.box.y1 - A.box.y0;
+  const right = W - margin - 2, left = margin + 4;
+  const ax = right - boxW, ay = margin + 6;
+  const dx = ax - A.box.x0, dy = ay - A.box.y0;
+  const tableTop = 52, tableBottom = H - margin - 14;
+  const shape = partyTableShape(rows, tableBottom - tableTop);
+  const tableRight = left + shape.blocks * PARTY_COL_MM + (shape.blocks - 1) * 2;
+  const rx0 = tableRight + 8;
+  return {
+    ...B,
+    border: { x0: margin, y0: margin, x1: W - margin, y1: H - margin },
+    panel: { x0: rx0, y0: 128, x1: right - 6, y1: H - margin - 30 },
+    title: { cx: (left + ax - 4) / 2, baselines: [18, 27, 36, 45], scaleBaseline: 52 },
+    northArrow: { ...B.northArrow, cx: rx0 + 12, cy: 82, refCy: B.northArrow.cy },
+    approval: {
+      box: { x0: ax, y0: ay, x1: ax + boxW, y1: ay + boxH },
+      approvedBaseline: A.approvedBaseline + dy,
+      leader1: { y: A.leader1.y + dy, x0: A.leader1.x0 + dx, x1: A.leader1.x1 + dx },
+      forBaseline: A.forBaseline + dy,
+      dateBaseline: A.dateBaseline + dy, dateX: A.dateX + dx,
+      leader2: { y: A.leader2.y + dy, x0: A.leader2.x0 + dx, x1: A.leader2.x1 + dx },
+    },
+    certificate: {
+      // never so far right that the line runs off the sheet when a long table has pushed the figure right
+      line1: { x: Math.min(rx0 + 8, W - margin - 72), baseline: H - margin - 24 },
+      line2: { x: Math.min(rx0 + 8, W - margin - 72) + (B.certificate.line2.x - B.certificate.line1.x), baseline: H - margin - 12 },
+    },
+    inset: { ...B.inset, box: { x0: rx0 + 28, y0: 58, x1: right, y1: 124 } },
+    srNumber: { cx: W / 2, baseline: H - margin - 3.5 },
+    partyTable: { x0: left, y0: tableTop, y1: tableBottom, ...shape },
+  };
+}
+
+/**
+ * The sheet and layout for an orientation; anything but 'portrait' is landscape. `opts.general` selects the
+ * General Plan's arrangement (always portrait), with `opts.rows` party-wall rows to carry.
+ */
+export function layoutFor(orientation, opts = {}) {
+  if (opts.general) {
+    return { orientation: 'portrait', sheet: SHEET_PORTRAIT, layout: generalPortraitLayout(opts.rows ?? 0) };
+  }
   return orientation === 'portrait'
     ? { orientation: 'portrait', sheet: SHEET_PORTRAIT, layout: portraitLayout() }
     : { orientation: 'landscape', sheet: SHEET_LANDSCAPE, layout: landscapeLayout() };
@@ -494,8 +562,64 @@ function symbolClearance(symbol) {
   }
 }
 
+/**
+ * The point of a polygon farthest from every edge, to a few metres: where a long label has the most room. An
+ * L-shaped outside figure has its centroid on or near an edge, which is not a place to letter anything.
+ */
+export function roomiestPoint(pts) {
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const inside = (x, y) => {
+    let c = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      if ((pts[i][1] > y) !== (pts[j][1] > y)
+        && x < ((pts[j][0] - pts[i][0]) * (y - pts[i][1])) / (pts[j][1] - pts[i][1]) + pts[i][0]) c = !c;
+    }
+    return c;
+  };
+  const edgeDist = (x, y) => {
+    let m = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const ux = b[0] - a[0], uy = b[1] - a[1];
+      const t = Math.max(0, Math.min(1, ((x - a[0]) * ux + (y - a[1]) * uy) / (ux * ux + uy * uy || 1)));
+      m = Math.min(m, Math.hypot(x - (a[0] + ux * t), y - (a[1] + uy * t)));
+    }
+    return m;
+  };
+  let best = [(x0 + x1) / 2, (y0 + y1) / 2], bestD = -1;
+  const N = 40;
+  for (let i = 0; i <= N; i++) {
+    for (let j = 0; j <= N; j++) {
+      const x = x0 + ((x1 - x0) * i) / N, y = y0 + ((y1 - y0) * j) / N;
+      if (!inside(x, y)) continue;
+      const dist = edgeDist(x, y);
+      if (dist > bestD) { bestD = dist; best = [x, y]; }
+    }
+  }
+  return best;
+}
+
+/** A label broken at its ", " into lines of about `max` characters; a line is never broken inside a name. */
+export function wrapAtCommas(text, max) {
+  const parts = String(text).split(/,\s*/).filter(Boolean);
+  const lines = [];
+  let cur = '';
+  for (const [i, part] of parts.entries()) {
+    const piece = part + (i < parts.length - 1 ? ',' : '');
+    if (cur && (cur + ' ' + piece).length > max) { lines.push(cur); cur = piece; }
+    else cur = cur ? cur + ' ' + piece : piece;
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [String(text)];
+}
+
 export function generateWorkingPlan(spec) {
-  const { orientation, sheet, layout: L } = layoutFor(spec.orientation);
+  // A General Plan's working plan draws the outside figure and a party-wall table; a diagrams-only survey's
+  // draws its stands. `spec.kind` says which; absent means the stands (the original sheet).
+  const general = spec.kind === 'general';
+  const partyRows = general ? (spec.partyWalls ?? []) : [];
+  const { orientation, sheet, layout: L } = layoutFor(spec.orientation, general ? { general: true, rows: partyRows.length } : {});
   const byName = new Map(spec.beacons.map((b) => {
     // The name is authoritative for a reference mark: RM16 with no description
     // or status still plots as the circle-with-a-cross, not as a peg.
@@ -835,7 +959,9 @@ const crowded = crowdedClusters(
     }
     // The letters sit at a fixed height on the sheet; expressed as an offset
     // from the arrow's own centre they travel with it at any size.
-    const dy = (na.letters.baseline - na.cy) * k;
+    // (refCy: the measured arrow's own centre, which the letters' height is measured from; a layout that
+    // moves the arrow moves cy, not this.)
+    const dy = (na.letters.baseline - (na.refCy ?? na.cy)) * k;
     d.text(na.letters.left, S(cx + na.letters.dxLeft * k, cy + dy), mm(letterMm),
       { layer: 'NORTH-ARROW', style: 'ARIAL' });
     d.text(na.letters.right, S(cx + na.letters.dxRight * k, cy + dy), mm(letterMm),
@@ -1140,13 +1266,19 @@ const crowded = crowdedClusters(
       drawBoundary(pts[k], pts[j], p.ring[k], p.ring[j], 'BOUNDARY-NEW');
     }
     areas[p.label] = ringArea(pts);
-    const [cx, cy] = p.labelAt ? Object.values(loToGround(p.labelAt)) : centroid(pts);
+    const [cx, cy] = p.labelAt ? Object.values(loToGround(p.labelAt)) : (general ? roomiestPoint(pts) : centroid(pts));
     // The stand number is reserved so beacon names and grid ticks keep off it.
     // It was written blind before, and anything placed later could sit on it.
-    const ph = mm(L.text.parcel);
-    occupied.push(textRect(p.label, cx, cy - ph / 2, ph, 'center'));
-    d.text(p.label, [cx, cy - ph / 2], ph,
-      { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
+    // The General Plan's one label names every stand the outside figure holds ("STANDS 1294 - 1421, 1423, ...")
+    // and runs to dozens of characters, so it is set smaller and broken at its commas into short lines.
+    const ph = mm(general ? 2.8 : L.text.parcel);
+    const lines = general ? wrapAtCommas(p.label, 30) : [p.label];
+    const top = cy - ph / 2 + ((lines.length - 1) * ph * 1.4) / 2;   // the block is centred on the figure
+    lines.forEach((line, i) => {
+      const y = top - i * ph * 1.4;
+      occupied.push(textRect(line, cx, y, ph, 'center'));
+      d.text(line, [cx, y], ph, { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
+    });
   }
 
   /* ---- the remaining extent's own boundary, dashed */
@@ -1837,6 +1969,32 @@ const crowded = crowdedClusters(
   });
   d.text(`Scale 1:${scale}`, S(L.title.cx, L.title.scaleBaseline), mm(L.text.scale),
     { layer: 'TITLE', style: 'ARIAL', align: 'center' });
+
+  /* ---- party-wall servitude table (General Plan only) */
+  if (general && L.partyTable) {
+    const T = L.partyTable, pr = T.pitch;
+    const hh = mm(2.3), ch = mm(2.0), bh = mm(pr >= 3.9 ? 2.5 : pr >= 3.2 ? 2.2 : 1.9);
+    const lineOpts = { layer: 'TITLE' };
+    for (let blk = 0; blk < T.blocks; blk++) {
+      const x0 = T.x0 + blk * (PARTY_COL_MM + 2), x1 = x0 + PARTY_COL_MM, xm = x0 + PARTY_COL_MM * 0.49;
+      const chunk = partyRows.slice(blk * T.perBlock, (blk + 1) * T.perBlock);
+      if (chunk.length === 0 && blk > 0) break;
+      const yEnd = Math.min(T.y1, T.y0 + PARTY_HEAD_MM + chunk.length * pr + 3);
+      d.polyline([S(x0, T.y0), S(x1, T.y0), S(x1, yEnd), S(x0, yEnd)], { ...lineOpts, closed: true });
+      d.line(S(x0, T.y0 + 4.8), S(x1, T.y0 + 4.8), lineOpts);
+      d.line(S(x0, T.y0 + 9.0), S(x1, T.y0 + 9.0), lineOpts);
+      d.line(S(xm, T.y0 + 4.8), S(xm, yEnd), lineOpts);
+      d.text('Party-Wall Servitude Data', S((x0 + x1) / 2, T.y0 + 3.6), hh,
+        { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
+      d.text('Stand Numbers', S((x0 + xm) / 2, T.y0 + 7.8), ch, { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
+      d.text('Boundary', S((xm + x1) / 2, T.y0 + 7.8), ch, { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
+      chunk.forEach((row, i) => {
+        const y = T.y0 + PARTY_HEAD_MM + 1.5 + i * pr + pr * 0.72;
+        d.text(String(row.stands), S((x0 + xm) / 2, y), bh, { layer: 'TITLE', style: 'ARIAL', align: 'center' });
+        d.text(String(row.boundary), S((xm + x1) / 2, y), bh, { layer: 'TITLE', style: 'ARIAL', align: 'center' });
+      });
+    }
+  }
 
   /* ---- north arrow */
   // Drawn at half its own size: the sheet's meridian arrow, not a compass rose.
@@ -2611,7 +2769,7 @@ const crowded = crowdedClusters(
   // sheetSize is reported so the caller can tell the surveyor -- and the plot
   // dialog -- which paper this was drawn for.
   const out = {
-    dxf: doc.toString(), scale, gridInterval, gridTicks: placed, insetTicks, areas,
+    dxf: doc.toString(), scale, gridInterval, gridTicks: placed, insetTicks, areas, kind: general ? 'general' : 'diagrams', partyWallRows: partyRows.length,
     sheetSize: 'A4', orientation, sheetWidthMm: sheet.width, sheetHeightMm: sheet.height,
   };
   // What the PDF is drawn from: the same shapes the DXF holds, and the transform that puts them on the

@@ -4745,7 +4745,15 @@ async function generatePlanDocuments() {
   let workingPlanSpec: ReturnType<typeof buildWorkingPlanSpec>['spec'] | null = null
   let workingPlanSkipped: string[] = []
   if ((exportFormats.dxf || exportFormats.pdf) && config.value.planType === 'working-plan') {
+    // Which working plan: a record that encloses General Plans gets the General Plan's (the outside figure,
+    // one label naming its stands, and the party-wall servitude table); a record of diagrams only keeps the
+    // original sheet that draws each stand. A record with both is a General Plan record.
+    const generalWorkingPlan = recordComposition.value?.includesGeneralPlans === true
+    // The party-wall rows come from the Servitudes step, so fetch them before the spec is built.
+    if (generalWorkingPlan) await loadServitudeStatementData()
     const built = buildWorkingPlanSpec({
+      kind: generalWorkingPlan ? 'general' : 'diagrams',
+      partyWalls: generalWorkingPlan ? servitudeStatementRows.value : undefined,
       beacons: exportBeaconsAsGeoJSON(),
       parcels: await workingPlanParcels(),
       projectInfo: props.projectInfo,

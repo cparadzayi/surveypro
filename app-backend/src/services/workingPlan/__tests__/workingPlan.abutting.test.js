@@ -105,11 +105,19 @@ describe('the parcels meeting at a station of the trig map are an inset of their
   }
   const out = generateWorkingPlan(spec)
   const ops = out.model.doc.ops.filter((o) => o.layer === 'INSET')
-  const caption = ops.find((o) => o.t === 'text' && /^INSET 2 \(1:\d+\)$/.test(o.str))
+  // In the narrow column beside the trig map a caption is set on two lines: "INSET 2" over "(1:3000)".
+  const captionOf = (n) => {
+    const one = ops.find((o) => o.t === 'text' && new RegExp('^INSET ' + n + ' \\(1:\\d+\\)$').test(o.str))
+    if (one) return one
+    const i = ops.findIndex((o) => o.t === 'text' && o.str === 'INSET ' + n)
+    const sc = i >= 0 ? ops.slice(i + 1).find((o) => o.t === 'text' && /^\(1:\d+\)$/.test(o.str)) : null
+    return sc ? { ...sc, str: 'INSET ' + n + ' ' + sc.str } : undefined
+  }
+  const caption = captionOf(2)
 
   test('is numbered after the trig map and states its scale', () => {
     expect(caption).toBeDefined()
-    expect(ops.some((o) => o.t === 'text' && /^INSET 1 \(1:\d+\)$/.test(o.str))).toBe(true)
+    expect(captionOf(1)).toBeDefined()
     expect(out.dxf).not.toContain('NOT TO SCALE')
   })
 
@@ -143,7 +151,8 @@ describe('the parcels meeting at a station of the trig map are an inset of their
     const D = +caption.str.match(/1:(\d+)/)[1]
     // The nearest corner is SD6, 18.8 m away; the circle's radius is 16 mm and the corner is to fall within 70% of it.
     const ground = Math.hypot(sd5.X - brackenhurstSpec.beacons.find((b) => b.name === 'SD6').X, sd5.Y - brackenhurstSpec.beacons.find((b) => b.name === 'SD6').Y)
-    expect((ground * 1000) / D).toBeLessThanOrEqual(0.7 * 16 + 1e-9)
+    expect((ground * 1000) / D).toBeLessThanOrEqual(0.7 * 15 + 1e-9)
+    // The circle is as large as its cell allows (the column beside the trig map is narrow, so its radius is 15 mm, not 16): 1:2000.
     expect(D).toBe(2000)
   })
 })

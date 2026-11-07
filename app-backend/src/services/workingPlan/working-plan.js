@@ -1479,8 +1479,8 @@ const crowded = crowdedClusters(
   // Ticks drawn in insets, by inset number: every scaled inset carries one.
   const insetTicks = {};
   const TICK_GEOMETRY = {
-    arm: L.symbol.gridArm / 2 + 2,   // paper mm, like the rest of the geometry
-    labelW: L.gridLabel.xDx + 0.63 * L.text.grid * 13,
+    arm: L.symbol.gridArm / 2 + 1,   // paper mm, like the rest of the geometry
+    labelW: L.gridLabel.xDx + 22,   // "X = +2176760" measured in the rendered plan: 21.5 mm from its offset
     drop: L.gridLabel.yStartDy + 0.63 * L.text.grid * 13,   // the Y figure runs this far below the cross
   };
 
@@ -1989,7 +1989,10 @@ const crowded = crowdedClusters(
     if (ABUT_SYMBOLS.has(b.symbol ?? 'peg') && wedgesOf(b).length > 0) insets.push({ kind: 'abut', beacon: b });
   }
 
-  const cells = insetCells(L.inset.box, insets.length);
+  // The column beside the trig map is as narrow as its insets allow: the parcels circle and a tick fit 36 mm, but a
+  // detail of crowded marks or the outlying-marks map needs about 60 mm (names, wedge and the pair's separation), which is as much as the old half-and-half split.
+  const sideNeeds = insets.slice(1).some((i) => i.kind === 'detail' || i.kind === 'merged') ? 63 : 36;
+  const cells = insetCells(L.inset.box, insets.length, { sideColumnMm: sideNeeds });
 
   insets.forEach((ins, idx) => {
     const B = cells[idx];
@@ -2165,7 +2168,10 @@ const crowded = crowdedClusters(
     // one leaves the reader guessing which way its marks lie. On NORTH-ARROW,
     // not INSET: it is a north point, and that keeps INSET meaning the inset's
     // MAP.
-    const nn = L.inset.north;
+    // In a narrow cell (the column beside the trig map) the north point is drawn smaller, so it leaves the
+    // cell room for its map.
+    const narrowCell = (B.x1 - B.x0) < 45;
+    const nn = narrowCell ? { ...L.inset.north, scale: L.inset.north.scale * 0.6, dxFromRight: L.inset.north.dxFromRight * 0.6 } : L.inset.north;
     drawNorthArrow(B.x1 - nn.dxFromRight, B.y0 + nn.dyFromTop, nn.scale, nn.letterMm);
 
     // Where nothing may be drawn in this cell: the caption at the top left and the north arrow at the top right.
@@ -2176,8 +2182,22 @@ const crowded = crowdedClusters(
     const tH = L.text.insetTitle;
     const na = L.northArrow;
     const ncx = B.x1 - nn.dxFromRight, ncy = B.y0 + nn.dyFromTop;
+    // The caption sits on one line when the cell is wide enough to hold it clear of the north arrow, and on
+    // two ("INSET 2" over "(1:3000)") when it is not: the trig map keeps three quarters of the box, so the
+    // cells beside it are narrow.
+    const oneLine = (B.x1 - B.x0) >= 0.63 * tH * widest.length + 5 + 10;
+    const capWidth = oneLine ? 0.63 * tH * widest.length : 0.63 * tH * '(1:2000000)'.length;
+    const capLines = oneLine ? 1 : 2;
+    const caption = (at, scaleText) => {
+      if (oneLine) {
+        d.text(`INSET ${number} ${scaleText}`, S(at[0], at[1]), mm(tH), { layer: 'INSET', style: 'ARIAL-BOLD' });
+      } else {
+        d.text(`INSET ${number}`, S(at[0], at[1]), mm(tH), { layer: 'INSET', style: 'ARIAL-BOLD' });
+        d.text(scaleText, S(at[0], at[1] + tH * 1.15), mm(tH), { layer: 'INSET', style: 'ARIAL-BOLD' });
+      }
+    };
     const reserved = [
-      { x0: B.x0 + 4, y0: B.y0 + 6 - tH * 1.1, x1: B.x0 + 5 + 0.63 * tH * widest.length + 1, y1: B.y0 + 6 + tH * 0.3 },
+      { x0: B.x0 + 4, y0: B.y0 + 6 - tH * 1.1, x1: B.x0 + 5 + capWidth + 1, y1: B.y0 + 6 + tH * 0.3 + (capLines - 1) * tH * 1.15 },
       { x0: ncx - 3, y0: ncy - 7.2, x1: ncx + 3.5, y1: ncy + na.south * nn.scale + 0.6 },
     ];
     // Each station's box on the sheet, in paper millimetres: its sign, its designation above, its monument
@@ -2307,13 +2327,12 @@ const crowded = crowdedClusters(
         ]);
       const tb = mergedTick.ticks[0].box;
       const fx0 = Math.max(B.x0, Math.min(...xs, tb.x0) - pad.side);
-      const fx1 = Math.min(B.x1, Math.max(...xs, tb.x1) + pad.side);
+      const fx1 = Math.min(B.x1, Math.max(Math.max(...xs, tb.x1) + pad.side, fx0 + 6 + capWidth));
       const fy0 = Math.max(B.y0, Math.min(...ys) - pad.top);
       const fy1 = Math.min(B.y1, Math.max(...ys, tb.y1) + pad.bottom);
       d.polyline([S(fx0, fy0), S(fx1, fy0), S(fx1, fy1), S(fx0, fy1)],
         { layer: 'INSET', closed: true });
-      d.text(`INSET ${number} (1:${F})`, S(fx0 + 3, fy0 + 4), mm(L.text.insetTitle),
-        { layer: 'INSET', style: 'ARIAL-BOLD' });
+      caption([fx0 + 3, fy0 + 4], `(1:${F})`);
       return;
     }
 
@@ -2323,8 +2342,10 @@ const crowded = crowdedClusters(
       // still inside, and each parcel is named where it lies. Nothing is schematic: a line's bearing and
       // length are the ground's at 1:D.
       const b = ins.beacon;
-      const Rm = Math.min(16, (B.x1 - B.x0) / 2 - 3, (B.y1 - B.y0 - 14) / 2);
-      const c0 = [B.x0 + 7 + Rm, B.y0 + 12 + Rm];
+      // A caption on two lines (a narrow cell) pushes the circle down by the second line.
+      const capDrop = capLines > 1 ? (capLines - 1) * tH * 1.15 + 2 : 0;
+      const Rm = Math.min(16, (B.x1 - B.x0) / 2 - 3, (B.y1 - B.y0 - 14 - capDrop) / 2);
+      const c0 = [B.x0 + 7 + Rm, B.y0 + 12 + capDrop + Rm];
       const on = abutShapes.filter((p) => p.ring.includes(b.name) && p.label);
       let nearest = Infinity;
       for (const p of on) {
@@ -2374,8 +2395,7 @@ const crowded = crowdedClusters(
           d.text(String(p.label).trim(), S(best[0], best[1] - 0.8), lh * 0.8, { layer: 'INSET', style: 'ARIAL', align: 'center' });
         }
       }
-      d.text(`INSET ${number} (1:${D})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
-        { layer: 'INSET', style: 'ARIAL-BOLD' });
+      caption([B.x0 + 5, B.y0 + 6], `(1:${D})`);
       // The circle is a disc, not its bounding square: strips of it, so the corners of the cell stay usable.
       const discs = [];
       for (let k = 0; k < 12; k++) {
@@ -2406,8 +2426,7 @@ const crowded = crowdedClusters(
         drawSign(at, b.symbol);
         letter(at, b, { plain: true });
       }
-      d.text(`INSET ${number} (1:${D})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
-        { layer: 'INSET', style: 'ARIAL-BOLD' });
+      caption([B.x0 + 5, B.y0 + 6], `(1:${D})`);
       const Tl = (e, n) => [fit.cx + ((e - ic.e) / D) * 1000, fit.cy - ((n - ic.n) / D) * 1000];
       placeTick(Tl, (x, y) => [ic.e + ((x - fit.cx) * D) / 1000, ic.n - ((y - fit.cy) * D) / 1000], D,
         ib.map((b) => stationBox(Tl, b, true)));
@@ -2438,6 +2457,7 @@ const crowded = crowdedClusters(
           beacons: ins.beacons.map((b) => ({ e: b.e, n: b.n, ext: extOf(b) })),
           cell: B, reserved, ic, scales: usable,
         });
+
         if (fit.fits) scaled = { D: fit.denominator, cx: fit.cx, cy: fit.cy, ic };
       }
     }
@@ -2449,8 +2469,7 @@ const crowded = crowdedClusters(
         drawSign(at, b.symbol ?? 'peg');
         letter(at, b);
       }
-      d.text(`INSET ${number} (1:${scaled.D})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
-        { layer: 'INSET', style: 'ARIAL-BOLD' });
+      caption([B.x0 + 5, B.y0 + 6], `(1:${scaled.D})`);
       const Td = (e, n) => [scaled.cx + ((e - scaled.ic.e) / scaled.D) * 1000, scaled.cy - ((n - scaled.ic.n) / scaled.D) * 1000];
       placeTick(Td, (x, y) => [scaled.ic.e + ((x - scaled.cx) * scaled.D) / 1000, scaled.ic.n - ((y - scaled.cy) * scaled.D) / 1000],
         scaled.D, ins.beacons.map((b) => stationBox(Td, b)));
@@ -2473,8 +2492,7 @@ const crowded = crowdedClusters(
         drawSign(at, b.symbol ?? 'peg');
         letter(at, b);
       });
-      d.text('INSET ' + number + ' (NOT TO SCALE)', S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
-        { layer: 'INSET', style: 'ARIAL-BOLD' });
+      caption([B.x0 + 5, B.y0 + 6], '(NOT TO SCALE)');
     }
 
     // And on the figure itself: a leader arrow drives straight at the spot the

@@ -100,9 +100,9 @@ export function placeInsetTicks({
   // The first interval wide enough to read, and then coarser ones, until some node has room.
   const start = TICK_INTERVALS.findIndex((i) => (i * 1000) / D >= minSpacingMm)
   const wide = TICK_INTERVALS.slice(Math.max(0, start), Math.max(0, start) + 6)
-  // Failing that, a finer lattice (nodes closer than the preferred spacing, still at least 4 mm apart on
+  // Failing that, a finer lattice (nodes closer than the preferred spacing, still at least 1.5 mm apart on
   // paper): one tick needs only one node with room, and a cell mostly taken up by a map has little.
-  const fine = TICK_INTERVALS.slice(0, Math.max(0, start)).reverse().filter((i) => (i * 1000) / D >= 4)
+  const fine = TICK_INTERVALS.slice(0, Math.max(0, start)).reverse().filter((i) => (i * 1000) / D >= 1.5)
   const intervals = [...wide, ...fine]
   for (const interval of intervals) {
     const clean = candidates(interval)

@@ -25,57 +25,35 @@ describe('insetCells', () => {
     expect(cell).toEqual(BOX)
   })
 
-  test('two insets split it side by side', () => {
-    const cells = insetCells(BOX, 2)
-
-    expect(cells).toHaveLength(2)
-    expect(cells[0].y0).toBe(BOX.y0)
-    expect(cells[0].y1).toBe(BOX.y1)
-    // toBeCloseTo, not toEqual: the second cell's width comes out of arithmetic
-    // on a larger origin, so the two differ in the last bit of a double.
-    expect(size(cells[0]).w).toBeCloseTo(size(cells[1]).w, 6)
-    expect(size(cells[0]).h).toBeCloseTo(size(cells[1]).h, 6)
-    // Left cell first, so INSET 1 is where a reader already looks for it.
-    expect(cells[0].x0).toBeLessThan(cells[1].x0)
+  test('with several insets the first keeps the whole height of the left column and about 70% of the box', () => {
+    for (const n of [2, 3, 4]) {
+      const [a, ...others] = insetCells(BOX, n)
+      expect(a.y0).toBe(BOX.y0)
+      expect(a.y1).toBe(BOX.y1)
+      expect(a.x0).toBe(BOX.x0)
+      expect(size(a).w * size(a).h).toBeGreaterThanOrEqual(0.69 * (BOX.x1 - BOX.x0) * (BOX.y1 - BOX.y0))
+      expect(others).toHaveLength(n - 1)
+      for (const o of others) {
+        expect(o.x0 - a.x1).toBeCloseTo(INSET_GUTTER_MM, 6)   // to its right, a gutter apart
+        expect(o.x1).toBeCloseTo(BOX.x1, 6)
+      }
+    }
   })
 
-  test('four take quadrants', () => {
-    const cells = insetCells(BOX, 4)
-    expect(cells).toHaveLength(4)
-    // Two columns, two rows.
-    expect(new Set(cells.map((c) => c.x0.toFixed(2))).size).toBe(2)
-    expect(new Set(cells.map((c) => c.y0.toFixed(2))).size).toBe(2)
-  })
-
-  test('three give the first the whole left column and stack the other two beside it', () => {
-    const [a, b, c] = insetCells(BOX, 3)
-
-    expect(a.y0).toBe(BOX.y0)
-    expect(a.y1).toBe(BOX.y1)                       // the first is as tall as the box
-    expect(b.x0).toBeGreaterThan(a.x1)              // the others are to its right
-    expect(c.x0).toBeCloseTo(b.x0, 9)
+  test('the others stack, a gutter apart, and fill the column', () => {
+    const [, b, c] = insetCells(BOX, 3)
     expect(b.y0).toBe(BOX.y0)
-    expect(c.y1).toBe(BOX.y1)
-    expect(c.y0 - b.y1).toBeCloseTo(INSET_GUTTER_MM, 6)    // stacked, a gutter apart
-    expect(b.x0 - a.x1).toBeCloseTo(INSET_GUTTER_MM, 6)
-    expect(size(a).w).toBeCloseTo(size(b).w, 6)
+    expect(c.y1).toBeCloseTo(BOX.y1, 6)
+    expect(c.y0 - b.y1).toBeCloseTo(INSET_GUTTER_MM, 6)
+    expect(c.x0).toBeCloseTo(b.x0, 9)
   })
 
-  test('reads left to right, then down', () => {
-    const [a, b, c, d] = insetCells(BOX, 4)
-
-    expect(a.y0).toBe(b.y0)         // first row
-    expect(a.x0).toBeLessThan(b.x0)
-    expect(c.y0).toBeGreaterThan(a.y0)
-    expect(c.x0).toBe(a.x0)
-    expect(d.x0).toBe(b.x0)
-  })
-
-  test('never lets two cells touch', () => {
-    const cells = insetCells(BOX, 4)
-    const [a, b] = cells
-
-    expect(b.x0 - a.x1).toBeCloseTo(INSET_GUTTER_MM, 6)
+  test('five or more take a grid, reading left to right then down', () => {
+    const cells = insetCells(BOX, 5)
+    expect(cells).toHaveLength(5)
+    expect(cells[0].y0).toBe(cells[1].y0)
+    expect(cells[0].x0).toBeLessThan(cells[1].x0)
+    expect(cells[3].y0).toBeGreaterThan(cells[0].y0)
   })
 
   test('stays inside the box it was given', () => {

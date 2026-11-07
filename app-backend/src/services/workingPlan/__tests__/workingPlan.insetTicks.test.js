@@ -12,7 +12,7 @@ const spec = {
 describe('every scaled inset carries a labelled tick', () => {
   const out = generateWorkingPlan(spec)
   const ops = out.model.doc.ops
-  const captions = ops.filter((o) => o.t === 'text' && o.layer === 'INSET' && /^INSET \d+ \(/.test(o.str))
+  const captions = ops.filter((o) => o.t === 'text' && o.layer === 'INSET' && /^INSET \d+( \(|$)/.test(o.str))
 
   test('there are scaled insets to check', () => {
     expect(captions.length).toBeGreaterThanOrEqual(2)

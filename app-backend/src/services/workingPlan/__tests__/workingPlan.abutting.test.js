@@ -96,32 +96,54 @@ describe('abutters around an inset sign do not overlap', () => {
   })
 })
 
-describe('the parcels meeting at an inset beacon are drawn as a wedge diagram', () => {
+describe('the parcels meeting at a station of the trig map are an inset of their own, drawn to scale', () => {
   const sd5 = brackenhurstSpec.beacons.find((b) => b.name === 'SD5')
   const spec = {
     ...brackenhurstSpec,
     remainderLabel: 'Rem./',
     inset: { ...brackenhurstSpec.inset, beacons: [{ name: 'SD5', X: sd5.X, Y: sd5.Y, symbol: 'peg' }] },
   }
-  const ops = generateWorkingPlan(spec).model.doc.ops.filter((o) => o.layer === 'INSET')
+  const out = generateWorkingPlan(spec)
+  const ops = out.model.doc.ops.filter((o) => o.layer === 'INSET')
+  const caption = ops.find((o) => o.t === 'text' && /^INSET 2 \(1:\d+\)$/.test(o.str))
 
-  test('each abutting parcel is lettered once, inside the circle, not around the sign', () => {
-    const names = ops.find((o) => o.t === 'text' && o.str === 'SD5')
-    for (const label of ['405', '404', 'Rem./']) expect(ops.filter((o) => o.t === 'text' && o.str === label)).toHaveLength(1)
-    // every label sits nearer the sign than the designation, which stands above the diagram
-    const dist = (o) => Math.hypot(o.at[0] - names.at[0], o.at[1] - (names.at[1] - 0))
-    for (const label of ['405', '404', 'Rem./']) {
-      const o = ops.find((t) => t.t === 'text' && t.str === label)
-      expect(o.at[1]).toBeLessThan(names.at[1])
-      expect(dist(o)).toBeGreaterThan(0)
-    }
+  test('is numbered after the trig map and states its scale', () => {
+    expect(caption).toBeDefined()
+    expect(ops.some((o) => o.t === 'text' && /^INSET 1 \(1:\d+\)$/.test(o.str))).toBe(true)
+    expect(out.dxf).not.toContain('NOT TO SCALE')
   })
 
-  test('the wedges are bounded by one outer arc per parcel and a ray for each ring side, shared sides once', () => {
-    const arcs = ops.filter((o) => o.t === 'polyline' && !o.closed && o.points.length > 3)
-    expect(arcs).toHaveLength(3)
-    // 405, 404 and Rem. meet at SD5 along three distinct sides
-    const rays = ops.filter((o) => o.t === 'line' && Math.hypot(o.a[0] - o.b[0], o.a[1] - o.b[1]) > 1)
-    expect(rays).toHaveLength(3)
+  test('letters each abutting parcel once, and the beacon, which the trig map no longer surrounds with a diagram', () => {
+    for (const label of ['405', '404', 'Rem./']) expect(ops.filter((o) => o.t === 'text' && o.str === label)).toHaveLength(1)
+    // SD5 is named on the trig map and again above the circle of its own inset
+    expect(ops.filter((o) => o.t === 'text' && o.str === 'SD5')).toHaveLength(2)
+  })
+
+  test('draws the real boundaries inside a circle round the beacon, at the scale the caption states', () => {
+    const D = +caption.str.match(/1:(\d+)/)[1]
+    // The circle: the closed 72-sided polyline; its centre is the beacon's place and its radius the reach.
+    const ring = ops.find((o) => o.t === 'polyline' && o.closed && o.points.length === 72)
+    expect(ring).toBeDefined()
+    const cx = ring.points.reduce((t, p) => t + p[0], 0) / 72, cy = ring.points.reduce((t, p) => t + p[1], 0) / 72
+    const radius = Math.hypot(ring.points[0][0] - cx, ring.points[0][1] - cy)
+    const near = (p, q, tol) => Math.hypot(p[0] - q[0], p[1] - q[1]) < tol
+    const tol = out.scale * 1e-6
+    // Every boundary line drawn in it lies within the circle...
+    const inside = ops.filter((o) => o.t === 'line' && Math.hypot(o.a[0] - cx, o.a[1] - cy) <= radius + tol && Math.hypot(o.b[0] - cx, o.b[1] - cy) <= radius + tol)
+    expect(inside.length).toBeGreaterThanOrEqual(3)
+    // ...and the side from SD5 to its nearest corner, SD6, is as long as the ground says at 1:D.
+    const sd6 = brackenhurstSpec.beacons.find((b) => b.name === 'SD6')
+    const ground = Math.hypot(sd5.X - sd6.X, sd5.Y - sd6.Y)
+    const want = (ground * out.scale) / D        // ground metres at the sheet's scale, i.e. DXF units
+    const fromCentre = inside.filter((o) => near(o.a, [cx, cy], tol) || near(o.b, [cx, cy], tol))
+    expect(fromCentre.some((o) => Math.abs(Math.hypot(o.b[0] - o.a[0], o.b[1] - o.a[1]) - want) < tol)).toBe(true)
+  })
+
+  test('chooses the finest scale at which the nearest corner of its parcels is still inside the circle', () => {
+    const D = +caption.str.match(/1:(\d+)/)[1]
+    // The nearest corner is SD6, 18.8 m away; the circle's radius is 16 mm and the corner is to fall within 70% of it.
+    const ground = Math.hypot(sd5.X - brackenhurstSpec.beacons.find((b) => b.name === 'SD6').X, sd5.Y - brackenhurstSpec.beacons.find((b) => b.name === 'SD6').Y)
+    expect((ground * 1000) / D).toBeLessThanOrEqual(0.7 * 16 + 1e-9)
+    expect(D).toBe(2000)
   })
 })

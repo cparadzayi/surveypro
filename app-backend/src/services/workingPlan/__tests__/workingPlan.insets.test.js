@@ -259,14 +259,14 @@ function withSupersededMark() {
 }
 
 describe('an inset caption fits the cell it titles', () => {
-  test('is lettered one ISO rank below the sheet captions', () => {
+  test('is lettered at the sheet’s 10 pt', () => {
     const out = generateWorkingPlan(withCrowdedPair())
     const caption = entities(out.dxf)
       .find((e) => e.type === 'TEXT' && (e.g['1'] ?? '').startsWith('INSET 2 ('))
 
-    // "INSET 2 (NOT TO SCALE)" is 22 characters. At 3.5 mm it ran about 69 mm,
-    // past the 58.5 mm a half-width cell leaves beside its frame.
-    expect(parseFloat(caption.g['40']) / out.scale * 1000).toBeCloseTo(2.5, 6)
+    // A caption such as "INSET 2 (1:12500)" is 17 characters, about 38 mm at 10 pt: inside the 63 mm a
+    // half-width cell gives it, and clear of the north arrow the layout reserves at its right.
+    expect(parseFloat(caption.g['40']) / out.scale * 1000).toBeCloseTo((25.4 * 10) / 72, 6)
   })
 })
 

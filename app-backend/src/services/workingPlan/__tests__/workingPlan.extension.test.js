@@ -312,11 +312,11 @@ describe('generateWorkingPlan — the divided figure', () => {
   })
 
   test('promotes a far mark to the trig map when it would flatten the survey map, and keeps the near one', () => {
-    // N1 stands 120 m from a 100 m survey; DB stands 1.1 km away. Holding DB the survey's own map would be
+    // N1 stands 70 m from a 100 m figure; DB stands 1.1 km away. Holding DB the survey's own map would be
     // 1:10000, a stamp; without it the map is 1:2000. DB is far from the cluster, so it goes on the trig
-    // map beside the control it is measured against; N1 stays with the survey.
+    // map beside the control it is measured against; N1, within the figure's own width, stays with it.
     const marks = [
-      { name: 'N1', X: 2144100, Y: -85820, symbol: 'rm', label: 'N' },
+      { name: 'N1', X: 2144100, Y: -85770, symbol: 'rm', label: 'N' },
       { name: 'DB', X: 2144100, Y: -86800, symbol: 'found', label: 'N' },
     ]
     const spec = {
@@ -326,15 +326,32 @@ describe('generateWorkingPlan — the divided figure', () => {
         { name: 'F1', X: 2144050, Y: -85650, symbol: 'found' },
       ] },
     }
-    const t = texts(generateWorkingPlan(spec).dxf, 'INSET')
+    const out = generateWorkingPlan(spec)
+    const t = texts(out.dxf, 'INSET')
     const cap1 = t.findIndex((s) => /^INSET 1 \(1:\d+\)$/.test(s))
-    const cap2 = t.findIndex((s) => /^INSET 2 \(1:\d+\)$/.test(s))
     expect(cap1).toBeGreaterThan(-1)
-    expect(cap2).toBeGreaterThan(cap1)
-    // an inset's own marks are lettered before its caption: DB with the trig map, N1 with the survey's
+    // DB is lettered before the trig map's caption: it is one of its marks...
     expect(t.indexOf('DB')).toBeLessThan(cap1)
-    expect(t.indexOf('N1')).toBeGreaterThan(cap1)
-    expect(t.indexOf('N1')).toBeLessThan(cap2)
+    // ...and N1, which fits the figure at the survey's own scale, stays ON the figure: no map of its own.
+    expect(texts(out.dxf, 'BEACON-TEXT')).toContain('N1')
+    expect(t).not.toContain('N1')
+    expect(out.dxf).not.toMatch(/INSET 2/)
+  })
+
+  test('keeps on the figure every outlying mark that fits at the scale the survey needs, setting aside only the one that does not', () => {
+    // A 100 m survey with a mark 150 m out and another 3 km out: the near one fits at 1:2500 with room to
+    // spare, the far one does not. Only the far one is set aside, so the sheet is not split for the sake of
+    // a mark that never needed to leave it.
+    const marks = [
+      { name: 'NEAR', X: 2144100, Y: -85850, symbol: 'rm', label: 'N' },
+      { name: 'FAR', X: 2147100, Y: -85650, symbol: 'rm', label: 'N' },
+    ]
+    const out = generateWorkingPlan(survey(marks))
+    expect(out.scale).toBe(2500)
+    expect(texts(out.dxf, 'BEACON-TEXT')).toContain('NEAR')
+    expect(texts(out.dxf, 'BEACON-TEXT')).not.toContain('FAR')
+    expect(texts(out.dxf, 'INSET')).toContain('FAR')
+    expect(texts(out.dxf, 'INSET')).not.toContain('NEAR')
   })
 
   test('promotes nothing when there is no trig map to take it: the far marks keep the one measured map', () => {

@@ -31,6 +31,20 @@ export function insetCells(box, count) {
   if (n === 0) return []
   if (n === 1) return [{ ...box }]
 
+  // Three: the first inset (the trig map, a map to scale of kilometres of ground) keeps the whole height of
+  // the left column and the other two stack to its right. A quarter of the box made it a stamp, too short
+  // to hold two stations a few kilometres apart at a scale that also separates the marks near the survey.
+  if (n === 3) {
+    const w = (box.x1 - box.x0 - INSET_GUTTER_MM) / 2
+    const h = (box.y1 - box.y0 - INSET_GUTTER_MM) / 2
+    const x1 = box.x0 + w + INSET_GUTTER_MM
+    return [
+      { x0: box.x0, y0: box.y0, x1: box.x0 + w, y1: box.y1 },
+      { x0: x1, y0: box.y0, x1: x1 + w, y1: box.y0 + h },
+      { x0: x1, y0: box.y0 + h + INSET_GUTTER_MM, x1: x1 + w, y1: box.y1 },
+    ]
+  }
+
   const cols = Math.ceil(Math.sqrt(n))
   const rows = Math.ceil(n / cols)
 

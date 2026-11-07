@@ -24,6 +24,7 @@ import { SI727_SCALE_LADDER } from '../../../../app-shared/si727Scales.js';
 import { crowdedClusters } from './crowdedBeacons.js';
 import { insetCells } from './insetCells.js';
 import { layoutMeasured } from './localityLayout.js';
+import { clipSegmentToCircle, pointInPolygon, pointSegmentDistance } from '../diagram/detailInset.js';
 import { MEASURED_INSET_SCALES, DETAIL_INSET_SCALES } from '../../../../app-shared/insetScales.js';
 import { isReferenceMarkName } from '../../../../app-shared/beaconName.js';
 
@@ -47,6 +48,9 @@ export const SHEET = SHEET_LANDSCAPE;
  * A4 printer's unprintable band (about 4-6 mm) and leaves the border whole on the plot.
  */
 export const PRINT_MARGIN_MM = 8;
+
+/** 10 pt of lettering, in millimetres: the size of everything on the sheet that is not the title block. */
+export const TEN_PT = (25.4 * 10) / 72;
 
 /**
  * The design measured off a Surveyor-General working plan, on the full landscape sheet with its neat line
@@ -142,15 +146,15 @@ const MEASURED_LANDSCAPE = {
    * the legibility floor.
    */
   text: {
-    beacon: 3.0, parcel: 3.0, adjoining: 3.0, grid: 2.5, insetLabel: 3.0,
-    road: 3.0,
+    beacon: TEN_PT, parcel: TEN_PT, adjoining: TEN_PT, grid: 2.5, insetLabel: TEN_PT,
+    road: TEN_PT,
     // title dropped one ISO rung (3,5 -> 2,5) so the identification lines make
     // room for the sheet it names; the heading alone stays the document size.
     scale: 3.5, approval: 3.5, certificate: 3.5, title: 2.5,
     // One ISO rank below the other 3.5 mm captions. "INSET 2 (NOT TO
     // SCALE)" is 22 characters, and at 3.5 mm it ran about 69 mm -- past
     // the 58.5 mm a half-width inset cell leaves beside its frame.
-    insetTitle: 2.5,
+    insetTitle: TEN_PT,
     // 5,0 / 2,5 -- two ISO steps, heading to the line that names the land.
     titleLeadFactor: 2.0,
   },
@@ -607,8 +611,23 @@ export function generateWorkingPlan(spec) {
         .filter((b) => !holdNames.has(b.name) && !withinPad(b.e, b.n));
     }
     if (remote.length > 0 && scaleIndex(scaleMain) < scaleIndex(scaleAll)) {
-      for (const b of remote) extensionNames.add(b.name);
-      bb = bbMain;
+      // The split is decided for the outlier that costs the scale, not for every mark beyond the band: a
+      // mark that fits the figure at the scale the survey needs stays on it (OF2 and the SL marks of Scenic,
+      // a couple of hundred metres out on a sheet with room to spare, were set aside with DB, 700 m away,
+      // and sent to a map of their own for no reason). The nearest are tried first and each is kept while
+      // the figure still draws at the main scale with it.
+      const gapTo = (b) => Math.hypot(
+        Math.max(bbMain.e0 - b.e, 0, b.e - bbMain.e1), Math.max(bbMain.n0 - b.n, 0, b.n - bbMain.n1));
+      let bbKept = bbMain;
+      for (const b of [...remote].sort((p, q) => gapTo(p) - gapTo(q))) {
+        const grown = {
+          e0: Math.min(bbKept.e0, b.e), e1: Math.max(bbKept.e1, b.e),
+          n0: Math.min(bbKept.n0, b.n), n1: Math.max(bbKept.n1, b.n),
+        };
+        if (pickScale(grown) === scaleMain) bbKept = grown;
+        else extensionNames.add(b.name);
+      }
+      bb = bbKept;
       scale = scaleMain;
     } else {
       scale = scaleAll;
@@ -1900,12 +1919,21 @@ const crowded = crowdedClusters(
       (E.nMax - E.nMin) / (L.inset.box.y1 - L.inset.box.y0)) * 1000 * FIGURE_BREATHING;
     return STANDARD_SCALES.find((s) => s >= need) ?? STANDARD_SCALES.at(-1);
   };
-  // ...and only one well clear of the survey: at the trig map's scale a mark within a footprint's width or
-  // two of the survey would stand on top of the survey's own marker there, and is better where it is.
-  const surveySpan = Math.max(surveyEnv.e1 - surveyEnv.e0, surveyEnv.n1 - surveyEnv.n0);
+  // ...and only one clear of the survey by at least the figure's own width: at the trig map's scale a mark
+  // nearer than that would stand on top of the survey's own marker there, and is better where it is.
+  // Measured against the FIGURE (the parcels' own corners), not the whole survey envelope: that one grows
+  // with every neighbour's name set beside the boundary, which would move the threshold with the lettering.
+  const ringMarks = [...holdNames].map((n) => byName.get(n)).filter(Boolean);
+  const figureEnv = ringMarks.length
+    ? {
+      e0: Math.min(...ringMarks.map((b) => b.e)), e1: Math.max(...ringMarks.map((b) => b.e)),
+      n0: Math.min(...ringMarks.map((b) => b.n)), n1: Math.max(...ringMarks.map((b) => b.n)),
+    }
+    : surveyEnv;
+  const figureSpan = Math.max(figureEnv.e1 - figureEnv.e0, figureEnv.n1 - figureEnv.n0);
   const clearOfSurvey = (b) => Math.hypot(
-    Math.max(surveyEnv.e0 - b.e, 0, b.e - surveyEnv.e1),
-    Math.max(surveyEnv.n0 - b.n, 0, b.n - surveyEnv.n1)) >= 1.5 * surveySpan;
+    Math.max(figureEnv.e0 - b.e, 0, b.e - figureEnv.e1),
+    Math.max(figureEnv.n0 - b.n, 0, b.n - figureEnv.n1)) >= figureSpan;
   const promoted = [];
   let outlying = [...farMarks];
   if (spec.inset) {
@@ -1939,6 +1967,13 @@ const crowded = crowdedClusters(
   }
   for (const cluster of crowded) {
     insets.push({ kind: 'detail', beacons: cluster });
+  }
+  // The PARCELS MEETING AT a station of the trig map -- the site marker -- as an inset of their own, drawn
+  // from the real boundaries to a stated scale. They used to be a wedge diagram round the marker, fixed
+  // at 19 mm across: a symbol bigger than the whole survey on a map to scale, which covered whatever
+  // stood beside it (DB, 580 m from the marker, was lettered over it).
+  for (const b of insets.find((i) => i.kind === 'locality')?.beacons ?? []) {
+    if (ABUT_SYMBOLS.has(b.symbol ?? 'peg') && wedgesOf(b).length > 0) insets.push({ kind: 'abut', beacon: b });
   }
 
   const cells = insetCells(L.inset.box, insets.length);
@@ -2021,7 +2056,7 @@ const crowded = crowdedClusters(
      *  sign by the same half-millimetre gap. The clearances use the inset's
      *  own symbol scale so a trig shrunk to its cell is cleared by that
      *  smaller reach, not by the figure's. */
-    const letter = (at, b) => {
+    const letter = (at, b, { plain = false } = {}) => {
       const h = mm(L.text.insetLabel);
       const k = (iRing * 2) / mm(L.symbol.foundOuterDia);
       const up = (() => {
@@ -2040,7 +2075,7 @@ const crowded = crowdedClusters(
       // round its sign (the abutting properties, each in the part of the circle it fills) in place of
       // loose labels that said the same thing around the sign and read as stray stand numbers. The
       // designation then sits above the diagram instead of above the sign.
-      const wedges = ABUT_SYMBOLS.has(b.symbol ?? 'peg') ? wedgesOf(b) : [];
+      const wedges = !plain && ABUT_SYMBOLS.has(b.symbol ?? 'peg') ? wedgesOf(b) : [];
       const R = mm(L.inset.abutDetailRadius);
       if (wedges.length) {
         const seen = new Set();
@@ -2078,7 +2113,7 @@ const crowded = crowdedClusters(
       // The abutting properties of a found or placed beacon, each lettered on the side of the sign
       // it lies toward (its true bearing), turned aside in steps until clear of the name and of its
       // fellows. A detail's marks are spread, but their bearings to the parcels are the real ones.
-      if (ABUT_SYMBOLS.has(b.symbol ?? 'peg') && wedges.length === 0) {
+      if (!plain && ABUT_SYMBOLS.has(b.symbol ?? 'peg') && wedges.length === 0) {
         // textRect's width is 0.63 of the height a character, which is a little short of Arial's digits
         // and capitals; the fit therefore measures a longer string than is drawn, so two labels that
         // measure as touching are never drawn overlapping.
@@ -2142,8 +2177,8 @@ const crowded = crowdedClusters(
       : b.symbol === 'ocp' ? L.symbol.trigH * kSign * 0.38 : b.symbol === 'rm' ? 1.2 : ringMm);
     const reachDown = (b) => (b.symbol === 'ocp' ? L.symbol.trigH * kSign * 0.62
       : b.symbol === 'trig' ? L.symbol.trigH * kSign * 0.38 : b.symbol === 'rm' ? 1.2 : ringMm);
-    const extOf = (b) => {
-      const abuts = ABUT_SYMBOLS.has(b.symbol ?? 'peg');
+    const extOf = (b, plain = false) => {
+      const abuts = !plain && ABUT_SYMBOLS.has(b.symbol ?? 'peg');
       const wedge = abuts && wedgesOf(b).length > 0;
       const R = L.inset.abutDetailRadius;
       let u = (wedge ? R : reachUp(b)) + 0.5 + lh;
@@ -2242,6 +2277,68 @@ const crowded = crowdedClusters(
       return;
     }
 
+    if (ins.kind === 'abut') {
+      // THE PARCELS MEETING AT ONE BEACON, to scale. A circle round the beacon holds the real boundaries
+      // that pass through it, at the largest round scale at which the nearest corner of its parcels is
+      // still inside, and each parcel is named where it lies. Nothing is schematic: a line's bearing and
+      // length are the ground's at 1:D.
+      const b = ins.beacon;
+      const Rm = Math.min(16, (B.x1 - B.x0) / 2 - 3, (B.y1 - B.y0 - 14) / 2);
+      const c0 = [B.x0 + 7 + Rm, B.y0 + 12 + Rm];
+      const on = abutShapes.filter((p) => p.ring.includes(b.name) && p.label);
+      let nearest = Infinity;
+      for (const p of on) {
+        for (const n of p.ring) {
+          if (n === b.name || !byName.has(n)) continue;
+          nearest = Math.min(nearest, Math.hypot(G(n).e - b.e, G(n).n - b.n));
+        }
+      }
+      const rungs = [...new Set([...DETAIL_INSET_SCALES, ...MEASURED_INSET_SCALES])].sort((x, y) => x - y);
+      const want = Number.isFinite(nearest) && nearest > 0 ? (nearest * 1000) / (0.7 * Rm) : 500;
+      const D = rungs.find((r) => r >= want) ?? rungs.at(-1);
+      const T = (e, n) => [c0[0] + ((e - b.e) / D) * 1000, c0[1] - ((n - b.n) / D) * 1000];
+
+      const C = S(c0[0], c0[1]);
+      d.polyline(circlePts(mm(Rm), 72).map(([x, y]) => [C[0] + x, C[1] + y]), { layer: 'INSET', closed: true });
+      const drawn = [];
+      for (const p of abutShapes) {
+        const names = p.ring.filter((n, i) => !(i === p.ring.length - 1 && n === p.ring[0]) && byName.has(n));
+        for (let i = 0; i < names.length; i++) {
+          const q0 = T(G(names[i]).e, G(names[i]).n), q1 = T(G(names[(i + 1) % names.length]).e, G(names[(i + 1) % names.length]).n);
+          const seg = clipSegmentToCircle(q0, q1, c0, Rm);
+          if (!seg) continue;
+          d.line(S(seg[0][0], seg[0][1]), S(seg[1][0], seg[1][1]), { layer: 'INSET' });
+          drawn.push(seg);
+        }
+      }
+      drawSign(C, b.symbol);
+      const lh = mm(L.text.insetLabel);
+      d.text(b.name, [C[0], C[1] + mm(Rm) + mm(1.2)], lh, { layer: 'INSET', style: 'ARIAL', align: 'center' });
+
+      // Each parcel's name where it lies inside the circle, on the clearest ground in it.
+      for (const p of on) {
+        const poly = p.ring.filter((n) => byName.has(n)).map((n) => T(G(n).e, G(n).n));
+        let best = null, bestClear = -1;
+        const steps = 17;
+        for (let i = 0; i < steps; i++) {
+          for (let j = 0; j < steps; j++) {
+            const q = [c0[0] - Rm + (2 * Rm * (i + 0.5)) / steps, c0[1] - Rm + (2 * Rm * (j + 0.5)) / steps];
+            if (Math.hypot(q[0] - c0[0], q[1] - c0[1]) > Rm * 0.78 || !pointInPolygon(q, poly)) continue;
+            // the clearest ground: far from every drawn line and from the beacon's own sign
+            let clear = Math.hypot(q[0] - c0[0], q[1] - c0[1]) - 1.5;
+            for (const [u, v] of drawn) clear = Math.min(clear, pointSegmentDistance(q, u, v));
+            if (clear > bestClear) { bestClear = clear; best = q; }
+          }
+        }
+        if (best) {
+          d.text(String(p.label).trim(), S(best[0], best[1] - 0.8), lh * 0.8, { layer: 'INSET', style: 'ARIAL', align: 'center' });
+        }
+      }
+      d.text(`INSET ${number} (1:${D})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
+        { layer: 'INSET', style: 'ARIAL-BOLD' });
+      return;
+    }
+
     if (ins.kind === 'locality') {
       // THE TRIGS THE SURVEY WAS OBSERVED FROM, with the far marks. The Surveyor General's one requirement
       // of a working plan that uses control is that it carries them, here, on a map to a stated scale:
@@ -2250,7 +2347,7 @@ const crowded = crowdedClusters(
       const ib = ins.beacons;
       const ic = centreOf(ib);
       const fit = layoutMeasured({
-        beacons: ib.map((b) => ({ e: b.e, n: b.n, ext: extOf(b) })),
+        beacons: ib.map((b) => ({ e: b.e, n: b.n, ext: extOf(b, true) })),
         cell: B, reserved, ic, scales: MEASURED_INSET_SCALES,
       });
       const D = fit.denominator;
@@ -2258,7 +2355,7 @@ const crowded = crowdedClusters(
       for (const b of ib) {
         const at = I(b.e, b.n);
         drawSign(at, b.symbol);
-        letter(at, b);
+        letter(at, b, { plain: true });
       }
       d.text(`INSET ${number} (1:${D})`, S(B.x0 + 5, B.y0 + 6), mm(L.text.insetTitle),
         { layer: 'INSET', style: 'ARIAL-BOLD' });

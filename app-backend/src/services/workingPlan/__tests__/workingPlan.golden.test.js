@@ -90,10 +90,11 @@ describe('generateWorkingPlan — golden', () => {
     // These had been measured off a source plot and carried its noise: SIX
     // body sizes inside 0,08 mm (2,99 / 3,00 / 3,03 / 3,06 / 3,07 / 3,07),
     // which is not a hierarchy, it is six attempts at one size.
-    // 3,0 is the one deliberate step off the ladder: the surveyor chose it (4 Nov 2026) for everything read
-    // off the drawing, because 3,5 crowded the corner of the Brackenhurst figure at 1:2500 and 2,5 was too
-    // small beside the 3,5 of the approval box. It sits between two rungs on purpose and is the only one.
-    const ISO = [1.8, 2.5, 3.0, 3.5, 5, 7]
+    // 10 pt (3,528 mm) is the one deliberate step off the ladder: the surveyor asked for it (7 Nov 2026) for
+    // everything on the sheet that is not the title block -- beacon names, stand numbers, adjoining names, roads
+    // and inset labels and captions. It sits a hair above the 3,5 rung on purpose and is the only one.
+    const TEN_PT = (25.4 * 10) / 72
+    const ISO = [1.8, 2.5, TEN_PT, 3.5, 5, 7]
     const T = LAYOUT.text
     const used = [T.adjoining, T.beacon, T.grid, T.insetLabel, T.parcel, T.road,
       T.scale, T.approval, T.certificate, T.insetTitle, T.title,
@@ -103,22 +104,22 @@ describe('generateWorkingPlan — golden', () => {
     }
     // three ranks, no more -- every extra one is a distinction a reader has to
     // work out and the draughtsman did not mean
-    // (the 3,0 is a fourth, and the only one added)
+    // (the 10 pt is a fourth, and the only one added)
     expect(new Set(used.map((h) => h.toFixed(2))).size).toBe(4)
-    expect(used.filter((h) => h === 3.0).length).toBeGreaterThan(0)
+    expect(used.filter((h) => h === TEN_PT).length).toBeGreaterThan(0)
   })
 
-  test('letters everything read off the drawing at one size, the coordinate grid excepted', () => {
+  test('letters everything read off the drawing at 10 pt, the coordinate grid and the title block excepted', () => {
     // A beacon name, a stand number, an abutting property's name, a road and an inset label are read
-    // together off the same drawing (3,0 mm, between the grid and the approval box). A reader
+    // together off the same drawing (10 pt, 3,528 mm, a hair above the approval box). A reader
     // should not have to work out why one of them is smaller than the others. The grid's figures are a
-    // reference framework, not something read off the drawing, and stay at 2,5 mm: at 3,5 the crosses
-    // could not find room and the sheet lost its coordinate framework.
+    // reference framework, not something read off the drawing, and stay at 2,5 mm: at 10 pt the crosses
+    // could not find room and the sheet lost its coordinate framework (fewer than four ticks).
     const T = LAYOUT.text
-    expect([T.parcel, T.adjoining, T.insetLabel, T.road]).toEqual([T.beacon, T.beacon, T.beacon, T.beacon])
-    expect(T.beacon).toBe(3.0)
+    expect([T.parcel, T.adjoining, T.insetLabel, T.road, T.insetTitle]).toEqual([T.beacon, T.beacon, T.beacon, T.beacon, T.beacon])
+    expect(T.beacon).toBeCloseTo((25.4 * 10) / 72, 9)
     expect(T.grid).toBeLessThan(T.beacon)
-    expect(T.beacon).toBeLessThan(T.approval)
+    expect(T.beacon).toBeGreaterThan(T.approval)
   })
 
   test('letters that size big enough to read at arm’s length', () => {
@@ -885,7 +886,10 @@ describe('generateWorkingPlan — golden', () => {
       // spread, and so the day the placer is fixed this test fails and says so.
       // Un-spaced road names, and the fixture's own, are clean at 1:2500 --
       // there is a test below that holds them to zero.
+      // At 10 pt (7 Nov 2026) the same name also reaches the stand label 404: two overlaps now, both of this
+      // one letter-spaced name, and still nothing else on the sheet.
       expect(auditAll(dxf).overlaps).toEqual([
+        'PARCEL-TEXT:404 <-> ROAD-TEXT:K  L  E  I  N     R  O  A  D',
         'GRID-TEXT:Y = -85600 <-> ROAD-TEXT:K  L  E  I  N     R  O  A  D',
       ])
     })

@@ -39,14 +39,26 @@ describe('insetCells', () => {
     expect(cells[0].x0).toBeLessThan(cells[1].x0)
   })
 
-  test('three or four take quadrants', () => {
-    for (const n of [3, 4]) {
-      const cells = insetCells(BOX, n)
-      expect(cells).toHaveLength(n)
-      // Two columns, two rows.
-      expect(new Set(cells.map((c) => c.x0.toFixed(2))).size).toBe(2)
-      expect(new Set(cells.map((c) => c.y0.toFixed(2))).size).toBe(2)
-    }
+  test('four take quadrants', () => {
+    const cells = insetCells(BOX, 4)
+    expect(cells).toHaveLength(4)
+    // Two columns, two rows.
+    expect(new Set(cells.map((c) => c.x0.toFixed(2))).size).toBe(2)
+    expect(new Set(cells.map((c) => c.y0.toFixed(2))).size).toBe(2)
+  })
+
+  test('three give the first the whole left column and stack the other two beside it', () => {
+    const [a, b, c] = insetCells(BOX, 3)
+
+    expect(a.y0).toBe(BOX.y0)
+    expect(a.y1).toBe(BOX.y1)                       // the first is as tall as the box
+    expect(b.x0).toBeGreaterThan(a.x1)              // the others are to its right
+    expect(c.x0).toBeCloseTo(b.x0, 9)
+    expect(b.y0).toBe(BOX.y0)
+    expect(c.y1).toBe(BOX.y1)
+    expect(c.y0 - b.y1).toBeCloseTo(INSET_GUTTER_MM, 6)    // stacked, a gutter apart
+    expect(b.x0 - a.x1).toBeCloseTo(INSET_GUTTER_MM, 6)
+    expect(size(a).w).toBeCloseTo(size(b).w, 6)
   })
 
   test('reads left to right, then down', () => {

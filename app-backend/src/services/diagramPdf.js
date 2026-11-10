@@ -41,6 +41,11 @@ const INNER_BAND_PT = 1.3 * PT_PER_MM          // ≈ 3.69 pt (~1.3 mm), page-re
 const ROAD_COLOR = '#FFAD5C'
 const SERVITUDE_BLUE = '#1F6FB2'
 const ROAD_STRIP_PT = 1.3 * PT_PER_MM          // nominal, like the inner band
+/** A road's or servitude's name is set at this fraction of the lettering size: a little smaller, so the name fits
+ *  between the corner letters that stand at each end of its side. */
+const ROAD_NAME_SCALE = 0.9
+/** The daylight a vertex letter keeps from the colour band and from a name, in points (placeVertexLabel's). */
+const VERTEX_CLEARANCE_PT = 2.2
 const STRIP_FILL_OPACITY = 0.6                 // colour must not obscure detail
 const ROAD_FILL_OPACITY = 1                    // the road reads as the template's solid hatch
 const CONTIG_STUB_PT = CONTIG_STUB_MM * PT_PER_MM
@@ -546,17 +551,23 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         // Push the name out past the strip AND the vertex-letter band, so it clears
         // the figure vertex labels (which stay close to their beacons).
         const stripPt = ann.role === 'servitude' && ann.widthM > 0 ? ann.widthM * ptPerGroundM : ROAD_STRIP_PT
-        const off = stripPt + vertexBandPt
+        // The name is set a little smaller than the lettering (ROAD_NAME_SCALE) and stands BEYOND the letters:
+        // a vertex letter on a road side lands just outside the colour band, so the name's near edge is held
+        // one letter-height plus two clearances past it. The letters then stay close to their beacons.
+        const nameFs = DIAGRAM_FONTS.label * ROAD_NAME_SCALE
+        doc.fontSize(nameFs)
+        const nameW = doc.widthOfString(labelText)
+        const off = stripPt + VERTEX_CLEARANCE_PT + DIAGRAM_FONTS.label + VERTEX_CLEARANCE_PT + nameFs / 2
         const lx = mid.px + perpX * off, ly = mid.py + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })
-        doc.text(labelText, lx - labelW / 2, ly - DIAGRAM_FONTS.label / 2, { lineBreak: false })
+        doc.text(labelText, lx - nameW / 2, ly - nameFs / 2, { lineBreak: false })
         // The rotated box as obstacle segments (edges and both diagonals), so the vertex letters set later
         // keep clear of the road's name as they do of every other label.
         {
           const th = angleDeg * Math.PI / 180, c = Math.cos(th), sn = Math.sin(th)
-          const hh = DIAGRAM_FONTS.label
+          const hh = nameFs
           const corner = (dx, dy) => ({ px: lx + dx * c - dy * sn, py: ly + dx * sn + dy * c })
-          const q = [corner(-labelW / 2, -hh / 2), corner(labelW / 2, -hh / 2), corner(labelW / 2, hh / 2), corner(-labelW / 2, hh / 2)]
+          const q = [corner(-nameW / 2, -hh / 2), corner(nameW / 2, -hh / 2), corner(nameW / 2, hh / 2), corner(-nameW / 2, hh / 2)]
           for (let k = 0; k < 4; k++) labelObstacles.push([q[k], q[(k + 1) % 4]])
           labelObstacles.push([q[0], q[2]], [q[1], q[3]])
         }
@@ -1152,21 +1163,11 @@ export async function generateDiagramPDF(options, logger) {
   })
 
   doc.layer('FIGURE_LABELS')
-  // A beacon in the middle of a straight side (B of a road frontage with a beacon on it): both its outward
-  // neighbours are road colour and road name, and the nearest clear paper is on the figure's side.
-  const onStraightSide = (i) => {
-    const m = subjPt.length
-    const p = subjPt[(i - 1 + m) % m], q = subjPt[i], r = subjPt[(i + 1) % m]
-    const ax = q.px - p.px, ay = q.py - p.py, bx = r.px - q.px, by = r.py - q.py
-    const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by)
-    return la > 0 && lb > 0 && (ax * bx + ay * by) / (la * lb) > Math.cos(15 * Math.PI / 180)
-  }
   geometry.vertices.forEach((v, i) => {
     const p = subjPt[i]
     const labelW = doc.widthOfString(v.letter)
     const pos = placeVertexLabel(p, subjCentroid, {
       beaconR, labelW, labelH: DIAGRAM_FONTS.label, gap: 1.4, segments: subjSegs.concat(neighbourSegs, labelObstacles),
-      inwardFallback: onStraightSide(i),
     })
     doc.text(v.letter, pos.x, pos.y)
     labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: DIAGRAM_FONTS.label }))

@@ -20,7 +20,7 @@ import { edgeStrip } from './diagram/edgeStrip.js'
 import { formatSI } from './diagram/numberFormat.js'
 import { sideToEdgeIndex } from './adjoiningFeatures.js'
 import {
-  contiguousMarks, CONTIG_STUB_MM, dashSegments,
+  contiguousMarks, continuedStubTip, CONTIG_STUB_MM, dashSegments,
   ADJOINING_DASH_ON_MM, ADJOINING_DASH_OFF_MM,
 } from './diagram/contiguousMarks.js'
 
@@ -91,8 +91,10 @@ export function emitSubjectAdjoiningFeaturesDxf({
           addLine(defaultLayer, q0[0], q0[1], q1[0], q1[1])
         }
       }
-      if (marks.stubFrom) emitStub(a, st[3])
-      if (marks.stubTo) emitStub(b, st[2])
+      // Each stub keeps the direction of the figure's own adjacent side, not the perpendicular.
+      const pa = ptRing[(i - 1 + n) % n], pb = ptRing[(i + 2) % n]
+      if (marks.stubFrom) emitStub(a, continuedStubTip(a, [pa.x, pa.y], st[3]))
+      if (marks.stubTo) emitStub(b, continuedStubTip(b, [pb.x, pb.y], st[2]))
     }
 
     // ── Label ──

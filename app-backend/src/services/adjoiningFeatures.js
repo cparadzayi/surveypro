@@ -17,7 +17,7 @@
  */
 import { edgeStrip } from './diagram/edgeStrip.js'
 import {
-  contiguousMarks, CONTIG_STUB_MM, dashSegments,
+  contiguousMarks, continuedStubTip, CONTIG_STUB_MM, dashSegments,
   ADJOINING_DASH_ON_MM, ADJOINING_DASH_OFF_MM,
 } from './diagram/contiguousMarks.js'
 import { formatSI } from './diagram/numberFormat.js'
@@ -123,8 +123,10 @@ export function drawSubjectAdjoiningFeatures(doc, { ptRing, annotations, ptPerGr
       const on = ADJOINING_DASH_ON_MM * PT_PER_MM, off = ADJOINING_DASH_OFF_MM * PT_PER_MM
       doc.save().lineWidth(0.6).strokeColor('#000000')
       const stubs = []
-      if (marks.stubFrom) stubs.push([a, st[3]])
-      if (marks.stubTo) stubs.push([b, st[2]])
+      // Each stub keeps the direction of the figure's own adjacent side, not the perpendicular.
+      const pa = ptRing[(i - 1 + n) % n], pb = ptRing[(i + 2) % n]
+      if (marks.stubFrom) stubs.push([a, continuedStubTip(a, [pa.x, pa.y], st[3])])
+      if (marks.stubTo) stubs.push([b, continuedStubTip(b, [pb.x, pb.y], st[2])])
       for (const [s0, s1] of stubs) {
         for (const [q0, q1] of dashSegments(s0, s1, on, off)) {
           doc.moveTo(q0[0], q0[1]).lineTo(q1[0], q1[1])

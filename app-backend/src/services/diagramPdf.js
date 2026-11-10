@@ -16,7 +16,7 @@ import { sharpVertices, insetDenominator, planDetailInset } from './diagram/deta
 import { placeVertexLabel } from './diagram/vertexLabel.js'
 import { edgeStrip } from './diagram/edgeStrip.js'
 import {
-  contiguousMarks, CONTIG_STUB_MM, dashSegments,
+  contiguousMarks, continuedStubTip, CONTIG_STUB_MM, dashSegments,
   ADJOINING_DASH_ON_MM, ADJOINING_DASH_OFF_MM,
 } from './diagram/contiguousMarks.js'
 import { resolveConnections } from './diagram/connections.js'
@@ -425,7 +425,8 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         if (!roadSides.has(flankA)) {
           if (contiguousSides.has(flankA)) {
             const prev = subjPt[(i - 1 + n) % n]
-            const stubTip = edgeStrip([prev.px, prev.py], a, CONTIG_STUB_PT, cen)[2]
+            // continuedStubTip: the stub keeps the road's own direction, so the colour runs on past the corner
+            const stubTip = continuedStubTip(a, b, edgeStrip([prev.px, prev.py], a, CONTIG_STUB_PT, cen)[2])
             // Past the corner only where the offshoot carries on along the road's own line; a
             // neighbour that meets it at an angle ends the road AT the beacon, not in a sideways kink.
             if (alongRoad(a, stubTip, [-ax[0], -ax[1]])) inner.push(offshootTip(a, stubTip))
@@ -440,7 +441,7 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         if (!roadSides.has(flankB)) {
           if (contiguousSides.has(flankB)) {
             const next = subjPt[(last + 2) % n]
-            const stubTip = edgeStrip(bEnd, [next.px, next.py], CONTIG_STUB_PT, cen)[3]
+            const stubTip = continuedStubTip(bEnd, aLast, edgeStrip(bEnd, [next.px, next.py], CONTIG_STUB_PT, cen)[3])
             if (alongRoad(bEnd, stubTip, axEnd)) inner.push(offshootTip(bEnd, stubTip))
           } else {
             inner.push(offshootTip(bEnd, [bEnd[0] + axEnd[0] * CONTIG_STUB_PT, bEnd[1] + axEnd[1] * CONTIG_STUB_PT]))
@@ -474,6 +475,11 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         to: connected?.has(geometry.vertices[(i + 1) % n].letter),
       })
       const st = edgeStrip(a, b, CONTIG_STUB_PT, cen) // st[3]=a+out, st[2]=b+out
+      // Each stub keeps the direction of the figure's own adjacent side (see continuedStubTip), not the
+      // perpendicular to the side it abuts.
+      const pa = subjPt[(i - 1 + n) % n], pb = subjPt[(i + 2) % n]
+      const tipA = continuedStubTip(a, [pa.px, pa.py], st[3])
+      const tipB = continuedStubTip(b, [pb.px, pb.py], st[2])
       // A stub whose line the neighbour's own boundary already draws is not
       // drawn again. The boundary says the neighbour is there AND where it
       // runs; the stub only said the first of those.
@@ -485,8 +491,8 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
       const on = ADJOINING_DASH_ON_MM * PT_PER_MM, off = ADJOINING_DASH_OFF_MM * PT_PER_MM
       doc.save().lineWidth(0.6).strokeColor('#000000')
       const stubs = []
-      if (marks.stubFrom && !dup(a, st[3])) stubs.push([a, st[3]])
-      if (marks.stubTo && !dup(b, st[2])) stubs.push([b, st[2]])
+      if (marks.stubFrom && !dup(a, tipA)) stubs.push([a, tipA])
+      if (marks.stubTo && !dup(b, tipB)) stubs.push([b, tipB])
       for (const [s0, s1] of stubs) {
         for (const [q0, q1] of dashSegments(s0, s1, on, off)) {
           doc.moveTo(q0[0], q0[1]).lineTo(q1[0], q1[1])

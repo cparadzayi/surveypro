@@ -17,7 +17,7 @@ import { DxfDocument } from './dxf-r12.js';
 // abutting neighbour is marked identically on every document. contiguousMarks'
 // own docblock names that as its purpose; the working plan is the fourth
 // consumer. Both are coordinate-space agnostic, so they work in ground units.
-import { contiguousMarks, CONTIG_STUB_MM } from '../diagram/contiguousMarks.js';
+import { contiguousMarks, continuedStubTip, CONTIG_STUB_MM } from '../diagram/contiguousMarks.js';
 import { edgeStrip } from '../diagram/edgeStrip.js';
 import { NORTH_ARROW_TEMPLATE } from '../diagram/diagramLayout.js';
 import { SI727_SCALE_LADDER } from '../../../../app-shared/si727Scales.js';
@@ -1666,8 +1666,17 @@ const crowded = crowdedClusters(
       const dx = (ux / len) * r, dy = (uy / len) * r;
       d.line([at[0] + dx, at[1] + dy], [end[0] + dx, end[1] + dy], { layer: 'ADJOINING' });
     };
-    if (marks.stubFrom) stub(A, st[3], a.symbol);
-    if (marks.stubTo) stub(B, st[2], b.symbol);
+    // Each stub keeps the direction of the figure's own adjacent side, not the perpendicular to the side it abuts.
+    const names = host.filter((n) => byName.has(n));
+    const nn = names.length, iA = names.indexOf(c.from), iB = names.indexOf(c.to);
+    const at = (k) => { const g = G(names[((k % nn) + nn) % nn]); return [g.e, g.n]; };
+    let advA = null, advB = null;
+    if (iA >= 0 && iB >= 0) {
+      if ((iA + 1) % nn === iB) { advA = at(iA - 1); advB = at(iB + 1); }
+      else if ((iB + 1) % nn === iA) { advA = at(iA + 1); advB = at(iB - 1); }
+    }
+    if (marks.stubFrom) stub(A, continuedStubTip(A, advA, st[3]), a.symbol);
+    if (marks.stubTo) stub(B, continuedStubTip(B, advB, st[2]), b.symbol);
   }
 
   /* ---- road and servitude names, set along the line they belong to */

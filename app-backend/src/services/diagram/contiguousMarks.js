@@ -80,6 +80,38 @@ export function dashSegments(a, b, onUnits, offUnits) {
   return out
 }
 
+/**
+ * Where an abutment stub ends: on the line of the SUBJECT's own side, carried on past the corner.
+ *
+ * A neighbour abutting a side shares that side with the figure, and where its boundary leaves the corner it
+ * leaves along the figure's other side there, not square to the side it abuts: the stub marks that
+ * boundary, so it keeps the direction the parcel under survey was running. At a right angle the two are the
+ * same line; at any other corner the perpendicular put the stub on land the neighbour does not hold.
+ *
+ * @param {[number, number]} corner     The terminal the stub springs from.
+ * @param {[number, number]|null} adj   The figure's vertex on the far side of `corner` from the abutting side,
+ *                                      i.e. the other end of the adjacent side. Null when there is none.
+ * @param {[number, number]} outwardTip The old stub end, perpendicular and outward: its length is the stub's,
+ *                                      and it is the answer where the figure's own line cannot be used.
+ * @returns {[number, number]} the stub's end, the same length as `outwardTip`'s stub.
+ *
+ * The figure's line is used only if it leaves the figure: carried on past a REFLEX corner it would run back
+ * into the parcel, and one that runs nearly along the abutting side is no boundary of a neighbour at all, so
+ * either falls back to the perpendicular.
+ */
+export function continuedStubTip(corner, adj, outwardTip) {
+  if (!adj) return outwardTip
+  const ox = outwardTip[0] - corner[0], oy = outwardTip[1] - corner[1]
+  const length = Math.hypot(ox, oy)
+  const dx = corner[0] - adj[0], dy = corner[1] - adj[1]
+  const dl = Math.hypot(dx, dy)
+  if (!(length > 0) || !(dl > 0)) return outwardTip
+  const ux = dx / dl, uy = dy / dl
+  // how far it points away from the abutting side: 1 = square to it, 0 = along it, negative = into the figure
+  if ((ux * ox + uy * oy) / length < 0.15) return outwardTip
+  return [corner[0] + ux * length, corner[1] + uy * length]
+}
+
 export function contiguousMarks(a, b, end, suppress) {
   const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
   const e = end || 'both'

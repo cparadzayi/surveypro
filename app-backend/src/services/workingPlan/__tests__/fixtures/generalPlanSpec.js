@@ -48,3 +48,26 @@ export function generalPlanSpec(rows = partyWallRows()) {
     inset: { scale: 25000, beacons: [{ name: 'ST1', X: 2246800, Y: 97900, symbol: 'ws' }] },
   }
 }
+
+/**
+ * The Maglas General Plan as a surveyor's real project (FCMAG3, Shabani): the eight beacons of the outside
+ * figure, the long side tagged "Road", no locality inset. Coordinates as the project stores them.
+ */
+export function maglasNoInsetSpec() {
+  const P = (name, y, x) => ({ name, X: x, Y: y, symbol: 'placed', label: 'auto' })
+  const beacons = [
+    P('M18', 97333.44, 2247645.31), P('M21', 97408.7, 2247602.54), P('M22', 97460.67, 2247689.71),
+    P('M23', 97531.6, 2247646.94), P('M24', 97584.11, 2247733.56), P('M25', 97385.41, 2247734.11),
+    P('M26', 97301.26, 2247785.72), P('M27', 97352.41, 2247873.21),
+  ]
+  const g = (n) => beacons.find((b) => b.name === n)
+  const mx = (g('M24').X + g('M27').X) / 2, my = (g('M24').Y + g('M27').Y) / 2
+  return {
+    kind: 'general', scale: 'auto', orientation: 'portrait', beacons,
+    parcels: [{ label: 'STANDS 1294 - 1421, 1423, 1425, 1427 - 1437, 1869', ring: ['M21', 'M18', 'M25', 'M26', 'M27', 'M24', 'M23', 'M22'] }],
+    title: ['WORKING PLAN OF', 'STANDS 1294 - 1421, 1423, 1425, 1427 - 1437, 1869 MAGLAS TOWNSHIP', 'OF SHABANI MINE SURFACE RIGHTS A', 'SHABANI DISTRICT'],
+    certificate: { line1: 'Surveyed in May 2021 by me,', line2: 'Land Surveyor' }, approvalBox: true,
+    notes: [{ text: 'Road', X: mx + 14, Y: my + 20 }],
+    partyWalls: partyWallRows(56),
+  }
+}

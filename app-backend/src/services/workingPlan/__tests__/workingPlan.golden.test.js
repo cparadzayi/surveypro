@@ -1397,10 +1397,10 @@ describe('generateWorkingPlan — golden', () => {
       }
     })
 
-    test('keeps the ticks far enough apart to read as a framework', () => {
+    test('keeps the ticks far enough apart to read as a framework (8 mm: the outside-the-figure pass may go finer than the old 15)', () => {
       for (const scale of [500, 1000, 1500, 2000, 5000]) {
         const r = generateWorkingPlan({ ...brackenhurstSpec, scale })
-        expect([scale, (r.gridInterval.e / scale) * 1000 >= 15]).toEqual([scale, true])
+        expect([scale, (r.gridInterval.e / scale) * 1000 >= 8]).toEqual([scale, true])
       }
     })
 

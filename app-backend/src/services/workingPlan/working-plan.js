@@ -318,7 +318,7 @@ export function partyTableShape(rows, availH) {
  * edge; the locality inset and the north arrow sit beside it under the title; the figure (the outside figure
  * alone, not its stands) fills the lower right, with the certificate beneath it.
  */
-function generalPortraitLayout(rows, margin = PRINT_MARGIN_MM, sheet = SHEET_PORTRAIT) {
+function generalPortraitLayout(rows, margin = PRINT_MARGIN_MM, sheet = SHEET_PORTRAIT, withInset = true) {
   const B = MEASURED_LANDSCAPE;
   const W = sheet.width, H = sheet.height;
   const A = B.approval;
@@ -333,9 +333,11 @@ function generalPortraitLayout(rows, margin = PRINT_MARGIN_MM, sheet = SHEET_POR
   return {
     ...B,
     border: { x0: margin, y0: margin, x1: W - margin, y1: H - margin },
-    panel: { x0: rx0, y0: 128, x1: right - 6, y1: H - margin - 30 },
+    // With no inset to hold, the paper under the title is the figure's (and the grid's), the north point moves to the
+    // top right, and the panel starts just below it: round the figure there is room for the crosses.
+    panel: { x0: rx0, y0: withInset ? 128 : 92, x1: right - 6, y1: H - margin - 30 },
     title: { cx: (left + ax - 4) / 2, baselines: [18, 27, 36, 45], scaleBaseline: 52 },
-    northArrow: { ...B.northArrow, cx: rx0 + 12, cy: 82, refCy: B.northArrow.cy },
+    northArrow: { ...B.northArrow, cx: withInset ? rx0 + 12 : right - 14, cy: withInset ? 82 : 70, refCy: B.northArrow.cy },
     approval: {
       box: { x0: ax, y0: ay, x1: ax + boxW, y1: ay + boxH },
       approvedBaseline: A.approvedBaseline + dy,
@@ -350,6 +352,8 @@ function generalPortraitLayout(rows, margin = PRINT_MARGIN_MM, sheet = SHEET_POR
       line2: { x: Math.min(rx0 + 8, W - margin - 72) + (B.certificate.line2.x - B.certificate.line1.x), baseline: H - margin - 12 },
     },
     inset: { ...B.inset, box: { x0: rx0 + 28, y0: 58, x1: right, y1: 124 } },
+    // false when the sheet has no inset: the box is then not a block, and its paper is the figure's
+    insetReserved: withInset,
     srNumber: { cx: W / 2, baseline: H - margin - 3.5 },
     partyTable: { x0: left, y0: tableTop, y1: tableBottom, ...shape },
   };
@@ -363,7 +367,7 @@ export function layoutFor(orientation, opts = {}) {
   const size = opts.size === 'A3' ? 'A3' : 'A4';
   if (opts.general) {
     const sheet = paper(size, 'portrait');
-    return { orientation: 'portrait', size, sheet, layout: generalPortraitLayout(opts.rows ?? 0, PRINT_MARGIN_MM, sheet) };
+    return { orientation: 'portrait', size, sheet, layout: generalPortraitLayout(opts.rows ?? 0, PRINT_MARGIN_MM, sheet, opts.withInset !== false) };
   }
   if (orientation === 'portrait') {
     const sheet = paper(size, 'portrait');
@@ -485,6 +489,9 @@ const SMALLER_THAN_READING_MM = 1.8;
  *  interval indefinitely. */
 const MIN_TICK_SPACING_MM = 15;
 
+/** The finest lattice the outside-the-figure pass will try, in paper millimetres. */
+const MIN_TICK_SPACING_OUTSIDE_MM = 8;
+
 /** How far a cross keeps off a boundary line, in paper millimetres. Enough to
  *  read as a separate mark; not so much that it cannot sit on the drawing. */
 const GRID_LINE_CLEARANCE_MM = 7;
@@ -583,6 +590,61 @@ function symbolClearance(symbol) {
  * The point of a polygon farthest from every edge, to a few metres: where a long label has the most room. An
  * L-shaped outside figure has its centroid on or near an edge, which is not a place to letter anything.
  */
+/**
+ * Where a multi-line label lies wholly inside a polygon with the most room round it.
+ * Tries the widest wrapping first (fewest lines); a wrapping that fits with `margin` to spare wins, else the
+ * wrapping and place with the greatest clearance. `hits` (optional) vetoes a place that lies on something else.
+ * Returns {lines, x, y}: the centre of the block of lines in the polygon's own units.
+ */
+export function fitLabelInPolygon(pts, wrapAt, textH, hits = () => false, margin = textH * 0.6) {
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const inside = (x, y) => {
+    let c = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      if ((pts[i][1] > y) !== (pts[j][1] > y)
+        && x < ((pts[j][0] - pts[i][0]) * (y - pts[i][1])) / (pts[j][1] - pts[i][1]) + pts[i][0]) c = !c;
+    }
+    return c;
+  };
+  const edgeDist = (x, y) => {
+    let m = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const ux = b[0] - a[0], uy = b[1] - a[1];
+      const t = Math.max(0, Math.min(1, ((x - a[0]) * ux + (y - a[1]) * uy) / (ux * ux + uy * uy || 1)));
+      m = Math.min(m, Math.hypot(x - (a[0] + ux * t), y - (a[1] + uy * t)));
+    }
+    return m;
+  };
+  let best = null;
+  const N = 56;
+  for (const W of [34, 28, 22, 18, 14, 11]) {
+    const lines = wrapAt(W);
+    const w = 0.63 * textH * Math.max(...lines.map((l) => l.length));
+    const h = textH * 1.4 * lines.length;
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        const cx = x0 + ((x1 - x0) * i) / N, cy = y0 + ((y1 - y0) * j) / N;
+        // the block's outline sampled round its edge and in the middle: every sample must be inside, and the
+        // least distance from any of them to the polygon's edge is the room it has
+        let room = Infinity;
+        for (const [dx, dy] of [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]) {
+          const px = cx + (dx * w) / 2, py = cy + (dy * h) / 2;
+          if (!inside(px, py)) { room = -1; break; }
+          room = Math.min(room, edgeDist(px, py));
+        }
+        if (room < 0) continue;
+        if (hits([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2])) continue;
+        if (!best || room > best.room) best = { room, lines, x: cx, y: cy };
+      }
+    }
+    if (best && best.room >= margin) break;           // fits comfortably at this wrapping: take it
+  }
+  if (!best) { const [x, y] = roomiestPoint(pts); return { lines: wrapAt(30), x, y }; }
+  return { lines: best.lines, x: best.x, y: best.y };
+}
+
 export function roomiestPoint(pts) {
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
@@ -631,12 +693,17 @@ export function wrapAtCommas(text, max) {
   return lines.length ? lines : [String(text)];
 }
 
-function renderWorkingPlan(spec) {
+/**
+ * One drawing of the sheet. A General Plan with no locality inset is laid out without the inset's room; if the
+ * sheet then turns out to need an inset after all (a crowded mark, a far control point), it is drawn again with
+ * the room kept (renderWorkingPlan, below).
+ */
+function renderOnce(spec) {
   // A General Plan's working plan draws the outside figure and a party-wall table; a diagrams-only survey's
   // draws its stands. `spec.kind` says which; absent means the stands (the original sheet).
   const general = spec.kind === 'general';
   const partyRows = general ? (spec.partyWalls ?? []) : [];
-  const { orientation, size, sheet, layout: L } = layoutFor(spec.orientation, { size: spec.sheetSize, ...(general ? { general: true, rows: partyRows.length } : {}) });
+  const { orientation, size, sheet, layout: L } = layoutFor(spec.orientation, { size: spec.sheetSize, ...(general ? { general: true, rows: partyRows.length, withInset: !!spec.inset || !!spec.reserveInset } : {}) });
   const byName = new Map(spec.beacons.map((b) => {
     // The name is authoritative for a reference mark: RM16 with no description
     // or status still plots as the circle-with-a-cross, not as a peg.
@@ -822,7 +889,9 @@ const crowded = crowdedClusters(
   doc.addLinetype('PLANDOT', 'Leader dots . . . . . . . .',
     [mm(LINETYPES.PLANDOT.on + LINETYPES.PLANDOT.off),
       mm(LINETYPES.PLANDOT.on), -mm(LINETYPES.PLANDOT.off)]);
-  for (const [n, c, lt] of LAYERS) doc.addLayer(n, c, lt, L.lineweight);
+  // The General Plan's outside figure is drawn in black: it is the one boundary on the sheet and the layer
+  // is its alone (the stands are not drawn).
+  for (const [n, c, lt] of LAYERS) doc.addLayer(n, general && n === 'BOUNDARY-NEW' ? 7 : c, lt, L.lineweight);
   doc.addStyle('ARIAL', 'arial.ttf');
   doc.addStyle('ARIAL-BOLD', 'arialbd.ttf');
   doc.addStyle('SERIF', 'times.ttf');
@@ -1283,13 +1352,20 @@ const crowded = crowdedClusters(
       drawBoundary(pts[k], pts[j], p.ring[k], p.ring[j], 'BOUNDARY-NEW');
     }
     areas[p.label] = ringArea(pts);
-    const [cx, cy] = p.labelAt ? Object.values(loToGround(p.labelAt)) : (general ? roomiestPoint(pts) : centroid(pts));
+    let [cx, cy] = p.labelAt ? Object.values(loToGround(p.labelAt)) : (general ? roomiestPoint(pts) : centroid(pts));
     // The stand number is reserved so beacon names and grid ticks keep off it.
     // It was written blind before, and anything placed later could sit on it.
     // The General Plan's one label names every stand the outside figure holds ("STANDS 1294 - 1421, 1423, ...")
     // and runs to dozens of characters, so it is set smaller and broken at its commas into short lines.
     const ph = mm(general ? 2.8 : L.text.parcel);
-    const lines = general ? wrapAtCommas(p.label, 30) : [p.label];
+    let lines = general ? wrapAtCommas(p.label, 30) : [p.label];
+    if (general && !p.labelAt) {
+      // The label is as long as the stands it names, so it is fitted to the figure: the widest wrapping that
+      // lies wholly inside the outline with daylight round it, at the place with the most room. Broken into
+      // more, shorter lines only as far as that takes.
+      const fit = fitLabelInPolygon(pts, (W) => wrapAtCommas(p.label, W), ph, hits);
+      lines = fit.lines; cx = fit.x; cy = fit.y;
+    }
     const top = cy - ph / 2 + ((lines.length - 1) * ph * 1.4) / 2;   // the block is centred on the figure
     lines.forEach((line, i) => {
       const y = top - i * ph * 1.4;
@@ -1417,7 +1493,7 @@ const crowded = crowdedClusters(
   const na0 = L.northArrow;
   const blocks = [
     blockRect(L.approval.box.x0 - 1, L.approval.box.y0 - 1, L.approval.box.x1 + 1, L.approval.box.y1 + 1),
-    blockRect(L.inset.box.x0 - 1, L.inset.box.y0 - 1, L.inset.box.x1 + 1, L.inset.box.y1 + 1),
+    ...(L.insetReserved === false ? [] : [blockRect(L.inset.box.x0 - 1, L.inset.box.y0 - 1, L.inset.box.x1 + 1, L.inset.box.y1 + 1)]),
     blockRect(na0.cx - 9, na0.cy - 14, na0.cx + 9, na0.cy + na0.south * na0.mainScale + 6),
     blockRect(L.certificate.line1.x - 1, L.certificate.line1.baseline - 6, L.certificate.line1.x + 80, L.certificate.line1.baseline + 2),
     blockRect(L.certificate.line2.x - 1, L.certificate.line2.baseline - 6, L.certificate.line2.x + 60, L.certificate.line2.baseline + 2),
@@ -1435,7 +1511,9 @@ const crowded = crowdedClusters(
    *  the pair actually occupy. Shared by the lattice walk below and by the
    *  fallback that guarantees a cross when the figure leaves the walk nothing,
    *  so the two can never disagree about what a readable cross needs. */
-  const gw = mm(L.gridLabel.xDx + GRID_CHAR_EM * L.text.grid * 13);
+  // "X = +2247850" measured on a rendered plan: 21.5 mm of text beyond its 4.45 mm offset. The estimate had been
+  // 1 mm short, which let a road name be set over the end of a figure.
+  const gw = mm(L.gridLabel.xDx + 22);
   const drop = mm(L.gridLabel.yStartDy + 12);
   const near = arm + mm(2);
   const labH = mm(L.text.grid);
@@ -1444,6 +1522,16 @@ const crowded = crowdedClusters(
     const flipX = side.startsWith('left') ? -1 : 1;
     const gx = flipX > 0 ? e + gw : e - gw;
     const yLx = e + flipX * mm(L.gridLabel.yDx);
+    // 'Up': the northing figure reads down INTO the cross from above it, so a cross can stand just above a
+    // figure instead of needing the room below it. Its box runs from the cross up to the figure's far end.
+    if (side.endsWith('Up')) {
+      return [
+        Math.min(e - near, gx, yLx),
+        n - near,
+        Math.max(e + near, gx, yLx + labH),
+        n + mm(L.gridLabel.yStartDy) + yLabelReach(e),
+      ];
+    }
     const yLy = n - mm(L.gridLabel.yStartDy);
     return [
       Math.min(e - near, gx, yLx),
@@ -1515,7 +1603,7 @@ const crowded = crowdedClusters(
       // half is full of boundaries they all fell to the open ground along the
       // bottom.
       if (!segments.every((s) => distToSegment([e, n], s[0], s[1]) > mm(GRID_LINE_CLEARANCE_MM))) return null;
-      for (const s of ['rightDown', 'leftDown']) {
+      for (const s of ['rightDown', 'leftDown', 'rightUp', 'leftUp']) {
         const r = guard(e, n, s);
         if (outsideOnly ? (withinRoom(r) && !clashes(r) && !rectTouchesFigure(r)) : (insidePanel(r) && !clashes(r))) return { rect: r, side: s };
       }
@@ -1609,7 +1697,9 @@ const crowded = crowdedClusters(
     let best = null;
     for (let k = GRID_INTERVALS.indexOf(pick()); k >= 0; k--) {
       const cand = GRID_INTERVALS[k];
-      if ((cand / scale) * 1000 < MIN_TICK_SPACING_MM) break;
+      // The outside pass may go finer (a figure with little paper round it needs more nodes to find four that
+      // stand clear); it still draws only a handful of crosses, so a finer lattice does not crowd the sheet.
+      if ((cand / scale) * 1000 < (outsideOnly ? MIN_TICK_SPACING_OUTSIDE_MM : MIN_TICK_SPACING_MM)) break;
       // Figures kept clear of each other first; a dense sheet that cannot find its four crosses that way
       // takes the ones that touch rather than lose a reference.
       let t = layGrid(cand, 2.5, outsideOnly);
@@ -1668,15 +1758,15 @@ const crowded = crowdedClusters(
     // offsets reflected, with the easting set right-aligned when it reads
     // leftward so it still ends at the cross rather than starting there.
     const flipX = side.startsWith('left') ? -1 : 1;
-    const flipY = 1;
+    const flipY = side.endsWith('Up') ? -1 : 1;
     d.text(`X = ${Xlo >= 0 ? '+' : ''}${Xlo.toFixed(0)}`,
-      [e + flipX * mm(L.gridLabel.xDx), n - flipY * mm(L.gridLabel.xBaselineDy)], gh,
+      [e + flipX * mm(L.gridLabel.xDx), n - mm(L.gridLabel.xBaselineDy)], gh,
       { layer: 'GRID-TEXT', style: 'ARIAL', ...(flipX < 0 ? { align: 'right' } : {}) });
     // The northing reads up the sheet; sent the other way it starts above the
     // cross instead of below it, so its run is measured from the far end.
     const yStart = flipY > 0
       ? n - mm(L.gridLabel.yStartDy)
-      : n + mm(L.gridLabel.yStartDy) - mm(0.63 * L.text.grid * 13);
+      : n + mm(L.gridLabel.yStartDy) + GRID_CHAR_EM * gh * `Y = ${Ylo.toFixed(0)}`.length;
     d.text(`Y = ${Ylo.toFixed(0)}`,
       [e + flipX * mm(L.gridLabel.yDx), yStart], gh,
       { layer: 'GRID-TEXT', style: 'ARIAL', rotation: -90 });
@@ -2857,7 +2947,7 @@ const crowded = crowdedClusters(
   // sheetSize is reported so the caller can tell the surveyor -- and the plot
   // dialog -- which paper this was drawn for.
   const out = {
-    dxf: doc.toString(), scale, gridInterval, gridTicks: placed, gridTicksInFigure: ticks.filter((t) => inFigure(t.e, t.n)).length, insetTicks, areas, kind: general ? 'general' : 'diagrams', partyWallRows: partyRows.length,
+    dxf: doc.toString(), scale, gridInterval, gridTicks: placed, gridTicksInFigure: ticks.filter((t) => inFigure(t.e, t.n)).length, insetTicks, areas, kind: general ? 'general' : 'diagrams', partyWallRows: partyRows.length, insetCount: insets.length,
     sheetSize: size, orientation, sheetWidthMm: sheet.width, sheetHeightMm: sheet.height,
   };
   // What the PDF is drawn from: the same shapes the DXF holds, and the transform that puts them on the
@@ -2880,6 +2970,14 @@ const crowded = crowdedClusters(
  * instruction, and the way up is theirs too: it is never flipped to fit. The result says what was chosen
  * (`sheetSize`) and, when it went up, why (`escalation`), so the plot dialog and the surveyor can be told.
  */
+function renderWorkingPlan(spec) {
+  const out = renderOnce(spec);
+  if (spec.kind === 'general' && !spec.inset && !spec.reserveInset && out.insetCount > 0) {
+    return renderOnce({ ...spec, reserveInset: true });
+  }
+  return out;
+}
+
 export function generateWorkingPlan(spec) {
   const named = spec.sheetSize === 'A3' || spec.sheetSize === 'A4';
   const fixedScale = spec.scale != null && spec.scale !== 'auto';

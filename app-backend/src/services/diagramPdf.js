@@ -583,12 +583,17 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         // projected onto that normal), so its near edge sits at gap + half - extent. Solve
         // that for a fixed CONTIG_LABEL_MARGIN — otherwise a narrow label like "88" nestles
         // onto a diagonal edge while a wider "404" gets pushed clear.
-        let ox = anchor.px - subjCentroid.px, oy = anchor.py - subjCentroid.py
-        const ol = Math.hypot(ox, oy) || 1; ox /= ol; oy /= ol
+        // Straight out from the MIDDLE of the side, square to it. It used to run along the line from the figure's
+        // centre through the midpoint, which is square to the side only on a symmetric figure: on any other the
+        // name slid along the side toward one beacon and the two ends of the side were unequal.
+        const sideX = b[0] - a[0], sideY = b[1] - a[1]
+        const sideLen = Math.hypot(sideX, sideY) || 1
+        let ox = -sideY / sideLen, oy = sideX / sideLen
+        if (ox * (anchor.px - subjCentroid.px) + oy * (anchor.py - subjCentroid.py) < 0) { ox = -ox; oy = -oy }
         const extent = (labelW / 2) * Math.abs(ox) + (labelH / 2) * Math.abs(oy)
         const half = Math.max(labelW, labelH) / 2
         const gap = Math.max(2, CONTIG_LABEL_MARGIN + extent - half)
-        const pos = placeVertexLabel(anchor, subjCentroid, {
+        const pos = placeVertexLabel(anchor, { px: anchor.px - ox, py: anchor.py - oy }, {
           beaconR: 0, gap, labelW, labelH,
           segments: subjSegs.concat(neighbourSegs, labelObstacles),
         })

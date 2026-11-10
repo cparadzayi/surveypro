@@ -297,6 +297,17 @@ function drawConnections(doc, ctx) {
     doc.text(text, cx - tw / 2, cy - fs / 2, { lineBreak: false })
     doc.restore()
 
+    // The distance is a label too: the vertex letters keep off it as they keep off the ray, three strokes
+    // along its length (its middle and both edges) standing for the rotated box.
+    const along = [Math.cos(th), Math.sin(th)]
+    for (const k of [-fs / 2, 0, fs / 2]) {
+      const ox = cx + perp[0] * k, oy = cy + perp[1] * k
+      labelObstacles.push([
+        { px: ox - along[0] * tw / 2, py: oy - along[1] * tw / 2 },
+        { px: ox + along[0] * tw / 2, py: oy + along[1] * tw / 2 },
+      ])
+    }
+
     // The far end's letter, just beyond the tip.
     doc.save().font('Helvetica').fontSize(DIAGRAM_FONTS.label).fillColor('#000000')
     const lw = doc.widthOfString(m.letter)

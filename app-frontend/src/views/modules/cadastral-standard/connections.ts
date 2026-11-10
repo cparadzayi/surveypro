@@ -9,6 +9,8 @@
  * coordinates if the survey is re-adjusted.
  */
 
+import { bankersRound } from '@/utils/dms'
+
 /** One connection, stored against beacon NAMES.
  *
  *  Not vertex letters: letters are assigned by ring index, so re-digitising a
@@ -145,4 +147,114 @@ export function formatBearingDMS(deg: number): string {
   const m = Math.floor((total % 3600) / 60)
   const s = total % 60
   return `${d} ${String(m).padStart(2, '0')} ${String(s).padStart(2, '0')}`
+}
+
+/* ------------------------------------------------------------------------------------------------------------
+ * Connecting data, generated.
+ *
+ * A new subdivision parcel whose side, carried on past its corner, runs to a beacon that already stands on the
+ * remaining extent is tied to that beacon: the Surveyor-General needs the distance along the side to the old
+ * beacon, lettered where the dashed ray ends. Surveyors had to name each of these by hand; they follow from
+ * the coordinates, so they are generated and the surveyor only overrides.
+ * ---------------------------------------------------------------------------------------------------------- */
+
+/** How far off a side's line an old beacon may stand and still be taken to lie on it, in metres. */
+export const CONNECTION_LINE_TOL_M = 0.10
+
+/** A connection can be marked dismissed: the surveyor cleared one the app had generated, and it stays cleared. */
+export interface StoredConnection extends Connection { dismissed?: boolean }
+
+export interface AutoConnectionInput {
+  /** The figure's corners, in ring order, by beacon name ('' for a corner with no coordinated beacon). */
+  corners: string[]
+  /** The beacons of the remaining extent's ring. */
+  remainder: string[]
+  /** Every corner of every NEW parcel of the subdivision. A remainder corner among them is new, not old, and
+   *  is no beacon to connect to: only beacons that stood before the subdivision qualify. */
+  newBeacons: Iterable<string>
+  points: Map<string, LoPoint>
+  tolM?: number
+}
+
+/**
+ * The connections a figure needs, one per corner at most.
+ *
+ * For each corner V, each of its two sides is carried on past V; an OLD remainder beacon E qualifies when it
+ * stands on that line (within `tolM`), ahead of V, with no new beacon between. The nearest qualifying beacon
+ * wins, and where both sides of a corner qualify, the nearer of the two. The distance is rounded to 2 decimal
+ * places by banker's rounding, as every other figure on the diagram is, so what is lettered is what is stored.
+ */
+export function autoConnections(input: AutoConnectionInput): Connection[] {
+  const { corners, remainder, points } = input
+  const tol = input.tolM ?? CONNECTION_LINE_TOL_M
+  const news = new Set([...input.newBeacons].map(String))
+  const olds = [...new Set(remainder.map(String))].filter(n => !news.has(n) && points.has(n))
+  const out: Connection[] = []
+  const n = corners.length
+  if (n < 3 || olds.length === 0) return out
+
+  for (let i = 0; i < n; i++) {
+    const v = corners[i]
+    const V = v ? points.get(v) : undefined
+    if (!V) continue
+    // The two sides at V, as the directions they run in when carried on past V.
+    const rays: LoPoint[] = []
+    for (const j of [(i + n - 1) % n, (i + 1) % n]) {
+      const P = corners[j] ? points.get(corners[j]) : undefined
+      if (!P) continue
+      const len = Math.hypot(V.Y - P.Y, V.X - P.X)
+      if (!(len > 0)) continue
+      rays.push({ Y: (V.Y - P.Y) / len, X: (V.X - P.X) / len })
+    }
+    let best: { name: string; along: number } | null = null
+    for (const dir of rays) {
+      for (const name of olds) {
+        const E = points.get(name)!
+        const dy = E.Y - V.Y, dx = E.X - V.X
+        const along = dy * dir.Y + dx * dir.X
+        if (!(along > tol)) continue
+        if (Math.abs(dy * dir.X - dx * dir.Y) > tol) continue
+        // a new beacon between V and E means the line runs into the subdivision first, not to the old beacon
+        let blocked = false
+        for (const w of news) {
+          if (w === v) continue
+          const W = points.get(w)
+          if (!W) continue
+          const wy = W.Y - V.Y, wx = W.X - V.X
+          const wa = wy * dir.Y + wx * dir.X
+          if (wa > tol && wa < along - tol && Math.abs(wy * dir.X - wx * dir.Y) <= tol) { blocked = true; break }
+        }
+        if (blocked) continue
+        if (!best || along < best.along) best = { name, along }
+      }
+    }
+    if (!best) continue
+    const conn = makeConnection(v, best.name, points)
+    if (conn) out.push({ ...conn, distanceM: bankersRound(conn.distanceM, 2) })
+  }
+  return out
+}
+
+/**
+ * What a figure draws: the generated connections, with the surveyor's own over them. A stored connection from
+ * a beacon replaces the generated one from it; a stored dismissal removes it. A stored connection from a beacon
+ * the app would not generate stands as it was entered.
+ */
+export function mergeConnections(auto: Connection[], stored: StoredConnection[]): Connection[] {
+  const have = new Set((stored ?? []).map(c => c.fromBeacon))
+  const mine = (stored ?? []).filter(c => !c.dismissed)
+  return [...mine, ...(auto ?? []).filter(c => !have.has(c.fromBeacon))]
+}
+
+/** Clear a connection. One the app generated cannot simply be removed (it would come straight back), so a
+ *  dismissal is stored in its place; one the surveyor entered is just removed. */
+export function dismissConnection(
+  stored: StoredConnection[],
+  fromBeacon: string,
+  generated: boolean,
+): StoredConnection[] {
+  const rest = (stored ?? []).filter(c => c.fromBeacon !== fromBeacon)
+  return generated
+    ? [...rest, { fromBeacon, toBeacon: '', distanceM: 0, bearingDeg: 0, dismissed: true }]
+    : rest
 }

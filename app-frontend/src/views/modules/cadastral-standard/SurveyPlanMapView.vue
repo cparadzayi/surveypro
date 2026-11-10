@@ -474,7 +474,7 @@ import { listCoordinatePoints, updateLandParcel } from '@/services/spatial'
 import { listAdoptedBeacons } from '@/services/adoptedBeacons'
 import { saveDocument } from '@/services/documentStorage'
 import { generateWorkingPlanDXF, generateWorkingPlanPDF } from '@/services/workingPlan'
-import { buildWorkingPlanSpec, workingPlanEmptyReason, controlPointsForInset, selectedControlPointIds } from './workingPlanSpec'
+import { buildWorkingPlanSpec, workingPlanEmptyReason, controlPointsForInset, selectedControlPointIds, ringNames } from './workingPlanSpec'
 import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
 import { dispensationFromWorkflow } from '@/composables/useDispensationCertificate'
 import { dsgCertificateFromWorkflow } from '@/composables/useDSGCertificate'
@@ -514,7 +514,8 @@ import { describeComposition } from '@/utils/recordComposition'
 import { subjectSides, annotationsForSubject, hydrateAnnotationsMap, type SideAnnotation } from './sideAnnotations'
 import { hydrateServitudes, buildPartyWallStatementRows, type PartyWallStatementRow } from './servitudes'
 import type { PartyWallRow } from '@/utils/fieldBookPagination'
-import { makeConnection, upsertConnection, removeConnection, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type LoPoint } from './connections'
+import { makeConnection, upsertConnection, dismissConnection, autoConnections, mergeConnections, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type StoredConnection, type LoPoint } from './connections'
+import { isRemainderParcel } from '@/utils/designationParcels'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation, composeSurveySource } from '@/utils/planDesignation';
@@ -691,11 +692,31 @@ const sideAnnotationsBySubject = ref<Record<string, SideAnnotation[]>>({})
 const servitudeStatementRows = ref<PartyWallStatementRow[]>([])
 // Connecting data: the tie from a new beacon to a parent beacon of the survey
 // being subdivided. Keyed by subject parcel, like the side annotations.
-const connectionsBySubject = ref<Record<string, Connection[]>>({})
-const currentConnections = computed<Connection[]>(() => {
+const connectionsBySubject = ref<Record<string, StoredConnection[]>>({})
+/** What the surveyor has entered or cleared for this subject. The generated ones are not stored here. */
+const storedConnections = computed<StoredConnection[]>(() => {
   const id = selectedDiagramParcelId.value
   return id == null ? [] : (connectionsBySubject.value[String(id)] ?? [])
 })
+/**
+ * The connecting data the coordinates imply: a side of this figure that runs on, past its corner, to a beacon
+ * that already stood on the remaining extent is tied to it (distance to 2 dp, banker's rounding). Generated
+ * for a diagram only, and only once the subdivision has a remaining extent to connect to.
+ */
+const generatedConnections = computed<Connection[]>(() => {
+  if (!isDiagramMode.value || selectedDiagramParcelId.value == null) return []
+  const list = Array.isArray(parcels.value) ? parcels.value : []
+  const rem = list.find(p => isRemainderParcel(p)) ?? getOutsideFigureParcel()
+  if (!rem) return []
+  const remainder = ringNames(rem)
+  if (remainder.length < 3) return []
+  const corners = subjectVertexBeacons().map(v => v.beacon)
+  const newBeacons = new Set<string>(corners.filter(Boolean))
+  for (const p of list) if (p !== rem && p?.id !== rem?.id) for (const n of ringNames(p)) newBeacons.add(n)
+  return autoConnections({ corners, remainder, newBeacons, points: loPointsByName() })
+})
+/** What the figure shows and the diagram carries: the generated connections, with the surveyor's own over them. */
+const currentConnections = computed<Connection[]>(() => mergeConnections(generatedConnections.value, storedConnections.value))
 const activeConnectionEditor = ref<{ fromBeacon: string; letter: string; toBeacon: string } | null>(null)
 const currentSideAnnotations = computed(() => annotationsForSubject(sideAnnotationsBySubject.value, selectedDiagramParcelId.value))
 const selectedDiagramStand = computed(() => {
@@ -2475,7 +2496,7 @@ function saveConnectionEditor() {
   const key = String(selectedDiagramParcelId.value)
   connectionsBySubject.value = {
     ...connectionsBySubject.value,
-    [key]: upsertConnection(currentConnections.value, conn),
+    [key]: upsertConnection(storedConnections.value, conn),
   }
   activeConnectionEditor.value = null
   updateSubjectVerticesLayer()
@@ -2488,7 +2509,7 @@ function clearConnectionEditor() {
   const key = String(selectedDiagramParcelId.value)
   connectionsBySubject.value = {
     ...connectionsBySubject.value,
-    [key]: removeConnection(currentConnections.value, ed.fromBeacon),
+    [key]: dismissConnection(storedConnections.value, ed.fromBeacon, generatedConnections.value.some(c => c.fromBeacon === ed.fromBeacon)),
   }
   activeConnectionEditor.value = null
   updateSubjectVerticesLayer()

@@ -888,10 +888,10 @@ describe('generateWorkingPlan — golden', () => {
       // there is a test below that holds them to zero.
       // At 10 pt (7 Nov 2026) the same name also reaches the stand label 404: two overlaps now, both of this
       // one letter-spaced name, and still nothing else on the sheet.
-      expect(auditAll(dxf).overlaps).toEqual([
-        'PARCEL-TEXT:404 <-> ROAD-TEXT:K  L  E  I  N     R  O  A  D',
-        'GRID-TEXT:Y = -85600 <-> ROAD-TEXT:K  L  E  I  N     R  O  A  D',
-      ])
+      // FIXED, as a side effect, once the coordinate grid kept off the outside figure: the cross whose figure this
+      // name used to land on stood inside the figure, and the grid now stands round it, so the road finds room.
+      // Left asserting NONE so the overlap cannot come back unnoticed.
+      expect(auditAll(dxf).overlaps).toEqual([])
     })
 
     test('no road name overwrites anything when it is not letter-spaced', () => {

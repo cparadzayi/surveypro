@@ -1395,6 +1395,39 @@ const crowded = crowdedClusters(
   const [pe0] = S(L.panel.x0 + inset, 0), [pe1] = S(L.panel.x1 - inset, 0);
   const pn1 = S(0, L.panel.y0 + inset)[1], pn0 = S(0, L.panel.y1 - inset)[1];
 
+  /* The outside figure, for keeping the grid off it: the stands' rings and the remaining extent's, as ground
+   * polygons. A point is "in the figure" when any of them holds it. */
+  const figureRings = [...(spec.parcels ?? []).map((p) => p.ring ?? []), spec.remainderRing ?? []]
+    .map((r) => r.filter((n) => byName.has(n)).map((n) => [G(n).e, G(n).n]))
+    .filter((r) => r.length >= 3);
+  const inFigure = (e, n) => figureRings.some((poly) => pointInPolygon([e, n], poly));
+  /** A cross's figures reach over the drawing: true when any corner or the middle of their rectangle does. */
+  const rectTouchesFigure = (r) => inFigure((r[0] + r[2]) / 2, (r[1] + r[3]) / 2)
+    || [[r[0], r[1]], [r[2], r[1]], [r[0], r[3]], [r[2], r[3]]].some(([e, n]) => inFigure(e, n));
+
+  /* The paper a cross may use when it stays OUTSIDE the figure: the panel and the margin round it, up to the neat
+   * line, but never the blocks the sheet keeps for something else. A figure that fills its panel leaves almost
+   * nothing outside it within the panel, and four crosses need room round the drawing, not inside it. */
+  const blockRect = (x0, y0, x1, y1) => {
+    const a = S(x0, y0), b = S(x1, y1);
+    return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])];
+  };
+  const bd = L.border;
+  const roomBox = blockRect(bd.x0 + 4, bd.y0 + 4, bd.x1 - 4, bd.y1 - 4);
+  const na0 = L.northArrow;
+  const blocks = [
+    blockRect(L.approval.box.x0 - 1, L.approval.box.y0 - 1, L.approval.box.x1 + 1, L.approval.box.y1 + 1),
+    blockRect(L.inset.box.x0 - 1, L.inset.box.y0 - 1, L.inset.box.x1 + 1, L.inset.box.y1 + 1),
+    blockRect(na0.cx - 9, na0.cy - 14, na0.cx + 9, na0.cy + na0.south * na0.mainScale + 6),
+    blockRect(L.certificate.line1.x - 1, L.certificate.line1.baseline - 6, L.certificate.line1.x + 80, L.certificate.line1.baseline + 2),
+    blockRect(L.certificate.line2.x - 1, L.certificate.line2.baseline - 6, L.certificate.line2.x + 60, L.certificate.line2.baseline + 2),
+    blockRect(L.srNumber.cx - 45, L.srNumber.baseline - 6, L.srNumber.cx + 45, L.srNumber.baseline + 2),
+    ...(L.partyTable ? [blockRect(L.partyTable.x0 - 1, L.partyTable.y0 - 1,
+      L.partyTable.x0 + L.partyTable.blocks * 45 + 1, L.partyTable.y1 + 1)] : []),
+  ];
+  const withinRoom = (r) => r[0] >= roomBox[0] && r[2] <= roomBox[2] && r[1] >= roomBox[1] && r[3] <= roomBox[3]
+    && !blocks.some((o) => r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]);
+
   /** Which corner of the figure a tick falls in. */
   const quadrantOf = (e, n) => `${e < figCx ? 'L' : 'R'}${n < figCy ? 'B' : 'T'}`;
 
@@ -1422,7 +1455,7 @@ const crowded = crowdedClusters(
 
   /** Where an interval's ticks would go. Reads `occupied` but never adds to it,
    *  so an interval can be tried and abandoned; only the chosen one is drawn. */
-  const layGrid = (gi, gap = 2.5) => {
+  const layGrid = (gi, gap = 2.5, outsideOnly = true) => {
     const out = [];
     // Two crosses' figures are kept a couple of millimetres apart: the width above is an estimate, and
     // an estimate that ends exactly where the next figure begins prints one over the other.
@@ -1472,6 +1505,9 @@ const crowded = crowdedClusters(
      *  is given up; flipping a label costs nothing, losing a tick costs the
      *  reader a reference. */
     const crossAt = (e, n) => {
+      // Never inside the outside figure: a coordinate mark belongs around the drawing, where it brackets
+      // the ground, not over the stands it is meant to reference.
+      if (outsideOnly && inFigure(e, n)) return null;
       // Clear of the BOUNDARIES by enough that the cross reads as a cross and
       // not as part of the figure -- but no more. A coordinate grid is drawn
       // ACROSS a plan, not squeezed into the gaps around it; at 7 mm the
@@ -1481,7 +1517,7 @@ const crowded = crowdedClusters(
       if (!segments.every((s) => distToSegment([e, n], s[0], s[1]) > mm(GRID_LINE_CLEARANCE_MM))) return null;
       for (const s of ['rightDown', 'leftDown']) {
         const r = guard(e, n, s);
-        if (insidePanel(r) && !clashes(r)) return { rect: r, side: s };
+        if (outsideOnly ? (withinRoom(r) && !clashes(r) && !rectTouchesFigure(r)) : (insidePanel(r) && !clashes(r))) return { rect: r, side: s };
       }
       return null;
     };
@@ -1540,10 +1576,11 @@ const crowded = crowdedClusters(
   // more candidates, not a weaker clearance, so no tick is ever drawn over the
   // drawing it is meant to reference. The best attempt is kept, so a crowded
   // sheet still gets the most ticks it can hold rather than the fewest.
+  const findTicks = (outsideOnly) => {
   let gi = spec.gridInterval;
   let ticks;
   if (gi) {
-    ticks = layGrid(gi);
+    ticks = layGrid(gi, 2.5, outsideOnly);
   } else {
     // Judged on how well the ticks SURROUND the figure, then on count.
     //
@@ -1575,15 +1612,38 @@ const crowded = crowdedClusters(
       if ((cand / scale) * 1000 < MIN_TICK_SPACING_MM) break;
       // Figures kept clear of each other first; a dense sheet that cannot find its four crosses that way
       // takes the ones that touch rather than lose a reference.
-      let t = layGrid(cand);
+      let t = layGrid(cand, 2.5, outsideOnly);
       if (t.length < MIN_GRID_TICKS) {
-        const tight = layGrid(cand, 0);
+        const tight = layGrid(cand, 0, outsideOnly);
         if (tight.length > t.length) t = tight;
       }
       if (!best || better(t, best.ticks)) best = { gi: cand, ticks: t };
       if (satisfies(t) && t.length >= MIN_GRID_TICKS) break;
     }
     ({ gi, ticks } = best ?? { gi: pick(), ticks: [] });
+  }
+  return { gi, ticks };
+  };
+
+  // The ticks stand OUTSIDE the figure. A figure that fills its panel leaves too little paper around it for four
+  // of them, and a sheet with fewer than four has no framework a reader can interpolate from. So the outside
+  // ones are taken first and are never given up; only a shortfall is made up, from the search that ignores the
+  // figure (it steps to finer intervals until it finds enough), nearest the figure's outline first, and only
+  // until there are four.
+  let { gi, ticks } = findTicks(true);
+  if (ticks.length < MIN_GRID_TICKS) {
+    const relaxed = findTicks(false);
+    const have = new Set(ticks.map((t) => `${t.e}|${t.n}`));
+    const extra = relaxed.ticks.filter((t) => !have.has(`${t.e}|${t.n}`));
+    const edgeD = (t) => Math.min(...segments.map((sg) => distToSegment([t.e, t.n], sg[0], sg[1])));
+    extra.sort((p, q) => edgeD(p) - edgeD(q));
+    const apart = mm(2.5);
+    for (const t of extra) {
+      if (ticks.length >= MIN_GRID_TICKS) break;
+      const clash = ticks.some(({ rect: o }) => t.rect[0] < o[2] + apart && t.rect[2] > o[0] - apart && t.rect[1] < o[3] && t.rect[3] > o[1]);
+      if (!clash) ticks.push(t);
+    }
+    if (ticks.length === 0) gi = relaxed.gi;
   }
 
   // A figure that leaves the lattice NO cross at all must keep its framework:
@@ -2797,7 +2857,7 @@ const crowded = crowdedClusters(
   // sheetSize is reported so the caller can tell the surveyor -- and the plot
   // dialog -- which paper this was drawn for.
   const out = {
-    dxf: doc.toString(), scale, gridInterval, gridTicks: placed, insetTicks, areas, kind: general ? 'general' : 'diagrams', partyWallRows: partyRows.length,
+    dxf: doc.toString(), scale, gridInterval, gridTicks: placed, gridTicksInFigure: ticks.filter((t) => inFigure(t.e, t.n)).length, insetTicks, areas, kind: general ? 'general' : 'diagrams', partyWallRows: partyRows.length,
     sheetSize: size, orientation, sheetWidthMm: sheet.width, sheetHeightMm: sheet.height,
   };
   // What the PDF is drawn from: the same shapes the DXF holds, and the transform that puts them on the

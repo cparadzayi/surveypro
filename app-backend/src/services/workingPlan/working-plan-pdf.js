@@ -97,6 +97,8 @@ export function workingPlanPdf({ doc: dxf, originE, originN, scale, sheet }) {
             const font = FONTS[op.style] ?? 'Helvetica';
             const size = (op.height * ctx.scale * k) / (CAP_HEIGHT[font] ?? 0.718);
             style(layerName, c, 'CONTINUOUS');
+            // Lettering is monochrome: black, whatever the colour of the layer it is drawn on.
+            pdf.fillColor([0, 0, 0]).strokeColor([0, 0, 0]);
             pdf.undash().font(font).fontSize(size);
             const w = pdf.widthOfString(op.str) * op.widthFactor;
             const dx = op.align === 'center' ? -w / 2 : op.align === 'right' ? -w : 0;

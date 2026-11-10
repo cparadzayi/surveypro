@@ -197,7 +197,9 @@ class EntitySink {
   } = {}) {
     this.ops.push({ t: 'text', str, at: [x, y], height, layer, style, rotation, align, widthFactor });
     const hcode = { left: 0, center: 1, right: 2 }[align];
-    const t = [0, 'TEXT', 8, layer, 7, style,
+    // Every text entity is colour 7 (black on paper) whatever its layer's colour: a working plan's lettering is
+    // monochrome, and the layers keep their colours only for the lines they draw.
+    const t = [0, 'TEXT', 8, layer, 62, 7, 7, style,
       10, f(x), 20, f(y), 30, f(0),
       40, f(height), 1, str,
       50, f(rotation), 41, f(widthFactor), 72, hcode];

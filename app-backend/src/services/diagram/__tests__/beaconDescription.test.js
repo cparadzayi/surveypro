@@ -52,3 +52,46 @@ describe('buildBeaconDescription', () => {
     expect(buildBeaconDescription(geometry, fc([]))).toEqual([])
   })
 })
+
+describe('connection points are described with the corners', () => {
+  const beacons = fc([
+    beacon('A1', 2144000, -85000, { description: '12mm iron peg in concrete' }),
+    beacon('B1', 2144060, -85000, { description: '12mm iron peg in concrete' }),
+    beacon('PARENT', 2144400, -85300, { description: '50mm iron pipe' }),
+    beacon('FAR', 2200000, -90000, { description: 'not connected' }),
+  ])
+  const conn = [{ letter: 'C', toBeacon: 'PARENT' }]
+
+  test('a connection point with its own description is listed against its letter', () => {
+    expect(buildBeaconDescription(geometry, beacons, 0.5, conn)).toEqual([
+      { names: 'A, B', description: '12mm iron peg in concrete' },
+      { names: 'C', description: '50mm iron pipe' },
+    ])
+  })
+
+  test('one with the same description joins the corners, so the "All" shorthand still holds', () => {
+    const same = fc([
+      beacon('A1', 2144000, -85000, { description: '12mm iron peg in concrete' }),
+      beacon('B1', 2144060, -85000, { description: '12mm iron peg in concrete' }),
+      beacon('PARENT', 2144400, -85300, { description: '12mm iron peg in concrete' }),
+    ])
+    expect(buildBeaconDescription(geometry, same, 0.5, conn)).toEqual([
+      { names: 'A, B, C', description: '12mm iron peg in concrete' },
+    ])
+  })
+
+  test('matches the beacon by name, whatever its case', () => {
+    expect(buildBeaconDescription(geometry, beacons, 0.5, [{ letter: 'C', toBeacon: 'parent' }]).at(-1))
+      .toEqual({ names: 'C', description: '50mm iron pipe' })
+  })
+
+  test('a connection to an unknown beacon adds nothing, and without connections nothing changes', () => {
+    expect(buildBeaconDescription(geometry, beacons, 0.5, [{ letter: 'C', toBeacon: 'NOPE' }])).toEqual(
+      buildBeaconDescription(geometry, beacons))
+  })
+
+  test('two connections to one beacon describe it once', () => {
+    const got = buildBeaconDescription(geometry, beacons, 0.5, [{ letter: 'C', toBeacon: 'PARENT' }, { letter: 'D', toBeacon: 'PARENT' }])
+    expect(got.filter((g) => g.description === '50mm iron pipe')).toEqual([{ names: 'C', description: '50mm iron pipe' }])
+  })
+})

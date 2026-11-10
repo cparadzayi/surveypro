@@ -20,10 +20,15 @@ function inferDescription(name) {
  * description (the renderer shows it as "All"). Beacons elsewhere in the dataset
  * (other parcels) are excluded.
  *
+ * The beacons a connection ties the figure to are described too: each carries a letter (E, F, ... continuing
+ * the figure's own sequence) and the diagram must say what stands there. `connections` is
+ * `[{ letter, toBeacon }]`; each is looked up by NAME and described like a corner, so a connection point whose
+ * description differs from the corners' is listed against its letter and the "All" shorthand is not used.
+ *
  * `geometry.vertices` are canonical [Y=Westing, X=Southing]; beacon points may be
  * raw [Southing, Westing] and are normalized here.
  */
-export function buildBeaconDescription(geometry, beacons, tolM = 0.5) {
+export function buildBeaconDescription(geometry, beacons, tolM = 0.5, connections = []) {
   const features = beacons?.features ?? []
   const vertices = geometry?.vertices ?? []
   const order = []              // descriptions in first-seen (vertex) order
@@ -47,6 +52,22 @@ export function buildBeaconDescription(geometry, beacons, tolM = 0.5) {
     const desc = String(p.description ?? p.beacon_type ?? '').trim() || inferDescription(name)
     if (!namesByDesc.has(desc)) { namesByDesc.set(desc, []); order.push(desc) }
     namesByDesc.get(desc).push(v.letter)
+  }
+
+  for (const c of connections ?? []) {
+    const want = String(c?.toBeacon ?? '').trim().toUpperCase()
+    if (!want || !c?.letter) continue
+    const f = features.find((x) => {
+      const p = x?.properties ?? {}
+      return String(p.name ?? p.beacon_name ?? p.id ?? '').trim().toUpperCase() === want
+    })
+    if (!f || used.has(f)) continue
+    used.add(f)
+    const p = f.properties ?? {}
+    const name = String(p.name ?? p.beacon_name ?? p.id ?? '')
+    const desc = String(p.description ?? p.beacon_type ?? '').trim() || inferDescription(name)
+    if (!namesByDesc.has(desc)) { namesByDesc.set(desc, []); order.push(desc) }
+    namesByDesc.get(desc).push(c.letter)
   }
 
   return order.map((desc) => ({ names: namesByDesc.get(desc).join(', '), description: desc }))

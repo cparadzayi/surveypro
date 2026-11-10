@@ -956,7 +956,14 @@ export async function generateDiagramPDF(options, logger) {
   // reclaimed space, with the figure + scale bar centred as a group between the
   // blocks and the "The figure ..." statement.
   const sidesTable = buildSidesTable(geometry, options.beacons)
-  const beaconGroups = buildBeaconDescription(geometry, options.beacons)
+  // Resolved before ANY of this is drawn. A connection decides things beyond its own mark: which beacons keep an
+  // abutment stub, which neighbour edges it covers, and which beacons the Description of Beacons must name.
+  const { marks: connMarks, suppressed: connected } = resolveConnections({
+    geometry, beacons: options.beacons, connections: metadata.connections,
+  })
+  // The corners AND the beacons the connections tie to, each under its letter.
+  const beaconGroups = buildBeaconDescription(geometry, options.beacons, 0.5,
+    connMarks.map((m) => ({ letter: m.letter, toBeacon: m.toBeacon })))
   const tableRows = Math.max(sidesTable.coordinateRows.length, sidesTable.sideRows.length)
   const tableBottom = tableBottomY(layout.table.y, tableRows)
   const BEACON_DESC_GAP = 8
@@ -1048,12 +1055,6 @@ export async function generateDiagramPDF(options, logger) {
   doc.font('Helvetica').fontSize(DIAGRAM_FONTS.label).fillColor('#555555')
   const neighbourSegs = [] // drawn neighbour line segments (pt) — labels avoid these
   const neighbourLabels = [] // { anchor, text } drawn after the subject, placed outward
-  // Resolved before ANY of this is drawn. A connection decides two things
-  // beyond its own mark: which beacons keep an abutment stub, and which
-  // neighbour edges it covers.
-  const { marks: connMarks, suppressed: connected } = resolveConnections({
-    geometry, beacons: options.beacons, connections: metadata.connections,
-  })
   const connRays = connMarks.map((m) => {
     const from = tf(m.fromYX), to = tf(m.toYX)
     const g = connectionMark([from.px, from.py], [to.px, to.py],

@@ -45,7 +45,7 @@ function segIntersectsRect(a, b, r) {
 
 export function placeVertexLabel(vertex, centroid, {
   beaconR = 2.5, labelW = 6, labelH = 8, gap = 2, step = 3, maxSteps = 8, segments = [],
-  fanDeg = 18, fanCount = 5, clearance = 0.75,
+  fanDeg = 18, fanCount = 5, clearance = 2.2,
 } = {}) {
   // Outward bearing: away from the figure centre.
   const ux = vertex.px - centroid.px

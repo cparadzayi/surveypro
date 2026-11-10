@@ -23,6 +23,7 @@ import { resolveConnections } from './diagram/connections.js'
 import {
   connectionMark, alreadyDrawnAlong, CONNECTION_STUB_MM, CONNECTION_ARROW_MM,
   CONNECTION_ARROW_HALF_MM, CONNECTION_LABEL_PAD_MM, CONNECTION_LABEL_STANDOFF_MM,
+  CONNECTION_TEXT_TO_HEAD_MM, CONNECTION_TIP_LETTER_GAP_MM,
   COINCIDENT_TOL_MM,
 } from './diagram/connectionMark.js'
 import { roadBandRibbon } from './diagram/roadBandRibbon.js'
@@ -225,6 +226,25 @@ function remainderCentroidPt(neighbours, tf) {
 }
 
 /**
+ * How long a connection's ray is drawn, in points.
+ *
+ * The ray is symbolic (the distance is lettered, not measured off it), so it is as long as its lettering
+ * needs: from clear of the beacon, along the whole distance, then a gap, then the arrowhead. A fixed 10 mm
+ * ray was shorter than "69,65m", so the text ran on past the arrowhead and into the letter beyond it. Never
+ * longer than the connection itself, so the ray does not overshoot the beacon it points at.
+ */
+function connectionRayLength(doc, m, from, to, denom) {
+  const head = CONNECTION_ARROW_MM * PT_PER_MM
+  doc.save().font('Helvetica').fontSize(DIAGRAM_FONTS.label)
+  const tw = doc.widthOfString(`${formatSI(m.distanceM, 2)}m`)
+  doc.restore()
+  const pad = beaconRadiusPt(denom) + CONNECTION_LABEL_PAD_MM * PT_PER_MM
+  const need = pad + tw + CONNECTION_TEXT_TO_HEAD_MM * PT_PER_MM + head
+  const reach = Math.hypot(to.px - from.px, to.py - from.py)
+  return Math.min(Math.max(CONNECTION_STUB_MM * PT_PER_MM, need), reach * 0.9)
+}
+
+/**
  * Draw the connecting data: for each connection, a ray from the beacon toward
  * its parent beacon, an arrowhead at the tip, the distance lettered along the
  * shaft and the far end lettered beyond it.
@@ -238,14 +258,13 @@ function drawConnections(doc, ctx) {
   const { marks, tf, labelObstacles, boxToSegs, remainderPt, denom } = ctx
   if (!marks?.length) return
   const ptPerMm = PT_PER_MM
-  const len = CONNECTION_STUB_MM * ptPerMm
   const head = CONNECTION_ARROW_MM * ptPerMm
   const half = CONNECTION_ARROW_HALF_MM * ptPerMm
 
   for (const m of marks) {
     const from = tf(m.fromYX)
     const to = tf(m.toYX)
-    const g = connectionMark([from.px, from.py], [to.px, to.py], len, head, half)
+    const g = connectionMark([from.px, from.py], [to.px, to.py], connectionRayLength(doc, m, from, to, denom), head, half)
     if (!g) continue
 
     // The shaft stops at the head's base, so it cannot show through the fill,
@@ -300,7 +319,7 @@ function drawConnections(doc, ctx) {
     // The distance is a label too: the vertex letters keep off it as they keep off the ray, three strokes
     // along its length (its middle and both edges) standing for the rotated box.
     const along = [Math.cos(th), Math.sin(th)]
-    for (const k of [-fs / 2, 0, fs / 2]) {
+    for (const k of [-fs / 2 - 1.5, 0, fs / 2 + 1.5]) {
       const ox = cx + perp[0] * k, oy = cy + perp[1] * k
       labelObstacles.push([
         { px: ox - along[0] * tw / 2, py: oy - along[1] * tw / 2 },
@@ -311,7 +330,8 @@ function drawConnections(doc, ctx) {
     // The far end's letter, just beyond the tip.
     doc.save().font('Helvetica').fontSize(DIAGRAM_FONTS.label).fillColor('#000000')
     const lw = doc.widthOfString(m.letter)
-    const tipOut = 5
+    // Clear of the arrowhead: a gap, then the letter's own half-extent along the ray.
+    const tipOut = CONNECTION_TIP_LETTER_GAP_MM * PT_PER_MM + (Math.abs(g.dir[0]) * lw + Math.abs(g.dir[1]) * DIAGRAM_FONTS.label) / 2
     const tx = g.tip[0] + g.dir[0] * tipOut, ty = g.tip[1] + g.dir[1] * tipOut
     doc.text(m.letter, tx - lw / 2, ty - DIAGRAM_FONTS.label / 2, { lineBreak: false })
     doc.restore()
@@ -338,7 +358,7 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
   const cen = [subjCentroid.px, subjCentroid.py]
   // Road/servitude names sit beyond the vertex-letter band so they clear the letters
   // (which stay snug to their beacons). ~beaconR + gap + letter height ≈ the band.
-  const vertexBandPt = beaconRadiusPt(denom) + 14
+  const vertexBandPt = beaconRadiusPt(denom) + 11
   // Side lookups for road-end handling: a road extends past a corner unless the flanking
   // side is ANOTHER road (an L-junction, where the bands just meet); it bends to a
   // contiguous offshoot if one is drawn there, else extends straight along the road axis.
@@ -530,6 +550,16 @@ function drawAdjoiningFeatures(doc, ctx, logger) {
         const lx = mid.px + perpX * off, ly = mid.py + perpY * off
         doc.rotate(angleDeg, { origin: [lx, ly] })
         doc.text(labelText, lx - labelW / 2, ly - DIAGRAM_FONTS.label / 2, { lineBreak: false })
+        // The rotated box as obstacle segments (edges and both diagonals), so the vertex letters set later
+        // keep clear of the road's name as they do of every other label.
+        {
+          const th = angleDeg * Math.PI / 180, c = Math.cos(th), sn = Math.sin(th)
+          const hh = DIAGRAM_FONTS.label
+          const corner = (dx, dy) => ({ px: lx + dx * c - dy * sn, py: ly + dx * sn + dy * c })
+          const q = [corner(-labelW / 2, -hh / 2), corner(labelW / 2, -hh / 2), corner(labelW / 2, hh / 2), corner(-labelW / 2, hh / 2)]
+          for (let k = 0; k < 4; k++) labelObstacles.push([q[k], q[(k + 1) % 4]])
+          labelObstacles.push([q[0], q[2]], [q[1], q[3]])
+        }
       } else {
         // Centre the neighbour label on the abutting extent (whole side, or the tagged
         // half) rather than always the side midpoint.
@@ -1011,7 +1041,7 @@ export async function generateDiagramPDF(options, logger) {
   const connRays = connMarks.map((m) => {
     const from = tf(m.fromYX), to = tf(m.toYX)
     const g = connectionMark([from.px, from.py], [to.px, to.py],
-      CONNECTION_STUB_MM * PT_PER_MM, CONNECTION_ARROW_MM * PT_PER_MM,
+      connectionRayLength(doc, m, from, to, denom), CONNECTION_ARROW_MM * PT_PER_MM,
       CONNECTION_ARROW_HALF_MM * PT_PER_MM)
     return g && { tail: g.tail, tip: g.tip }
   }).filter(Boolean)
@@ -1126,7 +1156,7 @@ export async function generateDiagramPDF(options, logger) {
     const p = subjPt[i]
     const labelW = doc.widthOfString(v.letter)
     const pos = placeVertexLabel(p, subjCentroid, {
-      beaconR, labelW, labelH: DIAGRAM_FONTS.label, gap: 2, segments: subjSegs.concat(neighbourSegs, labelObstacles),
+      beaconR, labelW, labelH: DIAGRAM_FONTS.label, gap: 1.4, segments: subjSegs.concat(neighbourSegs, labelObstacles),
     })
     doc.text(v.letter, pos.x, pos.y)
     labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: DIAGRAM_FONTS.label }))

@@ -102,3 +102,15 @@ describe('placeVertexLabel', () => {
     expect(n).toBeLessThan(cage.length)
   })
 })
+
+describe('a letter keeps daylight around it', () => {
+  test('is not set closer than 2 pt to another label\u2019s edge', () => {
+    // A label's edge runs vertically 1.5 pt beyond where the letter would stand straight out.
+    const vertex = { px: 150, py: 100 }
+    const wall = [{ px: 160.5, py: 80 }, { px: 160.5, py: 120 }]
+    const pos = placeVertexLabel(vertex, centroid, { beaconR: 2.5, labelW: 6, labelH: 8, gap: 1.4, segments: [wall] })
+    const right = pos.x + 6, left = pos.x
+    // the box (grown by the clearance) must not touch the wall at x = 160.5
+    expect(right + 2 <= 160.5 || left - 2 >= 160.5).toBe(true)
+  })
+})

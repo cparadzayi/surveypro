@@ -45,6 +45,12 @@ export const CONNECTION_STUB_MM = CONTIG_STUB_MM + CONNECTION_ARROW_MM
  */
 export const CONNECTION_LABEL_PAD_MM = 1.75
 
+/** Clear paper between the end of the distance and the arrowhead's base: the lettering must not touch it. */
+export const CONNECTION_TEXT_TO_HEAD_MM = 1.8
+
+/** Clear paper between the arrowhead's tip and the letter that names the far beacon. */
+export const CONNECTION_TIP_LETTER_GAP_MM = 1.6
+
 /**
  * How far the label sits off the connecting line, beyond its own half-height,
  * in paper millimetres. Enough to read as a label BESIDE the ray rather than

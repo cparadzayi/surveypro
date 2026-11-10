@@ -455,6 +455,9 @@ const PREFERRED_SCALE = 2500;
  */
 const MIN_GRID_TICKS = 4;
 
+/** The most crosses the outside-the-figure pass draws: a framework, not a mesh over the whole sheet. */
+const MAX_OUTSIDE_TICKS = 8;
+
 /**
  * Where those ticks have to be: one in each corner region of the FIGURE -- top
  * left and right, bottom left and right.
@@ -621,7 +624,9 @@ export function fitLabelInPolygon(pts, wrapAt, textH, hits = () => false, margin
   const N = 56;
   for (const W of [34, 28, 22, 18, 14, 11]) {
     const lines = wrapAt(W);
-    const w = 0.63 * textH * Math.max(...lines.map((l) => l.length));
+    // 0.72 an em a character: capitals and the bold heading run wider than the 0.63 the label placer uses,
+    // and a block that fits by the smaller figure touches the beacon name beside it.
+    const w = 0.72 * textH * Math.max(...lines.map((l) => l.length));
     const h = textH * 1.4 * lines.length;
     for (let i = 0; i <= N; i++) {
       for (let j = 0; j <= N; j++) {
@@ -1074,9 +1079,17 @@ const crowded = crowdedClusters(
    *  figure it is one more way for a label to find nothing free and fall back. */
   const signReach = (b) => mm(symbolClearance(b.symbol));
 
-  const segments = spec.parcels.flatMap((p) => p.ring.map((n, i) => [
-    [G(n).e, G(n).n],
-    [G(p.ring[(i + 1) % p.ring.length]).e, G(p.ring[(i + 1) % p.ring.length]).n]]));
+  // A multi-sheet General Plan's cut(s): the line that divides the outside figure between its sheets, as ground
+  // polylines. They are lines on the sheet like any boundary, so labels and grid crosses keep off them.
+  const splitLines = (spec.splitLines ?? [])
+    .map((pl) => (pl ?? []).map((p) => { const g = loToGround(p); return [g.e, g.n]; }))
+    .filter((pl) => pl.length >= 2);
+  const segments = [
+    ...spec.parcels.flatMap((p) => p.ring.map((n, i) => [
+      [G(n).e, G(n).n],
+      [G(p.ring[(i + 1) % p.ring.length]).e, G(p.ring[(i + 1) % p.ring.length]).n]])),
+    ...splitLines.flatMap((pl) => pl.slice(1).map((q, i) => [pl[i], q])),
+  ];
 
   // occupied rectangles, so labels do not sit on top of each other or a symbol
   const occupied = [];
@@ -1366,12 +1379,45 @@ const crowded = crowdedClusters(
       const fit = fitLabelInPolygon(pts, (W) => wrapAtCommas(p.label, W), ph, hits);
       lines = fit.lines; cx = fit.x; cy = fit.y;
     }
+    // A plan of several sheets letters each part of the figure with ITS sheet number and ITS stands instead
+    // (below); the one label naming every stand is then not drawn.
+    const sheeted = general && (spec.sheets ?? []).length > 1;
     const top = cy - ph / 2 + ((lines.length - 1) * ph * 1.4) / 2;   // the block is centred on the figure
-    lines.forEach((line, i) => {
+    if (!sheeted) lines.forEach((line, i) => {
       const y = top - i * ph * 1.4;
-      occupied.push(textRect(line, cx, y, ph, 'center'));
+      occupied.push(general ? [cx - (0.72 * ph * line.length) / 2, y - ph * 0.15, cx + (0.72 * ph * line.length) / 2, y + ph] : textRect(line, cx, y, ph, 'center'));
       d.text(line, [cx, y], ph, { layer: 'PARCEL-TEXT', style: 'ARIAL', align: 'center' });
     });
+  }
+
+  /* ---- a multi-sheet General Plan: the split line, and each sheet's number and stands.
+   * The cut that divides the outside figure is drawn dashed in black through the points it passes (clipped
+   * clear of the beacon signs on it, like a boundary), and each part carries "SHEET n" over the stand
+   * numbers on that sheet, fitted inside that part. */
+  if (general && (spec.sheets ?? []).length > 1) {
+    const nameAt = (p) => [...byName.values()].find((b) => Math.hypot(b.e - p[0], b.n - p[1]) < 0.5)?.name;
+    for (const pl of splitLines) {
+      for (let i = 0; i + 1 < pl.length; i++) {
+        const na = nameAt(pl[i]), nb = nameAt(pl[i + 1]);
+        if (na && nb) drawBoundary(pl[i], pl[i + 1], na, nb, 'ADJOINING');
+        else d.line(pl[i], pl[i + 1], { layer: 'ADJOINING' });
+      }
+    }
+    const ph = mm(2.8);
+    for (const sh of spec.sheets) {
+      const poly = (sh.polygon ?? []).map((q) => { const g = loToGround(q); return [g.e, g.n]; });
+      if (poly.length < 3) continue;
+      const head = `SHEET ${sh.number}`;
+      const fit = fitLabelInPolygon(poly, (W) => [head, ...wrapAtCommas(sh.stands, W)], ph, hits);
+      const top = fit.y - ph / 2 + ((fit.lines.length - 1) * ph * 1.4) / 2;
+      fit.lines.forEach((line, i) => {
+        const y = top - i * ph * 1.4;
+        // reserved at the width it is set (0.72 an em), so a beacon name placed later keeps clear of it
+        const wr = 0.72 * ph * line.length;
+        occupied.push([fit.x - wr / 2, y - ph * 0.15, fit.x + wr / 2, y + ph]);
+        d.text(line, [fit.x, y], ph, { layer: 'PARCEL-TEXT', style: i === 0 ? 'ARIAL-BOLD' : 'ARIAL', align: 'center' });
+      });
+    }
   }
 
   /* ---- the remaining extent's own boundary, dashed */
@@ -1570,6 +1616,8 @@ const crowded = crowdedClusters(
     // one corner's whole neighbourhood outranks another corner's best, and the
     // crowded end of the figure is served last with whatever room is left. That
     // is how six of seven ticks ended up along one edge.
+    // (The outside-only pass is capped at MAX_OUTSIDE_TICKS below: a figure with a great deal of paper round it
+    // would otherwise fill the sheet with crosses.)
     const byCorner = corners.map((c) => all.slice().sort((p, q) =>
       Math.hypot(p[0] - c[0], p[1] - c[1]) - Math.hypot(q[0] - c[0], q[1] - c[1])));
     const lattice = [];
@@ -1611,6 +1659,7 @@ const crowded = crowdedClusters(
     };
 
     for (const [e, n] of lattice) {
+      if (outsideOnly && out.length >= MAX_OUTSIDE_TICKS) break;
       const c = crossAt(e, n);
       if (c) out.push({ e, n, rect: c.rect, side: c.side });
     }
@@ -2149,7 +2198,7 @@ const crowded = crowdedClusters(
   /* ---- party-wall servitude table (General Plan only) */
   if (general && L.partyTable) {
     const T = L.partyTable, pr = T.pitch;
-    const hh = mm(2.3), ch = mm(2.0), bh = mm(pr >= 3.9 ? 2.5 : pr >= 3.2 ? 2.2 : 1.9);
+    const hh = mm(2.3), ch = mm(2.0), bh = mm(pr >= 3.2 ? 2.2 : 1.9);   // the longest boundary must fit half a column
     const lineOpts = { layer: 'TITLE' };
     for (let blk = 0; blk < T.blocks; blk++) {
       const x0 = T.x0 + blk * (PARTY_COL_MM + 2), x1 = x0 + PARTY_COL_MM, xm = x0 + PARTY_COL_MM * 0.49;

@@ -119,7 +119,23 @@ export interface WorkingPlanPartyWall {
  */
 export type WorkingPlanKind = 'general' | 'diagrams'
 
+/** One sheet of a multi-sheet General Plan, as the working plan states it: its number, its stands, its part of the figure. */
+export interface WorkingPlanSheet {
+  number: number
+  /** "STANDS 1665 - 1737, 1868" -- the stand numbers ON this sheet. */
+  stands: string
+  /** This sheet's part of the outside figure, in the survey's own X (southing) and Y (westing). */
+  polygon: Array<{ X: number; Y: number }>
+}
+
 export interface WorkingPlanSpec {
+  /**
+   * A General Plan of several sheets: each sheet's number and stands, lettered inside its part of the figure.
+   * Absent for a single sheet.
+   */
+  sheets?: WorkingPlanSheet[]
+  /** The cut(s) that divide the outside figure between the sheets, drawn as the split line. */
+  splitLines?: Array<Array<{ X: number; Y: number }>>
   /**
    * The paper. Left out, the renderer chooses: A4, and A3 only when a figure that does not fit 1:2500 on A4
    * does on A3, so the plan can still be plotted at 1:2500.
@@ -179,6 +195,13 @@ export interface WorkingPlanSpecResult {
 }
 
 export interface WorkingPlanSpecContext {
+  /**
+   * The sheets a stored cut divides the outside figure into (deriveStoredSheets), and the cut polylines. With
+   * two or more sheets a General Plan's working plan draws the split line and letters each part with its sheet
+   * number and stands.
+   */
+  sheets?: Array<{ sheetNumber: number; stands: string[]; ring: Array<{ y: number; x: number }> }>
+  cuts?: Array<Array<{ y: number; x: number }>>
   /** 'general' when the record encloses General Plans; anything else draws the stands. */
   kind?: WorkingPlanKind
   /** The party-wall statement rows (buildPartyWallStatementRows), carried on a General Plan's working plan. */
@@ -1202,6 +1225,14 @@ export function buildWorkingPlanSpec(
   return {
     spec: {
       scale: 'auto',
+      ...(general && (ctx.sheets?.length ?? 0) > 1 ? {
+        sheets: [...ctx.sheets!].sort((a, b) => a.sheetNumber - b.sheetNumber).map(sh => ({
+          number: sh.sheetNumber,
+          stands: `${sh.stands.length === 1 ? 'STAND' : 'STANDS'} ${formatStandRanges(sh.stands)}`,
+          polygon: sh.ring.map(p => ({ X: p.x, Y: p.y })),
+        })),
+        splitLines: (ctx.cuts ?? []).filter(c => c.length >= 2).map(c => c.map(p => ({ X: p.x, Y: p.y }))),
+      } : {}),
       ...(general ? { kind: 'general' as const, partyWalls: (ctx.partyWalls ?? []).map(r => ({ stands: r.stands, boundary: r.boundary })) } : {}),
       // The General Plan's sheet is always portrait: the party-wall table runs down it.
       orientation: general || ctx.config?.orientation === 'portrait' ? 'portrait' : 'landscape',

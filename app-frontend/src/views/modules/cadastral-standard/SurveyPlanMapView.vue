@@ -506,6 +506,7 @@ import { gpOfficeCode } from '../../../../../app-shared/si727SheetSizes.js'
 import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
 import { isCalculatedPoint } from '@/utils/calculatedPoint'
 import { deriveStoredSheets as deriveStoredSheetsFor, findOutsideFigureParcel, outsideFigureCapeLoRing } from './storedSheets'
+import { readCuts } from '@/utils/cutStorage'
 import { buildSheetSubjects, adjoiningSubjectsFor, type SheetSubject } from './sheetSubjects'
 import { paperSizeOptionsFor } from './paperSizeOptions'
 import { planTypeOptionsFor, normalizePlanTypeSelection } from './planTypeOptions'
@@ -4604,6 +4605,21 @@ function deriveStoredSheets(): SheetPayload[] | undefined {
   })
 }
 
+/**
+ * The sheets of a multi-sheet General Plan for the WORKING PLAN: the same derivation the plans use, whatever the
+ * plan type being made (deriveStoredSheets above answers only for a general plan). Undefined for one sheet.
+ */
+function workingPlanSheets(): SheetPayload[] | undefined {
+  return deriveStoredSheetsFor({
+    outsideFigureParcel: getOutsideFigureParcel(),
+    outsideFigureRing: getOutsideFigureCapeLoRing(),
+    parcels: parcels.value,
+    servitudeRows: servitudeStatementRows.value,
+    takenNames: coordinatePoints.value.map((p: { name?: string }) => p?.name).filter(Boolean) as string[],
+    coordinatePoints: coordinatePoints.value,
+  })
+}
+
 async function gatherPlanContext(): Promise<PlanPayloadContext> {
   const parcelsGeoJSON = await exportParcelsAsGeoJSON()
   const beaconsGeoJSON = exportBeaconsAsGeoJSON()
@@ -4775,6 +4791,15 @@ async function generatePlanDocuments() {
     const built = buildWorkingPlanSpec({
       kind: generalWorkingPlan ? 'general' : 'diagrams',
       partyWalls: generalWorkingPlan ? servitudeStatementRows.value : undefined,
+      // A General Plan of several sheets: each sheet's stands and number, and the cut that divides them.
+      ...(generalWorkingPlan ? (() => {
+        const sheets = workingPlanSheets()
+        if (!sheets || sheets.length < 2) return {}
+        return {
+          sheets: sheets.map(sh => ({ sheetNumber: sh.sheetNumber, stands: sh.stands, ring: sh.ring })),
+          cuts: readCuts(getOutsideFigureParcel()?.metadata).map(c => c.vertices),
+        }
+      })() : {}),
       beacons: exportBeaconsAsGeoJSON(),
       parcels: await workingPlanParcels(),
       projectInfo: props.projectInfo,

@@ -1867,3 +1867,43 @@ describe('buildWorkingPlanSpec for a record that encloses General Plans', () => 
     expect(workingPlanEmptyReason(r)).toMatch(/Outside Figure/)
   })
 })
+
+describe('a General Plan of several sheets', () => {
+  const list = beaconFC([
+    { name: 'M1', y: -100, x: 2000100 }, { name: 'M2', y: -400, x: 2000100 },
+    { name: 'M3', y: -400, x: 2000400 }, { name: 'M4', y: -100, x: 2000400 },
+  ])
+  const parcels = [{ ...parcel('Outside Figure', ['M1', 'M2', 'M3', 'M4']), id: 9, designation: 'Outside Figure' }]
+  const sheets = [
+    { sheetNumber: 2, stands: ['1696', '1697', '1699'], ring: [{ y: -250, x: 2000100 }, { y: -400, x: 2000100 }, { y: -400, x: 2000400 }, { y: -250, x: 2000400 }] },
+    { sheetNumber: 1, stands: ['1665'], ring: [{ y: -100, x: 2000100 }, { y: -250, x: 2000100 }, { y: -250, x: 2000400 }, { y: -100, x: 2000400 }] },
+  ]
+  const cuts = [[{ y: -250, x: 2000100 }, { y: -250, x: 2000400 }]]
+  const build = (extra: Record<string, any> = {}) => buildWorkingPlanSpec({
+    beacons: list, parcels, projectInfo: { designation: 'Stands 1665-1699 Maglas Township' },
+    config: {}, outsideFigureId: 9, kind: 'general', ...extra,
+  } as any)
+
+  it('carries each sheet\u2019s number, its own stands and its part of the figure, in sheet order', () => {
+    const { spec } = build({ sheets, cuts })
+    expect(spec.sheets?.map(s => s.number)).toEqual([1, 2])
+    expect(spec.sheets?.[0].stands).toBe('STAND 1665')
+    expect(spec.sheets?.[1].stands).toBe('STANDS 1696 - 1697, 1699')
+    expect(spec.sheets?.[0].polygon[0]).toEqual({ X: 2000100, Y: -100 })
+  })
+
+  it('carries the cut as the split line', () => {
+    const { spec } = build({ sheets, cuts })
+    expect(spec.splitLines).toEqual([[{ X: 2000100, Y: -250 }, { X: 2000400, Y: -250 }]])
+  })
+
+  it('a single sheet, or none, adds neither', () => {
+    expect(build({ sheets: [sheets[0]], cuts }).spec.sheets).toBeUndefined()
+    expect(build().spec.splitLines).toBeUndefined()
+  })
+
+  it('only a General Plan carries them', () => {
+    const { spec } = buildWorkingPlanSpec({ ...ctx(), kind: 'diagrams', sheets, cuts } as any)
+    expect(spec.sheets).toBeUndefined()
+  })
+})

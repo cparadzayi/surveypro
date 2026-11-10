@@ -114,3 +114,23 @@ describe('a letter keeps daylight around it', () => {
     expect(right + 2 <= 160.5 || left - 2 >= 160.5).toBe(true)
   })
 })
+
+describe('a beacon mid-side keeps its letter near it', () => {
+  // A beacon on a straight side whose outward half-plane is full of label and colour: bars across it every
+  // 6 pt, so no letter fits anywhere on that side. The figure (centroid below) is on the other side.
+  const vertex = { px: 100, py: 50 }
+  const centroid = { px: 100, py: 120 }
+  const bars = [46, 40, 34, 28, 22, 16, 10].map((y) => [{ px: -200, py: y }, { px: 400, py: y }])
+  const base = { beaconR: 2.5, labelW: 6, labelH: 8, gap: 1.4, segments: bars }
+
+  test('without the fallback the letter stays on the outward side', () => {
+    const pos = placeVertexLabel(vertex, centroid, base)
+    expect(pos.y + 4).toBeLessThan(50)
+  })
+
+  test('with it, the letter takes the figure side and stays within a few points of its beacon', () => {
+    const pos = placeVertexLabel(vertex, centroid, { ...base, inwardFallback: true })
+    expect(pos.y + 4).toBeGreaterThan(50)                    // below the beacon: the figure's side
+    expect(Math.hypot(pos.x + 3 - 100, pos.y + 4 - 50)).toBeLessThan(14)
+  })
+})

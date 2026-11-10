@@ -45,7 +45,7 @@ function segIntersectsRect(a, b, r) {
 
 export function placeVertexLabel(vertex, centroid, {
   beaconR = 2.5, labelW = 6, labelH = 8, gap = 2, step = 3, maxSteps = 8, segments = [],
-  fanDeg = 18, fanCount = 5, clearance = 2.2,
+  fanDeg = 18, fanCount = 5, clearance = 2.2, outwardRings = 3, inwardFallback = false,
 } = {}) {
   // Outward bearing: away from the figure centre.
   const ux = vertex.px - centroid.px
@@ -85,10 +85,10 @@ export function placeVertexLabel(vertex, centroid, {
   // Distance first, bearing second: ring 0 straight out, then fanned either way
   // by fanDeg, before any of it is tried a step further out.
   let best = null
-  for (let ring = 0; ring <= maxSteps; ring++) {
+  const tryRing = (ring, around) => {
     for (let k = 0; k < fanCount; k++) {
       for (const sign of (k === 0 ? [1] : [1, -1])) {
-        const rect = rectAt(base + sign * k * fanDeg * (Math.PI / 180), ring)
+        const rect = rectAt(around + sign * k * fanDeg * (Math.PI / 180), ring)
         const n = hits(rect)
         if (n === 0) return { x: rect.x, y: rect.y }
         // Nothing was clear yet; remember the least-obstructed box seen. Strict
@@ -96,6 +96,29 @@ export function placeVertexLabel(vertex, centroid, {
         if (best === null || n < best.n) best = { n, x: rect.x, y: rect.y }
       }
     }
+    return null
+  }
+  const rings = Math.min(outwardRings, maxSteps + 1)
+  for (let ring = 0; ring < rings; ring++) {
+    const found = tryRing(ring, base)
+    if (found) return found
+  }
+  // Outside is taken for the first few steps (a road's colour and its name, most often, stand there on both
+  // sides of a beacon in the middle of a side). The nearest clear paper is then on the figure's side of the
+  // beacon, not beyond the obstacle: a letter marching out to clear a road name ended up 20 pt from the beacon
+  // it names, so far that it read as belonging to something else. The figure's side is tried over the same
+  // few steps, and only then does the search go on outward.
+  // Only for a beacon in the middle of a side (`inwardFallback`): at a corner the figure's side is the cramped
+  // one, and a letter belongs outside it.
+  if (inwardFallback) {
+    for (let ring = 0; ring < rings; ring++) {
+      const found = tryRing(ring, base + Math.PI)
+      if (found) return found
+    }
+  }
+  for (let ring = rings; ring <= maxSteps; ring++) {
+    const found = tryRing(ring, base)
+    if (found) return found
   }
   return { x: best.x, y: best.y }
 }

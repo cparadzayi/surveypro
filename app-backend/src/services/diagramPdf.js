@@ -1152,11 +1152,21 @@ export async function generateDiagramPDF(options, logger) {
   })
 
   doc.layer('FIGURE_LABELS')
+  // A beacon in the middle of a straight side (B of a road frontage with a beacon on it): both its outward
+  // neighbours are road colour and road name, and the nearest clear paper is on the figure's side.
+  const onStraightSide = (i) => {
+    const m = subjPt.length
+    const p = subjPt[(i - 1 + m) % m], q = subjPt[i], r = subjPt[(i + 1) % m]
+    const ax = q.px - p.px, ay = q.py - p.py, bx = r.px - q.px, by = r.py - q.py
+    const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by)
+    return la > 0 && lb > 0 && (ax * bx + ay * by) / (la * lb) > Math.cos(15 * Math.PI / 180)
+  }
   geometry.vertices.forEach((v, i) => {
     const p = subjPt[i]
     const labelW = doc.widthOfString(v.letter)
     const pos = placeVertexLabel(p, subjCentroid, {
       beaconR, labelW, labelH: DIAGRAM_FONTS.label, gap: 1.4, segments: subjSegs.concat(neighbourSegs, labelObstacles),
+      inwardFallback: onStraightSide(i),
     })
     doc.text(v.letter, pos.x, pos.y)
     labelObstacles.push(...boxToSegs({ x: pos.x, y: pos.y, w: labelW, h: DIAGRAM_FONTS.label }))

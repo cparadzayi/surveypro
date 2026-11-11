@@ -894,9 +894,10 @@ const crowded = crowdedClusters(
   doc.addLinetype('PLANDOT', 'Leader dots . . . . . . . .',
     [mm(LINETYPES.PLANDOT.on + LINETYPES.PLANDOT.off),
       mm(LINETYPES.PLANDOT.on), -mm(LINETYPES.PLANDOT.off)]);
-  // The General Plan's outside figure is drawn in black: it is the one boundary on the sheet and the layer
-  // is its alone (the stands are not drawn).
-  for (const [n, c, lt] of LAYERS) doc.addLayer(n, general && n === 'BOUNDARY-NEW' ? 7 : c, lt, L.lineweight);
+  // A working plan is monochrome: every layer is colour 7 (black on paper), so its lines, symbols and fills
+  // print black as its lettering does (see dxf-r12.js text). The layer table's own colours (LAYERS) are kept
+  // as the working plan's palette for a coloured review copy, but not written to the sheet.
+  for (const [n, , lt] of LAYERS) doc.addLayer(n, 7, lt, L.lineweight);
   doc.addStyle('ARIAL', 'arial.ttf');
   doc.addStyle('ARIAL-BOLD', 'arialbd.ttf');
   doc.addStyle('SERIF', 'times.ttf');

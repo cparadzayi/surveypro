@@ -33,11 +33,11 @@ describe("the General Plan's working plan, a real project's (Maglas, no inset)",
     const layers = out.dxf.split(/\r?\n/).map((l) => l.trim())
     const i = layers.findIndex((l, k) => l === 'BOUNDARY-NEW' && layers[k - 1] === '2')
     expect(layers[i + 4]).toBe('7')                           // LAYER: name(2), flags(70), colour(62)
-    // and the diagrams sheet keeps its red stands
+    // and so does the diagrams sheet's: a working plan's lines are all black
     const dxf = generateWorkingPlan({ ...spec, kind: undefined, partyWalls: undefined, orientation: 'landscape', parcels: spec.parcels, notes: [] }).dxf
     const l2 = dxf.split(/\r?\n/).map((l) => l.trim())
     const j = l2.findIndex((l, k) => l === 'BOUNDARY-NEW' && l2[k - 1] === '2')
-    expect(l2[j + 4]).toBe('1')
+    expect(l2[j + 4]).toBe('7')
   })
 
   test('no grid cross stands inside the outside figure, and there are at least four', () => {

@@ -5576,8 +5576,10 @@ export function mapFurnitureMetrics(scale) {
 const MAX_FIGURE_FIT_STEPS = 3;
 
 export function titleBandHeight(titleHeight) {
-  return EDGE_PADDING + titleHeight + MAP_FURNITURE_TITLE_GAP
-    + mapFurnitureMetrics(1).height + MAP_FURNITURE_FIGURE_GAP;
+  // The scale bar stands BESIDE the title block (see _preferredSlots.scaleBar), not under it, so the band
+  // is the title alone: the 30 mm the bar used to cost is figure room (a General Plan whose figure needs
+  // 592 mm of a 578 mm area fits at 1:500 instead of running off the sheet).
+  return EDGE_PADDING + titleHeight + MAP_FURNITURE_FIGURE_GAP;
 }
 
 
@@ -7128,14 +7130,15 @@ export function calculateBlockPositions(
   // the drawing area, well clear of the bar. They used to share a rect, which put
   // the arrow 12pt off the end of the bar's labels so the pair read as one item.
   const _EDGE = EDGE_PADDING;
+  // The scale bar stands beside the title block, level with its middle: left of it, else right of it. It is
+  // not under it any more, because that cost the figure 30 mm of height (titleBandHeight).
+  const _BAR_SIDE_GAP = 24;
+  const _barY = _titleSlot.y + Math.max(0, (titleHeight - scaleBarHeight) / 2);
+  const _barLeft  = { name: "scaleBar", x: _titleSlot.x - _BAR_SIDE_GAP - scaleBarWidth, y: _barY, width: scaleBarWidth, height: scaleBarHeight };
+  const _barRight = { name: "scaleBar", x: _titleSlot.x + titleWidth + _BAR_SIDE_GAP,    y: _barY, width: scaleBarWidth, height: scaleBarHeight };
+  const _inMap = (r) => r.x >= mapBounds.x + EDGE_PADDING && r.x + r.width <= mapBounds.x + mapBounds.width - EDGE_PADDING;
   const _preferredSlots = {
-    scaleBar: {
-      name: "scaleBar",
-      x: _titleSlot.x + (titleWidth - scaleBarWidth) / 2,
-      // Centred in the furniture band's height, which titleBandHeight() reserves.
-      y: _titleSlot.y + titleHeight + MAP_FURNITURE_TITLE_GAP + (_furnitureHeight - scaleBarHeight) / 2,
-      width: scaleBarWidth, height: scaleBarHeight,
-    },
+    scaleBar: _barLeft,
     northArrow: {
       name: "northArrow",
       x: mapBounds.x + mapBounds.width - _EDGE - northArrowWidth,
@@ -7153,9 +7156,9 @@ export function calculateBlockPositions(
   const _rectsHit = (a, b, gap = 0) =>
     a.x < b.x + b.width + gap && a.x + a.width + gap > b.x &&
     a.y < b.y + b.height + gap && a.y + a.height + gap > b.y;
-  const prePlacedScaleBar = _onFigure(_preferredSlots.scaleBar) ? null : _preferredSlots.scaleBar;
+  const prePlacedScaleBar = [_barLeft, _barRight].find((r) => _inMap(r) && !_onFigure(r)) ?? null;
   if (prePlacedScaleBar) {
-    logger.info(`[PDFKit] 📌 scaleBar pre-placed below title block (${prePlacedScaleBar.x.toFixed(0)}, ${prePlacedScaleBar.y.toFixed(0)})`);
+    logger.info(`[PDFKit] 📌 scaleBar pre-placed beside title block (${prePlacedScaleBar.x.toFixed(0)}, ${prePlacedScaleBar.y.toFixed(0)})`);
   } else {
     logger.info(`[PDFKit] 🔄 scaleBar slot below the title overlaps the figure — engine-placed`);
     blockDescriptors.push({ name: "scaleBar", width: scaleBarWidth, height: scaleBarHeight, mandatory: true, preferredZone: _nextZone() });
@@ -13147,11 +13150,16 @@ async function _generateGeoPDFInner(options, logger) {
       .map((name) => ({ name, rect: _asRect(blockPositions[name]) }))
       .filter((t) => t.rect)
       .sort((a, b) => b.rect.width - a.rect.width);
+    // Every block that is already clear keeps its planner slot, and those slots are obstacles from the
+    // start: seeding them only when the loop reached each block let a wider block that had to move be
+    // seated on a narrower one that had not yet been visited (Outside Figure Data over the party-wall
+    // table on sheet 2).
+    const _staying = new Set();
     for (const t of _relocatable) {
-      if (!_needsRelocation(t.rect)) {
-        _occupied.push(t.rect); // already clear — keep planner slot, seed as obstacle
-        continue;
-      }
+      if (!_needsRelocation(t.rect)) { _occupied.push(t.rect); _staying.add(t.name); }
+    }
+    for (const t of _relocatable) {
+      if (_staying.has(t.name)) continue;
       const found = findBlockPosition({
         block: { width: t.rect.width, height: t.rect.height },
         mapBounds,

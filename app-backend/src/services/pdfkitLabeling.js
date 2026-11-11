@@ -1,4 +1,5 @@
 import { findPoleOfInaccessibility } from '../utils/labelPlacer.js';
+import { findLabelSpot } from '../utils/standLabelSpot.js';
 
 /**
  * Unified Labeling System - Single Source of Truth
@@ -745,8 +746,21 @@ class LabelingSystem {
 
       let placed = false;
 
+      // Phase 0: the label as the rectangle it is, wholly inside the stand with clear space round it
+      // (utils/standLabelSpot.js). The centroid is kept when it clears every edge, so ordinary stands
+      // are unchanged; on a chevron, L or notched stand, where the centroid is in the notch or on a
+      // boundary, the number goes to the pocket where it stands furthest from every line. The
+      // corners-only tests below let a label sit across an edge between two inside corners.
+      for (const fs of fontSizes) {
+        const lw = this.doc.widthOfString(labelText, { font: 'Helvetica-Bold', size: fs });
+        const spot = findLabelSpot({
+          polygon: pts, width: lw + 4, height: fs + 4, anchor: centroid, minClearance: 1.5, maxClearance: 8,
+        });
+        if (spot) { drawStandLabel(spot.x, spot.y, 0, fs); placed = true; break; }
+      }
+
       // Phase 1: Horizontal at CENTROID (primary — DXF parity)
-      if (tryAnchor(centroid.x, centroid.y, 0)) placed = true;
+      if (!placed && tryAnchor(centroid.x, centroid.y, 0)) placed = true;
 
       // Phase 2: Horizontal at POI (centroid label didn't fit)
       if (!placed && tryAnchor(poi.x, poi.y, 0)) placed = true;

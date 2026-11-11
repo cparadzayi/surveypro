@@ -261,11 +261,11 @@ describe('planSheetLayout — scale bar and north arrow are independent', () => 
     expect(overlap(r.scaleBar, cover)).toBe(false);
   });
 
-  test('with no figure in the way the bar is centred under the title and the arrow is in the top-right corner', () => {
+  test('with no figure in the way the bar stands beside the title and the arrow is in the top-right corner', () => {
     const r = planWithFigure(null);
-    // Bar: centred on the title block, below it.
-    expect(r.scaleBar.x + r.scaleBar.width / 2).toBeCloseTo(r.titleBlock.x + r.titleBlock.width / 2, 3);
-    expect(r.scaleBar.y).toBeGreaterThan(r.titleBlock.y + r.titleBlock.height);
+    // Bar: beside the title block (left of it), level with its middle, not under it.
+    expect(r.scaleBar.x + r.scaleBar.width).toBeLessThanOrEqual(r.titleBlock.x);
+    expect(r.scaleBar.y + r.scaleBar.height / 2).toBeCloseTo(r.titleBlock.y + r.titleBlock.height / 2, 1);
     // Arrow: flush to the top-right corner of the drawing area, inside its edge padding.
     expect(r.northArrow.x + r.northArrow.width).toBeCloseTo(A2_MAP_BOUNDS.x + A2_MAP_BOUNDS.width - 14, 3);
     expect(r.northArrow.y).toBeCloseTo(A2_MAP_BOUNDS.y + 14, 3);
@@ -601,10 +601,11 @@ describe('planSheetLayout — seated schedule stays inside the drawing area', ()
 // drawing area -- unless a seated schedule or the figure has it, when the arrow is
 // placed on its own.
 describe('map furniture: the scale bar and north arrow are separate items', () => {
-  test('the scale bar is centred on the title block, below it', () => {
+  test('the scale bar stands beside the title block, not under it', () => {
     const r = plan(sampleMinimalPlan)
-    expect(r.scaleBar.x + r.scaleBar.width / 2).toBeCloseTo(r.titleBlock.x + r.titleBlock.width / 2, 1)
-    expect(r.scaleBar.y).toBeGreaterThanOrEqual(r.titleBlock.y + r.titleBlock.height)
+    const beside = r.scaleBar.x + r.scaleBar.width <= r.titleBlock.x || r.scaleBar.x >= r.titleBlock.x + r.titleBlock.width
+    expect(beside).toBe(true)
+    expect(r.scaleBar.y).toBeLessThan(r.titleBlock.y + r.titleBlock.height)
   })
 
   test('the arrow is in the top-right corner of the drawing area', () => {

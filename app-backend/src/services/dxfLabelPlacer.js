@@ -36,6 +36,8 @@ import { isPointInPolygon } from './dxfGeometry.js'
  * @param {number} [args.padding=5] - Padding from polygon bbox edges
  * @returns {boolean}
  */
+import { findLabelSpot } from '../utils/standLabelSpot.js'
+
 export function checkLabelFitsInParcel({
   centerX, centerY, labelWidth, labelHeight, polygon, padding = 5,
 }) {
@@ -153,6 +155,20 @@ export function findStandLabelPosition({
     if (h < minFontHeight) h = minFontHeight
     widthEstimate  = standNumber.length * h * charWidthRatio
     heightEstimate = h * 1.2
+  }
+
+  // The label as the rectangle it is, wholly inside the stand with clear space round it (the same
+  // finder the PDF uses, utils/standLabelSpot.js): the centroid is kept when it clears every edge; on a
+  // chevron, L or notched stand it moves to the pocket where the number stands furthest from every line,
+  // shrinking the figures a step at a time only if no pocket holds them at full size.
+  for (let hh = h; hh >= minFontHeight - 1e-9; hh -= step) {
+    const w = standNumber.length * hh * charWidthRatio
+    const ht = hh * 1.2
+    const spot = findLabelSpot({
+      polygon, width: w + hh * 0.4, height: ht + hh * 0.4, anchor: labelPoint,
+      minClearance: hh * 0.15, maxClearance: hh * 0.8,
+    })
+    if (spot) return { x: spot.x, y: spot.y, fontHeight: hh, width: w, height: ht }
   }
 
   return {

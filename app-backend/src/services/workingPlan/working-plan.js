@@ -1391,7 +1391,7 @@ const crowded = crowdedClusters(
   }
 
   /* ---- a multi-sheet General Plan: the split line, and each sheet's number and stands.
-   * The cut that divides the outside figure is drawn dashed in black through the points it passes (clipped
+   * The cut that divides the outside figure is drawn solid in black (the figure's own layer) through the points it passes (clipped
    * clear of the beacon signs on it, like a boundary), and each part carries "SHEET n" over the stand
    * numbers on that sheet, fitted inside that part. */
   if (general && (spec.sheets ?? []).length > 1) {
@@ -1399,8 +1399,8 @@ const crowded = crowdedClusters(
     for (const pl of splitLines) {
       for (let i = 0; i + 1 < pl.length; i++) {
         const na = nameAt(pl[i]), nb = nameAt(pl[i + 1]);
-        if (na && nb) drawBoundary(pl[i], pl[i + 1], na, nb, 'ADJOINING');
-        else d.line(pl[i], pl[i + 1], { layer: 'ADJOINING' });
+        if (na && nb) drawBoundary(pl[i], pl[i + 1], na, nb, 'BOUNDARY-NEW');
+        else d.line(pl[i], pl[i + 1], { layer: 'BOUNDARY-NEW' });
       }
     }
     const ph = mm(2.8);

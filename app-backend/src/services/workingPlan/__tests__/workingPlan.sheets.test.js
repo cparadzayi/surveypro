@@ -17,7 +17,7 @@ describe("a multi-sheet General Plan's working plan (Maglas, two sheets)", () =>
   const spec = maglasTwoSheetSpec()
   const out = generateWorkingPlan(spec)
   const texts = out.model.doc.ops.filter((o) => o.t === 'text')
-  const lines = out.model.doc.ops.filter((o) => o.t === 'line' && o.layer === 'ADJOINING')
+  const lines = out.model.doc.ops.filter((o) => o.t === 'line' && o.layer === 'BOUNDARY-NEW')
 
   test('draws the split line along CP3, CP2, CP1 to M27', () => {
     const near = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 12
@@ -26,14 +26,15 @@ describe("a multi-sheet General Plan's working plan (Maglas, two sheets)", () =>
     for (let i = 0; i + 1 < pts.length; i++) {
       expect(lines.some((l) => (near(l.a, pts[i]) && near(l.b, pts[i + 1])) || (near(l.b, pts[i]) && near(l.a, pts[i + 1])))).toBe(true)
     }
-    expect(lines.length).toBeGreaterThanOrEqual(3)
+    expect(lines.length).toBeGreaterThanOrEqual(3 + 6)           // the cut's legs, and the figure's six sides
   })
 
-  test('the split line is on the black, dashed ADJOINING layer', () => {
+  test('the split line is solid black: the figure’s own layer, with no dash', () => {
     const L = out.dxf.split(/\r?\n/).map((l) => l.trim())
-    const i = L.findIndex((l, k) => l === 'ADJOINING' && L[k - 1] === '2')
+    const i = L.findIndex((l, k) => l === 'BOUNDARY-NEW' && L[k - 1] === '2')
     expect(L[i + 4]).toBe('7')                                  // colour 7: black
-    expect(L[i + 6]).toBe('PLANDASH')                           // dashed
+    expect(L[i + 6]).toBe('CONTINUOUS')                         // solid
+    expect(lines.every((l) => !l.linetype || l.linetype === 'CONTINUOUS')).toBe(true)
   })
 
   test('letters each sheet with its number and its own stands, and not the one label for all', () => {
@@ -77,6 +78,8 @@ describe("a multi-sheet General Plan's working plan (Maglas, two sheets)", () =>
     const one = generateWorkingPlan({ ...spec, sheets: undefined, splitLines: undefined })
     const strs = one.model.doc.ops.filter((o) => o.t === 'text').map((o) => o.str)
     expect(strs.some((s) => /^SHEET /.test(s))).toBe(false)
-    expect(one.model.doc.ops.filter((o) => o.t === 'line' && o.layer === 'ADJOINING')).toHaveLength(0)
+    // the figure's six sides only: with no split line there is nothing else on its layer
+    expect(one.model.doc.ops.filter((o) => o.t === 'line' && o.layer === 'BOUNDARY-NEW').length).toBeLessThanOrEqual(10)
+    expect(one.model.doc.ops.filter((o) => o.t === 'line' && o.layer === 'BOUNDARY-NEW').length).toBeLessThan(lines.length)
   })
 })

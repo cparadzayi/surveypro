@@ -215,6 +215,29 @@ describe('/api/geopdf/vector trueGeoPDF flag forwarding', () => {
     expect(res.headers['content-disposition']).toContain('general-plan-multisheet')
   })
 
+  test('a plan of several sheets does NOT render the whole plan first: the sheets are drawn once, by the sheeted render', async () => {
+    // The whole-plan first pass existed to detect multi-sheet, and its results were thrown away when the request
+    // already carried the cut. It cost about two thirds of a 265-stand request (244 s, roughly 190 s of it).
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/vector',
+      payload: {
+        ...basePayload,
+        planType: 'general-undeveloped',
+        sheets: [
+          { sheetNumber: 1, totalSheets: 2, ring: [], stands: ['1'], vertices: [], edges: [] },
+          { sheetNumber: 2, totalSheets: 2, ring: [], stands: ['2'], vertices: [], edges: [] }
+        ]
+      }
+    })
+    expect(res.statusCode).toBe(200)
+    expect(mockGenerateGeoPDF).not.toHaveBeenCalled()
+    expect(mockGenerateSheetedGeoPDF).toHaveBeenCalledTimes(1)
+    expect(res.headers['x-sheet-count']).toBe('2')
+    expect(res.rawPayload.toString()).toBe('SHEETED-PDF')
+  })
+
   test('ONE sheet is not a split: it keeps the mature single-plan path', async () => {
     const app = buildApp()
     const res = await app.inject({

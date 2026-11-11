@@ -400,6 +400,15 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
     
     const tempDir = path.join(__dirname, '../../temp/geopdf')
 
+    // Opt-in: with GEOPDF_DUMP_DIR set, the exact request body is written there, so a slow plan can be replayed
+    // and profiled under plain node (see CLAUDE.md, "Plan generation: cost, memory and cancelling"). Off by default.
+    if (process.env.GEOPDF_DUMP_DIR) {
+      try {
+        await mkdir(process.env.GEOPDF_DUMP_DIR, { recursive: true })
+        await writeFile(path.join(process.env.GEOPDF_DUMP_DIR, `geopdf-vector-${Date.now()}.json`), JSON.stringify(request.body))
+      } catch (e) { fastify.log.warn(`[GeoPDF] could not dump the request: ${e?.message}`) }
+    }
+
     // The renderer yields between beacons; if the client has gone (Cancel, closed tab) before the PDF
     // was sent, this signal stops it instead of letting it run on, unseen, for minutes.
     const clientGone = abortOnClientGone(reply)
@@ -678,8 +687,16 @@ export default async function vectorGeoPDFRoutes(fastify, options) {
 
         fastify.log.info(`[GeoPDF] 📐 Forwarding scale=${scale}, sheetSize=${sheetSize} to PDFKit renderer`)
 
-        // First-pass render — detects whether multi-sheet is required
-        const firstPass = await generatePDFKitGeoPDF(
+        // First-pass render — detects whether multi-sheet is required.
+        //
+        // NOT when the request already says so. `sheets` (two or more) IS the surveyor's cut, and the sheeted
+        // render below draws every sheet itself: this pass would render the WHOLE plan as one figure (all of its
+        // stands and beacons, with its own paper and scale escalations) and then have every one of its results
+        // thrown away, X-Used-Scale and X-Used-Sheet-Size included (they are replaced by the sheets' own, below).
+        // On a 265-stand, two-sheet plan that was about two thirds of the request: 244 s of which roughly 190 s
+        // was this pass.
+        const multiSheetRequest = Array.isArray(request.body.sheets) && request.body.sheets.length > 1
+        const firstPass = multiSheetRequest ? null : await generatePDFKitGeoPDF(
           {
             signal: clientGone.signal,
             parcels: parcelsWithComputedData,

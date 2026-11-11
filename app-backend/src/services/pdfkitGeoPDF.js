@@ -5572,6 +5572,9 @@ export function mapFurnitureMetrics(scale) {
  * scale is known — which it has to, since the scale is itself fitted into the
  * space this frees.
  */
+// Scale rungs the figure-fit guard may climb when the figure is taller than the room under the title band.
+const MAX_FIGURE_FIT_STEPS = 3;
+
 export function titleBandHeight(titleHeight) {
   return EDGE_PADDING + titleHeight + MAP_FURNITURE_TITLE_GAP
     + mapFurnitureMetrics(1).height + MAP_FURNITURE_FIGURE_GAP;
@@ -7662,7 +7665,9 @@ export function calculateBlockPositions(
         // Multi-table schedules use a fluid white-space search at render time — the stacker
         // position used here is a hint, not the final rendered position. Escalating on it
         // causes 3× redundant generation passes while the fluid table always finds clear slots.
-        const isScheduleWithFluidFallback = blk.name === 'scheduleOfAreas' && _schedNeedsSplit;
+        const isScheduleWithFluidFallback = (blk.name === 'scheduleOfAreas' && _schedNeedsSplit)
+          // the party-wall statement splits into tables at render time (planServitudePieces): its stacker slot is a hint too
+          || (blk.name === 'servitudeStatement' && (metadata?.servitudeStatement?.rows?.length ?? 0) >= 2);
         if (isMandatory && !isScheduleWithFluidFallback) _polyCollisionOnMandatory = true;
         logger.error({
           msg: `[PDFKit] ❌ Block↔Polygon collision${isMandatory && !isScheduleWithFluidFallback ? ' (MANDATORY — triggers escalation)' : isMandatory ? ' (mandatory but fluid-table will reposition — no escalation)' : ''}`,
@@ -10327,9 +10332,16 @@ function drawSurveyStatement(doc, metadata, mapBounds, position) {
  * table rows from `metadata.servitudeStatement.rows` — General Plans only.
  */
 export function drawServitudeStatement(doc, metadata, mapBounds, position) {
-  const rows = Array.isArray(metadata?.servitudeStatement?.rows)
-    ? metadata.servitudeStatement.rows
-    : [];
+  // A statement split into pieces (planServitudePieces): each is drawn as a table of its own.
+  if (Array.isArray(position?.placedTables) && position.placedTables.length > 0) {
+    for (const piece of position.placedTables) drawServitudeStatement(doc, metadata, mapBounds, piece);
+    return;
+  }
+  const rows = Array.isArray(position?.rows)
+    ? position.rows
+    : Array.isArray(metadata?.servitudeStatement?.rows)
+      ? metadata.servitudeStatement.rows
+      : [];
   if (!rows.length || !position || !position.width || !position.height) return;
 
   const SV = BLOCKS.SERVITUDE_STATEMENT ?? ({
@@ -10373,7 +10385,7 @@ export function drawServitudeStatement(doc, metadata, mapBounds, position) {
     .font(SV.headingFont.family)
     .fontSize(SV.headingFont.size)
     .fillColor("#000000")
-    .text(String(SV.heading), tableX, blockY + SV.padTop, {
+    .text(String(position.heading ?? SV.heading), tableX, blockY + SV.padTop, {
       width: tableW,
       align: "center",
       lineBreak: false,
@@ -10422,6 +10434,87 @@ export function drawServitudeStatement(doc, metadata, mapBounds, position) {
   }
 
   doc.restore();
+}
+
+/** The statement's chrome (fonts, paddings, row height), with the same fallback the drawer uses. */
+function servitudeChrome() {
+  return BLOCKS.SERVITUDE_STATEMENT ?? ({
+    heading: 'Party-wall servitudes data',
+    headingFont: { family: 'Helvetica-Bold', size: 8.5 },
+    columns: [
+      { key: 'stands', label: 'STAND NUMBER', align: 'left' },
+      { key: 'boundary', label: 'BOUNDARY', align: 'left' },
+    ],
+    font: { family: 'Helvetica', size: 8 },
+    headerFont: { family: 'Helvetica-Bold', size: 7.5 },
+    padTop: 6, padBottom: 6, headingGap: 4, headingLineHeight: 11,
+    headerHeight: 15, rowHeight: 14, cellPad: 6, tableInset: 4,
+    minWidth: 250, maxWidth: 340,
+  });
+}
+
+/**
+ * Split the party-wall statement into pieces that each find clear paper.
+ *
+ * A General Plan can carry dozens of party walls, which makes the one-box statement a very tall, narrow strip
+ * that no pocket of white paper round the figure can hold; a box with nowhere to go was drawn across the stands.
+ * The DXF has always handled that (dxfGenerator: whole first, then 2, 3, 4, 6 boxes headed "(cont'd)"); this is
+ * the PDF's version of the same rule, so the two formats lay the statement out alike.
+ *
+ * Each piece is as narrow as its own content (the widest stand and boundary, or the "(cont'd)" heading), not the
+ * planner's 250 pt minimum, so a pocket the width of a table fits one.
+ *
+ * @param {object} p
+ * @param {object} p.doc        PDFKit document (for text widths)
+ * @param {Array}  p.rows       the statement's rows, { stands, boundary }
+ * @param {(w:number,h:number,trial:Array)=>({x:number,y:number}|null)} p.place
+ *                              finds clear paper for a w x h box given the boxes already seated in this trial
+ * @param {number[]} [p.ks]     the numbers of pieces to try, in order
+ * @returns {Array<{x,y,width,height,rows,columns,heading}>|null}  null when no split finds room for every piece
+ */
+export function planServitudePieces({ doc, rows, place, ks = [2, 3, 4, 6] }) {
+  const SV = servitudeChrome();
+  const list = (rows ?? []).filter((r) => r && (r.stands || r.boundary));
+  if (list.length < 2) return null;
+  const contHeading = `${SV.heading} (cont'd)`;
+  doc.font(SV.headingFont.family).fontSize(SV.headingFont.size);
+  const headW = Math.max(doc.widthOfString(String(SV.heading)), doc.widthOfString(contHeading));
+  doc.font(SV.headerFont.family).fontSize(SV.headerFont.size);
+  const hStand = doc.widthOfString(SV.columns[0].label), hBound = doc.widthOfString(SV.columns[1].label);
+  doc.font(SV.font.family).fontSize(SV.font.size);
+  let wStand = 0, wBound = 0;
+  for (const r of list) {
+    wStand = Math.max(wStand, doc.widthOfString(String(r.stands ?? '')));
+    wBound = Math.max(wBound, doc.widthOfString(String(r.boundary ?? '')));
+  }
+  let colStand = Math.max(wStand, hStand) + 2 * SV.cellPad;
+  let colBound = Math.max(wBound, hBound) + 2 * SV.cellPad;
+  const tableW = Math.max(colStand + colBound, Math.ceil(headW));
+  const width = Math.ceil(tableW + 2 * SV.tableInset);
+  // the columns fill the box, as the one-box statement's do
+  const scale = tableW / (colStand + colBound);
+  colStand = Math.round(colStand * scale); colBound = Math.round(tableW - colStand * 1);
+  colBound = Math.round(tableW) - colStand;
+  const heightFor = (n) => SV.padTop + SV.headingLineHeight + SV.headingGap + SV.headerHeight + n * SV.rowHeight + SV.padBottom;
+
+  for (const k of ks) {
+    if (k > list.length) break;
+    const per = Math.ceil(list.length / k);
+    const trial = [];
+    const pieces = [];
+    let ok = true;
+    for (let i = 0; i < list.length; i += per) {
+      const slice = list.slice(i, i + per);
+      const height = heightFor(slice.length);
+      const at = place(width, height, trial);
+      if (!at) { ok = false; break; }
+      const box = { x: at.x, y: at.y, width, height };
+      trial.push(box);
+      pieces.push({ ...box, rows: slice, columns: [colStand, colBound], heading: pieces.length === 0 ? SV.heading : contHeading });
+    }
+    if (ok && pieces.length > 1) return pieces;
+  }
+  return null;
 }
 
 /**
@@ -11709,6 +11802,31 @@ async function _generateGeoPDFInner(options, logger) {
       calculatedExtent,
       alignX: figAlignX,
     });
+    // The shared resolver fits the figure into a drawing area less an ESTIMATED title band (55 mm); the band
+    // actually reserved above is measured, and on a General Plan with a long title it is twice that. Where
+    // the figure at the resolved scale is taller than the room really left, it would run past the figure's
+    // clearance and out of the drawing space (Maglas at 1:500: 13 pt past the bottom edge, over the record
+    // statement). The resolver cannot know the band, so step the scale up one rung here, as the block
+    // overflow path does. A surveyor-declared scale is honoured (the sheet escalates instead).
+    // Only on a sheet of a multi-sheet plan: its DXF is drawn from the PDF's own pages, so the two cannot
+    // disagree. A single-sheet DXF resolves its scale by itself, and a PDF-only step-up would split the
+    // two formats (planSheeting.parity.test.js).
+    if (sheetInfo && fig.vSlack < -1 && !_scaleDeclared && _scaleUpAttempt < MAX_FIGURE_FIT_STEPS) {
+      const _i = SI727_PRESCRIBED_SCALES.findIndex((s) => s.value === optimalScale.value);
+      const _next = _i !== -1 ? SI727_PRESCRIBED_SCALES[_i + 1] : null;
+      if (_next) {
+        logger.warn(
+          `[PDFKit] 📏 Figure at ${optimalScale.label} is ${(-fig.vSlack / MM_TO_PT).toFixed(1)}mm taller than the room under the title band — ` +
+          `stepping up to ${_next.label}`
+        );
+        return await _generateGeoPDFInner({
+          ...options,
+          _forceMinDenominator: optimalScale.value,
+          _scaleUpAttempt: _scaleUpAttempt + 1,
+          _sheetSizeUpAttempt,
+        }, logger);
+      }
+    }
     figureBounds = {
       x: fig.x,
       y: fig.y,
@@ -13001,11 +13119,17 @@ async function _generateGeoPDFInner(options, logger) {
         ? { x: p.x, y: p.y, width: p.width, height: p.height }
         : null;
     // Fixed blocks (do NOT relocate) seed the obstacle set so relocations avoid them.
+    // A General Plan's record-number statement is printed along the bottom of the drawing space; nothing may sit on it.
+    const _isGeneralPlan = metadata?.planType === 'general-developed' || metadata?.planType === 'general-undeveloped';
+    const _recordStatementRect = _isGeneralPlan
+      ? { x: mapBounds.x, y: mapBounds.y + mapBounds.height - 9 - 4 - 2, width: mapBounds.width, height: 9 + 4 + 2 }
+      : null;
     const _fixedObstacles = [
       blockPositions.titleBlock,
       blockPositions.scheduleOfAreas,
       blockPositions.endorsement,
     ].map(_asRect).filter(Boolean);
+    if (_recordStatementRect) _fixedObstacles.push(_recordStatementRect);
     const _occupied = [..._fixedObstacles, ..._tickRects];
     const _overlapsAnyTick = (r) => _tickRects.some((t) => rectanglesOverlap(r, t, 0));
     // The same 6pt the finder below demands of a block it places. Checking a block
@@ -13015,7 +13139,8 @@ async function _generateGeoPDFInner(options, logger) {
     const _FIGURE_CLEARANCE = 6;
     const _overlapsFigure = (r) =>
       _accurateFigurePoly ? rectangleOverlapsPolygon(r, _accurateFigurePoly, _FIGURE_CLEARANCE) : false;
-    const _needsRelocation = (r) => _overlapsAnyTick(r) || _overlapsFigure(r);
+    const _needsRelocation = (r) => _overlapsAnyTick(r) || _overlapsFigure(r)
+      || (_recordStatementRect ? rectanglesOverlap(r, _recordStatementRect, 0) : false);
     // Widest-first (matches DXF task ordering) so the hardest-to-fit blocks claim
     // whitespace before the smaller ones do.
     const _relocatable = ['outsideFigureData', 'beaconDescription', 'surveyStatement', 'servitudeStatement', 'sgSignature', 'scaleBar', 'northArrow']
@@ -13045,6 +13170,26 @@ async function _generateGeoPDFInner(options, logger) {
         logger.info(
           `[PDFKit] 📐 Relocated ${t.name} clear of ticks/figure → (${found.x.toFixed(1)}, ${found.y.toFixed(1)})`
         );
+      } else if (t.name === 'servitudeStatement' && Array.isArray(metadata?.servitudeStatement?.rows)) {
+        // No clear slot for the whole table: split it, and seat each piece in whitespace of its own.
+        const pieces = planServitudePieces({
+          doc,
+          rows: metadata.servitudeStatement.rows,
+          place: (w, h, trial) => findBlockPosition({
+            block: { width: w, height: h }, mapBounds, polygon: _accurateFigurePoly,
+            placedBlocks: [..._occupied, ...trial], buffer: 6, blockSpacing: 8, scanStep: 10, tableMinWidth: w, logger,
+          }),
+        });
+        if (pieces) {
+          // The statement is now several tables: its first sets x, y, width, height (so nothing sees the old
+          // one-box rect), and `placedTables` carries them all (drawing, tick avoidance and overlap checks read it).
+          blockPositions.servitudeStatement = { ...pieces[0], placedTables: pieces };
+          _occupied.push(...pieces.map((p) => ({ x: p.x, y: p.y, width: p.width, height: p.height })));
+          logger.info(`[PDFKit] 📐 servitudeStatement split into ${pieces.length} tables to find clear paper (${metadata.servitudeStatement.rows.length} rows)`);
+        } else {
+          _occupied.push(t.rect);
+          logger.warn('[PDFKit] ⚠️ servitudeStatement overlaps the figure or a tick, and no split found clear paper — keeping planner slot');
+        }
       } else {
         _occupied.push(t.rect); // no clear slot — keep planner slot (tick renderer still deflects its labels)
         logger.warn(
@@ -13671,13 +13816,25 @@ export async function generateSheetedGeoPDF(options, logger) {
     log.info(`[SheetedPDF] Key plan generated from ${orderedSheets.length} sheet rings`);
   }
 
-  const renderSheets = async (scaleArg) => {
+  // `only` (a Set of positions in orderedSheets) limits a pass to those sheets; the rest keep what `previous`
+  // rendered. A sheet already drawn at the scale the set is being unified to is not drawn again: the same
+  // request, the same page, and on a plan of a few hundred stands a whole render (tens of seconds) for nothing.
+  const renderSheets = async (scaleArg, only = null, previous = null) => {
     const pages = [];
     const sheetLayouts = [];
     // What each sheet's render warned about, so the caller can tell the surveyor.
     const sheetWarnings = [];
+    const warningsBySheet = [];
     const records = [];
-    for (const sheet of orderedSheets) {
+    for (const [position, sheet] of orderedSheets.entries()) {
+    if (only && !only.has(position) && previous) {
+      pages.push(previous.pages[position]);
+      sheetLayouts.push(previous.sheetLayouts[position]);
+      warningsBySheet[position] = previous.warningsBySheet?.[position] ?? [];
+      sheetWarnings.push(...warningsBySheet[position]);
+      if (recordOps && previous.records[position]) records.push(previous.records[position]);
+      continue;
+    }
     const outsideFigure = sheetOutsideFigure(sheet);
     // The plan's own features for this sheet's stands, when the whole-plan
     // collection was supplied -- so the sheet keeps the computed areas, edges
@@ -13713,10 +13870,12 @@ export async function generateSheetedGeoPDF(options, logger) {
     pages.push(result.pdfBuffer);
     if (recordOps) records.push({ sheetNumber: sheet.sheetNumber, totalSheets: sheet.totalSheets, ops: result.ops, ground: result.ground, scale: result.scale, sheetSize: result.sheetSize });
     sheetLayouts.push({ sheetNumber: sheet.sheetNumber, scale: result.scale, sheetSize: result.sheetSize });
-    sheetWarnings.push(...warningHints(result.warnings, `Sheet ${sheet.sheetNumber}: `));
+    const hints = warningHints(result.warnings, `Sheet ${sheet.sheetNumber}: `);
+    sheetWarnings.push(...hints);
+    warningsBySheet[position] = hints;
     log.info(`[SheetedPDF] Sheet ${sheet.sheetNumber}/${sheet.totalSheets} generated (${result.pdfBuffer.length} bytes)`);
   }
-    return { pages, sheetLayouts, warnings: sheetWarnings, records };
+    return { pages, sheetLayouts, warnings: sheetWarnings, warningsBySheet, records };
   };
 
   // Every sheet of ONE plan is drawn at ONE scale. A sheet that needed a coarser
@@ -13729,8 +13888,11 @@ export async function generateSheetedGeoPDF(options, logger) {
     const denoms = rendered.sheetLayouts.map((l) => parseInt(String(l.scale).split(':')[1], 10)).filter(Number.isFinite);
     const coarsest = Math.max(...denoms);
     if (denoms.length < 2 || denoms.every((d) => d === coarsest)) break;
-    log.info(`[SheetedPDF] Sheets resolved to different scales (${rendered.sheetLayouts.map((l) => l.scale).join(', ')}) — re-rendering every sheet at 1:${coarsest}`);
-    rendered = await renderSheets(`1:${coarsest}`);
+    // Only the sheets NOT already at the coarsest scale: those at it would come out identical.
+    const redo = new Set();
+    rendered.sheetLayouts.forEach((l, i) => { if (parseInt(String(l.scale).split(':')[1], 10) !== coarsest) redo.add(i); });
+    log.info(`[SheetedPDF] Sheets resolved to different scales (${rendered.sheetLayouts.map((l) => l.scale).join(', ')}) — re-rendering ${redo.size === orderedSheets.length ? 'every sheet' : 'the ' + redo.size + ' not at it'} at 1:${coarsest}`);
+    rendered = await renderSheets(`1:${coarsest}`, redo, rendered);
   }
   pageBuffers.push(...rendered.pages);
   layouts.push(...rendered.sheetLayouts);

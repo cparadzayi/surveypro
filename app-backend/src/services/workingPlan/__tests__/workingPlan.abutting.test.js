@@ -38,7 +38,7 @@ describe('abutting properties', () => {
 
   test('the site beacon in the inset letters its three properties', () => {
     const sd5 = brackenhurstSpec.beacons.find((b) => b.name === 'SD5')
-    const spec = { ...brackenhurstSpec, inset: { ...brackenhurstSpec.inset,
+    const spec = { ...brackenhurstSpec, abutInset: true, inset: { ...brackenhurstSpec.inset,
       beacons: [...brackenhurstSpec.inset.beacons, { name: 'SD5', X: sd5.X, Y: sd5.Y, symbol: 'peg' }] } }
     const inset = textsOn(generateWorkingPlan(spec).dxf, 'INSET')
     for (const label of ['405', '404', 'Rem./']) expect(inset).toContain(label)
@@ -74,6 +74,7 @@ describe('abutters around an inset sign do not overlap', () => {
     const sd5 = brackenhurstSpec.beacons.find((b) => b.name === 'SD5')
     const spec = {
       ...brackenhurstSpec,
+      abutInset: true,
       remainderLabel: 'Rem./',
       inset: { ...brackenhurstSpec.inset,
         beacons: [{ name: 'SD5', X: sd5.X, Y: sd5.Y, symbol: 'peg' }] },
@@ -100,6 +101,7 @@ describe('the parcels meeting at a station of the trig map are an inset of their
   const sd5 = brackenhurstSpec.beacons.find((b) => b.name === 'SD5')
   const spec = {
     ...brackenhurstSpec,
+    abutInset: true,   // not added by default: its parcels are all on the main figure (see the 'abut' inset in working-plan.js)
     remainderLabel: 'Rem./',
     inset: { ...brackenhurstSpec.inset, beacons: [{ name: 'SD5', X: sd5.X, Y: sd5.Y, symbol: 'peg' }] },
   }
@@ -154,5 +156,25 @@ describe('the parcels meeting at a station of the trig map are an inset of their
     expect((ground * 1000) / D).toBeLessThanOrEqual(0.7 * 15 + 1e-9)
     // The circle is as large as its cell allows (the column beside the trig map is narrow, so its radius is 15 mm, not 16): 1:2000.
     expect(D).toBe(2000)
+  })
+})
+
+describe('the parcels circle is not added when the main figure already shows its parcels', () => {
+  const sd5 = brackenhurstSpec.beacons.find((b) => b.name === 'SD5')
+  const base = {
+    ...brackenhurstSpec,
+    remainderLabel: 'Rem./',
+    inset: { ...brackenhurstSpec.inset, beacons: [{ name: 'SD5', X: sd5.X, Y: sd5.Y, symbol: 'peg' }] },
+  }
+  const captions = (spec) => generateWorkingPlan(spec).model.doc.ops
+    .filter((o) => o.t === 'text' && o.layer === 'INSET' && /^INSET \d+/.test(o.str)).map((o) => o.str)
+
+  test('by default the site marker gets no circle of its own', () => {
+    expect(generateWorkingPlan(base).insetCount).toBe(1)
+    expect(captions(base).filter((c) => /^INSET 2/.test(c))).toEqual([])
+  })
+
+  test('abutInset: true still asks for it', () => {
+    expect(generateWorkingPlan({ ...base, abutInset: true }).insetCount).toBe(2)
   })
 })

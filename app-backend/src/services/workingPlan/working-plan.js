@@ -159,8 +159,12 @@ const MEASURED_LANDSCAPE = {
    * the legibility floor.
    */
   text: {
-    beacon: TEN_PT, parcel: TEN_PT, adjoining: TEN_PT, grid: 2.5, insetLabel: TEN_PT,
-    road: TEN_PT,
+    // Two sizes of lettering, by what it has to do. The stand number and the road name identify what the
+    // sheet is about, so they stay at 10 pt (3.5 mm). The marks round them -- beacon letters, neighbours'
+    // names, the inset's labels -- are 2.5 mm, the ISO minimum, like the grid figures: they were crowding
+    // the figure, and at the smaller size the numbers stand out from them.
+    parcel: TEN_PT, road: TEN_PT,
+    beacon: 2.5, adjoining: 2.5, insetLabel: 2.5, grid: 2.5,
     // title dropped one ISO rung (3,5 -> 2,5) so the identification lines make
     // room for the sheet it names; the heading alone stays the document size.
     scale: 3.5, approval: 3.5, certificate: 3.5, title: 2.5,
@@ -2021,6 +2025,15 @@ const crowded = crowdedClusters(
     for (let k = 0; k <= 4; k++) {
       steps.push([g.e + (dx / len) * step * k, g.n + (dy / len) * step * k]);
     }
+    // Then to either side of that line, further out. Added AFTER the outward steps, so a name that already
+    // finds a clear spot keeps it; one that every outward step leaves on a grid figure (a vertical figure is a
+    // long strip) can still move clear of it.
+    const px0 = -dy / len, py0 = dx / len;
+    for (const k of [1, 2, 3]) for (const side of [1, -1]) {
+      for (const out of [0, 1, 2]) {
+        steps.push([g.e + (dx / len) * step * out + px0 * step * k * 1.2 * side, g.n + (dy / len) * step * out + py0 * step * k * 1.2 * side]);
+      }
+    }
     const chosen = bestOf(steps, (c) => textRect(t.text, c[0], c[1], th, 'center'));
     const [px, py] = chosen.choice;
     occupied.push(chosen.rect);
@@ -2228,17 +2241,18 @@ const crowded = crowdedClusters(
 
   /* ---- approval box */
   if (spec.approvalBox !== false) {
+    // The approval box is lettered in the same face as the surveyor's certificate (Arial) and at the same size.
     const A = L.approval, ah = mm(L.text.approval);
     d.polyline([S(A.box.x0, A.box.y0), S(A.box.x1, A.box.y0),
       S(A.box.x1, A.box.y1), S(A.box.x0, A.box.y1)],
     { layer: 'APPROVAL', closed: true });
     d.text('Approved', S((A.box.x0 + A.box.x1) / 2, A.approvedBaseline), ah,
-      { layer: 'APPROVAL', style: 'SERIF', align: 'center' });
+      { layer: 'APPROVAL', style: 'ARIAL', align: 'center' });
     d.line(S(A.leader1.x0, A.leader1.y), S(A.leader1.x1, A.leader1.y),
       { layer: 'APPROVAL', linetype: 'PLANDOT' });
     d.text('for Surveyor General', S((A.box.x0 + A.box.x1) / 2, A.forBaseline), ah,
-      { layer: 'APPROVAL', style: 'SERIF', align: 'center' });
-    d.text('Date:', S(A.dateX, A.dateBaseline), ah, { layer: 'APPROVAL', style: 'SERIF' });
+      { layer: 'APPROVAL', style: 'ARIAL', align: 'center' });
+    d.text('Date:', S(A.dateX, A.dateBaseline), ah, { layer: 'APPROVAL', style: 'ARIAL' });
     d.line(S(A.leader2.x0, A.leader2.y), S(A.leader2.x1, A.leader2.y),
       { layer: 'APPROVAL', linetype: 'PLANDOT' });
   }
@@ -2369,8 +2383,17 @@ const crowded = crowdedClusters(
   // from the real boundaries to a stated scale. They used to be a wedge diagram round the marker, fixed
   // at 19 mm across: a symbol bigger than the whole survey on a map to scale, which covered whatever
   // stood beside it (DB, 580 m from the marker, was lettered over it).
+  //
+  // Only when one of those parcels is NOT already drawn on the main figure: the circle repeats what the figure
+  // shows (stands 1343 and 1344 at 1:2500, once drawn there and again at 1:4000), and costs a cell of the inset
+  // box. Today every parcel a wedge names is read off a ring the sheet draws, so this adds the inset only if a
+  // wedge ever names one that is not.
+  const drawnLabels = new Set(abutShapes.filter((p) => p.mid).map((p) => String(p.label ?? '').trim()));
   for (const b of insets.find((i) => i.kind === 'locality')?.beacons ?? []) {
-    if (ABUT_SYMBOLS.has(b.symbol ?? 'peg') && wedgesOf(b).length > 0) insets.push({ kind: 'abut', beacon: b });
+    if (!ABUT_SYMBOLS.has(b.symbol ?? 'peg')) continue;
+    const wedges = wedgesOf(b);
+    // spec.abutInset === true asks for it regardless (the surveyor's choice).
+    if (wedges.length > 0 && (spec.abutInset === true || wedges.some((w) => !drawnLabels.has(w.label)))) insets.push({ kind: 'abut', beacon: b });
   }
 
   // The column beside the trig map is as narrow as its insets allow: the parcels circle and a tick fit 36 mm, but a

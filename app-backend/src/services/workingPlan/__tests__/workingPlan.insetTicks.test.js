@@ -5,6 +5,7 @@ import { brackenhurstSpec } from './fixtures/brackenhurstSpec.js'
 const sd5 = brackenhurstSpec.beacons.find((b) => b.name === 'SD5')
 const spec = {
   ...brackenhurstSpec,
+  abutInset: true,   // the parcels circle is not added by default; this checks the ticks of every scaled inset
   remainderLabel: 'Rem./',
   inset: { ...brackenhurstSpec.inset, beacons: [{ name: 'SD5', X: sd5.X, Y: sd5.Y, symbol: 'peg' }] },
 }

@@ -503,6 +503,8 @@ import { resolveSurveyDesignation } from '../../../utils/surveyDesignation'
 import { displayTrigName } from '../../../../../app-shared/trigName'
 import { purposeReferenceFieldLabel } from '../../../utils/reportPurpose'
 import { localControlFrom } from '../../../utils/siteCalibration'
+import { officialControlKindByName } from '../../../utils/beaconStatus'
+import { mergeControlNames, type ControlName } from '../../../utils/reportControl'
 
 const { workflowState, saveStepData } = useCadastralWorkflow()
 // Typed into the report and not yet saved to the project (Save Draft and Generate both save it).
@@ -627,10 +629,9 @@ onMounted(async () => {
     }
   }
 
-  // Fresh report: fill the trig section from the Project Setup control points
-  // so "Survey Based On" states "Trigonometrical beacons 176/P (Kenyani) ..."
-  // without retyping the monument numbers.
-  await autofillTrigNamesFromControlPoints()
+  // Merge the selected control into "Survey Based On" (trig stations and official control points), keeping
+  // what is already written: "Trigonometrical beacons 176/P (Kenyani) ..." without retyping the numbers.
+  await mergeControlIntoReport()
   
   console.log('[ReportOnSurvey] Loaded with', beaconCount.value, 'beacons')
 })
@@ -736,48 +737,82 @@ const goBack = () => {
 // Generate report
 const isGenerating = ref(false)
 
-// Auto-fill the trig names from the control points selected in Project Setup,
-// in the "176/P (Kenyani)" monument-number (alias) form the sample report uses.
-// Only when the report hasn't already been authored, so a saved report is never
-// overwritten.
-async function autofillTrigNamesFromControlPoints(): Promise<void> {
+// The control the survey was tied to, merged into "Survey Based On".
+//
+// It used to fill the trig list once, and only while it was empty: a report saved before the control
+// selection was finished (or before the calibration was loaded) kept its one name for ever, and the
+// stations selected afterwards never reached it. Now every selected control point -- the registry's and the
+// ones carried from the site calibration -- is merged in each time the report is opened and whenever the
+// selection changes. What the surveyor has written is kept; only what is missing is added, so it is safe to
+// run again and again.
+//
+// The two kinds go where the report puts them: trigonometrical stations in the trig list, official control
+// points (OCP, the "6091/V" series) in the official-control list. A name already in either is not added twice.
+async function selectedControlForReport(): Promise<ControlName[]> {
   const project = workflowState.projectInfo
-  const ids = project.controlPointIds
-  const carried = localControlFrom(workflowState)
-  if ((!project.controlPointIds || project.controlPointIds.length === 0) && carried.length === 0) return
-  if (reportData.value.surveyBasis.trigStationNames?.length) return
+  const found: ControlName[] = []
 
-  // control the calibration report names that the registry does not hold, then the registry's
-  const names: string[] = carried.map(c => c.name)
+  // carried from the site calibration: the report's own designation and kind
+  for (const c of localControlFrom(workflowState)) {
+    found.push({ label: c.name, ocp: c.type === 'OCP' || officialControlKindByName(c.name) === 'OCP' })
+  }
+
+  // the registry's: monument number with its monument name, "176/P (Kenyani)"
+  for (const id of project.controlPointIds ?? []) {
+    let cp: any
+    try {
+      // Shared client: the raw fetch() here sent no Authorization header. A 404/403 skips this point
+      // rather than aborting the loop.
+      cp = (await api.get(`/control-points/${id}`)).data
+    } catch {
+      continue
+    }
+    if (!cp) continue
+    const ocp = String(cp.type ?? '').toUpperCase() === 'OCP' || officialControlKindByName(cp.monu_num) === 'OCP'
+    if (cp.monu_num) found.push({ label: cp.monu_name ? `${cp.monu_num} (${displayTrigName(cp.monu_name)})` : cp.monu_num, ocp })
+    else if (cp.monu_name) found.push({ label: displayTrigName(cp.monu_name), ocp })
+  }
+  return found
+}
+
+let mergingControl = false
+async function mergeControlIntoReport(): Promise<void> {
+  if (mergingControl) return
+  mergingControl = true
   try {
-    for (const id of project.controlPointIds ?? []) {
-      // Shared client: the raw fetch() here sent no Authorization header.
-      // A 404/403 skips this point rather than aborting the whole loop.
-      let cp: any
-      try {
-        const response = await api.get(`/control-points/${id}`)
-        cp = response.data
-      } catch {
-        continue
-      }
-      if (!cp) continue
-      if (cp.monu_num) {
-        names.push(cp.monu_name ? `${cp.monu_num} (${displayTrigName(cp.monu_name)})` : cp.monu_num)
-      } else if (cp.monu_name) {
-        names.push(displayTrigName(cp.monu_name))
-      }
+    const found = await selectedControlForReport()
+    if (found.length === 0) return
+    const basis = reportData.value.surveyBasis
+    if (!basis) return
+
+    const { trig, ocp, addedTrig, addedOcp } = mergeControlNames(
+      { trig: basis.trigStationNames, ocp: basis.controlPointNames },
+      found,
+    )
+
+    if (addedTrig > 0) {
+      basis.trigStationNames = trig
+      basis.trigStations = true
+      trigStationNamesInput.value = trig.join(', ')
+    }
+    if (addedOcp > 0) {
+      basis.controlPointNames = ocp
+      basis.officialControlPoints = true
+      controlPointNamesInput.value = ocp.join(', ')
     }
   } catch (error) {
-    console.warn('[ReportOnSurvey] Failed to auto-load trig names from control points:', error)
-    return
-  }
-
-  if (names.length > 0) {
-    reportData.value.surveyBasis.trigStationNames = names
-    reportData.value.surveyBasis.trigStations = true
-    trigStationNamesInput.value = names.join(', ')
+    console.warn('[ReportOnSurvey] Failed to merge the selected control into the report:', error)
+  } finally {
+    mergingControl = false
   }
 }
+
+// A selection made or changed while the report is open reaches it too.
+watch(
+  () => [workflowState.projectInfo.controlPointIds, workflowState.projectInfo.localControlPoints],
+  () => { void mergeControlIntoReport() },
+  { deep: true },
+)
 
 const generateReport = async () => {
   if (!isFormValid.value) {

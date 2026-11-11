@@ -108,7 +108,7 @@
             <div class="ml-3">
               <h3 class="text-sm font-medium text-amber-800">Not Sure Which Points to Select?</h3>
               <p class="mt-1 text-sm text-amber-700">
-                You can <strong>skip this step for now</strong> and select control points later after importing your CSV data. 
+                You can <strong>skip this step for now</strong> and select control points later after importing your CSV data.
                 This way, you'll know your survey location and can choose the nearest control points.
               </p>
             </div>
@@ -125,7 +125,7 @@
           @update:selectedIds="handleSelectionUpdate"
           @meridianSuggested="handleMeridianSuggestion"
         />
-        
+
         <!-- Map Statistics -->
         <div v-if="useMapView" class="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
           <div class="flex items-center justify-between text-sm">
@@ -153,7 +153,7 @@
           v-model="controlPointsSelection"
           :project-id="projectId"
         />
-        
+
         <!-- Info about map view -->
         <div v-if="useMapView" class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
           <p class="text-sm text-blue-800">
@@ -188,7 +188,7 @@
               <span aria-hidden="true">⏭️</span>
               <span>Skip for Now</span>
             </button>
-            
+
             <!-- Save & Continue Button -->
             <button
               type="button"
@@ -210,7 +210,7 @@
         <div v-if="!canProceed && !showSkipMessage" class="mt-4 text-sm text-amber-600">
           <p v-if="!controlPointsSelection.meridian">⚠️ Please select a central meridian to continue, or click "Skip for Now"</p>
           <p v-if="controlPointsSelection.meridian && controlPointsSelection.points.length < 3">
-            ⚠️ Please select at least 3 control points ({{ controlPointsSelection.points.length }} selected), or click "Skip for Now"
+            ⚠️ Please select at least 3 control points ({{ controlPointsSelection.points.length + carriedControl.length }} selected), or click "Skip for Now"
           </p>
         </div>
 
@@ -238,7 +238,7 @@
             </div>
           </div>
         </div>
-        
+
         <!-- Loading Message -->
         <div v-if="isLoadingControlPoints" class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
           <p class="text-sm text-blue-800">
@@ -251,14 +251,14 @@
 </template>
 
 <script setup lang="ts">
-import { notifyError, notifyFailure, notifyWarning } from '@/composables/useNotifications'
+import { notifyError, notifyFailure, notifySuccess, notifyWarning } from '@/composables/useNotifications'
 import { ref, computed, onMounted, watch } from 'vue'
 import ControlPointSelector from '@/components/ControlPointSelector.vue'
 import ControlPointMapView from '@/components/cadastral/ControlPointMapView.vue'
 import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
 import { useSurveyors } from '@/composables/useSurveyors'
 import { capeLoToWGS84 } from '@/utils/coordinateTransform'
-import { siteCalibrationFrom, matchCalibrationControlPoints } from '@/utils/siteCalibration'
+import { siteCalibrationFrom, matchCalibrationControlPoints, localControlFromCalibration, localControlFrom } from '@/utils/siteCalibration'
 // axios no longer used directly; all calls go through the shared client.
 import api from '../../../services/api'
 
@@ -286,7 +286,7 @@ const searchRadius = ref(20) // Default 20km radius
 // Computed properties
 const projectId = computed(() => workflowState.projectInfo.projectId)
 
-const selectedCount = computed(() => controlPointsSelection.value.points.length)
+const selectedCount = computed(() => controlPointsSelection.value.points.length + carriedControl.value.length)
 
 // Calculate survey center from imported CSV data (in GAUSS coordinates)
 const surveyCenter = computed(() => {
@@ -295,41 +295,41 @@ const surveyCenter = computed(() => {
     console.log('[ControlPointSelection] No imported points available for survey center calculation')
     return null
   }
-  
+
   const loZone = workflowState.projectInfo.centralMeridian
   if (!loZone) {
     console.log('[ControlPointSelection] No central meridian set for survey center calculation')
     return null
   }
-  
+
   try {
     const points = workflowState.importedPoints
-    
+
     // Calculate centroid from Gauss coordinates (Y=westing, X=southing)
     // Points are stored as { original: { y, x } } in the workflow state
     const avgY = points.reduce((sum: number, p: any) => {
       const y = p.original?.y || p.y || 0
       return sum + y
     }, 0) / points.length
-    
+
     const avgX = points.reduce((sum: number, p: any) => {
       const x = p.original?.x || p.x || 0
       return sum + x
     }, 0) / points.length
-    
+
     console.log(`[ControlPointSelection] Survey centroid (Gauss): Y=${avgY.toFixed(2)}, X=${avgX.toFixed(2)}`)
     console.log('[ControlPointSelection] 🔍 DEBUG - Number of imported points:', points.length)
     console.log('[ControlPointSelection] 🔍 DEBUG - First imported point:', points[0])
     console.log('[ControlPointSelection] 🔍 DEBUG - Lo Zone:', loZone)
-    
+
     // Transform to WGS84 for map display only
     const wgs84Center = capeLoToWGS84({ id: 'center', y: avgY, x: avgX }, loZone)
-    
+
     console.log(`[ControlPointSelection] Survey center (WGS84 for map): [${wgs84Center.lat.toFixed(6)}, ${wgs84Center.lng.toFixed(6)}]`)
     console.log('[ControlPointSelection] 🔍 DEBUG - WGS84 object:', wgs84Center)
-    
+
     // Return BOTH Gauss (for distance calc) and WGS84 (for map display)
-    return { 
+    return {
       y: avgY,        // Gauss Y (westing) - PRIMARY for distance calc
       x: avgX,        // Gauss X (southing) - PRIMARY for distance calc
       lat: wgs84Center.lat,  // WGS84 lat - for map display only
@@ -351,15 +351,15 @@ const controlPointsForMap = computed(() => {
   console.log('[ControlPointSelection] 🔍 Computing controlPointsForMap...')
   console.log('[ControlPointSelection] 🔍 Total control points:', controlPoints.value.length)
   console.log('[ControlPointSelection] 🔍 Survey center:', surveyCenter.value)
-  
+
   if (!surveyCenter.value) {
     // No survey center, return all points with valid Gauss coordinates
     const mappedPoints = controlPoints.value
       .filter((point: any) => {
         // Check for valid Gauss coordinates (primary)
-        const hasValidGauss = typeof point.y === 'number' && 
+        const hasValidGauss = typeof point.y === 'number' &&
                               typeof point.x === 'number' &&
-                              !isNaN(point.y) && 
+                              !isNaN(point.y) &&
                               !isNaN(point.x)
         if (!hasValidGauss) {
           console.warn('[ControlPointSelection] ⚠️ Point missing Gauss coordinates:', point.id, point.y, point.x)
@@ -371,28 +371,28 @@ const controlPointsForMap = computed(() => {
         central_meridian: point.gauss_lo,
         description: point.monu_name || point.area_nm
       }))
-    
+
     console.log('[ControlPointSelection] 🗺️ No survey center - returning all valid points:', mappedPoints.length)
     return mappedPoints
   }
-  
+
   // Filter points within search radius using GAUSS COORDINATES (planar distance)
   const centerY = surveyCenter.value.y
   const centerX = surveyCenter.value.x
   const radiusMeters = searchRadius.value * 1000 // Convert km to meters
-  
+
   console.log('[ControlPointSelection] 🎯 Filtering by radius:', searchRadius.value, 'km (', radiusMeters, 'm)')
   console.log('[ControlPointSelection] 🎯 Center (Gauss):', [centerY, centerX])
   console.log('[ControlPointSelection] 🔍 DEBUG - Full survey center object:', surveyCenter.value)
   console.log('[ControlPointSelection] 🔍 DEBUG - Total control points before filter:', controlPoints.value.length)
   console.log('[ControlPointSelection] 🔍 DEBUG - First control point:', controlPoints.value[0])
-  
+
   const pointsWithDistance = controlPoints.value
     .filter((point: any) => {
       // Need Gauss coordinates for distance calculation
-      const hasValidGauss = typeof point.y === 'number' && 
+      const hasValidGauss = typeof point.y === 'number' &&
                             typeof point.x === 'number' &&
-                            !isNaN(point.y) && 
+                            !isNaN(point.y) &&
                             !isNaN(point.x)
       if (!hasValidGauss) {
         console.warn('[ControlPointSelection] ⚠️ Skipping point missing Gauss coords:', point.id)
@@ -405,7 +405,7 @@ const controlPointsForMap = computed(() => {
       const dx = point.x - centerX
       const distanceMeters = Math.sqrt(dy * dy + dx * dx)
       const distanceKm = distanceMeters / 1000
-      
+
       return {
         ...point,
         distance: distanceKm,
@@ -420,9 +420,9 @@ const controlPointsForMap = computed(() => {
       }
       return withinRadius
     })
-  
+
   console.log(`[ControlPointSelection] 🗺️ Final: ${pointsWithDistance.length} control points within ${searchRadius.value}km radius`)
-  
+
   if (pointsWithDistance.length > 0) {
     const sample = pointsWithDistance[0]
     console.log('[ControlPointSelection] 🔍 Sample point for map:', {
@@ -435,19 +435,21 @@ const controlPointsForMap = computed(() => {
       distance: sample.distance
     })
   }
-  
+
   return pointsWithDistance
 })
 
+// Control the calibration report names that the registry does not hold, carried with the report's own coordinates.
+const carriedControl = computed(() => localControlFrom(workflowState))
+
 const canProceed = computed(() => {
-  return controlPointsSelection.value.meridian !== null && 
-         controlPointsSelection.value.points.length >= 3
+  return controlPointsSelection.value.meridian !== null &&
+         controlPointsSelection.value.points.length + carriedControl.value.length >= 3
 })
 
 const isStepComplete = computed(() => {
   // Check if step is complete by looking at step data
-  return workflowState.projectInfo.controlPointIds && 
-         workflowState.projectInfo.controlPointIds.length >= 3
+  return (workflowState.projectInfo.controlPointIds?.length ?? 0) + carriedControl.value.length >= 3
 })
 
 // Planar distance calculation using Gauss coordinates (Euclidean)
@@ -462,26 +464,26 @@ function calculateGaussDistance(y1: number, x1: number, y2: number, x2: number):
 // Fetch control points from API
 async function fetchControlPoints() {
   const loZone = workflowState.projectInfo.centralMeridian
-  
+
   if (!loZone) {
     console.log('[ControlPointSelection] No central meridian set, skipping control point fetch')
     return
   }
-  
+
   isLoadingControlPoints.value = true
-  
+
   try {
     console.log(`[ControlPointSelection] Fetching control points for Lo${loZone}...`)
 
     // Shared client: bare axios here bypassed the auth interceptor, so this
     // request carried no Authorization header.
     const response = await api.get(`/control-points`, {
-      params: { 
+      params: {
         gauss_lo: loZone,
         limit: 5000
       }
     })
-    
+
     if (response.data && Array.isArray(response.data.data)) {
       // Convert coordinates from strings to numbers (PostgreSQL returns numeric as string)
       // Use Gauss coordinates as primary (y, x), WGS84 for display only
@@ -490,7 +492,7 @@ async function fetchControlPoints() {
         const gaussX = point.x_gauss ? parseFloat(point.x_gauss) : null
         let lat_wgs84 = point.lat_wgs84 ? parseFloat(point.lat_wgs84) : null
         let lng_wgs84 = point.lng_wgs84 ? parseFloat(point.lng_wgs84) : null
-        
+
         // If WGS84 coordinates are missing but we have Gauss coordinates, transform them
         if ((!lat_wgs84 || !lng_wgs84) && gaussY !== null && gaussX !== null && loZone) {
           try {
@@ -502,7 +504,7 @@ async function fetchControlPoints() {
             console.error(`[ControlPointSelection] ❌ Failed to transform point ${point.id}:`, error)
           }
         }
-        
+
         return {
           ...point,
           gauss_lo: point.gauss_lo ? parseInt(point.gauss_lo) : null,
@@ -512,32 +514,32 @@ async function fetchControlPoints() {
           lng_wgs84
         }
       })
-      
+
       console.log(`[ControlPointSelection] ✅ Loaded ${controlPoints.value.length} control points for Lo${loZone}`)
-      
+
       // 🔍 DEBUG: Check what coordinates we have
       const pointsWithWGS84 = controlPoints.value.filter(p => p.lat_wgs84 && p.lng_wgs84).length
       console.log(`[ControlPointSelection] 📊 WGS84 Coverage: ${pointsWithWGS84}/${controlPoints.value.length} points have WGS84 coordinates`)
-      
+
       if (controlPoints.value.length > 0) {
         const firstPoint = controlPoints.value[0]
         console.log('[ControlPointSelection] 🔍 DEBUG - First control point:', {
           id: firstPoint.id,
           monu_num: firstPoint.monu_num,
           gauss: `Y=${firstPoint.y}, X=${firstPoint.x}`,
-          wgs84: firstPoint.lat_wgs84 && firstPoint.lng_wgs84 
+          wgs84: firstPoint.lat_wgs84 && firstPoint.lng_wgs84
             ? `[${firstPoint.lat_wgs84.toFixed(6)}, ${firstPoint.lng_wgs84.toFixed(6)}]`
             : 'MISSING'
         })
-        
+
         // Check if coordinates are in expected range for Zimbabwe
         if (firstPoint.lat_wgs84 && firstPoint.lng_wgs84) {
-          const inZimbabwe = firstPoint.lng_wgs84 >= 25 && firstPoint.lng_wgs84 <= 33 && 
+          const inZimbabwe = firstPoint.lng_wgs84 >= 25 && firstPoint.lng_wgs84 <= 33 &&
                             firstPoint.lat_wgs84 >= -23 && firstPoint.lat_wgs84 <= -15
           console.log(`[ControlPointSelection] 🌍 Point location check: ${inZimbabwe ? '✅ In Zimbabwe' : '❌ Outside Zimbabwe'}`)
         }
       }
-      
+
       // Auto-select if the surveyor has not already chosen. No survey-center
       // requirement: a site calibration can drive the selection on its own.
       if (!autoSelectionApplied.value && controlPointsSelection.value.points.length === 0) {
@@ -565,21 +567,26 @@ function autoSelectNearbyPoints() {
     siteCalibrationFrom(workflowState),
     controlPoints.value,
   )
-  if (fromCalibration.ids.length > 0) {
+  const carried = localControlFromCalibration(siteCalibrationFrom(workflowState), fromCalibration.unmatched)
+  if (fromCalibration.ids.length > 0 || carried.length > 0) {
     controlPointsSelection.value.points = fromCalibration.ids
+    workflowState.projectInfo.localControlPoints = [...carried]
     autoSelectionApplied.value = true
     console.log(
       `[ControlPointSelection] ✅ Selected ${fromCalibration.ids.length} control point(s) named in the site calibration: ${fromCalibration.matched.join(', ')}`
     )
-    if (fromCalibration.unmatched.length > 0) {
+    const stillMissing = fromCalibration.unmatched.filter(n => !carried.some(c => c.name.toUpperCase() === n.toUpperCase()))
+    if (stillMissing.length > 0) {
       // Never silently drop these: "4 selected" when the report named 5 leaves
       // the surveyor with no way to know which one to add by hand.
-      console.warn('[ControlPointSelection] ⚠️ Calibration control not in the registry:', fromCalibration.unmatched.join(', '))
-      notifyWarning('These were named in the report but are not in the control registry. Add them manually.', {
-        title: `Selected ${fromCalibration.matched.length} control point(s) from the site calibration report`,
-        details: [fromCalibration.unmatched.join(', ')],
+      console.warn('[ControlPointSelection] ⚠️ Calibration control not in the registry and without coordinates:', stillMissing.join(', '))
+      notifyWarning('These were named in the report but are not in the control registry, and the report gives no coordinates for them. Add them manually.', {
+        title: `Selected ${fromCalibration.matched.length + carried.length} control point(s) from the site calibration report`,
+        details: [stillMissing.join(', ')],
         sticky: true,
       })
+    } else if (carried.length > 0) {
+      notifySuccess(`Carried from the calibration report, which gives their coordinates (not in the registry): ${carried.map(c => `${c.name} (${c.type})`).join(', ')}`)
     } else {
       showSuccessMessage.value = true
       setTimeout(() => { showSuccessMessage.value = false }, 5000)
@@ -591,16 +598,16 @@ function autoSelectNearbyPoints() {
     console.warn('[ControlPointSelection] Cannot auto-select by radius: missing survey center')
     return
   }
-  
+
   const RADIUS_KM = searchRadius.value
   const RADIUS_METERS = RADIUS_KM * 1000
   const centerY = surveyCenter.value.y
   const centerX = surveyCenter.value.x
-  
+
   console.log(`[ControlPointSelection] 🎯 Auto-selecting control points within ${RADIUS_KM}km of survey center...`)
   console.log(`[ControlPointSelection] Survey center (Gauss): Y=${centerY.toFixed(2)}, X=${centerX.toFixed(2)}`)
   console.log(`[ControlPointSelection] Total control points available: ${controlPoints.value.length}`)
-  
+
   // Calculate planar distances using Gauss coordinates
   const pointsWithDistance = controlPoints.value
     .filter(point => point.y && point.x) // Only use points with Gauss coordinates
@@ -609,35 +616,35 @@ function autoSelectNearbyPoints() {
       const dx = point.x - centerX
       const distanceMeters = Math.sqrt(dy * dy + dx * dx)
       const distanceKm = distanceMeters / 1000
-      
+
       return {
         ...point,
         distance: distanceKm
       }
     })
-  
+
   const pointsWithoutGauss = controlPoints.value.length - pointsWithDistance.length
   if (pointsWithoutGauss > 0) {
     console.warn(`[ControlPointSelection] ⚠️ ${pointsWithoutGauss} control points skipped (missing Gauss coordinates)`)
   }
   console.log(`[ControlPointSelection] Points with Gauss coordinates: ${pointsWithDistance.length}`)
-  
+
   // Filter by radius
   const nearbyPoints = pointsWithDistance.filter(p => p.distance <= RADIUS_KM)
-  
+
   // Sort by distance (nearest first)
   nearbyPoints.sort((a, b) => a.distance - b.distance)
-  
+
   if (nearbyPoints.length > 0) {
     controlPointsSelection.value.points = nearbyPoints.map(p => p.id)
     autoSelectionApplied.value = true
-    
+
     console.log(`[ControlPointSelection] ✅ Auto-selected ${nearbyPoints.length} control points within ${RADIUS_KM}km`)
     console.log('[ControlPointSelection] Nearest 5 points:')
     nearbyPoints.slice(0, 5).forEach((p, i) => {
       console.log(`  ${i + 1}. ${p.monu_num} (Y=${p.y?.toFixed(2)}, X=${p.x?.toFixed(2)}) - ${p.distance.toFixed(2)}km away`)
     })
-    
+
     // Show success message with details
     showSuccessMessage.value = true
     setTimeout(() => {
@@ -667,17 +674,17 @@ onMounted(() => {
   console.log('[ControlPointSelection] Current central meridian:', workflowState.projectInfo.centralMeridian)
   console.log('[ControlPointSelection] Current control point IDs:', workflowState.projectInfo.controlPointIds)
   console.log('[ControlPointSelection] Survey center:', surveyCenter.value)
-  
+
   // Load existing selection from workflow state
   if (workflowState.projectInfo.centralMeridian) {
     controlPointsSelection.value.meridian = workflowState.projectInfo.centralMeridian
   }
-  
+
   if (workflowState.projectInfo.controlPointIds && workflowState.projectInfo.controlPointIds.length > 0) {
     controlPointsSelection.value.points = [...workflowState.projectInfo.controlPointIds]
     autoSelectionApplied.value = true // Don't auto-select if user already has a selection
   }
-  
+
   // Fetch control points if we have a central meridian
   if (workflowState.projectInfo.centralMeridian) {
     fetchControlPoints()
@@ -703,13 +710,13 @@ const goBack = () => {
 
 const skipForNow = () => {
   console.log('[ControlPointSelection] User chose to skip for now')
-  
+
   // Show skip message
   showSkipMessage.value = true
-  
+
   // Mark step as skipped in workflow state
   workflowState.projectInfo.controlPointsSkipped = true
-  
+
   // Navigate to Found Beacons step after brief delay (next in workflow)
   setTimeout(() => {
     workflowState.currentStep = 'found-beacons'
@@ -726,25 +733,26 @@ const saveAndContinue = async () => {
     console.log('[ControlPointSelection] Saving control points...')
     console.log('  - Meridian:', controlPointsSelection.value.meridian)
     console.log('  - Point IDs:', controlPointsSelection.value.points)
-    
+
     // Save current cache before proceeding (for multi-meridian support)
     if (controlPointSelectorRef.value) {
       await controlPointSelectorRef.value.saveCurrentCache()
     }
-    
+
     // Update workflow state
     workflowState.projectInfo.centralMeridian = controlPointsSelection.value.meridian!
     workflowState.projectInfo.controlPointIds = [...controlPointsSelection.value.points]
-    
+
     // Set current step and mark as complete with metadata
     workflowState.currentStep = 'control-point-selection'
     await completeCurrentStep({
       central_meridian: controlPointsSelection.value.meridian,
-      control_point_ids: controlPointsSelection.value.points
+      control_point_ids: controlPointsSelection.value.points,
+      local_control_points: carriedControl.value
     })
-    
+
     console.log('[ControlPointSelection] ✅ Saved to workflow state')
-    
+
     // CRITICAL: Also update the project record in database to persist control points
     // This ensures control points are available when loading the project later
     if (projectId.value) {
@@ -752,7 +760,7 @@ const saveAndContinue = async () => {
       console.log('[ControlPointSelection] - Project ID:', projectId.value)
       console.log('[ControlPointSelection] - Control Point IDs:', controlPointsSelection.value.points)
       console.log('[ControlPointSelection] - Central Meridian:', controlPointsSelection.value.meridian)
-      
+
       const { updateSurveyProject } = useSurveyors()
       const success = await updateSurveyProject(projectId.value, {
         controlPoints: {
@@ -760,7 +768,7 @@ const saveAndContinue = async () => {
           points: controlPointsSelection.value.points
         }
       })
-      
+
       if (success) {
         console.log('[ControlPointSelection] ✅ Control points saved to database')
       } else {
@@ -769,20 +777,20 @@ const saveAndContinue = async () => {
         return
       }
     }
-    
+
     console.log('[ControlPointSelection] ✅ Control points fully persisted')
-    
+
     // Show success message
     showSuccessMessage.value = true
     setTimeout(() => {
       showSuccessMessage.value = false
     }, 2000)
-    
+
     // Navigate to Found Beacons step (next in workflow)
     setTimeout(() => {
       workflowState.currentStep = 'found-beacons'
     }, 500)
-    
+
   } catch (error) {
     console.error('[ControlPointSelection] Error saving:', error)
     notifyFailure('Failed to save control points', error)

@@ -1042,7 +1042,7 @@ import { dsgCertificateFromWorkflow } from '../../../composables/useDSGCertifica
 import { useAreaConsistencyPDF } from '../../../composables/useAreaConsistencyPDF';
 import { CalculationsPart1Generator, type SurveyPoint } from '../../../utils/calculations-part1';
 import { ComprehensiveDocumentGenerator } from '../../../utils/comprehensive-document';
-import { siteCalibrationFrom } from '../../../utils/siteCalibration';
+import { siteCalibrationFrom, localControlFrom, localControlToRegistryRows } from '../../../utils/siteCalibration';
 import { generateCalibrationReportPDF } from '../../../utils/calibration-pdf';
 import { displayTrigName } from '../../../../../app-shared/trigName';
 import { isOfficialControlStatus } from '../../../utils/beaconStatus';
@@ -2711,7 +2711,7 @@ const fetchControlPoints = async () => {
   const controlPointIds = workflowState?.projectInfo?.controlPointIds || [];
   const centralMeridian = workflowState?.projectInfo?.centralMeridian || 31;
   
-  if (!projectId || controlPointIds.length === 0) {
+  if (!projectId || (controlPointIds.length === 0 && localControlFrom(workflowState).length === 0)) {
     console.log('[MapLibre] No control points configured');
     controlPoints.value = [];
     return;
@@ -2727,7 +2727,11 @@ const fetchControlPoints = async () => {
     const data = response.data;
 
     if (data.data && Array.isArray(data.data)) {
-      controlPoints.value = data.data.filter((cp: any) => controlPointIds.includes(cp.id));
+      controlPoints.value = [
+        ...data.data.filter((cp: any) => controlPointIds.includes(cp.id)),
+        // control the calibration report names that the registry does not hold
+        ...localControlToRegistryRows(localControlFrom(workflowState), centralMeridian),
+      ];
       console.log(`[MapLibre] ✅ Fetched ${controlPoints.value.length} control points:`, 
                   controlPoints.value.map((cp: any) => cp.monu_num));
       
@@ -8257,7 +8261,7 @@ async function exportAreaConsistencyPDF() {
     console.log('[MapLibre] - controlPointIds:', workflowState?.projectInfo?.controlPointIds);
     console.log('[MapLibre] - centralMeridian:', centralMeridian);
     
-    if (workflowState?.projectInfo?.projectId && workflowState?.projectInfo?.controlPointIds?.length) {
+    if (workflowState?.projectInfo?.projectId && (workflowState?.projectInfo?.controlPointIds?.length || localControlFrom(workflowState).length)) {
       try {
         console.log('[MapLibre] 📍 Fetching control points...');
         console.log('[MapLibre] - Control Point IDs:', workflowState.projectInfo.controlPointIds);
@@ -8271,9 +8275,10 @@ async function exportAreaConsistencyPDF() {
         });
         
         if (response.data.data && Array.isArray(response.data.data)) {
-          controlPoints = response.data.data.filter((cp: any) => 
-            workflowState.projectInfo.controlPointIds!.includes(cp.id)
-          );
+          controlPoints = [
+            ...response.data.data.filter((cp: any) => (workflowState.projectInfo.controlPointIds ?? []).includes(cp.id)),
+            ...localControlToRegistryRows(localControlFrom(workflowState), centralMeridian),
+          ];
           console.log('[MapLibre] ✅ Found', controlPoints.length, 'control points');
           if (controlPoints.length > 0) {
             console.log('[MapLibre] - Control points:', controlPoints.map((cp: any) => cp.monu_num).join(', '));

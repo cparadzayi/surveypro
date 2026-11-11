@@ -553,6 +553,9 @@ async function loadWorkflowState(surveyProjectId: number) {
           workflowState.projectInfo.centralMeridian = controlPointData.central_meridian
           console.log(`✅ Restored central meridian from control points: Lo${controlPointData.central_meridian}`)
         }
+        if (Array.isArray(controlPointData.local_control_points)) {
+          workflowState.projectInfo.localControlPoints = controlPointData.local_control_points
+        }
         if (controlPointData.control_point_ids) {
           workflowState.projectInfo.controlPointIds = controlPointData.control_point_ids
           console.log(`✅ Restored ${controlPointData.control_point_ids.length} control point IDs`)

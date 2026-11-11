@@ -1,3 +1,4 @@
+import { officialControlKindByName } from './beaconStatus'
 /**
  * Parser for Trimble GNSS Site Calibration Reports.
  *
@@ -418,6 +419,82 @@ export function matchCalibrationControlPoints(
   return { ids, matched, unmatched }
 }
 
+/**
+ * A control point the calibration report names that the national registry does not hold, carried into
+ * the project with the report's own coordinates. The registry is shared by every surveyor, so a
+ * surveyor-supplied row never goes into it; the point belongs to this project (step data of Control Point
+ * Selection) and is merged with the registry rows wherever the selected control is used.
+ */
+export interface LocalControlPoint {
+  /** The designation, as the report names it: '6091/V'. */
+  name: string
+  /** OCP for the V series, TRIG otherwise: both are national control, one group. */
+  type: 'TRIG' | 'OCP'
+  /** Northing as the calibration records it (the registry's x_gauss, Southing). */
+  X: number
+  /** Easting as the calibration records it (the registry's y_gauss, Westing). */
+  Y: number
+  lat?: number
+  lng?: number
+  source: 'calibration'
+}
+
+/** The calibration's own record of the named control points that are not in the registry. */
+export function localControlFromCalibration(
+  calibration: { pairs?: SiteCalibrationPair[] } | null | undefined,
+  names: string[],
+): LocalControlPoint[] {
+  const wanted = new Set((names ?? []).map((n) => String(n).trim().toUpperCase()))
+  const out: LocalControlPoint[] = []
+  for (const pair of calibration?.pairs ?? []) {
+    const name = String(pair?.pointId ?? '').trim()
+    if (!name || !wanted.has(name.toUpperCase())) continue
+    if (out.some((c) => c.name.toUpperCase() === name.toUpperCase())) continue
+    const X = Number(pair.controlNorthing), Y = Number(pair.controlEasting)
+    if (!Number.isFinite(X) || !Number.isFinite(Y)) continue
+    const lat = Number(pair.globalLatitudeDegrees), lng = Number(pair.globalLongitudeDegrees)
+    out.push({
+      name, X, Y,
+      type: officialControlKindByName(name) === 'OCP' ? 'OCP' : 'TRIG',
+      ...(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : {}),
+      source: 'calibration',
+    })
+  }
+  return out
+}
+
+/**
+ * The carried points shaped like control-registry rows, so everything that reads the selected control
+ * (the coordinate list, the map, the trig inset, the report) takes them with no other change. The id is a
+ * string ('local:6091/V'), which can never equal a registry id.
+ */
+export function localControlToRegistryRows(
+  local: LocalControlPoint[] | null | undefined,
+  meridian?: number | null,
+): Array<Record<string, any>> {
+  return (local ?? []).map((c) => ({
+    id: `local:${c.name}`,
+    monu_num: c.name,
+    monu_name: '',
+    type: c.type,
+    gauss_lo: meridian ?? null,
+    y_gauss: c.Y,
+    x_gauss: c.X,
+    ...(c.lat !== undefined && c.lng !== undefined ? { lat_wgs84: c.lat, lng_wgs84: c.lng } : {}),
+    area_nm: '',
+    local: true,
+  }))
+}
+
+/** The carried control points of a project, from either workflowState shape (projectInfo, or restored step data). */
+export function localControlFrom(workflowState: any): LocalControlPoint[] {
+  const list =
+    workflowState?.projectInfo?.localControlPoints ??
+    workflowState?.step_data?.['control-point-selection']?.local_control_points ??
+    []
+  return Array.isArray(list) ? list.filter((c: any) => c && c.name && Number.isFinite(Number(c.X)) && Number.isFinite(Number(c.Y))) : []
+}
+
 /** The control points the minimum selection needs before Control Point Selection can be completed. */
 export const MIN_CONTROL_POINTS = 3
 
@@ -425,8 +502,10 @@ export interface CalibrationSelectionPlan {
   /** Registry ids the calibration names, in the report's order. */
   ids: number[]
   matched: string[]
-  /** Named in the report but absent from the registry: the surveyor has to add these by hand. */
+  /** Named in the report but absent from the registry. */
   unmatched: string[]
+  /** The unmatched ones, carried into the project with the report's own coordinates. */
+  local: LocalControlPoint[]
   /** There is a selection already and it is not the calibration's: replacing it needs the surveyor's word. */
   replacesExisting: boolean
   /** The calibration alone leaves fewer than the minimum, so the step cannot be completed from it. */
@@ -445,11 +524,14 @@ export function planCalibrationSelection(
   const { ids, matched, unmatched } = matchCalibrationControlPoints(calibration, registry)
   const current = new Set(currentIds)
   const same = ids.length === current.size && ids.every((id) => current.has(id))
+  const local = localControlFromCalibration(calibration as any, unmatched)
+  const total = ids.length + local.length
   return {
     ids,
     matched,
     unmatched,
+    local,
     replacesExisting: current.size > 0 && ids.length > 0 && !same,
-    belowMinimum: ids.length > 0 && ids.length < MIN_CONTROL_POINTS,
+    belowMinimum: total > 0 && total < MIN_CONTROL_POINTS,
   }
 }

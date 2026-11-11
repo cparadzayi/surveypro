@@ -465,7 +465,7 @@ import {
 import { generateSurveyPlanSummaryPDF, type SurveyPlanSummaryData } from '@/utils/surveyPlanSummaryGenerator'
 import { CalculationsPart1Generator, type SurveyPoint } from '@/utils/calculations-part1'
 import { ComprehensiveDocumentGenerator, type ComprehensiveDocumentData } from '@/utils/comprehensive-document'
-import { siteCalibrationFrom } from '@/utils/siteCalibration'
+import { siteCalibrationFrom, localControlFrom, localControlToRegistryRows } from '@/utils/siteCalibration'
 import type { SheetPayload } from '@/utils/sheetPayloads'
 import { generateCalibrationReportPDF } from '@/utils/calibration-pdf'
 import type { CoverPageInfo } from '@/utils/cover-page'
@@ -1623,12 +1623,14 @@ async function loadData() {
     // generate time so the working plan's spec can be built synchronously, the
     // way the fail-fast check below needs it.
     const controlIds = selectedControlPointIds(props.workflowState)
-    if (controlIds.length > 0) {
+    const carried = localControlToRegistryRows(localControlFrom(props.workflowState), props.workflowState?.projectInfo?.centralMeridian)
+    if (controlIds.length > 0 || carried.length > 0) {
       try {
         const rows = await Promise.all(
           controlIds.map(id => api.get(`/control-points/${id}`).then(r => r.data))
         )
-        projectControlPoints.value = controlPointsForInset(rows)
+        // plus the control the calibration report names that the registry does not hold
+        projectControlPoints.value = controlPointsForInset([...rows, ...carried])
         console.log(`[SurveyPlanMap] 📐 Loaded ${projectControlPoints.value.length} of ${controlIds.length} control point(s)`)
       } catch (err: any) {
         // A locality inset is worth having and not worth failing the sheet for.

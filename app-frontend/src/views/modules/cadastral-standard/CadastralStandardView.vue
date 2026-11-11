@@ -1424,7 +1424,7 @@ import { buildBeaconRepairPlan, runBeaconRepair, describeRepairResult, renameWor
 import { planCoordinateRefresh, refreshWorkflowCoordinateCopies } from './parcelSnapshotRefresh';
 import { areaCompute } from '../../../services/compute';
 import { useParcelsStore } from '../../../stores/parcels';
-import { parseCalibrationReport, planCalibrationSelection, MIN_CONTROL_POINTS } from '../../../utils/siteCalibration';
+import { parseCalibrationReport, planCalibrationSelection, MIN_CONTROL_POINTS, localControlFrom, localControlToRegistryRows } from '../../../utils/siteCalibration';
 import { generateCalibrationReportPDF } from '../../../utils/calibration-pdf';
 import CSVReimportDialog from '../../../components/cadastral/CSVReimportDialog.vue';
 import MergeAnalysisDialog from '../../../components/cadastral/MergeAnalysisDialog.vue';
@@ -1932,7 +1932,7 @@ async function generateCalculationsPart1() {
     
     // Fetch full control point data from API (project only stores IDs)
     let projectControlPoints: any[] | undefined = undefined;
-    if (selectedProject.value?.control_points && selectedProject.value.control_points.length > 0) {
+    if ((selectedProject.value?.control_points && selectedProject.value.control_points.length > 0) || localControlFrom(workflowState).length > 0) {
       try {
         const centralMeridian = workflowState.projectInfo.centralMeridian || 31;
         console.log(`[generateCalculations] Fetching control points for Lo${centralMeridian}`);
@@ -1944,8 +1944,11 @@ async function generateCalculationsPart1() {
         const data = response.data;
 
         if (data.data && Array.isArray(data.data)) {
-          const controlPointIds = selectedProject.value.control_points.map((cp: any) => cp.id);
-          projectControlPoints = data.data.filter((cp: any) => controlPointIds.includes(cp.id));
+          const controlPointIds = (selectedProject.value?.control_points ?? []).map((cp: any) => cp.id);
+          projectControlPoints = [
+            ...data.data.filter((cp: any) => controlPointIds.includes(cp.id)),
+            ...localControlToRegistryRows(localControlFrom(workflowState), centralMeridian),
+          ];
           console.log(`[generateCalculations] Found ${projectControlPoints.length} control points`);
           if (projectControlPoints.length > 0) {
             console.log('[generateCalculations] First CP:', projectControlPoints[0].monu_num, 
@@ -3258,7 +3261,7 @@ async function applyCalibrationControlSelection() {
     const current = workflowState.projectInfo.controlPointIds ?? [];
     const plan = planCalibrationSelection(calibration, registry, current);
 
-    if (plan.ids.length === 0) {
+    if (plan.ids.length === 0 && plan.local.length === 0) {
       notifyWarning('None of the points in the site calibration is in the control registry for this Lo zone. Select the control points by hand.', {
         title: 'No control points selected from the calibration',
         details: plan.unmatched,
@@ -3277,21 +3280,30 @@ async function applyCalibrationControlSelection() {
     }
 
     workflowState.projectInfo.controlPointIds = [...plan.ids];
-    await saveStepData('control-point-selection', { central_meridian: meridian, control_point_ids: plan.ids });
+    // Control the report names that the shared registry does not hold is carried into this project with the
+    // report's own coordinates (never written to the registry, which every surveyor shares).
+    workflowState.projectInfo.localControlPoints = [...plan.local];
+    await saveStepData('control-point-selection', { central_meridian: meridian, control_point_ids: plan.ids, local_control_points: plan.local });
     const projectId = workflowState.projectInfo.projectId;
     if (projectId) {
       const saved = await updateSurveyProject(projectId, { controlPoints: { meridian, points: plan.ids } });
       if (!saved) notifyWarning('The control points were selected but the project record could not be updated.');
     }
 
-    if (plan.unmatched.length > 0) {
-      notifyWarning('These were named in the report but are not in the control registry. Add them manually.', {
-        title: `Selected ${plan.matched.length} control point${plan.matched.length === 1 ? '' : 's'} from the site calibration`,
-        details: plan.unmatched,
+    // Named in the report, absent from the registry, and with no coordinates to carry: those still need hand-adding.
+    const stillMissing = plan.unmatched.filter(n => !plan.local.some(c => c.name.toUpperCase() === n.toUpperCase()));
+    const carried = plan.local.map(c => `${c.name} (${c.type})`);
+    const total = plan.ids.length + plan.local.length;
+    if (stillMissing.length > 0) {
+      notifyWarning('These were named in the report but are not in the control registry, and the report gives no coordinates for them. Add them manually.', {
+        title: `Selected ${total} control point${total === 1 ? '' : 's'} from the site calibration`,
+        details: stillMissing,
         sticky: true,
       });
     } else if (plan.belowMinimum) {
-      notifyWarning(`The calibration names ${plan.ids.length}; Control Point Selection needs at least ${MIN_CONTROL_POINTS} to be completed. Add more there.`);
+      notifyWarning(`The calibration names ${total}; Control Point Selection needs at least ${MIN_CONTROL_POINTS} to be completed. Add more there.`);
+    } else if (carried.length > 0) {
+      notifySuccess(`Selected ${total} control points from the site calibration: ${plan.matched.join(', ')}. Carried from the report, which gives their coordinates (not in the registry): ${carried.join(', ')}`);
     } else {
       notifySuccess(`Selected ${plan.ids.length} control points from the site calibration: ${plan.matched.join(', ')}`);
     }
@@ -4099,7 +4111,7 @@ async function generateCoordinateList() {
     
     // Fetch control points if project has them
     let projectControlPoints: any[] = [];
-    if (workflowState.projectInfo.projectId && workflowState.projectInfo.controlPointIds?.length) {
+    if (workflowState.projectInfo.projectId && (workflowState.projectInfo.controlPointIds?.length || localControlFrom(workflowState).length)) {
       try {
         console.log(`[CoordinateList] Fetching control points for Lo${centralMeridian}`);
         const response = await api.get('/control-points', {
@@ -4109,7 +4121,10 @@ async function generateCoordinateList() {
 
         // API returns { data: [...], pagination: {...} }
         if (data.data && Array.isArray(data.data)) {
-          projectControlPoints = data.data.filter((cp: any) => workflowState.projectInfo.controlPointIds!.includes(cp.id));
+          projectControlPoints = [
+            ...data.data.filter((cp: any) => (workflowState.projectInfo.controlPointIds ?? []).includes(cp.id)),
+            ...localControlToRegistryRows(localControlFrom(workflowState), centralMeridian),
+          ];
           console.log(`[CoordinateList] Found ${projectControlPoints.length} control points to include`);
           console.log('[CoordinateList] Control points:', projectControlPoints.map((cp: any) => cp.monu_num).join(', '));
         } else {

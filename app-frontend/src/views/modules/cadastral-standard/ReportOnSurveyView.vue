@@ -502,6 +502,7 @@ import type { ReportOnSurveyData } from '../../../types/cadastral'
 import { resolveSurveyDesignation } from '../../../utils/surveyDesignation'
 import { displayTrigName } from '../../../../../app-shared/trigName'
 import { purposeReferenceFieldLabel } from '../../../utils/reportPurpose'
+import { localControlFrom } from '../../../utils/siteCalibration'
 
 const { workflowState, saveStepData } = useCadastralWorkflow()
 // Typed into the report and not yet saved to the project (Save Draft and Generate both save it).
@@ -742,12 +743,14 @@ const isGenerating = ref(false)
 async function autofillTrigNamesFromControlPoints(): Promise<void> {
   const project = workflowState.projectInfo
   const ids = project.controlPointIds
-  if (!project.controlPointIds || project.controlPointIds.length === 0) return
+  const carried = localControlFrom(workflowState)
+  if ((!project.controlPointIds || project.controlPointIds.length === 0) && carried.length === 0) return
   if (reportData.value.surveyBasis.trigStationNames?.length) return
 
-  const names: string[] = []
+  // control the calibration report names that the registry does not hold, then the registry's
+  const names: string[] = carried.map(c => c.name)
   try {
-    for (const id of project.controlPointIds) {
+    for (const id of project.controlPointIds ?? []) {
       // Shared client: the raw fetch() here sent no Authorization header.
       // A 404/403 skips this point rather than aborting the whole loop.
       let cp: any

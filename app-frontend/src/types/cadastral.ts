@@ -424,6 +424,8 @@ export interface CadastralWorkflowState {
     projectId?: number; // Survey project ID for fetching control points
     centralMeridian?: number; // Central meridian (Lo27, Lo29, Lo31, Lo33)
     controlPointIds?: number[]; // Selected control point IDs
+    /** Control the site calibration names that the registry does not hold, carried with the report's own coordinates. */
+    localControlPoints?: Array<{ name: string; type: 'TRIG' | 'OCP'; X: number; Y: number; lat?: number; lng?: number; source: 'calibration' }>;
     controlPointsSkipped?: boolean; // Flag indicating user skipped control point selection
     workingDirectory?: string; // Working directory path for input/output files
     srNumber?: string; // Survey Register Number (for Report on Survey)

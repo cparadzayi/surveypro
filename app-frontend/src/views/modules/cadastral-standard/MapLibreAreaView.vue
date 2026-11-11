@@ -1045,6 +1045,7 @@ import { ComprehensiveDocumentGenerator } from '../../../utils/comprehensive-doc
 import { siteCalibrationFrom } from '../../../utils/siteCalibration';
 import { generateCalibrationReportPDF } from '../../../utils/calibration-pdf';
 import { displayTrigName } from '../../../../../app-shared/trigName';
+import { isOfficialControlStatus } from '../../../utils/beaconStatus';
 import { autoSaveStepProducts } from '../../../services/workflowProductStorage';
 import { polygon as turfPolygon, featureCollection } from '@turf/helpers';
 import booleanContains from '@turf/boolean-contains';
@@ -1559,7 +1560,7 @@ async function confirmParcelRename() {
 }
 
 const surveyPegPoints = computed(() =>
-  coordinatePoints.value.filter((p: any) => p.status !== 'TRIG')
+  coordinatePoints.value.filter((p: any) => !isOfficialControlStatus(p.status))
 );
 
 async function findAffectedParcels(
@@ -2032,7 +2033,7 @@ function handleRenameComplete(renames: Array<{ oldName: string; newName: string 
   const newGeojson: GeoJSON.FeatureCollection = {
     type: 'FeatureCollection',
     features: wgs84
-      .filter((p: any) => p.status !== 'TRIG')
+      .filter((p: any) => !isOfficialControlStatus(p.status))
       .map((p: any) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
@@ -2799,7 +2800,8 @@ const coordinatePoints = computed(() => {
       id: cp.monu_num || cp.id || `CP${index + 1}`,
       x: x,
       y: y,
-      status: 'TRIG',
+      // the registry names the kind: an official control point (OCP) is control like a trig beacon, and kept distinct
+      status: String(cp.type ?? '').toUpperCase() === 'OCP' ? 'OCP' : 'TRIG',
       description: trigName,
       surveyDate: ''
     };
@@ -2821,7 +2823,7 @@ const coordinatePoints = computed(() => {
 const trigBeacons = computed(() => {
   // Return only the control points that were explicitly selected in the Control Point Selection step
   // These are already filtered in coordinatePoints by the selected IDs
-  const trigs = coordinatePoints.value.filter((p: any) => p.status === 'TRIG');
+  const trigs = coordinatePoints.value.filter((p: any) => isOfficialControlStatus(p.status));
   
   console.log(`[MapLibre] 🔺 Trig beacons (selected control points): ${trigs.length}`, trigs.map((p: any) => p.id));
   
@@ -2830,7 +2832,7 @@ const trigBeacons = computed(() => {
 
 const surveyPegs = computed(() => {
   // Return all points that are NOT control points (status !== 'TRIG')
-  const pegs = coordinatePoints.value.filter((p: any) => p.status !== 'TRIG');
+  const pegs = coordinatePoints.value.filter((p: any) => !isOfficialControlStatus(p.status));
   console.log(`[MapLibre] 📍 Survey pegs (non-control points): ${pegs.length}`, pegs.map((p: any) => p.id));
   
   return pegs;
@@ -4094,8 +4096,8 @@ function addSurveyPoints(wgs84Points: any[]) {
   
   // Separate control points (status='TRIG') from regular survey pegs
   // Only points explicitly selected in Control Point Selection step have status='TRIG'
-  const trigPoints = wgs84Points.filter((p: any) => p.status === 'TRIG');
-  const pegPoints = wgs84Points.filter((p: any) => p.status !== 'TRIG');
+  const trigPoints = wgs84Points.filter((p: any) => isOfficialControlStatus(p.status));
+  const pegPoints = wgs84Points.filter((p: any) => !isOfficialControlStatus(p.status));
   
   console.log(`[MapLibre] 🔺 ${trigPoints.length} control points (selected), 📍 ${pegPoints.length} survey pegs`);
   

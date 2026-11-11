@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf'
-import { parseBeaconStatus } from './beaconStatus';
+import { parseBeaconStatus, officialControlKindByName } from './beaconStatus';
 import { useSurveyLookupStore } from '../stores/surveyLookup'
 import type { AdjustedCoordinate } from '../types/adjusted-coordinates'
 import { toCoordinateListPrecision } from '../types/adjusted-coordinates'
@@ -603,6 +603,8 @@ export class CoordinateListGenerator {
     
     return status === 'trig' ||
            isTSM ||
+           // the designation of a trig station (170/P) or an official control point (6091/V)
+           officialControlKindByName(pointId) !== undefined ||
            desc.includes('trig') || 
            desc.includes('town survey mark') ||
            desc.includes('tsm');

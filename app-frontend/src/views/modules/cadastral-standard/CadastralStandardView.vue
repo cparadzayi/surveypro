@@ -324,6 +324,20 @@
                 </button>
                 
                 <button
+                  @click="downloadFieldCsv"
+                  :disabled="workflowState.importedPoints.length === 0"
+                  :class="workflowState.importedPoints.length > 0
+                    ? 'border-blue-300 text-blue-700 bg-white hover:bg-blue-50'
+                    : 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'"
+                  class="inline-flex items-center px-4 py-2 border text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  :title="workflowState.importedPoints.length > 0
+                    ? 'Download the current field data as CSV, including any changes made here'
+                    : 'Import a CSV file first'"
+                >
+                  ⬇ Download Field CSV
+                </button>
+
+                <button
                   @click="resetImportStep"
                   :disabled="workflowState.importedPoints.length === 0"
                   :class="workflowState.importedPoints.length > 0
@@ -1404,6 +1418,8 @@ import {
 import { batchCreateCoordinatePoints, listCoordinatePoints, normalizeCoordinatePointNames, listLandParcels, updateLandParcel, deleteCoordinatePointByName } from '../../../services/spatial';
 import { normalizeAdoptedBeaconName } from '../../../utils/adoptedBeaconsCsv';
 import { toISODate } from '../../../utils/surveyDate';
+import { buildFieldCsv, fieldCsvFileName } from '../../../utils/fieldCsv';
+import { downloadBlob } from '../../../services/geopdf';
 import { buildBeaconRepairPlan, runBeaconRepair, describeRepairResult, renameWorkflowCopies, renamePointList } from './beaconRepairFlow';
 import { planCoordinateRefresh, refreshWorkflowCoordinateCopies } from './parcelSnapshotRefresh';
 import { areaCompute } from '../../../services/compute';
@@ -2911,6 +2927,15 @@ function handleMergeAnalysisViewDetails() {
   console.log('[CSV Merge] View details:', mergeAnalysisDialog.value.analysis);
   // Could open a detailed view modal here
   notifyWarning('Detailed analysis view coming soon!')
+}
+
+// The field data as it stands now (changes made in the interface included), as a CSV the importer
+// reads back. Built from the live points, not from the file saved at import time, which goes stale.
+function downloadFieldCsv() {
+  const points = workflowState.importedPoints;
+  if (!points.length) return;
+  const projectName = workflowState.projectInfo.projectName || selectedProject.value?.name || 'Survey_Project';
+  downloadBlob(new Blob([buildFieldCsv(points)], { type: 'text/csv;charset=utf-8' }), fieldCsvFileName(projectName));
 }
 
 async function resetImportStep() {

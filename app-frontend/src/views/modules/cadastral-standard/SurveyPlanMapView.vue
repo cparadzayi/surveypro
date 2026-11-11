@@ -577,7 +577,7 @@ const map = ref<maplibregl.Map | null>(null)
 const parcels = ref<any[]>([])
 const coordinatePoints = ref<any[]>([])
 /** The national control this project was tied to, for the working plan's locality inset. */
-const projectControlPoints = ref<Array<{ name: string; X: number; Y: number; monuName: string }>>([])
+const projectControlPoints = ref<Array<{ name: string; X: number; Y: number; monuName: string; type?: string }>>([])
 const isExporting = ref(false)
 const exportStatus = ref('')
 // Plan generation can take minutes: show how long it has been going and let the user stop it.

@@ -234,7 +234,7 @@ export interface WorkingPlanSpecContext {
    * and the inset then had nothing to show and vanished. Still not a proximity
    * search of the registry -- the surveyor picked these.
    */
-  controlPoints?: Array<{ name?: string; X?: number; Y?: number; monuName?: string; description?: string }>
+  controlPoints?: Array<{ name?: string; X?: number; Y?: number; monuName?: string; description?: string; type?: string }>
   /**
    * Side annotations per parcel id, from sideAnnotationsBySubject. Sides tagged
    * `contiguous` name the neighbouring property along that side -- the only
@@ -346,6 +346,9 @@ export interface ControlPointForInset {
    *  monu_name itself is empty: monu_name if present, else area_nm -- the same
    *  fallback Control Point Selection shows. */
   description: string
+  /** The registry's kind (PRIM, SEC, TERT, QUART, TSM or OCP). An OCP is drawn with the official control
+   *  point's sign; the rest are trig beacons. */
+  type?: string
 }
 
 export function controlPointsForInset(
@@ -363,6 +366,7 @@ export function controlPointsForInset(
       name, X, Y,
       monuName,
       description: monuName || String(row?.area_nm ?? row?.areaNm ?? row?.areaName ?? '').trim(),
+      ...(row?.type ? { type: String(row.type).toUpperCase() } : {}),
     })
   }
 
@@ -477,7 +481,10 @@ function buildInset(
       nameByKey.get(controlKey(pair?.pointId)))
   }
   for (const cp of controlPoints ?? []) {
-    add(String(cp?.name ?? '').trim(), Number(cp?.X), Number(cp?.Y), nameByKey.get(controlKey(cp?.name)))
+    // The registry names the kind: an OCP is drawn with the official control point's sign, in the same inset
+    // as the trig beacons.
+    add(String(cp?.name ?? '').trim(), Number(cp?.X), Number(cp?.Y), nameByKey.get(controlKey(cp?.name)),
+      String(cp?.type ?? '').toUpperCase() === 'OCP' ? 'ocp' : undefined)
   }
   // Official control the survey itself lists beyond its own ground, with the sign it is drawn with.
   for (const b of outlying) add(b.name, b.X, b.Y, b.cpName, b.symbol)

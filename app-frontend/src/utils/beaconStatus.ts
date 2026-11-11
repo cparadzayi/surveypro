@@ -85,3 +85,35 @@ export function statusProvenance(
 
 /** Every spelling the Status column accepts, for validation and for guidance. */
 export const BEACON_STATUS_CODES = [...KINDS, ...PROVENANCES];
+
+/**
+ * Official control: the national trig network. Trig beacons (TRIG) and official control points (OCP,
+ * the "6091/V" series) are one group. The survey did not establish either, so both stay out of the
+ * field book and Calculations, both print in the Co-ordinate List's trig section, both are
+ * read-only, and both belong in the trig inset and are selectable as control points.
+ */
+export type OfficialControlKind = 'TRIG' | 'OCP';
+
+/** The kind a designation names, or undefined when it is not a control designation. */
+export function officialControlKindByName(name: string | null | undefined): OfficialControlKind | undefined {
+  const n = String(name ?? '').trim().toUpperCase();
+  if (/^\d+\/V$/.test(n) || /^TSM\d+\/V$/.test(n)) return 'OCP';           // 6091/V, TSM894/V
+  if (/^\d+\/[PSTQ]$/.test(n) || /^TSM\d+$/.test(n)) return 'TRIG';        // 170/P, 49/T, TSM5168
+  return undefined;
+}
+
+/** True when a Status column value names official control (TRIG or OCP). */
+export function isOfficialControlStatus(status: string | null | undefined): boolean {
+  const kind = parseBeaconStatus(status).kind;
+  return kind === 'TRIG' || kind === 'OCP';
+}
+
+/**
+ * True when a point is official control: its status says so, or, with no kind stated, its designation
+ * does. A station typed in as a plain found beacon ("6091/V", status F) is still control.
+ */
+export function isOfficialControl(point: { id?: string | null; pointId?: string | null; name?: string | null; status?: string | null }): boolean {
+  const parsed = parseBeaconStatus(point.status);
+  if (parsed.kind) return parsed.kind === 'TRIG' || parsed.kind === 'OCP';
+  return officialControlKindByName(point.id ?? point.pointId ?? point.name) !== undefined;
+}

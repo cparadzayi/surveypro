@@ -51,7 +51,7 @@ const controlPointsRoutes = async (fastify, options) => {
         properties: {
           page: { type: 'integer', minimum: 1, default: 1 },
           limit: { type: 'integer', minimum: 1, maximum: 5000, default: 50 },
-          type: { type: 'string', enum: ['PRIM', 'SEC', 'TERT', 'QUART', 'TSM'] },
+          type: { type: 'string', enum: ['PRIM', 'SEC', 'TERT', 'QUART', 'TSM', 'OCP'] },
           area: { type: 'string' },
           gauss_lo: { type: 'integer', enum: [27, 29, 31, 33] },
           deg_sqr: { type: 'string' },
@@ -120,7 +120,8 @@ const controlPointsRoutes = async (fastify, options) => {
             WHEN 'TERT' THEN 3 
             WHEN 'QUART' THEN 4 
             WHEN 'TSM' THEN 5 
-            ELSE 6 
+            WHEN 'OCP' THEN 6 
+            ELSE 7 
           END,
           monu_num
         LIMIT $${paramIndex++} OFFSET $${paramIndex++}
@@ -206,6 +207,7 @@ const controlPointsRoutes = async (fastify, options) => {
           COUNT(CASE WHEN type = 'SEC' THEN 1 END) as secondary_count,
           COUNT(CASE WHEN type = 'TERT' THEN 1 END) as tertiary_count,
           COUNT(CASE WHEN type = 'QUART' THEN 1 END) as quaternary_count,
+          COUNT(CASE WHEN type = 'OCP' THEN 1 END) as ocp_count,
           COUNT(CASE WHEN gauss_lo = 27 THEN 1 END) as lo27_count,
           COUNT(CASE WHEN gauss_lo = 29 THEN 1 END) as lo29_count,
           COUNT(CASE WHEN gauss_lo = 31 THEN 1 END) as lo31_count,
@@ -315,7 +317,7 @@ const controlPointsRoutes = async (fastify, options) => {
         properties: {
           monu_num: { type: 'string', maxLength: 20 },
           monu_name: { type: 'string', maxLength: 100 },
-          type: { type: 'string', enum: ['PRIM', 'SEC', 'TERT', 'QUART'] },
+          type: { type: 'string', enum: ['PRIM', 'SEC', 'TERT', 'QUART', 'TSM', 'OCP'] },
           comp_sheet: { type: 'string', maxLength: 20 },
           topo: { type: 'string', maxLength: 20 },
           gauss_lo: { type: 'integer', enum: [27, 29, 31, 33] },
@@ -389,7 +391,7 @@ const controlPointsRoutes = async (fastify, options) => {
         properties: {
           monu_num: { type: 'string', maxLength: 20 },
           monu_name: { type: 'string', maxLength: 100 },
-          type: { type: 'string', enum: ['PRIM', 'SEC', 'TERT', 'QUART'] },
+          type: { type: 'string', enum: ['PRIM', 'SEC', 'TERT', 'QUART', 'TSM', 'OCP'] },
           comp_sheet: { type: 'string', maxLength: 20 },
           topo: { type: 'string', maxLength: 20 },
           gauss_lo: { type: 'integer', enum: [27, 29, 31, 33] },

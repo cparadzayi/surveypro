@@ -55,6 +55,7 @@
           <option value="TERT">Tertiary</option>
           <option value="QUART">Quaternary</option>
           <option value="TSM">TSM</option>
+          <option value="OCP">Official Control (OCP)</option>
         </select>
       </div>
 
@@ -510,7 +511,8 @@ const getTypeBadgeClass = (type: string) => {
     'SEC': 'bg-blue-100 text-blue-800',
     'TERT': 'bg-green-100 text-green-800',
     'QUART': 'bg-yellow-100 text-yellow-800',
-    'TSM': 'bg-gray-100 text-gray-800'
+    'TSM': 'bg-gray-100 text-gray-800',
+    'OCP': 'bg-red-100 text-red-800'
   }
   return classes[type as keyof typeof classes] || 'bg-gray-100 text-gray-800'
 }

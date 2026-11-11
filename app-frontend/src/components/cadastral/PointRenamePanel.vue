@@ -42,21 +42,21 @@
         <button
           v-for="row in filteredRows"
           :key="row.originalName"
-          :disabled="row.status === 'TRIG'"
-          @click="row.status !== 'TRIG' && openModal(row)"
+          :disabled="isControl(row.status)"
+          @click="!isControl(row.status) && openModal(row)"
           :class="[
             'flex flex-col items-center gap-1 p-2 rounded-lg border text-left transition-all focus:outline-none focus:ring-2 focus:ring-blue-400',
-            row.status === 'TRIG'
+            isControl(row.status)
               ? 'border-red-200 bg-red-50 cursor-not-allowed opacity-90'
               : (row.saved
                 ? 'border-green-400 bg-green-50 hover:bg-green-100 hover:shadow-md'
                 : 'border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 hover:shadow-md')
           ]"
-          :title="row.status === 'TRIG' ? `${row.currentName} (TRIG — read-only)` : `Click to edit ${row.currentName}`"
+          :title="isControl(row.status) ? `${row.currentName} (${String(row.status).toUpperCase()} — read-only)` : `Click to edit ${row.currentName}`"
         >
           <span :class="[
             'text-xs font-bold px-2 py-0.5 rounded-full w-full text-center truncate',
-            row.status === 'TRIG' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+            isControl(row.status) ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
           ]">{{ row.status || 'P' }}</span>
           <span class="font-mono text-xs font-semibold text-gray-800 truncate w-full text-center">
             {{ row.currentName }}
@@ -64,7 +64,7 @@
           <span class="text-gray-500 text-xs truncate w-full text-center">
             {{ row.y }}, {{ row.x }}
           </span>
-          <span v-if="row.status === 'TRIG'" class="text-red-500 text-xs font-semibold">🔒 TRIG</span>
+          <span v-if="isControl(row.status)" class="text-red-500 text-xs font-semibold">🔒 {{ String(row.status).toUpperCase() }}</span>
           <span v-else-if="row.saved" class="text-green-600 text-xs font-semibold">✓ saved</span>
           <span v-else class="text-blue-400 text-xs">✏️ edit</span>
         </button>
@@ -105,7 +105,7 @@
           <div class="px-5 py-4 bg-gray-50 border-b border-gray-100 flex items-center gap-3">
             <div :class="[
               'w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0',
-              modalRow.status === 'TRIG' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+              isControl(modalRow.status) ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
             ]">{{ modalRow.status || 'P' }}</div>
             <div>
               <p class="font-mono text-xs text-gray-500">Original: {{ modalRow.originalName }}</p>
@@ -198,6 +198,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
+import { isOfficialControlStatus } from '../../utils/beaconStatus';
+
+// A trig beacon (TRIG) and an official control point (OCP) are national control: their names are fixed.
+const isControl = (status: string | null | undefined) => isOfficialControlStatus(status);
 
 interface PointRow {
   originalName: string;

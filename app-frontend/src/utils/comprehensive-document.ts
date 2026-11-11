@@ -16,6 +16,7 @@ import type { SurveyPoint } from '@/utils/coordinate-list';
 import type { SiteCalibration } from '@/utils/siteCalibration';
 import { CoverPageGenerator, type CoverPageInfo } from '@/utils/cover-page';
 import { CoordinateListGenerator } from '@/utils/coordinate-list';
+import { isOfficialControlStatus } from '@/utils/beaconStatus';
 import { CalculationsPart1Generator } from '@/utils/calculations-part1';
 import { FieldBookGenerator, type FieldBookPoint } from '@/utils/field-book';
 import type { AdjustedCoordinate } from '@/types/adjusted-coordinates';
@@ -67,7 +68,8 @@ export interface Parcel {
 const isTrigSurveyPoint = (pt: { description?: string; status?: string }): boolean => {
   const desc = (pt.description || '').toUpperCase();
   const status = (pt.status || '').toUpperCase();
-  return desc.includes('TRIG') || status.includes('TRIG');
+  // Official control is one group: a trig beacon (TRIG) and an official control point (OCP, the '6091/V' series).
+  return desc.includes('TRIG') || status.includes('TRIG') || isOfficialControlStatus(pt.status);
 };
 
 /** A point computed rather than observed — no beacon was visited. */

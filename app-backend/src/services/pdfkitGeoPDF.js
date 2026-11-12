@@ -5136,14 +5136,14 @@ function _designationAdvance(doc, text, config, width) {
  * figure, fitted below it, never overlaps the lower elements). Uses the shared
  * _buildTitleBlockTexts builder so render and measurement can't drift.
  */
-function calculateTitleBlockHeight(doc, metadata, outsideFigureData, mapBounds, logger, parcels = null, sheetInfo = null) {
+function calculateTitleBlockHeight(doc, metadata, outsideFigureData, mapBounds, logger, parcels = null, sheetInfo = null, textWidthCap = Infinity) {
   const config = BLOCKS.TITLE_BLOCK;
   const { designation, figureText, videText, hasFigure, isMultiSheet } =
     _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, logger);
 
   // Match drawTitleBlock's text column width (figure description + Vide wrap here).
   const MARGIN = 10;
-  const actualTextWidth = Math.min(600, mapBounds.width - MARGIN * 2);
+  const actualTextWidth = Math.min(600, mapBounds.width - MARGIN * 2, textWidthCap);
 
   let h = config.mainTitle.font.size;            // GENERAL PLAN
   h += config.spacing.afterMainTitle;
@@ -5210,7 +5210,8 @@ function drawTitleBlock(
 
   // Calculate safe text widths that stay within map bounds
   const MARGIN = 10; // 10pt margin from map edges
-  const maxTextWidth = Math.min(600, mapBounds.width - MARGIN * 2);
+  // A block narrower than the usual 650 pt (seated beside a tall figure) wraps its text inside itself.
+  const maxTextWidth = Math.min(600, mapBounds.width - MARGIN * 2, position?.width ? position.width - 10 : Infinity);
   const titleTextWidth = Math.min(300, maxTextWidth / 2);
   const ofTextWidth = Math.min(100, maxTextWidth / 6);
 
@@ -6438,8 +6439,8 @@ export function calculateBlockPositions(
   // =========================================================================
 
   // --- Title Block ---
-  const titleWidth  = 650;
-  const titleHeight = calculateTitleBlockHeight(doc, metadata, outsideFigureData, mapBounds, logger, parcels);
+  let titleWidth  = 650;
+  let titleHeight = calculateTitleBlockHeight(doc, metadata, outsideFigureData, mapBounds, logger, parcels);
 
   // --- Outside Figure Data ---
   // Column widths: col1 is DYNAMIC (matches drawOutsideFigureData logic)
@@ -6913,6 +6914,28 @@ export function calculateBlockPositions(
   const _TITLE_EDGE = 14; // pt from top margin line
   const _TITLE_MARGIN = 10; // minimum margin from map edges
   const _titlePolyPts = mapFeatureBounds?.pdfPoints ?? [];
+  // A figure that rises into the title row (it was seated with no title band because it would not otherwise fit the
+  // drawing margin at the declared scale) leaves no room ABOVE it, only the paper beside it. The title is then
+  // set narrower to fit the wider strip, flush to the margin, rather than overlapping the figure.
+  let _titleFlushRight = false;
+  let _titleBesideX = null;
+  if (_titlePolyPts.length >= 3) {
+    const _top = Math.min(..._titlePolyPts.map((p) => p.y));
+    if (_top < mapBounds.y + _TITLE_EDGE + titleHeight + 6) {
+      const _figR = Math.max(..._titlePolyPts.map((p) => p.x)), _figL = Math.min(..._titlePolyPts.map((p) => p.x));
+      const _right = (mapBounds.x + mapBounds.width - _TITLE_MARGIN) - (_figR + 6);
+      const _left = (_figL - 6) - (mapBounds.x + _TITLE_MARGIN);
+      const _strip = Math.max(_right, _left);
+      if (_strip >= 380 && _strip < titleWidth) {
+        // Leave the north arrow its own corner (top right, 70 pt wide) beside the title.
+        titleWidth = Math.floor(_strip - (_right >= _left ? 100 : 0));
+        titleHeight = calculateTitleBlockHeight(doc, metadata, outsideFigureData, mapBounds, logger, parcels, null, titleWidth - 10);
+        _titleFlushRight = _right >= _left;
+        _titleBesideX = _titleFlushRight ? _figR + 8 : null;
+        logger.info(`[PDFKit] 📐 Figure rises into the title row: title block narrowed to ${titleWidth}pt, ${titleHeight.toFixed(0)}pt tall, seated beside the figure`);
+      }
+    }
+  }
 
   function _findTitleSlot() {
     const centerX = mapBounds.x + (mapBounds.width - titleWidth) / 2;
@@ -6936,6 +6959,7 @@ export function calculateBlockPositions(
     for (let ty = mapBounds.y + _TITLE_EDGE; ty <= maxY; ty += 20) {
       // build candidate X list: center first, then alternate left/right in 40pt steps
       const candidates = [centerX];
+      if (_titleBesideX != null) candidates.unshift(_titleBesideX);
       for (let dx = 40; centerX - dx >= mapBounds.x + _TITLE_MARGIN || centerX + dx + titleWidth <= mapBounds.x + mapBounds.width - _TITLE_MARGIN; dx += 40) {
         if (centerX + dx + titleWidth <= mapBounds.x + mapBounds.width - _TITLE_MARGIN) candidates.push(centerX + dx);
         if (centerX - dx >= mapBounds.x + _TITLE_MARGIN) candidates.push(centerX - dx);
@@ -6961,7 +6985,7 @@ export function calculateBlockPositions(
     width: titleWidth,
     height: titleHeight,
   };
-  logger.info(`[PDFKit] 📌 Title Block pre-placed at (${_titleSlot.x.toFixed(0)}, ${_titleSlot.y.toFixed(0)})`);
+  logger.info(`[PDFKit] 📌 Title Block pre-placed at (${_titleSlot.x.toFixed(0)}, ${_titleSlot.y.toFixed(0)}) w=${titleWidth.toFixed(0)} h=${titleHeight.toFixed(0)} poly=${_titlePolyPts.length} bounds=${JSON.stringify(_titlePolyPts.length ? [Math.min(..._titlePolyPts.map(p=>p.x)), Math.min(..._titlePolyPts.map(p=>p.y)), Math.max(..._titlePolyPts.map(p=>p.x)), Math.max(..._titlePolyPts.map(p=>p.y))].map(Math.round) : null)} mb=${JSON.stringify([mapBounds.x, mapBounds.y, mapBounds.width, mapBounds.height].map(Math.round))}`);
 
   // =========================================================================
   // STEP 2b — Polygon-coverage-aware zone assignment.
@@ -7189,8 +7213,29 @@ export function calculateBlockPositions(
   // the engine's to place, on its own.
   const _seated = [...(_schedStripTables ?? []), ...(_schedOfdReservation ? [_schedOfdReservation] : [])];
   const _arrowSlot = _preferredSlots.northArrow;
-  const prePlacedNorthArrow =
-    (_onFigure(_arrowSlot) || _seated.some((t) => _rectsHit(_arrowSlot, t, 14))) ? null : _arrowSlot;
+  let prePlacedNorthArrow =
+    (_onFigure(_arrowSlot) || _rectsHit(_arrowSlot, prePlacedTitleBlock, 14) || _seated.some((t) => _rectsHit(_arrowSlot, t, 14))) ? null : _arrowSlot;
+  // With the title seated in the top-right corner the arrow's own corner is gone, and the engine finds no slot in
+  // a column that crowded (it fell back onto the stands). Scan the paper right of the figure for the nearest clear
+  // spot to the title instead, so the arrow stays on free paper.
+  if (!prePlacedNorthArrow && _titleFlushRight) {
+    const _aw = _arrowSlot.width, _ah = _arrowSlot.height;
+    const _figRight = _titlePolyPts.length ? Math.max(..._titlePolyPts.map((p) => p.x)) : mapBounds.x;
+    const _usableBottom = mapBounds.y + mapBounds.height - 14;
+    const _spots = [];
+    for (let x = mapBounds.x + mapBounds.width - 14 - _aw; x >= _figRight + 20; x -= 10) {
+      for (let y = mapBounds.y + 14; y + _ah <= _usableBottom; y += 10) {
+        _spots.push({ x, y, name: 'northArrow', width: _aw, height: _ah, d: Math.hypot(x - (mapBounds.x + mapBounds.width), y - (prePlacedTitleBlock.y + prePlacedTitleBlock.height)) });
+      }
+    }
+    _spots.sort((p, q) => p.d - q.d);
+    const _fit = _spots.find((r) => !_onFigure(r) && !_rectsHit(r, prePlacedTitleBlock, 14) &&
+      !(prePlacedScaleBar && _rectsHit(r, prePlacedScaleBar, 14)) && !_seated.some((t) => _rectsHit(r, t, 14)));
+    if (_fit) {
+      prePlacedNorthArrow = { name: 'northArrow', x: _fit.x, y: _fit.y, width: _aw, height: _ah };
+      logger.info(`[PDFKit] 📌 northArrow seated on free paper beside the title (${_fit.x.toFixed(0)}, ${_fit.y.toFixed(0)})`);
+    }
+  }
   if (prePlacedNorthArrow) {
     logger.info(`[PDFKit] 📌 northArrow pre-placed in the top-right corner (${_arrowSlot.x.toFixed(0)}, ${_arrowSlot.y.toFixed(0)})`);
   } else {
@@ -7458,6 +7503,23 @@ export function calculateBlockPositions(
   // _stackRelaxedScan: like _stackScan2D full-map pass but polygon overlap is a soft
   // PENALTY instead of a hard reject.  Only block-to-block collisions remain hard.
   // This finds the "least-bad" position when no polygon-clear slot exists.
+  // True when an edge of the closed polygon passes through the rectangle's interior (Liang-Barsky clip).
+  const _polyEdgeCrossesRect = (rect, pts) => {
+    const x0 = rect.x, x1 = rect.x + rect.width, y0 = rect.y, y1 = rect.y + rect.height;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      let t0 = 0, t1 = 1;
+      for (const [p, q] of [[-dx, a.x - x0], [dx, x1 - a.x], [-dy, a.y - y0], [dy, y1 - a.y]]) {
+        if (p === 0) { if (q < 0) { t0 = 2; break; } continue; }
+        const r = q / p;
+        if (p < 0) { if (r > t1) { t0 = 2; break; } if (r > t0) t0 = r; }
+        else { if (r < t0) { t0 = 2; break; } if (r < t1) t1 = r; }
+      }
+      if (t0 <= t1 && t1 - t0 > 1e-9) return true;
+    }
+    return false;
+  };
   const _stackRelaxedScan = (w, h) => {
     const xMin = mapBounds.x + P;
     const xMax = mapBounds.x + mapBounds.width  - w - P;
@@ -7487,6 +7549,9 @@ export function calculateBlockPositions(
         if (_stackerPolyPts.length > 0 &&
             rectangleOverlapsPolygon(rect, _stackerPolyPts, _STACKER_POLY_BUFFER)) {
           polyPenalty = 2000;
+          // A block lying wholly inside the figure's outline is a smaller fault than one straddling it: the outline
+          // would run through its text. Prefer the inside.
+          if (_polyEdgeCrossesRect(rect, _stackerPolyPts)) polyPenalty += 1500;
         }
 
         // Score: prefer positions far from other blocks and polygon center
@@ -8074,6 +8139,12 @@ function calculateInsetPositions(
         x: mapBounds.x + mapBounds.width - width - SAFE_MARGIN,
         y: mapBounds.y + SAFE_MARGIN + index * (height + 10),
       };
+      // A title block seated in the top-right corner (beside a figure that rises into the title row) is not
+      // something the stack may start on top of: begin below it.
+      const _tb = placedBlocks.find((b) => b.name === 'titleBlock');
+      if (_tb && fallbackPos.x < _tb.x + _tb.width && _tb.x < fallbackPos.x + width && fallbackPos.y < _tb.y + _tb.height) {
+        fallbackPos.y = _tb.y + _tb.height + 10 + index * (height + 10);
+      }
       insetPositions[id] = {
         x: fallbackPos.x,
         y: fallbackPos.y,
@@ -11715,6 +11786,9 @@ async function _generateGeoPDFInner(options, logger) {
   // the figure is really drawn (see buildPlannerObstacles' figureTop).
   let _titleBandApplied = 0;
   let _figureClearPt = 0;
+  // The room the figure has with NO title band above it (set in the band block below); used to seat the figure
+  // beside the title instead of under it when the declared scale leaves it too tall for the room under the band.
+  let _figureRoomNoBand = null;
 
   // ── Reserve a top band for the title block; fit the outside figure below it ──
   // The title block (GENERAL PLAN / of / SHEET / designation / figure description
@@ -11741,6 +11815,14 @@ async function _generateGeoPDFInner(options, logger) {
     // is the title band.) Matches FIGURE_MARGIN_MM in the shared resolver, which
     // chose the scale with this inset already taken out of the area.
     _figureClearPt = FIGURE_MARGIN_MM * MM_TO_PT;
+    // Same shape as the banded box (clear paper left, right and bottom, none at the top: the planner's figureTop
+    // formula assumes exactly that), with a band of zero.
+    _figureRoomNoBand = {
+      x: figureBounds.x + _figureClearPt,
+      y: figureBounds.y,
+      width: figureBounds.width - 2 * _figureClearPt,
+      height: figureBounds.height - _figureClearPt,
+    };
     figureBounds = {
       x: figureBounds.x + _figureClearPt,
       y: figureBounds.y + _band,
@@ -11781,6 +11863,23 @@ async function _generateGeoPDFInner(options, logger) {
     // cannot hand back the room the escalation was meant to buy.
     _blockRoomFraction,
   );
+
+  // ── Figure too tall for the room under the title band at this scale: seat the title BESIDE it ──
+  // The scale is the surveyor's (or the shared resolver's) and is never stepped up for this. When the figure at
+  // that scale is taller than the room below the title band but fits the drawing margin without the band, the
+  // band is dropped and the figure takes the whole height; the title block then has no slot above the figure (it
+  // would overlap it) and _findTitleSlot seats it on the free paper beside the figure. Measured on the Nil General
+  // Plan: figure 1,887 pt tall, room under the band 1,830 pt, room without it 1,928 pt.
+  let _titleBeside = false;
+  if (_figureRoomNoBand && _titleBandApplied > 0) {
+    const _figHpt = (calculatedExtent.maxX - calculatedExtent.minX) / optimalScale.value * 1000 * MM_TO_PT;
+    if (_figHpt > figureBounds.height + 0.5 && _figHpt <= _figureRoomNoBand.height + 0.5) {
+      logger.info(`[PDFKit] 📐 Figure is ${_figHpt.toFixed(0)}pt tall at 1:${optimalScale.value}, room under the ${_titleBandApplied.toFixed(0)}pt title band is ${figureBounds.height.toFixed(0)}pt: band dropped, title seated beside the figure`);
+      figureBounds = { ..._figureRoomNoBand };
+      _titleBandApplied = 0;
+      _titleBeside = true;
+    }
+  }
 
   // ── Size the figure box from the resolved scale ──
   // sizeFigureBox (geometry.js) holds the alignment rule that keeps the drawn

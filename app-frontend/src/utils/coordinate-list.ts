@@ -340,7 +340,7 @@ export class CoordinateListGenerator {
           pointId: cp.monu_num || cp.id || `CP${index + 1}`,
           y: y,
           x: x,
-          status: 'TRIG',
+          status: String(cp.type ?? '').toUpperCase() === 'OCP' ? 'OCP' : 'TRIG',
           description: displayTrigName(cp.monu_name || cp.name || cp.monu_num || `Control Point ${index + 1}`),
           surveyDate: '',
           // Additional fields for coordinate list display
@@ -446,8 +446,14 @@ export class CoordinateListGenerator {
     
     pdf.text('SURVEY OF:', this.options.marginLeft, yPosition);
     pdf.setFont('helvetica', 'normal');
-    pdf.text(this.designationFor(surveyorInfo), this.options.marginLeft + 30, yPosition);
-    yPosition += 15;
+    // Wrapped to the page: the designation of a township survey ("STANDS 1343 - 1345, 1694 SEBANGA PARK TOWNSHIP
+    // OF SEBANGA PARK OF SEBANGA POORT") is longer than a line and used to run off the edge ("... OF SE").
+    const designationLines: string[] = pdf.splitTextToSize(
+      this.designationFor(surveyorInfo),
+      pdf.internal.pageSize.getWidth() - this.options.marginLeft - 30 - this.options.marginRight,
+    );
+    pdf.text(designationLines, this.options.marginLeft + 30, yPosition);
+    yPosition += 15 + (designationLines.length - 1) * 14;
     
     pdf.setFont('helvetica', 'bold');
     pdf.text('DISTRICT:', this.options.marginLeft, yPosition);

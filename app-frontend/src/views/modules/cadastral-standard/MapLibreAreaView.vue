@@ -1046,6 +1046,7 @@ import { siteCalibrationFrom, localControlFrom, localControlToRegistryRows } fro
 import { generateCalibrationReportPDF } from '../../../utils/calibration-pdf';
 import { displayTrigName } from '../../../../../app-shared/trigName';
 import { isOfficialControlStatus } from '../../../utils/beaconStatus';
+import { drawControlTriangle, isOcpPoint } from '../../../utils/controlTriangleIcon';
 import { autoSaveStepProducts } from '../../../services/workflowProductStorage';
 import { polygon as turfPolygon, featureCollection } from '@turf/helpers';
 import booleanContains from '@turf/boolean-contains';
@@ -1226,7 +1227,7 @@ const showTrigInset = ref(true); // Show trig beacon inset by default
 
 // ── Point Rename ──────────────────────────────────────────────────────────────
 const showRenamePanel = ref(false);
-const { saveWorkflowState: _saveWorkflowState } = useCadastralWorkflow();
+const { saveWorkflowState: _saveWorkflowState, removePointsFromWorkflow } = useCadastralWorkflow();
 
 // Live set of point names from DB — fetched on init and kept up-to-date after renames.
 // Used for pre-flight duplicate detection so stale in-memory state never causes a missed conflict.
@@ -1780,36 +1781,17 @@ async function deletePanelHandler(name: string): Promise<void> {
     console.warn(`[PointDelete] "${name}" not in DB — memory-only cleanup only`);
   }
 
-  const stripEntry = (entry: any) => {
-    if (entry === null || typeof entry !== 'object') return true;
-    const id = entry.pointId ?? entry.id ?? entry.name;
-    return id !== name;
-  };
-  if (Array.isArray(workflowState?.adjustedCoordinates)) {
-    workflowState.adjustedCoordinates = workflowState.adjustedCoordinates.filter(stripEntry);
-  }
-  if (Array.isArray(workflowState?.importedPoints)) {
-    workflowState.importedPoints = workflowState.importedPoints.filter(stripEntry);
-  }
-
   if (dbPointNames.value.has(name)) dbPointNames.value.delete(name);
   if (dbPointIds.value.has(name))   dbPointIds.value.delete(name);
 
-  const projectId = workflowState?.projectInfo?.projectId;
-  if (projectId) {
-    try {
-      await api.patch(`/survey-projects/${projectId}/workflow`, {
-        step: 'calculations-part1',
-        action: 'update',
-        metadata: {
-          adjusted_coordinates: workflowState.adjustedCoordinates,
-          point_delete: { name, at: new Date().toISOString() },
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch (e) {
-      console.warn('[PointDelete] Could not persist delete to workflow state:', e);
-    }
+  // Out of every copy the workflow keeps -- the import step's points as well as the adjusted coordinates --
+  // and persisted. This used to filter the in-memory lists and save only the adjusted coordinates, so the
+  // import copy still held the point and the next Calculations run brought it back into the Field Book and
+  // the Co-ordinate List.
+  try {
+    await removePointsFromWorkflow([name]);
+  } catch (e) {
+    console.warn('[PointDelete] Could not persist delete to workflow state:', e);
   }
 
   if (affectedParcels.length > 0) {
@@ -3165,6 +3147,8 @@ async function initializeMapOnce() {
     
     // Add the triangle icon to the map
     map!.addImage('trig-triangle', ctx.getImageData(0, 0, triangleSize, triangleSize));
+    // An official control point (OCP, the "6091/V" series) is the same sign inverted.
+    map!.addImage('ocp-triangle', drawControlTriangle({ inverted: true }).getContext('2d')!.getImageData(0, 0, 48, 48));
     console.log('[MapLibre] ✅ SGO cadastral triangle symbol added (with inscribed circle)');
 
     // Add all survey points (trigs and pegs)
@@ -3814,7 +3798,8 @@ async function initializeInsetMap() {
       id: `CP-${cp.monu_num || cp.name || cp.id}`,
       y: cp.y_gauss || cp.yGauss || cp.y_coordinate || cp.y || cp.Y || cp.northing,
       x: cp.x_gauss || cp.xGauss || cp.x_coordinate || cp.x || cp.X || cp.easting,
-      status: 'CP',
+      // status survives the WGS84 transform (type does not): an OCP from the registry stays an OCP
+      status: String(cp.type ?? '').toUpperCase() === 'OCP' ? 'OCP' : 'CP',
       description: cp.monu_num || cp.name || `CP${cp.id}`
     }));
     combinedPoints.push(...controlPointsForMap);
@@ -3922,6 +3907,8 @@ async function initializeInsetMap() {
     
     // Add the triangle icon to the map
     insetMap!.addImage('trig-triangle', ctx.getImageData(0, 0, triangleSize, triangleSize));
+    // An official control point (OCP, the "6091/V" series) is the same sign inverted.
+    insetMap!.addImage('ocp-triangle', drawControlTriangle({ inverted: true }).getContext('2d')!.getImageData(0, 0, 48, 48));
 
     // Create GeoJSON for all points (trig beacons and control points)
     console.log('[MapLibre Inset] 🏷️ Creating GeoJSON with point names:', allWgs84.map((p: any) => ({ id: p.id, description: p.description })));
@@ -3938,6 +3925,7 @@ async function initializeInsetMap() {
           id: point.id,
           description: point.description || (point.id.startsWith('CP-') ? 'Control Point' : 'Trig Beacon'),
           isControlPoint: point.id && point.id.toString().startsWith('CP-'),
+          isOcp: isOcpPoint(point),
           // Extract short ID (e.g., "2836B" from full description)
           shortId: point.id.length > 6 ? point.id.substring(0, 6) : point.id
         }
@@ -3956,7 +3944,7 @@ async function initializeInsetMap() {
       type: 'symbol',
       source: 'inset-trig-beacons',
       layout: {
-        'icon-image': 'trig-triangle',
+        'icon-image': ['case', ['get', 'isOcp'], 'ocp-triangle', 'trig-triangle'],
         'icon-size': [
           'interpolate', ['linear'], ['zoom'],
           6, 0.3,   // Small at zoom 6
@@ -4123,7 +4111,8 @@ function addSurveyPoints(wgs84Points: any[]) {
       properties: {
         id: point.id,
         status: point.status,
-        description: point.description
+        description: point.description,
+        isOcp: isOcpPoint(point)
       }
     }))
   };
@@ -4177,7 +4166,7 @@ function addSurveyPoints(wgs84Points: any[]) {
     type: 'symbol',
     source: 'trig-beacons',
     layout: {
-      'icon-image': 'trig-triangle',
+      'icon-image': ['case', ['get', 'isOcp'], 'ocp-triangle', 'trig-triangle'],
       'icon-size': [
         'interpolate', ['linear'], ['zoom'],
         12, 0.3,  // Small at zoom 12

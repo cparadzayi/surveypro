@@ -159,7 +159,7 @@ export default {
   setup() {
     const workflowState = inject('workflowState') as any;
     const lookupStore = useSurveyLookupStore();
-    const { projectId } = useCadastralWorkflow();
+    const { projectId, removePointsFromWorkflow } = useCadastralWorkflow();
 
     // Adopted beacons: carried from a previous approved survey, persisted in
     // project_adopted_beacons. They belong on this list (under ADOPTED
@@ -222,21 +222,9 @@ export default {
         if (projectId.value) {
           await deleteCoordinatePointByName(projectId.value, pointId);
         }
-        // Remove from workflowState.importedPoints
-        if (workflowState?.importedPoints) {
-          const idx = workflowState.importedPoints.findIndex((p: any) => p.id === pointId);
-          if (idx !== -1) workflowState.importedPoints.splice(idx, 1);
-        }
-        // Remove from coordinateList document if already generated
-        if (workflowState?.documents?.coordinateList?.points) {
-          const idx = workflowState.documents.coordinateList.points.findIndex((p: any) => p.id === pointId);
-          if (idx !== -1) workflowState.documents.coordinateList.points.splice(idx, 1);
-        }
-        // Remove from adjustedCoordinates if present
-        if (workflowState?.adjustedCoordinates) {
-          const idx = workflowState.adjustedCoordinates.findIndex((p: any) => p.pointId === pointId);
-          if (idx !== -1) workflowState.adjustedCoordinates.splice(idx, 1);
-        }
+        // Out of every copy the workflow keeps, and persisted: it used to splice the in-memory lists only,
+        // so a reload (or the next Calculations run) brought the deleted point back from the saved import step.
+        await removePointsFromWorkflow([pointId]);
         console.log(`[CoordinateList] Deleted point "${pointId}"`);
       } catch (err: any) {
         deleteError.value = err?.response?.data?.error ||

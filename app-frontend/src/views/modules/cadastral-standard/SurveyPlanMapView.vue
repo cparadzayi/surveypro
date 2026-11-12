@@ -471,6 +471,7 @@ import { generateCalibrationReportPDF } from '@/utils/calibration-pdf'
 import type { CoverPageInfo } from '@/utils/cover-page'
 import { loadCoverLetterhead } from '@/utils/letterheadInfo'
 import { listCoordinatePoints, updateLandParcel } from '@/services/spatial'
+import { registryNames, keepRegistered } from '@/utils/pointReconcile'
 import { listAdoptedBeacons } from '@/services/adoptedBeacons'
 import { saveDocument } from '@/services/documentStorage'
 import { generateWorkingPlanDXF, generateWorkingPlanPDF } from '@/services/workingPlan'
@@ -5105,18 +5106,36 @@ async function generateComprehensivePDF() {
     const workflowState = workflowResponse.data.workflow_state
 
     // Extract data from workflow
-    const adjustedCoords = workflowState?.step_data?.['calculations-part1']?.adjusted_coordinates || []
+    const adjustedCoordsSaved = workflowState?.step_data?.['calculations-part1']?.adjusted_coordinates || []
     const observations = workflowState?.step_data?.['field-book']?.observations || []
     const duplicateAnalyses = workflowState?.step_data?.['calculations-part1']?.duplicate_analyses || []
     
     console.log('[ComprehensivePDF] 📊 Workflow state loaded:', {
-      adjustedCoordinates: adjustedCoords.length,
+      adjustedCoordinates: adjustedCoordsSaved.length,
       observations: observations.length,
       duplicateAnalyses: duplicateAnalyses.length
     })
     
-    if (adjustedCoords.length === 0) {
+    if (adjustedCoordsSaved.length === 0) {
       throw new Error('No adjusted coordinates found in workflow state. Please complete Calculations Part 1 first.')
+    }
+
+    // The registry (coordinate_points) is the authority for which points the survey has. The saved adjusted
+    // coordinates are a copy, and a point deleted in the interface used to be left in it -- and so came back into
+    // the Field Book and the Co-ordinate List. Read fresh (not the cached list used for parcel matching below).
+    let registry = new Set<string>()
+    try {
+      registry = registryNames(await listCoordinatePoints(props.projectId))
+    } catch (e: any) {
+      console.warn('[ComprehensivePDF] could not read the registry to check the saved points:', e?.message)
+    }
+    const adjustedCoords = keepRegistered(
+      adjustedCoordsSaved,
+      (c: any) => c.id || c.point_id || c.pointId || c.name || c.label,
+      registry,
+    )
+    if (adjustedCoords.length !== adjustedCoordsSaved.length) {
+      console.log(`[ComprehensivePDF] 🧹 Left out ${adjustedCoordsSaved.length - adjustedCoords.length} saved point(s) no longer in the registry (deleted)`)
     }
     
     // Load ALL parcels from database
@@ -5264,7 +5283,8 @@ async function generateComprehensivePDF() {
     const centralMeridian = (props.projectInfo as any).centralMeridian ?? controlPointSelectionData?.central_meridian ?? projectSetupData?.central_meridian ?? 31
     const controlPointIds = controlPointSelectionData?.control_point_ids || projectSetupData?.control_point_ids || []
     
-    if (controlPointIds.length > 0) {
+    const carriedControl = localControlFrom(workflowState)
+    if (controlPointIds.length > 0 || carriedControl.length > 0) {
       try {
         // Raw fetch() with no Authorization header, so this only worked while
         // /api/control-points was unauthenticated. Uses the shared client now.
@@ -5274,7 +5294,11 @@ async function generateComprehensivePDF() {
         const data = response.data
 
         if (data.data && Array.isArray(data.data)) {
-          controlPoints = data.data.filter((cp: any) => controlPointIds.includes(cp.id))
+          controlPoints = [
+            ...data.data.filter((cp: any) => controlPointIds.includes(cp.id)),
+            // control the calibration report names that the registry does not hold (6091/V), with its own coordinates
+            ...localControlToRegistryRows(carriedControl, centralMeridian),
+          ]
           console.log(`[ComprehensivePDF] ✅ Found ${controlPoints.length} control points`)
         }
       } catch (error) {
@@ -5296,7 +5320,20 @@ async function generateComprehensivePDF() {
     }
     // The survey designation comes from one resolver: digitized parcels' stands
     // + township phrase, the same source the standalone report uses.
-    const designation = await resolveSurveyDesignation(workflowState)
+    // The context is built from what this view holds. `workflowState` here is the raw object fetched from
+    // /survey-projects/:id/workflow: it has no projectInfo (no project id, township or parent property) and no
+    // surveyorInfo, so resolving from it composed an empty designation and the Report on Survey printed
+    // "Survey of : N/A" while the standalone report, resolved from the live state, printed the stands.
+    const designation = await resolveSurveyDesignation({
+      projectInfo: {
+        projectId: props.projectId ?? (props.projectInfo as any)?.projectId,
+        township: (props.projectInfo as any)?.township,
+        parentProperty: (props.projectInfo as any)?.parentProperty,
+        wholePortion: (props.projectInfo as any)?.wholePortion,
+        projectName,
+      },
+      surveyorInfo: { surveyOf: surveySource },
+    })
     const narrativeOptions = {
       ...reportOptions,
       surveyOf: designation.surveyOf,

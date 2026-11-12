@@ -6,6 +6,8 @@ import { paginateFieldBook } from '../utils/fieldBookPagination'
 import { isCalculatedPoint } from '../utils/calculatedPoint'
 import { parseSurveyDate, toISODate } from '../utils/surveyDate'
 import api from '../services/api'
+import { listCoordinatePoints } from '../services/spatial'
+import { registryNames, keepRegistered, dropNamed } from '../utils/pointReconcile'
 
 // Project linkage for database persistence
 const projectId = ref<number | null>(null)
@@ -575,6 +577,11 @@ async function loadWorkflowState(surveyProjectId: number) {
       console.log(`✅ Workflow state loaded: current step = ${dbState.current_step}`)
       console.log(`✅ Completed steps: ${dbState.completed_steps.join(', ')}`)
       
+      // The registry is the authority for which points the survey has: drop any the workflow still holds that
+      // were deleted (a copy left behind by a delete path that did not persist), so they cannot return to
+      // the Field Book and the Co-ordinate List. Never blocks the load.
+      try { await reconcilePointsWithRegistry() } catch (e) { console.warn('[Reconcile] skipped:', e) }
+
       return dbState
     }
   } catch (error) {
@@ -640,6 +647,71 @@ async function updateCurrentStep(metadata?: any) {
  * Save metadata to a specific named step (not necessarily the current step).
  * Use this when you need to update a previous step's data from a later step.
  */
+/**
+ * Take points out of every copy the workflow keeps, and persist it.
+ *
+ * Deleting a point in the interface removed its registry row (and, on the map, the in-memory copies) but left
+ * step_data['csv-import'].points and the Calculations' adjusted_coordinates holding it. The next Calculations
+ * run rebuilt from the import copy, so a deleted point came back into the Field Book and the Co-ordinate List.
+ * Every delete path calls this, so none of them can leave a copy behind.
+ */
+async function removePointsFromWorkflow(names: string[]): Promise<void> {
+  if (!names.length) return
+  const norm = names
+
+  workflowState.importedPoints = dropNamed(workflowState.importedPoints, (p: any) => p.id, norm)
+  if (workflowState.adjustedCoordinates) {
+    workflowState.adjustedCoordinates = dropNamed(workflowState.adjustedCoordinates, (p: any) => p.pointId ?? p.id ?? p.name, norm)
+  }
+  const docs: any = workflowState.documents
+  if (docs?.coordinateList?.points) docs.coordinateList.points = dropNamed(docs.coordinateList.points, (p: any) => p.id, norm)
+  if (docs?.fieldBook?.points) docs.fieldBook.points = dropNamed(docs.fieldBook.points, (p: any) => p.id, norm)
+
+  // setImportedPoints writes step_data['csv-import'].points, which a reload rebuilds importedPoints from
+  setImportedPoints(workflowState.importedPoints)
+  if (workflowState.adjustedCoordinates) {
+    await saveStepData('calculations-part1', {
+      adjusted_coordinates: workflowState.adjustedCoordinates,
+      point_count: workflowState.adjustedCoordinates.length,
+    })
+  }
+}
+
+/**
+ * Bring the workflow's copies in line with the registry (coordinate_points), which is the authority for which
+ * points the survey has. Repairs a project whose points were deleted before every delete path persisted: the
+ * deleted points are still in the saved copies. Does nothing when the registry has no rows or cannot be read.
+ * Returns the names it dropped.
+ */
+async function reconcilePointsWithRegistry(): Promise<string[]> {
+  if (!projectId.value) return []
+  let registry: Set<string>
+  try {
+    registry = registryNames(await listCoordinatePoints(Number(projectId.value)))
+  } catch {
+    return []
+  }
+  if (registry.size === 0) return []
+
+  const key = (n: unknown) => String(n ?? '').trim()
+  const importedBefore = workflowState.importedPoints.map((p: any) => key(p.id))
+  const adjustedBefore = (workflowState.adjustedCoordinates ?? []).map((p: any) => key(p.pointId ?? p.id ?? p.name))
+
+  const importedAfter = keepRegistered(workflowState.importedPoints, (p: any) => p.id, registry)
+  const adjustedAfter = keepRegistered(workflowState.adjustedCoordinates, (p: any) => p.pointId ?? p.id ?? p.name, registry)
+
+  const dropped = [
+    ...importedBefore.filter((n) => !importedAfter.some((p: any) => key(p.id) === n)),
+    ...adjustedBefore.filter((n) => !adjustedAfter.some((p: any) => key(p.pointId ?? p.id ?? p.name) === n)),
+  ]
+  const names = Array.from(new Set(dropped))
+  if (names.length === 0) return []
+
+  console.log(`[Reconcile] ${names.length} point(s) are in the workflow but not in the registry (deleted): ${names.join(', ')}`)
+  await removePointsFromWorkflow(names)
+  return names
+}
+
 async function saveStepData(step: string, metadata: any) {
   if (!projectId.value) {
     console.warn('⚠️ No project linked, skipping step data save')
@@ -783,6 +855,8 @@ export function useCadastralWorkflow() {
     
     // Data management
     setImportedPoints,
+    removePointsFromWorkflow,
+    reconcilePointsWithRegistry,
     setSiteCalibration,
     
     // Reset functions

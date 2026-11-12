@@ -3,6 +3,7 @@
  * Manages map state, markers, and interactions
  */
 
+import { drawControlTriangle, isOcpPoint } from '../utils/controlTriangleIcon'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, toRef } from 'vue'
 import maplibregl from 'maplibre-gl'
 import type { ControlPoint, SurveyCenter } from '@/utils/controlPointMapUtils'
@@ -325,6 +326,17 @@ export function useControlPointMap(
       map.value.addImage('control-point-triangle-selected', ctxSelected.getImageData(0, 0, triangleSize, triangleSize))
     }
 
+    // An official control point (OCP, the "6091/V" series) is the same sign inverted.
+    for (const [name, fill, outline] of [
+      ['control-point-ocp', '#000000', '#ffffff'],
+      ['control-point-ocp-selected', '#dc2626', '#ffffff'],
+    ] as const) {
+      if (!map.value.hasImage(name)) {
+        const c = drawControlTriangle({ inverted: true, fill, outline, size: triangleSize })
+        map.value.addImage(name, c.getContext('2d')!.getImageData(0, 0, triangleSize, triangleSize))
+      }
+    }
+
     // Create GeoJSON from filtered points
     const geojson: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
@@ -349,6 +361,7 @@ export function useControlPointMap(
             id: point.id,
             monu_num: point.monu_num || 'Unknown',
             type: point.type || '',
+            isOcp: isOcpPoint({ type: point.type, id: point.monu_num }),
             description: point.description || '',
             distance: point.distance || 0,
             isSelected: selectedIdsGetter().includes(point.id),
@@ -374,6 +387,8 @@ export function useControlPointMap(
       layout: {
         'icon-image': [
           'case',
+          ['all', ['get', 'isOcp'], ['get', 'isSelected']], 'control-point-ocp-selected',   // inverted, red
+          ['get', 'isOcp'], 'control-point-ocp',                                            // inverted, black
           ['get', 'isSelected'],
           'control-point-triangle-selected',  // Red triangle for selected
           'control-point-triangle'  // Black triangle for unselected
@@ -505,6 +520,7 @@ export function useControlPointMap(
             id: point.id,
             monu_num: point.monu_num || 'Unknown',
             type: point.type || '',
+            isOcp: isOcpPoint({ type: point.type, id: point.monu_num }),
             description: point.description || '',
             distance: point.distance || 0,
             isSelected: selectedIdsGetter().includes(point.id),

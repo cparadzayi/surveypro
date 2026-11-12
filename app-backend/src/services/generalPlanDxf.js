@@ -37,7 +37,7 @@ export function groundOf({ a, b, extent, page }) {
 
 /** The DXF of a render made with recordOps: true. */
 export function dxfFromRecordedPlan(render, dxfVersion = 'r2000') {
-  return opsToDxf(render.ops, groundOf(render.ground), { version: dxfVersion === 'r12' ? 'r12' : 'r2000', layers: GENERAL_PLAN_LAYERS, dropWhiteFills: true })
+  return opsToDxf(render.ops, groundOf(render.ground), { version: dxfVersion === 'r12' ? 'r12' : 'r2000', layers: GENERAL_PLAN_LAYERS, dropWhiteFills: true, autoContrastBlack: true })
 }
 
 export async function generateGeneralPlanDXF(options, logger, { dxfVersion = 'r2000' } = {}) {

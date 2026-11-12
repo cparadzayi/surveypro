@@ -19,12 +19,13 @@ const square = (x, y, s = 10) => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]
 const ops = [
   { type: 'fill', layer: 'PARCELS', rings: [square(10, 10)], rule: 'nonzero', color: WHITE },
   { type: 'fill', layer: 'PARCELS', rings: [square(30, 10)], rule: 'nonzero', color: '#ff0000' },
+  // the beacon's white disc is drawn first, then its circle (as the renderer does)
+  { type: 'discFill', layer: 'BEACONS', cx: 20, cy: 20, r: 1, color: WHITE },
   { type: 'stroke', layer: 'PARCELS', pts: [...square(10, 10), [10, 10]], width: 0.4, color: '#000000', closed: true },
   // the same corner, as four stands that share it each draw it
   { type: 'circle', layer: 'PARCELS', cx: 20, cy: 20, r: 1, color: '#000000' },
   { type: 'circle', layer: 'PARCELS', cx: 20, cy: 20, r: 1, color: '#000000' },
   { type: 'circle', layer: 'PARCELS', cx: 20, cy: 20, r: 1, color: '#000000' },
-  { type: 'discFill', layer: 'BEACONS', cx: 20, cy: 20, r: 1, color: WHITE },
   { type: 'text', layer: 'PARCELS', text: '1665', x: 15, y: 15, size: 8, width: 20, rotation: 0, font: 'Helvetica', color: '#000000' },
   { type: 'text', layer: 'BEACONS', text: 'A', x: 21, y: 21, size: 6, width: 5, rotation: 0, font: 'Helvetica', color: '#000000' },
 ]
@@ -110,5 +111,78 @@ describe('Release 12 is left as it was', () => {
     const t = opsToDxf(ops, ground, { version: 'r12', layers }).dxfBuffer.toString('utf8')
     expect(t).not.toContain('PARCELS_TEXT')
     expect(t).not.toContain('\n370\n')
+  })
+})
+
+describe('black is colour 7, so the General Plan reads on a dark or a white CAD background', () => {
+  // A true-colour black (group 420 = 0) overrides colour 7 and is invisible on AutoCAD's dark background; the
+  // working plan writes plain colour 7 and reads on either.
+  const out = pairs(opsToDxf(ops, ground, { version: 'r2000', layers, dropWhiteFills: true, autoContrastBlack: true }).dxfBuffer)
+  const colourOf = (e) => ({ aci: e.find(([c]) => c === '62')?.[1], rgb: e.find(([c]) => c === '420')?.[1] })
+
+  test('black text, lines and circles carry colour 7 and no true colour', () => {
+    for (const type of ['TEXT', 'LWPOLYLINE', 'CIRCLE']) {
+      for (const e of entities(out, type).filter((x) => !['SHEET_EDGE'].includes(layerOf(x)))) {
+        expect(colourOf(e)).toEqual({ aci: '7', rgb: undefined })
+      }
+    }
+  })
+
+  test('a coloured object keeps its exact colour', () => {
+    const red = entities(out, 'HATCH')[0]
+    expect(colourOf(red).rgb).toBe(String(0xff0000))
+  })
+
+  test('without the option black keeps its true colour (the diagram, as it was)', () => {
+    const plain = pairs(opsToDxf(ops, ground, { version: 'r2000', layers }).dxfBuffer)
+    const circle = entities(plain, 'CIRCLE')[0]
+    expect(colourOf(circle).rgb).toBe('0')
+  })
+});
+
+describe('near-black lettering is contrast colour too', () => {
+  test('slate beacon letters are plain colour 7, so they show on a dark CAD background; a real colour keeps its RGB', () => {
+    const o = (color) => ({ type: 'text', layer: 'BEACONS', text: 'A', x: 1, y: 1, size: 6, width: 5, rotation: 0, font: 'Helvetica', color })
+    const ps = pairs(opsToDxf([o('#1e293b'), o('#ff0000')], ground, { version: 'r2000', layers, dropWhiteFills: true, autoContrastBlack: true }).dxfBuffer)
+    const [slate, red] = entities(ps, 'TEXT')
+    expect(slate.some(([c]) => c === '420')).toBe(false)
+    expect(slate.find(([c]) => c === '62')[1]).toBe('7')
+    expect(red.find(([c]) => c === '420')[1]).toBe(String(0xff0000))
+  })
+})
+
+describe('what the PDF hides under a white fill is not in the DXF either', () => {
+  const run = (list) => pairs(opsToDxf(list, ground, { version: 'r2000', layers, dropWhiteFills: true }).dxfBuffer)
+  const white = (x, y, s) => ({ type: 'fill', layer: 'PARCELS', rings: [square(x, y, s)], rule: 'nonzero', color: WHITE })
+
+  test('a line drawn earlier is cut where a later white fill covers it, and the rest stays', () => {
+    const ps = run([
+      { type: 'stroke', layer: 'PARCELS', pts: [[0, 50], [100, 50]], width: 0.4, color: '#000000', closed: false },
+      white(40, 40, 20),                                   // covers x 40..60 of that line
+    ])
+    const polys = entities(ps, 'LWPOLYLINE').filter((p) => layerOf(p) === 'PARCELS')
+    expect(polys).toHaveLength(2)
+    const xs = polys.map((p) => p.filter(([c]) => c === '10').map(([, v]) => Number(v))).sort((a, b) => a[0] - b[0])
+    expect(xs[0]).toEqual([0, 40])
+    expect(xs[1]).toEqual([60, 100])
+  })
+
+  test('a line along the edge of a later fill is not hidden by it', () => {
+    const ps = run([
+      { type: 'stroke', layer: 'PARCELS', pts: [[40, 40], [60, 40]], width: 0.4, color: '#000000', closed: false },
+      white(40, 40, 20),
+    ])
+    expect(entities(ps, 'LWPOLYLINE').filter((p) => layerOf(p) === 'PARCELS')).toHaveLength(1)
+  })
+
+  test('a line drawn after the fill is untouched, and a circle under a later fill is dropped', () => {
+    const ps = run([
+      { type: 'circle', layer: 'PARCELS', cx: 50, cy: 50, r: 1, color: '#000000' },
+      white(40, 40, 20),
+      { type: 'stroke', layer: 'PARCELS', pts: [[0, 50], [100, 50]], width: 0.4, color: '#000000', closed: false },
+      { type: 'circle', layer: 'PARCELS', cx: 5, cy: 5, r: 1, color: '#000000' },
+    ])
+    expect(entities(ps, 'LWPOLYLINE').filter((p) => layerOf(p) === 'PARCELS')).toHaveLength(1)
+    expect(entities(ps, 'CIRCLE')).toHaveLength(1)
   })
 })

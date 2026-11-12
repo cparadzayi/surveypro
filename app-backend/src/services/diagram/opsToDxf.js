@@ -7,6 +7,7 @@
  * Release 12 has no true colour (the nearest palette colour is used), no transparency, and
  * letters come from the CAD program's font rather than Helvetica.
  */
+import { maskHiddenByWhiteFills } from './maskHidden.js'
 import { createDxfWriter } from './dxfPrimitives.js'
 import { nearestAci } from './aci.js'
 import { createDxfWriterR2000 } from './dxfWriterR2000.js'
@@ -51,8 +52,11 @@ const norm360 = (a) => ((a % 360) + 360) % 360
  * @param {{ perPt: number, figCenterPx: number, figCenterPy: number, center: {x:number,y:number} }} ground
  * @returns {{ dxfBuffer: Buffer, stats: object }}
  */
-export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS, dropWhiteFills = false } = {}) {
+export function opsToDxf(rawOps, ground, { version = 'r12', layers = DIAGRAM_LAYERS, dropWhiteFills = false, autoContrastBlack = false } = {}) {
   const r2000 = version === 'r2000'
+  // Without the white fills the PDF masks with, what they hid is taken out of the lines and circles instead, so the
+  // drawing shows what the PDF shows (maskHidden.js).
+  const ops = dropWhiteFills ? maskHiddenByWhiteFills(rawOps) : rawOps
   // Release 2000 only, which is the editable file: the lettering goes on a layer of its own beside each layer that
   // has any ("PARCELS" / "PARCELS_TEXT"), so labels can be switched off or frozen apart from the linework, and the
   // PAPER layer (the white sheet under everything) is locked, so a click in the drawing never picks the sheet.
@@ -68,7 +72,15 @@ export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS
     : layers
   const w = r2000 ? createDxfWriterR2000(outLayers, { styles: ['Standard', ...Object.values(PDF_FONT_STYLES)] }) : createDxfWriter(layers)
   // Release 12 takes the palette index; Release 2000 and later take the exact RGB too.
-  const colorOf = (hex) => ({ aci: nearestAci(hex), rgb: hex })
+  // `autoContrastBlack`: the PDF's black is written as plain colour 7 and no true colour. Colour 7 is CAD's "contrast"
+  // colour, white on a dark background and black on a white one; a true-colour black (group 420) overrides it and
+  // is invisible on a dark background, which is how a General Plan arrived in AutoCAD 2026's dark theme.
+  // "Black" includes near-black: the beacon letters are slate #1E293B, which is as invisible as black on a dark background.
+  const isBlack = (hex) => {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex ?? ''))
+    return !!m && [m[1], m[2], m[3]].every((c) => parseInt(c, 16) < 64)   // every channel dark: a deep red or blue keeps its colour
+  }
+  const colorOf = (hex) => (autoContrastBlack && r2000 && isBlack(hex) ? { aci: 7 } : { aci: nearestAci(hex), rgb: hex })
   const known = new Set(layers.map((l) => l.name))
   const layerOf = (op) => (known.has(op.layer) ? op.layer : '0')
   const isWhite = (hex) => /^#?f{6}$/i.test(String(hex ?? ''))

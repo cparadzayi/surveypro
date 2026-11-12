@@ -1907,3 +1907,43 @@ describe('a General Plan of several sheets', () => {
     expect(spec.sheets).toBeUndefined()
   })
 })
+
+describe('beacons adopted from a previous approved survey', () => {
+  // 177/2024 ST1: an adopted working station (P/WS). Adopted beacons are not coordinate points, so the plan
+  // never saw them; a station or control point among them is a mark of this survey and is drawn.
+  const st1 = { point_name: 'ST1', y: '-85900.880', x: '2144406.940', status: 'P/WS', description: '12mm iron peg', sr_number: '177/2024' }
+  const faraway = { point_name: '551X', y: '-85800.370', x: '2144352.130', status: 'F', description: '12mm iron peg', sr_number: '177/2024' }
+  const names = (c: any) => buildWorkingPlanSpec(c).spec.beacons.map((b: any) => b.name)
+
+  it('draws an adopted working station, as a working station', () => {
+    const { spec } = buildWorkingPlanSpec(ctx({ adoptedBeacons: [st1] }))
+    const b = spec.beacons.find((q: any) => q.name === 'ST1')
+    expect(b).toBeDefined()
+    expect(b!.symbol).toBe('ws')
+    expect(b!.X).toBeCloseTo(2144406.94, 2)
+    expect(b!.Y).toBeCloseTo(-85900.88, 2)
+  })
+
+  it('leaves out an adopted found beacon that no drawn ring is built from', () => {
+    expect(names(ctx({ adoptedBeacons: [st1, faraway] }))).not.toContain('551X')
+  })
+
+  it('draws an adopted beacon that a drawn ring is built from', () => {
+    const withRing = ctx({
+      adoptedBeacons: [{ ...faraway, point_name: 'SD9', y: '-85650', x: '2144090' }],
+      parcels: [parcel('404', ['SD4', 'SD5', 'SD6', 'SD3', 'SD9'])],
+    })
+    expect(names(withRing)).toContain('SD9')
+  })
+
+  it('does not replace a point the survey has itself, and ignores a row without usable coordinates', () => {
+    const own = { ...st1, point_name: 'SD4', y: '1', x: '2' }
+    const { spec } = buildWorkingPlanSpec(ctx({ adoptedBeacons: [own, { ...st1, point_name: 'BAD', y: 'x', x: '' }] }))
+    expect(spec.beacons.find((q: any) => q.name === 'SD4')!.X).toBeCloseTo(2144027.08, 2)
+    expect(spec.beacons.some((q: any) => q.name === 'BAD')).toBe(false)
+  })
+
+  it('is unchanged when there are none', () => {
+    expect(names(ctx())).toEqual(names(ctx({ adoptedBeacons: [] })))
+  })
+})

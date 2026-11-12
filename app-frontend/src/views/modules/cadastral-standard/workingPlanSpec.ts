@@ -236,6 +236,14 @@ export interface WorkingPlanSpecContext {
    */
   controlPoints?: Array<{ name?: string; X?: number; Y?: number; monuName?: string; description?: string; type?: string }>
   /**
+   * Beacons carried from a previous approved survey (project_adopted_beacons rows). They are not coordinate
+   * points -- never visited in the field -- so they were not on the sheet at all. A station or control point
+   * among them (an adopted working station such as 177/2024 ST1, status P/WS) is a mark of this survey and
+   * is drawn; so is an adopted beacon that one of the drawn boundary rings is built from. Other adopted
+   * beacons stay off: they are on the Co-ordinate List, and a far found beacon is only clutter here.
+   */
+  adoptedBeacons?: Array<{ point_name?: string; y?: number | string; x?: number | string; status?: string; description?: string; sr_number?: string }>
+  /**
    * Side annotations per parcel id, from sideAnnotationsBySubject. Sides tagged
    * `contiguous` name the neighbouring property along that side -- the only
    * place the data model records a surrounding property's designation.
@@ -1026,6 +1034,22 @@ export function buildWorkingPlanSpec(
       description: String(props.description ?? ''),
       status: String(props.status ?? ''),
     })
+  }
+
+  // Adopted beacons that belong on the sheet: stations and control (WS, WSU, RM, TRIG, OCP by status), and any
+  // a drawn ring is built from. Never overriding a point the survey has itself.
+  {
+    const inRing = new Set<string>()
+    for (const p of ctx.parcels ?? []) for (const n of ringNames(p)) inRing.add(n)
+    for (const a of ctx.adoptedBeacons ?? []) {
+      const name = String(a?.point_name ?? '').trim()
+      if (!name || byName.has(name)) continue
+      const Y = Number(a.y), X = Number(a.x)
+      if (!Number.isFinite(X) || !Number.isFinite(Y)) continue
+      const status = String(a.status ?? '')
+      if (!(inRing.has(name) || parseBeaconStatus(status).kind)) continue
+      byName.set(name, { X, Y, description: String(a.description ?? ''), status })
+    }
   }
 
   const parcels: WorkingPlanParcel[] = []

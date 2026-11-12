@@ -4816,6 +4816,8 @@ async function generatePlanDocuments() {
       // its control only here -- without it the inset had nothing to draw and
       // the locality diagram disappeared from the sheet.
       controlPoints: projectControlPoints.value,
+      // Beacons adopted from a previous approved survey (an adopted working station such as 177/2024 ST1).
+      adoptedBeacons: await adoptedBeaconsForPlan(),
       // Sides tagged `contiguous` name the neighbouring properties, which the
       // working plan letters just outside the boundary they abut.
       sideAnnotations: sideAnnotationsBySubject.value,
@@ -5082,6 +5084,17 @@ async function generatePlanDocuments() {
     generationAbort.value = null
     isExporting.value = false
     exportStatus.value = ''
+  }
+}
+
+// The project's adopted beacons for the Working Plan; a plan is still drawn when they cannot be read.
+async function adoptedBeaconsForPlan(): Promise<any[]> {
+  if (!props.projectId) return []
+  try {
+    return await listAdoptedBeacons(props.projectId)
+  } catch (e: any) {
+    console.warn('[WorkingPlan] could not load the adopted beacons:', e?.message)
+    return []
   }
 }
 

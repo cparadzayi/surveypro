@@ -3054,6 +3054,11 @@ export function generateDXF(options, logger) {
   // "%%d" is pure-ASCII and rendered as ° by every CAD viewer.
   dxf = dxf.replace(/°/g, '%%d');
 
+  // En and em dashes (the party-wall table's "1692B – 1693A", stand ranges) likewise: written as UTF-8 they are
+  // E2 80 93 / E2 80 94, which a Windows-1252 viewer shows as "â€“" and an ANSI one drops. A plain hyphen reads
+  // the same in every CAD viewer, and is what the surveyor writes.
+  dxf = dxf.replace(/[\u2013\u2014]/g, '-');
+
   const sizeKB = (Buffer.byteLength(dxf, 'utf8') / 1024).toFixed(1);
   logger.info(`[DXF] Generation complete: ${sizeKB} KB, ${parcelCount} parcels, ${beaconCount} beacons, ${edgeLabelCount} edge labels, ${sharedEdges.size} shared edges`);
 

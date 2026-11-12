@@ -15,6 +15,11 @@ jest.unstable_mockModule('../../services/workingPlan/working-plan.js', () => ({
   generateWorkingPlan: mockGenerateWorkingPlan,
 }))
 
+// The Release 2000 writer has its own tests; here only which file the route sends.
+jest.unstable_mockModule('../../services/workingPlan/working-plan-r2000.js', () => ({
+  workingPlanDxf2000: jest.fn(() => Buffer.from('0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n0\nEOF\n')),
+}))
+
 // The PDF drawing has its own tests; here only the route's contract.
 jest.unstable_mockModule('../../services/workingPlan/working-plan-pdf.js', () => ({
   workingPlanPdf: jest.fn(async () => Buffer.from('%PDF-1.3 %%EOF')),
@@ -37,13 +42,19 @@ const validSpec = {
 }
 
 describe('POST /working-plan/dxf', () => {
-  test('returns the DXF body as application/dxf', async () => {
+  test('returns the DXF body as application/dxf, written as Release 2000', async () => {
     mockGenerateWorkingPlan.mockClear()
     const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: validSpec })
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toContain('application/dxf')
-    expect(res.rawPayload.toString()).toBe('0\nSECTION\n0\nEOF\n')
+    expect(res.rawPayload.toString()).toContain('AC1015')
     expect(mockGenerateWorkingPlan).toHaveBeenCalledTimes(1)
+  })
+
+  test("dxfVersion: 'r12' asks for the Release 12 file the plan is built as", async () => {
+    const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: { ...validSpec, dxfVersion: 'r12' } })
+    expect(res.statusCode).toBe(200)
+    expect(res.rawPayload.toString()).toBe('0\nSECTION\n0\nEOF\n')
   })
 
   test('reports the scale, grid and areas it drew at, on headers', async () => {

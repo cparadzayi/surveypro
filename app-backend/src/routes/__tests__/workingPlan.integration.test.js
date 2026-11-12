@@ -105,7 +105,7 @@ describe('the route accepts every sign the adapter can emit', () => {
  * Before $DWGCODEPAGE was declared the body went out as UTF-8, so the m² in the
  * area statement reached AutoCAD as "mÂ²".
  */
-describe('the delivered file matches the code page it declares', () => {
+describe('the delivered Release 12 file matches the code page it declares', () => {
   const specWithArea = {
     scale: 'auto',
     beacons: [
@@ -123,7 +123,7 @@ describe('the delivered file matches the code page it declares', () => {
     // line, which the docket review removed. The guarantee still matters: the
     // header declares ANSI_1252 and the route encodes latin1 to match, so any
     // non-ASCII text added later goes out as single bytes rather than UTF-8.
-    const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: specWithArea })
+    const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: { ...specWithArea, dxfVersion: 'r12' } })
     expect(res.statusCode).toBe(200)
     expect(res.rawPayload.toString('latin1')).toContain('ANSI_1252')
     // Never the UTF-8 form of a superscript two.
@@ -131,9 +131,38 @@ describe('the delivered file matches the code page it declares', () => {
   })
 
   test('every byte is a single-byte character, as R12 requires', async () => {
-    const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: specWithArea })
+    const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: { ...specWithArea, dxfVersion: 'r12' } })
     const body = res.rawPayload
     // Round-tripping through latin1 is lossless only if nothing was multi-byte.
     expect(Buffer.from(body.toString('latin1'), 'latin1').equals(body)).toBe(true)
+  })
+})
+
+describe('the delivered file is Release 2000 by default', () => {
+  const spec = {
+    scale: 'auto',
+    beacons: [
+      { name: 'A', X: 2144027.08, Y: -85673.91, symbol: 'placed', label: 'auto' },
+      { name: 'B', X: 2144063.20, Y: -85710.12, symbol: 'placed', label: 'auto' },
+      { name: 'C', X: 2144076.45, Y: -85723.41, symbol: 'placed', label: 'auto' },
+    ],
+    parcels: [{ label: '404', ring: ['A', 'B', 'C'] }],
+    title: ['WORKING PLAN OF', 'Stand 404'],
+  }
+
+  test('is AC1015, drawn from the plan itself, with no block inserts left', async () => {
+    const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: spec })
+    expect(res.statusCode).toBe(200)
+    const t = res.rawPayload.toString('utf8')
+    expect(t).toContain('AC1015')
+    expect(t).not.toContain('AC1009')
+    expect(t).not.toMatch(/\n {2}0\nINSERT\n/)
+    expect(t).toContain('WORKING PLAN OF')
+  })
+
+  test('is pure ASCII, so no character can be misread in the code page', async () => {
+    const res = await buildApp().inject({ method: 'POST', url: '/dxf', payload: { ...spec, title: ['WORKING PLAN OF', 'Caf\u00e9 \u2013 m\u00b2'] } })
+    expect([...res.rawPayload].every((b) => b < 0x80)).toBe(true)
+    expect(res.rawPayload.toString('utf8')).toContain('Caf\\U+00E9 - m\\U+00B2')
   })
 })

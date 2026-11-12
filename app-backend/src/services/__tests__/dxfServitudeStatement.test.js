@@ -51,3 +51,28 @@ describe('DXF party-wall servitude statement', () => {
     for (const r of many) expect(t).toContain(r.boundary);   // no row lost
   }, 180000);
 });
+
+describe('DXF party-wall servitude statement: the dash between two beacons', () => {
+  // The statement's rows join the two beacons with an en dash. The DXF is written as UTF-8, so the en dash was
+  // E2 80 93, which a Windows-1252 viewer showed as "1692B â€“ 1693A".
+  const dashRows = [
+    { stands: '1692, 1693', boundary: '1692B – 1693A' },
+    { stands: '1694, 1695', boundary: '1694A—1695C' },
+  ];
+  const buf = generateDXF(withRows('general-developed'), logger).buffer;
+  const out = generateDXF({ ...sampleRealisticPlan, planType: 'general-developed',
+    metadata: { ...sampleRealisticPlan.metadata, servitudeStatement: { rows: dashRows } } }, logger).buffer;
+
+  test('is lettered as a plain hyphen, "1692B - 1693A"', () => {
+    const t = dxfText(out);
+    expect(t).toContain('1692B - 1693A');
+    expect(t).toContain('1694A-1695C');
+  }, 120000);
+
+  test('leaves no UTF-8 dash bytes to be misread as "â€“"', () => {
+    expect(Buffer.from(out).includes(Buffer.from([0xe2, 0x80, 0x93]))).toBe(false);
+    expect(Buffer.from(out).includes(Buffer.from([0xe2, 0x80, 0x94]))).toBe(false);
+    expect(dxfText(out)).not.toContain('â\u0080\u0093');
+    expect(buf.length).toBeGreaterThan(0);
+  }, 120000);
+});

@@ -223,6 +223,9 @@ export function createDxfWriter(layers) {
 
     // ASCII-safe degree control code.
     dxf = dxf.replace(/°/g, '%%d')
+    // En and em dashes ("1970A – 1984A") are UTF-8 E2 80 93 / E2 80 94, which a Windows-1252 viewer shows as
+    // "â€“". A plain hyphen reads the same in every viewer.
+    dxf = dxf.replace(/[–—]/g, '-')
     return Buffer.from(dxf, 'utf8')
   }
 

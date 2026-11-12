@@ -2230,7 +2230,8 @@ const crowded = crowdedClusters(
       chunk.forEach((row, i) => {
         const y = T.y0 + PARTY_HEAD_MM + 1.5 + i * pr + pr * 0.72;
         d.text(String(row.stands), S((x0 + xm) / 2, y), bh, { layer: 'TITLE', style: 'ARIAL', align: 'center' });
-        d.text(String(row.boundary), S((xm + x1) / 2, y), bh, { layer: 'TITLE', style: 'ARIAL', align: 'center' });
+        // a plain hyphen with a space either side ("1902C - 1903A"): the en dash of the statement's rows is not in the DXF's R12 text and printed as a gap
+        d.text(String(row.boundary).replace(/\s*[–—]\s*/g, ' - '), S((xm + x1) / 2, y), bh, { layer: 'TITLE', style: 'ARIAL', align: 'center' });
       });
     }
   }

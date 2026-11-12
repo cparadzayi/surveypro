@@ -196,6 +196,9 @@ class EntitySink {
     align = 'left', widthFactor = 1,
   } = {}) {
     this.ops.push({ t: 'text', str, at: [x, y], height, layer, style, rotation, align, widthFactor });
+    // R12 text is Windows-1252 and the route sends it as latin1: an en or em dash would arrive as a control byte
+    // and print as a gap. A hyphen reads the same.
+    str = String(str).replace(/[\u2013\u2014]/g, '-');
     const hcode = { left: 0, center: 1, right: 2 }[align];
     // Every text entity is colour 7 (black on paper) whatever its layer's colour: a working plan's lettering is
     // monochrome, and the layers keep their colours only for the lines they draw.

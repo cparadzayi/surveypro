@@ -202,6 +202,12 @@ export function createDxfWriterR2000(layers, { styles = ['Standard'] } = {}) {
     d += p(0, 'EOF')
 
     d = d.replace(/°/g, '%%d')
+    // En and em dashes (the party-wall table's "1970A – 1984A") are written as UTF-8 E2 80 93 / E2 80 94, which an
+    // AC1015 reader decoding Windows-1252 shows as "â€“". A plain hyphen reads the same in every viewer.
+    d = d.replace(/[–—]/g, '-')
+    // Anything else outside ASCII ("m²", an accented name) is carried as AutoCAD's own \U+XXXX escape. A Release 2000
+    // file is read in the Windows-1252 code page, not UTF-8, so the raw character would arrive as mojibake ("mÂ²").
+    d = d.replace(/[\u0080-￿]/g, (ch) => '\\U+' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0'))
     return Buffer.from(d, 'utf8')
   }
 

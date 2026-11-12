@@ -22,7 +22,8 @@ describe("the General Plan's working plan", () => {
     expect(t).toContain('Boundary')
     for (const row of partyWallRows()) {
       expect(t).toContain(row.stands)
-      expect(t).toContain(row.boundary)
+      // the en dash of the statement's rows is lettered as a hyphen: the DXF has no en dash
+      expect(t).toContain(row.boundary.replace(/\s*[–—]\s*/g, ' - '))
     }
     expect(out.partyWallRows).toBe(56)
   })
@@ -124,5 +125,23 @@ describe('a diagrams-only survey keeps the original sheet', () => {
     expect(out.partyWallRows).toBe(0)
     expect(textsOn(out, 'TITLE').map((o) => o.str)).not.toContain('Party-Wall Servitude Data')
     expect(out.orientation).toBe(brackenhurstSpec.orientation ?? 'landscape')
+  })
+})
+
+
+describe("the party-wall table's boundary text", () => {
+  // The statement's rows join the two beacons with an en dash; the DXF's R12 text has none, and it printed as a
+  // gap ("1902C  1903A"). The working plan's table letters a plain hyphen with a space either side.
+  const out = generateWorkingPlan(generalPlanSpec([{ stands: '1902, 1903', boundary: '1902C – 1903A' }, { stands: '1904, 1905', boundary: '1904A—1905B' }]))
+  const texts = out.model.doc.ops.filter((o) => o.t === 'text').map((o) => o.str)
+
+  test('letters "1902C - 1903A" with a hyphen', () => {
+    expect(texts).toContain('1902C - 1903A')
+    expect(texts).toContain('1904A - 1905B')
+  })
+
+  test('draws no en or em dash', () => {
+    expect(texts.filter((t) => /[–—]/.test(t))).toEqual([])
+    expect(out.dxf).not.toMatch(/[–—]/)
   })
 })

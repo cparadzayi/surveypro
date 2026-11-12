@@ -1,5 +1,6 @@
 import { generateWorkingPlan } from '../services/workingPlan/working-plan.js'
 import { workingPlanPdf } from '../services/workingPlan/working-plan-pdf.js'
+import { workingPlanDxf2000 } from '../services/workingPlan/working-plan-r2000.js'
 
 // SI 727 Fifth Schedule conventional signs the renderer can draw. This MUST
 // track workingPlanSpec.ts's WorkingPlanSymbol: the adapter emits these names
@@ -128,7 +129,9 @@ export default async function workingPlanRoutes(fastify) {
         .header('X-Plan-Escalation', out.escalation ? encodeURIComponent(out.escalation.reason) : '')
         .header('X-Plan-Grid', JSON.stringify({ ...out.gridInterval, ticks: out.gridTicks }))
         .header('X-Plan-Areas', JSON.stringify(out.areas))
-        .send(Buffer.from(out.dxf, 'latin1'))   // matches $DWGCODEPAGE ANSI_1252
+        // AutoCAD Release 2000, like every other plan's DXF; `dxfVersion: 'r12'` in the body asks for the Release 12
+        // file the plan is built as (latin1, matching its $DWGCODEPAGE ANSI_1252).
+        .send(spec.dxfVersion === 'r12' ? Buffer.from(out.dxf, 'latin1') : workingPlanDxf2000(out.model))
     } catch (error) {
       // error may not be a real Error (a thrown string/object leaves .message
       // undefined), which would silently miss the regex below and send a 500

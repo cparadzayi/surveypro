@@ -12,6 +12,10 @@
  */
 
 const f4 = (n) => Number(n).toFixed(4)
+
+/** The lineweights an AutoCAD drawing offers, in hundredths of a millimetre (group 370 takes one of these). */
+const LINEWEIGHTS = [0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211]
+const nearestLineweight = (hundredthsMm) => LINEWEIGHTS.reduce((best, v) => (Math.abs(v - hundredthsMm) < Math.abs(best - hundredthsMm) ? v : best), 0)
 const p = (code, value) => String(code).padStart(3) + '\n' + value + '\n'
 
 /** '#rrggbb' -> the packed integer group 420 holds. */
@@ -32,6 +36,12 @@ export function createDxfWriterR2000(layers, { styles = ['Standard'] } = {}) {
   }
   let ent = ''
   const linetypes = []
+  // An object already written (same type, layer, look and geometry) is not written again: a corner shared by four
+  // stands used to carry four circles on top of each other, which left three behind when one was moved or deleted.
+  const written = new Set()
+  const fresh = (key) => { if (written.has(key)) return false; written.add(key); return true }
+  const ck = (c) => (c == null ? '' : typeof c === 'object' ? `${c.aci ?? ''}/${c.rgb ?? ''}` : String(c))
+  const look = (o) => `${o.linetype ?? ''}|${ck(o.color)}|${o.lineweight ?? ''}`
 
   const colour = (c) => {
     if (c == null) return ''
@@ -41,7 +51,9 @@ export function createDxfWriterR2000(layers, { styles = ['Standard'] } = {}) {
   /** The head every entity starts with. */
   const head = (type, layer, o = {}) =>
     p(0, type) + p(5, handle()) + p(330, H.modelRecord) + p(100, 'AcDbEntity') + p(8, layer) +
-    (o.linetype ? p(6, o.linetype) : '') + colour(o.color)
+    (o.linetype ? p(6, o.linetype) : '') + colour(o.color) +
+    // a real lineweight (plotted and shown as one), not a polyline width that is a band of fixed ground size
+    (o.lineweight != null ? p(370, String(nearestLineweight(o.lineweight))) : '')
 
   function dashed(on, off) {
     const found = linetypes.find((l) => Math.abs(l.on - on) < 1e-9 && Math.abs(l.off - off) < 1e-9)
@@ -54,21 +66,26 @@ export function createDxfWriterR2000(layers, { styles = ['Standard'] } = {}) {
   /** A run of points as a light-weight polyline carrying its line weight as a constant width. */
   function addPolyline(layer, pts, o = {}) {
     if (!Array.isArray(pts) || pts.length < 2) return
+    if (!fresh(`P|${layer}|${look(o)}|${o.closed ? 1 : 0}|${o.width ?? ''}|${pts.map((q) => f4(q.x) + ',' + f4(q.y)).join(';')}`)) return
     ent += head('LWPOLYLINE', layer, o) + p(100, 'AcDbPolyline') + p(90, String(pts.length)) + p(70, o.closed ? '1' : '0')
     if (o.width > 0) ent += p(43, f4(o.width))
     for (const q of pts) ent += p(10, f4(q.x)) + p(20, f4(q.y))
   }
 
   function addLine(layer, x1, y1, x2, y2, o = {}) {
+    const [a, b] = [`${f4(x1)},${f4(y1)}`, `${f4(x2)},${f4(y2)}`].sort()
+    if (!fresh(`L|${layer}|${look(o)}|${a};${b}`)) return
     ent += head('LINE', layer, o) + p(100, 'AcDbLine') + p(10, f4(x1)) + p(20, f4(y1)) + p(30, '0.0') + p(11, f4(x2)) + p(21, f4(y2)) + p(31, '0.0')
   }
 
   function addCircle(layer, cx, cy, r, o = {}) {
+    if (!fresh(`C|${layer}|${look(o)}|${f4(cx)},${f4(cy)},${f4(r)}`)) return
     ent += head('CIRCLE', layer, o) + p(100, 'AcDbCircle') + p(10, f4(cx)) + p(20, f4(cy)) + p(30, '0.0') + p(40, f4(r))
   }
 
   function addText(layer, x, y, text, height, rotationDeg = 0, o = {}) {
     const align = o.align || 'left'
+    if (!fresh(`T|${layer}|${look(o)}|${f4(x)},${f4(y)},${f4(height)},${f4(rotationDeg)}|${align}|${o.style ?? ''}|${text}`)) return
     ent += head('TEXT', layer, o) + p(100, 'AcDbText')
     ent += p(10, f4(x)) + p(20, f4(y)) + p(30, '0.0') + p(40, f4(height)) + p(1, String(text))
     if (rotationDeg) ent += p(50, f4(rotationDeg))
@@ -80,12 +97,14 @@ export function createDxfWriterR2000(layers, { styles = ['Standard'] } = {}) {
 
   /** A SOLID (filled quad; a triangle repeats its last corner), in the 1-2-4-3 order a SOLID is stored in. */
   function addSolid(layer, pts, o = {}) {
+    if (!fresh(`S|${layer}|${look(o)}|${pts.map((q) => f4(q[0]) + ',' + f4(q[1])).join(';')}`)) return
     ent += head('SOLID', layer, o) + p(100, 'AcDbTrace')
     pts.forEach((q, i) => { ent += p(10 + i, f4(q[0])) + p(20 + i, f4(q[1])) + p(30 + i, '0.0') })
   }
 
   /** A solid fill of one or more rings; several rings under the even-odd rule are a band with holes. */
   function addFill(layer, rings, rule, color) {
+    if (!fresh(`F|${layer}|${ck(color)}|${rule}|${rings.map((r) => r.map((q) => f4(q[0]) + ',' + f4(q[1])).join(';')).join('/')}`)) return
     const groups = rule === 'evenodd' && rings.length >= 2 ? [rings] : rings.map((r) => [r])
     for (const g of groups) {
       ent += head('HATCH', layer, { color }) + p(100, 'AcDbHatch')
@@ -103,6 +122,7 @@ export function createDxfWriterR2000(layers, { styles = ['Standard'] } = {}) {
 
   /** A filled disc: a HATCH whose boundary is one circular edge. */
   function addDisc(layer, cx, cy, r, color) {
+    if (!fresh(`D|${layer}|${ck(color)}|${f4(cx)},${f4(cy)},${f4(r)}`)) return
     ent += head('HATCH', layer, { color }) + p(100, 'AcDbHatch')
     ent += p(10, '0.0') + p(20, '0.0') + p(30, '0.0') + p(210, '0.0') + p(220, '0.0') + p(230, '1.0')
     ent += p(2, 'SOLID') + p(70, '1') + p(71, '0') + p(91, '1')
@@ -158,7 +178,7 @@ export function createDxfWriterR2000(layers, { styles = ['Standard'] } = {}) {
 
     const allLayers = layers.some((l) => l.name === '0') ? layers : [{ name: '0', color: 7 }, ...layers]
     d += table('LAYER', H.layerTable, allLayers.length, allLayers.map((l) => rec('LAYER', handle(), H.layerTable, 'AcDbLayerTableRecord',
-      p(2, l.name) + p(70, '0') + p(62, String(l.color)) + p(6, 'Continuous') + p(390, H.plotStyleNormal))).join(''))
+      p(2, l.name) + p(70, l.locked ? '4' : '0') + p(62, String(l.color)) + p(6, 'Continuous') + p(390, H.plotStyleNormal))).join(''))
 
     // A style is a name (the stroke font txt) or { name, file, face, bold, italic }: a TrueType face, which
     // is how the plan's own Helvetica is carried (Arial has the same letter widths).

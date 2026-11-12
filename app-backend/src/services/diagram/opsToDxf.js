@@ -51,13 +51,25 @@ const norm360 = (a) => ((a % 360) + 360) % 360
  * @param {{ perPt: number, figCenterPx: number, figCenterPy: number, center: {x:number,y:number} }} ground
  * @returns {{ dxfBuffer: Buffer, stats: object }}
  */
-export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS } = {}) {
+export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS, dropWhiteFills = false } = {}) {
   const r2000 = version === 'r2000'
-  const w = r2000 ? createDxfWriterR2000(layers, { styles: ['Standard', ...Object.values(PDF_FONT_STYLES)] }) : createDxfWriter(layers)
+  // Release 2000 only, which is the editable file: the lettering goes on a layer of its own beside each layer that
+  // has any ("PARCELS" / "PARCELS_TEXT"), so labels can be switched off or frozen apart from the linework, and the
+  // PAPER layer (the white sheet under everything) is locked, so a click in the drawing never picks the sheet.
+  const textLayerOf = (name) => `${name}_TEXT`
+  const layersWithText = r2000 ? new Set(ops.filter((o) => o.type === 'text' && layers.some((l) => l.name === o.layer)).map((o) => o.layer)) : new Set()
+  const outLayers = r2000
+    ? [
+      ...layers.map((l) => (l.name === 'PAPER' ? { ...l, locked: true } : l)),
+      ...layers.filter((l) => layersWithText.has(l.name)).map((l) => ({ name: textLayerOf(l.name), color: l.color })),
+    ]
+    : layers
+  const w = r2000 ? createDxfWriterR2000(outLayers, { styles: ['Standard', ...Object.values(PDF_FONT_STYLES)] }) : createDxfWriter(layers)
   // Release 12 takes the palette index; Release 2000 and later take the exact RGB too.
   const colorOf = (hex) => ({ aci: nearestAci(hex), rgb: hex })
   const known = new Set(layers.map((l) => l.name))
   const layerOf = (op) => (known.has(op.layer) ? op.layer : '0')
+  const isWhite = (hex) => /^#?f{6}$/i.test(String(hex ?? ''))
   const g = (x, y) => ({
     x: ground.center.x + (x - ground.figCenterPx) * ground.perPt,
     y: ground.center.y - (y - ground.figCenterPy) * ground.perPt,
@@ -84,6 +96,7 @@ export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS
     const layer = layerOf(op)
     if (op.type === 'text') {
       if (!op.text.trim()) continue
+      const textLayer = layersWithText.has(layer) ? textLayerOf(layer) : layer
       // Release 2000 text is set in the PDF's own face: AutoCAD sizes a TrueType face by its capital
       // height (measured), and Arial's letters are Helvetica's, so the width factor is 1 and the line is
       // as long as the PDF's. Release 12 has no faces: the stroke font is squeezed to the PDF's width.
@@ -96,21 +109,29 @@ export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS
       // at its middle / end, along the string's own direction.
       const along = align === 'center' ? op.width / 2 : align === 'right' ? op.width : 0
       const a = g(op.x + Math.cos(r) * along, op.y + Math.sin(r) * along)
-      w.addText(layer, a.x, a.y, op.text, len(h), norm360(-op.rotation), {
+      w.addText(textLayer, a.x, a.y, op.text, len(h), norm360(-op.rotation), {
         align, widthFactor: factor, color: colorOf(op.color), ...(face ? { style: face.name } : {}),
       })
       stats.text++
     } else if (op.type === 'stroke') {
       const pts = op.pts.map(([x, y]) => g(x, y))
       pts.forEach(track)
-      const o = { width: len(op.width), color: colorOf(op.color), closed: op.closed }
+      // Release 2000 takes the PDF's line width as a real lineweight (points -> hundredths of a millimetre);
+      // Release 12 has only a polyline width, a band of fixed ground size.
+      const o = r2000
+        ? { lineweight: (op.width * 25.4 * 100) / 72, color: colorOf(op.color), closed: op.closed }
+        : { width: len(op.width), color: colorOf(op.color), closed: op.closed }
       if (op.dash) o.linetype = w.dashed(len(op.dash.len), len(op.dash.space))
       w.addPolyline(layer, pts, o)
       stats.stroke++
     } else if (op.type === 'fill') {
+      // A white fill behind a stand only hides what lies beneath it in the PDF; in CAD it covers the neighbouring
+      // stands' edges and is picked ahead of the line under it.
+      if (dropWhiteFills && layer !== 'PAPER' && isWhite(op.color)) continue
       w.addFill(layer, op.rings.map((r) => r.map(([x, y]) => { const q = g(x, y); return [q.x, q.y] })), op.rule, colorOf(op.color))
       stats.fill++
     } else if (op.type === 'discFill') {
+      if (dropWhiteFills && isWhite(op.color)) continue
       const c = g(op.cx, op.cy)
       w.addDisc(layer, c.x, c.y, len(op.r), colorOf(op.color))
       stats.fill++

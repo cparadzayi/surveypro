@@ -40,7 +40,8 @@ describe('the General Plan DXF replicates the General Plan PDF', () => {
 
   test('is Release 2000 and on the plan\'s own layers', () => {
     expect(ps.some(([c, v]) => c === '1' && v === 'AC1015')).toBe(true)
-    const known = new Set(['0', ...GENERAL_PLAN_LAYERS.map((l) => l.name)])
+    // the lettering is on a layer of its own beside each layer that has any ("PARCELS_TEXT")
+    const known = new Set(['0', ...GENERAL_PLAN_LAYERS.flatMap((l) => [l.name, l.name + '_TEXT'])])
     const used = new Set(ps.filter(([c], i) => c === '8' && ps[i - 1]).map(([, v]) => v))
     for (const l of used) expect(known.has(l)).toBe(true)
     expect(used.has('TITLE_BLOCK')).toBe(true)

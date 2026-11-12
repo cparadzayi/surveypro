@@ -97,17 +97,24 @@ describe('the diagram DXF is Release 2000', () => {
     expect(ps.slice(k, end).find(([c]) => c === '91')?.[1]).toBe('2')
   })
 
-  test('lines carry their weight as a polyline width, as the PDF draws them', () => {
-    // group 43 is a polyline's constant width (the viewport table has its own, unrelated, 43)
-    const widths = []
+  test('lines carry their weight as a real lineweight (group 370), not a polyline width', () => {
+    // A constant width (group 43) is a band of fixed ground size: it does not offset, trim or plot as a line.
+    const weights = []
+    let widthed = 0
     ps.forEach(([c, v], i) => {
       if (c !== '0' || v !== 'LWPOLYLINE') return
       const end = ps.findIndex(([cc], k) => k > i && cc === '0')
-      const w = ps.slice(i, end).find(([cc]) => cc === '43')
-      if (w) widths.push(Number(w[1]))
+      const body = ps.slice(i, end)
+      const lw = body.find(([cc]) => cc === '370')
+      if (lw) weights.push(Number(lw[1]))
+      if (body.some(([cc]) => cc === '43')) widthed++
     })
-    expect(widths.length).toBeGreaterThan(20)
-    expect(Math.min(...widths)).toBeGreaterThan(0)
+    expect(weights.length).toBeGreaterThan(20)
+    expect(Math.min(...weights)).toBeGreaterThan(0)
+    expect(widthed).toBe(0)
+    // only lineweights AutoCAD offers
+    const offered = new Set([0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211])
+    for (const wgt of weights) expect(offered.has(wgt)).toBe(true)
   })
 
   test('the header names a view that opens on the sheet', () => {

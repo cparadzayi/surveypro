@@ -60,16 +60,17 @@ describe('the editable Release 2000 General Plan DXF', () => {
   const dxf = opsToDxf(ops, ground, { version: 'r2000', layers, dropWhiteFills: true }).dxfBuffer
   const ps = pairs(dxf)
 
-  test('writes no white fill behind a stand or a beacon, and keeps a coloured fill and the sheet', () => {
+  test('writes no white fill behind a stand or a beacon, and none over the sheet, but keeps a coloured fill', () => {
     const hatches = entities(ps, 'HATCH')
-    expect(hatches.map(layerOf).sort()).toEqual(['PAPER', 'PARCELS'])
-    const parcelHatch = hatches.find((h) => layerOf(h) === 'PARCELS')
+    expect(hatches.map(layerOf)).toEqual(['PARCELS'])            // no PAPER hatch: it hid everything from the cursor
+    const parcelHatch = hatches[0]
     expect(parcelHatch.find(([c]) => c === '420')[1]).toBe(String(0xff0000))   // the red one, not the white
   })
 
   test('without the option the white fills are written, as the PDF has them', () => {
     const all = entities(pairs(opsToDxf(ops, ground, { version: 'r2000', layers }).dxfBuffer), 'HATCH')
     expect(all.length).toBe(4)   // the sheet, two stands' fills, the beacon disc
+    expect(all.map(layerOf)).toContain('PAPER')
   })
 
   test('writes a line weight as a lineweight, not as a polyline width', () => {
@@ -90,11 +91,17 @@ describe('the editable Release 2000 General Plan DXF', () => {
     expect(table).not.toContain('PAPER_TEXT')                       // only a layer that has lettering gets a text layer
   })
 
-  test('locks the PAPER layer, so a click in the drawing never picks the sheet', () => {
-    const flags = layerTable(ps)
-    expect(flags.get('PAPER')).toBe('4')                             // bit 4: locked
-    expect(flags.get('PARCELS')).toBe('0')
-    expect(flags.get('PARCELS_TEXT')).toBe('0')
+  test('the General Plan has no PAPER layer at all, and still marks the sheet\'s edge', () => {
+    const table = layerTable(ps)
+    expect(table.has('PAPER')).toBe(false)
+    expect(entities(ps, 'LWPOLYLINE').map(layerOf)).toContain('SHEET_EDGE')
+    expect(table.get('PARCELS')).toBe('0')
+    expect(table.get('PARCELS_TEXT')).toBe('0')
+  })
+
+  test('where the sheet fill is kept (the diagram), its layer is locked', () => {
+    const kept = layerTable(pairs(opsToDxf(ops, ground, { version: 'r2000', layers }).dxfBuffer))
+    expect(kept.get('PAPER')).toBe('4')                              // bit 4: locked
   })
 })
 

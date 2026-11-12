@@ -48,14 +48,15 @@ describe('the General Plan DXF replicates the General Plan PDF', () => {
     expect(used.has('SHEET_EDGE')).toBe(true)
   })
 
-  test('the sheet is a white fill on its own PAPER layer, ahead of everything else', () => {
-    const hatch = ps.findIndex(([c, v]) => c === '0' && v === 'HATCH')
-    expect(hatch).toBeGreaterThan(-1)
-    const block = ps.slice(hatch, hatch + 12)
-    expect(block.some(([c, v]) => c === '8' && v === 'PAPER')).toBe(true)
-    expect(block.some(([c, v]) => c === '420' && v === String(0xffffff))).toBe(true)
-    const firstDrawn = ps.findIndex(([c, v], i) => c === '0' && ['TEXT', 'LWPOLYLINE', 'HATCH', 'CIRCLE'].includes(v) && i > 0)
-    expect(firstDrawn).toBe(hatch)
+  test('has no white fill at all: no sheet-sized hatch to hide the drawing from the cursor, and none behind a stand or a beacon', () => {
+    // A hatch over the whole sheet turned the drawing blue when it was clicked, so nothing under it could be picked.
+    // The working plan's DXF has none; the General Plan's has none either, and marks the sheet by its edge.
+    const hatchLayers = ps.filter(([c, v]) => c === '0' && v === 'HATCH').length
+    const whiteFills = ps.filter(([c, v], i) => c === '420' && v === String(0xffffff) && ps[i - 1] && ps[i - 2]?.[0] === '8').length
+    expect(whiteFills).toBe(0)
+    expect(ps.some(([c, v]) => c === '8' && v === 'PAPER')).toBe(false)
+    expect(ps.some(([c, v]) => c === '8' && v === 'SHEET_EDGE')).toBe(true)
+    expect(hatchLayers).toBeGreaterThanOrEqual(0)
   })
 
   test('text is set in the PDF own faces: Arial regular, bold and italic styles, one per PDF font', () => {

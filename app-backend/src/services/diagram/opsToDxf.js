@@ -60,7 +60,9 @@ export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS
   const layersWithText = r2000 ? new Set(ops.filter((o) => o.type === 'text' && layers.some((l) => l.name === o.layer)).map((o) => o.layer)) : new Set()
   const outLayers = r2000
     ? [
-      ...layers.map((l) => (l.name === 'PAPER' ? { ...l, locked: true } : l)),
+      // With the white fills dropped there is no sheet fill either (the General Plan's DXF, like the working plan's, has
+      // none), so there is no PAPER layer to carry; otherwise it is locked.
+      ...layers.filter((l) => !(dropWhiteFills && l.name === 'PAPER')).map((l) => (l.name === 'PAPER' ? { ...l, locked: true } : l)),
       ...layers.filter((l) => layersWithText.has(l.name)).map((l) => ({ name: textLayerOf(l.name), color: l.color })),
     ]
     : layers
@@ -89,7 +91,9 @@ export function opsToDxf(ops, ground, { version = 'r12', layers = DIAGRAM_LAYERS
   const sheet = ground.page ? [[0, 0], [ground.page.width, 0], [ground.page.width, ground.page.height], [0, ground.page.height]].map(([x, y]) => g(x, y)) : null
   // A PAPER layer, where the plan has one, takes a white fill of the whole sheet under everything else,
   // so the plan reads on white whatever the CAD screen's own background is set to.
-  if (sheet && known.has('PAPER')) w.addFill('PAPER', [sheet.map((q) => [q.x, q.y])], 'nonzero', { aci: 255, rgb: '#ffffff' })
+  // A sheet-sized white hatch turned the whole drawing blue when it was clicked, so nothing under it could be picked
+  // (a locked layer did not stop it): the General Plan's DXF has none, as the working plan's has none.
+  if (sheet && known.has('PAPER') && !dropWhiteFills) w.addFill('PAPER', [sheet.map((q) => [q.x, q.y])], 'nonzero', { aci: 255, rgb: '#ffffff' })
   if (sheet) w.addPolyline('SHEET_EDGE', sheet, { closed: true, color: { aci: 8, rgb: '#808080' } })
 
   for (const op of ops) {

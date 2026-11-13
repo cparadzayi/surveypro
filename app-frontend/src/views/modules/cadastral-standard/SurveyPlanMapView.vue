@@ -508,6 +508,7 @@ import { useCadastralWorkflow } from '@/composables/useCadastralWorkflow'
 import { isCalculatedPoint } from '@/utils/calculatedPoint'
 import { deriveStoredSheets as deriveStoredSheetsFor, findOutsideFigureParcel, outsideFigureCapeLoRing } from './storedSheets'
 import { readCuts } from '@/utils/cutStorage'
+import { orderEdgesNorthClockwise, orderVerticesNorthClockwise } from '@/utils/outsideFigureOrder'
 import { buildSheetSubjects, adjoiningSubjectsFor, type SheetSubject } from './sheetSubjects'
 import { paperSizeOptionsFor } from './paperSizeOptions'
 import { planTypeOptionsFor, normalizePlanTypeSelection } from './planTypeOptions'
@@ -6533,7 +6534,8 @@ const outsideFigureData = computed(() => {
   
   // ⭐ SINGLE SOURCE OF TRUTH: Use pre-computed edges from Area/Consistency
   // This is stored in metadata.residuals.edges after area computation
-  const storedEdges = outsideFigureParcel.metadata?.residuals?.edges
+  // The data is stated from the northmost point, clockwise (app-shared/figureOrder.js), whatever order the figure was digitised in.
+  const storedEdges = orderEdgesNorthClockwise(outsideFigureParcel.metadata?.residuals?.edges ?? [], decimalToDMS)
   
   // ⭐ STALE DETECTION: Compare geometry vertex count with stored edges
   // If they don't match, the metadata is outdated (geometry changed in QGIS)
@@ -6732,7 +6734,7 @@ const outsideFigureData = computed(() => {
   }
   
   const coords = parcelGeom.coordinates[0]
-  const vertices = coords.slice(0, -1)
+  const vertices = orderVerticesNorthClockwise(coords.slice(0, -1))
   
   // Helper function to generate letter labels
   const getLetterLabel = (index: number): string => {

@@ -12,6 +12,8 @@
  *   X = Southing (increases southward in Zimbabwe)
  */
 
+import { northClockwise } from '../../../app-shared/figureOrder'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,10 +77,12 @@ function toDMS(deg: number): string {
  * Build the SI 727 outside figure edge table from an ordered vertex array.
  * The polygon is treated as closed (last vertex connects back to first).
  */
-export function buildEdgeTable(verts: OfdVertex[]): {
+export function buildEdgeTable(vertsIn: OfdVertex[]): {
   edges: OfdEdge[]
   constants: { pointId: string; y: number; x: number }
 } {
+  // Stated from the northmost point, clockwise (app-shared/figureOrder.js), whatever order the part was walked in.
+  const verts = northClockwise(vertsIn)
   if (verts.length < 2) {
     return { edges: [], constants: { pointId: '', y: 0, x: 0 } }
   }

@@ -40,10 +40,12 @@ describe('sheetOutsideFigureVertices', () => {
     const part = [P(0, 0), P(100, 0), P(100, 100), P(0, 100)];
     const { edges, constants } = buildEdgeTable(sheetOutsideFigureVertices(part, []));
 
+    // The table is stated from the NORTHMOST vertex, clockwise (app-shared/figureOrder.js). Here A and B are level
+    // in the north (X = 0); B is the western one (larger Y), and the ring as given is counter-clockwise, so the
+    // table runs B, A, D, C and closes back onto B.
     expect(edges).toHaveLength(4);
-    expect(edges[0].side).toBe('A-B');
-    expect(edges[3].side).toBe('D-A');     // closes back to the first vertex
-    expect(constants.pointId).toBe('A');
+    expect(edges.map((e) => e.side)).toEqual(['B-A', 'A-D', 'D-C', 'C-B']);
+    expect(constants.pointId).toBe('B');
   });
 
   it('letters past Z for a township figure', () => {
@@ -103,9 +105,9 @@ describe('end to end, on a real split', () => {
       const { edges, constants } = buildEdgeTable(sheetOutsideFigureVertices(part, split.newPoints));
 
       expect(edges).toHaveLength(part.length);
-      expect(constants.pointId).toBe('A');
-      // The last side closes back onto the first vertex.
-      expect(edges[edges.length - 1].side.endsWith('-A')).toBe(true);
+      // The table starts at the part's northmost vertex, whatever it is called, and its last side closes back onto it.
+      expect(constants.pointId).toBe(edges[0].pointId);
+      expect(edges[edges.length - 1].side.endsWith(`-${constants.pointId}`)).toBe(true);
       // Every distance is a real positive number: no zero-length side, which is
       // what a duplicated vertex would produce.
       expect(edges.every((e) => e.distance > 0)).toBe(true);

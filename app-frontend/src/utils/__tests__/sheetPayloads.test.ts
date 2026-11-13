@@ -187,10 +187,11 @@ describe('buildSheetPayloads', () => {
     if (!out.ok) throw new Error('expected ok');
     for (const s of out.sheets) {
       expect(s.edges).toHaveLength(s.ring.length);
-      // The table closes: the last edge returns to the FIRST vertex,
+      // The table closes: the last edge returns to the FIRST row's start,
       // whatever that point is called -- a lettered survey point or a
-      // plan-named cut point ('C1' here, since the cut leads the ring).
-      expect(s.edges[s.edges.length - 1].side.endsWith(`-${s.vertices[0].pointId}`)).toBe(true);
+      // plan-named cut point ('C1').
+      // (the table starts at the part's northmost vertex, clockwise -- not necessarily vertices[0])
+      expect(s.edges[s.edges.length - 1].side.endsWith(`-${s.edges[0].pointId}`)).toBe(true);
       expect(s.edges.every((e) => e.distance > 0)).toBe(true);
     }
   });

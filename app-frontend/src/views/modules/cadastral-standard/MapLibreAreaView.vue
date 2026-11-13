@@ -1030,6 +1030,7 @@ import { wgs84ToCape, type LoZone } from '../../../utils/geodeticTransform';
 import { newDraft, addVertex, undoVertex, clearDraft, type CutDraft } from '../../../utils/cutDrawing';
 import { readCuts, writeCuts, type StoredCut } from '../../../utils/cutStorage';
 import { buildSheetPayloads } from '../../../utils/sheetPayloads';
+import { nameCutPoints } from '../../../../../app-shared/cutPointNames';
 import { shoelaceAreaYX } from '../../../utils/registryGeometry';
 import { splitFigure, splitFigureMultiple, resolveEndpointToward } from '../../../../../app-shared/figureSplit';
 import { areaCompute, type AreaComputeResponse } from '../../../services/compute';
@@ -4595,6 +4596,18 @@ function renderCutDraft() {
     splitLoZone()
   );
   const n = wgs84.length;
+  // Name every vertex as it is placed. A vertex on a surveyed point (a beacon, a stand corner) carries that
+  // point's own name; any other is a point the cut creates, shown with the automatic name it will take (C1,
+  // C2, ...) until the surveyor names it. The label used to read a `name` these features never had.
+  const known = (v: { y: number; x: number }) =>
+    splitSnapCandidates.value.find(c => Math.hypot(c.y - v.y, c.x - v.x) < 0.01);
+  const named = vertices.map(v => known(v)?.id ?? null);
+  const taken = [
+    ...splitSnapCandidates.value.map(c => c.id),
+    ...splitFigureRing.value.map((p: any) => String(p.id ?? p.name ?? '')),
+  ];
+  const auto = nameCutPoints(vertices.filter((_, i) => named[i] == null), taken);
+  let nextAuto = 0;
   cutVerticesSource.setData({
     type: 'FeatureCollection',
     features: wgs84.map((w, i) => ({
@@ -4602,6 +4615,7 @@ function renderCutDraft() {
       geometry: { type: 'Point', coordinates: [w.lng, w.lat] },
       properties: {
         index: i,
+        name: named[i] ?? auto[nextAuto++]?.name ?? '',
         snapped:
           i === 0 ? (cutDraft.value.startsAt?.snapped ?? false)
             : i === n - 1 ? (cutDraft.value.endsAt?.snapped ?? false)

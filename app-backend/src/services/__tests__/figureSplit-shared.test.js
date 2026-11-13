@@ -310,21 +310,31 @@ describe('standsCrossedBy', () => {
     expect(standsCrossedBy(through, road(1))).toEqual(['Road'])
   })
 
-  test('a stand the cut merely grazes is named, and the split refused', () => {
-    // Decision 12, as settled: a graze is REJECTED, not resolved. An earlier
-    // draft had the cut snap onto such a boundary, which cannot work -- the snap
-    // makes the cut touch the stand and this very rule then refuses it anyway,
-    // so it bought nothing and silently moved the surveyor's point. Do not
-    // "fix" this into a snap, and do not relax it to let a pure touch through:
-    // that would weaken the check that stops a sliced stand being lodged.
-    const grazed = [{ name: '1686', ring: box(0, 0, 10, 10) }]
+  test('a stand the cut merely touches is NOT named: a cut may run down a boundary between stands', () => {
+    // Changed Nov 2026 at the surveyor's instruction. Where a figure has no road to cut through, the cut runs
+    // along a stand boundary (889A-890C). Nothing is sliced: each stand lies wholly in one part. What is still
+    // refused is a cut that goes INTO a stand's interior (the two tests above and below).
+    const touched = [{ name: '1686', ring: box(0, 0, 10, 10) }]
 
     // The cut runs exactly along the stand's x = 10 side, entering nothing.
-    expect(standsCrossedBy([P(-5, 10), P(15, 10)], grazed)).toEqual(['1686'])
+    expect(standsCrossedBy([P(-5, 10), P(15, 10)], touched)).toEqual([])
     // And a cut touching a single corner of it.
-    expect(standsCrossedBy([P(5, 15), P(15, 5)], grazed)).toEqual(['1686'])
+    expect(standsCrossedBy([P(5, 15), P(15, 5)], touched)).toEqual([])
     // A cut genuinely clear of it is still clear.
-    expect(standsCrossedBy([P(-5, 12), P(15, 12)], grazed)).toEqual([])
+    expect(standsCrossedBy([P(-5, 12), P(15, 12)], touched)).toEqual([])
+    // A cut that runs along one side and then turns INTO the stand is still refused.
+    expect(standsCrossedBy([P(-5, 10), P(5, 10), P(5, 5)], touched)).toEqual(['1686'])
+    // And one that ends inside it.
+    expect(standsCrossedBy([P(-5, 5), P(5, 5)], touched)).toEqual(['1686'])
+  })
+
+  test('two stands sharing a boundary: a cut along it slices neither, a cut across it slices both', () => {
+    const left = { name: '889', ring: box(0, 0, 10, 10) }
+    const right = { name: '890', ring: box(10, 0, 20, 10) }
+    // along the shared x = 10 side, from beyond one end to beyond the other
+    expect(standsCrossedBy([P(10, -5), P(10, 15)], [left, right])).toEqual([])
+    // across both, at y = 5
+    expect(standsCrossedBy([P(-5, 5), P(25, 5)], [left, right]).sort()).toEqual(['889', '890'])
   })
 
   test('a stand merely enclosed by a loop in the cut is NOT named, on purpose', () => {

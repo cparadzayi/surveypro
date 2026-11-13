@@ -112,7 +112,7 @@ const digitizeGroups = computed(() => {
       id: 'start-splitting',
       icon: '✂️',
       label: 'Split Figure',
-      title: 'Cut the Outside Figure into sheets along a line through road space',
+      title: 'Cut the Outside Figure into sheets along a line through road space, or down a boundary between stands where there is no road',
       tone: 'accent',
       when: !props.isDrawing && !props.isSplitting,
       disabled: props.digitizingLocked,

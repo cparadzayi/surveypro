@@ -303,7 +303,7 @@ function atEndpoint(hit, p) {
  * "Enters" means the cut's PATH goes through the stand, and the two tests below
  * are exhaustive for that. A connected path cannot reach a region's interior
  * without crossing its boundary, so either the path meets the ring
- * (`crossesRing`) or it began inside it (`insideRing`). There is no third way in.
+ * (a piece of the path has its middle strictly inside the ring, see `entersInterior`). There is no third way in.
  *
  * A stand merely ENCLOSED by a loop in the cut is deliberately not named. It is
  * not sliced: it lies wholly within one of the two parts, so refusing that split
@@ -313,14 +313,13 @@ function atEndpoint(hit, p) {
  * enclosing case as a detection gap; it is not one, and the test named for it
  * holds this answer in place.
  *
- * A stand the cut merely GRAZES -- touching its boundary without entering -- is
- * named too, and the split refused. That is Decision 12, and it is deliberate:
- * an earlier draft had the cut snap onto such a boundary instead, which cannot
- * work, because the snap makes the cut touch the stand and this rule then refuses
- * it anyway. Allowing the touch would mean weakening the one check that stops a
- * sliced stand reaching the Surveyor-General, and moving the cut would break the
- * promise that the tool never silently adjusts what the surveyor drew. So a graze
- * is rejected rather than resolved, and the surveyor moves their own cut.
+ * A stand the cut merely TOUCHES -- runs along its boundary, or meets a corner -- is NOT named
+ * (changed Nov 2026, at the surveyor's instruction; it was refused before, as "Decision 12 graze").
+ * Where a figure has no road to cut through, the cut has to run down a boundary between stands, such
+ * as 889A-890C: nothing is sliced, the stands on either side each lie wholly in one part. What is
+ * refused is a cut that ENTERS a stand's interior, which is the only way to slice one. Contact is
+ * decided with ON_BOUNDARY_M, the rounding slop of a lodged coordinate, so a vertex the cut shares
+ * with the stand's own corner is on the boundary, not inside it.
  *
  * `isPublicPlace` must be exactly `true`. Truthiness would let a stringified
  * "false" out of a CSV import exempt a real stand, which fails OPEN: a sliced
@@ -342,27 +341,57 @@ export function standsCrossedBy(polyline, stands) {
       continue
     }
 
-    if (crossesRing(polyline, stand.ring) || insideRing(polyline, stand.ring)) {
-      hit.push(stand.name)
-    }
+    if (entersInterior(polyline, stand.ring)) hit.push(stand.name)
   }
   return hit
 }
 
-function crossesRing(polyline, ring) {
+/** A point this close to a stand's edge is ON its boundary: the rounding slop of a lodged coordinate. */
+const ON_BOUNDARY_M = ROUNDING_SLOP_M + TOUCH_EPS
+
+function distanceToRing(ring, p) {
+  let best = Infinity
+  for (let i = 0; i < ring.length; i++) {
+    const d = projectOnSegment(ring[i], ring[(i + 1) % ring.length], p).distance
+    if (d < best) best = d
+  }
+  return best
+}
+
+/**
+ * Whether the cut's path goes through the stand's INTERIOR.
+ *
+ * Each cut segment is broken wherever it meets the stand's boundary (at crossings, and at the stand's
+ * own corners that lie on it), and the middle of every piece is tested: strictly inside the ring and
+ * not within ON_BOUNDARY_M of its edge. A piece lying along an edge has its middle on the boundary, so
+ * it is not an entry; a piece through the stand has its middle inside, so it is.
+ */
+function entersInterior(polyline, ring) {
   for (let s = 0; s < polyline.length - 1; s++) {
+    const a = polyline[s], b = polyline[s + 1]
+    const dy = b.y - a.y, dx = b.x - a.x
+    const len2 = dy * dy + dx * dx
+    if (len2 === 0) continue
+    const ts = [0, 1]
+    const tOf = (p) => ((p.y - a.y) * dy + (p.x - a.x) * dx) / len2
     for (let i = 0; i < ring.length; i++) {
-      const r1 = ring[i]
-      const r2 = ring[(i + 1) % ring.length]
-      if (segmentIntersection(polyline[s], polyline[s + 1], r1, r2)) return true
+      const r1 = ring[i], r2 = ring[(i + 1) % ring.length]
+      const hit = segmentIntersection(a, b, r1, r2)
+      if (hit) ts.push(tOf(hit))
+      for (const v of [r1]) {
+        const pr = projectOnSegment(a, b, v)
+        if (pr.distance <= ON_BOUNDARY_M) ts.push(pr.t)
+      }
+    }
+    ts.sort((p, q) => p - q)
+    for (let k = 0; k + 1 < ts.length; k++) {
+      if (ts[k + 1] - ts[k] < 1e-12) continue
+      const t = (ts[k] + ts[k + 1]) / 2
+      const m = { y: a.y + t * dy, x: a.x + t * dx }
+      if (pointInRing(ring, m) && distanceToRing(ring, m) > ON_BOUNDARY_M) return true
     }
   }
   return false
-}
-
-/** A cut that never touches the stand's edges but lies wholly within it. */
-function insideRing(polyline, ring) {
-  return polyline.some((p) => pointInRing(ring, p))
 }
 
 /**

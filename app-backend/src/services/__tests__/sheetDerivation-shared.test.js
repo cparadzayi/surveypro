@@ -411,3 +411,18 @@ describe('standRange', () => {
     expect(standRange(['2833A', '2469'])).toBe('2469 to 2833A')
   })
 })
+
+describe('a cut that runs down a boundary between stands (no road to use)', () => {
+  test('splits the figure and puts each stand on its own sheet; a cut through a stand is still refused', async () => {
+    const { splitFigure } = await import('../../../../app-shared/figureSplit.js')
+    const ring = box(0, 0, 20, 10)
+    const stands = [{ name: '889', ring: box(0, 0, 10, 10) }, { name: '890', ring: box(10, 0, 20, 10) }]
+
+    const along = splitFigure({ ring, polyline: [P(10, 0), P(10, 10)], stands })
+    expect(along.ok).toBe(true)
+    expect(assignStands(along.parts, stands)).toEqual({ ok: true, bySheet: [['889'], ['890']] })
+
+    const through = splitFigure({ ring, polyline: [P(5, 0), P(5, 10)], stands })
+    expect(through).toMatchObject({ ok: false, error: 'straddles-stands', stands: ['889'] })
+  })
+})

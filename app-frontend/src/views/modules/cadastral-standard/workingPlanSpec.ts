@@ -1020,6 +1020,16 @@ function controlPointNameFor(
 }
 
 /** The plan-scale dropdown's '1:2500' as 2500; 'auto', blank or anything else leaves the renderer to choose. */
+/** A beacon this close to the split line (rounding of a lodged coordinate) is on it. */
+const SPLIT_LINE_TOL_M = 0.02
+
+function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay
+  const len2 = dx * dx + dy * dy
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2))
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+}
+
 export function fixedScaleOf(value: unknown): 'auto' | number {
   const m = /^\s*1\s*:\s*(\d+)\s*$/.exec(String(value ?? ''))
   const n = m ? Number(m[1]) : NaN
@@ -1179,7 +1189,14 @@ export function buildWorkingPlanSpec(
     const ranges = formatStandRanges(standNames)
     parcels.push({ label: ranges ? `${standNames.length === 1 ? 'STAND' : 'STANDS'} ${ranges}` : 'STANDS', ring: generalRing })
   }
-  const emitted = [...used, ...[...byName.keys()].filter(n => !seen.has(n) && !(general && standRingNames.has(n)))]
+  // A stand's corner stays off a General Plan's working plan, EXCEPT where it stands on the split line: the cut
+  // runs down boundaries between stands (889A-890C), and the sheet has to show the marks it runs through.
+  const onSplitLine = (n: string): boolean => {
+    const b = byName.get(n)
+    if (!b) return false
+    return (ctx.cuts ?? []).some(c => c.some((p, i) => i > 0 && distToSegment(b.X, b.Y, c[i - 1].x, c[i - 1].y, p.x, p.y) <= SPLIT_LINE_TOL_M))
+  }
+  const emitted = [...used, ...[...byName.keys()].filter(n => !seen.has(n) && !(general && standRingNames.has(n) && !onSplitLine(n)))]
   const controlNames = new Map<string, string>()
   for (const cp of ctx.controlPoints ?? []) {
     const num = controlKey(cp?.name)

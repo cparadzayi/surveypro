@@ -165,15 +165,16 @@ const MEASURED_LANDSCAPE = {
     // the figure, and at the smaller size the numbers stand out from them.
     parcel: TEN_PT, road: TEN_PT,
     beacon: 2.5, adjoining: 2.5, insetLabel: 2.5, grid: 2.5,
-    // title dropped one ISO rung (3,5 -> 2,5) so the identification lines make
-    // room for the sheet it names; the heading alone stays the document size.
-    scale: 3.5, approval: 3.5, certificate: 3.5, title: 2.5,
+    // The lines naming the land are the caption size, like the scale line, the approval box and the certificate
+    // (they were 2,5 -- smaller than the scale line beneath them); one that is too long for the room between the
+    // border and the approval box is set smaller (titleLineMm). The heading alone stays the document size, 5,0.
+    scale: 3.5, approval: 3.5, certificate: 3.5, title: 3.5,
     // One ISO rank below the other 3.5 mm captions. "INSET 2 (NOT TO
     // SCALE)" is 22 characters, and at 3.5 mm it ran about 69 mm -- past
     // the 58.5 mm a half-width inset cell leaves beside its frame.
     insetTitle: TEN_PT,
     // 5,0 / 2,5 -- two ISO steps, heading to the line that names the land.
-    titleLeadFactor: 2.0,
+    titleLeadFactor: 5 / 3.5,
   },
 
   // SI 727 Fifth Schedule (Sections 37, 38, 64 and 68), Conventional Signs,
@@ -1107,6 +1108,18 @@ const crowded = crowdedClusters(
   };
   const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 
+  /** The height (layout mm) of a title line. The heading is fixed. A line naming the land is set at the caption size
+   *  (3,5) unless it would not fit between the border and the approval box, when it is set smaller, never below 2,5:
+   *  a long designation on a narrow sheet used to be 40% wider than it is now and ran off the paper. */
+  const titleLineMm = (line, i) => {
+    const base = i === 0 ? L.text.title * L.text.titleLeadFactor : L.text.title;
+    if (i === 0 || !L.border) return base;
+    const right = L.approval?.box && L.approval.box.x0 > L.title.cx ? L.approval.box.x0 - 3 : L.border.x1 - 3;
+    const room = 2 * Math.min(L.title.cx - (L.border.x0 + 3), right - L.title.cx);
+    const need = 0.7 * base * String(line).length;                  // bold capitals, measured: ~0.68 of the height a letter
+    return need <= room || room <= 0 ? base : Math.max(2.5, (base * room) / need);
+  };
+
   /** Where a beacon's name sits for a given compass point and distance step. */
   const namePlace = (b, p, k = 1) => {
     const gap = (signReach(b) + mm(0.5)) * k;
@@ -1165,7 +1178,7 @@ const crowded = crowdedClusters(
   {
     const th = mm(L.text.title);
     (spec.title ?? []).slice(0, 4).forEach((line, i) => {
-      const hgt = i === 0 ? th * L.text.titleLeadFactor : th;
+      const hgt = mm(titleLineMm(line, i));
       const at = S(L.title.cx, L.title.baselines[i]);
       occupied.push(textRect(String(line), at[0], at[1], hgt, 'center'));
     });
@@ -2203,7 +2216,7 @@ const crowded = crowdedClusters(
     // than the lines that identify the land. Its baseline is 12.5 mm from the
     // sheet top and the glyphs grow upward, keeping clear both of the border at
     // 0.5 mm and of the next line 10 mm below.
-    d.text(line, S(L.title.cx, L.title.baselines[i]), i === 0 ? th * L.text.titleLeadFactor : th,
+    d.text(line, S(L.title.cx, L.title.baselines[i]), mm(titleLineMm(line, i)),
       { layer: 'TITLE', style: 'ARIAL-BOLD', align: 'center' });
   });
   d.text(`Scale 1:${scale}`, S(L.title.cx, L.title.scaleBaseline), mm(L.text.scale),

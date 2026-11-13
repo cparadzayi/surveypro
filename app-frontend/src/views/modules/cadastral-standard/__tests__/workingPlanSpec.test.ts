@@ -1958,3 +1958,39 @@ describe('fixedScaleOf: the plan-scale dropdown reaches the working plan', () =>
     for (const v of ['auto', '', undefined, null, 'x', '2:500', '1:0']) expect(fixedScaleOf(v)).toBe('auto')
   })
 })
+
+describe('buildWorkingPlanSpec — a General Plan working plan shows the beacons on the split line', () => {
+  // A figure y 0..20, x 0..10, cut down the boundary between stands 889 and 890 (y = 10). The stands' own corners
+  // stay off a General Plan's sheet, except the ones the cut runs through.
+  const list = beaconFC([
+    { name: 'F1', y: 0, x: 0 }, { name: 'F2', y: 20, x: 0 }, { name: 'F3', y: 20, x: 10 }, { name: 'F4', y: 0, x: 10 },
+    { name: '889A', y: 10, x: 0 }, { name: '890C', y: 10, x: 10 }, { name: '889B', y: 10, x: 5 }, { name: 'X1', y: 5, x: 5 },
+  ])
+  const ring = (ids: string[]) => ids.map(id => ({ id, y: 0, x: 0, status: 'P', description: '' }))
+  const outsideFigure = { id: 'of-1', stand: 'Outside Figure', metadata: { cape_lo_points: ring(['F1', 'F2', 'F3', 'F4']) } }
+  const base = (cuts?: any) => ({
+    kind: 'general' as const,
+    beacons: list,
+    parcels: [
+      { stand: '889', metadata: { cape_lo_points: ring(['F1', '889A', '889B', '890C', 'F4', 'X1']) } },
+      { stand: '890', metadata: { cape_lo_points: ring(['889A', 'F2', 'F3', '890C']) } },
+      outsideFigure,
+    ],
+    outsideFigureId: outsideFigure.id,
+    projectInfo: { designation: 'Stands 889-890 Nil Township' },
+    config: { surveyorName: 'A. Surveyor', surveyDate: '2026-07-15' },
+    ...(cuts ? { cuts } : {}),
+  })
+  const names = (c: any) => buildWorkingPlanSpec(c as any).spec.beacons.map((b: any) => b.name)
+
+  it('draws the stand corners the cut runs through, and not the others', () => {
+    const out = names(base([[{ y: 10, x: 0 }, { y: 10, x: 10 }]]))
+    for (const n of ['F1', 'F2', 'F3', 'F4', '889A', '890C', '889B']) expect(out).toContain(n)   // 889B stands on the line between them
+    expect(out).not.toContain('X1')
+  })
+
+  it('without a cut, no stand corner is drawn (the sheet is the outside figure alone)', () => {
+    const out = names(base())
+    expect(out.sort()).toEqual(['F1', 'F2', 'F3', 'F4'])
+  })
+})

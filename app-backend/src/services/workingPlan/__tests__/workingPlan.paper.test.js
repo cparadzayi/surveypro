@@ -143,3 +143,34 @@ describe("the surveyor's scale is kept (a fixed scale from the plan-scale dropdo
     expect(out.scale).toBe(2500)
   })
 })
+
+describe('the lines naming the land are set at the caption size, and smaller only when they would not fit', () => {
+  /** Heights of the TITLE-layer lines of a drawing, in the order drawn. */
+  const titleHeights = (dxf) => {
+    const lines = dxf.split('\n')
+    const out = []
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i] === '0' && lines[i + 1] === 'TEXT') {
+        let j = i + 2; const d = {}
+        while (j < lines.length - 1 && lines[j] !== '0') { (d[lines[j]] ||= []).push(lines[j + 1]); j += 2 }
+        if ((d['8'] || [])[0] === 'TITLE') out.push({ t: (d['1'] || [''])[0], h: Number(d['40'][0]) })
+      }
+    }
+    return out
+  }
+  const withTitle = (second, extra) => ({ ...square(200), title: ['WORKING PLAN OF', second], ...extra })
+
+  test('a title that fits is set at 3,5 under a 5,0 heading', () => {
+    const [heading, naming] = titleHeights(generateWorkingPlan(withTitle('STAND 404 BRACKENHURST')).dxf)
+    expect(heading.h / naming.h).toBeCloseTo(5 / 3.5, 3)
+  })
+
+  test('a 70-character line on A4 portrait is set smaller, but never under 2,5, and stays inside the border', () => {
+    const long = 'STANDS 131 - 179, 705 - 730, 735 - 851, 859 - 927 NIL TOWNSHIP OF SHABANI'
+    const short = titleHeights(generateWorkingPlan(withTitle('STAND 404', { sheetSize: 'A4', orientation: 'portrait' })).dxf)[1]
+    const [heading, naming] = titleHeights(generateWorkingPlan(withTitle(long, { sheetSize: 'A4', orientation: 'portrait' })).dxf)
+    expect(naming.h).toBeLessThan(short.h)
+    expect(naming.h).toBeGreaterThanOrEqual(short.h * (2.5 / 3.5) - 1e-9)
+    expect(heading.h).toBeCloseTo(short.h * (5 / 3.5), 6)       // the heading is never touched
+  })
+})

@@ -248,7 +248,9 @@ describe('generateWorkingPlan — golden', () => {
     const naming = title.find((t) => t.t.startsWith('STANDS 403-405'))
     expect(heading).toBeDefined()
     expect(naming).toBeDefined()
-    expect(heading.h / naming.h).toBeCloseTo(5.0 / 2.5, 2)
+    // 5,0 over 3,5 (Nov 2026): the lines naming the land are the caption size of the scale line, the approval box and the
+    // certificate (they were 2,5, smaller than the scale line beneath them), so the title block has three sizes, not four.
+    expect(heading.h / naming.h).toBeCloseTo(5.0 / 3.5, 2)
   })
 
   test('marks an abutting neighbour the way the diagram does', () => {
@@ -893,7 +895,9 @@ describe('generateWorkingPlan — golden', () => {
       // With the beacon, neighbour and inset lettering at 2,5 mm (stand numbers and road names stay at 10 pt) the
       // coordinate grid settles one cell differently, and this 40-character name reaches one tick figure again --
       // the limitation above, nothing else. Pinned to exactly that one, so it cannot spread.
-      expect(auditAll(dxf).overlaps).toEqual(['GRID-TEXT:X = +2144200 <-> ROAD-TEXT:K  L  E  I  N     R  O  A  D'])
+      // 12 Nov 2026: with the lines naming the land at 3,5 mm the grid settles another cell and the name finds clear paper:
+      // no overlap at all on this sheet. Pinned at none, so it cannot come back.
+      expect(auditAll(dxf).overlaps).toEqual([])
     })
 
     test('no road name overwrites anything when it is not letter-spaced', () => {

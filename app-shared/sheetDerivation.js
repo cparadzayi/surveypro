@@ -11,7 +11,7 @@
  * See docs/superpowers/specs/2026-09-26-multi-sheet-outside-figure-split-design.md
  */
 
-import { pointInRing, segmentIntersection } from './figureSplit.js'
+import { pointInRing, entersInterior, insideRingStrictly } from './figureSplit.js'
 
 /**
  * Area-weighted centroid of an open ring.
@@ -86,27 +86,6 @@ export function orderSheets(parts) {
  * in: standsCrossedBy refuses a cut that would slice one, so a stand matching two
  * parts is a symptom, not a case to resolve.
  */
-const CROSSING_EPS = 1e-9
-
-/** Whether two segments cross at a point interior to BOTH of them.
- *
- *  `segmentIntersection`'s bounds are inclusive by design -- figureSplit needs a
- *  touch at a ring vertex to register -- so it reports two rings that merely
- *  ABUT as intersecting. Two stands either side of the cut share that boundary
- *  without sharing any area, and treating the touch as overlap refused every one
- *  of them: every real split, in other words. So the endpoints are excluded here.
- */
-function crossesProperly(a1, a2, b1, b2) {
-  const hit = segmentIntersection(a1, a2, b1, b2)
-  if (!hit) return false
-  for (const end of [a1, a2, b1, b2]) {
-    if (Math.abs(hit.y - end.y) < CROSSING_EPS && Math.abs(hit.x - end.x) < CROSSING_EPS) {
-      return false
-    }
-  }
-  return true
-}
-
 /**
  * Whether two rings share AREA, not merely a boundary.
  *
@@ -126,17 +105,15 @@ function crossesProperly(a1, a2, b1, b2) {
  *   inside the other and neither centroid inside the other.
  */
 function ringsOverlap(a, b) {
-  if (a.some((p) => pointInRing(b, p))) return true
-  if (b.some((p) => pointInRing(a, p))) return true
-  if (pointInRing(b, centroid(a))) return true
-  if (pointInRing(a, centroid(b))) return true
-  for (let i = 0; i < a.length; i++) {
-    const a1 = a[i]
-    const a2 = a[(i + 1) % a.length]
-    for (let k = 0; k < b.length; k++) {
-      if (crossesProperly(a1, a2, b[k], b[(k + 1) % b.length])) return true
-    }
-  }
+  // "Inside" has to mean inside by more than a lodged coordinate's rounding. A cut that runs down a stand's side
+  // is rounded to 2 dp while the stand's corners carry 3, so a corner 1-5 mm on the far side of the line is ON
+  // the boundary, not in the neighbouring part; counted as inside, it put the stand on both sheets and refused
+  // the split (Nil, Nov 2026). The boundary of either ring running through the other's interior (by more than
+  // that) covers vertices inside and edges crossing, and the centroids cover containment.
+  if (entersInterior([...b, b[0]], a)) return true
+  if (entersInterior([...a, a[0]], b)) return true
+  if (insideRingStrictly(a, centroid(b))) return true
+  if (insideRingStrictly(b, centroid(a))) return true
   return false
 }
 

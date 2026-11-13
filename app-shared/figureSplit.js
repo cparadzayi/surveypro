@@ -349,6 +349,11 @@ export function standsCrossedBy(polyline, stands) {
 /** A point this close to a stand's edge is ON its boundary: the rounding slop of a lodged coordinate. */
 const ON_BOUNDARY_M = ROUNDING_SLOP_M + TOUCH_EPS
 
+/** Strictly inside the ring, and further than a lodged coordinate's rounding from its edge. */
+export function insideRingStrictly(ring, p) {
+  return pointInRing(ring, p) && distanceToRing(ring, p) > ON_BOUNDARY_M
+}
+
 function distanceToRing(ring, p) {
   let best = Infinity
   for (let i = 0; i < ring.length; i++) {
@@ -366,7 +371,7 @@ function distanceToRing(ring, p) {
  * not within ON_BOUNDARY_M of its edge. A piece lying along an edge has its middle on the boundary, so
  * it is not an entry; a piece through the stand has its middle inside, so it is.
  */
-function entersInterior(polyline, ring) {
+export function entersInterior(polyline, ring) {
   for (let s = 0; s < polyline.length - 1; s++) {
     const a = polyline[s], b = polyline[s + 1]
     const dy = b.y - a.y, dx = b.x - a.x

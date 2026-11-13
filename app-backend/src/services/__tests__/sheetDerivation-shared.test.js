@@ -426,3 +426,18 @@ describe('a cut that runs down a boundary between stands (no road to use)', () =
     expect(through).toMatchObject({ ok: false, error: 'straddles-stands', stands: ['889'] })
   })
 })
+
+describe('stands whose corners are a few millimetres off a cut that runs down their side', () => {
+  test('are still placed on one sheet (the cut is rounded to 2 dp, the stand carries 3)', async () => {
+    const { splitFigure } = await import('../../../../app-shared/figureSplit.js')
+    const ring = box(0, 0, 20, 10)
+    // The shared side is at y = 10; each stand's corners on it are 1-5 mm off the cut's line.
+    const stands = [
+      { name: '889', ring: [P(0, 0), P(10.001, 0), P(9.995, 10), P(0, 10)] },
+      { name: '890', ring: [P(10.004, 0), P(20, 0), P(20, 10), P(10.002, 10)] },
+    ]
+    const r = splitFigure({ ring, polyline: [P(10, 0), P(10, 10)], stands })
+    expect(r.ok).toBe(true)
+    expect(assignStands(r.parts, stands)).toEqual({ ok: true, bySheet: [['889'], ['890']] })
+  })
+})

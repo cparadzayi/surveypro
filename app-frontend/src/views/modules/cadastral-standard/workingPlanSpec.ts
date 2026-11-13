@@ -145,7 +145,8 @@ export interface WorkingPlanSpec {
   kind?: WorkingPlanKind
   /** The party-wall servitude table of a General Plan's working plan. */
   partyWalls?: WorkingPlanPartyWall[]
-  scale: 'auto'
+  /** 'auto', or the denominator the surveyor picked in the plan-scale dropdown (2500 for 1:2500). */
+  scale: 'auto' | number
   /** The A4 sheet's way up. A working plan is usually landscape; portrait suits a tall figure. */
   orientation: 'landscape' | 'portrait'
   beacons: WorkingPlanBeacon[]
@@ -1018,6 +1019,13 @@ function controlPointNameFor(
   return displayTrigName(candidate)
 }
 
+/** The plan-scale dropdown's '1:2500' as 2500; 'auto', blank or anything else leaves the renderer to choose. */
+export function fixedScaleOf(value: unknown): 'auto' | number {
+  const m = /^\s*1\s*:\s*(\d+)\s*$/.exec(String(value ?? ''))
+  const n = m ? Number(m[1]) : NaN
+  return Number.isFinite(n) && n > 0 ? n : 'auto'
+}
+
 export function buildWorkingPlanSpec(
   ctx: WorkingPlanSpecContext,
 ): WorkingPlanSpecResult {
@@ -1255,7 +1263,7 @@ export function buildWorkingPlanSpec(
 
   return {
     spec: {
-      scale: 'auto',
+      scale: fixedScaleOf(ctx.config?.scale),
       ...(general && (ctx.sheets?.length ?? 0) > 1 ? {
         sheets: [...ctx.sheets!].sort((a, b) => a.sheetNumber - b.sheetNumber).map(sh => ({
           number: sh.sheetNumber,

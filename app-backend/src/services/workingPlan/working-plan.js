@@ -3055,7 +3055,30 @@ function renderWorkingPlan(spec) {
 export function generateWorkingPlan(spec) {
   const named = spec.sheetSize === 'A3' || spec.sheetSize === 'A4';
   const fixedScale = spec.scale != null && spec.scale !== 'auto';
-  if (named || fixedScale) return renderWorkingPlan({ ...spec, sheetSize: named ? spec.sheetSize : 'A4' });
+  if (named) return renderWorkingPlan(spec);
+  if (fixedScale) {
+    // The surveyor's scale is kept while it fits. At a prescribed scale no finer than the compilation scale, the
+    // PAPER is chosen first: the smallest sheet on which the figure fits at that scale (A4, then A3). A figure that
+    // fits neither is drawn on A3 at the finest scale it allows (the scale is escalated to fit the sheet, never
+    // left to run past the neat line), and the result says so.
+    if (!(spec.scale >= PREFERRED_SCALE)) return renderWorkingPlan({ ...spec, sheetSize: 'A4' });
+    const fits = (sheetSize) => renderWorkingPlan({ ...spec, scale: 'auto', sheetSize }).scale <= spec.scale;
+    if (fits('A4')) return renderWorkingPlan({ ...spec, sheetSize: 'A4' });
+    if (fits('A3')) {
+      const out = renderWorkingPlan({ ...spec, sheetSize: 'A3' });
+      out.escalation = {
+        from: 'A4', to: 'A3', a4Scale: null, scale: spec.scale, reached: true,
+        reason: `The figure does not fit at your 1:${spec.scale} on A4, so the plan is drawn on A3 at 1:${spec.scale}.`,
+      };
+      return out;
+    }
+    const out = renderWorkingPlan({ ...spec, scale: 'auto', sheetSize: 'A3' });
+    out.escalation = {
+      from: 'A4', to: 'A3', a4Scale: null, scale: out.scale, reached: false,
+      reason: `The figure does not fit at your 1:${spec.scale} even on A3, so it is drawn on A3 at 1:${out.scale}, the finest scale that keeps it on the sheet.`,
+    };
+    return out;
+  }
 
   const onA4 = renderWorkingPlan({ ...spec, sheetSize: 'A4' });
   if (onA4.scale <= PREFERRED_SCALE) return onA4;

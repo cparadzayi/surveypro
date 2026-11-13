@@ -1947,3 +1947,14 @@ describe('beacons adopted from a previous approved survey', () => {
     expect(names(ctx())).toEqual(names(ctx({ adoptedBeacons: [] })))
   })
 })
+
+import { fixedScaleOf } from '../workingPlanSpec'
+describe('fixedScaleOf: the plan-scale dropdown reaches the working plan', () => {
+  it('reads 1:N as N', () => {
+    expect(fixedScaleOf('1:2500')).toBe(2500)
+    expect(fixedScaleOf(' 1 : 500 ')).toBe(500)
+  })
+  it('leaves auto, blanks and anything else to the renderer', () => {
+    for (const v of ['auto', '', undefined, null, 'x', '2:500', '1:0']) expect(fixedScaleOf(v)).toBe('auto')
+  })
+})

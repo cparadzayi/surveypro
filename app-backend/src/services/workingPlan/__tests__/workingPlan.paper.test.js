@@ -103,3 +103,43 @@ describe('which paper a working plan is drawn on', () => {
     expect(PAPER.A4.portrait).toEqual({ width: 210, height: 297 })
   })
 })
+
+describe("the surveyor's scale is kept (a fixed scale from the plan-scale dropdown)", () => {
+  test('a figure that fits at the picked 1:2500 on A4 is drawn there, at 1:2500', () => {
+    const out = generateWorkingPlan(square(200, { scale: 2500 }))
+    expect(out.scale).toBe(2500)
+    expect(out.sheetSize).toBe('A4')
+    expect(out.escalation).toBeUndefined()
+  })
+
+  test('a figure that needs 1:3000 on A4 goes to A3 and is drawn at the picked 1:2500', () => {
+    expect(generateWorkingPlan(square(350, { sheetSize: 'A4' })).scale).toBeGreaterThan(2500)
+    const out = generateWorkingPlan(square(350, { scale: 2500 }))
+    expect(out.scale).toBe(2500)
+    expect(out.sheetSize).toBe('A3')
+    expect(out.escalation).toMatchObject({ from: 'A4', to: 'A3', reached: true, scale: 2500 })
+    expect(out.escalation.reason).toMatch(/your 1:2500.*A3/)
+  })
+
+  test('a figure too big for the picked scale even on A3 is drawn on A3 at the finest scale that keeps it on the sheet, and says so', () => {
+    const out = generateWorkingPlan(square(900, { scale: 2500 }))
+    const auto = generateWorkingPlan(square(900, { sheetSize: 'A3' }))
+    expect(out.sheetSize).toBe('A3')
+    expect(out.scale).toBeGreaterThan(2500)
+    expect(out.scale).toBe(auto.scale)                   // exactly the fit the renderer finds for A3
+    expect(out.escalation).toMatchObject({ from: 'A4', to: 'A3', reached: false, scale: out.scale })
+    expect(out.escalation.reason).toMatch(new RegExp(`your 1:2500.*A3 at 1:${out.scale}`))
+    for (const [x, y] of beaconMm(out)) {
+      expect(x).toBeGreaterThan(PRINT_MARGIN_MM)
+      expect(x).toBeLessThan(420 - PRINT_MARGIN_MM)
+      expect(y).toBeGreaterThan(PRINT_MARGIN_MM)
+      expect(y).toBeLessThan(297 - PRINT_MARGIN_MM)
+    }
+  })
+
+  test('a picked paper is still the surveyor\'s: A4 asked for with a fixed scale stays A4', () => {
+    const out = generateWorkingPlan(square(350, { scale: 2500, sheetSize: 'A4' }))
+    expect(out.sheetSize).toBe('A4')
+    expect(out.scale).toBe(2500)
+  })
+})

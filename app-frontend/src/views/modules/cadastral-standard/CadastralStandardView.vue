@@ -2538,6 +2538,10 @@ async function handleReimportChoice(choice: 'use-previous' | 'append' | 'smart-m
             console.log('[CSV Re-import] ⭐ Beacon-name self-heal:', healNote);
             notifySuccess(healNote, { title: 'CSV append complete' });
           }
+          // Re-imported coordinates must reach the saved parcels too, or their
+          // geometry / Area & Consistency keep the old y/x (as the merge path does).
+          const snapNote = await refreshParcelSnapshotsAfterImport();
+          if (snapNote) notifySuccess(snapNote, { title: 'Parcels refreshed' });
         }
         break;
         

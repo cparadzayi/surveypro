@@ -136,7 +136,8 @@ export function refreshWorkflowCoordinateCopies(
   if (!Array.isArray(list)) return []
 
   const next = list.map((p: any) => {
-    const found = registry.get(p?.id)
+    // adjusted_coordinates entries are keyed `pointId` (older copies used `id`)
+    const found = registry.get(p?.pointId ?? p?.id)
     if (!found) return p
     if (p.y === found.y && p.x === found.x) return p
     return { ...p, y: found.y, x: found.x }

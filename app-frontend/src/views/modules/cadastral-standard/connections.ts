@@ -258,3 +258,55 @@ export function dismissConnection(
     ? [...rest, { fromBeacon, toBeacon: '', distanceM: 0, bearingDeg: 0, dismissed: true }]
     : rest
 }
+
+/* ------------------------------------------------------------------------------------------------------------
+ * Connecting data in the Calculations.
+ *
+ * The Surveyor-General's examiners want the computation behind each connection printed in the calculations, not
+ * only the distance lettered on the diagram. One row per connection: both beacons with their coordinates, the
+ * differences, and the direction and distance computed from them (the same functions the diagram's figure uses,
+ * so the two cannot disagree).
+ * ---------------------------------------------------------------------------------------------------------- */
+
+export interface ConnectingDataRow {
+  /** The stand whose diagram carries the connection. */
+  stand: string
+  fromBeacon: string
+  toBeacon: string
+  fromY: number
+  fromX: number
+  toY: number
+  toX: number
+  dY: number
+  dX: number
+  /** South-oriented direction, as the sides table prints it ("45 12 30"). */
+  direction: string
+  /** Metres, to 2 dp (banker's rounding) -- the figure lettered on the diagram. */
+  distance: number
+}
+
+/** The rows for one stand's connections; a connection whose beacons are not both in `points` is left out. */
+export function connectingDataRows(
+  stand: string,
+  connections: Connection[],
+  points: Map<string, LoPoint>,
+): ConnectingDataRow[] {
+  const rows: ConnectingDataRow[] = []
+  for (const c of connections ?? []) {
+    const a = points.get(c.fromBeacon)
+    const b = points.get(c.toBeacon)
+    if (!a || !b) continue
+    const distance = distanceBetween(a, b)
+    if (!(distance > 0)) continue
+    rows.push({
+      stand,
+      fromBeacon: c.fromBeacon,
+      toBeacon: c.toBeacon,
+      fromY: a.Y, fromX: a.X, toY: b.Y, toX: b.X,
+      dY: b.Y - a.Y, dX: b.X - a.X,
+      direction: formatBearingDMS(bearingSouthBetween(a, b)),
+      distance: bankersRound(distance, 2),
+    })
+  }
+  return rows
+}

@@ -20,6 +20,7 @@ import type {
 } from '../types/document-measurements'
 import type { CalculationsPart1Result } from '../types/adjusted-coordinates'
 import { CalculationsPart1Generator, type SurveyPoint } from './calculations-part1'
+import type { ConnectingDataRow } from '../views/modules/cadastral-standard/connections'
 import { CoordinateListGenerator, type SurveyorInfo, surveyOfForSurveyor } from './coordinate-list'
 import { FieldBookGenerator } from './field-book'
 import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE, type PartyWallRow } from './fieldBookPagination'
@@ -47,6 +48,8 @@ export interface TwoPassDocumentData {
   siteCalibration?: SiteCalibration
   /** Party-wall servitude rows; appended to the field book & Calculations final pages */
   partyWalls?: PartyWallRow[]
+  /** The computation behind each connection lettered on a diagram; printed in the Calculations */
+  connectingData?: ConnectingDataRow[]
 }
 
 export interface TwoPassDocumentResult {
@@ -358,6 +361,7 @@ export class TwoPassDocumentGenerator {
       // re-estimate it. This pass writes the lookup to the store, so getting it
       // wrong here leaks the estimate into every later consumer.
       fieldBookPageMap,
+      data.connectingData || [],
     ) as CalculationsPart1Result
     
     // Extract page count and point page map from the generated PDF
@@ -571,6 +575,7 @@ export class TwoPassDocumentGenerator {
       // it here is what makes the F/B column agree with the book it cites --
       // the same way renderCoordinateList is handed that map.
       fieldBookPageMap,
+      data.connectingData || [],
     ) as any // Result is CalculationsPart1Result when measureOnly = false
     
     return result.pdf

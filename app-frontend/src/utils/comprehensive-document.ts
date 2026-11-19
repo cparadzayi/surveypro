@@ -18,6 +18,7 @@ import { CoverPageGenerator, type CoverPageInfo } from '@/utils/cover-page';
 import { CoordinateListGenerator } from '@/utils/coordinate-list';
 import { isOfficialControlStatus } from '@/utils/beaconStatus';
 import { CalculationsPart1Generator } from '@/utils/calculations-part1';
+import type { ConnectingDataRow } from '@/views/modules/cadastral-standard/connections';
 import { FieldBookGenerator, type FieldBookPoint } from '@/utils/field-book';
 import type { AdjustedCoordinate } from '@/types/adjusted-coordinates';
 import type { SurveyorInfo } from '@/utils/coordinate-list';
@@ -116,6 +117,9 @@ export interface ComprehensiveDocumentData {
   /** Party-wall servitude rows; appended to the field book & Calculations final pages */
   partyWalls?: PartyWallRow[];
 
+  /** Computation behind each diagram connection; printed in the Calculations */
+  connectingData?: ConnectingDataRow[];
+
   // Survey Points
   surveyPoints: SurveyPoint[];
   adjustedCoordinates: AdjustedCoordinate[];
@@ -205,7 +209,8 @@ export class ComprehensiveDocumentGenerator {
       reportData: data.reportData,
       reportOptions: data.reportOptions,
       siteCalibration: data.siteCalibration,
-      partyWalls: data.partyWalls
+      partyWalls: data.partyWalls,
+      connectingData: data.connectingData
     });
     
     // Generate cover page separately

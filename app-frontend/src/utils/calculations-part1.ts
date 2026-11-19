@@ -6,6 +6,7 @@ import type { CalculationsMeasurement } from '../types/document-measurements'
 import { paginateFieldBook, computePartyWallPaginate, partyWallGrid, FIELD_BOOK_LAYOUT, type PartyWallRow } from './fieldBookPagination'
 import { isCalculatedPoint } from './calculatedPoint'
 import { formatDateDDMMYYYY } from './dateFormat'
+import type { ConnectingDataRow } from '../views/modules/cadastral-standard/connections'
 
 // Survey point interface for calculations
 export interface SurveyPoint {
@@ -171,6 +172,7 @@ export class CalculationsPart1Generator {
     partyWalls: PartyWallRow[] = [],
     partyWallPageMap: Record<number, string> = {},
     fieldBookPageMap?: Record<string, string>,
+    connectingData: ConnectingDataRow[] = [],
   ): Promise<CalculationsPart1Result | CalculationsMeasurement> {
     // Set the starting page for this generation
     this.currentPage = startingPage;
@@ -213,6 +215,10 @@ export class CalculationsPart1Generator {
       // last-page section carries) on the final Calculations page(s). The
       // far-right column cites the field-book E-page that records each wall.
       this.generatePartyWallPages(pdf, partyWalls, partyWallPageMap);
+
+      // The connecting data the diagrams letter (new beacon -> parent beacon): the
+      // examiners want the computation here, not only the distance on the diagram.
+      this.generateConnectingDataPages(pdf, connectingData);
 
       // Note: Coordinate List is generated separately by CoordinateListGenerator;
 
@@ -1002,6 +1008,60 @@ export class CalculationsPart1Generator {
     });
   }
   
+  /**
+   * Append the CONNECTING DATA: for every connection lettered on a diagram (a new
+   * beacon tied to a parent beacon of the survey), both beacons with their
+   * co-ordinates, the differences, and the direction and distance computed from
+   * them. Directions are south-oriented, as in the sides tables; the distance is
+   * the figure on the diagram.
+   */
+  private generateConnectingDataPages(pdf: jsPDF, rows: ConnectingDataRow[]): void {
+    if (!rows || rows.length === 0) return;
+
+    const left = this.options.marginLeft;
+    const BLOCK_H = 31;
+    const topY = 38;
+    const bottomY = 275;
+    const perPage = Math.max(1, Math.floor((bottomY - topY) / BLOCK_H));
+
+    for (let start = 0; start < rows.length; start += perPage) {
+      pdf.addPage();
+      this.addPageNumber(pdf, this.currentPage);
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.text('CALCULATIONS', left, FIELD_BOOK_LAYOUT.titleY);
+      pdf.setFontSize(11);
+      pdf.text(start === 0 ? 'Connecting data' : 'Connecting data (continued)', left, FIELD_BOOK_LAYOUT.titleY + 8);
+
+      let y = topY;
+      for (const r of rows.slice(start, start + perPage)) {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(10);
+        pdf.text(`Stand ${r.stand}: ${r.fromBeacon} to ${r.toBeacon}`, left, y);
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.text(`${r.fromBeacon}`, left + 4, y + 6);
+        pdf.text(`Y ${signedCoordinate(r.fromY)}`, left + 30, y + 6);
+        pdf.text(`X ${signedCoordinate(r.fromX)}`, left + 80, y + 6);
+        pdf.text(`${r.toBeacon}`, left + 4, y + 11);
+        pdf.text(`Y ${signedCoordinate(r.toY)}`, left + 30, y + 11);
+        pdf.text(`X ${signedCoordinate(r.toX)}`, left + 80, y + 11);
+        pdf.text(`dY ${signedCoordinate(r.dY)}`, left + 30, y + 16);
+        pdf.text(`dX ${signedCoordinate(r.dX)}`, left + 80, y + 16);
+        pdf.text(`Direction ${r.direction}`, left + 30, y + 21);
+        pdf.text(`Distance ${r.distance.toFixed(2)} m`, left + 80, y + 21);
+
+        pdf.setDrawColor(180);
+        pdf.line(left, y + 25, left + 170, y + 25);
+        pdf.setDrawColor(0);
+        y += BLOCK_H;
+      }
+      this.currentPage++;
+    }
+  }
+
   /**
    * Generate Found Beacons section (matching template format)
    */

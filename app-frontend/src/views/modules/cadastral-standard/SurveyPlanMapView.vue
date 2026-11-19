@@ -517,7 +517,7 @@ import { describeComposition } from '@/utils/recordComposition'
 import { subjectSides, annotationsForSubject, hydrateAnnotationsMap, type SideAnnotation } from './sideAnnotations'
 import { hydrateServitudes, buildPartyWallStatementRows, type PartyWallStatementRow } from './servitudes'
 import type { PartyWallRow } from '@/utils/fieldBookPagination'
-import { makeConnection, upsertConnection, dismissConnection, autoConnections, mergeConnections, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type StoredConnection, type LoPoint } from './connections'
+import { makeConnection, upsertConnection, dismissConnection, autoConnections, mergeConnections, connectingDataRows, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type StoredConnection, type LoPoint, type ConnectingDataRow } from './connections'
 import { isRemainderParcel } from '@/utils/designationParcels'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
@@ -720,6 +720,33 @@ const generatedConnections = computed<Connection[]>(() => {
 })
 /** What the figure shows and the diagram carries: the generated connections, with the surveyor's own over them. */
 const currentConnections = computed<Connection[]>(() => mergeConnections(generatedConnections.value, storedConnections.value))
+/**
+ * The connecting data of EVERY stand of the subdivision, as the rows the Calculations print: what each diagram
+ * letters (generated ties, with the surveyor's own over them), computed from the coordinates. Only for a diagram
+ * plan, the one that carries connections; empty otherwise.
+ */
+function connectingDataForCalculations(): ConnectingDataRow[] {
+  if (!isDiagramMode.value) return []
+  const list = Array.isArray(parcels.value) ? parcels.value : []
+  const rem = list.find(p => isRemainderParcel(p)) ?? getOutsideFigureParcel()
+  if (!rem) return []
+  const remainder = ringNames(rem)
+  if (remainder.length < 3) return []
+  const points = loPointsByName()
+  const newBeacons = new Set<string>()
+  const subjects = list.filter(p => p !== rem && p?.id !== rem?.id)
+  for (const p of subjects) for (const n of ringNames(p)) newBeacons.add(n)
+  const rows: ConnectingDataRow[] = []
+  for (const p of subjects) {
+    const ring = p?.geom?.coordinates?.[0]
+    if (!Array.isArray(ring) || ring.length < 3) continue
+    const corners = vertexBeaconNames(ring as Array<[number, number]>, points)
+    const generated = autoConnections({ corners, remainder, newBeacons, points })
+    const stored = connectionsBySubject.value[String(p.id)] ?? []
+    rows.push(...connectingDataRows(String(p.stand ?? p.designation ?? p.id), mergeConnections(generated, stored), points))
+  }
+  return rows
+}
 const activeConnectionEditor = ref<{ fromBeacon: string; letter: string; toBeacon: string } | null>(null)
 const currentSideAnnotations = computed(() => annotationsForSubject(sideAnnotationsBySubject.value, selectedDiagramParcelId.value))
 const selectedDiagramStand = computed(() => {
@@ -5416,6 +5443,7 @@ async function generateComprehensivePDF() {
       // imported at the CSV step; undefined leaves the document as before.
       siteCalibration: siteCalibrationFrom(workflowState),
       partyWalls,
+      connectingData: connectingDataForCalculations(),
       surveyPoints: surveyPoints,
       adjustedCoordinates: adjustedCoordinates,
       projectControlPoints: controlPoints,

@@ -203,8 +203,10 @@ function drawTable(doc, layout, table, loLabel, diagramSgNo = '') {
 
 function drawBeaconDescription(doc, layout, groups) {
   const R = layout.beaconDesc
-  doc.save().font('Helvetica-Bold').fontSize(DIAGRAM_FONTS.beacon).text('Description of Beacons', R.x, R.y)
-  doc.font('Helvetica').fontSize(DIAGRAM_FONTS.beacon)
+  // The examiners: the elements are set in the same face as the caption (black ink). A regular weight at this size
+  // prints grayish beside the bold caption, so both are bold and explicitly black.
+  doc.save().fillColor('#000000').font('Helvetica-Bold').fontSize(DIAGRAM_FONTS.beacon).text('Description of Beacons', R.x, R.y)
+  doc.font('Helvetica-Bold').fontSize(DIAGRAM_FONTS.beacon)
   if (groups.length === 0) {
     doc.text('All          :', R.x, R.y + 11)
   } else if (groups.length === 1) {
@@ -1114,9 +1116,9 @@ export async function generateDiagramPDF(options, logger) {
     doc.fill('even-odd')
     doc.restore()
   }
-  // Continuous, well-defined black boundary on top of the band.
-  doc.layer('FIGURE')
-  drawRing(doc, subjPt, { color: '#000000', width: 1.2 })
+  // The black boundary is drawn AFTER the road / servitude colour (see below, once drawAdjoiningFeatures has run):
+  // painted first, the translucent road ribbon covered the outer half of the stroke along a road, so that side
+  // read thinner than the others (the examiners: boundary lines of different thickness).
   // Vertex letters placed OUTSIDE the figure, clear of the beacon circle, and not
   // overriding the subject or adjoining-property lines. (No edge-distance labels.)
   doc.fillColor('#000000').fontSize(DIAGRAM_FONTS.label)
@@ -1141,6 +1143,11 @@ export async function generateDiagramPDF(options, logger) {
     geometry, subjPt, subjCentroid, subjSegs, neighbourSegs, denom, labelObstacles, boxToSegs,
     connected, bounds: layout.figure,
   }, logger)
+
+  // Continuous, well-defined black boundary on top of the band and of the road / servitude colour, so every side
+  // carries the same full-width line.
+  doc.layer('FIGURE')
+  drawRing(doc, subjPt, { color: '#000000', width: 1.2 })
 
   drawConnections(doc, {
     marks: connMarks, tf, labelObstacles, boxToSegs, denom,

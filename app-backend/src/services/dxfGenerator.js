@@ -1188,7 +1188,7 @@ export function generateDXF(options, logger) {
     for (const g of beaconGroups) {
       if (y - rowH < zoneBottom) break
       const text = `${g.points} : ${g.description || ''}`
-      addText(layer, zoneL, y, text, mm(2.4), 0)
+      addText(layer, zoneL, y, text, mm(2.4), 0, 'BOLD')   // same face as the caption (the PDF's rows are bold too)
       y -= rowH
       printed++
     }

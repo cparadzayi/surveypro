@@ -59,6 +59,11 @@ function isLabelBboxInsidePolygon(cx, cy, hw, hh, angleDeg, polygon, shrink = 0)
   return true;
 }
 
+import { sideLengthKey } from './standardSideLengths.js';
+
+/** A vertex as the plan lodges it (centimetres), as a map key. */
+const vertexKey = (c) => `${Math.round(c[0] * 100) / 100},${Math.round(c[1] * 100) / 100}`;
+
 function createEdgeKey(coord1, coord2) {
   const y1 = Math.round(coord1[0] * 100) / 100;
   const x1 = Math.round(coord1[1] * 100) / 100;
@@ -117,6 +122,35 @@ class LabelingSystem {
     // Label crowding tracking — counts edges where collision-free placement failed
     this.labelCollisions = 0;
     this.standLabelRects = []
+    // Side lengths the plan states once instead of on every side (standardSideLengths); empty = every side is labelled.
+    this.standardLengths = new Set();
+    // vertex -> bearings (mod 180, degrees) already printed on a side that meets it, so a side that continues the same
+    // straight line does not repeat the bearing.
+    this.bearingsAtVertex = new Map();
+    this.suppressed = { distances: 0, bearings: 0 };
+  }
+
+  setStandardLengths(keys) {
+    this.standardLengths = new Set(keys ?? []);
+  }
+
+  _isStandardSide(distM) {
+    return this.standardLengths.size > 0 && this.standardLengths.has(sideLengthKey(distM));
+  }
+
+  _noteBearing(c1, c2, bearDeg) {
+    const b = ((bearDeg % 180) + 180) % 180;
+    for (const k of [vertexKey(c1), vertexKey(c2)]) {
+      const list = this.bearingsAtVertex.get(k);
+      if (list) list.push(b); else this.bearingsAtVertex.set(k, [b]);
+    }
+  }
+
+  /** Whether a side meeting an end of this one already printed the same bearing: the same straight line, carried on. */
+  _bearingRepeats(c1, c2, bearDeg) {
+    const b = ((bearDeg % 180) + 180) % 180;
+    const near = (x) => Math.min(Math.abs(x - b), 180 - Math.abs(x - b)) < 0.0012;   // 4 arc-seconds
+    return [vertexKey(c1), vertexKey(c2)].some((k) => (this.bearingsAtVertex.get(k) ?? []).some(near));
   }
 
   // ── Scale-based font limits (field-readable: min 8pt for any text) ──────────
@@ -455,6 +489,27 @@ class LabelingSystem {
       // The stroke widths (~2pt each) provide ~1.4mm natural visual gap between text edges.
       const pairGap = 2; // 2pt ≈ 0.7mm — compact but prevents halo overlap between stacked labels
 
+      // A side whose length the plan states once (standardLengths) carries no length. Its bearing is printed unless the
+      // side only carries on the straight line of one already printed at the vertex it shares with it.
+      const isStandardSide = !isDeveloped && this._isStandardSide(edDistM);
+      if (isStandardSide) {
+        if (edgeInfo !== undefined && edgeInfo.bearing) { skipped++; continue; }
+        this.suppressed.distances++;
+        if (this._bearingRepeats(coords[i], coords[i + 1], bearDeg)) {
+          this.suppressed.bearings++;
+          if (!edgeInfo) {
+            this.labeledEdges.set(edgeKey, {
+              distance: true, bearing: true, dirText, midX, midY, perpX, perpY, angle,
+              distFontSize, dirFontSize, distOffset: effDistOffset, bearOffset: effDistOffset,
+              splay: hasSplayTouch, pdfCoords, edgeLenPt,
+            });
+          }
+          labeled++;
+          continue;
+        }
+        labelMode = 'bearing-only';
+      }
+
       if (isDeveloped) {
         // Developed Township General Plan: do not render edge distances or directions on parcel edges.
         // Still track topology so stand numbers and collision detection remain unaffected.
@@ -535,6 +590,7 @@ class LabelingSystem {
           if (bearPos) {
             this.logger.info(`[LABEL-STACK-V2] edge=${distText}/${dirText} sep=${baseSep.toFixed(1)}pt distPos=(${distPos.x.toFixed(1)},${distPos.y.toFixed(1)}) bearPos=(${bearPos.x.toFixed(1)},${bearPos.y.toFixed(1)}) pairGap=${pairGap} distFs=${chosenDistFs} dirFs=${dirFontSize}`);
             this._renderEdgeLabelAt(dirText, bearPos, bearPos.fontSize, angle, hasSplayTouch, true);
+            this._noteBearing(coords[i], coords[i + 1], bearDeg);
             const stored = this.labeledEdges.get(edgeKey);
             if (stored) stored.bearing = true;
           }
@@ -551,7 +607,15 @@ class LabelingSystem {
         if (!bearPos) { skipped++; continue; }
 
         this._renderEdgeLabelAt(dirText, bearPos, bearPos.fontSize, angle, hasSplayTouch, true);
+        this._noteBearing(coords[i], coords[i + 1], bearDeg);
         if (edgeInfo) edgeInfo.bearing = true;
+        else if (isStandardSide) {
+          this.labeledEdges.set(edgeKey, {
+            distance: true, bearing: true, dirText, midX, midY, perpX, perpY, angle,
+            distFontSize, dirFontSize, distOffset: effDistOffset, bearOffset: effDistOffset,
+            splay: hasSplayTouch, pdfCoords, edgeLenPt,
+          });
+        }
       }
 
       labeled++;

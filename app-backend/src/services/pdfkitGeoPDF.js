@@ -83,6 +83,8 @@ import {
   rectanglesOverlap
 } from './pdfkitGeoPDF/geometry.js';
 import { InsetManager } from './pdfkitGeoPDF/insetManager.js';
+import { pinPageToSheet } from './pdfkitGeoPDF/pinPageToSheet.js';
+import { standardSideLengths, standardLengthsPhrase } from './standardSideLengths.js';
 import { clusterCramped, rotatedBoxClear, fitIndicatorRing } from './pdfkitGeoPDF/beaconClusterInset.js';
 
 /**
@@ -2091,6 +2093,10 @@ function renderParcels(
     doc, extent, mapBounds, scale, collisionDetector, logger, planType
   );
   labelingSystem.identifySharedEdges(parcels, outsideFigureBoundary);
+  // An undeveloped township's repeated stand sides are stated once, in the title block, and left off the sides.
+  if (planType === 'general-undeveloped') {
+    labelingSystem.setStandardLengths(standardSideLengths(parcels));
+  }
 
   // Keep edgeOccurrences reference pointing at labelingSystem for backward compat
   const edgeOccurrences = labelingSystem.edgeOccurrences;
@@ -5001,6 +5007,11 @@ function _buildTitleBlockTexts(metadata, outsideFigureData, parcels, sheetInfo, 
         .replace('{district}',       district);
     }
     videText = figureVideText(metadata);
+    // The lengths the plan leaves off the sides are stated here, once (see standardSideLengths).
+    if (metadata?.planType === 'general-undeveloped') {
+      const phrase = standardLengthsPhrase(standardSideLengths(parcels));
+      if (phrase) videText = `${videText}  Unless otherwise shown, the sides of stands measure ${phrase} metres.`.trim();
+    }
   }
 
   return { designation, sheetText, figureText, videText, hasFigure, isMultiSheet };
@@ -7922,7 +7933,7 @@ export function calculateBlockPositions(
  * Calculate positions for inset boxes within map boundary with collision detection
  * Insets are treated as regular data blocks and positioned using the same system
  */
-function calculateInsetPositions(
+export function calculateInsetPositions(
   insetManager,
   mapBounds,
   mapFeatureBounds,
@@ -7935,7 +7946,7 @@ function calculateInsetPositions(
   // extra.footerReserve: the band along the bottom that carries the footer text.
   const {
     obstacles = [], collisionDetector: labelCollisions = null, footerReserve = 0,
-    segments = [], figureRing = [],
+    segments = [], figureRing = [], unplaced = null,
   } = extra;
   const usableBottom = mapBounds.y + mapBounds.height - footerReserve;
   const _hitsRect = (r, o, pad) =>
@@ -8144,6 +8155,13 @@ function calculateInsetPositions(
       const _tb = placedBlocks.find((b) => b.name === 'titleBlock');
       if (_tb && fallbackPos.x < _tb.x + _tb.width && _tb.x < fallbackPos.x + width && fallbackPos.y < _tb.y + _tb.height) {
         fallbackPos.y = _tb.y + _tb.height + 10 + index * (height + 10);
+      }
+      // The stack grows by one inset a step, so with enough insets it ran below the sheet, and each one there made a
+      // page of its own. An inset with no room ON the sheet is not drawn, and the caller says so.
+      if (fallbackPos.y + height > usableBottom - SAFE_MARGIN) {
+        if (Array.isArray(unplaced)) unplaced.push(inset.insetNumber ?? id);
+        logger.warn(`[PDFKit] ⚠️  ${id} has no room on the sheet and is not drawn`);
+        return;
       }
       insetPositions[id] = {
         x: fallbackPos.x,
@@ -11680,6 +11698,9 @@ async function _generateGeoPDFInner(options, logger) {
     },
   });
 
+  // Text below the sheet is clipped by it, never moved onto a page of its own (see pinPageToSheet).
+  pinPageToSheet(pdfDoc);
+
   // Tests/DXF ask for the drawing as page-space operations; the recorder forwards every call, so the PDF is unchanged.
   const _recorder = options.recordOps ? recordPdfOps(pdfDoc) : null;
   const doc = _recorder ? _recorder.doc : pdfDoc;
@@ -13514,6 +13535,7 @@ async function _generateGeoPDFInner(options, logger) {
     ? [...blockPositions.placedBlocks]
     : [];
 
+  const _unplacedInsets = [];
   const insetPositions = calculateInsetPositions(
     insetManager,
     mapBounds,
@@ -13535,8 +13557,17 @@ async function _generateGeoPDFInner(options, logger) {
         }),
       ],
       figureRing: _topoPolyPts,
+      unplaced: _unplacedInsets,
     }
   );
+  if (_unplacedInsets.length > 0) {
+    const names = _unplacedInsets.map((n) => `${n}`);
+    warnings.insetsNotPlaced = {
+      count: _unplacedInsets.length,
+      insets: names,
+      hint: `${names.length} inset${names.length === 1 ? '' : 's'} (${names.slice(0, 6).join(', ')}${names.length > 6 ? ', ...' : ''}) did not fit on the sheet and ${names.length === 1 ? 'is' : 'are'} not drawn. A coarser scale, or fewer cramped stands, would make room.`,
+    };
+  }
 
   doc.layer('INSETS');
   insetManager.renderInsetsAtPositions(

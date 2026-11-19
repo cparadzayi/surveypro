@@ -140,7 +140,8 @@ function drawTable(doc, layout, table, loLabel, diagramSgNo = '') {
   }
   doc.font('Helvetica').fontSize(DIAGRAM_FONTS.table)
   // 'Lo NN' heads the CO-ORDINATES group, between CO-ORDINATES and the Y/X row.
-  doc.text(loLabel, R.x + cY, R.y + TABLE_GEOM.lo, ctrCoord)
+  // With the degree sign, as the Co-ordinate List and the Outside Figure Data print it ("Lo 29°").
+  doc.text(`${loLabel}°`, R.x + cY, R.y + TABLE_GEOM.lo, ctrCoord)
   // ASCII degree/minute/second marks — the prime (′ U+2032) and double-prime
   // (″ U+2033) glyphs are absent from PDFKit's built-in Helvetica and render as
   // garbage; °, ' and " are all in the font.

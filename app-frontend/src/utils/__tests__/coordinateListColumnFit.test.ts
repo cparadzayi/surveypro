@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import jsPDF from 'jspdf';
-import { CoordinateListGenerator } from '../coordinate-list';
+import { CoordinateListGenerator, wrapToWidth } from '../coordinate-list';
 import type { AdjustedCoordinate } from '../../types/adjusted-coordinates';
 import type { SurveyorInfo } from '../coordinate-list';
 
@@ -87,5 +87,25 @@ describe('Co-ordinate List column fit', () => {
     const cells = await rowCells('iron peg');
 
     expect(cells.some((c) => c.t === 'iron peg')).toBe(true);
+  });
+
+  it("wraps a long description onto a second line instead of cutting it off", () => {
+    const ruler = new jsPDF({ unit: "mm", format: "a4" });
+    ruler.setFont("helvetica", "normal");
+    ruler.setFontSize(10);
+    const text = "12mm iron peg in concrete (Ref F E1)";
+    const lines = wrapToWidth(ruler, text, 50);
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines.join(" ")).toBe(text);                       // nothing lost: the Ref mark survives
+    for (const l of lines) expect(ruler.getTextWidth(l)).toBeLessThanOrEqual(50);
+    expect(wrapToWidth(ruler, "iron peg", 50)).toEqual(["iron peg"]);
+  });
+
+  it("prints the whole of a long description on the page, the Ref mark included", async () => {
+    const { pdf } = await new CoordinateListGenerator().generateCoordinateListPDF([coord("12mm iron peg in concrete (Ref F E1)")], surveyorInfo);
+    const raw = Buffer.from(pdf.output("arraybuffer")).toString("latin1");
+    // jsPDF escapes parentheses inside a string: the text is cut at a space and carried on, not dropped
+    expect(raw).toContain('\\(Ref)');
+    expect(raw).toContain('(F E1\\))');
   });
 });

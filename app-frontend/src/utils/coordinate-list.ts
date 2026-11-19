@@ -105,6 +105,32 @@ const SECTION_HEADINGS: Record<keyof GroupedPoints, string> = {
 };
 
 /**
+ * Break `text` at spaces into lines that each fit `maxWidthMm` in the document's current font, so a long description
+ * ("12mm iron peg in concrete (Ref F E1)", the Ref telling a reference mark) is shown whole instead of cut off. A
+ * single word wider than the column is trimmed to it, and at most `maxLines` lines are returned (the last one
+ * trimmed to fit, never silently dropped words mid-line).
+ */
+export const wrapToWidth = (pdf: jsPDF, text: string, maxWidthMm: number, maxLines = 3): string[] => {
+  const value = (text ?? '').trim();
+  if (!value) return [''];
+  const lines: string[] = [];
+  let line = '';
+  for (const word of value.split(/\s+/)) {
+    const next = line ? `${line} ${word}` : word;
+    if (pdf.getTextWidth(next) <= maxWidthMm) { line = next; continue }
+    if (line) lines.push(line)
+    line = word
+  }
+  if (line) lines.push(line)
+  const out = lines.slice(0, maxLines)
+  if (lines.length > maxLines) out[maxLines - 1] = lines.slice(maxLines - 1).join(' ')
+  return out.map((l) => fitToWidth(pdf, l, maxWidthMm))
+}
+
+/** Extra drop for each further line of a wrapped description (mm), tighter than a whole row. */
+const WRAPPED_LINE_HEIGHT = 4;
+
+/**
  * Trim `text` so it fits within `maxWidthMm` in the document's current font.
  *
  * Column overruns in this document are a function of glyph width, not character
@@ -888,8 +914,12 @@ export class CoordinateListGenerator {
     pdf.setFontSize(10);
     
     for (const point of points) {
+      // The description wraps in its column; each further line makes the row taller.
+      const descLimit = COL.fpRight - COL.description - 5;
+      const descLines = wrapToWidth(pdf, displayDescription(point), descLimit);
+      const extra = (descLines.length - 1) * WRAPPED_LINE_HEIGHT;
       // Check if we have space for this row
-      if (yPos + rowHeight > maxY) {
+      if (yPos + rowHeight + extra > maxY) {
         return { renderedCount, endY: yPos, needsNewPage: true };
       }
       
@@ -935,12 +965,9 @@ export class CoordinateListGenerator {
       // follows them if they move. The gap keeps the description visibly
       // separate from F/P, whose right-justified glyph starts a little before
       // its nominal edge.
-      const descLimit = COL.fpRight - COL.description - 5;
-      pdf.text(
-        fitToWidth(pdf, displayDescription(point), descLimit),
-        this.options.marginLeft + COL.description,
-        yPos,
-      );
+      descLines.forEach((text, i) => {
+        pdf.text(text, this.options.marginLeft + COL.description, yPos + i * WRAPPED_LINE_HEIGHT);
+      });
       
       // F/P status (skip for TRIG beacons from national system)
       // RIGHT-JUSTIFIED
@@ -985,7 +1012,7 @@ export class CoordinateListGenerator {
         pdf.text(fb, this.options.marginLeft + COL.fbRefRight, yPos, { align: 'right' });
       }
       
-      yPos += rowHeight;
+      yPos += rowHeight + extra;
       renderedCount++;
     }
     

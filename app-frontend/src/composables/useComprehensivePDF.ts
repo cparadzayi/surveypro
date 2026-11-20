@@ -46,6 +46,8 @@ export interface ComprehensivePDFOptions {
   dispensation?: DispensationInput
   /** DSG Certificate (1/96), appended after the dispensation; omit to skip it */
   dsg?: DSGCertificateData
+  /** The plans (each stand's Diagram, the Working Plan), appended last in this order; omit to leave them out */
+  plans?: { label: string; blob: Blob }[]
   /**
    * Asked before each slow stage and once more just before anything is written. Returning true stops
    * the run with `cancelled: true` and nothing saved. After the save has started it is not asked again:
@@ -164,6 +166,25 @@ export async function appendDSGCertificate(
 }
 
 /**
+ * Append the plans (each stand's Diagram, then the Working Plan) at the end of the record, each page at its own
+ * paper size (A4 or A3). Self-contained sheets that nothing in the record cross-references, so a pure tail append.
+ */
+export async function appendPlans(
+  mergedPdfBytes: Uint8Array,
+  plans: { label: string; blob: Blob }[] | undefined
+): Promise<Uint8Array> {
+  if (!plans || plans.length === 0) return mergedPdfBytes
+  const bodyDoc = await PDFDocument.load(mergedPdfBytes)
+  for (const plan of plans) {
+    console.log(`[ComprehensivePDF] 🗺️ Appending ${plan.label}...`)
+    const planDoc = await PDFDocument.load(await plan.blob.arrayBuffer())
+    const copied = await bodyDoc.copyPages(planDoc, planDoc.getPageIndices())
+    copied.forEach((page) => bodyDoc.addPage(page))
+  }
+  return bodyDoc.save()
+}
+
+/**
  * Generate Comprehensive_Latest PDF with Calculations Part 1 + Area & Consistency
  * 
  * @param options - Configuration options for PDF generation
@@ -186,6 +207,7 @@ export async function generateComprehensiveLatestPDF(
     narrativeOptions,
     dispensation,
     dsg,
+    plans,
     shouldCancel,
     onSaveStart
   } = options
@@ -248,7 +270,7 @@ export async function generateComprehensiveLatestPDF(
     // Fold the Dispensation Certificate in at the very bottom of the record.
     const withDispensation = await appendDispensationCertificate(withNarrative.merged, dispensation)
     const withDSG = await appendDSGCertificate(withDispensation.merged, dsg)
-    const finalMergedBytes = withDSG.merged
+    const finalMergedBytes = await appendPlans(withDSG.merged, plans)
     const dispensationBlob = withDispensation.dispensationBlob
     const dsgBlob = withDSG.dsgBlob
 

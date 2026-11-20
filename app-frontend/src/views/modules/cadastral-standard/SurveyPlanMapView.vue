@@ -4780,6 +4780,70 @@ async function copyText(text: string, what: string) {
   }
 }
 
+/**
+ * The plans the Complete Survey Record carries: a Diagram of every stand of the subdivision (when the record
+ * encloses diagrams) and the Working Plan, each generated afresh from the project as it stands -- never a file
+ * saved earlier, which is how stale figures reached the Surveyor-General. The diagrams are made exactly as the
+ * Diagram button makes them: the view is put into diagram mode on each stand in turn (its side tags,
+ * connections and S.G. number follow the selection), and its plan settings are put back afterwards.
+ * Diagrams and the working plan are drawn at the scale the renderers choose, not the dropdown's, which
+ * belongs to whichever plan type the surveyor last set it for.
+ */
+async function recordPlans(signal: AbortSignal): Promise<{ plans: { label: string; blob: Blob }[]; warnings: string[] }> {
+  const plans: { label: string; blob: Blob }[] = []
+  const warnings: string[] = []
+  const composition = recordComposition.value
+  const wantDiagrams = !composition || composition.includesDiagrams
+  const list = Array.isArray(parcels.value) ? parcels.value : []
+  const outsideId = getOutsideFigureParcel()?.id
+  const subjects = list.filter((p: any) => p?.id !== outsideId && !isRemainderParcel(p))
+
+  const saved = {
+    planType: config.value.planType, scale: config.value.scale, sheetSize: config.value.sheetSize,
+    subject: selectedDiagramParcelId.value,
+  }
+  try {
+    if (wantDiagrams && subjects.length) {
+      await loadSideAnnotations()
+      for (const p of subjects) {
+        if (signal.aborted) throw new DOMException('cancelled', 'AbortError')
+        const stand = String(p.stand ?? p.designation ?? p.id)
+        exportStatus.value = `Drawing the diagram of stand ${stand}…`
+        config.value.planType = 'diagram'
+        config.value.scale = 'auto'
+        config.value.sheetSize = 'A4'
+        selectedDiagramParcelId.value = p.id
+        await nextTick()
+        const payload = buildPlanPayload(await gatherPlanContext())
+        let result = await generateVectorGeoPDF(payload, { signal })
+        if (result.suggestedScale) result = await generateVectorGeoPDF({ ...payload, scale: result.suggestedScale }, { signal })
+        plans.push({ label: `Diagram of stand ${stand}`, blob: result.blob })
+        for (const w of result.warnings ?? []) warnings.push(`Stand ${stand}: ${w}`)
+      }
+    }
+
+    exportStatus.value = 'Drawing the Working Plan…'
+    config.value.planType = 'working-plan'
+    config.value.scale = 'auto'
+    await nextTick()
+    const built = await buildWorkingPlanSpecNow({ ...config.value, scale: 'auto' })
+    if (built.spec.parcels.length === 0) {
+      warnings.push(`Working Plan not included: ${workingPlanEmptyReason(built)}`)
+    } else {
+      const wp = await generateWorkingPlanPDF(built.spec)
+      plans.push({ label: 'Working Plan', blob: wp.blob })
+      if (wp.escalation) warnings.push(wp.escalation)
+    }
+  } finally {
+    config.value.planType = saved.planType
+    await nextTick()
+    config.value.scale = saved.scale
+    config.value.sheetSize = saved.sheetSize
+    selectedDiagramParcelId.value = saved.subject
+  }
+  return { plans, warnings }
+}
+
 async function generatePlanDocuments() {
   // Tags are edited in Boundaries & Abutters: take the saved ones, not what was loaded at mount.
   await loadSideAnnotations()
@@ -4814,13 +4878,35 @@ async function generatePlanDocuments() {
   let workingPlanSpec: ReturnType<typeof buildWorkingPlanSpec>['spec'] | null = null
   let workingPlanSkipped: string[] = []
   if ((exportFormats.dxf || exportFormats.pdf) && config.value.planType === 'working-plan') {
+    const built = await buildWorkingPlanSpecNow()
+    if (built.spec.parcels.length === 0) {
+      // Say which of the three things actually went wrong. The fixed message
+      // this replaces sent a surveyor to recompute areas that were already
+      // correct, when the real cause was a coordinate list cleared by an
+      // import reset and never re-imported.
+      notifyWarning(workingPlanEmptyReason(built), { title: "Can't draw the Working Plan" })
+      return
+    }
+    workingPlanSpec = built.spec
+    workingPlanSkipped = built.skippedParcels
+  }
+  await generatePlanDocumentsWith(meta, workingDirectory, workingPlanSpec, workingPlanSkipped)
+}
+
+/**
+ * The Working Plan's spec from the project as it stands. Shared by the Plan button and the Complete Survey
+ * Record, so the sheet in the record is the sheet the button makes. `planConfig` is the plan settings to draw
+ * with (the record passes its own scale).
+ */
+async function buildWorkingPlanSpecNow(planConfig: any = config.value) {
+  {
     // Which working plan: a record that encloses General Plans gets the General Plan's (the outside figure,
     // one label naming its stands, and the party-wall servitude table); a record of diagrams only keeps the
     // original sheet that draws each stand. A record with both is a General Plan record.
     const generalWorkingPlan = recordComposition.value?.includesGeneralPlans === true
     // The party-wall rows come from the Servitudes step, so fetch them before the spec is built.
     if (generalWorkingPlan) await loadServitudeStatementData()
-    const built = buildWorkingPlanSpec({
+    return buildWorkingPlanSpec({
       kind: generalWorkingPlan ? 'general' : 'diagrams',
       partyWalls: generalWorkingPlan ? servitudeStatementRows.value : undefined,
       // A General Plan of several sheets: each sheet's stands and number, and the cut that divides them.
@@ -4835,7 +4921,7 @@ async function generatePlanDocuments() {
       beacons: exportBeaconsAsGeoJSON(),
       parcels: await workingPlanParcels(),
       projectInfo: props.projectInfo,
-      config: config.value,
+      config: planConfig,
       outsideFigureId: getOutsideFigureParcel()?.id,
       // The control the survey was tied to, for the locality inset. Accepts
       // either workflowState shape -- see siteCalibrationFrom.
@@ -4851,18 +4937,15 @@ async function generatePlanDocuments() {
       // working plan letters just outside the boundary they abut.
       sideAnnotations: sideAnnotationsBySubject.value,
     })
-    if (built.spec.parcels.length === 0) {
-      // Say which of the three things actually went wrong. The fixed message
-      // this replaces sent a surveyor to recompute areas that were already
-      // correct, when the real cause was a coordinate list cleared by an
-      // import reset and never re-imported.
-      notifyWarning(workingPlanEmptyReason(built), { title: "Can't draw the Working Plan" })
-      return
-    }
-    workingPlanSpec = built.spec
-    workingPlanSkipped = built.skippedParcels
   }
+}
 
+async function generatePlanDocumentsWith(
+  meta: ReturnType<typeof getPlanTypeMeta>,
+  workingDirectory: string,
+  workingPlanSpec: ReturnType<typeof buildWorkingPlanSpec>['spec'] | null,
+  workingPlanSkipped: string[],
+) {
   isExporting.value = true
   exportStatus.value = 'Loading project data…'
   const abort = new AbortController()
@@ -5498,7 +5581,14 @@ async function generateComprehensivePDF() {
       console.log('[ComprehensivePDF] 📄 DSG Certificate (1/96) included')
     }
 
+    // The plans, generated now from the same data as the rest of the record.
+    stopIfCancelled()
+    const planSet = await recordPlans(abort.signal)
+    if (planSet.warnings.length) console.warn('[ComprehensivePDF] Plan notes:', planSet.warnings)
+    stopIfCancelled()
+
     const finalResult = await generateComprehensivePDFComposable({
+      plans: planSet.plans,
       computedParcels: computedParcels as any,
       calcPart1Blob: result.pdf,
       projectName: projectName,
@@ -5562,6 +5652,8 @@ async function generateComprehensivePDF() {
       if (finalResult.dsgBlob) {
         contentsLines.push(`• DSG Certificate (1/96)`)
       }
+      for (const plan of planSet.plans) contentsLines.push(`• ${plan.label}`)
+      for (const w of planSet.warnings) contentsLines.push(`• ⚠ ${w}`)
       notifySuccess(`Saved as Comprehensive_Latest.pdf in ${finalResult.filePath}`, {
         title: 'Complete survey record generated',
         details: contentsLines.map((l: string) => l.replace(/^•\s*/, '')),

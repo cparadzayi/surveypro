@@ -1072,6 +1072,7 @@ import { useRecordComposition } from '@/composables/useRecordComposition';
 import { buildLodgementWarnings } from '@/utils/lodgementDocuments';
 import { saveSurveyRecordSections } from '@/composables/useSurveyRecordOutputs';
 import { buildReportDataFromWorkflow } from '@/utils/reportDataFromWorkflow';
+import { sampleDataProblem, foundBeaconRows } from '@/utils/sampleBeacons';
 import { resolveSurveyDesignation } from '@/utils/surveyDesignation';
 import type { ReportOnSurveyData } from '@/types/cadastral';
 import {
@@ -8342,6 +8343,9 @@ async function exportAreaConsistencyPDF() {
 
     // Both collated reports are rebuilt from workflow state at collation time.
     const reportData = buildReportDataFromWorkflow(workflowState);
+    // Red flag, not a silent print: the tool's sample beacons once reached the Surveyor-General in a survey's place.
+    const sampleProblem = sampleDataProblem(foundBeaconRows(reportData?.beacons), 'The Report on Survey');
+    if (sampleProblem) throw new Error(sampleProblem);
     const reportOptions = {
       surveyorName: workflowState?.surveyorInfo?.landSurveyor || '',
       licenseNumber: workflowState?.surveyorInfo?.licenseNumber || '',

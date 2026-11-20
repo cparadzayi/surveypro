@@ -519,6 +519,7 @@ import { hydrateServitudes, buildPartyWallStatementRows, type PartyWallStatement
 import type { PartyWallRow } from '@/utils/fieldBookPagination'
 import { makeConnection, upsertConnection, dismissConnection, autoConnections, mergeConnections, connectingDataRows, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type StoredConnection, type LoPoint, type ConnectingDataRow } from './connections'
 import { isRemainderParcel } from '@/utils/designationParcels'
+import { sampleDataProblem, foundBeaconRows } from '@/utils/sampleBeacons'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
 import { buildPlanDesignation, composeSurveySource } from '@/utils/planDesignation';
@@ -5353,6 +5354,10 @@ async function generateComprehensivePDF() {
 
     // Rebuilt from the persisted workflow state (step_data['report-on-survey']).
     const reportData = buildReportDataFromWorkflow(workflowState)
+    // Red flag, not a silent print: the Beacon Comparison and the Report on Survey are built from these beacons,
+    // and the tool's sample network once went to the Surveyor-General in their place.
+    const sampleProblem = sampleDataProblem(foundBeaconRows(reportData?.beacons), 'The Report on Survey')
+    if (sampleProblem) throw new Error(sampleProblem)
     const reportOptions = {
       surveyorName: surveyorInfo.name || '',
       licenseNumber: surveyorInfo.licenseNumber || '',

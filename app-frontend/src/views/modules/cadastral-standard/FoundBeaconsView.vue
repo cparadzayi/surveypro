@@ -49,6 +49,7 @@ import {
   buildFoundBeacons, buildComparisonConfig, toHistoricalRows, pointsFromExistingBeacons,
 } from '../../../composables/useFoundBeaconsComparison'
 import CompareView from '../lite/compare/CompareView.vue'
+import { sampleRowsIn, sampleDataProblem } from '../../../utils/sampleBeacons'
 
 interface Props {
   fixedPoints?: Array<{ id: string; original: { y: number; x: number }; description: string }>
@@ -72,11 +73,13 @@ const canSave = computed(() => !!result.value && points.value.length >= 3)
 // reload the prior comparison from saved beacons, else fall back to the DB copy
 // of the last uploaded CSV, else start empty (user uploads a CSV).
 onMounted(async () => {
-  const rows = pointsFromExistingBeacons(props.existingBeacons)
-  if (rows.length === 0 && props.projectId) {
+  // The comparison CSV the surveyor last loaded comes FIRST. It used to be read only when the report held no
+  // beacons, so once a report had been saved (even with the tool's sample data in it) every later upload was
+  // ignored on the next visit and the old rows were saved again.
+  if (props.projectId) {
     try {
       const saved = await loadBeaconComparisonPoints(props.projectId)
-      if (saved && saved.length >= 3) {
+      if (saved && saved.length >= 3 && sampleRowsIn(saved).length === 0) {
         store.setPoints(saved.map((r) => ({ name: r.name, yH: r.yH, xH: r.xH, yS: r.yS, xS: r.xS })))
         return
       }
@@ -84,13 +87,16 @@ onMounted(async () => {
       console.warn('[FoundBeacons] DB load failed:', e?.message)
     }
   }
-  store.setPoints(rows) // rows may be [] → empty table, awaiting CSV upload
+  // Else the report's saved beacons -- never the sample network, which is placeholder data, not a survey.
+  const rows = pointsFromExistingBeacons(props.existingBeacons)
+  store.setPoints(sampleRowsIn(rows).length ? [] : rows) // [] → empty table, awaiting CSV upload
 })
 
 async function saveAssessment() {
   if (!canSave.value) return
+  saveError.value = sampleDataProblem(points.value as any, 'The comparison')
+  if (saveError.value) return
   saving.value = true
-  saveError.value = null
   try {
     const pts = points.value as any
     const res = result.value as any

@@ -20,30 +20,30 @@ const points: FieldBookPoint[] = Array.from({ length: FIELD_BOOK_POINTS_PER_PAGE
 }))
 
 describe('field book with a site calibration', () => {
-  it('opens the book with the calibration, adding exactly one page', async () => {
+  it('opens the book with the calibration in place of the control points page, so the page count is the same', async () => {
     const gen = new FieldBookGenerator()
     const withoutCal = await gen.generateFieldBookPDF(points, metadata)
 
     const gen2 = new FieldBookGenerator()
     const withCal = await gen2.generateFieldBookPDF(points, metadata, parseSiteCalibration(sampleXml))
 
-    expect(withoutCal.pageCount).toBe(3)          // cover + two pages of points
-    expect(withCal.pageCount).toBe(4)             // + the calibration page
+    expect(withoutCal.pageCount).toBe(4)          // cover + E1 control points + two pages of points
+    expect(withCal.pageCount).toBe(4)             // cover + E1 calibration + two pages of points
   })
 
-  it('moves every point page label down one', async () => {
-    // The calibration opens the book, so every point page — and every
-    // cross-reference to it in the other documents — moves one E-number later.
+  it('numbers the point pages the same with or without a calibration', async () => {
+    // E1 always opens the book (the calibration, or else the control points), so
+    // no point page -- and no cross-reference to it -- depends on which.
     const gen = new FieldBookGenerator()
     const withoutCal = await gen.generateFieldBookPDF(points, metadata)
 
     const gen2 = new FieldBookGenerator()
     const withCal = await gen2.generateFieldBookPDF(points, metadata, parseSiteCalibration(sampleXml))
 
-    expect(withoutCal.pointPageMap['P1']).toBe('E1')
+    expect(withoutCal.pointPageMap['P1']).toBe('E2')
     expect(withCal.pointPageMap['P1']).toBe('E2')
 
-    expect(withoutCal.pointPageMap[`P${points.length}`]).toBe('E2')
+    expect(withoutCal.pointPageMap[`P${points.length}`]).toBe('E3')
     expect(withCal.pointPageMap[`P${points.length}`]).toBe('E3')
   })
 
@@ -134,7 +134,7 @@ describe('where the calibration sits in the book', () => {
     expect(result.pageCount).toBe(3); // cover + calibration + the point page
   });
 
-  it('leaves the points on E1 when there is no calibration', async () => {
+  it('puts the control points on E1 and the points on E2 when there is no calibration', async () => {
     const points = [{ id: 'P1', y: 0, x: 0, status: 'P', description: 'peg', surveyDate: '2026-01-01' }];
 
     const result = await new FieldBookGenerator().generateFieldBookPDF(
@@ -142,7 +142,7 @@ describe('where the calibration sits in the book', () => {
       { surveyorName: 'C. Paradzayi' },
     );
 
-    expect(result.pointPageMap.P1).toBe('E1');
-    expect(result.pageCount).toBe(2); // cover + the point page
+    expect(result.pointPageMap.P1).toBe('E2');
+    expect(result.pageCount).toBe(3); // cover + E1 control points + the point page
   });
 });

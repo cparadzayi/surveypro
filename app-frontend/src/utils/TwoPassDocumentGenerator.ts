@@ -531,7 +531,9 @@ export class TwoPassDocumentGenerator {
       fieldBookPoints,
       metadata,
       data.siteCalibration,
-      data.partyWalls || []
+      data.partyWalls || [],
+      // Without a calibration, E1 lists the control points the survey was tied to.
+      data.projectControlPoints || [],
     )
     
     // Convert jsPDF to Blob and return with pointPageMap

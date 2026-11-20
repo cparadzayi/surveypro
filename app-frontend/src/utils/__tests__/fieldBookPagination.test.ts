@@ -23,32 +23,32 @@ describe('paginateFieldBook', () => {
   });
 
   describe('without a site calibration', () => {
-    it('starts the points at E1', () => {
+    it('starts the points at E2 (E1 lists the control points)', () => {
       const { pointPageMap, calibrationPage } = paginateFieldBook(
         points(1), { hasCalibration: false, ...noCover },
       );
 
-      expect(pointPageMap.P1).toBe('E1');
+      expect(pointPageMap.P1).toBe('E2');
       expect(calibrationPage).toBeNull();
     });
 
-    it('keeps a full page of points on E1', () => {
+    it('keeps a full page of points on E2', () => {
       const { pointPageMap, ePageCount } = paginateFieldBook(
         points(N), { hasCalibration: false, ...noCover },
       );
 
-      expect(pointPageMap[`P${N}`]).toBe('E1');
-      expect(ePageCount).toBe(1);
+      expect(pointPageMap[`P${N}`]).toBe('E2');
+      expect(ePageCount).toBe(2);
     });
 
-    it('spills the point after a full page onto E2', () => {
+    it('spills the point after a full page onto E3', () => {
       const { pointPageMap, ePageCount } = paginateFieldBook(
         points(N + 1), { hasCalibration: false, ...noCover },
       );
 
-      expect(pointPageMap[`P${N}`]).toBe('E1');
-      expect(pointPageMap[`P${N + 1}`]).toBe('E2');
-      expect(ePageCount).toBe(2);
+      expect(pointPageMap[`P${N}`]).toBe('E2');
+      expect(pointPageMap[`P${N + 1}`]).toBe('E3');
+      expect(ePageCount).toBe(3);
     });
   });
 
@@ -95,12 +95,12 @@ describe('paginateFieldBook', () => {
 
       // The observations keep every page they had: a computed point joins no
       // observation list, so it cannot shift a single E-number before it.
-      expect(pointPageMap.P5).toBe('E1');
+      expect(pointPageMap.P5).toBe('E2');
       // Both calculated points share one block page -- a full page, the same
       // grid -- which follows the observations in the E-series.
-      expect(pointPageMap.C1).toBe('E2');
-      expect(pointPageMap.C2).toBe('E2');
-      expect(ePageCount).toBe(2);
+      expect(pointPageMap.C1).toBe('E3');
+      expect(pointPageMap.C2).toBe('E3');
+      expect(ePageCount).toBe(3);
     });
 
     it('pushes the party-wall appendix past the block', () => {
@@ -115,14 +115,14 @@ describe('paginateFieldBook', () => {
           },
         );
 
-      // E1 observations, E2 block, E3 walls -- the appendix used to open at
-      // E2, so without counting the block every wall citation would be short
-      // one page in any survey that computed a point.
-      expect(pointPageMap.P1).toBe('E1');
-      expect(pointPageMap.C1).toBe('E2');
-      expect(partyWallBasePage).toBe(3);
-      expect(partyWallPageMap[0]).toBe('E3');
-      expect(ePageCount).toBe(3);
+      // E1 control, E2 observations, E3 block, E4 walls -- the appendix used to open
+      // right after the observations, so without counting the block every wall citation
+      // would be short one page in any survey that computed a point.
+      expect(pointPageMap.P1).toBe('E2');
+      expect(pointPageMap.C1).toBe('E3');
+      expect(partyWallBasePage).toBe(4);
+      expect(partyWallPageMap[0]).toBe('E4');
+      expect(ePageCount).toBe(4);
     });
 
     it('leaves a survey with no calculated points exactly where it was', () => {
@@ -140,12 +140,12 @@ describe('paginateFieldBook', () => {
   });
 
   describe('an empty survey', () => {
-    it('reports no pages rather than inventing one', () => {
+    it('reports only E1, the control points page, and no point pages', () => {
       const result = paginateFieldBook([], { hasCalibration: false, hasCover: false });
 
       expect(result.pointPageMap).toEqual({});
-      expect(result.ePageCount).toBe(0);
-      expect(result.physicalPageCount).toBe(0);
+      expect(result.ePageCount).toBe(1);
+      expect(result.physicalPageCount).toBe(1);
     });
 
     it('still numbers a calibration that exists without points', () => {

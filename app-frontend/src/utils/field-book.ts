@@ -97,6 +97,12 @@ export class FieldBookGenerator {
      * heading; skipped entirely when no rows are given.
      */
     partyWalls: PartyWallRow[] = [],
+    /**
+     * The control points the survey was tied to (the registry rows: monu_num, monu_name, type, y_gauss,
+     * x_gauss). Without a calibration, E1 lists them with their co-ordinates, so the book always opens with
+     * what the observations were tied to.
+     */
+    controlPoints: any[] = [],
   ): Promise<{ pdf: jsPDF; pageCount: number; pointPageMap: Record<string, string>; partyWallPageMap: Record<number, string> }> {
     const pdf = new jsPDF(this.options);
 
@@ -139,10 +145,15 @@ export class FieldBookGenerator {
     // The calibration opens the numbered book: it is the evidence the GNSS
     // observations were tied to the local grid, so it precedes the observations
     // themselves.
+    // Without one, E1 lists the control points the survey was tied to. E1 is always there, so the point
+    // pages start at E2 either way (fieldBookPagination.ts).
+    startPage();
     if (calibration) {
-      startPage();
       this.generateCalibrationPage(pdf, calibration, 1, metadata);
       console.log('[FieldBook] Generated calibration page E1');
+    } else {
+      this.generateControlPointsPage(pdf, controlPoints, 1);
+      console.log(`[FieldBook] Generated control points page E1 (${controlPoints.length})`);
     }
 
     const totalPointPages = Math.ceil(points.length / FIELD_BOOK_POINTS_PER_PAGE);
@@ -158,7 +169,7 @@ export class FieldBookGenerator {
       // this), and pointPageMap keeps only the last write for that id -- a
       // by-id lookup here would print that page's number on every page the
       // id appears on, leaving another page with no number at all.
-      const offset = calibration ? 1 : 0;
+      const offset = 1; // E1: calibration or control points
       const pageNumber = pageIndex + 1 + offset;
 
       this.generateFieldBookPage(pdf, pagePoints, pageNumber, metadata);
@@ -172,7 +183,7 @@ export class FieldBookGenerator {
     // FIELD_BOOK_POINTS_PER_PAGE), with a heading instead of an observation
     // date, because nothing was measured on the day.
     if (calculated.length > 0) {
-      const offset = calibration ? 1 : 0;
+      const offset = 1; // E1: calibration or control points
       const totalBlockPages = Math.ceil(calculated.length / FIELD_BOOK_POINTS_PER_PAGE);
       for (let pageIndex = 0; pageIndex < totalBlockPages; pageIndex++) {
         startPage();
@@ -343,6 +354,52 @@ export class FieldBookGenerator {
    * evidence itself is drawn by renderCalibrationContent so the standalone
    * calibration report cannot drift from this page.
    */
+  /**
+   * E1 when the survey has no site calibration: the control points it was tied to, each with its designation,
+   * name, kind and Lo co-ordinates (3 dp, as the registry holds them).
+   */
+  private generateControlPointsPage(pdf: jsPDF, controlPoints: any[], pageNumber: number): void {
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const left = this.options.marginLeft;
+    const right = pageWidth - this.options.marginRight;
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(16);
+    pdf.text('ELECTRONIC FIELD BOOK', left, 25);
+    const pageLabel = `E${pageNumber}`;
+    pdf.text(pageLabel, right - pdf.getTextWidth(pageLabel), 25);
+    pdf.setFontSize(12);
+    pdf.text('CONTROL POINTS USED', left, 38);
+
+    const rows = controlPointRows(controlPoints);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    if (rows.length === 0) {
+      pdf.text('No site calibration and no control points were recorded for this survey.', left, 50);
+      return;
+    }
+    pdf.text('No site calibration was observed. The survey was tied to these control points:', left, 48);
+
+    const cols = { station: left, name: left + 28, kind: left + 88, y: right - 62, x: right };
+    let y = 60;
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Station', cols.station, y);
+    pdf.text('Name', cols.name, y);
+    pdf.text('Type', cols.kind, y);
+    pdf.text('Y', cols.y, y, { align: 'right' });
+    pdf.text('X', cols.x, y, { align: 'right' });
+    pdf.line(left, y + 2, right, y + 2);
+    pdf.setFont('helvetica', 'normal');
+    for (const r of rows) {
+      y += FIELD_BOOK_LAYOUT.rowHeight + 1;
+      pdf.text(r.station, cols.station, y);
+      pdf.text(pdf.splitTextToSize(r.name, cols.kind - cols.name - 3)[0] ?? '', cols.name, y);
+      pdf.text(r.kind, cols.kind, y);
+      pdf.text(r.y, cols.y, y, { align: 'right' });
+      pdf.text(r.x, cols.x, y, { align: 'right' });
+    }
+  }
+
   private generateCalibrationPage(
     pdf: jsPDF,
     cal: SiteCalibration,
@@ -601,4 +658,28 @@ export class FieldBookGenerator {
       yPosition += rowHeight;
     }
   }
+}
+
+/** A stored co-ordinate, signed and to 3 dp: "-85633.030", "+2144068.004". */
+const signed3 = (v: number) => `${v < 0 ? '-' : '+'}${Math.abs(v).toFixed(3)}`;
+
+/**
+ * The rows E1 lists for the control points: station (monu_num), name, kind (TRIG or OCP) and the Lo
+ * co-ordinates. Accepts the registry rows and the local-control rows the Co-ordinate List takes (the same
+ * field names it reads); a row without both co-ordinates is left out.
+ */
+export function controlPointRows(controlPoints: any[]): { station: string; name: string; kind: string; y: string; x: string }[] {
+  const num = (v: any) => (typeof v === 'number' ? v : parseFloat(v));
+  return (controlPoints ?? []).flatMap((cp, i) => {
+    const y = num(cp?.y_gauss ?? cp?.yGauss ?? cp?.y_coordinate ?? cp?.y ?? cp?.Y);
+    const x = num(cp?.x_gauss ?? cp?.xGauss ?? cp?.x_coordinate ?? cp?.x ?? cp?.X);
+    if (!Number.isFinite(y) || !Number.isFinite(x)) return [];
+    return [{
+      station: String(cp?.monu_num ?? cp?.id ?? `CP${i + 1}`),
+      name: String(cp?.monu_name ?? cp?.name ?? ''),
+      kind: String(cp?.type ?? '').toUpperCase() === 'OCP' ? 'OCP' : 'TRIG',
+      y: signed3(y),
+      x: signed3(x),
+    }];
+  });
 }

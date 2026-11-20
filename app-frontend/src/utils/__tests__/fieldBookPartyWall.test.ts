@@ -100,11 +100,11 @@ describe('paginateFieldBook with party walls', () => {
     const { points: pts, opts } = base();
     const pagination = paginateFieldBook(pts, opts);
 
-    expect(pagination.pointPageMap.P1).toBe('E1');
-    expect(pagination.pointPageMap.P2).toBe('E1');
-    expect(pagination.partyWallBasePage).toBe(2);
-    expect(pagination.partyWallPageMap).toEqual({ 0: 'E2', 1: 'E2', 2: 'E2' });
-    expect(pagination.ePageCount).toBe(2);
+    expect(pagination.pointPageMap.P1).toBe('E2');
+    expect(pagination.pointPageMap.P2).toBe('E2');
+    expect(pagination.partyWallBasePage).toBe(3);
+    expect(pagination.partyWallPageMap).toEqual({ 0: 'E3', 1: 'E3', 2: 'E3' });
+    expect(pagination.ePageCount).toBe(3);
   });
 
   it('shifts past a calibration page', () => {
@@ -130,16 +130,16 @@ describe('the field book party-wall section', () => {
     const { pdf, pointPageMap, partyWallPageMap, pageCount } =
       await new FieldBookGenerator().generateFieldBookPDF(points, metadata, undefined, partyWalls);
 
-    expect(pointPageMap.P1).toBe('E1');
-    expect(partyWallPageMap).toEqual({ 0: 'E2', 1: 'E2', 2: 'E2' });
-    expect(pageCount).toBe(3); // cover + points E1 + party walls E2
-    expect(pdf.getNumberOfPages()).toBe(3);
+    expect(pointPageMap.P1).toBe('E2');
+    expect(partyWallPageMap).toEqual({ 0: 'E3', 1: 'E3', 2: 'E3' });
+    expect(pageCount).toBe(4); // cover + E1 control + points E2 + party walls E3
+    expect(pdf.getNumberOfPages()).toBe(4);
 
     const streams = pageStreams(pdf);
     const wallPages = streams.filter(s => s.includes('(BOUNDARY)'));
     expect(wallPages).toHaveLength(1);
     const partyWallPage = wallPages[0];
-    expect(partyWallPage).toContain('(E2)');
+    expect(partyWallPage).toContain('(E3)');
     expect(partyWallPage).toContain('(Party-wall servitudes)');
     expect(partyWallPage).toContain('(STANDS)');
     expect(partyWallPage).toContain('(BOUNDARY)');
@@ -151,7 +151,7 @@ describe('the field book party-wall section', () => {
     const { pdf, pageCount, partyWallPageMap } =
       await new FieldBookGenerator().generateFieldBookPDF(points, metadata);
 
-    expect(pageCount).toBe(2);
+    expect(pageCount).toBe(3);
     expect(partyWallPageMap).toEqual({});
     const streams = pageStreams(pdf);
     expect(streams.some(s => s.includes('Party-wall servitudes'))).toBe(false);
@@ -165,11 +165,11 @@ describe('the field book party-wall section', () => {
     const { pdf, partyWallPageMap, pageCount } =
       await new FieldBookGenerator().generateFieldBookPDF(points, metadata, undefined, manyWalls);
 
-    expect(pageCount).toBe(4); // cover, E1 points, E2-E3 party walls
-    expect(partyWallPageMap[0]).toBe('E2');
-    expect(partyWallPageMap[R - 3]).toBe('E2');
-    expect(partyWallPageMap[R - 2]).toBe('E3');
-    expect(partyWallPageMap[R - 1]).toBe('E3');
+    expect(pageCount).toBe(5); // cover, E1 control, E2 points, E3-E4 party walls
+    expect(partyWallPageMap[0]).toBe('E3');
+    expect(partyWallPageMap[R - 3]).toBe('E3');
+    expect(partyWallPageMap[R - 2]).toBe('E4');
+    expect(partyWallPageMap[R - 1]).toBe('E4');
 
     const streams = pageStreams(pdf);
     const wallPages = streams.filter(s => s.includes('(BOUNDARY)'));
@@ -231,7 +231,7 @@ describe('party walls through the two-pass generator', () => {
     expect(wallPage).toBeDefined();
     expect(wallPage).toContain('(F/B)');
     // The F/B column cites the field book's E-page for each wall.
-    expect(wallPage).toContain('(E2)');
+    expect(wallPage).toContain('(E3)');
   });
 
   it('adds no party-wall pages when the record has no walls', async () => {

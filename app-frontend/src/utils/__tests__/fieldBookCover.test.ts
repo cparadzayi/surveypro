@@ -71,8 +71,8 @@ describe('the field book cover', () => {
     const { pointPageMap, pageCount } = await new FieldBookGenerator()
       .generateFieldBookPDF(points, metadata);
 
-    expect(pointPageMap.P1).toBe('E1'); // the cover is before it, unnumbered
-    expect(pageCount).toBe(2);          // but it is a physical page
+    expect(pointPageMap.P1).toBe('E2'); // the cover is unnumbered; E1 is the control points page
+    expect(pageCount).toBe(3);          // the cover is still a physical page
   });
 });
 

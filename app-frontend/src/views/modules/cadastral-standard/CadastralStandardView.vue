@@ -3853,6 +3853,26 @@ function buildStandaloneFieldBook() {
   };
 }
 
+/**
+ * The control points the project was tied to (the registry points chosen in Control Point Selection, plus any
+ * local control), as the Co-ordinate List lists them. The field book prints them on E1 when there is no site
+ * calibration. Empty when none are chosen or they cannot be read.
+ */
+async function loadProjectControlPoints(): Promise<any[]> {
+  const ids = workflowState.projectInfo.controlPointIds ?? [];
+  const local = localControlFrom(workflowState);
+  if (!workflowState.projectInfo.projectId || (!ids.length && !local.length)) return [];
+  const meridian = selectedProject.value?.central_meridian ?? workflowState.projectInfo.centralMeridian ?? 31;
+  try {
+    const response = await api.get('/control-points', { params: { gauss_lo: meridian, limit: 5000 } });
+    const rows = Array.isArray(response.data?.data) ? response.data.data : [];
+    return [...rows.filter((cp: any) => ids.includes(cp.id)), ...localControlToRegistryRows(local, meridian)];
+  } catch (error) {
+    console.error('[FieldBook] Could not load the control points for E1:', error);
+    return [];
+  }
+}
+
 async function viewFieldBook() {
   const points = workflowState.documents.fieldBook?.points;
   if (!points || points.length === 0) {
@@ -3863,7 +3883,7 @@ async function viewFieldBook() {
   try {
     const { points: fbPoints, metadata, calibration } = buildStandaloneFieldBook();
     const { pdf, pageCount } = await new FieldBookGenerator().generateFieldBookPDF(
-      fbPoints, metadata, calibration,
+      fbPoints, metadata, calibration, [], calibration ? [] : await loadProjectControlPoints(),
     );
 
     const pdfBlob = new Blob([pdf.output('blob')], { type: 'application/pdf' });
@@ -3893,7 +3913,7 @@ async function downloadFieldBook() {
     const fileName = `fieldbook_${new Date().toISOString().split('T')[0]}.pdf`;
     const { points: fbPoints, metadata, calibration } = buildStandaloneFieldBook();
     const { pdf } = await new FieldBookGenerator().generateFieldBookPDF(
-      fbPoints, metadata, calibration,
+      fbPoints, metadata, calibration, [], calibration ? [] : await loadProjectControlPoints(),
     );
 
     const url = URL.createObjectURL(new Blob([pdf.output('blob')], { type: 'application/pdf' }));

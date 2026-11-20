@@ -42,15 +42,15 @@ describe('field book pages with a re-observed beacon', () => {
 
     // The map itself legitimately reflects the last write -- that is what
     // makes the bug possible, not what this test is pinning.
-    expect(pointPageMap.P1).toBe('E2')
+    expect(pointPageMap.P1).toBe('E3')
 
-    // No calibration, so the cover is physical page 1 and the two point
-    // pages are physical pages 2 and 3 (jsPDF's internal.pages[0] is unused).
-    const page1Text = (pdf as any).internal.pages.at(2).join(' ')
-    const page2Text = (pdf as any).internal.pages.at(3).join(' ')
+    // The cover is physical page 1 and E1 (the control points) page 2, so the two point
+    // pages are physical pages 3 and 4 (jsPDF's internal.pages[0] is unused).
+    const page1Text = (pdf as any).internal.pages.at(3).join(' ')
+    const page2Text = (pdf as any).internal.pages.at(4).join(' ')
 
-    expect(page1Text).toContain('(E1)')
-    expect(page1Text).not.toContain('(E2)')
-    expect(page2Text).toContain('(E2)')
+    expect(page1Text).toContain('(E2)')
+    expect(page1Text).not.toContain('(E3)')
+    expect(page2Text).toContain('(E3)')
   })
 })

@@ -66,10 +66,10 @@ describe('the field book', () => {
     expect(raw).toContain('(Not Beaconed)');
 
     // It consumes no observation slot, so the observed points keep their
-    // numbers: 2 observed = E1, the block starts at E2 — the page the
+    // numbers: 2 observed = E2 (E1 opens the book with the control points), the block starts at E3 — the page the
     // Co-ordinate List's F. B cell cites for 87DNew.
-    expect(pointPageMap['86B']).toBe('E1');
-    expect(pointPageMap['SD1']).toBe('E1');
-    expect(pointPageMap['87DNew']).toBe('E2');
+    expect(pointPageMap['86B']).toBe('E2');
+    expect(pointPageMap['SD1']).toBe('E2');
+    expect(pointPageMap['87DNew']).toBe('E3');
   });
 });

@@ -52,12 +52,12 @@ describe('the field book and working stations', () => {
   it('gives each station a page, and the calculated point a block page', async () => {
     const { pointPageMap } = await render();
 
-    expect(pointPageMap.ST1).toBe('E1');
-    expect(pointPageMap.BASE).toBe('E1');
-    expect(pointPageMap.SD1).toBe('E1');
-    // 4 observations fill E1; the computed point opens the block at E2, and
+    expect(pointPageMap.ST1).toBe('E2');
+    expect(pointPageMap.BASE).toBe('E2');
+    expect(pointPageMap.SD1).toBe('E2');
+    // E1 is the control points; 4 observations fill E2; the computed point opens the block at E3, and
     // that is the page the CO-ORDINATE LIST's F. B cell cites for it.
-    expect(pointPageMap['87DNew']).toBe('E2');
+    expect(pointPageMap['87DNew']).toBe('E3');
   });
 
   it('shows whether the station was found or placed', async () => {

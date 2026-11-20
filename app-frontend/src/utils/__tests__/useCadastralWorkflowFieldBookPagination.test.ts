@@ -49,11 +49,11 @@ describe('useCadastralWorkflow buildFieldBook — pagination parity', () => {
     // Past the 27th point, a page size that has drifted from the shared
     // module would disagree with paginateFieldBook.
     expect(lookupStore.fieldBookPageLookup).toEqual(expected);
-    expect(lookupStore.fieldBookPageLookup[`P${N}`]).toBe('E1');
-    expect(lookupStore.fieldBookPageLookup[`P${N + 1}`]).toBe('E2');
+    expect(lookupStore.fieldBookPageLookup[`P${N}`]).toBe('E2');
+    expect(lookupStore.fieldBookPageLookup[`P${N + 1}`]).toBe('E3');
 
     // The document's own points carry the same page numbers.
-    expect(workflowState.documents.fieldBook?.points[N].pageNumber).toBe(2);
+    expect(workflowState.documents.fieldBook?.points[N].pageNumber).toBe(3); // E1 is the control points page
 
     // metadata.pageCount reaches the live field book PDF's cover page ("Page
     // Count: N") and the preview modal subtitle ("N pages") verbatim — it must

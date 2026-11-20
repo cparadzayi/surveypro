@@ -166,7 +166,7 @@ describe('the F/B page a calculation cites', () => {
       result.adjustedCoordinates.map((c: any) => [c.pointId, c.fieldBookPage]),
     );
 
-    expect(byId.C1).toBe('E2');    // the block page, after the 1 observation page
-    expect(byId.P27).toBe('E1');   // still the 27th RENDERED observation
+    expect(byId.C1).toBe('E3');    // the block page, after E1 (control) and the 1 observation page
+    expect(byId.P27).toBe('E2');   // still the 27th RENDERED observation
   });
 });

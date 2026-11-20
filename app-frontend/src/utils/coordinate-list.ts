@@ -18,6 +18,15 @@ export interface SurveyPoint {
   observationIndex?: number
 }
 
+/**
+ * The S.R. number as the list prints it after "S.R. No.": the issued number, or, before the office issues one,
+ * a space for the examiner to fill in with the year it will fall in (".... / 2026").
+ */
+export function srNumberValue(srNumber?: string | null, now: Date = new Date()): string {
+  const sr = (srNumber ?? '').trim();
+  return sr && !/^n\/?a$/i.test(sr) ? sr : `.... / ${now.getFullYear()}`;
+}
+
 // Surveyor information interface
 export interface SurveyorInfo {
   name: string
@@ -28,6 +37,8 @@ export interface SurveyorInfo {
   projectTitle: string
   district: string
   centralMeridian?: number // Lo value from project settings
+  /** The S.R. number once the office has issued it; until then the list prints ".... / <year>". */
+  srNumber?: string
   /** The workflow "SURVEY OF ..." designation. When present (with `standNames`),
    *  the running title and cover render the same designation the general plan
    *  states, instead of `projectTitle`. `projectTitle` stays as the fallback. */
@@ -491,6 +502,7 @@ export class CoordinateListGenerator {
     pdf.setFont('helvetica', 'bold');
     pdf.text('S.R. No.:', this.options.marginLeft, yPosition);
     pdf.setFont('helvetica', 'normal');
+    pdf.text(srNumberValue(surveyorInfo.srNumber), this.options.marginLeft + 30, yPosition);
     yPosition += 15;
     
     pdf.setFont('helvetica', 'bold');
@@ -817,7 +829,7 @@ export class CoordinateListGenerator {
     
     // S.R. No. on right
     pdf.setFontSize(12);
-    const srText = 'S.R. No.';
+    const srText = `S.R. No. ${srNumberValue(surveyorInfo.srNumber)}`;
     const srWidth = pdf.getTextWidth(srText);
     pdf.text(srText, pdf.internal.pageSize.getWidth() - this.options.marginRight - srWidth, 25);
     

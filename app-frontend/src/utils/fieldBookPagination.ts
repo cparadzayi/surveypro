@@ -17,6 +17,9 @@
  * renderer and the page-allocation service are gone; of the original sites only
  * the Calculations fallback below still passes a literal, and it warns when it
  * does. Pass `Boolean(calibration)` from anything that renders a field book.
+ *
+ * Since Nov 2026 E1 is never empty: without a calibration it lists the control points used, with their
+ * co-ordinates. So the offset is always one, and `hasCalibration` only says what E1 holds.
  */
 
 /**
@@ -136,8 +139,10 @@ export function paginateFieldBook(
 ): FieldBookPagination {
   const { hasCalibration, hasCover } = opts;
 
-  // The calibration opens the book, so every point page sits one later.
-  const offset = hasCalibration ? 1 : 0;
+  // E1 always opens the book: the site calibration when there is one, otherwise the control points the
+  // survey was tied to (field-book.ts). So every point page starts at E2, whatever the survey has: no
+  // caller can get the numbering wrong by not knowing which of the two it is.
+  const offset = 1;
 
   const pointPageMap: Record<string, string> = {};
   points.forEach((point, index) => {

@@ -289,6 +289,6 @@ describe('field book page-count guard', () => {
     } as any);
 
     expect(result.sections?.fieldBook).toBeInstanceOf(Blob);
-    expect(result.measurements!.fieldBook.pages).toBe(3);
+    expect(result.measurements!.fieldBook.pages).toBe(4); // cover, E1 control points, two pages
   }, 30000);
 });

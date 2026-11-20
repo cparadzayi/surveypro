@@ -10,6 +10,7 @@
  */
 
 import { bankersRound } from '@/utils/dms'
+import { alignmentLimits } from '../../../../../app-shared/beaconAlignment'
 
 /** One connection, stored against beacon NAMES.
  *
@@ -198,13 +199,13 @@ export function autoConnections(input: AutoConnectionInput): Connection[] {
     const V = v ? points.get(v) : undefined
     if (!V) continue
     // The two sides at V, as the directions they run in when carried on past V.
-    const rays: LoPoint[] = []
+    const rays: Array<LoPoint & { len: number }> = []
     for (const j of [(i + n - 1) % n, (i + 1) % n]) {
       const P = corners[j] ? points.get(corners[j]) : undefined
       if (!P) continue
       const len = Math.hypot(V.Y - P.Y, V.X - P.X)
       if (!(len > 0)) continue
-      rays.push({ Y: (V.Y - P.Y) / len, X: (V.X - P.X) / len })
+      rays.push({ Y: (V.Y - P.Y) / len, X: (V.X - P.X) / len, len })
     }
     let best: { name: string; along: number } | null = null
     for (const dir of rays) {
@@ -213,7 +214,11 @@ export function autoConnections(input: AutoConnectionInput): Connection[] {
         const dy = E.Y - V.Y, dx = E.X - V.X
         const along = dy * dir.Y + dx * dir.X
         if (!(along > tol)) continue
-        if (Math.abs(dy * dir.X - dx * dir.Y) > tol) continue
+        // On the line: within SI 727 para (5)'s limit for a beacon that need not be moved (0,06 + 0,000 5d m, d to
+        // the nearer of the two ends), and never less than `tol`. A beacon further off is no connection; the
+        // Calculations' "Beacons on line" reports it instead.
+        const onLine = Math.max(tol, alignmentLimits(Math.min(along, dir.len)).moveLimit)
+        if (Math.abs(dy * dir.X - dx * dir.Y) > onLine) continue
         // a new beacon between V and E means the line runs into the subdivision first, not to the old beacon
         let blocked = false
         for (const w of news) {

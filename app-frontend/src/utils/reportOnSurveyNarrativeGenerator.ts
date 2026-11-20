@@ -11,6 +11,7 @@ import { formatSurveyMonthYear } from './surveyDate';
 import { buildFoundBeaconsNarrative } from './beaconAcceptanceNarrative';
 import { composeReportSurveyOf } from './planDesignation';
 import { purposeSentence } from './reportPurpose';
+import { describeAlignment, type AlignmentResult } from '../../../app-shared/beaconAlignment';
 
 export interface ReportGenerationOptions {
   surveyorName: string;
@@ -30,6 +31,8 @@ export interface ReportGenerationOptions {
   instrumentDescription?: string;
   instrumentBaseSerial?: string;
   instrumentRoverSerial?: string;
+  /** SI 727 para (5): new beacons on the parent boundary and their displacement from it. */
+  alignment?: AlignmentResult[];
 }
 
 /** Join a list in the practitioner-report manner: "A, B and C" (no serial comma). */
@@ -86,6 +89,9 @@ export class NarrativeReportOnSurveyGenerator {
     
     // Placed Beacons section
     this.addPlacedBeaconsNarrative(reportData);
+    
+    // New beacons on the parent boundary (SI 727 para (5))
+    this.addAlignmentNarrative(options.alignment);
     
     // Comments/Unusual Occurrences
     this.addCommentsSection(reportData);
@@ -430,6 +436,34 @@ export class NarrativeReportOnSurveyGenerator {
       this.doc.text(line, this.margin + this.labelWidth + 5, this.currentY + (index * this.lineHeight));
     });
     
+    this.currentY += lines.length * this.lineHeight + 8;
+  }
+
+  /**
+   * Beacons on line: the new beacons placed on the parent property's boundary and SI 727 para (5)'s verdict on
+   * each. All on line: one sentence naming them and the largest displacement. A beacon off the true boundary
+   * but within proviso (i) is stated on its own.
+   */
+  private addAlignmentNarrative(rows: AlignmentResult[] | undefined): void {
+    if (!rows || rows.length === 0) return;
+    this.checkPageBreak(30);
+    this.doc.setFont('helvetica', 'bold');
+    this.doc.text('Beacons on line', this.margin, this.currentY);
+    this.doc.text(':', this.margin + this.labelWidth, this.currentY);
+    this.doc.setFont('helvetica', 'normal');
+    const onLine = rows.filter((r) => r.band === 'on-line');
+    const parts: string[] = [];
+    if (onLine.length) {
+      const worst = Math.max(...onLine.map((r) => r.offset));
+      const names = naturalList(onLine.map((r) => r.beacon));
+      parts.push(`${names} ${onLine.length === 1 ? 'was' : 'were'} placed on the boundary between the parent property's beacons and ${onLine.length === 1 ? 'is' : 'are'} on line within SI 727 para (5) (largest displacement ${(worst * 1000).toFixed(0)} mm).`);
+    }
+    for (const r of rows.filter((x) => x.band !== 'on-line')) parts.push(describeAlignment(r));
+    const lines = this.doc.splitTextToSize(parts.join(' '), this.pageWidth - this.margin * 2 - this.labelWidth - 5);
+    lines.forEach((line: string, index: number) => {
+      this.checkPageBreak(10);
+      this.doc.text(line, this.margin + this.labelWidth + 5, this.currentY + (index * this.lineHeight));
+    });
     this.currentY += lines.length * this.lineHeight + 8;
   }
 

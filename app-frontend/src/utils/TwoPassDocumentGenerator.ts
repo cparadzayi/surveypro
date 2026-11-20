@@ -21,6 +21,7 @@ import type {
 import type { CalculationsPart1Result } from '../types/adjusted-coordinates'
 import { CalculationsPart1Generator, type SurveyPoint } from './calculations-part1'
 import type { ConnectingDataRow } from '../views/modules/cadastral-standard/connections'
+import type { AlignmentResult } from '../../../app-shared/beaconAlignment'
 import { CoordinateListGenerator, type SurveyorInfo, surveyOfForSurveyor } from './coordinate-list'
 import { FieldBookGenerator } from './field-book'
 import { paginateFieldBook, FIELD_BOOK_POINTS_PER_PAGE, type PartyWallRow } from './fieldBookPagination'
@@ -50,6 +51,8 @@ export interface TwoPassDocumentData {
   partyWalls?: PartyWallRow[]
   /** The computation behind each connection lettered on a diagram; printed in the Calculations */
   connectingData?: ConnectingDataRow[]
+  /** SI 727 para (5): new beacons on the parent boundary, with their displacement from it. */
+  alignment?: AlignmentResult[]
 }
 
 export interface TwoPassDocumentResult {
@@ -362,6 +365,7 @@ export class TwoPassDocumentGenerator {
       // wrong here leaks the estimate into every later consumer.
       fieldBookPageMap,
       data.connectingData || [],
+      data.alignment || [],
     ) as CalculationsPart1Result
     
     // Extract page count and point page map from the generated PDF
@@ -576,6 +580,7 @@ export class TwoPassDocumentGenerator {
       // the same way renderCoordinateList is handed that map.
       fieldBookPageMap,
       data.connectingData || [],
+      data.alignment || [],
     ) as any // Result is CalculationsPart1Result when measureOnly = false
     
     return result.pdf

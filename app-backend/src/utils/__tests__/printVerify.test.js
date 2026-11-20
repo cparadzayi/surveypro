@@ -3,7 +3,7 @@
  * Run: cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js printVerify
  */
 import { describe, test, expect } from '@jest/globals'
-import { verifyPrinted, printedCoordinates, allowedFigures } from '../printVerify.js'
+import { verifyPrinted, printedCoordinates, allowedFigures, printedConnections, letteredDistances, alignmentFindings } from '../printVerify.js'
 
 const points = [
   { name: '86B', status: 'F', y: -85728.702, x: 2143972.144 },
@@ -82,6 +82,65 @@ describe('verifyPrinted', () => {
     expect(f.filter((x) => x.code === 'COMPARISON_SURVEY_MISMATCH').map((x) => x.message)).toEqual([expect.stringMatching(/86C/)])
     expect(codes(f)).not.toContain('NEAR_MISS')
     expect(codes(f)).not.toContain('UNKNOWN_FIGURE')
+  })
+
+  describe('connections (Brackenhurst 403: SD2 -> 87C)', () => {
+    const conPoints = [
+      ...points,
+      { name: 'SD2', status: 'P', y: -85774.379, x: 2144120.221 },
+      { name: '87C', status: 'F', y: -85816.243, x: 2144078.189 },
+    ]
+    const calcs = [
+      'Connecting data', 'Stand 403: SD2 to 87C',
+      'SD2  Y -85774.379  X +2144120.221', '87C  Y -85816.243  X +2144078.189',
+      'dY -41.864  dX -42.032', 'Direction 224 53 07  Distance 59.32 m',
+    ].join('\n')
+    const diagram = (d) => `DEDUCTIONS FROM THIS DIAGRAM ARE MADE ON THE BACK HEREOF\nE\n${d}\nKlein Road 25,19m`
+
+    test('reads the Connecting data and the lettered distances', () => {
+      expect(printedConnections(calcs)).toEqual([{ stand: '403', from: 'SD2', to: '87C', directionSec: 224 * 3600 + 53 * 60 + 7, distance: 59.32 }])
+      expect(letteredDistances(diagram('59,32m'))).toEqual([59.32, 25.19])
+    })
+
+    test('a diagram lettering the distance the co-ordinates give passes', () => {
+      const f = verifyPrinted({ text: `${clean}\n${calcs}\n${diagram('59,32m')}`, points: conPoints })
+      expect(codes(f).filter((c) => c.startsWith('CONNECTION'))).toEqual([])
+    })
+
+    test('a diagram drawn before 87C moved (59,37m) is an error', () => {
+      const f = verifyPrinted({ text: `${clean}\n${calcs}\n${diagram('59,37m')}`, points: conPoints })
+      expect(f.find((x) => x.code === 'CONNECTION_LETTERED_MISMATCH').message).toMatch(/59,37m.*SD2 to 87C.*59\.32/)
+      expect(codes(f, 'warning')).toContain('CONNECTION_NOT_LETTERED')
+    })
+
+    test('Connecting data with a stale distance or direction is an error', () => {
+      const stale = calcs.replace('Distance 59.32', 'Distance 59.37').replace('224 53 07', '224 40 00')
+      const f = verifyPrinted({ text: `${clean}\n${stale}`, points: conPoints })
+      expect(codes(f, 'error')).toEqual(expect.arrayContaining(['CONNECTION_DISTANCE_MISMATCH', 'CONNECTION_DIRECTION_MISMATCH']))
+    })
+
+    test("a diagram saved on its own is held to the record's connections, and need not list every point", () => {
+      const f = verifyPrinted({
+        text: diagram('59,37m'), points: conPoints, listsAllPoints: false,
+        extraConnections: [{ stand: '403', from: 'SD2', to: '87C' }],
+      })
+      expect(codes(f, 'error')).toEqual(['CONNECTION_LETTERED_MISMATCH'])
+      expect(codes(f)).not.toContain('POINT_NOT_PRINTED')
+    })
+  })
+
+  describe('SI 727 para (5) findings', () => {
+    const r = (band) => ({ beacon: 'SD3', from: '86C', to: '87D', offset: 0.3, d: 67.08, nearest: '87D', limit: 0.077, moveLimit: 0.094, band })
+    test('must be corrected is an error, need not be moved a warning, on line nothing', () => {
+      const text = 'Beacons on line (SI 727, para (5))'
+      expect(alignmentFindings([r('correct')], text).map((f) => [f.level, f.code])).toEqual([['error', 'ALIGNMENT_CORRECT']])
+      expect(alignmentFindings([r('may-stay')], text).map((f) => [f.level, f.code])).toEqual([['warning', 'ALIGNMENT_MAY_STAY']])
+      expect(alignmentFindings([r('on-line')], text)).toEqual([])
+    })
+    test('a record that does not state the check is told to be regenerated', () => {
+      expect(alignmentFindings([r('on-line')], 'CALCULATIONS').map((f) => f.code)).toEqual(['ALIGNMENT_NOT_STATED'])
+      expect(alignmentFindings([], 'CALCULATIONS')).toEqual([])
+    })
   })
 
   test('a point missing from the document is reported', () => {

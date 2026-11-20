@@ -7,6 +7,7 @@ import { paginateFieldBook, computePartyWallPaginate, partyWallGrid, FIELD_BOOK_
 import { isCalculatedPoint } from './calculatedPoint'
 import { formatDateDDMMYYYY } from './dateFormat'
 import type { ConnectingDataRow } from '../views/modules/cadastral-standard/connections'
+import type { AlignmentResult } from '../../../app-shared/beaconAlignment'
 
 // Survey point interface for calculations
 export interface SurveyPoint {
@@ -173,6 +174,7 @@ export class CalculationsPart1Generator {
     partyWallPageMap: Record<number, string> = {},
     fieldBookPageMap?: Record<string, string>,
     connectingData: ConnectingDataRow[] = [],
+    alignment: AlignmentResult[] = [],
   ): Promise<CalculationsPart1Result | CalculationsMeasurement> {
     // Set the starting page for this generation
     this.currentPage = startingPage;
@@ -219,6 +221,8 @@ export class CalculationsPart1Generator {
       // The connecting data the diagrams letter (new beacon -> parent beacon): the
       // examiners want the computation here, not only the distance on the diagram.
       this.generateConnectingDataPages(pdf, connectingData);
+      // SI 727 para (5): each new beacon on the parent boundary, with its displacement from the line.
+      this.generateAlignmentPages(pdf, alignment);
 
       // Note: Coordinate List is generated separately by CoordinateListGenerator;
 
@@ -1057,6 +1061,55 @@ export class CalculationsPart1Generator {
         pdf.line(left, y + 25, left + 170, y + 25);
         pdf.setDrawColor(0);
         y += BLOCK_H;
+      }
+      this.currentPage++;
+    }
+  }
+
+  /**
+   * BEACONS ON LINE (SI 727 para (5)): every new beacon on the parent property's boundary, the line between the
+   * two parent beacons it stands between, its perpendicular displacement from that line, d (the distance to the
+   * nearer of them), the two limits 0,06 + 0,000 25d and 0,06 + 0,000 5d (each at most one metre) and the result.
+   */
+  private generateAlignmentPages(pdf: jsPDF, rows: AlignmentResult[]): void {
+    if (!rows || rows.length === 0) return;
+    const left = this.options.marginLeft;
+    const ROW_H = 6;
+    const topY = 52;
+    const bottomY = 275;
+    const perPage = Math.max(1, Math.floor((bottomY - topY) / ROW_H));
+    const cols = [0, 20, 48, 70, 96, 116, 138];
+    const head = ['Beacon', 'Line', 'Offset m', 'd m (to)', 'Limit m', 'Move m', 'Result'];
+    const result = (r: AlignmentResult) =>
+      r.band === 'on-line' ? 'On line' : r.band === 'may-stay' ? 'Need not move (i)' : 'Correct (ii)';
+
+    for (let start = 0; start < rows.length; start += perPage) {
+      pdf.addPage();
+      this.addPageNumber(pdf, this.currentPage);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.text('CALCULATIONS', left, FIELD_BOOK_LAYOUT.titleY);
+      pdf.setFontSize(11);
+      pdf.text(start === 0 ? 'Beacons on line (SI 727, para (5))' : 'Beacons on line (continued)', left, FIELD_BOOK_LAYOUT.titleY + 8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.text('Limit 0,06 + 0,000 25d m; need not be moved within 0,06 + 0,000 5d m; each at most 1 m. d: to the nearer terminal.', left, topY - 12);
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      head.forEach((h, i) => pdf.text(h, left + cols[i], topY - 4));
+      pdf.setDrawColor(180);
+      pdf.line(left, topY - 2.5, left + 175, topY - 2.5);
+      pdf.setDrawColor(0);
+      pdf.setFont('helvetica', 'normal');
+      let y = topY + 2;
+      for (const r of rows.slice(start, start + perPage)) {
+        const cells = [
+          r.beacon, `${r.from} - ${r.to}`, r.offset.toFixed(3), `${r.d.toFixed(2)} (${r.nearest})`,
+          r.limit.toFixed(3), r.moveLimit.toFixed(3), result(r),
+        ];
+        cells.forEach((c, i) => pdf.text(c, left + cols[i], y));
+        y += ROW_H;
       }
       this.currentPage++;
     }

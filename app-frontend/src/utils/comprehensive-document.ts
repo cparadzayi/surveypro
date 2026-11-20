@@ -19,6 +19,7 @@ import { CoordinateListGenerator } from '@/utils/coordinate-list';
 import { isOfficialControlStatus } from '@/utils/beaconStatus';
 import { CalculationsPart1Generator } from '@/utils/calculations-part1';
 import type { ConnectingDataRow } from '@/views/modules/cadastral-standard/connections';
+import type { AlignmentResult } from '../../../app-shared/beaconAlignment'
 import { FieldBookGenerator, type FieldBookPoint } from '@/utils/field-book';
 import type { AdjustedCoordinate } from '@/types/adjusted-coordinates';
 import type { SurveyorInfo } from '@/utils/coordinate-list';
@@ -119,6 +120,8 @@ export interface ComprehensiveDocumentData {
 
   /** Computation behind each diagram connection; printed in the Calculations */
   connectingData?: ConnectingDataRow[];
+  /** SI 727 para (5) on-line results, printed after the connecting data. */
+  alignment?: AlignmentResult[];
 
   // Survey Points
   surveyPoints: SurveyPoint[];
@@ -210,7 +213,8 @@ export class ComprehensiveDocumentGenerator {
       reportOptions: data.reportOptions,
       siteCalibration: data.siteCalibration,
       partyWalls: data.partyWalls,
-      connectingData: data.connectingData
+      connectingData: data.connectingData,
+      alignment: data.alignment
     });
     
     // Generate cover page separately

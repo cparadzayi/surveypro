@@ -520,6 +520,7 @@ import { hydrateServitudes, buildPartyWallStatementRows, type PartyWallStatement
 import type { PartyWallRow } from '@/utils/fieldBookPagination'
 import { makeConnection, upsertConnection, dismissConnection, autoConnections, mergeConnections, connectingDataRows, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type StoredConnection, type LoPoint, type ConnectingDataRow } from './connections'
 import { isRemainderParcel } from '@/utils/designationParcels'
+import { beaconAlignment, describeAlignment, type AlignmentResult } from '../../../../../app-shared/beaconAlignment'
 import { sampleDataProblem, foundBeaconRows } from '@/utils/sampleBeacons'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
@@ -748,6 +749,31 @@ function connectingDataForCalculations(): ConnectingDataRow[] {
     rows.push(...connectingDataRows(String(p.stand ?? p.designation ?? p.id), mergeConnections(generated, stored), points))
   }
   return rows
+}
+/**
+ * SI 727 para (5): each new beacon of the subdivision that stands on the parent property's boundary, and how far
+ * off the line between the two parent beacons it is. A parent beacon is a found one (status F); the rings are every
+ * parcel's, the remainder's included, so a beacon whose two parent neighbours are in different stands (SD3 of
+ * Brackenhurst, between 87D of 403 and 86C of 404) is still found. Whatever the plan type.
+ */
+function alignmentResults(): AlignmentResult[] {
+  const list = Array.isArray(parcels.value) ? parcels.value : []
+  const points = loPointsByName()
+  if (!list.length || !points.size) return []
+  const status = new Map<string, string>()
+  for (const p of coordinatePoints.value as any[]) status.set(String(p?.name ?? '').trim(), String(p?.status ?? ''))
+  const rings: string[][] = []
+  for (const p of list) {
+    let r = ringNames(p)
+    if (!r.length) {
+      const g = p?.geom?.coordinates?.[0]
+      if (Array.isArray(g) && g.length >= 3) r = vertexBeaconNames(g as Array<[number, number]>, points)
+    }
+    if (r.length >= 3) rings.push(r)
+  }
+  const wasDiagram = isDiagramMode.value
+  const connections = wasDiagram ? connectingDataForCalculations() : []
+  return beaconAlignment({ rings, points, isParent: (n) => /^F/i.test(status.get(n) ?? ''), connections })
 }
 const activeConnectionEditor = ref<{ fromBeacon: string; letter: string; toBeacon: string } | null>(null)
 const currentSideAnnotations = computed(() => annotationsForSubject(sideAnnotationsBySubject.value, selectedDiagramParcelId.value))
@@ -5087,6 +5113,13 @@ async function generatePlanDocumentsWith(
     const docs: PlanDocumentSet = {}
     // Plain sentences from the PDF and DXF generators, shown with the result.
     const generationWarnings: string[] = []
+    // SI 727 para (5): a new beacon off the parent boundary is stated with the plan (the Complete Survey Record
+    // refuses one that must be corrected).
+    try {
+      for (const r of alignmentResults()) if (r.band !== 'on-line') generationWarnings.push(`SI 727 para (5): ${describeAlignment(r)}`)
+    } catch (e: any) {
+      console.warn('[PlanDocs] beacon alignment check did not run:', e?.message)
+    }
     let usedScale: string | undefined
     // The sheet the PDF actually rendered on, after any paper-size escalation.
     let usedSheetSize: string | undefined
@@ -5567,6 +5600,12 @@ async function generateComprehensivePDF() {
     // and the tool's sample network once went to the Surveyor-General in their place.
     const sampleProblem = sampleDataProblem(foundBeaconRows(reportData?.beacons), 'The Report on Survey')
     if (sampleProblem) throw new Error(sampleProblem)
+    // SI 727 para (5): a new beacon on the parent boundary beyond 0,06 + 0,000 5d m must be corrected before the
+    // record goes in; one between the two limits need not be moved but is stated.
+    const alignment = alignmentResults()
+    const mustCorrect = alignment.filter((r) => r.band === 'correct')
+    if (mustCorrect.length) throw new Error(`SI 727 para (5): ${mustCorrect.map(describeAlignment).join(' ')}`)
+    const alignmentNotes = alignment.filter((r) => r.band === 'may-stay').map(describeAlignment)
     const reportOptions = {
       surveyorName: surveyorInfo.name || '',
       licenseNumber: surveyorInfo.licenseNumber || '',
@@ -5603,6 +5642,7 @@ async function generateComprehensivePDF() {
       instrumentDescription: surveyorInfo.instrumentDescription || '',
       instrumentBaseSerial: surveyorInfo.instrumentBaseSerial || '',
       instrumentRoverSerial: surveyorInfo.instrumentRoverSerial || '',
+      alignment,
     }
 
     // Party-wall servitude rows for the Field Book and Calculations tables: the
@@ -5658,6 +5698,7 @@ async function generateComprehensivePDF() {
       siteCalibration: siteCalibrationFrom(workflowState),
       partyWalls,
       connectingData: connectingDataForCalculations(),
+      alignment,
       surveyPoints: surveyPoints,
       adjustedCoordinates: adjustedCoordinates,
       projectControlPoints: controlPoints,
@@ -5780,6 +5821,7 @@ async function generateComprehensivePDF() {
       }
       for (const plan of planSet.plans) contentsLines.push(`• ${plan.label}`)
       for (const w of planSet.warnings) contentsLines.push(`• ⚠ ${w}`)
+      for (const w of alignmentNotes) contentsLines.push(`• ⚠ SI 727 para (5): ${w}`)
       notifySuccess(`Saved as Comprehensive_Latest.pdf in ${finalResult.filePath}`, {
         title: 'Complete survey record generated',
         details: contentsLines.map((l: string) => l.replace(/^•\s*/, '')),

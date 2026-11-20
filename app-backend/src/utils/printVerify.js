@@ -10,6 +10,7 @@
  * Findings are { level: 'error' | 'warning', code, message }. An error means the document must not be printed.
  */
 import { bankersRound } from './zim-geo.js'
+import { describeAlignment } from '../../../app-shared/beaconAlignment.js'
 
 /** Names the template and sample data use. They are never a real beacon. */
 const TEMPLATE_NAME = /^BM\s?\d{3}$/i
@@ -45,14 +46,63 @@ export function allowedFigures(points) {
 }
 
 /**
+ * The connections the record's Calculations print ("Connecting data"): each is headed
+ * "Stand 403: SD2 to 87C" and closes with "Direction 224 53 07  Distance 59.32 m".
+ */
+export function printedConnections(text) {
+  const lines = String(text ?? '').split('\n')
+  const out = []
+  for (let i = 0; i < lines.length; i++) {
+    const head = lines[i].trim().match(/^Stand\s+(\S+):\s+(\S+)\s+to\s+(\S+)$/)
+    if (!head) continue
+    for (let k = i + 1; k < Math.min(i + 6, lines.length); k++) {
+      const d = lines[k].match(/Direction\s+(\d+)\s+(\d+)\s+(\d+)\s+Distance\s+(\d+(?:\.\d+)?)\s*m/)
+      if (!d) continue
+      out.push({ stand: head[1], from: head[2], to: head[3], directionSec: (+d[1]) * 3600 + (+d[2]) * 60 + (+d[3]), distance: Number(d[4]) })
+      break
+    }
+  }
+  return out
+}
+
+/** Distances lettered on a diagram's connection ray: "59,32m" (comma decimals, metres). */
+export function letteredDistances(text) {
+  return [...String(text ?? '').matchAll(/(?<![\d,])(\d{1,4},\d{2})\s?m\b/g)].map((m) => Number(m[1].replace(',', '.')))
+}
+
+/**
+ * What a connection's distance and direction may legitimately be: computed from the stored 3 dp coordinates or
+ * from the Co-ordinate List's banker's 2 dp ones (the diagram is drawn from either), the distance rounded to
+ * 2 dp by banker's rounding. Direction in seconds, south-oriented as the sides table prints it.
+ */
+function connectionFigures(a, b) {
+  const r2 = (v) => Math.sign(v) * bankersRound(Math.abs(v), 2)
+  const out = []
+  for (const [ay, ax, by, bx] of [[a.y, a.x, b.y, b.x], [r2(a.y), r2(a.x), r2(b.y), r2(b.x)]]) {
+    const dy = by - ay, dx = bx - ax
+    let deg = Math.atan2(dy, dx) * 180 / Math.PI
+    if (deg < 0) deg += 360
+    out.push({ distance: bankersRound(Math.hypot(dy, dx), 2), directionSec: deg * 3600 })
+  }
+  return out
+}
+
+/**
  * @param {object} input
  * @param {string} input.text            the document's text
  * @param {{name:string,y:number,x:number,status?:string}[]} input.points   the project's coordinate points
  * @param {string[]} [input.comparisonNames] beacons in the project's saved Beacon Comparison (empty when none saved)
  * @param {{y:number,x:number}[]} [input.extraPoints] control points the document may also print (trig list)
  * @param {number[]} [input.extraFigures] other figures the document may print (control and calibration values)
+ * @param {{stand:string,from:string,to:string}[]} [input.extraConnections] connections to hold a diagram to when
+ *        the document has no Connecting data of its own (a diagram saved on its own, checked against the record)
+ * @param {boolean} [input.listsAllPoints] the document should print every found and placed beacon (false for a
+ *        single diagram, which prints only its own corners)
  */
-export function verifyPrinted({ text, points, comparisonNames = [], comparison = [], extraPoints = [], extraFigures = [] }) {
+export function verifyPrinted({
+  text, points, comparisonNames = [], comparison = [], extraPoints = [], extraFigures = [],
+  extraConnections = [], listsAllPoints = true,
+}) {
   const findings = []
   const err = (code, message) => findings.push({ level: 'error', code, message })
   const warn = (code, message) => findings.push({ level: 'warning', code, message })
@@ -132,8 +182,57 @@ export function verifyPrinted({ text, points, comparisonNames = [], comparison =
     }
   }
 
-  // 4. Every point of the survey that the document should list must be there (found and placed beacons).
-  for (const p of points) {
+  // 4. Connections. A connection's distance is under 10 000 m, so step 3 never reads it; a diagram drawn before
+  //    a re-import moved the beacon it ties to kept the old distance (Brackenhurst 403: SD2 -> 87C lettered
+  //    59,37 m while the list gave 59,32 m). Each connection the Calculations print is worked out again from the
+  //    stored coordinates, and every distance lettered on a diagram near one of them must equal it.
+  const printed = printedConnections(doc)
+  const connections = [...printed]
+  for (const c of extraConnections) {
+    if (!connections.some((p) => p.from === c.from && p.to === c.to)) connections.push(c)
+  }
+  const expected = []
+  for (const c of connections) {
+    const a = byName.get(c.from), b = byName.get(c.to)
+    if (!a || !b) {
+      warn('CONNECTION_UNKNOWN_BEACON', `Stand ${c.stand}: the connection ${c.from} to ${c.to} names a beacon with no co-ordinate in the survey`)
+      continue
+    }
+    const figs = connectionFigures(a, b)
+    const allowed = [...new Set(figs.map((f) => f.distance))]
+    expected.push({ ...c, allowed })
+    if (c.distance == null) continue   // given, not printed here
+    if (!allowed.some((d) => Math.abs(d - c.distance) < 0.0005)) {
+      err('CONNECTION_DISTANCE_MISMATCH', `Stand ${c.stand}: Connecting data prints ${c.from} to ${c.to} as ${c.distance.toFixed(2)} m, but the co-ordinates give ${allowed.map((d) => d.toFixed(2)).join(' / ')} m`)
+    }
+    if (!figs.some((f) => Math.abs(f.directionSec - c.directionSec) <= 1.5)) {
+      const dms = (s) => { const r = Math.round(s); return `${Math.floor(r / 3600)} ${String(Math.floor(r % 3600 / 60)).padStart(2, '0')} ${String(r % 60).padStart(2, '0')}` }
+      err('CONNECTION_DIRECTION_MISMATCH', `Stand ${c.stand}: Connecting data prints ${c.from} to ${c.to} at ${dms(c.directionSec)}, but the co-ordinates give ${dms(figs[0].directionSec)}`)
+    }
+  }
+  if (/DEDUCTIONS FROM THIS DIAGRAM/i.test(doc) && expected.length) {
+    const lettered = letteredDistances(doc)
+    const flagged = new Set()
+    for (const v of lettered) {
+      if (expected.some((e) => e.allowed.some((d) => Math.abs(d - v) < 0.0005))) continue
+      const near = expected.find((e) => e.allowed.some((d) => Math.abs(d - v) <= 0.5))
+      if (!near || flagged.has(v)) continue
+      flagged.add(v)
+      err('CONNECTION_LETTERED_MISMATCH', `a diagram letters a connection as ${v.toFixed(2).replace('.', ',')}m, but ${near.from} to ${near.to} (stand ${near.stand}) is ${near.allowed[0].toFixed(2)} m from the co-ordinates: the diagram was drawn from other figures`)
+    }
+    // Only when the document is the whole record (it prints the Connecting data): a diagram saved on its own
+    // carries only its own stand's connection.
+    if (printed.length) {
+      for (const e of expected) {
+        if (!lettered.some((v) => e.allowed.some((d) => Math.abs(d - v) < 0.0005))) {
+          warn('CONNECTION_NOT_LETTERED', `Stand ${e.stand}: the connection ${e.from} to ${e.to} (${e.allowed[0].toFixed(2)} m) is not lettered on any diagram`)
+        }
+      }
+    }
+  }
+
+  // 5. Every point of the survey that the document should list must be there (found and placed beacons).
+  for (const p of listsAllPoints ? points : []) {
     const wanted = [fix(bankersRound(abs(p.y), 2), 2), fix(bankersRound(abs(p.x), 2), 2)]
     let flat = doc.replace(/,/g, '.')
     for (let prev = ''; prev !== flat;) { prev = flat; flat = flat.replace(/(\d) (\d{3})/g, '$1$2') }   // "2 144 068" -> "2144068"
@@ -144,6 +243,25 @@ export function verifyPrinted({ text, points, comparisonNames = [], comparison =
   }
 
   return findings
+}
+
+/**
+ * SI 727 para (5) findings for a record: an error for a new beacon whose alignment must be corrected (beyond
+ * 0,06 + 0,000 5d m), a warning for one off the true boundary that need not be moved, and a warning when the
+ * record carries results but does not state them (it was generated before the check, or from other data).
+ * @param {import('../../../app-shared/beaconAlignment.js').AlignmentResult[]} results  beaconAlignment() output
+ * @param {string} text  the document's text
+ */
+export function alignmentFindings(results, text) {
+  const out = []
+  for (const r of results ?? []) {
+    if (r.band === 'correct') out.push({ level: 'error', code: 'ALIGNMENT_CORRECT', message: `SI 727 para (5): ${describeAlignment(r)}` })
+    else if (r.band === 'may-stay') out.push({ level: 'warning', code: 'ALIGNMENT_MAY_STAY', message: `SI 727 para (5): ${describeAlignment(r)}` })
+  }
+  if ((results ?? []).length && !/Beacons on line/i.test(String(text ?? ''))) {
+    out.push({ level: 'warning', code: 'ALIGNMENT_NOT_STATED', message: `the record does not state the SI 727 para (5) check of ${results.map((r) => r.beacon).join(', ')} (no "Beacons on line" in the Calculations or the Report on Survey): regenerate it` })
+  }
+  return out
 }
 
 /** The text of a PDF, page by page, with each visual line on its own line. Needs pdfjs-dist (a backend dependency). */

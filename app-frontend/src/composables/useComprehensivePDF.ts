@@ -27,6 +27,8 @@ export interface NarrativeReportOptions {
   surveyOf: string
   district?: string
   assistant?: string
+  /** SI 727 para (5) results, stated in the report's Beacons on line paragraph. */
+  alignment?: import('../../../app-shared/beaconAlignment').AlignmentResult[]
 }
 
 export interface ComprehensivePDFOptions {

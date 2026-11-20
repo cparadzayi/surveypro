@@ -473,7 +473,8 @@ import { loadCoverLetterhead } from '@/utils/letterheadInfo'
 import { listCoordinatePoints, updateLandParcel } from '@/services/spatial'
 import { registryNames, keepRegistered } from '@/utils/pointReconcile'
 import { listAdoptedBeacons } from '@/services/adoptedBeacons'
-import { saveDocument } from '@/services/documentStorage'
+import { saveDocument, getOutputManifest, supersedeDocument } from '@/services/documentStorage'
+import { coordinatesChangedAt, outdatedDiagrams, DIAGRAM_DIR, type DiagramFormat } from './diagramFreshness'
 import { generateWorkingPlanDXF, generateWorkingPlanPDF } from '@/services/workingPlan'
 import { buildWorkingPlanSpec, workingPlanEmptyReason, controlPointsForInset, selectedControlPointIds, ringNames } from './workingPlanSpec'
 import { useComprehensivePDF } from '@/composables/useComprehensivePDF'
@@ -4844,6 +4845,131 @@ async function recordPlans(signal: AbortSignal): Promise<{ plans: { label: strin
   return { plans, warnings }
 }
 
+/** The file name a diagram of this parcel is saved under, before its scale tag and extension. */
+function diagramBaseName(p: any): string {
+  return composePlanBaseName('diagram', resolveSubjectDesignation(p?.designation, p?.stand, props.projectInfo.designation), props.projectId)
+}
+
+/**
+ * Redraw every saved diagram that is older than the survey's coordinates (a re-import moved beacons after it
+ * was drawn), so output/diagrams never holds a diagram that disagrees with the Co-ordinate List. Runs when the
+ * screen opens. Each diagram is drawn as the Diagram button draws it, at the scale the old one was drawn at
+ * (the renderer may still move it if the figure no longer fits), in each format that was saved (PDF, DXF,
+ * GeoPackage). The new file replaces the old; when its name differs (a new scale), the old one is moved to
+ * output/diagrams/superseded rather than left beside it. A diagram that fails stays out of date and is tried
+ * again next time.
+ */
+async function redrawOutdatedDiagrams() {
+  if (isExporting.value || !props.projectId) return
+  const location = validateOutputLocation((props.projectInfo as any).workingDirectory)
+  if (!location.ok) return
+  const workingDirectory = location.workingDirectory
+  const list = Array.isArray(parcels.value) ? parcels.value : []
+  if (!list.length) return
+
+  let outdated
+  try {
+    const workflow = (await api.get(`/survey-projects/${props.projectId}/workflow`)).data?.workflow_state
+    const changedAt = coordinatesChangedAt(workflow?.step_data, list)
+    if (changedAt == null) return
+    const { files } = await getOutputManifest(workingDirectory)
+    outdated = outdatedDiagrams({ files, subjects: list.map((p: any) => ({ id: p.id, baseName: diagramBaseName(p) })), changedAt })
+  } catch (e: any) {
+    console.warn('[DiagramRedraw] could not check the saved diagrams:', e?.message)
+    return
+  }
+  if (!outdated.length) return
+
+  isExporting.value = true
+  const abort = new AbortController()
+  generationAbort.value = abort
+  startElapsed()
+  const saved = {
+    planType: config.value.planType, scale: config.value.scale, sheetSize: config.value.sheetSize,
+    subject: selectedDiagramParcelId.value,
+  }
+  // A diagram is A4 or A3; the file name does not say which, so keep A3 only when it is the diagram paper chosen.
+  const paper = saved.planType === 'diagram' && saved.sheetSize === 'A3' ? 'A3' : 'A4'
+  const redrawn: string[] = []
+  const moved: string[] = []
+  const failed: string[] = []
+  const warnings: string[] = []
+  try {
+    await loadSideAnnotations()
+    for (const o of outdated) {
+      if (abort.signal.aborted) break
+      const p = list.find((x: any) => String(x.id) === String(o.parcelId))
+      const stand = String(p?.stand ?? p?.designation ?? o.parcelId)
+      try {
+        exportStatus.value = `Redrawing the diagram of stand ${stand} (out of date after the re-import)…`
+        config.value.planType = 'diagram'
+        await nextTick()
+        config.value.scale = o.scale ?? 'auto'
+        config.value.sheetSize = paper
+        selectedDiagramParcelId.value = p.id
+        await nextTick()
+        const payload = buildPlanPayload(await gatherPlanContext())
+        const formats = new Set<DiagramFormat>(o.files.map((f) => f.format))
+        let usedScale: string | undefined
+        let usedSheetSize: string | undefined
+        const blobs: Partial<Record<DiagramFormat, Blob>> = {}
+        if (formats.has('pdf')) {
+          let result = await generateVectorGeoPDF(payload, { signal: abort.signal })
+          if (result.suggestedScale) result = await generateVectorGeoPDF({ ...payload, scale: result.suggestedScale }, { signal: abort.signal })
+          blobs.pdf = result.blob
+          usedScale = result.usedScale || undefined
+          usedSheetSize = result.usedSheetSize || undefined
+          for (const w of result.warnings ?? []) warnings.push(`Stand ${stand}: ${w}`)
+        }
+        const dxfPayload = { ...payload, scale: usedScale || payload.scale, sheetSize: usedSheetSize || payload.sheetSize }
+        if (formats.has('dxf')) blobs.dxf = (await generateDXF(dxfPayload, { includeGpkg: false, signal: abort.signal })).blob
+        if (formats.has('gpkg')) blobs.gpkg = (await generateDXF(dxfPayload, { gpkgOnly: true, signal: abort.signal })).blob
+
+        const scaleTag = composeScaleTag([usedScale ?? payload.scale])
+        for (const old of o.files) {
+          const blob = blobs[old.format]
+          if (!(blob instanceof Blob)) continue
+          const fileName = `${diagramBaseName(p)}${scaleTag}.${old.format === 'dxf' ? 'zip' : old.format}`
+          const res = await saveWithOverwritePrompt({ workingDirectory, subdir: 'diagrams', fileName, blob }, async () => true)
+          if (!res.success) throw new Error(res.error || `Failed to save ${fileName}`)
+          redrawn.push(fileName)
+          if (fileName !== old.name) {
+            const mv = await supersedeDocument(workingDirectory, DIAGRAM_DIR, old.name)
+            if (mv.ok) moved.push(old.name)
+            else warnings.push(`${old.name} was redrawn as ${fileName}, but the old file could not be moved to superseded: ${mv.error}`)
+          }
+        }
+      } catch (e: any) {
+        if (isCancelled(e)) break
+        failed.push(`Stand ${stand}: ${describeError(e, 'the diagram could not be drawn').message}`)
+      }
+    }
+  } finally {
+    config.value.planType = saved.planType
+    await nextTick()
+    config.value.scale = saved.scale
+    config.value.sheetSize = saved.sheetSize
+    selectedDiagramParcelId.value = saved.subject
+    stopElapsed()
+    generationAbort.value = null
+    isExporting.value = false
+    exportStatus.value = ''
+  }
+
+  const details = [
+    ...redrawn.map((n) => `Saved ${n}`),
+    ...moved.map((n) => `Moved the old ${n} to output/diagrams/superseded`),
+    ...failed, ...warnings,
+  ]
+  if (abort.signal.aborted) {
+    notifyWarning('The remaining diagrams are still out of date; they will be redrawn the next time this step is opened.', { title: 'Diagram redraw cancelled', details })
+  } else if (failed.length) {
+    notifyWarning(`${failed.length} diagram(s) could not be redrawn and still show the coordinates from before the re-import. Do not print them.`, { title: 'Diagrams out of date', details, sticky: true })
+  } else {
+    notifySuccess(`${outdated.length} saved diagram(s) were drawn before the last re-import and have been redrawn from the current coordinates.`, { title: 'Diagrams brought up to date', details })
+  }
+}
+
 async function generatePlanDocuments() {
   // Tags are edited in Boundaries & Abutters: take the saved ones, not what was loaded at mount.
   await loadSideAnnotations()
@@ -6999,7 +7125,7 @@ onMounted(async () => {
     geoPDFStatus.value = { available: false, message: 'GeoPDF service unavailable' }
   }
   
-  loadData()
+  const loaded = loadData()
   loadSideAnnotations()
 
   // Warms the module-scope cache that the `recordComposition` computed reads from.
@@ -7009,6 +7135,10 @@ onMounted(async () => {
   // sitting on a disabled option. This covers the already-warm-cache case, where the
   // computed never changes and so the watch above never fires.
   config.value.planType = normalizePlanTypeSelection(config.value.planType, recordComposition.value)
+
+  // Diagrams saved before the last re-import show the old coordinates: redraw them now.
+  await loaded
+  void redrawOutdatedDiagrams()
 })
 
 onUnmounted(() => {

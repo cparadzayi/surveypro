@@ -137,6 +137,21 @@ export async function getOutputManifest(
 }
 
 /**
+ * Move a replaced product into a `superseded` folder beside it (nothing is deleted).
+ * `relDir` is the file's folder relative to the working directory, as the output manifest gives it.
+ */
+export async function supersedeDocument(
+  workingDirectory: string, relDir: string, name: string,
+): Promise<{ ok: boolean; movedTo?: string; error?: string }> {
+  try {
+    const response = await api.post('/documents/supersede', { workingDirectory, relDir, name })
+    return { ok: true, movedTo: response.data?.movedTo }
+  } catch (error: any) {
+    return { ok: false, error: error?.response?.data?.error || error?.message || 'Could not move the old file' }
+  }
+}
+
+/**
  * Open a saved document in the system's default PDF viewer
  */
 export async function openDocument(filePath: string) {

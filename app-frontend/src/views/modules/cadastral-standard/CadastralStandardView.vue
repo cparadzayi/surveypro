@@ -2765,7 +2765,19 @@ async function refreshParcelSnapshotsAfterImport(): Promise<string> {
       }
     }
 
-    if (written.length > 0) lines.push(`Rebuilt ${written.length} parcel snapshot(s): ${written.join(', ')}.`);
+    if (written.length > 0) {
+      lines.push(`Rebuilt ${written.length} parcel snapshot(s): ${written.join(', ')}.`);
+      // Saved diagrams were drawn from the old figures. Record when the coordinates changed: the Survey Plan
+      // step redraws every diagram saved before this time (diagramFreshness.ts).
+      try {
+        await api.patch(`/survey-projects/${projectId}/workflow`, {
+          step: 'csv-import', action: 'update', metadata: { coordinates_changed_at: new Date().toISOString() }
+        });
+        lines.push('Diagrams saved before this import will be redrawn when the Survey Plan step is next opened.');
+      } catch (e: any) {
+        lines.push(`⚠️ Could not mark the saved diagrams out of date: ${e?.response?.data?.error || e?.message || String(e)}.`);
+      }
+    }
     if (failed.length > 0) {
       lines.push(`⚠️ Failed to reimport-coordinate ${failed.length} parcel(s): ${failed.map(f => `${f.designation} — ${f.message}`).join('; ')}.`);
     }

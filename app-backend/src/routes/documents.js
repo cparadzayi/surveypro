@@ -6,6 +6,7 @@ import { promisify } from 'util'
 import { classifyFsWriteError } from '../utils/fsWriteErrors.js'
 import { writeFileWithRetry } from '../utils/fsWriteRetry.js'
 import { collectOutputManifest, attachPageCounts } from '../utils/outputManifest.js'
+import { supersedeOutputFile, SupersedeError } from '../utils/supersedeFile.js'
 
 const execAsync = promisify(exec)
 
@@ -310,6 +311,23 @@ export default async function documentRoutes(fastify, options) {
         message: classified.message,
         code: classified.code
       })
+    }
+  })
+
+  // Move a replaced product (e.g. a diagram redrawn at another scale after a re-import) into a `superseded`
+  // folder beside it, so an out-of-date copy never sits next to the current one. Nothing is deleted.
+  fastify.post('/documents/supersede', auth, async (request, reply) => {
+    const { workingDirectory, relDir, name } = request.body ?? {}
+    if (!workingDirectory) return reply.code(400).send({ ok: false, error: 'Working directory required' })
+    try {
+      const movedTo = supersedeOutputFile(resolveWorkingDirectory(workingDirectory), relDir, name)
+      fastify.log.info(`[SUPERSEDE] ${relDir}/${name} -> ${movedTo}`)
+      return { ok: true, movedTo }
+    } catch (error) {
+      if (error instanceof SupersedeError) return reply.code(error.status).send({ ok: false, error: error.message })
+      fastify.log.error(error)
+      const classified = classifyFsWriteError(error, name)
+      return reply.code(classified.status).send({ ok: false, error: classified.message, code: classified.code })
     }
   })
 

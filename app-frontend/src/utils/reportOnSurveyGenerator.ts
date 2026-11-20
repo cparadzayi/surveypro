@@ -12,6 +12,7 @@ import {
 import { formatDateDDMMYYYY } from './dateFormat';
 import { buildFoundBeaconsNarrative } from './beaconAcceptanceNarrative';
 import { composeReportSurveyOf } from './planDesignation';
+import { srNumberText } from './reportOnSurveyNarrativeGenerator';
 import { purposeStatement } from './reportPurpose';
 
 export interface ReportGenerationOptions {
@@ -125,7 +126,7 @@ export class ReportOnSurveyGenerator {
     
     const info = [
       `Survey Of: ${surveyOf}`,
-      `S.R. No: ${reportData.srNumber}`,
+      srNumberText(reportData.srNumber),
       `Land Surveyor: ${options.surveyorName}`,
       `Date of Survey: ${options.surveyDate}`,
       `License Number: ${options.licenseNumber}`,

@@ -56,12 +56,23 @@ describe('appendNarrativeReport', () => {
     const mergedPages = (await PDFDocument.load(result.merged)).getPageCount();
     expect(mergedPages).toBe(6 + narrativePages);
 
-    // Page-count arithmetic alone can't catch a wrongly-computed start page
-    // (stamping never changes page counts). calculationsEndPage=130 +
-    // areasPages=2 + 1 = 133 — pin the actual stamped number, distinctive
-    // enough it can't coincidentally appear elsewhere in the narrative body.
+    // The report carries no page number in the record: 133 would be its first page
+    // after calculationsEndPage=130 and 2 pages of Areas.
     const raw = await rawPdfText(result.narrativeBlob!);
-    expect(raw).toContain('(133) Tj');
+    expect(raw).not.toContain('(133) Tj');
+  });
+
+  it('prints the S.R. number placeholder and no licence number or date in the signature', async () => {
+    const body = await makePdf(1);
+    const areas = await makePdf(1);
+    const result = await appendNarrativeReport(
+      body.bytes, areas.blob, 10, { ...reportData, srNumber: '' } as any, { ...narrativeOptions, licenseNumber: '293' },
+    );
+    const raw = await rawPdfText(result.narrativeBlob!);
+    expect(raw).toContain(`(S.R. No: .... / ${new Date().getFullYear()}) Tj`);
+    expect(raw).not.toContain('N/A) Tj');
+    expect(raw).not.toContain('License No');
+    expect(raw).not.toMatch(/\(Date: \d/);
   });
 
   it('returns the body untouched when the report data is empty', async () => {

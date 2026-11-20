@@ -77,10 +77,8 @@ export interface ComprehensivePDFResult {
 /**
  * Append the narrative Report of Survey to the collated body.
  *
- * The narrative is numbered as a continuation after Areas: Areas' own page count
- * is read back from the rendered areas section, so the first narrative page is
- * calculationsEndPage + areasPages + 1. Nothing cross-references the narrative,
- * so this is a pure tail append.
+ * The report is not page-numbered in the record (it used to continue the numbering
+ * after Areas). Nothing cross-references it, so this is a pure tail append.
  *
  * Returns the body unchanged (and no narrative blob) when there is no report data.
  */
@@ -96,15 +94,12 @@ export async function appendNarrativeReport(
     return { merged: mergedPdfBytes }
   }
 
-  const areasDoc = await PDFDocument.load(await areasOnlyBlob.arrayBuffer())
-  const narrativeStartPage = calculationsEndPage + areasDoc.getPageCount() + 1
-  console.log('[ComprehensivePDF] 📝 Appending Report of Survey from page', narrativeStartPage)
+  // The Report on Survey is a document of its own in the record and carries no page number
+  // (areasOnlyBlob / calculationsEndPage used to set where its numbering started).
+  void areasOnlyBlob; void calculationsEndPage
+  console.log('[ComprehensivePDF] 📝 Appending Report of Survey (unnumbered)')
 
-  const narrative = await generateNarrativeReportOnSurveyPDF(
-    reportData,
-    narrativeOptions,
-    narrativeStartPage
-  )
+  const narrative = await generateNarrativeReportOnSurveyPDF(reportData, narrativeOptions)
 
   const bodyDoc = await PDFDocument.load(mergedPdfBytes)
   const narrativeDoc = await PDFDocument.load(await narrative.pdf.arrayBuffer())

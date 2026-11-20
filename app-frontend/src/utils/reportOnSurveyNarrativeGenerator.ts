@@ -7,7 +7,6 @@
 import { jsPDF } from 'jspdf';
 import type { ReportOnSurveyData } from '../types/cadastral';
 import { stampSequentialPageNumbers } from './pdfPageNumber';
-import { formatDateDDMMYYYY } from './dateFormat';
 import { formatSurveyMonthYear } from './surveyDate';
 import { buildFoundBeaconsNarrative } from './beaconAcceptanceNarrative';
 import { composeReportSurveyOf } from './planDesignation';
@@ -127,7 +126,7 @@ export class NarrativeReportOnSurveyGenerator {
     
     // S.R. No — the report header pairs it with the designation, right-justified
     // above the "Survey of" line.
-    const srText = `S.R. No: ${reportData.srNumber || 'N/A'}`;
+    const srText = srNumberText(reportData.srNumber);
     this.doc.text(srText, this.pageWidth - this.margin, this.currentY, { align: 'right' });
     this.currentY += this.lineHeight;
     
@@ -476,15 +475,10 @@ export class NarrativeReportOnSurveyGenerator {
     this.doc.text(options.surveyorName, this.margin, this.currentY);
     this.currentY += this.lineHeight;
     
+    // Name and "Land Surveyor" only: the licence number and the date are not part of the report's signature.
     this.doc.setFontSize(9);
     this.doc.text(`Land Surveyor`, this.margin, this.currentY);
     this.currentY += this.lineHeight;
-    
-    this.doc.text(`License No. ${options.licenseNumber}`, this.margin, this.currentY);
-    this.currentY += this.lineHeight + 5;
-    
-    // Date
-    this.doc.text(`Date: ${formatDateDDMMYYYY(new Date())}`, this.margin, this.currentY);
   }
 
   /**
@@ -496,6 +490,15 @@ export class NarrativeReportOnSurveyGenerator {
       this.currentY = this.margin;
     }
   }
+}
+
+/**
+ * The report's S.R. number line. Before the office issues a number it is left for the examiner to fill in,
+ * with the year it will fall in: "S.R. No: .... / 2026".
+ */
+export function srNumberText(srNumber: string | null | undefined, now: Date = new Date()): string {
+  const sr = (srNumber ?? '').trim();
+  return `S.R. No: ${sr && !/^n\/?a$/i.test(sr) ? sr : `.... / ${now.getFullYear()}`}`;
 }
 
 /**

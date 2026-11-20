@@ -52,11 +52,37 @@ export function allowedFigures(points) {
  * @param {{y:number,x:number}[]} [input.extraPoints] control points the document may also print (trig list)
  * @param {number[]} [input.extraFigures] other figures the document may print (control and calibration values)
  */
-export function verifyPrinted({ text, points, comparisonNames = [], extraPoints = [], extraFigures = [] }) {
+export function verifyPrinted({ text, points, comparisonNames = [], comparison = [], extraPoints = [], extraFigures = [] }) {
   const findings = []
   const err = (code, message) => findings.push({ level: 'error', code, message })
   const warn = (code, message) => findings.push({ level: 'warning', code, message })
   const doc = String(text ?? '')
+  if (comparison.length && comparisonNames.length === 0) comparisonNames = comparison.map((r) => r.name)
+
+  // 0. The Beacon Comparison's survey column must be this survey's own co-ordinates, as the Co-ordinate List
+  //    prints them (banker's 2 dp of the field 3 dp). Its historical column is the previous survey's, so it is
+  //    a legitimate figure in the document and is not held to the field data.
+  const byName = new Map(points.map((p) => [p.name, p]))
+  for (const r of comparison) {
+    const p = byName.get(r.name)
+    if (!p) continue
+    for (const [axis, survey, field] of [['Y', r.yS, p.y], ['X', r.xS, p.x]]) {
+      if (!Number.isFinite(Number(survey)) || !Number.isFinite(field)) continue
+      const listed = bankersRound(abs(field), 2)
+      const off = Math.abs(abs(Number(survey)) - listed)
+      if (off < 0.0005) continue
+      const msg = `Beacon Comparison survey ${axis} of ${r.name} is ${Number(survey).toFixed(3)}, but the field book has ` +
+        `${field.toFixed(3)} and the Co-ordinate List ${field < 0 ? '-' : ''}${listed.toFixed(2)}`
+      const halfUp = Math.round(abs(field) * 100) / 100
+      if (Math.abs(abs(Number(survey)) - halfUp) < 0.0005) {
+        err('COMPARISON_SURVEY_ROUNDING', `${msg}: the field value was rounded half-up, not by banker's rounding, so the two documents disagree`)
+      } else if (off > 0.0051) {
+        err('COMPARISON_SURVEY_MISMATCH', `${msg} (${off.toFixed(3)} m apart): the comparison was run on other figures than the survey's`)
+      } else {
+        warn('COMPARISON_SURVEY_PRECISION', `${msg}: within rounding of the field value but not as the list prints it`)
+      }
+    }
+  }
 
   // 1. Template / sample beacons anywhere in the document.
   const template = [...new Set((doc.match(/\bBM\s?\d{3}\b/gi) ?? []).map((s) => s.replace(/\s+/, ' ').toUpperCase()))]
@@ -77,6 +103,8 @@ export function verifyPrinted({ text, points, comparisonNames = [], extraPoints 
 
   // 3. Every printed coordinate must be a stored figure, rounded the way the record rounds it.
   const allowed = allowedFigures([...points, ...extraPoints.map((p, i) => ({ name: `control ${i + 1}`, ...p }))])
+  // The comparison's own figures are printed in its table (to 3 dp); they are checked in step 0, not here.
+  for (const r of comparison) for (const v of [r.yH, r.xH, r.yS, r.xS]) extraFigures = [...extraFigures, Number(v)]
   for (const v of extraFigures) {
     if (!Number.isFinite(v)) continue
     allowed.set(fix(v, 3), 'control')

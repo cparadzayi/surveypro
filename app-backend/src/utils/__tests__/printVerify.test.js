@@ -70,6 +70,20 @@ describe('verifyPrinted', () => {
     expect(codes(f, 'error')).toContain('COMPARISON_NOT_SAVED')
   })
 
+  test("the Beacon Comparison's survey column is held to the field data and its figures are not flagged", () => {
+    const comparison = [
+      { name: '86B', yH: -85728.77, xH: 2143972.22, yS: -85728.7, xS: 2143972.14 },   // the list's own figures: fine
+      { name: 'RM7', yH: -85905.9, xH: 2144178.63, yS: -85905.85, xS: 2144178.57 },  // .845 rounded half-up
+      { name: '86C', yH: -85633.12, xH: 2144068.03, yS: -85633.09, xS: 2144068 },    // 6 cm off the field value
+    ]
+    const text = `${clean}\nBEACON COMPARISON REPORT\n86B -85728.770 2143972.220 -85728.700 2143972.140`
+    const f = verifyPrinted({ text, points, comparison })
+    expect(f.filter((x) => x.code === 'COMPARISON_SURVEY_ROUNDING').map((x) => x.message)).toEqual([expect.stringMatching(/RM7/)])
+    expect(f.filter((x) => x.code === 'COMPARISON_SURVEY_MISMATCH').map((x) => x.message)).toEqual([expect.stringMatching(/86C/)])
+    expect(codes(f)).not.toContain('NEAR_MISS')
+    expect(codes(f)).not.toContain('UNKNOWN_FIGURE')
+  })
+
   test('a point missing from the document is reported', () => {
     const f = verifyPrinted({ text: '86B -85 728.70 +2 143 972.14', points })
     expect(codes(f, 'warning')).toContain('POINT_NOT_PRINTED')

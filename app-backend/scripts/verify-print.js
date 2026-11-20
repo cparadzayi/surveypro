@@ -71,7 +71,7 @@ try {
   }
   collect(stepData['control-point-selection'])
   collect(stepData['site-calibration'])
-  const findings = verifyPrinted({ text, points, comparisonNames, extraPoints, extraFigures })
+  const findings = verifyPrinted({ text, points, comparisonNames, comparison, extraPoints, extraFigures })
 
   console.log(`Project: ${found.name} (${found.sc}, id ${found.id})`)
   console.log(`Document: ${pdf}`)

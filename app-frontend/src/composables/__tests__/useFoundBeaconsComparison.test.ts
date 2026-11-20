@@ -127,18 +127,22 @@ describe('buildComparisonConfig — per-check-method wording', () => {
   const rej = { id: 2, name: '87A', finalStatus: 'REJECT' as const }
   const acc = { id: 1, name: '86B', finalStatus: 'ACCEPT' as const }
 
-  it('describes a coords-mode result as a §67(5) co-ordinate comparison and carries checkMethod', () => {
+  it('describes a coords-mode result by para 7(5) on the lines, with no co-ordinate limit, and carries checkMethod and class', () => {
     const cfg = buildComparisonConfig(points, {
       pts: [acc, rej],
-      method: 'coords', surveyClass: 'C', posLimit: 0.0623,
+      method: 'coords', surveyClass: 'C',
+      comparison67: {
+        surveyClass: 'C', lines: new Array(10).fill({}), linesFailing: 3, beacons: [],
+        shift: { dY: 0, dX: 0 }, swingSec: 0, setAside: ['87A'], unresolved: [],
+      } as any,
     })
     expect(cfg.checkMethod).toBe('coords')
-    expect(cfg.adjustmentSummary).toMatch(/co-ordinate comparison/i)
-    expect(cfg.adjustmentSummary).toMatch(/class C/)
-    expect(cfg.adjustmentSummary).toMatch(/0\.0623 m/)
-    expect(cfg.adjustmentSummary).not.toMatch(/W-test/i)
-    expect(cfg.conclusion).toMatch(/class C co-ordinate limit/)
-    expect(cfg.conclusion).toMatch(/87A/)
+    expect(cfg.surveyClass).toBe('C')
+    expect(cfg.adjustmentSummary).toMatch(/comparison of co-ordinates, class C/i)
+    expect(cfg.adjustmentSummary).toMatch(/para 7\(5\)/)
+    expect(cfg.adjustmentSummary).toMatch(/10 lines, 3 outside the limit/)
+    expect(cfg.adjustmentSummary).not.toMatch(/W-test|co-ordinate limit|95%/i)
+    expect(cfg.conclusion).toMatch(/except 87A, whose distances to the other beacons do not agree .*para 7\(5\)/)
   })
 
   it('describes an edges-mode result as a Second Schedule severity verdict (no W-test)', () => {

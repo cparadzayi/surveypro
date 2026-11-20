@@ -19,9 +19,9 @@ const fmtNetSwing = (s) => {
 const fmtMedAllow = (s) => (s.lmed > 0 ? (s.posLimit * 206265 / s.lmed).toFixed(1) : '0')
 
 // Which test condemned a beacon. 'si727' is the Second Schedule severity verdict
-// (si727.js's severityVerdict); 'coords' is the §67(5) co-ordinate-compare limit; the
+// (si727.js's severityVerdict); 'coords' is the §67(5) comparison judged by para 7(5) on the lines; the
 // other two come from iterativeAdjust's own statistics.
-const REJ_SOURCE_LABEL = { si727: 'SI 727', coords: 'SI 727 §67(5)', wtest: 'W-test', danish: 'Danish' }
+const REJ_SOURCE_LABEL = { si727: 'SI 727', coords: 'Para 7(5) lines', wtest: 'W-test', danish: 'Danish' }
 
 // Standard ISO A-series page dimensions in mm, matching jsPDF's own built-in page-format
 // table exactly (confirmed against jspdf/dist/jspdf.node.js's pageFormats constant) --
@@ -221,7 +221,7 @@ class BeaconAdjustmentReport {
     let rejPhrase = ''
     if (method === 'coords') {
       const c = rej.filter(p => p.rejSource === 'coords')
-      if (c.length) rejPhrase = `${c.length} beacon(s) stand apart from the network of compared beacons and exceed the SI 727 class ${cls} co-ordinate limit: ${names(c)}`
+      if (c.length) rejPhrase = `${c.length} beacon(s) whose distances to the other beacons fail Second Schedule para 7(5) (class ${cls}) while the lines among the others pass: ${names(c)}`
     } else if (method === 'edges') {
       const c = rej.filter(p => p.rejSource === 'si727')
       if (c.length) rejPhrase = `${c.length} beacon(s) fail the Second Schedule limits of error (paras 7(1), 8): ${names(c)}`
@@ -251,17 +251,15 @@ class BeaconAdjustmentReport {
       line = 'Recommended with note — no single beacon stands out as an outlier, but '
         + `${linesFailing} of ${es.totalLines} `
         + 'compared lines exceed the Second Schedule limits of error; examine the network as a whole.'
-    } else if (method === 'coords' && result.verdict && result.verdict.networkWide) {
-      // A uniform shift (or a uniformly degraded network) raises every §67(5) residual
-      // together, so no beacon stands apart and the two-gate verdict flags none. That
-      // blind spot is reported here rather than silently approving all beacons.
-      line = 'Recommended with note — no single beacon stands out as an outlier, but the '
-        + `network as a whole lies at or beyond the SI 727 class ${cls} co-ordinate limit; `
-        + 'examine the datum shift and re-adjust before adoption.'
+    } else if (method === 'coords' && result.verdict && result.verdict.unresolved && result.verdict.unresolved.length) {
+      // A single failing line does not show which end moved: the surveyor decides.
+      line = 'Recommended with note — '
+        + result.verdict.unresolved.map(l => `${l.from} - ${l.to}`).join(', ')
+        + ' exceed Second Schedule para 7(5), but the lines alone do not show which beacon moved; the surveyor decides.'
     } else if (hasAdj && !chiOk) {
       line = 'Recommended with note — chi-square test outside bounds; review a priori Sigma-0.'
     } else if (method === 'coords') {
-      line = `Recommended for approval — all found beacons within the SI 727 class ${cls} co-ordinate limit.`
+      line = `Recommended for approval — every line between the found beacons within Second Schedule para 7(5), class ${cls}.`
     } else if (method === 'edges') {
       line = 'Recommended for approval — all compared lines within the Second Schedule limits of error.'
     } else {
@@ -273,17 +271,11 @@ class BeaconAdjustmentReport {
     this.doc.text(
       `Beacons compared: ${result.pts.length}.  Accepted: ${acc}.  Rejected: ${rej.length}.${critNote}`,
       this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 5
-    if (method === 'coords' && result.posLimit != null) {
-      this.doc.text(
-        `SI 727 §67(5) co-ordinate limit (class ${cls}, 95% 2-D): Δ ≤ ${result.posLimit.toFixed(4)} m.`,
-        this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 5
-    }
-    if (method === 'coords' && result.verdict) {
-      const v = result.verdict
-      const w = `Network consistency: median Δ/limit = ${v.median.toFixed(3)}, rejection cut = ${v.cut.toFixed(3)} `
-        + '(reject only when Δ/limit > cut and Δ/limit > 1).'
-        + (v.networkWide ? '  The network as a whole lies at or beyond the class limit.' : '')
-      this.doc.text(w, this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 5
+    if (method === 'coords' && result.comparison67) {
+      const c = result.comparison67
+      const w = `Second Schedule para 7(5), class ${cls}: ${c.lines.length - c.linesFailing} of ${c.lines.length} lines between the found beacons within the limit. `
+        + `Common shift ${f4s(c.shift.dY)} m (Y), ${f4s(c.shift.dX)} m (X); swing ${Math.abs(c.swingSec).toFixed(1)} sec (information only: section 67(5) sets no co-ordinate limit).`
+      this.doc.text(w, this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 9
     }
     if (es) {
       this.doc.text(
@@ -356,9 +348,8 @@ class BeaconAdjustmentReport {
         ]
       : method === 'coords'
         ? [
-            'dY, dX = raw difference (survey minus historical); Dist is its magnitude. Δ/limit = co-ordinate-limit severity (1.0 = exactly at the limit).',
-            'Acceptance / rejection is a two-gate consistency verdict: a beacon is rejected only when it stands apart from its own network (Δ/limit > 1.25 × network median) '
-              + `AND itself exceeds the SI 727 class ${result.surveyClass || 'B'} co-ordinate limit (Δ/limit > 1; Δ > ${result.posLimit != null ? result.posLimit.toFixed(4) : 'class limit'} m ≈95% 2-D) — no Helmert or W-test is applied in this mode.`,
+            'dY, dX = raw difference (survey minus historical); Dist is its magnitude. Section 67(5) sets no limit on them: a survey may be shifted or swung against the original data while its beacons agree.',
+            `A beacon is set aside when its distances to the other beacons fail SI 727 Second Schedule para 7(5) (class ${result.surveyClass || 'B'}) while the lines among the others pass — no Helmert or W-test is applied in this mode.`,
           ]
         : [
             'dY, dX = raw difference (survey minus historical); Dist is its magnitude.',

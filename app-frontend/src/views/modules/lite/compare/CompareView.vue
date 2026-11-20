@@ -46,7 +46,7 @@
               <option value="C">Class C</option>
             </select>
             <p class="text-xs text-gray-500 mt-0.5">
-              <template v-if="checkMethod === 'coords'">→ co-ordinate limit ±{{ posLimit.toFixed(4) }} m (95% 2-D)</template>
+              <template v-if="checkMethod === 'coords'">→ Second Schedule para 7(5) on the lines between beacons</template>
               <template v-else-if="checkMethod === 'edges'">→ Second Schedule paras 7(1) &amp; 8</template>
             </p>
           </div>
@@ -293,7 +293,7 @@
           <div class="flex flex-wrap justify-between items-center mb-3 gap-2 text-xs text-gray-500">
             <span>
               <template v-if="checkMethod === 'wtest'">σ₀ = {{ sigma0.toFixed(3) }} m · Critical W = {{ critW }} ·</template>
-              <template v-else-if="checkMethod === 'coords'">SI 727 class {{ surveyClass }} · co-ordinate limit ±{{ posLimit.toFixed(4) }} m (95% 2-D) ·<template v-if="result.verdict">network median Δ/limit {{ result.verdict.median.toFixed(3) }} · reject cut {{ result.verdict.cut.toFixed(3) }} ·</template></template>
+              <template v-else-if="checkMethod === 'coords'">SI 727 class {{ surveyClass }} · para 7(5): <template v-if="result.comparison67">{{ result.comparison67.lines.length - result.comparison67.linesFailing }} of {{ result.comparison67.lines.length }} lines within the limit · shift {{ f4s(result.comparison67.shift.dY) }} / {{ f4s(result.comparison67.shift.dX) }} m · swing {{ Math.abs(result.comparison67.swingSec).toFixed(1) }}″ ·</template></template>
               <template v-else>SI 727 class {{ surveyClass }} · Second Schedule limits (paras 7(1), 8) ·</template>
               <b class="text-blue-600">{{ acceptedCount }} Accepted</b>
               <template v-if="rejectedCount > 0">
@@ -326,7 +326,7 @@
                   </template>
                   <th v-if="checkMethod === 'coords'" rowspan="2" class="text-center px-2 py-1 font-medium text-blue-700
                                          bg-blue-50 border-b-2 border-gray-300 align-bottom
-                                         whitespace-nowrap">Δ/limit</th>
+                                         whitespace-nowrap" title="Difference after the common shift and swing; failed para 7(5) lines of the beacon">Residual · failed lines</th>
                   <th rowspan="2" class="text-center px-2 py-1 font-medium text-gray-600
                                          bg-white border-b-2 border-gray-300 align-bottom">Status</th>
                 </tr>
@@ -367,8 +367,8 @@
                   <td class="px-2 py-1.5 text-right text-blue-700 whitespace-nowrap">{{ f4s(p.dX) }}</td>
                   <template v-if="checkMethod === 'coords'">
                     <td class="px-2 py-1.5 text-right whitespace-nowrap"
-                        :class="(p.severity ?? 0) > 1 ? 'text-red-600 font-medium' : 'text-gray-500'">
-                      {{ (p.severity ?? 0).toFixed(3) }}
+                        :class="(p.failedLines ?? 0) > 0 ? 'text-red-600 font-medium' : 'text-gray-500'">
+                      {{ (p.residual ?? 0).toFixed(3) }} · {{ p.failedLines ?? 0 }}/{{ p.linesChecked ?? 0 }}
                     </td>
                   </template>
                   <template v-if="checkMethod === 'wtest'">
@@ -415,7 +415,7 @@
               <span>W-test critical value: {{ critW }} · Residuals after Helmert transformation · Bearings South-oriented (0°=S, 90°=W)</span>
             </template>
             <template v-else-if="checkMethod === 'coords'">
-              <span>Acceptance: two-gate consistency verdict — reject a beacon only when it stands apart from the network (Δ/limit &gt; 1.25×median) AND exceeds the class limit (Δ/limit &gt; 1) — no adjustment run</span>
+              <span>Acceptance: Second Schedule para 7(5) on every line between the beacons — a beacon is set aside when lines to it fail while lines among the others pass. Section 67(5) sets no co-ordinate limit; the residual after the common shift and swing is for information.</span>
             </template>
             <template v-else>
               <span>Acceptance: SI 727 Second Schedule severity verdict on line checks — no adjustment run</span>
@@ -745,7 +745,7 @@ import { useSurveyAdjustmentStore } from '@/stores/surveyAdjustmentStore'
 import { useProjectSelectionStore } from '@/stores/projectSelection'
 import { f3, f4, f4s, formatDMS, SAMPLE_DATA } from '@/utils/surveyMath'
 import { generateBeaconAdjustmentReport } from '@/utils/beaconAdjustmentReport'
-import { medianPairwiseDistance, suggestedSigma0 } from '@/utils/si727'
+import { medianPairwiseDistance } from '@/utils/si727'
 import { parseBeaconCsv, CSV_HEADER } from '@/utils/beaconComparisonCsv'
 import { formatDateDDMMYYYY } from '@/utils/dateFormat'
 import {
@@ -787,15 +787,11 @@ const CHECK_METHODS = [
 ]
 const checkMethodHint = computed(() => {
   const hints = {
-    coords: 'Compares each beacon’s survey co-ordinates against the historical record per §67(5); a beacon is adopted when its displacement is within the class co-ordinate limit (no Helmert, no W-test).',
+    coords: 'Sets each beacon’s survey co-ordinates beside the historical record per §67(5) and checks every line between the beacons against Second Schedule para 7(5); a beacon is set aside when lines to it fail while the others pass. No co-ordinate limit (the regulations set none), no Helmert, no W-test.',
     edges: 'Checks every inter-beacon line: distances against the SI 727 Second Schedule para 7(5) Limits of Error, directions on the swing principle (each line\'s swing residual after the length-weighted network swing ω̂, versus the class positional limit as an angle); the severity verdict flags the beacons presumed bad (no adjustment).',
     wtest: '4-parameter Helmert least-squares with iterative Baarda W-test data snooping and χ² consistency checking.',
   }
   return hints[checkMethod.value]
-})
-const posLimit = computed(() => {
-  const s = suggestedSigma0(points.value, surveyClass.value)
-  return 2.45 * (s > 0 ? s : 0.01)
 })
 function setCheckMethod(id) {
   store.setCheckMethod(id)

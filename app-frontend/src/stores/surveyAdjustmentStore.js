@@ -97,8 +97,9 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
     try {
       let res
       if (method.value === 'coords') {
-        // 1. Comparison of co-ordinates vide §67(5): raw survey-vs-historical schedule,
-        //    decided against the class co-ordinate limit. No Helmert, no W-test.
+        // 1. Comparison of co-ordinates vide §67(5): the survey-vs-historical schedule, judged by
+        //    Second Schedule para 7(5) on the lines between the beacons (no co-ordinate limit:
+        //    the regulations set none). No Helmert, no W-test.
         res = coordinateComparison(points.value, surveyClass.value)
       } else if (method.value === 'edges') {
         // 2. Edge compliance with the SI 727 classes: Second Schedule line checks

@@ -299,6 +299,9 @@ export interface BeaconComparisonConfig {
    *  `method` (report layout), which is about how the comparison is presented. */
   checkMethod?: 'coords' | 'edges' | 'wtest';
   
+  /** SI 727 survey class the comparison was judged in (Second Schedule para 7(5) K: A 0,01, B 0,04, C 0,06). */
+  surveyClass?: 'A' | 'B' | 'C';
+  
   /** Current survey S.R. Number */
   currentSRNumber: string;
   

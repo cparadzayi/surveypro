@@ -10,6 +10,9 @@ import type { jsPDF } from 'jspdf';
 import type { ReportOnSurveyData } from '../types/cadastral';
 import { computeExtent, pickSketchScale, makeSketchTransform, midpointOffset } from './beaconComparisonSketchLayout';
 import { formatDMS } from './surveyMath.js';
+import {
+  compareCoordinates67, comparisonConclusion, PARA_7_5_K, type ComparisonResult67,
+} from '../../../app-shared/coordinateComparison67';
 
 /** Layout state threaded through the renderer; `y` is mutated as content is emitted. */
 export interface BeaconComparisonCursor {
@@ -49,6 +52,64 @@ function horizontalLine(cursor: BeaconComparisonCursor): void {
   cursor.doc.line(cursor.margin, cursor.y, cursor.pageWidth - cursor.margin, cursor.y);
 }
 
+/**
+ * Is this saved comparison a comparison of co-ordinates (rather than a Helmert/W-test or an edge check)? Older
+ * saves carry only their summary ("SI 727 §67(5) co-ordinate comparison — class B, co-ordinate limit ...").
+ */
+export function isCoordinateComparison(comparison?: { checkMethod?: string; adjustmentSummary?: string } | null): boolean {
+  if (!comparison) return false;
+  if (comparison.checkMethod) return comparison.checkMethod === 'coords';
+  return /67\(5\)\s*(co-ordinate comparison|comparison of co-ordinates)/i.test(comparison.adjustmentSummary ?? '');
+}
+
+/** The survey class the comparison was judged in: saved, else read from the summary, else B. */
+export function comparisonClass(comparison?: { surveyClass?: string; adjustmentSummary?: string } | null): 'A' | 'B' | 'C' {
+  const c = (comparison?.surveyClass ?? /class\s+([ABC])\b/.exec(comparison?.adjustmentSummary ?? '')?.[1] ?? 'B').toUpperCase();
+  return c === 'A' || c === 'C' ? c : 'B';
+}
+
+/**
+ * The comparison of co-ordinates in steps a junior examiner can follow, every figure checkable against SI 727:
+ * section 67(5) asks for the schedule (black and red) and sets no co-ordinate limit; Second Schedule para 7(5)
+ * limits the difference in the distance between two beacons. Plain text apart from the square-root sign written
+ * out: the built-in PDF font cannot print a Greek delta or a radical, and jsPDF then letter-spaces the line.
+ */
+export function coordsComparisonExplanation(cls: 'A' | 'B' | 'C' = 'B'): { heading: string; steps: string[] } {
+  const k = PARA_7_5_K[cls].toFixed(2).replace('.', ',');
+  return {
+    heading: `How the found beacons were checked (SI 727 section 67(5) and Second Schedule para 7(5), class ${cls} survey):`,
+    steps: [
+      "Schedule: each beacon's co-ordinates from the original data (black) are set beside those from this survey (red), as section 67(5) requires. dY and dX are the differences.",
+      'Section 67(5) sets no limit on dY and dX. A survey may sit shifted or swung against the original data while its beacons agree with each other, so a beacon is not judged by its own dY and dX.',
+      `What the regulations do limit is the distance between two beacons. For every pair of found beacons, the distance from the original co-ordinates and the distance from this survey's co-ordinates are worked out; by para 7(5) their difference must not exceed ${k} x square root of (0,075f + 0,000 15f squared) metres, f being the distance in metres. A shift or a swing leaves every distance unchanged.`,
+      'A beacon has moved when lines to it fail para 7(5) while the lines among the other beacons pass. Such a beacon is set aside; every other found beacon is adopted. Where a single line fails on its own, it does not show which end moved, and that is stated for the surveyor to decide.',
+      "For information only, the survey's common shift and swing against the original data are given, and each beacon's difference once they are removed. No limit is applied to these figures.",
+    ],
+  };
+}
+
+/** Numbered steps with a hanging indent, wrapped to the page. */
+function renderExplanation(cursor: BeaconComparisonCursor, e: { heading: string; steps: string[] }): void {
+  const left = cursor.margin + 5;
+  const width = cursor.pageWidth - cursor.margin * 2 - 10;
+  const headingLines = cursor.doc.splitTextToSize(e.heading, width);
+  headingLines.forEach((line: string) => {
+    checkPageBreak(cursor, 10);
+    cursor.doc.text(line, left, cursor.y);
+    cursor.y += cursor.lineHeight;
+  });
+  e.steps.forEach((step, i) => {
+    const lines = cursor.doc.splitTextToSize(step, width - 7);
+    checkPageBreak(cursor, 10);
+    cursor.doc.text(`${i + 1}.`, left + 1, cursor.y);
+    lines.forEach((line: string) => {
+      checkPageBreak(cursor, 10);
+      cursor.doc.text(line, left + 7, cursor.y);
+      cursor.y += cursor.lineHeight;
+    });
+  });
+}
+
 /** Render the comparison block, advancing `cursor.y`. */
 export function renderBeaconComparison(
   cursor: BeaconComparisonCursor,
@@ -84,27 +145,39 @@ export function renderBeaconComparison(
     cursor.y += cursor.lineHeight;
   }
 
-  // Prefer an explicit adjustment summary (Helmert LSQ + W-test); fall back to the legacy tolerance line.
-  const adjustmentLine =
-    comparison.adjustmentSummary ||
-    `Tolerance Threshold: ±${(comparison.toleranceThreshold ?? 0).toFixed(3)}m`;
-  const adjustmentLines = cursor.doc.splitTextToSize(
-    adjustmentLine,
-    cursor.pageWidth - cursor.margin * 2 - 10
-  );
-  adjustmentLines.forEach((line: string) => {
-    cursor.doc.text(line, cursor.margin + 5, cursor.y);
-    cursor.y += cursor.lineHeight;
-  });
+  // A comparison of co-ordinates is explained in plain steps and judged here, from the printed co-ordinates, by
+  // para 7(5) on the lines between the beacons: the saved summary and conclusion of an older save carried a
+  // co-ordinate limit (0.079 m) and a 1.25 x median rule that are not in SI 727. Any other method keeps its
+  // summary (Helmert LSQ + W-test, edge compliance), or the legacy tolerance line.
+  const coords = isCoordinateComparison(comparison) ? comparisonClass(comparison) : null;
+  const judged = coords ? compareCoordinates67(comparisonPoints(reportData), coords) : null;
+  if (coords) {
+    renderExplanation(cursor, coordsComparisonExplanation(coords));
+  } else {
+    const adjustmentLine =
+      comparison.adjustmentSummary ||
+      `Tolerance Threshold: ±${(comparison.toleranceThreshold ?? 0).toFixed(3)}m`;
+    const adjustmentLines = cursor.doc.splitTextToSize(
+      adjustmentLine,
+      cursor.pageWidth - cursor.margin * 2 - 10
+    );
+    adjustmentLines.forEach((line: string) => {
+      cursor.doc.text(line, cursor.margin + 5, cursor.y);
+      cursor.y += cursor.lineHeight;
+    });
+  }
   cursor.y += 3;
 
   if (comparison.method === 'tabulation' || comparison.method === 'both') {
-    renderBeaconComparisonTable(cursor, reportData);
+    renderBeaconComparisonTable(cursor, reportData, judged);
   }
+
+  if (judged) renderLineCheck(cursor, judged);
 
   renderBeaconComparisonSketch(cursor, reportData);
 
-  if (comparison.conclusion) {
+  const conclusion = judged ? comparisonConclusion(judged) : comparison.conclusion;
+  if (conclusion) {
     cursor.y += 5;
     cursor.doc.setFont('helvetica', 'bold');
     cursor.doc.text('Conclusion:', cursor.margin + 5, cursor.y);
@@ -112,7 +185,7 @@ export function renderBeaconComparison(
 
     cursor.doc.setFont('helvetica', 'normal');
     const lines = cursor.doc.splitTextToSize(
-      comparison.conclusion,
+      conclusion,
       cursor.pageWidth - cursor.margin * 2 - 10
     );
     lines.forEach((line: string) => {
@@ -125,9 +198,82 @@ export function renderBeaconComparison(
   cursor.y += 5;
 }
 
+/** The compared beacons as original (H) and survey (S) co-ordinates, from the printed schedule's data. */
+export function comparisonPoints(reportData: ReportOnSurveyData): { name: string; yH: number; xH: number; yS: number; xS: number }[] {
+  return (reportData.beacons || []).flatMap((b) => {
+    const o = b.originalData?.coordinates, c = b.currentCoordinates;
+    if (!o || !c || ![o.y, o.x, c.y, c.x].every((v) => Number.isFinite(v))) return [];
+    return [{ name: b.beaconId, yH: o.y, xH: o.x, yS: c.y, xS: c.x }];
+  });
+}
+
+const signed3 = (v: number) => `${v >= 0 ? '+' : '-'}${Math.abs(v).toFixed(3)}`;
+
+/**
+ * Second Schedule para 7(5) on every line between the compared beacons: the distance from the original
+ * co-ordinates, the distance from this survey's, their difference, the limit and the result. Preceded by the
+ * survey's common shift and swing (information only).
+ */
+function renderLineCheck(cursor: BeaconComparisonCursor, r: ComparisonResult67): void {
+  if (!r.lines.length) return;
+  const left = cursor.margin + 5;
+  const width = cursor.pageWidth - cursor.margin * 2 - 10;
+  checkPageBreak(cursor, 40);
+  cursor.doc.setFont('helvetica', 'normal');
+  cursor.doc.setFontSize(9);
+  const info = `For information: this survey sits ${signed3(r.shift.dY)} m in Y and ${signed3(r.shift.dX)} m in X `
+    + `from the original data, with a swing of ${Math.abs(r.swingSec).toFixed(1)} seconds. `
+    + 'The Residual column above is each beacon\'s difference once that shift and swing are removed. No limit applies to either.';
+  cursor.doc.splitTextToSize(info, width).forEach((line: string) => {
+    cursor.doc.text(line, left, cursor.y);
+    cursor.y += 5;
+  });
+  cursor.y += 3;
+
+  cursor.doc.setFont('helvetica', 'bold');
+  cursor.doc.setFontSize(10);
+  cursor.doc.text(`Second Schedule para 7(5), class ${r.surveyClass}: distances between the found beacons`, left, cursor.y);
+  cursor.y += 6;
+
+  const cols = [0, 30, 58, 86, 112, 136, 156].map((d) => left + d);
+  const head = () => {
+    cursor.doc.setFont('helvetica', 'bold');
+    cursor.doc.setFontSize(8.5);
+    ['Line', 'Original (m)', 'This survey (m)', 'Difference (m)', 'Limit (m)', 'Result'].forEach((h, i) => cursor.doc.text(h, cols[i], cursor.y));
+    cursor.y += 2;
+    horizontalLine(cursor);
+    cursor.y += 4.5;
+    cursor.doc.setFont('helvetica', 'normal');
+    cursor.doc.setFontSize(8);
+  };
+  head();
+  for (const l of r.lines) {
+    if (cursor.y + 6 > cursor.pageHeight - cursor.margin) {
+      cursor.doc.addPage();
+      cursor.y = cursor.margin;
+      head();
+    }
+    const result = !l.judged ? 'Not judged' : l.pass ? 'Within' : 'Outside';
+    [`${l.from} - ${l.to}`, l.fH.toFixed(3), l.fS.toFixed(3), signed3(l.diff), l.limit.toFixed(3), result]
+      .forEach((c, i) => cursor.doc.text(c, cols[i], cursor.y));
+    cursor.y += 4.5;
+  }
+  cursor.y += 2;
+  cursor.doc.setFontSize(9);
+  const tally = `${r.lines.length - r.linesFailing} of ${r.lines.length} lines within the limit; `
+    + (r.setAside.length ? `set aside: ${r.setAside.join(', ')}.` : 'no beacon set aside.')
+    + ' The limit is worked out with f the shorter of the two distances.';
+  cursor.doc.splitTextToSize(tally, width).forEach((line: string) => {
+    cursor.doc.text(line, left, cursor.y);
+    cursor.y += 5;
+  });
+  cursor.y += 2;
+}
+
 function renderBeaconComparisonTable(
   cursor: BeaconComparisonCursor,
-  reportData: ReportOnSurveyData
+  reportData: ReportOnSurveyData,
+  judged: ComparisonResult67 | null = null,
 ): void {
   const beaconsWithOriginal = (reportData.beacons || []).filter(
     (b) => b.originalData && b.originalData.coordinates
@@ -145,7 +291,9 @@ function renderBeaconComparisonTable(
   const startX = cursor.margin + 5;
   const endX = cursor.pageWidth - cursor.margin - 5;
   const beaconCol = 20;
-  const numericCols = 6;
+  // A comparison of co-ordinates adds the Residual column (difference after the common shift and swing).
+  const residualOf = new Map((judged?.beacons ?? []).map((b) => [b.name, b.residual]));
+  const numericCols = judged ? 7 : 6;
   const numericW = (endX - startX - beaconCol) / numericCols;
   const colX = [
     startX,
@@ -164,10 +312,13 @@ function renderBeaconComparisonTable(
   cursor.doc.setTextColor(...BLACK);
   cursor.doc.text('dY (m)', colX[5], cursor.y);
   cursor.doc.text('dX (m)', colX[6], cursor.y);
+  if (judged) cursor.doc.text('Residual (m)', colX[7], cursor.y);
 
-  cursor.y += rowHeight;
+  cursor.y += rowHeight - 2;
   horizontalLine(cursor);
-  cursor.y += 2;
+  // Room under the rule for the first row's lettering: a baseline 2 mm below it put the tops of the figures
+  // through the line.
+  cursor.y += 5;
 
   cursor.doc.setFont('helvetica', 'normal');
   cursor.doc.setFontSize(7.5);
@@ -192,6 +343,8 @@ function renderBeaconComparisonTable(
     cursor.doc.setTextColor(...BLACK);
     cursor.doc.text(dY, colX[5], cursor.y);
     cursor.doc.text(dX, colX[6], cursor.y);
+    const residual = residualOf.get(beacon.beaconId);
+    if (judged) cursor.doc.text(residual != null ? residual.toFixed(3) : '-', colX[7], cursor.y);
 
     cursor.y += rowHeight;
   });

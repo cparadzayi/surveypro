@@ -321,19 +321,13 @@ describe('resolveDuplicateGroups — shared bnr-part8 escape logic (re-exported 
  * (s > 1.25 × median s) AND breach the class limit (s > 1). A uniform shift/degradation
  * flags nobody but sets verdict.networkWide.
  */
-describe('coordinateComparison — SI 727 §67(5) co-ordinate comparison', () => {
-  it('accepts beacons whose displacement is within 2.45·σ₀ of the class limit and rejects the rest', () => {
-    // SAMPLE_DATA: BM 004 carries a ~0.248 m planted southing blunder; every other
-    // beacon is within ~2 cm. L (median pairwise) = 500 m ⇒ posLimit ≈ 0.17 m on class
-    // B, so exactly BM 004 (s ≈ 1.45) rejects. Old comment "0.055 m" predates the
-    // para 7(5) Limits of Error correction (0.01→0.04).
-    const { pts, posLimit, sigma0 } = coordinateComparison(SAMPLE_DATA, 'B')
-    expect(sigma0).toBeGreaterThan(0)
-    expect(posLimit).toBeCloseTo(2.45 * sigma0, 10)
-    expect(pts.filter(p => p.finalStatus === 'ACCEPT').length).toBe(SAMPLE_DATA.length - 1)
-    const rej = pts.filter(p => p.finalStatus === 'REJECT')
-    expect(rej.map(p => p.name)).toEqual(['BM 004'])
-    expect(rej.every(p => p.rejSource === 'coords')).toBe(true)
+describe('coordinateComparison — SI 727 s.67(5), judged by Second Schedule para 7(5) on the lines', () => {
+  it('passes the sample network: its 0.248 m planted blunder is inside para 7(5) on lines about 500 m long', () => {
+    // The old rule (a 2.45 x sigma0 co-ordinate limit, not in SI 727) rejected BM 004. Para 7(5) allows
+    // 0,04 x sqrt(0,075f + 0,000 15f^2), about 0.35 m at f = 500 m, so no line through it fails.
+    const { pts, comparison67 } = coordinateComparison(SAMPLE_DATA, 'B')
+    expect(comparison67.linesFailing).toBe(0)
+    expect(pts.every(p => p.finalStatus === 'ACCEPT')).toBe(true)
   })
 
   it('records per-beacon raw differences dY/dX and the displacement size', () => {
@@ -345,13 +339,7 @@ describe('coordinateComparison — SI 727 §67(5) co-ordinate comparison', () =>
     expect(typeof bm.rawBrg).toBe('number')
   })
 
-  it('adopts every beacon when no displacement breaches the limit', () => {
-    const tiny = SAMPLE_DATA.slice(0, 4).map(p => ({ ...p, yS: p.yH + 0.001, xS: p.xH - 0.001 }))
-    const { pts } = coordinateComparison(tiny, 'B')
-    expect(pts.every(p => p.finalStatus === 'ACCEPT')).toBe(true)
-  })
-
-  /** Clean ring, residuals ~5–8 mm ⇒ s ≈ 0.08–0.13, class B limit ≈ 0.06 m (para 7(5): L=100 m). */
+  /** Clean ring, residuals ~5-8 mm; lines 50-141 m, para 7(5) class B allows 0.081-0.152 m. */
   const cleanRing = [
     { name: 'A', yH: 50000, xH: 2200500, yS: 50000.005, xS: 2200500.004 },
     { name: 'B', yH: 50100, xH: 2200500, yS: 50100.000, xS: 2200500.006 },
@@ -361,42 +349,48 @@ describe('coordinateComparison — SI 727 §67(5) co-ordinate comparison', () =>
     { name: 'F', yH: 50050, xH: 2200600, yS: 50050.006, xS: 2200600.001 },
   ]
 
-  it('rejects a displaced beacon only when it stands apart from the network AND breaches the limit', () => {
-    const moved = cleanRing.map(p => p.name === 'B'
-      ? { ...p, yS: p.yS + 0.10, xS: p.xS + 0.08 }   // ≈128 mm extra on B
-      : p)
-    const { pts, verdict } = coordinateComparison(moved, 'B')
-    const rej = pts.filter(p => p.finalStatus === 'REJECT')
-    expect(rej.map(p => p.name)).toEqual(['B'])
-    expect(rej.every(p => p.rejSource === 'coords')).toBe(true)
-    expect(pts.filter(p => p.finalStatus === 'ACCEPT').length).toBe(5)
-    expect(verdict.networkWide).toBe(false)
+  it('sets aside a beacon whose lines fail para 7(5) while the lines among the others pass', () => {
+    const moved = cleanRing.map(p => p.name === 'B' ? { ...p, yS: p.yS + 0.15, xS: p.xS + 0.12 } : p)
+    const { pts, verdict, comparison67 } = coordinateComparison(moved, 'B')
     expect(verdict.rejected).toEqual(['B'])
-    expect(verdict.severity.get('B')).toBeGreaterThan(verdict.cut)
-    expect(verdict.severity.get('B')).toBeGreaterThan(1)
-    // The clean beacons sit below the absolute floor even when above the relative cut.
-    for (const p of pts.filter(p => p.name !== 'B')) {
-      expect(p.severity).toBeLessThanOrEqual(1)
-      expect(p.finalStatus).toBe('ACCEPT')
-    }
+    expect(pts.filter(p => p.finalStatus === 'REJECT').map(p => p.rejSource)).toEqual(['coords'])
+    // every failing line runs to B
+    expect(comparison67.lines.filter((l: any) => !l.pass).every((l: any) => l.from === 'B' || l.to === 'B')).toBe(true)
+    expect(pts.find(p => p.name === 'B')!.failedLines).toBeGreaterThan(0)
   })
 
-  it('flags a uniform shift as network-wide rather than rejecting every beacon', () => {
-    const shifted = cleanRing.map(p => ({ ...p, yS: p.yH - 0.20, xS: p.xH + 0.25 }))   // ≈320 mm common shift
-    const { pts, verdict } = coordinateComparison(shifted as any, 'B')
+  it('adopts every beacon of a network shifted 0.32 m as a whole, and reports the shift', () => {
+    const shifted = cleanRing.map(p => ({ ...p, yS: p.yH - 0.20, xS: p.xH + 0.25 }))
+    const { pts, comparison67 } = coordinateComparison(shifted as any, 'B')
     expect(pts.every(p => p.finalStatus === 'ACCEPT')).toBe(true)
-    expect(verdict.rejected).toEqual([])
-    expect(verdict.networkWide).toBe(true)
-    expect(verdict.median).toBeGreaterThanOrEqual(1)
-    expect(pts.every(p => p.severity > 1)).toBe(true)
+    expect(comparison67.linesFailing).toBe(0)
+    expect(comparison67.shift.dY).toBeCloseTo(-0.20, 6)
+    expect(comparison67.shift.dX).toBeCloseTo(0.25, 6)
+    expect(pts.every(p => p.residual < 1e-6)).toBe(true)
   })
 
-  it('reports the consistency median, cut and worst-first order for the report', () => {
-    const { verdict } = coordinateComparison(cleanRing as any, 'B')
+  it('adopts every beacon of a network swung 30 seconds as a whole, and reports the swing', () => {
+    const a = 30 / 206264.806, cy = 50050, cx = 2200550
+    const swung = cleanRing.map(p => {
+      const y = p.yH - cy, x = p.xH - cx
+      return { ...p, yS: cy + y * Math.cos(a) - x * Math.sin(a), xS: cx + y * Math.sin(a) + x * Math.cos(a) }
+    })
+    const { pts, comparison67 } = coordinateComparison(swung as any, 'B')
+    expect(pts.every(p => p.finalStatus === 'ACCEPT')).toBe(true)
+    expect(Math.abs(comparison67.swingSec)).toBeCloseTo(30, 3)
+  })
+
+  it('leaves a single failing line unresolved: the line alone does not show which end moved', () => {
+    const pair = [
+      { name: 'P', yH: 50000, xH: 2200000, yS: 50000, xS: 2200000 },
+      { name: 'Q', yH: 50020, xH: 2200000, yS: 50020.2, xS: 2200000 },
+      { name: 'R', yH: 51000, xH: 2201000, yS: 51000, xS: 2201000 },
+      { name: 'S', yH: 51000, xH: 2199000, yS: 51000, xS: 2199000 },
+    ]
+    const { verdict, comparison67 } = coordinateComparison(pair as any, 'B')
+    expect(comparison67.lines.filter((l: any) => !l.pass).map((l: any) => `${l.from}-${l.to}`)).toEqual(['P-Q'])
     expect(verdict.rejected).toEqual([])
-    expect(verdict.median).toBeGreaterThan(0)
-    expect(verdict.cut).toBeCloseTo(SI727_SEVERITY_FACTOR * verdict.median, 12)
-    expect(verdict.severity.size).toBe(cleanRing.length)
+    expect(verdict.unresolved).toEqual([{ from: 'P', to: 'Q' }])
   })
 })
 

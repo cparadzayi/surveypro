@@ -1,5 +1,6 @@
 import type { FoundBeacon, BeaconComparisonConfig } from '@/types/cadastral'
 import type { HistoricalPointCSV } from '@/services/historicalSurveyPoints'
+import { comparisonConclusion, type ComparisonResult67 } from '../../../app-shared/coordinateComparison67'
 
 export interface StorePoint { id: number; name: string; yH: number; xH: number; yS: number; xS: number }
 export interface EdgeRow {
@@ -25,8 +26,8 @@ export interface EngineResult {
   surveyClass?: 'B' | 'C'
   /** Which comparison check produced this result ('coords' | 'edges' | 'wtest'). */
   method?: 'coords' | 'edges' | 'wtest'
-  /** SI 727 §67(5) co-ordinate comparison acceptance limit in metres ('coords' mode). */
-  posLimit?: number
+  /** 'coords' mode: the s.67(5) comparison judged by Second Schedule para 7(5) on the lines between beacons. */
+  comparison67?: ComparisonResult67
 }
 
 /** Map comparison points (+ engine result) to the Report on Survey FoundBeacon[] shape. */
@@ -64,18 +65,17 @@ export function buildComparisonConfig(
   let conclusion: string
   let adjustmentSummary: string
   if (m === 'coords') {
-    // §67(5) co-ordinate comparison — consistency verdict on the raw residuals, not a fit.
-    const pos = result?.posLimit != null
-      ? `co-ordinate limit ±${result.posLimit.toFixed(4)} m (95% 2-D)`
-      : `co-ordinate limit (class ${cls}, 95% 2-D)`
+    // s.67(5) schedule, judged by Second Schedule para 7(5) on the lines between the beacons (no co-ordinate
+    // limit: the regulations set none). The report re-derives the lines from the printed co-ordinates.
+    const c67 = result?.comparison67
     adjustmentSummary =
-      `SI 727 §67(5) co-ordinate comparison — class ${cls}, ${pos}, `
-      + 'two-gate consistency verdict (reject only when Δ/limit > 1.25 × network median and Δ/limit > 1)'
-    conclusion = rejected.length === 0
-      ? 'From the above comparison, I adopt the positions of all found beacons.'
-      : `From the above comparison, I adopt the positions of the found beacons, except ${rejected.join(', ')}, ` +
-        (rejected.length === 1 ? 'which falls' : 'which fall') +
-        ` outside the SI 727 class ${cls} co-ordinate limit.`
+      `SI 727 s.67(5) comparison of co-ordinates, class ${cls}: Second Schedule para 7(5) on every line between the found beacons`
+      + (c67 ? ` (${c67.lines.length} lines, ${c67.linesFailing} outside the limit)` : '')
+    conclusion = c67
+      ? comparisonConclusion(c67)
+      : rejected.length === 0
+        ? 'From the above comparison, I adopt the positions of all found beacons.'
+        : `From the above comparison, I adopt the positions of the found beacons, except ${rejected.join(', ')}.`
   } else if (m === 'edges') {
     // Second Schedule edge compliance + severity verdict — no adjustment was fitted.
     // Distances use the para 7(5) Limits of Error; directions use the swing principle
@@ -104,6 +104,7 @@ export function buildComparisonConfig(
     adjustmentSummary,
     conclusion,
     ...(result?.method ? { checkMethod: result.method } : {}),
+    ...(result?.surveyClass ? { surveyClass: result.surveyClass } : {}),
     ...(result?.edges ? {
       edgeCompliance: {
         surveyClass: result.surveyClass ?? 'B',

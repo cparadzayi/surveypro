@@ -5,6 +5,7 @@
 // the backend write doors resolve the same schedule (bnr-part8.md); this file re-exports
 // it unchanged and keeps the network-adjustment logic (edgeCompliance, severity) local.
 import { bearingSouth } from '@/utils/surveyMath'
+import { compareCoordinates67 } from '../../../app-shared/coordinateComparison67.js'
 import {
   SI727_CLASS,
   distanceToleranceM,
@@ -209,56 +210,33 @@ export function edgeCompliance(points, cls) {
 }
 
 /**
- * SI 727 §67(5) co-ordinate comparison for every beacon — a pure position schedule,
- * no Helmert and no W-test. This is the "Comparison of co-ordinates vide 67(5)" option.
+ * SI 727 s.67(5) comparison of co-ordinates, judged only by what the regulations state: every line between
+ * two compared beacons against Second Schedule para 7(5), a beacon set aside when lines to it fail while lines
+ * among the others pass, and the common shift and swing reported for information (no co-ordinate limit: the
+ * regulations set none). The rule itself is app-shared/coordinateComparison67.js; this keeps the per-beacon
+ * shape the schedule, sketch and reports read (dY, dX, rawDist, rawBrg, finalStatus, rejSource).
  *
- * Each beacon's raw survey-vs-historical difference (dY, dX = survey minus historical)
- * is turned into a consistency measure s = Δ / posLimit, where Δ = √(dY²+dX²) and
- * posLimit = 2.45·σ₀ is the ≈95 % 2-D circular confidence propagated from a per-coordinate
- * σ₀ (2.45 ≡ √χ²(2,0.95); σ₀ = distanceToleranceM(L)/5, L = median pairwise historical
- * distance — see suggestedSigma0). s = 1.0 means exactly at the class limit.
- *
- * Rejection uses the SAME TWO-GATE verdict as the Second Schedule edge test
- * (severityVerdict): a beacon is flagged only when it stands apart from its own network
- * (s > SI727_SEVERITY_FACTOR × network median s) AND genuinely exceeds the class limit
- * (s > 1). The second gate stops a purely relative cut from condemning a beacon that is
- * comfortably inside tolerance and merely happens to be the least good of a clean set;
- * the survivor floor (MIN_SURVIVORS) keeps the network intact. A uniform shift or a
- * generally degraded network raises every s together, so nothing stands apart and nothing
- * is flagged — then verdict.networkWide (median s ≥ 1) is set so the certification carries
- * the network-as-a-whole case instead of silently approving (or mass-rejecting).
- *
+ * It replaced a co-ordinate limit of 2.45 x (para 7(5) at the median beacon spacing / 5) with a 1.25 x median
+ * reject rule (0.079 m on Brackenhurst): neither figure is in SI 727, and a shifted network failed it while its
+ * beacons agreed with each other.
  * @param {Array<{name,yH,xH,yS,xS}>} points
  * @param {'B'|'C'} cls
- * @returns {{ pts, posLimit, sigma0, surveyClass, verdict }}
- *   pts[i].severity = Δ/posLimit; finalStatus = 'ACCEPT' | 'REJECT' (rejSource 'coords').
- *   verdict = { rejected (worst-first), severity (Map), median, cut, posLimit, sigma0, networkWide }.
  */
 export function coordinateComparison(points, cls) {
-  const sigma0 = suggestedSigma0(points, cls)
-  const posLimit = 2.45 * (sigma0 > 0 ? sigma0 : 0.01)
-  const pts = points.map(p => {
+  const r = compareCoordinates67(points, cls)
+  const by = new Map(r.beacons.map((b) => [b.name, b]))
+  const pts = points.map((p) => {
+    const b = by.get(p.name)
     const dY = p.yS - p.yH
     const dX = p.xS - p.xH
-    const rawDist = Math.sqrt(dY * dY + dX * dX)
-    const severity = posLimit > 0 ? rawDist / posLimit : 0
-    return { ...p, dY, dX, rawDist, rawBrg: bearingSouth(dY, dX), severity, finalStatus: 'ACCEPT', rejSource: null, rejIter: null }
+    return {
+      ...p, dY, dX, rawDist: Math.sqrt(dY * dY + dX * dX), rawBrg: bearingSouth(dY, dX),
+      resY: b?.resY ?? 0, resX: b?.resX ?? 0, residual: b?.residual ?? 0,
+      failedLines: b?.failedLines ?? 0, linesChecked: b?.linesChecked ?? 0,
+      finalStatus: b?.setAside ? 'REJECT' : 'ACCEPT', rejSource: b?.setAside ? 'coords' : null, rejIter: null,
+    }
   })
-  const severity = new Map(pts.map(p => [p.name, p.severity]))
-  const med = median([...severity.values()])
-  const cut = SI727_SEVERITY_FACTOR * med
-  const ranked = [...severity.keys()].sort((a, b) => severity.get(b) - severity.get(a))
-  const maxRejects = Math.max(0, severity.size - MIN_SURVIVORS)
-  const rejected = ranked
-    .filter(name => severity.get(name) > cut && severity.get(name) > 1)
-    .slice(0, maxRejects)
-  const networkWide = pts.length > 0 && med >= 1
-  const verdict = { rejected, severity, median: med, cut, posLimit, sigma0, networkWide }
-  const rejectedSet = new Set(rejected)
-  for (const p of pts) {
-    if (rejectedSet.has(p.name)) { p.finalStatus = 'REJECT'; p.rejSource = 'coords' }
-  }
-  return { pts, posLimit, sigma0, surveyClass: cls, verdict }
+  return { pts, surveyClass: cls, comparison67: r, verdict: { rejected: r.setAside, unresolved: r.unresolved } }
 }
 
 /**

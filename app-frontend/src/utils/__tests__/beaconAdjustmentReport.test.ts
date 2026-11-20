@@ -466,13 +466,16 @@ describe('each comparison check produces its own report', () => {
     const { written } = renderCapturing(makeResult({
       method: 'coords',
       adj: undefined, log: undefined, loo: undefined, edges: undefined,
-      posLimit: 0.0623,
       pts: withRawDiffs(makeResult().pts),
+      comparison67: { surveyClass: 'B', lines: new Array(6).fill({}), linesFailing: 0, beacons: [], shift: { dY: 0.061, dX: -0.059 }, swingSec: 5.2, setAside: [], unresolved: [] },
     }));
     expect(written).toContain('BEACON COMPARISON — SI 727 §67(5) CO-ORDINATES');
     expect(written).toContain('Comparison Schedule — SI 727 §67(5)');
     expect(written.some((w) => /no Helmert or W-test is applied in this mode/i.test(w))).toBe(true);
-    expect(written.some((w) => /co-ordinate limit/.test(w))).toBe(true);
+    // Judged by para 7(5) on the lines; no co-ordinate limit, 95% figure or median cut (none is in SI 727).
+    expect(written.some((w) => /para 7\(5\), class B: 6 of 6 lines/.test(w))).toBe(true);
+    expect(written.some((w) => /sets no co-ordinate limit/.test(w))).toBe(true);
+    expect(written.some((w) => /95% 2-D|Δ\/limit|rejection cut/.test(w))).toBe(false);
     expect(written).not.toContain('Data-Snooping Log (iterative Baarda W-test)');
     expect(written).not.toContain('Transformation Residuals');
     expect(written).not.toContain('Reliability & Validation');

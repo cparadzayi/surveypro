@@ -2440,6 +2440,13 @@ async function handleDataImported(points: CadastralPoint[]) {
         console.log(`  ${idx + 1}. Name: ${pt.name}, Y: ${pt.y}, X: ${pt.x}, Desc: ${pt.description || 'N/A'}`);
       });
       console.log(`[STEP 1 VERIFICATION] ✅ Total ${result.count} points stored in coordinate_points table`);
+
+      // The points are replaced wholesale, but every saved parcel still carries the OLD y/x in its geometry,
+      // vertex list and residuals -- the diagrams and the Area & Consistency read those, so they would print
+      // coordinates that disagree with the field book and the Co-ordinate List (Brackenhurst, Nov 2026).
+      // Rebuild them from the fresh registry, by beacon name; a no-op when nothing moved or no parcels exist.
+      const snapNote = await refreshParcelSnapshotsAfterImport();
+      if (snapNote) notifySuccess(snapNote, { title: 'Saved parcels refreshed' });
     } catch (error) {
       console.error('[CSV Import] ❌ Failed to auto-export to PostGIS:', error);
       console.error('[CSV Import] ❌ Error details:', error.message);

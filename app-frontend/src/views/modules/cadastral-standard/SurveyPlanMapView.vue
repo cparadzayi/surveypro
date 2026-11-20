@@ -1625,6 +1625,24 @@ function calculateOptimalPaperSize(ext: any, scale: number) {
   return { size: 'A0', orientation: 'landscape' as const }
 }
 
+/**
+ * The control points chosen for this project, as saved with it (GET /survey-projects/:id returns them from
+ * project_control_points), else whatever the live workflow state carries. One source for the record, the
+ * field book's E1, the Co-ordinate List and the working plan.
+ */
+async function savedControlPointIds(): Promise<number[]> {
+  if (props.projectId) {
+    try {
+      const project = (await api.get(`/survey-projects/${props.projectId}`)).data?.project
+      const ids = (project?.control_point_ids ?? []).map((id: unknown) => Number(id)).filter((id: number) => Number.isInteger(id) && id > 0)
+      if (ids.length) return ids
+    } catch (e: any) {
+      console.warn('[SurveyPlanMap] could not read the saved control points:', e?.message)
+    }
+  }
+  return selectedControlPointIds(props.workflowState)
+}
+
 async function loadData() {
   try {
     console.log('[SurveyPlanMap] 🔄 Loading data for project:', props.projectId)
@@ -1679,7 +1697,7 @@ async function loadData() {
     // The national control this survey was tied to. Fetched here rather than at
     // generate time so the working plan's spec can be built synchronously, the
     // way the fail-fast check below needs it.
-    const controlIds = selectedControlPointIds(props.workflowState)
+    const controlIds = await savedControlPointIds()
     const carried = localControlToRegistryRows(localControlFrom(props.workflowState), props.workflowState?.projectInfo?.centralMeridian)
     if (controlIds.length > 0 || carried.length > 0) {
       try {
@@ -5565,26 +5583,28 @@ async function generateComprehensivePDF() {
     // Fetch control points if project has them
     let controlPoints: any[] = []
     const centralMeridian = (props.projectInfo as any).centralMeridian ?? controlPointSelectionData?.central_meridian ?? projectSetupData?.central_meridian ?? 31
-    const controlPointIds = controlPointSelectionData?.control_point_ids || projectSetupData?.control_point_ids || []
+    // The selection is saved with the project (project_control_points), not in this raw workflow state, which
+    // had no control-point-selection step for Brackenhurst: reading only that left the field book's E1 and the
+    // Co-ordinate List's trig section empty while four points were selected.
+    let controlPointIds: number[] = await savedControlPointIds()
+    if (!controlPointIds.length) controlPointIds = controlPointSelectionData?.control_point_ids || projectSetupData?.control_point_ids || []
     
     const carriedControl = localControlFrom(workflowState)
     if (controlPointIds.length > 0 || carriedControl.length > 0) {
       try {
         // Raw fetch() with no Authorization header, so this only worked while
         // /api/control-points was unauthenticated. Uses the shared client now.
-        const response = await api.get('/control-points', {
-          params: { gauss_lo: centralMeridian, limit: 5000 }
-        })
-        const data = response.data
-
-        if (data.data && Array.isArray(data.data)) {
-          controlPoints = [
-            ...data.data.filter((cp: any) => controlPointIds.includes(cp.id)),
-            // control the calibration report names that the registry does not hold (6091/V), with its own coordinates
-            ...localControlToRegistryRows(carriedControl, centralMeridian),
-          ]
-          console.log(`[ComprehensivePDF] ✅ Found ${controlPoints.length} control points`)
-        }
+        // Each by id, as the working plan fetches them: a list filtered by meridian silently drops every point
+        // when the meridian it is asked for is not the one the points are on.
+        const rows = await Promise.all(
+          controlPointIds.map((id: number) => api.get(`/control-points/${id}`).then(r => r.data).catch(() => null)),
+        )
+        controlPoints = [
+          ...rows.filter(Boolean),
+          // control the calibration report names that the registry does not hold (6091/V), with its own coordinates
+          ...localControlToRegistryRows(carriedControl, centralMeridian),
+        ]
+        console.log(`[ComprehensivePDF] ✅ Found ${controlPoints.length} of ${controlPointIds.length + carriedControl.length} control points`)
       } catch (error) {
         console.error('[ComprehensivePDF] ❌ Failed to fetch control points:', error)
       }

@@ -3859,14 +3859,21 @@ function buildStandaloneFieldBook() {
  * calibration. Empty when none are chosen or they cannot be read.
  */
 async function loadProjectControlPoints(): Promise<any[]> {
-  const ids = workflowState.projectInfo.controlPointIds ?? [];
+  const projectId = workflowState.projectInfo.projectId;
+  if (!projectId) return [];
+  // The selection saved with the project (project_control_points) is the authority; the in-memory copy is a fallback.
+  let ids: number[] = workflowState.projectInfo.controlPointIds ?? [];
+  try {
+    const saved = (await api.get(`/survey-projects/${projectId}`)).data?.project?.control_point_ids;
+    if (Array.isArray(saved) && saved.length) ids = saved.map(Number);
+  } catch { /* keep the in-memory ids */ }
   const local = localControlFrom(workflowState);
-  if (!workflowState.projectInfo.projectId || (!ids.length && !local.length)) return [];
+  if (!ids.length && !local.length) return [];
   const meridian = selectedProject.value?.central_meridian ?? workflowState.projectInfo.centralMeridian ?? 31;
   try {
-    const response = await api.get('/control-points', { params: { gauss_lo: meridian, limit: 5000 } });
-    const rows = Array.isArray(response.data?.data) ? response.data.data : [];
-    return [...rows.filter((cp: any) => ids.includes(cp.id)), ...localControlToRegistryRows(local, meridian)];
+    // Each by id: a list filtered by meridian drops every point when the meridian is not the points' own.
+    const rows = await Promise.all(ids.map((id) => api.get(`/control-points/${id}`).then((r) => r.data).catch(() => null)));
+    return [...rows.filter(Boolean), ...localControlToRegistryRows(local, meridian)];
   } catch (error) {
     console.error('[FieldBook] Could not load the control points for E1:', error);
     return [];

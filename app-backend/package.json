@@ -12,6 +12,7 @@
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "migrate": "node scripts/migrate.js",
     "migrate:status": "node scripts/migrations-status.js",
+    "verify:print": "node scripts/verify-print.js",
     "setup:schemas": "node scripts/setup-surveyor-schemas.js",
     "setup:auto": "node scripts/auto-setup.js",
     "seed:sample": "node scripts/seed-sample-points.mjs",

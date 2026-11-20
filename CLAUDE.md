@@ -249,6 +249,10 @@ The `gdal` render engine was also **broken regardless of version**: it wrote par
 
 `gdalDiscovery.qgisProjDir()` is now unused (superseded by `gdalEnv`) and can be removed.
 
+### Verify the printed document before it is lodged
+
+`cd app-backend && npm run verify:print -- "<project name>"` reads the generated `Comprehensive_Latest.pdf` (default: `<Documents>/<working directory>/output/calculations/`) and holds what it PRINTS to the project's coordinate points, rounded as the record rounds them (banker's, 3 dp to 2 dp). Exit 1 means do not print. Errors: template beacon names (BM 001 - BM 008 reached the Surveyor-General in the Beacon Comparison and Report on Survey of a pack whose project had no comparison saved), a Beacon Comparison with none saved, and a real beacon's figure printed up to 0.025 m off (a diagram and the Co-ordinate List disagreeing, or half-up rounding of a half). Warnings: a large figure that is no coordinate of the survey (sample or foreign data), and a point that never appears. Logic and tests: `src/utils/printVerify.js`, `printVerify.test.js`. **Comparing the stored data is not this check**: a document can be generated from other data than the store holds, so the finished PDF has to be read.
+
 ### Test suite runtime
 
 `npm test` takes **over two hours**, which makes it unusable as a pre-commit gate and is the reason changes here get verified in slices. It is not one slow test but roughly a dozen, and they share a cause:

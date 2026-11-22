@@ -120,6 +120,8 @@ export interface ComprehensiveDocumentData {
 
   /** Computation behind each diagram connection; printed in the Calculations */
   connectingData?: ConnectingDataRow[];
+  /** The record's annexure that sets out the Beacon Comparison method; the section points to it. */
+  comparisonMethodInAnnexure?: string;
   /** SI 727 para (5) on-line results, printed after the connecting data. */
   alignment?: AlignmentResult[];
 
@@ -214,7 +216,8 @@ export class ComprehensiveDocumentGenerator {
       siteCalibration: data.siteCalibration,
       partyWalls: data.partyWalls,
       connectingData: data.connectingData,
-      alignment: data.alignment
+      alignment: data.alignment,
+      comparisonMethodInAnnexure: data.comparisonMethodInAnnexure
     });
     
     // Generate cover page separately

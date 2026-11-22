@@ -448,6 +448,10 @@ export class CoordinateListGenerator {
       lookupStore.fieldBookPageLookup
     );
     
+    // A new jsPDF opens with an empty page and the title page adds its own, so page 1 was blank: the list (and
+    // the record it went into) carried a blank page before its title page. Drop it: the title page is page 1.
+    if (pdf.getNumberOfPages() > 1) pdf.deletePage(1);
+
     // Use actual PDF page count to avoid off-by-one errors
     // this.currentPage represents the last page number used, not the next page
     const pageCount = this.currentPage - 100 + 1;  // +1 to include the current page

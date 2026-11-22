@@ -50,6 +50,8 @@ export interface ComprehensivePDFOptions {
   dsg?: DSGCertificateData
   /** The plans (each stand's Diagram, the Working Plan), appended last in this order; omit to leave them out */
   plans?: { label: string; blob: Blob }[]
+  /** Annexures (e.g. the Beacon Comparison method), appended after the plans: the very end of the record */
+  annexures?: { label: string; blob: Blob }[]
   /**
    * Asked before each slow stage and once more just before anything is written. Returning true stops
    * the run with `cancelled: true` and nothing saved. After the save has started it is not asked again:
@@ -205,6 +207,7 @@ export async function generateComprehensiveLatestPDF(
     dispensation,
     dsg,
     plans,
+    annexures,
     shouldCancel,
     onSaveStart
   } = options
@@ -267,7 +270,8 @@ export async function generateComprehensiveLatestPDF(
     // Fold the Dispensation Certificate in at the very bottom of the record.
     const withDispensation = await appendDispensationCertificate(withNarrative.merged, dispensation)
     const withDSG = await appendDSGCertificate(withDispensation.merged, dsg)
-    const finalMergedBytes = await appendPlans(withDSG.merged, plans)
+    // The annexures close the record, after the plans (the same tail append: nothing cross-references them).
+    const finalMergedBytes = await appendPlans(await appendPlans(withDSG.merged, plans), annexures)
     const dispensationBlob = withDispensation.dispensationBlob
     const dsgBlob = withDSG.dsgBlob
 

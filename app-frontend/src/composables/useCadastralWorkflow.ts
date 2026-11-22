@@ -147,7 +147,7 @@ function buildFieldBook() {
   const observed = workflowState.importedPoints.filter(point => !isCalculatedPoint(point))
   const calculated = workflowState.importedPoints.filter(point => isCalculatedPoint(point))
   const pagination = paginateFieldBook(
-    observed.map(point => ({ id: point.id })),
+    observed.map(point => ({ id: point.id, description: point.description ?? '' })),
     {
       hasCalibration: Boolean(workflowState.documents.siteCalibration),
       hasCover: false,

@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { jsPDF } from 'jspdf'
 import {
-  coordsComparisonExplanation, renderBeaconComparison, isCoordinateComparison, comparisonClass,
+  coordsComparisonExplanation, renderBeaconComparison, isCoordinateComparison, comparisonClass, comparisonMethodAnnexurePDF,
   type BeaconComparisonCursor,
 } from '../beaconComparisonSection'
 
@@ -102,5 +102,35 @@ describe('the section, on Brackenhurst', () => {
     expect(all).toContain('4-parameter Helmert least-squares')
     expect(all).toContain('saved conclusion')
     expect(all).not.toContain('Second Schedule para 7(5), class')
+  })
+})
+
+describe('the method as an annexure of the record', () => {
+  it('the section points to the annexure instead of setting out the steps', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+    const texts: string[] = []
+    const text = doc.text.bind(doc)
+    ;(doc as any).text = (s: any, x: number, y: number, o?: any) => { [].concat(s).forEach((t: any) => texts.push(String(t))); return text(s, x, y, o) }
+    renderBeaconComparison({ doc, margin: 20, lineHeight: 6, pageWidth: 210, pageHeight: 297, y: 30 },
+      { beacons: beacons(), beaconComparison: { method: 'tabulation', adjustmentSummary: OLD_SAVED } } as any,
+      { methodInAnnexure: 'Annexure A' })
+    const all = texts.join(' ').replace(/\s+/g, ' ')
+    expect(all).toContain('see Annexure A at the end of this record')
+    expect(all).not.toContain('Section 67(5) sets no limit on dY and dX')
+    // the line check and conclusion stay in the section
+    expect(all).toContain('36 of 36 lines within the limit')
+  })
+
+  it('the annexure carries the heading and every step, on a page of its own', async () => {
+    const blob = await comparisonMethodAnnexurePDF({ beacons: beacons(), beaconComparison: { method: 'tabulation', adjustmentSummary: OLD_SAVED } } as any)
+    const raw = Buffer.from(new Uint8Array(await blob!.arrayBuffer())).toString('latin1')
+    expect(raw).toContain('(ANNEXURE A: METHOD OF THE BEACON COMPARISON) Tj')
+    expect(raw).toContain('(1.) Tj')
+    expect(raw).toContain('(5.) Tj')
+    expect((raw.match(/\/Type \/Page\b/g) || []).length).toBe(1)
+  })
+
+  it('there is no annexure for another method', async () => {
+    expect(await comparisonMethodAnnexurePDF({ beacons: beacons(), beaconComparison: { method: 'tabulation', adjustmentSummary: '4-parameter Helmert least-squares' } } as any)).toBeNull()
   })
 })

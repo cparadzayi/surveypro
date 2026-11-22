@@ -9,6 +9,16 @@
  */
 
 import { PDFDocument } from 'pdf-lib'
+
+/** The same PDF without its first page (a section's own title page); a one-page PDF is returned unchanged. */
+export async function withoutFirstPage(blob: Blob): Promise<Blob> {
+  const src = await PDFDocument.load(await blob.arrayBuffer())
+  if (src.getPageCount() < 2) return blob
+  const out = await PDFDocument.create()
+  const pages = await out.copyPages(src, src.getPageIndices().slice(1))
+  pages.forEach((p) => out.addPage(p))
+  return new Blob([(await out.save()) as any], { type: 'application/pdf' })
+}
 import type { SiteCalibration } from './siteCalibration'
 import type {
   DocumentMeasurements,
@@ -51,6 +61,8 @@ export interface TwoPassDocumentData {
   partyWalls?: PartyWallRow[]
   /** The computation behind each connection lettered on a diagram; printed in the Calculations */
   connectingData?: ConnectingDataRow[]
+  /** The record's annexure that sets out the Beacon Comparison method (e.g. "Annexure A"); the section points to it. */
+  comparisonMethodInAnnexure?: string
   /** SI 727 para (5): new beacons on the parent boundary, with their displacement from it. */
   alignment?: AlignmentResult[]
 }
@@ -215,7 +227,10 @@ export class TwoPassDocumentGenerator {
       measurements.calculations.pointPageMap, // ✅ Accurate calc pages!
       fieldBookResult.pointPageMap // ✅ Accurate field book pages!
     )
-    pdfs.push(coordListPDF)
+    // The record carries the list without its own title page (survey of, district, S.R. No., surveyor, date,
+    // total points): the record's cover already states all of it. The title page is unnumbered and not counted
+    // in the measured pages (they start at 100), so no page number moves. The list saved on its own keeps it.
+    pdfs.push(await withoutFirstPage(coordListPDF))
     console.log(`     ✓ ${measurements.coordinateList.pages} pages with accurate cross-refs`)
 
     // 3. Generate the Beacon Comparison Report (before Calculations, in sequence)
@@ -315,7 +330,7 @@ export class TwoPassDocumentGenerator {
     // renderer will print them.
     const points = this.fieldBookPoints(data)
     const pagination = paginateFieldBook(
-      points.map(pt => ({ id: pt.pointId })),
+      points.map(pt => ({ id: pt.pointId, description: pt.description ?? '' })),
       {
         hasCalibration: Boolean(data.siteCalibration),
         hasCover: true,
@@ -454,11 +469,15 @@ export class TwoPassDocumentGenerator {
     startingPage: number
   ): Promise<{ pdf: Blob; pageCount: number } | null> {
     if (!data.reportData) return null
-    const options: BeaconComparisonReportOptions = data.reportOptions || {
-      surveyorName: data.surveyorInfo.name,
-      licenseNumber: data.surveyorInfo.licenseNumber,
-      surveyDate: data.surveyorInfo.surveyDate,
-      surveyOf: data.surveyorInfo.projectTitle
+    const options: BeaconComparisonReportOptions = {
+      ...(data.reportOptions || {
+        surveyorName: data.surveyorInfo.name,
+        licenseNumber: data.surveyorInfo.licenseNumber,
+        surveyDate: data.surveyorInfo.surveyDate,
+        surveyOf: data.surveyorInfo.projectTitle
+      }),
+      // Measured and rendered with the same setting, so the page count cannot drift between the passes.
+      ...(data.comparisonMethodInAnnexure ? { methodInAnnexure: data.comparisonMethodInAnnexure } : {}),
     }
     return generateBeaconComparisonReportPDF(data.reportData, options, startingPage)
   }

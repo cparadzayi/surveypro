@@ -1,3 +1,5 @@
+import { jsPDF } from 'jspdf';
+
 /**
  * Every field-book page number is decided here, and nowhere else.
  *
@@ -99,6 +101,41 @@ export function computePartyWallPaginate(partyWallCount: number): number[][] {
 
 export interface FieldBookPaginationPoint {
   id: string;
+  /** The observation's description. A long one wraps over more than one row of the page (descriptionLines). */
+  description?: string | null;
+}
+
+/**
+ * Where an observation page's Description column sits, in mm: after Point, Y, X, Status and Date (the renderer
+ * draws its columns from these), to the right margin. A description wider than this wraps onto further rows.
+ */
+export const FIELD_BOOK_DESCRIPTION = { x: 15 + 18 + 28 + 28 + 16 + 22, right: 210 - 15, fontSize: 10, maxLines: 3 } as const;
+
+let measurer: jsPDF | null = null;
+
+/**
+ * The lines an observation's description is printed on: wrapped to the Description column with the renderer's
+ * own font and size, so the rows counted here are the rows drawn. At most FIELD_BOOK_DESCRIPTION.maxLines; a
+ * longer one ends in "..." on its last line. Pagination and the renderer both call this, so they cannot differ.
+ */
+export function descriptionLines(description?: string | null): string[] {
+  const text = String(description ?? '').trim() || '-';
+  measurer ??= new jsPDF({ unit: 'mm', format: 'a4' });
+  measurer.setFont('helvetica', 'normal');
+  measurer.setFontSize(FIELD_BOOK_DESCRIPTION.fontSize);
+  const width = FIELD_BOOK_DESCRIPTION.right - FIELD_BOOK_DESCRIPTION.x;
+  const lines: string[] = measurer.splitTextToSize(text, width);
+  if (lines.length <= FIELD_BOOK_DESCRIPTION.maxLines) return lines;
+  const kept = lines.slice(0, FIELD_BOOK_DESCRIPTION.maxLines);
+  let last = kept[kept.length - 1];
+  while (last.length && measurer.getTextWidth(last + '...') > width) last = last.slice(0, -1);
+  kept[kept.length - 1] = last.trimEnd() + '...';
+  return kept;
+}
+
+/** Rows a point takes on an observation page: one per line of its description. */
+function rowsOf(point: FieldBookPaginationPoint): number {
+  return point.description == null ? 1 : descriptionLines(point.description).length;
 }
 
 export interface FieldBookPagination {
@@ -110,6 +147,8 @@ export interface FieldBookPagination {
   partyWallPageMap: Record<number, string>;
   /** E-page int of the first party-wall page (0 when there are no rows) */
   partyWallBasePage: number;
+  /** The observation pages: the indices (into `points`) printed on each, in order. */
+  observationPages: number[][];
   /** numbered (E) pages */
   ePageCount: number;
   /** physical pages, including the unnumbered cover */
@@ -144,13 +183,22 @@ export function paginateFieldBook(
   // caller can get the numbering wrong by not knowing which of the two it is.
   const offset = 1;
 
-  const pointPageMap: Record<string, string> = {};
+  // Observation pages are filled by ROWS: a point whose description wraps takes one row per line, and a point
+  // that does not fit in what is left of a page starts the next one.
+  const observationPages: number[][] = [];
+  let used = FIELD_BOOK_POINTS_PER_PAGE;
   points.forEach((point, index) => {
-    const page = Math.floor(index / FIELD_BOOK_POINTS_PER_PAGE) + 1 + offset;
-    pointPageMap[point.id] = `E${page}`;
+    const rows = Math.min(rowsOf(point), FIELD_BOOK_POINTS_PER_PAGE);
+    if (used + rows > FIELD_BOOK_POINTS_PER_PAGE) { observationPages.push([]); used = 0; }
+    observationPages[observationPages.length - 1].push(index);
+    used += rows;
+  });
+  const pointPageMap: Record<string, string> = {};
+  observationPages.forEach((indices, p) => {
+    for (const index of indices) pointPageMap[points[index].id] = `E${p + 1 + offset}`;
   });
 
-  const pointPages = Math.ceil(points.length / FIELD_BOOK_POINTS_PER_PAGE);
+  const pointPages = observationPages.length;
 
   // The CALCULATED POINTS block: its own page(s) after the observations,
   // numbered in the same E-series so the CO-ORDINATE LIST's F. B cell can
@@ -179,6 +227,7 @@ export function paginateFieldBook(
 
   return {
     pointPageMap,
+    observationPages,
     calibrationPage: hasCalibration ? 'E1' : null,
     partyWallPageMap,
     partyWallBasePage: partyWallPages.length ? partyWallBasePage : 0,

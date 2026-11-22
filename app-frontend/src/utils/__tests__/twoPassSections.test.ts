@@ -104,6 +104,22 @@ describe('generateWithTwoPass — section blobs', () => {
     }
   }, 30000);
 
+  it("leaves the Co-ordinate List's own title page out of the record, and keeps it on the list saved alone", async () => {
+    const gen = new ComprehensiveDocumentGenerator();
+    const result: any = await gen.generateWithTwoPass({ ...baseData } as any);
+    const raw = async (b: Blob) => Buffer.from(new Uint8Array(await b.arrayBuffer())).toString('latin1');
+    const pages = async (b: Blob) => (await PDFDocument.load(await b.arrayBuffer())).getPageCount();
+    // The title page is the one with "Total Points:"; the record's own cover states the survey.
+    expect(await raw(result.sections.coordinateList)).toContain('(Total Points:)');
+    expect(await raw(result.pdf)).not.toContain('(Total Points:)');
+    // Exactly that one page is dropped: the record is its sections less one page.
+    const s = result.sections;
+    const sum = (await pages(s.cover)) + (await pages(s.fieldBook)) + (await pages(s.coordinateList)) + (await pages(s.calculations));
+    expect(await pages(result.pdf)).toBe(sum - 1);
+    // The list's numbered pages are what the record measures; the title page never counted.
+    expect(result.measurements.coordinateList.pages).toBe((await pages(s.coordinateList)) - 1);
+  }, 30000);
+
   it('omits the beacon comparison and leaves Calculations unshifted with no report data', async () => {
     const gen = new ComprehensiveDocumentGenerator();
     const result = await gen.generateWithTwoPass({ ...baseData } as any);
@@ -165,7 +181,9 @@ describe('generateWithTwoPass — section blobs', () => {
     const mergedBlobs = mergeSpy.mock.calls[0][0] as Blob[];
 
     const fieldBookIdx = mergedBlobs.indexOf(result.sections!.fieldBook);
-    const coordListIdx = mergedBlobs.indexOf(result.sections!.coordinateList);
+    // The record merges the list without its title page, so it is a copy of the section: found by its content.
+    const texts = await Promise.all(mergedBlobs.map(async (b) => Buffer.from(new Uint8Array(await b.arrayBuffer())).toString('latin1')));
+    const coordListIdx = texts.findIndex((t) => t.includes('(CO-ORDINATE LIST)'));
     const beaconIdx = mergedBlobs.indexOf(result.sections!.beaconComparison!);
     const calcIdx = mergedBlobs.indexOf(result.sections!.calculations);
 
@@ -196,7 +214,7 @@ describe('generateWithTwoPass — section blobs', () => {
       ]);
 
     expect(coverAndBodyPages).toBe(
-      2 /* cover */ + fieldBookPages + coordListPages + beaconPages + calcPages
+      2 /* cover */ + fieldBookPages + (coordListPages - 1 /* its title page */) + beaconPages + calcPages
     );
 
     mergeSpy.mockRestore();

@@ -9,7 +9,7 @@ import { bankersRound } from './cadastral-precision';
 import type { SiteCalibration } from './siteCalibration';
 import { renderCalibrationContent } from './calibration-pdf';
 import { formatSurveyDate, formatSurveyMonthYear } from './surveyDate';
-import { paginateFieldBook, computePartyWallPaginate, FIELD_BOOK_POINTS_PER_PAGE, FIELD_BOOK_LAYOUT, type PartyWallRow } from './fieldBookPagination';
+import { paginateFieldBook, computePartyWallPaginate, descriptionLines, FIELD_BOOK_POINTS_PER_PAGE, FIELD_BOOK_LAYOUT, type PartyWallRow } from './fieldBookPagination';
 import { isCalculatedPoint } from './calculatedPoint';
 
 export interface FieldBookPoint {
@@ -156,12 +156,13 @@ export class FieldBookGenerator {
       console.log(`[FieldBook] Generated control points page E1 (${controlPoints.length})`);
     }
 
-    const totalPointPages = Math.ceil(points.length / FIELD_BOOK_POINTS_PER_PAGE);
+    // The pages are the pagination's own: a long description wraps over more than one row, so a page holds as
+    // many points as their rows allow, and every page number cited elsewhere was counted the same way.
+    const totalPointPages = pagination.observationPages.length;
     for (let pageIndex = 0; pageIndex < totalPointPages; pageIndex++) {
       startPage();
 
-      const startIndex = pageIndex * FIELD_BOOK_POINTS_PER_PAGE;
-      const pagePoints = points.slice(startIndex, startIndex + FIELD_BOOK_POINTS_PER_PAGE);
+      const pagePoints = pagination.observationPages[pageIndex].map((i) => points[i]);
 
       // Derived from this page's own position, not looked up by id: a
       // re-observed beacon can carry the same id on an earlier AND a later
@@ -503,42 +504,16 @@ export class FieldBookGenerator {
       // prints exactly as recorded, never as the literal words "Invalid Date".
       pdf.text(formatSurveyDate(point.surveyDate), col5, yPosition);
       
-      // Description (truncate if too long)
-      const description = point.description || '-';
-      const remainingWidth = pageWidth - col6 - this.options.marginRight;
-      if (pdf.getTextWidth(description) > remainingWidth) {
-        const maxChars = Math.floor((remainingWidth / pdf.getTextWidth('M')) * 0.85);
-        const wrappedDesc = description.substring(0, maxChars - 3) + '...';
-        pdf.text(wrappedDesc, col6, yPosition);
-      } else {
-        pdf.text(description, col6, yPosition);
-      }
+      // Description, wrapped to the column: one row per line ("12mm iron peg in concrete (Reference Mark)" used to
+      // be cut to "12mm iron peg in..."). The lines are the pagination's own (descriptionLines), so the rows
+      // drawn are the rows counted.
+      const lines = descriptionLines(point.description);
+      lines.forEach((line, i) => pdf.text(line, col6, yPosition + i * rowHeight));
       
-      yPosition += rowHeight;
+      yPosition += rowHeight * lines.length;
     });
     
-    // Empty row grid lines (for remaining rows on page)
-    const pointsPerPage = FIELD_BOOK_POINTS_PER_PAGE;
-    const currentRowCount = points.length;
-    const targetRowCount = Math.min(
-      pointsPerPage, 
-      Math.floor((maxYPosition - (yPosition - rowHeight)) / rowHeight)
-    );
-    
-    if (currentRowCount < targetRowCount) {
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(10);
-      pdf.setTextColor(200, 200, 200);
-      
-      for (let i = currentRowCount; i < targetRowCount; i++) {
-        pdf.setLineWidth(0.1);
-        pdf.line(col1, yPosition + 1.5, pageWidth - this.options.marginRight, yPosition + 1.5);
-        yPosition += rowHeight;
-      }
-      
-      pdf.setTextColor(0, 0, 0);
-      pdf.setLineWidth(0.2);
-    }
+    // The page ends with its last observation: no empty ruled rows after the field notes.
   }
 
   /**

@@ -86,7 +86,7 @@ function buildFieldBookSheet(ws: CadastralWorkflowState): XLSX.WorkSheet {
     // have to start one page later to match it. Read the flag from the same
     // workflow state the primary branch's page numbers come from.
     const { pointPageMap } = paginateFieldBook(
-      fbPoints.map(p => ({ id: p.id })),
+      fbPoints.map(p => ({ id: p.id, description: p.description ?? '' })),
       {
         hasCalibration: Boolean(ws.documents?.siteCalibration),
         hasCover: false,

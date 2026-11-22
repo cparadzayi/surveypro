@@ -110,7 +110,7 @@ export class CalculationsPart1Generator {
         'pointPageMap to cite a calibrated survey correctly.',
       );
       const { pointPageMap } = paginateFieldBook(
-        observed.map(pt => ({ id: pt.pointId })),
+        observed.map(pt => ({ id: pt.pointId, description: pt.description ?? '' })),
         { hasCalibration: false, hasCover: false, calculated: calculated.map(pt => ({ id: pt.pointId })) },
       )
       Object.assign(lookup, pointPageMap)

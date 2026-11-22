@@ -88,6 +88,33 @@ export function coordsComparisonExplanation(cls: 'A' | 'B' | 'C' = 'B'): { headi
   };
 }
 
+/**
+ * The annexure that sets out the method of a comparison of co-ordinates, for the end of the Complete Survey
+ * Record: a page of its own, headed with the annexure's name, then the same steps the section would print inline.
+ * Null when the saved comparison is not a comparison of co-ordinates (another method keeps its own summary).
+ */
+export async function comparisonMethodAnnexurePDF(
+  reportData: ReportOnSurveyData | null | undefined,
+  annexure = 'Annexure A',
+): Promise<Blob | null> {
+  const comparison = reportData?.beaconComparison;
+  if (!comparison || !hasBeaconComparisonData(reportData) || !isCoordinateComparison(comparison)) return null;
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const cursor: BeaconComparisonCursor = {
+    doc, margin: 20, lineHeight: 6.5,
+    pageWidth: doc.internal.pageSize.getWidth(), pageHeight: doc.internal.pageSize.getHeight(), y: 25,
+  };
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text(`${annexure.toUpperCase()}: METHOD OF THE BEACON COMPARISON`, cursor.margin, cursor.y);
+  cursor.y += 10;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  renderExplanation(cursor, coordsComparisonExplanation(comparisonClass(comparison)));
+  return new Blob([doc.output('arraybuffer')], { type: 'application/pdf' });
+}
+
 /** Numbered steps with a hanging indent, wrapped to the page. */
 function renderExplanation(cursor: BeaconComparisonCursor, e: { heading: string; steps: string[] }): void {
   const left = cursor.margin + 5;
@@ -113,7 +140,13 @@ function renderExplanation(cursor: BeaconComparisonCursor, e: { heading: string;
 /** Render the comparison block, advancing `cursor.y`. */
 export function renderBeaconComparison(
   cursor: BeaconComparisonCursor,
-  reportData: ReportOnSurveyData
+  reportData: ReportOnSurveyData,
+  /**
+   * In the Complete Survey Record the method of a comparison of co-ordinates is set out once, in an annexure at
+   * the end (comparisonMethodAnnexurePDF); the section then says where, e.g. "Annexure A". A document printed on
+   * its own (no annexure) keeps the steps inline.
+   */
+  opts: { methodInAnnexure?: string } = {},
 ): void {
   const comparison = reportData.beaconComparison;
   if (!comparison) return;
@@ -151,7 +184,13 @@ export function renderBeaconComparison(
   // summary (Helmert LSQ + W-test, edge compliance), or the legacy tolerance line.
   const coords = isCoordinateComparison(comparison) ? comparisonClass(comparison) : null;
   const judged = coords ? compareCoordinates67(comparisonPoints(reportData), coords) : null;
-  if (coords) {
+  if (coords && opts.methodInAnnexure) {
+    const ref = `How the found beacons were checked (SI 727 section 67(5) and Second Schedule para 7(5), class ${coords} survey): see ${opts.methodInAnnexure} at the end of this record.`;
+    cursor.doc.splitTextToSize(ref, cursor.pageWidth - cursor.margin * 2 - 10).forEach((line: string) => {
+      cursor.doc.text(line, cursor.margin + 5, cursor.y);
+      cursor.y += cursor.lineHeight;
+    });
+  } else if (coords) {
     renderExplanation(cursor, coordsComparisonExplanation(coords));
   } else {
     const adjustmentLine =

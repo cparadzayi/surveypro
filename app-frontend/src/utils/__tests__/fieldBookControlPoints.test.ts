@@ -54,3 +54,15 @@ describe("the Co-ordinate List's S.R. number", () => {
     expect(srNumberValue('188/2026', now)).toBe('188/2026')
   })
 })
+
+describe('a point page', () => {
+  it('ends with its last observation: no empty ruled rows after the field notes', async () => {
+    const two = await new FieldBookGenerator().generateFieldBookPDF(
+      [points[0], { ...points[0], id: 'SD2' }], { surveyorName: 'C. Paradzayi' }, undefined, [], control)
+    const page = pageText(two.pdf, 3)   // cover, E1 control points, then the point page E2
+    expect(page).toContain('(E2)')
+    expect(page).toContain('(SD2)')
+    // Only the rule under the column header: the 40-odd empty rows used to be ruled to the foot of the page.
+    expect((page.match(/ l\b/g) || []).length).toBeLessThanOrEqual(2)
+  })
+})

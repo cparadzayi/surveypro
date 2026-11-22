@@ -22,6 +22,8 @@ export interface BeaconComparisonReportOptions {
   licenseNumber: string;
   surveyDate: string;
   surveyOf: string;
+  /** The record's annexure that sets out the comparison method (e.g. "Annexure A"); omit to print it inline. */
+  methodInAnnexure?: string;
 }
 
 const MARGIN = 20;
@@ -92,7 +94,7 @@ export async function generateBeaconComparisonReportPDF(
     pageHeight,
     y,
   };
-  renderBeaconComparison(cursor, reportData!);
+  renderBeaconComparison(cursor, reportData!, { methodInAnnexure: options.methodInAnnexure });
 
   stampSequentialPageNumbers(doc, startingPage);
 

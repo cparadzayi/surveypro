@@ -521,6 +521,7 @@ import type { PartyWallRow } from '@/utils/fieldBookPagination'
 import { makeConnection, upsertConnection, dismissConnection, autoConnections, mergeConnections, connectingDataRows, distanceBetween, bearingSouthBetween, formatBearingDMS, toLoPoint, vertexBeaconNames, type Connection, type StoredConnection, type LoPoint, type ConnectingDataRow } from './connections'
 import { isRemainderParcel } from '@/utils/designationParcels'
 import { beaconAlignment, describeAlignment, type AlignmentResult } from '../../../../../app-shared/beaconAlignment'
+import { comparisonMethodAnnexurePDF } from '@/utils/beaconComparisonSection'
 import { sampleDataProblem, foundBeaconRows } from '@/utils/sampleBeacons'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
@@ -5626,6 +5627,9 @@ async function generateComprehensivePDF() {
     const mustCorrect = alignment.filter((r) => r.band === 'correct')
     if (mustCorrect.length) throw new Error(`SI 727 para (5): ${mustCorrect.map(describeAlignment).join(' ')}`)
     const alignmentNotes = alignment.filter((r) => r.band === 'may-stay').map(describeAlignment)
+    // The Beacon Comparison's method is set out once, as an annexure at the end of the record; the section
+    // points to it. Null when the comparison is not a comparison of co-ordinates (no annexure, method inline).
+    const comparisonAnnexure = await comparisonMethodAnnexurePDF(reportData, 'Annexure A')
     const reportOptions = {
       surveyorName: surveyorInfo.name || '',
       licenseNumber: surveyorInfo.licenseNumber || '',
@@ -5719,6 +5723,7 @@ async function generateComprehensivePDF() {
       partyWalls,
       connectingData: connectingDataForCalculations(),
       alignment,
+      ...(comparisonAnnexure ? { comparisonMethodInAnnexure: 'Annexure A' } : {}),
       surveyPoints: surveyPoints,
       adjustedCoordinates: adjustedCoordinates,
       projectControlPoints: controlPoints,
@@ -5776,6 +5781,7 @@ async function generateComprehensivePDF() {
 
     const finalResult = await generateComprehensivePDFComposable({
       plans: planSet.plans,
+      annexures: comparisonAnnexure ? [{ label: 'Annexure A: method of the Beacon Comparison', blob: comparisonAnnexure }] : [],
       computedParcels: computedParcels as any,
       calcPart1Blob: result.pdf,
       projectName: projectName,
@@ -5840,6 +5846,7 @@ async function generateComprehensivePDF() {
         contentsLines.push(`• DSG Certificate (1/96)`)
       }
       for (const plan of planSet.plans) contentsLines.push(`• ${plan.label}`)
+      if (comparisonAnnexure) contentsLines.push('• Annexure A: method of the Beacon Comparison')
       for (const w of planSet.warnings) contentsLines.push(`• ⚠ ${w}`)
       for (const w of alignmentNotes) contentsLines.push(`• ⚠ SI 727 para (5): ${w}`)
       notifySuccess(`Saved as Comprehensive_Latest.pdf in ${finalResult.filePath}`, {

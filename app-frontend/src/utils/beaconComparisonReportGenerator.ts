@@ -15,6 +15,7 @@ import {
   type BeaconComparisonCursor,
 } from './beaconComparisonSection';
 import { stampSequentialPageNumbers } from './pdfPageNumber';
+import { srNumberValue } from './coordinate-list';
 
 export interface BeaconComparisonReportOptions {
   surveyorName: string;
@@ -66,8 +67,11 @@ export async function generateBeaconComparisonReportPDF(
   // Survey identification
   const header = [
     `Survey Of: ${options.surveyOf || 'N/A'}`,
-    `S.R. Number: ${reportData!.srNumber || 'N/A'}`,
-    `Land Surveyor: ${options.surveyorName || 'N/A'} (License No. ${options.licenseNumber || 'N/A'})`,
+    // Until the office issues one, room for the number with the year it will fall in, as the Co-ordinate List and
+    // the Report on Survey print it.
+    `S.R. Number: ${srNumberValue(reportData!.srNumber)}`,
+    // The licence number is stated once, on the DSG certificate where the surveyor certifies the survey.
+    `Land Surveyor: ${options.surveyorName || 'N/A'}`,
     `Survey Date: ${options.surveyDate || 'N/A'}`,
   ];
   header.forEach((line) => {

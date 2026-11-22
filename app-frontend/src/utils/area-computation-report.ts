@@ -60,11 +60,7 @@ export function generateAreaComputationReport(
   pdf.text(`Surveyor: ${options.surveyorName}`, 25, yPos);
   yPos += 6;
   
-  if (options.surveyorLicense) {
-    pdf.text(`License Number: ${options.surveyorLicense}`, 25, yPos);
-    yPos += 6;
-  }
-  
+  // No licence number: it is stated once, on the DSG certificate where the surveyor certifies the survey.
   pdf.text(`Survey Date: ${options.surveyDate}`, 25, yPos);
   pdf.text(`Projection: Cape Lo ${options.centralMeridian}° (EPSG:${getSRID(options.centralMeridian)})`, 120, yPos);
   yPos += 6;

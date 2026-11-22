@@ -148,7 +148,7 @@ function drawTitleBlock(doc, info) {
   // Surveyor info
   doc.fontSize(8)
   doc.text(`Surveyor: ${info.surveyorName}`, x + 150, y + 65)
-  doc.text(`License: ${info.licenseNumber}`, x + 150, y + 80)
+  doc.text(`Licence: ${info.licenseNumber}`, x + 150, y + 80)
 }
 
 /**
@@ -395,7 +395,7 @@ function drawSurveyorCertificate(doc, area) {
   doc.text('Signature', area.x + 10, area.y + 42)
   
   doc.text(`${area.surveyorName}`, area.x + 150, area.y + 30)
-  doc.text(`License No: ${area.licenseNumber}`, area.x + 150, area.y + 42)
+  doc.text(`Licence No: ${area.licenseNumber}`, area.x + 150, area.y + 42)
 }
 
 /**

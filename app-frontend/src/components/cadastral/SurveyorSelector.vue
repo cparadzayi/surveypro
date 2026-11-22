@@ -38,7 +38,7 @@
           <span class="ml-2 text-gray-900">{{ selectedSurveyor.name }}</span>
         </div>
         <div>
-          <span class="font-medium text-gray-600">License:</span>
+          <span class="font-medium text-gray-600">Licence:</span>
           <span class="ml-2 text-gray-900">{{ selectedSurveyor.license_number }}</span>
         </div>
         <div v-if="selectedSurveyor.firm">

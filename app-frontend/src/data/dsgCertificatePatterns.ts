@@ -337,14 +337,14 @@ export const DSG_COMMON_PHRASES = {
     'I, {surveyorName}, Land Surveyor, do hereby certify that:-',
     'I, {surveyorName}, Registered Land Surveyor, do hereby certify that:-',
     'I, {surveyorName}, Professional Land Surveyor, do hereby certify that:-',
-    'I, {surveyorName}, Land Surveyor (License No. {licenseNumber}), do hereby certify that:-'
+    'I, {surveyorName}, Land Surveyor (Licence No. {licenseNumber}), do hereby certify that:-'
   ],
   
   closings: [
     '{surveyorName}\nLAND SURVEYOR',
     '{surveyorName}\nREGISTERED LAND SURVEYOR',
     '{surveyorName}\nPROFESSIONAL LAND SURVEYOR',
-    '{surveyorName}\nLAND SURVEYOR\nLicense No. {licenseNumber}'
+    '{surveyorName}\nLAND SURVEYOR\nLicence No. {licenseNumber}'
   ],
   
   additionalNotes: [

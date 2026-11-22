@@ -97,7 +97,7 @@ describe('POST /surveyors', () => {
     mockProfile.findByLicense.mockResolvedValue({ id: 2 })
     const r = await post(body)
     expect(r.statusCode).toBe(409)
-    expect(r.json().error).toMatch(/license number/)
+    expect(r.json().error).toMatch(/licence number/)
   })
 
   test('losing a race at the unique index is 409, not a crash', async () => {

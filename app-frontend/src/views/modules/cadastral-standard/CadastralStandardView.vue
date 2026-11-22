@@ -542,7 +542,7 @@
 
             <div>
               <label for="licenseNumber" class="block text-sm font-medium text-gray-700 mb-2">
-                License Number
+                Licence Number
               </label>
               <input
                 id="licenseNumber"
@@ -953,7 +953,7 @@
 
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">
-                    License Number
+                    Licence Number
                   </label>
                   <input
                     v-model="calculationsInfo.licenseNumber"

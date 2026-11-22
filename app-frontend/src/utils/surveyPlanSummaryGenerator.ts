@@ -184,7 +184,6 @@ export class SurveyPlanSummaryGenerator {
     this.doc.setFontSize(10);
     
     this.addLabelValuePair('Land Surveyor', data.surveyorName || 'N/A');
-    this.addLabelValuePair('License Number', data.licenseNumber || 'N/A');
     if (data.firm) {
       this.addLabelValuePair('Firm', data.firm);
     }

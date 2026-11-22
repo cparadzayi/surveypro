@@ -264,10 +264,10 @@ export async function generateDSGCertificatePDF(
     { fontSize: 10, fontStyle: 'bold' }
   )
 
-  // License number (if provided)
+  // Licence number (if provided): the one place a document states it
   if (data.licenseNumber) {
     currentY = addText(
-      `License No. ${data.licenseNumber}`,
+      `Licence No. ${data.licenseNumber}`,
       margins.left,
       currentY,
       { fontSize: 9 }

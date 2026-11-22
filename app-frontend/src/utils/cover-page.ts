@@ -297,11 +297,8 @@ export class CoverPageGenerator {
     pdf.text(info.surveyorName, this.marginLeft + 30, yPosition);
     yPosition += 10;
     
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('License:', this.marginLeft, yPosition);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text(info.licenseNumber, this.marginLeft + 30, yPosition);
-    yPosition += 15;
+    // No licence number: it is stated once, on the DSG certificate where the surveyor certifies the survey.
+    yPosition += 5;
     
     pdf.setFont('helvetica', 'bold');
     pdf.text('Survey Date:', this.marginLeft, yPosition);

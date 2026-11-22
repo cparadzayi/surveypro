@@ -30,7 +30,7 @@
                       <div class="text-sm font-semibold text-gray-900">{{ selectedSurveyor.name }}</div>
                     </div>
                     <div>
-                      <label class="block text-xs font-medium text-gray-600 mb-1">License Number</label>
+                      <label class="block text-xs font-medium text-gray-600 mb-1">Licence Number</label>
                       <div class="text-sm font-semibold text-gray-900">{{ selectedSurveyor.license_number }}</div>
                     </div>
                     <div>

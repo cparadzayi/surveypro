@@ -126,7 +126,7 @@
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">License Number *</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Licence Number *</label>
             <input
               v-model="formData.license_number"
               type="text"

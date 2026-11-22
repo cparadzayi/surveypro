@@ -241,7 +241,7 @@
         </div>
 
         <div class="config-group">
-          <label class="config-label" for="plan-license-number">License Number</label>
+          <label class="config-label" for="plan-license-number">Licence Number</label>
           <input id="plan-license-number" v-model="config.licenseNumber" type="text" class="config-input" readonly />
         </div>
 

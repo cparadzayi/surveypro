@@ -726,11 +726,8 @@ export class CalculationsPart1Generator {
     pdf.text(surveyorInfo.name, this.options.marginLeft + 30, yPosition)
     yPosition += 10
     
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('License:', this.options.marginLeft, yPosition)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text(surveyorInfo.licenseNumber, this.options.marginLeft + 30, yPosition)
-    yPosition += 15
+    // No licence number: it is stated once, on the DSG certificate where the surveyor certifies the survey.
+    yPosition += 5
     
     pdf.setFont('helvetica', 'bold')
     pdf.text('Survey Date:', this.options.marginLeft, yPosition)
@@ -946,10 +943,7 @@ export class CalculationsPart1Generator {
     pdf.text(surveyorInfo.name, this.options.marginLeft + 40, yPosition)
     yPosition += 10
     
-    pdf.text('License No:', this.options.marginLeft, yPosition)
-    pdf.text(surveyorInfo.licenseNumber, this.options.marginLeft + 40, yPosition)
-    yPosition += 10
-    
+    // No licence number: it is stated once, on the DSG certificate where the surveyor certifies the survey.
     pdf.text('Date:', this.options.marginLeft, yPosition)
     pdf.text(formatDateDDMMYYYY(new Date()), this.options.marginLeft + 40, yPosition)
   }

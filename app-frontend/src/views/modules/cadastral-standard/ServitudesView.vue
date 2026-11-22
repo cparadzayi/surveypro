@@ -280,7 +280,7 @@
           <input v-model="header.surveyorName" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
         </div>
         <div>
-          <label class="block text-xs font-medium text-gray-700 mb-1">License number (optional)</label>
+          <label class="block text-xs font-medium text-gray-700 mb-1">Licence number (optional)</label>
           <input v-model="header.licenseNumber" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
         </div>
         <div>

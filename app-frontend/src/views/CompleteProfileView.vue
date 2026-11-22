@@ -99,7 +99,7 @@
               <!-- Conditional Fields based on Surveyor Type -->
               <div v-if="formData.surveyorType === 'registered'">
                 <label for="license-number" class="block text-sm font-medium text-gray-700 mb-1.5">
-                  License Number <span class="text-red-500">*</span>
+                  Licence Number <span class="text-red-500">*</span>
                 </label>
                 <input
                   id="license-number"

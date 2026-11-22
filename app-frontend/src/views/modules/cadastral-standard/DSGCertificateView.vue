@@ -233,7 +233,7 @@
           
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">
-              License Number (Optional)
+              Licence Number (Optional)
             </label>
             <input
               v-model="certificateData.licenseNumber"

@@ -46,6 +46,19 @@ function makeReportData(): ReportOnSurveyData {
 }
 
 describe('generateBeaconComparisonReportPDF', () => {
+  it("prints the S.R. placeholder with the current year until a number is issued, and an issued number as it is", async () => {
+    const raw = async (sr: string) => {
+      const data = makeReportData();
+      data.srNumber = sr;
+      const r = await generateBeaconComparisonReportPDF(data, options, 140);
+      return Buffer.from(new Uint8Array(await r!.pdf.arrayBuffer())).toString('latin1');
+    };
+    const blank = await raw('');
+    expect(blank).toContain(`(S.R. Number: .... / ${new Date().getFullYear()}) Tj`);
+    expect(blank).not.toContain('(S.R. Number: N/A) Tj');
+    expect(await raw('188/2026')).toContain('(S.R. Number: 188/2026) Tj');
+  });
+
   it('returns a non-empty PDF with at least one page when comparison data is present', async () => {
     const result = await generateBeaconComparisonReportPDF(makeReportData(), options, 140);
     expect(result).not.toBeNull();

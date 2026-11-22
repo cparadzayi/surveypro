@@ -129,7 +129,6 @@ export class ReportOnSurveyGenerator {
       srNumberText(reportData.srNumber),
       `Land Surveyor: ${options.surveyorName}`,
       `Date of Survey: ${options.surveyDate}`,
-      `License Number: ${options.licenseNumber}`,
       `Firm: ${options.firm}`,
       `Address: ${options.address}`
     ];
@@ -559,7 +558,8 @@ export class ReportOnSurveyGenerator {
     this.doc.setFontSize(9);
     this.doc.text(options.surveyorName, this.margin, this.currentY);
     this.currentY += this.lineHeight;
-    this.doc.text(`Land Surveyor (License No. ${options.licenseNumber})`, this.margin, this.currentY);
+    // No licence number: it is stated once, on the DSG certificate where the surveyor certifies the survey.
+    this.doc.text('Land Surveyor', this.margin, this.currentY);
     this.currentY += this.lineHeight + 5;
     
     // Date line

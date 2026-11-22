@@ -154,7 +154,6 @@ export function generatePlanStatisticsPDF(data: SurveyPlanSummaryData): Blob {
   if (data.projectInfo.township) kv('Township:', data.projectInfo.township)
   kv('Survey Date:', formatDate(data.projectInfo.surveyDate))
   kv('Surveyor:', data.projectInfo.surveyorName || '—')
-  kv('Licence No.:', data.projectInfo.licenseNumber || '—')
   if (data.projectInfo.firm) kv('Firm:', data.projectInfo.firm)
 
   y += 3

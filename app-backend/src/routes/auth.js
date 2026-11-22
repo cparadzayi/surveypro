@@ -321,7 +321,7 @@ export default async function authRoutes(app) {
     } catch (err) {
       app.log.error(err)
       if (err.code === '23505') { // Unique constraint violation
-        return reply.code(409).send({ error: 'License or registration number already exists' })
+        return reply.code(409).send({ error: 'Licence or registration number already exists' })
       }
       throw err
     }

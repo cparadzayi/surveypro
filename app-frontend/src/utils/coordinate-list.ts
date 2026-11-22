@@ -511,11 +511,8 @@ export class CoordinateListGenerator {
     pdf.text(surveyorInfo.name, this.options.marginLeft + 40, yPosition);
     yPosition += 10;
     
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('License No:', this.options.marginLeft, yPosition);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text(surveyorInfo.licenseNumber, this.options.marginLeft + 40, yPosition);
-    yPosition += 15;
+    // No licence number: it is stated once, on the DSG certificate where the surveyor certifies the survey.
+    yPosition += 5;
     
     pdf.setFont('helvetica', 'bold');
     pdf.text('Survey Date:', this.options.marginLeft, yPosition);

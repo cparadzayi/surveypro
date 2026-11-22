@@ -230,7 +230,7 @@ export class TestProjectSetupService {
 Test Project Summary
 ====================
 Surveyor: ${metadata.surveyor}
-License: ${metadata.license}
+Licence: ${metadata.license}
 Client: ${metadata.client}
 District: ${metadata.district}
 Expected Zone: ${metadata.centralMeridian === 29 ? 'Lo29' : `Lo${metadata.centralMeridian}`} (EPSG:${metadata.expectedSrid})

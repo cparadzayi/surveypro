@@ -122,7 +122,7 @@ export default async function surveyorRoutes(fastify, options) {
         return reply.code(409).send({ ok: false, error: 'That e-mail address already has an account' })
       }
       if (result.status === 'license_taken') {
-        return reply.code(409).send({ ok: false, error: 'A surveyor with this license number already exists' })
+        return reply.code(409).send({ ok: false, error: 'A surveyor with this licence number already exists' })
       }
 
       fastify.log.info(`[surveyors] ${request.user?.sub} added surveyor ${result.profile.id}`)
@@ -139,7 +139,7 @@ export default async function surveyorRoutes(fastify, options) {
     } catch (err) {
       // A concurrent request for the same address loses at the unique index, not at the check above.
       if (err?.code === '23505') {
-        return reply.code(409).send({ ok: false, error: 'That e-mail address or license number is already in use' })
+        return reply.code(409).send({ ok: false, error: 'That e-mail address or licence number is already in use' })
       }
       fastify.log.error(err)
       return reply.code(500).send({ ok: false, error: 'Failed to create surveyor' })

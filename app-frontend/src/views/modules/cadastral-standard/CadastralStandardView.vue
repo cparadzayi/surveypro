@@ -1371,6 +1371,7 @@ import { confirmDialog, notifyError, notifyFailure, notifySuccess, notifyWarning
 import { ref, computed, reactive, provide, toRaw, markRaw, watch } from 'vue';
 import { confirmDiscardUnsaved, markSaved } from '@/composables/useUnsavedWork';
 import api from '../../../services/api';
+import { issuedSrNumber } from '../../../utils/srNumber';
 // import CadastralCSVImport from '../../../components/cadastral/CadastralCSVImport.vue';
 import type { CadastralWorkflowState, CadastralPoint } from '../../../types/cadastral';
 import { validateAndParseCSV } from '../../../utils/cadastral-csv';
@@ -1921,6 +1922,7 @@ async function generateCalculationsPart1() {
     
     // Prepare surveyor info
     const surveyorInfo = {
+      srNumber: projectSrNumber(),
       name: calculationsInfo.value.surveyorName,
       licenseNumber: calculationsInfo.value.licenseNumber,
       firm: calculationsInfo.value.firm,
@@ -3411,6 +3413,14 @@ function goToNextStep() {
   }
 }
 
+/**
+ * The S.R. number the Surveyor-General's office issued, as saved with the project (office numbers), else the
+ * workflow's copy; '' until issued. Every document printed from this screen takes it (utils/srNumber.ts).
+ */
+function projectSrNumber(): string {
+  return issuedSrNumber((selectedProject.value as any)?.sr_no, (workflowState.projectInfo as any).srNo, workflowState.projectInfo.srNumber);
+}
+
 // Found Beacons handler
 function handleFoundBeaconsSave(data: { beacons: any[]; comparisonConfig: any }) {
   console.log('[Found Beacons] Saving beacon assessment data:', data);
@@ -3418,7 +3428,7 @@ function handleFoundBeaconsSave(data: { beacons: any[]; comparisonConfig: any })
   // Initialize reportOnSurvey if it doesn't exist
   if (!workflowState.reportOnSurvey) {
     workflowState.reportOnSurvey = {
-      srNumber: workflowState.projectInfo.srNumber || '',
+      srNumber: projectSrNumber(),
       purpose: {
         type: 'private-land',
         reference: ''
@@ -3442,7 +3452,7 @@ function handleFoundBeaconsSave(data: { beacons: any[]; comparisonConfig: any })
   workflowState.reportOnSurvey.beacons = data.beacons;
   workflowState.reportOnSurvey.beaconComparison = {
     ...data.comparisonConfig,
-    currentSRNumber: workflowState.projectInfo.srNumber || 'This Survey'
+    currentSRNumber: projectSrNumber() || 'This Survey'
   };
   
   console.log('[Found Beacons] ✅ Beacon data and comparison config saved.');
@@ -4138,6 +4148,7 @@ async function generateCoordinateList() {
     
     // Prepare surveyor info - use fresh data from selectedProject (database) instead of stale workflowState
     const surveyorInfo = {
+      srNumber: projectSrNumber(),
       name: workflowState.surveyorInfo.landSurveyor,
       licenseNumber: workflowState.surveyorInfo.licenseNumber || '',
       firm: workflowState.surveyorInfo.firm || '',
@@ -4418,6 +4429,12 @@ function onProjectChange() {
     workflowState.projectInfo.projectId = project.id;
     workflowState.projectInfo.centralMeridian = project.central_meridian || undefined;
     workflowState.projectInfo.controlPointIds = project.control_point_ids || [];
+    // The Surveyor-General's numbers saved with the project, so every step that prints them has them (the
+    // Report on Survey read an empty field and printed ".... / 2026" while the diagrams printed 188/2026).
+    Object.assign(workflowState.projectInfo as any, {
+      srNo: (project as any).sr_no || '', fileNo: (project as any).file_no || '',
+      gpNo: (project as any).gp_no || '', compilation: (project as any).compilation || '',
+    });
     
     // CRITICAL: Restore selectedLoZone from project for CSV Import step
     if (project.central_meridian) {

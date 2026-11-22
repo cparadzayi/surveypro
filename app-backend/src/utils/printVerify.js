@@ -264,6 +264,27 @@ export function alignmentFindings(results, text) {
   return out
 }
 
+/**
+ * The S.R. number, once the Surveyor-General's office has issued it (saved with the project): the document must
+ * print it, and must not still print the ".... / <year>" space left for it before it was issued.
+ * @param {string|null|undefined} srNo  the project's issued S.R. number ('' or null when none yet)
+ * @param {string} text  the document's text
+ */
+export function srNumberFindings(srNo, text) {
+  const sr = String(srNo ?? '').trim()
+  if (!sr) return []
+  const doc = String(text ?? '')
+  const out = []
+  const placeholders = (doc.match(/\.\.\.\.\s*\/\s*\d{4}/g) ?? []).length
+  if (placeholders) {
+    out.push({ level: 'error', code: 'SR_NOT_INSERTED', message: `the S.R. number ${sr} has been issued, but the document still prints the space for it (".... / year") ${placeholders} time(s): regenerate it` })
+  }
+  if (!doc.includes(sr)) {
+    out.push({ level: 'warning', code: 'SR_NOT_PRINTED', message: `the issued S.R. number ${sr} does not appear in the document` })
+  }
+  return out
+}
+
 /** The text of a PDF, page by page, with each visual line on its own line. Needs pdfjs-dist (a backend dependency). */
 export async function extractPdfText(path) {
   const { readFileSync } = await import('node:fs')

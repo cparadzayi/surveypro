@@ -120,6 +120,15 @@ describe('generateWithTwoPass — section blobs', () => {
     expect(result.measurements.coordinateList.pages).toBe((await pages(s.coordinateList)) - 1);
   }, 30000);
 
+  it('opens with the cover letter alone: no "CALCULATIONS PART 1" project-information page', async () => {
+    const gen = new ComprehensiveDocumentGenerator();
+    const result: any = await gen.generateWithTwoPass({ ...baseData } as any);
+    const raw = Buffer.from(new Uint8Array(await result.pdf.arrayBuffer())).toString('latin1');
+    expect(raw).not.toContain('(Duplicate Point Analysis and Mean Coordinate Calculations)');
+    expect(raw).not.toContain('(Points Analyzed:)');
+    expect((await PDFDocument.load(await result.sections.cover.arrayBuffer())).getPageCount()).toBe(1);
+  }, 30000);
+
   it('omits the beacon comparison and leaves Calculations unshifted with no report data', async () => {
     const gen = new ComprehensiveDocumentGenerator();
     const result = await gen.generateWithTwoPass({ ...baseData } as any);
@@ -204,9 +213,10 @@ describe('generateWithTwoPass — section blobs', () => {
     const countPages = async (blob: Blob) =>
       (await PDFDocument.load(await blob.arrayBuffer())).getPageCount();
 
-    const [coverAndBodyPages, fieldBookPages, coordListPages, beaconPages, calcPages] =
+    const [coverAndBodyPages, coverPages, fieldBookPages, coordListPages, beaconPages, calcPages] =
       await Promise.all([
         countPages(result.pdf),
+        countPages(result.sections!.cover),
         countPages(result.sections!.fieldBook),
         countPages(result.sections!.coordinateList),
         countPages(result.sections!.beaconComparison!),
@@ -214,7 +224,7 @@ describe('generateWithTwoPass — section blobs', () => {
       ]);
 
     expect(coverAndBodyPages).toBe(
-      2 /* cover */ + fieldBookPages + (coordListPages - 1 /* its title page */) + beaconPages + calcPages
+      coverPages /* the letter */ + fieldBookPages + (coordListPages - 1 /* its title page */) + beaconPages + calcPages
     );
 
     mergeSpy.mockRestore();

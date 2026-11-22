@@ -505,6 +505,18 @@ import { purposeReferenceFieldLabel } from '../../../utils/reportPurpose'
 import { localControlFrom } from '../../../utils/siteCalibration'
 import { officialControlKindByName } from '../../../utils/beaconStatus'
 import { mergeControlNames, type ControlName } from '../../../utils/reportControl'
+import { issuedSrNumber, withIssuedSrNumber } from '../../../utils/srNumber'
+
+/** The S.R. number saved with the project (office numbers), read fresh; '' when none or unreadable. */
+async function savedProjectSrNumber(): Promise<string> {
+  const id = (workflowState?.projectInfo as any)?.projectId
+  if (!id) return ''
+  try {
+    return String((await api.get(`/survey-projects/${id}`)).data?.project?.sr_no ?? '')
+  } catch {
+    return ''
+  }
+}
 
 const { workflowState, saveStepData } = useCadastralWorkflow()
 // Typed into the report and not yet saved to the project (Save Draft and Generate both save it).
@@ -541,7 +553,7 @@ const purposeTextarea = ref<HTMLTextAreaElement | null>(null)
 
 // Initialize report data
 const reportData = ref<ReportOnSurveyData>({
-  srNumber: workflowState.projectInfo.srNumber || '',
+  srNumber: issuedSrNumber((workflowState.projectInfo as any).srNo, workflowState.projectInfo.srNumber),
   purpose: {
     type: '',
     reference: ''
@@ -916,13 +928,18 @@ const buildReportPdf = async () => {
     instrumentRoverSerial: workflowState.surveyorInfo.instrumentRoverSerial || ''
   }
 
+  // The S.R. number the office issued, as saved with the project, wins over whatever this report holds
+  // (utils/srNumber.ts); until one is issued the report prints ".... / <year>".
+  const data = withIssuedSrNumber(reportData.value,
+    issuedSrNumber(await savedProjectSrNumber(), (workflowState.projectInfo as any).srNo, reportData.value.srNumber))
+
   // Generate PDF based on selected format
   if (reportFormat.value === 'narrative') {
     const { generateNarrativeReportOnSurveyPDF } = await import('../../../utils/reportOnSurveyNarrativeGenerator')
-    return await generateNarrativeReportOnSurveyPDF(reportData.value, options)
+    return await generateNarrativeReportOnSurveyPDF(data, options)
   }
   const { generateReportOnSurveyPDF } = await import('../../../utils/reportOnSurveyGenerator')
-  return await generateReportOnSurveyPDF(reportData.value, options)
+  return await generateReportOnSurveyPDF(data, options)
 }
 
 // Preview the report in the parent's document preview modal without saving or

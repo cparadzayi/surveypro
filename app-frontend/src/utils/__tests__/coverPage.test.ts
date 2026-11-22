@@ -76,3 +76,16 @@ describe('CoverPageGenerator', () => {
     expect(blob.size).toBeGreaterThan(0);
   });
 });
+
+describe('the cover letter is signed by the surveyor whose survey it is', () => {
+  const raw = async (b: Blob) => Buffer.from(new Uint8Array(await b.arrayBuffer())).toString('latin1');
+  it("prints the surveyor's own name under the signature line", async () => {
+    const t = await raw(new CoverPageGenerator().generateCoverPage({ ...baseInfo, surveyorName: 'T. Moyo' }));
+    expect(t).toContain('(T. Moyo) Tj');
+    expect(t).not.toContain('Paradzayi');
+  });
+  it('prints no name at all when none is set, never someone else\'s', async () => {
+    const t = await raw(new CoverPageGenerator().generateCoverPage({ ...baseInfo, surveyorName: '' }));
+    expect(t).not.toContain('Paradzayi');
+  });
+});

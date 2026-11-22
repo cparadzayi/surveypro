@@ -23,7 +23,7 @@
       <form class="bg-white rounded-lg shadow-md p-6 space-y-4" @submit.prevent="save">
         <div>
           <label class="block text-sm font-medium text-gray-700" for="lh-firm">Firm name</label>
-          <input id="lh-firm" v-model="form.firm" maxlength="120" type="text" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" placeholder="C Paradzayi Land Surveyors" />
+          <input id="lh-firm" v-model="form.firm" maxlength="120" type="text" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" placeholder="e.g. Smith Land Surveyors" />
           <p class="mt-1 text-xs text-gray-500">Printed in capitals.</p>
         </div>
         <div>

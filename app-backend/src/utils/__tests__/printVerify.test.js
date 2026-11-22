@@ -3,7 +3,7 @@
  * Run: cd app-backend && node --experimental-vm-modules node_modules/jest/bin/jest.js printVerify
  */
 import { describe, test, expect } from '@jest/globals'
-import { verifyPrinted, printedCoordinates, allowedFigures, printedConnections, letteredDistances, alignmentFindings } from '../printVerify.js'
+import { verifyPrinted, printedCoordinates, allowedFigures, printedConnections, letteredDistances, alignmentFindings, srNumberFindings } from '../printVerify.js'
 
 const points = [
   { name: '86B', status: 'F', y: -85728.702, x: 2143972.144 },
@@ -140,6 +140,18 @@ describe('verifyPrinted', () => {
     test('a record that does not state the check is told to be regenerated', () => {
       expect(alignmentFindings([r('on-line')], 'CALCULATIONS').map((f) => f.code)).toEqual(['ALIGNMENT_NOT_STATED'])
       expect(alignmentFindings([], 'CALCULATIONS')).toEqual([])
+    })
+  })
+
+  describe('the issued S.R. number', () => {
+    test('a document still printing the space for it is an error once it is issued', () => {
+      const f = srNumberFindings('188/2026', 'S.R. No: .... / 2026\nS.R. No. 188/2026')
+      expect(f.map((x) => [x.level, x.code])).toEqual([['error', 'SR_NOT_INSERTED']])
+    })
+    test('a document that prints it passes; nothing is asked before it is issued', () => {
+      expect(srNumberFindings('188/2026', 'S.R. No: 188/2026')).toEqual([])
+      expect(srNumberFindings('', 'S.R. No: .... / 2026')).toEqual([])
+      expect(srNumberFindings('188/2026', 'no number here').map((x) => x.code)).toEqual(['SR_NOT_PRINTED'])
     })
   })
 

@@ -43,16 +43,48 @@ function naturalList(items: string[]): string {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
+/**
+ * How tightly the report is set, all in mm and pt. The report is drawn with the first layout; if it runs past
+ * one page it is drawn again with the next, and the first that fits on a single page (signature included) is
+ * kept. A report that fits as it always did is therefore unchanged; one that does not is compacted only as far
+ * as it needs to be.
+ */
+export interface ReportLayout {
+  name: string;
+  margin: number;
+  lineHeight: number;
+  labelWidth: number;
+  bodyFont: number;
+  titleFont: number;
+  titleGap: number;
+  sectionGap: number;
+  commentGap: number;
+  signatureGap: number;
+  signatureFont: number;
+}
+
+export const REPORT_LAYOUTS: ReportLayout[] = [
+  { name: 'standard', margin: 25, lineHeight: 7, labelWidth: 50, bodyFont: 11, titleFont: 14, titleGap: 12, sectionGap: 8, commentGap: 15, signatureGap: 10, signatureFont: 10 },
+  { name: 'compact', margin: 20, lineHeight: 5.6, labelWidth: 42, bodyFont: 10, titleFont: 13, titleGap: 9, sectionGap: 5, commentGap: 9, signatureGap: 8, signatureFont: 10 },
+  { name: 'tight', margin: 15, lineHeight: 4.7, labelWidth: 38, bodyFont: 9.5, titleFont: 12, titleGap: 7, sectionGap: 3.5, commentGap: 6, signatureGap: 6, signatureFont: 9.5 },
+];
+
 export class NarrativeReportOnSurveyGenerator {
   private doc: jsPDF;
   private pageWidth: number;
   private pageHeight: number;
-  private margin: number = 25;
-  private currentY: number = 25;
-  private lineHeight: number = 7;
-  private labelWidth: number = 50; // Width for left-aligned labels
+  private L: ReportLayout;
+  private margin: number;
+  private currentY: number;
+  private lineHeight: number;
+  private labelWidth: number; // Width for left-aligned labels
 
-  constructor() {
+  constructor(layout: ReportLayout = REPORT_LAYOUTS[0]) {
+    this.L = layout;
+    this.margin = layout.margin;
+    this.currentY = layout.margin;
+    this.lineHeight = layout.lineHeight;
+    this.labelWidth = layout.labelWidth;
     this.doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -116,18 +148,18 @@ export class NarrativeReportOnSurveyGenerator {
    * Add title
    */
   private addTitle(): void {
-    this.doc.setFontSize(14);
+    this.doc.setFontSize(this.L.titleFont);
     this.doc.setFont('helvetica', 'bold');
     this.doc.text('Report on Survey', this.margin, this.currentY);
     
-    this.currentY += 12;
+    this.currentY += this.L.titleGap;
   }
 
   /**
    * Add header section with survey details
    */
   private addHeaderSection(reportData: ReportOnSurveyData, options: ReportGenerationOptions): void {
-    this.doc.setFontSize(11);
+    this.doc.setFontSize(this.L.bodyFont);
     this.doc.setFont('helvetica', 'normal');
     
     // S.R. No — the report header pairs it with the designation, right-justified
@@ -159,7 +191,7 @@ export class NarrativeReportOnSurveyGenerator {
       this.addLabelValuePair('District', options.district);
     }
     
-    this.currentY += 8;
+    this.currentY += this.L.sectionGap;
   }
 
   /**
@@ -222,7 +254,7 @@ export class NarrativeReportOnSurveyGenerator {
       this.doc.text(line, this.margin + this.labelWidth + 5, this.currentY + (index * this.lineHeight));
     });
     
-    this.currentY += lines.length * this.lineHeight + 8;
+    this.currentY += lines.length * this.lineHeight + this.L.sectionGap;
   }
 
   /**
@@ -293,7 +325,7 @@ export class NarrativeReportOnSurveyGenerator {
       this.doc.text(line, this.margin + this.labelWidth + 5, this.currentY + (index * this.lineHeight));
     });
     
-    this.currentY += lines.length * this.lineHeight + 8;
+    this.currentY += lines.length * this.lineHeight + this.L.sectionGap;
   }
 
   /**
@@ -328,7 +360,7 @@ export class NarrativeReportOnSurveyGenerator {
     
     if (foundBeacons.length === 0) {
       this.doc.text('NIL.', this.margin + this.labelWidth + 5, this.currentY);
-      this.currentY += this.lineHeight + 8;
+      this.currentY += this.lineHeight + this.L.sectionGap;
       return;
     }
     
@@ -375,7 +407,7 @@ export class NarrativeReportOnSurveyGenerator {
       });
     }
     
-    this.currentY += 8;
+    this.currentY += this.L.sectionGap;
   }
 
   /**
@@ -397,7 +429,7 @@ export class NarrativeReportOnSurveyGenerator {
     let narrativeText = '';
     
     if (allPlacedBeacons.length === 0) {
-      narrativeText = 'All new beacons were positioned in accordance to the approved subdivision layout plan.';
+      narrativeText = 'All new beacons were positioned in accordance with the approved subdivision layout plan.';
     } else {
       // Build narrative for placed beacons
       const beaconDescriptions: string[] = [];
@@ -436,7 +468,7 @@ export class NarrativeReportOnSurveyGenerator {
       this.doc.text(line, this.margin + this.labelWidth + 5, this.currentY + (index * this.lineHeight));
     });
     
-    this.currentY += lines.length * this.lineHeight + 8;
+    this.currentY += lines.length * this.lineHeight + this.L.sectionGap;
   }
 
   /**
@@ -464,7 +496,7 @@ export class NarrativeReportOnSurveyGenerator {
       this.checkPageBreak(10);
       this.doc.text(line, this.margin + this.labelWidth + 5, this.currentY + (index * this.lineHeight));
     });
-    this.currentY += lines.length * this.lineHeight + 8;
+    this.currentY += lines.length * this.lineHeight + this.L.sectionGap;
   }
 
   /**
@@ -487,30 +519,31 @@ export class NarrativeReportOnSurveyGenerator {
       this.doc.text(line, this.margin + this.labelWidth + 5, this.currentY + (index * this.lineHeight));
     });
     
-    this.currentY += lines.length * this.lineHeight + 15;
+    this.currentY += lines.length * this.lineHeight + this.L.commentGap;
   }
 
   /**
    * Add signature section
    */
   private addSignatureSection(options: ReportGenerationOptions): void {
-    this.checkPageBreak(60);
+    // The signature stays together: the gap, the line, the name and "Land Surveyor".
+    this.checkPageBreak(this.L.signatureGap + 5 + this.lineHeight * 2);
     
-    this.currentY += 10;
+    this.currentY += this.L.signatureGap;
     
-    this.doc.setFontSize(10);
+    this.doc.setFontSize(this.L.signatureFont);
     this.doc.setFont('helvetica', 'normal');
     
     // Signature line
     this.doc.line(this.margin, this.currentY, this.margin + 80, this.currentY);
     this.currentY += 5;
     
-    this.doc.setFontSize(10);
+    this.doc.setFontSize(this.L.signatureFont);
     this.doc.text(options.surveyorName, this.margin, this.currentY);
     this.currentY += this.lineHeight;
     
     // Name and "Land Surveyor" only: the licence number and the date are not part of the report's signature.
-    this.doc.setFontSize(9);
+    this.doc.setFontSize(this.L.signatureFont - 1);
     this.doc.text(`Land Surveyor`, this.margin, this.currentY);
     this.currentY += this.lineHeight;
   }
@@ -545,7 +578,14 @@ export async function generateNarrativeReportOnSurveyPDF(
   reportData: ReportOnSurveyData,
   options: ReportGenerationOptions,
   startingPage?: number
-): Promise<{ pdf: Blob; pageCount: number }> {
-  const generator = new NarrativeReportOnSurveyGenerator();
-  return await generator.generate(reportData, options, startingPage);
+): Promise<{ pdf: Blob; pageCount: number; layout: string }> {
+  // One page where possible, signature included: each layout in turn until one fits; when none does, the one
+  // that takes the fewest pages (the earliest, so the least compacted, on a tie).
+  let best: { pdf: Blob; pageCount: number; layout: string } | null = null;
+  for (const layout of REPORT_LAYOUTS) {
+    const result = await new NarrativeReportOnSurveyGenerator(layout).generate(reportData, options, startingPage);
+    if (result.pageCount === 1) return { ...result, layout: layout.name };
+    if (!best || result.pageCount < best.pageCount) best = { ...result, layout: layout.name };
+  }
+  return best!;
 }

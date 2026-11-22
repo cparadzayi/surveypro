@@ -13,7 +13,7 @@ import pg from 'pg'
 import os from 'node:os'
 import path from 'node:path'
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { verifyPrinted, extractPdfText, printedConnections, alignmentFindings } from '../src/utils/printVerify.js'
+import { verifyPrinted, extractPdfText, printedConnections, alignmentFindings, srNumberFindings } from '../src/utils/printVerify.js'
 import { beaconAlignment } from '../../app-shared/beaconAlignment.js'
 
 const args = process.argv.slice(2)
@@ -31,7 +31,7 @@ try {
   for (const sc of schemas) {
     const byId = /^\d+$/.test(query)
     const r = await client.query(
-      `select id, name, working_directory, workflow_state from ${sc}.survey_projects where ${byId ? 'id = $1' : 'name ilike $1'} limit 2`,
+      `select id, name, working_directory, workflow_state, sr_no from ${sc}.survey_projects where ${byId ? 'id = $1' : 'name ilike $1'} limit 2`,
       [byId ? Number(query) : `%${query}%`],
     ).catch(() => ({ rows: [] }))
     if (r.rows.length) { found = { sc, ...r.rows[0], many: r.rows.length > 1 }; break }
@@ -84,9 +84,12 @@ try {
     connections: printedConnections(text).map((c) => ({ fromBeacon: c.from, toBeacon: c.to })),
   })
   findings.push(...alignmentFindings(alignment, text))
+  // The S.R. number, once issued, in place of the ".... / year" left for it.
+  findings.push(...srNumberFindings(found.sr_no, text))
 
   console.log(`Project: ${found.name} (${found.sc}, id ${found.id})`)
   console.log(`Document: ${pdf}`)
+  console.log(`S.R. number: ${found.sr_no || 'not issued yet'}`)
   console.log(`Points: ${points.length}, saved comparison beacons: ${comparisonNames.length}, connections: ${printedConnections(text).length}`)
   console.log(`Beacons on the parent boundary (SI 727 para (5)): ${alignment.map((r) => `${r.beacon} ${(r.offset * 1000).toFixed(0)} mm / ${(r.limit * 1000).toFixed(0)} mm ${r.band}`).join(', ') || 'none'}\n`)
   const report = (list) => {

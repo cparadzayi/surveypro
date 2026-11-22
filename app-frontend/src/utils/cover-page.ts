@@ -63,9 +63,8 @@ export class CoverPageGenerator {
     // Page 1: Formal Letter to Surveyor General
     this.generateLetterPage(pdf, info);
     
-    // Page 2: Project Information (moved from Calculations Part 1)
-    pdf.addPage();
-    this.generateProjectInfoPage(pdf, info);
+    // The cover is the letter alone: the "CALCULATIONS PART 1" project-information page that followed it repeated
+    // what the letter and the documents already state, and is left out of the record.
     
     return new Blob([pdf.output('blob')], { type: 'application/pdf' });
   }
@@ -257,67 +256,10 @@ export class CoverPageGenerator {
     // Signature line
     pdf.text('...........................', this.marginLeft, yPosition);
     yPosition += 5;
-    pdf.text(info.surveyorName || 'C. Paradzayi', this.marginLeft, yPosition);
+    // The surveyor's own name, or nothing: never another surveyor's (this fell back to "C. Paradzayi", so a
+    // letter with no name set went out signed by the wrong person). A blank leaves the line for a hand signature.
+    const signer = (info.surveyorName ?? '').trim();
+    if (signer) pdf.text(signer, this.marginLeft, yPosition);
   }
   
-  /**
-   * Generate project information page (Page 2)
-   * This content was previously the first page of Calculations Part 1
-   */
-  private generateProjectInfoPage(pdf: jsPDF, info: CoverPageInfo): void {
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    
-    // Title
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(18);
-    const title = 'CALCULATIONS PART 1';
-    const titleWidth = pdf.getTextWidth(title);
-    pdf.text(title, (pageWidth - titleWidth) / 2, 40);
-    
-    // Subtitle
-    pdf.setFontSize(14);
-    pdf.setFont('helvetica', 'normal');
-    const subtitle = 'Duplicate Point Analysis and Mean Coordinate Calculations';
-    const subtitleWidth = pdf.getTextWidth(subtitle);
-    pdf.text(subtitle, (pageWidth - subtitleWidth) / 2, 55);
-    
-    // Project Information
-    let yPosition = 80;
-    pdf.setFontSize(12);
-    
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Project:', this.marginLeft, yPosition);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text(info.projectTitle, this.marginLeft + 30, yPosition);
-    yPosition += 15;
-    
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Surveyor:', this.marginLeft, yPosition);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text(info.surveyorName, this.marginLeft + 30, yPosition);
-    yPosition += 10;
-    
-    // No licence number: it is stated once, on the DSG certificate where the surveyor certifies the survey.
-    yPosition += 5;
-    
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Survey Date:', this.marginLeft, yPosition);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text(info.surveyDate, this.marginLeft + 30, yPosition);
-    yPosition += 15;
-    
-    if (info.pointsAnalyzed) {
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('Points Analyzed:', this.marginLeft, yPosition);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`${info.pointsAnalyzed} points with duplicate observations`, this.marginLeft + 30, yPosition);
-    }
-    
-    // Footer
-    pdf.setFontSize(10);
-    pdf.setFont('helvetica', 'italic');
-    const footerText = 'SurveyPro - Professional Cadastral Survey Calculations';
-    const footerWidth = pdf.getTextWidth(footerText);
-    pdf.text(footerText, (pageWidth - footerWidth) / 2, pdf.internal.pageSize.getHeight() - 20);
-  }
 }

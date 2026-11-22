@@ -522,6 +522,7 @@ import { makeConnection, upsertConnection, dismissConnection, autoConnections, m
 import { isRemainderParcel } from '@/utils/designationParcels'
 import { beaconAlignment, describeAlignment, type AlignmentResult } from '../../../../../app-shared/beaconAlignment'
 import { comparisonMethodAnnexurePDF } from '@/utils/beaconComparisonSection'
+import { issuedSrNumber, withIssuedSrNumber } from '@/utils/srNumber'
 import { sampleDataProblem, foundBeaconRows } from '@/utils/sampleBeacons'
 import ParcelSelect from '@/components/inputs/ParcelSelect.vue'
 import { buildParcelOptions } from '@/components/inputs/parcelSelect'
@@ -5531,7 +5532,10 @@ async function generateComprehensivePDF() {
       pointsAnalyzed: surveyPoints.length
     }
     
-    const surveyorInfo = {
+    // The S.R. number the office issued, saved with the project (Survey Plan step's office numbers): every
+    // document of the record prints it (utils/srNumber.ts). '' until issued: the documents print ".... / <year>".
+    let recordSrNumber = issuedSrNumber(officeNumbers.value.srNo, (props.projectInfo as any)?.srNo)
+    const surveyorInfo: any = {
       name: surveyorName,
       licenseNumber: licenseNumber,
       firm: workflowSurveyorInfo?.firm || coverPageInfo.firmName,
@@ -5616,7 +5620,12 @@ async function generateComprehensivePDF() {
     const generator = new ComprehensiveDocumentGenerator()
 
     // Rebuilt from the persisted workflow state (step_data['report-on-survey']).
-    const reportData = buildReportDataFromWorkflow(workflowState)
+    // The issued S.R. number goes into the Report on Survey and the Beacon Comparison as into the Co-ordinate List
+    // (a number typed into the report itself still counts when the project has none).
+    const savedReport = buildReportDataFromWorkflow(workflowState)
+    recordSrNumber = issuedSrNumber(recordSrNumber, savedReport?.srNumber)
+    surveyorInfo.srNumber = recordSrNumber
+    const reportData = withIssuedSrNumber(savedReport, recordSrNumber)
     // Red flag, not a silent print: the Beacon Comparison and the Report on Survey are built from these beacons,
     // and the tool's sample network once went to the Surveyor-General in their place.
     const sampleProblem = sampleDataProblem(foundBeaconRows(reportData?.beacons), 'The Report on Survey')

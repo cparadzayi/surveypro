@@ -260,9 +260,14 @@ function renderLineCheck(cursor: BeaconComparisonCursor, r: ComparisonResult67):
   checkPageBreak(cursor, 40);
   cursor.doc.setFont('helvetica', 'normal');
   cursor.doc.setFontSize(9);
-  const info = `For information: this survey sits ${signed3(r.shift.dY)} m in Y and ${signed3(r.shift.dX)} m in X `
-    + `from the original data, with a swing of ${Math.abs(r.swingSec).toFixed(1)} seconds. `
-    + 'The Residual column above is each beacon\'s difference once that shift and swing are removed. No limit applies to either.';
+  // When the original co-ordinates are in another system (a local one, say), the "shift" and "swing" describe
+  // that system, not the survey: they are not reported as the survey's.
+  const info = r.otherSystem
+    ? `For information: the original co-ordinates are in a different co-ordinate system from this survey's (they lie about ${(Math.hypot(r.shift.dY, r.shift.dX) / 1000).toFixed(1)} km away, turned ${(Math.abs(r.swingSec) / 3600).toFixed(1)} degrees). `
+      + 'Distances do not depend on the system, which is why the beacons are compared by their distances below. The Residual column above is each beacon\'s difference after the two are fitted together, for information only.'
+    : `For information: this survey sits ${signed3(r.shift.dY)} m in Y and ${signed3(r.shift.dX)} m in X `
+      + `from the original data, with a swing of ${Math.abs(r.swingSec).toFixed(1)} seconds. `
+      + 'The Residual column above is each beacon\'s difference once that shift and swing are removed. No limit applies to either.';
   cursor.doc.splitTextToSize(info, width).forEach((line: string) => {
     cursor.doc.text(line, left, cursor.y);
     cursor.y += 5;
@@ -300,7 +305,9 @@ function renderLineCheck(cursor: BeaconComparisonCursor, r: ComparisonResult67):
   cursor.y += 2;
   cursor.doc.setFontSize(9);
   const tally = `${r.lines.length - r.linesFailing} of ${r.lines.length} lines within the limit; `
-    + (r.setAside.length ? `set aside: ${r.setAside.join(', ')}.` : 'no beacon set aside.')
+    + (r.networkWide
+      ? 'the failing lines run through the network, so no single beacon can be set aside.'
+      : r.setAside.length ? `set aside: ${r.setAside.join(', ')}.` : 'no beacon set aside.')
     + ' The limit is worked out with f the shorter of the two distances.';
   cursor.doc.splitTextToSize(tally, width).forEach((line: string) => {
     cursor.doc.text(line, left, cursor.y);

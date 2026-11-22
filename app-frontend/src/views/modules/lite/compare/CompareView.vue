@@ -293,7 +293,7 @@
           <div class="flex flex-wrap justify-between items-center mb-3 gap-2 text-xs text-gray-500">
             <span>
               <template v-if="checkMethod === 'wtest'">σ₀ = {{ sigma0.toFixed(3) }} m · Critical W = {{ critW }} ·</template>
-              <template v-else-if="checkMethod === 'coords'">SI 727 class {{ surveyClass }} · para 7(5): <template v-if="result.comparison67">{{ result.comparison67.lines.length - result.comparison67.linesFailing }} of {{ result.comparison67.lines.length }} lines within the limit · shift {{ f4s(result.comparison67.shift.dY) }} / {{ f4s(result.comparison67.shift.dX) }} m · swing {{ Math.abs(result.comparison67.swingSec).toFixed(1) }}″ ·</template></template>
+              <template v-else-if="checkMethod === 'coords'">SI 727 class {{ surveyClass }} · para 7(5): <template v-if="result.comparison67">{{ result.comparison67.lines.length - result.comparison67.linesFailing }} of {{ result.comparison67.lines.length }} lines within the limit · <template v-if="result.comparison67.networkWide"><b class="text-red-600">disagreement runs through the network: no beacon singled out</b> · </template><template v-if="result.comparison67.otherSystem">original data in another co-ordinate system ·</template><template v-else>shift {{ f4s(result.comparison67.shift.dY) }} / {{ f4s(result.comparison67.shift.dX) }} m · swing {{ Math.abs(result.comparison67.swingSec).toFixed(1) }}″ ·</template></template></template>
               <template v-else>SI 727 class {{ surveyClass }} · Second Schedule limits (paras 7(1), 8) ·</template>
               <b class="text-blue-600">{{ acceptedCount }} Accepted</b>
               <template v-if="rejectedCount > 0">

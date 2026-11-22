@@ -21,7 +21,7 @@ const fmtMedAllow = (s) => (s.lmed > 0 ? (s.posLimit * 206265 / s.lmed).toFixed(
 // Which test condemned a beacon. 'si727' is the Second Schedule severity verdict
 // (si727.js's severityVerdict); 'coords' is the §67(5) comparison judged by para 7(5) on the lines; the
 // other two come from iterativeAdjust's own statistics.
-const REJ_SOURCE_LABEL = { si727: 'SI 727', coords: 'Para 7(5) lines', wtest: 'W-test', danish: 'Danish' }
+const REJ_SOURCE_LABEL = { si727: 'SI 727', coords: 'Para 7(5)', wtest: 'W-test', danish: 'Danish' }
 
 // Standard ISO A-series page dimensions in mm, matching jsPDF's own built-in page-format
 // table exactly (confirmed against jspdf/dist/jspdf.node.js's pageFormats constant) --
@@ -251,6 +251,11 @@ class BeaconAdjustmentReport {
       line = 'Recommended with note — no single beacon stands out as an outlier, but '
         + `${linesFailing} of ${es.totalLines} `
         + 'compared lines exceed the Second Schedule limits of error; examine the network as a whole.'
+    } else if (method === 'coords' && result.comparison67 && result.comparison67.networkWide) {
+      // Lines still fail among the beacons left: no single beacon has moved, the data disagree throughout.
+      const c = result.comparison67
+      line = `Referred — ${c.linesFailing} of ${c.lines.length} lines exceed Second Schedule para 7(5), and the disagreement runs through the network: `
+        + 'the original data appear to be on another scale or co-ordinate system, or the beacons do not correspond. No beacon is singled out; the surveyor resolves this before adoption.'
     } else if (method === 'coords' && result.verdict && result.verdict.unresolved && result.verdict.unresolved.length) {
       // A single failing line does not show which end moved: the surveyor decides.
       line = 'Recommended with note — '
@@ -274,7 +279,9 @@ class BeaconAdjustmentReport {
     if (method === 'coords' && result.comparison67) {
       const c = result.comparison67
       const w = `Second Schedule para 7(5), class ${cls}: ${c.lines.length - c.linesFailing} of ${c.lines.length} lines between the found beacons within the limit. `
-        + `Common shift ${f4s(c.shift.dY)} m (Y), ${f4s(c.shift.dX)} m (X); swing ${Math.abs(c.swingSec).toFixed(1)} sec (information only: section 67(5) sets no co-ordinate limit).`
+        + (c.otherSystem
+          ? `The original co-ordinates are in a different co-ordinate system (about ${(Math.hypot(c.shift.dY, c.shift.dX) / 1000).toFixed(1)} km away, turned ${(Math.abs(c.swingSec) / 3600).toFixed(1)} degrees); distances do not depend on it.`
+          : `Common shift ${f4s(c.shift.dY)} m (Y), ${f4s(c.shift.dX)} m (X); swing ${Math.abs(c.swingSec).toFixed(1)} sec (information only: section 67(5) sets no co-ordinate limit).`)
       this.doc.text(w, this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 9
     }
     if (es) {

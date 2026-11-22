@@ -16,6 +16,8 @@
  */
 
 import type { FoundBeacon, ReportOnSurveyData } from '../types/cadastral';
+import { compareCoordinates67 } from '../../../app-shared/coordinateComparison67';
+import { isCoordinateComparison, comparisonClass, comparisonPoints } from './beaconComparisonSection';
 
 export interface FoundBeaconsNarrative {
   /** Found beacons whose positions were accepted. */
@@ -104,12 +106,35 @@ export function buildFoundBeaconsNarrative(
   }
 
   const rejectedNames = rejectedFound.map((b) => b.beaconId.trim()).filter((n) => n.length > 0);
-  const comparisonSentence = rejectedNames.length
+  let comparisonSentence = rejectedNames.length
     ? `After comparison, positions of all the found beacons/stations except ${joinNatural(rejectedNames)} were accepted after the comparison of coordinates.`
     : 'After comparison, positions of all the found beacons/stations were accepted after the comparison of coordinates.';
 
-  const adoptionSentence =
+  let adoptionSentence =
     'The coordinates of all found and accepted beacons were adopted as final coordinates.';
+
+  // A comparison of co-ordinates that could not decide must not read as an acceptance. Worked out again from the
+  // compared co-ordinates (as the Beacon Comparison section prints it), not from each beacon's saved flag, which
+  // stays "accepted" when nothing was singled out.
+  const comparison = reportData.beaconComparison;
+  if (found.length && isCoordinateComparison(comparison)) {
+    const verdict = compareCoordinates67(comparisonPoints(reportData), comparisonClass(comparison));
+    if (verdict.networkWide) {
+      comparisonSentence = 'The comparison of coordinates did not resolve: the distances between the found beacons disagree with the '
+        + 'original data throughout (SI 727 Second Schedule para 7(5), see the Beacon Comparison), so no beacon could be singled '
+        + 'out and their positions are not yet accepted.';
+      adoptionSentence = 'No coordinates are adopted from the comparison until the disagreement is resolved.';
+    } else if (verdict.unresolved.length) {
+      const ends = [...new Set(verdict.unresolved.flatMap((l) => [l.from, l.to]))];
+      const lines = verdict.unresolved.map((l) => `${l.from} - ${l.to}`);
+      const others = found.map((b) => b.beaconId.trim()).filter((n) => n && !ends.includes(n) && !rejectedNames.includes(n));
+      comparisonSentence = (others.length
+        ? `After comparison, positions of ${joinNatural(others)} were accepted after the comparison of coordinates. `
+        : '')
+        + `The ${lines.length === 1 ? 'line' : 'lines'} ${joinNatural(lines)} ${lines.length === 1 ? 'exceeds' : 'exceed'} SI 727 Second Schedule para 7(5); `
+        + `which of ${joinNatural(ends)} moved is not shown by the comparison, and ${ends.length === 1 ? 'its position is' : 'their positions are'} not yet accepted.`;
+    }
+  }
 
   return {
     acceptedFound,

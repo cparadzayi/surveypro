@@ -115,6 +115,17 @@ export function compareCoordinates67(points, cls = 'B', opts = {}) {
     setAside.push(top)
   }
 
+  // A beacon is set aside only when the lines AMONG THE OTHERS then pass. If lines still fail among the
+  // beacons that remain (and not merely as isolated, undecidable lines), the disagreement runs through the
+  // network -- the original data are on another scale or system, or the beacons do not correspond -- and no
+  // beacon can be singled out: none is set aside, and the comparison says so. (A comparison against a local
+  // system set aside one of four beacons here while every remaining line still failed, and claimed they passed.)
+  const networkWide = !unresolved.length && failingAmong().length > 0
+  if (networkWide) {
+    for (const n of setAside) byName.get(n).setAside = false
+    setAside.length = 0
+  }
+
   return {
     surveyClass: cls,
     lines,
@@ -123,6 +134,11 @@ export function compareCoordinates67(points, cls = 'B', opts = {}) {
     swingSec: swing * 206264.806,
     setAside,
     unresolved,
+    networkWide,
+    // The original co-ordinates are in another co-ordinate system (a local one, say) when the survey sits
+    // kilometres away from them or turned through more than a degree: the "shift" and "swing" then describe that
+    // system, not the survey, and are not reported as if they were the survey's.
+    otherSystem: Math.hypot(cS.y - cH.y, cS.x - cH.x) > 1000 || Math.abs(swing) > Math.PI / 180,
     linesFailing: lines.filter((l) => !l.pass).length,
   }
 }
@@ -136,6 +152,11 @@ export function comparisonConclusion(result) {
   } else {
     parts.push(`From the above comparison, I adopt the positions of the found beacons, except ${lines(result.setAside)}, `
       + 'whose distances to the other beacons do not agree with the original data within SI 727 Second Schedule para 7(5).')
+  }
+  if (result.networkWide) {
+    return `The distances between the found beacons do not agree with the original data within SI 727 Second Schedule para 7(5) `
+      + `on ${result.linesFailing} of ${result.lines.length} lines, and the disagreement runs through the network rather than to one beacon. `
+      + 'The original data appear to be on another scale or co-ordinate system, or the beacons do not correspond; no beacon is singled out, and this is for the surveyor to resolve before the positions are adopted.'
   }
   if (result.unresolved.length) {
     parts.push(`The line${result.unresolved.length === 1 ? '' : 's'} ${lines(result.unresolved.map((l) => `${l.from} - ${l.to}`))} `

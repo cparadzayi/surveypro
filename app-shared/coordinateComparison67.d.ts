@@ -12,6 +12,10 @@ export interface ComparisonResult67 {
   swingSec: number
   setAside: string[]
   unresolved: { from: string; to: string }[]
+  /** Lines still fail among the beacons left: no beacon can be singled out. */
+  networkWide: boolean
+  /** The original co-ordinates are in another system (more than 1 km away or turned more than 1 degree). */
+  otherSystem: boolean
   linesFailing: number
 }
 export const PARA_7_5_K: Record<SurveyClass67, number>

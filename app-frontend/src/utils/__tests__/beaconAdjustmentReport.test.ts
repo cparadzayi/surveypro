@@ -487,7 +487,7 @@ describe('each comparison check produces its own report', () => {
     expect(written).toContain('BEACON COMPARISON — SI 727 SECOND SCHEDULE EDGE COMPLIANCE');
     expect(written).toContain('SI 727 Edge Compliance — Class B');
     expect(written).toContain('Comparison Sketch — SI 727 §67(5)');
-    expect(written.some((w) => /no Helmert fitted/.test(w))).toBe(true);
+    expect(written.some((w) => /no scale fitted/.test(w))).toBe(true);
     expect(written).not.toContain('Data-Snooping Log (iterative Baarda W-test)');
     expect(written).not.toContain('Transformation Residuals');
     expect(written).not.toContain('Reliability & Validation');
@@ -513,6 +513,7 @@ describe('an unresolved comparison of co-ordinates', () => {
     }));
     const line = written.find((w) => /Beacons compared:/.test(w))!;
     expect(line).toMatch(new RegExp(`Accepted: 0\.  Rejected: 0\.  Unresolved: ${pts.length}\.`));
-    expect(written.some((w) => /Referred .* the disagreement runs through the network/.test(w))).toBe(true);
+    // The recommendation is wrapped to the page line by line: read it as one text.
+    expect(written.join(' ')).toMatch(/Referred .* the disagreement runs through the network/);
   });
 });

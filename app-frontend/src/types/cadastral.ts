@@ -315,8 +315,9 @@ export interface BeaconComparisonConfig {
   adjustmentSummary?: string;
   
   /** SI 727 s.67(5) inter-beacon (edge) check for every pair of beacons: the distance difference against
-   *  Second Schedule para 7(5) (distOk, which alone decides `pass`), and each line's direction and swing for
-   *  information (dirDiffSec raw Survey − Hist, swingResidSec after the network swing). Source of truth for
+   *  Second Schedule para 7(5) (distOk) and, since Nov 2026, the sideways movement across the line after the
+   *  common swing of the beacons kept against the same tolerance (side, sideOk); `pass` is both. Each line's
+   *  direction and swing are kept too (dirDiffSec raw Survey − Hist, swingResidSec after the common swing). Source of truth for
    *  the comparison sketch; from si727.js's edgeCompliance(). Comparisons saved before Nov 2026 may also
    *  carry dirAllowSec/dirOk and summary dirPass/bothPass from a direction limit SI 727 does not state;
    *  they are no longer read. */
@@ -326,11 +327,15 @@ export interface BeaconComparisonConfig {
       from: string; to: string;
       dH: number; dS: number; dDiff: number; dAllow: number; distOk: boolean;
       brgH: number; brgS: number; dirDiffSec: number; swingResidSec: number;
+      /** Sideways movement (m) and para 7(5)'s tolerance across the line; absent on older saves. */
+      side?: number; sideOk?: boolean;
       pass: boolean;
       dirAllowSec?: number; dirOk?: boolean;
     }>;
     summary: {
       totalLines: number; distPass: number;
+      /** Lines within the tolerance across the line, and within both; absent on older saves. */
+      sidePass?: number; bothPass?: number;
       meanScale: number | null;
       networkSwingDeg: number | null; networkSwingSec: number | null;
     };

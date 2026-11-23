@@ -103,14 +103,16 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
         res = coordinateComparison(points.value, surveyClass.value)
       } else if (method.value === 'edges') {
         // 2. Edge compliance with the SI 727 classes: every line between the beacons against Second
-        //    Schedule para 7(5), shown line by line (directions and swing for information), and decided
-        //    by the same para 7(5) rule as the comparison of co-ordinates: a beacon is set aside only when
+        //    Schedule para 7(5) ALONG each line and its tolerance ACROSS it (the sideways movement after
+        //    the common swing of the beacons kept; SI 727 states the limit along the line only, and the
+        //    report says the extension is ours), decided by the same rule as the comparison of
+        //    co-ordinates: a beacon is set aside only when
         //    lines to it fail while the lines among the others pass; failures running through the network
         //    leave every beacon UNRESOLVED. (It used to be a 1.25 x median "severity" cut that also counted
         //    a direction limit, neither in SI 727.) Edges cover every beacon, set-aside ones included:
         //    their failing lines are the evidence and stay on the sketch and table.
         const edges = edgeCompliance(points.value, surveyClass.value)
-        res = { ...coordinateComparison(points.value, surveyClass.value), edges }
+        res = { ...coordinateComparison(points.value, surveyClass.value, { sideways: true }), edges }
       } else {
         // 3. Iterative Baarda W-test: statistical data snooping on ALL points (no
         //    Second Schedule pre-filter) — the W-test alone decides rejections.

@@ -33,7 +33,14 @@ export function pickSketchScale(extent: ExtentM, areaMm: AreaMm): { denom: numbe
   const heightM = extent.maxX - extent.minX
   const fits = (denom: number) =>
     (widthM / denom) * 1000 <= areaMm.width && (heightM / denom) * 1000 <= areaMm.height
-  const denom = SCALE_LADDER.find(fits) ?? SCALE_LADDER[SCALE_LADDER.length - 1]
+  // Past the ladder the same round steps carry on a decade at a time (1:6000, 1:7500, 1:10 000, ...), so a
+  // network kilometres across is drawn whole. The ladder used to stop at 1:5000 and fall back to it: a 5 km
+  // comparison was then drawn a metre wide and only the middle of it reached the page.
+  let denom = SCALE_LADDER.find(fits)
+  for (let decade = 10; denom == null && decade <= 1e7; decade *= 10) {
+    denom = SCALE_LADDER.filter((d) => d >= 600 && d <= 5000).map((d) => d * decade).find(fits)
+  }
+  denom ??= SCALE_LADDER[SCALE_LADDER.length - 1] * 1e7
   return { denom, label: `1 : ${denom}` }
 }
 

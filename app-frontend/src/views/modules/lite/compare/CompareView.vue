@@ -47,7 +47,7 @@
             </select>
             <p class="text-xs text-gray-500 mt-0.5">
               <template v-if="checkMethod === 'coords'">→ Second Schedule para 7(5) on the lines between beacons</template>
-              <template v-else-if="checkMethod === 'edges'">→ Second Schedule para 7(5), line by line</template>
+              <template v-else-if="checkMethod === 'edges'">→ Second Schedule para 7(5), line by line, along and across</template>
             </p>
           </div>
 
@@ -626,12 +626,15 @@
           <template v-else>
             <div class="text-xs text-gray-500 mb-2">
               SI 727 Class {{ result.surveyClass }} · all pairs among accepted beacons ·
-              <b class="text-blue-700">{{ result.edges.summary.distPass }}</b> of
-              {{ result.edges.summary.totalLines }} lines within Second Schedule para 7(5) ·
+              <b class="text-blue-700">{{ result.edges.summary.bothPass ?? result.edges.summary.distPass }}</b> of
+              {{ result.edges.summary.totalLines }} lines within Second Schedule para 7(5)
+              <template v-if="result.edges.summary.sidePass != null">
+                along and across the line ({{ result.edges.summary.distPass }} along, {{ result.edges.summary.sidePass }} across)
+              </template> ·
               SI 727 mean scale {{ result.edges.summary.meanScale != null ? result.edges.summary.meanScale.toFixed(8) : '—' }},
-              network swing ω̂ =
+              common swing ω̂ =
               {{ result.edges.summary.networkSwingSec != null ? (result.edges.summary.networkSwingSec >= 0 ? '+' : '') + result.edges.summary.networkSwingSec.toFixed(1) + '″' : '—' }}
-              (weighted to the longest rays)
+              (of the beacons kept)
             </div>
             <div class="overflow-x-auto">
               <table class="min-w-full text-xs border-collapse">
@@ -647,13 +650,15 @@
                     <th class="text-right px-2 py-1.5">Survey dir (S)</th>
                     <th class="text-right px-2 py-1.5">swing (″)</th>
                     <th class="text-right px-2 py-1.5">swing − ω̂ (″)</th>
+                    <th class="text-right px-2 py-1.5">sideways (m)</th>
+                    <th class="text-center px-2 py-1.5">across</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr
                     v-for="(e, idx) in result.edges.rows"
                     :key="idx + '|' + e.from + '|' + e.to"
-                    :class="[!e.distOk ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60', 'border-t border-gray-100']"
+                    :class="[!e.distOk || e.sideOk === false ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60', 'border-t border-gray-100']"
                   >
                     <td class="px-2 py-1.5 whitespace-nowrap">{{ e.from }} – {{ e.to }}</td>
                     <td class="px-2 py-1.5 text-right">{{ f3(e.dH) }}</td>
@@ -665,15 +670,19 @@
                     <td class="px-2 py-1.5 text-right whitespace-nowrap text-red-600">{{ formatDMS(e.brgS) }}</td>
                     <td class="px-2 py-1.5 text-right">{{ e.dirDiffSec.toFixed(1) }}</td>
                     <td class="px-2 py-1.5 text-right">{{ e.swingResidSec.toFixed(1) }}</td>
+                    <td class="px-2 py-1.5 text-right">{{ e.side != null ? f4s(e.side) : '—' }}</td>
+                    <td class="px-2 py-1.5 text-center" :class="e.sideOk === false ? 'text-red-600 font-medium' : 'text-blue-600'">{{ e.sideOk == null ? '—' : e.sideOk ? '✓' : '✗' }}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
             <p class="text-xs text-gray-500 mt-2">
               dist tol = K·√(0,075f + 0,000 15f²) m, K = 0,01 / 0,04 / 0,06 for class A / B / C, f = the distance in metres
-              (Second Schedule para 7(5)); a line is judged on this alone. Swing = Survey − Hist direction, and swing − ω̂ after the
-              network swing ω̂ (length-weighted median), are shown for information: SI 727 sets no direction limit for a comparison,
-              and a whole network swung against the original is not a fault.
+              (Second Schedule para 7(5)). Swing = Survey − Hist direction; swing − ω̂ is that after the common swing ω̂ of the beacons
+              kept (a rigid fit of them, so a beacon set aside cannot pull it). Sideways = how far one end moved across the line
+              relative to the other once ω̂ is out; a line passes when it is within dist tol along the line and across it. SI 727 states
+              para 7(5) along the line only: holding its tolerance across the line is this check's extension, because a beacon's error
+              has no preferred direction. A whole network swung against the original is not a fault.
             </p>
           </template>
         </div>
@@ -779,7 +788,7 @@ const CHECK_METHODS = [
 const checkMethodHint = computed(() => {
   const hints = {
     coords: 'Sets each beacon’s survey co-ordinates beside the historical record per §67(5) and checks every line between the beacons against Second Schedule para 7(5); a beacon is set aside when lines to it fail while the others pass. No co-ordinate limit (the regulations set none), no Helmert, no W-test.',
-    edges: 'Lists every line between the beacons against Second Schedule para 7(5), with each line\'s direction and swing for information, and decides as the co-ordinate comparison does: a beacon is set aside when lines to it fail while the lines among the others pass; failures running through the network leave every beacon unresolved. No adjustment.',
+    edges: 'Lists every line between the beacons against Second Schedule para 7(5) along the line and, once the common swing of the beacons kept is taken out, its sideways movement against the same tolerance (SI 727 states the limit along the line only; holding it across is this check\'s extension), and decides as the co-ordinate comparison does: a beacon is set aside when lines to it fail while the lines among the others pass; failures running through the network leave every beacon unresolved. No adjustment.',
     wtest: '4-parameter Helmert least-squares with iterative Baarda W-test data snooping and χ² consistency checking.',
   }
   return hints[checkMethod.value]

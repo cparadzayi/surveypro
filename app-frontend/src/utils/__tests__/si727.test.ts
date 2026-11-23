@@ -67,11 +67,12 @@ describe('directionToleranceArcsec — Second Schedule para 8', () => {
 })
 
 /**
- * The edge check judges each line by Second Schedule para 7(5) alone. Directions and the swing are kept for
- * information: SI 727 sets no direction limit for a comparison (para 8 is a setting-out test), and the old
- * 2.45 x sigma0 angular limit was not in the regulations.
+ * The edge check holds each line to Second Schedule para 7(5) along the line and, once the common swing of the
+ * beacons kept is taken out, to the same tolerance across it (the sideways movement of one end relative to the
+ * other). SI 727 states the limit along the line only; holding it across is the check's own extension. A network
+ * swung as a whole is no fault. (The old 2.45 x sigma0 angular limit, which did not scale with para 7(5), is gone.)
  */
-describe('edgeCompliance — every line by para 7(5); directions for information', () => {
+describe('edgeCompliance — para 7(5) along the line and across it', () => {
   // A clean regular octagon, R = 1000 m, historical and survey coincident.
   const RING = Array.from({ length: 8 }, (_, i) => {
     const a = (i / 8) * 2 * Math.PI
@@ -88,21 +89,27 @@ describe('edgeCompliance — every line by para 7(5); directions for information
     })
     const { rows, summary } = edgeCompliance(rotated, 'B')
     expect(Math.abs(summary.networkSwingSec)).toBeCloseTo(180, 6)
-    expect(Math.max(...rows.map(r => Math.abs(r.swingResidSec)))).toBeLessThan(1e-6)
-    expect(rows.every(r => r.pass && r.distOk)).toBe(true)
-    expect(summary.distPass).toBe(rows.length)
+    expect(Math.max(...rows.map((r: any) => Math.abs(r.swingResidSec)))).toBeLessThan(1e-6)
+    expect(Math.max(...rows.map((r: any) => Math.abs(r.side)))).toBeLessThan(1e-6)
+    expect(rows.every((r: any) => r.pass && r.distOk && r.sideOk)).toBe(true)
+    expect(summary).toMatchObject({ distPass: rows.length, sidePass: rows.length, bothPass: rows.length })
   })
 
-  it('decides a line by its distance alone, however large its swing', () => {
-    // One beacon slid 0.05 m ALONG a 1000 m line: the distance changes 0.05 m (within class B), the
-    // short lines to it swing, and nothing may fail for that swing.
-    const pts = RING.map((p, i) => (i === 0 ? { ...p, yS: p.yS + 0.05 } : p))
+  it('sets aside a beacon moved sideways, which the distances alone would accept', () => {
+    // R1 moved 1.2 m square to the 2 km diameter R1-R5: the distance hardly changes, the line turns.
+    const pts = RING.map((p, i) => (i === 0 ? { ...p, xS: p.xS + 1.2 } : p))
     const { rows } = edgeCompliance(pts, 'B')
-    for (const r of rows) {
-      expect(r.pass).toBe(r.distOk)
-      expect('dirOk' in r).toBe(false)
-      expect('dirAllowSec' in r).toBe(false)
-    }
+    const d15 = rows.find((r: any) => r.from === 'R1' && r.to === 'R5')!
+    expect(d15.distOk).toBe(true)
+    expect(Math.abs(d15.side)).toBeCloseTo(1.2, 3)
+    expect(d15.dAllow).toBeLessThan(1.2)
+    expect(d15.sideOk).toBe(false)
+    expect(d15.pass).toBe(false)
+    // Every line among the others passes: the common swing is fitted to the beacons kept, so R1 cannot pull it.
+    expect(rows.filter((r: any) => r.from !== 'R1').every((r: any) => r.pass)).toBe(true)
+    const status = (opts?: any) => Object.fromEntries(coordinateComparison(pts, 'B', opts).pts.map((p: any) => [p.name, p.finalStatus]))
+    expect(status({ sideways: true }).R1).toBe('REJECT')
+    expect(Object.values(status({ sideways: true })).filter(s => s === 'REJECT')).toHaveLength(1)
   })
 
   it('uses K = 0,01 / 0,04 / 0,06 for class A / B / C on the shorter distance', () => {
@@ -116,16 +123,19 @@ describe('edgeCompliance — every line by para 7(5); directions for information
     expect(edgeCompliance(pts as any, 'C').rows[0].dAllow).toBeCloseTo(0.06 * k(1000), 12)
   })
 
-  it('pins the network swing to the well-determined rays — SAMPLE_DATA blunder cannot pull it', () => {
-    const { summary } = edgeCompliance(SAMPLE_DATA as any, 'B')
-    expect(Math.abs(summary.networkSwingSec)).toBeLessThan(2)
+  it('keeps SAMPLE_DATA whole: its 0.248 m BM 004 is within para 7(5) along and across its ~500 m lines', () => {
+    const { rows } = edgeCompliance(SAMPLE_DATA as any, 'B')
+    expect(rows).toHaveLength(28)
+    expect(rows.every((r: any) => r.distOk && r.sideOk)).toBe(true)
   })
 })
 
 /**
  * A surveyor's class B comparison of six beacons (23 Nov 2026). Printed before: 1 of 15 lines "within the
  * limits", because 14 failed a direction limit SI 727 does not state, and n rejected by a severity cut.
- * By para 7(5): four lines fail, n is set aside (o-n and n-1B), and 40-FS2 and 1A-1B each fail alone.
+ * By the distances alone: four lines fail, n is set aside (o-n and n-1B), and 40-FS2 and 1A-1B each fail alone.
+ * Across the line as well: o moved 3.04 m almost wholly sideways (its distances pass only because para 7(5)
+ * allows 2.7 m at 5 km), and it, not n, is the beacon the lines point to.
  */
 describe('a class B comparison of six beacons, by para 7(5)', () => {
   const SIX = [
@@ -136,17 +146,31 @@ describe('a class B comparison of six beacons, by para 7(5)', () => {
 
   it('prints the para 7(5) class B limits worked by hand (40 - FS2: 1.0028 m; 1A - 1B: 0.2446 m)', () => {
     const rows = edgeCompliance(SIX, 'B').rows
-    const line = (a: string, b: string) => rows.find(r => r.from === a && r.to === b)!
+    const line = (a: string, b: string) => rows.find((r: any) => r.from === a && r.to === b)!
     expect(line('40', 'FS2').dAllow).toBeCloseTo(1.0028, 4)
     expect(line('1A', '1B').dAllow).toBeCloseTo(0.2446, 4)
-    expect(rows.filter(r => !r.distOk).map(r => `${r.from}-${r.to}`)).toEqual(['40-FS2', 'o-n', 'n-1B', '1A-1B'])
+    expect(rows.filter((r: any) => !r.distOk).map((r: any) => `${r.from}-${r.to}`)).toEqual(['40-FS2', 'o-n', 'n-1B', '1A-1B'])
   })
 
-  it('sets aside n, accepts o, and leaves the ends of the two lone failing lines unresolved', () => {
+  it('by the distances alone: sets aside n, accepts o, and leaves the ends of the two lone failing lines unresolved', () => {
     const c = coordinateComparison(SIX, 'B')
     const status = Object.fromEntries(c.pts.map((p: any) => [p.name, p.finalStatus]))
     expect(status).toEqual({ '40': 'UNRESOLVED', FS2: 'UNRESOLVED', o: 'ACCEPT', n: 'REJECT', '1A': 'UNRESOLVED', '1B': 'UNRESOLVED' })
     expect(c.verdict.unresolved).toEqual([{ from: '40', to: 'FS2' }, { from: '1A', to: '1B' }].map(l => expect.objectContaining(l)))
+  })
+
+  it('along and across: sets aside o and 1B, keeps n and 1A, and leaves 40 - FS2 unresolved', () => {
+    const c = coordinateComparison(SIX, 'B', { sideways: true })
+    const status = Object.fromEntries(c.pts.map((p: any) => [p.name, p.finalStatus]))
+    expect(status).toEqual({ '40': 'UNRESOLVED', FS2: 'UNRESOLVED', o: 'REJECT', n: 'ACCEPT', '1A': 'ACCEPT', '1B': 'REJECT' })
+    expect(c.verdict.rejected).toEqual(['o', '1B'])
+    expect(c.verdict.unresolved).toEqual([expect.objectContaining({ from: '40', to: 'FS2' })])
+    // Every line among the beacons kept, other than the lone one, is within the limit along and across.
+    const { rows, summary } = edgeCompliance(SIX, 'B')
+    const kept = new Set(['40', 'FS2', 'n', '1A'])
+    expect(rows.filter((r: any) => kept.has(r.from) && kept.has(r.to) && !r.pass).map((r: any) => `${r.from}-${r.to}`)).toEqual(['40-FS2'])
+    // The common swing is that of the beacons kept (about +81 seconds), not the -78.5 the long lines to o gave.
+    expect(summary.networkSwingSec).toBeCloseTo(81.5, 0)
   })
 })
 

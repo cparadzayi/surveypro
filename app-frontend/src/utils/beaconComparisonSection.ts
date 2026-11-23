@@ -64,6 +64,15 @@ export function isCoordinateComparison(comparison?: { checkMethod?: string; adju
   return /67\(5\)\s*(co-ordinate comparison|comparison of co-ordinates)/i.test(comparison.adjustmentSummary ?? '');
 }
 
+/**
+ * How the saved comparison's verdict is worked out again: the edge check also holds each line to para 7(5)'s
+ * tolerance ACROSS it (sideways, after the common swing of the beacons kept); the comparison of co-ordinates
+ * holds the distance only.
+ */
+export function comparisonOptions(comparison?: { checkMethod?: string } | null): { sideways: boolean } {
+  return { sideways: comparison?.checkMethod === 'edges' };
+}
+
 /** The survey class the comparison was judged in: saved, else read from the summary, else B. */
 export function comparisonClass(comparison?: { surveyClass?: string; adjustmentSummary?: string } | null): 'A' | 'B' | 'C' {
   const c = (comparison?.surveyClass ?? /class\s+([ABC])\b/.exec(comparison?.adjustmentSummary ?? '')?.[1] ?? 'B').toUpperCase();
@@ -185,7 +194,7 @@ export function renderBeaconComparison(
   // co-ordinate limit (0.079 m) and a 1.25 x median rule that are not in SI 727. Any other method keeps its
   // summary (Helmert LSQ + W-test, edge compliance), or the legacy tolerance line.
   const coords = isCoordinateComparison(comparison) ? comparisonClass(comparison) : null;
-  const judged = coords ? compareCoordinates67(comparisonPoints(reportData), coords) : null;
+  const judged = coords ? compareCoordinates67(comparisonPoints(reportData), coords, comparisonOptions(comparison)) : null;
   if (coords && opts.methodInAnnexure) {
     const ref = `How the found beacons were checked (SI 727 section 67(5) and Second Schedule para 7(5), class ${coords} survey): see ${opts.methodInAnnexure} at the end of this record.`;
     cursor.doc.splitTextToSize(ref, cursor.pageWidth - cursor.margin * 2 - 10).forEach((line: string) => {
@@ -278,14 +287,21 @@ function renderLineCheck(cursor: BeaconComparisonCursor, r: ComparisonResult67):
 
   cursor.doc.setFont('helvetica', 'bold');
   cursor.doc.setFontSize(10);
-  cursor.doc.text(`Second Schedule para 7(5), class ${r.surveyClass}: distances between the found beacons`, left, cursor.y);
+  cursor.doc.text(r.sideways
+    ? `Second Schedule para 7(5), class ${r.surveyClass}: the lines between the found beacons, along and across`
+    : `Second Schedule para 7(5), class ${r.surveyClass}: distances between the found beacons`, left, cursor.y);
   cursor.y += 6;
 
-  const cols = [0, 30, 58, 86, 112, 136, 156].map((d) => left + d);
+  // With the sideways test a Sideways column (the movement across the line after the common swing of the
+  // beacons kept) goes in before the limit, which both are held to.
+  const cols = (r.sideways ? [0, 26, 50, 74, 98, 120, 142] : [0, 30, 58, 86, 112, 136, 156]).map((d) => left + d);
+  const heads = r.sideways
+    ? ['Line', 'Original (m)', 'This survey (m)', 'Difference (m)', 'Sideways (m)', 'Limit (m)', 'Result']
+    : ['Line', 'Original (m)', 'This survey (m)', 'Difference (m)', 'Limit (m)', 'Result'];
   const head = () => {
     cursor.doc.setFont('helvetica', 'bold');
     cursor.doc.setFontSize(8.5);
-    ['Line', 'Original (m)', 'This survey (m)', 'Difference (m)', 'Limit (m)', 'Result'].forEach((h, i) => cursor.doc.text(h, cols[i], cursor.y));
+    heads.forEach((h, i) => cursor.doc.text(h, cols[i], cursor.y));
     cursor.y += 2;
     horizontalLine(cursor);
     cursor.y += 4.5;
@@ -300,7 +316,9 @@ function renderLineCheck(cursor: BeaconComparisonCursor, r: ComparisonResult67):
       head();
     }
     const result = !l.judged ? 'Not judged' : l.pass ? 'Within' : 'Outside';
-    [`${l.from} - ${l.to}`, l.fH.toFixed(3), l.fS.toFixed(3), signed3(l.diff), l.limit.toFixed(3), result]
+    (r.sideways
+      ? [`${l.from} - ${l.to}`, l.fH.toFixed(3), l.fS.toFixed(3), signed3(l.diff), signed3(l.side ?? 0), l.limit.toFixed(3), result]
+      : [`${l.from} - ${l.to}`, l.fH.toFixed(3), l.fS.toFixed(3), signed3(l.diff), l.limit.toFixed(3), result])
       .forEach((c, i) => cursor.doc.text(c, cols[i], cursor.y));
     cursor.y += 4.5;
   }
@@ -310,7 +328,10 @@ function renderLineCheck(cursor: BeaconComparisonCursor, r: ComparisonResult67):
     + (r.networkWide
       ? 'the failing lines run through the network, so no single beacon can be set aside.'
       : r.setAside.length ? `set aside: ${r.setAside.join(', ')}.` : 'no beacon set aside.')
-    + ' The limit is worked out with f the shorter of the two distances.';
+    + ' The limit is worked out with f the shorter of the two distances.'
+    + (r.sideways
+      ? ` Sideways is how far one end moved across the line relative to the other once the common swing of the beacons kept (${Math.abs(r.keptSwingSec ?? 0).toFixed(1)} seconds) is taken out; it is held to the same limit. SI 727 states para 7(5) along the line only: applying it across the line is this record's extension, because a beacon's error has no preferred direction.`
+      : '');
   cursor.doc.splitTextToSize(tally, width).forEach((line: string) => {
     cursor.doc.text(line, left, cursor.y);
     cursor.y += 5;
@@ -520,20 +541,30 @@ function renderBeaconComparisonSketch(
       cursor.doc.setLineWidth(0.15);
       cursor.doc.ellipse(base.mmX + w / 2, base.mmY + 2.2 - 1, w / 2 + 1, 1.8, 'S');
     }
-    // The swing is information: SI 727 sets no direction limit for a comparison, so it is never circled.
+    // The swing is circled when the line's sideways movement exceeds para 7(5)'s tolerance across the line (the
+    // edge check). A comparison saved before that test, or one without it, carries no sideOk: never circled.
+    if (row.sideOk === false) {
+      const w = cursor.doc.getTextWidth(swingText);
+      cursor.doc.setDrawColor(...RED);
+      cursor.doc.setLineWidth(0.15);
+      cursor.doc.ellipse(base.mmX + w / 2, base.mmY + 4.4 - 1, w / 2 + 1, 1.8, 'S');
+    }
   });
 
   cursor.y = sketchTop + areaMm.height + 6;
 
   cursor.doc.setTextColor(...BLACK);
   cursor.doc.setFontSize(8);
-  cursor.doc.text('Black = historical, Red = current survey, Circled = distance outside Second Schedule para 7(5); swings for information', cursor.margin, cursor.y);
+  const sideways = ec.rows.some((r) => r.sideOk != null);
+  cursor.doc.text(sideways
+    ? 'Black = historical, Red = current survey, Circled = outside Second Schedule para 7(5): a distance along the line, a swing across it'
+    : 'Black = historical, Red = current survey, Circled = distance outside Second Schedule para 7(5); swings for information', cursor.margin, cursor.y);
   cursor.y += cursor.lineHeight;
 
   // Counted from the rows, so a comparison saved when directions were also judged prints the para 7(5) count.
-  const within = ec.rows.filter((r) => r.distOk).length;
+  const within = ec.rows.filter((r) => r.distOk && r.sideOk !== false).length;
   cursor.doc.text(
-    `SI 727 Class ${ec.surveyClass} · ${within} of ${ec.rows.length} lines within Second Schedule para 7(5)`,
+    `SI 727 Class ${ec.surveyClass} · ${within} of ${ec.rows.length} lines within Second Schedule para 7(5)${sideways ? ' along and across the line' : ''}`,
     cursor.margin, cursor.y,
   );
   cursor.y += cursor.lineHeight + 3;

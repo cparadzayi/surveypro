@@ -17,7 +17,7 @@
 
 import type { FoundBeacon, ReportOnSurveyData } from '../types/cadastral';
 import { compareCoordinates67 } from '../../../app-shared/coordinateComparison67';
-import { isCoordinateComparison, comparisonClass, comparisonPoints } from './beaconComparisonSection';
+import { isCoordinateComparison, comparisonClass, comparisonPoints, comparisonOptions } from './beaconComparisonSection';
 
 export interface FoundBeaconsNarrative {
   /** Found beacons whose positions were accepted. */
@@ -118,7 +118,7 @@ export function buildFoundBeaconsNarrative(
   // stays "accepted" when nothing was singled out.
   const comparison = reportData.beaconComparison;
   if (found.length && isCoordinateComparison(comparison)) {
-    const verdict = compareCoordinates67(comparisonPoints(reportData), comparisonClass(comparison));
+    const verdict = compareCoordinates67(comparisonPoints(reportData), comparisonClass(comparison), comparisonOptions(comparison));
     if (verdict.networkWide) {
       comparisonSentence = 'The comparison of coordinates did not resolve: the distances between the found beacons disagree with the '
         + 'original data throughout (SI 727 Second Schedule para 7(5), see the Beacon Comparison), so no beacon could be singled '

@@ -27,10 +27,16 @@ describe('pickSketchScale', () => {
     expect(label).toBe('1 : 200')
   })
 
-  it('falls back to the largest ladder denominator when nothing fits', () => {
+  it('carries on past 1:5000 in round steps until a network kilometres across fits', () => {
+    // A 100 km square in 150 x 100 mm needs 1:1 000 000.
     const extent = { minY: 0, maxY: 100000, minX: 0, maxX: 100000 }
-    const { denom } = pickSketchScale(extent, { width: 150, height: 100 })
-    expect(denom).toBe(5000) // largest rung on the ladder
+    expect(pickSketchScale(extent, { width: 150, height: 100 }).denom).toBe(1000000)
+    // The surveyor's six beacons: 4.3 km by 4.8 km (it was drawn at 1:5000, a metre wide).
+    const six = { minY: -86750.13, maxY: -82439.83, minX: 2140365.37, maxX: 2145134.86 }
+    const { denom } = pickSketchScale(six, { width: 180, height: 230 })
+    expect(denom).toBe(25000)
+    expect((4310 / denom) * 1000).toBeLessThanOrEqual(180)
+    expect((4770 / denom) * 1000).toBeLessThanOrEqual(230)
   })
 
   it('does not divide by zero for a degenerate (zero-width) extent', () => {

@@ -7,12 +7,15 @@ export interface EdgeRow {
   from: string; to: string
   dH: number; dS: number; dDiff: number; dAllow: number; distOk: boolean
   brgH: number; brgS: number; dirDiffSec: number; swingResidSec: number
-  /** Para 7(5) alone (directions are information). Saved results may still carry dirOk/dirAllowSec. */
+  /** Sideways movement (m) after the common swing of the beacons kept, against the same para 7(5) tolerance. */
+  side?: number; sideOk?: boolean
+  /** Within para 7(5) along the line and across it. Saved results may still carry dirOk/dirAllowSec. */
   pass: boolean
   dirAllowSec?: number; dirOk?: boolean
 }
 export interface EdgeSummary {
   totalLines: number; distPass: number
+  sidePass?: number; bothPass?: number
   meanScale: number | null
   networkSwingDeg: number | null; networkSwingSec: number | null
 }
@@ -77,12 +80,13 @@ export function buildComparisonConfig(
         ? 'From the above comparison, I adopt the positions of all found beacons.'
         : `From the above comparison, I adopt the positions of the found beacons, except ${rejected.join(', ')}.`
   } else if (m === 'edges') {
-    // Every line between the beacons against Second Schedule para 7(5), decided as the co-ordinate comparison
-    // is (directions shown for information) — no adjustment was fitted.
+    // Every line between the beacons against Second Schedule para 7(5) along the line and, sideways after the
+    // common swing of the beacons kept, across it; decided as the co-ordinate comparison is. No scale fitted.
     const c67 = result?.comparison67
     adjustmentSummary =
       `SI 727 Second Schedule para 7(5), class ${cls}, on every line between the found beacons`
-      + (c67 ? ` (${c67.lines.length} lines, ${c67.linesFailing} outside the limit); directions for information` : '')
+      + (c67?.sideways ? ', along the line and (its tolerance applied by this check) across it' : '')
+      + (c67 ? ` (${c67.lines.length} lines, ${c67.linesFailing} outside the limit)` : '')
     conclusion = c67
       ? comparisonConclusion(c67)
       : rejected.length === 0

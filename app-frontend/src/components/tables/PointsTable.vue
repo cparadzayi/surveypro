@@ -36,6 +36,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useSpatialStore } from '../../stores/spatial'
+import { featureYX } from '../../utils/join'
 
 const store = useSpatialStore()
 const q = ref(store.search)
@@ -51,9 +52,9 @@ const pages = computed(() => Math.max(1, Math.ceil(store.total / store.limit)))
 async function prev() { if (store.page>1) { store.page--; await store.fetch() } }
 async function next() { if (store.page<pages.value) { store.page++; await store.fetch() } }
 function nameOf(f:any){ return f.properties?.name || f.properties?.beacon || f.properties?.point_name || '' }
-// GeoJSON coordinates are [x, y] order; Cape Lo: Y=Westing(~97k), X=Southing(~2.2M)
-function yOf(f:any){ return Array.isArray(f.geometry?.coordinates) ? f.geometry.coordinates[1] : '' }
-function xOf(f:any){ return Array.isArray(f.geometry?.coordinates) ? f.geometry.coordinates[0] : '' }
+// The layers hold both [Y, X] and [X, Y]; featureYX tells them apart by the southing in the millions
+function yOf(f:any){ return featureYX(f)?.y ?? '' }
+function xOf(f:any){ return featureYX(f)?.x ?? '' }
 </script>
 <script lang="ts">
 export default { name: 'PointsTable' }

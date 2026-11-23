@@ -28,7 +28,7 @@
 </template>
 <script setup lang="ts">
 import { ref, watch, onMounted, computed } from 'vue'
-import { listProjects, listLayers, updateLayerSrid, type Project, type Layer } from '../../services/spatial'
+import { listProjects, listLayers, getLayer, updateLayerSrid, type Project, type Layer } from '../../services/spatial'
 
 const props = defineProps<{ modelValue?: number }>()
 const emit = defineEmits<{ (e:'update:modelValue', v:number|undefined): void }>()
@@ -75,7 +75,11 @@ async function applySrid() {
   }
 }
 
+// Set while a layer handed in through v-model is being shown, so choosing its project does not clear it.
+let restoring = false
+
 watch(projectId, async () => {
+  if (restoring) return
   localLayerId.value = 0
   await refreshLayers()
   emit('update:modelValue', undefined)
@@ -84,6 +88,20 @@ watch(localLayerId, (v) => emit('update:modelValue', v || undefined))
 
 onMounted(async () => {
   await refreshProjects()
+  // A layer chosen earlier (the Lite modules share one) opens with its project and layer selected.
+  if (props.modelValue) {
+    try {
+      const layer = await getLayer(props.modelValue)
+      restoring = true
+      projectId.value = layer.project_id
+      await refreshLayers()
+      localLayerId.value = layer.id
+    } catch {
+      emit('update:modelValue', undefined)
+    } finally {
+      restoring = false
+    }
+  }
 })
 </script>
 

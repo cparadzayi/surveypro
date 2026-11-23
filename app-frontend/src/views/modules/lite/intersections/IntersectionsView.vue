@@ -6,45 +6,30 @@
     :tabs="ribbonTabs"
     @action="runRibbonAction"
   >
+    <LiteLayerBar class="mb-3" />
     <form class="grid grid-cols-1 sm:grid-cols-2 gap-4" @submit.prevent="onCompute">
-      <fieldset class="space-y-2">
-        <legend class="font-medium text-sm">Point P1 (Y, X)</legend>
-        <div class="grid grid-cols-2 gap-2">
-          <label class="text-xs text-gray-600">Y (westing)
-            <input v-model.number="form.p1.y" type="number" step="0.001" class="input" />
-          </label>
-          <label class="text-xs text-gray-600">X (southing)
-            <input v-model.number="form.p1.x" type="number" step="0.001" class="input" />
-          </label>
-        </div>
+      <div class="space-y-2">
+        <LitePointPicker v-model="p1" label="Point P1 (Y, X)" />
         <label class="text-xs text-gray-600">Bearing from P1
-          <DMSBearingInput v-model="form.p1.bearingDeg" />
+          <DMSBearingInput v-model="bearing1" />
         </label>
-      </fieldset>
-      <fieldset class="space-y-2">
-        <legend class="font-medium text-sm">Point P2 (Y, X)</legend>
-        <div class="grid grid-cols-2 gap-2">
-          <label class="text-xs text-gray-600">Y (westing)
-            <input v-model.number="form.p2.y" type="number" step="0.001" class="input" />
-          </label>
-          <label class="text-xs text-gray-600">X (southing)
-            <input v-model.number="form.p2.x" type="number" step="0.001" class="input" />
-          </label>
-        </div>
+      </div>
+      <div class="space-y-2">
+        <LitePointPicker v-model="p2" label="Point P2 (Y, X)" />
         <label class="text-xs text-gray-600">Bearing from P2
-          <DMSBearingInput v-model="form.p2.bearingDeg" />
+          <DMSBearingInput v-model="bearing2" />
         </label>
-      </fieldset>
+      </div>
       <fieldset class="sm:col-span-2 space-y-2">
-        <legend class="font-medium text-sm">Options</legend>
-        <div class="flex items-center gap-3">
+        <legend class="font-medium text-sm">Result and options</legend>
+        <div class="flex flex-wrap items-center gap-3">
+          <label class="text-xs text-gray-600">Name of the intersection
+            <input v-model="iName" type="text" class="input w-40" :placeholder="nextName" />
+          </label>
           <label class="inline-flex items-center gap-2 text-xs">
-            <input v-model="form.save" type="checkbox" class="checkbox" /> Save to layer
+            <input v-model="save" type="checkbox" class="checkbox" /> Save to layer
           </label>
-          <LayerSelect v-if="form.save" v-model="form.layer_id" />
-          <label v-if="form.save" class="text-xs text-gray-600">Point Name (P)
-            <input v-model="propName" type="text" class="input w-40" />
-          </label>
+          <LayerSelect v-if="save" v-model="saveLayerId" />
         </div>
       </fieldset>
       <div class="sm:col-span-2 flex items-center gap-2">
@@ -53,46 +38,68 @@
       </div>
     </form>
     <div v-if="result" class="mt-4 p-3 rounded border bg-slate-50 text-sm">
-      <div class="font-medium">Intersection (Y, X)</div>
+      <div class="font-medium">Intersection {{ resultName }} (Y, X)</div>
       <div v-if="result.error" class="text-red-600">{{ result.error }}</div>
-      <div v-else class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-1">
-        <div>Y = {{ result.point?.y?.toFixed(3) }}</div>
-        <div>X = {{ result.point?.x?.toFixed(3) }}</div>
-        <div v-if="result.saved" class="text-green-700">Saved feature id: {{ result.saved.id }}</div>
-      </div>
+      <template v-else-if="result.point">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-1">
+          <div>Y = {{ result.point.y.toFixed(3) }}</div>
+          <div>X = {{ result.point.x.toFixed(3) }}</div>
+          <div v-if="result.saved" class="text-green-700">Saved feature id: {{ result.saved.id }}</div>
+        </div>
+        <div class="mt-1 text-xs text-gray-500">{{ resultName }} is in this session's working points: pick it in Join, Polar or Areas v2.</div>
+      </template>
     </div>
   </ModuleScaffold>
 </template>
 <script setup lang="ts">
-import { reactive, ref, computed } from 'vue'
+import { ref, computed } from 'vue'
 import ModuleScaffold from '../../../../components/scaffold/ModuleScaffold.vue'
 import { group, btn, type RibbonTab } from '../../../../components/ribbon/types'
 import DMSBearingInput from '../../../../components/inputs/DMSBearingInput.vue'
 import LayerSelect from '../../../../components/inputs/LayerSelect.vue'
-import { computeIntersectionBB, type BBIntersectionRequest, type BBIntersectionResponse } from '../../../../services/compute'
+import LitePointPicker, { type PickedPoint } from '../../../../components/lite/LitePointPicker.vue'
+import LiteLayerBar from '../../../../components/lite/LiteLayerBar.vue'
+import { useLiteWorkingPointsStore, nextFreeName } from '../../../../stores/liteWorkingPoints'
+import { computeIntersectionBB, type BBIntersectionResponse } from '../../../../services/compute'
 
-const form = reactive<BBIntersectionRequest>({
-  p1: { y: 0, x: 0, bearingDeg: 0 },
-  p2: { y: 0, x: 0, bearingDeg: 0 },
-  save: false,
-  properties: {}
-})
+const store = useLiteWorkingPointsStore()
+const blank = (): PickedPoint => ({ name: '', y: null, x: null })
+const p1 = ref<PickedPoint>(blank())
+const p2 = ref<PickedPoint>(blank())
+const bearing1 = ref(0)
+const bearing2 = ref(0)
+const iName = ref('')
+const save = ref(false)
+const saveLayerId = ref<number | undefined>(undefined)
 const loading = ref(false)
 const result = ref<BBIntersectionResponse | null>(null)
-
-const propName = computed({
-  get: () => (form.properties?.name as string) || '',
-  set: (v: string) => {
-    if (!form.properties) form.properties = {}
-    ;(form.properties as any).name = v
-  }
-})
+const resultName = ref('')
+const nextName = computed(() => nextFreeName(store.points, 'I'))
 
 async function onCompute() {
+  if (p1.value.y === null || p1.value.x === null || p2.value.y === null || p2.value.x === null) {
+    result.value = { ok: false, error: 'Give P1 and P2 a Y and an X, or pick them from the list.' }
+    return
+  }
   loading.value = true
+  const name = iName.value.trim() || nextName.value
   try {
-    const res = await computeIntersectionBB(form)
+    const res = await computeIntersectionBB({
+      p1: { y: p1.value.y, x: p1.value.x, bearingDeg: bearing1.value },
+      p2: { y: p2.value.y, x: p2.value.x, bearingDeg: bearing2.value },
+      save: save.value,
+      layer_id: saveLayerId.value,
+      properties: { name },
+    })
     result.value = res
+    if (res.point) {
+      resultName.value = name
+      store.add({ name, y: res.point.y, x: res.point.x, source: 'intersection' })
+      for (const p of [p1.value, p2.value]) {
+        if (p.name.trim()) store.add({ name: p.name, y: p.y!, x: p.x!, source: 'typed' })
+      }
+      iName.value = ''
+    }
   } catch (e: any) {
     result.value = { ok: false, error: e?.response?.data?.error || e.message }
   } finally {
@@ -102,11 +109,13 @@ async function onCompute() {
 
 // ── Ribbon: Solve toolbar ─────────────────────────────────────────────────────
 function resetAll() {
-  form.p1 = { y: 0, x: 0, bearingDeg: 0 }
-  form.p2 = { y: 0, x: 0, bearingDeg: 0 }
-  form.save = false
-  form.layer_id = undefined
-  form.properties = {}
+  p1.value = blank()
+  p2.value = blank()
+  bearing1.value = 0
+  bearing2.value = 0
+  iName.value = ''
+  save.value = false
+  saveLayerId.value = undefined
   result.value = null
 }
 
@@ -121,23 +130,15 @@ const ribbonTabs = computed<RibbonTab[]>(() => [
         btn({ id: 'inter-clear', icon: '🗑️', label: 'Clear', tone: 'danger' }),
       ], 'Intersection of two south-oriented bearing rays through P1 and P2.'),
       group('Options', [
-        btn({ id: 'inter-save', icon: '💾', label: 'Save', active: form.save, title: 'Save the computed point to a layer' }),
+        btn({ id: 'inter-save', icon: '💾', label: 'Save', active: save.value, title: 'Save the computed point to a layer' }),
       ]),
     ],
   },
 ])
 
 async function runRibbonAction(id: string) {
-  if (id === 'inter-compute') {
-    await onCompute()
-  } else if (id === 'inter-clear') {
-    resetAll()
-  } else if (id === 'inter-save') {
-    form.save = !form.save
-  }
+  if (id === 'inter-compute') await onCompute()
+  else if (id === 'inter-clear') resetAll()
+  else if (id === 'inter-save') save.value = !save.value
 }
 </script>
-
-<style scoped>
-/* Using utility classes directly */
-</style>

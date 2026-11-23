@@ -63,7 +63,7 @@ export const useModulesStore = defineStore('modules', {
         icon: '🧭',
         submenus: [
           { slug: 'points', title: 'Points', description: 'Manage survey control & detail points', badge: 'Core', icon: '📍' },
-          { slug: 'lines', title: 'Lines & Bearings', description: 'Bearing & distance computations', icon: '📐' },
+          { slug: 'join', title: 'Join', description: 'Direction & distance between two points', icon: '📐', badge: 'Core' },
           { slug: 'areas', title: 'Areas', description: 'Simple parcel / polygon area calc', icon: '▭' },
           { slug: 'exports', title: 'Exports', description: 'CSV / JSON outputs', icon: '⬆️⬇️' },
           // Newly activated compute tools exposed in flat submenus for quick access
@@ -91,12 +91,11 @@ export const useModulesStore = defineStore('modules', {
             title: 'Compute',
             description: 'Core survey computations',
             items: [
-              { slug: 'lines', title: 'Lines & Bearings', description: 'Bearings and distances', icon: '📐' },
+              { slug: 'join', title: 'Join', description: 'Direction & distance between two points (reverse polar)', icon: '📐', badge: 'Core' },
               { slug: 'areas', title: 'Areas', description: 'Polygon areas • fixed area', icon: '▭' },
               { slug: 'areas2', title: 'Areas v2 (Search)', description: 'Search points, build polygon, compute area', icon: '▭', badge: 'Beta' },
               { slug: 'estimate', title: 'Financial Estimate', description: 'Tariff‑based quotation', icon: '💰', badge: 'New' },
               { slug: 'polar', title: 'Polar', description: 'from plane/observations', icon: '🎯', badge: 'Core' },
-              { slug: 'reverse-polar', title: 'Reverse Polar', disabled: true, badge: 'Planned', icon: '🔄🎯' },
               { slug: 'intersections', title: 'Intersections', icon: '✖️', badge: 'Core' },
               { slug: 'curves', title: 'Curves', description: 'TP & 3-point', disabled: true, badge: 'Planned', icon: '〰️' }
             ]

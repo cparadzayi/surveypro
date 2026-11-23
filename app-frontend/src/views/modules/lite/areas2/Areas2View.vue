@@ -48,7 +48,7 @@
         <!-- Manual layer selection (fallback for standalone use) -->
         <label v-else class="block">
           <span class="text-xs text-gray-600">Points Layer</span>
-          <LayerSelect v-model="layerId" />
+          <LayerSelect v-model="layerId" @update:model-value="(v: number | undefined) => liteStore.setLayer(v)" />
         </label>
         
         <div v-if="layerId" class="text-xs flex items-center gap-2">
@@ -95,7 +95,7 @@
         
         <label class="block">
           <span class="text-xs text-gray-600">Search point</span>
-          <input ref="searchEl" v-model="q" @input="onInput" @keydown.down.prevent="highlightNext()" @keydown.up.prevent="highlightPrev()" @keydown.enter.prevent="enterAdd()" @keydown.esc.prevent="clearSuggestions()" :disabled="!layerId" class="border rounded px-2 py-1 w-64" placeholder="Beacon/Name" />
+          <input ref="searchEl" v-model="q" @input="onInput" @keydown.down.prevent="highlightNext()" @keydown.up.prevent="highlightPrev()" @keydown.enter.prevent="enterAdd()" @keydown.esc.prevent="clearSuggestions()" class="border rounded px-2 py-1 w-64" :placeholder="layerId ? 'Beacon/Name (layer or this session)' : 'Name of a working point from this session'" />
         </label>
         <button class="px-3 py-1 bg-slate-600 text-white rounded disabled:opacity-50" :disabled="!selectedSuggestion" @click="addSelected">Add Point</button>
       </div>
@@ -104,7 +104,7 @@
         <li v-for="(s, idx) in suggestions" :key="s.id" @mouseenter="hoverIndex=idx" @mouseleave="hoverIndex=-1"
             :class="['px-2 py-1 cursor-pointer', (selectedSuggestion && selectedSuggestion.id===s.id) || hoverIndex===idx ? 'bg-slate-100' : 'hover:bg-slate-50']"
             @click="addFromSuggestion(s)">
-          {{ displayName(s) }} — (Y: {{ coordFmt(s.geometry.coordinates[1]) }}, X: {{ coordFmt(s.geometry.coordinates[0]) }})
+          {{ displayName(s) }} — (Y: {{ coordFmt(featureYX(s as any)?.y ?? NaN) }}, X: {{ coordFmt(featureYX(s as any)?.x ?? NaN) }})<span v-if="(s.properties as any)?.workingPoint" class="ml-1 text-[10px] rounded px-1 bg-indigo-100 text-indigo-700">session</span>
         </li>
       </ul>
   <div v-else-if="q.trim().length>=1 && !loading && !error" class="text-xs text-gray-500">No matching points</div>
@@ -303,10 +303,14 @@ import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '../../../../utils/da
 import { searchFeatures, getLayer, listLayerFeatures, listLayers, createLayer, batchCreateFeatures, listLandParcels, createLandParcel, checkParcelDuplicates, type Layer } from '@/services/spatial'
 import type { Feature } from 'geojson'
 import { useProjectContext } from '../../../../stores/projectContext'
+import { useLiteWorkingPointsStore } from '../../../../stores/liteWorkingPoints'
+import { featureYX } from '../../../../utils/join'
 const DataMap = defineAsyncComponent(() => import('../../../../components/maps/DataMap.vue'))
 
 // Project context integration
 const { currentProject, currentProjectId, hasProject } = useProjectContext()
+// The points layer and working points the Lite modules share (Join, Polar, Intersections)
+const liteStore = useLiteWorkingPointsStore()
 
 // Inject workflow state from parent (if available from Cadastral workflow)
 const workflowState = inject<any>('workflowState', null)
@@ -321,7 +325,8 @@ const loadingParcels = ref(false)
 
 type PointAdhoc = { nameText: string; yText: string; xText: string }
 const points = ref<PointAdhoc[]>([])
-const layerId = ref<number | undefined>(undefined)
+// Standalone, it opens on the layer last chosen in a Lite module; the Cadastral workflow sets its own.
+const layerId = ref<number | undefined>(currentProjectId.value ? undefined : liteStore.layerId)
 const layerInfo = ref<Layer | null>(null)
 const layerLoading = ref(false)
 const save = ref(false)
@@ -438,7 +443,18 @@ async function onInput() {
   selectedSuggestion.value = null
   hoverIndex.value = -1
   error.value = ''
-  if (!layerId.value || q.value.trim().length < 1) { suggestions.value = []; return }
+  if (q.value.trim().length < 1) { suggestions.value = []; return }
+  // Working points from the other Lite modules (picked, typed, computed) come first, as point features.
+  const session = liteStore.matching(q.value, 8).map((p, i) => ({
+    type: 'Feature', id: `wp-${i}-${p.name}`, geometry: { type: 'Point', coordinates: [p.y, p.x] },
+    properties: { name: p.name, workingPoint: true },
+  })) as unknown as Feature[]
+  if (!layerId.value) {
+    suggestions.value = session
+    hoverIndex.value = session.length ? 0 : -1
+    selectedSuggestion.value = session[0] ?? null
+    return
+  }
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(async () => {
     loading.value = true
@@ -446,7 +462,11 @@ async function onInput() {
       const query = q.value.trim()
       const rows = await searchFeatures(layerId.value!, query, 20)
       const qLower = query.toLowerCase()
-      suggestions.value = rows.filter(r => String(displayName(r)).toLowerCase().includes(qLower))
+      const seen = new Set(session.map(f => String(displayName(f)).toLowerCase()))
+      suggestions.value = [...session, ...(rows as unknown as Feature[]).filter(r => {
+        const n = String(displayName(r)).toLowerCase()
+        return n.includes(qLower) && !seen.has(n)
+      })]
       if (suggestions.value && suggestions.value.length) {
         hoverIndex.value = 0
         selectedSuggestion.value = suggestions.value[0]
@@ -474,9 +494,12 @@ function addSelected() {
     return
   }
   
-  // GeoJSON coordinates are [x, y] order; Cape Lo: Y=Westing(~97k), X=Southing(~2.2M)
-  const [x, y] = f.geometry.coordinates
+  // The layers hold both [Y, X] and [X, Y]; featureYX tells them apart by the southing in the millions
+  const yx = featureYX(f as any)
+  if (!yx) { notifyWarning('Invalid point geometry'); return }
+  const { y, x } = yx
   const name = f.properties?.name || f.properties?.beacon || f.properties?.point_name || ''
+  if (name && !(f.properties as any)?.workingPoint) liteStore.add({ name: String(name), y, x, source: 'layer' })
   points.value.push({ nameText: name, yText: String(y), xText: String(x) })
   q.value = ''
   suggestions.value = []

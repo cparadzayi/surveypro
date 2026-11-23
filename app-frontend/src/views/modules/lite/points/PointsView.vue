@@ -25,9 +25,12 @@ import LayerSelect from '../../../../components/inputs/LayerSelect.vue'
 const DataMap = defineAsyncComponent(() => import('../../../../components/maps/DataMap.vue'))
 import PointsTable from '../../../../components/tables/PointsTable.vue'
 import { useSpatialStore } from '../../../../stores/spatial'
+import { useLiteWorkingPointsStore } from '../../../../stores/liteWorkingPoints'
 
 const store = useSpatialStore()
-const layerId = ref<number | undefined>(undefined)
+// The layer the Lite modules share: chosen here, Join, Polar, Intersections and Areas v2 search it too.
+const lite = useLiteWorkingPointsStore()
+const layerId = ref<number | undefined>(lite.layerId)
 
 const breadcrumbs = [
   { label: 'Lite', to: '/modules/lite' },
@@ -36,13 +39,14 @@ const breadcrumbs = [
 ]
 
 watch(layerId, async (v) => {
+  lite.setLayer(v)
   store.setLayer(v)
   await store.fetch()
 })
 
 async function refresh() { await store.fetch() }
 
-onMounted(async () => { if (layerId.value) await store.fetch() })
+onMounted(async () => { if (layerId.value) { store.setLayer(layerId.value); await store.fetch() } })
 
 // ── Ribbon: Data / results toolbar ────────────────────────────────────────────
 const pages = computed(() => Math.max(1, Math.ceil(store.total / store.limit)))

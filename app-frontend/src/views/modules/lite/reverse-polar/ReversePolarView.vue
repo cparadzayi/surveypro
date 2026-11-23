@@ -1,8 +1,8 @@
-<template>
-  <ModuleScaffold title="Lite • Reverse Polar" description="Compute reverse polar values.">
-    <div class="text-xs text-gray-500">Placeholder view.</div>
-  </ModuleScaffold>
-</template>
 <script setup lang="ts">
-import ModuleScaffold from '../../../../components/scaffold/ModuleScaffold.vue'
+// Lines & Bearings and Reverse Polar were empty pages; a join (direction and distance between two points) is
+// what both stood for, so their old addresses open the Join module.
+import JoinView from '../join/JoinView.vue'
 </script>
+<template>
+  <JoinView />
+</template>

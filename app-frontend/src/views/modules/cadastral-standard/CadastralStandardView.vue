@@ -3206,8 +3206,11 @@ async function handleCalibrationFileChange(event: Event) {
   try {
     const content = await readFileContent(file);
     const calibration = parseCalibrationReport(content);
-    setSiteCalibration(calibration);
+    const result = await setSiteCalibration(calibration);
     console.log(`✅ Site calibration loaded: ${calibration.pairs.length} control pairs`);
+    if (!result.saved) {
+      notifyWarning(`The calibration is loaded but was not saved: ${result.reason}. It will be lost when the project is reopened; load it again once the project is open.`, { title: 'Calibration not saved', sticky: true });
+    }
     void persistCalibrationReport(calibration);
   } catch (err: any) {
     // Leave any previously loaded calibration alone: a failed pick should not
@@ -3260,9 +3263,12 @@ async function persistCalibrationReport(
   }
 }
 
-function clearSiteCalibration() {
-  setSiteCalibration(null);
+async function clearSiteCalibration() {
   calibrationError.value = '';
+  const result = await setSiteCalibration(null);
+  if (!result.saved) {
+    notifyWarning(`The calibration was removed from the screen, but the removal was not saved: ${result.reason}. It will come back when the project is reopened.`, { title: 'Removal not saved', sticky: true });
+  }
 }
 
 const isSavingCalibrationStep = ref(false);

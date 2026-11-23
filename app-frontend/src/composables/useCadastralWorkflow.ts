@@ -254,17 +254,20 @@ function setImportedPoints(points: CadastralPoint[]) {
  * step lets each be reset on its own terms, and puts the calibration outside the
  * CSV reset's downstream cascade.
  */
-function setSiteCalibration(calibration: SiteCalibration | null) {
+async function setSiteCalibration(
+  calibration: SiteCalibration | null,
+): Promise<{ saved: boolean; reason?: string }> {
   if (calibration) {
     workflowState.documents.siteCalibration = calibration
   } else {
     delete workflowState.documents.siteCalibration
   }
 
-  if (!projectId.value) return
-  saveStepData('site-calibration', { site_calibration: calibration }).catch(err => {
-    console.error('⚠️ Failed to save site calibration:', err)
-  })
+  // Said, not swallowed: a calibration that is shown but not saved is gone on the next reload, and used to be
+  // reported only in the browser's console.
+  if (!projectId.value) return { saved: false, reason: 'no project is open, so it could not be saved with one' }
+  const stored = await saveStepData('site-calibration', { site_calibration: calibration })
+  return stored ? { saved: true } : { saved: false, reason: 'the server did not save it' }
 }
 
 function resetWorkflow() {
@@ -394,6 +397,10 @@ async function loadWorkflowState(surveyProjectId: number) {
         ?? dbState.step_data?.import_csv?.site_calibration
       const storedCalibration = calibrationStepData?.site_calibration ?? legacyCalibration
 
+      // This project's calibration, or none: never the one left from the project opened before. The state is a
+      // module-level singleton, and restoring only when there is one kept the previous project's calibration on
+      // screen -- unsaved for this project, gone on the next reload, and saved INTO it by "Save & Continue".
+      delete workflowState.documents.siteCalibration;
       if (storedCalibration) {
         workflowState.documents.siteCalibration = storedCalibration;
         console.log('✅ Restored site calibration:', storedCalibration.pairs?.length ?? 0, 'control pairs');

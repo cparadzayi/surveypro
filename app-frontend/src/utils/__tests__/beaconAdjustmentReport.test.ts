@@ -507,3 +507,16 @@ describe('each comparison check produces its own report', () => {
     expect(written).not.toContain('SI 727 Edge Compliance — Class');
   });
 });
+
+describe('an unresolved comparison of co-ordinates', () => {
+  it('counts the beacons as unresolved, not accepted, in the certification and schedule', () => {
+    const pts = makeResult().pts.map((p: any) => ({ ...p, dY: p.yS - p.yH, dX: p.xS - p.xH, rawDist: Math.hypot(p.yS - p.yH, p.xS - p.xH), rawBrg: 0, finalStatus: 'UNRESOLVED', rejSource: null }));
+    const { written } = renderCapturing(makeResult({
+      method: 'coords', adj: undefined, log: undefined, loo: undefined, edges: undefined, pts,
+      comparison67: { surveyClass: 'B', lines: new Array(6).fill({}), linesFailing: 6, beacons: [], shift: { dY: 0, dX: 0 }, swingSec: 0, setAside: [], unresolved: [], networkWide: true, otherSystem: true },
+    }));
+    const line = written.find((w) => /Beacons compared:/.test(w))!;
+    expect(line).toMatch(new RegExp(`Accepted: 0\.  Rejected: 0\.  Unresolved: ${pts.length}\.`));
+    expect(written.some((w) => /Referred .* the disagreement runs through the network/.test(w))).toBe(true);
+  });
+});

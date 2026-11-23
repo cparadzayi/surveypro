@@ -167,12 +167,13 @@ class BeaconAdjustmentReport {
       const x2 = x1 + (-(p.yS - p.yH)) * s * k
       const y2 = y1 - (-(p.xS - p.xH)) * s * k
       const rej = p.finalStatus === 'REJECT'
+      const und = p.finalStatus === 'UNRESOLVED'
       this.doc.setLineWidth(rej ? 0.6 : 0.4)
-      if (rej) this.doc.setDrawColor(220, 38, 38); else this.doc.setDrawColor(70, 90, 200)
+      if (rej) this.doc.setDrawColor(220, 38, 38); else if (und) this.doc.setDrawColor(217, 119, 6); else this.doc.setDrawColor(70, 90, 200)
       this.doc.line(x1, y1, x2, y2)
       this._arrowhead(x1, y1, x2, y2, rej)
       this.doc.setFillColor(20, 20, 20); this.doc.circle(x1, y1, 0.8, 'F')
-      if (rej) this.doc.setFillColor(220, 38, 38); else this.doc.setFillColor(37, 99, 235)
+      if (rej) this.doc.setFillColor(220, 38, 38); else if (und) this.doc.setFillColor(217, 119, 6); else this.doc.setFillColor(37, 99, 235)
       this.doc.circle(x2, y2, 0.7, 'F')
       this.doc.setFontSize(6.5); this.doc.setTextColor(rej ? 198 : 60, rej ? 30 : 60, rej ? 30 : 60)
       this.doc.text(p.name, x1 + 1.5, y1 - 1.2)
@@ -199,7 +200,7 @@ class BeaconAdjustmentReport {
     this.y = boxYtop + boxH + 6
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(60)
     this.doc.text(
-      `Displacement vectors exaggerated ×${k}. Black dot = historical position; blue dot = accepted survey position; `
+      `Displacement vectors exaggerated ×${k}. Black dot = historical position; blue dot = accepted survey position; amber = unresolved; `
       + `red dot/vector = rejected beacon. Bearings South-oriented (0°=S, 90°=W).`,
       this.margin, this.y, { maxWidth: this.pw - 2 * this.margin })
     this.y += 12
@@ -209,6 +210,7 @@ class BeaconAdjustmentReport {
     this.ensureSpace(66)
     this.sectionTitle('Certification')
     const acc = result.pts.filter(p => p.finalStatus === 'ACCEPT').length
+    const undecided = result.pts.filter(p => p.finalStatus === 'UNRESOLVED').length
     const rej = result.pts.filter(p => p.finalStatus === 'REJECT')
     const hasAdj = !!result.adj
     const cls = result.surveyClass || 'B'
@@ -274,7 +276,8 @@ class BeaconAdjustmentReport {
     this.doc.setFontSize(9); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(20)
     const critNote = method === 'wtest' ? `  W-test critical value: ${meta.critW}.` : ''
     this.doc.text(
-      `Beacons compared: ${result.pts.length}.  Accepted: ${acc}.  Rejected: ${rej.length}.${critNote}`,
+      `Beacons compared: ${result.pts.length}.  Accepted: ${acc}.  Rejected: ${rej.length}.`
+        + (undecided ? `  Unresolved: ${undecided}.` : '') + critNote,
       this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 5
     if (method === 'coords' && result.comparison67) {
       const c = result.comparison67
@@ -339,7 +342,12 @@ class BeaconAdjustmentReport {
       },
       headStyles: { fillColor: NAVY, halign: 'center', fontSize: 7.5 },
       // Status sits at index 11 (wtest) or 8 (coords/edges); 'Rejected by' follows it.
-      didParseCell: d => { if (d.section === 'body' && body[d.row.index][isWtest ? 11 : 8] === 'REJECT') d.cell.styles.fillColor = [252, 226, 226] },
+      didParseCell: d => {
+        if (d.section !== 'body') return
+        const st = body[d.row.index][isWtest ? 11 : 8]
+        if (st === 'REJECT') d.cell.styles.fillColor = [252, 226, 226]
+        else if (st === 'UNRESOLVED') d.cell.styles.fillColor = [254, 243, 199]
+      },
     })
     const fy = this.doc.lastAutoTable.finalY + 5
     const fw = this.doc.internal.pageSize.getWidth() - 28

@@ -225,6 +225,9 @@ export function edgeCompliance(points, cls) {
 export function coordinateComparison(points, cls) {
   const r = compareCoordinates67(points, cls)
   const by = new Map(r.beacons.map((b) => [b.name, b]))
+  // UNRESOLVED: the comparison could not decide this beacon -- every beacon when the para 7(5) failures run
+  // through the network, or the two ends of a lone failing line. It is neither accepted nor rejected.
+  const undecided = new Set(r.networkWide ? r.beacons.map((b) => b.name) : r.unresolved.flatMap((l) => [l.from, l.to]))
   const pts = points.map((p) => {
     const b = by.get(p.name)
     const dY = p.yS - p.yH
@@ -233,7 +236,8 @@ export function coordinateComparison(points, cls) {
       ...p, dY, dX, rawDist: Math.sqrt(dY * dY + dX * dX), rawBrg: bearingSouth(dY, dX),
       resY: b?.resY ?? 0, resX: b?.resX ?? 0, residual: b?.residual ?? 0,
       failedLines: b?.failedLines ?? 0, linesChecked: b?.linesChecked ?? 0,
-      finalStatus: b?.setAside ? 'REJECT' : 'ACCEPT', rejSource: b?.setAside ? 'coords' : null, rejIter: null,
+      finalStatus: b?.setAside ? 'REJECT' : undecided.has(p.name) ? 'UNRESOLVED' : 'ACCEPT',
+      rejSource: b?.setAside ? 'coords' : null, rejIter: null,
     }
   })
   return { pts, surveyClass: cls, comparison67: r, verdict: { rejected: r.setAside, unresolved: r.unresolved } }

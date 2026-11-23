@@ -18,7 +18,7 @@ export interface EdgeSummary {
   networkSwingWarn: boolean
 }
 export interface EngineResult {
-  pts: Array<{ id: number; name: string; finalStatus: 'ACCEPT' | 'REJECT' }>
+  pts: Array<{ id: number; name: string; finalStatus: 'ACCEPT' | 'REJECT' | 'UNRESOLVED' }>
   /** Posteriori unit-weight standard error from the Helmert adjustment (metres). */
   adj?: { stats?: { s0?: number } }
   /** SI 727 s.67(5) inter-beacon edge compliance (si727.js's edgeCompliance() result). */
@@ -39,7 +39,8 @@ export function buildFoundBeacons(
   const byName = new Map(projectBeacons.map((b) => [b.beaconId.toLowerCase(), b.beaconId]))
   return points.map((p) => {
     const rp = result?.pts.find((r) => r.id === p.id || r.name === p.name)
-    const withinTolerance = rp ? rp.finalStatus === 'ACCEPT' : undefined
+    // UNRESOLVED (the comparison could not decide) is neither within nor outside: left undefined, not adopted.
+    const withinTolerance = rp && rp.finalStatus !== 'UNRESOLVED' ? rp.finalStatus === 'ACCEPT' : undefined
     const dy = p.yS - p.yH
     const dx = p.xS - p.xH
     return {

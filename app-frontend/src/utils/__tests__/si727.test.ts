@@ -391,6 +391,23 @@ describe('coordinateComparison — SI 727 s.67(5), judged by Second Schedule par
     expect(comparison67.lines.filter((l: any) => !l.pass).map((l: any) => `${l.from}-${l.to}`)).toEqual(['P-Q'])
     expect(verdict.rejected).toEqual([])
     expect(verdict.unresolved).toEqual([{ from: 'P', to: 'Q' }])
+    // the two ends are undecided, the rest accepted
+    const byName = Object.fromEntries(coordinateComparison(pair as any, 'B').pts.map((p: any) => [p.name, p.finalStatus]))
+    expect(byName).toEqual({ P: 'UNRESOLVED', Q: 'UNRESOLVED', R: 'ACCEPT', S: 'ACCEPT' })
+  })
+
+  it('marks every beacon UNRESOLVED, none ACCEPT, when the para 7(5) failures run through the network', () => {
+    // Original data in a local system (report of 22 Nov 2026): every line fails, no beacon can be singled out,
+    // and the schedule must not show them accepted ("Accepted: 4" contradicted "Referred").
+    const local = [
+      { name: '40', yH: 7047.618, xH: 3891.003, yS: -85264.744, xS: 2140365.502 },
+      { name: 'FS2', yH: 8539.025, xH: 2859.112, yS: -86750.198, xS: 2141403.600 },
+      { name: 'o', yH: 4800.250, xH: -923.416, yS: -83032.998, xS: 2145135.852 },
+      { name: 'n', yH: 4203.845, xH: 1047.230, yS: -82440.018, xS: 2143157.201 },
+    ]
+    const { pts, comparison67 } = coordinateComparison(local as any, 'B')
+    expect(comparison67.networkWide).toBe(true)
+    expect(pts.map((p: any) => p.finalStatus)).toEqual(['UNRESOLVED', 'UNRESOLVED', 'UNRESOLVED', 'UNRESOLVED'])
   })
 })
 

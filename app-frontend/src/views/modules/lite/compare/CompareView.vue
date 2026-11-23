@@ -299,6 +299,9 @@
               <template v-if="rejectedCount > 0">
                 · <b class="text-red-600">{{ rejectedCount }} Rejected</b>
               </template>
+              <template v-if="unresolvedCount > 0">
+                · <b class="text-amber-600">{{ unresolvedCount }} Unresolved</b>
+              </template>
             </span>
           </div>
 
@@ -394,7 +397,7 @@
                     <span
                       :class="[
                         'inline-block px-2 py-0.5 rounded text-[10px] font-medium text-white',
-                        p.finalStatus === 'REJECT' ? 'bg-red-600' : 'bg-blue-600',
+                        p.finalStatus === 'REJECT' ? 'bg-red-600' : p.finalStatus === 'UNRESOLVED' ? 'bg-amber-600' : 'bg-blue-600',
                       ]"
                     >{{ p.finalStatus || '—' }}</span>
                     <span
@@ -543,6 +546,7 @@
             ● Black = historical position ·
             <span class="text-red-600">● Red = survey position</span> ·
             <span class="text-red-600 font-medium">Red arrow = rejected beacon</span>
+            <span class="text-amber-600 font-medium">Amber arrow = unresolved</span>
           </p>
 
           <svg
@@ -583,14 +587,14 @@
               <!-- Displacement arrow -->
               <line
                 :x1="pt.x1" :y1="pt.y1" :x2="pt.x2" :y2="pt.y2"
-                :stroke="pt.isRej ? '#dc3545' : '#9ca3af'"
+                :stroke="pt.isRej ? '#dc3545' : pt.isUnresolved ? '#d97706' : '#9ca3af'"
                 :stroke-width="pt.isRej ? 2 : 1"
               />
               <!-- Arrowhead polygon -->
               <polygon
                 v-if="pt.hasArrow"
                 :points="pt.arrowPoints"
-                :fill="pt.isRej ? '#dc3545' : '#9ca3af'"
+                :fill="pt.isRej ? '#dc3545' : pt.isUnresolved ? '#d97706' : '#9ca3af'"
               />
               <!-- Historical position (black) -->
               <circle :cx="pt.x1" :cy="pt.y1" r="4" fill="#1f2937" opacity="0.85" />
@@ -1011,6 +1015,9 @@ const acceptedCount = computed(
 const rejectedCount = computed(
   () => result.value?.pts.filter(p => p.finalStatus === 'REJECT').length ?? 0,
 )
+const unresolvedCount = computed(
+  () => result.value?.pts.filter(p => p.finalStatus === 'UNRESOLVED').length ?? 0,
+)
 const rejectedNames = computed(
   () => result.value?.pts.filter(p => p.finalStatus === 'REJECT').map(p => p.name) ?? [],
 )
@@ -1099,6 +1106,7 @@ const plotData = computed(() => {
     const x2 = x1 + (eS - eH) * asc
     const y2 = y1 - (nS - nH) * asc
     const isRej = p.finalStatus === 'REJECT'
+    const isUnresolved = p.finalStatus === 'UNRESOLVED'
 
     const dx = x2 - x1, dy = y2 - y1
     const len = Math.sqrt(dx * dx + dy * dy)
@@ -1111,7 +1119,7 @@ const plotData = computed(() => {
       arrowPoints =
         `${x2},${y2} ${hx - uy * 2.5},${hy + ux * 2.5} ${hx + uy * 2.5},${hy - ux * 2.5}`
     }
-    return { id: p.id, name: p.name, x1, y1, x2, y2, isRej, hasArrow, arrowPoints }
+    return { id: p.id, name: p.name, x1, y1, x2, y2, isRej, isUnresolved, hasArrow, arrowPoints }
   })
 
   return { W, H, pad, pointData, arrowScale }

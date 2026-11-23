@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SAMPLE Trimble Site Calibration Report, the format SurveyPro reads (Trimble Business Center / Access:
+  export the site calibration report as XML; the HTML export is read too).
+  The station names (CP1-CP3) and every figure are ILLUSTRATIVE ONLY. Load your own survey's report, not this.
+  Each <Pair> is one control station: <Global_Point> holds its GNSS position (latitude and longitude in
+  radians, ellipsoid height) and <Grid_Point> its local grid co-ordinates (CoordControl: the published values;
+  CoordCalculated: from the calibration) and the horizontal residual. <AdjustedParameters> holds the fitted
+  rotation, translation and scale.
+-->
+<Trimble.Vce.UI.GNSS.Reports.SiteCalibrationReport>
+    <HeaderInfo>
+        <ReportName>Site Calibration Report</ReportName>
+        <ReportDescription>Reports site calibration calculation</ReportDescription>
+        <ProjectIdentifier>00000000-0000-0000-0000-000000000000</ProjectIdentifier>
+    </HeaderInfo>
+    <SiteCalibrationResults>
+        <AdjustedParameters>
+            <Horizontal>
+                <NorthingCoordinateOfRotationCenter>2144245.27098077</NorthingCoordinateOfRotationCenter>
+                <EastingCoordinateOfRotationCenter>-80371.548317431443</EastingCoordinateOfRotationCenter>
+                <RotationAboutCenterPoint>-9.57842920931818E-07</RotationAboutCenterPoint>
+                <TranslationNorth>-0.0043974015861749649</TranslationNorth>
+                <TranslationEast>-0.0028325550811132416</TranslationEast>
+                <ScaleFactor>0.999999658860241</ScaleFactor>
+            </Horizontal>
+        </AdjustedParameters>
+        <PairsWithResiduals>
+            <Summary>
+                <MaxVerticalInclination />
+                <MaxHorizontalResidual PointSerial="101" RMSH="0.0074528415922655491">0.0084389872162713639</MaxHorizontalResidual>
+            </Summary>
+            <Pair Usage="HorizontalOnly">
+                <Global_Point Serial="102" ID="CP1">
+                    <Latitiude>-0.3387506027889603</Latitiude>
+                    <Longitude>0.52084097373294647</Longitude>
+                    <Height>1465.3829073213</Height>
+                </Global_Point>
+                <Grid_Point Serial="103" ID="CP1">
+                    <CoordControl>
+                        <Northing>2146856.3927760976</Northing>
+                        <Easting>-88453.696193198732</Easting>
+                        <Elevation>1459.1</Elevation>
+                    </CoordControl>
+                    <CoordCalculated>
+                        <Northing>2146856.3875822145</Northing>
+                        <Easting>-88453.690375924736</Easting>
+                        <Elevation>1458.1687004657813</Elevation>
+                    </CoordCalculated>
+                    <Residuals>
+                        <Horizontal>0.0077985318018890856</Horizontal>
+                    </Residuals>
+                </Grid_Point>
+            </Pair>
+            <Pair Usage="HorizontalOnly">
+                <Global_Point Serial="101" ID="CP2">
+                    <Latitiude>-0.33716664297037707</Latitiude>
+                    <Longitude>0.51969002650184293</Longitude>
+                    <Height>1460.6138532543555</Height>
+                </Global_Point>
+                <Grid_Point Serial="104" ID="CP2">
+                    <CoordControl>
+                        <Northing>2136776.9860925851</Northing>
+                        <Easting>-81571.960628775749</Easting>
+                        <Elevation>1454.7</Elevation>
+                    </CoordControl>
+                    <CoordCalculated>
+                        <Northing>2136776.9860206135</Northing>
+                        <Easting>-81571.969067456055</Easting>
+                        <Elevation>1453.5979297108756</Elevation>
+                    </CoordCalculated>
+                    <Residuals>
+                        <Horizontal>0.0084389872162713639</Horizontal>
+                    </Residuals>
+                </Grid_Point>
+            </Pair>
+            <Pair Usage="HorizontalOnly">
+                <Global_Point Serial="105" ID="CP3">
+                    <Latitiude>-0.33911675808806413</Latitiude>
+                    <Longitude>0.51795718247775857</Longitude>
+                    <Height>1444.8095515935</Height>
+                </Global_Point>
+                <Grid_Point Serial="106" ID="CP3">
+                    <CoordControl>
+                        <Northing>2149102.4208814218</Northing>
+                        <Easting>-71088.996627985092</Easting>
+                        <Elevation>1437.3</Elevation>
+                    </CoordControl>
+                    <CoordCalculated>
+                        <Northing>2149102.4261472709</Northing>
+                        <Easting>-71088.994006578534</Easting>
+                        <Elevation>1437.4180843935094</Elevation>
+                    </CoordCalculated>
+                    <Residuals>
+                        <Horizontal>0.0058822563610185282</Horizontal>
+                    </Residuals>
+                </Grid_Point>
+            </Pair>
+        </PairsWithResiduals>
+    </SiteCalibrationResults>
+</Trimble.Vce.UI.GNSS.Reports.SiteCalibrationReport>

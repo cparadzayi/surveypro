@@ -457,6 +457,21 @@
                 remove
               </button>
             </div>
+            <!-- The loaded calibration leaves the app as a document (the PDF report) and as data (CSV); the sample
+                 shows the Trimble report format the step reads. -->
+            <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <template v-if="workflowState.documents.siteCalibration">
+                <button @click="downloadCalibrationReport" class="text-blue-700 hover:text-blue-900 underline">
+                  ⬇ Calibration report (PDF)
+                </button>
+                <button @click="downloadCalibrationData" class="text-blue-700 hover:text-blue-900 underline">
+                  ⬇ Calibration data (CSV)
+                </button>
+              </template>
+              <a :href="SAMPLE_CALIBRATION_URL" download="site-calibration-sample.xml" class="text-gray-600 hover:text-gray-800 underline">
+                ⬇ Sample calibration file (XML)
+              </a>
+            </div>
           </div>
 
           <!-- Showing the report's own numbers, not just a count: the point of
@@ -1427,6 +1442,7 @@ import { areaCompute } from '../../../services/compute';
 import { useParcelsStore } from '../../../stores/parcels';
 import { parseCalibrationReport, planCalibrationSelection, MIN_CONTROL_POINTS, localControlFrom, localControlToRegistryRows } from '../../../utils/siteCalibration';
 import { generateCalibrationReportPDF } from '../../../utils/calibration-pdf';
+import { calibrationCsv, SAMPLE_CALIBRATION_URL } from '../../../utils/siteCalibrationExport';
 import CSVReimportDialog from '../../../components/cadastral/CSVReimportDialog.vue';
 import MergeAnalysisDialog from '../../../components/cadastral/MergeAnalysisDialog.vue';
 import LiveCSVValidator from '../../../components/cadastral/LiveCSVValidator.vue';
@@ -3261,6 +3277,29 @@ async function persistCalibrationReport(
   } catch (err) {
     console.error('❌ Failed to save calibration report:', err);
   }
+}
+
+/** The loaded calibration as its PDF report, named for the project. */
+function downloadCalibrationReport() {
+  const cal = workflowState.documents.siteCalibration;
+  if (!cal) return;
+  const { blob } = generateCalibrationReportPDF(cal, {
+    surveyorName: workflowState.surveyorInfo.landSurveyor?.trim() || undefined,
+    projectTitle: workflowState.projectInfo.name?.trim() || undefined,
+  });
+  downloadBlob(blob, `${calibrationFileStem()}_CalibrationReport.pdf`);
+}
+
+/** The loaded calibration as data: its control pairs and parameters (utils/siteCalibrationExport.ts). */
+function downloadCalibrationData() {
+  const cal = workflowState.documents.siteCalibration;
+  if (!cal) return;
+  downloadBlob(new Blob([calibrationCsv(cal)], { type: 'text/csv;charset=utf-8' }), `${calibrationFileStem()}_Calibration.csv`);
+}
+
+function calibrationFileStem(): string {
+  const name = (workflowState.projectInfo as any).projectName || selectedProject.value?.name || 'Survey_Project';
+  return String(name).replace(/[^\w.-]+/g, '_');
 }
 
 async function clearSiteCalibration() {

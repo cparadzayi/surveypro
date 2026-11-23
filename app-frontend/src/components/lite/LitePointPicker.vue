@@ -12,7 +12,7 @@
         @keydown.esc.prevent="close()"
         @blur="closeSoon()"
         class="rounded border px-2 py-1 text-sm w-full"
-        :placeholder="store.layerId ? 'Find a point: this session or the layer' : 'Find a point from this session (choose a layer to search it too)'"
+        :placeholder="placeholder"
         :aria-label="`${label}: find point`" />
       <ul v-if="open && options.length" class="absolute z-20 mt-1 w-full border rounded bg-white shadow max-h-56 overflow-auto text-sm">
         <li
@@ -22,7 +22,7 @@
           @mouseenter="highlight = i"
           :class="['px-2 py-1 cursor-pointer flex justify-between gap-2', i === highlight ? 'bg-slate-100' : '']">
           <span><span class="font-medium">{{ o.name }}</span> <span class="text-gray-500">Y {{ fmt(o.y) }}, X {{ fmt(o.x) }}</span></span>
-          <span :class="['text-[10px] rounded px-1', o.fromLayer ? 'bg-slate-200 text-slate-700' : 'bg-indigo-100 text-indigo-700']">{{ o.tag }}</span>
+          <span :class="['text-[10px] rounded px-1', o.fromSource ? 'bg-slate-200 text-slate-700' : 'bg-indigo-100 text-indigo-700']">{{ o.tag }}</span>
         </li>
       </ul>
       <div v-if="searching" class="text-xs text-gray-500 mt-1">Searching the layer…</div>
@@ -45,8 +45,9 @@
 <script setup lang="ts">
 /**
  * One point of a Lite computation: find it among this session's working points (anything picked, typed or
- * computed in any Lite module) or in the shared points layer, or type its name, Y and X. Layer points are read
- * with featureYX, which copes with both co-ordinate orders the layers hold.
+ * computed in any Lite module) or in the shared source (the chosen survey project's beacons, or a spatial points
+ * layer), or type its name, Y and X. Layer points are read with featureYX, which copes with both co-ordinate
+ * orders the layers hold; a survey project's points come from the server as Y and X already.
  */
 import { ref, computed } from 'vue'
 import { useLiteWorkingPointsStore } from '../../stores/liteWorkingPoints'
@@ -67,21 +68,33 @@ const searching = ref(false)
 const searchError = ref('')
 let timer: ReturnType<typeof setTimeout> | null = null
 
-interface Option { key: string; name: string; y: number; x: number; tag: string; fromLayer: boolean }
+interface Option { key: string; name: string; y: number; x: number; tag: string; fromSource: 'survey' | 'layer' | null }
+
+const placeholder = computed(() => {
+  if (store.activeSurveyProjectId) return `Find a point: ${store.surveyProjectName ?? 'the survey project'} or this session`
+  if (store.activeLayerId) return 'Find a point: the layer or this session'
+  return 'Find a point from this session (choose a survey project to search it too)'
+})
 
 const options = computed<Option[]>(() => {
   const session: Option[] = store.matching(q.value, 8).map((p) => ({
-    key: `s:${p.name}`, name: p.name, y: p.y, x: p.x, tag: p.source === 'layer' ? 'recent' : p.source, fromLayer: false,
+    key: `s:${p.name}`, name: p.name, y: p.y, x: p.x, tag: p.source === 'layer' || p.source === 'survey' ? 'recent' : p.source, fromSource: null,
   }))
   const seen = new Set(session.map((o) => o.name.toLowerCase()))
-  const layer: Option[] = []
+  const source: Option[] = []
+  if (store.activeSurveyProjectId && q.value.trim()) {
+    for (const p of store.matchingSurvey(q.value, 20)) {
+      if (seen.has(p.name.toLowerCase())) continue
+      source.push({ key: `p:${p.name}`, name: p.name, y: p.y, x: p.x, tag: 'project', fromSource: 'survey' })
+    }
+  }
   for (const f of layerHits.value) {
     const yx = featureYX(f)
     const name = String(f.properties?.name ?? f.properties?.beacon ?? f.properties?.point_name ?? f.id)
     if (!yx || seen.has(name.toLowerCase())) continue
-    layer.push({ key: `l:${f.id}`, name, y: yx.y, x: yx.x, tag: 'layer', fromLayer: true })
+    source.push({ key: `l:${f.id}`, name, y: yx.y, x: yx.x, tag: 'layer', fromSource: 'layer' })
   }
-  return [...session, ...layer]
+  return [...session, ...source]
 })
 
 function onInput() {
@@ -90,11 +103,13 @@ function onInput() {
   searchError.value = ''
   if (timer) clearTimeout(timer)
   const text = q.value.trim()
-  if (!store.layerId || !text) { layerHits.value = []; return }
+  if (store.activeSurveyProjectId) void store.loadSurveyPoints()
+  const layerId = store.activeLayerId
+  if (!layerId || !text) { layerHits.value = []; return }
   timer = setTimeout(async () => {
     searching.value = true
     try {
-      const rows = await searchFeatures(store.layerId!, text, 20)
+      const rows = await searchFeatures(layerId, text, 20)
       const t = text.toLowerCase()
       layerHits.value = rows.filter((r) => String(r.properties?.name ?? r.properties?.beacon ?? r.properties?.point_name ?? r.id).toLowerCase().includes(t))
     } catch {
@@ -114,7 +129,7 @@ function move(step: number) {
 function pickHighlighted() { const o = options.value[highlight.value]; if (o) pick(o) }
 function pick(o: Option) {
   emit('update:modelValue', { name: o.name, y: o.y, x: o.x })
-  if (o.fromLayer) store.add({ name: o.name, y: o.y, x: o.x, source: 'layer' })
+  if (o.fromSource) store.add({ name: o.name, y: o.y, x: o.x, source: o.fromSource })
   q.value = ''
   layerHits.value = []
   close()

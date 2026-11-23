@@ -46,10 +46,7 @@
         </div>
         
         <!-- Manual layer selection (fallback for standalone use) -->
-        <label v-else class="block">
-          <span class="text-xs text-gray-600">Points Layer</span>
-          <LayerSelect v-model="layerId" @update:model-value="(v: number | undefined) => liteStore.setLayer(v)" />
-        </label>
+        <LiteLayerBar v-else class="w-full" />
         
         <div v-if="layerId" class="text-xs flex items-center gap-2">
           <span v-if="layerLoading" class="text-gray-500">Checking SRID…</span>
@@ -104,7 +101,7 @@
         <li v-for="(s, idx) in suggestions" :key="s.id" @mouseenter="hoverIndex=idx" @mouseleave="hoverIndex=-1"
             :class="['px-2 py-1 cursor-pointer', (selectedSuggestion && selectedSuggestion.id===s.id) || hoverIndex===idx ? 'bg-slate-100' : 'hover:bg-slate-50']"
             @click="addFromSuggestion(s)">
-          {{ displayName(s) }} — (Y: {{ coordFmt(featureYX(s as any)?.y ?? NaN) }}, X: {{ coordFmt(featureYX(s as any)?.x ?? NaN) }})<span v-if="(s.properties as any)?.workingPoint" class="ml-1 text-[10px] rounded px-1 bg-indigo-100 text-indigo-700">session</span>
+          {{ displayName(s) }} — (Y: {{ coordFmt(featureYX(s as any)?.y ?? NaN) }}, X: {{ coordFmt(featureYX(s as any)?.x ?? NaN) }})<span v-if="(s.properties as any)?.workingPoint" class="ml-1 text-[10px] rounded px-1 bg-indigo-100 text-indigo-700">session</span><span v-else-if="(s.properties as any)?.projectPoint" class="ml-1 text-[10px] rounded px-1 bg-slate-200 text-slate-700">project</span>
         </li>
       </ul>
   <div v-else-if="q.trim().length>=1 && !loading && !error" class="text-xs text-gray-500">No matching points</div>
@@ -304,6 +301,7 @@ import { searchFeatures, getLayer, listLayerFeatures, listLayers, createLayer, b
 import type { Feature } from 'geojson'
 import { useProjectContext } from '../../../../stores/projectContext'
 import { useLiteWorkingPointsStore } from '../../../../stores/liteWorkingPoints'
+import LiteLayerBar from '../../../../components/lite/LiteLayerBar.vue'
 import { featureYX } from '../../../../utils/join'
 const DataMap = defineAsyncComponent(() => import('../../../../components/maps/DataMap.vue'))
 
@@ -326,7 +324,9 @@ const loadingParcels = ref(false)
 type PointAdhoc = { nameText: string; yText: string; xText: string }
 const points = ref<PointAdhoc[]>([])
 // Standalone, it opens on the layer last chosen in a Lite module; the Cadastral workflow sets its own.
-const layerId = ref<number | undefined>(currentProjectId.value ? undefined : liteStore.layerId)
+const layerId = ref<number | undefined>(currentProjectId.value ? undefined : liteStore.activeLayerId)
+// Standalone, the layer follows the Lite bar (a survey project chosen there is searched instead, in onInput).
+watch(() => liteStore.activeLayerId, (v) => { if (!currentProjectId.value) layerId.value = v })
 const layerInfo = ref<Layer | null>(null)
 const layerLoading = ref(false)
 const save = ref(false)
@@ -445,11 +445,20 @@ async function onInput() {
   hoverIndex.value = -1
   error.value = ''
   if (q.value.trim().length < 1) { suggestions.value = []; return }
-  // Working points from the other Lite modules (picked, typed, computed) come first, as point features.
-  const session = liteStore.matching(q.value, 8).map((p, i) => ({
-    type: 'Feature', id: `wp-${i}-${p.name}`, geometry: { type: 'Point', coordinates: [p.y, p.x] },
-    properties: { name: p.name, workingPoint: true },
-  })) as unknown as Feature[]
+  // Working points from the other Lite modules (picked, typed, computed) come first, then the beacons of the
+  // survey project chosen in the Lite bar (standalone only; the Cadastral workflow has its own project), as
+  // point features in the server's [Y, X] order.
+  const asFeature = (p: { name: string; y: number; x: number }, i: number, tag: string) => ({
+    type: 'Feature', id: `${tag}-${i}-${p.name}`, geometry: { type: 'Point', coordinates: [p.y, p.x] },
+    properties: { name: p.name, workingPoint: tag === 'wp', projectPoint: tag === 'sp' },
+  })
+  const fromSession = liteStore.matching(q.value, 8).map((p, i) => asFeature(p, i, 'wp'))
+  const taken = new Set(fromSession.map((f) => f.properties.name.toLowerCase()))
+  if (!currentProjectId.value && liteStore.activeSurveyProjectId) await liteStore.loadSurveyPoints()
+  const fromProject = !currentProjectId.value && liteStore.activeSurveyProjectId
+    ? liteStore.matchingSurvey(q.value, 20).filter((p) => !taken.has(p.name.toLowerCase())).map((p, i) => asFeature(p, i, 'sp'))
+    : []
+  const session = [...fromSession, ...fromProject] as unknown as Feature[]
   if (!layerId.value) {
     suggestions.value = session
     hoverIndex.value = session.length ? 0 : -1
@@ -500,7 +509,7 @@ function addSelected() {
   if (!yx) { notifyWarning('Invalid point geometry'); return }
   const { y, x } = yx
   const name = f.properties?.name || f.properties?.beacon || f.properties?.point_name || ''
-  if (name && !(f.properties as any)?.workingPoint) liteStore.add({ name: String(name), y, x, source: 'layer' })
+  if (name && !(f.properties as any)?.workingPoint) liteStore.add({ name: String(name), y, x, source: (f.properties as any)?.projectPoint ? 'survey' : 'layer' })
   points.value.push({ nameText: name, yText: String(y), xText: String(x) })
   q.value = ''
   suggestions.value = []

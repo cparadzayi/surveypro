@@ -81,6 +81,7 @@ import proj4 from 'proj4'
 import 'proj4leaflet'
 import { coordinateTransform, CAPE_LO_ZONES, transformToLatLng } from '../../services/coordinateTransform'
 import { getLayer } from '../../services/spatial'
+import { featureYX } from '../../utils/join'
 
 const props = withDefaults(defineProps<{ 
   layerId?: number; 
@@ -402,10 +403,10 @@ async function performDraw() {
   }
   
   const bgPts = (props.backgroundItems || []).map((f:any, i:number) => {
-    // GeoJSON coordinates are in standard [x, y] order
-    // Cape Lo: Y = Westing (~97k), X = Southing (~2.2M)
-    const x = Number(f?.geometry?.coordinates?.[0])  // X = Southing (first in GeoJSON)
-    const y = Number(f?.geometry?.coordinates?.[1])  // Y = Westing (second in GeoJSON)
+    // The layers hold both [Y, X] (the server's routes) and [X, Y]; featureYX takes the southing in the millions
+    const yx = featureYX(f)
+    const x = yx ? yx.x : NaN  // X = Southing
+    const y = yx ? yx.y : NaN  // Y = Westing
     const name = f?.properties?.name || f?.properties?.beacon || f?.properties?.point_name || `BG${i+1}`
     
     if (i === 0 && Number.isFinite(y) && Number.isFinite(x)) {
@@ -428,9 +429,9 @@ async function performDraw() {
 
   // Process main items (selected points - with polygon)
   const pts = (props.items || []).map((f:any, i:number) => ({
-    // CRITICAL FIX: GeoJSON coordinates are [longitude, latitude] = [X, Y]
-    x: Number(f?.geometry?.coordinates?.[0] ?? f?.x),  // Easting
-    y: Number(f?.geometry?.coordinates?.[1] ?? f?.y),  // Northing
+    // Same reading as the background points: [Y, X] or [X, Y], told apart by the southing in the millions
+    x: Number(featureYX(f)?.x ?? f?.x),  // X = Southing
+    y: Number(featureYX(f)?.y ?? f?.y),  // Y = Westing
     name: f?.properties?.name || f?.properties?.beacon || f?.properties?.point_name || `P${i+1}`
   })).filter(p => Number.isFinite(p.y) && Number.isFinite(p.x))
 
@@ -694,12 +695,12 @@ async function performDraw() {
         }
         
         // Convert coordinates to LatLng using same pattern as points
-        // GeoJSON coordinates are [x, y] order; Cape Lo: Y=Westing(~97k), X=Southing(~2.2M)
+        // PostGIS geometry is [Y, X] (ST_X is the westing); featureYX also copes with an [X, Y] ring
         const ring = coordinates[0]
-        const parcelPts = ring.map(coord => ({
-          x: coord[0],  // X = Southing (first in GeoJSON)
-          y: coord[1]   // Y = Westing (second in GeoJSON)
-        }))
+        const parcelPts = ring.map(coord => {
+          const yx = featureYX({ geometry: { coordinates: coord } })
+          return { x: yx ? yx.x : NaN, y: yx ? yx.y : NaN }
+        })
         const parcelLatLngs = convertToLatLngs(parcelPts)
         
         // CRITICAL: Check if transformation succeeded
@@ -1093,13 +1094,13 @@ onMounted(async () => {
         if (allItems.length > 0) {
           // Extract coordinates and calculate bounds
           const coords = allItems
-            .map(item => item?.geometry?.coordinates)
-            .filter(c => c && c.length === 2)
+            .map(item => featureYX(item))
+            .filter((c): c is { y: number; x: number } => !!c)
           
           if (coords.length > 0) {
             // Calculate center of data
-            const avgY = coords.reduce((sum, c) => sum + c[0], 0) / coords.length
-            const avgX = coords.reduce((sum, c) => sum + c[1], 0) / coords.length
+            const avgY = coords.reduce((sum, c) => sum + c.y, 0) / coords.length
+            const avgX = coords.reduce((sum, c) => sum + c.x, 0) / coords.length
             initialCenter = [avgX, avgY]  // [X, Y] for Leaflet
             console.log(`[DataMap] 📍 Calculated initial center from ${coords.length} points: [${avgX.toFixed(0)}, ${avgY.toFixed(0)}]`)
           }
@@ -1336,7 +1337,7 @@ function estimateLatLon() {
   let lat = -18
   let lon = 31
   const xs: number[] = (props.items || [])
-    .map((f: any) => Number(f?.geometry?.coordinates?.[1]))
+    .map((f: any) => Number(featureYX(f)?.x))
     .filter((v: any) => Number.isFinite(v))
   if (xs.length) {
     const sorted = xs.slice().sort((a,b)=>a-b)

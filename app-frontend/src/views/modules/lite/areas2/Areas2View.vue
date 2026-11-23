@@ -377,7 +377,8 @@ const mapItems = computed(() => {
   for (let i = 0; i < selectedForMap.value.length; i++) {
     const p = selectedForMap.value[i]
     items.push({
-      geometry: { type: 'Point', coordinates: [p.x, p.y] },
+      // [Y, X], the order the server stores layer points in, as DataMap reads them (featureYX)
+      geometry: { type: 'Point', coordinates: [p.y, p.x] },
       properties: { 
         name: p.name || `P${i+1}`,
         _isSelected: true

@@ -314,27 +314,25 @@ export interface BeaconComparisonConfig {
   /** How accept/reject was decided (e.g. Helmert LSQ + W-test summary). Printed in place of the tolerance line when present. */
   adjustmentSummary?: string;
   
-  /** SI 727 s.67(5) inter-beacon (edge) compliance — distance AND direction/swing checks for
-   *  every pair of accepted beacons. Source of truth for the comparison sketch. Populated
-   *  from si727.js's edgeCompliance(), already computed by every comparison run.
-   *  Directions are judged on the swing principle: dirDiffSec is the raw (Survey − Hist)
-   *  swing, swingResidSec its residual after the network swing (length-weighted median),
-   *  dirAllowSec the class positional limit expressed as an angle on that ray. */
+  /** SI 727 s.67(5) inter-beacon (edge) check for every pair of beacons: the distance difference against
+   *  Second Schedule para 7(5) (distOk, which alone decides `pass`), and each line's direction and swing for
+   *  information (dirDiffSec raw Survey − Hist, swingResidSec after the network swing). Source of truth for
+   *  the comparison sketch; from si727.js's edgeCompliance(). Comparisons saved before Nov 2026 may also
+   *  carry dirAllowSec/dirOk and summary dirPass/bothPass from a direction limit SI 727 does not state;
+   *  they are no longer read. */
   edgeCompliance?: {
     surveyClass: 'B' | 'C';
     rows: Array<{
       from: string; to: string;
       dH: number; dS: number; dDiff: number; dAllow: number; distOk: boolean;
       brgH: number; brgS: number; dirDiffSec: number; swingResidSec: number;
-      dirAllowSec: number; dirOk: boolean;
       pass: boolean;
+      dirAllowSec?: number; dirOk?: boolean;
     }>;
     summary: {
-      totalLines: number; distPass: number; dirPass: number; bothPass: number;
+      totalLines: number; distPass: number;
       meanScale: number | null;
-      sigma0: number; posLimit: number; lmed: number;
       networkSwingDeg: number | null; networkSwingSec: number | null;
-      networkSwingWarn: boolean;
     };
   };
   

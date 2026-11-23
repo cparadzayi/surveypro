@@ -53,12 +53,14 @@ function horizontalLine(cursor: BeaconComparisonCursor): void {
 }
 
 /**
- * Is this saved comparison a comparison of co-ordinates (rather than a Helmert/W-test or an edge check)? Older
- * saves carry only their summary ("SI 727 §67(5) co-ordinate comparison — class B, co-ordinate limit ...").
+ * Is this saved comparison decided by Second Schedule para 7(5) on the lines between the beacons: a comparison
+ * of co-ordinates, or the edge check (which decides the same way since its made-up direction limit and
+ * severity cut were retired, so an edge comparison saved under them prints the para 7(5) verdict)? Not a
+ * Helmert/W-test. Older saves carry only their summary ("SI 727 §67(5) co-ordinate comparison — class B, ...").
  */
 export function isCoordinateComparison(comparison?: { checkMethod?: string; adjustmentSummary?: string } | null): boolean {
   if (!comparison) return false;
-  if (comparison.checkMethod) return comparison.checkMethod === 'coords';
+  if (comparison.checkMethod) return comparison.checkMethod === 'coords' || comparison.checkMethod === 'edges';
   return /67\(5\)\s*(co-ordinate comparison|comparison of co-ordinates)/i.test(comparison.adjustmentSummary ?? '');
 }
 
@@ -518,24 +520,20 @@ function renderBeaconComparisonSketch(
       cursor.doc.setLineWidth(0.15);
       cursor.doc.ellipse(base.mmX + w / 2, base.mmY + 2.2 - 1, w / 2 + 1, 1.8, 'S');
     }
-    if (!row.dirOk) {
-      const w = cursor.doc.getTextWidth(swingText);
-      cursor.doc.setDrawColor(...RED);
-      cursor.doc.setLineWidth(0.15);
-      cursor.doc.ellipse(base.mmX + w / 2, base.mmY + 4.4 - 1, w / 2 + 1, 1.8, 'S');
-    }
+    // The swing is information: SI 727 sets no direction limit for a comparison, so it is never circled.
   });
 
   cursor.y = sketchTop + areaMm.height + 6;
 
   cursor.doc.setTextColor(...BLACK);
   cursor.doc.setFontSize(8);
-  cursor.doc.text('Black = historical, Red = current survey, Circled = outside SI 727 tolerance', cursor.margin, cursor.y);
+  cursor.doc.text('Black = historical, Red = current survey, Circled = distance outside Second Schedule para 7(5); swings for information', cursor.margin, cursor.y);
   cursor.y += cursor.lineHeight;
 
-  const s = ec.summary;
+  // Counted from the rows, so a comparison saved when directions were also judged prints the para 7(5) count.
+  const within = ec.rows.filter((r) => r.distOk).length;
   cursor.doc.text(
-    `SI 727 Class ${ec.surveyClass} · ${s.bothPass} of ${s.totalLines} lines pass both checks`,
+    `SI 727 Class ${ec.surveyClass} · ${within} of ${ec.rows.length} lines within Second Schedule para 7(5)`,
     cursor.margin, cursor.y,
   );
   cursor.y += cursor.lineHeight + 3;

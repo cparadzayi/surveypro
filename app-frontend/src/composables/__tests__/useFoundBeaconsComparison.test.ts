@@ -145,16 +145,16 @@ describe('buildComparisonConfig — per-check-method wording', () => {
     expect(cfg.conclusion).toMatch(/except 87A, whose distances to the other beacons do not agree .*para 7\(5\)/)
   })
 
-  it('describes an edges-mode result as a Second Schedule severity verdict (no W-test)', () => {
+  it('describes an edges-mode result as Second Schedule para 7(5) on every line (no W-test, no severity cut)', () => {
     const cfg = buildComparisonConfig(points, {
       pts: [acc, rej],
       method: 'edges', surveyClass: 'B',
-      edges: { rows: [], summary: { totalLines: 0, distPass: 0, dirPass: 0, bothPass: 0, meanScale: null, sigma0: 0.02, posLimit: 0.049, lmed: 100, networkSwingDeg: null, networkSwingSec: null, networkSwingWarn: false } },
+      edges: { rows: [], summary: { totalLines: 0, distPass: 0, meanScale: null, networkSwingDeg: null, networkSwingSec: null } },
     })
     expect(cfg.checkMethod).toBe('edges')
-    expect(cfg.adjustmentSummary).toMatch(/Second Schedule edge compliance/i)
-    expect(cfg.adjustmentSummary).not.toMatch(/W-test/i)
-    expect(cfg.conclusion).toMatch(/severity verdict/i)
+    expect(cfg.adjustmentSummary).toMatch(/Second Schedule para 7\(5\), class B, on every line/i)
+    expect(cfg.adjustmentSummary).not.toMatch(/W-test|severity/i)
+    expect(cfg.conclusion).not.toMatch(/severity/i)
     expect(cfg.conclusion).toMatch(/87A/)
   })
 

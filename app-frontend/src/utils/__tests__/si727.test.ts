@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   distanceToleranceM, directionToleranceArcsec, SI727_CLASS,
-  edgeCompliance, beaconSeverity, severityVerdict, SI727_SEVERITY_FACTOR,
-  coordinateComparison, edgeVerdictPoints,
+  edgeCompliance,
+  coordinateComparison,
   classifyDuplicateGroup, resolveDuplicateGroups,
 } from '../si727'
 import { SAMPLE_DATA } from '../surveyMath'
@@ -66,175 +66,20 @@ describe('directionToleranceArcsec — Second Schedule para 8', () => {
   })
 })
 
-/** Minimal hand-computable rows; only the fields beaconSeverity reads are present. */
-const row = (from: string, to: string, dRatio: number, dirRatio: number) => ({
-  from, to,
-  dDiff: dRatio * 0.1, dAllow: 0.1,
-  dirDiffSec: dirRatio * 60, dirAllowSec: 60,
-})
-
-describe('beaconSeverity', () => {
-  it('scores a line by the worse of its two Schedule ratios', () => {
-    // One line, A-B: distance at 0.5x tolerance, direction at 2.0x -> severity 2.0 for both ends.
-    const sev = beaconSeverity([row('A', 'B', 0.5, 2.0)])
-    expect(sev.get('A')).toBeCloseTo(2.0, 12)
-    expect(sev.get('B')).toBeCloseTo(2.0, 12)
-  })
-
-  it("averages a beacon's severity across every line it sits on", () => {
-    // B sits on both lines (3.0 and 1.0) -> 2.0; A only on the first, C only on the second.
-    const sev = beaconSeverity([row('A', 'B', 3.0, 0), row('B', 'C', 1.0, 0)])
-    expect(sev.get('B')).toBeCloseTo(2.0, 12)
-    expect(sev.get('A')).toBeCloseTo(3.0, 12)
-    expect(sev.get('C')).toBeCloseTo(1.0, 12)
-  })
-
-  it('uses the absolute difference, so sign never cancels severity out', () => {
-    const sev = beaconSeverity([row('A', 'B', -3.0, 0), row('B', 'C', 3.0, 0)])
-    expect(sev.get('B')).toBeCloseTo(3.0, 12)
-  })
-
-  it('returns an empty map for no rows', () => {
-    expect(beaconSeverity([]).size).toBe(0)
-  })
-})
-
-describe('severityVerdict', () => {
-  /** n beacons in a ring, all at the same severity, so none is an outlier. */
-  const ring = (sevs: number[]) =>
-    sevs.map((s, i) => row(`P${i}`, `P${(i + 1) % sevs.length}`, s, 0))
-
-  it('rejects nobody when every beacon breaches the limit equally', () => {
-    // All severity 5.0: badly out, but no beacon stands apart from its own network.
-    expect(severityVerdict(ring([5, 5, 5, 5, 5, 5])).rejected).toEqual([])
-  })
-
-  it('rejects nobody when the network is clean, however uneven', () => {
-    // P0 is far above the median but still inside tolerance -- the absolute floor holds.
-    const rows = [row('P0', 'P1', 0.9, 0), row('P1', 'P2', 0.1, 0), row('P2', 'P3', 0.1, 0),
-      row('P3', 'P0', 0.1, 0)]
-    const v = severityVerdict(rows)
-    expect(v.rejected).toEqual([])
-    expect(v.cut).toBeLessThan(0.9)   // it cleared the relative cut, and was spared by the floor
-  })
-
-  it('rejects a beacon that is both an outlier and over the limit', () => {
-    const rows = [row('BAD', 'P1', 8, 0), row('P1', 'P2', 1, 0), row('P2', 'P3', 1, 0),
-      row('P3', 'P4', 1, 0), row('P4', 'BAD', 8, 0)]
-    expect(severityVerdict(rows).rejected).toEqual(['BAD'])
-  })
-
-  it('orders rejections worst-first', () => {
-    const rows = [row('WORST', 'MID', 20, 0), row('MID', 'P2', 9, 0), row('P2', 'P3', 0.2, 0),
-      row('P3', 'P4', 0.2, 0), row('P4', 'P5', 0.2, 0), row('P5', 'WORST', 20, 0)]
-    const rejected = severityVerdict(rows).rejected
-    expect(rejected[0]).toBe('WORST')
-    expect(rejected).toContain('MID')
-  })
-
-  it('never rejects so many that fewer than three beacons survive', () => {
-    // Four beacons, three of them wildly out -- only the worst two may go.
-    const rows = [row('A', 'B', 30, 0), row('B', 'C', 20, 0), row('C', 'D', 0.1, 0),
-      row('D', 'A', 25, 0)]
-    const v = severityVerdict(rows)
-    expect(v.rejected.length).toBeLessThanOrEqual(1)
-    expect(4 - v.rejected.length).toBeGreaterThanOrEqual(3)
-  })
-
-  it('reports the median and cut it used, so the report can state them', () => {
-    const v = severityVerdict(ring([2, 2, 2, 2]))
-    expect(v.median).toBeCloseTo(2, 12)
-    expect(v.cut).toBeCloseTo(SI727_SEVERITY_FACTOR * 2, 12)
-  })
-
-  it('rejects nobody when there are no rows to judge', () => {
-    expect(severityVerdict([]).rejected).toEqual([])
-  })
-})
-
 /**
- * The rule has to hold on real networks, not just constructed ones, and it must not
- * depend on which class the surveyor declared — the ranking is class-invariant even
- * though the raw ratios are not.
+ * The edge check judges each line by Second Schedule para 7(5) alone. Directions and the swing are kept for
+ * information: SI 727 sets no direction limit for a comparison (para 8 is a setting-out test), and the old
+ * 2.45 x sigma0 angular limit was not in the regulations.
  */
-describe('severityVerdict on real networks', () => {
-  // The survey drawn in the SG reference comparison sketch (D:\para2026\comparisonsketch.dxf).
-  // The examining surveyor rejected exactly RM10, 148a and 152c.
-  const MIDLANDS = [
-    ['RM7', -1454.419, 1979603.687, -1454.271, 1979603.84],
-    ['RM10', -1418.232, 1979452.159, -1418.023, 1979452.106],
-    ['RM11', -1413.868, 1979434.153, -1413.644, 1979434.231],
-    ['148b', -1398.696, 1979357.577, -1398.445, 1979357.715],
-    ['148a', -1349.695, 1979369.27, -1349.255, 1979369.541],
-    ['152a', -1153.691, 1979416.045, -1153.42, 1979416.191],
-    ['152c', -1221.475, 1979483.059, -1221.336, 1979483.421],
-    ['151c', -1270.476, 1979471.365, -1270.304, 1979471.604],
-  ].map(([name, yH, xH, yS, xS], i) => ({ id: i + 1, name, yH, xH, yS, xS })) as any[]
-
-  it.each(['B', 'C'])('matches the reference surveyor on the Midlands network (class %s)', (cls) => {
-    const { rows } = edgeCompliance(MIDLANDS, cls)
-    expect(severityVerdict(rows).rejected.sort()).toEqual(['148a', '152c', 'RM10'])
-  })
-
-  /**
-   * BM 004 carries a ~0.248 m planted southing blunder. The swing principle judges it against
-   * the class positional limit expressed as an angle: class B posLimit ≈ 0.17 m so the blunder
-   * is 1.45x the budget and its long-ray swing residuals breach it; class C posLimit ≈ 0.26 m,
-   * so 0.248 m is WITHIN the class C budget and class C correctly adopts the beacon.
-   */
-  it('isolates the planted blunder in SAMPLE_DATA under class B (it breaches the class positional limit)', () => {
-    const { rows } = edgeCompliance(SAMPLE_DATA as any, 'B')
-    expect(severityVerdict(rows).rejected).toEqual(['BM 004'])
-  })
-
-  it('adopts the planted blunder under class C (0.248 m sits inside the class C limit ≈ 0.26 m)', () => {
-    const { rows, summary } = edgeCompliance(SAMPLE_DATA as any, 'C')
-    expect(summary.posLimit).toBeGreaterThan(0.24)
-    expect(severityVerdict(rows).rejected).toEqual([])
-  })
-
-  /**
-   * Declaring class C instead of B divides the distance ratio by 2 but the direction
-   * ratio by 3, so which term wins `max()` can flip and the tail of the ranking DOES
-   * reorder (here RM7 and 152a swap). What must hold — and what the verdict rests on —
-   * is that the worst beacons, the only ones the cut can reach, rank the same either way.
-   */
-  it('ranks the worst beacons identically whichever class is declared', () => {
-    const order = (cls: string) =>
-      [...beaconSeverity(edgeCompliance(MIDLANDS, cls).rows).entries()]
-        .sort((a, b) => b[1] - a[1]).map(([name]) => name)
-    expect(order('B').slice(0, 5)).toEqual(order('C').slice(0, 5))
-  })
-
-  it('reaches the same verdict whichever class is declared', () => {
-    const verdict = (cls: string) => severityVerdict(edgeCompliance(MIDLANDS, cls).rows).rejected
-    expect(verdict('B')).toEqual(verdict('C'))
-  })
-})
-
-/**
- * Direction compliance is the old-days swing principle: each line swings by (Survey − Hist),
- * the NETWORK swing ω̂ is the length-weighted median of the swings, and a line is judged on
- * its swing RESIDUAL — not the raw difference, and not the para 8 K/(S+300) setting-out rule.
- */
-describe('edgeCompliance — swing-principle directions', () => {
-  // A clean regular octagon, R = 1000 m, historical and survey coincident. Rotating the
-  // whole survey network about its centroid multiplies every line's bearing by exactly the
-  // rotation — the archetypal uniform network swing.
+describe('edgeCompliance — every line by para 7(5); directions for information', () => {
+  // A clean regular octagon, R = 1000 m, historical and survey coincident.
   const RING = Array.from({ length: 8 }, (_, i) => {
     const a = (i / 8) * 2 * Math.PI
     return { y: 50050 + 1000 * Math.cos(a), x: 2200550 + 1000 * Math.sin(a) }
   }).map((p, i) => ({ id: i + 1, name: `R${i + 1}`, yH: p.y, xH: p.x, yS: p.y, xS: p.x }))
 
-  it('judges direction on the swing residual, not the raw difference', () => {
-    const rawLarge = { from: 'A', to: 'B', dDiff: 0, dAllow: 0.05, dirDiffSec: 1800, swingResidSec: 0, dirAllowSec: 60 }
-    const noResidual = { from: 'A', to: 'B', dDiff: 0, dAllow: 0.05, dirDiffSec: 1800, dirAllowSec: 60 }
-    expect(beaconSeverity([rawLarge]).get('A')).toBe(0)
-    expect(beaconSeverity([noResidual]).get('A')).toBe(30)
-  })
-
-  it('removes a uniform 180″ network swing before judging directions, and flags it as a warning', () => {
-    const TH = 0.000872664626 // 180″ ≈ 0.05°
+  it('passes a network swung 180 seconds as a whole, and reports the swing', () => {
+    const TH = 0.000872664626 // 180″
     const cy = 50050, cx = 2200550
     const rotated = RING.map(p => {
       const yS = cy + (p.yH - cy) * Math.cos(TH) - (p.xH - cx) * Math.sin(TH)
@@ -243,24 +88,65 @@ describe('edgeCompliance — swing-principle directions', () => {
     })
     const { rows, summary } = edgeCompliance(rotated, 'B')
     expect(Math.abs(summary.networkSwingSec)).toBeCloseTo(180, 6)
-    expect(summary.networkSwingWarn).toBe(true)
     expect(Math.max(...rows.map(r => Math.abs(r.swingResidSec)))).toBeLessThan(1e-6)
-    expect(Math.abs(rows[0].dirDiffSec)).toBeCloseTo(180, 6)
-    expect(rows.every(r => r.pass)).toBe(true)
-    expect(severityVerdict(rows).rejected).toEqual([])
+    expect(rows.every(r => r.pass && r.distOk)).toBe(true)
+    expect(summary.distPass).toBe(rows.length)
   })
 
-  it('keeps the exact 1.5x class ratio in the angular direction tolerance', () => {
-    const b = edgeCompliance(RING, 'B').rows[0].dirAllowSec
-    const c = edgeCompliance(RING, 'C').rows[0].dirAllowSec
-    expect(c).toBeCloseTo(1.5 * b, 9)
+  it('decides a line by its distance alone, however large its swing', () => {
+    // One beacon slid 0.05 m ALONG a 1000 m line: the distance changes 0.05 m (within class B), the
+    // short lines to it swing, and nothing may fail for that swing.
+    const pts = RING.map((p, i) => (i === 0 ? { ...p, yS: p.yS + 0.05 } : p))
+    const { rows } = edgeCompliance(pts, 'B')
+    for (const r of rows) {
+      expect(r.pass).toBe(r.distOk)
+      expect('dirOk' in r).toBe(false)
+      expect('dirAllowSec' in r).toBe(false)
+    }
+  })
+
+  it('uses K = 0,01 / 0,04 / 0,06 for class A / B / C on the shorter distance', () => {
+    const k = (f: number) => Math.sqrt(0.075 * f + 0.00015 * f * f)
+    const pts = [
+      { name: 'P', yH: 0, xH: 0, yS: 0, xS: 0 },
+      { name: 'Q', yH: 0, xH: 1000, yS: 0, xS: 1000.5 },
+    ]
+    expect(edgeCompliance(pts as any, 'A').rows[0].dAllow).toBeCloseTo(0.01 * k(1000), 12)
+    expect(edgeCompliance(pts as any, 'B').rows[0].dAllow).toBeCloseTo(0.04 * k(1000), 12)
+    expect(edgeCompliance(pts as any, 'C').rows[0].dAllow).toBeCloseTo(0.06 * k(1000), 12)
   })
 
   it('pins the network swing to the well-determined rays — SAMPLE_DATA blunder cannot pull it', () => {
     const { summary } = edgeCompliance(SAMPLE_DATA as any, 'B')
-    // BM 004's pairwise swings reach ~100° but the well-determined majority of the
-    // weight sits near 0, so the weighted-median consensus ω̂ stays sub-arcsecond.
     expect(Math.abs(summary.networkSwingSec)).toBeLessThan(2)
+  })
+})
+
+/**
+ * A surveyor's class B comparison of six beacons (23 Nov 2026). Printed before: 1 of 15 lines "within the
+ * limits", because 14 failed a direction limit SI 727 does not state, and n rejected by a severity cut.
+ * By para 7(5): four lines fail, n is set aside (o-n and n-1B), and 40-FS2 and 1A-1B each fail alone.
+ */
+describe('a class B comparison of six beacons, by para 7(5)', () => {
+  const SIX = [
+    ['40', -85263.68, 2140365.37, -85264.74, 2140365.5], ['FS2', -86750.13, 2141404.16, -86750.2, 2141403.6],
+    ['o', -83030.13, 2145134.86, -83033.0, 2145135.85], ['n', -82439.83, 2143159.44, -82440.02, 2143157.2],
+    ['1A', -84691.17, 2141734.59, -84691.54, 2141733.92], ['1B', -84723.77, 2142041.66, -84722.99, 2142040.63],
+  ].map(([name, yH, xH, yS, xS]) => ({ name, yH, xH, yS, xS })) as any[]
+
+  it('prints the para 7(5) class B limits worked by hand (40 - FS2: 1.0028 m; 1A - 1B: 0.2446 m)', () => {
+    const rows = edgeCompliance(SIX, 'B').rows
+    const line = (a: string, b: string) => rows.find(r => r.from === a && r.to === b)!
+    expect(line('40', 'FS2').dAllow).toBeCloseTo(1.0028, 4)
+    expect(line('1A', '1B').dAllow).toBeCloseTo(0.2446, 4)
+    expect(rows.filter(r => !r.distOk).map(r => `${r.from}-${r.to}`)).toEqual(['40-FS2', 'o-n', 'n-1B', '1A-1B'])
+  })
+
+  it('sets aside n, accepts o, and leaves the ends of the two lone failing lines unresolved', () => {
+    const c = coordinateComparison(SIX, 'B')
+    const status = Object.fromEntries(c.pts.map((p: any) => [p.name, p.finalStatus]))
+    expect(status).toEqual({ '40': 'UNRESOLVED', FS2: 'UNRESOLVED', o: 'ACCEPT', n: 'REJECT', '1A': 'UNRESOLVED', '1B': 'UNRESOLVED' })
+    expect(c.verdict.unresolved).toEqual([{ from: '40', to: 'FS2' }, { from: '1A', to: '1B' }].map(l => expect.objectContaining(l)))
   })
 })
 
@@ -408,31 +294,5 @@ describe('coordinateComparison — SI 727 s.67(5), judged by Second Schedule par
     const { pts, comparison67 } = coordinateComparison(local as any, 'B')
     expect(comparison67.networkWide).toBe(true)
     expect(pts.map((p: any) => p.finalStatus)).toEqual(['UNRESOLVED', 'UNRESOLVED', 'UNRESOLVED', 'UNRESOLVED'])
-  })
-})
-
-/**
- * edgeVerdictPoints — the same selector's "Edge compliance with the SI 727 classes".
- * Bundles a Second Schedule severity verdict into per-beacon status shaped like
- * iterativeAdjust rejects (rejSource 'si727'), independent of any adjustment.
- */
-describe('edgeVerdictPoints — Second Schedule severity-verdict status', () => {
-  it('marks the verdict-rejected beacons REJECT / rejSource si727 and the rest ACCEPT', () => {
-    const edges = edgeCompliance(SAMPLE_DATA, 'B')
-    const verdict = severityVerdict(edges.rows)
-    const pts = edgeVerdictPoints(SAMPLE_DATA, edges, verdict)
-    expect(verdict.rejected.length).toBeGreaterThan(0)
-    expect(pts.filter(p => p.finalStatus === 'REJECT').map(p => p.name)).toEqual(verdict.rejected)
-    expect(pts.filter(p => p.finalStatus === 'ACCEPT').map(p => p.name)).toEqual(
-      SAMPLE_DATA.map(p => p.name).filter(n => !verdict.rejected.includes(n)),
-    )
-    expect(pts.filter(p => p.finalStatus === 'REJECT').every(p => p.rejSource === 'si727')).toBe(true)
-    expect(pts.every(p => typeof p.rawDist === 'number' && typeof p.rawBrg === 'number')).toBe(true)
-  })
-
-  it('accepts everything for an empty verdict', () => {
-    const edges = { rows: [], summary: null as any }
-    const pts = edgeVerdictPoints(SAMPLE_DATA, edges, { rejected: [] })
-    expect(pts.every(p => p.finalStatus === 'ACCEPT')).toBe(true)
   })
 })

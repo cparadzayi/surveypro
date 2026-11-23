@@ -70,7 +70,7 @@ function makeReportDataWithEdges(): ReportOnSurveyData {
         brgH: 130.5, brgS: 130.502, dirDiffSec: 7.2, swingResidSec: 7.2, dirAllowSec: 45.0, dirOk: true, pass: true,
       },
     ],
-    summary: { totalLines: 1, distPass: 1, dirPass: 1, bothPass: 1, meanScale: 1.0003, sigma0: 0.02, posLimit: 0.049, lmed: 100, networkSwingDeg: 0.002, networkSwingSec: 7.2, networkSwingWarn: false },
+    summary: { totalLines: 1, distPass: 1, meanScale: 1.0003, networkSwingDeg: 0.002, networkSwingSec: 7.2 },
   };
   return base;
 }
@@ -267,7 +267,7 @@ describe('renderBeaconComparisonSketch (via renderBeaconComparison)', () => {
     expect(cursorWithSketch.y).toBeGreaterThan(cursorWithoutSketch.y);
   });
 
-  it('draws every ray in plain black regardless of pass/fail, and circles only the failing figures', () => {
+  it('draws every ray in plain black regardless of pass/fail, and circles only a distance outside para 7(5)', () => {
     const passing = renderCapturing(makeReportDataWithEdges());
     const failing = renderCapturing(makeReportDataWithFailingEdge());
 
@@ -277,10 +277,11 @@ describe('renderBeaconComparisonSketch (via renderBeaconComparison)', () => {
     expect(failing.lines.length).toBeGreaterThan(0);
     expect(failing.lines.every((l) => l.color[0] === 0 && l.color[1] === 0 && l.color[2] === 0)).toBe(true);
 
-    // A passing edge circles nothing; the failing fixture flips BOTH distOk and dirOk to
-    // false, so both the survey-distance figure and the swing figure get circled (2 ellipses).
+    // A passing edge circles nothing. The failing fixture flips BOTH distOk and dirOk to false: only the
+    // survey-distance figure is circled, since SI 727 sets no direction limit for a comparison (dirOk is an
+    // old saved field that is no longer read).
     expect(passing.ellipses.length).toBe(0);
-    expect(failing.ellipses.length).toBe(2);
+    expect(failing.ellipses.length).toBe(1);
   });
 
   it('renders a negative swing with an explicit minus sign, not wrapped into [0,360)', () => {

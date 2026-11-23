@@ -49,7 +49,9 @@ function render(rows = BRACKENHURST, comparison: any = { method: 'tabulation', c
 describe('which comparisons are comparisons of co-ordinates', () => {
   it('reads the saved check, or an older save by its summary', () => {
     expect(isCoordinateComparison({ checkMethod: 'coords' })).toBe(true)
-    expect(isCoordinateComparison({ checkMethod: 'edges', adjustmentSummary: OLD_SAVED })).toBe(false)
+    // The edge check decides by para 7(5) too (Nov 2026), so its saves print the para 7(5) verdict.
+    expect(isCoordinateComparison({ checkMethod: 'edges', adjustmentSummary: OLD_SAVED })).toBe(true)
+    expect(isCoordinateComparison({ checkMethod: 'wtest', adjustmentSummary: OLD_SAVED })).toBe(false)
     expect(isCoordinateComparison({ adjustmentSummary: OLD_SAVED })).toBe(true)
     expect(isCoordinateComparison({ adjustmentSummary: '4-parameter Helmert least-squares' })).toBe(false)
     expect(comparisonClass({ adjustmentSummary: OLD_SAVED })).toBe('B')

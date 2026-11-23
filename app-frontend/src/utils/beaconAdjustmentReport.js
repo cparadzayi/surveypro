@@ -9,18 +9,17 @@ import { formatSignedDMS } from '@/utils/beaconComparisonSection'
 
 const NAVY = [30, 58, 92]
 
-// Signed network-swing renderer for the edge-compliance note lines: "+12.3″" style.
+// Signed network-swing renderer for the edge-compliance note lines: "+12.3 sec" (the report's font has no ″).
 const fmtNetSwing = (s) => {
   if (s.networkSwingSec == null) return '-'
   const v = s.networkSwingSec.toFixed(1)
-  return `${s.networkSwingSec >= 0 ? '+' : ''}${v}\u2033`
+  return `${s.networkSwingSec >= 0 ? '+' : ''}${v} sec`
 }
-// Angular tolerance at the median ray: 2.45·σ₀·206265/L_median.
-const fmtMedAllow = (s) => (s.lmed > 0 ? (s.posLimit * 206265 / s.lmed).toFixed(1) : '0')
 
-// Which test condemned a beacon. 'si727' is the Second Schedule severity verdict
-// (si727.js's severityVerdict); 'coords' is the §67(5) comparison judged by para 7(5) on the lines; the
-// other two come from iterativeAdjust's own statistics.
+// Which test condemned a beacon. 'coords' is Second Schedule para 7(5) on the lines between the beacons
+// (the comparison of co-ordinates and the edge-compliance mode both decide by it); 'si727' is the old
+// severity verdict, kept so a result saved before it was retired still prints; the other two come from
+// iterativeAdjust's own statistics.
 const REJ_SOURCE_LABEL = { si727: 'SI 727', coords: 'Para 7(5)', wtest: 'W-test', danish: 'Danish' }
 
 // Standard ISO A-series page dimensions in mm, matching jsPDF's own built-in page-format
@@ -214,19 +213,16 @@ class BeaconAdjustmentReport {
     const rej = result.pts.filter(p => p.finalStatus === 'REJECT')
     const hasAdj = !!result.adj
     const cls = result.surveyClass || 'B'
-    // Which authority condemned each beacon: the §67(5) co-ordinate limit, the Second
-    // Schedule severity verdict, or the adjustment's own statistics. Naming them
+    // Which authority condemned each beacon: Second Schedule para 7(5) on the lines, or the
+    // adjustment's own statistics. Naming them
     // separately is what stops this page -- the one an examiner reads first -- from
     // contradicting the schedule or the edge-compliance table.
     const names = ps => ps.map(p => p.name).join(', ')
     const method = result.method || (hasAdj ? 'wtest' : 'coords')
     let rejPhrase = ''
-    if (method === 'coords') {
-      const c = rej.filter(p => p.rejSource === 'coords')
+    if (method === 'coords' || method === 'edges') {
+      const c = rej.filter(p => p.rejSource === 'coords' || p.rejSource === 'si727')
       if (c.length) rejPhrase = `${c.length} beacon(s) whose distances to the other beacons fail Second Schedule para 7(5) (class ${cls}) while the lines among the others pass: ${names(c)}`
-    } else if (method === 'edges') {
-      const c = rej.filter(p => p.rejSource === 'si727')
-      if (c.length) rejPhrase = `${c.length} beacon(s) fail the Second Schedule limits of error (paras 7(1), 8): ${names(c)}`
     } else {
       const schedRej = rej.filter(p => p.rejSource === 'si727')
       const statRej = rej.filter(p => p.rejSource !== 'si727')
@@ -240,35 +236,41 @@ class BeaconAdjustmentReport {
     const s = hasAdj ? result.adj.stats : null
     const chiOk = !s || (s.chi2 >= s.chi2L && s.chi2 <= s.chi2U)
     const es = result.edges ? result.edges.summary : null
-    const linesFailing = es ? es.totalLines - es.bothPass : 0
+    const linesFailing = es ? es.totalLines - es.distPass : 0
+    // The para 7(5) decision (comparison of co-ordinates, and the edge-compliance mode) carries its own
+    // reading of the failing lines; the older modes fall back to counting them.
+    const c67 = (method === 'coords' || method === 'edges') ? result.comparison67 : null
     let line
     if (hasAdj && !result.converged) {
       line = 'Did not converge within 25 iterations — REFER for manual review.'
-    } else if (rej.length > 0) {
-      line = `Referred — ${rejPhrase}.`
-    } else if (linesFailing > 0) {
-      // No beacon is an outlier RELATIVE to its own network -- but a uniformly poor
-      // network raises its own median, so severityVerdict can never flag one. That blind
-      // spot is reported here rather than left for the reader to notice two pages later.
-      line = 'Recommended with note — no single beacon stands out as an outlier, but '
-        + `${linesFailing} of ${es.totalLines} `
-        + 'compared lines exceed the Second Schedule limits of error; examine the network as a whole.'
-    } else if (method === 'coords' && result.comparison67 && result.comparison67.networkWide) {
+    } else if (c67 && c67.networkWide) {
       // Lines still fail among the beacons left: no single beacon has moved, the data disagree throughout.
-      const c = result.comparison67
-      line = `Referred — ${c.linesFailing} of ${c.lines.length} lines exceed Second Schedule para 7(5), and the disagreement runs through the network: `
+      line = `Referred — ${c67.linesFailing} of ${c67.lines.length} lines exceed Second Schedule para 7(5), and the disagreement runs through the network: `
         + 'the original data appear to be on another scale or co-ordinate system, or the beacons do not correspond. No beacon is singled out; the surveyor resolves this before adoption.'
-    } else if (method === 'coords' && result.verdict && result.verdict.unresolved && result.verdict.unresolved.length) {
+    } else if (rej.length > 0) {
+      // Lone failing lines left after the set-aside are named too: they are not settled by setting it aside.
+      const lone = c67 && result.verdict && result.verdict.unresolved ? result.verdict.unresolved : []
+      line = `Referred — ${rejPhrase}`
+        + (lone.length
+          ? `; ${lone.map(l => `${l.from} - ${l.to}`).join(', ')} also exceed${lone.length === 1 ? 's' : ''} Second Schedule para 7(5), and the line${lone.length === 1 ? '' : 's'} alone do${lone.length === 1 ? 'es' : ''} not show which beacon moved; the surveyor decides.`
+          : '.')
+    } else if (c67 && result.verdict && result.verdict.unresolved && result.verdict.unresolved.length) {
       // A single failing line does not show which end moved: the surveyor decides.
       line = 'Recommended with note — '
         + result.verdict.unresolved.map(l => `${l.from} - ${l.to}`).join(', ')
         + ' exceed Second Schedule para 7(5), but the lines alone do not show which beacon moved; the surveyor decides.'
+    } else if (!c67 && linesFailing > 0) {
+      // The W-test found no outlier, but lines still exceed para 7(5): reported here rather than left for
+      // the reader to notice two pages later.
+      line = 'Recommended with note — no single beacon stands out as an outlier, but '
+        + `${linesFailing} of ${es.totalLines} `
+        + 'compared lines exceed the Second Schedule limits of error; examine the network as a whole.'
     } else if (hasAdj && !chiOk) {
       line = 'Recommended with note — chi-square test outside bounds; review a priori Sigma-0.'
     } else if (method === 'coords') {
       line = `Recommended for approval — every line between the found beacons within Second Schedule para 7(5), class ${cls}.`
     } else if (method === 'edges') {
-      line = 'Recommended for approval — all compared lines within the Second Schedule limits of error.'
+      line = `Recommended for approval — every line between the found beacons within Second Schedule para 7(5), class ${cls}.`
     } else {
       line = 'Recommended for approval — all compared beacons and lines within the Second Schedule limits of error.'
     }
@@ -287,10 +289,10 @@ class BeaconAdjustmentReport {
           : `Common shift ${f4s(c.shift.dY)} m (Y), ${f4s(c.shift.dX)} m (X); swing ${Math.abs(c.swingSec).toFixed(1)} sec (information only: section 67(5) sets no co-ordinate limit).`)
       this.doc.text(w, this.margin, this.y, { maxWidth: this.pw - 2 * this.margin }); this.y += 9
     }
-    if (es) {
+    if (es && !(method === 'coords' && result.comparison67)) {
       this.doc.text(
-        `Second Schedule (class ${cls}): ${es.bothPass} of ${es.totalLines} compared lines within the limits of error; `
-        + `${es.distPass} pass the distance limit (para 7(5) Limits of Error), ${es.dirPass} the direction limit (swing residual against the class positional limit as an angle).`,
+        `Second Schedule para 7(5), class ${cls}: ${es.distPass} of ${es.totalLines} lines between the beacons within the limit. `
+        + 'Directions and their swing are shown for information: SI 727 sets no direction limit for a comparison.',
         this.margin, this.y, { maxWidth: this.pw - 2 * this.margin })
     }
     this.y += 6
@@ -361,14 +363,13 @@ class BeaconAdjustmentReport {
           'vY, vX = residuals left after the best-fit Helmert transformation is removed - the beacon-specific misfit. Dist is its magnitude.',
           'Acceptance / rejection is decided by the standardised residual W-max (Baarda data snooping), not by the raw difference dY/dX.',
         ]
-      : method === 'coords'
+      : (method === 'coords' || method === 'edges')
         ? [
             'dY, dX = raw difference (survey minus historical); Dist is its magnitude. Section 67(5) sets no limit on them: a survey may be shifted or swung against the original data while its beacons agree.',
             `A beacon is set aside when its distances to the other beacons fail SI 727 Second Schedule para 7(5) (class ${result.surveyClass || 'B'}) while the lines among the others pass — no Helmert or W-test is applied in this mode.`,
           ]
         : [
             'dY, dX = raw difference (survey minus historical); Dist is its magnitude.',
-            'Acceptance is decided by the SI 727 Second Schedule severity verdict on the inter-beacon line checks (paras 7(1), 8) — no Helmert or W-test is applied in this mode.',
           ]
     note.forEach((ln, i) => this.doc.text(ln, 14, fy + 6 + i * 4))
   }
@@ -466,33 +467,30 @@ class BeaconAdjustmentReport {
       `${e.from} - ${e.to}`, f3(e.dH), f3(e.dS), f4s(e.dDiff), f4(e.dAllow),
       e.distOk ? 'PASS' : 'FAIL',
       formatDMS(e.brgH), formatDMS(e.brgS),
-      e.dirDiffSec.toFixed(1), e.swingResidSec.toFixed(1), e.dirAllowSec.toFixed(1),
-      e.dirOk ? 'PASS' : 'FAIL',
+      e.dirDiffSec.toFixed(1), e.swingResidSec.toFixed(1),
     ])
     autoTable(this.doc, {
       startY: 18, margin: { left: 14, right: 14 },
       head: [['Line', 'd Hist (m)', 'd Surv (m)', 'dd (m)', 'dist tol (m)', 'dist',
-              'Hist dir (S)', 'Survey dir (S)', 'dir diff (sec)', 'swing resid (sec)', 'dir tol (sec)', 'dir']],
+              'Hist dir (S)', 'Survey dir (S)', 'swing (sec)', 'swing less network (sec)']],
       body,
       styles: { fontSize: 7.5, cellPadding: 1, halign: 'right' },
-      columnStyles: { 0: { halign: 'left' }, 5: { halign: 'center' }, 11: { halign: 'center' } },
+      columnStyles: { 0: { halign: 'left' }, 5: { halign: 'center' } },
       headStyles: { fillColor: NAVY, halign: 'center', fontSize: 7.5 },
-      didParseCell: d => { if (d.section === 'body' && !edges.rows[d.row.index].pass) d.cell.styles.fillColor = [252, 226, 226] },
+      didParseCell: d => { if (d.section === 'body' && !edges.rows[d.row.index].distOk) d.cell.styles.fillColor = [252, 226, 226] },
     })
     const s = edges.summary, p = result.adj ? result.adj.params : null
     let y = this.doc.lastAutoTable.finalY + 6
     // For large (O(n²)) networks the table can fill the page; keep the note
     // lines from clipping off the bottom by starting them on a fresh page.
     const note = [
-      `Lines: ${s.totalLines}.  Distance pass: ${s.distPass}.  Direction pass: ${s.dirPass}.  Both: ${s.bothPass}.`,
+      `Lines: ${s.totalLines}.  Within Second Schedule para 7(5): ${s.distPass}.  Outside: ${s.totalLines - s.distPass}.`,
       p
-        ? `SI 727 mean scale ${s.meanScale != null ? s.meanScale.toFixed(8) : '-'}, network swing \u03c9\u0302 ${fmtNetSwing(s)}  (Helmert scale ${p.scale.toFixed(8)}, rotation ${formatDMS(p.rotDeg)}).`
-        : `SI 727 mean scale ${s.meanScale != null ? s.meanScale.toFixed(8) : '-'}, network swing \u03c9\u0302 ${fmtNetSwing(s)}  (independent edge-compliance mode — no Helmert fitted).`,
-      `Distance tolerance = factor x sqrt(0.075f + 0.00015 f^2), f = shorter line (Second Schedule para 7(5) Limits of Error). Direction: swing residual vs the class positional limit as an angle — tolerance = 2.45 x sigma0 x 206265/S, S = historical ray length, sigma0 = distance tolerance/5 at the median pairwise distance.`,
-      `dir diff (sec) = raw (Survey - Hist) swing; swing resid (sec) = dir diff minus the network swing \u03c9\u0302 (length-weighted median on the longest rays). Independent SI 727 check (does not use the Helmert swing or the W-test).`,
-      ...(s.networkSwingWarn
-        ? [`\u26a0 Network swung by \u03c9\u0302 = ${fmtNetSwing(s)} relative to the historical datum (allow ${fmtMedAllow(s)} at the median ray) — a uniform orientation offset to note, not a per-beacon finding.`]
-        : []),
+        ? `SI 727 mean scale ${s.meanScale != null ? s.meanScale.toFixed(8) : '-'}, network swing ${fmtNetSwing(s)}  (Helmert scale ${p.scale.toFixed(8)}, rotation ${formatDMS(p.rotDeg)}).`
+        : `SI 727 mean scale ${s.meanScale != null ? s.meanScale.toFixed(8) : '-'}, network swing ${fmtNetSwing(s)}  (independent edge-compliance mode — no Helmert fitted).`,
+      `dist tol = K x sqrt(0,075f + 0,000 15f^2) m, K = ${({ A: '0,01', B: '0,04', C: '0,06' })[result.surveyClass || 'B'] || '0,04'} for class ${result.surveyClass || 'B'}, f = the distance in metres (Second Schedule para 7(5)). A line is judged on this alone.`,
+      'swing (sec) = Survey direction - Hist direction; swing less network = that minus the network swing (length-weighted median).',
+      'Directions are for information only: SI 727 sets no direction limit for a comparison, and a whole network swung against the original is not a fault.',
     ]
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(90)
     if (y + note.length * 4 > this.doc.internal.pageSize.getHeight() - 12) {
@@ -628,7 +626,7 @@ class BeaconAdjustmentReport {
         { text: spec.brgHText, color: BLACK },
         { text: ' -> ', color: ARROW_GREY },
         { text: spec.brgSText, color: RED },
-        { text: ' ' + spec.dirDiffText, color: row.dirOk ? BLACK : RED },
+        { text: ' ' + spec.dirDiffText, color: BLACK }, // directions are information: SI 727 sets no limit
       ])
     })
 
@@ -654,14 +652,14 @@ class BeaconAdjustmentReport {
     this.y = boxYtop + boxH + 6
     this.doc.setFontSize(8); this.doc.setFont('helvetica', 'normal'); this.doc.setTextColor(60)
     this.doc.text(
-      `Scale ${label}. Black = historical, Red = current survey. Differences black = within SI 727 tolerance, red = outside. `
+      `Scale ${label}. Black = historical, Red = current survey. Distance differences black = within Second Schedule para 7(5), red = outside; direction differences for information. `
       + 'Beacons circled and named in red were rejected.',
       this.margin, this.y, { maxWidth: pageW - 2 * this.margin })
     this.y += 6
     const s = edges.summary
     this.doc.setTextColor(20)
     this.doc.text(
-      `SI 727 Class ${result.surveyClass || 'B'} · ${s.bothPass} of ${s.totalLines} lines pass both checks`,
+      `SI 727 Class ${result.surveyClass || 'B'} · ${s.distPass} of ${s.totalLines} lines within Second Schedule para 7(5)`,
       this.margin, this.y)
     this.y += 12
   }

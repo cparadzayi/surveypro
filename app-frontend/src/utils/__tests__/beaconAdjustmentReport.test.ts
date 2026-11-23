@@ -230,17 +230,13 @@ describe('addEdgeComplianceSketch (via generateBeaconAdjustmentReport)', () => {
     expect(red.length).toBe(1);
   });
 
-  it('colours the direction-difference figure black when within tolerance and red when outside it', () => {
-    // Same reasoning as the distance-difference test: all 3 edges share dirDiffSec=-7200
-    // (-2 deg -> "-2°00'00.0""); 86B-87A and 87A-87B pass (dirOk=true), 86B-87B fails
-    // (dirOk=false).
+  it('prints every direction difference black: SI 727 sets no direction limit for a comparison', () => {
+    // All 3 edges share dirDiffSec=-7200 (-2 deg -> "-2°00'00.0""); one of them carries an old saved
+    // dirOk=false, which must no longer colour it.
     const { textsColored } = renderCapturing(makeResult());
     const diffs = textsColored.filter((t) => t.text === ` (-2°00'00.0")`);
     expect(diffs.length).toBe(3);
-    const black = diffs.filter((t) => t.color[0] === 0 && t.color[1] === 0 && t.color[2] === 0);
-    const red = diffs.filter((t) => t.color[0] === 220 && t.color[1] === 0 && t.color[2] === 0);
-    expect(black.length).toBe(2);
-    expect(red.length).toBe(1);
+    expect(diffs.every((t) => t.color[0] === 0 && t.color[1] === 0 && t.color[2] === 0)).toBe(true);
   });
 
   it('renders a negative direction difference with an explicit minus sign, not wrapped into [0,360)', () => {

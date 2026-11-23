@@ -5,7 +5,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { iterativeAdjust, SAMPLE_DATA } from '@/utils/surveyMath'
-import { suggestedSigma0, edgeCompliance, severityVerdict, coordinateComparison, edgeVerdictPoints } from '@/utils/si727'
+import { suggestedSigma0, edgeCompliance, coordinateComparison } from '@/utils/si727'
 
 let nextId = SAMPLE_DATA.length + 1
 
@@ -102,13 +102,15 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
         //    the regulations set none). No Helmert, no W-test.
         res = coordinateComparison(points.value, surveyClass.value)
       } else if (method.value === 'edges') {
-        // 2. Edge compliance with the SI 727 classes: Second Schedule line checks
-        //    (paras 7(1), 8) over the WHOLE network + severity verdict. Edges are
-        //    computed over every beacon, rejected ones included: their failing rays
-        //    are the evidence for rejecting them and must stay on the sketch/table.
+        // 2. Edge compliance with the SI 727 classes: every line between the beacons against Second
+        //    Schedule para 7(5), shown line by line (directions and swing for information), and decided
+        //    by the same para 7(5) rule as the comparison of co-ordinates: a beacon is set aside only when
+        //    lines to it fail while the lines among the others pass; failures running through the network
+        //    leave every beacon UNRESOLVED. (It used to be a 1.25 x median "severity" cut that also counted
+        //    a direction limit, neither in SI 727.) Edges cover every beacon, set-aside ones included:
+        //    their failing lines are the evidence and stay on the sketch and table.
         const edges = edgeCompliance(points.value, surveyClass.value)
-        const verdict = severityVerdict(edges.rows)
-        res = { pts: edgeVerdictPoints(points.value, edges, verdict), edges, si727Verdict: verdict }
+        res = { ...coordinateComparison(points.value, surveyClass.value), edges }
       } else {
         // 3. Iterative Baarda W-test: statistical data snooping on ALL points (no
         //    Second Schedule pre-filter) — the W-test alone decides rejections.

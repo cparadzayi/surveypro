@@ -47,7 +47,7 @@
             </select>
             <p class="text-xs text-gray-500 mt-0.5">
               <template v-if="checkMethod === 'coords'">→ Second Schedule para 7(5) on the lines between beacons</template>
-              <template v-else-if="checkMethod === 'edges'">→ Second Schedule paras 7(1) &amp; 8</template>
+              <template v-else-if="checkMethod === 'edges'">→ Second Schedule para 7(5), line by line</template>
             </p>
           </div>
 
@@ -293,7 +293,7 @@
           <div class="flex flex-wrap justify-between items-center mb-3 gap-2 text-xs text-gray-500">
             <span>
               <template v-if="checkMethod === 'wtest'">σ₀ = {{ sigma0.toFixed(3) }} m · Critical W = {{ critW }} ·</template>
-              <template v-else-if="checkMethod === 'coords'">SI 727 class {{ surveyClass }} · para 7(5): <template v-if="result.comparison67">{{ result.comparison67.lines.length - result.comparison67.linesFailing }} of {{ result.comparison67.lines.length }} lines within the limit · <template v-if="result.comparison67.networkWide"><b class="text-red-600">disagreement runs through the network: no beacon singled out</b> · </template><template v-if="result.comparison67.otherSystem">original data in another co-ordinate system ·</template><template v-else>shift {{ f4s(result.comparison67.shift.dY) }} / {{ f4s(result.comparison67.shift.dX) }} m · swing {{ Math.abs(result.comparison67.swingSec).toFixed(1) }}″ ·</template></template></template>
+              <template v-else-if="checkMethod === 'coords' || checkMethod === 'edges'">SI 727 class {{ surveyClass }} · para 7(5): <template v-if="result.comparison67">{{ result.comparison67.lines.length - result.comparison67.linesFailing }} of {{ result.comparison67.lines.length }} lines within the limit · <template v-if="result.comparison67.networkWide"><b class="text-red-600">disagreement runs through the network: no beacon singled out</b> · </template><template v-if="result.comparison67.otherSystem">original data in another co-ordinate system ·</template><template v-else>shift {{ f4s(result.comparison67.shift.dY) }} / {{ f4s(result.comparison67.shift.dX) }} m · swing {{ Math.abs(result.comparison67.swingSec).toFixed(1) }}″ ·</template></template></template>
               <template v-else>SI 727 class {{ surveyClass }} · Second Schedule limits (paras 7(1), 8) ·</template>
               <b class="text-blue-600">{{ acceptedCount }} Accepted</b>
               <template v-if="rejectedCount > 0">
@@ -417,11 +417,8 @@
             <template v-if="checkMethod === 'wtest'">
               <span>W-test critical value: {{ critW }} · Residuals after Helmert transformation · Bearings South-oriented (0°=S, 90°=W)</span>
             </template>
-            <template v-else-if="checkMethod === 'coords'">
+            <template v-else-if="checkMethod === 'coords' || checkMethod === 'edges'">
               <span>Acceptance: Second Schedule para 7(5) on every line between the beacons — a beacon is set aside when lines to it fail while lines among the others pass. Section 67(5) sets no co-ordinate limit; the residual after the common shift and swing is for information.</span>
-            </template>
-            <template v-else>
-              <span>Acceptance: SI 727 Second Schedule severity verdict on line checks — no adjustment run</span>
             </template>
           </div>
         </div>
@@ -629,17 +626,12 @@
           <template v-else>
             <div class="text-xs text-gray-500 mb-2">
               SI 727 Class {{ result.surveyClass }} · all pairs among accepted beacons ·
-              <b class="text-blue-700">{{ result.edges.summary.bothPass }}</b> of
-              {{ result.edges.summary.totalLines }} lines pass both checks ·
+              <b class="text-blue-700">{{ result.edges.summary.distPass }}</b> of
+              {{ result.edges.summary.totalLines }} lines within Second Schedule para 7(5) ·
               SI 727 mean scale {{ result.edges.summary.meanScale != null ? result.edges.summary.meanScale.toFixed(8) : '—' }},
               network swing ω̂ =
               {{ result.edges.summary.networkSwingSec != null ? (result.edges.summary.networkSwingSec >= 0 ? '+' : '') + result.edges.summary.networkSwingSec.toFixed(1) + '″' : '—' }}
               (weighted to the longest rays)
-            </div>
-            <div v-if="result.edges.summary.networkSwingWarn" class="mb-2 text-xs text-amber-700">
-              ⚠ Network swung by ω̂ relative to the historical datum — orientation offset beyond the
-              class positional budget at the median ray ({{ result.edges.summary.networkSwingSec.toFixed(1) }}″ vs
-              allow {{ (result.edges.summary.posLimit * 206265 / result.edges.summary.lmed).toFixed(1) }}″). Not a per-beacon finding.
             </div>
             <div class="overflow-x-auto">
               <table class="min-w-full text-xs border-collapse">
@@ -653,17 +645,15 @@
                     <th class="text-center px-2 py-1.5">dist</th>
                     <th class="text-right px-2 py-1.5">Hist dir (S)</th>
                     <th class="text-right px-2 py-1.5">Survey dir (S)</th>
-                    <th class="text-right px-2 py-1.5">Δdir (″)</th>
-                    <th class="text-right px-2 py-1.5">Δdir−ω̂ (″)</th>
-                    <th class="text-right px-2 py-1.5">dir tol (″)</th>
-                    <th class="text-center px-2 py-1.5">dir</th>
+                    <th class="text-right px-2 py-1.5">swing (″)</th>
+                    <th class="text-right px-2 py-1.5">swing − ω̂ (″)</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr
                     v-for="(e, idx) in result.edges.rows"
                     :key="idx + '|' + e.from + '|' + e.to"
-                    :class="[!e.pass ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60', 'border-t border-gray-100']"
+                    :class="[!e.distOk ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60', 'border-t border-gray-100']"
                   >
                     <td class="px-2 py-1.5 whitespace-nowrap">{{ e.from }} – {{ e.to }}</td>
                     <td class="px-2 py-1.5 text-right">{{ f3(e.dH) }}</td>
@@ -675,18 +665,15 @@
                     <td class="px-2 py-1.5 text-right whitespace-nowrap text-red-600">{{ formatDMS(e.brgS) }}</td>
                     <td class="px-2 py-1.5 text-right">{{ e.dirDiffSec.toFixed(1) }}</td>
                     <td class="px-2 py-1.5 text-right">{{ e.swingResidSec.toFixed(1) }}</td>
-                    <td class="px-2 py-1.5 text-right text-gray-500">{{ e.dirAllowSec.toFixed(1) }}</td>
-                    <td class="px-2 py-1.5 text-center" :class="e.dirOk ? 'text-blue-600' : 'text-red-600 font-medium'">{{ e.dirOk ? '✓' : '✗' }}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
             <p class="text-xs text-gray-500 mt-2">
-              Distance tolerance = factor·√(0.075f + 0.00015f²), f = shorter line (Second Schedule para 7(5) Limits of Error).
-              Directions are judged on the swing principle: Δdir = raw (Survey − Hist) swing in seconds; the check removes the
-              network swing ω̂ (length-weighted median — the longest rays set it) and compares each line's residual Δdir − ω̂ to the
-              class positional limit as an angle, tol = 2.45·σ₀·206265/S (S = historical ray length). A point whose edges do not
-              show consistent distances and directions is suspect. Independent of the Helmert fit.
+              dist tol = K·√(0,075f + 0,000 15f²) m, K = 0,01 / 0,04 / 0,06 for class A / B / C, f = the distance in metres
+              (Second Schedule para 7(5)); a line is judged on this alone. Swing = Survey − Hist direction, and swing − ω̂ after the
+              network swing ω̂ (length-weighted median), are shown for information: SI 727 sets no direction limit for a comparison,
+              and a whole network swung against the original is not a fault.
             </p>
           </template>
         </div>
@@ -792,7 +779,7 @@ const CHECK_METHODS = [
 const checkMethodHint = computed(() => {
   const hints = {
     coords: 'Sets each beacon’s survey co-ordinates beside the historical record per §67(5) and checks every line between the beacons against Second Schedule para 7(5); a beacon is set aside when lines to it fail while the others pass. No co-ordinate limit (the regulations set none), no Helmert, no W-test.',
-    edges: 'Checks every inter-beacon line: distances against the SI 727 Second Schedule para 7(5) Limits of Error, directions on the swing principle (each line\'s swing residual after the length-weighted network swing ω̂, versus the class positional limit as an angle); the severity verdict flags the beacons presumed bad (no adjustment).',
+    edges: 'Lists every line between the beacons against Second Schedule para 7(5), with each line\'s direction and swing for information, and decides as the co-ordinate comparison does: a beacon is set aside when lines to it fail while the lines among the others pass; failures running through the network leave every beacon unresolved. No adjustment.',
     wtest: '4-parameter Helmert least-squares with iterative Baarda W-test data snooping and χ² consistency checking.',
   }
   return hints[checkMethod.value]

@@ -7,15 +7,14 @@ export interface EdgeRow {
   from: string; to: string
   dH: number; dS: number; dDiff: number; dAllow: number; distOk: boolean
   brgH: number; brgS: number; dirDiffSec: number; swingResidSec: number
-  dirAllowSec: number; dirOk: boolean
+  /** Para 7(5) alone (directions are information). Saved results may still carry dirOk/dirAllowSec. */
   pass: boolean
+  dirAllowSec?: number; dirOk?: boolean
 }
 export interface EdgeSummary {
-  totalLines: number; distPass: number; dirPass: number; bothPass: number
+  totalLines: number; distPass: number
   meanScale: number | null
-  sigma0: number; posLimit: number; lmed: number
   networkSwingDeg: number | null; networkSwingSec: number | null
-  networkSwingWarn: boolean
 }
 export interface EngineResult {
   pts: Array<{ id: number; name: string; finalStatus: 'ACCEPT' | 'REJECT' | 'UNRESOLVED' }>
@@ -78,16 +77,17 @@ export function buildComparisonConfig(
         ? 'From the above comparison, I adopt the positions of all found beacons.'
         : `From the above comparison, I adopt the positions of the found beacons, except ${rejected.join(', ')}.`
   } else if (m === 'edges') {
-    // Second Schedule edge compliance + severity verdict — no adjustment was fitted.
-    // Distances use the para 7(5) Limits of Error; directions use the swing principle
-    // (swing residual vs the class positional limit as an angle — a point whose edges do
-    // not display consistent distances and directions is suspect).
+    // Every line between the beacons against Second Schedule para 7(5), decided as the co-ordinate comparison
+    // is (directions shown for information) — no adjustment was fitted.
+    const c67 = result?.comparison67
     adjustmentSummary =
-      `SI 727 Second Schedule edge compliance (para 7(5) distances, swing-principle directions) — `
-      + `class ${cls} limits, two-gate severity verdict`
-    conclusion = rejected.length === 0
-      ? 'From the above comparison, I adopt the positions of all found beacons.'
-      : `From the above comparison, I adopt the positions of the found beacons, except ${rejected.join(', ')}, flagged by the SI 727 Second Schedule severity verdict.`
+      `SI 727 Second Schedule para 7(5), class ${cls}, on every line between the found beacons`
+      + (c67 ? ` (${c67.lines.length} lines, ${c67.linesFailing} outside the limit); directions for information` : '')
+    conclusion = c67
+      ? comparisonConclusion(c67)
+      : rejected.length === 0
+        ? 'From the above comparison, I adopt the positions of all found beacons.'
+        : `From the above comparison, I adopt the positions of the found beacons, except ${rejected.join(', ')}.`
   } else {
     // Helmert LSQ + W-test (explicit 'wtest' mode or legacy results without a method).
     const s0 = result?.adj?.stats?.s0

@@ -751,6 +751,7 @@ function onProjectChange() {
     setupData.value.township = project.township || ''
     const parentProp = project.parent_property || ''
     setupData.value.parentProperty = parentProp
+    setupData.value.parentArea = project.parent_area ?? null
     setupData.value.hasParentProperty = parentProp.trim() !== ''
     setupData.value.deedOfTransferNo = project.deed_of_transfer_no || ''
     setupData.value.parentDiagramNo = project.parent_diagram_no || ''
@@ -971,6 +972,7 @@ async function completeSetup() {
       district: setupData.value.district,
       surveyDate: setupData.value.surveyDate,
       surveyOf: composedSurveyOf.value || setupData.value.surveyOf,
+      parentArea: setupData.value.parentArea,
       instruments: setupData.value.instruments,
       assistedBy: setupData.value.assistedBy,
       instrumentDescription: setupData.value.instrumentDescription,

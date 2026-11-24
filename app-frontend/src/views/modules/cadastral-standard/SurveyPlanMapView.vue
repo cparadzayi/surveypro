@@ -4736,6 +4736,7 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
     licenseNumber: config.value.licenseNumber,
     parentProperty: props.projectInfo.parentProperty || '',
     wholePortion: props.projectInfo.wholePortion || 'the whole',
+    parentArea: props.projectInfo.parentArea ?? null,
     priorDiagrams: props.projectInfo.priorDiagrams || [],
     ...diagramReferenceMetadata(props.projectInfo as any),
     // What the SG's office gave after examination, as entered on this screen (these win over

@@ -2121,6 +2121,7 @@ async function handleProjectSetupComplete(setupData: {
   surveyType: string;
   township?: string;
   parentProperty?: string;
+  parentArea?: number | null;
   deedOfTransferNo?: string;
   parentDiagramNo?: string;
   parentDiagramAnnexedTo?: string;
@@ -2262,6 +2263,7 @@ async function handleProjectSetupComplete(setupData: {
   workflowState.projectInfo.surveyType = setupData.surveyType;
   workflowState.projectInfo.township = setupData.township;
   workflowState.projectInfo.parentProperty = setupData.parentProperty;
+  workflowState.projectInfo.parentArea = setupData.parentArea ?? null;
   workflowState.projectInfo.deedOfTransferNo = setupData.deedOfTransferNo;
   workflowState.projectInfo.parentDiagramNo = setupData.parentDiagramNo;
   workflowState.projectInfo.parentDiagramAnnexedTo = setupData.parentDiagramAnnexedTo;
@@ -2299,6 +2301,7 @@ async function handleProjectSetupComplete(setupData: {
         surveyType: setupData.surveyType,
         township: setupData.township,
         parentProperty: setupData.parentProperty,
+        parentArea: setupData.parentArea,
         deedOfTransferNo: setupData.deedOfTransferNo,
         parentDiagramNo: setupData.parentDiagramNo,
         parentDiagramAnnexedTo: setupData.parentDiagramAnnexedTo,
@@ -2331,6 +2334,7 @@ async function handleProjectSetupComplete(setupData: {
         survey_type: setupData.surveyType,
         township: setupData.township,
         parent_property: setupData.parentProperty,
+        parent_area: setupData.parentArea,
         whole_portion: setupData.wholePortion,
         working_directory: setupData.workingDirectory,
         survey_date: setupData.surveyDate,

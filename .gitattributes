@@ -21,3 +21,4 @@ app-backend/migrations/106_unique_active_project_name_per_schema.do.sql text eol
 app-backend/migrations/107_password_reset_tokens.do.sql text eol=lf
 app-backend/migrations/108_surveyor_letterheads.do.sql text eol=lf
 app-backend/migrations/109_control_points_allow_ocp.do.sql text eol=lf
+app-backend/migrations/110_add_parent_area_to_projects.do.sql text eol=lf

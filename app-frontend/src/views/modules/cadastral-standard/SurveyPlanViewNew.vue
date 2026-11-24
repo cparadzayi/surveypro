@@ -285,6 +285,7 @@ const projectInfo = computed(() => {
     wholePortion: project?.whole_portion || props.workflowState?.projectInfo?.wholePortion || 'the whole',
     // Immediate parent property (e.g. "Shabani Mine Surface Rights A")
     parentProperty: project?.parent_property || props.workflowState?.projectInfo?.parentProperty || '',
+    parentArea: project?.parent_area ?? props.workflowState?.projectInfo?.parentArea ?? null,
     // Diagram reference fields (sub-project 2a)
     deedOfTransferNo: project?.deed_of_transfer_no || props.workflowState?.projectInfo?.deedOfTransferNo || '',
     parentDiagramNo: project?.parent_diagram_no || props.workflowState?.projectInfo?.parentDiagramNo || '',

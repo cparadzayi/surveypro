@@ -161,8 +161,10 @@ export async function analyzeMerge(data: {
 export async function executeMerge(data: {
   project_id: number;
   import_id: number;
-  matched_points: PointMatch[];
-  new_points: Array<{ id: string; y: number; x: number }>;
+  // Status, description and survey date come from the file (views/.../mergePayload.ts); a matched point
+  // keeps its stored values for any the file does not state.
+  matched_points: Array<PointMatch & { status?: string; description?: string; surveyDate?: string | null }>;
+  new_points: Array<{ id: string; y: number; x: number; status?: string; description?: string; surveyDate?: string | null }>;
   orphaned_parcel_ids?: number[];
   partial_parcel_actions?: Record<number, 'delete' | 'keep' | 'review'>;
   surveyClass?: 'B' | 'C'; // SI 727 class for duplicate-conflict adjudication (bnr-part8)

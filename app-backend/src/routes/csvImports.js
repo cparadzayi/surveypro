@@ -552,15 +552,29 @@ export default async function csvImportRoutes(fastify, options) {
       const srid = getCapeLoSRID(centralMeridian);
       console.log(`[CSV Import] Central meridian: Lo ${centralMeridian} (from ${meridianSource}), SRID: ${srid}`);
 
-      // 0. Delete existing points for this project (for re-import)
-      // This allows clean re-import without duplicate key violations
+      // 0. Remove the points the new file no longer has. The matched ones are KEPT and updated in step 1:
+      // this used to delete every point of the project first, and step 1 then updated rows that no longer
+      // existed, so a re-import of the same field data (every point matched) left the project with no
+      // points at all (goodyear2026: 453 imported, 0 kept; the field book and Co-ordinate List printed only
+      // the trig stations and the calculated points added afterwards).
+      const keptIds = (matched_points || []).map((m) => Number(m.oldDbId)).filter(Number.isFinite);
       const deleteResult = await client.query(
-        'DELETE FROM coordinate_points WHERE project_id = $1',
-        [project_id]
+        'DELETE FROM coordinate_points WHERE project_id = $1 AND NOT (id = ANY($2::int[]))',
+        [project_id, keptIds]
       );
-      console.log('[CSV Import] Deleted', deleteResult.rowCount, 'existing points');
+      console.log('[CSV Import] Deleted', deleteResult.rowCount, 'points the new file no longer has; keeping', keptIds.length);
 
-      // 1. Update matched points with new coordinates (if changed)
+      // A matched point may take the name another kept point had (a rename swap), which the
+      // (project_id, name) unique key would refuse mid-way: park the kept rows on names that cannot clash.
+      if (keptIds.length) {
+        await client.query(
+          `UPDATE coordinate_points SET name = '__merge_' || id::text WHERE project_id = $1 AND id = ANY($2::int[])`,
+          [project_id, keptIds]
+        );
+      }
+
+      // 1. Update matched points with the new file's coordinates, name and, when the file states them,
+      // status, description and survey date (a matched beacon keeps its stored values otherwise).
       console.log('[CSV Import] Updating', matched_points.length, 'matched points...');
       for (const match of matched_points) {
         // PostGIS ST_MakePoint expects (X, Y) where X=longitude-like, Y=latitude-like
@@ -571,9 +585,13 @@ export default async function csvImportRoutes(fastify, options) {
           `UPDATE coordinate_points
            SET geom = ST_SetSRID(ST_MakePoint($1, $2), $6),
                import_id = $3,
-               name = $4
+               name = $4,
+               status = COALESCE($7, status),
+               description = COALESCE($8, description),
+               survey_date = COALESCE($9::date, survey_date)
            WHERE id = $5`,
-          [match.coordinate.y, match.coordinate.x, import_id, match.newId, match.oldDbId, srid]
+          [match.coordinate.y, match.coordinate.x, import_id, match.newId, match.oldDbId, srid,
+            match.status ?? null, match.description ?? null, match.surveyDate || null]
         );
 
         // Record history
@@ -610,11 +628,12 @@ export default async function csvImportRoutes(fastify, options) {
         // So we pass: ST_MakePoint(newPt.y, newPt.x) = ST_MakePoint(Westing, Southing)
         // SRID is determined from project's central_meridian setting
         const result = await client.query(
-          `INSERT INTO coordinate_points 
-           (project_id, name, geom, status, description, import_id)
-           VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), $8), $5, $6, $7)
+          `INSERT INTO coordinate_points
+           (project_id, name, geom, status, description, import_id, survey_date)
+           VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), $8), $5, $6, $7, $9::date)
            RETURNING id`,
-          [project_id, newPt.id, newPt.y, newPt.x, newPt.status, newPt.description, import_id, srid]
+          [project_id, newPt.name || newPt.id, newPt.y, newPt.x, newPt.status ?? null, newPt.description ?? null, import_id, srid,
+            newPt.surveyDate || null]
         );
 
         // Record history
@@ -622,7 +641,7 @@ export default async function csvImportRoutes(fastify, options) {
           `INSERT INTO coordinate_point_history 
            (point_id, import_id, action, point_name, coordinates)
            VALUES ($1, $2, 'created', $3, $4)`,
-          [result.rows[0].id, import_id, newPt.id, JSON.stringify({ y: newPt.y, x: newPt.x })]
+          [result.rows[0].id, import_id, newPt.name || newPt.id, JSON.stringify({ y: newPt.y, x: newPt.x })]
         );
       }
 

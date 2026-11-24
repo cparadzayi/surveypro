@@ -1434,6 +1434,7 @@ import {
 import { batchCreateCoordinatePoints, listCoordinatePoints, normalizeCoordinatePointNames, listLandParcels, updateLandParcel, deleteCoordinatePointByName } from '../../../services/spatial';
 import { normalizeAdoptedBeaconName } from '../../../utils/adoptedBeaconsCsv';
 import { toISODate } from '../../../utils/surveyDate';
+import { buildMergePayload } from './mergePayload';
 import { buildFieldCsv, fieldCsvFileName } from '../../../utils/fieldCsv';
 import { downloadBlob } from '../../../services/geopdf';
 import { buildBeaconRepairPlan, runBeaconRepair, describeRepairResult, renameWorkflowCopies, renamePointList } from './beaconRepairFlow';
@@ -2874,15 +2875,13 @@ async function handleMergeProceed(partialParcelActions: Record<number, 'delete' 
     }
     
     // Execute merge
+    // Each point carries its status, description and survey date from the file (mergePayload.ts).
+    const mergePoints = buildMergePayload(pendingCSVData.value.points as any[], analysis);
     const result = await executeMerge({
       project_id: selectedProjectId.value,
       import_id: importId,
-      matched_points: analysis.matched,
-      new_points: analysis.newPoints.map(p => ({
-        id: p.id,
-        y: p.coordinate.y,
-        x: p.coordinate.x
-      })),
+      matched_points: mergePoints.matched_points,
+      new_points: mergePoints.new_points,
       orphaned_parcel_ids: analysis.parcelAnalysis.orphaned.map(p => p.id),
       partial_parcel_actions: partialParcelActions,
       surveyClass,

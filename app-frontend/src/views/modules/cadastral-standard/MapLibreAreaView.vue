@@ -8498,7 +8498,7 @@ async function generateComprehensivePDF(
       designation: p.designation ?? p.stand,
       area_m2: p.area_m2 != null ? Number(p.area_m2) : undefined,
     }))
-    const dispensation = dispensationFromWorkflow(workflowState?.step_data, certParcels)
+    const dispensation = dispensationFromWorkflow(workflowState?.step_data, certParcels, workflowState?.projectInfo as any)
     if (dispensation) {
       console.log('[MapLibre] 📑 Dispensation Certificate included:', dispensation.portion, dispensation.servitudes.length, 'servitudes');
     }

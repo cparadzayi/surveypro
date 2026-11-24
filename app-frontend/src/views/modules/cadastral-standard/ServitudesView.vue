@@ -373,9 +373,12 @@ import {
   type Servitude,
   type ServitudeType,
 } from './servitudes'
-import { generateAndSaveDispensation, type DispensationHeader } from '@/composables/useDispensationCertificate'
+import {
+  applyProjectSetupToDispensationHeader,
+  generateAndSaveDispensation,
+  type DispensationHeader,
+} from '@/composables/useDispensationCertificate'
 import type { CertificateParcel } from '@/utils/dispensationCertificate'
-import { townshipPhrase } from '@/utils/planDesignation'
 
 const { workflowState, projectId } = useCadastralWorkflow()
 
@@ -1319,25 +1322,22 @@ async function deleteServitude(id: string) {
 
 function applyHeaderDefaults() {
   const info = workflowState.projectInfo
-  // The certificate's "SURVEY OF ..." designation comes from the workflow's
-  // single source of truth, not from the editable township field. A manually
-  // saved header is overridden so the certificate always tracks the project.
+  // The saved header is a snapshot of the last generation, not an authority on
+  // the project. Project setup wins on every field it owns — including an
+  // emptied parent property — so a re-opened certificate tracks the current
+  // survey instead of the one the surveyor looked at last time.
   const surveyOf = workflowState.surveyorInfo?.surveyOf
-    || workflowState.projectInfo?.designation
+    || (info as any)?.designation
     || header.value.surveyOf
-  header.value.surveyOf = surveyOf
-  // The Township box holds the designation's township phrase — "MAGLAS TOWNSHIP
-  // OF SHABANI MINE SURFACE RIGHTS A", never the project's short name ("MAG1
-  // SH2") and never the workflow's unpopulated projectInfo.township.
-  header.value.township = townshipPhrase(surveyOf)
-    || info.township
-    || info.name
-    || header.value.township
-  header.value.parentProperty = info.parentProperty || header.value.parentProperty
-  header.value.district = info.district || header.value.district
-  header.value.loZone = info.centralMeridian != null ? `Lo ${info.centralMeridian}` : header.value.loZone
-  header.value.surveyorName = workflowState.surveyorInfo.landSurveyor || header.value.surveyorName
-  header.value.licenseNumber = workflowState.surveyorInfo.licenseNumber || header.value.licenseNumber
+  applyProjectSetupToDispensationHeader(header.value, {
+    surveyOf,
+    township: info.township || (info as any).name || header.value.township,
+    parentProperty: info.parentProperty ?? header.value.parentProperty,
+    district: info.district ?? header.value.district,
+    loZone: info.centralMeridian,
+    landSurveyor: workflowState.surveyorInfo.landSurveyor,
+    licenseNumber: workflowState.surveyorInfo.licenseNumber,
+  })
   header.value.place = header.value.place || info.district || ''
 }
 

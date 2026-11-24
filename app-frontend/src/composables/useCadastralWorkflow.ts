@@ -537,9 +537,6 @@ async function loadWorkflowState(surveyProjectId: number) {
         if (setupData.parent_property) {
           workflowState.projectInfo.parentProperty = setupData.parent_property
         }
-        if (setupData.parent_area !== undefined) {
-          workflowState.projectInfo.parentArea = setupData.parent_area
-        }
         if (setupData.whole_portion) {
           workflowState.projectInfo.wholePortion = setupData.whole_portion
         }

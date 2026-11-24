@@ -9,7 +9,11 @@ vi.mock('@/utils/dispensationCertificateGenerator', () => ({
 
 import { saveDocument } from '@/services/documentStorage'
 import { generateDispensationCertificatePDF } from '@/utils/dispensationCertificateGenerator'
-import { generateAndSaveDispensation, dispensationFromWorkflow } from '../useDispensationCertificate'
+import {
+  applyProjectSetupToDispensationHeader,
+  generateAndSaveDispensation,
+  dispensationFromWorkflow,
+} from '../useDispensationCertificate'
 import type { Servitude } from '../../views/modules/cadastral-standard/servitudes'
 
 const header = { township: 'MAGLAS', dispensationClause: 'Reg 78', surveyorName: 'F.C.', date: '2026-07-14' }
@@ -114,5 +118,107 @@ describe('dispensationFromWorkflow', () => {
 
     expect(input).toBeDefined()
     expect(input!.header.surveyOf).toBe('STANDS 271-339, 346-349 MAGLAS TOWNSHIP OF SHABANI MINE SURFACE RIGHTS A')
+  })
+
+  it('applies the current project-setup step data over a stale saved header', () => {
+    const input = dispensationFromWorkflow({
+      'project-setup': {
+        survey_of: 'Stands 1620 Current Township',
+        district: 'CURRENT DISTRICT',
+        parent_property: '',
+        lo_zone: 27,
+      },
+      servitudes: {
+        servitudes: [sv],
+        header: {
+          township: 'OLD TOWNSHIP',
+          surveyOf: 'Stands 1620 Old Township',
+          parentProperty: 'OLD PARENT',
+          district: 'OLD DISTRICT',
+          loZone: 'Lo 99',
+          certificateNumber: 'C-7',
+          dispensationClause: 'Reg 78',
+          date: '2026-07-14',
+        },
+      },
+    }, certParcels)
+
+    expect(input!.header.surveyOf).toBe('Stands 1620 Current Township')
+    expect(input!.header.township).toBe('Current Township')
+    expect(input!.header.parentProperty).toBe('')
+    expect(input!.header.district).toBe('CURRENT DISTRICT')
+    expect(input!.header.loZone).toBe('Lo 27')
+    expect(input!.header.certificateNumber).toBe('C-7')
+  })
+
+  it('uses live projectInfo, including a cleared parent property, over the saved header', () => {
+    const input = dispensationFromWorkflow({
+      servitudes: {
+        servitudes: [sv],
+        header: {
+          township: 'OLD TOWNSHIP',
+          surveyOf: 'Stands 1620 Old Township of Stand 9',
+          parentProperty: 'STAND 9 OLD TOWNSHIP',
+          district: 'OLD DISTRICT',
+          loZone: 'Lo 99',
+          certificateNumber: 'C-7',
+          date: '2026-07-14',
+        },
+      },
+    }, certParcels, {
+      surveyOf: 'Stands 1620 New Township',
+      district: 'NEW DISTRICT',
+      parentProperty: '',
+      centralMeridian: 29,
+    })
+
+    expect(input!.header.surveyOf).toBe('Stands 1620 New Township')
+    expect(input!.header.township).toBe('New Township')
+    expect(input!.header.parentProperty).toBe('')
+    expect(input!.header.district).toBe('NEW DISTRICT')
+    expect(input!.header.loZone).toBe('Lo 29')
+    // Certificate-only edits survive a project setup change.
+    expect(input!.header.certificateNumber).toBe('C-7')
+    expect(input!.header.date).toBe('2026-07-14')
+  })
+})
+
+describe('applyProjectSetupToDispensationHeader', () => {
+  it('takes every setup-owned field from the setup, even when it is emptied', () => {
+    const header = {
+      township: 'OLD TOWNSHIP',
+      surveyOf: 'Stands 9 Old Township',
+      parentProperty: 'STAND 8 OLD TOWNSHIP',
+      district: 'OLD DISTRICT',
+      loZone: 'Lo 99',
+      certificateNumber: 'C-1',
+      dispensationClause: 'Reg 78',
+      surveyorName: 'OLD SURVEYOR',
+      licenseNumber: 'L-OLD',
+      place: 'OLD PLACE',
+      date: '2026-01-01',
+    }
+
+    const out = applyProjectSetupToDispensationHeader({ ...header }, {
+      surveyOf: 'Stands 9 Maglas Township of Stand 8',
+      township: 'MAGLAS',
+      parentProperty: '',
+      district: 'NEW DISTRICT',
+      loZone: 31,
+      landSurveyor: 'NEW SURVEYOR',
+      licenseNumber: 'L-NEW',
+    })
+
+    expect(out.surveyOf).toBe('Stands 9 Maglas Township of Stand 8')
+    expect(out.township).toBe('Maglas Township of Stand 8')
+    expect(out.parentProperty).toBe('')
+    expect(out.district).toBe('NEW DISTRICT')
+    expect(out.loZone).toBe('Lo 31')
+    expect(out.surveyorName).toBe('NEW SURVEYOR')
+    expect(out.licenseNumber).toBe('L-NEW')
+    expect(out.certificateNumber).toBe('C-1')
+    expect(out.dispensationClause).toBe('Reg 78')
+    expect(out.place).toBe('OLD PLACE')
+    expect(out.date).toBe('2026-01-01')
   })
 })

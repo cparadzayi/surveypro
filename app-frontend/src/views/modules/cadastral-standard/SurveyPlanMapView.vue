@@ -553,10 +553,6 @@ const props = defineProps<{
     centralMeridian?: number
     wholePortion?: string
     parentProperty?: string
-    /** Registered area of the parent from its title diagram (m²), captured in
-     *  Project Setup. The working plan sums the mutations and remaining extent
-     *  against it. */
-    parentArea?: number | null
     workingDirectory?: string
     name?: string
     deedOfTransferNo?: string
@@ -4736,7 +4732,6 @@ async function gatherPlanContext(): Promise<PlanPayloadContext> {
     licenseNumber: config.value.licenseNumber,
     parentProperty: props.projectInfo.parentProperty || '',
     wholePortion: props.projectInfo.wholePortion || 'the whole',
-    parentArea: props.projectInfo.parentArea ?? null,
     priorDiagrams: props.projectInfo.priorDiagrams || [],
     ...diagramReferenceMetadata(props.projectInfo as any),
     // What the SG's office gave after examination, as entered on this screen (these win over
@@ -5770,7 +5765,7 @@ async function generateComprehensivePDF() {
       designation: p.designation ?? p.stand,
       area_m2: registryAreas.value[p.id] ?? (p.area_m2 != null ? Number(p.area_m2) : undefined),
     }))
-    const dispensation = dispensationFromWorkflow(workflowState?.step_data, certParcels)
+    const dispensation = dispensationFromWorkflow(workflowState?.step_data, certParcels, props.projectInfo as any)
     if (dispensation) {
       console.log(`[ComprehensivePDF] 📑 Dispensation Certificate included (${dispensation.portion}, ${dispensation.servitudes.length} servitudes)`)
     }

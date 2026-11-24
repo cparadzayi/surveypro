@@ -44,8 +44,6 @@ export interface VectorGeoPDFRequest {
     township?: string
     wholePortion?: string
     parentProperty?: string
-    /** Registered area of the parent (m²), for the working plan's area check. */
-    parentArea?: number | null
     // New (DXF/PDF parity)
     firm?: string
     licenseNumber?: string

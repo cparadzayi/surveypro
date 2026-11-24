@@ -209,27 +209,6 @@
               </div>
             </div>
 
-            <!-- Registered area of the land being subdivided. The working plan
-                 sums the new mutations and the remaining extent against it, so
-                 the sheet can show that no land was lost or gained. -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">
-                Original Area of Parent Property (m²)
-              </label>
-              <input
-                v-model.number="setupData.parentArea"
-                type="number"
-                step="0.01"
-                min="0"
-                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., 17580.44"
-              />
-              <p class="mt-1 text-sm text-gray-500">
-                From the title diagram, not computed. The working plan compares it
-                against the sum of the new mutations plus the remaining extent.
-              </p>
-            </div>
-
             <!-- Immediate parent diagram (SI 727 single-stand Diagram reference grid) -->
             <h3 class="text-sm font-semibold text-gray-700 pt-2">Immediate Parent Diagram</h3>
             <div>
@@ -568,8 +547,6 @@ const emit = defineEmits<{
     surveyType: string
     township?: string
     parentProperty?: string
-    /** Registered area of the parent, from its title diagram (m²). */
-    parentArea?: number | null
     deedOfTransferNo?: string
     parentDiagramNo?: string
     parentDiagramAnnexedTo?: string
@@ -608,7 +585,6 @@ const blankProjectDetails = () => ({
   township: '',
   hasParentProperty: false,
   parentProperty: '',
-  parentArea: null as number | null,
   deedOfTransferNo: '',
   parentDiagramNo: '',
   parentDiagramAnnexedTo: '',
@@ -751,7 +727,6 @@ function onProjectChange() {
     setupData.value.township = project.township || ''
     const parentProp = project.parent_property || ''
     setupData.value.parentProperty = parentProp
-    setupData.value.parentArea = project.parent_area ?? null
     setupData.value.hasParentProperty = parentProp.trim() !== ''
     setupData.value.deedOfTransferNo = project.deed_of_transfer_no || ''
     setupData.value.parentDiagramNo = project.parent_diagram_no || ''
@@ -972,7 +947,6 @@ async function completeSetup() {
       district: setupData.value.district,
       surveyDate: setupData.value.surveyDate,
       surveyOf: composedSurveyOf.value || setupData.value.surveyOf,
-      parentArea: setupData.value.parentArea,
       instruments: setupData.value.instruments,
       assistedBy: setupData.value.assistedBy,
       instrumentDescription: setupData.value.instrumentDescription,

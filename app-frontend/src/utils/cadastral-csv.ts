@@ -24,6 +24,15 @@ import { normalizeBeaconName, findCaseFoldDuplicates } from '../../../app-shared
  * Handles parsing, validation, and processing of cadastral coordinate CSV files
  * Expected format: Point,Y,X,Status,Description,Date of survey
  */
+/**
+ * Headings accepted for the point-name, status and description columns (lower-cased, trimmed). Only "point"
+ * used to be read for the name, so a file headed "NAMES" (goodyear2026) imported 453 points with no names:
+ * nothing could be stored as a beacon, and the field book printed none. The first heading found is used.
+ */
+export const POINT_NAME_COLUMNS = ['point', 'points', 'name', 'names', 'point name', 'point id', 'point no', 'pt', 'station', 'stn', 'beacon', 'beacon name', 'id']
+export const STATUS_COLUMNS = ['status', 'f/p', 'state']
+export const DESCRIPTION_COLUMNS = ['description', 'descriptions', 'desc', 'beacon description', 'remarks']
+
 const EXPECTED_HEADERS = [
   'point',
   'y', 
@@ -157,6 +166,24 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
     }
     const header = parseCSVRow(rows[0]).map(h => h.toLowerCase().trim());
     console.log(' [CSV Parser] Header columns:', header);
+
+    // Which column holds each point's name. Without one no point can be stored as a beacon, so the file is
+    // refused here rather than imported nameless.
+    const nameColumn = POINT_NAME_COLUMNS.find(c => header.includes(c)) ?? null;
+    if (!nameColumn) {
+      result.isValid = false;
+      result.errors.push({
+        row: 0,
+        field: 'point',
+        message: `No point-name column found. The header reads "${parseCSVRow(rows[0]).map(h => h.trim()).join(', ')}"; `
+          + 'head the name column Point (Name, Names, Point Name, Station or Beacon are also accepted).',
+        severity: 'error'
+      });
+      return result;
+    }
+    const statusColumn = STATUS_COLUMNS.find(c => header.includes(c)) ?? 'status';
+    const descriptionColumn = DESCRIPTION_COLUMNS.find(c => header.includes(c)) ?? 'description';
+    const namelessRows: number[] = [];
     
     // Check if System column exists
     const hasSystemColumn = header.some(h => h === 'system' || h === 'lo' || h === 'zone');
@@ -220,6 +247,11 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
         }
       }
       
+      const pointName = record[nameColumn] || '';
+      const pointStatus = record[statusColumn] || '';
+      const pointDescription = record[descriptionColumn] || '';
+      if (!pointName) namelessRows.push(i + 1);
+
       // Map to CadastralPoint structure - handle multiple column name formats
       const yValue = getColumnValue(record, ['y', 'y (westing)', 'y (northing)', 'westing']);
       const xValue = getColumnValue(record, ['x', 'x (northing)', 'x (southing)', 'x (easting)', 'northing', 'southing', 'easting']);
@@ -254,7 +286,7 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
       if (loZone && !isNaN(rawY) && !isNaN(rawX)) {
         try {
           const capeLoPoint: CapeLoPoint = {
-            id: record['point'] || '',
+            id: pointName,
             y: originalY,
             x: originalX
           };
@@ -268,7 +300,7 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
             console.log(`[CSV Parser] 🌍 Transformed to WGS84: ${wgs84Point.lng.toFixed(6)}°E, ${wgs84Point.lat.toFixed(6)}°S`);
           }
         } catch (error) {
-          console.error(`[CSV Parser] Failed to transform point ${record['point']}:`, error);
+          console.error(`[CSV Parser] Failed to transform point ${pointName}:`, error);
         }
       }
       
@@ -283,17 +315,17 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
       const isCalculated = 
         pointType === 'calculated' || 
         pointType === 'c' ||
-        isCalculatedPoint({ status: record['status'], description: record['description'] });
+        isCalculatedPoint({ status: pointStatus, description: pointDescription });
       
       if (i === 1 && isCalculated) {
-        console.log('[CSV Parser] 🧮 Detected CALCULATED point:', record['point']);
+        console.log('[CSV Parser] 🧮 Detected CALCULATED point:', pointName);
         console.log('  - Point Type:', pointType);
-        console.log('  - Status:', record['status']);
-        console.log('  - Description:', record['description']);
+        console.log('  - Status:', pointStatus);
+        console.log('  - Description:', pointDescription);
       }
       
       const point: CadastralPoint = {
-        id: record['point'] || '',
+        id: pointName,
         original: {
           y: originalY,
           x: originalX
@@ -307,15 +339,15 @@ export function validateAndParseCSV(csv: string, loZone?: number): CSVValidation
           y: (!isNaN(rawY) ? rawY.toFixed(2) : ''),
           x: (!isNaN(rawX) ? rawX.toFixed(2) : '')
         },
-        status: (record['status'] || '') as any,
-        description: record['description'] || '',
+        status: pointStatus as any,
+        description: pointDescription,
         surveyDate: parsedDate,
         includeInFieldBook: !isCalculated,  // Keep them off the observation pages -- the field book prints them in its own CALCULATED POINTS block
         includeInCoordinateList: true       // Include all points in coordinate list
       };
       // Throwaway key consumed by the case-fold duplicate check below — never
       // reaches the store or the API.
-      (point as any)._rawId = record['point'] || '';
+      (point as any)._rawId = pointName;
       
       if (i === 1) {
         console.log(' [CSV Parser] === STAGE 3: FINAL POINT OBJECT ===' );
@@ -346,6 +378,18 @@ result.preview.push(point);
       if (point.includeInFieldBook) {
         result.summary.fieldBookPoints++;
       }
+    }
+
+    // A row with co-ordinates but no name cannot become a beacon; refuse the file and say which rows.
+    if (namelessRows.length > 0) {
+      result.isValid = false;
+      const shown = namelessRows.slice(0, 10).join(', ');
+      result.errors.push({
+        row: namelessRows[0],
+        field: 'point',
+        message: `${namelessRows.length} row${namelessRows.length === 1 ? ' has' : 's have'} no point name (row${namelessRows.length === 1 ? '' : 's'} ${shown}${namelessRows.length > 10 ? ', ...' : ''})`,
+        severity: 'error'
+      });
     }
 
     if (emptyRows > 0) {

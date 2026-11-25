@@ -188,8 +188,12 @@ function buildFieldBook() {
   };
 }
 
-function setImportedPoints(points: CadastralPoint[]) {
+function setImportedPoints(points: CadastralPoint[], targetProjectId?: number | string | null) {
   workflowState.importedPoints = points;
+  // Later workflow steps can hold a project id in their own state while this
+  // composable's singleton is still unset. Callers that delete or adopt points
+  // pass theirs explicitly so the deferred csv-import write is not skipped.
+  const saveProjectId = targetProjectId ?? projectId.value;
   
   console.log('💾 [setImportedPoints] Saving', points.length, 'points');
   if (points.length > 0) {
@@ -199,7 +203,7 @@ function setImportedPoints(points: CadastralPoint[]) {
   }
   
   // Auto-save to database if linked to a project (non-blocking)
-  if (projectId.value) {
+  if (saveProjectId) {
     // Use setTimeout to make it truly non-blocking
     setTimeout(() => {
       const mappedPoints = points.map(p => ({
@@ -233,7 +237,7 @@ function setImportedPoints(points: CadastralPoint[]) {
         points: mappedPoints,
         coordinate_count: points.length,
         file_imported_at: new Date().toISOString()
-      }).catch(err => {
+      }, saveProjectId).catch(err => {
         console.error('⚠️ Failed to auto-save imported points:', err)
         console.log('💡 Data is still imported locally, save will retry on next action')
       })
@@ -662,9 +666,10 @@ async function updateCurrentStep(metadata?: any) {
  * run rebuilt from the import copy, so a deleted point came back into the Field Book and the Co-ordinate List.
  * Every delete path calls this, so none of them can leave a copy behind.
  */
-async function removePointsFromWorkflow(names: string[]): Promise<void> {
+async function removePointsFromWorkflow(names: string[], targetProjectId?: number | string | null): Promise<void> {
   if (!names.length) return
   const norm = names
+  const saveProjectId = targetProjectId ?? projectId.value
 
   workflowState.importedPoints = dropNamed(workflowState.importedPoints, (p: any) => p.id, norm)
   if (workflowState.adjustedCoordinates) {
@@ -675,12 +680,12 @@ async function removePointsFromWorkflow(names: string[]): Promise<void> {
   if (docs?.fieldBook?.points) docs.fieldBook.points = dropNamed(docs.fieldBook.points, (p: any) => p.id, norm)
 
   // setImportedPoints writes step_data['csv-import'].points, which a reload rebuilds importedPoints from
-  setImportedPoints(workflowState.importedPoints)
+  setImportedPoints(workflowState.importedPoints, saveProjectId)
   if (workflowState.adjustedCoordinates) {
     await saveStepData('calculations-part1', {
       adjusted_coordinates: workflowState.adjustedCoordinates,
       point_count: workflowState.adjustedCoordinates.length,
-    })
+    }, saveProjectId)
   }
 }
 
@@ -719,13 +724,14 @@ async function reconcilePointsWithRegistry(): Promise<string[]> {
   return names
 }
 
-async function saveStepData(step: string, metadata: any) {
-  if (!projectId.value) {
+async function saveStepData(step: string, metadata: any, targetProjectId?: number | string | null) {
+  const saveProjectId = targetProjectId ?? projectId.value
+  if (!saveProjectId) {
     console.warn('⚠️ No project linked, skipping step data save')
     return
   }
   try {
-    const response = await api.patch(`/survey-projects/${projectId.value}/workflow`, {
+    const response = await api.patch(`/survey-projects/${saveProjectId}/workflow`, {
       step,
       action: 'update',
       metadata: {

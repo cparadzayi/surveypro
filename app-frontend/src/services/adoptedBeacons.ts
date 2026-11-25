@@ -1,4 +1,5 @@
 import api from './api'
+import { clearCoordinatePointsCache } from './coordinatePointCache'
 
 /**
  * Adopted beacons: coordinates carried forward from a previous approved
@@ -60,4 +61,25 @@ export async function importAdoptedBeacons(
 export async function clearAdoptedBeacons(projectId: number | string): Promise<number> {
   const r = await api.delete('/adopted-beacons', { params: { project_id: projectId } })
   return r.data?.deleted ?? 0
+}
+
+/**
+ * Move one live observation into the adopted set without a full CSV replace.
+ * The server reads the point's coordinates, status and description; the caller
+ * supplies only the source-record citation. The deleted point must also be
+ * removed from the workflow arrays by the caller -- the API only owns the two
+ * database rows.
+ */
+export async function adoptCoordinatePoint(
+  projectId: number | string,
+  input: { pointName: string; srNumber: string; surveyDate?: string | null },
+): Promise<AdoptedBeacon> {
+  const r = await api.post('/adopted-beacons/adopt', {
+    project_id: projectId,
+    point_name: input.pointName,
+    sr_number: input.srNumber,
+    survey_date: input.surveyDate ?? null,
+  })
+  clearCoordinatePointsCache()
+  return r.data?.data ?? r.data?.adopted
 }

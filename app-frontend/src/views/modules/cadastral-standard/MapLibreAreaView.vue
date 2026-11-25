@@ -88,6 +88,7 @@
         :points="surveyPegPoints"
         :edit-handler="editPanelHandler"
         :delete-handler="deletePanelHandler"
+        :adopt-handler="adoptPanelHandler"
         @close="showRenamePanel = false"
         @edit-complete="(payload) => handleRenameComplete(payload.patch?.name ? [{ oldName: payload.oldName, newName: payload.patch.name }] : [])"
       />
@@ -746,6 +747,34 @@
                 @keydown.escape="beaconModal = null"
               />
             </div>
+            <div v-if="beaconModal.mode === 'edit' && !isOfficialControlStatus(beaconModal.status)" class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-2">
+              <p class="text-xs font-semibold text-amber-900">🏛 Adopted beacon</p>
+              <p class="text-[11px] text-amber-800">
+                Move this point out of field observations into ADOPTED BEACONS, citing the source record. Its Y/X, status and description are carried forward.
+              </p>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-xs font-medium text-amber-900 mb-1">S.R. number</label>
+                  <input
+                    v-model="beaconModal.srNumber"
+                    type="text"
+                    maxlength="20"
+                    class="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    placeholder="e.g. 112/2021"
+                  />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-amber-900 mb-1">Date of survey</label>
+                  <input
+                    v-model="beaconModal.surveyDateRaw"
+                    type="text"
+                    maxlength="30"
+                    class="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    placeholder="e.g. February-21"
+                  />
+                </div>
+              </div>
+            </div>
             <p v-if="beaconModal.error" class="text-xs text-red-600">{{ beaconModal.error }}</p>
           </div>
           <!-- Actions -->
@@ -758,7 +787,15 @@
             >📍 Pick on map</button>
             <div class="flex gap-3">
               <button
+                v-if="beaconModal.mode === 'edit' && !isOfficialControlStatus(beaconModal.status)"
+                @click="confirmBeaconAdopt"
+                :disabled="beaconModal.saving || !beaconModal.srNumber.trim()"
+                class="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Move this point to ADOPTED BEACONS with the source S.R. number and survey date"
+              >🏛 Adopt</button>
+              <button
                 @click="beaconModal = null"
+                :disabled="beaconModal.saving"
                 class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >Cancel</button>
               <button
@@ -931,7 +968,7 @@
           <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
             <div class="px-5 py-4 bg-amber-500">
               <h3 class="text-white font-semibold text-base">
-                {{ affectedParcelsConfirm.intent === 'delete' ? 'Delete this point?' : 'Apply this change?' }}
+                {{ affectedParcelsConfirm.intent === 'delete' ? 'Delete this point?' : (affectedParcelsConfirm.intent === 'adopt' ? 'Adopt this beacon?' : 'Apply this change?') }}
               </h3>
               <p class="text-amber-100 text-xs mt-0.5">
                 Point "{{ affectedParcelsConfirm.pointName }}" is used by {{ affectedParcelsConfirm.parcels.length }} parcel{{ affectedParcelsConfirm.parcels.length === 1 ? '' : 's' }}.
@@ -945,7 +982,9 @@
               </ul>
             </div>
             <div class="px-5 py-3 text-xs text-gray-600 bg-amber-50 border-t border-amber-100">
-              Proceeding will apply the change and re-run parcel computation so the affected parcels pick up the new beacon geometry.
+              {{ affectedParcelsConfirm.intent === 'adopt'
+                ? 'Proceeding will move the point into ADOPTED BEACONS with its source S.R. number and date, and re-run parcel computation.'
+                : 'Proceeding will apply the change and re-run parcel computation so the affected parcels pick up the new beacon geometry.' }}
             </div>
             <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
               <button
@@ -1056,7 +1095,7 @@ import area from '@turf/area';
 import { listLandParcels, createLandParcel, finalizeLandParcels, deleteLandParcel, updateLandParcel, listCoordinatePoints, renameCoordinatePoint, createCoordinatePoint, updateCoordinatePoint, deleteCoordinatePoint, deleteCoordinatePointByName, normalizeCoordinatePointNames, type LandParcel, type CoordinatePoint } from '../../../services/spatial';
 import { useCadastralWorkflow } from '../../../composables/useCadastralWorkflow';
 import api from '../../../services/api';
-import { listAdoptedBeacons } from '../../../services/adoptedBeacons';
+import { adoptCoordinatePoint, listAdoptedBeacons } from '../../../services/adoptedBeacons';
 import { saveDocument } from '../../../services/documentStorage';
 import { validateParcel, formatValidationMessage, type ValidationResult } from '../../../services/parcelValidation';
 import { nextDesignation } from '../../../utils/parcelNumbering';
@@ -1322,7 +1361,7 @@ const mapRenameInputRef = ref<HTMLInputElement | null>(null);
 const affectedParcelsConfirm = ref<{
   pointName: string;
   parcels: Array<{ id: number; stand: string; designation: string }>;
-  intent: 'edit' | 'delete';
+  intent: 'edit' | 'delete' | 'adopt';
   resolve: () => void;
   reject: (e: Error) => void;
 } | null>(null);
@@ -1596,7 +1635,7 @@ async function findAffectedParcels(
 async function showAffectedParcelsConfirm(
   pointName: string,
   parcels: Array<{ id: number; stand: string; designation: string }>,
-  intent: 'edit' | 'delete'
+  intent: 'edit' | 'delete' | 'adopt'
 ): Promise<void> {
   if (parcels.length === 0) return;
   await new Promise<void>((resolve, reject) => {
@@ -1606,7 +1645,7 @@ async function showAffectedParcelsConfirm(
 
 async function requireAffectedParcelsConfirm(
   pointName: string,
-  intent: 'edit' | 'delete'
+  intent: 'edit' | 'delete' | 'adopt'
 ): Promise<Array<{ id: number; stand: string; designation: string; capeLoPoints: any[] }>> {
   const parcels = await findAffectedParcels(pointName);
   await showAffectedParcelsConfirm(pointName, parcels, intent);
@@ -1751,15 +1790,17 @@ async function deletePanelHandler(name: string): Promise<void> {
     throw e;
   }
 
+  const workflowProjectId = workflowState?.projectInfo?.projectId;
+  if (!workflowProjectId) throw new Error('No project loaded');
+
   // Resolve numeric DB id. Memory-only points (entered into the workflow but
   // not yet persisted to coordinate_points) won't have a row to delete —
   // we skip the DB call and just clean the workflow state.
   let resolvedDbId = dbPointIds.value.get(name);
   if (resolvedDbId === undefined) {
-    const projectId = workflowState?.projectInfo?.projectId;
-    if (projectId) {
+    if (workflowProjectId) {
       try {
-        const all = await listCoordinatePoints(Number(projectId));
+        const all = await listCoordinatePoints(Number(workflowProjectId));
         const match = all.find((p: any) => p.name === name);
         if (match?.id !== undefined) {
           dbPointIds.value.set(name, match.id);
@@ -1791,7 +1832,7 @@ async function deletePanelHandler(name: string): Promise<void> {
   // import copy still held the point and the next Calculations run brought it back into the Field Book and
   // the Co-ordinate List.
   try {
-    await removePointsFromWorkflow([name]);
+    await removePointsFromWorkflow([name], workflowProjectId);
   } catch (e) {
     console.warn('[PointDelete] Could not persist delete to workflow state:', e);
   }
@@ -1802,6 +1843,62 @@ async function deletePanelHandler(name: string): Promise<void> {
 
   // Force the survey-peg map source to drop the deleted marker immediately.
   handleRenameComplete([]);
+}
+
+/**
+ * Move one field point into the adopted-beacon set, with the source record's
+ * S.R. number and survey date. This is the Areas-module equivalent of the
+ * Import CSV "remove from this survey and adopt instead" correction: the point
+ * leaves coordinate_points (so a CSV merge cannot resurrect it) and every
+ * workflow copy, but its coordinates/status/description are carried into
+ * project_adopted_beacons for the Co-ordinate List's ADOPTED BEACONS section.
+ */
+async function adoptPanelHandler(
+  name: string,
+  srNumber: string,
+  surveyDateRaw?: string | null,
+): Promise<void> {
+  const projectId = workflowState?.projectInfo?.projectId;
+  if (!projectId) throw new Error('No project loaded');
+
+  const recordNumber = String(srNumber ?? '').trim();
+  if (!recordNumber) throw new Error('S.R. number is required');
+  if (recordNumber.length > 20) throw new Error('S.R. number must be 20 characters or fewer');
+
+  const pointName = normalizeBeaconName(String(name).trim());
+  if (!pointName) throw new Error('Point name is required');
+
+  // Official control belongs in the TRIG/OCP sections of the record, never in
+  // ADOPTED BEACONS. Both entry points hide the action, and this guard keeps a
+  // stale panel/popup from adopting one after its status changes.
+  const sourcePoint =
+    surveyPegPoints.value.find((p: any) => normalizeBeaconName(String(p.id ?? p.name ?? '')) === pointName)
+    ?? coordinatePoints.value.find((p: any) => normalizeBeaconName(String(p.id ?? p.name ?? '')) === pointName);
+  if (sourcePoint && isOfficialControlStatus(sourcePoint.status)) {
+    throw new Error('Official control points cannot be adopted');
+  }
+
+  const affectedParcels = await requireAffectedParcelsConfirm(name, 'adopt');
+  await adoptCoordinatePoint(projectId, {
+    pointName,
+    srNumber: recordNumber,
+    surveyDate: String(surveyDateRaw ?? '').trim() || null,
+  });
+
+  // The point is no longer a live observation: drop it from the map's DB
+  // lookups and every persisted workflow copy, just as the delete path does.
+  dbPointNames.value.delete(name);
+  dbPointNames.value.delete(pointName);
+  dbPointIds.value.delete(name);
+  dbPointIds.value.delete(pointName);
+  await removePointsFromWorkflow([name, pointName], projectId);
+
+  if (affectedParcels.length > 0) {
+    await rebuildAffectedParcels(affectedParcels, { kind: 'delete', name });
+  }
+
+  handleRenameComplete([]);
+  notifySuccess(`"${pointName}" is now an adopted beacon (S.R. ${recordNumber}).`);
 }
 
 async function handlePointRename(payload: { oldName: string; newName: string }) {
@@ -2048,6 +2145,11 @@ type BeaconModalState = {
   y: string;                 // Cape Lo Y (Westing)
   x: string;                 // Cape Lo X (Southing)
   description: string;
+  /** Status of the point being edited — official control is not adoptable. */
+  status: string | null;
+  /** Source-record citation for the Adopt button (edit mode only). */
+  srNumber: string;
+  surveyDateRaw: string;
   error: string;
   saving: boolean;
   /** Where the Y/X came from — shown under the fields (map click, snap target). */
@@ -2059,11 +2161,11 @@ const beaconModal = ref<BeaconModalState | null>(null);
 const beaconModalNameRef = ref<HTMLInputElement | null>(null);
 
 function openAddBeaconModal() {
-  beaconModal.value = { mode: 'add', dbId: null, originalName: '', name: '', y: '', x: '', description: '', error: '', saving: false };
+  beaconModal.value = { mode: 'add', dbId: null, originalName: '', name: '', y: '', x: '', description: '', status: null, srNumber: '', surveyDateRaw: '', error: '', saving: false };
   nextTick(() => { beaconModalNameRef.value?.focus(); });
 }
 
-function openEditBeaconModal(pt: { id: string | number; y: number; x: number; description?: string; _dbId?: number }) {
+function openEditBeaconModal(pt: { id: string | number; y: number; x: number; description?: string; status?: string | null; _dbId?: number }) {
   // _dbId is the numeric DB row id (set during loadParcelsFromDatabase / listCoordinatePoints reconcile)
   const resolvedId = pt._dbId ?? dbPointIds.value.get(String(pt.id)) ?? null;
   beaconModal.value = {
@@ -2074,6 +2176,9 @@ function openEditBeaconModal(pt: { id: string | number; y: number; x: number; de
     y: String(pt.y),
     x: String(pt.x),
     description: pt.description ?? '',
+    status: pt.status ?? null,
+    srNumber: '',
+    surveyDateRaw: '',
     error: '',
     saving: false
   };
@@ -2137,7 +2242,7 @@ function nearestKnownPoint(pt: { x: number; y: number }) {
 
 /** Ribbon entry: straight to the map, with a blank add-draft waiting behind it. */
 function startPickPoint() {
-  beaconModal.value = { mode: 'add', dbId: null, originalName: '', name: '', y: '', x: '', description: '', error: '', saving: false };
+  beaconModal.value = { mode: 'add', dbId: null, originalName: '', name: '', y: '', x: '', description: '', status: null, srNumber: '', surveyDateRaw: '', error: '', saving: false };
   beginCoordinatePick();
 }
 
@@ -2296,6 +2401,29 @@ async function confirmBeaconSave() {
 
   } catch (e: any) {
     modal.error = e?.response?.data?.error || e?.message || 'Save failed';
+    modal.saving = false;
+  }
+}
+
+/** Adopt the point this edit modal was opened for, using the citation typed below. */
+async function confirmBeaconAdopt() {
+  const modal = beaconModal.value;
+  if (!modal || modal.mode !== 'edit' || modal.saving) return;
+
+  const srNumber = modal.srNumber.trim();
+  if (!srNumber) { modal.error = 'S.R. number is required.'; return; }
+
+  modal.saving = true;
+  modal.error = '';
+  try {
+    await adoptPanelHandler(modal.originalName, srNumber, modal.surveyDateRaw);
+    beaconModal.value = null;
+  } catch (e: any) {
+    if (e?.message === 'cancelled') {
+      modal.saving = false;
+      return;
+    }
+    modal.error = e?.response?.data?.error || e?.message || 'Adoption failed';
     modal.saving = false;
   }
 }
@@ -4324,6 +4452,7 @@ function addSurveyPoints(wgs84Points: any[]) {
           <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#1e293b">${props.id}</div>
           <button id="beacon-rename-btn" style="display:block;width:100%;text-align:left;padding:5px 8px;border-radius:6px;background:#eff6ff;color:#1d4ed8;font-size:12px;border:none;cursor:pointer;margin-bottom:4px">✏️ Rename</button>
           <button id="beacon-editcoords-btn" style="display:block;width:100%;text-align:left;padding:5px 8px;border-radius:6px;background:#f0fdf4;color:#15803d;font-size:12px;border:none;cursor:pointer;margin-bottom:4px">📐 Edit Coordinates</button>
+          ${isOfficialControlStatus(props.status) ? '' : `<button id="beacon-adopt-btn" style="display:block;width:100%;text-align:left;padding:5px 8px;border-radius:6px;background:#fffbeb;color:#b45309;font-size:12px;border:none;cursor:pointer;margin-bottom:4px">🏛️ Adopt as Beacon</button>`}
           <button id="beacon-delete-btn" style="display:block;width:100%;text-align:left;padding:5px 8px;border-radius:6px;background:#fef2f2;color:#dc2626;font-size:12px;border:none;cursor:pointer">🗑️ Delete Point</button>
         </div>
       `)
@@ -4349,6 +4478,23 @@ function addSurveyPoints(wgs84Points: any[]) {
             y: fullPt?.y ?? 0,
             x: fullPt?.x ?? 0,
             description: fullPt?.description ?? props.description ?? '',
+            status: props.status,
+            _dbId: dbPointIds.value.get(props.id)
+          });
+        });
+      }
+
+      const adoptBtn = document.getElementById('beacon-adopt-btn');
+      if (adoptBtn) {
+        adoptBtn.addEventListener('click', () => {
+          popup.remove();
+          const fullPt = coordinatePoints.value.find((p: any) => p.id === props.id);
+          openEditBeaconModal({
+            id: props.id,
+            y: fullPt?.y ?? 0,
+            x: fullPt?.x ?? 0,
+            description: fullPt?.description ?? props.description ?? '',
+            status: props.status,
             _dbId: dbPointIds.value.get(props.id)
           });
         });

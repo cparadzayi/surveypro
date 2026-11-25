@@ -98,7 +98,7 @@
           <!-- Dialog header -->
           <div class="bg-blue-600 px-5 py-4">
             <h3 class="text-white font-semibold text-base">Edit Point</h3>
-            <p class="text-blue-200 text-xs mt-0.5">Update name, coordinates, or description</p>
+            <p class="text-blue-200 text-xs mt-0.5">Update name, coordinates, description, or adopt as a beacon</p>
           </div>
 
           <!-- Point badge -->
@@ -158,6 +158,37 @@
                 placeholder="Optional"
               />
             </div>
+            <div
+              v-if="props.adoptHandler && modalRow && !isControl(modalRow.status)"
+              class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-2"
+            >
+              <p class="text-xs font-semibold text-amber-900">🏛 Adopted beacon</p>
+              <p class="text-[11px] text-amber-800">
+                Move this point out of field observations into ADOPTED BEACONS. Its Y/X, status and description are carried forward; the source record details come from here.
+              </p>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-xs font-medium text-amber-900 mb-1">S.R. number</label>
+                  <input
+                    v-model="adoptSrNumber"
+                    type="text"
+                    maxlength="20"
+                    class="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    placeholder="e.g. 112/2021"
+                  />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-amber-900 mb-1">Date of survey</label>
+                  <input
+                    v-model="adoptSurveyDate"
+                    type="text"
+                    maxlength="30"
+                    class="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    placeholder="e.g. February-21"
+                  />
+                </div>
+              </div>
+            </div>
             <p v-if="modalError" class="text-xs text-red-600">{{ modalError }}</p>
           </div>
 
@@ -165,7 +196,7 @@
           <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
             <button
               @click="confirmDelete"
-              :disabled="isSaving || isDeleting"
+              :disabled="isSaving || isDeleting || isAdopting"
               class="px-4 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
             >
               <span v-if="isDeleting" class="animate-spin inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full"></span>
@@ -173,15 +204,25 @@
             </button>
             <div class="flex gap-2">
               <button
+                v-if="props.adoptHandler && modalRow && !isControl(modalRow.status)"
+                @click="confirmAdopt"
+                :disabled="isSaving || isDeleting || isAdopting || !adoptSrNumber.trim()"
+                class="px-4 py-2 text-sm text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                title="Move this point to ADOPTED BEACONS with the source S.R. number and survey date"
+              >
+                <span v-if="isAdopting" class="animate-spin inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full"></span>
+                {{ isAdopting ? 'Adopting...' : 'Adopt' }}
+              </button>
+              <button
                 @click="cancelModal"
-                :disabled="isSaving"
+                :disabled="isSaving || isAdopting"
                 class="px-4 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 @click="confirmEdit"
-                :disabled="isSaving || !canSave"
+                :disabled="isSaving || isAdopting || !canSave"
                 class="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 <span v-if="isSaving" class="animate-spin inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full"></span>
@@ -234,16 +275,21 @@ const props = defineProps<{
     patch: { name?: string; y?: number; x?: number; description?: string }
   ) => Promise<void>;
   deleteHandler: (name: string) => Promise<void>;
+  adoptHandler?: (name: string, srNumber: string, surveyDate?: string | null) => Promise<void>;
 }>();
 
 const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'edit-complete', payload: { oldName: string; patch: { name?: string; y?: number; x?: number; description?: string } }): void;
+  (e: 'adopt-complete', payload: { name: string; srNumber: string; surveyDate: string | null }): void;
 }>();
 
 const searchQuery = ref('');
 const isSaving = ref(false);
 const isDeleting = ref(false);
+const isAdopting = ref(false);
+const adoptSrNumber = ref('');
+const adoptSurveyDate = ref('');
 const savedCount = ref(0);
 const rows = ref<PointRow[]>([]);
 
@@ -313,6 +359,8 @@ function openModal(row: PointRow) {
   modalY.value = String(row.numericY);
   modalX.value = String(row.numericX);
   modalDescription.value = row.description;
+  adoptSrNumber.value = '';
+  adoptSurveyDate.value = '';
   modalError.value = '';
   nextTick(() => {
     modalInputRef.value?.focus();
@@ -326,10 +374,16 @@ function cancelModal() {
   modalY.value = '';
   modalX.value = '';
   modalDescription.value = '';
+  adoptSrNumber.value = '';
+  adoptSurveyDate.value = '';
   modalError.value = '';
 }
 
 // Live validation feedback (errors only — disablement is via canSave)
+watch(adoptSrNumber, () => {
+  if (modalError.value === 'S.R. number is required') modalError.value = '';
+});
+
 watch([modalNewName, modalY, modalX], () => {
   if (!modalRow.value) return;
   const trimmedName = modalNewName.value.trim();
@@ -405,6 +459,33 @@ async function confirmDelete() {
     }
   } finally {
     isDeleting.value = false;
+  }
+}
+
+async function confirmAdopt() {
+  if (!modalRow.value || !props.adoptHandler || isAdopting.value || isDeleting.value || isSaving.value) return;
+  const srNumber = adoptSrNumber.value.trim();
+  if (!srNumber) {
+    modalError.value = 'S.R. number is required';
+    return;
+  }
+
+  const row = modalRow.value;
+  const name = row.currentName;
+  const surveyDate = adoptSurveyDate.value.trim() || null;
+  isAdopting.value = true;
+  modalError.value = '';
+  try {
+    await props.adoptHandler(name, srNumber, surveyDate);
+    rows.value = rows.value.filter(r => r !== row);
+    emit('adopt-complete', { name, srNumber, surveyDate });
+    cancelModal();
+  } catch (err: any) {
+    if (err?.message !== 'cancelled') {
+      modalError.value = err?.message || 'Adoption failed. Please try again.';
+    }
+  } finally {
+    isAdopting.value = false;
   }
 }
 </script>

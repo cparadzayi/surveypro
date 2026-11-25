@@ -43,6 +43,20 @@ describe('deleted points leave every copy the workflow keeps', () => {
     expect(calc.metadata.adjusted_coordinates.map((p: any) => p.pointId)).toEqual(['102B', '96C', 'SLE'])
   })
 
+  it('persists an adoption/delete from a later step whose project id is not in the composable singleton', async () => {
+    const wf = seed()
+    wf.projectId.value = null as any
+    await wf.removePointsFromWorkflow(['SLA'], 99)
+    await vi.advanceTimersByTimeAsync(200)
+
+    expect(patch.mock.calls.map((c: any) => c[0])).toEqual([
+      '/survey-projects/99/workflow',
+      '/survey-projects/99/workflow',
+    ])
+    expect(savedStep('csv-import').metadata.points.map((p: any) => p.id)).not.toContain('SLA')
+    expect(savedStep('calculations-part1').metadata.adjusted_coordinates.map((p: any) => p.pointId)).not.toContain('SLA')
+  })
+
   it('reconcilePointsWithRegistry repairs a project whose deleted points are still in the saved copies', async () => {
     const wf = seed()
     listCoordinatePoints.mockResolvedValue(['102B', '96C', 'SLE'].map((name) => ({ name })))

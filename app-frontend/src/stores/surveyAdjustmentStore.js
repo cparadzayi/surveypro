@@ -93,6 +93,15 @@ export const useSurveyAdjustmentStore = defineStore('surveyAdjustment', () => {
   function compute() {
     error.value  = null
     result.value = null
+    // A beacon whose four co-ordinates are all still 0 is a row added (or loaded) and never filled in. It is
+    // not a beacon of either survey: compared, a few of them coincide, every line among them "passes", and the
+    // real beacons are the ones set aside (an upload with blank rows rejected all four of its beacons that way).
+    const blank = points.value.filter(p => [p.yH, p.xH, p.yS, p.xS].every(v => Number(v) === 0))
+    if (blank.length) {
+      error.value = `${blank.map(p => p.name).join(', ')} ${blank.length === 1 ? 'has' : 'have'} no co-ordinates `
+        + '(all four are 0). Enter them or remove the row' + (blank.length === 1 ? '' : 's') + ' before comparing.'
+      return
+    }
     if (sigma0Auto.value) sigma0.value = suggestedSigma0(points.value, surveyClass.value)
     try {
       let res

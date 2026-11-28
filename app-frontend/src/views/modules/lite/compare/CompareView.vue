@@ -743,6 +743,7 @@ import ModuleScaffold from '@/components/scaffold/ModuleScaffold.vue'
 import { group, btn } from '@/components/ribbon/types'
 import { useSurveyAdjustmentStore } from '@/stores/surveyAdjustmentStore'
 import { useProjectSelectionStore } from '@/stores/projectSelection'
+import { useLiteWorkingPointsStore } from '@/stores/liteWorkingPoints'
 import { f3, f4, f4s, formatDMS, SAMPLE_DATA } from '@/utils/surveyMath'
 import { generateBeaconAdjustmentReport } from '@/utils/beaconAdjustmentReport'
 import { medianPairwiseDistance } from '@/utils/si727'
@@ -904,6 +905,21 @@ function schedulePersist() {
 }
 
 watch(points, schedulePersist, { deep: true })
+
+// The network's beacons are offered to the other Lite modules (Join, Polar, Intersections, Areas v2) as working
+// points: this survey's position under the beacon's name, the historical one as "<name> (hist)". The sample
+// network is placeholder data and is not offered.
+const liteWorkingPoints = useLiteWorkingPointsStore()
+let shareTimer = null
+function shareWithLite() {
+  const rows = normalizeRows(points.value)
+  if (isSampleNetwork(rows)) return
+  liteWorkingPoints.syncComparison(rows)
+}
+watch(points, () => {
+  if (shareTimer) clearTimeout(shareTimer)
+  shareTimer = setTimeout(shareWithLite, 300)
+}, { deep: true, immediate: true })
 
 onMounted(async () => {
   if (props.embedded) return   // workflow reloads via its own existing-beacons path

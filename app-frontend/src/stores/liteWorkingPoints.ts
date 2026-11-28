@@ -8,7 +8,31 @@
 import { defineStore } from 'pinia'
 import { listCoordinatePoints } from '../services/spatial'
 
-export type WorkingPointSource = 'survey' | 'layer' | 'typed' | 'polar' | 'intersection'
+export type WorkingPointSource = 'survey' | 'layer' | 'typed' | 'polar' | 'intersection' | 'comparison' | 'historical'
+
+/** The suffix that names a beacon's historical (original survey) position among the working points. */
+export const HISTORICAL_SUFFIX = ' (hist)'
+
+/** A row of the Beacon Comparison network: historical (yH, xH) and this survey's (yS, xS) position. */
+export interface ComparisonBeacon { name: string; yH: number; xH: number; yS: number; xS: number }
+
+/**
+ * The working points a Beacon Comparison network gives: each beacon at this survey's position under its own
+ * name (source 'comparison'), and at its historical position under "<name> (hist)" (source 'historical').
+ * The historical co-ordinates may be in another system (an old survey's local system), so they are never
+ * given the beacon's bare name. A row with no name, or with all four co-ordinates 0 (never filled in), gives none.
+ */
+export function comparisonWorkingPoints(rows: ComparisonBeacon[]): Array<{ name: string; y: number; x: number; source: WorkingPointSource }> {
+  const out: Array<{ name: string; y: number; x: number; source: WorkingPointSource }> = []
+  for (const r of rows) {
+    const name = String(r?.name ?? '').trim()
+    const v = [r?.yH, r?.xH, r?.yS, r?.xS].map(Number)
+    if (!name || v.every((n) => n === 0)) continue
+    if (Number.isFinite(v[2]) && Number.isFinite(v[3])) out.push({ name, y: v[2], x: v[3], source: 'comparison' })
+    if (Number.isFinite(v[0]) && Number.isFinite(v[1])) out.push({ name: name + HISTORICAL_SUFFIX, y: v[0], x: v[1], source: 'historical' })
+  }
+  return out
+}
 
 /** Where the Lite modules find points: a survey project's coordinate points, or a spatial points layer. */
 export type PointSourceKind = 'survey' | 'layer'
@@ -153,6 +177,25 @@ export const useLiteWorkingPointsStore = defineStore('liteWorkingPoints', {
       const i = this.points.findIndex((q) => q.name.toLowerCase() === key)
       if (i >= 0) this.points.splice(i, 1, entry)
       else this.points.push(entry)
+      if (this.points.length > MAX_WORKING_POINTS) {
+        this.points = [...this.points].sort((a, b) => b.at - a.at).slice(0, MAX_WORKING_POINTS)
+      }
+      this.persist()
+    },
+    /**
+     * Make the Beacon Comparison network's beacons working points, replacing those of an earlier network (so a
+     * renamed or deleted beacon does not linger). Points typed or computed in the other modules are kept.
+     */
+    syncComparison(rows: ComparisonBeacon[]) {
+      const next = comparisonWorkingPoints(rows)
+      const names = new Set(next.map((p) => p.name.toLowerCase()))
+      const now = Date.now()
+      const kept = this.points.filter((q) => q.source !== 'comparison' && q.source !== 'historical' && !names.has(q.name.toLowerCase()))
+      const same = (a: WorkingPoint[], b: typeof next) => a.length === b.length
+        && a.every((p, i) => p.name === b[i].name && p.y === b[i].y && p.x === b[i].x && p.source === b[i].source)
+      const prev = this.points.filter((q) => q.source === 'comparison' || q.source === 'historical')
+      if (same(prev, next) && kept.length + prev.length === this.points.length) return
+      this.points = [...kept, ...next.map((p, i) => ({ ...p, at: now - i }))]
       if (this.points.length > MAX_WORKING_POINTS) {
         this.points = [...this.points].sort((a, b) => b.at - a.at).slice(0, MAX_WORKING_POINTS)
       }
